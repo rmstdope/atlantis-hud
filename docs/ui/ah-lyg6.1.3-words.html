@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.1.3 — every word and every state, as I intend to specify them</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, .card code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:16px; }
+  .hdr { display:flex; align-items:center; gap:7px; padding:9px 13px; background:var(--raised);
+         border:1px solid var(--edge); border-radius:7px; font:13px/1.4 'Helvetica Neue',Arial,sans-serif; flex-wrap:wrap; }
+  .hdr .box { border:1px solid var(--edge); background:var(--raised); border-radius:4px; padding:1px 7px; color:var(--ink); }
+  .hdr .lvl { color:var(--ink-dim); }
+  .chip { display:inline-flex; align-items:center; gap:4px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif;
+          padding:1px 7px; border-radius:4px; border:1px solid var(--edge); color:var(--ink-soft); background:var(--raised); }
+  .chip .car { color:var(--ink-dim); }
+  .chip.warn { border-color:#5c3232; color:var(--danger); }
+  .pop { width:320px; background:var(--panel); border:1px solid var(--edge); border-radius:7px;
+         box-shadow:0 10px 32px #000a; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:8px; }
+  .pop .top { display:flex; align-items:center; gap:8px; padding:6px 9px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); }
+  .pop .top .sp { margin-left:auto; }
+  .pop ul { list-style:none; padding:8px; }
+  .pop li { display:flex; gap:8px; padding:4px 2px; color:var(--ink-soft); align-items:baseline; border-top:1px solid var(--edge-soft); }
+  .pop li:first-child { border-top:0; }
+  .pop li .f { color:var(--ink); }
+  .pop li .as { margin-left:auto; font-size:11.5px; color:var(--ink-dim); }
+  .pop li.stale .as { color:var(--danger); }
+  .pop li .x { border:0; background:none; color:var(--ink-dim); font-size:12px; padding:0 2px; }
+  .pop li.armed { background:#20161a; border-radius:4px; }
+  .pop li.armed .x { color:var(--danger); }
+  .pop .foot { padding:6px 9px; border-top:1px solid var(--edge); color:var(--ink-dim); font-size:11.5px; }
+  .pop .confirm { padding:8px 9px; border-top:1px solid var(--edge); background:var(--raised); color:var(--ink-soft); }
+  .pop .confirm .row { display:flex; gap:6px; justify-content:flex-end; margin-top:8px; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px; padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.focus { outline:2px solid var(--select); outline-offset:1px; color:var(--ink); }
+  .btn.dgr { border-color:#5c3232; color:var(--danger); }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:22px; align-items:start; }
+  .three { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; align-items:start; }
+  @media (max-width:980px) { .two,.three { grid-template-columns:1fr; } }
+  .status { margin-top:10px; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ok); }
+  table { border-collapse:collapse; width:100%; font:13px/1.6 'Helvetica Neue',Arial,sans-serif; }
+  td, th { border-top:1px solid var(--edge-soft); padding:6px 8px; vertical-align:top; text-align:left; color:var(--ink-soft); }
+  th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; border-top:0; }
+  td b { color:var(--ink); font-weight:600; }
+  .q { border-left:3px solid var(--brass); padding-left:12px; margin:14px 0; color:var(--ink); font-size:13.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.1.3 — <span>every word, every state</span></h1>
+  <p>You chose <b>1B</b> (Forget behind a confirm inside the popover) and <b>2B</b> (the chip counts
+  how many sheets are behind the turn you are looking at). Everything below is that, drawn as I
+  intend to write it into the plan. The words are the words that will ship.</p>
+  <p>Two of them I am least sure about, and they are the two questions beside this page: the
+  <b>footer sentence</b>, and what <b>Escape</b> means while the confirm is showing.</p>
+</header>
+<main>
+
+<h3 class="sec">The chip</h3>
+<div class="card">
+  <div class="stage">
+    <div class="lbl">Two held, both current</div>
+    <div class="hdr"><span class="box">Havilah &#9662;</span><span class="box">Turn 23 &#9662;</span>
+      <span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+      <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+      <span class="chip">2 mage sheets <span class="car">&#9662;</span></span></div>
+    <div class="lbl" style="margin-top:18px">Two held, one behind turn 23</div>
+    <div class="hdr"><span class="box">Havilah &#9662;</span><span class="box">Turn 23 &#9662;</span>
+      <span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+      <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+      <span class="chip warn">2 mage sheets &middot; 1 old <span class="car">&#9662;</span></span></div>
+    <div class="lbl" style="margin-top:18px">One held, and it is old</div>
+    <div class="hdr"><span class="box">Havilah &#9662;</span><span class="box">Turn 23 &#9662;</span>
+      <span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+      <span class="chip warn">1 mage sheet &middot; 1 old <span class="car">&#9662;</span></span></div>
+    <div class="lbl" style="margin-top:18px">None held &mdash; no chip, and no empty popover to open</div>
+    <div class="hdr"><span class="box">Havilah &#9662;</span><span class="box">Turn 23 &#9662;</span>
+      <span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+      <span class="chip">+1 merged <span class="car">&#9662;</span></span></div>
+  </div>
+</div>
+
+<h3 class="sec">The popover, and Forget</h3>
+<div class="three">
+  <div class="card">
+    <h2>Resting</h2>
+    <div class="concept">Oldest sheet first, then by faction number. Forget is a &#10005; per row.</div>
+    <div class="stage">
+      <div class="pop" style="margin-top:0">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul>
+          <li class="stale"><span class="f">Creeping Death (17)</span><span>3 mages</span><span class="as">turn 21 &middot; 2 turns old</span><button class="x">&#10005;</button></li>
+          <li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span><button class="x">&#10005;</button></li>
+        </ul>
+        <div class="foot">A newer sheet from the same faction replaces the one you hold.</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>The confirm</h2>
+    <div class="concept">The row is marked, the foot becomes the question, focus lands on Cancel.</div>
+    <div class="stage">
+      <div class="pop" style="margin-top:0">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul>
+          <li class="stale armed"><span class="f">Creeping Death (17)</span><span>3 mages</span><span class="as">turn 21 &middot; 2 turns old</span><button class="x">&#10005;</button></li>
+          <li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span><button class="x">&#10005;</button></li>
+        </ul>
+        <div class="confirm">Forget Creeping Death (17)'s 3 mages? A newer sheet from them brings them back.
+          <div class="row"><span class="btn focus">Cancel</span><span class="btn dgr">Forget</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Forgotten</h2>
+    <div class="concept">The row goes, the chip drops to <code>1 mage sheet</code> and loses its
+    colour, and the status line is the receipt.</div>
+    <div class="stage">
+      <div class="hdr" style="margin-bottom:10px"><span class="box">The Disinherited Knights (42) &#9662;</span>
+        <span class="chip">1 mage sheet <span class="car">&#9662;</span></span></div>
+      <div class="pop" style="margin-top:0">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul><li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span><button class="x">&#10005;</button></li></ul>
+        <div class="foot">A newer sheet from the same faction replaces the one you hold.</div>
+      </div>
+      <div class="status">3 mages from Creeping Death (17) forgotten</div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">Question A — the footer sentence</h3>
+<p>The foot is one line of standing explanation, like the merged-reports panel's
+<i>"What these factions saw is on your map. Their units are shown, and cannot be ordered."</i></p>
+<div class="card">
+  <table>
+    <tr><th style="width:8em">Candidate</th><th>Sentence</th><th style="width:34%">Against it</th></tr>
+    <tr><td><b>A1</b> (mine)</td><td>A newer sheet from the same faction replaces the one you hold.</td>
+        <td>Says nothing about what a sheet is <i>for</i> — but it is the only thing that is true on the day this ships.</td></tr>
+    <tr><td><b>A2</b></td><td>A sheet is used by the study planner.</td>
+        <td>The wording from the mockup you chose — but the study planner is ah-lyg6.2 and is not built. This sentence would be false for at least one release.</td></tr>
+    <tr><td><b>A3</b></td><td>These mages will be planned alongside your own once the study planner lands.</td>
+        <td>Honest about both, and the longest; it also dates itself and has to be changed by ah-lyg6.2.</td></tr>
+  </table>
+</div>
+
+<h3 class="sec">Question B — Escape, while the confirm is showing</h3>
+<p>Every other header popover closes on Escape (<code>usePopoverDismiss</code>). The confirm adds a
+second thing Escape could mean.</p>
+<div class="card">
+  <table>
+    <tr><th style="width:8em">Candidate</th><th>What Escape does</th><th style="width:34%">Against it</th></tr>
+    <tr><td><b>B1</b> (mine)</td><td>First Escape cancels the confirm and leaves the popover open; a second Escape closes the popover.</td>
+        <td>Escape means two things depending on state — but it always means "back out of the innermost thing", which is what it means everywhere else in this app.</td></tr>
+    <tr><td><b>B2</b></td><td>Escape always closes the whole popover; the confirm is abandoned with it.</td>
+        <td>One rule, no state to reason about — but a keyboard user who armed the wrong row has to reopen the popover and find their place again.</td></tr>
+  </table>
+</div>
+
+<h3 class="sec">Everything else, as I will write it</h3>
+<div class="card">
+  <table>
+    <tr><th style="width:16em">Thing</th><th>Decision</th></tr>
+    <tr><td>Chip text</td><td><code>2 mage sheets</code> / <code>1 mage sheet</code>, and <code>&middot; 1 old</code> appended when any sheet is behind the loaded turn. Whole chip takes the danger border and ink then, plain otherwise.</td></tr>
+    <tr><td>"Old"</td><td>The sheet's turn is <b>behind the loaded report's turn</b>. A sheet from a turn <i>ahead</i> of the one you are looking at is not old and is not counted; its row says <code>turn 23 &middot; ahead of this turn</code>.</td></tr>
+    <tr><td>Row</td><td><code>Creeping Death (17)</code> &middot; <code>3 mages</code> / <code>1 mage</code> &middot; <code>turn 21 &middot; 2 turns old</code> (<code>1 turn old</code> singular). A faction with no name in its sheet header reads <code>Faction 17</code>.</td></tr>
+    <tr><td>Order</td><td>Oldest sheet first, then ascending faction number. The trouble is at the top.</td></tr>
+    <tr><td>Long name</td><td>Cut with an ellipsis at the row's width; the full name is the row's <code>title</code>.</td></tr>
+    <tr><td>Many sheets</td><td>The list scrolls inside the popover, at the same max height every other header popover uses.</td></tr>
+    <tr><td>Forget button</td><td>Labelled for screen readers <code>forget Creeping Death (17)'s mage sheet</code>. Arming a second row while one is armed moves the confirm to that row.</td></tr>
+    <tr><td>Forgetting the last one</td><td>The popover and the chip both go; focus returns to the faction chip beside where it was.</td></tr>
+    <tr><td>Focus</td><td>Opening focuses the popover frame; Cancel takes focus when the confirm appears; closing returns focus to the chip. All of it is what <code>ChipPopover</code> already does.</td></tr>
+    <tr><td>Persistence</td><td>Forget is a real deletion in the game's store, so it survives a reload. The chip follows the game you switch to and is empty in a game with no sheets.</td></tr>
+    <tr><td>No shortcut key</td><td>The chip earns no keyboard shortcut of its own; it is reached the way the merged chip is.</td></tr>
+  </table>
+</div>
+</main>
+</body>
+</html>

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.1.3 — the mage-sheet chip: Forget, and what the chip says when a sheet is old</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, .card code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; overflow:auto; padding:16px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .hdr { display:flex; align-items:center; gap:7px; padding:9px 13px; background:var(--raised);
+         border:1px solid var(--edge); border-radius:7px; font:13px/1.4 'Helvetica Neue',Arial,sans-serif; flex-wrap:wrap; }
+  .hdr .box { border:1px solid var(--edge); background:var(--raised); border-radius:4px; padding:1px 7px; color:var(--ink); }
+  .hdr .lvl { color:var(--ink-dim); }
+  .chip { display:inline-flex; align-items:center; gap:4px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif;
+          padding:1px 7px; border-radius:4px; border:1px solid var(--edge); color:var(--ink-soft); background:var(--raised); }
+  .chip .car { color:var(--ink-dim); }
+  .chip.warn { border-color:#5c3232; color:var(--danger); }
+  .chip.brass { border-color:var(--brass); color:var(--brass-bright); }
+  .pop { width:320px; background:var(--panel); border:1px solid var(--edge); border-radius:7px;
+         box-shadow:0 10px 32px #000a; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:8px; }
+  .pop .top { display:flex; align-items:center; gap:8px; padding:6px 9px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); }
+  .pop .top .sp { margin-left:auto; }
+  .pop ul { list-style:none; padding:8px; }
+  .pop li { display:flex; gap:8px; padding:4px 2px; color:var(--ink-soft); align-items:baseline; border-top:1px solid var(--edge-soft); }
+  .pop li:first-child { border-top:0; }
+  .pop li .f { color:var(--ink); }
+  .pop li .as { margin-left:auto; font-size:11.5px; color:var(--ink-dim); }
+  .pop li.stale .as { color:var(--danger); }
+  .pop li .x { border:0; background:none; color:var(--ink-dim); cursor:pointer; font-size:12px; padding:0 2px; }
+  .pop li .x:hover { color:var(--danger); }
+  .pop .foot { padding:6px 9px; border-top:1px solid var(--edge); color:var(--ink-dim); font-size:11.5px; }
+  .pop .confirm { padding:8px 9px; border-top:1px solid var(--edge); background:var(--raised); color:var(--ink-soft); }
+  .pop .confirm .row { display:flex; gap:6px; justify-content:flex-end; margin-top:8px; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px; padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.prim { background:#243244; color:var(--ink); border-color:#3a5372; }
+  .btn.dgr { border-color:#5c3232; color:var(--danger); }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .col { display:grid; gap:22px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:22px; align-items:start; }
+  .three { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; align-items:start; }
+  @media (max-width:980px) { .two,.three { grid-template-columns:1fr; } }
+  .status { margin-top:10px; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ok); }
+  .status.warn { color:var(--brass-bright); }
+</style>
+</head>
+<body>
+<header>
+  <h1>The mage-sheet chip — <span>two things still open</span></h1>
+  <p>You already chose the shape: <b>a chip beside the faction, in the merged-reports chip's shape,
+  opening a popover with one row per faction and how old its sheet is</b>
+  (<code>docs/ui/ah-lyg6.1-visible.html</code>, option 1). Everything below is drawn in that shape and
+  changes nothing about it.</p>
+  <p>Two questions are left that I should not settle alone. <b>Question 1 — does this bead's popover
+  carry Forget?</b> <code>ah-lyg6.1.2</code>'s interview accepted that a sheet taken in cannot be
+  refused, and named "Forget, later, in ah-lyg6.1.3's chip" as the way back. This is that bead.
+  <b>Question 2 — does an old sheet show on the chip itself</b>, or only once the popover is open?</p>
+  <p>Everything else — the wording, the row order, the truncation, the empty and narrow states — I
+  will settle and write into the plan; the last section shows what I intend so you can overrule any
+  of it in a sentence.</p>
+</header>
+<main>
+
+<h3 class="sec">Question 1 — Forget</h3>
+<p>You hold Creeping Death's turn-21 sheet. The alliance is over, or the sheet was a mistake. Today
+the only way back is a newer sheet from the same faction, which you will never get.</p>
+
+<div class="two">
+  <div class="card">
+    <h2><em>1A</em>Read-only — no Forget in this bead</h2>
+    <div class="concept">The popover answers "what do I hold, and how old is it" and nothing else.
+    Forget becomes its own bead, filed unranked.</div>
+    <div class="stage">
+      <div class="hdr">
+        <span class="box">Havilah &#9662;</span><span class="box">Turn 23 &#9662;</span>
+        <span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+        <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+        <span class="chip">2 mage sheets <span class="car">&#9662;</span></span>
+      </div>
+      <div class="pop">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul>
+          <li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span></li>
+          <li class="stale"><span class="f">Creeping Death (17)</span><span>3 mages</span><span class="as">turn 21 &middot; 2 turns old</span></li>
+        </ul>
+        <div class="foot">The study planner uses every sheet listed here.</div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Smallest bead, and the one thing it does it does completely.</li>
+      <li>Nothing destructive ships in a bead whose whole subject is looking.</li>
+      <li class="con">The gap ah-lyg6.1.2 knowingly left stays open for at least another bead: a sheet you did not want is yours for ever.</li>
+      <li class="con">Once ah-lyg6.2 reads these sheets, an unwanted one is not merely clutter — it plans study for mages you no longer have.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>1B</em>Forget, with a confirm inside the popover</h2>
+    <div class="concept">A &#10005; on each row. Pressing it swaps the popover's foot for one
+    question; Escape and Cancel leave everything as it was.</div>
+    <div class="stage">
+      <div class="hdr">
+        <span class="box">Havilah &#9662;</span><span class="box">Turn 23 &#9662;</span>
+        <span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+        <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+        <span class="chip">2 mage sheets <span class="car">&#9662;</span></span>
+      </div>
+      <div class="pop">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul>
+          <li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span><button class="x">&#10005;</button></li>
+          <li class="stale"><span class="f">Creeping Death (17)</span><span>3 mages</span><span class="as">turn 21 &middot; 2 turns old</span><button class="x">&#10005;</button></li>
+        </ul>
+        <div class="confirm">
+          Forget Creeping Death (17)'s 3 mages? A newer sheet from them would bring them back.
+          <div class="row"><span class="btn">Cancel</span><span class="btn dgr">Forget</span></div>
+        </div>
+      </div>
+      <div class="status">3 mages from Creeping Death (17) forgotten</div>
+    </div>
+    <ul class="notes">
+      <li>Closes the gap ah-lyg6.1.2 accepted, in the bead that interview pointed at.</li>
+      <li>The confirm names what is lost, so a mis-click on a six-mage sheet costs nothing.</li>
+      <li>No new dialog, no new key, no new frame — the question lives in the popover's own foot.</li>
+      <li class="con">A destructive control in a popover that closes on any press elsewhere; the confirm is what makes that safe, and it is one more state to build and test.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card">
+  <h2><em>1C</em>Forget, immediate, no confirm</h2>
+  <div class="concept">The &#10005; forgets at once and says so in the status line. Nothing to undo,
+  because a sheet is a file the ally can send again.</div>
+  <div class="stage"><div class="two">
+    <div>
+      <div class="lbl">Before</div>
+      <div class="pop" style="margin-top:0">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul>
+          <li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span><button class="x">&#10005;</button></li>
+          <li class="stale"><span class="f">Creeping Death (17)</span><span>3 mages</span><span class="as">turn 21 &middot; 2 turns old</span><button class="x">&#10005;</button></li>
+        </ul>
+        <div class="foot">The study planner uses every sheet listed here.</div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">After one press</div>
+      <div class="pop" style="margin-top:0">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul>
+          <li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span><button class="x">&#10005;</button></li>
+        </ul>
+        <div class="foot">The study planner uses every sheet listed here.</div>
+      </div>
+      <div class="status">3 mages from Creeping Death (17) forgotten</div>
+    </div>
+  </div></div>
+  <ul class="notes">
+    <li>One press, no ceremony, and the status line is the receipt.</li>
+    <li class="con">A mis-click on the wrong row throws away a sheet you may have to ask an ally for again — and the rows move as the list shrinks.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Question 2 — does the chip itself say a sheet is old?</h3>
+<p>The popover always says how old each sheet is. The question is whether you learn it without
+opening anything. "Old" here means the sheet's turn is behind the turn you are looking at.</p>
+
+<div class="three">
+  <div class="card">
+    <h2><em>2A</em>Plain, always</h2>
+    <div class="concept">The chip counts and nothing more, exactly like <code>+1 merged</code>.</div>
+    <div class="stage">
+      <div class="lbl">All current</div>
+      <div class="hdr"><span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+        <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+        <span class="chip">2 mage sheets <span class="car">&#9662;</span></span></div>
+      <div class="lbl" style="margin-top:16px">One of them 2 turns old</div>
+      <div class="hdr"><span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+        <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+        <span class="chip">2 mage sheets <span class="car">&#9662;</span></span></div>
+    </div>
+    <ul class="notes">
+      <li>Quietest header, and the one already-shipped chip it sits beside behaves this way.</li>
+      <li class="con">You only find out a sheet is stale by going looking, which is exactly when you have already trusted it.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>2B</em>Counted in the chip</h2>
+    <div class="concept">The chip names how many are behind, in the danger colour, and stays plain
+    when none are.</div>
+    <div class="stage">
+      <div class="lbl">All current</div>
+      <div class="hdr"><span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+        <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+        <span class="chip">2 mage sheets <span class="car">&#9662;</span></span></div>
+      <div class="lbl" style="margin-top:16px">One of them 2 turns old</div>
+      <div class="hdr"><span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+        <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+        <span class="chip warn">2 mage sheets &middot; 1 old <span class="car">&#9662;</span></span></div>
+    </div>
+    <ul class="notes">
+      <li>You cannot act on a stale sheet without having been told, on every screen, for as long as it is stale.</li>
+      <li>Reads as a fact, not an alarm: it is still the count chip, with a second count.</li>
+      <li class="con">A wider chip in a header that has wrapped before, and it is wider exactly when there is most to fit.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>2C</em>Marked, not counted</h2>
+    <div class="concept">Same width, same words; the chip changes colour and takes a dot when any
+    sheet is behind.</div>
+    <div class="stage">
+      <div class="lbl">All current</div>
+      <div class="hdr"><span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+        <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+        <span class="chip">2 mage sheets <span class="car">&#9662;</span></span></div>
+      <div class="lbl" style="margin-top:16px">One of them 2 turns old</div>
+      <div class="hdr"><span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+        <span class="chip">+1 merged <span class="car">&#9662;</span></span>
+        <span class="chip warn">&#9679; 2 mage sheets <span class="car">&#9662;</span></span></div>
+    </div>
+    <ul class="notes">
+      <li>Costs the header one character, whatever is held.</li>
+      <li>Tells you to look; the popover tells you what.</li>
+      <li class="con">A dot is a convention this application does not use anywhere else yet, so it teaches nothing on its own.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">The states, in the shape you already chose</h3>
+<p>These are drawn as I intend to specify them, whichever way the two questions go — drawn with 1B
+and 2B in place so nothing is hidden. Say the word on any of them and I will change it.</p>
+
+<div class="card">
+  <div class="stage"><div class="two">
+    <div>
+      <div class="lbl">Nothing held — the chip is simply absent</div>
+      <div class="hdr"><span class="box">Havilah &#9662;</span><span class="box">Turn 23 &#9662;</span>
+        <span class="box">The Disinherited Knights (42) &#9662;</span><span class="lvl">Surface</span>
+        <span class="chip">+1 merged <span class="car">&#9662;</span></span></div>
+      <p style="color:var(--ink-dim);font:12.5px/1.6 'Helvetica Neue',Arial,sans-serif;margin-top:10px">
+      There is no empty popover to open: no sheets, no chip.</p>
+    </div>
+    <div>
+      <div class="lbl">One faction, current</div>
+      <div class="pop" style="margin-top:0">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul><li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span><button class="x">&#10005;</button></li></ul>
+        <div class="foot">The study planner uses every sheet listed here.</div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">Many, and a long name — ordered oldest first</div>
+      <div class="pop" style="margin-top:0">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul>
+          <li class="stale"><span class="f">The Grey Company of the We&hellip;</span><span>2 mages</span><span class="as">turn 18 &middot; 5 turns old</span><button class="x">&#10005;</button></li>
+          <li class="stale"><span class="f">Creeping Death (17)</span><span>3 mages</span><span class="as">turn 21 &middot; 2 turns old</span><button class="x">&#10005;</button></li>
+          <li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23</span><button class="x">&#10005;</button></li>
+          <li><span class="f">Ravenwood (8)</span><span>1 mage</span><span class="as">turn 23</span><button class="x">&#10005;</button></li>
+        </ul>
+        <div class="foot">The study planner uses every sheet listed here.</div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">Looking at an older turn than the sheet</div>
+      <div class="pop" style="margin-top:0">
+        <div class="top"><span>Mage sheets you hold</span><span class="sp"></span><span class="btn">&#10005;</span></div>
+        <ul>
+          <li><span class="f">Borg (21)</span><span>6 mages</span><span class="as">turn 23 &middot; ahead of this turn</span><button class="x">&#10005;</button></li>
+        </ul>
+        <div class="foot">The study planner uses every sheet listed here.</div>
+      </div>
+      <p style="color:var(--ink-dim);font:12.5px/1.6 'Helvetica Neue',Arial,sans-serif;margin-top:10px">
+      Turn 21 is open, the sheet is turn 23. Not old, so not marked — just named.</p>
+    </div>
+  </div></div>
+  <ul class="notes">
+    <li class="n">Chip word: <b>2 mage sheets</b> / <b>1 mage sheet</b> — spelled out rather than <code>+2 sheets</code>, because "merged" beside it already means reports.</li>
+    <li class="n">Row: faction name and number, mage count, then the sheet's turn; oldest first, then by faction number.</li>
+    <li class="n">A name too long for the row is cut with an ellipsis and the whole name is the row's tooltip.</li>
+    <li class="n">Escape closes the popover; focus returns to the chip. Same as every other header chip.</li>
+    <li class="n">The chip and its contents survive a reload, and follow the game you switch to.</li>
+  </ul>
+</div>
+</main>
+</body>
+</html>
