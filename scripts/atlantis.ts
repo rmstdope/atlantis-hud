@@ -404,10 +404,10 @@ async function runRefresh(io: Io, json: boolean): Promise<number> {
   const rulesBefore = io.readFile(RULES_FIXTURE);
   const dataBefore = io.readFile(DATA_FIXTURE);
 
-  // Trial run first, against real OS temp files rather than the fixtures - see cli.ts:60 for why
-  // an absolute path is safe to hand the scraper. Nothing under the committed tree is touched
-  // until this succeeds, so a page the scraper cannot read leaves the working copy exactly as it
-  // was.
+  // Trial run first, against real OS temp files rather than the fixtures - the scraper resolves
+  // a relative path against the repository root, so these are absolute deliberately. Nothing
+  // under the committed tree is touched until this succeeds, so a page the scraper cannot read
+  // leaves the working copy exactly as it was.
   const tempRules = join(tmpdir(), `atlantis-rules.${pid}.html`);
   const tempData = join(tmpdir(), `atlantis-data.${pid}.html`);
   const tempOut = join(tmpdir(), `atlantis-ruleset.${pid}.json`);

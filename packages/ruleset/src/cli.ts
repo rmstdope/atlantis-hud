@@ -1,11 +1,21 @@
 /**
- * Fetches a game's rules and data pages and writes `config/public/ruleset.json`.
+ * Fetches one game's rules page and catalogue and writes that game's ruleset.
  *
  *   pnpm --filter @atlantis/ruleset scrape -- \
  *     --rules https://atlantis-pbem.com/rules \
  *     --data  https://atlantis-pbem.com/data
  *
- * Either argument may be a local file instead of a URL, which is how the committed fixtures are
+ *   pnpm --filter @atlantis/ruleset scrape -- \
+ *     --rules    https://atlantis-newage.com/api/worlds/arcanum/game/rules \
+ *     --database https://atlantis-newage.com/api/worlds/arcanum/game/database \
+ *     --out      config/public/ruleset-newage-arcanum.json
+ *
+ * A world serving its catalogue as an HTML data page is read with `--data`; one serving it as a
+ * JSON database with `--database`, which is converted to a data page before anything else happens.
+ * Without `--out` the standard `config/public/ruleset.json` is written, which is why `--database`
+ * requires one.
+ *
+ * Any argument may be a local file instead of a URL, which is how the committed fixtures are
  * re-read without touching the network.
  *
  * Nothing is written unless every required value was read. A half-written ruleset would be worse
@@ -17,6 +27,7 @@ import { isAbsolute, resolve } from "node:path";
 import { argv, exit, pid } from "node:process";
 import { pathToFileURL } from "node:url";
 import { buildRuleset } from "./build";
+import { catalogueDataPage } from "./worlds";
 import { RulesetScrapeError } from "./rules";
 
 const DEFAULT_OUTPUT = new URL("../../../config/public/ruleset.json", import.meta.url);
@@ -60,31 +71,60 @@ async function load(location: string): Promise<string> {
   return readFile(isAbsolute(location) ? location : new URL(location, REPOSITORY_ROOT), "utf8");
 }
 
-async function main(): Promise<void> {
+/** The whole of the command, exported so `cli.test.ts` can drive it with a stubbed `argv`. */
+export async function main(): Promise<void> {
   const rulesUrl = readArgument("rules");
   const dataUrl = readArgument("data");
+  const databaseUrl = readArgument("database");
   const output = readArgument("out");
 
-  if (!rulesUrl || !dataUrl) {
+  if (!rulesUrl || (!dataUrl && !databaseUrl)) {
     throw new Error(
-      "usage: fetch --rules <url|path> --data <url|path> [--out <path>]\n" +
-        "Point these at the rules and data pages of the game you are playing."
+      "usage: scrape --rules <url|path> (--data <url|path> | --database <url|path>) [--out <path>]\n" +
+        "Point --rules at the rules page of the game you are playing, and either --data at its " +
+        "data page\nor --database at its JSON database. --database needs --out."
     );
   }
 
-  const [rulesHtml, dataHtml] = await Promise.all([load(rulesUrl), load(dataUrl)]);
+  if (dataUrl && databaseUrl) {
+    throw new Error("--data and --database name the same thing two ways; give one of them");
+  }
+
+  if (databaseUrl && !output) {
+    throw new Error(
+      "--database needs --out: a world's ruleset has its own file, and writing it to the default " +
+        "output would overwrite config/public/ruleset.json"
+    );
+  }
+
+  const catalogueUrl = dataUrl ?? databaseUrl;
+  if (!catalogueUrl) {
+    // Unreachable: the usage guard above already refuses both being absent. It is here so the
+    // type narrows without a cast, and nothing below is written against `string | undefined`.
+    throw new Error("--data or --database is required");
+  }
+
+  const [rulesHtml, catalogueText] = await Promise.all([load(rulesUrl), load(catalogueUrl)]);
+  const dataHtml = catalogueDataPage(databaseUrl ? "database" : "data-page", catalogueText);
 
   const ruleset = buildRuleset({
     rulesHtml,
     dataHtml,
     rulesUrl,
-    dataUrl,
+    dataUrl: catalogueUrl,
     fetchedAt: new Date().toISOString()
   });
 
   // pathToFileURL rather than hand-building `file://${cwd()}`: a working directory containing a
   // `#` or `?` silently truncates a hand-built URL, writing to a different directory entirely.
-  const target = output ? pathToFileURL(resolve(output)) : DEFAULT_OUTPUT;
+  // A relative --out is resolved against the repository root, exactly as `load` resolves a
+  // relative input: `pnpm run` executes this from the package directory, so
+  // `--out config/public/ruleset-newage-arcanum.json` would otherwise land under packages/ruleset.
+  const target = output
+    ? isAbsolute(output)
+      ? pathToFileURL(resolve(output))
+      : new URL(output, REPOSITORY_ROOT)
+    : DEFAULT_OUTPUT;
 
   // Written beside the target and renamed into place. A rename is atomic, so an interrupt or a
   // full disk leaves the previous ruleset intact rather than a half-written one - which is what
@@ -101,17 +141,21 @@ async function main(): Promise<void> {
     .map(([name, cost]) => `${name} ${cost}`)
     .join(", ");
   console.log(`  terrain premiums: ${premiums}`);
+  console.log(`  food maintenance: ${ruleset.items.MEAL?.maintenanceValue ?? "unknown"} silver`);
   console.log(`  items: ${items}`);
 }
 
-main().catch((error: unknown) => {
-  if (error instanceof RulesetScrapeError) {
-    // The page did not say what we needed. Naming the value is the whole point: the fix is to
-    // update the pattern in rules.ts, never to invent a number.
-    console.error(`ruleset scrape failed: ${error.message}`);
-    console.error("config/public/ruleset.json was left untouched.");
-  } else {
-    console.error(error instanceof Error ? error.message : String(error));
-  }
-  exit(1);
-});
+// Only when run as the command, so importing this module in a test does not scrape anything.
+if (argv[1] !== undefined && import.meta.url === pathToFileURL(argv[1]).href) {
+  main().catch((error: unknown) => {
+    if (error instanceof RulesetScrapeError) {
+      // The page did not say what we needed. Naming the value is the whole point: the fix is to
+      // update the pattern in rules.ts, never to invent a number.
+      console.error(`ruleset scrape failed: ${error.message}`);
+      console.error("the ruleset was left untouched.");
+    } else {
+      console.error(error instanceof Error ? error.message : String(error));
+    }
+    exit(1);
+  });
+}

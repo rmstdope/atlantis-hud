@@ -35,12 +35,27 @@ describe("buildRuleset", () => {
     expect(Object.keys(ruleset.items).length).toBe(171);
   });
 
-  it("overrides the four New Origins food values from the maintenance rule", () => {
+  it("prices the four foods from the rules page rather than the data page", () => {
     const ruleset = built();
     for (const tag of ["FISH", "GRAI", "LIVE", "MEAL"]) {
       expect(ruleset.items[tag].maintenanceValue).toBe(50);
       expect(ruleset.items[tag].description).toContain("provide 30 silver");
     }
+    expect(ruleset.source.note).toContain("50 silver");
+  });
+
+  it("refuses a catalogue whose foods the rules page does not name", () => {
+    const rules = RULES_HTML.replace("grain, livestock, fish or", "bread, livestock, fish or");
+    expect(rules).not.toBe(RULES_HTML);
+    expect(() =>
+      buildRuleset({
+        rulesHtml: rules,
+        dataHtml: DATA_HTML,
+        rulesUrl: "x",
+        dataUrl: "y",
+        fetchedAt: "now"
+      })
+    ).toThrowError(/reworded/);
   });
 
   it("leaves an unrelated scraped maintenance value unchanged", () => {
@@ -59,7 +74,7 @@ describe("buildRuleset", () => {
     expect(ruleset.items.MANN.maintenanceValue).toBe(45);
   });
 
-  it("refuses a New Origins catalogue missing an overridden food", () => {
+  it("refuses a catalogue missing a food the rules page prices", () => {
     const data = DATA_HTML.replace(
       "fish [FISH], weight 1, costs 75 silver to withdraw. This item is a\n  trade resource. This item can be eaten to provide 30 silver towards\n  a unit's maintenance cost.",
       ""

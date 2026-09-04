@@ -81,6 +81,14 @@ pub const ALL: &[&Report] = &[
 /// The shipped ruleset, `config/public/ruleset.json`, which the tests parse against.
 pub const RULESET_JSON: &str = include_str!("../../../config/public/ruleset.json");
 
+/// The committed New Age Arcanum ruleset, `config/public/ruleset-newage-arcanum.json`.
+pub const NEWAGE_ARCANUM_RULESET_JSON: &str =
+    include_str!("../../../config/public/ruleset-newage-arcanum.json");
+
+/// The committed New Age Trident ruleset, `config/public/ruleset-newage-trident.json`.
+pub const NEWAGE_TRIDENT_RULESET_JSON: &str =
+    include_str!("../../../config/public/ruleset-newage-trident.json");
+
 #[cfg(test)]
 mod tests {
     use super::*;

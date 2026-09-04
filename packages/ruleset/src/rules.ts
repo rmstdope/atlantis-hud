@@ -15,9 +15,11 @@ export type { MovementRules } from "./generated/MovementRules";
 export type { OceanRule } from "./generated/OceanRule";
 export type { RoadRule } from "./generated/RoadRule";
 export type { SailingRule } from "./generated/SailingRule";
+export type { Gap } from "./generated/Gap";
 export type { TerrainCosts } from "./generated/TerrainCosts";
 
 import type { MovementMode } from "./generated/MovementMode";
+import type { Gap } from "./generated/Gap";
 import type { MovementRules } from "./generated/MovementRules";
 import { htmlToText } from "./html";
 
@@ -305,3 +307,93 @@ export function parseMovementRules(html: string): MovementRules {
   };
 }
 
+/** What one unit of food is worth against maintenance, and which foods the page names. */
+export type FoodMaintenance = {
+  /** Silver of maintenance one unit of food pays. */
+  value: number;
+  /** The food names the sentence lists, lower-cased and in the page's order. */
+  foods: string[];
+};
+
+/**
+ * Reads `rules/economy_maintenance`'s substitution sentence.
+ *
+ * The number differs between servers - New Origins says 50 where both New Age worlds say 30 - so it
+ * is scraped rather than chosen, and a page that does not state it stops the run.
+ */
+export function parseFoodMaintenance(html: string): FoodMaintenance {
+  const match = requireMatch(
+    htmlToText(html),
+    "foodMaintenance",
+    /Units may substitute one unit of ([^.]+?) for each (\d+) silver \(or fraction thereof\) of maintenance owed\./i
+  );
+
+  return {
+    value: Number.parseInt(match[2], 10),
+    foods: match[1]
+      .split(/,\s*|\s+or\s+/)
+      .map((food) => food.trim().toLowerCase())
+      .filter((food) => food.length > 0)
+  };
+}
+
+/**
+ * The rules page never states a weather rule, but it proves one exists.
+ *
+ * A walker has two movement points and a mountain costs two, so two is exactly enough - yet the
+ * page says a walker cannot enter a mountain in winter in one turn. Winter therefore costs at
+ * least three, and the page gives no multiplier, no affected-terrain list, and no way to tell
+ * which months are winter. Turn reports carry no weather line either, so there is nothing to
+ * scrape and nothing to infer.
+ */
+const WEATHER_GAP: Gap = {
+  modelled: false,
+  note:
+    "The rules page states no weather rule, but implies one: winter raises the cost of at least " +
+    "mountain terrain above a walker's two movement points, by an amount the page never gives.",
+  consequence:
+    "A route crossing a winter month is under-cost, so a journey can look achievable when it is " +
+    "not. Present such a route as a lower bound rather than as fact.",
+  evidence:
+    "a unit on foot trying to move into a mountain region in winter would not have enough " +
+    "movement points to enter in one turn"
+};
+
+/** New Age: the page rules weather out of movement outright. */
+const CALM_WEATHER =
+  /Weather is reported for every region, but[^.]*?it is description only: it never changes movement costs[^.]*\./i;
+
+/** New Origins: the page never states the rule, but this sentence proves one exists. */
+const WINTER_WEATHER =
+  /a unit on foot trying to move into a mountain region in winter would not have enough movement points to enter in one turn/i;
+
+/**
+ * Reads what the page says about weather, as the gap block the ruleset carries.
+ *
+ * Two anchored patterns and no fallback: a page that says a third thing about weather stops the
+ * run, and is fixed by adding a pattern rather than by guessing at a gap.
+ */
+export function parseWeatherGap(html: string): Gap {
+  const text = htmlToText(html);
+
+  const calm = text.match(CALM_WEATHER);
+  if (calm) {
+    return {
+      modelled: true,
+      note:
+        "The rules page rules weather out of movement: it is reported for every region as " +
+        "description only.",
+      consequence:
+        "None. A route is costed in full, because the page states the rule rather than leaving it " +
+        "unsaid.",
+      evidence: sentence(calm)
+    };
+  }
+
+  requireMatch(
+    text,
+    "weatherRule",
+    new RegExp(`${CALM_WEATHER.source}|${WINTER_WEATHER.source}`, "i")
+  );
+  return WEATHER_GAP;
+}
