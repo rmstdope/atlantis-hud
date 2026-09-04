@@ -44,16 +44,21 @@ describe("arrow-key tab navigation", () => {
 describe("ruleset options", () => {
   it("offers the shipped rulesets for a known id", () => {
     const options = rulesetOptions("neworigins");
-    expect(options.map((option) => option.id)).toEqual(["neworigins"]);
+    expect(options.map((option) => option.id)).toEqual(["neworigins", "newage-arcanum", "newage-trident"]);
   });
 
   it("shows an id this build does not ship rather than misrepresenting it", () => {
     // A manifest can hold an id from a newer build or a hand edit. A select that silently renders
     // the first shipped option would claim the game runs under a ruleset it does not.
     const options = rulesetOptions("futuredeep");
-    expect(options.map((option) => option.id)).toEqual(["neworigins", "futuredeep"]);
-    expect(options[1].label).toContain("futuredeep");
-    expect(options[1].shipped).toBe(false);
+    expect(options.map((option) => option.id)).toEqual([
+      "neworigins",
+      "newage-arcanum",
+      "newage-trident",
+      "futuredeep"
+    ]);
+    expect(options[3].label).toContain("futuredeep");
+    expect(options[3].shipped).toBe(false);
   });
 });
 

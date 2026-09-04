@@ -83,3 +83,18 @@ export function outcomeMessage(phase: SendOrdersPhase, turnNumber: number | null
       return "Could not reach the server. Your orders were not sent — export them to a file if the turn is due.";
   }
 }
+
+/**
+ * Why Send is off, shown on hover so a dialog that could do nothing is never opened.
+ *
+ * The missing address is reported first because it holds whatever the orders say: no rewriting of
+ * the `#atlantis` line would make the button work, so naming the line would send the player after
+ * a fix that is not one. It names no variant, because the rule is "this ruleset declares no
+ * address" rather than anything about New Age in particular.
+ */
+export function sendDisabledReason({ hasUploadAddress }: { hasUploadAddress: boolean }): string {
+  if (!hasUploadAddress) {
+    return "Orders for this variant cannot be sent from the app yet. Export them and upload them yourself.";
+  }
+  return "These orders have no #atlantis line, so the server cannot tell which faction they belong to.";
+}

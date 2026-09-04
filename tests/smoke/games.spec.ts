@@ -34,10 +34,30 @@ test("creating a game asks which ruleset it is played under", async ({ page }) =
 
   const ruleset = page.getByTestId("game-ruleset");
   await expect(ruleset).toBeVisible();
-  await expect(ruleset.getByRole("option")).toHaveText(["New Origins"]);
+  await expect(ruleset.getByRole("option")).toHaveText([
+    "New Origins",
+    "New Age: Arcanum",
+    "New Age: Trident"
+  ]);
 
   await createGame(page, "Ruleset game");
   await expect(page.getByTestId("map-canvas")).toBeVisible();
+});
+
+test("a game can be created under a New Age world", async ({ page }) => {
+  await clearGames(page);
+
+  await page.getByTestId("game-ruleset").selectOption("newage-arcanum");
+  await createGame(page, "Arcanum game");
+
+  // F2 opens the game data dictionary, which exists only once the ruleset has been fetched and
+  // parsed - so this is what proves /ruleset-newage-arcanum.json was served and read. The press is
+  // retried because the New Age files are around 300 KiB: a press that lands before the fetch
+  // resolves is ignored, which made a single press flaky rather than wrong.
+  await expect(async () => {
+    await page.keyboard.press("F2");
+    await expect(page.getByTestId("game-data-dialog")).toBeVisible({ timeout: 1000 });
+  }).toPass();
 });
 
 test("a game will not be created without a name", async ({ page }) => {

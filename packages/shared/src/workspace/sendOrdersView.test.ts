@@ -5,6 +5,7 @@ import {
   metaLine,
   outcomeMessage,
   passwordProblem,
+  sendDisabledReason,
   showsServerReport
 } from "./sendOrdersView";
 
@@ -75,5 +76,19 @@ describe("the server's own report", () => {
     expect(showsServerReport(null)).toBe(false);
     // Anything unrecognised is worth showing - the rule survives the server rewording itself.
     expect(showsServerReport("No errors were found!")).toBe(true);
+  });
+});
+
+describe("sendDisabledReason", () => {
+  it("says a variant with no upload address cannot send", () => {
+    expect(sendDisabledReason({ hasUploadAddress: false })).toBe(
+      "Orders for this variant cannot be sent from the app yet. Export them and upload them yourself."
+    );
+  });
+
+  it("still names the missing #atlantis line when there is an address", () => {
+    expect(sendDisabledReason({ hasUploadAddress: true })).toBe(
+      "These orders have no #atlantis line, so the server cannot tell which faction they belong to."
+    );
   });
 });

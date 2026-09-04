@@ -170,11 +170,8 @@ import { ArmyExportDialog } from "./ArmyExportDialog";
 import { MapExportDialog } from "./MapExportDialog";
 import { SendOrdersDialog } from "./SendOrdersDialog";
 import type { SendOrdersPhase } from "./sendOrdersView";
+import { sendDisabledReason } from "./sendOrdersView";
 import { performOrdersSend } from "./sendOrders";
-
-/** Why Send is off. Stated on hover, so a dialog that could do nothing is never opened. */
-const SEND_DISABLED_REASON =
-  "These orders have no #atlantis line, so the server cannot tell which faction they belong to.";
 import { BattlesDialog } from "./BattlesDialog";
 import { ChangesDialog } from "./ChangesDialog";
 import {
@@ -3243,6 +3240,8 @@ export function AppShell({
     /^\d+$/.test(sendFactionId) &&
     uploadUrl !== null;
 
+  const sendOffReason = sendDisabledReason({ hasUploadAddress: uploadUrl !== null });
+
   const sendOrders = useCallback(
     async (password: string) => {
       if (uploadOrders === undefined || uploadUrl === null || sendFactionId === null || !canSendOrders) {
@@ -3983,7 +3982,7 @@ export function AppShell({
         canExport={ordersDocument.length > 0}
         onSendOrders={uploadOrders === undefined ? undefined : () => setSendPhase({ kind: "ready" })}
         canSend={canSendOrders}
-        sendDisabledReason={SEND_DISABLED_REASON}
+        sendDisabledReason={sendOffReason}
         onExportOrdersLong={exportOrdersLong}
         canExportLong={ordersDocument.length > 0 && ordersTemplateText !== null}
         onExportMap={() => openExport()}
