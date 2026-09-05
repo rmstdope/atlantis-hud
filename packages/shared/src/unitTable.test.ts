@@ -125,18 +125,12 @@ describe("sortUnits", () => {
    * column chosen, the table is in exactly the order that function produces. Same shape as the
    * assertion in hexMapModel.test.ts.
    */
-  it("defaults to the order unitsForHex produces, own units first then by name", () => {
-    const units = [
-      unit("a", false, { name: "Alpha" }),
-      unit("b", true, { name: "Zulu" }),
-      unit("c", false, { name: "Beta" })
-    ];
+  it("defaults to the order unitsForHex produces, own units first then by id", () => {
+    // 9 rather than 19: under the old name default "19" already sorted before "30", so an
+    // id-ordered expectation held by coincidence. "9" after "30" by name, before it by number.
+    const units = [unit("30", false), unit("7", true), unit("9", false)];
 
-    expect(sortUnits(units, DEFAULT_SORT).map((entry) => entry.name)).toEqual([
-      "Zulu",
-      "Alpha",
-      "Beta"
-    ]);
+    expect(ids(sortUnits(units, DEFAULT_SORT))).toEqual(["7", "9", "30"]);
   });
 
   it("leaves the array it was given alone", () => {
@@ -270,14 +264,21 @@ describe("sortUnits", () => {
     ]);
   });
 
-  it("holds the previous order for rows the column cannot separate", () => {
+  it("orders rows the column cannot separate by id, whichever way the column runs", () => {
     const units = [
-      unit("first", false, { men: 5 }),
-      unit("second", false, { men: 5 }),
-      unit("third", false, { men: 5 })
+      unit("30", false, { men: 5 }),
+      unit("7", false, { men: 5 }),
+      unit("19", false, { men: 5 })
     ];
 
-    expect(ids(sortBy(units, { column: "men" }))).toEqual(["first", "second", "third"]);
+    expect(ids(sortBy(units, { column: "men" }))).toEqual(["7", "19", "30"]);
+    expect(ids(sortBy(units, { column: "men", direction: "desc" }))).toEqual(["7", "19", "30"]);
+  });
+
+  it("puts a formed unit's placeholder last when the tie-break decides", () => {
+    const units = [unit("new-1", false, { men: 5 }), unit("5", false, { men: 5 })];
+
+    expect(ids(sortBy(units, { column: "men" }))).toEqual(["5", "new-1"]);
   });
 });
 

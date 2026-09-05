@@ -259,23 +259,27 @@ describe("unit ordering", () => {
   }
 
   it("puts your own units first, so one of ninety-two is not buried", () => {
-    const hex = hexWith([unit("a", false, "Alpha"), unit("b", true, "Zulu"), unit("c", false, "Beta")]);
+    const hex = hexWith([
+      unit("30", false, "Alpha"),
+      unit("7", true, "Zulu"),
+      unit("9", false, "Beta")
+    ]);
 
-    expect(unitsForHex(hex).map((entry) => entry.name)).toEqual(["Zulu", "Alpha", "Beta"]);
+    expect(unitsForHex(hex).map((entry) => entry.unitId)).toEqual(["7", "9", "30"]);
   });
 
   it("returns nothing for a hex with no detail", () => {
     expect(unitsForHex(null)).toEqual([]);
   });
 
-  it("sorts directly too, own units first then by name", () => {
+  it("sorts directly too, own units first then by id", () => {
     const sorted = sortUnitsForDisplay([
-      unit("a", false, "Alpha"),
-      unit("b", true, "Zulu"),
-      unit("c", false, "Beta")
+      unit("30", false, "Alpha"),
+      unit("7", true, "Zulu"),
+      unit("9", false, "Beta")
     ]);
 
-    expect(sorted.map((entry) => entry.name)).toEqual(["Zulu", "Alpha", "Beta"]);
+    expect(sorted.map((entry) => entry.unitId)).toEqual(["7", "9", "30"]);
   });
 });
 

@@ -2996,6 +2996,29 @@ test("sorting by a column reorders the table, own units still first", async ({ p
 });
 
 /**
+ * The pane opens on Id, so the same hex reads the same way every turn rather than in whatever
+ * order the report listed its units (ah-26jt).
+ */
+test("the units table opens ordered by id, with the Id header marked", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  await expect(
+    // exact-selector-exempt: a columnheader's accessible name is built from everything inside it,
+    // and each header also holds a reorder grip, so this cell's name can never be exactly "Id".
+    page.getByTestId("panel-units").getByRole("columnheader", { name: "Id" })
+  ).toHaveAttribute("aria-sort", "ascending");
+
+  // nth-child(2) is the Id column: UNIT_COLUMNS runs own, unitId, name, faction, men, ...
+  // Inholm holds exactly one unit of the player's, held above the foreign block by groupOwnFirst,
+  // so the first row is dropped before checking the foreign rows run in ascending id order.
+  const cells = await page.locator("[data-testid^='unit-row-'] td:nth-child(2)").allInnerTexts();
+  const foreign = cells.slice(1).map((cell) => Number(cell.replace(/[^0-9]/g, "")));
+  expect(foreign.length).toBeGreaterThan(3);
+  expect(foreign).toEqual([...foreign].sort((left, right) => left - right));
+});
+
+/**
  * The grouping is a default, not a cage: releasing it lets the biggest stack in the hex rise to the
  * top whoever it belongs to.
  */
