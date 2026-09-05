@@ -1,7 +1,7 @@
 /**
  * Talking to an Atlantis New Age world's REST API, and understanding what it said back.
  *
- * The whole of the logic is here and pure: building the requests the five endpoints the HUD needs
+ * The whole of the logic is here and pure: building the requests the six endpoints the HUD needs
  * expect, and reading a value or a named failure out of each reply. Performing the request is a
  * shell's job, through `HttpTransport` - only the desktop has one, because `atlantis-newage.com`
  * allowlists CORS origins and the live web deploy is not on the list (probed 2026-09-04).
@@ -65,6 +65,12 @@ export type NewAgeClient = {
   gameStatus(signal: AbortSignal): Promise<NewAgeResult<NewAgeGameStatus>>;
   report(token: string, signal: AbortSignal): Promise<NewAgeResult<string>>;
   historyTurns(token: string, signal: AbortSignal): Promise<NewAgeResult<number[]>>;
+  /** One earlier turn's report text, from the world's own history. */
+  historyReport(
+    token: string,
+    turnNumber: number,
+    signal: AbortSignal
+  ): Promise<NewAgeResult<string>>;
   uploadOrders(
     token: string,
     ordersText: string,
@@ -188,6 +194,29 @@ export function newAgeClient(transport: HttpTransport, worldId: string): NewAgeC
         { method: "GET", url: `${base}/files/history/turns`, headers: bearer(token) },
         signal,
         (reply) => readHistoryTurns(reply.body)
+      );
+    },
+
+    async historyReport(token, turnNumber, signal) {
+      if (!Number.isSafeInteger(turnNumber) || turnNumber < 0) {
+        // Interpolated into a URL path, so anything but a plain number could address a different
+        // endpoint - the reason `newAgeClient` throws on a world id that is not a slug. Turn
+        // numbers come from the world's own list, so a bad one is a programming mistake.
+        throw new Error("That is not a turn number this client can address.");
+      }
+      return send(
+        {
+          method: "GET",
+          // `?format=txt` by symmetry with `report`: the served spec documents it there and
+          // declares no response schema for the history family at all, so this is unverified
+          // against the live world. No fallback shape is attempted - a second request shape would
+          // double what a failure could mean.
+          url: `${base}/files/history/${turnNumber}/report?format=txt`,
+          headers: bearer(token)
+        },
+        signal,
+        (reply): NewAgeResult<string> =>
+          reply.body.trim() === "" ? { kind: "unreadable" } : { kind: "ok", value: reply.body }
       );
     },
 

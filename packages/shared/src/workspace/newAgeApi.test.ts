@@ -193,6 +193,38 @@ describe("report and history", () => {
     });
   });
 
+  it("asks the world's history endpoint for one turn as text", async () => {
+    const report = fixture("newage-report.txt");
+    const { transport, calls } = fakeTransport({ status: 200, body: report });
+
+    const result = await newAgeClient(transport, "arcanum").historyReport("a-token", 80, signal);
+
+    expect(calls).toEqual([
+      {
+        method: "GET",
+        url: "https://atlantis-newage.com/api/worlds/arcanum/files/history/80/report?format=txt",
+        headers: { Authorization: "Bearer a-token" }
+      }
+    ]);
+    expect(result).toEqual({ kind: "ok", value: report });
+  });
+
+  it("answers unreadable when the world has no report for that turn", async () => {
+    const { transport } = fakeTransport({ status: 200, body: "  \n " });
+
+    expect(await newAgeClient(transport, "arcanum").historyReport("tok", 80, signal)).toEqual({
+      kind: "unreadable"
+    });
+  });
+
+  it("refuses a turn number that is not a plain number", async () => {
+    const { transport } = fakeTransport({ status: 200, body: "x" });
+    const client = newAgeClient(transport, "arcanum");
+
+    await expect(client.historyReport("tok", -1, signal)).rejects.toThrow(/turn number/);
+    await expect(client.historyReport("tok", 1.5, signal)).rejects.toThrow(/turn number/);
+  });
+
   it("answers unreadable for a turn history in neither shape", async () => {
     const { transport } = fakeTransport({ status: 200, body: '{"latest": 82}' });
 
