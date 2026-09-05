@@ -2587,12 +2587,12 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             unit_id: "9001".to_string(),
             goals: vec![
                 StudyGoal::Study {
+                    turn: 25,
                     skill: "FORC".to_string(),
-                    target_level: Some(4),
                 },
                 StudyGoal::Study {
+                    turn: 26,
                     skill: "PATT".to_string(),
-                    target_level: None,
                 },
             ],
             comment: "heading for Gate Lore".to_string(),

@@ -3633,21 +3633,94 @@ mod tests {
         assert_eq!(listed, vec![mage], "an allied mage survives the round trip");
     }
 
-    fn a_plan(unit_id: &str, skill: Option<&str>, target_level: Option<u32>) -> StudyPlan {
+    fn a_plan(unit_id: &str, skill: Option<&str>, turn: u32) -> StudyPlan {
         StudyPlan {
             faction_id: "21".to_string(),
             unit_id: unit_id.to_string(),
             goals: skill
                 .map(|skill| {
                     vec![StudyGoal::Study {
+                        turn,
                         skill: skill.to_string(),
-                        target_level,
                     }]
                 })
                 .unwrap_or_default(),
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-08-01T09:00:00Z".to_string(),
         }
+    }
+
+    #[test]
+    fn study_plans_round_trip_turn_stamped_goals() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let plan = StudyPlan {
+            faction_id: "21".to_string(),
+            unit_id: "9001".to_string(),
+            goals: vec![
+                StudyGoal::Study {
+                    turn: 25,
+                    skill: "FORC".to_string(),
+                },
+                StudyGoal::Teach {
+                    turn: 26,
+                    students: vec!["2517".to_string()],
+                },
+            ],
+            comment: String::new(),
+            updated_at: "2026-08-01T09:00:00Z".to_string(),
+        };
+
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&plan),
+            &[],
+        )
+        .expect("save should succeed");
+
+        let listed =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(
+            listed,
+            vec![plan],
+            "a turn-stamped plan survives the round trip"
+        );
+    }
+
+    #[test]
+    fn study_plans_written_before_turns_read_as_turn_zero() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+
+        let connection = Connection::open(&created.database_path).expect("open");
+        connection
+            .execute(
+                "INSERT INTO study_plans
+                        (game_id, faction_id, unit_id, goals_json, comment, updated_at)
+                 VALUES ('faction-12', '21', '9001',
+                         '[{\"kind\":\"study\",\"skill\":\"FORC\",\"targetLevel\":4}]',
+                         '', '2026-08-01T09:00:00Z')",
+                [],
+            )
+            .expect("seed a pre-turn row");
+        drop(connection);
+
+        let listed =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(
+            listed
+                .into_iter()
+                .map(|plan| plan.goals)
+                .collect::<Vec<_>>(),
+            vec![vec![StudyGoal::Study {
+                turn: 0,
+                skill: "FORC".to_string(),
+            }]],
+            "a goal written before turns reads back as turn 0 rather than failing the list"
+        );
     }
 
     /// A queue written before ah-lyg6.3 carries no `kind`, and serde's tagged enum refuses it.
@@ -3681,10 +3754,10 @@ mod tests {
                 .map(|plan| plan.goals)
                 .collect::<Vec<_>>(),
             vec![vec![StudyGoal::Study {
+                turn: 0,
                 skill: "FORC".to_string(),
-                target_level: Some(5),
             }]],
-            "an untagged goal reads back as the study it always was"
+            "an untagged goal reads back as the study it always was, with no turn"
         );
     }
 
@@ -3694,10 +3767,10 @@ mod tests {
         let created =
             create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
 
-        let first = a_plan("9001", Some("FORC"), Some(4));
+        let first = a_plan("9001", Some("FORC"), 25);
         let second = StudyPlan {
             comment: String::new(),
-            ..a_plan("9002", None, None)
+            ..a_plan("9002", None, 0)
         };
         save_study_plans(
             &created.database_path,
@@ -3716,7 +3789,7 @@ mod tests {
             "both plans come back whole, a chosen skill and a bare note alike"
         );
 
-        let newer = a_plan("9001", Some("PATT"), None);
+        let newer = a_plan("9001", Some("PATT"), 25);
         save_study_plans(
             &created.database_path,
             GAME_ID,
@@ -3757,7 +3830,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let created =
             create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
-        let plan = a_plan("9001", Some("FORC"), Some(4));
+        let plan = a_plan("9001", Some("FORC"), 25);
 
         save_study_plans(
             &created.database_path,
@@ -3782,8 +3855,8 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let created =
             create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
-        let mine = a_plan("9001", Some("FORC"), Some(4));
-        let theirs = a_plan("9002", Some("PATT"), None);
+        let mine = a_plan("9001", Some("FORC"), 25);
+        let theirs = a_plan("9002", Some("PATT"), 25);
         save_study_plans(
             &created.database_path,
             GAME_ID,
@@ -3906,13 +3979,13 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 vec![StudyGoal::Study {
+                    turn: 0,
                     skill: "FORC".to_string(),
-                    target_level: Some(4),
                 }],
                 vec![],
                 vec![StudyGoal::Study {
+                    turn: 0,
                     skill: "PATT".to_string(),
-                    target_level: None,
                 }],
             ],
             "a study becomes a one-goal queue, a note-only row an empty one"
@@ -3933,16 +4006,16 @@ mod tests {
             unit_id: "9001".to_string(),
             goals: vec![
                 StudyGoal::Study {
+                    turn: 25,
                     skill: "FORC".to_string(),
-                    target_level: Some(5),
                 },
                 StudyGoal::Study {
+                    turn: 26,
                     skill: "PATT".to_string(),
-                    target_level: None,
                 },
                 StudyGoal::Study {
+                    turn: 27,
                     skill: "SPIR".to_string(),
-                    target_level: Some(3),
                 },
             ],
             comment: String::new(),
@@ -3971,7 +4044,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let created =
             create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
-        let plan = a_plan("9001", Some("FORC"), Some(4));
+        let plan = a_plan("9001", Some("FORC"), 25);
         save_study_plans(
             &created.database_path,
             GAME_ID,

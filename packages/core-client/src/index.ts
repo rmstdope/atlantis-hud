@@ -661,29 +661,32 @@ export type AlliedMageKey = {
 };
 
 /**
- * One step of a mage's study plan: what he studies, and how far.
+ * One planned month. A plan is one of these per planned turn - at most one for any turn, and turns
+ * with none are simply unplanned.
  *
  * `rules/study` allows `STUDY <skill>` and `STUDY <skill> <level>`, the second meaning "continue
- * from turn to turn until he reaches that level"; `targetLevel` of null is the first form - one
- * month, and then the next goal. `rules/teach` names the units taught, and a teacher studies
- * nothing that month, so a teach goal is always exactly one turn.
+ * from turn to turn until he reaches that level", which would override the turns the player planned
+ * by hand - so a planned month is always the bare form. `rules/teach` names the units taught, and a
+ * teacher studies nothing that month, so a teach goal is always exactly one turn.
  */
 export type StudyGoal =
   | {
       kind: "study";
+      /** The game turn this month is planned for, as the report numbers turns. */
+      turn: number;
       /** The skill tag, upper-cased (`"FORC"`). */
       skill: string;
-      /** `STUDY <skill> <level>`'s optional level; null is the bare one-month form. */
-      targetLevel: number | null;
     }
   | {
       kind: "teach";
+      /** The game turn this month is planned for, as the report numbers turns. */
+      turn: number;
       /** The unit numbers taught, as the report writes them, in the order the player ticked them. */
       students: string[];
     };
 
 /**
- * One mage's study plan: an ordered queue of goals, and what the player wants to remember.
+ * One mage's study plan: one goal per planned turn, and what the player wants to remember.
  *
  * There is no `gameId`: every call that reads or writes these rows is scoped to one game and
  * takes it as a parameter, as `AlliedMageRecord` is.
@@ -693,7 +696,7 @@ export type StudyPlanRecord = {
   factionId: string;
   /** The unit number, as the report writes it. */
   unitId: string;
-  /** Next turn's study first. Empty when the row is a note with nothing planned. */
+  /** One entry per planned turn, ascending by `turn`. Empty when nothing is planned. */
   goals: StudyGoal[];
   /** The player's free text. Never null: an absent note is the empty string. */
   comment: string;

@@ -284,12 +284,12 @@ pub struct AlliedMageKey {
     pub unit_id: String,
 }
 
-/// One step of a mage's study plan: a month of study, or a month spent teaching.
+/// One planned month: a month of study, or a month spent teaching.
 ///
-/// `rules/study`: `STUDY [skill] [level]`, where a level means "continued from turn to turn until
-/// the unit reaches that skill level"; `target_level` of `None` is the bare form - one month, and
-/// then the next goal. `rules/teach`: `TEACH [unit] ...` names the units taught, and the teacher
-/// studies nothing that month, so a teach goal is always exactly one month.
+/// A plan is one of these per planned turn - at most one for any turn, and turns with none are
+/// simply unplanned. `rules/study`: `STUDY [skill]` is the bare one-month form, which is what a
+/// planned month exports as. `rules/teach`: `TEACH [unit] ...` names the units taught, and the
+/// teacher studies nothing that month, so a teach goal is always exactly one month.
 ///
 /// The per-variant `rename_all` rather than the container-level `rename_all_fields`: the latter
 /// needs serde 1.0.181 or newer, and this crate has never declared a serde floor.
@@ -298,19 +298,27 @@ pub struct AlliedMageKey {
 pub enum StudyGoal {
     #[serde(rename_all = "camelCase")]
     Study {
+        /// The game turn this month is planned for, as the report numbers turns.
+        ///
+        /// `#[serde(default)]`, and only for the rows written before ah-lyg6.2.3's redesign: a plan
+        /// stored under the queue-of-goals shape names no turn, and reads back as turn 0, which the
+        /// TypeScript reader drops. Nothing writes a 0.
+        #[serde(default)]
+        turn: u32,
         /// The skill tag, upper-cased (`"FORC"`).
         skill: String,
-        /// `STUDY <skill> <level>`'s optional level; `None` is the bare one-month form.
-        target_level: Option<u32>,
     },
     #[serde(rename_all = "camelCase")]
     Teach {
+        /// The game turn this month is planned for, as the report numbers turns.
+        #[serde(default)]
+        turn: u32,
         /// The unit numbers taught, as the report writes them, in the order the player ticked them.
         students: Vec<String>,
     },
 }
 
-/// One mage's study plan: an ordered queue of goals, and what the player wants to remember.
+/// One mage's study plan: one goal per planned turn, and what the player wants to remember.
 ///
 /// There is no `game_id`: every call that reads or writes these rows is scoped to one game and
 /// takes it as a parameter, exactly as `AlliedMage` is.
@@ -321,7 +329,7 @@ pub struct StudyPlan {
     pub faction_id: String,
     /// The unit number, as the report writes it.
     pub unit_id: String,
-    /// Next turn's study first. Empty when the row is a note with nothing planned.
+    /// One entry per planned turn, ascending by `turn`. Empty when the row is a note with nothing planned.
     #[serde(default)]
     pub goals: Vec<StudyGoal>,
     /// The player's free text. Never `None`: an absent note is the empty string.
@@ -1277,12 +1285,12 @@ mod tests {
             unit_id: "9001".to_string(),
             goals: vec![
                 StudyGoal::Study {
+                    turn: 25,
                     skill: "FORC".to_string(),
-                    target_level: Some(4),
                 },
                 StudyGoal::Study {
+                    turn: 26,
                     skill: "PATT".to_string(),
-                    target_level: None,
                 },
             ],
             comment: "heading for Gate Lore".to_string(),
@@ -1315,11 +1323,12 @@ mod tests {
             unit_id: "9001".to_string(),
             goals: vec![
                 StudyGoal::Teach {
+                    turn: 25,
                     students: vec!["2517".to_string(), "2688".to_string()],
                 },
                 StudyGoal::Study {
+                    turn: 26,
                     skill: "FORC".to_string(),
-                    target_level: Some(4),
                 },
             ],
             comment: String::new(),
@@ -1344,8 +1353,8 @@ mod tests {
             faction_id: "21".to_string(),
             unit_id: "9001".to_string(),
             goals: vec![StudyGoal::Study {
+                turn: 25,
                 skill: "FORC".to_string(),
-                target_level: Some(4),
             }],
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
