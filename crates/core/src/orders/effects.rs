@@ -10,7 +10,7 @@
 //! The governing policy is the validator's own **accept on doubt**: an order that cannot be read,
 //! or whose target cannot be found, changes nothing rather than changing something wrong.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +33,10 @@ pub enum UnitPreviewStatus {
     Arriving,
     /// Does not exist yet: a `FORM` order creates it this month.
     Formed,
+    /// A unit this month's `FORM` creates that gains nobody, so `rules/form` dissolves it before
+    /// the month ends and its goods revert. Drawn rather than skipped since `ah-ty3s.3`, so the
+    /// row does not vanish from under a player editing its orders (decision **K2**).
+    Dissolving,
 }
 
 /// One field the orders change, with what the report said before.
@@ -91,6 +95,14 @@ pub struct UnitPreview {
     /// document order. Empty for a unit whose every transport reached an eligible target
     /// (`ah-64wm`).
     pub transport_target_issues: Vec<TransportTargetIssue>,
+    /// The unit a dissolving row's goods revert to, as `<name> (<id>)` - `rules/form`'s "the first
+    /// unit you have in that region", named from the preview so a recipient this month's `NAME`
+    /// renames reads as the orders leave it.
+    ///
+    /// `None` on every row that is not [`UnitPreviewStatus::Dissolving`], and on a dissolving row
+    /// in a region whose report shows no own unit of ours: there the goods revert to nobody, which
+    /// the core already models by taking nothing from the dissolving row.
+    pub dissolves_into: Option<String>,
 }
 
 /// One line of what a unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document order
@@ -338,10 +350,9 @@ pub fn preview_orders_on_map(
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
     working.apply_transports(&dissolved);
-    for (index, working_unit) in working.units.iter_mut().enumerate() {
-        if dissolved.contains(&index) {
-            continue;
-        }
+    // A dissolving row is drawn now (`ah-ty3s.3`), so its weight, capacity and movement are
+    // settled exactly like any other formed row's rather than left at `formed_unit`'s defaults.
+    for working_unit in working.units.iter_mut() {
         working_unit.refresh_movement(&ruleset);
     }
 
@@ -362,13 +373,13 @@ pub fn preview_orders_on_map(
     let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
 
     for (index, entry) in working.units.into_iter().enumerate() {
-        if dissolved.contains(&index) {
-            continue;
-        }
         let mut arrival = None;
         let mut mode = None;
 
-        let status = if entry.formed {
+        // First, so a dissolving row never reaches `trace_move`: it is not going anywhere.
+        let status = if dissolved.contains_key(&index) {
+            UnitPreviewStatus::Dissolving
+        } else if entry.formed {
             UnitPreviewStatus::Formed
         } else if let Some(steps) = &entry.move_steps {
             match trace_move(&map, &ruleset, &entry.unit, steps, Some(&ordered)) {
@@ -419,6 +430,7 @@ pub fn preview_orders_on_map(
             status,
             arrival,
             aboard: None,
+            dissolves_into: dissolved.get(&index).cloned().flatten(),
         });
     }
 
@@ -446,6 +458,7 @@ pub fn preview_orders_on_map(
         status,
         arrival,
         aboard,
+        dissolves_into,
     } in decided
     {
         let changes = entry.changes();
@@ -454,9 +467,27 @@ pub fn preview_orders_on_map(
         // unit stands (`ah-agbm`).
         let uncounted = entry.uncounted.clone();
         let taken_unshown = entry.taken_unshown.clone();
-        let produced = entry.produced.clone();
-        let built = entry.built.clone();
-        let created = entry.created.clone();
+        // `rules/sequenceofevents` runs the market - where a formed unit's own BUY of peasants
+        // decides whether it gained anybody - before PRODUCE, BUILD and the month-long orders, so
+        // a unit the market dissolved makes nothing (`ah-ty3s.3`). `uncounted` is kept: it names
+        // orders the forecast could not read, which is a fact about the document rather than
+        // about the month.
+        let dissolving = status == UnitPreviewStatus::Dissolving;
+        let produced = if dissolving {
+            Vec::new()
+        } else {
+            entry.produced.clone()
+        };
+        let built = if dissolving {
+            Vec::new()
+        } else {
+            entry.built.clone()
+        };
+        let created = if dissolving {
+            Vec::new()
+        } else {
+            entry.created.clone()
+        };
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
         let transport_target_issues = entry.transport_target_issues.clone();
@@ -465,6 +496,7 @@ pub fn preview_orders_on_map(
         if changes.is_empty()
             && !departed
             && status != UnitPreviewStatus::Formed
+            && status != UnitPreviewStatus::Dissolving
             && uncounted.is_empty()
             && transport_sent.is_empty()
             && transport_received.is_empty()
@@ -505,6 +537,9 @@ pub fn preview_orders_on_map(
                     transport_sent: transport_sent.clone(),
                     transport_received: transport_received.clone(),
                     transport_target_issues: transport_target_issues.clone(),
+                    // An arriving row is never dissolving, but the field is set from the same
+                    // source on all three pushes rather than relying on that.
+                    dissolves_into: dissolves_into.clone(),
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -524,6 +559,7 @@ pub fn preview_orders_on_map(
                     transport_sent,
                     transport_received,
                     transport_target_issues,
+                    dissolves_into: dissolves_into.clone(),
                 });
         } else {
             regions
@@ -544,6 +580,7 @@ pub fn preview_orders_on_map(
                     transport_sent,
                     transport_received,
                     transport_target_issues,
+                    dissolves_into,
                 });
         }
     }
@@ -564,6 +601,9 @@ struct Decided {
     arrival: Option<String>,
     /// Set on the departing row of a unit carried by a fleet: `<name> [<id>]`.
     aboard: Option<String>,
+    /// Set on a [`UnitPreviewStatus::Dissolving`] row alone: the unit its goods revert to
+    /// (`ah-ty3s.3`).
+    dissolves_into: Option<String>,
 }
 
 /// A fleet leaving its hex this month, as its passengers need to read it.
@@ -1174,8 +1214,10 @@ impl Working {
     /// put and the caller filters them out while rendering. What the row was not given stays on
     /// it, unrendered - so `apply_transports` is given the same set and drops what a dissolved row
     /// had queued.
-    fn dissolve_empty_forms(&mut self) -> BTreeSet<usize> {
-        let mut dissolved = BTreeSet::new();
+    /// Each index carries its recipient's label, as `<name> (<id>)`, or `None` where the region
+    /// shows no own unit for the goods to revert to (`ah-ty3s.3`).
+    fn dissolve_empty_forms(&mut self) -> BTreeMap<usize, Option<String>> {
+        let mut dissolved = BTreeMap::new();
         for index in 0..self.units.len() {
             if !self.units[index].formed || self.units[index].unit.men != 0 {
                 continue;
@@ -1191,7 +1233,7 @@ impl Working {
                 .iter()
                 .position(|unit| unit.unit.region_id == region_id && unit.original.is_some())
             else {
-                dissolved.insert(index);
+                dissolved.insert(index, None);
                 continue;
             };
             // Exactly what it was *given*, which is what `rules/form` reverts - not what its own
@@ -1224,7 +1266,13 @@ impl Working {
                     moved,
                 );
             }
-            dissolved.insert(index);
+            dissolved.insert(
+                index,
+                Some(format!(
+                    "{} ({})",
+                    self.units[recipient].unit.name, self.units[recipient].unit.unit_id
+                )),
+            );
         }
         dissolved
     }
@@ -1870,7 +1918,7 @@ impl Working {
     /// Applies every queued `TRANSPORT`/`DISTRIBUTE`, last of all: `rules/sequenceofevents` runs
     /// transport in the month's final phases, after the market, after movement, after production
     /// (`ah-bxgs`).
-    fn apply_transports(&mut self, dissolved: &BTreeSet<usize>) {
+    fn apply_transports(&mut self, dissolved: &BTreeMap<usize, Option<String>>) {
         let pending = std::mem::take(&mut self.transports);
         let mut sent: Vec<Vec<(usize, TransportSent)>> = vec![Vec::new(); self.units.len()];
         let mut received: Vec<Vec<(usize, TransportReceived)>> = vec![Vec::new(); self.units.len()];
@@ -1895,7 +1943,7 @@ impl Working {
         ] {
             let mut of_this_phase: Vec<&PendingTransport> = pending
                 .iter()
-                .filter(|pending| !dissolved.contains(&pending.sender))
+                .filter(|pending| !dissolved.contains_key(&pending.sender))
                 .filter(|pending| self.transport_phase(pending) == phase)
                 .collect();
             // `rules/sequenceofevents`: "units that appear higher on the report get precedence",
@@ -4103,6 +4151,124 @@ mod tests {
         );
     }
 
+    /// `rules/form` dissolves a formed unit that gains nobody, and since `ah-ty3s.3` the row is
+    /// drawn rather than skipped (decision **K2**), so it does not vanish from under a player
+    /// editing its orders. It holds nothing: the goods have already reverted.
+    #[test]
+    fn a_formed_unit_that_gains_nobody_is_previewed_as_dissolving() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 0 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 10 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 10 SILV\n",
+        );
+
+        let dissolving = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the row a player is editing stays on the table");
+        assert_eq!(dissolving.status, UnitPreviewStatus::Dissolving);
+        assert!(
+            !dissolving
+                .unit
+                .items
+                .iter()
+                .any(|item| item.tag == "SWOR" && item.amount > 0),
+            "the swords have reverted: {:?}",
+            dissolving.unit.items
+        );
+        assert!(
+            !dissolving
+                .unit
+                .items
+                .iter()
+                .any(|item| item.tag == "SILV" && item.amount > 0),
+            "and the silver with them: {:?}",
+            dissolving.unit.items
+        );
+    }
+
+    /// The row names where its goods went, so the hover can say so without a second implementation
+    /// of `rules/form`'s "the first unit you have in that region" in the client.
+    #[test]
+    fn a_dissolving_row_names_the_unit_its_goods_revert_to() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 0 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nGIVE NEW 1 3 SWOR\n",
+        );
+
+        let dissolving = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the dissolving row is drawn");
+        assert_eq!(
+            dissolving.dissolves_into,
+            Some("Receiver (900)".to_string())
+        );
+    }
+
+    /// `rules/sequenceofevents` runs the market before `PRODUCE`, `BUILD` and the month-long
+    /// orders, so a unit the market dissolved makes nothing - and the row must not say it does.
+    #[test]
+    fn a_dissolving_row_reports_nothing_it_would_have_made() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 0 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nPRODUCE WOOD\nTRANSPORT 900 1 SILV\nEND\n\
+             GIVE NEW 1 100 SILV\n",
+        );
+
+        let dissolving = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the dissolving row is drawn");
+        assert!(dissolving.produced.is_empty(), "{:?}", dissolving.produced);
+        assert!(dissolving.built.is_empty(), "{:?}", dissolving.built);
+        assert!(dissolving.created.is_empty(), "{:?}", dissolving.created);
+        assert!(
+            dissolving.transport_sent.is_empty(),
+            "{:?}",
+            dissolving.transport_sent
+        );
+    }
+
     /// `rules/form`: "If the demand for recruits in that region that month is much higher than
     /// the supply, ... it may not gain any recruits at all. ... If no recruits are gained at all,
     /// the empty unit will be dissolved, and the silver and any other items it was given will
@@ -4133,13 +4299,19 @@ mod tests {
             .iter()
             .flat_map(|region| region.units.iter())
             .collect();
+        let dissolving = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the row is drawn rather than skipped since `ah-ty3s.3`");
+        assert_eq!(
+            dissolving.status,
+            UnitPreviewStatus::Dissolving,
+            "and says the game will dissolve it"
+        );
         assert!(
-            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
-            "the empty formed unit is dissolved: {:?}",
-            units
-                .iter()
-                .map(|unit| &unit.unit.unit_id)
-                .collect::<Vec<_>>()
+            dissolving.unit.items.iter().all(|item| item.amount == 0),
+            "holding nothing: the goods have reverted: {:?}",
+            dissolving.unit.items
         );
 
         let amount = |id: &str, tag: &str| {
@@ -4227,9 +4399,15 @@ mod tests {
             .iter()
             .flat_map(|region| region.units.iter())
             .collect();
+        let dissolving = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the row is drawn rather than skipped since `ah-ty3s.3`");
+        assert_eq!(dissolving.status, UnitPreviewStatus::Dissolving);
         assert!(
-            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
-            "the empty formed unit dissolves"
+            dissolving.transport_sent.is_empty(),
+            "and sends nothing: {:?}",
+            dissolving.transport_sent
         );
         let receiver = units
             .iter()
@@ -4313,10 +4491,11 @@ mod tests {
             .iter()
             .flat_map(|region| region.units.iter())
             .collect();
-        assert!(
-            !units.iter().any(|unit| unit.unit.unit_id == "new-1"),
-            "the empty formed unit dissolves"
-        );
+        let dissolving = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the row is drawn rather than skipped since `ah-ty3s.3`");
+        assert_eq!(dissolving.status, UnitPreviewStatus::Dissolving);
         let held = |id: &str, tag: &str| {
             units
                 .iter()
@@ -4359,13 +4538,14 @@ mod tests {
             .flat_map(|region| region.units.iter())
             .collect();
         assert!(
-            !units
-                .iter()
-                .any(|unit| unit.unit.unit_id.starts_with("new-")),
-            "both dissolve: {:?}",
             units
                 .iter()
-                .map(|unit| &unit.unit.unit_id)
+                .filter(|unit| unit.unit.unit_id.starts_with("new-"))
+                .all(|unit| unit.status == UnitPreviewStatus::Dissolving),
+            "both rows are drawn, both dissolving: {:?}",
+            units
+                .iter()
+                .map(|unit| (&unit.unit.unit_id, unit.status))
                 .collect::<Vec<_>>()
         );
         let receiver = units
@@ -4416,13 +4596,14 @@ mod tests {
             .flat_map(|region| region.units.iter())
             .collect();
         assert!(
-            !units
-                .iter()
-                .any(|unit| unit.unit.unit_id.starts_with("new-")),
-            "both empty formed units dissolve: {:?}",
             units
                 .iter()
-                .map(|unit| &unit.unit.unit_id)
+                .filter(|unit| unit.unit.unit_id.starts_with("new-"))
+                .all(|unit| unit.status == UnitPreviewStatus::Dissolving),
+            "both rows are drawn, both dissolving: {:?}",
+            units
+                .iter()
+                .map(|unit| (&unit.unit.unit_id, unit.status))
                 .collect::<Vec<_>>()
         );
         let held = |id: &str, tag: &str| {

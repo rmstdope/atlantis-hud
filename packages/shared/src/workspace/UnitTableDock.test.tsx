@@ -145,7 +145,8 @@ describe("a unit carried away by a sailing fleet", () => {
         created: [],
         transportSent: [],
         transportReceived: [],
-        transportTargetIssues: []
+        transportTargetIssues: [],
+        dissolvesInto: null
       }
     ]
   });
@@ -227,7 +228,8 @@ describe("the structure column", () => {
             created: [],
             transportSent: [],
             transportReceived: [],
-            transportTargetIssues: []
+            transportTargetIssues: [],
+            dissolvesInto: null
           }
         ]
       }
@@ -805,6 +807,7 @@ describe("the items column", () => {
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
+        dissolvesInto: null,
         ...previewOverrides
       }
     ]
@@ -996,6 +999,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
+        dissolvesInto: null,
         ...previewOverrides
       }
     ]
@@ -1311,6 +1315,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     transportSent: [],
     transportReceived: [],
     transportTargetIssues: [],
+    dissolvesInto: null,
     ...overrides
   });
 
@@ -1785,5 +1790,131 @@ describe("hidden columns (ah-20di)", () => {
     expect(markup).not.toContain('data-testid="column-splitter-longOrder-silver"');
     expect(markup).not.toContain('data-testid="column-splitter-silver-');
     expect(markup).toContain('data-testid="column-splitter-structure-longOrder"');
+  });
+});
+
+/**
+ * A `FORM` that gains nobody (`rules/form`): the row stays on the table while its block stands,
+ * and says the game will dissolve it (`ah-ty3s.3`, decision **K2**).
+ */
+describe("a row the game dissolves", () => {
+  afterEach(restoreStoresForTest);
+
+  const FORMER = unit({ unitId: "902", name: "Former", own: true });
+
+  const dissolvingRow = (
+    overrides: Partial<RegionPreview["units"][number]> = {}
+  ): RegionPreview["units"][number] => ({
+    unit: unit({ unitId: "new-1", name: "new 1", own: true }),
+    status: "dissolving",
+    changes: [],
+    arrivingFrom: null,
+    departingTo: null,
+    aboard: null,
+    uncounted: [],
+    takenUnshown: [],
+    produced: [],
+    built: [],
+    created: [],
+    transportSent: [],
+    transportReceived: [],
+    transportTargetIssues: [],
+    dissolvesInto: "Former (902)",
+    ...overrides
+  });
+
+  const drawDissolving = (
+    props: Partial<React.ComponentProps<typeof UnitTableDock>> = {}
+  ): string =>
+    renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [FORMER] }), ownUnitCount: 1 })}
+        preview={{ regionId: "1:6,52", units: [dissolvingRow()] }}
+        {...props}
+      />
+    );
+
+  const rowMarkup = (markup: string): string =>
+    /<tr[^>]*data-testid="unit-row-new-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+
+  it("says so and reads dimmed", () => {
+    const row = rowMarkup(drawDissolving());
+
+    expect(row).toContain(">new<");
+    expect(row).toContain('data-testid="unit-dissolving-new-1"');
+    expect(row).toContain("dissolves — no recruits");
+    expect(row).toContain('data-preview-status="dissolving"');
+    expect(row).toContain("opacity-60");
+  });
+
+  it("reads the same in All my units, where a departing row is not dimmed", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={null}
+        ownUnits={[FORMER]}
+        ordersPreview={{
+          regions: [
+            {
+              regionId: "1:6,52",
+              units: [
+                dissolvingRow(),
+                {
+                  ...dissolvingRow(),
+                  unit: unit({ unitId: "903", name: "Leaver", own: true }),
+                  status: "departing",
+                  departingTo: "1:7,53",
+                  dissolvesInto: null
+                }
+              ]
+            }
+          ]
+        }}
+        currentTurn={42}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+    const row = rowMarkup(markup);
+
+    expect(row).toContain("dissolves — no recruits");
+    expect(row).toContain('data-preview-status="dissolving"');
+    expect(row).toContain("opacity-60");
+    // Decision A1: the dim is unconditional on the source, and `dimsDeparting` still governs
+    // departures alone - a departing row in the same list is not dimmed here.
+    const departingRow = /<tr[^>]*data-testid="unit-row-903"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    expect(departingRow).toContain('data-preview-status="departing"');
+    expect(departingRow).not.toContain("opacity-60");
+  });
+
+  it("shows no month end in its Silver cell", () => {
+    const row = rowMarkup(
+      drawDissolving({
+        getSilver: () => aUnitSilver({ regionId: "1:6,52", atMonthEnd: 200 })
+      })
+    );
+
+    const cell = /<td[^>]*tabular-nums[\s\S]*?<\/td>/.exec(row)?.[0] ?? "";
+    expect(cell).toContain("—");
+    expect(cell).not.toContain("200");
+    expect(cell).not.toContain("text-danger");
+    expect(cell).not.toContain("?");
+  });
+
+  it("still shows its silver warning", () => {
+    const row = rowMarkup(
+      drawDissolving({
+        getSilver: () => aUnitSilver({ regionId: "1:6,52", atMonthEnd: -140 }),
+        silverWarnings: new Set([silverKey("1:6,52", "new-1")]),
+        onSelectUnit: () => {}
+      })
+    );
+
+    expect(row).toContain('data-testid="unit-silver-new-1"');
+    expect(row).toContain("⚠");
+    expect(row).toContain("—");
+    expect(row).not.toContain("-140");
   });
 });

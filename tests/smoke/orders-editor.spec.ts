@@ -629,3 +629,36 @@ test("a unit formed this month edits its own orders inside the FORM that creates
   // "never invents a unit new-1 block": an editor shows one block, so no walk here can see the
   // whole document.
 });
+
+/**
+ * A `FORM` that recruits nobody keeps its row, marked as dissolving (`ah-ty3s.3`, decision K2).
+ *
+ * The negative of the walk above: the same recipe with `CLAIM 200` dropped, so the hex's shared
+ * purse (`rules/share`) cannot pay for the recruit, no recruit is gained and `rules/form`
+ * dissolves the unit. The row stays all the same, so `new 1` never disappears from under a player
+ * working on it, and it says why.
+ */
+test("a formed unit that recruits nobody keeps its row, marked as dissolving", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@study obse\nFORM 1\nBUY 1 HDWA\nEND\n");
+
+  const formedRow = page.getByTestId("unit-row-new-1");
+  await expect(formedRow).toBeVisible();
+  await expect(formedRow).toHaveAttribute("data-preview-status", "dissolving");
+  await expect(formedRow).toContainText("dissolves — no recruits");
+  // The Silver column shows no month end for a unit that will not exist (decision S1).
+  await expect(formedRow.getByTestId("unit-silver-new-1")).toHaveCount(0);
+  // Decision S1: an em dash, not an empty cell and not a figure. This is the one place the real
+  // silver forecast and the real cell meet - the unit tests stub `getSilver`.
+  await expect(formedRow.locator("td").last()).toContainText("—");
+  await expect(formedRow.locator("td").last()).not.toHaveText(/\d/);
+
+  // Pay for the recruit, and the row reads like any other new unit.
+  await fillOrders(page, "@study obse\nCLAIM 200\nFORM 1\nBUY 1 HDWA\nEND\n");
+
+  await expect(formedRow).toHaveAttribute("data-preview-status", "formed");
+  await expect(formedRow).not.toContainText("dissolves — no recruits");
+  await expect(formedRow.locator("td").last()).toHaveText(/\d/);
+});

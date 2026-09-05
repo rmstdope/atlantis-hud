@@ -60,6 +60,7 @@ import {
 import { isCursorRow, unitCursor } from "./unitCursor";
 import {
   changeFor,
+  dissolves,
   formatItems,
   hasUncertainTransportTarget,
   itemsTooltip,
@@ -483,9 +484,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         .filter((entry) => entry.own)
         // The row's own hex, not the selected one: `silverKey` keys the forecast by region, so a
         // source spanning hexes must look each row up where it actually stands.
+        // A dissolving row prints no month end, so it sorts as having none: a column that
+        // printed a dash and sorted on a figure is the defect the dash exists to avoid
+        // (`ah-ty3s.3`, decision **S1**).
         .map((entry) => [
           unitRowKey(entry.regionId, entry.unitId),
-          silverShown(getSilver(entry.unitId, entry.regionId), countUpkeep)
+          dissolves(entry) ? null : silverShown(getSilver(entry.unitId, entry.regionId), countUpkeep)
         ])
     );
   }, [units, effectiveSort.column, getSilver, countUpkeep]);
@@ -652,7 +656,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * ref until the wait is up: following the pointer through state would re-render the table on
    * every mouse move, for a figure only one timeout ever reads.
    */
-  const [hovered, setHovered] = useState<{ unit: ReportUnit; at: Point } | null>(null);
+  const [hovered, setHovered] = useState<{ unit: PreviewedUnit; at: Point } | null>(null);
   const pointerAt = useRef<Point>({ x: 0, y: 0 });
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -664,7 +668,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     setHovered(null);
   };
 
-  const restOn = (unit: ReportUnit) => {
+  const restOn = (unit: PreviewedUnit) => {
     forgetHover();
     hoverTimer.current = setTimeout(() => {
       hoverTimer.current = null;
@@ -1468,6 +1472,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
               }
               warned={silverWarnings?.has(silverKey(regionId ?? "", hovered.unit.unitId)) ?? false}
               derivedSkills={derivedSkillsFor(derivedSkills, hovered.unit)}
+              dissolving={
+                dissolves(hovered.unit) ? { into: hovered.unit.dissolvesInto ?? null } : null
+              }
             />
           ) : null}
         </div>
@@ -1976,6 +1983,7 @@ function UnitRow({
     [structureLabel, originalTooltip(structureChange)].filter(Boolean).join("\n") || undefined;
   // A row that is somewhere else next month reads dimmed; its marker says where it went.
   const departing = unit.previewStatus === "departing";
+  const dissolving = dissolves(unit);
   // Only for our own units: there is nothing of anybody else's orders to read.
   const longOrder = unit.own ? (getLongOrder?.(unit.unitId, regionId) ?? null) : null;
   // Only our own units have a month to price; `getSilver` returns null for everyone else anyway,
@@ -1994,6 +2002,19 @@ function UnitRow({
   // The setting decides whether maintenance comes off the figure (`ah-1wcw.4`); the core computes
   // both answers, so switching it costs no round trip through the checks.
   const shownSilver = silverShown(silver, countUpkeep);
+  // A dissolving unit will not exist at month end, so the column shows no figure for it - the dash
+  // is written explicitly rather than taken from `silverFigure(null)`, whose `?` means "could not
+  // be priced", a different sentence (`ah-ty3s.3`, decision **S1**).
+  const figure = dissolving ? (
+    <>
+      <span className="sr-only">no month end</span>
+      <span aria-hidden className="text-ink-dim">
+        —
+      </span>
+    </>
+  ) : (
+    silverFigure(shownSilver)
+  );
 
   /**
    * Every cell, keyed the same way the header's dispatch is, so reordering the columns never means
@@ -2049,8 +2070,17 @@ function UnitRow({
         {unit.previewStatus === "arriving" ? (
           <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>← {unit.arrivingFrom ?? "…"}</span>
         ) : null}
-        {unit.previewStatus === "formed" ? (
+        {unit.previewStatus === "formed" || dissolving ? (
           <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>new</span>
+        ) : null}
+        {/* `rules/form` dissolves a FORM that gains nobody. The row stays while its block stands
+            (`ah-ty3s.3`, decision **K2**), and names the cause so the fix - recruit somebody - is
+            inferable from the row itself. */}
+        {dissolving ? (
+          <span className="ml-1.5 text-pane-sm text-warn" data-testid={`unit-dissolving-${unit.unitId}`}>
+            <span className="sr-only">dissolves, no recruits</span>
+            <span aria-hidden>dissolves — no recruits</span>
+          </span>
         ) : null}
       </Td>
     ),
@@ -2215,7 +2245,7 @@ function UnitRow({
     silver: (
       <Td
         className={`text-right tabular-nums${
-          silverIsRed(shownSilver, silver) ? " text-danger" : ""
+          !dissolving && silverIsRed(shownSilver, silver) ? " text-danger" : ""
         }`}
       >
         {silver === null ? (
@@ -2230,7 +2260,7 @@ function UnitRow({
           >
             <span className="sr-only">unit {unit.unitId} </span>
             <SeverityMark severity="warning" />
-            {silverFigure(shownSilver)}
+            {figure}
           </button>
         ) : (
           <span
@@ -2240,7 +2270,7 @@ function UnitRow({
                 : undefined
             }
           >
-            {silverFigure(shownSilver)}
+            {figure}
           </span>
         )}
       </Td>
@@ -2337,7 +2367,7 @@ function UnitRow({
             : unit.own
               ? "text-ink"
               : "text-ink-soft"
-      }${departing && dimDeparting ? " opacity-60" : ""}`}
+      }${(departing && dimDeparting) || dissolving ? " opacity-60" : ""}`}
     >
       {drawn.map((entry) =>
         entry.kind === "unit" ? (

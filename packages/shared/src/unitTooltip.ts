@@ -35,6 +35,11 @@ export type UnitSummary = {
   items: TooltipEntry[];
   /** What this unit's month does to its silver, or null for a unit that has no forecast. */
   silver: SilverSummary | null;
+  /**
+   * One sentence about a row `rules/form` dissolves, and where its goods go (`ah-ty3s.3`).
+   * Absent on every other unit.
+   */
+  note?: string;
 };
 
 export type Point = { x: number; y: number };
@@ -56,10 +61,23 @@ export function summariseUnit(
   /** Whether this unit carries the `not-enough-silver` finding, which the note explains. */
   warned = false,
   /** Whether the Silver column is counting upkeep, which adds the fifth row (`ah-1wcw.4`). */
-  countUpkeep = false
+  countUpkeep = false,
+  /**
+   * Set on a row `rules/form` dissolves, with the unit its goods revert to as `<name> (<id>)` -
+   * or `into: null` where the hex shows no own unit for them to revert to (`ah-ty3s.3`).
+   *
+   * Structural rather than the row type on purpose: `unitPreview` already imports from this
+   * module, so taking a `PreviewedUnit` here would make a cycle.
+   */
+  dissolving: { into: string | null } | null = null
 ): UnitSummary {
   return {
     silver: silver === null ? null : summariseSilver(unit, silver, warned, countUpkeep),
+    note: dissolving
+      ? dissolving.into === null
+        ? "Gains no recruits, so the game dissolves it. No unit of yours is shown in this hex for its goods to revert to."
+        : `Gains no recruits, so the game dissolves it and its goods revert to ${dissolving.into}.`
+      : undefined,
     title: `${unit.name} (${unit.unitId})`,
     skills: unit.skills.map((skill) => ({
       label: `${skill.name} ${skill.tag}`,
