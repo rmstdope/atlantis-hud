@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>ah-26jt — A: the default order becomes Id</title>
+<style>
+ body{background:#14161a;color:#dfe3ea;font:14px/1.5 system-ui,sans-serif;margin:0;padding:24px 28px}
+ h1{font-size:18px;margin:0 0 4px} h2{font-size:14px;margin:26px 0 6px;color:#9fb4d6;font-weight:600}
+ p{max-width:70ch;color:#aab2c0;margin:6px 0}
+ table{border-collapse:collapse;margin:8px 0 4px;background:#1b1e24;font-size:13px}
+ th,td{border:1px solid #2c313a;padding:3px 10px;text-align:left;white-space:nowrap}
+ th{background:#232833;color:#c8d4e8;font-weight:600}
+ th.sorted{background:#2f4b74;color:#fff}
+ tr.own td{color:#ffd479}
+ .sep td{background:#191c21;height:6px;padding:0;border-left:none;border-right:none}
+ .note{color:#7f8899;font-size:12px;max-width:70ch}
+ .cols{display:flex;gap:28px;flex-wrap:wrap}
+ code{background:#232833;padding:1px 5px;border-radius:3px}
+</style></head><body>
+<h1>ah-26jt — variant A: the table opens ordered by Id</h1>
+<p>Nothing about clicking a header changes. A header click still goes ascending, then descending,
+and there is no third click that clears the sort — so “no other column is sorted by” means the
+state the table is in before anybody clicks, and the state it returns to when the source changes to
+one that does not draw the column you were sorted on.</p>
+
+<div class="cols">
+<div>
+<h2>Today — opens ordered by Unit</h2>
+<table>
+<tr><th>Own</th><th class="sorted">Unit ▲</th><th>Id</th><th>Faction</th><th>Men</th></tr>
+<tr class="own"><td>●</td><td>Border Watch</td><td>1042</td><td>Thane's Ring (10)</td><td>4</td></tr>
+<tr class="own"><td>●</td><td>Scout North</td><td>207</td><td>Thane's Ring (10)</td><td>1</td></tr>
+<tr class="own"><td>●</td><td>Wood crew</td><td>88</td><td>Thane's Ring (10)</td><td>6</td></tr>
+<tr class="sep"><td colspan="5"></td></tr>
+<tr><td></td><td>Cartel guards</td><td>3311</td><td>Merchants (44)</td><td>12</td></tr>
+<tr><td></td><td>Hill patrol</td><td>915</td><td>Grey Company (7)</td><td>9</td></tr>
+</table>
+</div>
+
+<div>
+<h2>Variant A — opens ordered by Id</h2>
+<table>
+<tr><th>Own</th><th>Unit</th><th class="sorted">Id ▲</th><th>Faction</th><th>Men</th></tr>
+<tr class="own"><td>●</td><td>Wood crew</td><td>88</td><td>Thane's Ring (10)</td><td>6</td></tr>
+<tr class="own"><td>●</td><td>Scout North</td><td>207</td><td>Thane's Ring (10)</td><td>1</td></tr>
+<tr class="own"><td>●</td><td>Border Watch</td><td>1042</td><td>Thane's Ring (10)</td><td>4</td></tr>
+<tr class="sep"><td colspan="5"></td></tr>
+<tr><td></td><td>Hill patrol</td><td>915</td><td>Grey Company (7)</td><td>9</td></tr>
+<tr><td></td><td>Cartel guards</td><td>3311</td><td>Merchants (44)</td><td>12</td></tr>
+</table>
+</div>
+</div>
+
+<p class="note">Your own units still sit in a block above foreign ones — that is the <code>Own</code>
+header's toggle and it is untouched. Ids sort as numbers, so 88 comes before 207 and 1042.</p>
+
+<h2>What this costs</h2>
+<p><code>sortUnitsForDisplay</code>, which picks the hex's default selected unit, orders own-first
+then by name, and today that is exactly what the table opens in. Changing only the table would
+leave the selected unit somewhere other than the top row, so variant A moves both: the unit the app
+picks for you when you click a hex is the own unit with the lowest Id, and it is still the top row
+of the table.</p>
+</body></html>
