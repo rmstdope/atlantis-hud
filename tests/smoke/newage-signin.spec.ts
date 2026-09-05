@@ -195,6 +195,7 @@ test("changing the ruleset closes a sign-in dialog headed for the old world", as
 
   // Settings opens *under* the sign-in backdrop, so it too is driven by keyboard throughout.
   await activate(page, "settings-indicator");
+  await expect(page.getByTestId("settings-panel")).toBeVisible();
   await activate(page, "settings-tab-game");
 
   const ruleset = page.getByTestId("settings-game-ruleset");
@@ -206,7 +207,14 @@ test("changing the ruleset closes a sign-in dialog headed for the old world", as
   // the guard intact. `selectOption` is used instead, with `force` because the sign-in backdrop
   // covers the header and its Settings dialog: the option is set on the `<select>` itself and
   // `change` fires from it, so unlike a forced *click* nothing lands on the backdrop and the
-  // dialog is not dismissed by the act of changing the ruleset. The RED steps below prove that.
+  // dialog is not dismissed by the act of changing the ruleset. That was proved by hand while
+  // writing this walk: with the `selectOption` line removed the `toHaveValue` below fails, and
+  // with the guard's `dismissSignIn()` commented out the `toHaveCount(0)` below fails while
+  // `toHaveValue` still passes.
+  //
+  // `force` skips the whole actionability set and not only the hit test, so the enabled check is
+  // asserted explicitly first - the select carries `disabled={busy}`.
+  await expect(ruleset).toBeEnabled();
   await ruleset.selectOption("newage-trident", { force: true });
 
   await expect(ruleset).toHaveValue("newage-trident");
