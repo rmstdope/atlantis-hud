@@ -420,6 +420,8 @@ describe("the New Age world control", () => {
         onSignIn: () => {},
         onSignOut: () => {},
         onFetchReport: () => {},
+    onFetchEarlierTurns: () => {},
+    historyBusy: false,
         fetching: false
       }
     });
@@ -435,6 +437,8 @@ describe("the New Age world control", () => {
         onSignIn: () => {},
         onSignOut: () => {},
         onFetchReport: () => {},
+    onFetchEarlierTurns: () => {},
+    historyBusy: false,
         fetching: false
       }
     });

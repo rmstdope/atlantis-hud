@@ -56,6 +56,10 @@ export type NewAgeHeaderControl = {
   onFetchReport: () => void;
   /** True while that fetch is in flight. */
   fetching: boolean;
+  /** Opens the earlier-turns dialog. Called only from the popover, so only while signed in. */
+  onFetchEarlierTurns: () => void;
+  /** True while that dialog is open or its list is being asked for: both items are off. */
+  historyBusy: boolean;
 };
 
 /**
@@ -681,7 +685,9 @@ export function AppHeader({
           panel={<NewAgeWorldPanel
                   summary={newAge.summary}
                   fetching={newAge.fetching}
+                  historyBusy={newAge.historyBusy}
                   onFetchReport={newAge.onFetchReport}
+                  onFetchEarlierTurns={newAge.onFetchEarlierTurns}
                   onSignOut={newAge.onSignOut}
                 />}
         >

@@ -14,11 +14,19 @@ import { clearGames, createGame } from "./gameSetup";
  * cleartext, so only a length is kept, which is what proves the password went nowhere it should
  * not.
  */
+const TURN_70 = readReport("g7f95t70");
 const TURN_71 = readReport("g7f95t71");
+const TURN_72 = readReport("g7f95t72");
 
 const REPORT_URL = "https://atlantis-newage.com/api/worlds/arcanum/files/report?format=txt";
 
 type HttpCall = ["httpRequest", string, string, number];
+
+/** What the world's history endpoints answer, per turn. Set by `historyWith`. */
+type HistoryStandIn = {
+  turns: { status: number; body: string };
+  reports: Record<string, { status: number; body: string }>;
+};
 
 test.beforeEach(async ({ page }, testInfo) => {
   test.skip(
@@ -36,6 +44,9 @@ test.beforeEach(async ({ page }, testInfo) => {
         window as unknown as { __ATLANTIS_REPORT_REPLY__: { status: number; body: string } }
       ).__ATLANTIS_REPORT_REPLY__ = { status: 200, body: report };
       (
+        window as unknown as { __ATLANTIS_HISTORY__: HistoryStandIn }
+      ).__ATLANTIS_HISTORY__ = { turns: { status: 500, body: "" }, reports: {} };
+      (
         window as unknown as {
           __ATLANTIS_DESKTOP_PLUGINS__: {
             httpRequest(
@@ -51,6 +62,15 @@ test.beforeEach(async ({ page }, testInfo) => {
           body?: string;
         }) {
           calls.push(["httpRequest", request.method, request.url, request.body?.length ?? 0]);
+          if (request.url.includes("/files/history/")) {
+            const history = (window as unknown as { __ATLANTIS_HISTORY__: HistoryStandIn })
+              .__ATLANTIS_HISTORY__;
+            if (request.url.includes("/files/history/turns")) {
+              return history.turns;
+            }
+            const turn = /\/files\/history\/(\d+)\/report/.exec(request.url)?.[1] ?? "";
+            return history.reports[turn] ?? { status: 500, body: "" };
+          }
           if (request.url.includes("/auth/login")) {
             return {
               status: 200,
@@ -88,6 +108,13 @@ async function replyWith(
       window as unknown as { __ATLANTIS_REPORT_REPLY__: { status: number; body: string } }
     ).__ATLANTIS_REPORT_REPLY__ = next;
   }, reply);
+}
+
+/** Sets what the world's history endpoints answer. */
+async function historyWith(page: import("@playwright/test").Page, history: HistoryStandIn) {
+  await page.evaluate((next) => {
+    (window as unknown as { __ATLANTIS_HISTORY__: HistoryStandIn }).__ATLANTIS_HISTORY__ = next;
+  }, history);
 }
 
 /** A signed-in Arcanum game with the ruleset loaded and the world popover open. */
@@ -165,4 +192,97 @@ test("says so when the world has no report yet", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText(
     "could not fetch this turn's report: the world has no report for you yet"
   );
+});
+
+test("lists the turns the world holds and fetches an earlier one into history", async ({ page }) => {
+  await signedInWithPopover(page);
+  await page.getByTestId("newage-fetch-report").click();
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ turns: [70, 71, 72] }) },
+    reports: { "70": { status: 200, body: TURN_70 } }
+  });
+  await page.getByTestId("newage-control").click();
+  await page.getByTestId("newage-fetch-history").click();
+
+  await expect(page.getByTestId("newage-history-panel")).toBeVisible();
+  await expect(page.getByTestId("newage-history-row-70")).toContainText("fetch");
+  await expect(page.getByTestId("newage-history-row-71")).toContainText("playing");
+
+  await page.getByTestId("newage-history-row-70").click();
+
+  await expect(page.getByTestId("import-status")).toContainText("turn 70 stored for history");
+  await expect(page.getByTestId("newage-history-row-70")).toContainText("stored");
+  // The screen did not change: turn 71 is still the working turn.
+  await expect(page.getByTestId("import-status")).toContainText("still showing turn 71");
+});
+
+test("fetches every missing turn in one press and says what happened", async ({ page }) => {
+  await signedInWithPopover(page);
+  // Turn 72 is the working turn, so 70 and 71 are the earlier ones this bead is about.
+  await replyWith(page, { status: 200, body: TURN_72 });
+  await page.getByTestId("newage-fetch-report").click();
+  await expect(page.getByTestId("import-status")).toContainText("regions");
+
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ turns: [70, 71, 72] }) },
+    reports: {
+      "70": { status: 200, body: TURN_70 },
+      "71": { status: 200, body: TURN_71 }
+    }
+  });
+  await page.getByTestId("newage-control").click();
+  await page.getByTestId("newage-fetch-history").click();
+
+  const fetchAll = page.getByTestId("newage-history-fetch-all");
+  await expect(fetchAll).toHaveText("Fetch all 2 missing");
+  await fetchAll.click();
+
+  await expect(page.getByTestId("import-status")).toContainText(
+    "2 turns stored for history; still showing turn 72."
+  );
+  await expect(page.getByTestId("newage-history-row-70")).toContainText("stored");
+  await expect(page.getByTestId("newage-history-row-71")).toContainText("stored");
+});
+
+test("asks for the password again when the session runs out mid-run, and finishes the run", async ({
+  page
+}) => {
+  await signedInWithPopover(page);
+  await replyWith(page, { status: 200, body: TURN_72 });
+  await page.getByTestId("newage-fetch-report").click();
+  await expect(page.getByTestId("import-status")).toContainText("regions");
+
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ turns: [70, 71, 72] }) },
+    reports: {
+      "70": { status: 200, body: TURN_70 },
+      "71": { status: 401, body: "" }
+    }
+  });
+  await page.getByTestId("newage-control").click();
+  await page.getByTestId("newage-fetch-history").click();
+  await page.getByTestId("newage-history-fetch-all").click();
+
+  await expect(page.getByTestId("newage-signin-panel")).toBeVisible();
+  await expect(page.getByTestId("newage-signin-notice")).toHaveText(
+    "Your session has ended. Sign in again to continue."
+  );
+  await expect(page.getByTestId("newage-signin-confirm")).toHaveText("Sign in and fetch");
+
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ turns: [70, 71, 72] }) },
+    reports: {
+      "70": { status: 200, body: TURN_70 },
+      "71": { status: 200, body: TURN_71 }
+    }
+  });
+  await page.getByTestId("newage-faction-number").fill("27");
+  await page.getByTestId("newage-password").fill("right");
+  await page.getByTestId("newage-signin-confirm").click();
+
+  await expect(page.getByTestId("newage-signin-panel")).not.toBeVisible();
+  await expect(page.getByTestId("import-status")).toContainText("2 turns stored for history");
+  await expect(page.getByTestId("newage-history-row-71")).toContainText("stored");
 });
