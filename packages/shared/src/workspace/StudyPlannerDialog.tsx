@@ -205,7 +205,7 @@ export function StudyPlannerDialog({
   );
 
   // The Orders tab counts its own mages; every other tab keeps the planner's summary line.
-  const subLine = view === "orders" ? orders.summary : summaryLine;
+  const subLine = (view === "orders" ? orders.summary : null) ?? summaryLine;
 
   const move = (key: string): boolean => {
     if (picked === null) {

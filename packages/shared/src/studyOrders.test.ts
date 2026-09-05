@@ -55,15 +55,18 @@ const allyGroup: PlannerGroup = {
   mages: []
 };
 
-const aTeachCell = (
-  over: Partial<Extract<ScheduleCell, { kind: "teach" }>> & { taught: string[] }
-): ScheduleCell => ({
+const aTeachCell = ({
+  taught,
+  ...over
+}: Partial<Omit<Extract<ScheduleCell, { kind: "teach" }>, "kind" | "outcome">> & {
+  taught: string[];
+}): ScheduleCell => ({
   kind: "teach",
   goalIndex: 0,
-  students: over.students ?? over.taught.map((key) => key.slice(key.indexOf("/") + 1)),
-  outcome: { taught: over.taught, refused: [], worth: 2 },
+  students: taught.map((key) => key.slice(key.indexOf("/") + 1)),
   label: "TEACH",
-  ...(over.label === undefined ? {} : { label: over.label })
+  ...over,
+  outcome: { taught, refused: [], worth: 2 }
 });
 
 const aNotice = (over: Partial<PlannerNotice> = {}): PlannerNotice => ({
@@ -241,6 +244,25 @@ describe("studyOrders", () => {
     const [section] = studyOrders({ groups: [allyGroup], rows, turns: [72], notices: [] }).sections;
     expect(section.text.split("\n")[1]).toBe(
       "; From their mage sheet of turn 70 — 2 months of study since are estimated."
+    );
+  });
+
+  it("a_sheet_one_month_old_says_one_month_and_agrees_its_verb", () => {
+    const rows = [
+      aRow({
+        factionId: "17",
+        unitId: "300",
+        key: "17/300",
+        name: "Ghost",
+        cells: [aStudyCell()],
+        goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+        monthsUnreported: 1,
+        sheetTurn: 71
+      })
+    ];
+    const [section] = studyOrders({ groups: [allyGroup], rows, turns: [72], notices: [] }).sections;
+    expect(section.text.split("\n")[1]).toBe(
+      "; From their mage sheet of turn 71 — 1 month of study since is estimated."
     );
   });
 

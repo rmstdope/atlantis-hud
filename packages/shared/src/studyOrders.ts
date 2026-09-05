@@ -176,8 +176,13 @@ export function studyOrders(input: {
     // copied, and the recipient is the person who most needs to know.
     const stale = group.source === "sheet" ? mine.find((row) => row.monthsUnreported > 0) : undefined;
     if (stale !== undefined) {
+      // Pluralised the way `plannerGroupNote` does one file away (`studyPlanner.ts:277-278`):
+      // one month stale is the commonest allied case, and this sentence is mailed to a stranger.
+      const months = stale.monthsUnreported;
       lines.push(
-        `; From their mage sheet of turn ${stale.sheetTurn} — ${stale.monthsUnreported} months of study since are estimated.`
+        `; From their mage sheet of turn ${stale.sheetTurn} — ${months} month${
+          months === 1 ? " of study since is" : "s of study since are"
+        } estimated.`
       );
     }
     for (const row of mine) {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { copyText } from "../copyText";
 
 /**
@@ -26,6 +26,16 @@ export function CopyButton({
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  // Cleared on unmount: this button now has five instances, four of them inside a dialog the
+  // player closes with Escape, so a copy two seconds before that would set state on a dead one.
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) {
+        clearTimeout(timer.current);
+      }
+    };
+  }, []);
 
   return (
     <button
@@ -35,7 +45,7 @@ export function CopyButton({
         void copyText(text).then((ok) => {
           if (!ok) return;
           setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
+          timer.current = setTimeout(() => setCopied(false), 2000);
         });
       }}
       className={className}

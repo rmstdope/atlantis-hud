@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { UnreadableLine } from "@atlantis/core-client";
 import {
   unreadableClipboardText,
@@ -71,9 +72,16 @@ export function UnreadableCopyButton({
   /** `Borg (73)`, or null when the report does not name both parts. */
   factionLabel: string | null;
 }) {
+  // Built on click rather than on every render of the panel: a report with many unreadable lines
+  // makes this a long string, and the panel re-renders as the workspace does.
+  const text = useMemo(
+    () => unreadableClipboardText(entries, turnNumber, factionLabel),
+    [entries, turnNumber, factionLabel]
+  );
+
   return (
     <CopyButton
-      text={unreadableClipboardText(entries, turnNumber, factionLabel)}
+      text={text}
       label="Copy all"
       testId="unreadable-copy"
       className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink"
