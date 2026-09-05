@@ -20,6 +20,28 @@ function diagnostic(overrides: Partial<OrderDiagnostic>): OrderDiagnostic {
 }
 
 describe("OrdersImportSummaryDialog", () => {
+  it("names a formed unit new 1 rather than the core's new-1 (ah-nix5)", () => {
+    const markup = renderToStaticMarkup(
+      <OrdersImportSummaryDialog
+        summary={{
+          unitCount: 1,
+          document: "",
+          diagnostics: [
+            diagnostic({
+              unitId: "new-1",
+              formed: { alias: "1", formedBy: "1010" },
+              message: "this hex does not sell silk"
+            })
+          ]
+        }}
+        onDismiss={() => {}}
+      />
+    );
+
+    expect(markup).toContain("unit new 1: this hex does not sell silk");
+    expect(markup).not.toContain("new-1");
+  });
+
   it("lists errors before warnings with unit ids", () => {
     const markup = renderToStaticMarkup(
       <OrdersImportSummaryDialog

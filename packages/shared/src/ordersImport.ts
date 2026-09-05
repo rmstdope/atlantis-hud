@@ -202,3 +202,19 @@ export function unitIdForDiagnostic(document: string, diagnostic: OrderDiagnosti
   );
   return block?.unitId ?? null;
 }
+
+/**
+ * How the summary dialog names a diagnostic's subject.
+ *
+ * `unitIdForDiagnostic` answers which unit a finding belongs to, in the core's own ids; this
+ * answers what the player is shown. They differ for a unit this month's `FORM` orders create: the
+ * core mints it as `new-1` and the player wrote it as `NEW 1`, so it is read back as `new 1`. The
+ * same spelling `ProblemWho` uses (`workspace/primitives.tsx`), kept separately rather than shared
+ * because that one returns markup and this one a string.
+ */
+export function unitLabelForDiagnostic(document: string, diagnostic: OrderDiagnostic): string | null {
+  if (diagnostic.formed !== null) {
+    return `new ${diagnostic.formed.alias}`;
+  }
+  return unitIdForDiagnostic(document, diagnostic);
+}

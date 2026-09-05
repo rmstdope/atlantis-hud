@@ -1,7 +1,7 @@
-import type { OpenedGame, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
+import type { OpenedGame, OrderDiagnostic, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
 import { aParsedReport, aReportHeaderInfo } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { describeOrdersImport, isOrdersFile, ordersFileFaction, routeOrdersImport } from "./ordersImport";
+import { describeOrdersImport, isOrdersFile, ordersFileFaction, routeOrdersImport, unitLabelForDiagnostic } from "./ordersImport";
 
 /** Shaped exactly like the template a real report carries. */
 const ORDERS_FILE = [
@@ -211,5 +211,39 @@ describe("routing a dropped orders file", () => {
         emptiedCount: 0
       }
     });
+  });
+});
+
+describe("naming a diagnostic's subject", () => {
+  function diagnostic(overrides: Partial<OrderDiagnostic>): OrderDiagnostic {
+    return {
+      code: "test",
+      message: "something is wrong",
+      lineStart: null,
+      lineEnd: null,
+      columnStart: null,
+      columnEnd: null,
+      regionId: null,
+      unitId: null,
+      formed: null,
+      severity: "error",
+      ...overrides
+    };
+  }
+
+  it("names a formed unit the way the player wrote it", () => {
+    expect(
+      unitLabelForDiagnostic("", diagnostic({ unitId: "new-1", formed: { alias: "1", formedBy: "1010" } }))
+    ).toBe("new 1");
+  });
+
+  it("names an ordinary unit by its number", () => {
+    expect(unitLabelForDiagnostic("", diagnostic({ unitId: "1815" }))).toBe("1815");
+  });
+
+  it("still places a syntax diagnostic by the block its line falls in", () => {
+    expect(
+      unitLabelForDiagnostic("unit 1815\n@work\n", diagnostic({ lineStart: 2, lineEnd: 2 }))
+    ).toBe("1815");
   });
 });
