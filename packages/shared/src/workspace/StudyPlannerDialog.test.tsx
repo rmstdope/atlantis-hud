@@ -2,12 +2,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
 import { aParsedReport, aReportHeaderInfo, aReportUnit } from "@atlantis/core-client";
-import type { AlliedMageRecord, SkillInfo } from "@atlantis/core-client";
+import type { AlliedMageRecord, SkillInfo, StudyPlanRecord } from "@atlantis/core-client";
 import { parseGameData, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
 import { standingOf } from "../magicStanding";
 import { plannerGroups, type PlannerMage } from "../studyPlanner";
-import { StudyPlannerDetail, StudyPlannerList } from "./StudyPlannerDialog";
+import { StudyPlannerDetail, StudyPlannerList, StudyPlannerDialog } from "./StudyPlannerDialog";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -184,5 +184,50 @@ describe("the All mages view carries no warnings strip", () => {
     for (const markup of [list, detail]) {
       expect(markup).not.toContain("study-planner-warnings");
     }
+  });
+});
+
+/**
+ * The Orders tab (`ah-lyg6.4.1`). Rendered with `renderToStaticMarkup`, which runs no effects and
+ * fires no timers - so this pins what the pane opens on and what its header offers, and the smoke
+ * suite proves the switch.
+ */
+describe("the Orders tab", () => {
+  const dialog = (plans: StudyPlanRecord[]) =>
+    renderToStaticMarkup(
+      <StudyPlannerDialog
+        groups={GROUPS}
+        summaryLine={null}
+        emptyCopy={{ headline: "", detail: "" }}
+        alliedStatus="ready"
+        selectedUnitId={null}
+        label={label}
+        seats={new Map()}
+        structureNames={new Map()}
+        tree={tree}
+        plans={plans}
+        viewedTurn={71}
+        saveError={null}
+        onSaveText={() => {}}
+        ordersError={null}
+        onSavePlan={() => {}}
+        onSaveNote={() => {}}
+        onDismiss={() => {}}
+      />
+    );
+
+  it("the_orders_tab_is_the_third_tab", () => {
+    const markup = dialog([]);
+    expect(markup).toContain('data-testid="study-planner-view-orders"');
+    expect(markup.indexOf("study-planner-view-schedule")).toBeLessThan(
+      markup.indexOf("study-planner-view-orders")
+    );
+    // The pane never opens on it: the view switch is remembered no longer than the dialog.
+    expect(markup).toContain('data-testid="study-planner-view-orders" aria-selected="false"');
+    expect(markup).not.toContain('data-testid="study-planner-orders"');
+  });
+
+  it("save_all_is_offered_only_on_the_orders_tab_and_only_with_sections", () => {
+    expect(dialog([])).not.toContain('data-testid="study-planner-save-all"');
   });
 });

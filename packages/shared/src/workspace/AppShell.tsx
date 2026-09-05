@@ -51,6 +51,7 @@ import {
   deliverArmyExport,
   deliverGameBackupExport,
   deliverMageSheetExport,
+  deliverStudyOrdersExport,
   deliverMapExport,
   deliverOrdersExport
 } from "./exportActions";
@@ -3838,6 +3839,26 @@ export function AppShell({
     );
   }, [client, mages, parsed, rawReport, saveTextFile]);
 
+  // Its own state rather than the existing `exportError`, which is drawn only inside
+  // `MapExportDialog`: an error reported into that one while the planner is open would be shown
+  // nowhere at all.
+  const [studyOrdersError, setStudyOrdersError] = useState<string | null>(null);
+
+  /** Saves a section of the study planner's Orders tab (`ah-lyg6.4.1`). A cancelled save is silent. */
+  const saveStudyOrders = useCallback(
+    async (fileName: string, text: string) => {
+      setStudyOrdersError(null);
+      await runReported(
+        async () => {
+          await deliverStudyOrdersExport(saveTextFile, fileName, text);
+        },
+        setStudyOrdersError,
+        { busy: setExportBusy }
+      );
+    },
+    [saveTextFile]
+  );
+
   /**
    * Writes one or two Armies out as a battle file the simulator loads (`ah-1mpx.3`).
    *
@@ -4221,6 +4242,8 @@ export function AppShell({
           alliedStatus={alliedStatus}
           selectedUnitId={unit?.unitId ?? null}
           label={hexLabel}
+          onSaveText={(fileName, text) => void saveStudyOrders(fileName, text)}
+          ordersError={studyOrdersError}
           tree={magicTree}
           plans={studyPlans}
           viewedTurn={parsed?.header.turnNumber ?? null}

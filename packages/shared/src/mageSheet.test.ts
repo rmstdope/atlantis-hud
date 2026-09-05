@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mageSheetFileName } from "./mageSheet";
+import { mageSheetFileName, safeFileNamePart } from "./mageSheet";
 
 /** The name a shared mage sheet is saved under (`ah-lyg6.1.1`). */
 describe("naming a mage sheet", () => {
@@ -20,5 +20,14 @@ describe("naming a mage sheet", () => {
 
   it("falls back to unknown when neither is known", () => {
     expect(mageSheetFileName(null, null, null)).toBe("mages-unknown-turn-unknown.txt");
+  });
+});
+
+describe("safeFileNamePart", () => {
+  it("a_faction_name_with_a_slash_becomes_one_dash_in_a_file_name_part", () => {
+    expect(safeFileNamePart("Borg/TNG")).toBe("Borg-TNG");
+    expect(safeFileNamePart(" Borg  TNG ")).toBe("Borg-TNG");
+    expect(safeFileNamePart("   ")).toBeNull();
+    expect(safeFileNamePart(null)).toBeNull();
   });
 });

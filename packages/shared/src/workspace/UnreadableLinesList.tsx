@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useMemo } from "react";
 import type { UnreadableLine } from "@atlantis/core-client";
-import { copyText } from "../copyText";
 import {
   unreadableClipboardText,
   unreadableCostNote,
   unreadableKindLabel,
   unreadableLineRange
 } from "../unreadableLines";
+import { CopyButton } from "./CopyButton";
 
 /**
  * Every line of the loaded report the parser could not read, verbatim.
@@ -72,22 +72,20 @@ export function UnreadableCopyButton({
   /** `Borg (73)`, or null when the report does not name both parts. */
   factionLabel: string | null;
 }) {
-  const [copied, setCopied] = useState(false);
+  // Memoised rather than rebuilt on every render of the panel: a report with many unreadable
+  // lines makes this a long string, and the panel re-renders as the workspace does. `entries` is
+  // `parsed?.unreadableLines ?? []`, which is stable whenever a report is loaded.
+  const text = useMemo(
+    () => unreadableClipboardText(entries, turnNumber, factionLabel),
+    [entries, turnNumber, factionLabel]
+  );
 
   return (
-    <button
-      type="button"
-      data-testid="unreadable-copy"
-      onClick={() => {
-        void copyText(unreadableClipboardText(entries, turnNumber, factionLabel)).then((ok) => {
-          if (!ok) return;
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        });
-      }}
+    <CopyButton
+      text={text}
+      label="Copy all"
+      testId="unreadable-copy"
       className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink"
-    >
-      {copied ? "Copied" : "Copy all"}
-    </button>
+    />
   );
 }
