@@ -17,6 +17,8 @@ import {
   findFormBlocks,
   findUnitBlocks,
   formedAlias,
+  regionUnitIdsAt,
+  repairFormedUnitBlocks,
   hasFactionHeader,
   LONG_ORDER_COMMANDS,
   longOrderOf,
@@ -1014,5 +1016,319 @@ describe("a formed unit's own orders", () => {
     expect(applyUnitOrders(document, "new-1", "@work", BANNER_43_81, region)).toContain(
       "form 1\n@work\nend"
     );
+  });
+});
+
+describe("regionUnitIdsAt", () => {
+  const TWO_REGIONS = [
+    "#atlantis 3",
+    "",
+    ";*** plain (7,53) in Inhead ***",
+    "unit 1922",
+    "@tax",
+    "",
+    "unit 3001",
+    "study comb",
+    "",
+    ";*** forest (9,55) in Elsewhere ***",
+    "unit 4100",
+    "work",
+    "",
+    "#end",
+    ""
+  ].join("\n");
+
+  it("the region's reported units are the ones under the same banner", () => {
+    expect([...regionUnitIdsAt(TWO_REGIONS, 3)].sort()).toEqual(["1922", "3001"]);
+    expect([...regionUnitIdsAt(TWO_REGIONS, 10)]).toEqual(["4100"]);
+  });
+
+  it("a document with no banners is one region", () => {
+    const document = ["unit 1922", "@tax", "", "unit 4100", "work", ""].join("\n");
+    expect([...regionUnitIdsAt(document, 0)].sort()).toEqual(["1922", "4100"]);
+  });
+
+  it("a stale unit new-1 block is not a reported unit", () => {
+    const document = [
+      ";*** plain (7,53) in Inhead ***",
+      "unit 1922",
+      "@tax",
+      "",
+      "unit new-1",
+      "study comb",
+      ""
+    ].join("\n");
+    expect([...regionUnitIdsAt(document, 4)]).toEqual(["1922"]);
+  });
+});
+
+describe("repairFormedUnitBlocks", () => {
+  const BANNER = ";*** plain (7,53) in Inhead ***";
+  const OTHER = ";*** forest (9,55) in Elsewhere ***";
+
+  it("a stale unit new-1 block is folded into the form 1 that creates it", () => {
+    const document = [
+      BANNER,
+      "unit 1922",
+      "@tax",
+      "form 1",
+      "buy 5 plainsmen",
+      "end",
+      "",
+      "unit new-1",
+      "study comb",
+      "",
+      "#end",
+      ""
+    ].join("\n");
+    const repair = repairFormedUnitBlocks(document);
+    expect(repair.document).not.toContain("unit new-1");
+    expect(repair.document.split("\n")).toEqual([
+      BANNER,
+      "unit 1922",
+      "@tax",
+      "form 1",
+      "buy 5 plainsmen",
+      "study comb",
+      "end",
+      "",
+      "#end",
+      ""
+    ]);
+    expect(repair.moved).toEqual([{ alias: "1", orderCount: 1 }]);
+    expect(repair.emptied).toEqual([]);
+    expect(repair.orphaned).toEqual([]);
+  });
+
+  it("an empty unit new-1 block loses its header and nothing else", () => {
+    const document = [
+      BANNER,
+      "unit 1922",
+      "@tax",
+      "form 1",
+      "end",
+      "",
+      "unit new-1",
+      "",
+      "#end",
+      ""
+    ].join("\n");
+    const repair = repairFormedUnitBlocks(document);
+    expect(repair.document.split("\n")).toEqual([
+      BANNER,
+      "unit 1922",
+      "@tax",
+      "form 1",
+      "end",
+      "",
+      "#end",
+      ""
+    ]);
+    expect(repair.emptied).toEqual(["new-1"]);
+    expect(repair.moved).toEqual([]);
+    expect(repair.orphaned).toEqual([]);
+  });
+
+  it("an empty unit new-1 block with no form 1 anywhere still loses its header", () => {
+    const document = [BANNER, "unit 1922", "@tax", "", "unit new-1", "", "#end", ""].join("\n");
+    const repair = repairFormedUnitBlocks(document);
+    expect(repair.document.split("\n")).toEqual([BANNER, "unit 1922", "@tax", "", "#end", ""]);
+    expect(repair.emptied).toEqual(["new-1"]);
+  });
+
+  it("the first form 1 in the region takes the lines", () => {
+    const document = [
+      BANNER,
+      "unit 1922",
+      "form 1",
+      "buy 5 plainsmen",
+      "end",
+      "",
+      "unit 3001",
+      "form 1",
+      "work",
+      "end",
+      "",
+      "unit new-1",
+      "study comb",
+      "",
+      "#end",
+      ""
+    ].join("\n");
+    const repair = repairFormedUnitBlocks(document);
+    expect(repair.document.split("\n")).toEqual([
+      BANNER,
+      "unit 1922",
+      "form 1",
+      "buy 5 plainsmen",
+      "study comb",
+      "end",
+      "",
+      "unit 3001",
+      "form 1",
+      "work",
+      "end",
+      "",
+      "#end",
+      ""
+    ]);
+    expect(repair.moved).toEqual([{ alias: "1", orderCount: 1 }]);
+  });
+
+  it("a form 1 in another region is not a match, and the block is left alone", () => {
+    const document = [
+      BANNER,
+      "unit 1922",
+      "form 1",
+      "buy 5 plainsmen",
+      "end",
+      "",
+      OTHER,
+      "unit 4100",
+      "work",
+      "",
+      "unit new-1",
+      "study comb",
+      "",
+      "#end",
+      ""
+    ].join("\n");
+    const repair = repairFormedUnitBlocks(document);
+    expect(repair.document).toBe(document);
+    expect(repair.orphaned).toEqual(["new-1"]);
+    expect(repair.moved).toEqual([]);
+  });
+
+  it("a unit new-1 block with orders and no form anywhere is left alone", () => {
+    const document = [BANNER, "unit 1922", "@tax", "", "unit new-1", "study comb", "", "#end", ""].join(
+      "\n"
+    );
+    const repair = repairFormedUnitBlocks(document);
+    expect(repair.document).toBe(document);
+    expect(repair.orphaned).toEqual(["new-1"]);
+  });
+
+  it("a stale block's own form and end move verbatim, indentation and all", () => {
+    const document = [
+      BANNER,
+      "unit 1922",
+      "form 2",
+      "buy 5 plainsmen",
+      "end",
+      "",
+      "unit new-2",
+      "  form 9",
+      "  buy 1 hdwa",
+      "  end",
+      "",
+      "#end",
+      ""
+    ].join("\n");
+    const repair = repairFormedUnitBlocks(document);
+    expect(repair.document.split("\n")).toEqual([
+      BANNER,
+      "unit 1922",
+      "form 2",
+      "buy 5 plainsmen",
+      "  form 9",
+      "  buy 1 hdwa",
+      "  end",
+      "end",
+      "",
+      "#end",
+      ""
+    ]);
+    expect(repair.moved).toEqual([{ alias: "2", orderCount: 3 }]);
+  });
+
+  it("a form 1 nested inside another form is matched", () => {
+    const document = [
+      BANNER,
+      "unit 1922",
+      "form 2",
+      "form 1",
+      "buy 5 plainsmen",
+      "end",
+      "end",
+      "",
+      "unit new-1",
+      "study comb",
+      "",
+      "#end",
+      ""
+    ].join("\n");
+    const repair = repairFormedUnitBlocks(document);
+    expect(repair.document.split("\n")).toEqual([
+      BANNER,
+      "unit 1922",
+      "form 2",
+      "form 1",
+      "buy 5 plainsmen",
+      "study comb",
+      "end",
+      "end",
+      "",
+      "#end",
+      ""
+    ]);
+    expect(repair.moved).toEqual([{ alias: "1", orderCount: 1 }]);
+  });
+
+  it("a unit NEW-1 header is repaired too", () => {
+    const document = [
+      BANNER,
+      "unit 1922",
+      "form 1",
+      "end",
+      "",
+      "unit NEW-1",
+      "STUDY COMB",
+      "",
+      "#end",
+      ""
+    ].join("\n");
+    const repair = repairFormedUnitBlocks(document);
+    expect(repair.document).not.toContain("NEW-1");
+    expect(repair.moved).toEqual([{ alias: "1", orderCount: 1 }]);
+  });
+
+  it("a second run of the repair changes nothing", () => {
+    const document = [
+      BANNER,
+      "unit 1922",
+      "form 1",
+      "buy 5 plainsmen",
+      "end",
+      "",
+      "unit new-1",
+      "study comb",
+      "",
+      "unit new-2",
+      "",
+      OTHER,
+      "unit 4100",
+      "work",
+      "",
+      "unit new-7",
+      "work",
+      "",
+      "#end",
+      ""
+    ].join("\n");
+    const first = repairFormedUnitBlocks(document);
+    expect(first.moved).toEqual([{ alias: "1", orderCount: 1 }]);
+    expect(first.emptied).toEqual(["new-2"]);
+    expect(first.orphaned).toEqual(["new-7"]);
+
+    const second = repairFormedUnitBlocks(first.document);
+    expect(second.document).toBe(first.document);
+    expect(second.moved).toEqual([]);
+    expect(second.emptied).toEqual([]);
+    expect(second.orphaned).toEqual(["new-7"]);
+  });
+
+  it("a document with nothing to repair comes back by reference", () => {
+    const document = [BANNER, "unit 1922", "@tax", "", "#end", ""].join("\n");
+    expect(repairFormedUnitBlocks(document).document).toBe(document);
   });
 });
