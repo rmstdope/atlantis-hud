@@ -1,0 +1,31 @@
+; Mage sheet from Atlantis HUD
+; Mantzikert (39), turn 17
+
+Atlantis Report For:
+Mantzikert (39) (Martial 1, Magic 4)
+June, Year 2
+
+mountain (43,81) in Derngill, contains Onthead [city], 10372 peasants
+  (humans), $10994.
+------------------------------------------------------------
+
+- L Justinian (7310), Mantzikert (39), avoiding, behind, revealing
+  faction, holding, sharing, consuming faction's food, 1 leader
+  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 1 (60).
+- L Justinian (7311), Mantzikert (39), avoiding, behind, revealing
+  faction, holding, sharing, consuming faction's food, 1 leader
+  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: spirit [SPIR] 1
+  (60).
+- L Bey (1447), Mantzikert (39), behind, revealing faction, sharing,
+  consuming faction's food, 1 leader [LEAD], 1 horse [HORS]. Weight:
+  60. Capacity: 0/70/85/0. Skills: spirit [SPIR] 2 (90), force [FORC]
+  2 (140), fire [FIRE] 2 (90), pattern [PATT] 2 (90), artifact lore
+  [ARTI] 2 (120), necromancy [NECR] 1 (30), illusion [ILLU] 1 (60).
+  Combat spell: fire [FIRE].
+- L Bryennios (1448), Mantzikert (39), behind, revealing faction,
+  sharing, consuming faction's food, 1 leader [LEAD], 1 horse [HORS].
+  Weight: 60. Capacity: 0/70/85/0. Skills: pattern [PATT] 2 (90),
+  force [FORC] 2 (145), fire [FIRE] 2 (90), spirit [SPIR] 2 (90),
+  artifact lore [ARTI] 2 (90), illusion [ILLU] 1 (60). Combat spell:
+  fire [FIRE].
+

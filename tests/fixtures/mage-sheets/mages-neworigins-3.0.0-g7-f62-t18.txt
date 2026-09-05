@@ -1,0 +1,54 @@
+; Mage sheet from Atlantis HUD
+; Borg (62), turn 18
+
+Atlantis Report For:
+Borg (62) (Martial 1, Magic 4)
+July, Year 2
+
+mountain (43,81) in Derngill, contains Onthead [city], 10418 peasants
+  (humans), $11459.
+------------------------------------------------------------
+
+- Four of Two (1659), Borg (62), behind, revealing faction, sharing,
+  consuming faction's food, 1 leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: force [FORC] 3 (190), pattern [PATT] 3 (190),
+  illusion [ILLU] 1 (60), phantasmal entertainment [PHEN] 1 (30), fire
+  [FIRE] 2 (90), earth lore [EART] 2 (135), wolf lore [WOLF] 1 (30),
+  bird lore [BIRD] 1 (60). Combat spell: fire [FIRE].
+- Seven of One (1658), Borg (62), behind, revealing faction, sharing,
+  consuming faction's food, 1 leader [LEAD], 1165 silver [SILV].
+  Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 3 (190),
+  pattern [PATT] 3 (195), illusion [ILLU] 1 (85), phantasmal
+  entertainment [PHEN] 1 (30), fire [FIRE] 2 (90), earth lore [EART] 1
+  (60), wolf lore [WOLF] 1 (30), bird lore [BIRD] 1 (60). Combat
+  spell: fire [FIRE].
+
++ Building [4] : Fort.
+  - Nine of Eight (1656), Borg (62), behind, revealing faction,
+    sharing, consuming faction's food, 1 leader [LEAD], 1066 silver
+    [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 3
+    (205), pattern [PATT] 3 (195), illusion [ILLU] 1 (85), phantasmal
+    entertainment [PHEN] 1 (30), fire [FIRE] 2 (90), earth lore [EART]
+    2 (90), wolf lore [WOLF] 2 (120), bird lore [BIRD] 1 (60). Combat
+    spell: fire [FIRE].
+
++ House of bricks [7] : Fort.
+  - Five of Ten (916), Borg (62), behind, revealing faction, sharing,
+    consuming faction's food, 1 leader [LEAD], 618 silver [SILV].
+    Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1 (35),
+    force [FORC] 2 (140), pattern [PATT] 2 (170), spirit [SPIR] 1
+    (30), gate lore [GATE] 1 (30), fire [FIRE] 1 (70), combat [COMB] 3
+    (180), illusion [ILLU] 1 (85), phantasmal entertainment [PHEN] 1
+    (30), earth lore [EART] 2 (120), wolf lore [WOLF] 2 (90), bird
+    lore [BIRD] 1 (60), energy shield [ESHI] 1 (30). Combat spell:
+    fire [FIRE].
+
++ Building [8] : Hermits hut.
+  - Three of Five (1657), Borg (62), behind, revealing faction,
+    sharing, consuming faction's food, 1 leader [LEAD], 550 silver
+    [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 3
+    (190), pattern [PATT] 3 (225), illusion [ILLU] 1 (85), phantasmal
+    entertainment [PHEN] 1 (30), fire [FIRE] 2 (90), earth lore [EART]
+    2 (120), bird lore [BIRD] 1 (30), wolf lore [WOLF] 1 (60). Combat
+    spell: fire [FIRE].
+
