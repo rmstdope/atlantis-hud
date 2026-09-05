@@ -1242,13 +1242,16 @@ export function AppShell({
     if (!pendingProblem) {
       return;
     }
-    if (unit?.unitId === pendingProblem.unitId) {
+    // Against the *selection*, not against `unit`: a unit this month's `FORM` orders create is in
+    // neither the report nor the forecast's unit list, so `unit` is null for it and the landing
+    // would be thrown away every time (`ah-ty3s.1`).
+    if (selectedUnitId === pendingProblem.unitId) {
       ordersEditor.current?.selectProblem(pendingProblem.problem);
     }
     // Consumed either way once the selection has moved at all: a landing left waiting would
     // fire on some much later, unrelated visit to that unit.
     setPendingProblem(null);
-  }, [pendingProblem, unit]);
+  }, [pendingProblem, selectedUnitId]);
 
   const walkProblems = useCallback(
     (direction: 1 | -1) => {
@@ -1260,14 +1263,14 @@ export function AppShell({
       walkKey.current = problemKeys[step] ?? null;
       setWalkStop({ index: step, standing: true });
       const target = problemTargets[step];
-      if (unit?.unitId === target.unitId) {
+      if (selectedUnitId === target.unitId) {
         ordersEditor.current?.selectProblem(target.problem);
       } else {
         goToUnit(target.unitId, "report", target.regionId ?? undefined);
         setPendingProblem(target);
       }
     },
-    [problemTargets, problemKeys, unit, goToUnit]
+    [problemTargets, problemKeys, selectedUnitId, goToUnit]
   );
 
   const dispatchShortcut = useCallback(

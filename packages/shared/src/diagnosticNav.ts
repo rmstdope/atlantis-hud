@@ -40,6 +40,22 @@ export function diagnosticTargets(
   const formBlocks = unitIdsByRegion === undefined ? [] : findFormBlocks(text);
 
   /**
+   * Which hex each reported unit stands in.
+   *
+   * The region is read from the *block* rather than from the diagnostic, because the findings this
+   * placement exists for do not carry one: the core gives every syntax diagnostic both
+   * `unit_id: None` and `region_id: None` ("the syntax checker knows nothing of the map",
+   * `crates/core/src/orders/parser.rs`), and a misspelled keyword inside a `FORM` is exactly such a
+   * finding. Keying off `diagnostic.regionId` would leave the whole class unplaced.
+   */
+  const regionOfUnit = new Map<string, string>();
+  for (const [regionId, unitIds] of unitIdsByRegion ?? []) {
+    for (const candidate of unitIds) {
+      regionOfUnit.set(candidate, regionId);
+    }
+  }
+
+  /**
    * The `FORM` block a line sits innermost inside, in the hex whose reported units are given -
    * and only one an editor can actually reach, since a duplicate the server swallows opens no
    * editor to walk to. `null` for a line in no such block, which is the ordinary case.
@@ -60,14 +76,32 @@ export function diagnosticTargets(
     return innermost === null ? null : `new-${innermost.alias}`;
   };
 
+  /** The reported units of the hex a `unit` block's own unit stands in. */
+  const regionUnitsAround = (unitId: string): ReadonlySet<string> | undefined => {
+    const regionId = regionOfUnit.get(unitId);
+    return regionId === undefined ? undefined : unitIdsByRegion?.get(regionId);
+  };
+
   const placed: DiagnosticTarget[] = [];
   for (const diagnostic of diagnostics) {
     if (diagnostic.lineStart === null) {
       continue;
     }
     const line = diagnostic.lineStart;
+
+    // The `unit` block this line falls in, which is what says which hex is in play - and so which
+    // reported units scope a `NEW n` alias (`rules/form`).
+    const enclosing =
+      blocks.find(
+        (candidate) => line >= candidate.firstLine + 1 && line <= candidate.lastLine + 1
+      ) ?? null;
     const regionUnitIds =
-      diagnostic.regionId === null ? undefined : unitIdsByRegion?.get(diagnostic.regionId);
+      diagnostic.unitId === null
+        ? enclosing === null
+          ? undefined
+          : regionUnitsAround(enclosing.unitId)
+        : (regionUnitsAround(diagnostic.unitId) ??
+          (diagnostic.regionId === null ? undefined : unitIdsByRegion?.get(diagnostic.regionId)));
 
     // Whose editor this stop belongs in. A finding that names its unit is placed by that name -
     // the core's own decision - and one that only knows its line is placed by the innermost block
@@ -78,11 +112,7 @@ export function diagnosticTargets(
       (regionUnitIds === undefined ? null : formBlockAt(line, regionUnitIds)) ??
       null;
     const block: UnitBlock | null =
-      owner === null
-        ? (blocks.find(
-            (candidate) => line >= candidate.firstLine + 1 && line <= candidate.lastLine + 1
-          ) ?? null)
-        : blockFor(text, owner, regionUnitIds);
+      owner === null ? enclosing : blockFor(text, owner, regionUnitIds);
     if (!block) {
       continue;
     }
@@ -90,7 +120,10 @@ export function diagnosticTargets(
     const last = block.lastLine + 1;
     placed.push({
       unitId: block.unitId,
-      regionId: formedAlias(block.unitId) === null ? null : diagnostic.regionId,
+      regionId:
+        formedAlias(block.unitId) === null
+          ? null
+          : (regionOfUnit.get(enclosing?.unitId ?? "") ?? diagnostic.regionId),
       blockFirstLine: block.firstLine,
       problem: {
         ...diagnostic,

@@ -219,21 +219,28 @@ describe("the walk over a formed unit's problems", () => {
     expect(targets[0].problem.lineStart).toBe(2);
   });
 
+  // `regionId: null` deliberately, because that is the shape the core actually emits for a
+  // syntax finding: "the syntax checker knows nothing of the map, and a diagnostic about a
+  // misspelled keyword belongs to no hex" (`crates/core/src/orders/parser.rs`). The hex is read
+  // off the `unit` block the line falls in instead - keying off the diagnostic's own region would
+  // leave this whole class of finding, which is the one this rule exists for, unplaced.
   it("places an unnamed finding inside a FORM in the formed unit's editor, not its creator's", () => {
     const targets = diagnosticTargets(
       FORMED,
-      [problem({ lineStart: 4, lineEnd: 4, regionId: "1:7,53" })],
+      [problem({ lineStart: 4, lineEnd: 4, regionId: null })],
       REGIONS
     );
 
     expect(targets.map((target) => target.unitId)).toEqual(["new-1"]);
     expect(targets[0].problem.lineStart).toBe(2);
+    // And the jump is given the hex it needs, though the finding named none.
+    expect(targets[0].regionId).toBe("1:7,53");
   });
 
   it("leaves a finding on the FORM line itself with the unit that wrote it", () => {
     const targets = diagnosticTargets(
       FORMED,
-      [problem({ lineStart: 2, lineEnd: 2, regionId: "1:7,53" })],
+      [problem({ lineStart: 2, lineEnd: 2, regionId: null })],
       REGIONS
     );
 
