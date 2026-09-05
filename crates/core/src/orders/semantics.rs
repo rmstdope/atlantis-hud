@@ -1649,9 +1649,10 @@ fn forecast_hex(
     // Step 4, decided per hex before this one was priced and only applied here - and before the
     // step-5/6 pass below, which is the payment order's own sequence.
     //
-    // The walk is positional over `hex.units` but the lookup is by id. That is sound because one
-    // unit number is one row in a region block: `parse_region_block` refuses a repeat (`ah-bm0d`),
-    // so no hex can hold two rows for one id.
+    // The walk is positional over `hex.units` but the lookup is by `UnitKey`, as the two passes
+    // below it are. The pair rather than the number: `rules/form` scopes an alias to its region, so
+    // two hexes may each hold a `new-1` and a report-wide map keyed on the number alone hands one
+    // hex's figure to the other (`ah-9o0c.1`).
     for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
         let Some(owed) = forecast.upkeep else {
             // A doubted fee stays doubted: a neighbour cannot settle a number nothing knows.
