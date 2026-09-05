@@ -401,10 +401,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   /**
    * The rows for the current source, and everything the extra columns need alongside them.
    *
-   * `unitsForHex` rather than `hex.region.units`: sorting it again is a no-op because `Array.sort`
-   * is stable, and it guarantees the table cannot drift from the order `AppShell` picks defaults
-   * from. The orders preview folds in on top, so everything below it - filter and sort - already
-   * works over the coming month's rows, arrivals and formed units included.
+   * `unitsForHex` rather than `hex.region.units`: sorting it again is a no-op because both paths
+   * key on the same total order - own units first, then `compareUnitIds` (`ah-26jt`) - and it
+   * guarantees the table cannot drift from the order `AppShell` picks defaults from. The orders
+   * preview folds in on top, so everything below it - filter and sort - already works over the
+   * coming month's rows, arrivals and formed units included.
    *
    * **The preview folds in for both sources that list your own units** (`ah-tguk`): `This hex`
    * merges the selected hex's slice, `All my units` the whole report's - one row per unit, on the

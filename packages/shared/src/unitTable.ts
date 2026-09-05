@@ -1,6 +1,7 @@
 import type { ReportUnit, StructureInfo, UnitSilver } from "@atlantis/core-client";
 
 import { unitStructureLabel } from "./structureLabel";
+import { compareUnitIds, idNumber } from "./unitOrder";
 
 /**
  * How the units table is ordered, filtered and windowed.
@@ -94,7 +95,7 @@ export type SortState = {
 };
 
 export const DEFAULT_SORT: SortState = {
-  column: "name",
+  column: "unitId",
   direction: "asc",
   groupOwnFirst: true
 };
@@ -205,7 +206,7 @@ function valueOf(
 ): number | string | null {
   switch (column) {
     case "unitId":
-      return numberOrNull(unit.unitId);
+      return idNumber(unit.unitId);
     case "name":
       return unit.name;
     case "faction":
@@ -265,18 +266,9 @@ function structureKey(
     return null;
   }
   const name = structures.get(structureId)?.name.toLowerCase() ?? UNNAMED;
-  const numeric = numberOrNull(structureId);
+  const numeric = idNumber(structureId);
   const tieBreak = numeric === null ? structureId : String(numeric).padStart(12, "0");
   return `${name}\u0000${tieBreak}`;
-}
-
-/** Ids are numbers the report hands over as strings, so "9" must not beat "10". */
-function numberOrNull(raw: string | null): number | null {
-  if (raw === null || raw.trim() === "") {
-    return null;
-  }
-  const parsed = Number(raw);
-  return Number.isNaN(parsed) ? null : parsed;
 }
 
 /**
@@ -287,8 +279,9 @@ function numberOrNull(raw: string | null): number | null {
  * some other way.
  *
  * Ownership is compared before the column and never reversed, so flipping a column to descending
- * cannot bury the player's own units under a bigger foreign stack. Array.sort is stable, so units
- * a column cannot separate keep the order they arrived in.
+ * cannot bury the player's own units under a bigger foreign stack. Units a column cannot separate
+ * are broken apart by unit id, ascending whichever way the column runs, so the same hex reads the
+ * same way every turn rather than in whatever order the report listed them.
  */
 export function sortUnits(
   units: ReportUnit[],
@@ -313,7 +306,8 @@ export function sortUnits(
       valueOf(left, sort.column, byId, longOrders, silver, seen),
       valueOf(right, sort.column, byId, longOrders, silver, seen)
     );
-    return "settled" in outcome ? outcome.settled : outcome.compare * direction;
+    const decided = "settled" in outcome ? outcome.settled : outcome.compare * direction;
+    return decided !== 0 ? decided : compareUnitIds(left.unitId, right.unitId);
   });
 }
 

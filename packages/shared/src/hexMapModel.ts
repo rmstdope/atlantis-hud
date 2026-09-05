@@ -25,6 +25,8 @@ import type {
   ReportUnit
 } from "@atlantis/core-client";
 
+import { compareUnitIds } from "./unitOrder";
+
 /** Owned by core since ah-u4e.1; re-exported so the map's consumers keep importing it from here. */
 export type { HexKnowledge };
 /** Owned by core since ah-4b4; re-exported so the map's consumers keep importing it from here. */
@@ -235,13 +237,13 @@ export function buildHexMapModel(known: KnownMap): HexMapModel {
   };
 }
 
-/** Own units first, then by name — one of 92 being yours should not be buried. */
+/** Own units first, then by id — one of 92 being yours should not be buried. */
 export function sortUnitsForDisplay(units: ReportUnit[]): ReportUnit[] {
   return [...units].sort((left, right) => {
     if (left.own !== right.own) {
       return left.own ? -1 : 1;
     }
-    return left.name.localeCompare(right.name);
+    return compareUnitIds(left.unitId, right.unitId);
   });
 }
 
