@@ -1,5 +1,5 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
-import { unitIdForDiagnostic } from "../ordersImport";
+import { unitLabelForDiagnostic } from "../ordersImport";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { SeverityMark } from "./primitives";
 
@@ -45,7 +45,7 @@ export function OrdersImportSummaryDialog({
   // rather than in the render below.
   const ordered = [...errors, ...warnings].map((diagnostic) => ({
     diagnostic,
-    unitId: unitIdForDiagnostic(summary.document, diagnostic)
+    unitId: unitLabelForDiagnostic(summary.document, diagnostic)
   }));
 
   const headline =

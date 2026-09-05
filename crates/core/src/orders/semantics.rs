@@ -32805,6 +32805,91 @@ BUILD
         );
     }
 
+    /// A `BUY` written inside a `FORM`/`END` block is checked against the market like any other,
+    /// and the finding names the formed unit rather than its founder. Characterisation of behaviour
+    /// that already held when `ah-nix5` was written; the point is that nothing pinned it.
+    #[test]
+    fn a_formed_units_buy_of_an_untraded_good_is_named_against_it() {
+        let founder = with_silver(unit("1010"), 500);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 5,
+                name: "perfume".to_string(),
+                tag: "PERF".to_string(),
+                price: 100,
+            }],
+            ..region(vec![founder])
+        };
+        let orders = "unit 1010\nFORM 1\nBUY 1 SILK\nEND\nGIVE NEW 1 200 SILV\n";
+
+        let findings = check(vec![region], orders);
+
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == codes::NOT_TRADED_HERE)
+            .unwrap_or_else(|| panic!("{findings:?}"));
+        assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
+        let formed = finding.formed.as_ref().expect("a formed subject");
+        assert_eq!(formed.alias, "1");
+        assert_eq!(formed.formed_by, "1010");
+    }
+
+    /// The market pool is settled for a formed unit exactly as for any other claimant, and the
+    /// oversubscription names the formed unit. Characterisation; see `ah-nix5`.
+    #[test]
+    fn a_formed_unit_that_buys_more_than_the_market_has_is_named_against_it() {
+        let founder = with_silver(unit("1010"), 900);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 2,
+                name: "silk".to_string(),
+                tag: "SILK".to_string(),
+                price: 100,
+            }],
+            ..region(vec![founder])
+        };
+        let orders = "unit 1010\nFORM 1\nBUY 5 SILK\nEND\nGIVE NEW 1 500 SILV\n";
+
+        let findings = check(vec![region], orders);
+
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED)
+            .unwrap_or_else(|| panic!("{findings:?}"));
+        assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
+        let formed = finding.formed.as_ref().expect("a formed subject");
+        assert_eq!(formed.alias, "1");
+        assert_eq!(formed.formed_by, "1010");
+    }
+
+    /// A formed unit's purse is what it was given, not its founder's, so the shortfall is its own.
+    /// Characterisation; see `ah-nix5`.
+    #[test]
+    fn a_formed_unit_that_cannot_pay_for_its_buy_is_named_against_it() {
+        let founder = with_silver(unit("1010"), 500);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 5,
+                name: "silk".to_string(),
+                tag: "SILK".to_string(),
+                price: 100,
+            }],
+            ..region(vec![founder])
+        };
+        let orders = "unit 1010\nFORM 1\nBUY 1 SILK\nEND\nGIVE NEW 1 50 SILV\n";
+
+        let findings = check(vec![region], orders);
+
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .unwrap_or_else(|| panic!("{findings:?}"));
+        assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
+        let formed = finding.formed.as_ref().expect("a formed subject");
+        assert_eq!(formed.alias, "1");
+        assert_eq!(formed.formed_by, "1010");
+    }
+
     /// `ruleset.is_man` gates what `apply_recruits` counts as an arrival - a `BUY` of equipment
     /// moves an item tag the ledger sees exactly as it sees a man tag, but it is not one.
     #[test]
