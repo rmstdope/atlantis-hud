@@ -3012,7 +3012,10 @@ test("the units table opens ordered by id, with the Id header marked", async ({ 
   // nth-child(2) is the Id column: UNIT_COLUMNS runs own, unitId, name, faction, men, ...
   // Inholm holds exactly one unit of the player's, held above the foreign block by groupOwnFirst,
   // so the first row is dropped before checking the foreign rows run in ascending id order.
-  const cells = await page.locator("[data-testid^='unit-row-'] td:nth-child(2)").allInnerTexts();
+  const cells = await page
+    .getByTestId("panel-units")
+    .locator("[data-testid^='unit-row-'] td:nth-child(2)")
+    .allInnerTexts();
   const foreign = cells.slice(1).map((cell) => Number(cell.replace(/[^0-9]/g, "")));
   expect(foreign.length).toBeGreaterThan(3);
   expect(foreign).toEqual([...foreign].sort((left, right) => left - right));
