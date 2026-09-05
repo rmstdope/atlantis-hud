@@ -69,6 +69,7 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
 
 beforeEach(() => {
   resetResourceMemoryStore();
+  vi.restoreAllMocks();
 });
 
 describe("scanStoredTurns (ah-tgtp)", () => {
@@ -93,6 +94,7 @@ describe("scanStoredTurns (ah-tgtp)", () => {
   });
 
   it("counts a turn it cannot read and carries on", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const core = client({
       listImportedTurns: vi.fn().mockResolvedValue([summary("21", 23), summary("21", 25)]),
       loadImportedTurn: vi
@@ -109,6 +111,7 @@ describe("scanStoredTurns (ah-tgtp)", () => {
   });
 
   it("counts a turn that will not parse and carries on", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const core = client({
       listImportedTurns: vi.fn().mockResolvedValue([summary("21", 23), summary("21", 25)]),
       parseReportFull: vi
@@ -133,7 +136,7 @@ describe("scanStoredTurns (ah-tgtp)", () => {
     });
   });
 
-  it("remembers nothing without a catalogue", async () => {
+  it("remembers nothing without a catalogue, and does not read a turn to find that out", async () => {
     const core = client({
       listImportedTurns: vi.fn().mockResolvedValue([summary("21", 23)]),
       parseReportFull: vi.fn().mockResolvedValue(PRESENT)
@@ -142,6 +145,10 @@ describe("scanStoredTurns (ah-tgtp)", () => {
     const { memory } = await scanStoredTurns(core, game(), null);
 
     expect(rememberedFor(memory, hexId).size).toBe(0);
+    // `AppShell` scans while the ruleset is still fetching, so a walk that parsed every stored turn
+    // to hand back nothing would be paid on every game open.
+    expect(core.listImportedTurns).not.toHaveBeenCalled();
+    expect(core.parseReportFull).not.toHaveBeenCalled();
   });
 });
 
@@ -155,18 +162,20 @@ describe("useResourceMemoryStore (ah-tgtp)", () => {
       listImportedTurns: vi
         .fn()
         .mockReturnValueOnce(first)
-        .mockResolvedValueOnce([summary("21", 25)]),
+        .mockResolvedValueOnce([summary("21", 23)]),
       parseReportFull: vi.fn().mockResolvedValue(PRESENT)
     });
 
     const slow = useResourceMemoryStore.getState().scan(core, game(), anIndex());
     await useResourceMemoryStore.getState().scan(core, game(), anIndex());
-    releaseFirst([summary("21", 23)]);
+    // The stale scan carries the *later* turn, so the merge rule cannot mask a missing guard: only
+    // the guard keeps turn 25 out of the state the newer scan settled on.
+    releaseFirst([summary("21", 25)]);
     await slow;
 
     const { memory, status } = useResourceMemoryStore.getState();
     expect(status).toBe("ready");
-    expect(rememberedFor(memory, hexId).get("FLOA")?.turn).toBe(25);
+    expect(rememberedFor(memory, hexId).get("FLOA")?.turn).toBe(23);
   });
 
   it("ignores a fold for another game", async () => {

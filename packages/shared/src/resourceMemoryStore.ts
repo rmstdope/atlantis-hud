@@ -117,6 +117,13 @@ export async function scanStoredTurns(
   game: OpenedGame,
   index: GameDataIndex | null
 ): Promise<{ memory: ResourceMemory; unreadTurns: number }> {
+  // Nothing can be judged without the catalogue, and `AppShell` scans while the ruleset is still
+  // fetching - so without this the whole walk runs, parsing every stored turn over IPC, to hand
+  // back nothing and be re-run the moment the ruleset lands.
+  if (index === null) {
+    return { memory: NO_RESOURCE_MEMORY, unreadTurns: 0 };
+  }
+
   const gameId = game.manifest.metadata.gameId;
 
   let summaries;
