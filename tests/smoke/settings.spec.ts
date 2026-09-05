@@ -573,15 +573,22 @@ test.describe("the Columns tab", () => {
    */
   test.afterEach(async ({ page }) => {
     await page.evaluate(() => {
-      const key = "atlantis-hud-workspace";
-      const raw = window.localStorage.getItem(key);
-      if (!raw) {
-        return;
-      }
-      const stored = JSON.parse(raw) as { state?: Record<string, unknown> };
-      if (stored.state && "unitColumnsShown" in stored.state) {
-        delete stored.state.unitColumnsShown;
-        window.localStorage.setItem(key, JSON.stringify(stored));
+      // A failure in the very first step leaves the page at `about:blank`, where touching
+      // `localStorage` throws a SecurityError - and a hook error stacked on top of the real
+      // failure is how a legible failure stops being one.
+      try {
+        const key = "atlantis-hud-workspace";
+        const raw = window.localStorage.getItem(key);
+        if (!raw) {
+          return;
+        }
+        const stored = JSON.parse(raw) as { state?: Record<string, unknown> };
+        if (stored.state && "unitColumnsShown" in stored.state) {
+          delete stored.state.unitColumnsShown;
+          window.localStorage.setItem(key, JSON.stringify(stored));
+        }
+      } catch {
+        // Nothing to restore, or nothing that can be reached from here.
       }
     });
   });
