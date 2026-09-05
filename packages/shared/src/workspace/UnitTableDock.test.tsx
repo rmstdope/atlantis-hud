@@ -729,12 +729,11 @@ describe("the Silver column", () => {
     expect(second).not.toContain(">300<");
   });
 
-  // Decisions C1 and I2 (`ah-jw85`): a formed row's ⚠ and Id cell both name and select the unit
-  // whose block wrote the FORM, not the row's own id - a unit that does not exist cannot be
-  // selected, and its orders are typed in its parent's block anyway. `packages/shared` has no
-  // jsdom (`ah-nass`), so what is checkable here is the markup a click would act on - the
-  // `aria-label`s both controls carry - not the click itself.
-  it("a_formed_row_names_the_unit_that_forms_it_on_both_its_id_and_its_warning", () => {
+  // Decision D1 (`ah-ty3s.1`, reversing `ah-jw85`'s C1 and I2): a formed row's Id cell and its ⚠
+  // both name and select the row's own unit, so the mouse agrees with the keyboard, which has
+  // always selected `new-1`. `packages/shared` has no jsdom (`ah-nass`), so what is checkable here
+  // is the markup a click would act on - the `aria-label`s both controls carry - not the click.
+  it("a_formed_rows_id_cell_is_labelled_for_the_formed_unit_not_for_its_creator", () => {
     const forming = aReportUnit({ unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52", own: true });
     const silver = aUnitSilver({
       unitId: "new-1",
@@ -751,11 +750,10 @@ describe("the Silver column", () => {
       />
     );
 
-    // The Id cell's own aria-label - `rowTarget`, decision I2.
-    expect(markup).toContain('aria-label="unit 1922"');
-    // The ⚠ button's sr-only text - `rowTarget`, decision C1.
-    expect(markup).toContain("unit 1922");
-    expect(markup).not.toContain("unit new-1");
+    // The Id cell's own aria-label, and the ⚠ button's sr-only text - both the row's own id.
+    expect(markup).toContain('aria-label="unit new-1"');
+    expect(markup).toContain("unit new-1");
+    expect(markup).not.toContain("unit 1922");
   });
 
   // `ah-ofpb.1`. The ITEMS hover reads the same cap sentence the SILVER hover already gives, from

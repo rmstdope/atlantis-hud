@@ -160,19 +160,20 @@ describe("ProblemsList, a formed unit's entry (ah-jw85)", () => {
     expect(markup).not.toContain(">new-1<");
   });
 
-  it("clicking_a_formed_unit_selects_the_unit_that_forms_it", () => {
+  it("clicking_a_formed_unit_selects_the_formed_unit_itself", () => {
     const markup = renderToStaticMarkup(
       <ProblemsList
         hexes={FORMED_HEXES}
         labelFor={(regionId) => regionId}
         onSelectHex={() => {}}
         onDismiss={() => {}}
-        known={new Set(["1922"])}
+        known={new Set(["1922", "new-1"])}
         onSelectUnit={() => {}}
       />
     );
 
-    // Clickable only because "1922" - the forming unit, not "new-1" - is in `known`.
+    // Clickable because the formed unit itself is reachable now (decision D1, `ah-ty3s.1`): its
+    // orders are its own, so the entry goes to it and not to the unit that forms it.
     expect(markup).toContain('data-testid="problem-unit-new-1"');
     expect(markup).toContain(">new 1<");
   });

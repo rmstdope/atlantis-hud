@@ -197,3 +197,25 @@ describe("a game data link", () => {
     expect(html).toContain('data-game-data-entry="skill:LUMB"');
   });
 });
+
+describe("a formed subject in the Problems panel", () => {
+  // Decision D1 (`ah-ty3s.1`): the entry selects the formed unit itself, so it is a control only
+  // when that unit can be reached - which is what `known` says.
+  const draw = (known: ReadonlySet<string>) =>
+    renderToStaticMarkup(
+      <ProblemWho
+        unitId="new-1"
+        formed={{ alias: "1", formedBy: "1922" }}
+        regionId="1:6,52"
+        known={known}
+        onSelectUnit={() => {}}
+      />
+    );
+
+  it("a formed subject is a button only when the formed unit itself can be reached", () => {
+    expect(draw(new Set(["1922"]))).not.toContain("<button");
+    const reachable = draw(new Set(["1922", "new-1"]));
+    expect(reachable).toContain('data-testid="problem-unit-new-1"');
+    expect(reachable).toContain("new 1");
+  });
+});

@@ -177,7 +177,7 @@ type UnitTableDockProps = {
   /** The whole report's orders preview, so a list spanning hexes shows the coming month too. */
   ordersPreview?: OrdersPreviewResponse | null;
   /** The month-long order a unit's live orders carry, for the Long order column. */
-  getLongOrder?: (unitId: string) => string | null;
+  getLongOrder?: (unitId: string, regionId: string) => string | null;
   /** Each own unit's silver forecast, or null where there is none. `ah-1wcw.1`. */
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
@@ -444,7 +444,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     if (sort.column !== "longOrder" || !getLongOrder) {
       return NO_LONG_ORDERS;
     }
-    return new Map(units.filter((entry) => entry.own).map((entry) => [entry.unitId, getLongOrder(entry.unitId)]));
+    return new Map(
+      units
+        .filter((entry) => entry.own)
+        .map((entry) => [entry.unitId, getLongOrder(entry.unitId, entry.regionId)])
+    );
   }, [units, sort.column, getLongOrder]);
   // Same bargain as `longOrders` above: built only when the table actually sorts on it.
   const silverByUnit = useMemo(() => {
@@ -1897,7 +1901,7 @@ function UnitRow({
   onPointerAt: (point: Point) => void;
   onPointerGone: () => void;
   /** The month-long order this unit's live orders carry, where it is one of ours. */
-  getLongOrder?: (unitId: string) => string | null;
+  getLongOrder?: (unitId: string, regionId: string) => string | null;
   /** This unit's silver forecast, where it is one of ours. `ah-1wcw.1`. */
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
@@ -1943,14 +1947,10 @@ function UnitRow({
   // A row that is somewhere else next month reads dimmed; its marker says where it went.
   const departing = unit.previewStatus === "departing";
   // Only for our own units: there is nothing of anybody else's orders to read.
-  const longOrder = unit.own ? (getLongOrder?.(unit.unitId) ?? null) : null;
+  const longOrder = unit.own ? (getLongOrder?.(unit.unitId, regionId) ?? null) : null;
   // Only our own units have a month to price; `getSilver` returns null for everyone else anyway,
   // and the cell is empty either way.
   const silver = unit.own ? (getSilver?.(unit.unitId, regionId) ?? null) : null;
-  // A formed row's Id, ⚠ and Problems-panel clicks all land on the unit whose block wrote the
-  // `FORM` - a unit that does not exist cannot be selected, and its orders are typed there anyway
-  // (decisions C1, I2, `ah-jw85`).
-  const rowTarget = silver?.formed?.formedBy ?? unit.unitId;
   // Which pin this row's faction cell would set, and so whether that cell is a control at all.
   // One rule, in `foreignUnits.ts`, rather than a second concealed-test spelled out down here that
   // could drift from it.
@@ -1976,8 +1976,8 @@ function UnitRow({
       <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
         <button
           type="button"
-          onClick={() => onSelect(rowTarget, regionId)}
-          aria-label={`unit ${rowTarget}`}
+          onClick={() => onSelect(unit.unitId, regionId)}
+          aria-label={`unit ${unit.unitId}`}
           tabIndex={-1}
           className="focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
         >
@@ -2195,10 +2195,10 @@ function UnitRow({
             type="button"
             data-testid={`unit-silver-${unit.unitId}`}
             onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => onSelectUnit?.(rowTarget)}
+            onClick={() => onSelectUnit?.(unit.unitId)}
             className={`inline-flex items-center gap-0.5 ${UNIT_LINK_CLASS}`}
           >
-            <span className="sr-only">unit {rowTarget} </span>
+            <span className="sr-only">unit {unit.unitId} </span>
             <SeverityMark severity="warning" />
             {silverFigure(shownSilver)}
           </button>
@@ -2264,7 +2264,7 @@ function UnitRow({
       data-preview-status={unit.previewStatus}
       // Pointerdown rather than click: a press on a row already in the pick must be able to defer
       // what it means until it is known whether it became a drag (`ah-1mpx.4` E2).
-      onPointerDown={(event) => onPress(event, unit, rowTarget)}
+      onPointerDown={(event) => onPress(event, unit, unit.unitId)}
       // The browser's own drag, refused. A Shift+click extends the document's text selection as
       // well as the pick, so the next press lands *inside* selected text - and a press on selected
       // text followed by a move is how a browser starts dragging that text, which cancels the
@@ -2272,7 +2272,7 @@ function UnitRow({
       // calling `preventDefault` on its pointerdown; a row cannot, because it must still take
       // focus, so it is refused here instead.
       onDragStart={(event) => event.preventDefault()}
-      onContextMenu={(event) => onContextMenu(event, unit, rowTarget)}
+      onContextMenu={(event) => onContextMenu(event, unit, unit.unitId)}
       onKeyDown={(event) => onKeyDown(event, index)}
       // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
       // so a touch would open a summary that never closed. Only a mouse can rest on something.

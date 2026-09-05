@@ -522,3 +522,67 @@ describe("the units the silver column marks", () => {
     );
   });
 });
+
+describe("the diagnostics belonging to a unit formed this month", () => {
+  /** Line numbers as the core reports them: 1-based, from the top of the whole document. */
+  const FORMED = [
+    "#atlantis 95", // 1
+    "", // 2
+    "unit 1922", // 3
+    "@claim 200", // 4
+    "form 1", // 5
+    "buy 1 hdwa", // 6
+    "WROK", // 7
+    "end", // 8
+    "give new 1 100 silv", // 9
+    "", // 10
+    "#end" // 11
+  ].join("\n");
+
+  const REGION = new Set(["1922", "1923"]);
+
+  const named = (lineStart: number, unitId: string | null): OrderDiagnostic => ({
+    ...diagnostic(lineStart, "not enough silver"),
+    unitId
+  });
+
+  it("a finding naming a formed unit is numbered from the top of its FORM block", () => {
+    expect(diagnosticsForUnit(FORMED, "new-1", [named(7, "new-1")], REGION)).toEqual([
+      { ...named(7, "new-1"), lineStart: 2, lineEnd: 2 }
+    ]);
+  });
+
+  it("a finding naming a formed unit is not in its creator's list", () => {
+    expect(diagnosticsForUnit(FORMED, "1922", [named(7, "new-1")], REGION)).toEqual([]);
+  });
+
+  it("a syntax finding inside a FORM block belongs to the formed unit alone", () => {
+    expect(diagnosticsForUnit(FORMED, "1922", [named(7, null)], REGION)).toEqual([]);
+    expect(diagnosticsForUnit(FORMED, "new-1", [named(7, null)], REGION)).toEqual([
+      { ...named(7, null), lineStart: 2, lineEnd: 2 }
+    ]);
+  });
+
+  it("a finding on the FORM line itself stays with the unit that wrote it", () => {
+    expect(diagnosticsForUnit(FORMED, "1922", [named(5, null)], REGION)).toEqual([
+      { ...named(5, null), lineStart: 2, lineEnd: 2 }
+    ]);
+  });
+
+  it("a syntax finding inside a swallowed duplicate FORM stays in its creator's list", () => {
+    const twice = [
+      "#atlantis 95", // 1
+      "", // 2
+      "unit 1922", // 3
+      "form 1", // 4
+      "buy 1 hdwa", // 5
+      "end", // 6
+      "form 1", // 7
+      "WROK", // 8
+      "end" // 9
+    ].join("\n");
+    expect(
+      diagnosticsForUnit(twice, "1922", [named(8, null)], REGION).map((entry) => entry.lineStart)
+    ).toEqual([5]);
+  });
+});

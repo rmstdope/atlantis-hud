@@ -72,7 +72,7 @@ export function RegionPanel({
    * Threaded from `AppShell` rather than read from the store: the unit-to-region lookup lives in
    * `AppShell`'s `unitRegions` memo, so there is nothing in the store to read.
    */
-  onSelectUnit?: (unitId: string) => void;
+  onSelectUnit?: (unitId: string, regionId?: string) => void;
   /**
    * The game-data dictionary, needed here rather than only in the dialog because an item's
    * category - and so its entry id - is not knowable from its tag alone.
@@ -125,7 +125,12 @@ export function RegionPanel({
         <StaleBanner lastSeenTurn={hex.lastSeenTurn} ageInTurns={hex.ageInTurns ?? 0} />
       ) : null}
 
-      <Problems problems={problems} known={known} onSelectUnit={onSelectUnit} />
+      <Problems
+        problems={problems}
+        regionId={hex.regionId}
+        known={known}
+        onSelectUnit={onSelectUnit}
+      />
 
       <p className="m-0 mb-2">
         in {hex.province}
@@ -341,12 +346,15 @@ function RegionProblemsToggle({ count }: { count: number }) {
  */
 function Problems({
   problems,
+  regionId,
   known,
   onSelectUnit
 }: {
   problems: OrderDiagnostic[];
+  /** The hex these findings are in, which is what tells two `new-1`s apart (`ah-9o0c.2`). */
+  regionId: string;
   known?: ReadonlySet<string>;
-  onSelectUnit?: (unitId: string) => void;
+  onSelectUnit?: (unitId: string, regionId?: string) => void;
 }) {
   const shown = useWorkspaceStore((state) => state.regionProblemsShown);
 
@@ -365,7 +373,13 @@ function Problems({
             className="flex gap-1.5 border-t border-edge-soft px-1.5 py-0.5 first:border-t-0"
           >
             <SeverityMark severity={problem.severity} />
-            <ProblemWho unitId={problem.unitId} known={known} onSelectUnit={onSelectUnit} />
+            <ProblemWho
+              unitId={problem.unitId}
+              formed={problem.formed}
+              regionId={regionId}
+              known={known}
+              onSelectUnit={onSelectUnit}
+            />
             <span className="text-ink">
               <ProblemMessage
                 message={problem.message}

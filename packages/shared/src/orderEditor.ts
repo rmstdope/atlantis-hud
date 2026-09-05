@@ -1,6 +1,6 @@
 import type { OrderDiagnostic, OrderValidationResult, UnitSilver } from "@atlantis/core-client";
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
-import { findUnitBlocks } from "./ordersDocument";
+import { blockFor, findFormBlocks, formBlockFor } from "./ordersDocument";
 import { silverKey } from "./unitTable";
 
 export type OrderValidationSummary = {
@@ -152,12 +152,36 @@ export type ValidatedOrders = {
 export function diagnosticsForUnit(
   document: string,
   unitId: string,
-  diagnostics: OrderDiagnostic[]
+  diagnostics: OrderDiagnostic[],
+  regionUnitIds?: ReadonlySet<string>
 ): OrderDiagnostic[] {
-  const block = findUnitBlocks(document).find((candidate) => candidate.unitId === unitId);
+  const block = blockFor(document, unitId, regionUnitIds);
   if (!block) {
     return [];
   }
+
+  // A finding naming no unit but falling inside a `FORM` block nested in this one belongs to the
+  // unit that block forms, not to the unit that wrote the `FORM` - the same rule the name-first
+  // test above delivers for the findings that do name one. The `form` line and its `end` are
+  // deliberately outside the span, so a finding about the `FORM` order itself stays here.
+  //
+  // Only a block a formed unit's own editor can actually reach: a duplicate `form 1` the server
+  // swallows is reachable from no editor, so excluding its lines would leave a syntax error inside
+  // it underlined nowhere.
+  const nested =
+    regionUnitIds === undefined
+      ? []
+      : findFormBlocks(document).filter(
+          (candidate) =>
+            candidate.unitId === unitId &&
+            candidate.headerLine > block.headerLine &&
+            formBlockFor(document, candidate.alias, regionUnitIds)?.headerLine ===
+              candidate.headerLine
+        );
+  const insideNestedForm = (lineStart: number, lineEnd: number): boolean =>
+    nested.some(
+      (candidate) => lineEnd >= candidate.firstLine + 1 && lineStart <= candidate.lastLine + 1
+    );
 
   // Diagnostics count lines from one and blocks record them from zero, so the block's own lines are
   // `firstLine + 1` through `lastLine + 1` in a diagnostic's terms.
@@ -171,6 +195,9 @@ export function diagnosticsForUnit(
       }
       // A finding about the hex names neither a unit nor a line, and belongs to no unit's list.
       if (diagnostic.lineStart === null || diagnostic.lineEnd === null) {
+        return false;
+      }
+      if (insideNestedForm(diagnostic.lineStart, diagnostic.lineEnd)) {
         return false;
       }
       // Anything overlapping the block, not merely starting inside it: the core reports single
