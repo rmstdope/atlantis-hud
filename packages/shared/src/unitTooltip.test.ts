@@ -1885,3 +1885,24 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     ).toEqual(["shared-silver-covers-shortfall", "nothing-moves-silver"]);
   });
 });
+
+/** `rules/form`: a unit that gains no recruits is dissolved and its goods revert (`ah-ty3s.3`). */
+describe("a dissolving unit's note", () => {
+  it("says where its goods go", () => {
+    expect(
+      summariseUnit(unit(), null, false, false, { into: "Tax Collector (1922)" }).note
+    ).toBe(
+      "Gains no recruits, so the game dissolves it and its goods revert to Tax Collector (1922)."
+    );
+  });
+
+  it("says so plainly where there is nobody in the hex to take them", () => {
+    expect(summariseUnit(unit(), null, false, false, { into: null }).note).toBe(
+      "Gains no recruits, so the game dissolves it. No unit of yours is shown in this hex for its goods to revert to."
+    );
+  });
+
+  it("is absent on an ordinary unit", () => {
+    expect(summariseUnit(unit()).note).toBeUndefined();
+  });
+});

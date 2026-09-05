@@ -24,7 +24,8 @@ export function UnitTooltip({
   at,
   silver = null,
   warned = false,
-  derivedSkills = []
+  derivedSkills = [],
+  dissolving = null
 }: {
   unit: ReportUnit;
   at: Point;
@@ -38,6 +39,11 @@ export function UnitTooltip({
    * always has.
    */
   derivedSkills?: readonly DerivedSkill[];
+  /**
+   * Set on a row `rules/form` dissolves, naming the unit its goods revert to - or `into: null`
+   * where the hex shows no own unit of ours (`ah-ty3s.3`).
+   */
+  dissolving?: { into: string | null } | null;
 }) {
   // The node is held as state rather than a ref so the effect below runs once it exists.
   const [node, setNode] = useState<HTMLDivElement | null>(null);
@@ -58,7 +64,7 @@ export function UnitTooltip({
 
   // The Silver column's upkeep setting also decides the hover's fifth row (`ah-1wcw.4`).
   const countUpkeep = useSettingsStore((state) => state.countUpkeep);
-  const summary = summariseUnit(unit, silver, warned, countUpkeep);
+  const summary = summariseUnit(unit, silver, warned, countUpkeep, dissolving);
   const groups = derivedSkills.length > 0 ? battleSkillGroups(derivedSkills) : [];
 
   return createPortal(
@@ -126,6 +132,10 @@ export function UnitTooltip({
           </Section>
         </>
       )}
+
+      {/* Outside the skills/items ternary, so it cannot be lost if the battle-skills branch ever
+          applies to one of our own units. */}
+      {summary.note ? <p className="m-0 mt-1 text-pane-sm text-warn">{summary.note}</p> : null}
 
       {summary.silver ? (
         <Section title="Silver">

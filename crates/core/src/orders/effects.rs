@@ -10,7 +10,7 @@
 //! The governing policy is the validator's own **accept on doubt**: an order that cannot be read,
 //! or whose target cannot be found, changes nothing rather than changing something wrong.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 

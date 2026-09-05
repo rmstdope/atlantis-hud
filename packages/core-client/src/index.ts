@@ -337,7 +337,12 @@ export type MoveOrderTraceResponse = {
 };
 
 /** How a previewed unit relates to the hex its row sits in. */
-export type UnitPreviewStatus = "present" | "departing" | "arriving" | "formed";
+export type UnitPreviewStatus =
+  | "present"
+  | "departing"
+  | "arriving"
+  | "formed"
+  | "dissolving";
 
 /** One field the orders change, with what the report said before, formatted for a tooltip. */
 export type FieldChange = {
@@ -466,6 +471,11 @@ export type UnitPreview = {
    * receive, in document order. Those orders move nothing (`ah-64wm`).
    */
   transportTargetIssues: TransportTargetIssue[];
+  /**
+   * The unit a dissolving row's goods revert to, as `<name> (<id>)` (`rules/form`). `null` on
+   * every other row, and on a dissolving row in a hex the report shows no own unit in.
+   */
+  dissolvesInto: string | null;
 };
 
 /** Every previewed unit standing in (or bound for) one region. */

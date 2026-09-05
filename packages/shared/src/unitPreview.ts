@@ -68,7 +68,20 @@ export type PreviewedUnit = ReportUnit & {
    * receive. Those orders move nothing (`ah-64wm`).
    */
   transportTargetIssues?: TransportTargetIssue[];
+  /**
+   * The unit a dissolving row's goods revert to, as `<name> (<id>)` (`rules/form`, `ah-ty3s.3`).
+   * `null` where the hex shows no own unit of ours for them to revert to.
+   */
+  dissolvesInto?: string | null;
 };
+
+/**
+ * Whether this row's unit is dissolved before the month ends, so it holds nothing next month
+ * (`rules/form`, decision **K2** of `ah-ty3s`).
+ */
+export function dissolves(unit: PreviewedUnit): boolean {
+  return unit.previewStatus === "dissolving";
+}
 
 /**
  * The hex's units with the orders preview folded in.
@@ -160,7 +173,8 @@ function rowFor(previewed: UnitPreview): PreviewedUnit {
     created: previewed.created,
     transportSent: previewed.transportSent,
     transportReceived: previewed.transportReceived,
-    transportTargetIssues: previewed.transportTargetIssues
+    transportTargetIssues: previewed.transportTargetIssues,
+    dissolvesInto: previewed.dissolvesInto
   };
 }
 

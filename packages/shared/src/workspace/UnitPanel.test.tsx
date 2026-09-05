@@ -260,7 +260,8 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
       created: [],
       transportSent: [],
       transportReceived: [],
-      transportTargetIssues: []
+      transportTargetIssues: [],
+      dissolvesInto: null
     };
     const html = draw({ unit: aReportUnit({ movement: RIDING }), preview });
 

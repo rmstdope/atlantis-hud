@@ -12,6 +12,7 @@ import {
   hasUncertainTransportTarget,
   itemsTooltip,
   mergePreview,
+  dissolves,
   mergePreviewAcross,
   originalTooltip,
   transportSentences,
@@ -26,6 +27,29 @@ const unit = (overrides: Partial<ReportUnit>): ReportUnit =>
 const preview = (units: RegionPreview["units"]): RegionPreview => ({
   regionId: "1:1,1",
   units
+});
+
+/** One previewed unit, with every field the wire carries defaulted. */
+const previewedRow = (
+  unitOverrides: Partial<ReportUnit>,
+  overrides: Partial<RegionPreview["units"][number]> = {}
+): RegionPreview["units"][number] => ({
+  unit: unit(unitOverrides),
+  status: "present",
+  changes: [],
+  arrivingFrom: null,
+  departingTo: null,
+  aboard: null,
+  uncounted: [],
+  takenUnshown: [],
+  produced: [],
+  built: [],
+  created: [],
+  transportSent: [],
+  transportReceived: [],
+  transportTargetIssues: [],
+  dissolvesInto: null,
+  ...overrides
 });
 
 describe("mergePreview", () => {
@@ -47,7 +71,8 @@ describe("mergePreview", () => {
           created: [],
           transportSent: [],
           transportReceived: [],
-          transportTargetIssues: []
+          transportTargetIssues: [],
+      dissolvesInto: null
         }
       ])
     );
@@ -83,7 +108,8 @@ describe("mergePreview", () => {
           created: [],
           transportSent: [],
           transportReceived: [],
-          transportTargetIssues: []
+          transportTargetIssues: [],
+      dissolvesInto: null
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
@@ -99,7 +125,8 @@ describe("mergePreview", () => {
           created: [],
           transportSent: [],
           transportReceived: [],
-          transportTargetIssues: []
+          transportTargetIssues: [],
+      dissolvesInto: null
         }
       ])
     );
@@ -128,7 +155,8 @@ describe("mergePreview", () => {
           created: [],
           transportSent: [],
           transportReceived: [],
-          transportTargetIssues: []
+          transportTargetIssues: [],
+      dissolvesInto: null
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -144,7 +172,8 @@ describe("mergePreview", () => {
           created: [],
           transportSent: [],
           transportReceived: [],
-          transportTargetIssues: []
+          transportTargetIssues: [],
+      dissolvesInto: null
         }
       ])
     );
@@ -171,7 +200,8 @@ describe("mergePreview", () => {
           created: [],
           transportSent: [],
           transportReceived: [],
-          transportTargetIssues: []
+          transportTargetIssues: [],
+      dissolvesInto: null
         }
       ])
     );
@@ -182,27 +212,7 @@ describe("mergePreview", () => {
 });
 
 describe("mergePreviewAcross", () => {
-  /** One previewed unit, with every field the wire carries defaulted. */
-  const previewed = (
-    unitOverrides: Partial<ReportUnit>,
-    overrides: Partial<RegionPreview["units"][number]> = {}
-  ): RegionPreview["units"][number] => ({
-    unit: unit(unitOverrides),
-    status: "present",
-    changes: [],
-    arrivingFrom: null,
-    departingTo: null,
-    aboard: null,
-    uncounted: [],
-    takenUnshown: [],
-    produced: [],
-    built: [],
-    created: [],
-    transportSent: [],
-    transportReceived: [],
-    transportTargetIssues: [],
-    ...overrides
-  });
+  const previewed = previewedRow;
 
   const across = (regions: RegionPreview[]): OrdersPreviewResponse => ({ regions });
 
@@ -358,6 +368,46 @@ describe("mergePreviewAcross", () => {
     expect(rows).toBe(units);
   });
 
+  it("a dissolving row keeps its status and the unit its goods revert to", () => {
+    const rows = mergePreview(
+      [unit({})],
+      preview([
+        previewedRow(
+          { unitId: "new-1", name: "new 1" },
+          { status: "dissolving", dissolvesInto: "Tax Collector (1922)" }
+        )
+      ])
+    );
+
+    const dissolving = rows.find((row) => row.unitId === "new-1");
+    expect(dissolving?.previewStatus).toBe("dissolving");
+    expect(dissolving?.dissolvesInto).toBe("Tax Collector (1922)");
+    expect(dissolves(dissolving as PreviewedUnit)).toBe(true);
+    expect(dissolves(rows[0])).toBe(false);
+  });
+
+  it("a dissolving row reaches All my units, where an arriving one does not", () => {
+    const units = [unit({ unitId: "902", regionId: "1:1,1" })];
+    const rows = mergePreviewAcross(
+      units,
+      across([
+        {
+          regionId: "1:1,1",
+          units: [
+            previewed(
+              { unitId: "new-1", name: "new 1", regionId: "1:1,1" },
+              { status: "dissolving", dissolvesInto: "Former (902)" }
+            ),
+            previewed({ unitId: "7000", regionId: "1:1,1" }, { status: "arriving", arrivingFrom: "1:2,2" })
+          ]
+        }
+      ])
+    );
+
+    expect(rows.map((row) => row.unitId)).toEqual(["902", "new-1"]);
+    expect(dissolves(rows[1])).toBe(true);
+  });
+
   it("leaves an untouched unit as the very same object", () => {
     const bystander = unit({ unitId: "901", name: "Bystander" });
     const rows = mergePreviewAcross(
@@ -396,7 +446,8 @@ describe("changeFor and originalTooltip", () => {
           created: [],
           transportSent: [],
           transportReceived: [],
-          transportTargetIssues: []
+          transportTargetIssues: [],
+      dissolvesInto: null
         }
       ])
     );
