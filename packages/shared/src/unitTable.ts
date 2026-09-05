@@ -777,9 +777,9 @@ export function mergeShownOrder(full: ColumnOrder, shownAfter: ColumnOrder): Col
 }
 
 /**
- * The sort to actually apply: a sort on a hidden column falls back to `DEFAULT_SORT.column`
- * (`name`, which is never hideable), keeping the direction and the own-first grouping. Derived
- * per render rather than written back, so showing the column again restores its sort.
+ * The sort to actually apply: a sort on a hidden column falls back to `DEFAULT_SORT.column`,
+ * which is never hideable, keeping the direction and the own-first grouping. Derived per render
+ * rather than written back, so showing the column again restores its sort.
  */
 export function sortAfterHiding(sort: SortState, shown: ColumnVisibility): SortState {
   const column = sort.column as UnitColumn;
@@ -793,9 +793,10 @@ export function sortAfterHiding(sort: SortState, shown: ColumnVisibility): SortS
  * The sort a click on one column's header means, given the sort **currently on screen**.
  *
  * `current` is the effective sort - what `sortAfterHiding` derived - and not the raw state, which
- * is the whole point of extracting this. With a sort on a hidden column the header shows `name`
- * ascending; a click on `name` read against the raw state takes the "different column" branch and
- * writes exactly what is already drawn, so the header looks dead until it is clicked twice.
+ * is the whole point of extracting this. With a sort on a hidden column the header shows the
+ * default column ascending; a click on that header read against the raw state takes the
+ * "different column" branch and writes exactly what is already drawn, so the header looks dead
+ * until it is clicked twice.
  */
 export function nextSort(current: SortState, column: SortColumn): SortState {
   return current.column === column

@@ -990,16 +990,19 @@ describe("column visibility (ah-20di)", () => {
     expect([...merged].sort()).toEqual([...full].sort());
   });
 
-  it("sortAfterHiding falls back to the name column and leaves the rest of the sort alone", () => {
+  it("sortAfterHiding falls back to the default column and leaves the rest of the sort alone", () => {
+    // `DEFAULT_SORT.column` rather than a literal: it is never hideable, which is the property the
+    // fallback rests on, and it has moved once already (`name` to `unitId`).
+    expect(isHideable(DEFAULT_SORT.column as UnitColumn)).toBe(false);
     const sort: SortState = { column: "structure", direction: "desc", groupOwnFirst: false };
     expect(sortAfterHiding(sort, { ...allColumnsShown(), structure: false })).toEqual({
-      column: "name",
+      column: DEFAULT_SORT.column,
       direction: "desc",
       groupOwnFirst: false
     });
     expect(sortAfterHiding(sort, allColumnsShown())).toEqual(sort);
-    const byName: SortState = { column: "name", direction: "asc", groupOwnFirst: true };
-    expect(sortAfterHiding(byName, { ...allColumnsShown(), skills: false })).toEqual(byName);
+    const byDefault: SortState = { ...DEFAULT_SORT };
+    expect(sortAfterHiding(byDefault, { ...allColumnsShown(), skills: false })).toEqual(byDefault);
   });
 });
 
@@ -1011,11 +1014,15 @@ describe("nextSort (ah-20di)", () => {
   });
 
   it("flips the fallback column on its first click, not its second", () => {
-    // Sorted on a column that has since been hidden: the header shows `name` ascending, so a
-    // click on it must give `name` descending. Reading the raw sort here would write the sort
-    // that is already on screen and look like a dead header.
+    // Sorted on a column that has since been hidden: the header shows the default column
+    // ascending, so a click on it must give that column descending. Reading the raw sort here
+    // would write the sort that is already on screen and look like a dead header.
     const raw: SortState = { column: "structure", direction: "asc", groupOwnFirst: true };
     const shown = sortAfterHiding(raw, { ...allColumnsShown(), structure: false });
-    expect(nextSort(shown, "name")).toEqual({ ...raw, column: "name", direction: "desc" });
+    expect(nextSort(shown, DEFAULT_SORT.column)).toEqual({
+      ...raw,
+      column: DEFAULT_SORT.column,
+      direction: "desc"
+    });
   });
 });
