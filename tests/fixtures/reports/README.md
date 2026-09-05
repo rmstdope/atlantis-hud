@@ -9,6 +9,9 @@ Every fixture here is named once per language rather than by string literal at e
 test that fails when this directory and the names in that module disagree, so adding or renaming a
 fixture is: drop the file here, add its name in both modules, run both tests.
 
+The other fixture directory is `tests/fixtures/mage-sheets/`, which holds generated mage sheets —
+the report fragment `export_mage_sheet` writes — under the same lockstep rule. See its own README.
+
 ## Where they came from
 
 A personal archive of 209 reports across eight game/faction runs of the author's own Borg faction,

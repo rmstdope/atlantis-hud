@@ -55,6 +55,32 @@ export function readReport(key: ReportKey): string {
   return readFileSync(reportPath(key), "utf8");
 }
 
+/**
+ * The committed mage sheets by key, mapping to their file name under tests/fixtures/mage-sheets/.
+ *
+ * A mage sheet is a report fragment written by `export_mage_sheet`, not a turn report, which is why
+ * these live in a directory of their own: every guard over tests/fixtures/reports/ lists `.rep`
+ * files only, so a `.txt` dropped in there would be governed by nothing (ah-fu0j).
+ */
+export const MAGE_SHEETS = {
+  g7f39t17: "mages-neworigins-3.0.0-g7-f39-t17.txt",
+  g7f39t18: "mages-neworigins-3.0.0-g7-f39-t18.txt",
+  g7f39t18trimmed: "mages-neworigins-3.0.0-g7-f39-t18-trimmed.txt",
+  g7f62t18: "mages-neworigins-3.0.0-g7-f62-t18.txt"
+} as const;
+
+export type MageSheetKey = keyof typeof MAGE_SHEETS;
+
+/** Absolute path of a mage sheet on disk. */
+export function mageSheetPath(key: MageSheetKey): string {
+  return join(__dirname, "..", "..", "..", "tests", "fixtures", "mage-sheets", MAGE_SHEETS[key]);
+}
+
+/** A mage sheet's text. */
+export function readMageSheet(key: MageSheetKey): string {
+  return readFileSync(mageSheetPath(key), "utf8");
+}
+
 /** The shipped ruleset, config/public/ruleset.json. */
 export const RULESET_PATH = join(__dirname, "..", "..", "..", "config", "public", "ruleset.json");
 
