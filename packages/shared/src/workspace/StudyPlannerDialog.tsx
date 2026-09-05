@@ -15,6 +15,7 @@ import type { MagicTree } from "../magicTree";
 import { goalQueueText, scheduleRows, scheduleTurns } from "../studySchedule";
 import { plannerNotices } from "../studyTeaching";
 import { studyOrders } from "../studyOrders";
+import { studyWritePlan } from "../studyOrdersWrite";
 import { shelterKey, type ShelterSeats } from "../studyShelter";
 import { planFor } from "../studyPlans";
 import { STUDY_NOTE_MAX_CHARS, noteCountText, normalizeStudyNote } from "../studyNote";
@@ -61,6 +62,9 @@ export function StudyPlannerDialog({
   onSavePlan,
   onSaveText,
   ordersError,
+  ordersDocument,
+  regionBanner,
+  onWriteOrdersDocument,
   onSaveNote,
   onDismiss
 }: {
@@ -91,6 +95,12 @@ export function StudyPlannerDialog({
   onSaveText: (fileName: string, text: string) => void;
   /** `Could not save these orders.`, or null. Drawn in the Orders tab, beside the Schedule's own. */
   ordersError: string | null;
+  /** The orders document as it stands, so the Orders tab can say what writing into it would change. */
+  ordersDocument: string;
+  /** The `;***` banner a new block for a mage in this region goes under, or null. */
+  regionBanner: (regionId: string) => string | null;
+  /** Replaces the whole document, as an external write. `AppShell`'s `writeStudyOrdersDocument`. */
+  onWriteOrdersDocument: (next: string) => void;
   onSavePlan: (factionId: string, unitId: string, goals: StudyGoal[]) => void;
   onSaveNote: (factionId: string, unitId: string, comment: string) => void;
   onDismiss: () => void;
@@ -144,6 +154,42 @@ export function StudyPlannerDialog({
     () => studyOrders({ groups, rows, turns, notices }),
     [groups, rows, turns, notices]
   );
+
+  /**
+   * The last write of this visit, or the fact that it was undone. Dies with the dialog, exactly as
+   * `view` does - and so, deliberately, does the one undo this bead offers (`ah-lyg6.4.2`, U1).
+   */
+  type WriteNotice =
+    | { kind: "wrote"; text: string; before: string; after: string }
+    | { kind: "undone" };
+  const [writeNotice, setWriteNotice] = useState<WriteNotice | null>(null);
+  const [asking, setAsking] = useState(false);
+
+  const ownEntries = useMemo(
+    () => orders.sections.find((section) => section.source === "own")?.entries ?? [],
+    [orders]
+  );
+  const writePlan = useMemo(
+    () =>
+      ownEntries.some((entry) => entry.order !== null)
+        ? studyWritePlan({
+            document: ordersDocument,
+            entries: ownEntries,
+            banner: regionBanner,
+            label
+          })
+        : null,
+    [ownEntries, ordersDocument, regionBanner, label]
+  );
+
+  // Never re-entered mid-question, and a stale Undo is never offered against a document that has
+  // moved on while the player was on another tab.
+  useEffect(() => {
+    if (view !== "orders") {
+      setAsking(false);
+      setWriteNotice(null);
+    }
+  }, [view]);
 
   const flat = useMemo(() => groups.flatMap((group) => group.mages), [groups]);
   // Derived from `groups` rather than passed in: `groups` is already a prop, and a second source
@@ -341,6 +387,43 @@ export function StudyPlannerDialog({
             }
             error={ordersError}
             onSaveText={onSaveText}
+            writePlan={writePlan}
+            asking={asking}
+            notice={
+              writeNotice === null
+                ? null
+                : writeNotice.kind === "undone"
+                  ? { text: "Put your orders back as they were.", undoable: false }
+                  : {
+                      text: writeNotice.text,
+                      // U1: the Undo stands only while the document is byte for byte what the
+                      // write left it. A keystroke, an import or a restore ends it.
+                      undoable: ordersDocument === writeNotice.after
+                    }
+            }
+            onAskWrite={() => setAsking(true)}
+            onCancelWrite={() => setAsking(false)}
+            onConfirmWrite={() => {
+              if (writePlan === null) {
+                return;
+              }
+              const before = ordersDocument;
+              onWriteOrdersDocument(writePlan.next);
+              setWriteNotice({
+                kind: "wrote",
+                text: writePlan.resultText,
+                before,
+                after: writePlan.next
+              });
+              setAsking(false);
+            }}
+            onUndoWrite={() => {
+              if (writeNotice === null || writeNotice.kind !== "wrote") {
+                return;
+              }
+              onWriteOrdersDocument(writeNotice.before);
+              setWriteNotice({ kind: "undone" });
+            }}
           />
         ) : view === "schedule" ? (
           <StudySchedule

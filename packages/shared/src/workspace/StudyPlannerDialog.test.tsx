@@ -210,6 +210,9 @@ describe("the Orders tab", () => {
         saveError={null}
         onSaveText={() => {}}
         ordersError={null}
+        ordersDocument=""
+        regionBanner={() => null}
+        onWriteOrdersDocument={() => {}}
         onSavePlan={() => {}}
         onSaveNote={() => {}}
         onDismiss={() => {}}

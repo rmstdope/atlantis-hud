@@ -31,6 +31,27 @@ import { joinNames } from "./workspace/standingChip";
  */
 export const COMMENT_COLUMN = 20;
 
+/**
+ * One mage's contribution to a section, as `ah-lyg6.4.2` needs it to write into a document.
+ *
+ * `order` and `annotation` are the two halves of the line the section text draws; the section is
+ * rendered from these, so the tab and the write can never disagree about what a mage is doing.
+ */
+export type OrdersEntry = {
+  /** `${factionId}/${unitId}` - `ScheduleRow.key`. */
+  key: string;
+  unitId: string;
+  name: string;
+  /** `ScheduleRow.regionId` - the core's own id, for the banner a new block goes under. */
+  regionId: string;
+  /** The month-long order alone: `STUDY FORC 4`, `STUDY PATT`, `TEACH 1234 1263`. Null when the mage has none. */
+  order: string | null;
+  /** What follows `; ` in the tab: `force 3 -> 4, taught by Sable`, `teaches Ereb and Vess`. Null when there is none. */
+  annotation: string | null;
+  /** Why there is no order, in the planner's own words. Null when `order` is non-null. */
+  skipReason: string | null;
+};
+
 /** One faction's block, as the tab draws it and as Copy and Save… deliver it. */
 export type OrdersSection = {
   factionId: string;
@@ -40,6 +61,10 @@ export type OrdersSection = {
   text: string;
   /** `study-orders-Borg-TNG-(95)-turn-72.txt`. */
   fileName: string;
+  /** `PlannerGroup.source` - which section is your own. */
+  source: "own" | "sheet";
+  /** One per mage of this faction, in the same order as the rows the section draws. */
+  entries: OrdersEntry[];
 };
 
 /** Next turn's orders for every faction the planner knows about. */
@@ -80,24 +105,39 @@ function targetOf(goals: readonly StudyGoal[], goalIndex: number): number | null
   return goal.targetLevel ?? null;
 }
 
-/** The lines one row contributes, or the empty list when it contributes none. */
-function linesFor(
+/**
+ * What one row contributes: the entry `ah-lyg6.4.2` writes from, and the lines the section draws.
+ *
+ * One function rather than two, so the mailed text and the written order can never disagree: every
+ * line below is rendered *from* the entry it returns.
+ */
+function contributionOf(
   row: ScheduleRow,
   rows: readonly ScheduleRow[],
   notices: readonly PlannerNotice[]
-): string[] {
+): { entry: OrdersEntry; lines: string[] } {
+  const base = {
+    key: row.key,
+    unitId: row.unitId,
+    name: row.name,
+    regionId: row.regionId
+  };
   const cell = row.cells[0];
+
   if (cell === undefined || cell.kind === "idle") {
     // Named rather than left out, so a mage you forgot is not indistinguishable from one you
     // meant to idle - the navigator's choice.
-    return [`; ${row.name} (${row.unitId}) — nothing planned for this turn`];
+    const entry: OrdersEntry = { ...base, order: null, annotation: null, skipReason: "nothing planned" };
+    return { entry, lines: [`; ${row.name} (${row.unitId}) — nothing planned for this turn`] };
   }
 
-  const lines = [annotated(`UNIT ${row.unitId}`, row.name)];
+  let entry: OrdersEntry;
+  let orderLine: string;
 
   if (cell.kind === "study") {
     if (cell.blocked !== null) {
-      lines.push(`  ; STUDY ${cell.skill} — ${cell.blocked}`);
+      entry = { ...base, order: null, annotation: null, skipReason: cell.blocked };
+      orderLine = `  ; STUDY ${cell.skill} — ${cell.blocked}`;
     } else {
       const target = targetOf(row.goals, cell.goalIndex);
       const from = row.standings[0]?.get(cell.skill)?.level ?? 0;
@@ -108,33 +148,37 @@ function linesFor(
         cell.taughtBy === null
           ? ""
           : `, taught by ${rows.find((one) => one.key === cell.taughtBy)?.name ?? unitOf(cell.taughtBy)}`;
-      lines.push(
-        annotated(
-          `  STUDY ${cell.skill}${target === null ? "" : ` ${target}`}`,
-          `${gain}${teacher}`
-        )
-      );
+      entry = {
+        ...base,
+        order: `STUDY ${cell.skill}${target === null ? "" : ` ${target}`}`,
+        annotation: `${gain}${teacher}`,
+        skipReason: null
+      };
+      orderLine = annotated(`  ${entry.order}`, entry.annotation ?? "");
     }
   } else if (cell.outcome.taught.length > 0) {
     const taughtRows = cell.outcome.taught.map(
       (key) => rows.find((one) => one.key === key)?.name ?? unitOf(key)
     );
-    lines.push(
-      annotated(
-        `  TEACH ${cell.outcome.taught.map(unitOf).join(" ")}`,
-        `teaches ${joinNames(taughtRows)}`
-      )
-    );
+    entry = {
+      ...base,
+      order: `TEACH ${cell.outcome.taught.map(unitOf).join(" ")}`,
+      annotation: `teaches ${joinNames(taughtRows)}`,
+      skipReason: null
+    };
+    orderLine = annotated(`  ${entry.order}`, entry.annotation ?? "");
   } else {
-    lines.push(`  ; TEACH ${cell.students.join(" ")} — nobody can be taught this turn`);
+    entry = { ...base, order: null, annotation: null, skipReason: "nobody can be taught this turn" };
+    orderLine = `  ; TEACH ${cell.students.join(" ")} — ${entry.skipReason ?? ""}`;
   }
 
+  const lines = [annotated(`UNIT ${row.unitId}`, row.name), orderLine];
   for (const notice of notices) {
     if (notice.rowKey === row.key && notice.turnIndex === 0 && notice.level === "warning") {
       lines.push(`  ; ${notice.text}`);
     }
   }
-  return lines;
+  return { entry, lines };
 }
 
 /**
@@ -185,12 +229,17 @@ export function studyOrders(input: {
         } estimated.`
       );
     }
+    const entries: OrdersEntry[] = [];
     for (const row of mine) {
-      lines.push(...linesFor(row, rows, notices));
+      const contribution = contributionOf(row, rows, notices);
+      entries.push(contribution.entry);
+      lines.push(...contribution.lines);
     }
     sections.push({
       factionId: group.factionId,
       heading: group.heading,
+      source: group.source,
+      entries,
       text: lines.join("\n"),
       fileName: `study-orders-${safeFileNamePart(group.factionLabel) ?? group.factionId}-turn-${turn}.txt`
     });

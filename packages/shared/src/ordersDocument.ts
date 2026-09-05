@@ -873,6 +873,22 @@ export const LONG_ORDER_COMMANDS = [
 const LONG_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${LONG_ORDER_COMMANDS.join("|")})\\b`, "iu");
 
 /**
+ * A unit's orders with every month-long order line removed, so a newly written one replaces
+ * whichever was there rather than standing beside it: a unit spends its month on one of the eleven
+ * (`rules/sequenceofevents`, and {@link LONG_ORDER_COMMANDS}).
+ *
+ * Unlike {@link stripMovementOrderLines} this does not `trim()`. That one is used on a block about
+ * to be rewritten whole; here the surviving lines are the player's own and the first one's
+ * indentation is part of what they wrote.
+ */
+export function stripLongOrderLines(orders: string): string {
+  return orders
+    .split("\n")
+    .filter((line) => !LONG_ORDER_LINE.test(line))
+    .join("\n");
+}
+
+/**
  * The month-long order a unit's orders currently carry, if the document has one - for a display
  * that wants to say what a unit is actually going to spend its month on, at a glance. Comments and
  * blank lines are never it; if a document somehow holds two, the first is what the game will keep,

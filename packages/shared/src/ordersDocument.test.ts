@@ -25,6 +25,7 @@ import {
   readUnitOrders,
   seedOrdersDocument,
   regionBannerLine,
+  stripLongOrderLines,
   stripMovementOrderLines,
   stripUnitComments,
   withoutTrailingBlankLines,
@@ -1330,5 +1331,21 @@ describe("repairFormedUnitBlocks", () => {
   it("a document with nothing to repair comes back by reference", () => {
     const document = [BANNER, "unit 1922", "@tax", "", "#end", ""].join("\n");
     expect(repairFormedUnitBlocks(document).document).toBe(document);
+  });
+});
+
+describe("stripLongOrderLines", () => {
+  it("every_month_long_order_line_is_removed_including_an_at_repeated_one", () => {
+    expect(stripLongOrderLines("@work\nBUILD Tower\nclaim 200")).toBe("claim 200");
+  });
+
+  it("a_give_or_claim_line_survives", () => {
+    expect(stripLongOrderLines("claim 200\ngive 1250 20 silv")).toBe(
+      "claim 200\ngive 1250 20 silv"
+    );
+  });
+
+  it("the_first_lines_indentation_is_not_trimmed_away", () => {
+    expect(stripLongOrderLines("  study forc\n  claim 200")).toBe("  claim 200");
   });
 });
