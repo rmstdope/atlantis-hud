@@ -668,7 +668,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     setHovered(null);
   };
 
-  const restOn = (unit: ReportUnit) => {
+  const restOn = (unit: PreviewedUnit) => {
     forgetHover();
     hoverTimer.current = setTimeout(() => {
       hoverTimer.current = null;

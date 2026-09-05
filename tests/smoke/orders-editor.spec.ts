@@ -650,6 +650,9 @@ test("a formed unit that recruits nobody keeps its row, marked as dissolving", a
   await expect(formedRow).toContainText("dissolves — no recruits");
   // The Silver column shows no month end for a unit that will not exist (decision S1).
   await expect(formedRow.getByTestId("unit-silver-new-1")).toHaveCount(0);
+  // Decision S1: an em dash, not an empty cell and not a figure. This is the one place the real
+  // silver forecast and the real cell meet - the unit tests stub `getSilver`.
+  await expect(formedRow.locator("td").last()).toContainText("—");
   await expect(formedRow.locator("td").last()).not.toHaveText(/\d/);
 
   // Pay for the recruit, and the row reads like any other new unit.

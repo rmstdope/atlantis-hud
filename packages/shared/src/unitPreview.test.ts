@@ -72,7 +72,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-      dissolvesInto: null
+          dissolvesInto: null
         }
       ])
     );
@@ -109,7 +109,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-      dissolvesInto: null
+          dissolvesInto: null
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
@@ -126,7 +126,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-      dissolvesInto: null
+          dissolvesInto: null
         }
       ])
     );
@@ -156,7 +156,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-      dissolvesInto: null
+          dissolvesInto: null
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -173,7 +173,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-      dissolvesInto: null
+          dissolvesInto: null
         }
       ])
     );
@@ -201,7 +201,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-      dissolvesInto: null
+          dissolvesInto: null
         }
       ])
     );
@@ -209,11 +209,26 @@ describe("mergePreview", () => {
     expect(rows[0].previewStatus).toBe("departing");
     expect(rows[0].departingTo).toBe("1:2,2");
   });
+  it("a dissolving row keeps its status and the unit its goods revert to", () => {
+    const rows = mergePreview(
+      [unit({})],
+      preview([
+        previewedRow(
+          { unitId: "new-1", name: "new 1" },
+          { status: "dissolving", dissolvesInto: "Tax Collector (1922)" }
+        )
+      ])
+    );
+
+    const dissolving = rows.find((row) => row.unitId === "new-1");
+    expect(dissolving?.previewStatus).toBe("dissolving");
+    expect(dissolving?.dissolvesInto).toBe("Tax Collector (1922)");
+    expect(dissolves(dissolving as PreviewedUnit)).toBe(true);
+    expect(dissolves(rows[0])).toBe(false);
+  });
 });
 
 describe("mergePreviewAcross", () => {
-  const previewed = previewedRow;
-
   const across = (regions: RegionPreview[]): OrdersPreviewResponse => ({ regions });
 
   it("lists a unit that moves once, on the row the report gave it", () => {
@@ -224,7 +239,7 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:36,4",
           units: [
-            previewed(
+            previewedRow(
               { unitId: "5105", name: "MinersA", regionId: "1:36,4" },
               { status: "departing", departingTo: "1:35,3" }
             )
@@ -233,7 +248,7 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:35,3",
           units: [
-            previewed(
+            previewedRow(
               { unitId: "5105", name: "MinersA", regionId: "1:35,3" },
               { status: "arriving", arrivingFrom: "1:36,4" }
             )
@@ -256,7 +271,7 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:36,4",
           units: [
-            previewed({ unitId: "5105", regionId: "1:36,4" }, { status: "departing", departingTo: null })
+            previewedRow({ unitId: "5105", regionId: "1:36,4" }, { status: "departing", departingTo: null })
           ]
         }
       ])
@@ -274,7 +289,7 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:36,4",
           units: [
-            previewed(
+            previewedRow(
               { unitId: "new-1", name: "Unit (new 1)", regionId: "1:36,4" },
               { status: "formed" }
             )
@@ -283,7 +298,7 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:7,53",
           units: [
-            previewed(
+            previewedRow(
               { unitId: "new-1", name: "Unit (new 1)", regionId: "1:7,53" },
               { status: "formed" }
             )
@@ -304,7 +319,7 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:36,4",
           units: [
-            previewed({ unitId: "new-1", name: "Unit (new 1)", regionId: "1:36,4" }, { status: "formed" })
+            previewedRow({ unitId: "new-1", name: "Unit (new 1)", regionId: "1:36,4" }, { status: "formed" })
           ]
         }
       ])
@@ -321,7 +336,7 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:36,4",
           units: [
-            previewed(
+            previewedRow(
               { unitId: "5105", regionId: "1:36,4", items: [{ amount: 2, tag: "SILV", name: "silver" }] },
               { changes: [{ field: "items", original: "" }] }
             )
@@ -330,7 +345,7 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:7,53",
           units: [
-            previewed(
+            previewedRow(
               { unitId: "2418", regionId: "1:7,53", items: [{ amount: 1, tag: "PERF", name: "perfume" }] },
               { changes: [{ field: "items", original: "" }] }
             )
@@ -359,31 +374,13 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:35,3",
           units: [
-            previewed({ unitId: "7000", regionId: "1:35,3" }, { status: "arriving", arrivingFrom: "1:34,2" })
+            previewedRow({ unitId: "7000", regionId: "1:35,3" }, { status: "arriving", arrivingFrom: "1:34,2" })
           ]
         }
       ])
     );
 
     expect(rows).toBe(units);
-  });
-
-  it("a dissolving row keeps its status and the unit its goods revert to", () => {
-    const rows = mergePreview(
-      [unit({})],
-      preview([
-        previewedRow(
-          { unitId: "new-1", name: "new 1" },
-          { status: "dissolving", dissolvesInto: "Tax Collector (1922)" }
-        )
-      ])
-    );
-
-    const dissolving = rows.find((row) => row.unitId === "new-1");
-    expect(dissolving?.previewStatus).toBe("dissolving");
-    expect(dissolving?.dissolvesInto).toBe("Tax Collector (1922)");
-    expect(dissolves(dissolving as PreviewedUnit)).toBe(true);
-    expect(dissolves(rows[0])).toBe(false);
   });
 
   it("a dissolving row reaches All my units, where an arriving one does not", () => {
@@ -394,11 +391,11 @@ describe("mergePreviewAcross", () => {
         {
           regionId: "1:1,1",
           units: [
-            previewed(
+            previewedRow(
               { unitId: "new-1", name: "new 1", regionId: "1:1,1" },
               { status: "dissolving", dissolvesInto: "Former (902)" }
             ),
-            previewed({ unitId: "7000", regionId: "1:1,1" }, { status: "arriving", arrivingFrom: "1:2,2" })
+            previewedRow({ unitId: "7000", regionId: "1:1,1" }, { status: "arriving", arrivingFrom: "1:2,2" })
           ]
         }
       ])
@@ -415,7 +412,7 @@ describe("mergePreviewAcross", () => {
       across([
         {
           regionId: "1:1,1",
-          units: [previewed({ name: "Renamed" }, { changes: [{ field: "name", original: "Walker" }] })]
+          units: [previewedRow({ name: "Renamed" }, { changes: [{ field: "name", original: "Walker" }] })]
         }
       ])
     );
@@ -447,7 +444,7 @@ describe("changeFor and originalTooltip", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-      dissolvesInto: null
+          dissolvesInto: null
         }
       ])
     );

@@ -146,7 +146,7 @@ describe("a unit carried away by a sailing fleet", () => {
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
-      dissolvesInto: null
+        dissolvesInto: null
       }
     ]
   });
@@ -229,7 +229,7 @@ describe("the structure column", () => {
             transportSent: [],
             transportReceived: [],
             transportTargetIssues: [],
-      dissolvesInto: null
+            dissolvesInto: null
           }
         ]
       }
@@ -807,7 +807,7 @@ describe("the items column", () => {
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
-      dissolvesInto: null,
+        dissolvesInto: null,
         ...previewOverrides
       }
     ]
@@ -999,7 +999,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
-      dissolvesInto: null,
+        dissolvesInto: null,
         ...previewOverrides
       }
     ]
@@ -1315,7 +1315,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     transportSent: [],
     transportReceived: [],
     transportTargetIssues: [],
-      dissolvesInto: null,
+    dissolvesInto: null,
     ...overrides
   });
 
@@ -1841,6 +1841,7 @@ describe("a row the game dissolves", () => {
     const row = rowMarkup(drawDissolving());
 
     expect(row).toContain(">new<");
+    expect(row).toContain('data-testid="unit-dissolving-new-1"');
     expect(row).toContain("dissolves — no recruits");
     expect(row).toContain('data-preview-status="dissolving"');
     expect(row).toContain("opacity-60");
@@ -1851,7 +1852,23 @@ describe("a row the game dissolves", () => {
       <UnitTableDock
         hex={null}
         ownUnits={[FORMER]}
-        ordersPreview={{ regions: [{ regionId: "1:6,52", units: [dissolvingRow()] }] }}
+        ordersPreview={{
+          regions: [
+            {
+              regionId: "1:6,52",
+              units: [
+                dissolvingRow(),
+                {
+                  ...dissolvingRow(),
+                  unit: unit({ unitId: "903", name: "Leaver", own: true }),
+                  status: "departing",
+                  departingTo: "1:7,53",
+                  dissolvesInto: null
+                }
+              ]
+            }
+          ]
+        }}
         currentTurn={42}
         client={{} as never}
         game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
@@ -1865,6 +1882,11 @@ describe("a row the game dissolves", () => {
     expect(row).toContain("dissolves — no recruits");
     expect(row).toContain('data-preview-status="dissolving"');
     expect(row).toContain("opacity-60");
+    // Decision A1: the dim is unconditional on the source, and `dimsDeparting` still governs
+    // departures alone - a departing row in the same list is not dimmed here.
+    const departingRow = /<tr[^>]*data-testid="unit-row-903"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    expect(departingRow).toContain('data-preview-status="departing"');
+    expect(departingRow).not.toContain("opacity-60");
   });
 
   it("shows no month end in its Silver cell", () => {
