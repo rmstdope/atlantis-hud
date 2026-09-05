@@ -991,8 +991,11 @@ describe("column visibility (ah-20di)", () => {
   });
 
   it("sortAfterHiding falls back to the default column and leaves the rest of the sort alone", () => {
-    // `DEFAULT_SORT.column` rather than a literal: it is never hideable, which is the property the
-    // fallback rests on, and it has moved once already (`name` to `unitId`).
+    // `DEFAULT_SORT.column` rather than a literal: it has moved once already (`name` to
+    // `unitId`). Two properties, not one - `SortColumn` is wider than `UnitColumn`, so a default
+    // that moved to a source-dependent column would satisfy `isHideable` while not being drawn
+    // at all.
+    expect(UNIT_COLUMNS).toContain(DEFAULT_SORT.column);
     expect(isHideable(DEFAULT_SORT.column as UnitColumn)).toBe(false);
     const sort: SortState = { column: "structure", direction: "desc", groupOwnFirst: false };
     expect(sortAfterHiding(sort, { ...allColumnsShown(), structure: false })).toEqual({

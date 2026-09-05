@@ -388,7 +388,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   }, [source]);
 
   /**
-   * The sort actually applied: one on a hidden column falls back to `name` (ah-20di). Derived per
+   * The sort actually applied: one on a hidden column falls back to `DEFAULT_SORT.column`, which
+   * is never hideable (ah-20di). Derived per
    * render rather than written back to `sort`, so showing the column again restores the sort it
    * had - and the header that would change it back is off screen while it is hidden.
    */
@@ -703,7 +704,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   };
 
   // Against the sort on screen rather than the raw state: with a sort on a hidden column the
-  // header shows `name`, and reading the raw state would write back what is already drawn
+  // header shows the default column, and reading the raw state would write back what is drawn
   // (ah-20di).
   const sortByColumn = (column: SortColumn) => setSort(nextSort(effectiveSort, column));
 
