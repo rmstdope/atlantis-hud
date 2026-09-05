@@ -282,6 +282,15 @@ export type PendingMapExport = {
  */
 export type PendingMageSheet = UsableMageSheet & { fileName: string };
 
+/**
+ * What `loadReport` did with the report, or `undefined` when `runReported` caught a failure.
+ *
+ * Declared here beside `ReportRoute` because it is the same decision seen from the other end: the
+ * route says what should happen, this says what did. A caller fetching several turns needs it to
+ * tell a stored turn from a refused one.
+ */
+export type ReportLoadOutcome = "loaded" | "stored" | "asked" | "mageSheet" | "mapExport";
+
 export type ReportRoute =
   | { kind: "reject"; reason: string }
   | { kind: "load" }

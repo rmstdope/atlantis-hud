@@ -10,6 +10,8 @@ describe("the New Age world popover", () => {
         summary="Signed in to New Age: Arcanum as Merchant Guild (27)."
         fetching={false}
         onFetchReport={() => {}}
+        historyBusy={false}
+        onFetchEarlierTurns={() => {}}
         onSignOut={() => {}}
       />
     );
@@ -25,6 +27,8 @@ describe("the New Age world popover", () => {
         summary="Signed in to New Age: Arcanum as Merchant Guild (27)."
         fetching={false}
         onFetchReport={() => {}}
+        historyBusy={false}
+        onFetchEarlierTurns={() => {}}
         onSignOut={() => {}}
       />
     );
@@ -42,11 +46,51 @@ describe("the New Age world popover", () => {
         summary="Signed in to New Age: Arcanum as Merchant Guild (27)."
         fetching={true}
         onFetchReport={() => {}}
+        historyBusy={false}
+        onFetchEarlierTurns={() => {}}
         onSignOut={() => {}}
       />
     );
     const button = /<button[^>]*data-testid="newage-fetch-report"[^>]*>/.exec(markup)?.[0] ?? "";
     expect(button).toContain("disabled");
     expect(markup).toContain("Fetching\u2026");
+  });
+
+  it("offers a second item for the world's earlier turns", () => {
+    const markup = renderToStaticMarkup(
+      <NewAgeWorldPanelBody
+        summary="Signed in to New Age: Arcanum as Merchant Guild (27)."
+        fetching={false}
+        historyBusy={false}
+        onFetchEarlierTurns={() => {}}
+        onFetchReport={() => {}}
+        onSignOut={() => {}}
+      />
+    );
+    expect(markup).toContain('data-testid="newage-fetch-history"');
+    expect(markup).toContain("Fetch earlier turns\u2026");
+    expect(markup.indexOf("newage-fetch-report")).toBeLessThan(
+      markup.indexOf("newage-fetch-history")
+    );
+    expect(markup.indexOf("newage-fetch-history")).toBeLessThan(
+      markup.indexOf("Nothing is stored:")
+    );
+  });
+
+  it("turns both items off while the turn dialog is busy", () => {
+    const markup = renderToStaticMarkup(
+      <NewAgeWorldPanelBody
+        summary="Signed in to New Age: Arcanum as Merchant Guild (27)."
+        fetching={false}
+        historyBusy={true}
+        onFetchEarlierTurns={() => {}}
+        onFetchReport={() => {}}
+        onSignOut={() => {}}
+      />
+    );
+    for (const id of ["newage-fetch-report", "newage-fetch-history"]) {
+      const button = new RegExp(`<button[^>]*data-testid="${id}"[^>]*>`).exec(markup)?.[0] ?? "";
+      expect(button).toContain("disabled");
+    }
   });
 });
