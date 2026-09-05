@@ -61,7 +61,6 @@ describe("what the planner has to say about a plan", () => {
 
   const teachCell = (refused: TeachRefusal[], taught: string[] = []): ScheduleCell => ({
     kind: "teach",
-    goalIndex: 0,
     students: [],
     outcome: { taught, refused, worth: taughtWorth(taught.length) },
     label: "TEACH nobody"
@@ -73,7 +72,6 @@ describe("what the planner has to say about a plan", () => {
     name: "force",
     level: 3,
     gained: false,
-    goalIndex: 0,
     blocked: null,
     worth: 1,
     unsheltered: false,
@@ -355,7 +353,6 @@ describe("a teacher who names himself", () => {
         cells: [
           {
             kind: "teach",
-            goalIndex: 0,
             students: ["881"],
             outcome: { taught: [], refused: [{ kind: "self", unitId: "881" }], worth: 1 },
             label: "TEACH nobody"

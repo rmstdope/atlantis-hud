@@ -3,31 +3,26 @@ import { STANDING_CHIP } from "./standingChip";
 import { useEscapeToDismiss } from "./dismissLayer";
 import type { MagicTree } from "../magicTree";
 import type { StudyGoal } from "@atlantis/core-client";
-import {
-  goalsAfterClear,
-  goalsAfterPick,
-  cellMenu,
-  cellWarning,
-  teachWarning,
-  type CellMenu
-} from "../studyCell";
+import { cellMenu, goalsAfterChoice, teachWarning, type CellMenu } from "../studyCell";
+import { plannedGoals } from "../studyPlans";
 import { hoverCard, worthMark, type ScheduleRow } from "../studySchedule";
 import { noticeSummary, type PlannerNotice } from "../studyTeaching";
 import type { PlannerGroup } from "../studyPlanner";
-import type { CellEvent, CellMode } from "./studyCellState";
+import type { CellEvent, CellMode, CellPick } from "./studyCellState";
 import { keyToAction } from "./studyCellState";
 
 /**
  * The Schedule view (`ah-lyg6.2.3`): every mage a row, the next six turns the columns.
  *
- * `docs/ui/ah-lyg6.2.3-schedule.html` and `-cell.html` are the design, chosen with the navigator.
- * The grid **is** the planner: clicking a cell says what that mage studies from that turn on, and
- * the cells to its right re-flow. Every rule about what a cell offers, what it says and what queue
- * a choice writes lives in `studyCell.ts` and `studySchedule.ts`; nothing here decides anything.
+ * `docs/ui/ah-lyg6.2.3-simple.html` is the design, chosen with the navigator. The grid **is** the
+ * planner: a cell is one turn, clicking it opens a dropdown of what that mage can study then, and
+ * a choice changes exactly the cell that was clicked. Every rule about what a cell offers, what it
+ * says and what a choice writes lives in `studyCell.ts` and `studySchedule.ts`; nothing here
+ * decides anything.
  *
  * **Split hook-free**, the way `MagePicker` and `StudyPlannerList` are: `packages/shared` has no
  * jsdom (ah-nass), so `ScheduleGrid`, `ScheduleHoverCard` and `CellPopover` take everything as
- * props and are what the unit tests render. Focus, the arrow keys and a popover actually opening
+ * props and are what the unit tests render. Focus, the arrow keys and a dropdown actually opening
  * belong to the smoke suite.
  */
 export function StudySchedule({
@@ -49,8 +44,15 @@ export function StudySchedule({
   tree: MagicTree;
   mode: CellMode;
   onEvent: (event: CellEvent) => void;
-  /** Called with the whole new goal list for one mage when `Set` or `Clear from here` is pressed. */
-  onCommit: (rowKey: string, goals: StudyGoal[]) => void;
+  /**
+   * Called when a choice is made, with the *edit* rather than the resulting list.
+   *
+   * A function, because the store applies it against the row it holds when the write actually
+   * runs: a plan is one row whose goals are written whole, so a second choice made while the
+   * first write is still in flight would otherwise be built from a row that does not hold the
+   * first choice yet, and would overwrite it.
+   */
+  onCommit: (rowKey: string, edit: (current: readonly StudyGoal[]) => StudyGoal[]) => void;
   /** `Could not save this plan.`, or null. */
   saveError: string | null;
   /** Everything the planner has to say about this plan, for the strip and the cell tints. */
@@ -88,18 +90,19 @@ export function StudySchedule({
           new Map(rows.map((row) => [row.key, row.name] as const))
         );
 
-  const open = mode.kind === "editing" ? rows.find((row) => row.key === mode.rowKey) ?? null : null;
+  const editing = mode.kind === "choosing" || mode.kind === "teaching" ? mode : null;
+  const open = editing === null ? null : rows.find((row) => row.key === editing.rowKey) ?? null;
   const menu =
-    open === null || mode.kind !== "editing"
+    open === null || editing === null
       ? null
       : cellMenu({
           mageName: open.name,
-          turn: turns[mode.turnIndex],
-          standing: open.standings[mode.turnIndex] ?? new Map(),
+          turn: turns[editing.turnIndex],
+          standing: open.standings[editing.turnIndex] ?? new Map(),
           tree,
           rows,
-          turnIndex: mode.turnIndex,
-          rowKey: mode.rowKey,
+          turnIndex: editing.turnIndex,
+          rowKey: editing.rowKey,
           label
         });
 
@@ -186,21 +189,23 @@ export function StudySchedule({
       />
       </div>
       {card === null ? null : <ScheduleHoverCard card={card} />}
-      {menu === null || open === null || mode.kind !== "editing" ? null : (
+      {menu === null || open === null || editing === null ? null : (
         <CellPopoverLayer
           menu={menu}
-          mode={mode}
+          mode={editing}
           mageName={open.name}
-          turn={turns[startTurnIndex(open, mode.turnIndex)]}
-          replacing={wasText(open, mode.turnIndex)}
+          turn={turns[editing.turnIndex]}
+          current={pickOf(open, turns[editing.turnIndex])}
+          rowIndex={rows.findIndex((row) => row.key === editing.rowKey)}
           onEvent={onEvent}
-          onSet={(goal) => {
-            onCommit(open.key, goalsAfterPick(open.goals, open, mode.turnIndex, goal));
-            onEvent({ kind: "set" });
-          }}
-          onClear={() => {
-            onCommit(open.key, goalsAfterClear(open.goals, open, mode.turnIndex));
-            onEvent({ kind: "set" });
+          onChoose={(choice) => {
+            // `plannedGoals` because the edit is applied against the *stored* row rather than
+            // against the sanitized one the grid drew: a row written before goals named turns
+            // would otherwise be carried forward by a write instead of dropped by it.
+            onCommit(open.key, (goals) =>
+              goalsAfterChoice(plannedGoals(goals), turns[editing.turnIndex], choice)
+            );
+            onEvent({ kind: "closed" });
           }}
         />
       )}
@@ -218,9 +223,40 @@ export function StudySchedule({
 function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   useEscapeToDismiss(() => props.onEvent({ kind: "cancelled" }));
   const box = useRef<HTMLDivElement | null>(null);
+  const cell = `${props.rowIndex}:${props.mode.turnIndex}`;
+  const step = props.mode.kind;
+  // Focus lands on a *row*, not on the wrapper. The arrow-key walk reads `data-row` off the
+  // focused element, so focusing the wrapper would leave the `↑↓ to move` the foot promises doing
+  // nothing at all until the player found a row with Tab. Keyed on **both** the cell and the
+  // step: on the step so that coming back from the teach step - whose buttons have just
+  // unmounted - lands on a row again rather than on `<body>`, and on the cell because clicking a
+  // second cell while a dropdown is open moves this one rather than remounting it (`reduce`
+  // answers `cell-opened` with `choosing` whatever it was in, and there is no outside-click
+  // dismissal - `dismissLayer.ts` listens for Escape alone). Without the cell in the list, that
+  // click would leave focus on the *previous* grid cell, which the cleanup below has just taken.
+  // React runs every cleanup before every effect, so this focus always wins over that one.
   useEffect(() => {
-    box.current?.focus();
-  }, []);
+    const root = box.current;
+    if (root === null) {
+      return;
+    }
+    const target =
+      root.querySelector<HTMLElement>('[data-row][aria-pressed="true"]') ??
+      root.querySelector<HTMLElement>("[data-row]") ??
+      root.querySelector<HTMLElement>("button:not([disabled])") ??
+      root;
+    target.focus();
+  }, [cell, step]);
+  // Focus goes back to the cell the dropdown came from, by the `[data-cell="r:c"]` address the
+  // arrow-key walk and `focusCell` already use: anything else strands a keyboard player at the
+  // top of the grid. Its own effect, so the step change above cannot fire this cleanup and throw
+  // focus out of a dropdown that is still open.
+  useEffect(
+    () => () => {
+      document.querySelector<HTMLElement>(`[data-cell="${cell}"]`)?.focus();
+    },
+    [cell]
+  );
   return (
     <div ref={box} tabIndex={-1}>
       <CellPopover {...props} />
@@ -228,33 +264,20 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   );
 }
 
+/** What the cell at `turn` already holds, as a `CellPick`, or null when nothing is planned. */
+function pickOf(row: ScheduleRow, turn: number): CellPick | null {
+  const goal = row.goals.find((one) => one.turn === turn);
+  if (goal === undefined) {
+    return null;
+  }
+  return goal.kind === "teach"
+    ? { kind: "teach", students: [...goal.students] }
+    : { kind: "study", skill: goal.skill };
+}
+
 /** The group heading's faction label, so the card words a faction the way the list does. */
 function factionLabelOf(groups: readonly PlannerGroup[], factionId: string): string {
   return groups.find((group) => group.factionId === factionId)?.factionLabel ?? "";
-}
-
-/**
- * The turn a goal set at `turnIndex` will actually begin.
- *
- * On an idle cell the new goal is simply appended (`goalsAfterSet`), so it starts at the first
- * idle turn rather than at the one clicked. The popover says which turn it is talking about, so
- * it must say the turn the study will really start, not the column the pointer was over.
- */
-function startTurnIndex(row: ScheduleRow, turnIndex: number): number {
-  if (row.cells[turnIndex]?.kind !== "idle") {
-    return turnIndex;
-  }
-  const first = row.cells.findIndex((cell) => cell.kind === "idle");
-  return first === -1 ? turnIndex : Math.min(first, turnIndex);
-}
-
-/** `was: force 4, force 4, force 5` - the tail this choice will overwrite, or null. */
-function wasText(row: ScheduleRow, turnIndex: number): string | null {
-  const tail = row.cells
-    .slice(startTurnIndex(row, turnIndex))
-    .filter((cell) => cell.kind === "study")
-    .map((cell) => (cell.kind === "study" ? `${cell.name} ${cell.level}` : ""));
-  return tail.length === 0 ? null : `was: ${tail.join(", ")}`;
 }
 
 /** The table itself. Hook-free, so the markup can be tested without a DOM. */
@@ -406,7 +429,7 @@ function FactionRows({
             {turns.map((turn, index) => {
               const cell = row.cells[index];
               const open =
-                mode.kind === "editing" && mode.rowKey === row.key && mode.turnIndex === index;
+                mode.kind !== "idle" && mode.rowKey === row.key && mode.turnIndex === index;
               const cellNotices = (notices ?? []).filter(
                 (notice) => notice.rowKey === row.key && notice.turnIndex === index
               );
@@ -438,22 +461,12 @@ function FactionRows({
                           : undefined
                     }
                     onClick={() =>
-                      onEvent({
-                        kind: "cell-clicked",
-                        rowKey: row.key,
-                        turnIndex: index,
-                        pick:
-                          cell?.kind === "study"
-                            ? { kind: "study", skill: cell.skill, targetLevel: null }
-                            : cell?.kind === "teach"
-                              ? { kind: "teach", students: [...cell.students] }
-                              : null
-                      })
+                      onEvent({ kind: "cell-opened", rowKey: row.key, turnIndex: index })
                     }
                     className={`w-full rounded border px-1 text-left ${tint}`}
                   >
                     {cell === undefined || cell.kind === "idle"
-                      ? "+"
+                      ? "—"
                       : cell.kind === "teach"
                         ? cell.label
                         : `${cell.name} ${cell.level}${(() => {
@@ -496,52 +509,108 @@ export function ScheduleHoverCard({ card }: { card: ReturnType<typeof hoverCard>
   );
 }
 
-/** The cell's menu: three groups, a level, and the two buttons that end it. */
+/**
+ * The cell's dropdown, and the teach step behind it. Hook-free, so the markup can be tested
+ * without a DOM.
+ *
+ * Choosing a skill or `— nothing` commits and closes: one choice is one click. Only teaching, where
+ * several students are ticked, keeps `Cancel` and `Set`.
+ */
 export function CellPopover({
   menu,
   mode,
   mageName,
   turn,
-  replacing,
+  current,
   onEvent,
-  onSet,
-  onClear
+  onChoose
 }: {
   menu: CellMenu;
-  mode: Extract<CellMode, { kind: "editing" }>;
+  mode: Extract<CellMode, { kind: "choosing" } | { kind: "teaching" }>;
   mageName: string;
   turn: number;
-  /** `was: force 4, force 4, force 5` - the tail this choice overwrites, or null. */
-  replacing: string | null;
+  /** What the cell already holds, read by the caller from the row's stored plan. */
+  current: CellPick | null;
+  /** Which row of the grid this cell is in, for returning focus to it on close. */
+  rowIndex: number;
   onEvent: (event: CellEvent) => void;
-  onSet: (goal: StudyGoal) => void;
-  onClear: () => void;
+  onChoose: (choice: CellPick | null) => void;
 }) {
-  const picked = mode.pick;
-  const chosen =
-    picked?.kind === "study"
-      ? [...menu.raise, ...menu.begin, ...menu.notYet].find(
-          (choice) => choice.skill === picked.skill
-        )
-      : undefined;
-  const ticked = picked?.kind === "teach" ? picked.students : [];
-  const warning =
-    picked?.kind === "teach"
-      ? teachWarning(
-          menu.teach.filter((choice) => ticked.includes(choice.unitId)),
-          turn,
-          mageName
-        )
-      : chosen === undefined
-        ? null
-        : cellWarning(chosen, turn, mageName);
-  /** What Set would write, or null when nothing is picked. */
-  const goal: StudyGoal | null =
-    picked?.kind === "teach"
-      ? { kind: "teach", students: [...picked.students] }
-      : chosen === undefined
-        ? null
-        : { kind: "study", skill: chosen.skill, targetLevel: picked?.kind === "study" ? picked.targetLevel : null };
+  if (mode.kind === "teaching") {
+    const warning = teachWarning(
+      menu.teach.filter((choice) => mode.students.includes(choice.unitId)),
+      turn,
+      mageName
+    );
+    return (
+      <div
+        data-testid="study-schedule-popover"
+        role="dialog"
+        aria-label={`${mageName} teaches on turn ${turn}`}
+        className="rounded border border-edge bg-panel-raised p-2"
+        // `Cmd/Ctrl+Enter` only. **Escape is not handled here and must not be**: the layer's
+        // `useEscapeToDismiss` is a capture-phase document listener that stops propagation before
+        // React dispatches, so a `cancel` branch on this element would be dead code reading like
+        // the mechanism that takes the teach step back to the dropdown. That is the layer's.
+        onKeyDown={(event) => {
+          if (
+            keyToAction({
+              key: event.key,
+              metaKey: event.metaKey,
+              ctrlKey: event.ctrlKey
+            }) === "set"
+          ) {
+            event.preventDefault();
+            onChoose({ kind: "teach", students: [...mode.students] });
+          }
+        }}
+      >
+        <p className="m-0 text-ink">{`${mageName} teaches on turn ${turn}`}</p>
+        <ul className="m-0 list-none p-0">
+          {menu.teach.map((choice) => (
+            <li key={choice.unitId}>
+              <button
+                type="button"
+                role="checkbox"
+                data-testid={`study-schedule-teach-${choice.unitId}`}
+                aria-checked={mode.students.includes(choice.unitId)}
+                disabled={choice.blocked !== null}
+                onClick={() => onEvent({ kind: "teach-toggled", unitId: choice.unitId })}
+                className={`w-full rounded px-1 text-left ${
+                  choice.blocked === null ? "" : "text-ink-dim"
+                }`}
+              >
+                <span className="text-ink">{choice.label}</span>{" "}
+                <span className="text-ink-dim">{choice.detail}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        {warning === null ? null : (
+          <p data-testid="study-schedule-warning" className="m-0 mt-1 text-warn">
+            {warning}
+          </p>
+        )}
+        <div className="mt-2 flex gap-2">
+          <span className="flex-1" />
+          <button
+            type="button"
+            data-testid="study-schedule-cancel"
+            onClick={() => onEvent({ kind: "cancelled" })}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="study-schedule-set"
+            onClick={() => onChoose({ kind: "teach", students: [...mode.students] })}
+          >
+            Set
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -549,135 +618,122 @@ export function CellPopover({
       role="dialog"
       aria-label={menu.heading}
       className="rounded border border-edge bg-panel-raised p-2"
-      onKeyDown={(event) => {
-        const action = keyToAction({
-          key: event.key,
-          metaKey: event.metaKey,
-          ctrlKey: event.ctrlKey
-        });
-        if (action === "cancel") {
-          event.stopPropagation();
-          onEvent({ kind: "cancelled" });
-        } else if (action === "set" && goal !== null) {
-          event.preventDefault();
-          onSet(goal);
-        }
-      }}
     >
       <p className="m-0 text-ink">{menu.heading}</p>
-      {menu.sub === null ? null : <p className="m-0 text-ink-dim">{menu.sub}</p>}
-      {replacing === null ? null : (
-        <p data-testid="study-schedule-was" className="m-0 text-ink-dim line-through">
-          {replacing}
+      <ul
+        className="m-0 list-none p-0"
+        // `↑↓` move between the rows, wrapping at both ends; `↵` activates the focused button
+        // natively, so nothing handles it. Scoped to this list, as `ScheduleGrid`'s own walk is.
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+            return;
+          }
+          const rows = event.currentTarget.querySelectorAll<HTMLElement>("[data-row]");
+          const from = (event.target as HTMLElement | null)?.dataset?.row;
+          if (from === undefined || rows.length === 0) {
+            return;
+          }
+          event.preventDefault();
+          const step = event.key === "ArrowDown" ? 1 : -1;
+          const next = (Number(from) + step + rows.length) % rows.length;
+          event.currentTarget
+            .querySelector<HTMLElement>(`[data-row="${next}"]`)
+            ?.focus();
+        }}
+      >
+        {rowsOf(menu, current).map((row, index) => (
+          <li key={row.key}>
+            <button
+              type="button"
+              data-testid={row.testId}
+              data-row={index}
+              aria-pressed={row.pressed}
+              onClick={row.onClick(onEvent, onChoose, current)}
+              className="w-full rounded px-1 text-left"
+            >
+              <span className="text-ink">{row.name}</span>
+              {row.detail === null ? null : (
+                <>
+                  {" "}
+                  <span className="text-ink-dim">{row.detail}</span>
+                </>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {menu.empty === null ? null : (
+        <p data-testid="study-schedule-empty" className="m-0 mt-1 text-ink-dim">
+          {menu.empty}
         </p>
       )}
-
-      {menu.teach.length === 0 ? null : (
-        <div data-testid="study-schedule-group-teach">
-          <p className="m-0 mt-2 text-ink-soft">Teaches</p>
-          <ul className="m-0 list-none p-0">
-            {menu.teach.map((choice) => (
-              <li key={choice.unitId}>
-                <button
-                  type="button"
-                  role="checkbox"
-                  data-testid={`study-schedule-teach-${choice.unitId}`}
-                  aria-checked={ticked.includes(choice.unitId)}
-                  disabled={choice.blocked !== null}
-                  onClick={() => onEvent({ kind: "teach-toggled", unitId: choice.unitId })}
-                  className={`w-full rounded px-1 text-left ${
-                    choice.blocked === null ? "" : "text-ink-dim"
-                  }`}
-                >
-                  <span className="text-ink">{choice.label}</span>{" "}
-                  <span className="text-ink-dim">{choice.detail}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {(
-        [
-          ["Raise", menu.raise, "raise"],
-          ["Begin", menu.begin, "begin"],
-          [`Not by turn ${turn}`, menu.notYet, "not-yet"]
-        ] as const
-      ).map(([heading, choices, key]) => (
-        <div key={key} data-testid={`study-schedule-group-${key}`}>
-          <p className="m-0 mt-2 text-ink-soft">{heading}</p>
-          <ul className="m-0 list-none p-0">
-            {choices.map((choice) => (
-              <li key={choice.skill}>
-                <button
-                  type="button"
-                  data-testid={`study-schedule-choice-${choice.skill}`}
-                  aria-pressed={picked?.kind === "study" && picked.skill === choice.skill}
-                  onClick={() => onEvent({ kind: "skill-chosen", skill: choice.skill })}
-                  className="w-full rounded px-1 text-left"
-                >
-                  <span className="text-ink">{choice.name}</span>{" "}
-                  <span className="text-ink-dim">{choice.detail}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-
-      <label className="mt-2 block text-ink-soft">
-        to{" "}
-        <select
-          data-testid="study-schedule-level"
-          value={
-            picked?.kind === "study" && picked.targetLevel !== null
-              ? String(picked.targetLevel)
-              : ""
-          }
-          onChange={(event) =>
-            onEvent({
-              kind: "level-chosen",
-              targetLevel: event.target.value === "" ? null : Number(event.target.value)
-            })
-          }
-        >
-          <option value="">one month</option>
-          {(chosen?.levels ?? []).map((level) => (
-            <option key={level} value={String(level)}>
-              {level}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {warning === null ? null : (
-        <p data-testid="study-schedule-warning" className="m-0 mt-1 text-warn">
-          {warning}
-        </p>
-      )}
-
-      <div className="mt-2 flex gap-2">
-        <button type="button" data-testid="study-schedule-clear" onClick={onClear}>
-          Clear from here
-        </button>
-        <span className="flex-1" />
-        <button
-          type="button"
-          data-testid="study-schedule-cancel"
-          onClick={() => onEvent({ kind: "cancelled" })}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          data-testid="study-schedule-set"
-          disabled={goal === null}
-          onClick={() => (goal === null ? undefined : onSet(goal))}
-        >
-          Set
-        </button>
-      </div>
+      <p className="m-0 mt-2 text-ink-dim">↑↓ to move · ↵ to choose · Esc to close</p>
     </div>
   );
+}
+
+/**
+ * The dropdown's rows in the agreed order: `— nothing`, `Teaches…` when it is offered, then the
+ * skills.
+ *
+ * A list rather than three blocks of JSX, so the arrow-key walk can number them and the order is
+ * one thing rather than three.
+ */
+function rowsOf(
+  menu: CellMenu,
+  current: CellPick | null
+): {
+  key: string;
+  testId: string;
+  name: string;
+  detail: string | null;
+  pressed: boolean;
+  onClick: (
+    onEvent: (event: CellEvent) => void,
+    onChoose: (choice: CellPick | null) => void,
+    current: CellPick | null
+  ) => () => void;
+}[] {
+  return [
+    {
+      key: "nothing",
+      testId: "study-schedule-choice-nothing",
+      name: "— nothing",
+      detail: null,
+      pressed: current === null,
+      onClick: (_onEvent, onChoose) => () => onChoose(null)
+    },
+    ...(menu.teachDetail === null
+      ? []
+      : [
+          {
+            key: "teach",
+            testId: "study-schedule-choice-teach",
+            name: "Teaches…",
+            detail: menu.teachDetail,
+            pressed: current?.kind === "teach",
+            onClick:
+              (onEvent: (event: CellEvent) => void) =>
+              () =>
+                onEvent({
+                  kind: "teach-opened",
+                  students: current?.kind === "teach" ? current.students : []
+                })
+          }
+        ]),
+    ...menu.choices.map((choice) => ({
+      key: choice.skill,
+      testId: `study-schedule-choice-${choice.skill}`,
+      name: choice.name,
+      detail: choice.detail,
+      pressed: current?.kind === "study" && current.skill === choice.skill,
+      onClick:
+        (
+          _onEvent: (event: CellEvent) => void,
+          onChoose: (pick: CellPick | null) => void
+        ) =>
+        () =>
+          onChoose({ kind: "study", skill: choice.skill })
+    }))
+  ];
 }

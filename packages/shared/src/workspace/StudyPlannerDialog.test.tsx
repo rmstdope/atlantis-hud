@@ -110,6 +110,7 @@ describe("StudyPlannerList", () => {
 describe("StudyPlannerDetail", () => {
   const own = renderToStaticMarkup(<StudyPlannerDetail
         mage={mageBy("881")}
+        turn={72}
         label={label}
         tree={tree}
         plan={null}
@@ -118,6 +119,7 @@ describe("StudyPlannerDetail", () => {
       />);
   const stale = renderToStaticMarkup(<StudyPlannerDetail
         mage={mageBy("300")}
+        turn={72}
         label={label}
         tree={tree}
         plan={null}
@@ -147,9 +149,36 @@ describe("StudyPlannerDetail", () => {
     expect(own).toContain("Nothing he holds is at a prerequisite&#x27;s ceiling.");
   });
 
+  it("says nothing is planned for next turn when the mage has no plan", () => {
+    expect(own).toContain("Nothing planned for turn 72.");
+  });
+
+  it("names next turn's study when there is one", () => {
+    const planned = renderToStaticMarkup(
+      <StudyPlannerDetail
+        mage={mageBy("881")}
+        turn={72}
+        label={label}
+        tree={tree}
+        plan={{
+          factionId: "95",
+          unitId: "881",
+          goals: [{ kind: "study", turn: 72, skill: "FORC" }],
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }}
+        saveError={null}
+        onSaveNote={() => {}}
+      />
+    );
+
+    expect(planned).toContain("Next turn: force");
+  });
+
   it("names what holds a skill back in the tree's own words", () => {
     const heldBack = renderToStaticMarkup(<StudyPlannerDetail
         mage={mageBy("883")}
+        turn={72}
         label={label}
         tree={tree}
         plan={null}
@@ -173,6 +202,7 @@ describe("the All mages view carries no warnings strip", () => {
     const detail = renderToStaticMarkup(
       <StudyPlannerDetail
         mage={mageBy("881")}
+        turn={72}
         label={label}
         tree={tree}
         plan={null}

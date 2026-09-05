@@ -5,8 +5,8 @@ import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import {
   SCHEDULE_TURNS,
-  goalQueueText,
   hoverCard,
+  planLine,
   projectAll,
   scheduleRows,
   scheduleSummary,
@@ -27,14 +27,22 @@ function at(held: Record<string, [number, number]>): SkillPoints {
   );
 }
 
+/** The six turns every case here is projected over. */
+const TURNS = [24, 25, 26, 27, 28, 29];
+
+/** A study goal on each of the turns named. */
+function studies(skill: string, ...turns: number[]): StudyGoal[] {
+  return turns.map((turn) => ({ kind: "study" as const, turn, skill }));
+}
+
 /** One mage, projected alone: what `projectMage` used to answer. */
-function project(start: SkillPoints, goals: readonly StudyGoal[], turnCount = SCHEDULE_TURNS) {
+function project(start: SkillPoints, goals: readonly StudyGoal[], turns: readonly number[] = TURNS) {
   const projected = projectAll({
     mages: [
       { key: "21/2431", unitId: "2431", name: "Ereb", regionId: "1:7", structureId: "1", start, goals }
     ],
     tree,
-    turnCount,
+    turns,
     // Sheltered, so these cases measure study arithmetic and nothing else; the shelter rule has
     // its own cases below.
     seats: new Map([["1:7/1", 1]])
@@ -60,10 +68,37 @@ describe("scheduleTurns", () => {
 });
 
 describe("projectAll", () => {
-  it("raises a skill towards its goal, a month at a time", () => {
+  it("plans the turn a goal names, and leaves every other turn idle", () => {
+    const { cells } = project(at({ FORC: [3, 270] }), studies("FORC", 26));
+
+    expect(said(cells)).toEqual(["-", "-", "force 4", "-", "-", "-"]);
+  });
+
+  it("leaves the gap between two goals on non-adjacent turns idle", () => {
+    const { cells } = project(at({ FORC: [3, 270], PATT: [1, 40] }), [
+      ...studies("FORC", 24),
+      ...studies("PATT", 27)
+    ]);
+
+    expect(said(cells)).toEqual(["force 4", "-", "-", "pattern 1", "-", "-"]);
+  });
+
+  it("gives six idle cells for an empty plan", () => {
+    const { cells } = project(at({ FORC: [3, 270] }), []);
+
+    expect(said(cells)).toEqual(["-", "-", "-", "-", "-", "-"]);
+  });
+
+  it("ignores a goal on a turn outside the window", () => {
+    const { cells } = project(at({ FORC: [3, 270] }), studies("FORC", 12, 40));
+
+    expect(said(cells)).toEqual(["-", "-", "-", "-", "-", "-"]);
+  });
+
+  it("raises a skill a month at a time, on the turns it is planned for", () => {
     // force 3 is 180 points; 4 is 300 and 5 is 450, so a 30-point month reaches 4 on the first
     // turn (300) and 5 on the sixth (450).
-    const { cells } = project(at({ FORC: [3, 270] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }]);
+    const { cells } = project(at({ FORC: [3, 270] }), studies("FORC", 24, 25, 26, 27, 28, 29));
 
     expect(said(cells)).toEqual([
       "force 4",
@@ -83,53 +118,20 @@ describe("projectAll", () => {
     ]);
   });
 
-  it("runs out when the goal is reached, and idles after it", () => {
-    // force 1 is 30 points; 2 is 90 and 3 is 180. From 40, the second month reaches 100 (level 2)
-    // and the fifth 190 (level 3).
-    const { cells } = project(at({ FORC: [1, 40] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 3 }]);
+  it("says a maxed skill is already as high as it goes", () => {
+    const { cells } = project(at({ FORC: [5, 450] }), studies("FORC", 24));
+    const cell = cells[0];
 
-    expect(said(cells)).toEqual(["force 1", "force 2", "force 2", "force 2", "force 3", "-"]);
+    expect(cell.kind === "study" && cell.blocked).toBe(
+      "force is already at 5, the highest there is."
+    );
   });
 
-  it("gives a goal with no level exactly one turn", () => {
-    const { cells } = project(at({ FORC: [3, 270], PATT: [1, 40] }), [
-      { kind: "study" as const, skill: "FORC", targetLevel: null },
-      { kind: "study" as const, skill: "PATT", targetLevel: 2 }
-    ]);
-
-    expect(said(cells).slice(0, 3)).toEqual(["force 4", "pattern 1", "pattern 2"]);
-  });
-
-  it("re-flows the queue: the next goal begins the turn the one before it arrives", () => {
-    const { cells } = project(at({ FORC: [3, 270], PATT: [2, 100] }), [
-      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
-      { kind: "study" as const, skill: "PATT", targetLevel: 3 }
-    ]);
-
-    expect(said(cells)).toEqual([
-      "force 4",
-      "pattern 2",
-      "pattern 2",
-      "pattern 3",
-      "-",
-      "-"
-    ]);
-  });
-
-  it("skips a goal already satisfied at the start, and it costs no column", () => {
-    const { cells } = project(at({ FORC: [4, 300], PATT: [2, 100] }), [
-      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
-      { kind: "study" as const, skill: "PATT", targetLevel: 3 }
-    ]);
-
-    expect(said(cells)[0]).toBe("pattern 2");
-  });
-
-  it("warns once about an impossible goal and moves on, without running out of cells", () => {
+  it("warns about an impossible month and still plans the turns around it", () => {
     // Summoning is locked without spirit; the mage holds only force.
     const { cells } = project(at({ FORC: [2, 100] }), [
-      { kind: "study" as const, skill: "SUSK", targetLevel: 2 },
-      { kind: "study" as const, skill: "FORC", targetLevel: 3 }
+      ...studies("SUSK", 24),
+      ...studies("FORC", 25)
     ]);
 
     expect(cells).toHaveLength(SCHEDULE_TURNS);
@@ -139,21 +141,8 @@ describe("projectAll", () => {
     expect(said(cells)[1]).toBe("force 2");
   });
 
-  it("says a maxed skill is already as high as it goes", () => {
-    const { cells } = project(at({ FORC: [5, 450] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }]);
-
-    // The goal is satisfied, so nothing is planned at all - the queue is empty from the start.
-    expect(said(cells)[0]).toBe("-");
-
-    const anyway = project(at({ FORC: [5, 450] }), [{ kind: "study" as const, skill: "FORC", targetLevel: null }]);
-    const cell = anyway.cells[0];
-    expect(cell.kind === "study" && cell.blocked).toBe(
-      "force is already at 5, the highest there is."
-    );
-  });
-
   it("records where he stands before each turn, and after the last", () => {
-    const { standings } = project(at({ FORC: [3, 270] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }]);
+    const { standings } = project(at({ FORC: [3, 270] }), studies("FORC", 24, 25, 26, 27, 28, 29));
 
     expect(standings).toHaveLength(SCHEDULE_TURNS + 1);
     expect(standings[0].get("FORC")).toEqual({ level: 3, points: 270 });
@@ -161,56 +150,53 @@ describe("projectAll", () => {
   });
 });
 
-describe("goalQueueText", () => {
-  it("names each goal and its level, in order", () => {
+describe("planLine", () => {
+  it("names next turn's study", () => {
+    expect(planLine(studies("FORC", 24), 24, tree)).toBe("Next turn: force");
+  });
+
+  it("names next turn's teaching by name", () => {
     expect(
-      goalQueueText(
-        [
-          { kind: "study" as const, skill: "FORC", targetLevel: 4 },
-          { kind: "study" as const, skill: "PATT", targetLevel: 3 }
-        ],
-        tree
+      planLine(
+        [{ kind: "teach", turn: 24, students: ["2517", "2688"] }],
+        24,
+        tree,
+        new Map([
+          ["2517", "Sable"],
+          ["2688", "Vess"]
+        ])
       )
-    ).toBe("force → 4, then pattern → 3");
+    ).toBe("Next turn: teaches Sable and Vess");
   });
 
-  it("names one goal alone", () => {
-    expect(goalQueueText([{ kind: "study" as const, skill: "FORC", targetLevel: 4 }], tree)).toBe("force → 4");
+  it("says who is taught by id when no name is known", () => {
+    expect(planLine([{ kind: "teach", turn: 24, students: ["2517"] }], 24, tree)).toBe(
+      "Next turn: teaches 2517"
+    );
   });
 
-  it("is null for an empty queue", () => {
-    expect(goalQueueText([], tree)).toBeNull();
+  it("says a teach month with no students teaches nobody", () => {
+    expect(planLine([{ kind: "teach", turn: 24, students: [] }], 24, tree)).toBe(
+      "Next turn: teaches nobody"
+    );
+  });
+
+  it("says nothing is planned when the plan starts later", () => {
+    expect(planLine(studies("FORC", 26), 24, tree)).toBe("Nothing planned for turn 24.");
+  });
+
+  it("says nothing is planned when there is no plan at all", () => {
+    expect(planLine([], 24, tree)).toBe("Nothing planned for turn 24.");
   });
 });
 
 describe("scheduleSummary", () => {
-  const start = at({ FORC: [3, 270] });
-
-  it("names his reach and what he is aiming at", () => {
-    expect(
-      scheduleSummary({
-        start,
-        goals: [
-          { kind: "study" as const, skill: "FORC", targetLevel: 5 },
-          { kind: "study" as const, skill: "PATT", targetLevel: 3 }
-        ],
-        tree
-      })
-    ).toBe("force 3 · force → 5, then pattern → 3");
+  it("is his strongest magic skill and nothing else", () => {
+    expect(scheduleSummary({ start: at({ FORC: [3, 270], PATT: [1, 40] }), tree })).toBe("force 3");
   });
 
-  it("says nothing is planned when there is no queue", () => {
-    expect(scheduleSummary({ start, goals: [], tree })).toBe("force 3 · nothing planned");
-  });
-
-  it("says the goal is reached when the queue is stored but satisfied", () => {
-    expect(
-      scheduleSummary({
-        start: at({ FORC: [4, 300] }),
-        goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }],
-        tree
-      })
-    ).toBe("force 4 · goal reached");
+  it("says so when he holds no magic skills", () => {
+    expect(scheduleSummary({ start: at({}), tree })).toBe("no magic skills");
   });
 });
 
@@ -256,7 +242,7 @@ describe("scheduleRows", () => {
         {
           factionId: "21",
           unitId: "2431",
-          goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }],
+          goals: [{ kind: "study" as const, turn: 24, skill: "FORC" }],
           comment: "heading for Gate Lore",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -267,7 +253,7 @@ describe("scheduleRows", () => {
     });
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].summary).toBe("force 3 · force → 4");
+    expect(rows[0].summary).toBe("force 3");
     expect(rows[0].hasNote).toBe(true);
     expect(rows[0].cells).toHaveLength(SCHEDULE_TURNS);
   });
@@ -276,7 +262,7 @@ describe("scheduleRows", () => {
     const rows = scheduleRows({ groups: groupOf(), plans: [], tree, turns, seats: new Map() });
 
     expect(rows[0].hasNote).toBe(false);
-    expect(rows[0].summary).toBe("force 3 · nothing planned");
+    expect(rows[0].summary).toBe("force 3");
     expect(rows[0].cells.every((cell) => cell.kind === "idle")).toBe(true);
   });
 
@@ -303,7 +289,7 @@ describe("hoverCard", () => {
         {
           factionId: "21",
           unitId: "2431",
-          goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }],
+          goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -341,7 +327,7 @@ describe("hoverCard", () => {
         {
           factionId: "21",
           unitId: "2431",
-          goals: [{ kind: "study" as const, skill: "PATT", targetLevel: 1 }],
+          goals: [{ kind: "study" as const, turn: turns[0], skill: "PATT" }],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -388,6 +374,9 @@ describe("hoverCard", () => {
 });
 
 describe("projectAll across the whole fleet", () => {
+  /** Two turns, as every case here projects over. */
+  const FLEET_TURNS = [24, 25];
+
   /** Two or more mages, projected together. */
   function fleet(
     mages: {
@@ -400,7 +389,7 @@ describe("projectAll across the whole fleet", () => {
       goals: readonly StudyGoal[];
     }[],
     seats: ReadonlyMap<string, number | null> = new Map(),
-    turnCount = 2
+    turns: readonly number[] = FLEET_TURNS
   ) {
     return projectAll({
       mages: mages.map((mage) => ({
@@ -409,15 +398,15 @@ describe("projectAll across the whole fleet", () => {
         ...mage
       })),
       tree,
-      turnCount,
+      turns,
       seats
     });
   }
 
-  const teaches = (students: string[]): StudyGoal[] => [{ kind: "teach", students }];
-  const studies = (skill: string, targetLevel: number | null = null): StudyGoal[] => [
-    { kind: "study", skill, targetLevel }
-  ];
+  const teaches = (students: string[]): StudyGoal[] =>
+    FLEET_TURNS.map((turn) => ({ kind: "teach", turn, students }));
+  const studies = (skill: string): StudyGoal[] =>
+    FLEET_TURNS.map((turn) => ({ kind: "study", turn, skill }));
 
   it("has the teacher study nothing that month", () => {
     const out = fleet([

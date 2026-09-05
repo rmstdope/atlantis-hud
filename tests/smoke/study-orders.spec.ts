@@ -27,8 +27,6 @@ test("the Orders tab writes next turn's study orders and saves them", async ({ p
   await cell.click();
   await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
   await page.getByTestId("study-schedule-choice-FORC").click();
-  await page.getByTestId("study-schedule-level").selectOption("5");
-  await page.getByTestId("study-schedule-set").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
 
   await page.getByTestId("study-planner-view-orders").click();
@@ -46,7 +44,7 @@ test("the Orders tab writes next turn's study orders and saves them", async ({ p
   expect(download.suggestedFilename()).toMatch(/^study-orders-.+-turn-72\.txt$/u);
   expect(text).toContain("study orders for turn 72, from Atlantis HUD");
   expect(text).toContain(`UNIT ${MAGE}`);
-  expect(text).toContain("STUDY FORC 5");
+  expect(text).toContain("STUDY FORC");
   // A `95/881` key on an order line is an order no server accepts.
   expect(text).not.toContain("/881");
 });

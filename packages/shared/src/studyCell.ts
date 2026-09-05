@@ -1,33 +1,35 @@
 /**
- * What a cell's menu offers, and every string in it.
+ * What a cell's dropdown offers, and every string in it.
  *
- * Pure, because `packages/shared` has no jsdom (ah-nass): the popover's markup is tested with
+ * Pure, because `packages/shared` has no jsdom (ah-nass): the dropdown's markup is tested with
  * `renderToStaticMarkup`, and everything it would have to click to discover lives here instead.
  *
- * The navigator's C2: the menu offers **every** magic skill, and the impossible ones say why -
- * choosing one saves with a warning rather than being refused. Offering only what the projection
- * allows would mean editing an earlier cell had to do something to a later goal the player never
- * asked for.
+ * The navigator's round-four redesign: a cell is one turn, and the dropdown offers **only** what
+ * that mage can actually study on it, plus a `Teaches…` row when there is somebody he could teach,
+ * plus `— nothing`. Nothing impossible is offered, so nothing has to explain itself; an earlier
+ * cell changed afterwards can still make a later one impossible, which is what `ScheduleCell.blocked`
+ * and the warnings strip are for.
  */
 
 import type { StudyGoal } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
 import { standingsFrom } from "./magicStanding";
-import { joinNames } from "./workspace/standingChip";
+import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
+import type { CellPick } from "./workspace/studyCellState";
 
-/** One row of the cell menu. */
+/** One skill the dropdown offers, and what a month of it buys. */
 export type CellChoice = {
   /** Upper-cased tag. */
   skill: string;
-  /** Lower-case, verbatim from `MagicSkillNode.name`. */
+  /** Lower case, verbatim from `MagicSkillNode.name`. */
   name: string;
-  /** `from 3`, or `needs spirit 3, he will have 1`. */
+  /** The level he holds as the turn begins. */
+  from: number;
+  /** The level a plain month leaves him at. */
+  to: number;
+  /** `3 → 4`, from `from` and `to`. */
   detail: string;
-  /** Null when he can study it at that turn; the reason otherwise. */
-  blocked: string | null;
-  /** The levels offerable as a target, ascending. Empty when only "one month" applies. */
-  levels: number[];
 };
 
 /** One mage the teacher could name this turn. */
@@ -42,40 +44,19 @@ export type TeachChoice = {
   blocked: string | null;
 };
 
-/** The menu, in its four groups, each in tree order. */
+/** The dropdown, and every string in it. */
 export type CellMenu = {
-  /** `From turn 27, Ereb studies`. */
+  /** `Ereb — turn 26`. */
   heading: string;
-  /** `He will be force 4, pattern 2 by then.`, or null when he holds nothing yet. */
-  sub: string | null;
-  /**
-   * Every mage the planner can see, in mage order, minus the teacher himself. One that cannot be
-   * taught is kept and given a reason rather than dropped: a player who ticked Kestrel last turn
-   * needs to learn why he is not offered, not watch him vanish.
-   */
+  /** Only the skills he can study that turn, in the magic tree's order. */
+  choices: CellChoice[];
+  /** The students the second step lists. Empty, or with no unblocked entry, means no `Teaches…` row. */
   teach: TeachChoice[];
-  raise: CellChoice[];
-  begin: CellChoice[];
-  /** Group heading `Not by turn 27`; every row here has `blocked` set. */
-  notYet: CellChoice[];
+  /** `2 he could teach`, or null when the `Teaches…` row is not offered. */
+  teachDetail: string | null;
+  /** `Nothing he can study this turn.`, or null when `choices` is not empty. */
+  empty: string | null;
 };
-
-/**
- * `needs spirit 3, he will have 1` - what a skill wants, and what he will actually hold.
- *
- * Joined with `joinNames`, as `blockedBecause` joins the same fact one file over: two spellings of
- * one sentence a key apart is the drift `standingChip.ts` exists to prevent.
- */
-function needsDetail(tag: string, tree: MagicTree, standing: SkillPoints): string {
-  const node = tree.byTag.get(tag);
-  const needs = [...(node?.within ?? []), ...(node?.crossing ?? [])];
-  return `needs ${joinNames(
-    needs.map((need) => {
-      const held = standing.get(need.tag)?.level ?? 0;
-      return `${need.name} ${need.level}, he will have ${held}`;
-    })
-  )}`;
-}
 
 export function cellMenu(input: {
   mageName: string;
@@ -83,7 +64,7 @@ export function cellMenu(input: {
   /** `ScheduleRow.standings[turnIndex]` - where he stands as that turn begins. */
   standing: SkillPoints;
   tree: MagicTree;
-  /** Every row the Schedule draws, so the teach group can name the mages he could teach. */
+  /** Every row the Schedule draws, so the teach step can name the mages he could teach. */
   rows?: readonly ScheduleRow[];
   /** Which column was clicked, and whose row it is. */
   turnIndex?: number;
@@ -96,172 +77,67 @@ export function cellMenu(input: {
   );
   const { byTag } = standingsFrom(levels, input.tree);
 
-  const raise: CellChoice[] = [];
-  const begin: CellChoice[] = [];
-  const notYet: CellChoice[] = [];
-
-  // The tree's own order, so the menu and the magic tree list the same skills the same way.
+  const choices: CellChoice[] = [];
+  // The tree's own order, so the dropdown and the magic tree list the same skills the same way.
   for (const [tag, node] of input.tree.byTag) {
     const standing = byTag.get(tag);
     if (standing === undefined) {
       continue;
     }
-    const held = input.standing.get(tag)?.level ?? 0;
-    const blocked = blockedBecause(standing, node.name, input.tree, tag);
-    const choice: CellChoice = {
+    // `blockedBecause` is the one predicate: null for `known` and `open`, a sentence for `maxed`,
+    // `ceiling` and `locked` - which is precisely "he can study it and it buys something".
+    if (blockedBecause(standing, node.name, input.tree, tag) !== null) {
+      continue;
+    }
+    const held = input.standing.get(tag) ?? { level: 0, points: 0 };
+    // A plain month: unsheltered, untaught. The dropdown cannot know what the cell will be worth,
+    // because teaching and shelter depend on choices not yet made; the grid's own cell is where
+    // `×2` and `×½` are accounted for.
+    const to = Math.min(node.maxLevel, levelForPoints(held.points + STUDY_POINTS_PER_MONTH));
+    choices.push({
       skill: tag,
       name: node.name,
-      detail: blocked === null ? (held > 0 ? `from ${held}` : "from nothing") : needsDetail(tag, input.tree, input.standing),
-      blocked,
-      levels: Array.from(
-        { length: Math.max(0, node.maxLevel - held) },
-        (_unused, offset) => held + offset + 1
-      )
-    };
-    if (blocked !== null) {
-      notYet.push(choice);
-    } else if (held > 0) {
-      raise.push(choice);
-    } else {
-      begin.push(choice);
-    }
+      from: held.level,
+      to,
+      detail: `${held.level} → ${to}`
+    });
   }
 
-  const holds = [...input.standing]
-    .filter(([tag, held]) => held.level > 0 && input.tree.byTag.has(tag))
-    .map(([tag, held]) => `${input.tree.byTag.get(tag)?.name ?? tag.toLowerCase()} ${held.level}`);
+  const teach = teachChoices(input);
+  const teachable = teach.filter((choice) => choice.blocked === null).length;
 
   return {
-    heading: `From turn ${input.turn}, ${input.mageName} studies`,
-    sub: holds.length === 0 ? null : `He will be ${holds.join(", ")} by then.`,
-    teach: teachChoices(input),
-    raise,
-    begin,
-    notYet
+    heading: `${input.mageName} — turn ${input.turn}`,
+    choices,
+    teach,
+    // Offered only when it leads somewhere: a teacher with nobody teachable gets no row and no
+    // dead end.
+    teachDetail: teachable === 0 ? null : `${teachable} he could teach`,
+    empty: choices.length === 0 ? "Nothing he can study this turn." : null
   };
 }
 
-/** The warning under a chosen-anyway impossible goal, or null. */
-export function cellWarning(choice: CellChoice, turn: number, mageName: string): string | null {
-  if (choice.blocked === null) {
-    return null;
-  }
-  return `${mageName} cannot study ${choice.name} by turn ${turn}. The plan will say so anyway.`;
-}
-
 /**
- * The queue after setting `goal` from `turnIndex` on: the head goals that fill the turns before it,
- * kept.
+ * The plan after one choice at one turn: that turn set, replaced or emptied, and every other turn
+ * exactly as it was.
  *
- * Truncated, not spliced. The goal running at `turnIndex` has its `targetLevel` replaced with the
- * level the projection says he holds as that turn begins, so what is drawn to the *left* of the
- * click does not move; it is dropped entirely when `turnIndex` is its first turn. Everything after
- * the click goes, which is what the ghosted `was:` line tells the player.
+ * `choice` of null is `— nothing`. The result is ascending by turn and holds at most one entry per
+ * turn, so it is already what `plannedGoals` would return.
  */
-export function goalsAfterSet(
+export function goalsAfterChoice(
   goals: readonly StudyGoal[],
-  row: ScheduleRow,
-  turnIndex: number,
-  goal: StudyGoal
+  turn: number,
+  choice: CellPick | null
 ): StudyGoal[] {
-  const cell = row.cells[turnIndex];
-  if (cell === undefined || cell.kind === "idle") {
-    return [...goals, goal];
+  const kept = goals.filter((goal) => goal.turn !== turn);
+  if (choice !== null) {
+    kept.push(
+      choice.kind === "teach"
+        ? { kind: "teach", turn, students: [...choice.students] }
+        : { kind: "study", turn, skill: choice.skill }
+    );
   }
-
-  const kept = goals.slice(0, cell.goalIndex);
-  const running = goals[cell.goalIndex];
-  const firstTurn = row.cells.findIndex(
-    (one) => one.kind === "study" && one.goalIndex === cell.goalIndex
-  );
-  if (running !== undefined && running.kind === "study" && firstTurn !== turnIndex) {
-    const reached = row.standings[turnIndex]?.get(running.skill)?.level ?? null;
-    kept.push({ kind: "study" as const, skill: running.skill, targetLevel: reached });
-  }
-  kept.push(goal);
-  return kept;
-}
-
-/**
- * The queue after the popover's `Set`, whichever kind of goal it wrote.
- *
- * The dispatch lives here rather than at the call site so it can be tested: `packages/shared` has
- * no jsdom (ah-nass), so nothing there can press `Set`, and a routing decision spelled inline in
- * `StudySchedule.tsx` is one no test in this package can reach. A study goal replaces the tail
- * because it runs until it is met; a teach goal is one month and inserts (the navigator's I1).
- */
-export function goalsAfterPick(
-  goals: readonly StudyGoal[],
-  row: ScheduleRow,
-  turnIndex: number,
-  goal: StudyGoal
-): StudyGoal[] {
-  return goal.kind === "teach"
-    ? goalsAfterTeach(goals, row, turnIndex, goal.students)
-    : goalsAfterSet(goals, row, turnIndex, goal);
-}
-
-/** The queue with everything from `turnIndex` on removed: `Clear from here`. */
-export function goalsAfterClear(
-  goals: readonly StudyGoal[],
-  row: ScheduleRow,
-  turnIndex: number
-): StudyGoal[] {
-  const cell = row.cells[turnIndex];
-  if (cell === undefined || cell.kind === "idle") {
-    return [...goals];
-  }
-
-  const kept = goals.slice(0, cell.goalIndex);
-  const running = goals[cell.goalIndex];
-  const firstTurn = row.cells.findIndex(
-    (one) => one.kind === "study" && one.goalIndex === cell.goalIndex
-  );
-  if (running !== undefined && running.kind === "study" && firstTurn !== turnIndex) {
-    const reached = row.standings[turnIndex]?.get(running.skill)?.level ?? null;
-    kept.push({ kind: "study" as const, skill: running.skill, targetLevel: reached });
-  }
-  return kept;
-}
-
-/**
- * The queue after saying "teach these mages" at one cell - **inserting**, not truncating.
- *
- * A study click replaces the tail because a study goal runs until it is met; a teach goal is one
- * month, so what follows it is a plan the player has not changed. The navigator chose I1 for
- * exactly that: teaching a month costs a month and nothing else.
- *
- * The months already spent on the head goal before this cell are re-expressed as that many bare
- * one-month goals of the same skill, which is exact - a bare goal is one studied month, and so was
- * each of those cells - and preserves the target the player set.
- *
- * Setting a teach on a cell that is **already** a teach goal replaces that goal in place instead,
- * so re-opening a teach cell and changing the ticks does not lengthen the plan by a month.
- */
-export function goalsAfterTeach(
-  goals: readonly StudyGoal[],
-  row: ScheduleRow,
-  turnIndex: number,
-  students: readonly string[]
-): StudyGoal[] {
-  const teach: StudyGoal = { kind: "teach", students: [...students] };
-  const cell = row.cells[turnIndex];
-  if (cell === undefined || cell.kind === "idle") {
-    return [...goals, teach];
-  }
-  if (cell.kind === "teach") {
-    return goals.map((goal, index) => (index === cell.goalIndex ? teach : goal));
-  }
-
-  const kept = goals.slice(0, cell.goalIndex);
-  const spent = row.cells.filter(
-    (one, index) => index < turnIndex && one.kind === "study" && one.goalIndex === cell.goalIndex
-  ).length;
-  for (let month = 0; month < spent; month += 1) {
-    kept.push({ kind: "study", skill: cell.skill, targetLevel: null });
-  }
-  kept.push(teach);
-  return [...kept, ...goals.slice(cell.goalIndex)];
+  return kept.sort((left, right) => left.turn - right.turn);
 }
 
 /**

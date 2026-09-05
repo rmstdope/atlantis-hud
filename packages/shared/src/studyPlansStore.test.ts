@@ -21,10 +21,20 @@ function plan(unitId = "1204", skill: string | null = "FORC"): StudyPlanRecord {
   return {
     factionId: "21",
     unitId,
-    goals: skill ? [{ kind: "study" as const, skill, targetLevel: 4 }] : [],
+    goals: skill ? [{ kind: "study" as const, turn: 24, skill }] : [],
     comment: "",
     updatedAt: "2026-01-01T00:00:00.000Z"
   };
+}
+
+/** `save`'s new shape: the key, and an edit that ignores what is stored. */
+function saving(
+  store: ReturnType<typeof useStudyPlansStore.getState>,
+  core: CoreClient,
+  opened: OpenedGame,
+  row: StudyPlanRecord
+): Promise<void> {
+  return store.save(core, opened, { factionId: row.factionId, unitId: row.unitId }, () => row);
 }
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
@@ -89,7 +99,7 @@ describe("save", () => {
       })
     });
 
-    await useStudyPlansStore.getState().save(core, game(), plan());
+    await saving(useStudyPlansStore.getState(), core, game(), plan());
 
     expect(seen).toEqual(["cache held 0"]);
     expect(useStudyPlansStore.getState().plans).toEqual([plan()]);
@@ -98,16 +108,16 @@ describe("save", () => {
   it("leaves the cache alone and rethrows when the write fails", async () => {
     const core = client({ saveStudyPlans: vi.fn().mockRejectedValue(new Error("no")) });
 
-    await expect(useStudyPlansStore.getState().save(core, game(), plan())).rejects.toThrow("no");
+    await expect(saving(useStudyPlansStore.getState(), core, game(), plan())).rejects.toThrow("no");
 
     expect(useStudyPlansStore.getState().plans).toEqual([]);
   });
 
   it("replaces the row held for the same mage rather than adding a second", async () => {
     const core = client();
-    await useStudyPlansStore.getState().save(core, game(), plan("1204", "FORC"));
+    await saving(useStudyPlansStore.getState(), core, game(), plan("1204", "FORC"));
 
-    await useStudyPlansStore.getState().save(core, game(), plan("1204", "PATT"));
+    await saving(useStudyPlansStore.getState(), core, game(), plan("1204", "PATT"));
 
     expect(useStudyPlansStore.getState().plans).toEqual([plan("1204", "PATT")]);
   });
@@ -115,8 +125,8 @@ describe("save", () => {
   it("keeps the cache in the order the pane renders", async () => {
     const core = client();
 
-    await useStudyPlansStore.getState().save(core, game(), plan("9"));
-    await useStudyPlansStore.getState().save(core, game(), plan("10"));
+    await saving(useStudyPlansStore.getState(), core, game(), plan("9"));
+    await saving(useStudyPlansStore.getState(), core, game(), plan("10"));
 
     expect(useStudyPlansStore.getState().plans.map((one) => one.unitId)).toEqual(["10", "9"]);
   });
@@ -125,8 +135,8 @@ describe("save", () => {
 describe("remove", () => {
   it("drops the named rows, and only those", async () => {
     const core = client();
-    await useStudyPlansStore.getState().save(core, game(), plan("1204"));
-    await useStudyPlansStore.getState().save(core, game(), plan("1205"));
+    await saving(useStudyPlansStore.getState(), core, game(), plan("1204"));
+    await saving(useStudyPlansStore.getState(), core, game(), plan("1205"));
 
     await useStudyPlansStore
       .getState()
@@ -137,7 +147,7 @@ describe("remove", () => {
 
   it("rethrows and keeps the cache when the write fails", async () => {
     const core = client();
-    await useStudyPlansStore.getState().save(core, game(), plan("1204"));
+    await saving(useStudyPlansStore.getState(), core, game(), plan("1204"));
     const failing = client({ saveStudyPlans: vi.fn().mockRejectedValue(new Error("no")) });
 
     await expect(
@@ -159,5 +169,98 @@ describe("clear", () => {
       status: "idle",
       plans: []
     });
+  });
+});
+
+describe("two writes at once", () => {
+  it("lands them in the order they were made, however slow the first is", async () => {
+    const landed: string[] = [];
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let first = true;
+    const core = client({
+      saveStudyPlans: vi.fn().mockImplementation(async (_path, _game, plans: StudyPlanRecord[]) => {
+        // The first write is held open. Without the queue the second would complete while it
+        // waits, and the first would then clobber it in storage - which is a plan the player made
+        // vanishing on the next reload.
+        if (first) {
+          first = false;
+          await held;
+        }
+        landed.push(plans[0]?.unitId ?? "none");
+      })
+    });
+    const store = useStudyPlansStore.getState();
+
+    const one = saving(store, core, game(), plan("1204", "FORC"));
+    const two = saving(store, core, game(), plan("1205", "PATT"));
+    release();
+    await Promise.all([one, two]);
+
+    expect(landed).toEqual(["1204", "1205"]);
+  });
+
+  it("builds the second edit from the row the first one wrote, not from the row it started with", async () => {
+    // The defect this queue exists for: a plan is one row whose goals are written whole, so two
+    // choices made before the first write lands would otherwise both be built from the empty row
+    // and the second would overwrite the first.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let first = true;
+    const written: StudyPlanRecord[] = [];
+    const core = client({
+      saveStudyPlans: vi.fn().mockImplementation(async (_path, _game, plans: StudyPlanRecord[]) => {
+        if (first) {
+          first = false;
+          await held;
+        }
+        written.push(plans[0]);
+      })
+    });
+    const store = useStudyPlansStore.getState();
+    const key = { factionId: "21", unitId: "1204" };
+    const goal = (turn: number, skill: string) => ({ kind: "study" as const, turn, skill });
+    const add = (turn: number, skill: string) => (current: StudyPlanRecord | null) => ({
+      factionId: key.factionId,
+      unitId: key.unitId,
+      goals: [...(current?.goals ?? []), goal(turn, skill)],
+      comment: current?.comment ?? "",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    });
+
+    const one = store.save(core, game(), key, add(24, "FORC"));
+    const two = store.save(core, game(), key, add(26, "PATT"));
+    release();
+    await Promise.all([one, two]);
+
+    expect(written[1].goals).toEqual([goal(24, "FORC"), goal(26, "PATT")]);
+    expect(useStudyPlansStore.getState().plans[0].goals).toEqual([
+      goal(24, "FORC"),
+      goal(26, "PATT")
+    ]);
+  });
+
+  it("does not let a failed write poison the one behind it", async () => {
+    let call = 0;
+    const core = client({
+      saveStudyPlans: vi.fn().mockImplementation(async () => {
+        call += 1;
+        if (call === 1) {
+          throw new Error("no");
+        }
+      })
+    });
+    const store = useStudyPlansStore.getState();
+
+    const failing = saving(store, core, game(), plan("1204"));
+    const following = saving(store, core, game(), plan("1205"));
+
+    await expect(failing).rejects.toThrow("no");
+    await expect(following).resolves.toBeUndefined();
+    expect(useStudyPlansStore.getState().plans.map((one) => one.unitId)).toEqual(["1205"]);
   });
 });

@@ -276,23 +276,26 @@ function requireAdmissible(prepared: PreparedImport): number {
 function withGoals(
   plan: StudyPlanRecord & { skill?: string | null; targetLevel?: number | null }
 ): StudyPlanRecord {
-  const { skill, targetLevel, ...rest } = plan;
+  // `turn: 0` for anything written before ah-lyg6.2.3's redesign, exactly as the desktop reader
+  // answers: a queue of goals names no turn and cannot be converted without the report it was
+  // projected against, so `plannedGoals` drops it and the next save rewrites the row.
   const goals =
-    rest.goals ??
-    (skill ? [{ kind: "study" as const, skill, targetLevel: targetLevel ?? null }] : []);
-  // A goal written before ah-lyg6.3 carries no discriminant. Same courtesy as the line above, and
-  // deletable on the same day: study plans were never in a release.
+    plan.goals ?? (plan.skill ? [{ kind: "study" as const, turn: 0, skill: plan.skill }] : []);
+  // Built field by field rather than spread-minus-the-legacy-ones, so a flat `skill` or
+  // `targetLevel` column cannot reach a caller however many of them a stored row turns out to
+  // carry. A goal written before ah-lyg6.3 carries no discriminant, and is stamped here for the
+  // same reason and deletable on the same day: study plans were never in a release.
   return {
-    ...rest,
-    goals: goals.map((goal) =>
-      "kind" in goal
-        ? goal
-        : {
-            kind: "study" as const,
-            skill: (goal as { skill: string }).skill,
-            targetLevel: (goal as { targetLevel: number | null }).targetLevel ?? null
-          }
-    )
+    factionId: plan.factionId,
+    unitId: plan.unitId,
+    comment: plan.comment,
+    updatedAt: plan.updatedAt,
+    goals: goals.map((goal) => {
+      const one = goal as { kind?: string; turn?: number; skill?: string; students?: string[] };
+      return one.kind === "teach"
+        ? { kind: "teach" as const, turn: one.turn ?? 0, students: one.students ?? [] }
+        : { kind: "study" as const, turn: one.turn ?? 0, skill: one.skill ?? "" };
+    })
   };
 }
 

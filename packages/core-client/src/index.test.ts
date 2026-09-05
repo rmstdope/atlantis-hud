@@ -557,7 +557,7 @@ function aPlan(factionId: string, unitId: string): StudyPlanRecord {
   return {
     factionId,
     unitId,
-    goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+    goals: [{ kind: "study", turn: 24, skill: "FORC" }],
     comment: "",
     updatedAt: "2026-08-07T12:00:00Z"
   };

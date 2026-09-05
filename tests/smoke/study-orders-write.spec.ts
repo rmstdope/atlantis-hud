@@ -31,8 +31,6 @@ async function openPlannerWithHandWrittenOrders(page: import("@playwright/test")
   await cell.click();
   await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
   await page.getByTestId("study-schedule-choice-FORC").click();
-  await page.getByTestId("study-schedule-level").selectOption("5");
-  await page.getByTestId("study-schedule-set").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
   await page.getByTestId("study-planner-view-orders").click();
   await expect(page.getByTestId("study-planner-orders-95")).toBeVisible();
@@ -47,7 +45,7 @@ test("the Orders tab writes the plan into the document, and the write can be und
   const prompt = page.getByTestId("study-orders-write-prompt");
   await expect(prompt).toBeVisible();
   await expect(prompt).toContainText(`Six of Seven (${MAGE})`);
-  await expect(prompt).toContainText("STUDY FORC 5 replaces build Tower");
+  await expect(prompt).toContainText("STUDY FORC replaces build Tower");
 
   await page.getByTestId("study-orders-write-confirm").click();
   await expect(prompt).toHaveCount(0);
@@ -58,7 +56,7 @@ test("the Orders tab writes the plan into the document, and the write can be und
   // The planner stays open after a write; the editor behind it is what the write is judged on.
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("study-planner-dialog")).toHaveCount(0);
-  await expectOrders(page, /STUDY FORC 5/u);
+  await expectOrders(page, /STUDY FORC/u);
   await expectOrders(page, /claim 200/u);
   await expectOrders(page, /give 1250 20 silv/u);
   await expectOrdersNot(page, /build Tower/u);
@@ -75,7 +73,7 @@ test("the Orders tab writes the plan into the document, and the write can be und
   );
 
   await page.keyboard.press("Escape");
-  await expectOrders(page, /STUDY FORC 5/u);
+  await expectOrders(page, /STUDY FORC/u);
   await expectOrders(page, /claim 200/u);
 });
 

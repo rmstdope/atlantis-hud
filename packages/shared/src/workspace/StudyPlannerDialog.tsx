@@ -12,12 +12,12 @@ import { useEscapeToDismiss } from "./dismissLayer";
 import { STANDING_CHIP, standingWords } from "./standingChip";
 import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
-import { goalQueueText, scheduleRows, scheduleTurns } from "../studySchedule";
+import { planLine, scheduleRows, scheduleTurns } from "../studySchedule";
 import { plannerNotices } from "../studyTeaching";
 import { studyOrders } from "../studyOrders";
 import { studyWritePlan } from "../studyOrdersWrite";
 import { shelterKey, type ShelterSeats } from "../studyShelter";
-import { planFor } from "../studyPlans";
+import { planFor, plannedGoals } from "../studyPlans";
 import { STUDY_NOTE_MAX_CHARS, noteCountText, normalizeStudyNote } from "../studyNote";
 import { isMacPlatform } from "../shortcuts";
 import { StudySchedule } from "./StudySchedule";
@@ -101,7 +101,12 @@ export function StudyPlannerDialog({
   regionBanner: (regionId: string) => string | null;
   /** Replaces the whole document, as an external write. `AppShell`'s `writeStudyOrdersDocument`. */
   onWriteOrdersDocument: (next: string) => void;
-  onSavePlan: (factionId: string, unitId: string, goals: StudyGoal[]) => void;
+  /** The edit, not the result: it is applied against the stored row when the write runs. */
+  onSavePlan: (
+    factionId: string,
+    unitId: string,
+    edit: (current: readonly StudyGoal[]) => StudyGoal[]
+  ) => void;
   onSaveNote: (factionId: string, unitId: string, comment: string) => void;
   onDismiss: () => void;
 }) {
@@ -433,9 +438,9 @@ export function StudyPlannerDialog({
             tree={tree}
             mode={cellMode}
             onEvent={(event) => setCellMode((mode) => reduceCell(mode, event))}
-            onCommit={(rowKey, goals) => {
+            onCommit={(rowKey, edit) => {
               const [factionId, unitId] = rowKey.split("/");
-              onSavePlan(factionId, unitId, goals);
+              onSavePlan(factionId, unitId, edit);
             }}
             saveError={saveError}
             notices={notices}
@@ -457,6 +462,7 @@ export function StudyPlannerDialog({
             />
             <StudyPlannerDetail
               mage={picked}
+              turn={turns[0] ?? null}
               label={label}
               names={names}
               tree={tree}
@@ -548,6 +554,7 @@ export function StudyPlannerList({
 /** One mage read out: where he is, what he knows, what he may begin, and what holds him back. */
 export function StudyPlannerDetail({
   mage,
+  turn,
   label,
   names = new Map(),
   tree,
@@ -556,6 +563,8 @@ export function StudyPlannerDetail({
   onSaveNote
 }: {
   mage: PlannerMage;
+  /** The turn the plan line names - `turns[0]`, the next one; null before a report is loaded. */
+  turn: number | null;
   label: (regionId: string) => string;
   /** Unit id to mage name, so a teach goal in the plan line reads as a name. */
   names?: ReadonlyMap<string, string>;
@@ -589,7 +598,7 @@ export function StudyPlannerDetail({
       {/* Read-only: the plan is written in the Schedule view, and two editors for one thing was
           the alternative the navigator rejected. */}
       <p data-testid="study-planner-plan-line" className="mt-2 text-ink-dim">
-        {goalQueueText(plan?.goals ?? [], tree, names) ?? "nothing planned"}
+        {turn === null ? "Nothing planned." : planLine(plannedGoals(plan?.goals ?? []), turn, tree, names)}
       </p>
 
       <StudyPlannerNote
