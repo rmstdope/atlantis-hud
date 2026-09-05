@@ -72,8 +72,9 @@ export function UnreadableCopyButton({
   /** `Borg (73)`, or null when the report does not name both parts. */
   factionLabel: string | null;
 }) {
-  // Built on click rather than on every render of the panel: a report with many unreadable lines
-  // makes this a long string, and the panel re-renders as the workspace does.
+  // Memoised rather than rebuilt on every render of the panel: a report with many unreadable
+  // lines makes this a long string, and the panel re-renders as the workspace does. `entries` is
+  // `parsed?.unreadableLines ?? []`, which is stable whenever a report is loaded.
   const text = useMemo(
     () => unreadableClipboardText(entries, turnNumber, factionLabel),
     [entries, turnNumber, factionLabel]
