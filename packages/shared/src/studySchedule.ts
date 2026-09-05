@@ -21,7 +21,7 @@ import { shelterKey, type ShelterSeats } from "./studyShelter";
 import { monthWords, taughtWorth, type TeachOutcome, type TeachRefusal } from "./studyTeaching";
 import { standingsFrom, type SkillStanding } from "./magicStanding";
 import type { MagicTree } from "./magicTree";
-import { remainingGoals } from "./studyPlans";
+import { plannedGoals } from "./studyPlans";
 import { STUDY_POINTS_PER_MONTH, levelForPoints, pointsForLevel } from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
 import { joinNames } from "./workspace/standingChip";
@@ -44,11 +44,6 @@ export type ScheduleCell =
       level: number;
       /** True when the level rose this turn: the cell that is tinted. */
       gained: boolean;
-      /**
-       * Which goal of the queue produced this cell. What `goalsAfterSet` truncates, and the only
-       * reason a cell can be edited without re-running the projection.
-       */
-      goalIndex: number;
       /**
        * Why this month buys nothing, or null when it buys a month of study. Set when the skill is
        * locked, at its prerequisite ceiling, or already at its maximum - the plan may still say
@@ -73,7 +68,6 @@ export type ScheduleCell =
     }
   | {
       kind: "teach";
-      goalIndex: number;
       /** The stored student list, unchanged - what the popover reopens with. */
       students: readonly string[];
       /** Who was actually taught, and who was refused and why. */
@@ -81,7 +75,7 @@ export type ScheduleCell =
       /** `TEACH Sable`, `TEACH Sable, Vess`, `TEACH 3 mages`, `TEACH nobody`. */
       label: string;
     }
-  /** Nothing planned for this turn: the queue is empty or has run out. */
+  /** Nothing planned for this turn. */
   | { kind: "idle" };
 
 /** One mage's row of the Schedule. */
@@ -93,15 +87,15 @@ export type ScheduleRow = {
   name: string;
   /** `PlannerMage.regionId` - the core's own id. Never formatted here. */
   regionId: string;
-  /** `force 3 · force → 5, then pattern → 3` - the line under the name. */
+  /** `force 3` - his strongest magic skill, the line under the name. */
   summary: string;
   /** True when the mage has a non-empty comment: the pencil. */
   hasNote: boolean;
   /**
-   * The queue as stored, untouched - not what the projection made of it.
+   * The plan as stored, sanitized by `plannedGoals` - ascending by turn, at most one per turn.
    *
-   * `goalsAfterSet` and `goalsAfterClear` write from this: a queue rebuilt from the drawn cells
-   * would have lost every goal the projection skipped and every target it has not reached.
+   * `goalsAfterChoice` writes from this: a plan rebuilt from the drawn cells would have lost every
+   * goal on a turn outside the six columns.
    */
   goals: readonly StudyGoal[];
   /** One per turn, `SCHEDULE_TURNS` long, in turn order. */
@@ -220,14 +214,13 @@ type Intent =
   | { kind: "none" }
   | {
       kind: "study";
-      goalIndex: number;
       skill: string;
       name: string;
       before: { level: number; points: number };
       maxLevel: number;
       blocked: string | null;
     }
-  | { kind: "teach"; goalIndex: number; students: readonly string[] };
+  | { kind: "teach"; students: readonly string[] };
 
 /**
  * Every mage's turns, projected together.
@@ -241,45 +234,21 @@ export function projectAll(input: {
   /** In `plannerGroups` order: your faction first, then allies oldest sheet first. */
   mages: readonly ProjectedMage[];
   tree: MagicTree;
-  turnCount: number;
+  /** The turn numbers the columns carry, in order - `scheduleTurns(...)`. */
+  turns: readonly number[];
   seats: ShelterSeats;
 }): Map<string, { cells: ScheduleCell[]; standings: SkillPoints[] }> {
   const held = new Map<string, Map<string, { level: number; points: number }>>();
-  const index = new Map<string, number>();
   const out = new Map<string, { cells: ScheduleCell[]; standings: SkillPoints[] }>();
 
   for (const mage of input.mages) {
-    const start = copy(mage.start);
-    held.set(mage.key, start);
-    // The queue is indexed against the *stored* list, so a cell can say which goal produced it even
-    // after the satisfied head has been skipped. Nothing here is written back: pruning happens only
-    // when the player next edits that mage (`remainingGoals`).
-    index.set(
-      mage.key,
-      mage.goals.length - remainingGoals(mage.goals, levelsOf(start)).length
-    );
+    held.set(mage.key, copy(mage.start));
     out.set(mage.key, { cells: [], standings: [] });
   }
 
-  const dropSatisfied = (mage: ProjectedMage) => {
-    let at = index.get(mage.key) ?? 0;
-    const levels = held.get(mage.key) ?? new Map();
-    while (at < mage.goals.length) {
-      const goal = mage.goals[at];
-      if (goal.kind === "teach") {
-        break;
-      }
-      const level = levels.get(goal.skill)?.level ?? 0;
-      if (goal.targetLevel === null || level < goal.targetLevel) {
-        break;
-      }
-      at += 1;
-    }
-    index.set(mage.key, at);
-  };
-
-  // At most `turnCount` iterations, so termination is structural rather than argued.
-  for (let turn = 0; turn < input.turnCount; turn += 1) {
+  // One iteration per column, so termination is structural rather than argued.
+  for (let turn = 0; turn < input.turns.length; turn += 1) {
+    const planned = input.turns[turn];
     // 1. Record the standing every decision this turn is taken against.
     const standing = new Map<string, SkillPoints>();
     for (const mage of input.mages) {
@@ -291,16 +260,13 @@ export function projectAll(input: {
     // 2. Each mage's intent, decided independently of everyone else's.
     const intents = new Map<string, Intent>();
     for (const mage of input.mages) {
-      const at = index.get(mage.key) ?? 0;
-      if (at >= mage.goals.length) {
+      const goal = mage.goals.find((one) => one.turn === planned);
+      if (goal === undefined) {
         intents.set(mage.key, { kind: "none" });
         continue;
       }
-      const goal = mage.goals[at];
       if (goal.kind === "teach") {
-        // A teach goal is one month, always (`rules/teach`), so the index moves on regardless of
-        // whether anybody turns out to be teachable.
-        intents.set(mage.key, { kind: "teach", goalIndex: at, students: goal.students });
+        intents.set(mage.key, { kind: "teach", students: goal.students });
         continue;
       }
       const node = input.tree.byTag.get(goal.skill);
@@ -309,7 +275,6 @@ export function projectAll(input: {
       const where = standingsFrom(levels, input.tree).byTag.get(goal.skill);
       intents.set(mage.key, {
         kind: "study",
-        goalIndex: at,
         skill: goal.skill,
         name,
         before: standing.get(mage.key)?.get(goal.skill) ?? { level: 0, points: 0 },
@@ -436,7 +401,6 @@ export function projectAll(input: {
         const outcome = outcomes.get(mage.key) ?? { taught: [], refused: [], worth: 1 };
         row.cells.push({
           kind: "teach",
-          goalIndex: intent.goalIndex,
           students: intent.students,
           outcome,
           label: teachLabel(
@@ -445,29 +409,24 @@ export function projectAll(input: {
             )
           )
         });
-        index.set(mage.key, intent.goalIndex + 1);
-        dropSatisfied(mage);
         continue;
       }
 
       if (intent.blocked !== null) {
-        // One warned cell, and the queue moves on. Leaving an impossible goal in place would eat
-        // every remaining column and tell the player nothing.
+        // One warned cell, and the turns around it are planned as they were: an impossible month
+        // says why and buys nothing.
         row.cells.push({
           kind: "study",
           skill: intent.skill,
           name: intent.name,
           level: intent.before.level,
           gained: false,
-          goalIndex: intent.goalIndex,
           blocked: intent.blocked,
           worth: 0,
           unsheltered: false,
           shelterUnknown: false,
           taughtBy: null
         });
-        index.set(mage.key, intent.goalIndex + 1);
-        dropSatisfied(mage);
         continue;
       }
 
@@ -489,21 +448,12 @@ export function projectAll(input: {
         name: intent.name,
         level,
         gained: level > intent.before.level,
-        goalIndex: intent.goalIndex,
         blocked: null,
         worth,
         unsheltered: halved,
         shelterUnknown: shelterUnknown.has(mage.key),
         taughtBy: teacher
       });
-
-      const goal = mage.goals[intent.goalIndex];
-      if (goal !== undefined && goal.kind === "study") {
-        if (goal.targetLevel === null || level >= goal.targetLevel) {
-          index.set(mage.key, intent.goalIndex + 1);
-        }
-      }
-      dropSatisfied(mage);
     }
   }
 
@@ -514,67 +464,54 @@ export function projectAll(input: {
 }
 
 /**
- * `force → 4, then pattern → 3`; null when the queue is empty.
+ * `Next turn: force` - the plan line under a mage in the All mages detail.
  *
- * `names` maps a unit id to a mage's name, so a teach goal reads `teach Sable` rather than naming
- * a number the player never typed. An id it does not carry falls back to the id itself.
+ * One turn only, and deliberately: the Schedule is where a whole row is read, and the depth view
+ * says what is about to happen. `Nothing planned for turn 24.` covers both an empty plan and one
+ * that starts later.
+ *
+ * A teach goal reads `Next turn: teaches Sable and Vess`, joined with `joinNames` and falling back
+ * to the unit id where `names` has none; an empty `students` list reads `Next turn: teaches nobody`.
  */
-export function goalQueueText(
+export function planLine(
   goals: readonly StudyGoal[],
+  turn: number,
   tree: MagicTree,
+  /** Unit id to mage name, so a teach goal reads as names. */
   names: ReadonlyMap<string, string> = new Map()
-): string | null {
-  if (goals.length === 0) {
-    return null;
+): string {
+  const goal = goals.find((one) => one.turn === turn);
+  if (goal === undefined) {
+    return `Nothing planned for turn ${turn}.`;
   }
-  const parts = goals.map((goal) => {
-    if (goal.kind === "teach") {
-      if (goal.students.length >= 3) {
-        return `teach ${goal.students.length} mages`;
-      }
-      return `teach ${joinNames(goal.students.map((unitId) => names.get(unitId) ?? unitId))}`;
+  if (goal.kind === "teach") {
+    if (goal.students.length === 0) {
+      return "Next turn: teaches nobody";
     }
-    const name = tree.byTag.get(goal.skill)?.name ?? goal.skill.toLowerCase();
-    return goal.targetLevel === null ? `${name}, one month` : `${name} → ${goal.targetLevel}`;
-  });
-  return parts.join(", then ");
+    return `Next turn: teaches ${joinNames(
+      goal.students.map((unitId) => names.get(unitId) ?? unitId)
+    )}`;
+  }
+  return `Next turn: ${tree.byTag.get(goal.skill)?.name ?? goal.skill.toLowerCase()}`;
 }
 
-/** `force 3` - his strongest magic skill and its level, or `no magic skills` when he holds none. */
-function reachOf(start: SkillPoints, tree: MagicTree): string {
+/** `force 3` - his strongest magic skill and its level, or `no magic skills`. */
+export function scheduleSummary(input: { start: SkillPoints; tree: MagicTree }): string {
   let best: { name: string; level: number } | null = null;
-  for (const [tag, held] of start) {
-    const node = tree.byTag.get(tag);
+  for (const [tag, held] of input.start) {
+    const node = input.tree.byTag.get(tag);
     if (node === undefined || held.level <= 0) {
       continue;
     }
-    if (best === null || held.level > best.level || (held.level === best.level && node.name < best.name)) {
+    if (
+      best === null ||
+      held.level > best.level ||
+      (held.level === best.level && node.name < best.name)
+    ) {
       best = { name: node.name, level: held.level };
     }
   }
   return best === null ? "no magic skills" : `${best.name} ${best.level}`;
-}
-
-/**
- * `force 3 · force → 5, then pattern → 3` - the line under a mage's name.
- *
- * `goal reached` when the queue is stored but every goal in it is already satisfied, and
- * `nothing planned` when there is no queue at all: the two say different things to a player.
- */
-export function scheduleSummary(input: {
-  start: SkillPoints;
-  goals: readonly StudyGoal[];
-  tree: MagicTree;
-  /** Unit id to mage name, for a teach goal. */
-  names?: ReadonlyMap<string, string>;
-}): string {
-  const reach = reachOf(input.start, input.tree);
-  const remaining = remainingGoals(input.goals, levelsOf(input.start));
-  if (input.goals.length === 0) {
-    return `${reach} · nothing planned`;
-  }
-  const text = goalQueueText(remaining, input.tree, input.names);
-  return `${reach} · ${text ?? "goal reached"}`;
 }
 
 /** The points a mage's report or sheet printed, keyed by upper-cased tag. */
@@ -614,7 +551,7 @@ export function scheduleRows(input: {
         regionId: mage.regionId,
         structureId: mage.structureId,
         start: startOf(mage.skills),
-        goals: byKey.get(mage.key)?.goals ?? []
+        goals: plannedGoals(byKey.get(mage.key)?.goals ?? [])
       });
       names.set(mage.unitId, mage.name);
     }
@@ -623,7 +560,7 @@ export function scheduleRows(input: {
   const projected = projectAll({
     mages,
     tree: input.tree,
-    turnCount: input.turns.length,
+    turns: input.turns,
     seats: input.seats
   });
 
@@ -631,7 +568,7 @@ export function scheduleRows(input: {
   for (const group of input.groups) {
     for (const mage of group.mages) {
       const plan = byKey.get(mage.key) ?? null;
-      const goals = plan?.goals ?? [];
+      const goals = plannedGoals(plan?.goals ?? []);
       const start = startOf(mage.skills);
       const { cells, standings } = projected.get(mage.key) ?? { cells: [], standings: [start] };
       rows.push({
@@ -640,7 +577,7 @@ export function scheduleRows(input: {
         unitId: mage.unitId,
         name: mage.name,
         regionId: mage.regionId,
-        summary: scheduleSummary({ start, goals, tree: input.tree, names }),
+        summary: scheduleSummary({ start, tree: input.tree }),
         hasNote: (plan?.comment ?? "") !== "",
         goals,
         cells,

@@ -37,7 +37,6 @@ const aStudyCell = (over: Partial<Extract<ScheduleCell, { kind: "study" }>> = {}
   name: "force",
   level: 4,
   gained: true,
-  goalIndex: 0,
   blocked: null,
   worth: 1,
   unsheltered: false,
@@ -62,7 +61,6 @@ const aTeachCell = ({
   taught: string[];
 }): ScheduleCell => ({
   kind: "teach",
-  goalIndex: 0,
   students: taught.map((key) => key.slice(key.indexOf("/") + 1)),
   label: "TEACH",
   ...over,
@@ -81,7 +79,7 @@ const aNotice = (over: Partial<PlannerNotice> = {}): PlannerNotice => ({
 
 /** Two studying, one teaching, one idle, across the two factions. */
 const mixedRows = (): ScheduleRow[] => [
-  aRow({ cells: [aStudyCell()], goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }] }),
+  aRow({ cells: [aStudyCell()], goals: [{ kind: "study", turn: 24, skill: "FORC" }] }),
   aRow({ unitId: "881", key: "95/881", name: "Sable", cells: [aTeachCell({ taught: ["95/1234"] })] }),
   aRow({ unitId: "1263", key: "95/1263", name: "Vess", cells: [{ kind: "idle" }] }),
   aRow({
@@ -90,7 +88,7 @@ const mixedRows = (): ScheduleRow[] => [
     key: "17/300",
     name: "Ghost",
     cells: [aStudyCell({ skill: "SPIR", name: "spirit", level: 4 })],
-    goals: [{ kind: "study", skill: "SPIR", targetLevel: 4 }],
+    goals: [{ kind: "study", turn: 24, skill: "SPIR" }],
     standings: [standing({ SPIR: 3 })]
   })
 ];
@@ -100,7 +98,7 @@ describe("studyOrders", () => {
     const rows = [
       aRow({
         cells: [aStudyCell()],
-        goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+        goals: [{ kind: "study", turn: 24, skill: "FORC" }],
         standings: [standing({ FORC: 3 })]
       })
     ];
@@ -110,15 +108,15 @@ describe("studyOrders", () => {
     expect(orders.sections[0].text.split("\n")).toEqual([
       "; Borg TNG (95) — study orders for turn 72, from Atlantis HUD",
       "UNIT 1234           ; Ereb",
-      "  STUDY FORC 4      ; force 3 -> 4"
+      "  STUDY FORC        ; force 3 -> 4"
     ]);
   });
 
-  it("a_goal_with_no_target_level_writes_the_bare_study_form", () => {
+  it("the_study_order_is_the_bare_form", () => {
     const rows = [
       aRow({
         cells: [aStudyCell()],
-        goals: [{ kind: "study", skill: "FORC", targetLevel: null }],
+        goals: [{ kind: "study", turn: 24, skill: "FORC" }],
         standings: [standing({ FORC: 3 })]
       })
     ];
@@ -130,25 +128,25 @@ describe("studyOrders", () => {
     const rows = [
       aRow({
         cells: [aStudyCell({ level: 3, gained: false })],
-        goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+        goals: [{ kind: "study", turn: 24, skill: "FORC" }],
         standings: [standing({ FORC: 3 })]
       })
     ];
     const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
-    expect(section.text.split("\n")[2]).toBe("  STUDY FORC 4      ; force 3");
+    expect(section.text.split("\n")[2]).toBe("  STUDY FORC        ; force 3");
   });
 
   it("a_taught_month_names_the_teacher_in_the_comment", () => {
     const rows = [
       aRow({
         cells: [aStudyCell({ taughtBy: "95/1263" })],
-        goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+        goals: [{ kind: "study", turn: 24, skill: "FORC" }],
         standings: [standing({ FORC: 3 })]
       }),
       aRow({ unitId: "1263", name: "Vess", key: "95/1263", cells: [{ kind: "idle" }] })
     ];
     const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
-    expect(section.text.split("\n")[2]).toBe("  STUDY FORC 4      ; force 3 -> 4, taught by Vess");
+    expect(section.text.split("\n")[2]).toBe("  STUDY FORC        ; force 3 -> 4, taught by Vess");
   });
 
   it("a_teacher_writes_one_teach_line_of_the_unit_numbers_taught", () => {
@@ -178,7 +176,7 @@ describe("studyOrders", () => {
     const rows = [
       aRow({
         cells: [aStudyCell({ skill: "PATT", name: "pattern", blocked: "He cannot begin pattern until force reaches 1." })],
-        goals: [{ kind: "study", skill: "PATT", targetLevel: 3 }]
+        goals: [{ kind: "study", turn: 24, skill: "PATT" }]
       })
     ];
     const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
@@ -197,7 +195,7 @@ describe("studyOrders", () => {
 
   it("a_mage_with_nothing_planned_is_named_in_a_comment_and_gets_no_unit_block", () => {
     const rows = [
-      aRow({ cells: [aStudyCell()], goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }] }),
+      aRow({ cells: [aStudyCell()], goals: [{ kind: "study", turn: 24, skill: "FORC" }] }),
       aRow({ unitId: "1263", key: "95/1263", name: "Vess", cells: [{ kind: "idle" }] })
     ];
     const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
@@ -206,7 +204,7 @@ describe("studyOrders", () => {
   });
 
   it("a_warning_about_this_turn_is_written_under_its_mage", () => {
-    const rows = [aRow({ cells: [aStudyCell()], goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }] })];
+    const rows = [aRow({ cells: [aStudyCell()], goals: [{ kind: "study", turn: 24, skill: "FORC" }] })];
     const notices = [aNotice({ text: "He studies force above level 2 outside a building." })];
     const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices }).sections;
     expect(section.text.split("\n")[3]).toBe(
@@ -215,14 +213,14 @@ describe("studyOrders", () => {
   });
 
   it("a_suggestion_is_left_out_of_the_file", () => {
-    const rows = [aRow({ cells: [aStudyCell()], goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }] })];
+    const rows = [aRow({ cells: [aStudyCell()], goals: [{ kind: "study", turn: 24, skill: "FORC" }] })];
     const notices = [aNotice({ level: "suggestion", code: "teacher-has-free-slots", text: "He could also teach." })];
     const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices }).sections;
     expect(section.text).not.toContain("could also teach");
   });
 
   it("a_warning_about_a_later_turn_is_left_out", () => {
-    const rows = [aRow({ cells: [aStudyCell()], goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }] })];
+    const rows = [aRow({ cells: [aStudyCell()], goals: [{ kind: "study", turn: 24, skill: "FORC" }] })];
     const notices = [aNotice({ turnIndex: 2, text: "Later trouble." })];
     const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices }).sections;
     expect(section.text).not.toContain("Later trouble.");
@@ -236,7 +234,7 @@ describe("studyOrders", () => {
         key: "17/300",
         name: "Ghost",
         cells: [aStudyCell()],
-        goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+        goals: [{ kind: "study", turn: 24, skill: "FORC" }],
         monthsUnreported: 2,
         sheetTurn: 70
       })
@@ -255,7 +253,7 @@ describe("studyOrders", () => {
         key: "17/300",
         name: "Ghost",
         cells: [aStudyCell()],
-        goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+        goals: [{ kind: "study", turn: 24, skill: "FORC" }],
         monthsUnreported: 1,
         sheetTurn: 71
       })
@@ -274,7 +272,7 @@ describe("studyOrders", () => {
         key: "17/300",
         name: "Ghost",
         cells: [aStudyCell()],
-        goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+        goals: [{ kind: "study", turn: 24, skill: "FORC" }],
         sheetTurn: 72
       })
     ];
@@ -308,7 +306,7 @@ describe("studyOrders", () => {
 
   it("a_faction_with_no_planned_month_still_gets_a_section", () => {
     const rows = [
-      aRow({ cells: [aStudyCell()], goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }] }),
+      aRow({ cells: [aStudyCell()], goals: [{ kind: "study", turn: 24, skill: "FORC" }] }),
       aRow({ factionId: "17", unitId: "300", key: "17/300", name: "Ghost", cells: [{ kind: "idle" }] })
     ];
     const orders = studyOrders({ groups: [ownGroup, allyGroup], rows, turns: [72], notices: [] });
@@ -348,7 +346,7 @@ describe("studyOrders entries", () => {
     });
     const own = orders.sections.find((section) => section.factionId === "95");
     expect(own?.entries.map((entry) => [entry.unitId, entry.order, entry.annotation])).toEqual([
-      ["1234", "STUDY FORC 4", "force 0 -> 4"],
+      ["1234", "STUDY FORC", "force 0 -> 4"],
       ["881", "TEACH 1234", "teaches Ereb"],
       ["1263", null, null]
     ]);

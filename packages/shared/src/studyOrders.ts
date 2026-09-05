@@ -7,16 +7,15 @@
  *
  * `rules/study` is what a level on the line means: `STUDY <skill>` is one month, while
  * `STUDY <skill> <level>` is "continued from turn to turn until the unit reaches that skill
- * level" - which is exactly what a goal's `targetLevel` says, so the level is written when the
- * goal carries one and omitted when it does not. `rules/teach` takes a list of units on one line,
- * and it is unit **numbers** that go on it.
+ * level" - which would override the turns the player planned by hand, so the bare form is always
+ * written. `rules/teach` takes a list of units on one line, and it is unit **numbers** that go on
+ * it.
  *
  * Every sentence about why an order is missing or halved is `plannerNotices`' own, copied
  * verbatim: a second wording of a fact this family has already worded is the drift four beads have
  * spent tests avoiding.
  */
 
-import type { StudyGoal } from "@atlantis/core-client";
 import { safeFileNamePart } from "./mageSheet";
 import type { PlannerGroup } from "./studyPlanner";
 import type { ScheduleRow } from "./studySchedule";
@@ -95,16 +94,6 @@ function unitOf(key: string): string {
   return key.slice(key.indexOf("/") + 1);
 }
 
-/** The `STUDY` line's target level, or null when the goal does not name one. */
-function targetOf(goals: readonly StudyGoal[], goalIndex: number): number | null {
-  const goal = goals[goalIndex];
-  if (goal === undefined || goal.kind !== "study") {
-    // Defensive: a projection that named a goal index this queue has not got.
-    return null;
-  }
-  return goal.targetLevel ?? null;
-}
-
 /**
  * What one row contributes: the entry `ah-lyg6.4.2` writes from, and the lines the section draws.
  *
@@ -139,7 +128,6 @@ function contributionOf(
       entry = { ...base, order: null, annotation: null, skipReason: cell.blocked };
       orderLine = `  ; STUDY ${cell.skill} — ${cell.blocked}`;
     } else {
-      const target = targetOf(row.goals, cell.goalIndex);
       const from = row.standings[0]?.get(cell.skill)?.level ?? 0;
       // An arrow pointing at itself reads like a defect, and most months in this game buy no
       // level. ASCII `->`, not `→`: this text is mailed and pasted into strangers' order files.
@@ -150,7 +138,7 @@ function contributionOf(
           : `, taught by ${rows.find((one) => one.key === cell.taughtBy)?.name ?? unitOf(cell.taughtBy)}`;
       entry = {
         ...base,
-        order: `STUDY ${cell.skill}${target === null ? "" : ` ${target}`}`,
+        order: `STUDY ${cell.skill}`,
         annotation: `${gain}${teacher}`,
         skipReason: null
       };

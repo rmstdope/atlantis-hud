@@ -56,34 +56,24 @@ export function keyOf(plan: StudyPlanRecord): StudyPlanKey {
 }
 
 /**
- * A plan's goals with any already-satisfied head dropped: what is still to be studied.
+ * The goals a plan actually holds: ascending by turn, at most one per turn.
  *
- * Only the *front* of the list is dropped, and it stops at the first unsatisfied goal - a later
- * goal being incidentally satisfied does not remove it, because the player put it there in an
- * order. A goal with no `targetLevel` is one month and is never satisfied in advance
- * (`rules/study`), and neither is a teach goal: a month somebody decided to spend teaching is
- * never satisfied by what anyone already knows (`rules/teach`).
+ * Drops an entry whose `turn` is not a positive whole number. That is the shape written before
+ * ah-lyg6.2.3's redesign, when a plan was an ordered queue and no goal named a turn; such a queue
+ * cannot be converted without the report it was projected against, and the planner has never been
+ * in a release, so it is dropped rather than guessed at. The next save of that mage rewrites the
+ * row.
  *
- * This is derived and is never written back. The stored queue is pruned only when the player next
- * edits that mage; a store that rewrote its rows on report load would be mutating itself behind a
- * pane nobody had opened.
+ * Where two entries name one turn, the last wins - `goalsAfterChoice` never writes such a list, and
+ * a hand-edited or restored row should read as something rather than as an error.
  */
-export function remainingGoals(
-  goals: readonly StudyGoal[],
-  levels: ReadonlyMap<string, number>
-): readonly StudyGoal[] {
-  let index = 0;
-  while (index < goals.length) {
-    const goal = goals[index];
-    if (goal.kind === "teach") {
-      break;
+export function plannedGoals(goals: readonly StudyGoal[]): StudyGoal[] {
+  const byTurn = new Map<number, StudyGoal>();
+  for (const goal of goals) {
+    if (!Number.isInteger(goal.turn) || goal.turn <= 0) {
+      continue;
     }
-    const satisfied =
-      goal.targetLevel !== null && (levels.get(goal.skill) ?? 0) >= goal.targetLevel;
-    if (!satisfied) {
-      break;
-    }
-    index += 1;
+    byTurn.set(goal.turn, goal);
   }
-  return index === 0 ? goals : goals.slice(index);
+  return [...byTurn.values()].sort((left, right) => left.turn - right.turn);
 }

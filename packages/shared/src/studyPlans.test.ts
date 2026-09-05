@@ -1,6 +1,12 @@
 import type { CoreClient, OpenedGame, StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { keyOf, loadStudyPlans, planFor, remainingGoals, saveStudyPlans } from "./studyPlans";
+import {
+  keyOf,
+  loadStudyPlans,
+  planFor,
+  plannedGoals,
+  saveStudyPlans
+} from "./studyPlans";
 
 function game(gameId = "aug-2026"): OpenedGame {
   return {
@@ -21,7 +27,7 @@ function plan(unitId = "1204", factionId = "21"): StudyPlanRecord {
   return {
     factionId,
     unitId,
-    goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }],
+    goals: [{ kind: "study" as const, turn: 24, skill: "FORC" }],
     comment: "heading for Gate Lore",
     updatedAt: "2026-01-01T00:00:00.000Z"
   };
@@ -79,70 +85,34 @@ describe("keyOf", () => {
   });
 });
 
-describe("remainingGoals", () => {
-  const levels = new Map([
-    ["FORC", 4],
-    ["PATT", 2]
-  ]);
+describe("plannedGoals", () => {
+  const study = (turn: number, skill: string): StudyGoal => ({ kind: "study", turn, skill });
 
-  it("is empty for an empty queue", () => {
-    expect(remainingGoals([], levels)).toEqual([]);
+  it("drops a goal with no turn", () => {
+    const goals = [{ kind: "study", skill: "FORC" } as unknown as StudyGoal, study(25, "PATT")];
+    expect(plannedGoals(goals)).toEqual([study(25, "PATT")]);
   });
 
-  it("drops a head goal the mage has already reached", () => {
-    expect(
-      remainingGoals(
-        [
-          { kind: "study" as const, skill: "FORC", targetLevel: 3 },
-          { kind: "study" as const, skill: "PATT", targetLevel: 5 }
-        ],
-        levels
-      )
-    ).toEqual([{ kind: "study" as const, skill: "PATT", targetLevel: 5 }]);
-  });
-
-  it("drops every satisfied goal at the front, not only the first", () => {
-    expect(
-      remainingGoals(
-        [
-          { kind: "study" as const, skill: "FORC", targetLevel: 4 },
-          { kind: "study" as const, skill: "PATT", targetLevel: 2 },
-          { kind: "study" as const, skill: "SPIR", targetLevel: 1 }
-        ],
-        levels
-      )
-    ).toEqual([{ kind: "study" as const, skill: "SPIR", targetLevel: 1 }]);
-  });
-
-  it("stops at the first unsatisfied goal, even when a later one is satisfied", () => {
-    const goals = [
-      { kind: "study" as const, skill: "SPIR", targetLevel: 1 },
-      { kind: "study" as const, skill: "FORC", targetLevel: 3 }
-    ];
-
-    expect(remainingGoals(goals, levels)).toEqual(goals);
-  });
-
-  it("never treats a one-month goal as satisfied", () => {
-    const goals = [{ kind: "study" as const, skill: "FORC", targetLevel: null }];
-
-    expect(remainingGoals(goals, levels)).toEqual(goals);
-  });
-
-  // `rules/teach`: a teach month is a month somebody decided to spend, so nothing anyone already
-  // knows can satisfy it in advance.
-  it("never treats a teach goal as satisfied in advance", () => {
-    const goals: StudyGoal[] = [
-      { kind: "teach", students: ["2517"] },
-      { kind: "study", skill: "FORC", targetLevel: 1 }
-    ];
-
-    expect(remainingGoals(goals, levels)).toEqual(goals);
-  });
-
-  it("treats a skill the mage does not hold as level zero", () => {
-    expect(remainingGoals([{ kind: "study" as const, skill: "SPIR", targetLevel: 1 }], levels)).toEqual([
-      { kind: "study" as const, skill: "SPIR", targetLevel: 1 }
+  it("drops a goal whose turn is zero, negative or fractional", () => {
+    expect(plannedGoals([study(0, "A"), study(-3, "B"), study(2.5, "C"), study(25, "D")])).toEqual([
+      study(25, "D")
     ]);
+  });
+
+  it("sorts ascending by turn", () => {
+    expect(plannedGoals([study(27, "C"), study(25, "A"), study(26, "B")])).toEqual([
+      study(25, "A"),
+      study(26, "B"),
+      study(27, "C")
+    ]);
+  });
+
+  it("keeps the last of two entries naming one turn", () => {
+    expect(plannedGoals([study(25, "FIRST"), study(25, "LAST")])).toEqual([study(25, "LAST")]);
+  });
+
+  it("leaves a good list alone", () => {
+    const goals = [study(25, "FORC"), study(26, "PATT")];
+    expect(plannedGoals(goals)).toEqual(goals);
   });
 });
