@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>ah-26jt — C: Id breaks every tie</title>
+<style>
+ body{background:#14161a;color:#dfe3ea;font:14px/1.5 system-ui,sans-serif;margin:0;padding:24px 28px}
+ h1{font-size:18px;margin:0 0 4px} h2{font-size:14px;margin:26px 0 6px;color:#9fb4d6;font-weight:600}
+ p{max-width:70ch;color:#aab2c0;margin:6px 0}
+ table{border-collapse:collapse;margin:8px 0 4px;background:#1b1e24;font-size:13px}
+ th,td{border:1px solid #2c313a;padding:3px 10px;text-align:left;white-space:nowrap}
+ th{background:#232833;color:#c8d4e8;font-weight:600}
+ th.sorted{background:#2f4b74;color:#fff}
+ tr.own td{color:#ffd479}
+ mark{background:#3d5a2f;color:#dfe3ea;padding:0 3px;border-radius:2px}
+ .note{color:#7f8899;font-size:12px;max-width:70ch}
+ .cols{display:flex;gap:28px;flex-wrap:wrap}
+ code{background:#232833;padding:1px 5px;border-radius:3px}
+</style></head><body>
+<h1>ah-26jt — variant C: Id also breaks a tie inside another column's sort</h1>
+<p>This is variant A plus one more thing: when the sorted column cannot separate two rows, Id
+decides, instead of the order the rows happened to arrive in. Six units on 0 silver, or a screen
+of unnamed scouts, then have an order that does not shuffle when a later turn is loaded.</p>
+
+<div class="cols">
+<div>
+<h2>A — sorted on Men, ties keep arrival order</h2>
+<table>
+<tr><th>Own</th><th>Unit</th><th>Id</th><th class="sorted">Men ▲</th></tr>
+<tr class="own"><td>●</td><td>Scout North</td><td><mark>207</mark></td><td>1</td></tr>
+<tr class="own"><td>●</td><td>Scout East</td><td><mark>88</mark></td><td>1</td></tr>
+<tr class="own"><td>●</td><td>Scout West</td><td><mark>1042</mark></td><td>1</td></tr>
+<tr class="own"><td>●</td><td>Wood crew</td><td>310</td><td>6</td></tr>
+</table>
+<p class="note">The three scouts are in whatever order the report listed them, and that order can
+differ from turn to turn.</p>
+</div>
+
+<div>
+<h2>C — sorted on Men, Id breaks the tie</h2>
+<table>
+<tr><th>Own</th><th>Unit</th><th>Id</th><th class="sorted">Men ▲</th></tr>
+<tr class="own"><td>●</td><td>Scout East</td><td><mark>88</mark></td><td>1</td></tr>
+<tr class="own"><td>●</td><td>Scout North</td><td><mark>207</mark></td><td>1</td></tr>
+<tr class="own"><td>●</td><td>Scout West</td><td><mark>1042</mark></td><td>1</td></tr>
+<tr class="own"><td>●</td><td>Wood crew</td><td>310</td><td>6</td></tr>
+</table>
+<p class="note">The three scouts are always in this order, whichever turn is loaded.</p>
+</div>
+</div>
+
+<h2>What this costs</h2>
+<p>Descending is the awkward part. If Men descending also reversed the tiebreak, the scouts would
+run 1042, 207, 88; keeping Id ascending under a descending column is the steadier reading, and it
+is what this mockup shows. Nothing about clicking a header changes.</p>
+</body></html>
