@@ -147,6 +147,8 @@ import {
 } from "../mageSheetImport";
 import { mageSheetStatus, sharedSheetTurn } from "../mageSheetPrompt";
 import { useBattleSkillsStore } from "../battleSkillsStore";
+import { rememberedFor } from "../resourceMemory";
+import { useResourceMemoryStore } from "../resourceMemoryStore";
 import { derivedSkillsFor } from "../battleSkills";
 import { unitsByIdIn } from "../armies";
 import { useSettingsStore } from "../settingsStore";
@@ -754,6 +756,7 @@ export function AppShell({
   const derivedSkills = useBattleSkillsStore((state) => state.skills);
   const derivedStatus = useBattleSkillsStore((state) => state.status);
   const unreadTurns = useBattleSkillsStore((state) => state.unreadTurns);
+  const resourceMemory = useResourceMemoryStore((state) => state.memory);
   /** Which header popover is open - one at a time, by construction. Dialogs keep their own flags. */
   const [openPopover, setOpenPopover] = useState<HeaderPopoverId | null>(null);
   /** Which faction's Forget is armed in the mage-sheets popover, or null (ah-lyg6.1.3). */
@@ -2371,6 +2374,35 @@ export function AppShell({
       useBattleSkillsStore.getState().clear();
     }
   }, [client, openGameId, gameEpoch]);
+
+  /**
+   * And the same again for what earlier turns proved about hidden resources (ah-tgtp), with
+   * `gameData` in the dependencies as well: the verdicts are judged against the catalogue, so a
+   * ruleset that arrives after the game must re-scan.
+   */
+  useEffect(() => {
+    if (game) {
+      void useResourceMemoryStore.getState().scan(client, game, gameData);
+    } else {
+      useResourceMemoryStore.getState().clear();
+    }
+  }, [client, openGameId, gameEpoch, gameData]);
+
+  /**
+   * Folds the turn on screen into that memory, so a report imported this minute counts at once.
+   *
+   * Driven off `parsed` rather than hooked into `applyLoadedTurn`, for the reason the battle-roster
+   * fold below gives: the restore effect sets `parsed` directly, and that is how a turn appears
+   * every time the application is reopened. Racing the scan is safe in both directions - the merge
+   * rule keeps whichever verdict has the greater turn.
+   */
+  useEffect(() => {
+    const turn = parsed?.header.turnNumber;
+    if (openGameId === null || !parsed || turn === null || turn === undefined) {
+      return;
+    }
+    useResourceMemoryStore.getState().foldIn(openGameId, parsed, turn, gameData);
+  }, [openGameId, parsed, gameData]);
 
   /**
    * Folds the turn on screen into the recovered skills (ah-1mpx.6.2, N1), so a report imported this
@@ -5191,6 +5223,7 @@ export function AppShell({
                 known={knownUnitIds}
                 onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId)}
                 gameData={gameData}
+                remembered={rememberedFor(resourceMemory, hex?.regionId ?? "")}
                 onOpenGameData={
                   gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
                 }

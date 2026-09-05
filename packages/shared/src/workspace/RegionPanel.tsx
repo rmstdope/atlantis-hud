@@ -1,7 +1,8 @@
 import { Fragment } from "react";
 import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
 import { structureEntryId, type GameDataIndex } from "../gameData";
-import { resourceChecksOf } from "../resourceChecks";
+import { resourceChecksOf, type ResourceCheck } from "../resourceChecks";
+import type { RememberedResource } from "../resourceMemory";
 import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
 import { structureLabelParts } from "../structureLabel";
 import { useWorkspaceStore } from "../workspaceStore";
@@ -41,6 +42,7 @@ export function RegionPanel({
   known,
   onSelectUnit,
   gameData = null,
+  remembered,
   onOpenGameData
 }: {
   hex: HexNode | null;
@@ -78,6 +80,11 @@ export function RegionPanel({
    * category - and so its entry id - is not knowable from its tag alone.
    */
   gameData?: GameDataIndex | null;
+  /**
+   * What earlier turns proved about this hex's hidden resources, keyed by item tag (`ah-tgtp`).
+   * Empty when nothing is remembered, which is what a shell that does not pass it gets.
+   */
+  remembered?: ReadonlyMap<string, RememberedResource>;
   /** Absent while the ruleset has not loaded; nothing is then linked. */
   onOpenGameData?: (entryId: string) => void;
 }) {
@@ -111,7 +118,7 @@ export function RegionPanel({
   const region = hex.region;
   // No `useMemo`: this component returns early above (`if (!hex)`), so a hook here would break the
   // rules of hooks. The computation is a handful of array walks over one hex.
-  const checks = region === null ? [] : resourceChecksOf(region, gameData);
+  const checks = region === null ? [] : resourceChecksOf(region, gameData, remembered, turn);
 
   return (
     <CollapsiblePanel
@@ -186,26 +193,23 @@ export function RegionPanel({
                 ))}
                 {/*
                   A resource the terrain may hold that the report did not name: `0 floater hide`
-                  where a skilled unit of yours stood and found none, `mushroom?` where nobody
-                  here could tell. Italic, as this pane already writes anything that is not a
-                  figure the report printed.
+                  where a skilled unit of yours found none, `8 floater hides` where an earlier turn
+                  proved it rich, `mushroom?` where nobody has ever been able to tell. Italic, as
+                  this pane already writes anything that is not a figure the report printed - and a
+                  verdict carried over from an earlier turn reads exactly like a fresh one, the
+                  turn appearing only in the hover (`ah-tgtp`, Q1).
                 */}
                 {checks.map((check, position) => (
                   <Fragment key={`check:${check.tag}`}>
                     {region.products.length + position === 0 ? null : " · "}
-                    {check.state === "absent" ? (
-                      <span
-                        className="italic"
-                        title={`A unit with ${check.skill.skillName} ${check.skill.level} stands here, and the report names no ${check.name}.`}
-                      >
-                        0 <GameDataItemName index={gameData} item={check} onOpen={linkable} />
+                    {check.state === "unchecked" ? (
+                      <span className="italic text-ink-dim" title={uncheckedTitle(check)}>
+                        <GameDataItemName index={gameData} item={check} onOpen={linkable} />?
                       </span>
                     ) : (
-                      <span
-                        className="italic text-ink-dim"
-                        title={`No unit of yours here has ${check.skill.skillName} ${check.skill.level}, so whether this hex holds ${check.name} is unknown.`}
-                      >
-                        <GameDataItemName index={gameData} item={check} onOpen={linkable} />?
+                      <span className="italic" title={provedTitle(check)}>
+                        {check.amount}{" "}
+                        <GameDataItemName index={gameData} item={check} onOpen={linkable} />
                       </span>
                     )}
                   </Fragment>
@@ -392,4 +396,23 @@ function Problems({
       </ul>
     </Section>
   );
+}
+
+/**
+ * The hover for a resource nobody who could tell has ever stood beside.
+ */
+function uncheckedTitle(check: ResourceCheck): string {
+  return `No unit of yours here has ${check.skill.skillName} ${check.skill.level}, so whether this hex holds ${check.name} is unknown.`;
+}
+
+/**
+ * The hover for a proved mark. Present tense when this turn's own report proved it, past tense
+ * naming the turn when the proof was carried over from an earlier one (`ah-tgtp`). Skill name,
+ * level, amount and item name all come from the data; nothing here is hard-coded.
+ */
+function provedTitle(check: ResourceCheck): string {
+  const found = check.amount === 0 ? `no ${check.name}` : `${check.amount} ${check.name}`;
+  return check.provedOn === null
+    ? `A unit with ${check.skill.skillName} ${check.skill.level} stands here, and the report names ${found}.`
+    : `A unit with ${check.skill.skillName} ${check.skill.level} stood here on turn ${check.provedOn}, and that report named ${found}.`;
 }
