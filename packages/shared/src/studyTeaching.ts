@@ -36,6 +36,8 @@ export function taughtWorth(students: number): number {
 /** Why one named student cannot be taught this turn. */
 export type TeachRefusal =
   | { kind: "unknown"; unitId: string }
+  /** The teacher named himself. He is on screen, so "no such mage" would be false. */
+  | { kind: "self"; unitId: string }
   | { kind: "elsewhere"; unitId: string; regionId: string }
   | { kind: "not-studying"; unitId: string }
   | {
@@ -152,6 +154,13 @@ export function plannerNotices(input: {
                 "taught-not-here",
                 "warning",
                 `${student} is in ${input.label(refusal.regionId)}, not in ${row.name}'s hex, so ${row.name} cannot teach him on turn ${turn}.`
+              );
+              break;
+            case "self":
+              add(
+                "teacher-cannot-teach",
+                "warning",
+                `${row.name} names himself on turn ${turn}, and a mage cannot teach himself.`
               );
               break;
             case "unknown":

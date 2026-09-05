@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
-import { cellMenu, cellWarning, goalsAfterClear, goalsAfterSet, goalsAfterTeach, teachWarning } from "./studyCell";
+import { cellMenu, cellWarning, goalsAfterClear, goalsAfterPick, goalsAfterSet, goalsAfterTeach, teachWarning } from "./studyCell";
 import { projectAll, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import type { StudyGoal } from "@atlantis/core-client";
 
@@ -278,5 +278,32 @@ describe("the teach group of the cell menu", () => {
       "Ereb can teach nobody on turn 24. The plan will say so anyway."
     );
     expect(teachWarning(menu.teach, 24, "Ereb")).toBeNull();
+  });
+});
+
+/**
+ * What `Set` writes, whichever kind was picked. This is the routing `StudySchedule.tsx` performs -
+ * pulled into a function precisely so a test can reach it, since `renderToStaticMarkup` cannot
+ * press the button (ah-nass).
+ */
+describe("goalsAfterPick", () => {
+  const forc: StudyGoal = { kind: "study", skill: "FORC", targetLevel: 5 };
+  const row = rowOf(at({ FORC: [3, 270] }), [forc]);
+
+  it("inserts a teach goal, leaving the plan behind it whole", () => {
+    expect(goalsAfterPick([forc], row, 1, { kind: "teach", students: ["2517"] })).toEqual(
+      goalsAfterTeach([forc], row, 1, ["2517"])
+    );
+    // The target survives: this is the navigator's I1, and the one thing truncating would lose.
+    expect(goalsAfterPick([forc], row, 1, { kind: "teach", students: ["2517"] })).toContainEqual(
+      forc
+    );
+  });
+
+  it("truncates for a study goal, as a study click always has", () => {
+    const study: StudyGoal = { kind: "study", skill: "PATT", targetLevel: 2 };
+
+    expect(goalsAfterPick([forc], row, 1, study)).toEqual(goalsAfterSet([forc], row, 1, study));
+    expect(goalsAfterPick([forc], row, 1, study)).not.toContainEqual(forc);
   });
 });

@@ -5,8 +5,7 @@ import type { MagicTree } from "../magicTree";
 import type { StudyGoal } from "@atlantis/core-client";
 import {
   goalsAfterClear,
-  goalsAfterSet,
-  goalsAfterTeach,
+  goalsAfterPick,
   cellMenu,
   cellWarning,
   teachWarning,
@@ -196,15 +195,7 @@ export function StudySchedule({
           replacing={wasText(open, mode.turnIndex)}
           onEvent={onEvent}
           onSet={(goal) => {
-            // A study goal replaces the tail; a teach goal is one month and **inserts**, so the
-            // plan behind it survives with its target intact. That is the navigator's I1, and
-            // routing both through `goalsAfterSet` would be the I2 they rejected.
-            onCommit(
-              open.key,
-              goal.kind === "teach"
-                ? goalsAfterTeach(open.goals, open, mode.turnIndex, goal.students)
-                : goalsAfterSet(open.goals, open, mode.turnIndex, goal)
-            );
+            onCommit(open.key, goalsAfterPick(open.goals, open, mode.turnIndex, goal));
             onEvent({ kind: "set" });
           }}
           onClear={() => {

@@ -339,3 +339,36 @@ describe("noticeSummary", () => {
     ).toBe("3 warnings, 1 suggestion");
   });
 });
+
+describe("a teacher who names himself", () => {
+  it("is told so, rather than told there is no such mage", () => {
+    const rows: ScheduleRow[] = [
+      {
+        key: "21/1",
+        factionId: "21",
+        unitId: "881",
+        regionId: "1:7",
+        name: "Ereb",
+        summary: "",
+        hasNote: false,
+        goals: [],
+        cells: [
+          {
+            kind: "teach",
+            goalIndex: 0,
+            students: ["881"],
+            outcome: { taught: [], refused: [{ kind: "self", unitId: "881" }], worth: 1 },
+            label: "TEACH nobody"
+          }
+        ],
+        standings: [],
+        monthsUnreported: 0,
+        sheetTurn: null
+      }
+    ];
+
+    const notices = plannerNotices({ rows, turns: [24], label: (regionId) => regionId });
+
+    expect(notices[0].text).toBe("Ereb names himself on turn 24, and a mage cannot teach himself.");
+  });
+});

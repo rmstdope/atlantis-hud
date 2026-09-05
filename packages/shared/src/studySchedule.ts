@@ -335,8 +335,13 @@ export function projectAll(input: {
       const refused: TeachRefusal[] = [];
       for (const unitId of intent.students) {
         const student = byUnitId.get(unitId);
-        if (student === undefined || student.key === teacher.key) {
+        if (student === undefined) {
           refused.push({ kind: "unknown", unitId });
+          continue;
+        }
+        if (student.key === teacher.key) {
+          // Distinct from `unknown`: he is on screen, so "no such mage" would be a false sentence.
+          refused.push({ kind: "self", unitId });
           continue;
         }
         if (student.regionId !== teacher.regionId) {

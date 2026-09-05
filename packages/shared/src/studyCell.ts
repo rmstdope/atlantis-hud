@@ -182,6 +182,25 @@ export function goalsAfterSet(
   return kept;
 }
 
+/**
+ * The queue after the popover's `Set`, whichever kind of goal it wrote.
+ *
+ * The dispatch lives here rather than at the call site so it can be tested: `packages/shared` has
+ * no jsdom (ah-nass), so nothing there can press `Set`, and a routing decision spelled inline in
+ * `StudySchedule.tsx` is one no test in this package can reach. A study goal replaces the tail
+ * because it runs until it is met; a teach goal is one month and inserts (the navigator's I1).
+ */
+export function goalsAfterPick(
+  goals: readonly StudyGoal[],
+  row: ScheduleRow,
+  turnIndex: number,
+  goal: StudyGoal
+): StudyGoal[] {
+  return goal.kind === "teach"
+    ? goalsAfterTeach(goals, row, turnIndex, goal.students)
+    : goalsAfterSet(goals, row, turnIndex, goal);
+}
+
 /** The queue with everything from `turnIndex` on removed: `Clear from here`. */
 export function goalsAfterClear(
   goals: readonly StudyGoal[],

@@ -597,10 +597,9 @@ describe("worthMark", () => {
   it("falls back to one decimal", () => {
     expect(worthMark(1.3)).toBe("×1.3");
   });
-});
 
-describe("worthMark on a month that was modified but came out at one", () => {
-  it("draws ×1 when something modified it, and nothing when nothing did", () => {
+  it("draws ×1 when something modified the month and it came out at one", () => {
+    // A taught but unsheltered month: silence would hide that the two effects cancelled.
     expect(worthMark(1, true)).toBe("×1");
     expect(worthMark(1, false)).toBe("");
   });
