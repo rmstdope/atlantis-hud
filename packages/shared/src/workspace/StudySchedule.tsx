@@ -214,9 +214,14 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   const step = props.mode.kind;
   // Focus lands on a *row*, not on the wrapper. The arrow-key walk reads `data-row` off the
   // focused element, so focusing the wrapper would leave the `↑↓ to move` the foot promises doing
-  // nothing at all until the player found a row with Tab. Keyed on the step, so coming back from
-  // the teach step - whose buttons have just unmounted - lands on a row again rather than on
-  // `<body>`.
+  // nothing at all until the player found a row with Tab. Keyed on **both** the cell and the
+  // step: on the step so that coming back from the teach step - whose buttons have just
+  // unmounted - lands on a row again rather than on `<body>`, and on the cell because clicking a
+  // second cell while a dropdown is open moves this one rather than remounting it (`reduce`
+  // answers `cell-opened` with `choosing` whatever it was in, and there is no outside-click
+  // dismissal - `dismissLayer.ts` listens for Escape alone). Without the cell in the list, that
+  // click would leave focus on the *previous* grid cell, which the cleanup below has just taken.
+  // React runs every cleanup before every effect, so this focus always wins over that one.
   useEffect(() => {
     const root = box.current;
     if (root === null) {
@@ -228,7 +233,7 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
       root.querySelector<HTMLElement>("button:not([disabled])") ??
       root;
     target.focus();
-  }, [step]);
+  }, [cell, step]);
   // Focus goes back to the cell the dropdown came from, by the `[data-cell="r:c"]` address the
   // arrow-key walk and `focusCell` already use: anything else strands a keyboard player at the
   // top of the grid. Its own effect, so the step change above cannot fire this cleanup and throw

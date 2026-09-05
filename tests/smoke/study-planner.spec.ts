@@ -106,11 +106,24 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   // The dropdown opens with a row focused, so the `↑↓ to move · ↵ to choose` its foot promises
   // works from the keyboard alone - which nothing in `packages/shared` can reach (ah-nass).
   await cell.click();
+  // The cell is empty, so `— nothing` is the pressed row and focus starts there. Walked down to
+  // a named skill rather than pressing Enter on whatever row 1 happens to be: `Teaches…` is
+  // between them for a mage with somebody teachable, and a test that plans a skill only when the
+  // fixture has nobody teachable is one that passes for a reason it does not state.
   await expect(page.locator("[data-row]:focus")).toHaveCount(1);
-  await page.keyboard.press("ArrowDown");
+  const force = page.getByTestId("study-schedule-choice-FORC");
+  const rows = await page.locator("[data-row]").count();
+  for (let step = 0; step < rows; step += 1) {
+    if (await force.evaluate((node) => node === document.activeElement)) {
+      break;
+    }
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(force).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(popover).toHaveCount(0);
-  await expect(cell).not.toContainText("—");
+  await expect(cell).toContainText("force");
+
   await cell.click();
   await page.getByTestId("study-schedule-choice-nothing").click();
   await expect(popover).toHaveCount(0);
