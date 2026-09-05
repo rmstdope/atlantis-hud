@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-tgtp — a proved verdict carries forward</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  .panes { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .pane { background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:14px 15px 16px; box-shadow:0 10px 30px rgba(0,0,0,.45); font-family:'Helvetica Neue',Arial,sans-serif; }
+  .pane h3 { font:13.5px/1.4 'Helvetica Neue',Arial,sans-serif; color:var(--ink); margin-bottom:2px; }
+  .pane .sub { color:var(--ink-dim); font-size:11.5px; margin-bottom:12px; }
+  .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; margin:14px 0 5px; border-top:1px solid var(--edge-soft); padding-top:10px; }
+  .sect:first-of-type { border-top:none; padding-top:0; }
+  .prose { color:var(--ink-soft); font-size:12.5px; line-height:1.75; }
+  .dim { color:var(--ink-dim); }
+  .zero { color:var(--ink-dim); font-style:italic; }
+  .zero b { color:var(--ink-soft); font-style:normal; font-weight:normal; }
+  .unk { color:#6f7c8d; font-style:italic; }
+  .mem { font-style:italic; color:var(--ink-dim); }
+  .mem b { color:var(--ink-soft); font-style:normal; font-weight:normal; }
+  .when { font-size:11px; color:#6f7c8d; font-style:normal; }
+  .note { color:var(--ink-dim); font-size:11.5px; font-style:italic; margin-top:9px; line-height:1.5; }
+  .hover { color:#7f8ea0; font-size:11px; margin-top:7px; line-height:1.5; border-left:2px solid var(--edge); padding-left:9px; }
+  .hover b { color:var(--ink-dim); font-weight:normal; }
+  .flag { display:inline-block; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--brass); border:1px solid var(--edge); border-radius:3px; padding:1px 6px; margin-left:8px; }
+  .bad { border-color:#5a3a3a; color:#d99; }
+  .good { border-color:#3a5a48; color:var(--ok); }
+  .today { border-color:#3a4a5a; color:var(--select); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-tgtp</span> &mdash; a proved verdict carries forward</h1>
+  <p>Since <code>ah-rx0r.2</code> the Products line marks a hidden resource as
+  <span class="zero"><b>0</b> floater hide</span> when a skilled unit of yours <em>stands there now</em>
+  and the report names none, and as <span class="unk">mushroom?</span> when nobody there could tell.
+  The verdict is read from <strong>this turn&rsquo;s units</strong> only &mdash; so the moment the
+  hunter marches away the proof is thrown away.</p>
+  <blockquote>&ldquo;If turn n discovers that a certain hex has or has not a specific advanced
+  resource due to a unit with the right skill being there, that knowledge should be brought over to
+  future turns (&gt; n) even if the unit with the right skill has moved on.&rdquo;</blockquote>
+  <p>Every hex below is a <strong>real hex from a committed turn</strong> of
+  <code>g5-f21</code>. In <b>turn 23</b> two <code>hunting [HUNT] 3</code> drones (11851, 11854)
+  stood in <code>swamp (36,46)</code> and the report named no floater hides. By <b>turn 24</b> they
+  had ridden to <code>swamp (35,47)</code>, and by <b>turn 39</b> no hunter of yours is in (36,46)
+  at all.</p>
+  <p><strong>This is what the navigator chose</strong>, over a sister page that named the proving
+  turn on the line itself. Whether a hex holds floater hides is a durable fact about the hex, so
+  once proved it is simply stated &mdash; no turn on the line, the turn only in the hover. Chosen
+  with it: a remembered <em>presence</em> is shown too, and a verdict <em>never</em> expires.</p>
+</header>
+
+<section><h2 class="rule"><em>the bug</em> what turn 39 shows today</h2>
+<div class="panes">
+<div class="pane">
+  <h3>swamp (36,46) in Pangmore <span class="flag bad">today</span></h3>
+  <div class="sub">viewing turn 39 &middot; turns 23&ndash;25 and 39 imported</div>
+  <div class="sect">Products</div>
+  <p class="prose">12 livestock &middot; 16 wood &middot; 18 herbs &middot; <span class="unk">floater hide?</span> &middot; <span class="unk">mushroom?</span></p>
+  <p class="note">&ldquo;Nobody could tell&rdquo; &mdash; but two hunters of yours proved it empty
+  sixteen turns ago, and you paid to have them there. The knowledge is in the imported turns and
+  the pane throws it away.</p>
+</div>
+</div>
+</section>
+
+<section><h2 class="rule"><em>proposal B</em> the five states, with no turn on the line</h2>
+<p>The line carries only the verdict. A player who wants to know when it was proved hovers it; the
+pane already carries its own <em>Last seen turn</em> banner for a hex you cannot currently see.</p>
+<div class="panes">
+
+<div class="pane">
+  <h3>swamp (36,46) &mdash; proved now</h3>
+  <div class="sub">viewing turn 23 &middot; two <code>HUNT 3</code> drones stand here</div>
+  <div class="sect">Products</div>
+  <p class="prose">12 livestock &middot; 16 wood &middot; 18 herbs &middot; <span class="zero"><b>0</b> floater hide</span> &middot; <span class="unk">mushroom?</span></p>
+  <p class="note">Unchanged from what ships today.</p>
+  <p class="hover"><b>hover:</b> A unit with hunting 3 stands here, and the report names no floater hide.</p>
+</div>
+
+<div class="pane">
+  <h3>swamp (36,46) &mdash; remembered absence <span class="flag good">the fix</span></h3>
+  <div class="sub">viewing turn 39 &middot; no hunter of yours here since turn 25</div>
+  <div class="sect">Products</div>
+  <p class="prose">12 livestock &middot; 16 wood &middot; 18 herbs &middot; <span class="zero"><b>0</b> floater hide</span> &middot; <span class="unk">mushroom?</span></p>
+  <p class="note"><strong>Identical to the pane above.</strong> That is the proposal: the hex holds
+  no floater hides, and it does not start holding some because your hunter left. The pane says
+  nothing it would have to take back.</p>
+  <p class="hover"><b>hover:</b> A unit with hunting 3 stood here on turn 23, and that report named no floater hide.</p>
+</div>
+
+<div class="pane">
+  <h3>swamp (35,47) &mdash; remembered presence <span class="flag good">chosen</span></h3>
+  <div class="sub">viewing turn 39 &middot; last proved on turn 25</div>
+  <div class="sect">Products</div>
+  <p class="prose">18 grain &middot; 16 wood &middot; 14 herbs &middot; <span class="mem"><b>8</b> floater hides</span> &middot; <span class="unk">mushroom?</span></p>
+  <p class="note"><strong>Question 3 on this page.</strong> A resource that <em>is</em> there is
+  named by the report only while a skilled unit stands in the hex &mdash; so a hex you proved rich
+  goes back to reading <span class="unk">floater hide?</span> the moment the hunter leaves. Here it
+  is set in italics, so it still reads as something the pane worked out rather than a figure this
+  turn&rsquo;s report printed. The amount and the item&rsquo;s name are the proving report&rsquo;s
+  own (<code>8 floater hides</code>); a remembered <em>absence</em> has no report name of its own
+  and keeps the catalogue&rsquo;s singular, <span class="zero"><b>0</b> floater hide</span>.</p>
+  <p class="hover"><b>hover:</b> A unit with hunting 3 stood here on turn 25, and that report named 8 floater hides.</p>
+</div>
+
+<div class="pane">
+  <h3>swamp (36,48) &mdash; never checked</h3>
+  <div class="sub">viewing turn 39 &middot; no skilled unit of yours has ever stood here</div>
+  <div class="sect">Products</div>
+  <p class="prose">17 grain &middot; 17 wood &middot; 15 herbs &middot; <span class="unk">floater hide?</span> &middot; <span class="unk">mushroom?</span></p>
+  <p class="note">Unchanged. Nothing is remembered, so nothing is said.</p>
+</div>
+
+<div class="pane">
+  <h3>a hex where this turn disagrees with memory</h3>
+  <div class="sub">memory: none on turn 23 &middot; this turn a <code>HUNT 3</code> unit stands here and the report names 6</div>
+  <div class="sect">Products</div>
+  <p class="prose">14 grain &middot; 12 wood &middot; <strong style="color:var(--ink-soft);font-weight:normal">6 floater hides</strong> &middot; <span class="unk">mushroom?</span></p>
+  <p class="note"><strong>The precedence rule.</strong> This turn&rsquo;s report is the newer
+  evidence and simply wins &mdash; the memory is dropped, not shown beside it. The same rule the
+  import path already uses for a hex seen twice.</p>
+</div>
+
+</div>
+</section>
+
+<section><h2 class="rule"><em>question 2</em> does a remembered verdict ever go stale?</h2>
+<p>A resource is not something a hex grows back. The rules page states each terrain&rsquo;s
+resources once and says nothing anywhere about a region gaining or losing one
+(<code>rules/region_resources</code>; no rules text matches &ldquo;depleted&rdquo; or &ldquo;run
+out&rdquo;). So the case for an expiry is caution, not a rule.</p>
+<div class="panes">
+<div class="pane">
+  <h3>never expires</h3>
+  <div class="sub">viewing turn 82 &middot; proved on turn 23, fifty-nine turns ago <span class="flag good">chosen</span></div>
+  <div class="sect">Products</div>
+  <p class="prose">12 livestock &middot; 16 wood &middot; 18 herbs &middot; <span class="zero"><b>0</b> floater hide</span> &middot; <span class="unk">mushroom?</span></p>
+  <p class="note">Under B the age is only ever in the hover, so an old proof and a fresh one are
+  the same sentence on the page.</p>
+</div>
+<div class="pane">
+  <h3>expires after some number of turns</h3>
+  <div class="sub">viewing turn 82 &middot; proved on turn 23</div>
+  <div class="sect">Products</div>
+  <p class="prose">12 livestock &middot; 16 wood &middot; 18 herbs &middot; <span class="unk">floater hide?</span> &middot; <span class="unk">mushroom?</span></p>
+  <p class="note"><strong>Rejected.</strong> Back to a gap, as if nobody had ever looked. It needs a
+  number, and the number would be invented rather than looked up.</p>
+</div>
+</div>
+</section>
+</body>
+</html>
