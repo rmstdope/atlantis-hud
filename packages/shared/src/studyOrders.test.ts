@@ -337,3 +337,82 @@ describe("studyOrders", () => {
     expect(studyOrders({ groups: [ownGroup], rows, turns: [], notices: [] }).sections).toEqual([]);
   });
 });
+
+describe("studyOrders entries", () => {
+  it("each_section_carries_one_entry_per_mage_with_its_bare_order_and_annotation", () => {
+    const orders = studyOrders({
+      groups: [ownGroup, allyGroup],
+      rows: mixedRows(),
+      turns: [72],
+      notices: []
+    });
+    const own = orders.sections.find((section) => section.factionId === "95");
+    expect(own?.entries.map((entry) => [entry.unitId, entry.order, entry.annotation])).toEqual([
+      ["1234", "STUDY FORC 4", "force 0 -> 4"],
+      ["881", "TEACH 1234", "teaches Ereb"],
+      ["1263", null, null]
+    ]);
+    expect(own?.entries.map((entry) => entry.name)).toEqual(["Ereb", "Sable", "Vess"]);
+    expect(own?.entries.map((entry) => entry.key)).toEqual(["95/1234", "95/881", "95/1263"]);
+    expect(own?.entries.map((entry) => entry.regionId)).toEqual(["r1", "r1", "r1"]);
+  });
+
+  it("an_idle_mage_s_entry_carries_no_order_and_says_nothing_planned", () => {
+    const rows = [
+      aRow({ cells: [aStudyCell()] }),
+      aRow({ unitId: "1263", key: "95/1263", name: "Vess", cells: [{ kind: "idle" }] })
+    ];
+    const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
+    expect(section.entries[1].order).toBeNull();
+    expect(section.entries[1].skipReason).toBe("nothing planned");
+  });
+
+  it("a_blocked_study_s_entry_carries_the_planners_own_reason", () => {
+    const rows = [aRow({ cells: [aStudyCell({ blocked: "he cannot study force yet" })] })];
+    const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
+    expect(section.entries[0].order).toBeNull();
+    expect(section.entries[0].skipReason).toBe("he cannot study force yet");
+  });
+
+  it("a_teach_nobody_can_receive_gives_an_entry_saying_so", () => {
+    const rows = [aRow({ cells: [aTeachCell({ taught: [] })] })];
+    const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
+    expect(section.entries[0].order).toBeNull();
+    expect(section.entries[0].skipReason).toBe("nobody can be taught this turn");
+  });
+
+  it("the_own_factions_section_is_marked_source_own", () => {
+    const orders = studyOrders({
+      groups: [ownGroup, allyGroup],
+      rows: mixedRows(),
+      turns: [72],
+      notices: []
+    });
+    expect(orders.sections.map((section) => [section.factionId, section.source])).toEqual([
+      ["95", "own"],
+      ["17", "sheet"]
+    ]);
+  });
+
+  it("every_entrys_order_and_annotation_appear_in_the_section_text", () => {
+    const orders = studyOrders({
+      groups: [ownGroup, allyGroup],
+      rows: mixedRows(),
+      turns: [72],
+      notices: [aNotice()]
+    });
+    for (const section of orders.sections) {
+      for (const entry of section.entries) {
+        if (entry.order !== null) {
+          expect(section.text).toContain(entry.order);
+        }
+        if (entry.annotation !== null) {
+          expect(section.text).toContain(entry.annotation);
+        }
+        if (entry.skipReason !== null) {
+          expect(section.text).toContain(entry.skipReason);
+        }
+      }
+    }
+  });
+});

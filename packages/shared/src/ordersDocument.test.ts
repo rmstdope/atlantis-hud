@@ -25,6 +25,7 @@ import {
   readUnitOrders,
   seedOrdersDocument,
   regionBannerLine,
+  stripLongOrderLines,
   stripMovementOrderLines,
   stripUnitComments,
   withoutTrailingBlankLines,
@@ -1330,5 +1331,57 @@ describe("repairFormedUnitBlocks", () => {
   it("a document with nothing to repair comes back by reference", () => {
     const document = [BANNER, "unit 1922", "@tax", "", "#end", ""].join("\n");
     expect(repairFormedUnitBlocks(document).document).toBe(document);
+  });
+});
+
+describe("stripLongOrderLines", () => {
+  it("every_month_long_order_line_is_removed_including_an_at_repeated_one", () => {
+    expect(stripLongOrderLines("@work\nBUILD Tower\nclaim 200")).toBe("claim 200");
+  });
+
+  it("a_give_or_claim_line_survives", () => {
+    expect(stripLongOrderLines("claim 200\ngive 1250 20 silv")).toBe(
+      "claim 200\ngive 1250 20 silv"
+    );
+  });
+
+  it("the_first_lines_indentation_is_not_trimmed_away", () => {
+    expect(stripLongOrderLines("  study forc\n  claim 200")).toBe("  claim 200");
+  });
+});
+
+describe("nested orders are not the unit's own month-long order", () => {
+  /** `rules/form`: the orders after FORM belong to the new unit, until END. */
+  const withForm = [
+    "  claim 200",
+    "FORM 1",
+    "  BUY 5 Plainsmen",
+    "  STUDY COMBAT",
+    "END",
+    "@work"
+  ].join("\n");
+
+  /** `rules/turn`: orders inside TURN/ENDTURN are next month's, not this one's. */
+  const withTurn = ["STUDY COMB", "TURN", "  MOVE N", "ENDTURN"].join("\n");
+
+  it("a_form_blocks_own_study_survives_the_strip", () => {
+    expect(stripLongOrderLines(withForm)).toBe(
+      ["  claim 200", "FORM 1", "  BUY 5 Plainsmen", "  STUDY COMBAT", "END"].join("\n")
+    );
+  });
+
+  it("a_queued_turns_orders_survive_the_strip", () => {
+    expect(stripLongOrderLines(withTurn)).toBe(["TURN", "  MOVE N", "ENDTURN"].join("\n"));
+  });
+
+  it("a_repeating_turn_block_is_nested_too", () => {
+    const repeating = ["TAX", "@TURN", "  MOVE S S S", "ENDTURN"].join("\n");
+    expect(stripLongOrderLines(repeating)).toBe(["@TURN", "  MOVE S S S", "ENDTURN"].join("\n"));
+  });
+
+  it("the_long_order_named_is_the_units_own_not_a_nested_one", () => {
+    expect(longOrderOf(withForm)).toBe("@work");
+    expect(longOrderOf(withTurn)).toBe("STUDY COMB");
+    expect(longOrderOf(["  claim 200", "FORM 1", "  STUDY COMBAT", "END"].join("\n"))).toBeNull();
   });
 });

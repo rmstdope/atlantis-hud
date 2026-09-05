@@ -1,5 +1,7 @@
 import { CopyButton } from "./CopyButton";
+import { StudyOrdersWritePrompt } from "./StudyOrdersWritePrompt";
 import type { StudyOrders } from "../studyOrders";
+import type { StudyWritePlan } from "../studyOrdersWrite";
 
 /**
  * The Orders view: one section per faction, each copyable and savable on its own (`ah-lyg6.4.1`).
@@ -12,7 +14,14 @@ export function StudyPlannerOrders({
   orders,
   emptyCopy,
   error,
-  onSaveText
+  onSaveText,
+  writePlan,
+  asking,
+  notice,
+  onAskWrite,
+  onConfirmWrite,
+  onCancelWrite,
+  onUndoWrite
 }: {
   orders: StudyOrders;
   /**
@@ -23,12 +32,49 @@ export function StudyPlannerOrders({
   /** `ordersError`. */
   error: string | null;
   onSaveText: (fileName: string, text: string) => void;
+  /** The own faction's write plan, or null when this tab has nothing it could write. */
+  writePlan: StudyWritePlan | null;
+  /** True while the confirmation stands: every section's buttons are disabled under it. */
+  asking: boolean;
+  /** The line about the last write of this visit, or null. */
+  notice: { text: string; undoable: boolean } | null;
+  onAskWrite: () => void;
+  onConfirmWrite: () => void;
+  onCancelWrite: () => void;
+  onUndoWrite: () => void;
 }) {
   return (
     <div data-testid="study-planner-orders" className="min-h-0 overflow-auto p-3">
       {error === null ? null : (
         <p data-testid="study-planner-orders-error" className="m-0 px-2 py-1 text-warn">
           {error}
+        </p>
+      )}
+      {asking && writePlan !== null ? (
+        <StudyOrdersWritePrompt
+          plan={writePlan}
+          onConfirm={onConfirmWrite}
+          onCancel={onCancelWrite}
+        />
+      ) : null}
+      {notice === null ? null : (
+        <p
+          data-testid="study-planner-write-notice"
+          className={`m-0 flex items-center gap-2 px-2 py-1 ${
+            notice.undoable ? "text-ok" : "text-ink-dim"
+          }`}
+        >
+          {notice.text}
+          {notice.undoable ? (
+            <button
+              type="button"
+              data-testid="study-planner-write-undo"
+              onClick={onUndoWrite}
+              className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink"
+            >
+              Undo
+            </button>
+          ) : null}
         </p>
       )}
       {orders.sections.length === 0 ? (
@@ -44,17 +90,32 @@ export function StudyPlannerOrders({
             <div className="flex items-center gap-2 py-1">
               <span className="text-ink-soft">{section.heading}</span>
               <span className="flex-1" />
+              {/* Absent, not greyed, when nothing of yours can be written: a heading button that
+                  exists in one condition only, beside a body that already says why. */}
+              {section.source === "own" && writePlan !== null ? (
+                <button
+                  type="button"
+                  data-testid="study-planner-write"
+                  disabled={asking}
+                  onClick={onAskWrite}
+                  className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink disabled:opacity-50"
+                >
+                  Put into my orders
+                </button>
+              ) : null}
               <CopyButton
                 text={section.text}
                 label="Copy"
                 testId={`study-planner-copy-${section.factionId}`}
-                className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink"
+                disabled={asking}
+                className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink disabled:opacity-50"
               />
               <button
                 type="button"
                 data-testid={`study-planner-save-${section.factionId}`}
+                disabled={asking}
                 onClick={() => onSaveText(section.fileName, section.text)}
-                className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink"
+                className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink disabled:opacity-50"
               >
                 Save…
               </button>

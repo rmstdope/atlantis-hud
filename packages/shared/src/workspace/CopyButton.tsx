@@ -16,7 +16,8 @@ export function CopyButton({
   label,
   copiedLabel = "Copied",
   testId,
-  className
+  className,
+  disabled = false
 }: {
   text: string;
   /** The idle label, e.g. `Copy` or `Copy all`. */
@@ -24,6 +25,8 @@ export function CopyButton({
   copiedLabel?: string;
   testId: string;
   className?: string;
+  /** Greyed and inert, for a caller holding a question open over it. */
+  disabled?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   // Cleared on unmount: this button now has five instances, four of them inside a dialog the
@@ -41,6 +44,7 @@ export function CopyButton({
     <button
       type="button"
       data-testid={testId}
+      disabled={disabled}
       onClick={() => {
         void copyText(text).then((ok) => {
           if (!ok) return;

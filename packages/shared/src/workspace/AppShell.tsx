@@ -3260,6 +3260,30 @@ export function AppShell({
     return region ? regionBannerLine(region, levelFieldOf(region.coordinate.z)) : null;
   }, [hex]);
 
+  /**
+   * The banner a new block for a mage in this region would go under, or null when the map has no
+   * detail for it. Unlike `newBlockBanner` this is asked per region rather than for the selection:
+   * the study planner writes several mages at once, standing in several hexes (`ah-lyg6.4.2`).
+   */
+  const regionBanner = useCallback(
+    (regionId: string) => {
+      const region = model.hexes.find((candidate) => candidate.regionId === regionId)?.region;
+      return region ? regionBannerLine(region, levelFieldOf(region.coordinate.z)) : null;
+    },
+    [model]
+  );
+
+  /** Puts the study planner's own-faction orders into the document, and puts them back on Undo. */
+  const writeStudyOrdersDocument = useCallback(
+    (next: string) => {
+      // `"external"` bumps `externalOrdersRevision`, which is what tells the open editor to take
+      // its block again; `markDirty` goes with it, always (`:3212-3214`).
+      writeOrdersDocument("external", next);
+      writer.markDirty(game, draftKey, next);
+    },
+    [game, draftKey, writer, writeOrdersDocument]
+  );
+
   const onOrdersChange = useCallback(
     (unitId: string, orders: string) => {
       writeOrdersDocument("editor", (document) => {
@@ -4343,6 +4367,9 @@ export function AppShell({
           label={hexLabel}
           onSaveText={(fileName, text) => void saveStudyOrders(fileName, text)}
           ordersError={studyOrdersError}
+          ordersDocument={ordersDocument}
+          regionBanner={regionBanner}
+          onWriteOrdersDocument={writeStudyOrdersDocument}
           tree={magicTree}
           plans={studyPlans}
           viewedTurn={parsed?.header.turnNumber ?? null}
