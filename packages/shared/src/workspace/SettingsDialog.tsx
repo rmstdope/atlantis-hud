@@ -12,6 +12,11 @@ import { useWorkspaceStore } from "../workspaceStore";
 import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
 import { SettingToggle } from "./SettingToggle";
+import {
+  COLUMN_LABELS,
+  HIDEABLE_COLUMNS,
+  type HideableColumn
+} from "../unitTable";
 import type { WorkspaceGame } from "../workspaceStore";
 import type { AppUpdateControl } from "./appUpdate";
 import { updatePresentationFor } from "./appUpdate";
@@ -129,7 +134,10 @@ export function SettingsDialog({
                 ?.focus();
             }
           }}
-          className="mt-2 flex gap-1"
+          // Wraps rather than overflowing: a sixth tab (ah-20di) is already wider than the panel
+          // at some sizes, and a tab strip scrolled off the side is one nobody can find. The
+          // chosen mockup shows the wrapped strip.
+          className="mt-2 flex flex-wrap gap-1"
         >
           {SETTINGS_TABS.map((entry) => (
             <Tab key={entry.id} id={entry.id} label={entry.label} active={tab} onTab={setTab} />
@@ -147,6 +155,7 @@ export function SettingsDialog({
               onChangeMap={onChangeMap}
             />
           ) : null}
+          {tab === "columns" ? <ColumnSettings /> : null}
           {tab === "warnings" ? <WarningSettings /> : null}
           {tab === "snippets" ? <SnippetSettings /> : null}
           {tab === "about" ? (
@@ -217,13 +226,8 @@ export function GlobalSettings() {
   const setOrderOcd = useSettingsStore((state) => state.setOrderOcd);
   const countUpkeep = useSettingsStore((state) => state.countUpkeep);
   const setCountUpkeep = useSettingsStore((state) => state.setCountUpkeep);
-  // A workspace preference rather than a setting, but this is where a player looks for "put it
-  // back how it was" - and a table whose columns have been dragged into a bad shape needs a way
-  // out that is not on the table itself (ah-1owr.2).
   const layers = useWorkspaceStore((state) => state.layers);
   const toggleLayer = useWorkspaceStore((state) => state.toggleLayer);
-  const resetUnitColumnShares = useWorkspaceStore((state) => state.resetUnitColumnShares);
-  const resetUnitColumnOrder = useWorkspaceStore((state) => state.resetUnitColumnOrder);
 
   return (
     <div className="flex flex-col gap-3">
@@ -350,38 +354,6 @@ export function GlobalSettings() {
         </span>
       </label>
 
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-ink-soft">
-          <span className="block">Units table columns</span>
-          <span className="block text-pane-sm text-ink-dim">
-            Puts the dragged column widths, or the order they were dragged into, back to how they
-            ship.
-          </span>
-        </span>
-        {/*
-          Two buttons rather than one "Reset columns": order and widths are separate preferences
-          stored separately, so a player can undo the mess they made of one without losing the
-          other (ah-1owr.3). The pair follows `BadgeMenu`'s All/None shape.
-        */}
-        <span className="flex gap-1">
-          <button
-            type="button"
-            data-testid="settings-reset-column-widths"
-            onClick={resetUnitColumnShares}
-            className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
-          >
-            Reset widths
-          </button>
-          <button
-            type="button"
-            data-testid="settings-reset-column-order"
-            onClick={resetUnitColumnOrder}
-            className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
-          >
-            Reset order
-          </button>
-        </span>
-      </div>
 
       <SettingToggle
         title="Movement planner"
@@ -706,6 +678,104 @@ export const WARNING_GROUPS: readonly {
     ]
   }
 ];
+
+/**
+ * Which columns the units table draws, and the three buttons that put its column preferences back
+ * (ah-20di). A tab of its own rather than more rows on an already-scrolling Global tab, and it is
+ * where the two reset buttons moved to: everything about the table's columns in one place.
+ *
+ * A workspace preference rather than a setting, but this is where a player looks for "put it back
+ * how it was" - and a table whose columns have been dragged into a bad shape, or hidden, needs a
+ * way out that is not on the table itself (ah-1owr.2).
+ */
+/** Exported for `SettingsDialog.test.tsx`, which renders this panel in isolation. */
+export function ColumnSettings() {
+  const columnsShown = useWorkspaceStore((state) => state.unitColumnsShown);
+  const setUnitColumnShown = useWorkspaceStore((state) => state.setUnitColumnShown);
+  const showAllUnitColumns = useWorkspaceStore((state) => state.showAllUnitColumns);
+  const resetUnitColumnShares = useWorkspaceStore((state) => state.resetUnitColumnShares);
+  const resetUnitColumnOrder = useWorkspaceStore((state) => state.resetUnitColumnOrder);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-pane-sm text-ink-dim">
+        Which columns the units table draws. Unchecking one takes it off the table and gives its
+        width to the columns still shown.
+      </p>
+
+      {/*
+        `HIDEABLE_COLUMNS` order - the shipped left-to-right order - rather than the player's own
+        dragged order: a settings list that rearranges itself under them is one nobody can learn.
+        The titles come from `COLUMN_LABELS` and are never retyped here; two lists of labels for
+        one set of columns is exactly the drift `UNIT_COLUMNS` exists to prevent.
+      */}
+      {HIDEABLE_COLUMNS.map((column) => (
+        <SettingToggle
+          key={column}
+          title={COLUMN_LABELS[column] ?? column}
+          description={COLUMN_DESCRIPTIONS[column]}
+          testId={`settings-column-${column}`}
+          checked={columnsShown[column]}
+          onChange={(checked) => setUnitColumnShown(column, checked)}
+        />
+      ))}
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-ink-soft">
+          <span className="block">Units table columns</span>
+          <span className="block text-pane-sm text-ink-dim">
+            Puts the dragged column widths, or the order they were dragged into, back to how they
+            ship.
+          </span>
+        </span>
+        {/*
+          Three buttons rather than one "Reset columns": visibility, order and widths are separate
+          preferences stored separately, so a player can undo the mess they made of one without
+          losing the others (ah-1owr.3, ah-20di). The set follows `BadgeMenu`'s All/None shape.
+        */}
+        <span className="flex gap-1">
+          <button
+            type="button"
+            data-testid="settings-show-all-columns"
+            onClick={showAllUnitColumns}
+            className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
+          >
+            Show all
+          </button>
+          <button
+            type="button"
+            data-testid="settings-reset-column-widths"
+            onClick={resetUnitColumnShares}
+            className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
+          >
+            Reset widths
+          </button>
+          <button
+            type="button"
+            data-testid="settings-reset-column-order"
+            onClick={resetUnitColumnOrder}
+            className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
+          >
+            Reset order
+          </button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** What each hideable column shows, one line each, for the Columns tab's checkboxes. */
+const COLUMN_DESCRIPTIONS: Record<HideableColumn, string> = {
+  faction: "Who the unit belongs to.",
+  men: "How many men the unit holds.",
+  movement: "How the unit can travel, and how heavily it is loaded.",
+  flags: "The unit's behaviour flags, one letter each.",
+  skills: "The skills the unit knows, and at what level.",
+  items: "What the unit carries, after this month's orders.",
+  structure: "The building or ship the unit is in.",
+  longOrder: "The unit's month-long order.",
+  silver: "The silver the unit is left holding at the end of the month."
+};
 
 /**
  * Every advisory check's on/off toggle, grouped as `WARNING_GROUPS` lays out. Global in scope -

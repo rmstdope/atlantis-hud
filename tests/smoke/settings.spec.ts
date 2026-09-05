@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { clearGames, createGame } from "./gameSetup";
+import { clearGames, createGame, loadReport, selectHex } from "./gameSetup";
 
 /**
  * The settings dialog, in both shells.
@@ -523,4 +523,43 @@ test("the create form's map fields do not overflow the gate", async ({ page }) =
 
   expect(overflow.form).toBeLessThanOrEqual(1);
   expect(overflow.parent).toBeLessThanOrEqual(1);
+});
+
+/**
+ * ah-20di. Hiding a column is a third column preference beside the dragged widths and the dragged
+ * order, and it lives in the Columns tab with them.
+ *
+ * The `Show all` at the end is not decoration: `test:smoke` runs one worker and localStorage
+ * persists across the tests in a file, so a column left hidden here would take positional cell
+ * assertions elsewhere with it.
+ */
+test("a column is hidden from the Columns tab, leaves the units table, and is still gone after a reload", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const structure = page.getByRole("columnheader", { name: /Structure/ });
+  const items = page.getByRole("columnheader", { name: /Items/ });
+  await expect(structure).toBeVisible();
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-columns").click();
+  await page.getByTestId("settings-column-structure").uncheck();
+  await page.keyboard.press("Escape");
+
+  await expect(structure).toHaveCount(0);
+  await expect(items).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored");
+  await selectHex(page, "1:7,53");
+  await expect(page.getByRole("columnheader", { name: /Structure/ })).toHaveCount(0);
+
+  // Put it back, so the tests after this one see the table they expect.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-columns").click();
+  await page.getByTestId("settings-show-all-columns").click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("columnheader", { name: /Structure/ })).toBeVisible();
 });
