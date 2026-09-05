@@ -457,7 +457,7 @@ export function StudyPlannerDialog({
             />
             <StudyPlannerDetail
               mage={picked}
-              turn={turns[0]}
+              turn={turns[0] ?? null}
               label={label}
               names={names}
               tree={tree}
@@ -558,8 +558,8 @@ export function StudyPlannerDetail({
   onSaveNote
 }: {
   mage: PlannerMage;
-  /** The turn the plan line names - `turns[0]`, the next one. */
-  turn: number;
+  /** The turn the plan line names - `turns[0]`, the next one; null before a report is loaded. */
+  turn: number | null;
   label: (regionId: string) => string;
   /** Unit id to mage name, so a teach goal in the plan line reads as a name. */
   names?: ReadonlyMap<string, string>;
@@ -593,7 +593,7 @@ export function StudyPlannerDetail({
       {/* Read-only: the plan is written in the Schedule view, and two editors for one thing was
           the alternative the navigator rejected. */}
       <p data-testid="study-planner-plan-line" className="mt-2 text-ink-dim">
-        {planLine(plannedGoals(plan?.goals ?? []), turn, tree, names)}
+        {turn === null ? "Nothing planned." : planLine(plannedGoals(plan?.goals ?? []), turn, tree, names)}
       </p>
 
       <StudyPlannerNote

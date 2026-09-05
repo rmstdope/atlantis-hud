@@ -353,7 +353,7 @@ describe("a teacher who names himself", () => {
         cells: [
           {
             kind: "teach",
-                    students: ["881"],
+            students: ["881"],
             outcome: { taught: [], refused: [{ kind: "self", unitId: "881" }], worth: 1 },
             label: "TEACH nobody"
           }

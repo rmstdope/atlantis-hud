@@ -211,15 +211,34 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   useEscapeToDismiss(() => props.onEvent({ kind: "cancelled" }));
   const box = useRef<HTMLDivElement | null>(null);
   const cell = `${props.rowIndex}:${props.mode.turnIndex}`;
+  const step = props.mode.kind;
+  // Focus lands on a *row*, not on the wrapper. The arrow-key walk reads `data-row` off the
+  // focused element, so focusing the wrapper would leave the `↑↓ to move` the foot promises doing
+  // nothing at all until the player found a row with Tab. Keyed on the step, so coming back from
+  // the teach step - whose buttons have just unmounted - lands on a row again rather than on
+  // `<body>`.
   useEffect(() => {
-    box.current?.focus();
-    // Focus goes back to the cell the dropdown came from, by the `[data-cell="r:c"]` address the
-    // arrow-key walk and `focusCell` already use: anything else strands a keyboard player at the
-    // top of the grid.
-    return () => {
+    const root = box.current;
+    if (root === null) {
+      return;
+    }
+    const target =
+      root.querySelector<HTMLElement>('[data-row][aria-pressed="true"]') ??
+      root.querySelector<HTMLElement>("[data-row]") ??
+      root.querySelector<HTMLElement>("button:not([disabled])") ??
+      root;
+    target.focus();
+  }, [step]);
+  // Focus goes back to the cell the dropdown came from, by the `[data-cell="r:c"]` address the
+  // arrow-key walk and `focusCell` already use: anything else strands a keyboard player at the
+  // top of the grid. Its own effect, so the step change above cannot fire this cleanup and throw
+  // focus out of a dropdown that is still open.
+  useEffect(
+    () => () => {
       document.querySelector<HTMLElement>(`[data-cell="${cell}"]`)?.focus();
-    };
-  }, [cell]);
+    },
+    [cell]
+  );
   return (
     <div ref={box} tabIndex={-1}>
       <CellPopover {...props} />
@@ -511,16 +530,18 @@ export function CellPopover({
         role="dialog"
         aria-label={`${mageName} teaches on turn ${turn}`}
         className="rounded border border-edge bg-panel-raised p-2"
+        // `Cmd/Ctrl+Enter` only. **Escape is not handled here and must not be**: the layer's
+        // `useEscapeToDismiss` is a capture-phase document listener that stops propagation before
+        // React dispatches, so a `cancel` branch on this element would be dead code reading like
+        // the mechanism that takes the teach step back to the dropdown. That is the layer's.
         onKeyDown={(event) => {
-          const action = keyToAction({
-            key: event.key,
-            metaKey: event.metaKey,
-            ctrlKey: event.ctrlKey
-          });
-          if (action === "cancel") {
-            event.stopPropagation();
-            onEvent({ kind: "cancelled" });
-          } else if (action === "set") {
+          if (
+            keyToAction({
+              key: event.key,
+              metaKey: event.metaKey,
+              ctrlKey: event.ctrlKey
+            }) === "set"
+          ) {
             event.preventDefault();
             onChoose({ kind: "teach", students: [...mode.students] });
           }

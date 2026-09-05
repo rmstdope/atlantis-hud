@@ -103,6 +103,18 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await expect(cell).toContainText("—");
   await expect(neighbour).toContainText("—");
 
+  // The dropdown opens with a row focused, so the `↑↓ to move · ↵ to choose` its foot promises
+  // works from the keyboard alone - which nothing in `packages/shared` can reach (ah-nass).
+  await cell.click();
+  await expect(page.locator("[data-row]:focus")).toHaveCount(1);
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(popover).toHaveCount(0);
+  await expect(cell).not.toContainText("—");
+  await cell.click();
+  await page.getByTestId("study-schedule-choice-nothing").click();
+  await expect(popover).toHaveCount(0);
+
   // Two turns apart, and the gap between them stays empty.
   await cell.click();
   await page.getByTestId("study-schedule-choice-FORC").click();
