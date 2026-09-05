@@ -31,7 +31,7 @@ export function ProblemsList({
   /** The unit ids the loaded turn describes, so only a unit that can be reached becomes a button. */
   known?: ReadonlySet<string>;
   /** Go and look at a unit. The caller closes this popover, since it is the one that opened it. */
-  onSelectUnit?: (unitId: string) => void;
+  onSelectUnit?: (unitId: string, regionId?: string) => void;
 }) {
   return (
     <ul data-testid="problems-panel" className="list-none space-y-2">
@@ -65,6 +65,7 @@ export function ProblemsList({
                 <ProblemWho
                   unitId={finding.unitId}
                   formed={finding.formed}
+                  regionId={hex.regionId}
                   known={known}
                   onSelectUnit={onSelectUnit}
                 />

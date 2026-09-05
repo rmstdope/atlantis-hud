@@ -7,6 +7,7 @@ import {
   fillOrders,
   loadReport,
   ordersInput,
+  ordersText,
   selectHex,
   selectUnit
 } from "./gameSetup";
@@ -576,4 +577,55 @@ test("a unit the report's template never listed can still be ordered", async ({ 
 
   await expectOrders(page, /study forc/);
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+});
+
+/**
+ * A unit this month's `FORM` orders create edits its own orders, inside the `FORM` that makes it
+ * (`ah-ty3s.1`, decisions A1, B1 and D1).
+ *
+ * The recipe is `workspace.spec.ts`'s: 18642 CLAIMs, FORMs and BUYs, which is what produces a
+ * `new-1` row at all - `rules/form` dissolves a formed unit that gains nobody, and the hex's
+ * shared purse (`rules/share`) is what pays for the recruit.
+ *
+ * The whole point is that this can only be seen here: the pane, the table and the document meet
+ * inside `AppShell`, and `packages/shared` has no jsdom (`ah-nass`).
+ */
+test("a unit formed this month edits its own orders inside the FORM that creates it", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@study obse\nCLAIM 200\nFORM 1\nBUY 1 HDWA\nEND\n");
+
+  const formedRow = page.getByTestId("unit-row-new-1");
+  await expect(formedRow).toBeVisible();
+  // Decision D1: the Id cell names the row's own unit, so this click selects `new-1` itself.
+  await formedRow.getByRole("button", { name: "unit new-1", exact: true }).click();
+
+  // Decision A1: the pane says whose block the lines land in, and holds the FORM's own lines and
+  // neither the `FORM` line nor its `END`.
+  await expect(page.getByTestId("panel-orders")).toContainText("— new 1, in unit 18642's block");
+  await expect(ordersInput(page)).toHaveAttribute("aria-label", "Orders for new 1");
+  await expectOrders(page, /^BUY 1 HDWA$/);
+  await expectOrdersNot(page, /FORM|END/);
+
+  await fillOrders(page, "BUY 1 HDWA\n@work");
+
+  // Decision B1: the creator's editor is unchanged and still shows the whole block, the new order
+  // inside the `FORM`/`END` pair. Trimmed, because Order OCD re-indents from the top of whatever
+  // editor last wrote the lines (`ah-ty3s.1`'s traps).
+  await selectUnit(page, OWN_UNIT);
+  await expect
+    .poll(async () =>
+      (await ordersText(page))
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "")
+    )
+    .toEqual(["@study obse", "CLAIM 200", "FORM 1", "BUY 1 HDWA", "@work", "END"]);
+
+  // That the typing never invented a literal `unit new-1` block is `ordersDocument.test.ts`'s
+  // "never invents a unit new-1 block": an editor shows one block, so no walk here can see the
+  // whole document.
 });

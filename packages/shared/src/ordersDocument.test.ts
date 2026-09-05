@@ -10,9 +10,13 @@ import { REPORT_NAMES_NO_FACTION, judgeReportUsable } from "./reportLoadDecision
 import { isOrdersFile } from "./ordersImport";
 import {
   applyUnitOrders,
+  blockFor,
+  formBlockFor,
   commandsOnly,
   ensureUnitBlock,
+  findFormBlocks,
   findUnitBlocks,
+  formedAlias,
   hasFactionHeader,
   LONG_ORDER_COMMANDS,
   longOrderOf,
@@ -771,6 +775,244 @@ describe("applyUnitOrders", () => {
     );
     expect(applyUnitOrders(existing, "1656", "@work", BANNER_43_81)).toBe(
       ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "@work", "", "#end", ""].join("\n")
+    );
+  });
+});
+
+describe("finding FORM blocks", () => {
+  const formed = [
+    "#atlantis 62",
+    "",
+    BANNER_43_81,
+    "",
+    "unit 1922",
+    "form 1",
+    "buy 1 hdwa",
+    "study comb",
+    "end",
+    "give new 1 100 silv",
+    "",
+    "#end",
+    ""
+  ].join("\n");
+
+  it("finds a FORM block's own lines, inside the unit block that holds it", () => {
+    const blocks = findFormBlocks(formed);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      alias: "1",
+      unitId: "1922",
+      parentIndex: null,
+      headerLine: 5,
+      firstLine: 6,
+      lastLine: 7
+    });
+  });
+
+  it("rule 5: a FORM opened inside a TURN block is next month's and is not returned", () => {
+    const document = ["unit 1922", "turn", "form 1", "buy 1 hdwa", "end", "endturn"].join("\n");
+    expect(findFormBlocks(document)).toEqual([]);
+  });
+
+  it("rule 6: an alias that is not a number of at least one is not returned", () => {
+    expect(findFormBlocks(["unit 1922", "form a", "buy 1 hdwa", "end"].join("\n"))).toEqual([]);
+    expect(findFormBlocks(["unit 1922", "form 0", "buy 1 hdwa", "end"].join("\n"))).toEqual([]);
+  });
+
+  it("rule 2: a FORM inside a unit block naming no reported unit is not returned", () => {
+    expect(findFormBlocks(["unit new-1", "form 1", "buy 1 hdwa", "end"].join("\n"))).toEqual([]);
+  });
+
+  it("rule 6: a FORM nested inside one that was not returned is not returned either", () => {
+    const document = ["unit 1922", "form 0", "form 2", "buy 1 hdwa", "end", "end"].join("\n");
+    expect(findFormBlocks(document)).toEqual([]);
+  });
+
+  it("a nested FORM points at the block enclosing it", () => {
+    const document = [
+      "unit 1922",
+      "form 1",
+      "buy 1 hdwa",
+      "form 2",
+      "study comb",
+      "end",
+      "end"
+    ].join("\n");
+    const blocks = findFormBlocks(document);
+    expect(blocks.map((block) => [block.alias, block.parentIndex])).toEqual([
+      ["1", null],
+      ["2", 0]
+    ]);
+    expect(blocks[1]).toMatchObject({ unitId: "1922", firstLine: 4, lastLine: 4 });
+  });
+
+  it("rule for comments and @: @form 1 is a block and ; form 1 is not", () => {
+    expect(
+      findFormBlocks(["unit 1922", "@form 1", "buy 1 hdwa", "end"].join("\n")).map((b) => b.alias)
+    ).toEqual(["1"]);
+    expect(findFormBlocks(["unit 1922", "; form 1", "buy 1 hdwa"].join("\n"))).toEqual([]);
+  });
+
+  it("rule 7: an unterminated FORM runs to the line before the next unit line", () => {
+    const document = [
+      "unit 1922",
+      "form 1",
+      "buy 1 hdwa",
+      "",
+      "unit 1923",
+      "@tax"
+    ].join("\n");
+    expect(findFormBlocks(document)[0]).toMatchObject({ firstLine: 2, lastLine: 2 });
+  });
+
+  it("rule 7: an empty FORM block gives lastLine below firstLine", () => {
+    const document = ["unit 1922", "form 1", "end"].join("\n");
+    const block = findFormBlocks(document)[0];
+    expect(block?.lastLine).toBeLessThan(block?.firstLine ?? 0);
+  });
+
+  it("rule 1: a directive closes an open FORM and clears the enclosing unit", () => {
+    const document = ["unit 1922", "form 1", "buy 1 hdwa", "#end", "form 2", "study comb"].join(
+      "\n"
+    );
+    expect(findFormBlocks(document).map((block) => block.alias)).toEqual(["1"]);
+  });
+
+  it("rule 3: endturn closes a TURN and only a TURN", () => {
+    const document = ["unit 1922", "turn", "endturn", "form 1", "buy 1 hdwa", "end"].join("\n");
+    expect(findFormBlocks(document).map((block) => block.alias)).toEqual(["1"]);
+  });
+});
+
+describe("formedAlias", () => {
+  it("reads the alias out of a formed unit's id, and nothing out of a reported one", () => {
+    expect(formedAlias("new-1")).toBe("1");
+    expect(formedAlias("1922")).toBeNull();
+  });
+});
+
+describe("formBlockFor and blockFor", () => {
+  const region = new Set(["1922", "1923"]);
+
+  it("the first form 1 in a region wins, and the second is swallowed", () => {
+    const document = [
+      "unit 1922",
+      "form 1",
+      "buy 1 hdwa",
+      "end",
+      "unit 1923",
+      "form 1",
+      "study comb",
+      "end"
+    ].join("\n");
+    expect(formBlockFor(document, "1", region)).toMatchObject({ unitId: "1922", firstLine: 2 });
+  });
+
+  it("a form 1 under a unit in another region does not match", () => {
+    const document = ["unit 4000", "form 1", "buy 1 hdwa", "end"].join("\n");
+    expect(formBlockFor(document, "1", region)).toBeNull();
+  });
+
+  it("a FORM nested inside a swallowed duplicate is swallowed with it", () => {
+    const document = [
+      "unit 1922",
+      "form 1",
+      "buy 1 hdwa",
+      "end",
+      "unit 1923",
+      "form 1",
+      "form 2",
+      "study comb",
+      "end",
+      "end"
+    ].join("\n");
+    expect(formBlockFor(document, "2", region)).toBeNull();
+  });
+
+  it("blockFor gives the unit block for a reported id and null for a new-1 with no region", () => {
+    const document = ["unit 1922", "form 1", "buy 1 hdwa", "end"].join("\n");
+    expect(blockFor(document, "1922")).toMatchObject({ unitId: "1922", headerLine: 0 });
+    expect(blockFor(document, "new-1")).toBeNull();
+    expect(blockFor(document, "new-1", region)).toMatchObject({
+      unitId: "new-1",
+      headerLine: 1,
+      firstLine: 2,
+      lastLine: 2
+    });
+  });
+});
+
+describe("a formed unit's own orders", () => {
+  const region = new Set(["1922"]);
+  const document = [
+    "#atlantis 62",
+    "",
+    BANNER_43_81,
+    "",
+    "unit 1922",
+    "@claim 200",
+    "form 1",
+    "buy 1 hdwa",
+    "study comb",
+    "end",
+    "give new 1 100 silv",
+    "",
+    "#end",
+    ""
+  ].join("\n");
+
+  it("reads the lines between form 1 and end, and nothing else", () => {
+    expect(readUnitOrders(document, "new-1", region)).toBe("buy 1 hdwa\nstudy comb");
+  });
+
+  it("writes a formed unit's orders back inside its FORM block", () => {
+    expect(writeUnitOrders(document, "new-1", "buy 1 hdwa\nstudy comb\n@work", region)).toBe(
+      [
+        "#atlantis 62",
+        "",
+        BANNER_43_81,
+        "",
+        "unit 1922",
+        "@claim 200",
+        "form 1",
+        "buy 1 hdwa",
+        "study comb",
+        "@work",
+        "end",
+        "give new 1 100 silv",
+        "",
+        "#end",
+        ""
+      ].join("\n")
+    );
+  });
+
+  it("emptying a formed unit's orders leaves its form and end standing", () => {
+    const emptied = writeUnitOrders(document, "new-1", "", region);
+    expect(emptied.split("\n").filter((line) => line.trim() !== "")).toEqual([
+      "#atlantis 62",
+      BANNER_43_81,
+      "unit 1922",
+      "@claim 200",
+      "form 1",
+      "end",
+      "give new 1 100 silv",
+      "#end"
+    ]);
+    expect(readUnitOrders(emptied, "new-1", region)).toBe("");
+  });
+
+  it("never invents a unit new-1 block", () => {
+    const noForm = ["#atlantis 62", "", BANNER_43_81, "", "unit 1922", "@tax", "", "#end", ""].join(
+      "\n"
+    );
+    expect(applyUnitOrders(noForm, "new-1", "buy 1 hdwa", BANNER_43_81, region)).toBe(noForm);
+    expect(ensureUnitBlock(noForm, "new-1", BANNER_43_81)).toBe(noForm);
+  });
+
+  it("applyUnitOrders edits an existing FORM block", () => {
+    expect(applyUnitOrders(document, "new-1", "@work", BANNER_43_81, region)).toContain(
+      "form 1\n@work\nend"
     );
   });
 });

@@ -226,6 +226,7 @@ import { loadSavedView, saveMapView } from "./mapViewportStorage";
 import type { MapViewState } from "./mapViewState";
 import { getMapTheme } from "./mapThemes";
 import { OrdersPanel } from "./OrdersPanel";
+import { formedSelectionFor } from "./ordersLock";
 import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
 import { GameDataDialog } from "./GameDataDialog";
@@ -306,6 +307,12 @@ import {
  * can be tested without rendering anything.
  */
 export { isOlderTurn };
+
+/**
+ * The reported units of a hex nothing is known about - one frozen instance, so a render with no hex
+ * selected hands the same identity down and memoised work below it does not run again.
+ */
+const NO_UNITS: ReadonlySet<string> = Object.freeze(new Set<string>());
 
 /** How long a load waits for the ruleset before giving up on it and parsing unclassified. */
 export const RULESET_WAIT_MS = 5000;
@@ -469,13 +476,29 @@ export function AppShell({
   const [ordersDocument, setOrdersDocument] = useState("");
 
   /**
+   * Every unit the report shows in each hex, foreign ones included.
+   *
+   * This is what scopes a `NEW n` alias: the core keys an alias by the hex the unit writing the
+   * `FORM` stands in (`intents.rs`), so resolving `new-1` needs the hex's reported units and not a
+   * `unitId -> regionId` map - two hexes can each hold a `new-1` (`ah-9o0c.2`).
+   */
+  const unitIdsByRegion = useMemo(() => {
+    const found = new Map<string, ReadonlySet<string>>();
+    for (const region of parsed?.regions ?? []) {
+      found.set(region.regionId, new Set(region.units.map((candidate) => candidate.unitId)));
+    }
+    return found;
+  }, [parsed]);
+
+  /**
    * What a unit will spend the month on, read from the live document so the units table follows an
    * edit in the orders pane without anything having to be reselected. `readUnitOrders` answers null
    * for a unit with no block yet, which is the commonest case there is.
    */
   const getLongOrder = useCallback(
-    (unitId: string) => longOrderOf(readUnitOrders(ordersDocument, unitId) ?? ""),
-    [ordersDocument]
+    (unitId: string, regionId: string) =>
+      longOrderOf(readUnitOrders(ordersDocument, unitId, unitIdsByRegion.get(regionId)) ?? ""),
+    [ordersDocument, unitIdsByRegion]
   );
   /** How many writes to the document did not come from the editor. See `OrdersOrigin`. */
   const [externalOrdersRevision, setExternalOrdersRevision] = useState(0);
@@ -1100,8 +1123,38 @@ export function AppShell({
     return found;
   }, [parsed]);
 
-  /** Which of the units a message names can actually be gone to. */
-  const knownUnitIds = useMemo(() => new Set(unitRegions.keys()), [unitRegions]);
+  /** The units this month's `FORM` orders create, wherever they are - the forecast's own list. */
+  const formedUnitIds = useMemo(
+    () => validated.silver.filter((entry) => entry.formed).map((entry) => entry.unitId),
+    [validated.silver]
+  );
+
+  /**
+   * Which of the units a message names can actually be gone to.
+   *
+   * A unit formed this month is one of them (decision D1, `ah-ty3s.1`), which is what makes a
+   * Problems entry naming it a button. `unitRegions` itself is deliberately left alone: it is
+   * `unitId -> regionId` and could not tell two `new-1`s apart.
+   */
+  const knownUnitIds = useMemo(
+    () => new Set([...unitRegions.keys(), ...formedUnitIds]),
+    [unitRegions, formedUnitIds]
+  );
+
+  /** The reported units of the hex on screen, which is what a `NEW n` alias is scoped by. */
+  const regionUnitIds = unitIdsByRegion.get(hex?.regionId ?? "") ?? NO_UNITS;
+
+  /**
+   * The selection as a unit this month's `FORM` orders create, when it is one.
+   *
+   * Resolved from the document rather than from the debounced forecast, and by
+   * `formedSelectionFor` rather than here: the shell holds no rule of its own, so the rule can be
+   * tested without a jsdom (`ah-nass`, `.cerebro/traps.md`).
+   */
+  const formedSelection = useMemo(
+    () => formedSelectionFor(ordersDocument, selectedUnitId, regionUnitIds),
+    [ordersDocument, selectedUnitId, regionUnitIds]
+  );
 
   /** Every own unit in the report, for the units dock's `All my units` source. `ah-1mpx.2`. */
   const ownUnits = useMemo(
@@ -1129,8 +1182,10 @@ export function AppShell({
    * selecting and then switching would leave nothing selected at all.
    */
   const goToUnit = useCallback(
-    (unitId: string, closing: HeaderPopoverId | null = "report") => {
-      const regionId = unitRegions.get(unitId);
+    (unitId: string, closing: HeaderPopoverId | null = "report", inRegion?: string) => {
+      // The caller's hex wins where it has one: a formed unit's id is meaningless outside the hex
+      // it is formed in, and `unitRegions` has no entry for it at all.
+      const regionId = inRegion ?? unitRegions.get(unitId);
       if (!regionId) {
         return;
       }
@@ -1170,14 +1225,14 @@ export function AppShell({
 
   // Every problem the F8 walk can visit, in document order, against the text validation saw.
   const problemTargets = useMemo(
-    () => diagnosticTargets(validated.text, validated.diagnostics),
-    [validated]
+    () => diagnosticTargets(validated.text, validated.diagnostics, unitIdsByRegion),
+    [validated, unitIdsByRegion]
   );
 
   // The document position of each stop, for carrying the walk across a re-validation.
   const problemKeys = useMemo(
-    () => stopKeys(validated.text, problemTargets),
-    [validated, problemTargets]
+    () => stopKeys(problemTargets),
+    [problemTargets]
   );
 
   // A fresh validation rebuilds the list, so the old index means nothing - but the player's place
@@ -1196,13 +1251,16 @@ export function AppShell({
     if (!pendingProblem) {
       return;
     }
-    if (unit?.unitId === pendingProblem.unitId) {
+    // Against the *selection*, not against `unit`: a unit this month's `FORM` orders create is in
+    // neither the report nor the forecast's unit list, so `unit` is null for it and the landing
+    // would be thrown away every time (`ah-ty3s.1`).
+    if (selectedUnitId === pendingProblem.unitId) {
       ordersEditor.current?.selectProblem(pendingProblem.problem);
     }
     // Consumed either way once the selection has moved at all: a landing left waiting would
     // fire on some much later, unrelated visit to that unit.
     setPendingProblem(null);
-  }, [pendingProblem, unit]);
+  }, [pendingProblem, selectedUnitId]);
 
   const walkProblems = useCallback(
     (direction: 1 | -1) => {
@@ -1214,14 +1272,14 @@ export function AppShell({
       walkKey.current = problemKeys[step] ?? null;
       setWalkStop({ index: step, standing: true });
       const target = problemTargets[step];
-      if (unit?.unitId === target.unitId) {
+      if (selectedUnitId === target.unitId) {
         ordersEditor.current?.selectProblem(target.problem);
       } else {
-        goToUnit(target.unitId);
+        goToUnit(target.unitId, "report", target.regionId ?? undefined);
         setPendingProblem(target);
       }
     },
-    [problemTargets, problemKeys, unit, goToUnit]
+    [problemTargets, problemKeys, selectedUnitId, goToUnit]
   );
 
   const dispatchShortcut = useCallback(
@@ -3205,12 +3263,12 @@ export function AppShell({
       writeOrdersDocument("editor", (document) => {
         // The block is created on the first keystroke, not on selection: an edit that arrives with
         // no text in it has typed nothing (ah-0gs8).
-        const next = applyUnitOrders(document, unitId, orders, newBlockBanner);
+        const next = applyUnitOrders(document, unitId, orders, newBlockBanner, regionUnitIds);
         writer.markDirty(game, draftKey, next);
         return next;
       });
     },
-    [game, draftKey, writer, writeOrdersDocument, newBlockBanner]
+    [game, draftKey, writer, writeOrdersDocument, newBlockBanner, regionUnitIds]
   );
 
   /**
@@ -3295,15 +3353,15 @@ export function AppShell({
           newBlockBanner === null
             ? document
             : ensureUnitBlock(document, unit.unitId, newBlockBanner);
-        const existing = readUnitOrders(base, unit.unitId) ?? "";
+        const existing = readUnitOrders(base, unit.unitId, regionUnitIds) ?? "";
         const withoutMove = stripMovementOrderLines(existing);
         const next = withoutMove ? `${withoutMove}\n${order}` : order;
-        const written = writeUnitOrders(base, unit.unitId, next);
+        const written = writeUnitOrders(base, unit.unitId, next, regionUnitIds);
         writer.markDirty(game, draftKey, written);
         return written;
       });
     },
-    [unit, game, draftKey, writer, writeOrdersDocument, newBlockBanner]
+    [unit, game, draftKey, writer, writeOrdersDocument, newBlockBanner, regionUnitIds]
   );
 
   /**
@@ -4300,7 +4358,7 @@ export function AppShell({
             onSelectHex={selectHex}
             onDismiss={() => closePopover("report")}
             known={knownUnitIds}
-            onSelectUnit={(unitId) => goToUnit(unitId)}
+            onSelectUnit={(unitId, regionId) => goToUnit(unitId, "report", regionId)}
           />
         );
       case "engine":
@@ -4750,7 +4808,7 @@ export function AppShell({
                 game={game}
                 turn={parsed?.header.turnNumber ?? null}
                 known={knownUnitIds}
-                onSelectUnit={(unitId) => goToUnit(unitId, null)}
+                onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId)}
                 gameData={gameData}
                 onOpenGameData={
                   gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
@@ -4835,6 +4893,9 @@ export function AppShell({
               >
                 <OrdersPanel
                   unit={unit}
+                  unitId={selectedUnitId}
+                  formed={formedSelection}
+                  regionUnitIds={regionUnitIds}
                   hex={hex}
                   document={ordersDocument}
                   externalRevision={externalOrdersRevision}
@@ -4893,7 +4954,7 @@ export function AppShell({
               getLongOrder={getLongOrder}
               getSilver={getSilver}
               silverWarnings={silverWarnings}
-              onSelectUnit={(unitId) => goToUnit(unitId, null)}
+              onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId)}
               ownUnits={ownUnits}
               foreignUnits={foreignUnits}
               attitudes={parsed?.header.attitudes ?? null}

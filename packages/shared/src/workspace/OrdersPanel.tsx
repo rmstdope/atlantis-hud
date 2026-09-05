@@ -12,7 +12,7 @@ import { SeverityMark } from "./primitives";
 import type { CaretLookup } from "../orderCompletion";
 import type { OrderSnippet } from "../orderSnippets";
 import { readUnitOrders } from "../ordersDocument";
-import { describeLock, lockFor, type Lock } from "./ordersLock";
+import { describeLock, lockFor, type FormedSelection, type Lock } from "./ordersLock";
 import { useSettingsStore } from "../settingsStore";
 import type { Ref } from "react";
 import { CollapsiblePanel } from "./CollapsiblePanel";
@@ -20,6 +20,17 @@ import { OrdersEditor, type OrdersEditorHandle } from "./OrdersEditor";
 
 type OrdersPanelProps = {
   unit: ReportUnit | null;
+  /**
+   * The selected unit's id, `new-1` included.
+   *
+   * Not read off `unit`: a unit this month's `FORM` orders create is selectable before - and
+   * briefly after - the debounced forecast has a row for it.
+   */
+  unitId: string | null;
+  /** The selection as a formed unit, when it is one (`ordersLock.formedSelectionFor`). */
+  formed: FormedSelection | null;
+  /** Every unit the report shows in the hex on screen, which is what scopes a `NEW n` alias. */
+  regionUnitIds: ReadonlySet<string>;
   hex: HexNode | null;
   /** The whole faction document, of which this panel edits one unit's slice. */
   document: string;
@@ -65,6 +76,9 @@ type OrdersPanelProps = {
 
 export function OrdersPanel({
   unit,
+  unitId,
+  formed,
+  regionUnitIds,
   hex,
   document,
   externalRevision,
@@ -83,9 +97,8 @@ export function OrdersPanel({
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
   // keeps the editor's `latest` ref current without rebuilding the view.
   const orderOcd = useSettingsStore((state) => state.orderOcd);
-  const unitId = unit?.unitId ?? null;
-  const block = unitId === null ? null : readUnitOrders(document, unitId);
-  const lock = lockFor(unit, hex);
+  const block = unitId === null ? null : readUnitOrders(document, unitId, regionUnitIds);
+  const lock = lockFor(unit, hex, formed);
 
   // This unit's problems, and how many the rest of the faction has. The document-wide figure is
   // what stops a mistake in a unit nobody is looking at from reaching the server unnoticed. Not
@@ -98,14 +111,14 @@ export function OrdersPanel({
     () =>
       locked || unitId === null
         ? []
-        : diagnosticsForUnit(validated.text, unitId, validated.diagnostics),
-    [locked, unitId, validated]
+        : diagnosticsForUnit(validated.text, unitId, validated.diagnostics, regionUnitIds),
+    [locked, unitId, validated, regionUnitIds]
   );
   // The text those line and column numbers were counted in, which validation being debounced means
   // is not always the draft on screen. Quoting a token out of the draft instead would occasionally
   // quote whatever now sits at those columns.
   const validatedBlock =
-    unitId === null ? "" : (readUnitOrders(validated.text, unitId) ?? "");
+    unitId === null ? "" : (readUnitOrders(validated.text, unitId, regionUnitIds) ?? "");
   const here = summarizeOrderValidation({ diagnostics: problems });
   // What the rest of the faction has wrong, counted apart from this unit's own. A whole-document
   // total sitting beside a per-unit count reads as though the two should be added together.
@@ -115,7 +128,15 @@ export function OrdersPanel({
     <CollapsiblePanel
       panel="orders"
       title="Orders"
-      hint={unit ? `— unit ${unit.unitId}` : undefined}
+      hint={
+        formed
+          ? `— new ${formed.alias}${
+              formed.formedBy === null ? "" : `, in unit ${formed.formedBy}'s block`
+            }`
+          : unitId
+            ? `— unit ${unitId}`
+            : undefined
+      }
       className="min-h-0"
       actions={<WalkProblems onWalk={onWalkProblems} position={walkPosition ?? null} />}
     >
@@ -125,11 +146,13 @@ export function OrdersPanel({
         <div className="flex h-full min-h-0 flex-col">
           <OrdersEditor
             ref={editorRef}
-            unitId={unit?.unitId ?? ""}
+            unitId={unitId ?? ""}
             text={block ?? ""}
             externalRevision={externalRevision}
             savedAt={save.kind === "saved" ? save.at : null}
-            ariaLabel={`Orders for unit ${unit?.unitId ?? ""}`}
+            ariaLabel={
+              formed ? `Orders for new ${formed.alias}` : `Orders for unit ${unitId ?? ""}`
+            }
             problems={problems}
             commands={commands}
             orderVocabulary={orderVocabulary}
@@ -137,8 +160,8 @@ export function OrdersPanel({
             snippets={snippets}
             caretCompletions={caretCompletions}
             onChange={(text) => {
-              if (unit) {
-                onChange(unit.unitId, text);
+              if (unitId !== null) {
+                onChange(unitId, text);
               }
             }}
           />

@@ -1,12 +1,26 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
-import { findUnitBlocks } from "./ordersDocument";
+import { blockFor, findFormBlocks, findUnitBlocks, formBlockFor, formedAlias } from "./ordersDocument";
+import type { UnitBlock } from "./ordersDocument";
 
 /**
  * One stop on the F8 walk: whose editor to open, and the problem re-based to that editor's
  * lines - the same terms `diagnosticsForUnit` hands the orders panel, so the editor can place
  * the selection with the machinery it already has.
  */
-export type DiagnosticTarget = { unitId: string; problem: OrderDiagnostic };
+export type DiagnosticTarget = {
+  unitId: string;
+  /**
+   * The hex whose editor this stop opens in, for an id the report does not list.
+   *
+   * A unit this month's `FORM` orders create is reachable only through its hex - two hexes can
+   * each hold a `new-1` (`ah-9o0c.2`) - so the shell's jump is given the region rather than
+   * looking one up. `null` for a reported unit, which needs none.
+   */
+  regionId: string | null;
+  problem: OrderDiagnostic;
+  /** Where the block this stop was re-based against starts, so its document position is arithmetic rather than a second lookup. */
+  blockFirstLine: number;
+};
 
 /**
  * Every problem the F8 walk can visit, in document order.
@@ -19,9 +33,48 @@ export type DiagnosticTarget = { unitId: string; problem: OrderDiagnostic };
  */
 export function diagnosticTargets(
   text: string,
-  diagnostics: OrderDiagnostic[]
+  diagnostics: OrderDiagnostic[],
+  unitIdsByRegion?: ReadonlyMap<string, ReadonlySet<string>>
 ): DiagnosticTarget[] {
   const blocks = findUnitBlocks(text);
+  const formBlocks = unitIdsByRegion === undefined ? [] : findFormBlocks(text);
+
+  /**
+   * Which hex each reported unit stands in.
+   *
+   * The region is read from the *block* rather than from the diagnostic, because the findings this
+   * placement exists for do not carry one: the core gives every syntax diagnostic both
+   * `unit_id: None` and `region_id: None` ("the syntax checker knows nothing of the map",
+   * `crates/core/src/orders/parser.rs`), and a misspelled keyword inside a `FORM` is exactly such a
+   * finding. Keying off `diagnostic.regionId` would leave the whole class unplaced.
+   */
+  const regionOfUnit = new Map<string, string>();
+  for (const [regionId, unitIds] of unitIdsByRegion ?? []) {
+    for (const candidate of unitIds) {
+      regionOfUnit.set(candidate, regionId);
+    }
+  }
+
+  /**
+   * The `FORM` block a line sits innermost inside, in the hex whose reported units are given -
+   * and only one an editor can actually reach, since a duplicate the server swallows opens no
+   * editor to walk to. `null` for a line in no such block, which is the ordinary case.
+   */
+  const formBlockAt = (line: number, regionUnitIds: ReadonlySet<string>): string | null => {
+    let innermost: { alias: string; firstLine: number } | null = null;
+    for (const candidate of formBlocks) {
+      if (line < candidate.firstLine + 1 || line > candidate.lastLine + 1) {
+        continue;
+      }
+      if (formBlockFor(text, candidate.alias, regionUnitIds)?.headerLine !== candidate.headerLine) {
+        continue;
+      }
+      if (innermost === null || candidate.firstLine > innermost.firstLine) {
+        innermost = { alias: candidate.alias, firstLine: candidate.firstLine };
+      }
+    }
+    return innermost === null ? null : `new-${innermost.alias}`;
+  };
 
   const placed: DiagnosticTarget[] = [];
   for (const diagnostic of diagnostics) {
@@ -29,13 +82,33 @@ export function diagnosticTargets(
       continue;
     }
     const line = diagnostic.lineStart;
-    const block =
-      diagnostic.unitId !== null
-        ? blocks.find((candidate) => candidate.unitId === diagnostic.unitId)
-        : // Blocks record lines from zero and diagnostics from one.
-          blocks.find(
-            (candidate) => line >= candidate.firstLine + 1 && line <= candidate.lastLine + 1
-          );
+
+    // The `unit` block this line falls in, which is what says which hex is in play - and so which
+    // reported units scope a `NEW n` alias (`rules/form`).
+    const enclosing =
+      blocks.find(
+        (candidate) => line >= candidate.firstLine + 1 && line <= candidate.lastLine + 1
+      ) ?? null;
+    // The hex the block is resolved in, kept rather than re-derived: a stop's `regionId` must name
+    // the same hex its block was found in, or the jump would open a different hex's `new-1`.
+    const scopeRegionId =
+      (diagnostic.unitId === null
+        ? enclosing === null
+          ? undefined
+          : regionOfUnit.get(enclosing.unitId)
+        : (regionOfUnit.get(diagnostic.unitId) ?? diagnostic.regionId ?? undefined)) ?? null;
+    const regionUnitIds = scopeRegionId === null ? undefined : unitIdsByRegion?.get(scopeRegionId);
+
+    // Whose editor this stop belongs in. A finding that names its unit is placed by that name -
+    // the core's own decision - and one that only knows its line is placed by the innermost block
+    // that line sits in, which is the `FORM` block where there is one: the panel underlines it
+    // there and nowhere else (`ah-ty3s.1`, F1), so the walk has to agree.
+    const owner =
+      diagnostic.unitId ??
+      (regionUnitIds === undefined ? null : formBlockAt(line, regionUnitIds)) ??
+      null;
+    const block: UnitBlock | null =
+      owner === null ? enclosing : blockFor(text, owner, regionUnitIds);
     if (!block) {
       continue;
     }
@@ -43,6 +116,8 @@ export function diagnosticTargets(
     const last = block.lastLine + 1;
     placed.push({
       unitId: block.unitId,
+      regionId: formedAlias(block.unitId) === null ? null : scopeRegionId,
+      blockFirstLine: block.firstLine,
       problem: {
         ...diagnostic,
         // Clamped into the block, the same way diagnosticsForUnit clamps: a named unit's
@@ -57,8 +132,8 @@ export function diagnosticTargets(
   }
 
   return placed.sort((a, b) => {
-    const keyA = stopKey(blocks, a);
-    const keyB = stopKey(blocks, b);
+    const keyA = stopKey(a);
+    const keyB = stopKey(b);
     if (keyA.line !== keyB.line) {
       return keyA.line - keyB.line;
     }
@@ -76,18 +151,22 @@ export function diagnosticTargets(
  */
 export type StopKey = { line: number; column: number };
 
-function stopKey(blocks: ReturnType<typeof findUnitBlocks>, target: DiagnosticTarget): StopKey {
-  const block = blocks.find((candidate) => candidate.unitId === target.unitId);
+function stopKey(target: DiagnosticTarget): StopKey {
   return {
-    line: (block?.firstLine ?? 0) + (target.problem.lineStart ?? 0),
+    line: target.blockFirstLine + (target.problem.lineStart ?? 0),
     column: target.problem.columnStart ?? 0
   };
 }
 
-/** Each target's document position, in the order `diagnosticTargets` returned them. */
-export function stopKeys(text: string, targets: readonly DiagnosticTarget[]): StopKey[] {
-  const blocks = findUnitBlocks(text);
-  return targets.map((target) => stopKey(blocks, target));
+/**
+ * Each target's document position, in the order `diagnosticTargets` returned them.
+ *
+ * Read off the block each stop was re-based against rather than looked up again by unit id: a
+ * formed unit has no `unit` block to find, and one piece of arithmetic with one definition is
+ * what this walk was rebuilt for (ah-9ess).
+ */
+export function stopKeys(targets: readonly DiagnosticTarget[]): StopKey[] {
+  return targets.map((target) => stopKey(target));
 }
 
 /** Where the walk stands after the problem list was rebuilt. */

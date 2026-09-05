@@ -88,6 +88,241 @@ export function findUnitBlocks(document: string): UnitBlock[] {
   return blocks;
 }
 
+/** Where a `FORM` block sits inside the document, as line indices. */
+export type FormBlock = {
+  /** The alias exactly as the `form` line wrote it, so `"1"` for `form 1`. */
+  alias: string;
+  /** The reported unit whose `unit <id>` block encloses it, however deep the `FORM` nesting. */
+  unitId: string;
+  /** Index of the `form <alias>` line itself. */
+  headerLine: number;
+  /** First and last line of the formed unit's own content, exclusive of `form` and `end`. */
+  firstLine: number;
+  lastLine: number;
+  /** Index in this array of the `FORM` block enclosing it, or `null` at a unit block's top level. */
+  parentIndex: number | null;
+};
+
+/** The first non-blank token of a line, lowercased, with a leading `@` and comments accounted for. */
+function firstToken(line: string): string | null {
+  const trimmed = line.trim();
+  // "anything after a semicolon is treated as a comment" (rules/orders), so a line opening with
+  // one carries no order at all. `@;` is a repeating comment and is equally not a block keyword.
+  if (trimmed === "" || trimmed.startsWith(";")) {
+    return null;
+  }
+  // "You may precede orders with the at sign (@)" (rules/orders), and "The parser is not case
+  // sensitive" - so the keyword is read past an optional `@` and folded to lower case.
+  const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1).trim() : trimmed;
+  if (withoutAt === "" || withoutAt.startsWith(";")) {
+    return null;
+  }
+  return (withoutAt.split(/\s+/u)[0] ?? "").toLowerCase();
+}
+
+/** The arguments of a line, after its keyword. */
+function argumentsOf(line: string): string[] {
+  const trimmed = line.trim();
+  const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1).trim() : trimmed;
+  return withoutAt.split(/\s+/u).slice(1);
+}
+
+/** An alias the game accepts: a run of digits naming at least 1 (`rules/form`, `forms::read_alias`). */
+function readAlias(token: string | undefined): string | null {
+  if (token === undefined || !/^[0-9]+$/u.test(token)) {
+    return null;
+  }
+  return token.replace(/^0+/u, "") === "" ? null : token;
+}
+
+type OpenBlock = { kind: "turn" | "form"; index: number | null; headerLine: number };
+
+/**
+ * Every syntactically formed `FORM` block, in document order.
+ *
+ * Mirrors `crates/core/src/orders/walk.rs` and `intents.rs`'s `FormReader`, and invents no rules of
+ * its own. It is mirrored rather than called for the same reason `orderIndent.ts` mirrors the same
+ * walk: the need is synchronous and per-keystroke, and `CoreClient.validateOrders` is a debounced
+ * round trip.
+ *
+ * A `FORM` the game would not read - inside a `TURN`, with an alias that is not a number of at
+ * least one, outside any reported unit's block, or nested inside one of those - is still *opened*,
+ * so its orders never fall through to whatever encloses it, but it is never returned.
+ */
+export function findFormBlocks(document: string): FormBlock[] {
+  const lines = document.split("\n");
+  const blocks: FormBlock[] = [];
+  const stack: OpenBlock[] = [];
+  let currentUnit: string | null = null;
+
+  /** Closes an open block at `index`, ending its content on the line above `endsBefore`. */
+  const close = (opened: OpenBlock, endsBefore: number): void => {
+    if (opened.index === null) {
+      return;
+    }
+    const block = blocks[opened.index];
+    if (!block) {
+      return;
+    }
+    let end = endsBefore - 1;
+    while (end >= block.firstLine && belongsToDocument(lines[end] ?? "")) {
+      end -= 1;
+    }
+    block.lastLine = end;
+  };
+
+  const closeAll = (endsBefore: number): void => {
+    while (stack.length > 0) {
+      close(stack.pop() as OpenBlock, endsBefore);
+    }
+  };
+
+  lines.forEach((line, index) => {
+    const command = firstToken(line);
+    if (command === null) {
+      return;
+    }
+
+    if (command.startsWith("#")) {
+      closeAll(index);
+      currentUnit = null;
+      return;
+    }
+
+    if (command === "unit") {
+      closeAll(index);
+      // The enclosing reported unit is the first argument only when it is all digits
+      // (`intents.rs`, which filters on `TokenKind::Number`) - which is what makes a stale
+      // `unit new-1` block enclose no reported unit and form nothing.
+      const first = argumentsOf(line)[0];
+      currentUnit = first !== undefined && /^[0-9]+$/u.test(first) ? first : null;
+      return;
+    }
+
+    if (command === "turn") {
+      stack.push({ kind: "turn", index: null, headerLine: index });
+      return;
+    }
+
+    if (command === "endturn") {
+      const top = stack[stack.length - 1];
+      if (top?.kind === "turn") {
+        stack.pop();
+        close(top, index);
+      }
+      return;
+    }
+
+    if (command === "form") {
+      const insideTurn = stack.some((opened) => opened.kind === "turn");
+      const alias = readAlias(argumentsOf(line)[0]);
+      const parent = stack[stack.length - 1];
+      const parentUsable = parent === undefined || parent.index !== null;
+      if (insideTurn || alias === null || currentUnit === null || !parentUsable) {
+        stack.push({ kind: "form", index: null, headerLine: index });
+        return;
+      }
+      const position = blocks.length;
+      blocks.push({
+        alias,
+        unitId: currentUnit,
+        headerLine: index,
+        firstLine: index + 1,
+        lastLine: index,
+        parentIndex: parent?.index ?? null
+      });
+      stack.push({ kind: "form", index: position, headerLine: index });
+      return;
+    }
+
+    if (command === "end") {
+      const top = stack[stack.length - 1];
+      if (top?.kind === "form") {
+        stack.pop();
+        close(top, index);
+      }
+    }
+  });
+
+  closeAll(lines.length);
+
+  return blocks;
+}
+
+/** The alias in a formed unit's id - `"1"` for `new-1` - or `null` for an id the report shows. */
+export function formedAlias(unitId: string): string | null {
+  const match = /^new-([0-9]+)$/u.exec(unitId);
+  return match?.[1] ?? null;
+}
+
+/**
+ * The `FORM` block creating `new-<alias>` in the hex whose reported units are `regionUnitIds`,
+ * or `null` when the document has none.
+ *
+ * The region is where the taken aliases live, because the core scopes an alias by the hex the unit
+ * writing the `FORM` stands in (`intents.rs`): a second `form 1` in the same hex is swallowed by
+ * the server rather than applied, and so is anything nested inside it. First wins.
+ */
+export function formBlockFor(
+  document: string,
+  alias: string,
+  regionUnitIds: ReadonlySet<string>
+): FormBlock | null {
+  const blocks = findFormBlocks(document);
+  const taken = new Set<string>();
+  const swallowed = new Set<number>();
+
+  for (const [index, block] of blocks.entries()) {
+    if (!regionUnitIds.has(block.unitId)) {
+      continue;
+    }
+    if (block.parentIndex !== null && swallowed.has(block.parentIndex)) {
+      swallowed.add(index);
+      continue;
+    }
+    if (taken.has(block.alias)) {
+      swallowed.add(index);
+      continue;
+    }
+    taken.add(block.alias);
+    if (block.alias === alias) {
+      return block;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Where one unit's editable lines sit: its own `unit` block, or the `FORM` block that creates it.
+ *
+ * `regionUnitIds` is the reported units of the hex the unit stands in, which is what a `NEW n`
+ * alias is scoped by (`rules/form`). Omitted, a `new-<n>` id resolves to `null` - which is what
+ * every caller with no hex in hand wants.
+ */
+export function blockFor(
+  document: string,
+  unitId: string,
+  regionUnitIds?: ReadonlySet<string>
+): UnitBlock | null {
+  const alias = formedAlias(unitId);
+  if (alias === null) {
+    return findUnitBlocks(document).find((candidate) => candidate.unitId === unitId) ?? null;
+  }
+  if (!regionUnitIds) {
+    return null;
+  }
+  const block = formBlockFor(document, alias, regionUnitIds);
+  return block
+    ? {
+        unitId,
+        headerLine: block.headerLine,
+        firstLine: block.firstLine,
+        lastLine: block.lastLine
+      }
+    : null;
+}
+
 /**
  * The `;***` banner line a report writes above a region's units in its orders template.
  *
@@ -113,9 +348,18 @@ export function regionBannerLine(
   return `;*** ${region.terrain} (${coordinate}) in ${region.province}${settlement} ***`;
 }
 
-/** Reads one unit's lines out of the document, or `null` when it has no block. */
-export function readUnitOrders(document: string, unitId: string): string | null {
-  const block = findUnitBlocks(document).find((candidate) => candidate.unitId === unitId);
+/**
+ * Reads one unit's lines out of the document, or `null` when it has no block.
+ *
+ * `regionUnitIds` is the reported units of the hex on screen, which is what lets a `new-<n>` id
+ * resolve to the `FORM` block that creates it.
+ */
+export function readUnitOrders(
+  document: string,
+  unitId: string,
+  regionUnitIds?: ReadonlySet<string>
+): string | null {
+  const block = blockFor(document, unitId, regionUnitIds);
   if (!block) {
     return null;
   }
@@ -134,8 +378,13 @@ export function readUnitOrders(document: string, unitId: string): string | null 
  * not one the player can order, and silently adding a block would produce an orders file the server
  * would reject.
  */
-export function writeUnitOrders(document: string, unitId: string, orders: string): string {
-  const block = findUnitBlocks(document).find((candidate) => candidate.unitId === unitId);
+export function writeUnitOrders(
+  document: string,
+  unitId: string,
+  orders: string,
+  regionUnitIds?: ReadonlySet<string>
+): string {
+  const block = blockFor(document, unitId, regionUnitIds);
   if (!block) {
     return document;
   }
@@ -203,6 +452,13 @@ export function seedOrdersDocument(templateText: string, factionId: string | nul
  * Unchanged when the unit already has a block.
  */
 export function ensureUnitBlock(document: string, unitId: string, banner: string): string {
+  // A unit this month's `FORM` orders create has no `unit` block and never gains one: its orders
+  // live between its `form` line and its `end`, and a literal `unit new-1` block is a file the
+  // server refuses. This is the guard, here rather than in each caller.
+  if (formedAlias(unitId) !== null) {
+    return document;
+  }
+
   const blocks = findUnitBlocks(document);
   if (blocks.some((block) => block.unitId === unitId)) {
     return document;
@@ -258,11 +514,12 @@ export function applyUnitOrders(
   document: string,
   unitId: string,
   orders: string,
-  banner: string | null
+  banner: string | null,
+  regionUnitIds?: ReadonlySet<string>
 ): string {
   const base =
     orders === "" || banner === null ? document : ensureUnitBlock(document, unitId, banner);
-  return writeUnitOrders(base, unitId, orders);
+  return writeUnitOrders(base, unitId, orders, regionUnitIds);
 }
 
 /**

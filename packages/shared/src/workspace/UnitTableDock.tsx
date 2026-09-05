@@ -177,13 +177,13 @@ type UnitTableDockProps = {
   /** The whole report's orders preview, so a list spanning hexes shows the coming month too. */
   ordersPreview?: OrdersPreviewResponse | null;
   /** The month-long order a unit's live orders carry, for the Long order column. */
-  getLongOrder?: (unitId: string) => string | null;
+  getLongOrder?: (unitId: string, regionId: string) => string | null;
   /** Each own unit's silver forecast, or null where there is none. `ah-1wcw.1`. */
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<string>;
   /** Selects a unit and opens its orders. Absent means the cell is not clickable. */
-  onSelectUnit?: (unitId: string) => void;
+  onSelectUnit?: (unitId: string, regionId?: string) => void;
   /**
    * Wraps a foreign faction's name so it can open that faction's dossier beside the row clicked
    * (ah-bu2c). Left off, the name prints as it always did.
@@ -445,7 +445,16 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     if (sort.column !== "longOrder" || !getLongOrder) {
       return NO_LONG_ORDERS;
     }
-    return new Map(units.filter((entry) => entry.own).map((entry) => [entry.unitId, getLongOrder(entry.unitId)]));
+    return new Map(
+      units
+        .filter((entry) => entry.own)
+        // Keyed by the row rather than by the unit number, as the silver map beside it is: a
+        // source spanning hexes can hold two `new-1`s (`ah-9o0c.2`).
+        .map((entry) => [
+          unitRowKey(entry.regionId, entry.unitId),
+          getLongOrder(entry.unitId, entry.regionId)
+        ])
+    );
   }, [units, sort.column, getLongOrder]);
   // Same bargain as `longOrders` above: built only when the table actually sorts on it.
   const silverByUnit = useMemo(() => {
@@ -458,7 +467,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         // The row's own hex, not the selected one: `silverKey` keys the forecast by region, so a
         // source spanning hexes must look each row up where it actually stands.
         .map((entry) => [
-          entry.unitId,
+          unitRowKey(entry.regionId, entry.unitId),
           silverShown(getSilver(entry.unitId, entry.regionId), countUpkeep)
         ])
     );
@@ -711,11 +720,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   };
 
   /** Picks a row alone and puts the cursor on it - what a click, Enter and Space all mean. */
-  const settleOn = (pickNext: UnitPick, rowTarget: string, rowRegionId: string) => {
+  const settleOn = (pickNext: UnitPick, rowUnitId: string, rowRegionId: string) => {
     setPick(pickNext);
-    // The row's own hex, even when `rowTarget` is the unit that wrote the FORM: `rules/form` puts a
-    // formed unit "in the same region as the unit which formed it".
-    selectUnit(rowTarget, rowRegionId);
+    // The row's own unit and the row's own hex. Since `ah-ty3s.1` a formed row selects itself
+    // rather than the unit that wrote its `FORM`, and the hex is what tells two `new-1`s apart -
+    // `rules/form` puts a formed unit "in the same region as the unit which formed it".
+    selectUnit(rowUnitId, rowRegionId);
   };
 
   /**
@@ -729,9 +739,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * Deliberately not called from `moveSelection`, from Space, or from a press with a modifier held:
    * walking a list and building a pick must both leave the map alone.
    */
-  const travelTo = (unitId: string) => {
+  const travelTo = (unitId: string, regionId: string) => {
     if (travelsOnSelect(source)) {
-      onSelectUnit?.(unitId);
+      // The row's own hex goes with it: a unit this month's `FORM` orders create is not in the
+      // report, so `goToUnit` could not look one up, and two hexes can each hold a `new-1`
+      // (`ah-9o0c.2`).
+      onSelectUnit?.(unitId, regionId);
     }
   };
 
@@ -759,7 +772,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       // Choosing a row from the keyboard collapses a pick exactly as a plain click does.
       settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys), here, hereRow.regionId);
       if (travel) {
-        travelTo(here);
+        travelTo(here, hereRow.regionId);
       }
     };
     const keys: Record<string, () => void> = {
@@ -859,7 +872,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const pressRow = (
     event: PointerEvent<HTMLTableRowElement>,
     unit: ReportUnit,
-    rowTarget: string
+    rowUnitId: string
   ) => {
     if (event.button !== 0) {
       return;
@@ -872,8 +885,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     const outcome = onPress(pick, unitRowKey(unit.regionId, unit.unitId), modifiers, rowKeys);
     if (outcome.now) {
       if (plain) {
-        settleOn(outcome.now, rowTarget, unit.regionId);
-        travelTo(rowTarget);
+        settleOn(outcome.now, rowUnitId, unit.regionId);
+        travelTo(rowUnitId, unit.regionId);
       } else {
         setPick(outcome.now);
       }
@@ -893,8 +906,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       unit,
       deferred
         ? () => {
-            settleOn(deferred, rowTarget, unit.regionId);
-            travelTo(rowTarget);
+            settleOn(deferred, rowUnitId, unit.regionId);
+            travelTo(rowUnitId, unit.regionId);
           }
         : undefined
     );
@@ -1019,7 +1032,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const contextRow = (
     event: ReactMouseEvent<HTMLTableRowElement>,
     unit: ReportUnit,
-    rowTarget: string
+    rowUnitId: string
   ) => {
     event.preventDefault();
     const outcome = onPress(
@@ -1029,7 +1042,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       rowKeys
     );
     if (outcome.now) {
-      settleOn(outcome.now, rowTarget, unit.regionId);
+      settleOn(outcome.now, rowUnitId, unit.regionId);
     }
     setMenu({ at: "pointer", point: { x: event.clientX, y: event.clientY } });
   };
@@ -1875,19 +1888,20 @@ function UnitRow({
   onSelect: (unitId: string, regionId: string) => void;
   /**
    * A press on the row, which is where selection now happens - `onClick` would be too late for a
-   * press that may become a drag. Handed the row's own unit and the id the cursor should land on,
-   * because only `UnitRow` knows a formed row from an ordinary one.
+   * press that may become a drag. Handed the row's own unit and the id the cursor should land on -
+   * since `ah-ty3s.1` those are the same id for every row, a formed one included, but the two
+   * arguments are kept apart because the cursor's id is the row's business and not the caller's.
    */
   onPress: (
     event: PointerEvent<HTMLTableRowElement>,
     unit: ReportUnit,
-    rowTarget: string
+    rowUnitId: string
   ) => void;
   /** A right-click on the row: the Army menu, at the pointer. */
   onContextMenu: (
     event: ReactMouseEvent<HTMLTableRowElement>,
     unit: ReportUnit,
-    rowTarget: string
+    rowUnitId: string
   ) => void;
   /** The hex this row stands in, so its silver forecast is looked up by the right key. */
   regionId: string;
@@ -1898,7 +1912,7 @@ function UnitRow({
   onPointerAt: (point: Point) => void;
   onPointerGone: () => void;
   /** The month-long order this unit's live orders carry, where it is one of ours. */
-  getLongOrder?: (unitId: string) => string | null;
+  getLongOrder?: (unitId: string, regionId: string) => string | null;
   /** This unit's silver forecast, where it is one of ours. `ah-1wcw.1`. */
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
@@ -1906,7 +1920,7 @@ function UnitRow({
   /** Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`). */
   countUpkeep: boolean;
   /** Selects a unit and opens its orders. */
-  onSelectUnit?: (unitId: string) => void;
+  onSelectUnit?: (unitId: string, regionId?: string) => void;
   /** Wraps a foreign faction's name so it can open that faction's dossier (ah-bu2c). */
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
   /**
@@ -1944,14 +1958,10 @@ function UnitRow({
   // A row that is somewhere else next month reads dimmed; its marker says where it went.
   const departing = unit.previewStatus === "departing";
   // Only for our own units: there is nothing of anybody else's orders to read.
-  const longOrder = unit.own ? (getLongOrder?.(unit.unitId) ?? null) : null;
+  const longOrder = unit.own ? (getLongOrder?.(unit.unitId, regionId) ?? null) : null;
   // Only our own units have a month to price; `getSilver` returns null for everyone else anyway,
   // and the cell is empty either way.
   const silver = unit.own ? (getSilver?.(unit.unitId, regionId) ?? null) : null;
-  // A formed row's Id, ⚠ and Problems-panel clicks all land on the unit whose block wrote the
-  // `FORM` - a unit that does not exist cannot be selected, and its orders are typed there anyway
-  // (decisions C1, I2, `ah-jw85`).
-  const rowTarget = silver?.formed?.formedBy ?? unit.unitId;
   // Which pin this row's faction cell would set, and so whether that cell is a control at all.
   // One rule, in `foreignUnits.ts`, rather than a second concealed-test spelled out down here that
   // could drift from it.
@@ -1977,8 +1987,8 @@ function UnitRow({
       <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
         <button
           type="button"
-          onClick={() => onSelect(rowTarget, regionId)}
-          aria-label={`unit ${rowTarget}`}
+          onClick={() => onSelect(unit.unitId, regionId)}
+          aria-label={`unit ${unit.unitId}`}
           tabIndex={-1}
           className="focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
         >
@@ -2196,10 +2206,10 @@ function UnitRow({
             type="button"
             data-testid={`unit-silver-${unit.unitId}`}
             onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => onSelectUnit?.(rowTarget)}
+            onClick={() => onSelectUnit?.(unit.unitId, regionId)}
             className={`inline-flex items-center gap-0.5 ${UNIT_LINK_CLASS}`}
           >
-            <span className="sr-only">unit {rowTarget} </span>
+            <span className="sr-only">unit {unit.unitId} </span>
             <SeverityMark severity="warning" />
             {silverFigure(shownSilver)}
           </button>
@@ -2265,7 +2275,7 @@ function UnitRow({
       data-preview-status={unit.previewStatus}
       // Pointerdown rather than click: a press on a row already in the pick must be able to defer
       // what it means until it is known whether it became a drag (`ah-1mpx.4` E2).
-      onPointerDown={(event) => onPress(event, unit, rowTarget)}
+      onPointerDown={(event) => onPress(event, unit, unit.unitId)}
       // The browser's own drag, refused. A Shift+click extends the document's text selection as
       // well as the pick, so the next press lands *inside* selected text - and a press on selected
       // text followed by a move is how a browser starts dragging that text, which cancels the
@@ -2273,7 +2283,7 @@ function UnitRow({
       // calling `preventDefault` on its pointerdown; a row cannot, because it must still take
       // focus, so it is refused here instead.
       onDragStart={(event) => event.preventDefault()}
-      onContextMenu={(event) => onContextMenu(event, unit, rowTarget)}
+      onContextMenu={(event) => onContextMenu(event, unit, unit.unitId)}
       onKeyDown={(event) => onKeyDown(event, index)}
       // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
       // so a touch would open a summary that never closed. Only a mouse can rest on something.

@@ -1,6 +1,7 @@
 import type { OrderDiagnostic, OrderValidationResult, UnitSilver } from "@atlantis/core-client";
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
-import { findUnitBlocks } from "./ordersDocument";
+import { blockFor, findFormBlocks, formBlockFor, formedAlias } from "./ordersDocument";
+import type { FormBlock } from "./ordersDocument";
 import { silverKey } from "./unitTable";
 
 export type OrderValidationSummary = {
@@ -152,12 +153,44 @@ export type ValidatedOrders = {
 export function diagnosticsForUnit(
   document: string,
   unitId: string,
-  diagnostics: OrderDiagnostic[]
+  diagnostics: OrderDiagnostic[],
+  regionUnitIds?: ReadonlySet<string>
 ): OrderDiagnostic[] {
-  const block = findUnitBlocks(document).find((candidate) => candidate.unitId === unitId);
+  const block = blockFor(document, unitId, regionUnitIds);
   if (!block) {
     return [];
   }
+
+  // A finding naming no unit but falling inside a `FORM` block nested in this one belongs to the
+  // unit that block forms, not to the unit whose editor this is - the same rule the name-first
+  // test above delivers for the findings that do name one. The `form` line and its `end` are
+  // deliberately outside the span, so a finding about the `FORM` order itself stays here.
+  //
+  // "Nested in this one" is one level, and it is asked of the block on screen rather than of the
+  // reported unit: a `FORM 2` inside `new-1`'s own block is `new-2`'s business and not `new-1`'s,
+  // exactly as `form 1` is `new-1`'s and not `1922`'s. `FormBlock.unitId` is always the enclosing
+  // *reported* unit however deep the nesting, so the parent is read from `parentIndex`.
+  //
+  // Only a block a formed unit's own editor can actually reach: a duplicate `form 1` the server
+  // swallows is reachable from no editor, so excluding its lines would leave a syntax error inside
+  // it underlined nowhere.
+  const formBlocks = regionUnitIds === undefined ? [] : findFormBlocks(document);
+  const reachable = (candidate: FormBlock): boolean =>
+    regionUnitIds !== undefined &&
+    formBlockFor(document, candidate.alias, regionUnitIds)?.headerLine === candidate.headerLine;
+  const nested = formBlocks.filter((candidate) => {
+    if (!reachable(candidate)) {
+      return false;
+    }
+    const parent = candidate.parentIndex === null ? null : formBlocks[candidate.parentIndex];
+    return parent === null
+      ? formedAlias(unitId) === null && candidate.unitId === unitId
+      : parent.headerLine === block.headerLine;
+  });
+  const insideNestedForm = (lineStart: number, lineEnd: number): boolean =>
+    nested.some(
+      (candidate) => lineEnd >= candidate.firstLine + 1 && lineStart <= candidate.lastLine + 1
+    );
 
   // Diagnostics count lines from one and blocks record them from zero, so the block's own lines are
   // `firstLine + 1` through `lastLine + 1` in a diagnostic's terms.
@@ -171,6 +204,9 @@ export function diagnosticsForUnit(
       }
       // A finding about the hex names neither a unit nor a line, and belongs to no unit's list.
       if (diagnostic.lineStart === null || diagnostic.lineEnd === null) {
+        return false;
+      }
+      if (insideNestedForm(diagnostic.lineStart, diagnostic.lineEnd)) {
         return false;
       }
       // Anything overlapping the block, not merely starting inside it: the core reports single

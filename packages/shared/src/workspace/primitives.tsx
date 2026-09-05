@@ -74,19 +74,23 @@ export const UNIT_LINK_CLASS =
  *
  * `formed` is set when `unitId` names a unit this month's `FORM` orders create rather than one the
  * report shows (decision N2, `ah-jw85`): the subject reads by its alias - `new 1`, the way the
- * order itself writes `GIVE NEW 1` - and the click goes to `formed.formedBy` instead, since a unit
- * that does not exist cannot be selected and its orders are typed in its parent's block anyway.
+ * order itself writes `GIVE NEW 1`. The click goes to that unit itself (decision D1, `ah-ty3s.1`,
+ * reversing `ah-jw85`'s I2), which is where its orders now are - and `regionId` goes with it,
+ * because two hexes can each hold a `new-1` and a `unitId -> regionId` map cannot tell them apart.
  */
 export function ProblemWho({
   unitId,
   formed,
+  regionId,
   known,
   onSelectUnit
 }: {
   unitId: string | null;
   formed?: FormedSubject | null;
+  /** The hex this entry's finding is in, passed on only for a formed subject. */
+  regionId?: string;
   known?: ReadonlySet<string>;
-  onSelectUnit?: (unitId: string) => void;
+  onSelectUnit?: (unitId: string, regionId?: string) => void;
 }) {
   if (unitId === null) {
     return (
@@ -100,14 +104,14 @@ export function ProblemWho({
   }
 
   const label = formed ? `new ${formed.alias}` : unitId;
-  const target = formed ? formed.formedBy : unitId;
+  const target = unitId;
 
   if (onSelectUnit && known?.has(target)) {
     return (
       <button
         type="button"
         data-testid={`problem-unit-${unitId}`}
-        onClick={() => onSelectUnit(target)}
+        onClick={() => onSelectUnit(target, formed ? regionId : undefined)}
         className={UNIT_LINK_CLASS}
       >
         <span className="sr-only">unit </span>
