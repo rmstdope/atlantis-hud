@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.4.2 — the confirmation and the Undo</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:16px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  .cols3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; }
+  @media (max-width:1080px) { .cols, .cols3 { grid-template-columns:1fr; } }
+
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden; position:relative;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top .name { color:var(--ink-soft); }
+  .pane .top .tabs { display:flex; gap:4px; }
+  .pane .top .tab { border-radius:4px; padding:2px 7px; color:var(--ink-soft); }
+  .pane .top .tab.on { background:#1b2735; color:var(--ink); box-shadow:inset 0 -2px 0 var(--select); }
+  .pane .top .sp { margin-left:auto; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; display:inline-block; }
+  .btn.prim { color:var(--ink); border-color:#3b5064; }
+  .btn.done { color:var(--ok); border-color:#2c4a3e; }
+  .btn.dim { opacity:.35; }
+  .body { padding:12px; display:grid; gap:14px; max-height:470px; overflow:auto; }
+  .grp { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .grp .hd { display:flex; align-items:center; gap:8px; padding:5px 10px; background:#141a23;
+             color:var(--brass); font-size:11.5px; letter-spacing:0.4px; }
+  .grp .hd .sp { margin-left:auto; }
+  pre { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.55;
+        color:var(--ink); padding:10px; margin:0; white-space:pre; overflow:auto; }
+  pre .c { color:var(--ink-dim); }
+  pre .k { color:var(--brass-bright); }
+  pre .add { color:var(--ok); }
+  pre .del { color:var(--danger); text-decoration:line-through; }
+
+  .prompt { border:1px solid #3b5064; background:#141d28; border-radius:5px; overflow:hidden; }
+  .prompt .ph { padding:8px 11px; color:var(--ink); font-size:13.5px; border-bottom:1px solid var(--edge-soft); }
+  .prompt .pp { padding:7px 11px; color:var(--ink-soft); font-size:12.5px; }
+  .prompt .dl { padding:2px 11px 8px; display:grid; gap:5px; max-height:190px; overflow:auto; }
+  .prompt .row { display:flex; gap:8px; align-items:baseline; font-size:12.5px; }
+  .prompt .row .who { color:var(--ink); min-width:120px; }
+  .prompt .row .what { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink-soft); }
+  .prompt .row .what b { color:var(--ok); font-weight:normal; }
+  .prompt .row .what s { color:var(--danger); }
+  .prompt .row .skip { color:var(--ink-dim); font-style:italic; }
+  .prompt .pf { padding:8px 11px; border-top:1px solid var(--edge-soft); display:flex; gap:8px; align-items:center; }
+  .prompt .pf .sp { margin-left:auto; }
+  .scrim { position:absolute; inset:0; background:#000a; display:flex; align-items:center; justify-content:center; padding:18px; }
+  .result { font:12px 'Helvetica Neue',Arial,sans-serif; color:var(--ok); display:flex; gap:12px; align-items:center;
+            padding:5px 10px; background:#141f1a; border:1px solid #2c4a3e; border-radius:4px; }
+  .result.gone { color:var(--ink-dim); background:#141a23; border-color:var(--edge); }
+  .result .u { color:var(--select); text-decoration:underline; cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.4.2 — <span>the confirmation and the Undo</span></h1>
+  <p>Round one chose <b>W3</b> (confirm, then offer Undo), <b>X1</b> (a conflicting month-long order
+  is replaced and named), <b>Y1</b> (a missing block is made under that mage's own region banner) and
+  <b>N2</b> (the lines are annotated exactly as the tab shows them). Two things are still open: what
+  the confirmation looks like, and what the Undo is worth once you have carried on working.</p>
+</header>
+
+<main>
+
+  <h3 class="sec">D — where the confirmation appears</h3>
+  <p>The study planner is itself a dialog covering the whole window, so this cannot be the header's
+  status line and it is not obvious it should be a second modal. The repository's own precedent is
+  <code>OrdersImportPrompt</code> — "a box in the flow rather than a modal, so the map stays where the
+  player left it while they decide".</p>
+  <div class="cols">
+    <div class="card">
+      <h2><em>D1</em> A box in the Orders tab, above the sections</h2>
+      <div class="concept">The tab body scrolls down; the box takes the top of it. The text you are
+      about to write is still on screen underneath, which is the thing you are confirming.</div>
+      <div class="stage">
+        <div class="pane">
+          <div class="top">
+            <span class="name">Study planner</span>
+            <span class="tabs"><span class="tab">All mages</span><span class="tab">Schedule</span><span class="tab on">Orders</span></span>
+            <span class="sp"></span><span class="btn">Save all…</span><span class="btn">Close</span>
+          </div>
+          <div class="sub">Orders for turn 72 — 3 mages studying, 1 teaching, 1 with no order this turn</div>
+          <div class="body">
+            <div class="prompt">
+              <div class="ph">Put these orders into your own orders?</div>
+              <div class="pp">Four units change. Nothing else in the document is touched, and you can
+              undo it afterwards.</div>
+              <div class="dl">
+                <div class="row"><span class="who">Ereb (1234)</span><span class="what"><b>STUDY FORC 4</b> replaces <s>BUILD Tower</s></span></div>
+                <div class="row"><span class="who">Sable (1250)</span><span class="what"><b>TEACH 1234</b></span></div>
+                <div class="row"><span class="who">Thane (1301)</span><span class="what"><b>STUDY PATT</b> replaces <s>STUDY FORC</s></span></div>
+                <div class="row"><span class="who">Rell (1288)</span><span class="what"><b>STUDY ARTI 2</b> — a new block, in plain (7,53)</span></div>
+                <div class="row"><span class="who">Vess (1263)</span><span class="skip">nothing planned — left alone</span></div>
+              </div>
+              <div class="pf"><span class="sp"></span><span class="btn">Cancel</span><span class="btn prim">Write orders</span></div>
+            </div>
+            <div class="grp">
+              <div class="hd"><span>Borg TNG (95) — your faction, turn 72</span><span class="sp"></span>
+                <span class="btn dim">Put into my orders</span><span class="btn dim">Copy</span><span class="btn dim">Save…</span></div>
+<pre><span class="c">; Borg TNG (95) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT</span> 1234              <span class="c">; Ereb</span>
+  <span class="k">STUDY</span> FORC 4          <span class="c">; force 3 -&gt; 4, taught by Sable</span></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>The orders you are agreeing to are visible below the box while you read it.</li>
+        <li>The pane's own layout; no second layer of modality over a dialog.</li>
+        <li class="con">On a short window the list and the text compete for the same scroll.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>D2</em> A modal over the planner</h2>
+      <div class="concept">The planner dims; the box is centred and takes focus. Escape cancels.</div>
+      <div class="stage">
+        <div class="pane">
+          <div class="top">
+            <span class="name">Study planner</span>
+            <span class="tabs"><span class="tab">All mages</span><span class="tab">Schedule</span><span class="tab on">Orders</span></span>
+            <span class="sp"></span><span class="btn">Save all…</span><span class="btn">Close</span>
+          </div>
+          <div class="sub">Orders for turn 72 — 3 mages studying, 1 teaching, 1 with no order this turn</div>
+          <div class="body" style="max-height:300px">
+            <div class="grp">
+              <div class="hd"><span>Borg TNG (95) — your faction, turn 72</span></div>
+<pre><span class="c">; Borg TNG (95) — study orders for turn 72</span>
+<span class="k">UNIT</span> 1234              <span class="c">; Ereb</span></pre>
+            </div>
+          </div>
+          <div class="scrim">
+            <div class="prompt" style="width:520px;max-width:100%">
+              <div class="ph">Put these orders into your own orders?</div>
+              <div class="pp">Four units change. Nothing else in the document is touched, and you can
+              undo it afterwards.</div>
+              <div class="dl">
+                <div class="row"><span class="who">Ereb (1234)</span><span class="what"><b>STUDY FORC 4</b> replaces <s>BUILD Tower</s></span></div>
+                <div class="row"><span class="who">Sable (1250)</span><span class="what"><b>TEACH 1234</b></span></div>
+              </div>
+              <div class="pf"><span class="sp"></span><span class="btn">Cancel</span><span class="btn prim">Write orders</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Impossible to miss, and Escape is unambiguous.</li>
+        <li class="con">A modal on top of a modal — the only place in the application that would do it.</li>
+        <li class="con">Hides the very text you are being asked to approve.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sec">U — what the Undo is worth afterwards</h3>
+  <p>The Undo restores the document as it was a moment before the write. But you may have closed the
+  planner, selected a unit and typed three lines by hand before you press it — and restoring the
+  document byte for byte would take those three lines with it.</p>
+  <div class="cols3">
+    <div class="card">
+      <h2><em>U1</em> Offered until anything else changes the document</h2>
+      <div class="concept">The Undo stands while the document is exactly what the write left. The
+      first keystroke anywhere, or an import, or a restore, and it quietly goes.</div>
+      <div class="stage">
+        <div style="display:grid;gap:10px">
+          <div class="result">Wrote study orders for 4 mages; 1 other order replaced. <span class="u">Undo</span></div>
+          <div class="result gone">Wrote study orders for 4 mages; 1 other order replaced.</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>It can never destroy work — by construction there is none to destroy.</li>
+        <li>Cheap and exact: one saved string and one equality test.</li>
+        <li class="con">Type one character and the way back is gone, with only the line greying to say so.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>U2</em> Offered until the planner is closed</h2>
+      <div class="concept">The Undo stands for as long as you are in the planner, whatever else has
+      happened. Pressing it restores the whole document, and says so first.</div>
+      <div class="stage">
+        <div style="display:grid;gap:10px">
+          <div class="result">Wrote study orders for 4 mages; 1 other order replaced. <span class="u">Undo</span></div>
+          <div class="prompt" style="width:auto">
+            <div class="pp">Undoing puts your orders back as they were before the write. Anything
+            typed since will go with it.</div>
+            <div class="pf"><span class="sp"></span><span class="btn">Keep</span><span class="btn prim">Undo the write</span></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>The way back is there when you notice the mistake, which is rarely instantly.</li>
+        <li class="con">A second confirmation, on the button that exists to save you from a confirmation.</li>
+        <li class="con">It can still lose typing, and the warning is the only thing stopping it.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>U3</em> Undo only the lines it wrote</h2>
+      <div class="concept">Each mage's block is put back individually, and only if it still reads
+      exactly as the write left it. A block you have since edited is left alone and named.</div>
+      <div class="stage">
+        <div style="display:grid;gap:10px">
+          <div class="result">Wrote study orders for 4 mages; 1 other order replaced. <span class="u">Undo</span></div>
+          <div class="result gone">Put 3 mages back; Ereb (1234) was left alone, you have edited him since.</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Never destroys anything and never expires — the strongest of the three.</li>
+        <li class="con">The most work, and a partial undo is a state that has to be explained in a
+        sentence every time.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sec">The words, as they would ship</h3>
+  <div class="card">
+    <div class="stage">
+<pre><span class="c">button          </span> Put into my orders
+<span class="c">prompt title    </span> Put these orders into your own orders?
+<span class="c">prompt lead     </span> Four units change. Nothing else in the document is touched, and you can undo it afterwards.
+<span class="c">                </span> (One unit changes. …)
+<span class="c">row, plain      </span> Sable (1250)   TEACH 1234
+<span class="c">row, replacing  </span> Ereb (1234)    STUDY FORC 4 replaces BUILD Tower
+<span class="c">row, new block  </span> Rell (1288)    STUDY ARTI 2 — a new block, in plain (7,53)
+<span class="c">row, skipped    </span> Vess (1263)    nothing planned — left alone
+<span class="c">confirm / cancel</span> Write orders / Cancel
+<span class="c">result          </span> Wrote study orders for 4 mages; 1 other order replaced.  Undo
+<span class="c">result, no clash</span> Wrote study orders for 4 mages.  Undo
+<span class="c">after undo      </span> Put your orders back as they were.
+<span class="c">failure         </span> Could not write these orders into your document.</pre>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>
