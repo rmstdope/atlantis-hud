@@ -727,24 +727,26 @@ export function AppShell({
     async (
       factionId: string,
       unitId: string,
-      change: { goals?: StudyGoal[]; comment?: string },
+      // `goals` is an *edit* rather than a list: the store applies it against the row it holds at
+      // the moment the write runs, so two choices made in quick succession cannot each be built
+      // from the same pre-first-write row (`studyPlansStore.save`).
+      change: { goals?: (current: readonly StudyGoal[]) => StudyGoal[]; comment?: string },
       failure: string
     ) => {
       if (!game) {
         return;
       }
-      const existing = useStudyPlansStore
-        .getState()
-        .plans.find((row) => row.factionId === factionId && row.unitId === unitId);
       setStudyPlanError(null);
       try {
-        await useStudyPlansStore.getState().save(client, game, {
-          factionId,
-          unitId,
-          goals: change.goals ?? existing?.goals ?? [],
-          comment: change.comment ?? existing?.comment ?? "",
-          updatedAt: new Date().toISOString()
-        });
+        await useStudyPlansStore
+          .getState()
+          .save(client, game, { factionId, unitId }, (current) => ({
+            factionId,
+            unitId,
+            goals: change.goals ? change.goals(current?.goals ?? []) : (current?.goals ?? []),
+            comment: change.comment ?? current?.comment ?? "",
+            updatedAt: new Date().toISOString()
+          }));
       } catch {
         setStudyPlanError(failure);
       }
@@ -4717,8 +4719,8 @@ export function AppShell({
           plans={studyPlans}
           viewedTurn={parsed?.header.turnNumber ?? null}
           saveError={studyPlanError}
-          onSavePlan={(factionId, unitId, goals) =>
-            void saveStudyPlan(factionId, unitId, { goals }, "Could not save this plan.")
+          onSavePlan={(factionId, unitId, edit) =>
+            void saveStudyPlan(factionId, unitId, { goals: edit }, "Could not save this plan.")
           }
           onSaveNote={(factionId, unitId, comment) =>
             void saveStudyPlan(factionId, unitId, { comment }, "Could not save this note.")

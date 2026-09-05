@@ -128,7 +128,11 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await page.getByTestId("study-schedule-choice-nothing").click();
   await expect(popover).toHaveCount(0);
 
-  // Two turns apart, and the gap between them stays empty.
+  // Two turns apart, and the gap between them stays empty. Deliberately without waiting for the
+  // first write to land between the clicks: a plan is one row whose goals are written whole, so
+  // this is the window in which a second choice built from a stale row would overwrite the first
+  // (`studyPlansStore.save` applies each edit inside its queued write). The reload below is what
+  // asserts both survived.
   await cell.click();
   await page.getByTestId("study-schedule-choice-FORC").click();
   await expect(popover).toHaveCount(0);
@@ -136,8 +140,13 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await page.getByTestId("study-schedule-choice-FORC").click();
   await expect(popover).toHaveCount(0);
   await expect(neighbour).toContainText("—");
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("force");
+  // Both cells before the reload, and this is a *durability* wait rather than a paint one: the
+  // store writes first and updates the cache only when the write resolves, so a cell showing
+  // `force` is a write that has landed. Reloading without it kills a transaction still in flight.
+  // It does not hide the case above - the two clicks are still not gated on each other, which is
+  // the window - and `studyPlansStore.test.ts` pins the payload rule directly.
   await expect(cell).toContainText("force");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("force");
 
   // The reload has to finish restoring the game before F4 means anything: the shortcut is
   // ignored while there is no report, exactly as `persistence.spec.ts` waits for this line.

@@ -43,8 +43,15 @@ export function StudySchedule({
   tree: MagicTree;
   mode: CellMode;
   onEvent: (event: CellEvent) => void;
-  /** Called with the whole new goal list for one mage when a choice is made. */
-  onCommit: (rowKey: string, goals: StudyGoal[]) => void;
+  /**
+   * Called when a choice is made, with the *edit* rather than the resulting list.
+   *
+   * A function, because the store applies it against the row it holds when the write actually
+   * runs: a plan is one row whose goals are written whole, so a second choice made while the
+   * first write is still in flight would otherwise be built from a row that does not hold the
+   * first choice yet, and would overwrite it.
+   */
+  onCommit: (rowKey: string, edit: (current: readonly StudyGoal[]) => StudyGoal[]) => void;
   /** `Could not save this plan.`, or null. */
   saveError: string | null;
   /** Everything the planner has to say about this plan, for the strip and the cell tints. */
@@ -191,7 +198,9 @@ export function StudySchedule({
           rowIndex={rows.findIndex((row) => row.key === editing.rowKey)}
           onEvent={onEvent}
           onChoose={(choice) => {
-            onCommit(open.key, goalsAfterChoice(open.goals, turns[editing.turnIndex], choice));
+            onCommit(open.key, (goals) =>
+              goalsAfterChoice(goals, turns[editing.turnIndex], choice)
+            );
             onEvent({ kind: "closed" });
           }}
         />

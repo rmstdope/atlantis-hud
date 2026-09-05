@@ -33,8 +33,18 @@ export type StudyPlansState = {
    *
    * Write first rather than optimistically: a failed write must not leave a study on screen that
    * storage does not hold. Rethrows. Serialized against every other write - see `queued`.
+   *
+   * `update` is applied **inside** the queue, against the row the cache holds at the moment the
+   * write runs, and is why this takes an edit rather than a finished record: a plan is one row
+   * whose goals are written whole, so a second choice made while the first write is in flight
+   * would otherwise be built from a row that does not hold the first yet, and would overwrite it.
    */
-  save: (client: CoreClient, game: OpenedGame, plan: StudyPlanRecord) => Promise<void>;
+  save: (
+    client: CoreClient,
+    game: OpenedGame,
+    key: StudyPlanKey,
+    update: (current: StudyPlanRecord | null) => StudyPlanRecord
+  ) => Promise<void>;
   /** Drops rows, then removes them from the cache. Rethrows. */
   remove: (client: CoreClient, game: OpenedGame, keys: readonly StudyPlanKey[]) => Promise<void>;
   clear: () => void;
@@ -90,10 +100,15 @@ export const useStudyPlansStore = create<StudyPlansState>()((set, get) => ({
     }
   },
 
-  save: async (client, game, plan) =>
+  save: async (client, game, key, update) =>
     queued(async () => {
+      const replaced = keyText(key.factionId, key.unitId);
+      // Read *here*, not when the call was made: the row may have been written by an edit that
+      // was queued ahead of this one, and a plan's goals are written whole.
+      const current =
+        get().plans.find((row) => keyText(row.factionId, row.unitId) === replaced) ?? null;
+      const plan = update(current);
       await saveStudyPlans(client, game, [plan], []);
-        const replaced = keyText(plan.factionId, plan.unitId);
       set((state) => ({
         plans: sortStudyPlans([
           ...state.plans.filter((row) => keyText(row.factionId, row.unitId) !== replaced),

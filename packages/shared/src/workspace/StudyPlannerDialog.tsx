@@ -101,7 +101,12 @@ export function StudyPlannerDialog({
   regionBanner: (regionId: string) => string | null;
   /** Replaces the whole document, as an external write. `AppShell`'s `writeStudyOrdersDocument`. */
   onWriteOrdersDocument: (next: string) => void;
-  onSavePlan: (factionId: string, unitId: string, goals: StudyGoal[]) => void;
+  /** The edit, not the result: it is applied against the stored row when the write runs. */
+  onSavePlan: (
+    factionId: string,
+    unitId: string,
+    edit: (current: readonly StudyGoal[]) => StudyGoal[]
+  ) => void;
   onSaveNote: (factionId: string, unitId: string, comment: string) => void;
   onDismiss: () => void;
 }) {
@@ -433,9 +438,9 @@ export function StudyPlannerDialog({
             tree={tree}
             mode={cellMode}
             onEvent={(event) => setCellMode((mode) => reduceCell(mode, event))}
-            onCommit={(rowKey, goals) => {
+            onCommit={(rowKey, edit) => {
               const [factionId, unitId] = rowKey.split("/");
-              onSavePlan(factionId, unitId, goals);
+              onSavePlan(factionId, unitId, edit);
             }}
             saveError={saveError}
             notices={notices}
