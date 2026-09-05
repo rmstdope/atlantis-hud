@@ -99,7 +99,7 @@ describe("stopKeys", () => {
       problem({ lineStart: 6, lineEnd: 6, message: "second" }),
       problem({ lineStart: 3, lineEnd: 3, message: "first" })
     ]);
-    const keys = stopKeys(TEXT, targets);
+    const keys = stopKeys(targets);
 
     expect(keys).toHaveLength(2);
     // Non-decreasing, because diagnosticTargets already sorted by the same arithmetic.
@@ -111,7 +111,7 @@ describe("stopKeys", () => {
       problem({ lineStart: 2, lineEnd: 2, columnStart: 0, message: "a" }),
       problem({ lineStart: 3, lineEnd: 3, columnStart: 0, message: "b" })
     ]);
-    const keys = stopKeys(TEXT, targets);
+    const keys = stopKeys(targets);
 
     expect(targets[0].unitId).toBe(targets[1].unitId);
     expect(keys[0]).not.toEqual(keys[1]);
@@ -122,7 +122,7 @@ describe("stopKeys", () => {
       problem({ lineStart: 3, lineEnd: 3, message: "unit 100" }),
       problem({ lineStart: 6, lineEnd: 6, message: "unit 200" })
     ]);
-    const keys = stopKeys(TEXT, targets);
+    const keys = stopKeys(targets);
 
     expect(keys[1].line).toBeGreaterThan(keys[0].line);
   });
@@ -190,5 +190,63 @@ describe("resumeWalk", () => {
     const resume = resumeWalk(list, { line: 2, column: 4 });
     expect(resume).toEqual({ index: 0, standing: false });
     expect(stepDiagnostic(list.length, resume.index, 1)).toBe(1);
+  });
+});
+
+/**
+ * The walk over a unit this month's `FORM` orders create (`ah-ty3s.1`).
+ *
+ * Its orders are its own now, so the walk has to stop in *its* editor - and the panel and the walk
+ * must agree about which editor marks a finding, or F8 selects lines nothing underlines.
+ *
+ *   1 `unit 1922`  2 `form 1`  3 `buy 1 hdwa`  4 `WROK`  5 `end`
+ */
+describe("the walk over a formed unit's problems", () => {
+  const FORMED = "unit 1922\nform 1\nbuy 1 hdwa\nWROK\nend";
+  const REGIONS = new Map([["1:7,53", new Set(["1922"])]]);
+
+  it("stops on a finding that names a formed unit, in that unit's own editor", () => {
+    const targets = diagnosticTargets(
+      FORMED,
+      [problem({ lineStart: 4, lineEnd: 4, unitId: "new-1", regionId: "1:7,53" })],
+      REGIONS
+    );
+
+    expect(targets).toHaveLength(1);
+    expect(targets[0].unitId).toBe("new-1");
+    expect(targets[0].regionId).toBe("1:7,53");
+    // Numbered from the top of the FORM block, exactly as `diagnosticsForUnit` numbers it.
+    expect(targets[0].problem.lineStart).toBe(2);
+  });
+
+  it("places an unnamed finding inside a FORM in the formed unit's editor, not its creator's", () => {
+    const targets = diagnosticTargets(
+      FORMED,
+      [problem({ lineStart: 4, lineEnd: 4, regionId: "1:7,53" })],
+      REGIONS
+    );
+
+    expect(targets.map((target) => target.unitId)).toEqual(["new-1"]);
+    expect(targets[0].problem.lineStart).toBe(2);
+  });
+
+  it("leaves a finding on the FORM line itself with the unit that wrote it", () => {
+    const targets = diagnosticTargets(
+      FORMED,
+      [problem({ lineStart: 2, lineEnd: 2, regionId: "1:7,53" })],
+      REGIONS
+    );
+
+    expect(targets.map((target) => target.unitId)).toEqual(["1922"]);
+  });
+
+  it("gives a formed stop its document position like any other", () => {
+    const targets = diagnosticTargets(
+      FORMED,
+      [problem({ lineStart: 4, lineEnd: 4, unitId: "new-1", regionId: "1:7,53" })],
+      REGIONS
+    );
+
+    expect(stopKeys(targets)[0].line).toBe(4);
   });
 });

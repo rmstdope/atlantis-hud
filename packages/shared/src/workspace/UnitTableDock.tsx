@@ -183,7 +183,7 @@ type UnitTableDockProps = {
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<string>;
   /** Selects a unit and opens its orders. Absent means the cell is not clickable. */
-  onSelectUnit?: (unitId: string) => void;
+  onSelectUnit?: (unitId: string, regionId?: string) => void;
   /**
    * Wraps a foreign faction's name so it can open that faction's dossier beside the row clicked
    * (ah-bu2c). Left off, the name prints as it always did.
@@ -732,9 +732,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * Deliberately not called from `moveSelection`, from Space, or from a press with a modifier held:
    * walking a list and building a pick must both leave the map alone.
    */
-  const travelTo = (unitId: string) => {
+  const travelTo = (unitId: string, regionId: string) => {
     if (travelsOnSelect(source)) {
-      onSelectUnit?.(unitId);
+      // The row's own hex goes with it: a unit this month's `FORM` orders create is not in the
+      // report, so `goToUnit` could not look one up, and two hexes can each hold a `new-1`
+      // (`ah-9o0c.2`).
+      onSelectUnit?.(unitId, regionId);
     }
   };
 
@@ -762,7 +765,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       // Choosing a row from the keyboard collapses a pick exactly as a plain click does.
       settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys), here, hereRow.regionId);
       if (travel) {
-        travelTo(here);
+        travelTo(here, hereRow.regionId);
       }
     };
     const keys: Record<string, () => void> = {
@@ -876,7 +879,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     if (outcome.now) {
       if (plain) {
         settleOn(outcome.now, rowTarget, unit.regionId);
-        travelTo(rowTarget);
+        travelTo(rowTarget, unit.regionId);
       } else {
         setPick(outcome.now);
       }
@@ -897,7 +900,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       deferred
         ? () => {
             settleOn(deferred, rowTarget, unit.regionId);
-            travelTo(rowTarget);
+            travelTo(rowTarget, unit.regionId);
           }
         : undefined
     );
@@ -1909,7 +1912,7 @@ function UnitRow({
   /** Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`). */
   countUpkeep: boolean;
   /** Selects a unit and opens its orders. */
-  onSelectUnit?: (unitId: string) => void;
+  onSelectUnit?: (unitId: string, regionId?: string) => void;
   /** Wraps a foreign faction's name so it can open that faction's dossier (ah-bu2c). */
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
   /**
@@ -2195,7 +2198,7 @@ function UnitRow({
             type="button"
             data-testid={`unit-silver-${unit.unitId}`}
             onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => onSelectUnit?.(unit.unitId)}
+            onClick={() => onSelectUnit?.(unit.unitId, regionId)}
             className={`inline-flex items-center gap-0.5 ${UNIT_LINK_CLASS}`}
           >
             <span className="sr-only">unit {unit.unitId} </span>

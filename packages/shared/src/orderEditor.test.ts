@@ -586,3 +586,37 @@ describe("the diagnostics belonging to a unit formed this month", () => {
     ).toEqual([5]);
   });
 });
+
+describe("a FORM nested inside a FORM", () => {
+  //     1  #atlantis 95
+  //     2  unit 1922
+  //     3  form 1
+  //     4  buy 1 hdwa
+  //     5  form 2
+  //     6  WROK
+  //     7  end
+  //     8  end
+  const NESTED = ["#atlantis 95", "unit 1922", "form 1", "buy 1 hdwa", "form 2", "WROK", "end", "end"]
+    .join("\n");
+  const REGION = new Set(["1922"]);
+  const unnamed = (lineStart: number): OrderDiagnostic => ({
+    ...diagnostic(lineStart, "unknown order command: WROK"),
+    unitId: null
+  });
+
+  it("an unnamed finding inside it belongs to the unit it forms and to no editor above", () => {
+    expect(diagnosticsForUnit(NESTED, "new-2", [unnamed(6)], REGION)).toEqual([
+      { ...unnamed(6), lineStart: 1, lineEnd: 1 }
+    ]);
+    // Neither the unit that wrote the outer FORM, nor the unit that outer FORM creates.
+    expect(diagnosticsForUnit(NESTED, "new-1", [unnamed(6)], REGION)).toEqual([]);
+    expect(diagnosticsForUnit(NESTED, "1922", [unnamed(6)], REGION)).toEqual([]);
+  });
+
+  it("the inner FORM line itself stays with the unit that wrote it", () => {
+    expect(diagnosticsForUnit(NESTED, "new-1", [unnamed(5)], REGION).map((e) => e.lineStart)).toEqual(
+      [2]
+    );
+    expect(diagnosticsForUnit(NESTED, "1922", [unnamed(5)], REGION)).toEqual([]);
+  });
+});

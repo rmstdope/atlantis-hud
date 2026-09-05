@@ -226,12 +226,6 @@ import type { MapViewState } from "./mapViewState";
 import { getMapTheme } from "./mapThemes";
 import { OrdersPanel } from "./OrdersPanel";
 import { formedSelectionFor } from "./ordersLock";
-
-/**
- * The reported units of a hex nothing is known about - one frozen instance, so a render with no hex
- * selected hands the same identity down and memoised work below it does not run again.
- */
-const NO_UNITS: ReadonlySet<string> = Object.freeze(new Set<string>());
 import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
 import { GameDataDialog } from "./GameDataDialog";
@@ -311,6 +305,12 @@ import {
  * can be tested without rendering anything.
  */
 export { isOlderTurn };
+
+/**
+ * The reported units of a hex nothing is known about - one frozen instance, so a render with no hex
+ * selected hands the same identity down and memoised work below it does not run again.
+ */
+const NO_UNITS: ReadonlySet<string> = Object.freeze(new Set<string>());
 
 /** How long a load waits for the ruleset before giving up on it and parsing unclassified. */
 export const RULESET_WAIT_MS = 5000;
@@ -487,7 +487,6 @@ export function AppShell({
     }
     return found;
   }, [parsed]);
-
 
   /**
    * What a unit will spend the month on, read from the live document so the units table follows an
@@ -1217,14 +1216,14 @@ export function AppShell({
 
   // Every problem the F8 walk can visit, in document order, against the text validation saw.
   const problemTargets = useMemo(
-    () => diagnosticTargets(validated.text, validated.diagnostics),
-    [validated]
+    () => diagnosticTargets(validated.text, validated.diagnostics, unitIdsByRegion),
+    [validated, unitIdsByRegion]
   );
 
   // The document position of each stop, for carrying the walk across a re-validation.
   const problemKeys = useMemo(
-    () => stopKeys(validated.text, problemTargets),
-    [validated, problemTargets]
+    () => stopKeys(problemTargets),
+    [problemTargets]
   );
 
   // A fresh validation rebuilds the list, so the old index means nothing - but the player's place
@@ -1264,7 +1263,7 @@ export function AppShell({
       if (unit?.unitId === target.unitId) {
         ordersEditor.current?.selectProblem(target.problem);
       } else {
-        goToUnit(target.unitId);
+        goToUnit(target.unitId, "report", target.regionId ?? undefined);
         setPendingProblem(target);
       }
     },
@@ -4919,7 +4918,7 @@ export function AppShell({
               getLongOrder={getLongOrder}
               getSilver={getSilver}
               silverWarnings={silverWarnings}
-              onSelectUnit={(unitId) => goToUnit(unitId, null)}
+              onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId)}
               ownUnits={ownUnits}
               foreignUnits={foreignUnits}
               attitudes={parsed?.header.attitudes ?? null}
