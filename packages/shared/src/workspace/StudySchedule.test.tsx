@@ -9,7 +9,7 @@ import { hoverCard, scheduleRows, scheduleTurns, type ScheduleRow } from "../stu
 import type { PlannerGroup } from "../studyPlanner";
 import { STANDING_CHIP } from "./standingChip";
 import { CellPopover, ScheduleGrid, ScheduleHoverCard, StudySchedule } from "./StudySchedule";
-import type { CellMode } from "./studyCellState";
+import type { CellMode, CellPick } from "./studyCellState";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -55,7 +55,7 @@ const rows = scheduleRows({
     {
       factionId: "12",
       unitId: "2431",
-      goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }],
+      goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
       comment: "heading for Gate Lore",
       updatedAt: "2026-01-01T00:00:00.000Z"
     }
@@ -100,8 +100,8 @@ describe("ScheduleGrid", () => {
     expect(first.slice(0, 400)).toContain(STANDING_CHIP.known);
   });
 
-  it("draws an empty cell as a plus", () => {
-    expect(grid()).toContain(">+<");
+  it("draws an unplanned cell as a dash", () => {
+    expect(grid()).toContain(">—<");
   });
 
   it("puts a pencil on a mage who has a note, and on no one else", () => {
@@ -119,12 +119,7 @@ describe("ScheduleGrid", () => {
   });
 
   it("says which cell is open", () => {
-    const markup = grid({
-      kind: "editing",
-      rowKey: "12/2431",
-      turnIndex: 0,
-      pick: { kind: "study", skill: "FORC", targetLevel: 5 }
-    });
+    const markup = grid({ kind: "choosing", rowKey: "12/2431", turnIndex: 0 });
     const cell = markup.slice(markup.indexOf('study-schedule-cell-2431-24'));
 
     expect(cell.slice(0, 200)).toContain('aria-expanded="true"');
@@ -178,89 +173,110 @@ describe("ScheduleHoverCard", () => {
 });
 
 describe("CellPopover", () => {
-  const mode = {
-    kind: "editing" as const,
-    rowKey: "12/2431",
-    turnIndex: 3,
-    pick: { kind: "study" as const, skill: "FORC", targetLevel: 5 }
-  };
+  const mode = { kind: "choosing" as const, rowKey: "12/2431", turnIndex: 2 };
+  // Both mages studying force in the same hex, so Ereb - who outranks Ilna - has somebody he could
+  // teach and the `Teaches…` row is offered (`rules/skills_teaching`).
+  const withStudent = scheduleRows({
+    groups,
+    plans: ["2431", "2432"].map((unitId) => ({
+      factionId: "12",
+      unitId,
+      goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+      comment: "",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    })),
+    tree,
+    turns,
+    seats: new Map([["1:7,53/1", 1]])
+  });
   const menu = cellMenu({
     mageName: "Ereb",
-    turn: 27,
-    standing: (rows[0] as ScheduleRow).standings[3],
+    turn: 26,
+    standing: (withStudent[0] as ScheduleRow).standings[2],
     tree,
-    rows,
-    turnIndex: 3,
+    rows: withStudent,
+    turnIndex: 2,
     rowKey: "12/2431",
     label: (regionId: string) => regionId
   });
 
-  function popover() {
+  function popover(current: CellPick | null = { kind: "study", skill: "FORC" }) {
     return renderToStaticMarkup(
       <CellPopover
         menu={menu}
         mode={mode}
         mageName="Ereb"
-        turn={27}
-        replacing="was: force 4, force 5"
+        turn={26}
+        current={current}
+        rowIndex={0}
         onEvent={() => {}}
-        onSet={() => {}}
-        onClear={() => {}}
+        onChoose={() => {}}
       />
     );
   }
 
-  it("heads the menu with the turn and the mage, and says where he will stand", () => {
-    expect(popover()).toContain("From turn 27, Ereb studies");
-    expect(popover()).toContain("He will be force 4 by then.");
+  it("heads the dropdown with the mage and the turn", () => {
+    expect(popover()).toContain("Ereb — turn 26");
   });
 
-  it("draws all three groups", () => {
+  it("lists — nothing, the teaches row and the skills, in that order", () => {
+    const markup = popover();
+    const nothing = markup.indexOf('data-testid="study-schedule-choice-nothing"');
+    const teach = markup.indexOf('data-testid="study-schedule-choice-teach"');
+    const first = markup.indexOf('data-testid="study-schedule-choice-FORC"');
+
+    expect(nothing).toBeGreaterThan(-1);
+    expect(teach).toBeGreaterThan(nothing);
+    expect(first).toBeGreaterThan(teach);
+    expect(markup).toContain("— nothing");
+    expect(markup).toContain("Teaches…");
+  });
+
+  it("marks the row the cell already holds", () => {
+    const pressed = popover().slice(
+      popover().indexOf('data-testid="study-schedule-choice-FORC"')
+    );
+
+    expect(pressed.slice(0, 200)).toContain('aria-pressed="true"');
+  });
+
+  it("marks — nothing when the cell holds nothing", () => {
+    const markup = popover(null);
+    const row = markup.slice(markup.indexOf('data-testid="study-schedule-choice-nothing"'));
+
+    expect(row.slice(0, 200)).toContain('aria-pressed="true"');
+  });
+
+  it("has no Set button and no level select", () => {
     const markup = popover();
 
-    expect(markup).toContain(">Raise<");
-    expect(markup).toContain(">Begin<");
-    expect(markup).toContain(">Not by turn 27<");
+    expect(markup).not.toContain(">Set<");
+    expect(markup).not.toContain("study-schedule-level");
+    expect(markup).not.toContain("Clear from here");
   });
 
-  it("offers the level, with the one-month form first", () => {
-    const markup = popover();
-
-    expect(markup).toContain('data-testid="study-schedule-level"');
-    expect(markup).toContain(">one month<");
+  it("says how the dropdown is worked", () => {
+    expect(popover()).toContain("↑↓ to move · ↵ to choose · Esc to close");
   });
 
-  it("ghosts the tail the choice will overwrite", () => {
-    expect(popover()).toContain("was: force 4, force 5");
-    expect(popover()).toContain('data-testid="study-schedule-was"');
-  });
-
-  it("carries the three buttons the navigator chose", () => {
-    const markup = popover();
-
-    expect(markup).toContain(">Set<");
-    expect(markup).toContain(">Cancel<");
-    expect(markup).toContain(">Clear from here<");
-  });
-
-  it("warns when an impossible skill is the chosen one", () => {
-    const blocked = menu.notYet[0];
+  it("shows the students, Cancel and Set in the teach step", () => {
     const markup = renderToStaticMarkup(
       <CellPopover
         menu={menu}
-        mode={{ ...mode, pick: { kind: "study", skill: blocked.skill, targetLevel: null } }}
+        mode={{ kind: "teaching", rowKey: "12/2431", turnIndex: 2, students: [] }}
         mageName="Ereb"
-        turn={27}
-        replacing="was: force 4, force 5"
+        turn={26}
+        current={null}
+        rowIndex={0}
         onEvent={() => {}}
-        onSet={() => {}}
-        onClear={() => {}}
+        onChoose={() => {}}
       />
     );
 
-    expect(markup).toContain(
-      `Ereb cannot study ${blocked.name} by turn 27. The plan will say so anyway.`
-    );
+    expect(markup).toContain("Ereb teaches on turn 26");
+    expect(markup).toContain('data-testid="study-schedule-teach-2432"');
+    expect(markup).toContain(">Cancel<");
+    expect(markup).toContain(">Set<");
   });
 });
 
@@ -273,8 +289,8 @@ describe("a teaching month in the grid", () => {
         factionId: "12",
         unitId: "2431",
         goals: [
-          { kind: "teach", students: ["2432"] },
-          { kind: "study", skill: "FORC", targetLevel: 5 }
+          { kind: "teach", turn: turns[0], students: ["2432"] },
+          ...turns.slice(1).map((turn) => ({ kind: "study" as const, turn, skill: "FORC" }))
         ],
         comment: "",
         updatedAt: "2026-01-01T00:00:00.000Z"
@@ -284,7 +300,7 @@ describe("a teaching month in the grid", () => {
         unitId: "2432",
         // Force, not pattern: `rules/skills_teaching` needs the teacher to outrank the student in
         // the skill being studied, and Ereb holds no pattern at all.
-        goals: [{ kind: "study", skill: "FORC", targetLevel: 5 }],
+        goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
         comment: "",
         updatedAt: "2026-01-01T00:00:00.000Z"
       }

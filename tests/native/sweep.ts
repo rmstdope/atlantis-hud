@@ -388,7 +388,7 @@ export const SWEEP: SweepEntry[] = [
         {
           factionId: "21",
           unitId: "9001",
-          goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+          goals: [{ kind: "study", turn: 24, skill: "FORC" }],
           comment: "heading for Gate Lore",
           updatedAt: ISO
         }

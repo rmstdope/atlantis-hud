@@ -276,23 +276,24 @@ function requireAdmissible(prepared: PreparedImport): number {
 function withGoals(
   plan: StudyPlanRecord & { skill?: string | null; targetLevel?: number | null }
 ): StudyPlanRecord {
+  // Both flat columns are read off and dropped: `targetLevel` because there are no target levels
+  // any more (ah-lyg6.2.3), and neither belongs on the record a caller gets back.
   const { skill, targetLevel, ...rest } = plan;
-  const goals =
-    rest.goals ??
-    (skill ? [{ kind: "study" as const, skill, targetLevel: targetLevel ?? null }] : []);
+  void targetLevel;
+  // `turn: 0` for anything written before ah-lyg6.2.3's redesign, exactly as the desktop reader
+  // answers: a queue of goals names no turn and cannot be converted without the report it was
+  // projected against, so `plannedGoals` drops it and the next save rewrites the row.
+  const goals = rest.goals ?? (skill ? [{ kind: "study" as const, turn: 0, skill }] : []);
   // A goal written before ah-lyg6.3 carries no discriminant. Same courtesy as the line above, and
   // deletable on the same day: study plans were never in a release.
   return {
     ...rest,
-    goals: goals.map((goal) =>
-      "kind" in goal
-        ? goal
-        : {
-            kind: "study" as const,
-            skill: (goal as { skill: string }).skill,
-            targetLevel: (goal as { targetLevel: number | null }).targetLevel ?? null
-          }
-    )
+    goals: goals.map((goal) => {
+      const one = goal as { kind?: string; turn?: number; skill?: string; students?: string[] };
+      return one.kind === "teach"
+        ? { kind: "teach" as const, turn: one.turn ?? 0, students: one.students ?? [] }
+        : { kind: "study" as const, turn: one.turn ?? 0, skill: one.skill ?? "" };
+    })
   };
 }
 

@@ -65,7 +65,8 @@ test("the palette offers the planner with its key beside it", async ({ page }) =
  *
  * Everything the projection says and every string it says it in is pinned in
  * `studySchedule.test.ts` and `studyCell.test.ts`. What is here is what needs a real browser: a
- * popover opening on a click, a plan surviving a reload, and the note reaching the other view.
+ * dropdown opening on a click, one cell changing and its neighbours not, a plan surviving a
+ * reload, and the note reaching the other view.
  */
 test("the Schedule plans a mage's studies, and the plan survives a reload", async ({ page }) => {
   await loadReport(page);
@@ -76,18 +77,40 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await expect(page.getByTestId("study-schedule-turn-72")).toContainText("72 · next");
 
   const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const neighbour = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
+  await expect(cell).toContainText("—");
   await cell.click();
   const popover = page.getByTestId("study-schedule-popover");
   await expect(popover).toBeVisible();
-  await expect(popover).toContainText("From turn 72, Six of Seven studies");
+  await expect(popover).toContainText("Six of Seven — turn 72");
 
+  // One click is one choice: no Set, and nothing to its right moves.
   await page.getByTestId("study-schedule-choice-FORC").click();
-  await page.getByTestId("study-schedule-level").selectOption("5");
-  await page.getByTestId("study-schedule-set").click();
   // Waits for the popover to close rather than for the cell's text: the row is written
   // optimistically, so its text can be the new one before the write has landed.
   await expect(popover).toHaveCount(0);
   await expect(cell).toContainText("force");
+  await expect(neighbour).toContainText("—");
+
+  // Opening it again shows the choice that is stored, and `— nothing` empties that cell alone.
+  await cell.click();
+  await expect(page.getByTestId("study-schedule-choice-FORC")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await page.getByTestId("study-schedule-choice-nothing").click();
+  await expect(popover).toHaveCount(0);
+  await expect(cell).toContainText("—");
+  await expect(neighbour).toContainText("—");
+
+  // Two turns apart, and the gap between them stays empty.
+  await cell.click();
+  await page.getByTestId("study-schedule-choice-FORC").click();
+  await expect(popover).toHaveCount(0);
+  await page.getByTestId(`study-schedule-cell-${MAGE}-74`).click();
+  await page.getByTestId("study-schedule-choice-FORC").click();
+  await expect(popover).toHaveCount(0);
+  await expect(neighbour).toContainText("—");
 
   // The reload has to finish restoring the game before F4 means anything: the shortcut is
   // ignored while there is no report, exactly as `persistence.spec.ts` waits for this line.
@@ -96,6 +119,8 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
   await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("force");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("force");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("—");
 });
 
 test("a note written in All mages shows as a pencil in the Schedule", async ({ page }) => {
@@ -133,12 +158,15 @@ test("Escape closes the cell popover and leaves the pane open", async ({ page })
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  await cell.click();
   await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
   await expect(page.getByTestId("study-planner-dialog")).toBeVisible();
+  // Nothing was chosen, so the cell is exactly as it was.
+  await expect(cell).toContainText("—");
 
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("study-planner-dialog")).toHaveCount(0);
@@ -165,7 +193,6 @@ test("a teach month is planned in the popover, warned about in the strip, and su
   const studentCell = page.getByTestId(`study-schedule-cell-${STUDENT}-72`);
   await studentCell.click();
   await page.getByTestId("study-schedule-choice-GATE").click();
-  await page.getByTestId("study-schedule-set").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
   await expect(studentCell).toContainText("gate lore");
 
@@ -174,9 +201,14 @@ test("a teach month is planned in the popover, warned about in the strip, and su
   const popover = page.getByTestId("study-schedule-popover");
   await expect(popover).toBeVisible();
 
-  // Every mage the planner can see is offered, with a reason on the ones he cannot teach.
-  const teach = page.getByTestId("study-schedule-group-teach");
-  await expect(teach).toBeVisible();
+  // `Teaches…` is one row of the dropdown, and it opens the student list; Escape from that step
+  // goes back to the dropdown rather than out.
+  await page.getByTestId("study-schedule-choice-teach").click();
+  await expect(popover).toContainText("Six of Seven teaches on turn 72");
+  await page.keyboard.press("Escape");
+  await expect(popover).toContainText("Six of Seven — turn 72");
+
+  await page.getByTestId("study-schedule-choice-teach").click();
   await page.getByTestId(`study-schedule-teach-${STUDENT}`).click();
   await page.getByTestId("study-schedule-set").click();
   await expect(popover).toHaveCount(0);
@@ -214,7 +246,6 @@ test("the strip counts a warning, opens on a click, and focuses the cell it name
 
   await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
   await page.getByTestId("study-schedule-choice-FORC").click();
-  await page.getByTestId("study-schedule-set").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
   await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("×½");
 

@@ -1098,7 +1098,7 @@ describe("web core adapter", () => {
   // A row a local build wrote before ah-lyg6.2.3 carried one flat skill and level. IndexedDB has
   // no migration step, so the read path normalises them; the desktop's 0012 migration does the
   // same in SQL.
-  it("reads a plan stored before goals as a one-goal queue", async () => {
+  it("reads a plan stored before goals as a one-goal queue naming no turn", async () => {
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
     await store.putStudyPlans(
@@ -1129,7 +1129,7 @@ describe("web core adapter", () => {
     const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
 
     expect(listed.map((plan) => plan.goals)).toEqual([
-      [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+      [{ kind: "study", turn: 0, skill: "FORC" }],
       []
     ]);
     expect(listed.every((plan) => !("skill" in plan) && !("targetLevel" in plan))).toBe(true);
@@ -1166,8 +1166,8 @@ describe("web core adapter", () => {
     const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
 
     expect(listed.map((plan) => plan.goals)).toEqual([
-      [{ kind: "study", skill: "FORC", targetLevel: 4 }],
-      [{ kind: "teach", students: ["2517"] }]
+      [{ kind: "study", turn: 0, skill: "FORC" }],
+      [{ kind: "teach", turn: 0, students: ["2517"] }]
     ]);
   });
 
@@ -1937,7 +1937,7 @@ function aStudyPlan(unitId: string, factionId = "21"): StudyPlanRecord {
   return {
     factionId,
     unitId,
-    goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+    goals: [{ kind: "study", turn: 24, skill: "FORC" }],
     comment: "heading for Gate Lore",
     updatedAt: "2026-08-07T12:00:00Z"
   };
