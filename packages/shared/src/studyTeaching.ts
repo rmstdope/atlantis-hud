@@ -165,8 +165,8 @@ export function plannerNotices(input: {
               break;
             case "unknown":
               // The plan gives no string for a student the planner cannot see at all - a unit
-              // number typed before an ally's sheet went stale, or the teacher naming himself.
-              // Naming the number is the only honest thing to say about it.
+              // number stored before an ally's sheet went stale, say. Naming the number is the
+              // only honest thing to say about it; a teacher naming himself is `self`, above.
               add(
                 "taught-not-studying",
                 "warning",
