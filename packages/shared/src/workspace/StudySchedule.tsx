@@ -6,6 +6,7 @@ import type { StudyGoal } from "@atlantis/core-client";
 import {
   goalsAfterClear,
   goalsAfterSet,
+  goalsAfterTeach,
   cellMenu,
   cellWarning,
   teachWarning,
@@ -39,7 +40,8 @@ export function StudySchedule({
   onEvent,
   onCommit,
   saveError,
-  notices = []
+  notices = [],
+  label = (regionId: string) => regionId
 }: {
   rows: readonly ScheduleRow[];
   /** For the faction headings, worded exactly as the All mages view words them. */
@@ -54,6 +56,8 @@ export function StudySchedule({
   saveError: string | null;
   /** Everything the planner has to say about this plan, for the strip and the cell tints. */
   notices?: readonly PlannerNotice[];
+  /** How a region id reads to a player, for a teach row naming a student's hex. */
+  label?: (regionId: string) => string;
 }) {
   // The card follows the *focused* cell as well as the hovered one, or it would be unreachable
   // without a mouse - and the grid is walked with the arrow keys, which is what moves focus.
@@ -76,7 +80,14 @@ export function StudySchedule({
   const card =
     hovered === null || at === null
       ? null
-      : hoverCard(hovered, at.turnIndex, turns, tree, factionLabelOf(groups, hovered.factionId));
+      : hoverCard(
+          hovered,
+          at.turnIndex,
+          turns,
+          tree,
+          factionLabelOf(groups, hovered.factionId),
+          new Map(rows.map((row) => [row.key, row.name] as const))
+        );
 
   const open = mode.kind === "editing" ? rows.find((row) => row.key === mode.rowKey) ?? null : null;
   const menu =
@@ -89,7 +100,8 @@ export function StudySchedule({
           tree,
           rows,
           turnIndex: mode.turnIndex,
-          rowKey: mode.rowKey
+          rowKey: mode.rowKey,
+          label
         });
 
   if (empty) {
@@ -111,6 +123,9 @@ export function StudySchedule({
 
   return (
     <div data-testid="study-schedule" className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden">
+      {/* One grid child, whatever it holds: the error line and the strip share the `auto` row, so
+          the scroller below keeps the `1fr` whether an error is showing or not. */}
+      <div>
       {saveError === null ? null : (
         <p data-testid="study-schedule-error" className="m-0 px-2 py-1 text-warn">
           {saveError}
@@ -159,6 +174,7 @@ export function StudySchedule({
           </>
         )}
       </div>
+      </div>
       <div className="min-h-0 overflow-auto">
       <ScheduleGrid
         rows={rows}
@@ -180,7 +196,15 @@ export function StudySchedule({
           replacing={wasText(open, mode.turnIndex)}
           onEvent={onEvent}
           onSet={(goal) => {
-            onCommit(open.key, goalsAfterSet(open.goals, open, mode.turnIndex, goal));
+            // A study goal replaces the tail; a teach goal is one month and **inserts**, so the
+            // plan behind it survives with its target intact. That is the navigator's I1, and
+            // routing both through `goalsAfterSet` would be the I2 they rejected.
+            onCommit(
+              open.key,
+              goal.kind === "teach"
+                ? goalsAfterTeach(open.goals, open, mode.turnIndex, goal.students)
+                : goalsAfterSet(open.goals, open, mode.turnIndex, goal)
+            );
             onEvent({ kind: "set" });
           }}
           onClear={() => {
@@ -441,9 +465,13 @@ function FactionRows({
                       ? "+"
                       : cell.kind === "teach"
                         ? cell.label
-                        : `${cell.name} ${cell.level}${
-                            worthMark(cell.worth) === "" ? "" : ` ${worthMark(cell.worth)}`
-                          }`}
+                        : `${cell.name} ${cell.level}${(() => {
+                            const mark = worthMark(
+                              cell.worth,
+                              cell.taughtBy !== null || cell.unsheltered
+                            );
+                            return mark === "" ? "" : ` ${mark}`;
+                          })()}`}
                   </button>
                 </td>
               );

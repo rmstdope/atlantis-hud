@@ -14,7 +14,7 @@ import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
 import { goalQueueText, scheduleRows, scheduleTurns } from "../studySchedule";
 import { plannerNotices } from "../studyTeaching";
-import type { ShelterSeats } from "../studyShelter";
+import { shelterKey, type ShelterSeats } from "../studyShelter";
 import { planFor } from "../studyPlans";
 import { STUDY_NOTE_MAX_CHARS, noteCountText, normalizeStudyNote } from "../studyNote";
 import { isMacPlatform } from "../shortcuts";
@@ -51,6 +51,7 @@ export function StudyPlannerDialog({
   selectedUnitId,
   label,
   seats,
+  structureNames,
   tree,
   plans,
   viewedTurn,
@@ -71,6 +72,8 @@ export function StudyPlannerDialog({
   label: (regionId: string) => string;
   /** `shelterSeats(...)` - every structure the report shows and the mages it seats. */
   seats: ShelterSeats;
+  /** `shelterNames(...)` - what each of those structures is called, for a notice about one. */
+  structureNames: ReadonlyMap<string, string>;
   /** The magic tree, for the Schedule's projection and its menus. */
   tree: MagicTree;
   /** Every stored plan of this game, from `useStudyPlansStore`. */
@@ -102,9 +105,29 @@ export function StudyPlannerDialog({
     () => scheduleRows({ groups, plans, tree, turns, seats }),
     [groups, plans, tree, turns, seats]
   );
+  // Which building each mage stands in, and how many mages it seats - so an unsheltered mage in a
+  // full Fort is told his seat is taken rather than that he is standing outside. Absent means the
+  // open, which is what `plannerNotices` reads it as.
+  const shelters = useMemo(() => {
+    const found = new Map<string, { name: string; seats: number }>();
+    for (const group of groups) {
+      for (const mage of group.mages) {
+        if (mage.structureId === null) {
+          continue;
+        }
+        const key = shelterKey(mage.regionId, mage.structureId);
+        const held = seats.get(key);
+        if (held === undefined || held === null) {
+          continue;
+        }
+        found.set(mage.key, { name: structureNames.get(key) ?? "building", seats: held });
+      }
+    }
+    return found;
+  }, [groups, seats, structureNames]);
   const notices = useMemo(
-    () => plannerNotices({ rows, turns, label, factionLabels }),
-    [rows, turns, label, factionLabels]
+    () => plannerNotices({ rows, turns, label, factionLabels, shelters }),
+    [rows, turns, label, factionLabels, shelters]
   );
 
   const flat = useMemo(() => groups.flatMap((group) => group.mages), [groups]);
@@ -277,6 +300,7 @@ export function StudyPlannerDialog({
             }}
             saveError={saveError}
             notices={notices}
+            label={label}
           />
         ) : picked === null ? (
           <div data-testid="study-planner-empty" className="min-h-0 overflow-y-auto p-3">

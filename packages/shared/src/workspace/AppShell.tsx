@@ -232,7 +232,7 @@ import { StudyPlannerDialog } from "./StudyPlannerDialog";
 import type { MagicTreeView } from "./magicGraphLayout";
 import type { Viewport } from "./mapViewport";
 import { parseGameData } from "../gameData";
-import { shelterSeats } from "../studyShelter";
+import { shelterNames, shelterSeats } from "../studyShelter";
 import { buildMagicTree } from "../magicTree";
 import { magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
@@ -655,6 +655,7 @@ export function AppShell({
     () => shelterSeats({ report: parsed, index: gameData }),
     [parsed, gameData]
   );
+  const shelterNamesByKey = useMemo(() => shelterNames(parsed), [parsed]);
 
   const plannerGroupRows = useMemo(
     () =>
@@ -4197,6 +4198,7 @@ export function AppShell({
         <StudyPlannerDialog
           groups={plannerGroupRows}
           seats={shelter}
+          structureNames={shelterNamesByKey}
           summaryLine={plannerSummaryLine(plannerGroupRows)}
           emptyCopy={plannerEmptyCopy({ reportLoaded: parsed !== null })}
           alliedStatus={alliedStatus}

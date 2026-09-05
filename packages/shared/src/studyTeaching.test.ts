@@ -106,6 +106,16 @@ describe("what the planner has to say about a plan", () => {
     });
   });
 
+  it("names a unit it can see no mage for", () => {
+    const notices = notice([
+      row({ key: "21/1", name: "Ereb", cells: [teachCell([{ kind: "unknown", unitId: "9999" }])] })
+    ]);
+
+    expect(notices[0].text).toBe(
+      "Ereb names unit 9999 on turn 24, and the planner can see no such mage."
+    );
+  });
+
   it("says a student has nothing planned", () => {
     const notices = notice([
       row({ key: "21/1", name: "Ereb", cells: [teachCell([{ kind: "not-studying", unitId: "2688" }])] }),
@@ -199,15 +209,49 @@ describe("what the planner has to say about a plan", () => {
   });
 
   it("suggests the mages a teacher with room could also teach", () => {
+    // Standings matter now: the suggestion offers only mages in his hex whom he actually
+    // outranks in what they are studying (`rules/skills_teaching`).
+    const stands = (level: number) => [new Map([["FORC", { level, points: level * 30 }]])];
     const notices = notice([
-      row({ key: "21/1", name: "Ereb", cells: [teachCell([], ["21/2"])] }),
-      row({ key: "21/2", name: "Sable", cells: [studyCell({ level: 1, taughtBy: "21/1" })] }),
-      row({ key: "21/3", name: "Vess", cells: [studyCell({ level: 1 })] })
+      row({ key: "21/1", name: "Ereb", cells: [teachCell([], ["21/2"])], standings: stands(3) }),
+      row({
+        key: "21/2",
+        name: "Sable",
+        cells: [studyCell({ level: 1, taughtBy: "21/1" })],
+        standings: stands(1)
+      }),
+      row({ key: "21/3", name: "Vess", cells: [studyCell({ level: 1 })], standings: stands(1) })
     ]);
 
     const suggestion = notices.find((one) => one.code === "teacher-has-free-slots");
     expect(suggestion).toMatchObject({ level: "suggestion", rowKey: "21/1" });
     expect(suggestion?.text).toBe("Ereb teaches 1 of 10 on turn 24. He could also teach Vess.");
+  });
+
+  it("suggests nobody when the teacher outranks nobody, or has no slot left", () => {
+    const stands = (level: number) => [new Map([["FORC", { level, points: level * 30 }]])];
+    const outranked = notice([
+      row({ key: "21/1", name: "Ereb", cells: [teachCell([], ["21/2"])], standings: stands(2) }),
+      row({
+        key: "21/2",
+        name: "Sable",
+        cells: [studyCell({ level: 1, taughtBy: "21/1" })],
+        standings: stands(1)
+      }),
+      row({ key: "21/3", name: "Vess", cells: [studyCell({ level: 2 })], standings: stands(2) })
+    ]);
+    const full = notice([
+      row({
+        key: "21/1",
+        name: "Uln",
+        cells: [teachCell([], Array.from({ length: 10 }, (_u, index) => `21/${index + 100}`))],
+        standings: stands(3)
+      }),
+      row({ key: "21/3", name: "Vess", cells: [studyCell({ level: 1 })], standings: stands(1) })
+    ]);
+
+    expect(outranked.find((one) => one.code === "teacher-has-free-slots")).toBeUndefined();
+    expect(full.find((one) => one.code === "teacher-has-free-slots")).toBeUndefined();
   });
 
   it("says a mage studies in the open", () => {

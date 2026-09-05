@@ -598,3 +598,10 @@ describe("worthMark", () => {
     expect(worthMark(1.3)).toBe("×1.3");
   });
 });
+
+describe("worthMark on a month that was modified but came out at one", () => {
+  it("draws ×1 when something modified it, and nothing when nothing did", () => {
+    expect(worthMark(1, true)).toBe("×1");
+    expect(worthMark(1, false)).toBe("");
+  });
+});

@@ -67,3 +67,24 @@ export function shelterSeats(input: {
   }
   return seats;
 }
+
+/**
+ * What each structure the report shows is called, keyed the same way `shelterSeats` is.
+ *
+ * A sibling of `shelterSeats` rather than a field on it: the projection wants a number and only a
+ * number, and widening its map's value would ripple through every call that reads one.
+ * `structure.name` is what the report printed - `Fort`, `Ereb's Tower` - which is what a sentence
+ * about the building should say.
+ */
+export function shelterNames(report: ParsedReport | null): ReadonlyMap<string, string> {
+  const names = new Map<string, string>();
+  if (report === null) {
+    return names;
+  }
+  for (const region of report.regions) {
+    for (const structure of region.structures) {
+      names.set(shelterKey(region.regionId, structure.structureId), structure.name);
+    }
+  }
+  return names;
+}

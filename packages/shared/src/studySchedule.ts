@@ -192,10 +192,16 @@ function teachLabel(taughtNames: readonly string[]): string {
   return `TEACH ${taughtNames.join(", ")}`;
 }
 
-/** `×2`, `×1½`, `×½`, `×1`, `×1.3`; the empty string when nothing modified the month. */
-export function worthMark(worth: number): string {
+/**
+ * `×2`, `×1½`, `×½`, `×1`, `×1.3`; the empty string when nothing modified the month.
+ *
+ * `modified` is what tells the two apart at a worth of exactly 1: a taught but unsheltered month
+ * is worth one because the two effects cancelled, and silence there would hide that from the
+ * player. An ordinary month is silent.
+ */
+export function worthMark(worth: number, modified = false): string {
   if (worth === 1) {
-    return "";
+    return modified ? "×1" : "";
   }
   if (worth === 2) {
     return "×2";
@@ -685,7 +691,9 @@ export function hoverCard(
     const against = Math.min(node.maxLevel, gained ? ends.level : ends.level + 1);
     lines.push({
       name: node.name,
-      right: `${held.level} → ${ends.level}  (${ends.points} of ${pointsForLevel(against)})`,
+      // Rounded **for display only**: a taught or halved month makes points fractional, and a
+      // card reading `(133.33333333333334 of 150)` is the arithmetic leaking through the glass.
+      right: `${held.level} → ${ends.level}  (${Math.round(ends.points)} of ${pointsForLevel(against)})`,
       studying: tag === studying
     });
   }

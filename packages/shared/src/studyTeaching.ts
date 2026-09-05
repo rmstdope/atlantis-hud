@@ -155,6 +155,15 @@ export function plannerNotices(input: {
               );
               break;
             case "unknown":
+              // The plan gives no string for a student the planner cannot see at all - a unit
+              // number typed before an ally's sheet went stale, or the teacher naming himself.
+              // Naming the number is the only honest thing to say about it.
+              add(
+                "taught-not-studying",
+                "warning",
+                `${row.name} names unit ${refusal.unitId} on turn ${turn}, and the planner can see no such mage.`
+              );
+              break;
             case "not-studying":
               add(
                 "taught-not-studying",
@@ -188,22 +197,29 @@ export function plannerNotices(input: {
             "warning",
             `${row.name} teaches ${taught} students on ${TEACHING_SLOTS} slots on turn ${turn}, so each gains ${monthWords(cell.outcome.worth)} instead of two months.`
           );
-        } else if (taught > 0) {
-          // Every mage in his hex studying something nobody is teaching him. Raised only when
-          // there is at least one such mage - a teacher with nobody left to help needs no advice.
-          const teacherRow = rows.find((one) => one.key === row.key);
+        } else if (taught > 0 && taught < TEACHING_SLOTS) {
+          // Every mage **in his hex** whom he **could** teach that turn and is not teaching: same
+          // hex, studying something unblocked, nobody else teaching him, and the teacher strictly
+          // outranking him in it (`rules/skills_teaching`). Raised only when there is at least one
+          // such mage - a teacher with nobody left to help needs no advice.
+          const held = row.standings[turnIndex];
           const others = rows
             .filter((one) => {
               if (one.key === row.key || cell.outcome.taught.includes(one.key)) {
                 return false;
               }
+              if (one.regionId !== row.regionId) {
+                return false;
+              }
               const theirs = one.cells[turnIndex];
-              return (
-                theirs?.kind === "study" && theirs.blocked === null && theirs.taughtBy === null
-              );
+              if (theirs?.kind !== "study" || theirs.blocked !== null || theirs.taughtBy !== null) {
+                return false;
+              }
+              const teacherLevel = held?.get(theirs.skill)?.level ?? 0;
+              const studentLevel = one.standings[turnIndex]?.get(theirs.skill)?.level ?? 0;
+              return teacherLevel > studentLevel;
             })
             .map((one) => one.name);
-          void teacherRow;
           if (others.length > 0) {
             const named = others.slice(0, 3);
             const rest = others.length - named.length;

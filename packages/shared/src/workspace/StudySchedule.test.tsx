@@ -4,9 +4,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
-import { cellMenu } from "../studyCell";
+import { cellMenu, goalsAfterSet, goalsAfterTeach } from "../studyCell";
 import { hoverCard, scheduleRows, scheduleTurns, type ScheduleRow } from "../studySchedule";
 import type { PlannerGroup } from "../studyPlanner";
+import type { StudyGoal } from "@atlantis/core-client";
 import { STANDING_CHIP } from "./standingChip";
 import { CellPopover, ScheduleGrid, ScheduleHoverCard, StudySchedule } from "./StudySchedule";
 import type { CellMode } from "./studyCellState";
@@ -397,5 +398,55 @@ describe("the warnings strip", () => {
     expect(markup).toContain('data-testid="study-planner-warnings-none"');
     expect(markup).toContain("Nothing to warn about in this plan.");
     expect(markup).not.toContain('data-testid="study-planner-warnings-toggle"');
+  });
+});
+
+/**
+ * The commit path, which is what a truncating implementation would get wrong while looking right
+ * (the plan's validation step 2). `onSet` is the only place a teach goal reaches storage.
+ */
+describe("setting a teach month from the popover", () => {
+  const goals: StudyGoal[] = [{ kind: "study", skill: "FORC", targetLevel: 5 }];
+  const row = scheduleRows({
+    groups,
+    plans: [
+      {
+        factionId: "12",
+        unitId: "2431",
+        goals,
+        comment: "",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    tree,
+    turns,
+    seats: new Map()
+  })[0];
+
+  it("inserts the month and keeps the target behind it", () => {
+    const committed: StudyGoal[][] = [];
+    renderToStaticMarkup(
+      <StudySchedule
+        rows={[row]}
+        groups={groups}
+        turns={turns}
+        tree={tree}
+        mode={{ kind: "editing", rowKey: "12/2431", turnIndex: 1, pick: null }}
+        onEvent={() => {}}
+        onCommit={(_rowKey, next) => committed.push(next)}
+        saveError={null}
+      />
+    );
+
+    // The component renders; the assertion is on the writer it would call, which is the one thing
+    // `renderToStaticMarkup` cannot press for us.
+    expect(goalsAfterTeach(goals, row, 1, ["2432"])).toEqual([
+      { kind: "study", skill: "FORC", targetLevel: null },
+      { kind: "teach", students: ["2432"] },
+      { kind: "study", skill: "FORC", targetLevel: 5 }
+    ]);
+    expect(goalsAfterSet(goals, row, 1, { kind: "study", skill: "PATT", targetLevel: 2 })).not.toContainEqual(
+      { kind: "teach", students: ["2432"] }
+    );
   });
 });
