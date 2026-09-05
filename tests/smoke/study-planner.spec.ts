@@ -136,6 +136,8 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await page.getByTestId("study-schedule-choice-FORC").click();
   await expect(popover).toHaveCount(0);
   await expect(neighbour).toContainText("—");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("force");
+  await expect(cell).toContainText("force");
 
   // The reload has to finish restoring the game before F4 means anything: the shortcut is
   // ignored while there is no report, exactly as `persistence.spec.ts` waits for this line.
@@ -146,6 +148,42 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("force");
   await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("force");
   await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("—");
+});
+
+test("a dropdown moved to a second cell keeps focus inside itself", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  const popover = page.getByTestId("study-schedule-popover");
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await expect(popover).toBeVisible();
+
+  // Shift+Tab walks backwards through the dropdown's own rows before it leaves them, so it is
+  // pressed until focus is on a grid cell rather than exactly once. There is no focus trap -
+  // `dismissLayer.ts` handles Escape alone - which is what makes this route reachable at all.
+  const focused = page.locator("[data-cell]:focus");
+  const rows = await page.locator("[data-row]").count();
+  for (let step = 0; step < rows + 2; step += 1) {
+    if ((await focused.count()) === 1) {
+      break;
+    }
+    await page.keyboard.press("Shift+Tab");
+  }
+  await expect(focused).toHaveCount(1);
+
+  // Enter on a grid cell moves the open dropdown rather than remounting it, and focus goes with
+  // it: the focus effect is keyed on the cell as well as the step for exactly this, or the
+  // return-to-the-previous-cell cleanup would leave focus on the grid.
+  await page.keyboard.press("Enter");
+  await expect(focused).toHaveCount(0);
+  await expect(
+    page.locator('[data-testid="study-schedule-popover"] [data-row]:focus')
+  ).toHaveCount(1);
+
+  await page.keyboard.press("Escape");
+  await expect(popover).toHaveCount(0);
 });
 
 test("a note written in All mages shows as a pencil in the Schedule", async ({ page }) => {

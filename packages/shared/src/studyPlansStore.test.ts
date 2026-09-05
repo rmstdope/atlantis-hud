@@ -161,3 +161,54 @@ describe("clear", () => {
     });
   });
 });
+
+describe("two writes at once", () => {
+  it("lands them in the order they were made, however slow the first is", async () => {
+    const landed: string[] = [];
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let first = true;
+    const core = client({
+      saveStudyPlans: vi.fn().mockImplementation(async (_path, _game, plans: StudyPlanRecord[]) => {
+        // The first write is held open. Without the queue the second would complete while it
+        // waits, and the first would then clobber it in storage - which is a plan the player made
+        // vanishing on the next reload.
+        if (first) {
+          first = false;
+          await held;
+        }
+        landed.push(plans[0]?.unitId ?? "none");
+      })
+    });
+    const store = useStudyPlansStore.getState();
+
+    const one = store.save(core, game(), plan("1204", "FORC"));
+    const two = store.save(core, game(), plan("1205", "PATT"));
+    release();
+    await Promise.all([one, two]);
+
+    expect(landed).toEqual(["1204", "1205"]);
+  });
+
+  it("does not let a failed write poison the one behind it", async () => {
+    let call = 0;
+    const core = client({
+      saveStudyPlans: vi.fn().mockImplementation(async () => {
+        call += 1;
+        if (call === 1) {
+          throw new Error("no");
+        }
+      })
+    });
+    const store = useStudyPlansStore.getState();
+
+    const failing = store.save(core, game(), plan("1204"));
+    const following = store.save(core, game(), plan("1205"));
+
+    await expect(failing).rejects.toThrow("no");
+    await expect(following).resolves.toBeUndefined();
+    expect(useStudyPlansStore.getState().plans.map((one) => one.unitId)).toEqual(["1205"]);
+  });
+});

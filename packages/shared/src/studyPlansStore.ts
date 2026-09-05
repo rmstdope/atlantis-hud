@@ -32,13 +32,34 @@ export type StudyPlansState = {
    * (factionId, unitId).
    *
    * Write first rather than optimistically: a failed write must not leave a study on screen that
-   * storage does not hold. Rethrows.
+   * storage does not hold. Rethrows. Serialized against every other write - see `queued`.
    */
   save: (client: CoreClient, game: OpenedGame, plan: StudyPlanRecord) => Promise<void>;
   /** Drops rows, then removes them from the cache. Rethrows. */
   remove: (client: CoreClient, game: OpenedGame, keys: readonly StudyPlanKey[]) => Promise<void>;
   clear: () => void;
 };
+
+/**
+ * Writes are serialized, and this is the tail of the queue.
+ *
+ * Two writes in flight at once are two "replace this mage's row" calls whose *completion* order
+ * decides what storage ends up holding, and the second one can land first: clicking two cells of
+ * the schedule quickly enough - which ah-lyg6.2.3 made a one-click action - then loses the second
+ * plan on the next reload. Chaining them keeps storage in the order the player made the choices.
+ *
+ * Module-level rather than in the store, because it is not state anything renders, and the store
+ * is a singleton per process exactly as `plans` is.
+ */
+let writes: Promise<unknown> = Promise.resolve();
+
+/** Runs `work` after every write queued before it, whether those succeeded or failed. */
+function queued<T>(work: () => Promise<T>): Promise<T> {
+  const next = writes.then(work, work);
+  // The tail must not reject, or every later write would inherit the failure.
+  writes = next.catch(() => undefined);
+  return next;
+}
 
 /** One row's identity as a cache key: whose mage, and which unit of his. */
 function keyText(factionId: string, unitId: string): string {
@@ -69,24 +90,26 @@ export const useStudyPlansStore = create<StudyPlansState>()((set, get) => ({
     }
   },
 
-  save: async (client, game, plan) => {
-    await saveStudyPlans(client, game, [plan], []);
-    const replaced = keyText(plan.factionId, plan.unitId);
-    set((state) => ({
-      plans: sortStudyPlans([
-        ...state.plans.filter((row) => keyText(row.factionId, row.unitId) !== replaced),
-        plan
-      ])
-    }));
-  },
+  save: async (client, game, plan) =>
+    queued(async () => {
+      await saveStudyPlans(client, game, [plan], []);
+        const replaced = keyText(plan.factionId, plan.unitId);
+      set((state) => ({
+        plans: sortStudyPlans([
+          ...state.plans.filter((row) => keyText(row.factionId, row.unitId) !== replaced),
+          plan
+        ])
+      }));
+    }),
 
-  remove: async (client, game, keys) => {
-    await saveStudyPlans(client, game, [], keys);
-    const dropped = new Set(keys.map((key) => keyText(key.factionId, key.unitId)));
-    set((state) => ({
-      plans: state.plans.filter((row) => !dropped.has(keyText(row.factionId, row.unitId)))
-    }));
-  },
+  remove: async (client, game, keys) =>
+    queued(async () => {
+      await saveStudyPlans(client, game, [], keys);
+      const dropped = new Set(keys.map((key) => keyText(key.factionId, key.unitId)));
+      set((state) => ({
+        plans: state.plans.filter((row) => !dropped.has(keyText(row.factionId, row.unitId)))
+      }));
+    }),
 
   clear: () => set({ gameId: null, status: "idle", plans: [] })
 }));
@@ -99,4 +122,7 @@ export const useStudyPlansStore = create<StudyPlansState>()((set, get) => ({
  */
 export function resetStudyPlansStore(): void {
   useStudyPlansStore.setState({ gameId: null, status: "idle", plans: [] });
+  // The write queue is module state too, and a test that left one in flight would otherwise hold
+  // up every write of the next one.
+  writes = Promise.resolve();
 }
