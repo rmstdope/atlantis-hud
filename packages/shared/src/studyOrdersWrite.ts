@@ -131,7 +131,10 @@ export function studyWritePlan(input: {
     const kept = stripLongOrderLines(existing);
     const line = lineFor({ ...entry, order: entry.order });
 
-    next = writeUnitOrders(base, entry.unitId, kept === "" ? line : `${kept}\n${line}`);
+    // `kept.trim()`, not `kept === ""`: a block that held nothing but a blank line and a long
+    // order leaves a blank line behind, and `writeUnitOrders` drops only *trailing* blanks - so
+    // the written line would land under one.
+    next = writeUnitOrders(base, entry.unitId, kept.trim() === "" ? line : `${kept}\n${line}`);
     changed += 1;
     if (previous !== null && !OWN_KIND.test(previous)) {
       replaced += 1;

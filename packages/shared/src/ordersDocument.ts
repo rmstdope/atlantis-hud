@@ -872,6 +872,44 @@ export const LONG_ORDER_COMMANDS = [
 /** A line that is one of the eleven month-long orders, `@`-repeated or not. */
 const LONG_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${LONG_ORDER_COMMANDS.join("|")})\\b`, "iu");
 
+/** `FORM [alias]` - the orders that follow belong to the new unit, until `END` (`rules/form`). */
+const FORM_LINE = /^\s*@?\s*FORM\b/iu;
+/** `TURN` / `@TURN` - the orders that follow are a later month's, until `ENDTURN` (`rules/turn`). */
+const TURN_LINE = /^\s*@?\s*TURN\b/iu;
+/** `ENDTURN`, tested before `END` because it starts with it. */
+const ENDTURN_LINE = /^\s*@?\s*ENDTURN\b/iu;
+/** `END`, which closes a `FORM`. Not `#end`, which is the document's own terminator. */
+const END_LINE = /^\s*@?\s*END\b/iu;
+
+/**
+ * Which of a unit's lines are the unit's own, rather than a nested unit's or a later month's.
+ *
+ * `rules/form`: "The FORM order is followed by a list of orders for the newly created unit. This
+ * list is terminated by the END keyword, after which orders for the original unit resume." -
+ * so the ruleset's own example puts a `STUDY COMBAT` inside a `FORM`, and that month belongs to
+ * the new unit. `rules/turn`: "Each TURN section must be ended by an ENDTURN line", and the
+ * orders inside are delayed by a turn - so a `MOVE` in one is not this month's either.
+ *
+ * Anything that reads a unit's month-long order, or replaces it, must therefore look only at
+ * depth zero. Nesting is counted rather than matched pairwise: an unbalanced block is a document
+ * the server would reject anyway, and counting keeps everything after it out of reach, which is
+ * the safe direction for a function that deletes lines.
+ */
+function atTopLevel(orders: string): boolean[] {
+  let depth = 0;
+  return orders.split("\n").map((line) => {
+    if (ENDTURN_LINE.test(line) || END_LINE.test(line)) {
+      depth = Math.max(0, depth - 1);
+      return false;
+    }
+    const own = depth === 0;
+    if (FORM_LINE.test(line) || TURN_LINE.test(line)) {
+      depth += 1;
+    }
+    return own;
+  });
+}
+
 /**
  * A unit's orders with every month-long order line removed, so a newly written one replaces
  * whichever was there rather than standing beside it: a unit spends its month on one of the eleven
@@ -882,9 +920,10 @@ const LONG_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${LONG_ORDER_COMMANDS.join("|")}
  * indentation is part of what they wrote.
  */
 export function stripLongOrderLines(orders: string): string {
+  const own = atTopLevel(orders);
   return orders
     .split("\n")
-    .filter((line) => !LONG_ORDER_LINE.test(line))
+    .filter((line, index) => !(own[index] === true && LONG_ORDER_LINE.test(line)))
     .join("\n");
 }
 
@@ -895,5 +934,7 @@ export function stripLongOrderLines(orders: string): string {
  * so the first is what is shown.
  */
 export function longOrderOf(orders: string): string | null {
-  return commandsOnly(orders).find((line) => LONG_ORDER_LINE.test(line)) ?? null;
+  const own = atTopLevel(orders);
+  const mine = orders.split("\n").filter((_line, index) => own[index] === true);
+  return commandsOnly(mine.join("\n")).find((line) => LONG_ORDER_LINE.test(line)) ?? null;
 }

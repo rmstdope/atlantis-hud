@@ -167,3 +167,45 @@ describe("studyWritePlan", () => {
     expect(result.rows[0].detail).toBe(`STUDY FORC 4 replaces ${previous.slice(0, 47)}…`);
   });
 });
+
+describe("studyWritePlan and nesting", () => {
+  it("a_block_that_was_only_a_long_order_gains_no_leading_blank_line", () => {
+    const document = ["#atlantis 95", "", BANNER, "", "unit 1234", "", "@work", "", "#end"].join(
+      "\n"
+    );
+    const result = plan(document, [anEntry({ annotation: null })]);
+    expect(result.next.split("\n")).toEqual([
+      "#atlantis 95",
+      "",
+      BANNER,
+      "",
+      "unit 1234",
+      "STUDY FORC 4",
+      "",
+      "#end"
+    ]);
+  });
+
+  it("a_form_block_inside_the_mages_orders_is_left_alone", () => {
+    const result = plan(
+      aDocument("FORM 1", "  BUY 5 Plainsmen", "  STUDY COMBAT", "END", "@work"),
+      [anEntry({ annotation: null })]
+    );
+    expect(result.next.split("\n")).toEqual([
+      "#atlantis 95",
+      "",
+      BANNER,
+      "",
+      "unit 1234",
+      "FORM 1",
+      "  BUY 5 Plainsmen",
+      "  STUDY COMBAT",
+      "END",
+      "STUDY FORC 4",
+      "",
+      "#end"
+    ]);
+    expect(result.rows[0].detail).toBe("STUDY FORC 4 replaces @work");
+    expect(result.replaced).toBe(1);
+  });
+});

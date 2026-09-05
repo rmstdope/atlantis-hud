@@ -108,7 +108,7 @@ export function StudyPlannerOrders({
                 label="Copy"
                 testId={`study-planner-copy-${section.factionId}`}
                 disabled={asking}
-                className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink"
+                className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink disabled:opacity-50"
               />
               <button
                 type="button"
