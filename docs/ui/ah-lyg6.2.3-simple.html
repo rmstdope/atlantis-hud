@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.2.3 — the schedule, redesigned: a cell is one turn</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+    --known-fill:#1b2c26; --known-ink:#7fcaa5; --known-edge:#2c4a3e;
+    --ceil-fill:#2e2718; --ceil-ink:#d9a441; --ceil-edge:#4a3d21;
+    --maxed-fill:#232a38; --maxed-ink:#8fb4e0; --maxed-edge:#33455f;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:40px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:18px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"\00b7 "; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:1080px) { .cols { grid-template-columns:1fr; } }
+  .lbl { font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.3px;
+         text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+
+  .pane { width:940px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane.narrow { width:auto; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top h4 { font:600 13.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top .key { color:var(--ink-dim); font-size:11.5px; }
+  .pane .top .sp { margin-left:auto; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .btn.prim { border-color:#37556e; background:#1b2735; color:var(--ink); }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .switch { display:inline-flex; border:1px solid var(--edge); border-radius:4px; overflow:hidden; }
+  .switch button { background:var(--ground); border:none; color:var(--ink-dim); padding:3px 12px;
+                   font:12px/1.5 'Helvetica Neue',Arial,sans-serif; border-right:1px solid var(--edge); }
+  .switch button:last-child { border-right:none; }
+  .switch button.on { background:#1b2735; color:var(--ink); box-shadow:inset 0 -2px 0 var(--select); }
+
+  .gridwrap { overflow:auto; max-height:520px; }
+  table.sched { border-collapse:separate; border-spacing:0; font:12px/1.45 'Helvetica Neue',Arial,sans-serif; width:100%; }
+  table.sched th { position:sticky; top:0; background:var(--raised); color:var(--ink-dim); font-weight:400;
+        font-size:10.5px; letter-spacing:0.8px; text-transform:uppercase; text-align:left;
+        padding:6px 8px; border-bottom:1px solid var(--edge); white-space:nowrap; }
+  table.sched th.next { color:var(--brass); }
+  table.sched th.who, table.sched td.who { position:sticky; left:0; background:var(--raised); z-index:2;
+        min-width:13.5rem; border-right:1px solid var(--edge); }
+  table.sched td { padding:4px 6px; border-bottom:1px solid var(--edge-soft); vertical-align:top; white-space:nowrap; }
+  table.sched tr.grp td { background:#141a23; color:var(--brass); font-size:11px; letter-spacing:0.5px;
+        text-transform:uppercase; position:sticky; left:0; }
+  table.sched tr.grp td .age { color:var(--brass-bright); text-transform:none; letter-spacing:0; }
+  td.who .nm { color:var(--ink); }
+  td.who .un { color:var(--ink-dim); font-size:11px; margin-left:5px; }
+  td.who .now { color:var(--ink-dim); font-size:11px; }
+  td.who .pencil { color:var(--brass); font-size:11px; margin-left:4px; }
+  tr.stale td.who { background:#191612; }
+  tr.stale td { background:#15120f; }
+
+  .cell { display:inline-block; border-radius:3px; padding:1px 6px; border:1px solid transparent; min-width:6.4rem; }
+  .cell.study { color:var(--ink-soft); }
+  .cell.up { border-color:var(--known-edge); background:var(--known-fill); color:var(--known-ink); }
+  .cell.teach { border-color:var(--maxed-edge); background:var(--maxed-fill); color:var(--maxed-ink); }
+  .cell.warn { border-color:var(--ceil-edge); background:var(--ceil-fill); color:var(--ceil-ink); }
+  .cell.none { color:#4d5867; }
+  .cell.foc { outline:2px solid var(--select); outline-offset:1px; }
+
+  .menu { border:1px solid var(--edge); background:var(--panel); border-radius:5px;
+          box-shadow:0 12px 30px #000c; width:16rem; overflow:hidden;
+          font:12px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .menu .mh { padding:5px 10px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11px; }
+  .menu .mh b { color:var(--ink); font-weight:600; }
+  .menu ul { list-style:none; max-height:16rem; overflow:auto; }
+  .menu li { display:flex; justify-content:space-between; gap:10px; padding:3px 10px; color:var(--ink-soft); cursor:pointer; }
+  .menu li .r { color:var(--ink-dim); font-size:11px; }
+  .menu li.on { background:#1b2735; color:var(--ink); }
+  .menu li.on .r { color:var(--brass-bright); }
+  .menu li.cur > span:first-child::after { content:" \2713"; color:var(--ok); }
+  .menu li.sep { border-top:1px solid var(--edge-soft); }
+  .menu li.teach { color:var(--maxed-ink); }
+  .menu .mf { padding:4px 10px; border-top:1px solid var(--edge-soft); color:#6c7887; font-size:11px; }
+  .menu .row { display:flex; align-items:center; gap:8px; padding:3px 10px; color:var(--ink-soft); }
+  .menu .row .box { width:11px; height:11px; border:1px solid var(--edge); border-radius:2px; display:inline-block; }
+  .menu .row .box.on { background:var(--ok); border-color:var(--ok); }
+  .menu .row.dis { color:#5b6674; }
+  .menu .acts { display:flex; gap:8px; justify-content:flex-end; padding:7px 10px; border-top:1px solid var(--edge-soft); }
+  .float { position:relative; }
+  .float .menu { position:absolute; z-index:20; }
+  .kbdkey { display:inline-block; border:1px solid var(--edge); border-radius:3px; padding:0 5px;
+            font-size:11px; color:var(--ink-soft); background:var(--ground); }
+  .hovercard { border:1px solid var(--edge); background:var(--panel); border-radius:5px;
+        box-shadow:0 10px 26px #000b; padding:9px 11px; width:19rem; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .hovercard .h { font-weight:600; font-size:12.5px; }
+  .hovercard .s { color:var(--ink-dim); font-size:11px; margin-bottom:7px; }
+  .hovercard .line { display:flex; justify-content:space-between; padding:1.5px 0; color:var(--ink-soft); }
+  .hovercard .line.on { color:var(--known-ink); font-weight:600; }
+  .hovercard .line.on .r { color:var(--brass-bright); font-weight:400; }
+  .hovercard .line .r { color:var(--ink-dim); }
+  .hovercard .foot { color:var(--ink-dim); font-size:11px; border-top:1px solid var(--edge-soft); margin-top:7px; padding-top:6px; }
+  .empty-state { padding:34px 16px; text-align:center; color:var(--ink-dim); font-size:12.5px; }
+  .err { color:var(--danger); font-size:12px; padding:8px 12px; }
+  table.k { border-collapse:collapse; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  table.k td { border-bottom:1px solid var(--edge-soft); padding:5px 14px 5px 0; color:var(--ink-soft); vertical-align:top; }
+  table.k td:first-child { color:var(--ink); white-space:nowrap; }
+  .orderline { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.2.3 — the schedule, <span>redesigned</span>: a cell is one turn</h1>
+  <p>The grid is unchanged. What changed is how a plan is written into it: <strong>a cell holds one
+  turn, you set it from a dropdown, and nothing else on the row moves.</strong> There is no queue of
+  goals, no <em>to</em> level, no <em>Set</em> for a skill and no ghosted tail. The dropdown offers only
+  what that mage will actually be able to study on that turn, plus teaching, plus a way to empty the
+  cell.</p>
+</header>
+
+<main>
+
+<h3 class="sec">The schedule</h3>
+<p>Mages down, the next six turns across. A cell says the skill and the level he ends that turn at;
+an unplanned turn reads <code>&mdash;</code>. Hovering or focusing a cell still shows the mage's
+skills for that turn, as it does today.</p>
+
+<div class="card">
+  <div class="stage">
+    <div class="pane">
+      <div class="top"><h4>Study planner</h4><span class="key">F4</span>
+        <span class="switch"><button>All mages</button><button class="on">Schedule</button><button>Orders</button></span>
+        <span class="sp"></span><button class="btn">Close</button></div>
+      <div class="sub">7 mages — 3 yours, 4 from 2 allies · turns 24–29</div>
+      <div class="gridwrap">
+        <table class="sched">
+          <thead><tr><th class="who">Mage</th>
+            <th class="next">24 · next</th><th>25</th><th>26</th><th>27</th><th>28</th><th>29</th></tr></thead>
+          <tbody>
+            <tr class="grp"><td colspan="7">Wardens of the North (12)</td></tr>
+            <tr>
+              <td class="who"><span class="nm">Ereb</span><span class="un">(2431)</span>
+                <div class="now">force 3</div></td>
+              <td><span class="cell up">force 4</span></td>
+              <td><span class="cell study">force 4</span></td>
+              <td><span class="cell study">force 4</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell study">force 4</span></td>
+              <td><span class="cell up">force 5</span></td>
+            </tr>
+            <tr>
+              <td class="who"><span class="nm">Sable</span><span class="un">(2517)</span>
+                <div class="now">force 1</div></td>
+              <td><span class="cell study">force 1 &times;2</span></td>
+              <td><span class="cell up">force 2</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell study">pattern 0</span></td>
+              <td><span class="cell up">pattern 1</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+            </tr>
+            <tr>
+              <td class="who"><span class="nm">Vess</span><span class="un">(2588)</span>
+                <div class="now">pattern 4</div>
+                <span class="pencil">&#9998;</span></td>
+              <td><span class="cell teach">TEACH Sable</span></td>
+              <td><span class="cell teach">TEACH nobody</span></td>
+              <td><span class="cell study">pattern 4</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+            </tr>
+            <tr>
+              <td class="who"><span class="nm">Vail</span><span class="un">(2602)</span>
+                <div class="now">no magic skills</div></td>
+              <td><span class="cell none">&mdash;</span></td><td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell none">&mdash;</span></td><td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell none">&mdash;</span></td><td><span class="cell none">&mdash;</span></td>
+            </tr>
+            <tr class="grp"><td colspan="7">Ash Compact (31) <span class="age">— sheet of turn 20</span></td></tr>
+            <tr class="stale">
+              <td class="who"><span class="nm">Thess</span><span class="un">(3140)</span>
+                <div class="now">pattern 2</div></td>
+              <td><span class="cell study">pattern 2</span></td>
+              <td><span class="cell up">pattern 3</span></td>
+              <td><span class="cell warn">summoning 0</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+              <td><span class="cell none">&mdash;</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>A tinted green cell is a level gained that turn; a plain one is a month that changes no level.</li>
+      <li>Gaps are ordinary: Ereb's turn 27 is simply unplanned, and turns 28 and 29 carry on regardless.</li>
+      <li><code>&times;2</code> still marks a taught month, and the warnings strip still counts what is wrong.</li>
+      <li>An amber cell is a choice that a <em>later</em> edit made impossible — Thess can no longer begin
+      summoning once his turn-25 pattern month moved. It still warns rather than vanishing.</li>
+      <li>The line under a mage's name is what he is now, and nothing else.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Setting a cell</h3>
+<p>Click a cell, or focus it and press <span class="kbdkey">&#8629;</span>. The dropdown opens in place,
+on whatever the cell holds. Choosing a skill writes it and closes — there is no <em>Set</em>.</p>
+
+<div class="cols">
+  <div class="card">
+    <h2><em>1</em> The dropdown</h2>
+    <div class="stage" style="min-height:300px">
+      <div class="menu">
+        <div class="mh"><b>Ereb</b> — turn 26</div>
+        <ul>
+          <li><span>&mdash; nothing</span></li>
+          <li class="teach sep"><span>Teaches&hellip;</span><span class="r">4 mages here</span></li>
+          <li class="on sep cur"><span>force</span><span class="r">4 &rarr; 4</span></li>
+          <li><span>pattern</span><span class="r">1 &rarr; 2</span></li>
+          <li><span>spirit</span><span class="r">0 &rarr; 1</span></li>
+          <li><span>earth lore</span><span class="r">2 &rarr; 2</span></li>
+          <li><span>farsight</span><span class="r">0 &rarr; 1</span></li>
+        </ul>
+        <div class="mf">&#8593;&#8595; to move &middot; &#8629; to choose &middot; Esc to close</div>
+      </div>
+      <ul class="notes">
+        <li>Only skills he will be able to study that turn. One he cannot raise is not in the list at all.</li>
+        <li>The tick is what the cell holds now; the list opens on it.</li>
+        <li>The hint is the level a plain month buys him — <code>4 &rarr; 4</code> when it buys no level.</li>
+        <li><code>&mdash; nothing</code> empties the cell.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>2</em> Teaches&hellip; opens the student list</h2>
+    <p class="concept">The one place a second step survives, because ticking several mages is not one
+    choice. Unchanged from what shipped, apart from being one level in.</p>
+    <div class="stage" style="min-height:300px">
+      <div class="menu">
+        <div class="mh"><b>Vess</b> teaches on turn 24</div>
+        <div class="row"><span class="box on"></span><span>Sable (2517)</span><span class="r" style="margin-left:auto">force 1 &rarr; force 2</span></div>
+        <div class="row"><span class="box"></span><span>Ereb (2431)</span><span class="r" style="margin-left:auto">force 4 &rarr; force 4</span></div>
+        <div class="row dis"><span class="box"></span><span>Thess (3140)</span><span class="r" style="margin-left:auto">in Dry Hills, not here</span></div>
+        <div class="row dis"><span class="box"></span><span>Vail (2602)</span><span class="r" style="margin-left:auto">studies nothing that turn</span></div>
+        <div class="acts"><button class="btn">Cancel</button><button class="btn prim">Set</button></div>
+      </div>
+      <ul class="notes">
+        <li>Escape or Cancel goes back to the dropdown; nothing is written until <em>Set</em>.</li>
+        <li>Ticking nobody and pressing <em>Set</em> gives <code>TEACH nobody</code>, as it does today.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">What one click does, and does not do</h3>
+<div class="card">
+  <div class="stage">
+    <p class="lbl">Before — turn 26 holds force; you open it and choose pattern</p>
+    <div class="pane narrow"><div class="gridwrap"><table class="sched">
+      <thead><tr><th class="who">Mage</th><th class="next">24 · next</th><th>25</th><th>26</th><th>27</th><th>28</th><th>29</th></tr></thead>
+      <tbody><tr><td class="who"><span class="nm">Ereb</span><div class="now">force 3</div></td>
+        <td><span class="cell up">force 4</span></td><td><span class="cell study">force 4</span></td>
+        <td><span class="cell foc study">force 4</span></td><td><span class="cell study">force 4</span></td>
+        <td><span class="cell study">force 4</span></td><td><span class="cell up">force 5</span></td></tr></tbody>
+    </table></div></div>
+    <p class="lbl" style="margin-top:14px">After — turn 26 only. Turns 27–29 are exactly as they were.</p>
+    <div class="pane narrow"><div class="gridwrap"><table class="sched">
+      <thead><tr><th class="who">Mage</th><th class="next">24 · next</th><th>25</th><th>26</th><th>27</th><th>28</th><th>29</th></tr></thead>
+      <tbody><tr><td class="who"><span class="nm">Ereb</span><div class="now">force 3</div></td>
+        <td><span class="cell up">force 4</span></td><td><span class="cell study">force 4</span></td>
+        <td><span class="cell foc up">pattern 1</span></td><td><span class="cell study">force 4</span></td>
+        <td><span class="cell study">force 4</span></td><td><span class="cell study">force 4</span></td></tr></tbody>
+    </table></div></div>
+    <ul class="notes">
+      <li>Turn 29 slipped from <code>force 5</code> to <code>force 4</code> — not because the plan moved,
+      but because a month of force was spent on pattern instead. The plan itself is untouched.</li>
+      <li>Nothing to the left of the click ever changes, and nothing to the right is dropped.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">The states that are not the happy path</h3>
+<div class="card">
+  <div class="stage">
+    <div class="cols">
+      <div>
+        <p class="lbl">No report loaded</p>
+        <div class="pane narrow"><div class="empty-state">Load a report and the coming six turns appear here.</div></div>
+        <p class="lbl" style="margin-top:16px">A write that failed</p>
+        <div class="pane narrow"><div class="err">Could not save this plan.</div></div>
+        <p class="lbl" style="margin-top:16px">A mage with nothing he can study</p>
+        <div class="menu" style="width:15rem">
+          <div class="mh"><b>Thess</b> — turn 29</div>
+          <ul><li><span>&mdash; nothing</span></li>
+            <li class="teach sep"><span>Teaches&hellip;</span><span class="r">4 mages here</span></li></ul>
+          <div class="mf">Every skill he could raise is at its ceiling.</div>
+        </div>
+      </div>
+      <div>
+        <p class="lbl">Nobody he could teach</p>
+        <div class="menu" style="width:15rem">
+          <div class="mh"><b>Vail</b> — turn 24</div>
+          <ul><li><span>&mdash; nothing</span></li>
+            <li class="sep"><span>force</span><span class="r">0 &rarr; 1</span></li>
+            <li><span>pattern</span><span class="r">0 &rarr; 1</span></li>
+            <li><span>spirit</span><span class="r">0 &rarr; 1</span></li></ul>
+          <div class="mf">&#8593;&#8595; to move &middot; &#8629; to choose &middot; Esc to close</div>
+        </div>
+        <ul class="notes"><li>No <code>Teaches&hellip;</code> row when there is nobody in his hex to teach.</li></ul>
+        <p class="lbl" style="margin-top:16px">The hover card, unchanged</p>
+        <div class="hovercard">
+          <div class="h">Ereb (2431) — turn 26</div>
+          <div class="s">Wardens of the North (12) · studying force</div>
+          <div class="line on"><span>force</span><span class="r">4 &rarr; 4&nbsp; (390 of 450)</span></div>
+          <div class="line"><span>pattern</span><span class="r">1</span></div>
+          <div class="line"><span>earth lore</span><span class="r">2</span></div>
+          <div class="foot">Projected from turn 23's report at 30 points a studied month.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">What this changes in the orders it exports</h3>
+<div class="card">
+  <div class="stage">
+    <table class="k">
+      <tr><td>Today</td><td><span class="orderline">STUDY FORC 5</span> — a standing order that keeps
+        studying force every turn until he reaches 5 (<code>rules/study</code>).</td></tr>
+      <tr><td>After this</td><td><span class="orderline">STUDY FORC</span> — one month of force, which is
+        what the cell says. Next turn's cell is planned separately, so a standing order would fight it.</td></tr>
+      <tr><td>Teaching</td><td><span class="orderline">TEACH 2517</span> — unchanged.</td></tr>
+    </table>
+    <ul class="notes">
+      <li>The Orders tab still exports the first column only, faction by faction, as it does today.</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+</body>
+</html>
