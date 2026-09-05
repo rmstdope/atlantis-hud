@@ -214,12 +214,15 @@ function valueOf(
       return unit.men;
     case "structure":
       return structureKey(unit.structureId, structures);
+    // Both of these are keyed by hex and unit, because a unit number is unique to a hex and not to
+    // a turn: two hexes can each hold a `new-1` (`ah-9o0c.2`), and a lookup on the id alone hands
+    // one hex's row the other's answer.
     case "longOrder":
-      return longOrderKey(longOrders.get(unit.unitId) ?? null);
+      return longOrderKey(longOrders.get(unitRowKey(unit.regionId, unit.unitId)) ?? null);
     // A forecast that could not be priced, and a foreign unit that has none at all, are both null
     // - which `compareValues` already sorts last in either direction, so neither needs a sentinel.
     case "silver":
-      return silver.get(unit.unitId) ?? null;
+      return silver.get(unitRowKey(unit.regionId, unit.unitId)) ?? null;
     // A row with no entry - every row of a source that is not an Army - is null, which
     // `compareValues` already sorts last in either direction.
     case "seen":

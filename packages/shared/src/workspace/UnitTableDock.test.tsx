@@ -750,9 +750,10 @@ describe("the Silver column", () => {
       />
     );
 
-    // The Id cell's own aria-label, and the ⚠ button's sr-only text - both the row's own id.
+    // The Id cell's own aria-label, and - separately, or the assertion above would carry it - the
+    // ⚠ button's sr-only text. Both the row's own id, and neither the unit that forms it.
     expect(markup).toContain('aria-label="unit new-1"');
-    expect(markup).toContain("unit new-1");
+    expect(markup).toContain('<span class="sr-only">unit new-1 </span>');
     expect(markup).not.toContain("unit 1922");
   });
 

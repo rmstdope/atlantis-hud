@@ -447,7 +447,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     return new Map(
       units
         .filter((entry) => entry.own)
-        .map((entry) => [entry.unitId, getLongOrder(entry.unitId, entry.regionId)])
+        // Keyed by the row rather than by the unit number, as the silver map beside it is: a
+        // source spanning hexes can hold two `new-1`s (`ah-9o0c.2`).
+        .map((entry) => [
+          unitRowKey(entry.regionId, entry.unitId),
+          getLongOrder(entry.unitId, entry.regionId)
+        ])
     );
   }, [units, sort.column, getLongOrder]);
   // Same bargain as `longOrders` above: built only when the table actually sorts on it.
@@ -461,7 +466,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         // The row's own hex, not the selected one: `silverKey` keys the forecast by region, so a
         // source spanning hexes must look each row up where it actually stands.
         .map((entry) => [
-          entry.unitId,
+          unitRowKey(entry.regionId, entry.unitId),
           silverShown(getSilver(entry.unitId, entry.regionId), countUpkeep)
         ])
     );

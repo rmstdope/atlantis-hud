@@ -16,12 +16,13 @@ import { unitRowKey } from "../unitTable";
 /**
  * Which rows are picked, and where a Shift range extends from.
  *
- * Keyed on the row's own `unitRowKey(regionId, unitId)` - a unit number is unique inside a hex
- * only, so a list spanning hexes can draw two rows both called `new-1` (`ah-9o0c.2`) - and
- * deliberately NOT on the dock's
- * `rowTarget`, which is `silver?.formed?.formedBy ?? unit.unitId` (`UnitTableDock.tsx`) and so can
- * name a different unit than the row it is drawn on. The cursor keeps using `rowTarget`; the pick
- * never does, or a picked row would add a different unit to the Army.
+ * Keyed on the row's own `unitRowKey(regionId, unitId)` and never on a bare unit number: a number
+ * is unique inside a hex only, so a list spanning hexes can draw two rows both called `new-1`
+ * (`ah-9o0c.2`), and a pick keyed on the id alone would put the wrong one in the Army.
+ *
+ * It used to say the id it avoided was the dock's `rowTarget`, which redirected a formed row to
+ * the unit that wrote its `FORM`. `ah-ty3s.1` deleted that redirect - every row now names its own
+ * unit - so the reason is the hex alone, which was always the load-bearing half.
  */
 export type UnitPick = {
   readonly ids: ReadonlySet<string>;

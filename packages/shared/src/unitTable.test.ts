@@ -361,12 +361,17 @@ describe("sorts by the long order, ignoring case and a leading @", () => {
     unit("3", true),
     unit("4", true)
   ];
-  const longOrders = new Map<string, string | null>([
-    ["1", "work"],
-    ["2", "@tax"],
-    ["3", "TAX"],
-    ["4", null]
-  ]);
+  // Keyed by row, as the dock builds it: a unit number alone is not unique across hexes.
+  const longOrders = new Map<string, string | null>(
+    (
+      [
+        ["1", "work"],
+        ["2", "@tax"],
+        ["3", "TAX"],
+        ["4", null]
+      ] as const
+    ).map(([unitId, order]) => [unitRowKey(aReportUnit().regionId, unitId), order])
+  );
 
   it("puts a repeated order beside its plain, differently-cased twin", () => {
     const order = ids(sortUnits(units, { ...DEFAULT_SORT, column: "longOrder" }, [], longOrders));
@@ -384,6 +389,43 @@ describe("sorts by the long order, ignoring case and a leading @", () => {
         sortUnits(units, { ...DEFAULT_SORT, column: "longOrder", direction: "desc" }, [], longOrders)
       ).at(-1)
     ).toBe("4");
+  });
+});
+
+/**
+ * Two hexes can each hold a `new-1` (`ah-9o0c.2`), so a sort value looked up by unit id alone
+ * gives one hex's row the other's answer. `unitRowKey` is what tells them apart, and the silver
+ * column has keyed that way since `ah-jw85`; the long-order column now does too (`ah-ty3s.1`).
+ */
+describe("a sort value belongs to a row, not to a unit number", () => {
+  const here = unit("new-1", true, { regionId: "1:7,53" });
+  const there = unit("new-1", true, { regionId: "1:8,54" });
+  const rows = [here, there];
+
+  it("gives each new-1 its own long order rather than whichever was written last", () => {
+    const longOrders = new Map<string, string | null>([
+      [unitRowKey("1:7,53", "new-1"), "work"],
+      [unitRowKey("1:8,54", "new-1"), "@tax"]
+    ]);
+
+    expect(
+      sortUnits(rows, { ...DEFAULT_SORT, column: "longOrder" }, [], longOrders).map(
+        (entry) => entry.regionId
+      )
+    ).toEqual(["1:8,54", "1:7,53"]);
+  });
+
+  it("gives each new-1 its own silver figure", () => {
+    const silver = new Map<string, number | null>([
+      [unitRowKey("1:7,53", "new-1"), 100],
+      [unitRowKey("1:8,54", "new-1"), -50]
+    ]);
+
+    expect(
+      sortUnits(rows, { ...DEFAULT_SORT, column: "silver" }, [], new Map(), silver).map(
+        (entry) => entry.regionId
+      )
+    ).toEqual(["1:8,54", "1:7,53"]);
   });
 });
 
@@ -771,11 +813,16 @@ describe("the Silver column (ah-1wcw.1)", () => {
       { ...aReportUnit({ unitId: "2", own: true }) },
       { ...aReportUnit({ unitId: "3", own: true }) }
     ];
-    const silver = new Map<string, number | null>([
-      ["1", 50],
-      ["2", null],
-      ["3", -140]
-    ]);
+    // Keyed by row, as the dock builds it (`unitRowKey`): two hexes can each hold a `new-1`.
+    const silver = new Map<string, number | null>(
+      (
+        [
+          ["1", 50],
+          ["2", null],
+          ["3", -140]
+        ] as const
+      ).map(([unitId, figure]) => [unitRowKey(aReportUnit().regionId, unitId), figure])
+    );
     const ascending = sortUnits(
       units,
       { column: "silver", direction: "asc", groupOwnFirst: false },
