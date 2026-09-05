@@ -255,6 +255,142 @@ export function formedAlias(unitId: string): string | null {
   return match?.[1] ?? null;
 }
 
+/** What one load-time repair did, for the header line that reports it. */
+export type FormedBlockRepair = {
+  /** The document after the repair. Reference-identical to the input when nothing was repairable. */
+  document: string;
+  /** One entry per stale block folded back, in document order. */
+  moved: { alias: string; orderCount: number }[];
+  /** `new-<alias>` of every stale block that held nothing and lost its header alone. */
+  emptied: string[];
+  /** `new-<alias>` of every stale block with orders and no `FORM` in its region to take them. */
+  orphaned: string[];
+};
+
+/**
+ * Removes a stale block's header and body, and the blank line `ensureUnitBlock` put above it.
+ *
+ * The range is `max`ed because `findUnitBlocks` winds an empty block's `lastLine` back to its
+ * header. The blank line above goes only when the line now standing where the block did is blank
+ * too, or the document ends there - otherwise the repair would close a gap it did not open.
+ */
+function withoutBlockAt(lines: string[], headerLine: number, lastLine: number): string[] {
+  const end = Math.max(lastLine, headerLine);
+  let start = headerLine;
+  const above = lines[headerLine - 1];
+  const below = lines[end + 1];
+  if (headerLine > 0 && (above ?? "").trim() === "" && (below === undefined || below.trim() === "")) {
+    start = headerLine - 1;
+  }
+  return [...lines.slice(0, start), ...lines.slice(end + 1)];
+}
+
+/**
+ * Folds every stale `unit new-<n>` block back into the `FORM` that creates it.
+ *
+ * Such a block could only be written before ah-ty3s.1 stopped `ensureUnitBlock` making them: it
+ * names no unit the report lists, so the server refuses the file, and once `new-<n>` resolves to
+ * its `FORM` block instead there is no editor that can reach the orders inside it. This puts them
+ * back, once, as the document is loaded.
+ *
+ * Pure, and idempotent: running it on its own output changes nothing. Run once as a document is
+ * loaded, never while typing.
+ *
+ * The loop repairs one block and recomputes rather than planning a set of splices - every repair
+ * moves line indices, and one recomputation per block on a document of a few hundred lines is not
+ * worth an off-by-one. `skip` steps past blocks left alone, which is what terminates it: a folded
+ * or emptied block is gone and cannot be found again, an orphan is not. It counts rather than keys
+ * on the id, because a document can hold two `unit new-1` blocks.
+ */
+export function repairFormedUnitBlocks(document: string): FormedBlockRepair {
+  const moved: { alias: string; orderCount: number }[] = [];
+  const emptied: string[] = [];
+  const orphaned: string[] = [];
+  let current = document;
+  let skip = 0;
+
+  for (;;) {
+    const lines = current.split("\n");
+    // The parser is not case sensitive (rules/orders), so a hand-edited file may say `unit NEW-1`.
+    const stale = findUnitBlocks(current).filter(
+      (block) => formedAlias(block.unitId.toLowerCase()) !== null
+    )[skip];
+    if (!stale) {
+      break;
+    }
+    const alias = formedAlias(stale.unitId.toLowerCase()) as string;
+    const body =
+      stale.lastLine >= stale.firstLine
+        ? lines.slice(stale.firstLine, stale.lastLine + 1).join("\n")
+        : "";
+    const text = withoutTrailingBlankLines(body);
+
+    if (text === "") {
+      current = withoutBlockAt(lines, stale.headerLine, stale.lastLine).join("\n");
+      emptied.push(`new-${alias}`);
+      continue;
+    }
+
+    const regionUnitIds = regionUnitIdsAt(current, stale.headerLine);
+    if (!formBlockFor(current, alias, regionUnitIds)) {
+      orphaned.push(`new-${alias}`);
+      skip += 1;
+      continue;
+    }
+
+    const without = withoutBlockAt(lines, stale.headerLine, stale.lastLine).join("\n");
+    const existing = readUnitOrders(without, `new-${alias}`, regionUnitIds) ?? "";
+    const next = existing === "" ? text : `${existing}\n${text}`;
+    current = writeUnitOrders(without, `new-${alias}`, next, regionUnitIds);
+    // What "2 orders" means to a player: a blank line inside the block is not an order.
+    moved.push({ alias, orderCount: text.split("\n").filter((line) => line.trim() !== "").length });
+  }
+
+  return { document: current === document ? document : current, moved, emptied, orphaned };
+}
+
+/**
+ * The reported units standing under the same `;***` region banner as `line`.
+ *
+ * Read out of the document rather than out of the report, because a stale `unit new-<n>` block
+ * names no reported unit and so has no region of its own: the banner it was inserted under is what
+ * says where it stood. The section runs from the greatest banner at or before `line` - or the start
+ * of the document when there is none - to the next banner, or the end of the document.
+ *
+ * Only ids that are a run of digits count, matching `intents.rs`'s filter on `TokenKind::Number` -
+ * the same rule that makes `unit new-1` enclose no reported unit and form nothing.
+ *
+ * A document with no banners at all is one section holding every unit, which is the honest answer
+ * for a hand-written file that carries nothing to scope by.
+ */
+export function regionUnitIdsAt(document: string, line: number): ReadonlySet<string> {
+  const lines = document.split("\n");
+
+  let start = 0;
+  for (let index = Math.min(line, lines.length - 1); index >= 0; index -= 1) {
+    if (REGION_BANNER.test((lines[index] ?? "").trim())) {
+      start = index;
+      break;
+    }
+  }
+
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (REGION_BANNER.test((lines[index] ?? "").trim())) {
+      end = index;
+      break;
+    }
+  }
+
+  const ids = new Set<string>();
+  for (const block of findUnitBlocks(document)) {
+    if (block.headerLine >= start && block.headerLine < end && /^[0-9]+$/u.test(block.unitId)) {
+      ids.add(block.unitId);
+    }
+  }
+  return ids;
+}
+
 /**
  * The `FORM` block creating `new-<alias>` in the hex whose reported units are `regionUnitIds`,
  * or `null` when the document has none.

@@ -252,6 +252,53 @@ const ORDERS_IMPORT_WRONG_FACTION = [
   "#end"
 ].join("\n");
 
+/**
+ * ah-ty3s.2: a draft saved before ah-ty3s.1 can carry a literal `unit new-1` block, which the
+ * server refuses and no editor can reach. The load-time repair folds it back into its `FORM`.
+ */
+const ORDERS_IMPORT_STALE_FORMED = [
+  '#atlantis 95 "smoke"',
+  "",
+  ";*** plain (7,53) in Inhead ***",
+  "unit 18642",
+  "@study obse",
+  "form 1",
+  "buy 1 hdwa",
+  "end",
+  "",
+  "unit new-1",
+  "STUDY COMB",
+  "",
+  "#end"
+].join("\n");
+
+test("an imported orders file's stale unit new-n block is folded into its FORM", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await choose(page, "orders-turn-71-stale.txt", ORDERS_IMPORT_STALE_FORMED);
+  await page.getByTestId("orders-import-replace").click();
+  await expect(page.getByTestId("orders-import-prompt")).toHaveCount(0);
+
+  await expect(page.getByTestId("import-status")).toContainText(
+    "Moved 1 order into FORM 1 for new 1"
+  );
+
+  // The import validates the file as it arrived, before the repair runs, so the stale block's own
+  // lines raise the summary dialog. It sits over the whole workspace until it is closed.
+  const summary = page.getByTestId("orders-import-summary");
+  if (await summary.isVisible()) {
+    await page.getByTestId("orders-import-summary-close").click();
+    await expect(summary).toHaveCount(0);
+  }
+
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await expectOrders(page, /form 1[\s\S]*buy 1 hdwa[\s\S]*STUDY COMB[\s\S]*end/);
+  await expectOrdersNot(page, /unit new-1/);
+});
+
 test("an orders file imports through the confirm prompt", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");

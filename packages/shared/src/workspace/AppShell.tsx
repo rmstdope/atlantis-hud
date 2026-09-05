@@ -36,6 +36,7 @@ import {
   longOrderOf,
   readUnitOrders,
   regionBannerLine,
+  repairFormedUnitBlocks,
   stripMovementOrderLines,
   writeUnitOrders
 } from "../ordersDocument";
@@ -293,6 +294,7 @@ import type { Point } from "../unitTooltip";
 import { describeError, runReported } from "./shellAction";
 import {
   failedStatus,
+  formedBlockRepairStatus,
   noticeStatus,
   routineStatus,
   statusForLoadedTurn,
@@ -3270,6 +3272,45 @@ export function AppShell({
     },
     [game, draftKey, writer, writeOrdersDocument, newBlockBanner, regionUnitIds]
   );
+
+  /**
+   * The load-time repair of a stale `unit new-n` block, run once per document that arrives from
+   * outside the editor and never while typing.
+   *
+   * Keyed on `externalOrdersRevision`, which only an external write moves - a loaded turn, a
+   * restored turn, an imported orders file, a game switch. The repair's own write is external too,
+   * so the document it produced is remembered and recognised when it comes back round; without that
+   * the notice below would be said twice for one load.
+   *
+   * An effect rather than a call inside the load callbacks: those set the save state two lines
+   * after writing the document, so a `markDirty` made inside one would be overwritten, and
+   * `draftKey` is derived from the `parsed` they are in the middle of setting.
+   */
+  const repaired = useRef<{ revision: number; document: string }>({ revision: -1, document: "" });
+  useEffect(() => {
+    if (repaired.current.revision === externalOrdersRevision) {
+      return;
+    }
+    if (repaired.current.document === ordersDocument) {
+      repaired.current = { revision: externalOrdersRevision, document: ordersDocument };
+      return;
+    }
+    repaired.current = { revision: externalOrdersRevision, document: ordersDocument };
+    const repair = repairFormedUnitBlocks(ordersDocument);
+    if (repair.document !== ordersDocument) {
+      repaired.current = { revision: externalOrdersRevision, document: repair.document };
+      // External, not "editor": the editor may already have taken the stale text, and only an
+      // external write tells it to take the block again.
+      writeOrdersDocument("external", repair.document);
+      // `markDirty` calls `onState({kind:"dirty"})` itself, which the autosave effect picks up; it
+      // is a no-op when there is no turn behind the document.
+      writer.markDirty(game, draftKey, repair.document);
+    }
+    const line = formedBlockRepairStatus(repair);
+    if (line) {
+      setStatus(line);
+    }
+  }, [externalOrdersRevision, ordersDocument, writeOrdersDocument, writer, game, draftKey]);
 
   /**
    * Applies the confirmed orders import: the file text becomes the document, through the same

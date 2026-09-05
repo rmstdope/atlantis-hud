@@ -1,3 +1,5 @@
+import type { FormedBlockRepair } from "../ordersDocument";
+
 /**
  * A line the header says to the player, and how loudly.
  *
@@ -60,4 +62,47 @@ export const RULESET_MISSING_MESSAGE = "The rules could not be loaded — unit n
  */
 export function statusForLoadedTurn(loaded: StatusLine, rulesetStatus: string): StatusLine {
   return rulesetStatus === "ready" ? loaded : warningStatus(RULESET_MISSING_MESSAGE);
+}
+
+/**
+ * The header line one load-time repair earns, or `null` when it changed nothing.
+ *
+ * One line, never two - "a load says one thing", the rule `statusForLoadedTurn` already follows -
+ * and in this precedence: the orphan warning first, because of the three it is the only one the
+ * player has to act on; then the move notice; then the removal notice.
+ *
+ * The wording of the warning and of the one- and many-move notices was chosen by the navigator on
+ * `docs/ui/ah-ty3s-round3-repair.html`, em dash included; the alias is written spaced, `FORM 1 for
+ * new 1`, exactly as the units table and the orders pane write it, and the hyphenated `new-1`
+ * appears only in the warning, where it is quoting the block's own header line.
+ */
+export function formedBlockRepairStatus(repair: FormedBlockRepair): StatusLine | null {
+  if (repair.orphaned.length === 1) {
+    return warningStatus(
+      `unit ${repair.orphaned[0]} has orders but nothing forms it — the server will refuse this block`
+    );
+  }
+  if (repair.orphaned.length > 1) {
+    return warningStatus(
+      `${repair.orphaned.length} stale unit new-n blocks have orders but nothing forms them — the server will refuse them`
+    );
+  }
+  if (repair.moved.length === 1) {
+    const only = repair.moved[0] as { alias: string; orderCount: number };
+    return noticeStatus(
+      `Moved ${only.orderCount} order${only.orderCount === 1 ? "" : "s"} into FORM ${only.alias} for new ${only.alias}`
+    );
+  }
+  if (repair.moved.length > 1) {
+    const orders = repair.moved.reduce((total, entry) => total + entry.orderCount, 0);
+    return noticeStatus(
+      `Moved ${orders} order${orders === 1 ? "" : "s"} into ${repair.moved.length} FORM blocks`
+    );
+  }
+  if (repair.emptied.length > 0) {
+    return noticeStatus(
+      `Removed ${repair.emptied.length} empty unit new-n block${repair.emptied.length === 1 ? "" : "s"}`
+    );
+  }
+  return null;
 }
