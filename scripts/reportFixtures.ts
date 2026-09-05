@@ -28,9 +28,13 @@ export function parseFixtureName(name: string): ParsedFixtureName | null {
   return { ruleset, version, game, faction, turn };
 }
 
-/** Every `.rep` file directly inside `directory`. */
-export function fixtureFiles(directory: string): string[] {
-  return readdirSync(directory).filter((name) => name.endsWith(".rep"));
+/**
+ * Every file with `extension` directly inside `directory`.
+ *
+ * The default keeps every report caller unchanged; `tests/fixtures/mage-sheets/` passes `.txt`.
+ */
+export function fixtureFiles(directory: string, extension = ".rep"): string[] {
+  return readdirSync(directory).filter((name) => name.endsWith(extension));
 }
 
 /**
