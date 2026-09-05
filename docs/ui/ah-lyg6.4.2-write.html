@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-lyg6.4.2 — Put into my orders</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#e89494;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin:0 auto; }
+  h1 { font-size:25px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:22px; }
+  .card h2 { font-size:17px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; max-width:98ch; }
+  .stage { background:#0b0f14; border:1px solid var(--edge-soft); border-radius:8px; padding:16px; overflow:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  .cols3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; }
+  @media (max-width:1080px) { .cols, .cols3 { grid-template-columns:1fr; } }
+
+  .pane { width:900px; max-width:100%; background:var(--raised); border:1px solid var(--edge);
+          border-radius:6px; box-shadow:0 14px 40px #000a; overflow:hidden;
+          font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane .top { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  .pane .top .name { color:var(--ink-soft); }
+  .pane .top .tabs { display:flex; gap:4px; }
+  .pane .top .tab { border-radius:4px; padding:2px 7px; color:var(--ink-soft); }
+  .pane .top .tab.on { background:#1b2735; color:var(--ink); box-shadow:inset 0 -2px 0 var(--select); }
+  .pane .top .sp { margin-left:auto; }
+  .pane .sub { padding:6px 12px; border-bottom:1px solid var(--edge-soft); color:var(--ink-dim); font-size:11.5px; }
+  .btn { background:var(--ground); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:3px 9px; font-size:12px; font-family:'Helvetica Neue',Arial,sans-serif; display:inline-block; }
+  .btn.prim { color:var(--ink); border-color:#3b5064; }
+  .btn.done { color:var(--ok); border-color:#2c4a3e; }
+  .btn.dim { opacity:.35; }
+  .body { padding:12px; display:grid; gap:14px; max-height:460px; overflow:auto; }
+  .grp { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .grp .hd { display:flex; align-items:center; gap:8px; padding:5px 10px; background:#141a23;
+             color:var(--brass); font-size:11.5px; letter-spacing:0.4px; }
+  .grp .hd .sp { margin-left:auto; }
+  .grp .hd .age { color:var(--brass-bright); }
+  pre { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.55;
+        color:var(--ink); padding:10px; margin:0; white-space:pre; overflow:auto; }
+  pre .c { color:var(--ink-dim); }
+  pre .k { color:var(--brass-bright); }
+  pre .add { color:var(--ok); }
+  pre .del { color:var(--danger); text-decoration:line-through; }
+  .empty { font:13px/1.6 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft);
+           border:1px dashed var(--edge); border-radius:6px; padding:26px; text-align:center; margin:12px; }
+  .empty b { display:block; color:var(--ink); font-size:14px; margin-bottom:5px; font-weight:600; }
+
+  .dlg { width:560px; max-width:100%; background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         box-shadow:0 14px 40px #000a; font:13px/1.5 'Helvetica Neue',Arial,sans-serif; overflow:hidden; }
+  .dlg .dh { padding:9px 12px; border-bottom:1px solid var(--edge); color:var(--ink); font-size:14px; }
+  .dlg .dp { padding:8px 12px; color:var(--ink-soft); font-size:12.5px; border-bottom:1px solid var(--edge-soft); }
+  .dlg .dl { padding:6px 12px; display:grid; gap:5px; max-height:230px; overflow:auto; }
+  .dlg .row { display:flex; gap:8px; align-items:baseline; font-size:12.5px; }
+  .dlg .row .who { color:var(--ink); min-width:130px; }
+  .dlg .row .what { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink-soft); }
+  .dlg .row .what b { color:var(--ok); font-weight:normal; }
+  .dlg .row .what s { color:var(--danger); }
+  .dlg .row .skip { color:var(--ink-dim); font-style:italic; }
+  .dlg .df { padding:9px 12px; border-top:1px solid var(--edge); display:flex; gap:8px; align-items:center; }
+  .dlg .df .sp { margin-left:auto; }
+  .box { width:11px; height:11px; border:1px solid var(--edge); border-radius:2px; display:inline-block;
+         background:var(--ground); position:relative; top:1px; }
+  .box.on { background:var(--select); border-color:var(--select); }
+  .status { font:12px 'Helvetica Neue',Arial,sans-serif; background:#141a23; border:1px solid var(--edge);
+            border-radius:4px; padding:5px 10px; color:var(--ink-soft); display:inline-flex; gap:10px; align-items:center; }
+  .status .u { color:var(--select); text-decoration:underline; }
+  .status.bad { color:var(--danger); border-color:#4a2c2c; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-lyg6.4.2 — <span>Put into my orders</span></h1>
+  <p>Your own faction's section on the study planner's <b>Orders</b> tab gains a third button, chosen
+  as <b>O2</b> in <code>ah-lyg6.4</code>'s round-two interview. It merges next turn's
+  <code>STUDY</code> and <code>TEACH</code> lines into the orders document you have been editing by
+  hand — the first thing in this application that writes into that document from somewhere other
+  than the editor. This page is the four things that decides.</p>
+</header>
+
+<main>
+
+  <h3 class="sec">Where the button is</h3>
+  <p>Unchanged from the tab that <code>ah-lyg6.4.1</code> builds; only the own faction's section gets
+  the button, and only when there is at least one order to write.</p>
+  <div class="card">
+    <div class="stage">
+      <div class="pane">
+        <div class="top">
+          <span class="name">Study planner</span>
+          <span class="tabs"><span class="tab">All mages</span><span class="tab">Schedule</span><span class="tab on">Orders</span></span>
+          <span class="sp"></span><span class="btn">Save all…</span><span class="btn">Close</span>
+        </div>
+        <div class="sub">Orders for turn 72 — 3 mages studying, 1 teaching, 1 with no order this turn</div>
+        <div class="body">
+          <div class="grp">
+            <div class="hd"><span>Borg TNG (95) — your faction, turn 72</span>
+              <span class="sp"></span>
+              <span class="btn prim">Put into my orders</span>
+              <span class="btn">Copy</span><span class="btn">Save…</span></div>
+<pre><span class="c">; Borg TNG (95) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT</span> 1234              <span class="c">; Ereb</span>
+  <span class="k">STUDY</span> FORC 4          <span class="c">; force 3 -&gt; 4, taught by Sable</span>
+<span class="k">UNIT</span> 1250              <span class="c">; Sable</span>
+  <span class="k">TEACH</span> 1234            <span class="c">; teaches Ereb</span>
+<span class="k">UNIT</span> 1301              <span class="c">; Thane</span>
+  <span class="k">STUDY</span> PATT            <span class="c">; pattern 2</span>
+<span class="c">; Vess (1263) — nothing planned for this turn</span></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="sec">What "merge" means</h3>
+  <p>The same shape as the route planner's <code>applyRoute</code>: the unit's month-long order is
+  replaced and everything else the player wrote is left exactly where it is. Ereb's block below is
+  hand-written; only the marked line changes.</p>
+  <div class="card">
+    <div class="cols">
+      <div>
+        <div class="concept">Before</div>
+        <div class="stage">
+<pre><span class="c">;*** plain (7,53) in Inhead ***</span>
+<span class="k">unit</span> 1234
+  <span class="k">claim</span> 200
+  <span class="k">build</span> Tower           <span class="c">; nearly finished</span>
+  <span class="k">give</span> 1250 20 silv</pre>
+        </div>
+      </div>
+      <div>
+        <div class="concept">After</div>
+        <div class="stage">
+<pre><span class="c">;*** plain (7,53) in Inhead ***</span>
+<span class="k">unit</span> 1234
+  <span class="k">claim</span> 200
+  <span class="del">  build Tower           ; nearly finished</span>
+  <span class="k">give</span> 1250 20 silv
+  <span class="add">STUDY FORC 4</span></pre>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li><code>claim</code> and <code>give</code> are not month-long orders, so they survive.</li>
+      <li class="n">The comment annotations from the tab are <b>not</b> written into your own
+      document — they are for a stranger reading a mailed file, and your own editor already names
+      the mage. (Mine to decide unless you say otherwise.)</li>
+      <li class="con">The <code>build</code> line is the question in section <b>X</b> below.</li>
+    </ul>
+  </div>
+
+  <h3 class="sec">W — how safe the write is made</h3>
+  <p>The one place in this application where a button rewrites text you typed — and
+  <code>Ctrl-Z</code> will not save you. The orders editor deliberately keeps a write that came from
+  outside it out of its undo history ("kept out of the undo history because the player did not do
+  it", <code>OrdersEditor.tsx:421</code>), and its history is per unit anyway. There is no other undo
+  in this application. So whatever is drawn below is the whole of the safety.</p>
+  <p style="color:var(--ink-dim)">The line that reports the result is drawn inside the Orders tab,
+  under the section heading, not in the header status line: this dialog covers the header, which is
+  why it already reports its own save errors inline.</p>
+  <div class="cols3">
+    <div class="card">
+      <h2><em>W1</em> Write at once, offer Undo</h2>
+      <div class="concept">No dialog. The document changes, and the status line says what happened
+      with an <b>Undo</b> that puts the whole document back byte for byte.</div>
+      <div class="stage">
+        <div class="status">Study orders written for 3 mages. <span class="u">Undo</span></div>
+      </div>
+      <ul class="notes">
+        <li>One press for the thing you came to the tab to do.</li>
+        <li>Undo covers every mage, not just the one on screen.</li>
+        <li class="con">It happens to your hand-written text before you have seen what it will do.</li>
+        <li class="con">The status line is easy to miss, and the Undo goes with it.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>W2</em> Confirm first, no undo</h2>
+      <div class="concept">A dialog listing every mage and the exact line about to be written,
+      naming what it replaces. <b>Write orders</b> / <b>Cancel</b>.</div>
+      <div class="stage">
+        <div class="dlg">
+          <div class="dh">Put study orders into your orders?</div>
+          <div class="dp">Turn 72. Three units change; nothing else in the document is touched.</div>
+          <div class="dl">
+            <div class="row"><span class="who">Ereb (1234)</span><span class="what"><b>STUDY FORC 4</b> replaces <s>BUILD Tower</s></span></div>
+            <div class="row"><span class="who">Sable (1250)</span><span class="what"><b>TEACH 1234</b></span></div>
+            <div class="row"><span class="who">Thane (1301)</span><span class="what"><b>STUDY PATT</b> replaces <s>STUDY FORC</s></span></div>
+            <div class="row"><span class="who">Vess (1263)</span><span class="skip">nothing planned — left alone</span></div>
+          </div>
+          <div class="df"><span class="sp"></span><span class="btn">Cancel</span><span class="btn prim">Write orders</span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>You see exactly what will happen to text you wrote by hand, before it happens.</li>
+        <li>The list is also the record of what the planner thinks it is doing.</li>
+        <li class="con">A dialog every single time, including the common case where every block is empty.</li>
+        <li class="con">Once confirmed there is no way back.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>W3</em> Confirm first, and Undo afterwards</h2>
+      <div class="concept">W2's dialog, and then W1's status line with its <b>Undo</b>.</div>
+      <div class="stage">
+        <div class="status">Study orders written for 3 mages. <span class="u">Undo</span></div>
+      </div>
+      <ul class="notes">
+        <li>The strongest, and what the round-one note asked for: "must be undoable".</li>
+        <li>The dialog explains; the Undo forgives a confirmation pressed too fast.</li>
+        <li class="con">The most work of the three, and two safety nets on one action.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>W4</em> Ask only when something would be lost</h2>
+    <div class="concept">Silent, with W1's status line, whenever every mage's block is empty or
+    already carries a <code>STUDY</code>/<code>TEACH</code>. W2's dialog only when a
+    <code>BUILD</code>, <code>PRODUCE</code>, <code>TAX</code> or <code>MOVE</code> would go.</div>
+    <ul class="notes">
+      <li>The dialog appears exactly on the turns where it earns its place.</li>
+      <li class="con">The button behaves differently on different turns, which is the kind of thing a
+      player learns wrongly and then trusts.</li>
+    </ul>
+  </div>
+
+  <h3 class="sec">X — a mage already carrying another month-long order</h3>
+  <p>Ereb's <code>BUILD Tower</code>. A unit gets one month-long order
+  (<code>rules/sequenceofevents</code>), so the study and the build cannot both stand.</p>
+  <div class="cols3">
+    <div class="card">
+      <h2><em>X1</em> Replaced, and said so</h2>
+      <div class="concept">The study wins. The dialog row, or the status line, names what went.</div>
+      <div class="stage"><div class="status">Study orders written for 3 mages; 1 other order replaced. <span class="u">Undo</span></div></div>
+      <ul class="notes">
+        <li>The planner is the thing you just told what each mage does; it finishes the job.</li>
+        <li class="con">A build you were three months into is gone on one press.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>X2</em> Kept, and the mage skipped</h2>
+      <div class="concept">Ereb is left exactly as he was and named as skipped. You resolve it in
+      the editor, or on the Schedule.</div>
+      <div class="stage">
+        <div class="dlg" style="width:auto">
+          <div class="dl">
+            <div class="row"><span class="who">Ereb (1234)</span><span class="skip">kept your BUILD Tower — no study written</span></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Nothing you typed by hand can ever be destroyed by this button.</li>
+        <li class="con">The plan and the document silently disagree, and the tab still shows the
+        study as if it had been written.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>X3</em> Yours to choose, per mage</h2>
+      <div class="concept">W2's dialog, with a checkbox on every row. Rows that replace nothing are
+      ticked; a row that would replace something else is unticked and has to be chosen.</div>
+      <div class="stage">
+        <div class="dlg" style="width:auto">
+          <div class="dl">
+            <div class="row"><span class="box"></span><span class="who">Ereb (1234)</span><span class="what"><b>STUDY FORC 4</b> replaces <s>BUILD Tower</s></span></div>
+            <div class="row"><span class="box on"></span><span class="who">Sable (1250)</span><span class="what"><b>TEACH 1234</b></span></div>
+            <div class="row"><span class="box on"></span><span class="who">Thane (1301)</span><span class="what"><b>STUDY PATT</b> replaces <s>STUDY FORC</s></span></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Every case answered by the person who knows which they meant.</li>
+        <li class="con">A real control with real state, and it forces W2 or W3 — X3 cannot exist
+        without the dialog.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sec">Y — a mage with no <code>unit</code> block in the document</h3>
+  <p>What a report carrying <code>OPTION TEMPLATE OFF</code> produces: the document is
+  <code>#atlantis</code> … <code>#end</code> and nothing else. <code>writeUnitOrders</code> leaves
+  such a unit alone rather than inventing a block, so this has to be decided.</p>
+  <div class="cols">
+    <div class="card">
+      <h2><em>Y1</em> The block is made, under that mage's own region banner</h2>
+      <div class="concept">Exactly as the editor's first keystroke makes one today, and as the
+      report itself would have written it.</div>
+      <div class="stage">
+<pre><span class="c">#atlantis 95</span>
+<span class="add">;*** plain (7,53) in Inhead ***</span>
+<span class="add">unit 1234</span>
+<span class="add">  STUDY FORC 4</span>
+
+<span class="c">#end</span></pre>
+      </div>
+      <ul class="notes">
+        <li>A player who turned the template off still gets a complete, valid orders file.</li>
+        <li>Each mage gets the banner of the hex <em>he</em> stands in, not the hex you have selected.</li>
+        <li class="con">The button writes structure, not just a line — the largest thing it does.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><em>Y2</em> Skipped, and named</h2>
+      <div class="concept">Only mages the document already lists are written. The rest are reported:
+      <code>Thane (1301) — no block in your orders; select him and type a line first</code>.</div>
+      <ul class="notes">
+        <li>Nothing structural is invented.</li>
+        <li class="con">With the template off, that is <em>every</em> mage, so the button does
+        nothing at all for the players who most need it.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sec">The other states</h3>
+  <div class="cols">
+    <div class="card">
+      <h2>Nothing to write</h2>
+      <div class="concept">Your own section exists (some ally has a plan) but every one of your
+      mages is idle or refused. The button is hidden; <code>Copy</code> and <code>Save…</code> stay.</div>
+      <div class="stage">
+        <div class="grp" style="width:520px;max-width:100%">
+          <div class="hd"><span>Borg TNG (95) — your faction, turn 72</span><span class="sp"></span>
+            <span class="btn">Copy</span><span class="btn">Save…</span></div>
+<pre><span class="c">; Vess (1263) — nothing planned for this turn</span></pre>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>The write failed</h2>
+      <div class="concept">Same shape and place as the tab's save error.</div>
+      <div class="stage">
+        <div class="status bad">Could not write these orders into your document.</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>
