@@ -78,6 +78,66 @@ pub const ALL: &[&Report] = &[
     &G8_F73_T71,
 ];
 
+/// One committed mage sheet: the report it was exported from, the unit ids it was exported with,
+/// and its text.
+///
+/// The unit-id list is what makes the fixture reproducible: `export_mage_sheet` never asks the
+/// ruleset who is a mage, so the ids are the whole definition of what the sheet contains.
+pub struct MageSheet {
+    pub name: &'static str,
+    pub file: &'static str,
+    /// The committed report `export_mage_sheet` was run over.
+    pub source: &'static Report,
+    /// The unit ids it was given, ascending.
+    pub mages: &'static [&'static str],
+    pub text: &'static str,
+}
+
+macro_rules! mage_sheet {
+    ($name:ident, $file:literal, $source:expr, $mages:expr) => {
+        MageSheet {
+            name: stringify!($name),
+            file: $file,
+            source: &$source,
+            mages: &$mages,
+            text: include_str!(concat!("../../../tests/fixtures/mage-sheets/", $file)),
+        }
+    };
+}
+
+pub const MAGES_G7_F39_T17: MageSheet = mage_sheet!(
+    MAGES_G7_F39_T17,
+    "mages-neworigins-3.0.0-g7-f39-t17.txt",
+    G7_F39_T17,
+    ["1447", "1448", "7310", "7311"]
+);
+pub const MAGES_G7_F39_T18: MageSheet = mage_sheet!(
+    MAGES_G7_F39_T18,
+    "mages-neworigins-3.0.0-g7-f39-t18.txt",
+    G7_F39_T18,
+    ["1447", "1448", "7310", "7311", "7722"]
+);
+pub const MAGES_G7_F39_T18_TRIMMED: MageSheet = mage_sheet!(
+    MAGES_G7_F39_T18_TRIMMED,
+    "mages-neworigins-3.0.0-g7-f39-t18-trimmed.txt",
+    G7_F39_T18,
+    ["7310", "7722"]
+);
+pub const MAGES_G7_F62_T18: MageSheet = mage_sheet!(
+    MAGES_G7_F62_T18,
+    "mages-neworigins-3.0.0-g7-f62-t18.txt",
+    G7_F62_T18,
+    ["916", "1656", "1657", "1658", "1659"]
+);
+
+/// Every committed mage sheet, for the lockstep test and for anything that walks them all.
+pub const ALL_MAGE_SHEETS: &[&MageSheet] = &[
+    &MAGES_G7_F39_T17,
+    &MAGES_G7_F39_T18,
+    &MAGES_G7_F39_T18_TRIMMED,
+    &MAGES_G7_F62_T18,
+];
+
 /// The shipped ruleset, `config/public/ruleset.json`, which the tests parse against.
 pub const RULESET_JSON: &str = include_str!("../../../config/public/ruleset.json");
 
@@ -145,6 +205,61 @@ mod tests {
                 report.name, expected,
                 "const name for {:?} should be {expected}",
                 report.file
+            );
+        }
+    }
+
+    fn mage_sheets_dir() -> std::path::PathBuf {
+        std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/mage-sheets"
+        ))
+        .to_path_buf()
+    }
+
+    #[test]
+    fn every_mage_sheet_on_disk_is_named_here() {
+        let on_disk: BTreeSet<String> = fs::read_dir(mage_sheets_dir())
+            .expect("tests/fixtures/mage-sheets should exist")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".txt"))
+            .collect();
+        let named: BTreeSet<String> = ALL_MAGE_SHEETS
+            .iter()
+            .map(|sheet| sheet.file.to_string())
+            .collect();
+
+        let on_disk_only: Vec<_> = on_disk.difference(&named).collect();
+        let named_only: Vec<_> = named.difference(&on_disk).collect();
+        assert!(
+            on_disk_only.is_empty() && named_only.is_empty(),
+            "mage sheets on disk but not named: {on_disk_only:?}; named but missing from disk: {named_only:?}"
+        );
+    }
+
+    /// `mages-neworigins-3.0.0-g7-f39-t18-trimmed.txt` must be named `MAGES_G7_F39_T18_TRIMMED`:
+    /// the `g<n>-f<n>-t<n>[-variant]` tail, uppercased, dashes to underscores, prefixed `MAGES_`.
+    #[test]
+    fn mage_sheet_names_follow_the_file() {
+        for sheet in ALL_MAGE_SHEETS {
+            let tail = sheet
+                .file
+                .strip_prefix("mages-")
+                .and_then(|rest| rest.strip_suffix(".txt"))
+                .and_then(|rest| rest.split_once("-g"))
+                .map(|(_, tail)| format!("g{tail}"))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "mage sheet file name {:?} does not match the expected pattern",
+                        sheet.file
+                    )
+                });
+            let expected = format!("MAGES_{}", tail.to_uppercase().replace('-', "_"));
+            assert_eq!(
+                sheet.name, expected,
+                "const name for {:?} should be {expected}",
+                sheet.file
             );
         }
     }
