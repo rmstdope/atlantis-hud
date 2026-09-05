@@ -331,14 +331,17 @@ export function repairFormedUnitBlocks(document: string): FormedBlockRepair {
       continue;
     }
 
+    // The region is read while the stale block is still in place - the banner it sits under is what
+    // says where it stood - but the match is asked of the document actually written to, so the
+    // guard cannot pass while `writeUnitOrders` silently declines and loses the orders with it.
     const regionUnitIds = regionUnitIdsAt(current, stale.headerLine);
-    if (!formBlockFor(current, alias, regionUnitIds)) {
+    const without = withoutBlockAt(lines, stale.headerLine, stale.lastLine).join("\n");
+    if (!formBlockFor(without, alias, regionUnitIds)) {
       orphaned.push(`new-${alias}`);
       skip += 1;
       continue;
     }
 
-    const without = withoutBlockAt(lines, stale.headerLine, stale.lastLine).join("\n");
     const existing = readUnitOrders(without, `new-${alias}`, regionUnitIds) ?? "";
     const next = existing === "" ? text : `${existing}\n${text}`;
     current = writeUnitOrders(without, `new-${alias}`, next, regionUnitIds);
@@ -346,7 +349,7 @@ export function repairFormedUnitBlocks(document: string): FormedBlockRepair {
     moved.push({ alias, orderCount: text.split("\n").filter((line) => line.trim() !== "").length });
   }
 
-  return { document: current === document ? document : current, moved, emptied, orphaned };
+  return { document: current, moved, emptied, orphaned };
 }
 
 /**

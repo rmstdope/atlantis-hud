@@ -288,10 +288,9 @@ test("an imported orders file's stale unit new-n block is folded into its FORM",
   // The import validates the file as it arrived, before the repair runs, so the stale block's own
   // lines raise the summary dialog. It sits over the whole workspace until it is closed.
   const summary = page.getByTestId("orders-import-summary");
-  if (await summary.isVisible()) {
-    await page.getByTestId("orders-import-summary-close").click();
-    await expect(summary).toHaveCount(0);
-  }
+  await expect(summary).toBeVisible();
+  await page.getByTestId("orders-import-summary-close").click();
+  await expect(summary).toHaveCount(0);
 
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
