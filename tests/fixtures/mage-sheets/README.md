@@ -37,6 +37,10 @@ mages-<ruleset>-<version>-g<game>-f<faction>-t<turn>[-<variant>].txt
 The reports' pattern with a `mages-` prefix and an optional variant. The game matters for the same
 reason it does there: a faction id is only unique within one game.
 
+A variant may contain dashes, but two variants that differ only by a dash (`ab` and `a-b`) would
+collapse to one key in `packages/fixtures/src/index.ts`, where keys are lowercased and undashed —
+so keep variants distinct as words, not as punctuation.
+
 ## Regenerating
 
 ```bash

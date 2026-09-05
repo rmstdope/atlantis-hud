@@ -34,8 +34,6 @@ fn every_committed_mage_sheet_matches_a_fresh_export() {
         let fresh = export_mage_sheet(&report, &ids);
         let path = sheets_dir().join(file);
         if update {
-            std::fs::create_dir_all(sheets_dir())
-                .expect("the mage-sheets directory should be creatable");
             std::fs::write(&path, &fresh)
                 .unwrap_or_else(|error| panic!("{} should be writable: {error}", path.display()));
             continue;
