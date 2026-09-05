@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-kp37 — A: the turn list inside the world popover</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#d9a441; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1280px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  b.opt { color:var(--brass); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+        font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; }
+  .ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+  .ui .field { margin-bottom:9px; }
+  .ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+     color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+  .ui input:disabled { opacity:.5; }
+  .ui .hint { color:var(--ink-dim); margin:6px 0 8px; }
+  .ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:4px 10px; display:inline-block; }
+  .ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+  .ui .btn.off { opacity:.45; }
+  .ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
+  .ui .err { color:var(--danger); margin-top:2px; }
+  .ui .soft { color:var(--ink-soft); margin-top:2px; }
+  .hdr { display:flex; align-items:center; gap:9px; justify-content:flex-end; background:var(--panel);
+         border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .hdr .chip { border:1px solid var(--edge); background:var(--raised); border-radius:4px; padding:3px 9px; color:var(--ink); }
+  .hdr .chip.brassy { border-color:var(--brass); color:var(--brass); }
+  .hdr .chip.dim { color:var(--ink-soft); opacity:.5; }
+  .pop { margin-top:6px; margin-left:auto; width:300px; background:#0b0f14; border:1px solid var(--edge);
+         border-radius:6px; padding:9px 10px; font-family:system-ui,sans-serif; font-size:12px; color:var(--ink-soft); }
+  .pop b { color:var(--ink); font-weight:600; }
+  .pop .item { display:block; width:100%; text-align:left; border:1px solid var(--edge); background:var(--panel);
+     color:var(--ink); border-radius:4px; padding:5px 8px; margin:8px 0; }
+  .pop .item.brassy { border-color:var(--brass); color:var(--brass); }
+  .pop .item.off { opacity:.45; }
+  .status { font-family:system-ui,sans-serif; font-size:12px; background:var(--panel); border:1px solid var(--edge);
+     border-top:none; border-radius:0 0 6px 6px; padding:6px 10px; color:var(--ink-soft); }
+  .status.ok { color:var(--ok); } .status.bad { color:var(--danger); } .status.warn { color:var(--warn); }
+  .caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; }
+  .tag { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+         font-family:system-ui,sans-serif; display:block; margin:12px 0 5px; }
+  .fixed { border-left:2px solid var(--brass); padding-left:12px; margin-top:14px; color:var(--ink-soft); font-size:13px; max-width:96ch; }
+  .modal { background:rgba(0,0,0,.45); border-radius:6px; padding:14px; }
+  table { border-collapse:collapse; width:100%; font-family:system-ui,sans-serif; font-size:12.5px; margin-top:8px; }
+  td,th { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { color:var(--brass); font-weight:600; }
+  td.w { color:var(--ink); }
+
+  .pop .row { display:flex; align-items:center; gap:8px; width:100%; text-align:left; border:1px solid transparent;
+     background:transparent; color:var(--ink); border-radius:4px; padding:4px 6px; }
+  .pop .row.sel { background:#1c232e; }
+  .pop .row .n { font-variant-numeric:tabular-nums; color:var(--ink); width:22px; }
+  .pop .row .season { color:var(--ink-dim); }
+  .pop .row .mark { margin-left:auto; font-size:11px; color:var(--ink-dim); text-transform:lowercase; }
+  .pop .row .mark.on { color:var(--ok); }
+  .pop .row .mark.busy { color:var(--brass); }
+  .pop .back { color:var(--brass); font-size:11.5px; background:none; border:none; padding:0 0 6px 0; display:block; }
+  .pop .head { color:var(--brass); font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase;
+     padding-bottom:5px; border-bottom:1px solid var(--edge); margin-bottom:5px; }
+  .pop .foot { border-top:1px solid var(--edge); margin-top:6px; padding-top:6px; color:var(--ink-dim); font-size:11.5px; }
+  .dlg { width:340px; margin:0 auto; background:var(--panel); border:1px solid var(--edge); border-radius:6px;
+     padding:13px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .dlg h4 { font-size:14px; color:var(--ink); margin-bottom:3px; font-family:system-ui,sans-serif; }
+  .dlg .sub { color:var(--ink-soft); font-size:11.5px; margin-bottom:9px; }
+  .dlg ul { list-style:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-kp37 — <span>Option A: the list lives inside the world popover</span></h1>
+  <p>You can already fetch <b>this</b> turn from a New Age world (ah-lbd9.3, shipped). This bead adds the
+  other turns the world still holds, so a turn you never kept a file of can be pulled into the game's stored
+  history and compared against. An earlier turn is <b>stored, never shown</b> — the same rule a dropped older
+  file already follows.</p>
+  <p>In <b class="opt">A</b> the world popover <b>drills in</b>: the second item swaps the popover's body for the
+  list of turns, with a way back. Clicking a turn fetches it, and the popover <b>closes</b> — one turn per visit,
+  exactly like "Fetch this turn's report" behaves today. Compare with
+  <b class="opt">B</b>, where the list is a dialog you can fetch several turns from before closing.</p>
+</header>
+<main>
+
+<h3 class="sec">1 · Getting to the list</h3>
+<p>The popover you have today, plus one item. Nothing else about it moves.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>today</em>The popover as it ships now</h2>
+    <p class="concept">One fetch item and a sign-out.</p>
+    <div class="hdr"><span class="chip brassy">New Age: Arcanum — Merchant Guild (27)</span></div>
+    <div class="pop">
+      <b>Signed in to New Age: Arcanum</b> as Merchant Guild (27).
+      <button class="item brassy">Fetch this turn&rsquo;s report</button>
+      Nothing is stored: closing Atlantis HUD signs you out.
+      <div style="text-align:right"><span class="btn" style="font-size:11.5px">Sign out</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>this bead</em>A second item</h2>
+    <p class="concept">The ellipsis says it opens something rather than acting at once.</p>
+    <div class="hdr"><span class="chip brassy">New Age: Arcanum — Merchant Guild (27)</span></div>
+    <div class="pop">
+      <b>Signed in to New Age: Arcanum</b> as Merchant Guild (27).
+      <button class="item brassy">Fetch this turn&rsquo;s report</button>
+      <button class="item">Fetch an earlier turn&hellip;</button>
+      Nothing is stored: closing Atlantis HUD signs you out.
+      <div style="text-align:right"><span class="btn" style="font-size:11.5px">Sign out</span></div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">2 · The list, and every state it has</h3>
+<p>The world is asked which turns it holds. That is a network call, so it has a wait, an empty answer and a
+failure of its own — before any turn is fetched.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>waiting</em>Asking the world</h2>
+    <p class="concept">One line, no spinner: the popover does not resize under you.</p>
+    <div class="pop">
+      <button class="back">&larr; Arcanum</button>
+      <div class="head">Turns Arcanum holds</div>
+      <div style="padding:10px 4px">Asking Arcanum which turns it holds&hellip;</div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>the usual case</em>Six turns, two already stored</h2>
+    <p class="concept">Working turn marked, stored turns marked, the rest are the ones worth clicking.</p>
+    <div class="pop">
+      <button class="back">&larr; Arcanum</button>
+      <div class="head">Turns Arcanum holds</div>
+      <ul style="list-style:none">
+        <li><button class="row"><span class="n">78</span><span class="season">Winter, year 4</span><span class="mark"></span></button></li>
+        <li><button class="row"><span class="n">79</span><span class="season">Spring, year 5</span><span class="mark"></span></button></li>
+        <li><button class="row"><span class="n">80</span><span class="season">Summer, year 5</span><span class="mark"></span></button></li>
+        <li><button class="row"><span class="n">81</span><span class="season">Autumn, year 5</span><span class="mark"></span></button></li>
+        <li><button class="row"><span class="n">82</span><span class="season">Winter, year 5</span><span class="mark on">stored</span></button></li>
+        <li><button class="row"><span class="n">83</span><span class="season">Spring, year 6</span><span class="mark on">playing</span></button></li>
+      </ul>
+      <div class="foot">a fetched turn is stored for comparison, not shown</div>
+    </div>
+    <p class="caption">A turn already in the game is still clickable — clicking it fetches and overwrites the
+    stored copy. It is never the thing you wanted by accident: the mark says it is already there.</p>
+  </div>
+  <div class="card">
+    <h2><em>nothing there</em>The world holds only this turn</h2>
+    <p class="concept">A new faction, or a world that keeps no history.</p>
+    <div class="pop">
+      <button class="back">&larr; Arcanum</button>
+      <div class="head">Turns Arcanum holds</div>
+      <div style="padding:10px 4px">Arcanum holds no earlier turns for you.</div>
+    </div>
+    <p class="caption">Same panel, one sentence in place of the list. There is nothing to press.</p>
+  </div>
+</div>
+
+<h3 class="sec">3 · Fetching one</h3>
+<p>Click a turn and the popover closes, the way "Fetch this turn's report" already does. Everything after that
+is the status line.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>in flight</em>Fetching turn 80</h2>
+    <div class="hdr"><span class="chip brassy">New Age: Arcanum — Merchant Guild (27)</span></div>
+    <div class="status">Fetching turn 80 from Arcanum&hellip;</div>
+    <p class="caption">The popover is shut. The world item shows nothing special; the status line is the whole
+    of it, as it is for this turn's fetch today.</p>
+  </div>
+  <div class="card">
+    <h2><em>done</em>Stored, screen untouched</h2>
+    <div class="hdr"><span class="chip brassy">New Age: Arcanum — Merchant Guild (27)</span></div>
+    <div class="status ok">turn 80 stored for history; still showing turn 83.</div>
+    <p class="caption">Word for word the sentence a dropped older file already produces. Nothing new to learn,
+    and nothing on screen moved.</p>
+  </div>
+  <div class="card">
+    <h2><em>failed</em>The world would not give it</h2>
+    <div class="hdr"><span class="chip brassy">New Age: Arcanum — Merchant Guild (27)</span></div>
+    <div class="status bad">could not fetch turn 80: could not reach atlantis-newage.com</div>
+    <p class="caption">The same five failure sentences the existing fetch uses, behind a prefix naming the turn.
+    Nothing was stored.</p>
+  </div>
+</div>
+
+<h3 class="sec">4 · The two failures the list itself can have</h3>
+<div class="cards2">
+  <div class="card">
+    <h2><em>list failed</em>The world would not say</h2>
+    <p class="concept">The popover closes and the status line carries it, so no half-drawn list is left up.</p>
+    <div class="hdr"><span class="chip brassy">New Age: Arcanum — Merchant Guild (27)</span></div>
+    <div class="status bad">could not list the earlier turns: could not reach atlantis-newage.com</div>
+  </div>
+  <div class="card">
+    <h2><em>E1</em>The session ran out while listing</h2>
+    <p class="concept">Exactly the reauth dialog the fetch already has, with this action's words.</p>
+    <div class="modal">
+      <div class="ui" style="width:320px;margin:0 auto">
+        <b style="font-family:system-ui">Fetch an earlier turn</b>
+        <div class="err" style="margin:5px 0 8px">Your session has ended. Sign in again to continue.</div>
+        <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+        <div class="field"><label>Password</label><input type="password" value="&bull;&bull;&bull;&bull;&bull;&bull;"></div>
+        <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Sign in and fetch</span></div>
+      </div>
+    </div>
+    <p class="caption">Signing in carries straight on to whatever you had asked for — listing, or the turn you
+    had clicked.</p>
+  </div>
+</div>
+
+<h3 class="sec">5 · What A costs, and what it buys</h3>
+<div class="fixed">
+  <p><b>Buys:</b> no new surface at all — one popover, one item, the same drill-in you would find in any menu.
+  Escape closes it like every other popover; there is no focus trap and nothing modal to get out of.</p>
+  <p style="margin-top:8px"><b>Costs:</b> one turn per visit. Back-filling four turns means opening the popover
+  four times, and the popover is 288px wide, so a long list scrolls inside it.</p>
+</div>
+
+</main>
+</body>
+</html>
