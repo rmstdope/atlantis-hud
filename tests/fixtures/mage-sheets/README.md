@@ -47,11 +47,18 @@ Then run it again without the variable and see it pass. A failure of that test w
 unset means one of two things: a regression in `export_mage_sheet`, or a deliberate change to what it
 writes — in which case regenerate, and read the diff before committing it.
 
+That path refreshes the *content* of sheets that already exist. It cannot bootstrap a new or deleted
+one: `crates/fixtures/src/lib.rs` reaches each file with `include_str!`, so a file named there and
+missing from disk is a compile error in a crate `crates/core` depends on, before any test runs. To
+add a sheet, or to restore a deleted one, write the file first — a `touch` is enough, the
+regeneration then fills it.
+
 ## The lockstep rule
 
 Every file here is named once per language: `crates/fixtures/src/lib.rs` (`ALL_MAGE_SHEETS`) for
 Rust, `packages/fixtures/src/index.ts` (`MAGE_SHEETS`) for TypeScript. Both carry a test that fails
 when this directory and the names in that module disagree, and `scripts/mageSheetFixtures.test.ts`
 checks the naming rule, the marker line, the absence of a password, and that every file is listed in
-this README. So adding a fixture is: add it to the table in `crates/core/tests/mage_sheet_fixtures.rs`'s
-source, regenerate, name it in both modules, add a row above, run the tests.
+this README. So adding a fixture is: `touch` the file here, add its const to `ALL_MAGE_SHEETS` with
+its source report and unit ids, regenerate, name it in `packages/fixtures/src/index.ts` too, add a
+row to the table above, and run the tests.

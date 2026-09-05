@@ -61,12 +61,17 @@ describe("the committed mage sheets", () => {
     }
   });
 
+  // The same shape `scripts/mageSheetFixtures.ts`'s MAGE_SHEET_NAME allows - any ruleset, any
+  // version, a dashed variant - so a fixture the directory guard accepts cannot fail here with a
+  // message that blames the filename rather than this test.
   it("keys follow the file", () => {
     for (const [key, file] of Object.entries(MAGE_SHEETS)) {
-      const match = file.match(/^mages-neworigins-3\.0\.0-g(\d+)-f(\d+)-t(\d+)(?:-([a-z]+))?\.txt$/);
+      const match = file.match(
+        /^mages-[a-z]+-\d+\.\d+\.\d+-g(\d+)-f(\d+)-t(\d+)(?:-([a-z][a-z0-9-]*))?\.txt$/
+      );
       expect(match, `${file} should match the expected pattern`).not.toBeNull();
       const [, g, f, t, variant] = match as RegExpMatchArray;
-      expect(key).toBe(`g${g}f${f}t${t}${variant ?? ""}`);
+      expect(key).toBe(`g${g}f${f}t${t}${(variant ?? "").replace(/-/gu, "")}`);
     }
   });
 });

@@ -72,4 +72,12 @@ describe("the mage sheet fixtures directory", () => {
     }
     expect(duplicates).toEqual([]);
   });
+
+  it("tells a dashed variant apart from a longer turn", () => {
+    const asVariant = parseMageSheetName("mages-neworigins-3.0.0-g7-f39-t18-a-b.txt");
+    expect(asVariant).not.toBeNull();
+    expect(duplicateMageSheetKey(asVariant!)).not.toBe(
+      duplicateMageSheetKey({ ...asVariant!, turn: "18-a", variant: "b" })
+    );
+  });
 });

@@ -28,7 +28,12 @@ export function parseMageSheetName(name: string): ParsedMageSheetName | null {
   return { ruleset, version, game, faction, turn, variant: variant ?? null };
 }
 
-/** The key that makes two mage sheets duplicates: same game, faction, turn and variant. */
+/**
+ * The key that makes two mage sheets duplicates: same game, faction, turn and variant.
+ *
+ * Joined on a character no field can contain, because a variant may contain `-`: joined on `-`,
+ * turn `18` variant `a-b` and turn `18-a` variant `b` would collide.
+ */
 export function duplicateMageSheetKey(parsed: ParsedMageSheetName): string {
-  return `g${parsed.game}-f${parsed.faction}-t${parsed.turn}-${parsed.variant ?? ""}`;
+  return [parsed.game, parsed.faction, parsed.turn, parsed.variant ?? ""].join("\u0000");
 }

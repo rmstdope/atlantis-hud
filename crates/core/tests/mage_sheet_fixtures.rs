@@ -4,7 +4,9 @@
 //! That is the whole answer to the one risk in committing generated data: if the exporter's output
 //! ever changes, these fixtures go red rather than quietly describing a format the code no longer
 //! writes. Set `UPDATE_MAGE_SHEET_FIXTURES=1` to write the files instead of asserting - which is
-//! also how they came into existence.
+//! also how they came into existence. That refreshes content only: `atlantis_hud_fixtures` reaches
+//! each file with `include_str!`, so a named file missing from disk fails to compile before this
+//! test can run, and has to be created empty first.
 //!
 //! Fixtures are read with `read_to_string`, never `include_str!`: the latter bakes content in at
 //! compile time, so a run that has just rewritten a file would compare the new file with the old
@@ -40,8 +42,9 @@ fn every_committed_mage_sheet_matches_a_fresh_export() {
         }
         let committed = std::fs::read_to_string(&path).unwrap_or_else(|error| {
             panic!(
-                "{} should exist and be readable: {error}. Regenerate with \
-                 UPDATE_MAGE_SHEET_FIXTURES=1 cargo test -p atlantis-hud-core --test mage_sheet_fixtures",
+                "{} should exist and be readable: {error}. A named-but-missing file has to be \
+                 created empty before UPDATE_MAGE_SHEET_FIXTURES=1 can fill it - see \
+                 tests/fixtures/mage-sheets/README.md",
                 path.display()
             )
         });
