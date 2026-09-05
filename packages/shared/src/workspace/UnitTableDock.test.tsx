@@ -12,7 +12,14 @@ import type {
 } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
-import { DEFAULT_COLUMN_SHARES, silverKey, UNIT_COLUMNS, unitRowKey, type UnitColumn } from "../unitTable";
+import {
+  DEFAULT_COLUMN_SHARES,
+  allColumnsShown,
+  silverKey,
+  UNIT_COLUMNS,
+  unitRowKey,
+  type UnitColumn
+} from "../unitTable";
 import { renderWithStoreState, restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
@@ -1739,5 +1746,44 @@ describe("picking several rows (ah-1mpx.4)", () => {
     expect(one).not.toContain('data-testid="unit-bulk-line"');
     expect(two).toContain('data-testid="unit-bulk-line"');
     expect(two).toContain("2 units picked.");
+  });
+});
+
+describe("hidden columns (ah-20di)", () => {
+  afterEach(restoreStoresForTest);
+
+  const withUnits = () =>
+    hex({
+      region: region({ units: [unit({ unitId: "1", own: true })] }),
+      ownUnitCount: 1,
+      foreignUnitCount: 0
+    });
+
+  it("a hidden column is absent from the header and from every row", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock hex={withUnits()} preview={null} />,
+      useWorkspaceStore,
+      { unitColumnsShown: { ...allColumnsShown(), structure: false } }
+    );
+
+    expect(markup).not.toContain(">Structure<");
+    expect(markup).toContain(">Items<");
+    expect((markup.match(/<col\b/g) ?? []).length).toBe(UNIT_COLUMNS.length - 1);
+
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length - 1);
+    expect(markup).not.toContain('data-testid="column-reorder-structure"');
+  });
+
+  it("the last drawn column carries no splitter when the columns after it are hidden", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock hex={withUnits()} preview={null} />,
+      useWorkspaceStore,
+      { unitColumnsShown: { ...allColumnsShown(), silver: false } }
+    );
+
+    expect(markup).not.toContain('data-testid="column-splitter-longOrder-silver"');
+    expect(markup).not.toContain('data-testid="column-splitter-silver-');
+    expect(markup).toContain('data-testid="column-splitter-structure-longOrder"');
   });
 });

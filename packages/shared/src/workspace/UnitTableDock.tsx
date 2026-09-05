@@ -37,6 +37,10 @@ import {
   filterUnits,
   rowHeightAt,
   sharesFor,
+  shareScaleFor,
+  shownColumns,
+  mergeShownOrder,
+  sortAfterHiding,
   sortUnits,
   windowRange,
   COLUMN_LABELS,
@@ -286,6 +290,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   // The order everything below draws in - the colgroup, the header and every row alike, so the
   // three cannot fall out of step (ah-1owr.3).
   const order = useMemo(() => orderOf(storedColumnOrder), [storedColumnOrder]);
+  const columnsShown = useWorkspaceStore((state) => state.unitColumnsShown);
+  // The order actually drawn: the hidden columns taken out (ah-20di). `order` stays the unit of
+  // storage and of a reorder commit, so hiding a column never rewrites the stored order.
+  const visibleOrder = useMemo(() => shownColumns(order, columnsShown), [order, columnsShown]);
   // The `<col>` elements a drag writes to directly, and the table it measures a share against.
   const colRefs = useRef<Partial<Record<UnitColumn, HTMLTableColElement | null>>>({});
   const tableRef = useRef<HTMLTableElement | null>(null);
@@ -379,6 +387,13 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   }, [source]);
 
   /**
+   * The sort actually applied: one on a hidden column falls back to `name` (ah-20di). Derived per
+   * render rather than written back to `sort`, so showing the column again restores the sort it
+   * had - and the header that would change it back is off screen while it is hidden.
+   */
+  const effectiveSort = useMemo(() => sortAfterHiding(sort, columnsShown), [sort, columnsShown]);
+
+  /**
    * `All my units` with the whole report's preview folded in - and **only** when that is the source
    * on screen (`ah-tguk`).
    *
@@ -442,7 +457,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   // Only asked for when the table sorts on it: every other arrangement would read the document
   // once per unit for an answer nothing compares.
   const longOrders = useMemo(() => {
-    if (sort.column !== "longOrder" || !getLongOrder) {
+    if (effectiveSort.column !== "longOrder" || !getLongOrder) {
       return NO_LONG_ORDERS;
     }
     return new Map(
@@ -455,10 +470,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           getLongOrder(entry.unitId, entry.regionId)
         ])
     );
-  }, [units, sort.column, getLongOrder]);
+  }, [units, effectiveSort.column, getLongOrder]);
   // Same bargain as `longOrders` above: built only when the table actually sorts on it.
   const silverByUnit = useMemo(() => {
-    if (sort.column !== "silver" || !getSilver) {
+    if (effectiveSort.column !== "silver" || !getSilver) {
       return NO_SILVER;
     }
     return new Map(
@@ -471,18 +486,18 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           silverShown(getSilver(entry.unitId, entry.regionId), countUpkeep)
         ])
     );
-  }, [units, sort.column, getSilver, countUpkeep]);
+  }, [units, effectiveSort.column, getSilver, countUpkeep]);
   const visible = useMemo(
     () =>
       sortUnits(
         filterUnits(units, filter, structures, (unit) => unitSkillsCell(unit, derivedSkills)),
-        sort,
+        effectiveSort,
         structures,
         longOrders,
         silverByUnit,
         sourced.seen
       ),
-    [units, filter, sort, structures, longOrders, silverByUnit, sourced.seen, derivedSkills]
+    [units, filter, effectiveSort, structures, longOrders, silverByUnit, sourced.seen, derivedSkills]
   );
   /** The unit numbers the table is drawing, in the order it is drawing them. */
   const rowKeys = useMemo(
@@ -605,7 +620,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     head,
     selectedIndex,
     regionId,
-    sort,
+    effectiveSort,
     filter,
     visible.length,
     viewportHeight,
@@ -815,16 +830,18 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   };
 
   /** The columns actually drawn, the table's own and the source's, in render order. */
-  const drawn = useMemo(() => drawnColumnsFor(order, extras), [order, extras]);
+  const drawn = useMemo(() => drawnColumnsFor(visibleOrder, extras), [visibleOrder, extras]);
   /** What the extra columns take, which is what the rest has to be scaled back to leave. */
   const extraShare = extras.reduce((total, column) => total + EXTRA_COLUMN_SHARES[column], 0);
   const drawnShares: ColumnShares = useMemo(
-    () => sharesFor(order, columnShares, extraShare),
-    [order, columnShares, extraShare]
+    () => sharesFor(visibleOrder, columnShares, extraShare),
+    [visibleOrder, columnShares, extraShare]
   );
   // What one stored share is worth on screen, so a resize or a reorder measures against the table
   // the columns are actually laid out in rather than the whole of it.
-  const shareScale = 1 - extraShare;
+  // With a column hidden, `sharesFor` renormalises what is drawn, so a scale of `1 - extraShare`
+  // would make every drag overshoot - smoothly enough to read as a feel problem rather than a bug.
+  const shareScale = shareScaleFor(visibleOrder, columnShares, extraShare);
 
   const stale = hex?.knowledge === "stale";
   // A stale hex's count would be a lie the moment it left the model: a hex nobody sees carries no
@@ -1345,18 +1362,18 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                       <ExtraTh
                         key={`extra-${entry.column}`}
                         column={entry.column}
-                        sort={sort}
+                        sort={effectiveSort}
                         onSort={sortByColumn}
                       />
                     );
                   }
                   const column = entry.column;
-                  const index = order.indexOf(column);
+                  const index = visibleOrder.indexOf(column);
                   return (
                     <ColumnHeaderCell
                       key={column}
                       column={column}
-                      sort={sort}
+                      sort={effectiveSort}
                       onSort={sortByColumn}
                       onToggleGroupOwn={() =>
                         setSort((current) => ({ ...current, groupOwnFirst: !current.groupOwnFirst }))
@@ -1366,10 +1383,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                       // a handle there would sit on top of the group-own-units toggle and swallow
                       // its clicks. It is a fixed marker column, not one anybody resizes.
                       splitter={
-                        column !== "own" && index < order.length - 1 ? (
+                        column !== "own" && index < visibleOrder.length - 1 ? (
                           <ColumnSplitter
                             left={column}
-                            right={order[index + 1]}
+                            right={visibleOrder[index + 1]}
                             columns={colRefs}
                             table={tableRef}
                             shares={columnShares}
@@ -1384,12 +1401,14 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                         column !== "own" ? (
                           <ColumnReorderHandle
                             column={column}
-                            order={order}
+                            order={visibleOrder}
                             shares={columnShares}
                             scale={shareScale}
                             table={tableRef}
                             overlay={overlayRef}
-                            onCommit={setColumnOrder}
+                            // A drag can only travel across columns the player can see; a hidden
+                            // column keeps the array index it had in the stored order.
+                            onCommit={(next) => setColumnOrder(mergeShownOrder(order, next))}
                           />
                         ) : null
                       }
