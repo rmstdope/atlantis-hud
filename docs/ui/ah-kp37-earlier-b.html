@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-kp37 — B: a turn dialog you can fetch several from</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#d9a441; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1280px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  b.opt { color:var(--brass); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+        font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; }
+  .ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+  .ui .field { margin-bottom:9px; }
+  .ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+     color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+  .ui input:disabled { opacity:.5; }
+  .ui .hint { color:var(--ink-dim); margin:6px 0 8px; }
+  .ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:4px 10px; display:inline-block; }
+  .ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+  .ui .btn.off { opacity:.45; }
+  .ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
+  .ui .err { color:var(--danger); margin-top:2px; }
+  .ui .soft { color:var(--ink-soft); margin-top:2px; }
+  .hdr { display:flex; align-items:center; gap:9px; justify-content:flex-end; background:var(--panel);
+         border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .hdr .chip { border:1px solid var(--edge); background:var(--raised); border-radius:4px; padding:3px 9px; color:var(--ink); }
+  .hdr .chip.brassy { border-color:var(--brass); color:var(--brass); }
+  .hdr .chip.dim { color:var(--ink-soft); opacity:.5; }
+  .pop { margin-top:6px; margin-left:auto; width:300px; background:#0b0f14; border:1px solid var(--edge);
+         border-radius:6px; padding:9px 10px; font-family:system-ui,sans-serif; font-size:12px; color:var(--ink-soft); }
+  .pop b { color:var(--ink); font-weight:600; }
+  .pop .item { display:block; width:100%; text-align:left; border:1px solid var(--edge); background:var(--panel);
+     color:var(--ink); border-radius:4px; padding:5px 8px; margin:8px 0; }
+  .pop .item.brassy { border-color:var(--brass); color:var(--brass); }
+  .pop .item.off { opacity:.45; }
+  .status { font-family:system-ui,sans-serif; font-size:12px; background:var(--panel); border:1px solid var(--edge);
+     border-top:none; border-radius:0 0 6px 6px; padding:6px 10px; color:var(--ink-soft); }
+  .status.ok { color:var(--ok); } .status.bad { color:var(--danger); } .status.warn { color:var(--warn); }
+  .caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; }
+  .tag { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+         font-family:system-ui,sans-serif; display:block; margin:12px 0 5px; }
+  .fixed { border-left:2px solid var(--brass); padding-left:12px; margin-top:14px; color:var(--ink-soft); font-size:13px; max-width:96ch; }
+  .modal { background:rgba(0,0,0,.45); border-radius:6px; padding:14px; }
+  table { border-collapse:collapse; width:100%; font-family:system-ui,sans-serif; font-size:12.5px; margin-top:8px; }
+  td,th { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { color:var(--brass); font-weight:600; }
+  td.w { color:var(--ink); }
+
+  .pop .row { display:flex; align-items:center; gap:8px; width:100%; text-align:left; border:1px solid transparent;
+     background:transparent; color:var(--ink); border-radius:4px; padding:4px 6px; }
+  .pop .row.sel { background:#1c232e; }
+  .pop .row .n { font-variant-numeric:tabular-nums; color:var(--ink); width:22px; }
+  .pop .row .season { color:var(--ink-dim); }
+  .pop .row .mark { margin-left:auto; font-size:11px; color:var(--ink-dim); text-transform:lowercase; }
+  .pop .row .mark.on { color:var(--ok); }
+  .pop .row .mark.busy { color:var(--brass); }
+  .pop .back { color:var(--brass); font-size:11.5px; background:none; border:none; padding:0 0 6px 0; display:block; }
+  .pop .head { color:var(--brass); font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase;
+     padding-bottom:5px; border-bottom:1px solid var(--edge); margin-bottom:5px; }
+  .pop .foot { border-top:1px solid var(--edge); margin-top:6px; padding-top:6px; color:var(--ink-dim); font-size:11.5px; }
+  .dlg { width:340px; margin:0 auto; background:var(--panel); border:1px solid var(--edge); border-radius:6px;
+     padding:13px; font-family:system-ui,sans-serif; font-size:12.5px; }
+  .dlg h4 { font-size:14px; color:var(--ink); margin-bottom:3px; font-family:system-ui,sans-serif; }
+  .dlg .sub { color:var(--ink-soft); font-size:11.5px; margin-bottom:9px; }
+  .dlg ul { list-style:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-kp37 — <span>Option B: a dialog, and you can take several</span></h1>
+  <p>Same bead as <b class="opt">A</b>: the turns a New Age world still holds, pulled into the game's stored
+  history so they can be compared against. An earlier turn is <b>stored, never shown</b>.</p>
+  <p>In <b class="opt">B</b> the popover item opens a <b>modal dialog</b>. It stays open while turns are fetched,
+  so a run of missing turns is back-filled in one visit: click 78, watch it go green, click 79. There is a
+  <b>Fetch all missing</b> button for the common case of "I have none of them". Compare with
+  <b class="opt">A</b>, where the list lives in the popover and one click closes it.</p>
+</header>
+<main>
+
+<h3 class="sec">1 · Getting to it</h3>
+<p>The same second popover item as A. The difference starts when you press it.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>the popover</em>Identical to A</h2>
+    <div class="hdr"><span class="chip brassy">New Age: Arcanum — Merchant Guild (27)</span></div>
+    <div class="pop">
+      <b>Signed in to New Age: Arcanum</b> as Merchant Guild (27).
+      <button class="item brassy">Fetch this turn&rsquo;s report</button>
+      <button class="item">Fetch earlier turns&hellip;</button>
+      Nothing is stored: closing Atlantis HUD signs you out.
+      <div style="text-align:right"><span class="btn" style="font-size:11.5px">Sign out</span></div>
+    </div>
+    <p class="caption">Plural, because the dialog behind it takes more than one.</p>
+  </div>
+  <div class="card">
+    <h2><em>waiting</em>Asking the world</h2>
+    <p class="concept">The dialog opens straight away and fills in — it never appears late.</p>
+    <div class="modal">
+      <div class="dlg">
+        <h4>Earlier turns on Arcanum</h4>
+        <p class="sub">Asking Arcanum which turns it holds&hellip;</p>
+        <div class="ui" style="border:none;background:none;padding:0"><div class="foot"><span class="btn">Close</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">2 · The list</h3>
+<p>Wider than a popover, so the season and what is already held both fit without truncation.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>the usual case</em>Six turns, two already stored</h2>
+    <div class="modal">
+      <div class="dlg">
+        <h4>Earlier turns on Arcanum</h4>
+        <p class="sub">A fetched turn is stored for comparison. What is on screen does not change.</p>
+        <ul>
+          <li><button class="row"><span class="n">78</span><span class="season">&mdash;</span><span class="mark">fetch</span></button></li>
+          <li><button class="row"><span class="n">79</span><span class="season">&mdash;</span><span class="mark">fetch</span></button></li>
+          <li><button class="row"><span class="n">80</span><span class="season">&mdash;</span><span class="mark">fetch</span></button></li>
+          <li><button class="row"><span class="n">81</span><span class="season">&mdash;</span><span class="mark">fetch</span></button></li>
+          <li><button class="row"><span class="n">82</span><span class="season">Winter, year 5</span><span class="mark on">stored</span></button></li>
+          <li><button class="row"><span class="n">83</span><span class="season">Spring, year 6</span><span class="mark on">playing</span></button></li>
+        </ul>
+        <div class="ui" style="border:none;background:none;padding:0"><div class="foot">
+          <span class="btn">Close</span><span class="btn primary">Fetch all 4 missing</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>in flight</em>Fetching, one after another</h2>
+    <p class="concept">Rows tick over in place. The dialog stays; nothing else on screen moves.</p>
+    <div class="modal">
+      <div class="dlg">
+        <h4>Earlier turns on Arcanum</h4>
+        <p class="sub">A fetched turn is stored for comparison. What is on screen does not change.</p>
+        <ul>
+          <li><button class="row"><span class="n">78</span><span class="season">Winter, year 4</span><span class="mark on">stored</span></button></li>
+          <li><button class="row sel"><span class="n">79</span><span class="season">&mdash;</span><span class="mark busy">fetching&hellip;</span></button></li>
+          <li><button class="row"><span class="n">80</span><span class="season">&mdash;</span><span class="mark">fetch</span></button></li>
+          <li><button class="row"><span class="n">81</span><span class="season">&mdash;</span><span class="mark">fetch</span></button></li>
+          <li><button class="row"><span class="n">82</span><span class="season">Winter, year 5</span><span class="mark on">stored</span></button></li>
+          <li><button class="row"><span class="n">83</span><span class="season">Spring, year 6</span><span class="mark on">playing</span></button></li>
+        </ul>
+        <div class="ui" style="border:none;background:none;padding:0"><div class="foot">
+          <span class="btn">Close</span><span class="btn primary off">Fetching 2 of 4&hellip;</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">3 · When one of them will not come</h3>
+<p>A run of four can half-succeed. The row that failed says so and the run carries on; nothing is thrown away.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>one failed</em>The others still landed</h2>
+    <div class="modal">
+      <div class="dlg">
+        <h4>Earlier turns on Arcanum</h4>
+        <p class="sub">A fetched turn is stored for comparison. What is on screen does not change.</p>
+        <ul>
+          <li><button class="row"><span class="n">78</span><span class="season">Winter, year 4</span><span class="mark on">stored</span></button></li>
+          <li><button class="row"><span class="n">79</span><span class="season">&mdash;</span><span class="mark" style="color:var(--danger)">no report</span></button></li>
+          <li><button class="row"><span class="n">80</span><span class="season">Summer, year 5</span><span class="mark on">stored</span></button></li>
+          <li><button class="row"><span class="n">81</span><span class="season">Autumn, year 5</span><span class="mark on">stored</span></button></li>
+          <li><button class="row"><span class="n">82</span><span class="season">Winter, year 5</span><span class="mark on">stored</span></button></li>
+          <li><button class="row"><span class="n">83</span><span class="season">Spring, year 6</span><span class="mark on">playing</span></button></li>
+        </ul>
+        <div class="ui" style="border:none;background:none;padding:0"><div class="foot">
+          <span class="btn">Close</span><span class="btn primary">Fetch 1 missing</span></div></div>
+      </div>
+    </div>
+    <p class="caption">The row keeps its own short reason; the status line behind the dialog gets the long one
+    when the dialog closes: <span style="color:var(--danger)">turn 79 could not be fetched: the world has no
+    report for you yet.</span></p>
+  </div>
+  <div class="card">
+    <h2><em>nothing there</em> / <em>list failed</em></h2>
+    <p class="concept">Both stay inside the dialog — it is already open, so closing it to say so would flash.</p>
+    <div class="modal" style="margin-bottom:14px">
+      <div class="dlg">
+        <h4>Earlier turns on Arcanum</h4>
+        <p class="sub">Arcanum holds no earlier turns for you.</p>
+        <div class="ui" style="border:none;background:none;padding:0"><div class="foot"><span class="btn">Close</span></div></div>
+      </div>
+    </div>
+    <div class="modal">
+      <div class="dlg">
+        <h4>Earlier turns on Arcanum</h4>
+        <p class="sub" style="color:var(--danger)">Arcanum would not say which turns it holds: could not reach
+        atlantis-newage.com.</p>
+        <div class="ui" style="border:none;background:none;padding:0"><div class="foot">
+          <span class="btn">Close</span><span class="btn primary">Try again</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">4 · E1 — the session runs out</h3>
+<div class="cards2">
+  <div class="card">
+    <h2><em>E1</em>The same reauth dialog, over this one</h2>
+    <div class="modal">
+      <div class="ui" style="width:320px;margin:0 auto">
+        <b style="font-family:system-ui">Fetch an earlier turn</b>
+        <div class="err" style="margin:5px 0 8px">Your session has ended. Sign in again to continue.</div>
+        <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+        <div class="field"><label>Password</label><input type="password" value="&bull;&bull;&bull;&bull;&bull;&bull;"></div>
+        <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Sign in and fetch</span></div>
+      </div>
+    </div>
+    <p class="caption">Two modals at once is the one awkward part of B: the turn dialog is behind this one and
+    comes back when it is answered. Cancel drops both.</p>
+  </div>
+  <div class="card">
+    <h2><em>what B costs, and what it buys</em></h2>
+    <div class="fixed" style="margin-top:0">
+      <p><b>Buys:</b> back-filling a whole game is one visit and one button. Room for the season and the mark
+      without truncation, and a per-row failure that does not stop the rest.</p>
+      <p style="margin-top:8px"><b>Costs:</b> a new modal surface — focus trap, Escape, focus return, and the
+      awkward two-modal case above. A run of fetches that can half-fail needs its own summary. Roughly twice
+      the work of A.</p>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">5 · Chosen (2026-09-05), and the three things still open</h3>
+<p>You picked <b class="opt">B</b>. A stored turn stays clickable and re-fetches; the working turn is listed and
+marked <b>playing</b>; nothing opens itself when a turn lands — the status line is the whole report. What is
+still undecided is what happens to a <b>run</b> of fetches when it is interrupted.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>open 1</em>Escape, mid-run</h2>
+    <p class="concept">Four turns asked for, two landed, the third is in the air, and you press Escape.</p>
+    <div class="modal">
+      <div class="dlg">
+        <h4>Earlier turns on Arcanum</h4>
+        <p class="sub">A fetched turn is stored for comparison. What is on screen does not change.</p>
+        <ul>
+          <li><button class="row"><span class="n">78</span><span class="season">Winter, year 4</span><span class="mark on">stored</span></button></li>
+          <li><button class="row"><span class="n">79</span><span class="season">Spring, year 5</span><span class="mark on">stored</span></button></li>
+          <li><button class="row sel"><span class="n">80</span><span class="season">&mdash;</span><span class="mark busy">fetching&hellip;</span></button></li>
+          <li><button class="row"><span class="n">81</span><span class="season">&mdash;</span><span class="mark">fetch</span></button></li>
+        </ul>
+        <div class="ui" style="border:none;background:none;padding:0"><div class="foot">
+          <span class="btn">Close</span><span class="btn primary off">Fetching 3 of 4&hellip;</span></div></div>
+      </div>
+    </div>
+    <p class="caption">78 and 79 are already written and cannot be taken back. The question is whether Escape
+    is <b>stop and close</b> or whether the button first becomes <b>Stop</b> and Escape does nothing until you
+    press it.</p>
+  </div>
+  <div class="card">
+    <h2><em>open 2</em>The session runs out mid-run</h2>
+    <p class="concept">Turn 80 comes back 401. Two turns are already stored.</p>
+    <div class="modal">
+      <div class="ui" style="width:300px;margin:0 auto">
+        <b style="font-family:system-ui">Fetch an earlier turn</b>
+        <div class="err" style="margin:5px 0 8px">Your session has ended. Sign in again to continue.</div>
+        <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+        <div class="field"><label>Password</label><input type="password" value="&bull;&bull;&bull;&bull;&bull;&bull;"></div>
+        <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Sign in and fetch</span></div>
+      </div>
+    </div>
+    <p class="caption">After signing in: does the run <b>pick up where it stopped</b> (80, then 81), or does it
+    fetch only the turn that failed and leave you to press the button again?</p>
+  </div>
+  <div class="card">
+    <h2><em>open 3</em>What the run says when it ends</h2>
+    <p class="concept">Three of four landed. The rows already say which; the question is whether the status line
+    says anything at all.</p>
+    <div class="hdr"><span class="chip brassy">New Age: Arcanum — Merchant Guild (27)</span></div>
+    <div class="status warn">3 turns stored for history, 1 could not be fetched; still showing turn 83.</div>
+    <p class="caption" style="margin-top:14px">The alternative: no summary. The dialog stays open with the rows
+    telling the story, and the status line is only written when you fetch one turn on its own.</p>
+  </div>
+</div>
+
+<h3 class="sec">6 · One correction to the drawings above</h3>
+<div class="fixed">
+  <p>The world's turn list is <b>numbers and nothing else</b> — it says which turns it holds, not what season
+  each was. A season is only known for a turn the game has already parsed and stored, so a row that has not
+  been fetched shows <b>&mdash;</b> where the season would be, and fills it in once the turn lands. That is why
+  the rows above are drawn that way; the first draft of this page showed a season on every row, which the world
+  cannot supply.</p>
+</div>
+</main>
+
+</body>
+</html>
