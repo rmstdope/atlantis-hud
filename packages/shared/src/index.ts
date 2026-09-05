@@ -20,6 +20,8 @@ export * from "./alliedMagesStore";
 export * from "./studyPlans";
 export * from "./studySchedule";
 export * from "./studyCell";
+export * from "./studyShelter";
+export * from "./studyTeaching";
 export * from "./studyNote";
 export * from "./studyPlansStore";
 export * from "./hexNotes";

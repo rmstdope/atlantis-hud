@@ -277,12 +277,22 @@ function withGoals(
   plan: StudyPlanRecord & { skill?: string | null; targetLevel?: number | null }
 ): StudyPlanRecord {
   const { skill, targetLevel, ...rest } = plan;
-  if (rest.goals) {
-    return rest;
-  }
+  const goals =
+    rest.goals ??
+    (skill ? [{ kind: "study" as const, skill, targetLevel: targetLevel ?? null }] : []);
+  // A goal written before ah-lyg6.3 carries no discriminant. Same courtesy as the line above, and
+  // deletable on the same day: study plans were never in a release.
   return {
     ...rest,
-    goals: skill ? [{ skill, targetLevel: targetLevel ?? null }] : []
+    goals: goals.map((goal) =>
+      "kind" in goal
+        ? goal
+        : {
+            kind: "study" as const,
+            skill: (goal as { skill: string }).skill,
+            targetLevel: (goal as { targetLevel: number | null }).targetLevel ?? null
+          }
+    )
   };
 }
 

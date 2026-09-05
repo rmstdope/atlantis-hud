@@ -13,6 +13,13 @@ import { loadReport } from "./gameSetup";
 /** "Six of Seven", a mage of the player's faction: force 4 (325) is their highest magic skill. */
 const MAGE = "881";
 
+/**
+ * "Two of Seven", a mage of the same faction in the same hex. He can begin gate lore and holds
+ * none of it; Six of Seven holds gate lore 1, which is the strictly greater level
+ * `rules/skills_teaching` requires of a teacher.
+ */
+const STUDENT = "12878";
+
 test("F4 opens the planner, arrows walk it, and Escape closes it", async ({ page }) => {
   await loadReport(page);
 
@@ -135,4 +142,86 @@ test("Escape closes the cell popover and leaves the pane open", async ({ page })
 
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("study-planner-dialog")).toHaveCount(0);
+});
+
+/**
+ * Teaching, and the warnings strip (ah-lyg6.3).
+ *
+ * Everything asserted here is a click, a focus move or a reload - the three things a
+ * `renderToStaticMarkup` test in `packages/shared` cannot reach. The wording of every notice and
+ * every teaching rule is pinned in `studyTeaching.test.ts` instead.
+ */
+test("a teach month is planned in the popover, warned about in the strip, and survives a reload", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  // The student first: `rules/skills_teaching` teaches "whatever skill they are studying that
+  // month", so a mage with nothing planned is nobody's student - and the teacher must hold that
+  // skill at a strictly greater level, which is why the student studies gate lore.
+  const studentCell = page.getByTestId(`study-schedule-cell-${STUDENT}-72`);
+  await studentCell.click();
+  await page.getByTestId("study-schedule-choice-GATE").click();
+  await page.getByTestId("study-schedule-set").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await expect(studentCell).toContainText("gate lore");
+
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  await cell.click();
+  const popover = page.getByTestId("study-schedule-popover");
+  await expect(popover).toBeVisible();
+
+  // Every mage the planner can see is offered, with a reason on the ones he cannot teach.
+  const teach = page.getByTestId("study-schedule-group-teach");
+  await expect(teach).toBeVisible();
+  await page.getByTestId(`study-schedule-teach-${STUDENT}`).click();
+  await page.getByTestId("study-schedule-set").click();
+  await expect(popover).toHaveCount(0);
+  await expect(cell).toContainText("TEACH");
+  // And the month he is taught is worth two (`rules/skills_teaching`).
+  await expect(studentCell).toContainText("×2");
+
+  // Nothing in this plan is wrong, and the strip says so rather than disappearing - the pane must
+  // not change height as the plan is edited. The warning path is the case below.
+  await expect(page.getByTestId("study-planner-warnings-none")).toContainText(
+    "Nothing to warn about in this plan."
+  );
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("TEACH");
+});
+
+/**
+ * The warnings strip, on a plan that is actually wrong (ah-lyg6.3).
+ *
+ * One write, so nothing here depends on two saves landing in order: Six of Seven is force 4 and
+ * stands in no building, and `rules/magic_skills` cuts a study above level 2 in half without one.
+ * The click and the focus move are the two things `renderToStaticMarkup` cannot reach.
+ */
+test("the strip counts a warning, opens on a click, and focuses the cell it names", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await page.getByTestId("study-schedule-choice-FORC").click();
+  await page.getByTestId("study-schedule-set").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("×½");
+
+  const toggle = page.getByTestId("study-planner-warnings-toggle");
+  await expect(toggle).toContainText("warning");
+  await toggle.click();
+  await expect(page.getByTestId("study-planner-warnings")).toBeVisible();
+  await page.getByTestId("study-planner-warning-0").click();
+  await expect(page.locator("[data-cell]:focus")).toHaveCount(1);
 });

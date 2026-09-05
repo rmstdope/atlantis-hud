@@ -160,3 +160,29 @@ describe("StudyPlannerDetail", () => {
     expect(heldBack).not.toContain("Nothing he holds is at a prerequisite");
   });
 });
+
+/**
+ * K1: the warnings strip belongs to the Schedule view alone. The All mages view is not given a
+ * strip it never had, and neither of its two components renders one.
+ */
+describe("the All mages view carries no warnings strip", () => {
+  it("shows neither the toggle nor the empty line", () => {
+    const list = renderToStaticMarkup(
+      <StudyPlannerList groups={GROUPS} picked={mageBy("881")} onPick={() => {}} onMove={() => false} />
+    );
+    const detail = renderToStaticMarkup(
+      <StudyPlannerDetail
+        mage={mageBy("881")}
+        label={label}
+        tree={tree}
+        plan={null}
+        saveError={null}
+        onSaveNote={() => {}}
+      />
+    );
+
+    for (const markup of [list, detail]) {
+      expect(markup).not.toContain("study-planner-warnings");
+    }
+  });
+});

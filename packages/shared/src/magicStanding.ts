@@ -48,6 +48,11 @@ export type MageStanding = {
    */
   regionId: string;
   /**
+   * `unit.structureId` unchanged - null when he stands in the open. What `shelterSeats` looks the
+   * building up by; this module never resolves it to a kind.
+   */
+  structureId: string | null;
+  /**
    * True when he holds a magic skill other than `MANI`. False is an apprentice:
    * `rules/magic_apprentices` says manipulation makes an apprentice, who may use a mage's items
    * but cast no spell.
@@ -153,6 +158,7 @@ export function standingOf(
     unitId: unit.unitId,
     name: unit.name,
     regionId: unit.regionId,
+    structureId: unit.structureId,
     adept: [...levels.keys()].some((tag) => tag !== "MANI" && tree.byTag.has(tag)),
     byTag,
     counts,

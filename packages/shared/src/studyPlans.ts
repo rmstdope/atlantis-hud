@@ -61,7 +61,8 @@ export function keyOf(plan: StudyPlanRecord): StudyPlanKey {
  * Only the *front* of the list is dropped, and it stops at the first unsatisfied goal - a later
  * goal being incidentally satisfied does not remove it, because the player put it there in an
  * order. A goal with no `targetLevel` is one month and is never satisfied in advance
- * (`rules/study`).
+ * (`rules/study`), and neither is a teach goal: a month somebody decided to spend teaching is
+ * never satisfied by what anyone already knows (`rules/teach`).
  *
  * This is derived and is never written back. The stored queue is pruned only when the player next
  * edits that mage; a store that rewrote its rows on report load would be mutating itself behind a
@@ -74,6 +75,9 @@ export function remainingGoals(
   let index = 0;
   while (index < goals.length) {
     const goal = goals[index];
+    if (goal.kind === "teach") {
+      break;
+    }
     const satisfied =
       goal.targetLevel !== null && (levels.get(goal.skill) ?? 0) >= goal.targetLevel;
     if (!satisfied) {

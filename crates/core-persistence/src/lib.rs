@@ -26,7 +26,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 12;
+pub const CURRENT_SCHEMA_VERSION: u32 = 13;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -46,13 +46,14 @@ const MIGRATION_0010_ALLIED_MAGES: &str = include_str!("../migrations/0010_allie
 const MIGRATION_0011_STUDY_PLANS: &str = include_str!("../migrations/0011_study_plans.sql");
 const MIGRATION_0012_STUDY_PLAN_GOALS: &str =
     include_str!("../migrations/0012_study_plan_goals.sql");
+const MIGRATION_0013_STUDY_GOAL_KIND: &str = include_str!("../migrations/0013_study_goal_kind.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 12] = [
+const MIGRATIONS: [Migration; 13] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -100,6 +101,10 @@ const MIGRATIONS: [Migration; 12] = [
     Migration {
         version: 12,
         sql: MIGRATION_0012_STUDY_PLAN_GOALS,
+    },
+    Migration {
+        version: 13,
+        sql: MIGRATION_0013_STUDY_GOAL_KIND,
     },
 ];
 
@@ -3132,8 +3137,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 12,
-            "growing a study plan into a queue of goals added migration 12"
+            created.schema_version, 13,
+            "a goal becoming a tagged union added migration 13"
         );
     }
 
@@ -3634,7 +3639,7 @@ mod tests {
             unit_id: unit_id.to_string(),
             goals: skill
                 .map(|skill| {
-                    vec![StudyGoal {
+                    vec![StudyGoal::Study {
                         skill: skill.to_string(),
                         target_level,
                     }]
@@ -3643,6 +3648,44 @@ mod tests {
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-08-01T09:00:00Z".to_string(),
         }
+    }
+
+    /// A queue written before ah-lyg6.3 carries no `kind`, and serde's tagged enum refuses it.
+    /// Migration 0013 stamps the tag in; without it every stored plan would fail to deserialise.
+    #[test]
+    fn goals_written_before_the_kind_tag_are_stamped_as_studies() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
+
+        // Put the database back at schema 12, with a row in the shape 0012 wrote.
+        let connection = Connection::open(&created.database_path).expect("open");
+        connection
+            .execute_batch(
+                "DELETE FROM schema_migrations WHERE version >= 13;
+                 INSERT INTO study_plans
+                        (game_id, faction_id, unit_id, goals_json, comment, updated_at)
+                 VALUES ('faction-12', '21', '9001',
+                         '[{\"skill\":\"FORC\",\"targetLevel\":5}]', '', '2026-08-01T09:00:00Z');",
+            )
+            .expect("rewind and seed");
+        drop(connection);
+
+        open_game(dir.path(), &manifest.metadata.game_id, CREATED_AT).expect("reopen migrates");
+
+        let listed =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(
+            listed
+                .into_iter()
+                .map(|plan| plan.goals)
+                .collect::<Vec<_>>(),
+            vec![vec![StudyGoal::Study {
+                skill: "FORC".to_string(),
+                target_level: Some(5),
+            }]],
+            "an untagged goal reads back as the study it always was"
+        );
     }
 
     #[test]
@@ -3862,12 +3905,12 @@ mod tests {
                 .map(|plan| plan.goals.clone())
                 .collect::<Vec<_>>(),
             vec![
-                vec![StudyGoal {
+                vec![StudyGoal::Study {
                     skill: "FORC".to_string(),
                     target_level: Some(4),
                 }],
                 vec![],
-                vec![StudyGoal {
+                vec![StudyGoal::Study {
                     skill: "PATT".to_string(),
                     target_level: None,
                 }],
@@ -3889,15 +3932,15 @@ mod tests {
             faction_id: "21".to_string(),
             unit_id: "9001".to_string(),
             goals: vec![
-                StudyGoal {
+                StudyGoal::Study {
                     skill: "FORC".to_string(),
                     target_level: Some(5),
                 },
-                StudyGoal {
+                StudyGoal::Study {
                     skill: "PATT".to_string(),
                     target_level: None,
                 },
-                StudyGoal {
+                StudyGoal::Study {
                     skill: "SPIR".to_string(),
                     target_level: Some(3),
                 },

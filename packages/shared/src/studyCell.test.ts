@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
-import { cellMenu, cellWarning, goalsAfterClear, goalsAfterSet } from "./studyCell";
-import { projectMage, type ScheduleRow, type SkillPoints } from "./studySchedule";
+import { cellMenu, cellWarning, goalsAfterClear, goalsAfterPick, goalsAfterSet, goalsAfterTeach, teachWarning } from "./studyCell";
+import { projectAll, type ScheduleRow, type SkillPoints } from "./studySchedule";
+import type { StudyGoal } from "@atlantis/core-client";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -94,13 +95,21 @@ describe("cellWarning", () => {
 });
 
 /** A row projected from `start` and `goals`, as the Schedule draws it. */
-function rowOf(start: SkillPoints, goals: { skill: string; targetLevel: number | null }[]): ScheduleRow {
-  const { cells, standings } = projectMage({ start, goals, tree, turnCount: 6 });
+function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
+  const { cells, standings } = projectAll({
+    mages: [
+      { key: "21/2431", unitId: "2431", name: "Ereb", regionId: "1:7", structureId: "1", start, goals }
+    ],
+    tree,
+    turnCount: 6,
+    seats: new Map([["1:7/1", 1]])
+  }).get("21/2431") as { cells: ScheduleRow["cells"]; standings: SkillPoints[] };
   return {
     key: "21/2431",
     factionId: "21",
     unitId: "2431",
     name: "Ereb",
+    regionId: "1:7",
     summary: "",
     hasNote: false,
     goals,
@@ -113,60 +122,61 @@ function rowOf(start: SkillPoints, goals: { skill: string; targetLevel: number |
 
 describe("goalsAfterSet", () => {
   // force 3 at 270 reaches 4 on the first turn and 5 on the sixth.
-  const goals = [{ skill: "FORC", targetLevel: 5 }];
+  const goals = [{ kind: "study" as const, skill: "FORC", targetLevel: 5 }];
   const row = rowOf(at({ FORC: [3, 270] }), goals);
 
   it("truncates the running goal to the level he holds at that turn", () => {
-    expect(goalsAfterSet(goals, row, 2, { skill: "PATT", targetLevel: 3 })).toEqual([
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "PATT", targetLevel: 3 }
+    expect(goalsAfterSet(goals, row, 2, { kind: "study" as const, skill: "PATT", targetLevel: 3 })).toEqual([
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "PATT", targetLevel: 3 }
     ]);
   });
 
   it("drops the running goal entirely when the cell is its first turn", () => {
-    expect(goalsAfterSet(goals, row, 0, { skill: "PATT", targetLevel: 3 })).toEqual([
-      { skill: "PATT", targetLevel: 3 }
+    expect(goalsAfterSet(goals, row, 0, { kind: "study" as const, skill: "PATT", targetLevel: 3 })).toEqual([
+      { kind: "study" as const, skill: "PATT", targetLevel: 3 }
     ]);
   });
 
   it("drops everything after the cell", () => {
     const queue = [
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "PATT", targetLevel: 3 },
-      { skill: "SPIR", targetLevel: 2 }
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "PATT", targetLevel: 3 },
+      { kind: "study" as const, skill: "SPIR", targetLevel: 2 }
     ];
     const reflowed = rowOf(at({ FORC: [3, 270], PATT: [2, 100] }), queue);
 
-    expect(goalsAfterSet(queue, reflowed, 1, { skill: "SPIR", targetLevel: 1 })).toEqual([
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "SPIR", targetLevel: 1 }
+    expect(goalsAfterSet(queue, reflowed, 1, { kind: "study" as const, skill: "SPIR", targetLevel: 1 })).toEqual([
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "SPIR", targetLevel: 1 }
     ]);
   });
 
   it("simply appends on an idle cell", () => {
-    const short = rowOf(at({ FORC: [3, 270] }), [{ skill: "FORC", targetLevel: 4 }]);
+    const short = rowOf(at({ FORC: [3, 270] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }]);
 
     expect(
-      goalsAfterSet([{ skill: "FORC", targetLevel: 4 }], short, 3, {
+      goalsAfterSet([{ kind: "study" as const, skill: "FORC", targetLevel: 4 }], short, 3, {
+        kind: "study",
         skill: "PATT",
         targetLevel: 2
       })
     ).toEqual([
-      { skill: "FORC", targetLevel: 4 },
-      { skill: "PATT", targetLevel: 2 }
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+      { kind: "study" as const, skill: "PATT", targetLevel: 2 }
     ]);
   });
 });
 
 describe("goalsAfterClear", () => {
   const goals = [
-    { skill: "FORC", targetLevel: 5 },
-    { skill: "PATT", targetLevel: 3 }
+    { kind: "study" as const, skill: "FORC", targetLevel: 5 },
+    { kind: "study" as const, skill: "PATT", targetLevel: 3 }
   ];
   const row = rowOf(at({ FORC: [3, 270] }), goals);
 
   it("drops the tail and keeps what is drawn to the left", () => {
-    expect(goalsAfterClear(goals, row, 2)).toEqual([{ skill: "FORC", targetLevel: 4 }]);
+    expect(goalsAfterClear(goals, row, 2)).toEqual([{ kind: "study" as const, skill: "FORC", targetLevel: 4 }]);
   });
 
   it("empties the queue when the cell is the first goal's first turn", () => {
@@ -174,10 +184,126 @@ describe("goalsAfterClear", () => {
   });
 
   it("leaves an idle cell's queue alone", () => {
-    const short = rowOf(at({ FORC: [3, 270] }), [{ skill: "FORC", targetLevel: 4 }]);
+    const short = rowOf(at({ FORC: [3, 270] }), [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }]);
 
-    expect(goalsAfterClear([{ skill: "FORC", targetLevel: 4 }], short, 4)).toEqual([
-      { skill: "FORC", targetLevel: 4 }
+    expect(goalsAfterClear([{ kind: "study" as const, skill: "FORC", targetLevel: 4 }], short, 4)).toEqual([
+      { kind: "study" as const, skill: "FORC", targetLevel: 4 }
     ]);
+  });
+});
+
+describe("goalsAfterTeach", () => {
+  const forc: StudyGoal = { kind: "study", skill: "FORC", targetLevel: 5 };
+
+  it("inserts a teach month mid-goal and keeps the target behind it", () => {
+    const row = rowOf(at({ FORC: [3, 270] }), [forc]);
+
+    // Turn 1: one month of FORC has already been drawn to the left of the click.
+    expect(goalsAfterTeach([forc], row, 1, ["2517"])).toEqual([
+      { kind: "study", skill: "FORC", targetLevel: null },
+      { kind: "teach", students: ["2517"] },
+      forc
+    ]);
+  });
+
+  it("appends on an idle cell", () => {
+    const row = rowOf(at({ FORC: [3, 270] }), []);
+
+    expect(goalsAfterTeach([], row, 0, ["2517"])).toEqual([
+      { kind: "teach", students: ["2517"] }
+    ]);
+  });
+
+  it("replaces an existing teach goal rather than lengthening the plan", () => {
+    const goals: StudyGoal[] = [{ kind: "teach", students: ["2517"] }, forc];
+    const row = rowOf(at({ FORC: [3, 270] }), goals);
+
+    expect(goalsAfterTeach(goals, row, 0, ["2517", "2688"])).toEqual([
+      { kind: "teach", students: ["2517", "2688"] },
+      forc
+    ]);
+  });
+});
+
+describe("the teach group of the cell menu", () => {
+  /** Two mages in one hex, and one a hex away. */
+  function rowsOf(): ScheduleRow[] {
+    const base = rowOf(at({ FORC: [3, 270] }), [{ kind: "study", skill: "FORC", targetLevel: 5 }]);
+    const student = {
+      ...rowOf(at({ FORC: [1, 30] }), [{ kind: "study", skill: "FORC", targetLevel: 5 }]),
+      key: "21/2517",
+      unitId: "2517",
+      name: "Sable"
+    };
+    const away = { ...student, key: "21/2688", unitId: "2688", name: "Kestrel", regionId: "2:8" };
+    return [base, student, away];
+  }
+
+  it("offers every mage and says why one cannot be taught", () => {
+    const rows = rowsOf();
+    const menu = cellMenu({
+      mageName: "Ereb",
+      turn: 24,
+      standing: rows[0].standings[0],
+      tree,
+      rows,
+      turnIndex: 0,
+      rowKey: "21/2431",
+      label: (regionId) => (regionId === "2:8" ? "Dunmoor" : "Ereb's Hollow")
+    });
+
+    expect(menu.teach.map((one) => one.unitId)).toEqual(["2517", "2688"]);
+    expect(menu.teach[0]).toMatchObject({ label: "Sable (2517)", blocked: null });
+    expect(menu.teach[1]).toMatchObject({
+      label: "Kestrel (2688)",
+      detail: "in Dunmoor, not here",
+      blocked: "in Dunmoor, not here"
+    });
+  });
+
+  it("warns when every ticked student is refused", () => {
+    const rows = rowsOf();
+    const menu = cellMenu({
+      mageName: "Ereb",
+      turn: 24,
+      standing: rows[0].standings[0],
+      tree,
+      rows,
+      turnIndex: 0,
+      rowKey: "21/2431",
+      label: () => "Dunmoor"
+    });
+
+    expect(teachWarning([menu.teach[1]], 24, "Ereb")).toBe(
+      "Ereb can teach nobody on turn 24. The plan will say so anyway."
+    );
+    expect(teachWarning(menu.teach, 24, "Ereb")).toBeNull();
+  });
+});
+
+/**
+ * What `Set` writes, whichever kind was picked. This is the routing `StudySchedule.tsx` performs -
+ * pulled into a function precisely so a test can reach it, since `renderToStaticMarkup` cannot
+ * press the button (ah-nass).
+ */
+describe("goalsAfterPick", () => {
+  const forc: StudyGoal = { kind: "study", skill: "FORC", targetLevel: 5 };
+  const row = rowOf(at({ FORC: [3, 270] }), [forc]);
+
+  it("inserts a teach goal, leaving the plan behind it whole", () => {
+    expect(goalsAfterPick([forc], row, 1, { kind: "teach", students: ["2517"] })).toEqual(
+      goalsAfterTeach([forc], row, 1, ["2517"])
+    );
+    // The target survives: this is the navigator's I1, and the one thing truncating would lose.
+    expect(goalsAfterPick([forc], row, 1, { kind: "teach", students: ["2517"] })).toContainEqual(
+      forc
+    );
+  });
+
+  it("truncates for a study goal, as a study click always has", () => {
+    const study: StudyGoal = { kind: "study", skill: "PATT", targetLevel: 2 };
+
+    expect(goalsAfterPick([forc], row, 1, study)).toEqual(goalsAfterSet([forc], row, 1, study));
+    expect(goalsAfterPick([forc], row, 1, study)).not.toContainEqual(forc);
   });
 });

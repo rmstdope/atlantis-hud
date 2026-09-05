@@ -654,15 +654,23 @@ export type AlliedMageKey = {
  * One step of a mage's study plan: what he studies, and how far.
  *
  * `rules/study` allows `STUDY <skill>` and `STUDY <skill> <level>`, the second meaning "continue
- * from turn to turn until he reaches that level". `targetLevel` of null is the first form: one
- * month, and then the next goal.
+ * from turn to turn until he reaches that level"; `targetLevel` of null is the first form - one
+ * month, and then the next goal. `rules/teach` names the units taught, and a teacher studies
+ * nothing that month, so a teach goal is always exactly one turn.
  */
-export type StudyGoal = {
-  /** The skill tag, upper-cased (`"FORC"`). */
-  skill: string;
-  /** `STUDY <skill> <level>`'s optional level; null is the bare one-month form. */
-  targetLevel: number | null;
-};
+export type StudyGoal =
+  | {
+      kind: "study";
+      /** The skill tag, upper-cased (`"FORC"`). */
+      skill: string;
+      /** `STUDY <skill> <level>`'s optional level; null is the bare one-month form. */
+      targetLevel: number | null;
+    }
+  | {
+      kind: "teach";
+      /** The unit numbers taught, as the report writes them, in the order the player ticked them. */
+      students: string[];
+    };
 
 /**
  * One mage's study plan: an ordered queue of goals, and what the player wants to remember.

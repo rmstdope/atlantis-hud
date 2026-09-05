@@ -1128,8 +1128,47 @@ describe("web core adapter", () => {
 
     const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
 
-    expect(listed.map((plan) => plan.goals)).toEqual([[{ skill: "FORC", targetLevel: 4 }], []]);
+    expect(listed.map((plan) => plan.goals)).toEqual([
+      [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+      []
+    ]);
     expect(listed.every((plan) => !("skill" in plan) && !("targetLevel" in plan))).toBe(true);
+  });
+
+  // ah-lyg6.3: a goal written before the tagged union carries no `kind`. The same read path
+  // stamps it as the study it always was, and leaves a teach goal alone.
+  it("reads a goal stored without a kind as a study, and a teach goal unchanged", async () => {
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+    await store.putStudyPlans(
+      DB,
+      [
+        {
+          databasePath: DB,
+          factionId: "21",
+          unitId: "9001",
+          goals: [{ skill: "FORC", targetLevel: 4 }],
+          comment: "",
+          updatedAt: "2026-08-07T12:00:00Z"
+        } as unknown as StoredStudyPlan,
+        {
+          databasePath: DB,
+          factionId: "21",
+          unitId: "9002",
+          goals: [{ kind: "teach", students: ["2517"] }],
+          comment: "",
+          updatedAt: "2026-08-07T12:00:00Z"
+        } as unknown as StoredStudyPlan
+      ],
+      []
+    );
+
+    const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
+
+    expect(listed.map((plan) => plan.goals)).toEqual([
+      [{ kind: "study", skill: "FORC", targetLevel: 4 }],
+      [{ kind: "teach", students: ["2517"] }]
+    ]);
   });
 
   it("keeps study plans apart per database", async () => {
@@ -1898,7 +1937,7 @@ function aStudyPlan(unitId: string, factionId = "21"): StudyPlanRecord {
   return {
     factionId,
     unitId,
-    goals: [{ skill: "FORC", targetLevel: 4 }],
+    goals: [{ kind: "study", skill: "FORC", targetLevel: 4 }],
     comment: "heading for Gate Lore",
     updatedAt: "2026-08-07T12:00:00Z"
   };

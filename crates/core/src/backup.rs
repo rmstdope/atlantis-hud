@@ -284,18 +284,30 @@ pub struct AlliedMageKey {
     pub unit_id: String,
 }
 
-/// One step of a mage's study plan: what he studies, and how far.
+/// One step of a mage's study plan: a month of study, or a month spent teaching.
 ///
 /// `rules/study`: `STUDY [skill] [level]`, where a level means "continued from turn to turn until
-/// the unit reaches that skill level". `target_level` of `None` is the bare form - one month, and
-/// then the next goal.
+/// the unit reaches that skill level"; `target_level` of `None` is the bare form - one month, and
+/// then the next goal. `rules/teach`: `TEACH [unit] ...` names the units taught, and the teacher
+/// studies nothing that month, so a teach goal is always exactly one month.
+///
+/// The per-variant `rename_all` rather than the container-level `rename_all_fields`: the latter
+/// needs serde 1.0.181 or newer, and this crate has never declared a serde floor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StudyGoal {
-    /// The skill tag, upper-cased (`"FORC"`).
-    pub skill: String,
-    /// `STUDY <skill> <level>`'s optional level; `None` is the bare one-month form.
-    pub target_level: Option<u32>,
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum StudyGoal {
+    #[serde(rename_all = "camelCase")]
+    Study {
+        /// The skill tag, upper-cased (`"FORC"`).
+        skill: String,
+        /// `STUDY <skill> <level>`'s optional level; `None` is the bare one-month form.
+        target_level: Option<u32>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Teach {
+        /// The unit numbers taught, as the report writes them, in the order the player ticked them.
+        students: Vec<String>,
+    },
 }
 
 /// One mage's study plan: an ordered queue of goals, and what the player wants to remember.
@@ -365,7 +377,9 @@ pub struct GameBackupContent {
 /// A `StudyPlan`'s `goals` carries `#[serde(default)]` for the same reason. There is no decode
 /// path for the flat `skill`/`target_level` this row carried before ah-lyg6.2.3: ah-lyg6.2.1
 /// merged as `21af4dc`, which is not an ancestor of the newest tag, so no released build ever
-/// wrote a backup containing one.
+/// wrote a backup containing one. For the same reason a goal written before ah-lyg6.3 - carrying
+/// no `kind` discriminant - has no decode path here either: it is rewritten by migration 0013 on
+/// the desktop and by a read-path shim in the browser, and neither is a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameBackup {
@@ -1262,11 +1276,11 @@ mod tests {
             faction_id: "21".to_string(),
             unit_id: "9001".to_string(),
             goals: vec![
-                StudyGoal {
+                StudyGoal::Study {
                     skill: "FORC".to_string(),
                     target_level: Some(4),
                 },
-                StudyGoal {
+                StudyGoal::Study {
                     skill: "PATT".to_string(),
                     target_level: None,
                 },
@@ -1295,11 +1309,41 @@ mod tests {
     }
 
     #[test]
+    fn a_teach_goal_survives_encode_and_decode() {
+        let plan = StudyPlan {
+            faction_id: "21".to_string(),
+            unit_id: "9001".to_string(),
+            goals: vec![
+                StudyGoal::Teach {
+                    students: vec!["2517".to_string(), "2688".to_string()],
+                },
+                StudyGoal::Study {
+                    skill: "FORC".to_string(),
+                    target_level: Some(4),
+                },
+            ],
+            comment: String::new(),
+            updated_at: "2026-01-05T00:00:00Z".to_string(),
+        };
+        let mut content = content_with(vec![], vec![], vec![], vec![], vec![]);
+        content.collections.study_plans = vec![plan.clone()];
+        let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
+
+        let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
+
+        assert_eq!(
+            decoded.collections.study_plans,
+            vec![plan],
+            "a month spent teaching comes back naming the same students, in order"
+        );
+    }
+
+    #[test]
     fn a_study_plan_row_without_goals_decodes_to_an_empty_queue() {
         let plan = StudyPlan {
             faction_id: "21".to_string(),
             unit_id: "9001".to_string(),
-            goals: vec![StudyGoal {
+            goals: vec![StudyGoal::Study {
                 skill: "FORC".to_string(),
                 target_level: Some(4),
             }],

@@ -233,6 +233,7 @@ import { StudyPlannerDialog } from "./StudyPlannerDialog";
 import type { MagicTreeView } from "./magicGraphLayout";
 import type { Viewport } from "./mapViewport";
 import { parseGameData } from "../gameData";
+import { shelterNames, shelterSeats } from "../studyShelter";
 import { buildMagicTree } from "../magicTree";
 import { magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
@@ -650,6 +651,13 @@ export function AppShell({
    *
    * Gated on the ruleset exactly as `mages` is: with no tree there are no standings to group.
    */
+  /** Every structure the report shows and the mages it seats, for the study planner (ah-lyg6.3). */
+  const shelter = useMemo(
+    () => shelterSeats({ report: parsed, index: gameData }),
+    [parsed, gameData]
+  );
+  const shelterNamesByKey = useMemo(() => shelterNames(parsed), [parsed]);
+
   const plannerGroupRows = useMemo(
     () =>
       magicTree === null || gameData === null
@@ -4206,6 +4214,8 @@ export function AppShell({
       {studyPlannerOpen && magicTree !== null ? (
         <StudyPlannerDialog
           groups={plannerGroupRows}
+          seats={shelter}
+          structureNames={shelterNamesByKey}
           summaryLine={plannerSummaryLine(plannerGroupRows)}
           emptyCopy={plannerEmptyCopy({ reportLoaded: parsed !== null })}
           alliedStatus={alliedStatus}

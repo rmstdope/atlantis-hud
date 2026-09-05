@@ -30,12 +30,30 @@ export type CellChoice = {
   levels: number[];
 };
 
-/** The menu, in its three groups, each in tree order. */
+/** One mage the teacher could name this turn. */
+export type TeachChoice = {
+  /** The stored value: the unit number, as the report writes it. */
+  unitId: string;
+  /** `Sable (2517)`. */
+  label: string;
+  /** `force 1 → force 2`, or the reason he cannot be taught. */
+  detail: string;
+  /** Null when he can be taught that turn; the reason otherwise, and the row is drawn dim. */
+  blocked: string | null;
+};
+
+/** The menu, in its four groups, each in tree order. */
 export type CellMenu = {
   /** `From turn 27, Ereb studies`. */
   heading: string;
   /** `He will be force 4, pattern 2 by then.`, or null when he holds nothing yet. */
   sub: string | null;
+  /**
+   * Every mage the planner can see, in mage order, minus the teacher himself. One that cannot be
+   * taught is kept and given a reason rather than dropped: a player who ticked Kestrel last turn
+   * needs to learn why he is not offered, not watch him vanish.
+   */
+  teach: TeachChoice[];
   raise: CellChoice[];
   begin: CellChoice[];
   /** Group heading `Not by turn 27`; every row here has `blocked` set. */
@@ -65,6 +83,13 @@ export function cellMenu(input: {
   /** `ScheduleRow.standings[turnIndex]` - where he stands as that turn begins. */
   standing: SkillPoints;
   tree: MagicTree;
+  /** Every row the Schedule draws, so the teach group can name the mages he could teach. */
+  rows?: readonly ScheduleRow[];
+  /** Which column was clicked, and whose row it is. */
+  turnIndex?: number;
+  rowKey?: string;
+  /** How a region id reads to a player, for a student who is elsewhere. */
+  label?: (regionId: string) => string;
 }): CellMenu {
   const levels = new Map(
     [...input.standing].map(([tag, held]) => [tag, held.level] as const)
@@ -109,6 +134,7 @@ export function cellMenu(input: {
   return {
     heading: `From turn ${input.turn}, ${input.mageName} studies`,
     sub: holds.length === 0 ? null : `He will be ${holds.join(", ")} by then.`,
+    teach: teachChoices(input),
     raise,
     begin,
     notYet
@@ -148,12 +174,31 @@ export function goalsAfterSet(
   const firstTurn = row.cells.findIndex(
     (one) => one.kind === "study" && one.goalIndex === cell.goalIndex
   );
-  if (running !== undefined && firstTurn !== turnIndex) {
+  if (running !== undefined && running.kind === "study" && firstTurn !== turnIndex) {
     const reached = row.standings[turnIndex]?.get(running.skill)?.level ?? null;
-    kept.push({ skill: running.skill, targetLevel: reached });
+    kept.push({ kind: "study" as const, skill: running.skill, targetLevel: reached });
   }
   kept.push(goal);
   return kept;
+}
+
+/**
+ * The queue after the popover's `Set`, whichever kind of goal it wrote.
+ *
+ * The dispatch lives here rather than at the call site so it can be tested: `packages/shared` has
+ * no jsdom (ah-nass), so nothing there can press `Set`, and a routing decision spelled inline in
+ * `StudySchedule.tsx` is one no test in this package can reach. A study goal replaces the tail
+ * because it runs until it is met; a teach goal is one month and inserts (the navigator's I1).
+ */
+export function goalsAfterPick(
+  goals: readonly StudyGoal[],
+  row: ScheduleRow,
+  turnIndex: number,
+  goal: StudyGoal
+): StudyGoal[] {
+  return goal.kind === "teach"
+    ? goalsAfterTeach(goals, row, turnIndex, goal.students)
+    : goalsAfterSet(goals, row, turnIndex, goal);
 }
 
 /** The queue with everything from `turnIndex` on removed: `Clear from here`. */
@@ -172,9 +217,131 @@ export function goalsAfterClear(
   const firstTurn = row.cells.findIndex(
     (one) => one.kind === "study" && one.goalIndex === cell.goalIndex
   );
-  if (running !== undefined && firstTurn !== turnIndex) {
+  if (running !== undefined && running.kind === "study" && firstTurn !== turnIndex) {
     const reached = row.standings[turnIndex]?.get(running.skill)?.level ?? null;
-    kept.push({ skill: running.skill, targetLevel: reached });
+    kept.push({ kind: "study" as const, skill: running.skill, targetLevel: reached });
   }
   return kept;
+}
+
+/**
+ * The queue after saying "teach these mages" at one cell - **inserting**, not truncating.
+ *
+ * A study click replaces the tail because a study goal runs until it is met; a teach goal is one
+ * month, so what follows it is a plan the player has not changed. The navigator chose I1 for
+ * exactly that: teaching a month costs a month and nothing else.
+ *
+ * The months already spent on the head goal before this cell are re-expressed as that many bare
+ * one-month goals of the same skill, which is exact - a bare goal is one studied month, and so was
+ * each of those cells - and preserves the target the player set.
+ *
+ * Setting a teach on a cell that is **already** a teach goal replaces that goal in place instead,
+ * so re-opening a teach cell and changing the ticks does not lengthen the plan by a month.
+ */
+export function goalsAfterTeach(
+  goals: readonly StudyGoal[],
+  row: ScheduleRow,
+  turnIndex: number,
+  students: readonly string[]
+): StudyGoal[] {
+  const teach: StudyGoal = { kind: "teach", students: [...students] };
+  const cell = row.cells[turnIndex];
+  if (cell === undefined || cell.kind === "idle") {
+    return [...goals, teach];
+  }
+  if (cell.kind === "teach") {
+    return goals.map((goal, index) => (index === cell.goalIndex ? teach : goal));
+  }
+
+  const kept = goals.slice(0, cell.goalIndex);
+  const spent = row.cells.filter(
+    (one, index) => index < turnIndex && one.kind === "study" && one.goalIndex === cell.goalIndex
+  ).length;
+  for (let month = 0; month < spent; month += 1) {
+    kept.push({ kind: "study", skill: cell.skill, targetLevel: null });
+  }
+  kept.push(teach);
+  return [...kept, ...goals.slice(cell.goalIndex)];
+}
+
+/**
+ * Every mage the teacher could name, with a reason on each one he cannot teach.
+ *
+ * The reasons are the short forms of `plannerNotices`' sentences - the popover has a column, not a
+ * paragraph - and they are decided from the projection the grid already drew, so the list and the
+ * grid cannot disagree about who is teachable.
+ */
+function teachChoices(input: {
+  rows?: readonly ScheduleRow[];
+  turnIndex?: number;
+  rowKey?: string;
+  standing: SkillPoints;
+  label?: (regionId: string) => string;
+}): TeachChoice[] {
+  const { rows, turnIndex, rowKey } = input;
+  if (rows === undefined || turnIndex === undefined || rowKey === undefined) {
+    return [];
+  }
+  const teacher = rows.find((row) => row.key === rowKey);
+  if (teacher === undefined) {
+    return [];
+  }
+
+  const choices: TeachChoice[] = [];
+  for (const row of rows) {
+    if (row.key === rowKey) {
+      continue;
+    }
+    const cell = row.cells[turnIndex];
+    const label = `${row.name} (${row.unitId})`;
+    if (row.regionId !== teacher.regionId) {
+      const hex = input.label?.(row.regionId) ?? row.regionId;
+      choices.push({
+        unitId: row.unitId,
+        label,
+        detail: `in ${hex}, not here`,
+        blocked: `in ${hex}, not here`
+      });
+      continue;
+    }
+    if (cell === undefined || cell.kind !== "study" || cell.blocked !== null) {
+      choices.push({ unitId: row.unitId, label, detail: "nothing planned", blocked: "nothing planned" });
+      continue;
+    }
+    const held = row.standings[turnIndex]?.get(cell.skill)?.level ?? 0;
+    const teacherLevel = input.standing.get(cell.skill)?.level ?? 0;
+    if (teacherLevel <= held) {
+      choices.push({
+        unitId: row.unitId,
+        label,
+        detail: `${cell.name} ${held}, and so are you`,
+        blocked: `${cell.name} ${held}, and so are you`
+      });
+      continue;
+    }
+    if (cell.taughtBy !== null && cell.taughtBy !== rowKey) {
+      const by = rows.find((one) => one.key === cell.taughtBy)?.name ?? cell.taughtBy;
+      choices.push({ unitId: row.unitId, label, detail: `taught by ${by}`, blocked: `taught by ${by}` });
+      continue;
+    }
+    choices.push({
+      unitId: row.unitId,
+      label,
+      detail: `${cell.name} ${held} → ${cell.name} ${cell.level}`,
+      blocked: null
+    });
+  }
+  return choices;
+}
+
+/** The warning under a teach goal every one of whose students is refused, or null. */
+export function teachWarning(
+  students: readonly TeachChoice[],
+  turn: number,
+  mageName: string
+): string | null {
+  if (students.length === 0 || students.some((student) => student.blocked === null)) {
+    return null;
+  }
+  return `${mageName} can teach nobody on turn ${turn}. The plan will say so anyway.`;
 }

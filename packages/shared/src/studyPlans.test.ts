@@ -1,4 +1,4 @@
-import type { CoreClient, OpenedGame, StudyPlanRecord } from "@atlantis/core-client";
+import type { CoreClient, OpenedGame, StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import { keyOf, loadStudyPlans, planFor, remainingGoals, saveStudyPlans } from "./studyPlans";
 
@@ -21,7 +21,7 @@ function plan(unitId = "1204", factionId = "21"): StudyPlanRecord {
   return {
     factionId,
     unitId,
-    goals: [{ skill: "FORC", targetLevel: 4 }],
+    goals: [{ kind: "study" as const, skill: "FORC", targetLevel: 4 }],
     comment: "heading for Gate Lore",
     updatedAt: "2026-01-01T00:00:00.000Z"
   };
@@ -93,45 +93,56 @@ describe("remainingGoals", () => {
     expect(
       remainingGoals(
         [
-          { skill: "FORC", targetLevel: 3 },
-          { skill: "PATT", targetLevel: 5 }
+          { kind: "study" as const, skill: "FORC", targetLevel: 3 },
+          { kind: "study" as const, skill: "PATT", targetLevel: 5 }
         ],
         levels
       )
-    ).toEqual([{ skill: "PATT", targetLevel: 5 }]);
+    ).toEqual([{ kind: "study" as const, skill: "PATT", targetLevel: 5 }]);
   });
 
   it("drops every satisfied goal at the front, not only the first", () => {
     expect(
       remainingGoals(
         [
-          { skill: "FORC", targetLevel: 4 },
-          { skill: "PATT", targetLevel: 2 },
-          { skill: "SPIR", targetLevel: 1 }
+          { kind: "study" as const, skill: "FORC", targetLevel: 4 },
+          { kind: "study" as const, skill: "PATT", targetLevel: 2 },
+          { kind: "study" as const, skill: "SPIR", targetLevel: 1 }
         ],
         levels
       )
-    ).toEqual([{ skill: "SPIR", targetLevel: 1 }]);
+    ).toEqual([{ kind: "study" as const, skill: "SPIR", targetLevel: 1 }]);
   });
 
   it("stops at the first unsatisfied goal, even when a later one is satisfied", () => {
     const goals = [
-      { skill: "SPIR", targetLevel: 1 },
-      { skill: "FORC", targetLevel: 3 }
+      { kind: "study" as const, skill: "SPIR", targetLevel: 1 },
+      { kind: "study" as const, skill: "FORC", targetLevel: 3 }
     ];
 
     expect(remainingGoals(goals, levels)).toEqual(goals);
   });
 
   it("never treats a one-month goal as satisfied", () => {
-    const goals = [{ skill: "FORC", targetLevel: null }];
+    const goals = [{ kind: "study" as const, skill: "FORC", targetLevel: null }];
+
+    expect(remainingGoals(goals, levels)).toEqual(goals);
+  });
+
+  // `rules/teach`: a teach month is a month somebody decided to spend, so nothing anyone already
+  // knows can satisfy it in advance.
+  it("never treats a teach goal as satisfied in advance", () => {
+    const goals: StudyGoal[] = [
+      { kind: "teach", students: ["2517"] },
+      { kind: "study", skill: "FORC", targetLevel: 1 }
+    ];
 
     expect(remainingGoals(goals, levels)).toEqual(goals);
   });
 
   it("treats a skill the mage does not hold as level zero", () => {
-    expect(remainingGoals([{ skill: "SPIR", targetLevel: 1 }], levels)).toEqual([
-      { skill: "SPIR", targetLevel: 1 }
+    expect(remainingGoals([{ kind: "study" as const, skill: "SPIR", targetLevel: 1 }], levels)).toEqual([
+      { kind: "study" as const, skill: "SPIR", targetLevel: 1 }
     ]);
   });
 });
