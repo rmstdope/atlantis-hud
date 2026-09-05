@@ -4,6 +4,7 @@ import { useEscapeToDismiss } from "./dismissLayer";
 import type { MagicTree } from "../magicTree";
 import type { StudyGoal } from "@atlantis/core-client";
 import { cellMenu, goalsAfterChoice, teachWarning, type CellMenu } from "../studyCell";
+import { plannedGoals } from "../studyPlans";
 import { hoverCard, worthMark, type ScheduleRow } from "../studySchedule";
 import { noticeSummary, type PlannerNotice } from "../studyTeaching";
 import type { PlannerGroup } from "../studyPlanner";
@@ -198,8 +199,11 @@ export function StudySchedule({
           rowIndex={rows.findIndex((row) => row.key === editing.rowKey)}
           onEvent={onEvent}
           onChoose={(choice) => {
+            // `plannedGoals` because the edit is applied against the *stored* row rather than
+            // against the sanitized one the grid drew: a row written before goals named turns
+            // would otherwise be carried forward by a write instead of dropped by it.
             onCommit(open.key, (goals) =>
-              goalsAfterChoice(goals, turns[editing.turnIndex], choice)
+              goalsAfterChoice(plannedGoals(goals), turns[editing.turnIndex], choice)
             );
             onEvent({ kind: "closed" });
           }}
