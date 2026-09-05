@@ -286,3 +286,50 @@ test("asks for the password again when the session runs out mid-run, and finishe
   await expect(page.getByTestId("import-status")).toContainText("2 turns stored for history");
   await expect(page.getByTestId("newage-history-row-71")).toContainText("stored");
 });
+
+test("asks for the password again when the listing itself runs out, and then lists", async ({
+  page
+}) => {
+  await signedInWithPopover(page);
+  await replyWith(page, { status: 200, body: TURN_72 });
+  await page.getByTestId("newage-fetch-report").click();
+  await expect(page.getByTestId("import-status")).toContainText("regions");
+
+  await historyWith(page, { turns: { status: 401, body: "" }, reports: {} });
+  await page.getByTestId("newage-control").click();
+  await page.getByTestId("newage-fetch-history").click();
+
+  await expect(page.getByTestId("newage-signin-panel")).toBeVisible();
+  await expect(page.getByTestId("newage-signin-confirm")).toHaveText("Sign in and fetch");
+
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ turns: [70, 71, 72] }) },
+    reports: { "70": { status: 200, body: TURN_70 } }
+  });
+  await page.getByTestId("newage-faction-number").fill("27");
+  await page.getByTestId("newage-password").fill("right");
+  await page.getByTestId("newage-signin-confirm").click();
+
+  await expect(page.getByTestId("newage-signin-panel")).not.toBeVisible();
+  // The listing was made again with the fresh token: the rows are there rather than an empty box.
+  await expect(page.getByTestId("newage-history-row-70")).toContainText("fetch");
+  await expect(page.getByTestId("newage-history-row-72")).toContainText("playing");
+});
+
+test("says why a single earlier turn could not be fetched", async ({ page }) => {
+  await signedInWithPopover(page);
+  await replyWith(page, { status: 200, body: TURN_72 });
+  await page.getByTestId("newage-fetch-report").click();
+  await expect(page.getByTestId("import-status")).toContainText("regions");
+
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ turns: [70, 71, 72] }) },
+    reports: { "70": { status: 200, body: "" } }
+  });
+  await page.getByTestId("newage-control").click();
+  await page.getByTestId("newage-fetch-history").click();
+  await page.getByTestId("newage-history-row-70").click();
+
+  await expect(page.getByTestId("import-status")).toContainText("could not fetch turn 70: no report");
+  await expect(page.getByTestId("newage-history-row-70")).toContainText("no report");
+});

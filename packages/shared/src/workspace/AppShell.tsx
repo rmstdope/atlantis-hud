@@ -189,7 +189,9 @@ import {
   type NewAgeFetchPhase
 } from "./newAgeFetchView";
 import {
+  HISTORY_NOT_STORED,
   HISTORY_REAUTH_PURPOSE,
+  fetchTurnPrefix,
   fetchedTurnName,
   fetchingTurnStatus,
   historyListFailed,
@@ -3581,6 +3583,11 @@ export function AppShell({
    */
   const [historyPhase, setHistoryPhase] = useState<NewAgeHistoryPhase | null>(null);
   const historyAbort = useRef<AbortController | null>(null);
+  /**
+   * The sign-in this dialog's own 401 put up. Its own ref rather than `signInAbort`, which belongs
+   * to the header's sign-in: closing this dialog must not abort an unrelated sign-in.
+   */
+  const historySignInAbort = useRef<AbortController | null>(null);
   /** Set when the dialog is dismissed mid-run; `runHistoryFetch` reads it at each turn boundary. */
   const historyAbandoned = useRef(false);
 
@@ -3706,8 +3713,8 @@ export function AppShell({
     historyAbandoned.current = true;
     historyAbort.current?.abort();
     historyAbort.current = null;
-    signInAbort.current?.abort();
-    signInAbort.current = null;
+    historySignInAbort.current?.abort();
+    historySignInAbort.current = null;
     setHistoryPhase(null);
   }, []);
 
@@ -3896,12 +3903,19 @@ export function AppShell({
         if (ready === null) {
           return null;
         }
+        // Merged, not replaced: a mark from an earlier press in this visit still describes that
+        // turn, unless this run has just stored it.
+        const failures = new Map(ready.failures);
+        for (const turnNumber of stored) {
+          failures.delete(turnNumber);
+        }
+        for (const [turnNumber, reason] of failed) {
+          failures.set(Number(turnNumber), reason);
+        }
         return {
           ...ready,
           fetched: [...new Set([...ready.fetched, ...stored])],
-          failures: new Map(
-            [...failed].map(([turnNumber, reason]) => [Number(turnNumber), reason] as const)
-          ),
+          failures,
           run: null
         };
       };
@@ -3920,10 +3934,16 @@ export function AppShell({
       }
 
       setHistoryPhase((phase) => folded(phase) ?? phase);
+      const onlyFailure = stored.length === 0 && failed.size === 1 ? [...failed][0] : null;
       if (stored.length + failed.size > 1) {
-        // A run of one says nothing further: `loadReport` has already written
+        // A run of one that landed says nothing further: `loadReport` has already written
         // `turn 80 stored for history; still showing turn 83.` and a second line would repeat it.
         setStatus(runSummary(stored.length, failed.size, workingTurn));
+      } else if (onlyFailure !== null && onlyFailure[1] !== HISTORY_NOT_STORED) {
+        // But a run of one that *failed at the fetch* called `loadReport` not at all, so without
+        // this the routine `Fetching turn 70 from Arcanum…` would stay up for ever. A turn the
+        // game would not store is left alone: `loadReport` reported its own reason.
+        setStatus(failedStatus(`${fetchTurnPrefix(Number(onlyFailure[0]))}: ${onlyFailure[1]}`));
       }
       // Once, at the end: a refresh is a core round trip, and mid-run the rows already say what
       // happened from the run's own state.
@@ -3944,15 +3964,18 @@ export function AppShell({
   );
 
   /** Asks the world which turns it holds, and opens the dialog on the answer. */
-  const openNewAgeHistory = useCallback(async () => {
-    if (newAgeApi === null || newAgeWorld === null || newAgeSession === null) {
+  const openNewAgeHistory = useCallback(async (withToken?: string) => {
+    // The token is a parameter rather than read from state so the reauth path can list with a token
+    // `setNewAgeSessions` has not applied yet - the rule `fetchNewAgeReportWith` already follows.
+    const token = withToken ?? newAgeSession?.token;
+    if (newAgeApi === null || newAgeWorld === null || token === undefined) {
       return;
     }
     setOpenPopover(null);
     const controller = new AbortController();
     historyAbort.current = controller;
     setHistoryPhase({ kind: "listing" });
-    const result = await newAgeApi.historyTurns(newAgeSession.token, controller.signal);
+    const result = await newAgeApi.historyTurns(token, controller.signal);
     if (historyAbort.current !== controller) {
       return;
     }
@@ -3989,7 +4012,7 @@ export function AppShell({
       kind: "listFailed",
       message: historyListFailed(newAgeWorld.worldName, fetchFailureReason(result, NEW_AGE_HOST))
     });
-  }, [newAgeApi, newAgeWorld, newAgeSession, workingTurn, openGameId]);
+  }, [newAgeApi, newAgeWorld, newAgeSession?.token, workingTurn, openGameId]);
 
   /** One row, pressed. A run of exactly one, so a click and the button share one path. */
   const fetchOneEarlierTurn = useCallback(
@@ -4035,13 +4058,13 @@ export function AppShell({
         return;
       }
       const controller = new AbortController();
-      signInAbort.current = controller;
+      historySignInAbort.current = controller;
       setHistoryPhase({ ...phase, signIn: { kind: "signingIn" } });
       const result = await newAgeApi.login(factionNumber, password, controller.signal);
-      if (signInAbort.current !== controller) {
+      if (historySignInAbort.current !== controller) {
         return;
       }
-      signInAbort.current = null;
+      historySignInAbort.current = null;
       if (result.kind === "ok") {
         const session = {
           worldId: newAgeWorld.worldId,
@@ -4052,8 +4075,9 @@ export function AppShell({
         setNewAgeSessions((sessions) => withNewAgeSession(sessions, openGameId, session));
         setHistoryPhase(phase.behind);
         if (phase.remaining.length === 0) {
-          // The listing itself was what ran out: ask again with the fresh token.
-          await openNewAgeHistory();
+          // The listing itself was what ran out: ask again with the fresh token, which state does
+          // not carry yet.
+          await openNewAgeHistory(session.token);
           return;
         }
         await runHistoryFetchFrom([...phase.remaining], session.token, {

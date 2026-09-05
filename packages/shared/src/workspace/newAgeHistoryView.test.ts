@@ -62,15 +62,24 @@ describe("historyRows", () => {
 
 describe("missingTurns", () => {
   it("counts a turn that failed this visit as missing again", () => {
-    expect(missingTurns(ready({ failures: new Map([[70, "no report"]]) }), [{ turnNumber: 70 }], 71)).toEqual([70, 72]);
+    expect(
+      missingTurns(ready({ failures: new Map([[70, "no report"]]) }), [{ turnNumber: 70 }], 72)
+    ).toEqual([70, 71]);
   });
 
   it("leaves out the working turn and the turns already stored", () => {
-    expect(missingTurns(ready(), [{ turnNumber: 70 }], 71)).toEqual([72]);
+    expect(missingTurns(ready(), [{ turnNumber: 70 }], 72)).toEqual([71]);
+  });
+
+  it("never asks for a turn newer than the one on screen", () => {
+    // `routeReport` answers `load` for a newer turn, which would take the screen - exactly what
+    // the dialog's blurb promises will not happen.
+    expect(missingTurns(ready({ worldTurns: [70, 71, 72] }), [], 70)).toEqual([]);
+    expect(missingTurns(ready({ worldTurns: [70, 71, 72] }), [], 72)).toEqual([70, 71]);
   });
 
   it("counts a turn fetched this visit as no longer missing", () => {
-    expect(missingTurns(ready({ fetched: [72] }), [], 71)).toEqual([70]);
+    expect(missingTurns(ready({ fetched: [70] }), [], 72)).toEqual([71]);
   });
 });
 

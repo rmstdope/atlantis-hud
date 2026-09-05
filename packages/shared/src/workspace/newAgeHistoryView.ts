@@ -188,9 +188,13 @@ function rowState(
 }
 
 /**
- * The turns a `Fetch all missing` press would ask for, turn ascending: every listed turn that is
- * neither the working turn nor already stored. A turn that failed earlier this visit is missing
- * again, so pressing the button retries it.
+ * The turns a `Fetch all missing` press would ask for, turn ascending: every listed *earlier* turn
+ * that is neither the working turn nor already stored. A turn that failed earlier this visit is
+ * missing again, so pressing the button retries it.
+ *
+ * A turn **newer** than the one on screen is never asked for in bulk: `routeReport` answers `load`
+ * for it, so it would take the screen - exactly what `HISTORY_BLURB` promises will not happen. Its
+ * row stays pressable, like the working turn's, because pressing one row is a deliberate act.
  */
 export function missingTurns(
   phase: Extract<NewAgeHistoryPhase, { kind: "ready" }>,
@@ -202,7 +206,9 @@ export function missingTurns(
     .sort((left, right) => left - right)
     .filter(
       (turnNumber) =>
-        turnNumber !== workingTurn && (phase.failures.has(turnNumber) || !held.has(turnNumber))
+        turnNumber !== workingTurn &&
+        (workingTurn === null || turnNumber < workingTurn) &&
+        (phase.failures.has(turnNumber) || !held.has(turnNumber))
     );
 }
 
