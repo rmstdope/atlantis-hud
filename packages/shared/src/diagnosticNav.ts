@@ -76,12 +76,6 @@ export function diagnosticTargets(
     return innermost === null ? null : `new-${innermost.alias}`;
   };
 
-  /** The reported units of the hex a `unit` block's own unit stands in. */
-  const regionUnitsAround = (unitId: string): ReadonlySet<string> | undefined => {
-    const regionId = regionOfUnit.get(unitId);
-    return regionId === undefined ? undefined : unitIdsByRegion?.get(regionId);
-  };
-
   const placed: DiagnosticTarget[] = [];
   for (const diagnostic of diagnostics) {
     if (diagnostic.lineStart === null) {
@@ -95,13 +89,15 @@ export function diagnosticTargets(
       blocks.find(
         (candidate) => line >= candidate.firstLine + 1 && line <= candidate.lastLine + 1
       ) ?? null;
-    const regionUnitIds =
-      diagnostic.unitId === null
+    // The hex the block is resolved in, kept rather than re-derived: a stop's `regionId` must name
+    // the same hex its block was found in, or the jump would open a different hex's `new-1`.
+    const scopeRegionId =
+      (diagnostic.unitId === null
         ? enclosing === null
           ? undefined
-          : regionUnitsAround(enclosing.unitId)
-        : (regionUnitsAround(diagnostic.unitId) ??
-          (diagnostic.regionId === null ? undefined : unitIdsByRegion?.get(diagnostic.regionId)));
+          : regionOfUnit.get(enclosing.unitId)
+        : (regionOfUnit.get(diagnostic.unitId) ?? diagnostic.regionId ?? undefined)) ?? null;
+    const regionUnitIds = scopeRegionId === null ? undefined : unitIdsByRegion?.get(scopeRegionId);
 
     // Whose editor this stop belongs in. A finding that names its unit is placed by that name -
     // the core's own decision - and one that only knows its line is placed by the innermost block
@@ -120,10 +116,7 @@ export function diagnosticTargets(
     const last = block.lastLine + 1;
     placed.push({
       unitId: block.unitId,
-      regionId:
-        formedAlias(block.unitId) === null
-          ? null
-          : (regionOfUnit.get(enclosing?.unitId ?? "") ?? diagnostic.regionId),
+      regionId: formedAlias(block.unitId) === null ? null : scopeRegionId,
       blockFirstLine: block.firstLine,
       problem: {
         ...diagnostic,

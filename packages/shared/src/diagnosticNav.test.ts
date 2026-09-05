@@ -257,3 +257,41 @@ describe("the walk over a formed unit's problems", () => {
     expect(stopKeys(targets)[0].line).toBe(4);
   });
 });
+
+/**
+ * Two hexes each holding a `new-1` (`ah-9o0c.2`), which is the case a stop's `regionId` exists for.
+ *
+ *   1 `unit 1922`  2 `form 1`  3 `WROK`  4 `end`  5 `unit 3000`  6 `form 1`  7 `STUFY x`  8 `end`
+ */
+describe("a formed unit's stop names the hex its block was resolved in", () => {
+  const TWO_HEXES = "unit 1922\nform 1\nWROK\nend\nunit 3000\nform 1\nSTUFY x\nend";
+  const REGIONS = new Map([
+    ["1:7,53", new Set(["1922"])],
+    ["1:8,54", new Set(["3000"])]
+  ]);
+
+  it("reads the hex off the block the line falls in, not off the first region in the map", () => {
+    const targets = diagnosticTargets(
+      TWO_HEXES,
+      [problem({ lineStart: 7, lineEnd: 7, regionId: null })],
+      REGIONS
+    );
+
+    expect(targets.map((target) => [target.unitId, target.regionId])).toEqual([
+      ["new-1", "1:8,54"]
+    ]);
+  });
+
+  it("names the hex the block was found in, even where the finding's own region disagrees", () => {
+    // The core does not emit this today, but a stop whose `regionId` named one hex while its block
+    // came from another would take the jump to a different unit of the same name.
+    const targets = diagnosticTargets(
+      TWO_HEXES,
+      [problem({ lineStart: 3, lineEnd: 3, unitId: "new-1", regionId: "1:8,54" })],
+      REGIONS
+    );
+
+    expect(targets[0].regionId).toBe("1:8,54");
+    expect(targets[0].blockFirstLine).toBe(6);
+  });
+});
