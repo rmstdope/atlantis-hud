@@ -8,18 +8,19 @@ import { RULESETS } from "../rulesets";
 import { mapShapeOfGame } from "../mapShape";
 import type { WorkspaceGame } from "../workspaceStore";
 
-export type SettingsTabId = "global" | "game" | "warnings" | "snippets" | "about";
+export type SettingsTabId = "global" | "game" | "columns" | "warnings" | "snippets" | "about";
 
 export type SettingsTab = { id: SettingsTabId; label: string };
 
 /**
  * The reading order of the dialog: what applies everywhere, what applies to the open game, which
- * advisory checks run at all, the player's own snippet library, and what this build is. Global
- * first is also the default tab on open.
+ * columns the units table draws, which advisory checks run at all, the player's own snippet
+ * library, and what this build is. Global first is also the default tab on open.
  */
 export const SETTINGS_TABS: readonly SettingsTab[] = [
   { id: "global", label: "Global" },
   { id: "game", label: "Per game" },
+  { id: "columns", label: "Columns" },
   { id: "warnings", label: "Warnings" },
   { id: "snippets", label: "Snippets" },
   { id: "about", label: "About" }

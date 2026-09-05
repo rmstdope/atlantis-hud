@@ -20,10 +20,13 @@ import {
   type RailSide
 } from "./workspace/panelLayout";
 import {
+  allColumnsShown,
   columnOrderFromStorage,
   columnSharesFromStorage,
   type ColumnOrder,
-  type ColumnShares
+  type ColumnShares,
+  type ColumnVisibility,
+  type HideableColumn
 } from "./unitTable";
 import {
   mapViewCommitted,
@@ -187,6 +190,13 @@ export type WorkspaceState = {
    * implies reordering it, or the reverse, so a player can undo one without losing the other.
    */
   unitColumnOrder: ColumnOrder | null;
+  /**
+   * Which hideable columns the units table draws (ah-20di). A whole record rather than a nullable
+   * one, unlike the widths and the order: there is no "shipped shape" to fall back to beyond
+   * "everything shown", and `reconcile` already gives a partial stored record the same treatment
+   * `layers` and `badges` get.
+   */
+  unitColumnsShown: ColumnVisibility;
   layers: Record<LayerName, boolean>;
   /** Which marks the map draws over its terrain. */
   badges: Record<BadgeName, boolean>;
@@ -265,6 +275,9 @@ export type WorkspaceState = {
   setUnitColumnOrder: (order: ColumnOrder) => void;
   /** Drops the stored order, back to the shipped one. Reachable from Settings. */
   resetUnitColumnOrder: () => void;
+  setUnitColumnShown: (column: HideableColumn, shown: boolean) => void;
+  /** Puts every hidden column back. The visibility half of the column reset buttons. */
+  showAllUnitColumns: () => void;
   toggleLayer: (layer: LayerName) => void;
   toggleBadge: (badge: BadgeName) => void;
   /** Shows or hides the region panel's Problems section. */
@@ -376,6 +389,7 @@ type Persisted = Pick<
   | "rightRailWidthRem"
   | "unitColumnShares"
   | "unitColumnOrder"
+  | "unitColumnsShown"
   | "layers"
   | "badges"
   | "regionProblemsShown"
@@ -398,6 +412,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       rightRailWidthRem: null,
       unitColumnShares: null,
       unitColumnOrder: null,
+      unitColumnsShown: allColumnsShown(),
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
       regionProblemsShown: true,
@@ -536,6 +551,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setUnitColumnOrder: (order) => set(() => ({ unitColumnOrder: [...order] })),
 
       resetUnitColumnOrder: () => set(() => ({ unitColumnOrder: null })),
+      setUnitColumnShown: (column, shown) =>
+        set((state) => ({ unitColumnsShown: { ...state.unitColumnsShown, [column]: shown } })),
+      showAllUnitColumns: () => set(() => ({ unitColumnsShown: allColumnsShown() })),
 
       toggleLayer: (layer) =>
         set((state) => ({
@@ -579,6 +597,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         rightRailWidthRem: state.rightRailWidthRem,
         unitColumnShares: state.unitColumnShares,
         unitColumnOrder: state.unitColumnOrder,
+        unitColumnsShown: state.unitColumnsShown,
         layers: state.layers,
         badges: state.badges,
         regionProblemsShown: state.regionProblemsShown
@@ -607,6 +626,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // No `emptyToNull` wrapper: `columnOrderFromStorage` already returns null for anything
           // it rejects, and it rejects rather than repairs.
           unitColumnOrder: columnOrderFromStorage(stored.unitColumnOrder),
+          // A boolean record, so `reconcile` applies exactly as it does to `layers`: a missing key
+          // reads as the default, which here is shown, so a build that adds a hideable column
+          // draws it rather than hiding it - and no migration is owed for a record written before
+          // this field existed.
+          unitColumnsShown: reconcile(allColumnsShown(), stored.unitColumnsShown ?? {}),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
           badges: badgesFromStorage(stored.badges ?? {}),
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
@@ -638,6 +662,7 @@ export function resetWorkspaceStore() {
     rightRailWidthRem: null,
     unitColumnShares: null,
     unitColumnOrder: null,
+    unitColumnsShown: allColumnsShown(),
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
     regionProblemsShown: true,

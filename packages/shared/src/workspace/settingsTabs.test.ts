@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { SETTINGS_TABS, gameSettingsPresentation, nextTab, rulesetOptions } from "./settingsTabs";
 
 describe("settings dialog tabs", () => {
-  it("offers global, per-game, warnings, snippets and about, in that order", () => {
+  it("offers global, per-game, columns, warnings, snippets and about, in that order", () => {
     // The order is the reading order of the dialog: what applies everywhere, what applies to the
-    // open game, which advisory checks run at all, the player's own snippets, and what this build
-    // is. Global first is also the default tab on open.
+    // open game, which columns the units table draws, which advisory checks run at all, the
+    // player's own snippets, and what this build is. Global first is also the default tab on open.
     expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual([
       "global",
       "game",
+      "columns",
       "warnings",
       "snippets",
       "about"
@@ -22,7 +23,8 @@ describe("settings dialog tabs", () => {
 describe("arrow-key tab navigation", () => {
   it("moves right with wrap-around", () => {
     expect(nextTab("global", "ArrowRight")).toBe("game");
-    expect(nextTab("game", "ArrowRight")).toBe("warnings");
+    expect(nextTab("game", "ArrowRight")).toBe("columns");
+    expect(nextTab("columns", "ArrowRight")).toBe("warnings");
     expect(nextTab("warnings", "ArrowRight")).toBe("snippets");
     expect(nextTab("snippets", "ArrowRight")).toBe("about");
     expect(nextTab("about", "ArrowRight")).toBe("global");
@@ -32,7 +34,8 @@ describe("arrow-key tab navigation", () => {
     expect(nextTab("global", "ArrowLeft")).toBe("about");
     expect(nextTab("about", "ArrowLeft")).toBe("snippets");
     expect(nextTab("snippets", "ArrowLeft")).toBe("warnings");
-    expect(nextTab("warnings", "ArrowLeft")).toBe("game");
+    expect(nextTab("warnings", "ArrowLeft")).toBe("columns");
+    expect(nextTab("columns", "ArrowLeft")).toBe("game");
   });
 
   it("ignores keys that are not arrow navigation", () => {
@@ -127,5 +130,24 @@ describe("per-game settings presentation", () => {
     };
 
     expect(gameSettingsPresentation(game)).toMatchObject({ map: null, mapStated: false });
+  });
+});
+
+describe("the Columns tab (ah-20di)", () => {
+  it("sits between Per game and Warnings", () => {
+    expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual([
+      "global",
+      "game",
+      "columns",
+      "warnings",
+      "snippets",
+      "about"
+    ]);
+    expect(SETTINGS_TABS.find((tab) => tab.id === "columns")?.label).toBe("Columns");
+  });
+
+  it("the arrows walk through it", () => {
+    expect(nextTab("game", "ArrowRight")).toBe("columns");
+    expect(nextTab("warnings", "ArrowLeft")).toBe("columns");
   });
 });

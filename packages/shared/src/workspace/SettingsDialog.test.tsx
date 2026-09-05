@@ -4,11 +4,14 @@ import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { resetSettingsStore, useSettingsStore } from "../settingsStore";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { RULESETS } from "../rulesets";
+import { COLUMN_LABELS, HIDEABLE_COLUMNS, allColumnsShown } from "../unitTable";
+import { useWorkspaceStore } from "../workspaceStore";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
 import { mapCommitOf } from "../mapShape";
 import {
   About,
   GameMapSettings,
+  ColumnSettings,
   GlobalSettings,
   WARNING_GROUPS,
   WarningSettings
@@ -249,8 +252,9 @@ describe("the Warnings settings tab", () => {
  * matters here is that it exists, is named as the navigator settled it, and is reachable.
  */
 describe("the units table's column widths (ah-1owr.2)", () => {
+  // The row moved to the Columns tab (ah-20di); it is unchanged apart from where it lives.
   it("offers a way to put the units table's columns back", () => {
-    const html = renderToStaticMarkup(<GlobalSettings />);
+    const html = renderToStaticMarkup(<ColumnSettings />);
 
     expect(html).toContain("Units table columns");
     expect(tag(html, "settings-reset-column-widths")).toContain("<button");
@@ -258,7 +262,7 @@ describe("the units table's column widths (ah-1owr.2)", () => {
   });
 
   it("offers a way to put the column order back", () => {
-    const html = renderToStaticMarkup(<GlobalSettings />);
+    const html = renderToStaticMarkup(<ColumnSettings />);
 
     expect(tag(html, "settings-reset-column-order")).toContain("<button");
     expect(html).toContain("Reset order");
@@ -395,5 +399,42 @@ describe("a per-game map whose wrapping cannot be drawn", () => {
     expect(markup).toContain('data-testid="settings-map-problem-x"');
     expect(markup).toContain("A 71-wide map cannot wrap east-west");
     expect(markup).toContain('value="71"');
+  });
+});
+
+describe("the Columns tab (ah-20di)", () => {
+  afterEach(restoreStoresForTest);
+
+  it("offers a checkbox for every hideable column and none for the fixed ones", () => {
+    const markup = renderToStaticMarkup(<ColumnSettings />);
+    for (const column of HIDEABLE_COLUMNS) {
+      expect(markup).toContain(`data-testid="settings-column-${column}"`);
+      expect(markup).toContain(`>${COLUMN_LABELS[column]}<`);
+    }
+    expect(markup).not.toContain('data-testid="settings-column-own"');
+    expect(markup).not.toContain('data-testid="settings-column-unitId"');
+    expect(markup).not.toContain('data-testid="settings-column-name"');
+  });
+
+  it("shows an unchecked column as unchecked", () => {
+    const markup = renderWithStoreState(<ColumnSettings />, useWorkspaceStore, {
+      unitColumnsShown: { ...allColumnsShown(), skills: false }
+    });
+    const inputFor = (column: string) =>
+      new RegExp(`<input[^>]*data-testid="settings-column-${column}"[^>]*>`).exec(markup)?.[0] ?? "";
+    expect(inputFor("skills")).not.toBe("");
+    expect(inputFor("skills")).not.toContain("checked");
+    expect(inputFor("items")).toContain("checked");
+  });
+
+  it("carries the column reset buttons, which the Global tab no longer does", () => {
+    const columns = renderToStaticMarkup(<ColumnSettings />);
+    expect(columns).toContain('data-testid="settings-show-all-columns"');
+    expect(columns).toContain('data-testid="settings-reset-column-widths"');
+    expect(columns).toContain('data-testid="settings-reset-column-order"');
+
+    const global = renderToStaticMarkup(<GlobalSettings />);
+    expect(global).not.toContain('data-testid="settings-reset-column-widths"');
+    expect(global).not.toContain('data-testid="settings-reset-column-order"');
   });
 });

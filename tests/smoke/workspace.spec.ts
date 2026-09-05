@@ -2793,6 +2793,8 @@ test("column widths are dragged, survive a reload, and can never push a column o
 
   // ...and Settings puts it back.
   await page.getByTestId("settings-indicator").click();
+  // The column preferences live in their own Columns tab now (ah-20di).
+  await page.getByTestId("settings-tab-columns").click();
   await page.getByTestId("settings-reset-column-widths").click();
   await page.keyboard.press("Escape");
   const nameReset = (await widthOf(3)) / ((await table.boundingBox())?.width ?? 1);
@@ -2898,6 +2900,8 @@ test("a column is dragged to a new place, shows where it will land, and survives
 
   // ...and Settings puts it back, without disturbing the widths.
   await page.getByTestId("settings-indicator").click();
+  // The column preferences live in their own Columns tab now (ah-20di).
+  await page.getByTestId("settings-tab-columns").click();
   await page.getByTestId("settings-reset-column-order").click();
   await page.keyboard.press("Escape");
   expect(await headerOrder()).toEqual(before);
