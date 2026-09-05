@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-ty3s.3 — what a dissolving new unit's row says</title><style>
+  :root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;
+        --ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;
+        --select:#4a9fd8;--ok:#4fb783;--danger:#d97070;--warn:#d9a441;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif;padding:32px 24px 72px}
+  header,main,footer{max-width:1400px;margin:0 auto}
+  h1{font-size:26px;letter-spacing:.4px} h1 span{color:var(--brass)}
+  header p{color:var(--ink-soft);max-width:96ch;margin-top:10px;font-size:14px}
+  header p+p{margin-top:8px}
+  code,.mono{font-family:'SF Mono',Menlo,Consolas,monospace}
+  header code,p code,li code,td code,div.concept code{color:var(--brass-bright);font-size:12.5px}
+  h3.sec{margin:40px 0 4px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+  h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:14px;max-width:96ch}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;margin-bottom:18px}
+  .card h2{font-size:16px;margin-bottom:5px}
+  .card h2 em{color:var(--brass);font-style:normal;font-size:11.5px;letter-spacing:1.5px;margin-right:8px}
+  .concept{color:var(--ink-soft);font-size:12.5px;margin-bottom:11px;max-width:96ch}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+  .pane{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;overflow:hidden;margin-bottom:10px}
+  .pane-head{display:flex;align-items:baseline;gap:8px;padding:5px 10px;border-bottom:1px solid var(--edge-soft);
+             font:12px/1.4 'Helvetica Neue',Arial,sans-serif;color:var(--ink)}
+  .pane-head .hint{color:var(--ink-dim);font-size:11.5px}
+  .pane-head .cnt{margin-left:auto;font-size:11px;color:var(--ink-dim)}
+  table.t{width:100%;border-collapse:collapse;font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif}
+  table.t th{text-align:left;color:var(--ink-dim);font-weight:normal;padding:4px 8px;border-bottom:1px solid var(--edge-soft);
+             font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}
+  table.t th.r,table.t td.r{text-align:right}
+  table.t td{padding:3px 8px;border-bottom:1px solid var(--edge-soft);color:var(--ink);white-space:nowrap}
+  table.t td.id{color:var(--brass-bright);font-family:'SF Mono',Menlo,monospace}
+  table.t tr.sel td{background:#1b2836}
+  table.t tr.dim td{opacity:.6}
+  table.t tr.struck td{opacity:.6;text-decoration:line-through}
+  .mk{margin-left:6px;font-size:10.5px;font-style:italic;color:var(--brass)}
+  .mk.plain{font-style:normal}
+  .mk.warn{color:var(--warn);font-style:normal;letter-spacing:.04em}
+  .mk.dimw{color:var(--ink-dim);font-style:normal}
+  .dimtxt{color:var(--ink-dim)}
+  .ed{font:11.5px/1.62 'SF Mono',Menlo,Consolas,monospace;padding:6px 10px 8px;white-space:pre;min-height:34px;color:var(--ink-soft)}
+  .kw{color:var(--brass-bright)}
+  ul.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px;margin-top:11px}
+  ul.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+  ul.notes li.con::before{content:"\2212 ";color:var(--danger)}
+  ul.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+  .verdict{background:var(--raised);border:1px solid var(--edge);border-left:3px solid var(--brass);
+           border-radius:6px;padding:12px 14px;font-size:13px;color:var(--ink-soft);margin-top:14px;max-width:112ch}
+  .verdict b{color:var(--ink)}
+  .lbl{font:10.5px/1 'Helvetica Neue',Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;
+       color:var(--ink-dim);margin:0 0 6px}
+  footer{margin-top:44px;color:var(--ink-dim);font-size:12.5px;border-top:1px solid var(--edge);padding-top:14px}
+</style></head><body>
+
+<header>
+<h1>ah&#8209;ty3s.3 &mdash; <span>the row of a <code style="font-size:20px">new 1</code> that gains nobody</span></h1>
+<p>You chose <b>K2</b> on 5 Sep: a formed unit's row <b>stays on the units table while its <code>FORM</code> block
+stands</b>, so <code>new 1</code> never disappears from under you while you are writing its orders. That decision
+is settled and I am not reopening it. What is open is <b>what such a row says</b>.</p>
+<p>The awkwardness is real and it is the whole of this bead. <code>rules/form</code>: &ldquo;If no recruits are
+gained at all, the empty unit will be dissolved, and the silver and any other items it was given will revert to
+the first unit you have in that region.&rdquo; So the row you asked to keep is a row for a unit the game
+<em>will not create</em>. Every other row on that table is a prediction that comes true. This one is a
+placeholder for something you are still building.</p>
+<p><b>The example throughout.</b> Hex <code>plain (7,53)</code>. Unit <code>1922 Tax Collector</code> holds
+$540 and its orders read <code>FORM 1</code> / <code>GIVE NEW 1 200 SILV</code> / <code>END</code> &mdash; so
+<code>new 1</code> has 200 silver, no men, and no <code>BUY</code> of peasants. Next month it is dissolved and
+the 200 goes back to <code>1922</code>.</p>
+</header>
+
+<main>
+
+<h3 class="sec">Question 1 &mdash; how the row reads</h3>
+<p>Three treatments of the same row in <b>This hex</b>. Look at the <code>new&#8209;1</code> line in each.</p>
+
+<div class="grid3">
+
+<div class="card"><h2><em>R1</em> Exactly like any new unit</h2>
+<div class="concept">The row a formed unit gets today, unchanged: the brass italic <code>new</code> beside the
+name and nothing else. The table says nothing about the dissolve.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), 3 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">4</td><td class="r">340</td></tr>
+    <tr class="sel"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span></td><td class="r">0</td><td class="r">200</td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Nothing new to learn, and no new vocabulary on the table.</li>
+  <li>Cheapest by a wide margin: one Rust line stops skipping the row.</li>
+  <li class="con">The table asserts a unit that will not exist, with a silver figure that is not its own. That is the objection I raised against K2 in round 4, and R1 does nothing about it.</li>
+  <li class="con">Nothing tells you that adding a <code>BUY 1 PEAS</code> is what makes this unit real.</li>
+</ul></div>
+
+<div class="card"><h2><em>R2</em> Dimmed, and it says why</h2>
+<div class="concept">The <code>new</code> marker stays, and a second marker says the outcome:
+<b>dissolves &mdash; no recruits</b>, in the amber the table already uses for a warning. The whole row is dimmed
+to the same 60% a departing row uses in this pane.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), 3 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">4</td><td class="r">340</td></tr>
+    <tr class="sel dim"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Both facts on one line: it is new, and as the orders stand it does not survive.</li>
+  <li>It names the cause, so the fix (<code>BUY 1 PEAS</code>) is inferable from the row itself.</li>
+  <li>Dimming is a signal you already read as &ldquo;not here next month&rdquo; &mdash; it is what a departing row does.</li>
+  <li class="con">The longest marker on the table; in a narrow pane the Name column truncates sooner.</li>
+</ul></div>
+
+<div class="card"><h2><em>R3</em> Struck through</h2>
+<div class="concept">Dimmed and struck through, the <code>new</code> marker alone. The strike is the
+&ldquo;this is being deleted&rdquo; picture, with no words spent.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), 3 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">4</td><td class="r">340</td></tr>
+    <tr class="sel struck"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Unmistakable at a glance, and it costs no width at all.</li>
+  <li class="con">Strike-through appears nowhere else in this application, so it is a new vocabulary item for one case.</li>
+  <li class="con">It says the outcome and not the cause, so it does not tell you what to type.</li>
+  <li class="con">Struck-through text over a selected row's blue is the hardest thing on this page to read.</li>
+</ul>
+</div>
+</div>
+
+<div class="verdict"><b>My recommendation is R2.</b> The whole reason you kept the row is that you are
+<em>mid-edit</em> on it &mdash; and mid-edit is exactly when the useful thing to say is what is missing, not that
+something is doomed. R2 is also the only one of the three that answers the objection I put against K2 in round 4:
+the table stops asserting a unit it does not believe in. R1 is the cheapest and I would not fight hard for R2 over
+it if you find the marker noisy. R3 I would not take: a new visual word for one row, saying less than R2 says.</div>
+
+<h3 class="sec">Question 2 &mdash; the Silver column</h3>
+<p>The 200 silver belongs to <code>new&#8209;1</code> today and reverts to <code>1922</code> when the unit
+dissolves. Three answers, all shown with R2's row treatment. Note what <code>1922</code>'s figure does in each.</p>
+
+<div class="grid3">
+
+<div class="card"><h2><em>S1</em> A dash</h2>
+<div class="concept">The unit has no month end, so it is given no month-end figure. The column shows the same
+blank a unit with no forecast gets. <code>1922</code> shows 540 &mdash; its own 340 plus the 200 coming back.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), 3 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">4</td><td class="r">540</td></tr>
+    <tr class="sel dim"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>The column stays honest: every figure on it is silver that unit really holds next month, and the hex total adds up.</li>
+  <li class="con">You cannot see how much is tied up in the gift you just wrote without opening the orders.</li>
+</ul></div>
+
+<div class="card"><h2><em>S2</em> The figure, dimmed</h2>
+<div class="concept">200, greyed. It is what the unit is holding as the orders stand, said quietly because it
+does not survive the month. <code>1922</code> still shows 540, so the hex's Silver column sums to 200 more than
+the hex will have.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), 3 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">4</td><td class="r">540</td></tr>
+    <tr class="sel dim"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">200</span></td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>You can see what the gift was worth without leaving the table.</li>
+  <li class="con">The same 200 is counted twice down the column. A player adding up their hex is told the wrong number.</li>
+  <li class="con">Dim already means &ldquo;a figure near zero&rdquo; on this column, so it would mean two things.</li>
+</ul></div>
+
+<div class="card"><h2><em>S3</em> Where it goes</h2>
+<div class="concept">The figure, greyed, with the unit it reverts to named beside it. Most explicit, and the only
+one that shows the reversion <code>rules/form</code> actually performs.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), 3 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">4</td><td class="r">540</td></tr>
+    <tr class="sel dim"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">200 &rarr; 1922</span></td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Says the whole rule on one line.</li>
+  <li class="con">Two facts in a right-aligned numeric column, which the sort and the tabular alignment both assume is a number.</li>
+  <li class="con">Widest option, on the column that is already the narrowest.</li>
+</ul></div>
+</div>
+
+<div class="verdict"><b>My recommendation is S1.</b> The Silver column is a forecast of what a unit will hold, and
+this unit will hold nothing; S2 makes the column stop summing, which is a defect a player will eventually report.
+Where the 200 went belongs in the row's hover, which I will write as a sentence &mdash; and if you take R2, the
+marker beside the name has already told you the row is not real. I would take S3 only if you want the reversion
+visible without hovering, and I think it costs the column too much.</div>
+
+<h3 class="sec">Question 3 &mdash; and in All my units?</h3>
+<p>A departing row is dimmed in <b>This hex</b> and <em>not</em> in <b>All my units</b> &mdash; that was
+<code>ah&#8209;tguk</code>, on the grounds that in a roster of everything you own nothing is leaving anything, so
+a dimmed row there reads as a unit being lost. A dissolving unit is genuinely being lost, in both lists. So the
+question is whether this new treatment follows the departing rule or overrides it.</p>
+
+<div class="grid2">
+<div class="card"><h2><em>A1</em> The same in both lists</h2>
+<div class="concept">Dimmed and marked wherever it appears. The claim: &ldquo;this will not exist&rdquo; is true
+of the unit itself, not of a hex you happen to be looking at.</div>
+<p class="lbl">All my units</p>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; All my units, 24 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th>Hex</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1660</td><td>Woodcutters</td><td class="dimtxt">forest (5,49)</td><td class="r">6</td><td class="r">122</td></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="dimtxt">plain (7,53)</td><td class="r">4</td><td class="r">540</td></tr>
+    <tr class="dim"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="dimtxt">plain (7,53)</td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>One rule, one picture, nothing to remember.</li>
+  <li>Dim here means what it says: this unit is not going to be among your units.</li>
+  <li class="con">Two panes now dim rows for two different reasons, and only one of them is pane-specific.</li>
+</ul></div>
+
+<div class="card"><h2><em>A2</em> Marked in both, dimmed only in This hex</h2>
+<div class="concept">The marker travels; the dimming follows the existing departing rule and stays in
+<b>This hex</b>. <code>ah&#8209;tguk</code>'s rule kept exactly as written.</div>
+<p class="lbl">All my units</p>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; All my units, 24 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th>Hex</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1660</td><td>Woodcutters</td><td class="dimtxt">forest (5,49)</td><td class="r">6</td><td class="r">122</td></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="dimtxt">plain (7,53)</td><td class="r">4</td><td class="r">540</td></tr>
+    <tr><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="dimtxt">plain (7,53)</td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Leaves <code>ah&#8209;tguk</code> untouched: dim keeps meaning &ldquo;gone from the hex on screen&rdquo; and nothing else.</li>
+  <li>Cheaper: the dim rule already exists and is not widened.</li>
+  <li class="con">The same unit reads two ways in two lists, and here the difference is not about the hex at all.</li>
+</ul></div>
+</div>
+
+<div class="verdict"><b>My recommendation is A1.</b> <code>ah&#8209;tguk</code>'s reason for holding the dimming
+back was that a departing unit is not lost &mdash; it is somewhere else next month, and the roster should say so.
+A dissolving unit is not somewhere else. The premise does not carry over, so I would rather dim it in both than
+keep a rule whose reason has gone.</div>
+
+<h3 class="sec">The states, under R2 + S1 + A1</h3>
+<p>These are not a question &mdash; they are what I will write down as decided unless you say otherwise. They are
+here because they are where the treatment is actually tested.</p>
+
+<div class="grid2">
+
+<div class="card"><h2><em>&middot;</em> Emptied editor &mdash; the case that started this</h2>
+<div class="concept">You select <code>new&#8209;1</code>, delete everything in its editor, and stop typing. The
+<code>form 1</code> / <code>end</code> pair stands (that is <code>ah&#8209;ty3s.1</code>), the row stands, the
+selection stands. Nothing on screen moves except the two markers appearing.</div>
+<div class="pane">
+  <div class="pane-head"><b>Orders</b><span class="hint">&mdash; new 1, in unit 1922's block</span><span class="cnt">0 errors &middot; 0 warnings</span></div>
+  <div class="ed">&nbsp;</div>
+</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), 3 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">4</td><td class="r">540</td></tr>
+    <tr class="sel dim"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div></div>
+
+<div class="card"><h2><em>&middot;</em> It recruits &mdash; the markers go</h2>
+<div class="concept">You type <code>BUY 2 PEAS</code> into <code>new&#8209;1</code>. The unit gains men, so
+nothing dissolves: the amber marker and the dimming both go, the Silver column starts showing a real figure, and
+what is left is the ordinary <code>new</code> row this table has drawn since <code>ah&#8209;jw85</code>.</div>
+<div class="pane">
+  <div class="pane-head"><b>Orders</b><span class="hint">&mdash; new 1, in unit 1922's block</span><span class="cnt">0 errors &middot; 0 warnings</span></div>
+  <div class="ed"><span class="kw">BUY</span> 2 PEAS</div>
+</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), 3 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">4</td><td class="r">340</td></tr>
+    <tr class="sel"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span></td><td class="r">2</td><td class="r">80</td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div></div>
+
+<div class="card"><h2><em>&middot;</em> Nobody to revert to</h2>
+<div class="concept">The <code>FORM</code> is written by a unit that is itself leaving, and no unit of yours is
+shown in the hex. <code>rules/form</code> reverts to &ldquo;the first unit you have in that region&rdquo;, and
+there is none &mdash; so the core hands the goods to nobody and they stay on the unrendered row. The marker is
+the same; the row is the same. Nothing extra is said, because nothing extra is known.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), 2 units</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr class="dim"><td class="id">1922</td><td>Tax Collector<span class="mk dimw">&rarr; forest (6,52)</span></td><td class="r">4</td><td class="r">340</td></tr>
+    <tr class="sel dim"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+  </table>
+</div></div>
+
+<div class="card"><h2><em>&middot;</em> Narrow pane</h2>
+<div class="concept">The Name column truncates before the markers do &mdash; the markers sit after the name and
+the cell clips from the right, so on a narrow pane the amber marker is the first thing lost. That is the cost of
+R2's length, and it is why the same sentence is also in the row's hover.</div>
+<div class="pane" style="max-width:300px">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th></tr>
+    <tr><td class="id">1922</td><td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">Tax Collector</td><td class="r">4</td></tr>
+    <tr class="sel dim"><td class="id">new&#8209;1</td><td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">Unit (new 1)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recr&hellip;</span></td><td class="r">0</td></tr>
+  </table>
+</div></div>
+
+</div>
+
+<h3 class="sec">What I am deciding myself either way</h3>
+<p>Say the word on any of these and I will change it; otherwise they go into the plan as mine.</p>
+<div class="card">
+<ul class="notes">
+  <li class="n">The row's hover gains one sentence: <b>&ldquo;Gains no recruits, so the game dissolves it and its 200 silver reverts to Tax Collector (1922).&rdquo;</b> &mdash; and, with no own unit shown in the hex, <b>&ldquo;Gains no recruits, so the game dissolves it. No unit of yours is shown in this hex for its goods to revert to.&rdquo;</b></li>
+  <li class="n">The screen reader hears the marker as words, like every other marker on this table: <b>&ldquo;dissolves, no recruits&rdquo;</b>.</li>
+  <li class="n">The hex header's unit count includes the row, because the row is on the table and a count that disagreed with what you can see would be worse than one that counts something doomed.</li>
+  <li class="n">The row is selectable, sortable and filterable exactly like any other &mdash; nothing about it is special-cased outside the marker, the dim and the Silver cell.</li>
+  <li class="n"><b>Reversed after the mockup went out.</b> I had written that the <code>&#9888;</code>
+      silver warning would never appear on a dissolving row. It stays. Reading
+      <code>settle_headcounts</code> showed that a formed unit&rsquo;s men are derived from its item list
+      <em>after</em> the market settles, so a <code>BUY 2 PEAS</code> the unit cannot pay for is one of the
+      two ways a unit gains nobody &mdash; and there the <code>&#9888;</code> is the explanation, not noise.
+      Suppressing it would hide the cause of the very dissolve the row is announcing. The warned row shows
+      <code>&#9888;</code> with the dash in place of the figure.</li>
+</ul>
+</div>
+
+</main>
+<footer>Mockup for <code>ah&#8209;ty3s.3</code>, third child of <code>ah&#8209;ty3s</code>. Round 4 of
+<code>ah&#8209;ty3s.1</code> (<code>docs/ui/ah-ty3s-round4-empty.html</code>) is where K2 was chosen; this page
+only settles what the row it keeps actually says.</footer>
+</body></html>
