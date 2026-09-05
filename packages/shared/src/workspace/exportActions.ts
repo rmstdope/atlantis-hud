@@ -124,3 +124,20 @@ export async function deliverArmyExport(
     "application/json"
   );
 }
+
+/**
+ * Saves one faction's study orders, or every faction's (`ah-lyg6.4.1`).
+ *
+ * Nothing crosses to the core: the text was built in `packages/shared` from plans already in
+ * memory, which is why this takes no client while `deliverMapExport` does.
+ *
+ * Resolves with the path written, `""` for a browser download, or `null` when the player
+ * cancelled.
+ */
+export async function deliverStudyOrdersExport(
+  saveTextFile: TextFileSaver,
+  fileName: string,
+  text: string
+): Promise<string | null> {
+  return saveTextFile(fileName, text, "text/plain");
+}

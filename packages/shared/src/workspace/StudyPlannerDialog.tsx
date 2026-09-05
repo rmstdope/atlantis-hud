@@ -14,11 +14,13 @@ import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
 import { goalQueueText, scheduleRows, scheduleTurns } from "../studySchedule";
 import { plannerNotices } from "../studyTeaching";
+import { studyOrders } from "../studyOrders";
 import { shelterKey, type ShelterSeats } from "../studyShelter";
 import { planFor } from "../studyPlans";
 import { STUDY_NOTE_MAX_CHARS, noteCountText, normalizeStudyNote } from "../studyNote";
 import { isMacPlatform } from "../shortcuts";
 import { StudySchedule } from "./StudySchedule";
+import { StudyPlannerOrders } from "./StudyPlannerOrders";
 import { keyToAction as noteKeyToAction } from "./regionNotesState";
 import { reduce as reduceCell, type CellMode } from "./studyCellState";
 
@@ -57,6 +59,8 @@ export function StudyPlannerDialog({
   viewedTurn,
   saveError,
   onSavePlan,
+  onSaveText,
+  ordersError,
   onSaveNote,
   onDismiss
 }: {
@@ -83,6 +87,10 @@ export function StudyPlannerDialog({
   /** `Could not save this plan.`, or null. Reported here rather than in the header status line,
    * which this dialog covers - the same choice `RegionNotes` made. */
   saveError: string | null;
+  /** Turns a section's Save… into a file, through the shell's own `TextFileSaver`. */
+  onSaveText: (fileName: string, text: string) => void;
+  /** `Could not save these orders.`, or null. Drawn in the Orders tab, beside the Schedule's own. */
+  ordersError: string | null;
   onSavePlan: (factionId: string, unitId: string, goals: StudyGoal[]) => void;
   onSaveNote: (factionId: string, unitId: string, comment: string) => void;
   onDismiss: () => void;
@@ -92,7 +100,7 @@ export function StudyPlannerDialog({
   // Remembered no longer than the dialog, exactly as the picked mage is and for the reason
   // ah-lyg6.2.2 gave: a pane that opens differently depending on what you did last time is the
   // less predictable of the two.
-  const [view, setView] = useState<"all" | "schedule">("all");
+  const [view, setView] = useState<"all" | "schedule" | "orders">("all");
   const [cellMode, setCellMode] = useState<CellMode>({ kind: "idle" });
   const turns = useMemo(() => scheduleTurns(viewedTurn), [viewedTurn]);
   // Memoized beside `turns` and `flat`: without it every keystroke in the popover - each skill
@@ -128,6 +136,13 @@ export function StudyPlannerDialog({
   const notices = useMemo(
     () => plannerNotices({ rows, turns, label, factionLabels, shelters }),
     [rows, turns, label, factionLabels, shelters]
+  );
+
+  // Memoised beside `rows` and for the same reason: without it every keystroke in a cell popover
+  // rebuilds every faction's text.
+  const orders = useMemo(
+    () => studyOrders({ groups, rows, turns, notices }),
+    [groups, rows, turns, notices]
   );
 
   const flat = useMemo(() => groups.flatMap((group) => group.mages), [groups]);
@@ -188,6 +203,9 @@ export function StudyPlannerDialog({
     alliedStatus,
     groups.some((group) => group.source === "own" && group.mages.length > 0)
   );
+
+  // The Orders tab counts its own mages; every other tab keeps the planner's summary line.
+  const subLine = view === "orders" ? orders.summary : summaryLine;
 
   const move = (key: string): boolean => {
     if (picked === null) {
@@ -251,8 +269,28 @@ export function StudyPlannerDialog({
             >
               Schedule
             </button>
+            <button
+              type="button"
+              role="tab"
+              data-testid="study-planner-view-orders"
+              aria-selected={view === "orders"}
+              onClick={() => setView("orders")}
+              className="rounded px-1.5"
+            >
+              Orders
+            </button>
           </span>
           <span className="flex-1" />
+          {view === "orders" && orders.sections.length > 0 ? (
+            <button
+              type="button"
+              data-testid="study-planner-save-all"
+              onClick={() => onSaveText(orders.allFileName, orders.allText)}
+              className="rounded px-1.5 text-ink-dim hover:text-ink"
+            >
+              Save all…
+            </button>
+          ) : null}
           <button
             type="button"
             data-testid="study-planner-close"
@@ -268,17 +306,17 @@ export function StudyPlannerDialog({
           child would leave the body in the second, `auto` track instead of the `1fr` one, and the
           two columns would stop filling the box and stop scrolling inside it.
         */}
-        {summaryLine === null && notice === null ? (
+        {subLine === null && notice === null ? (
           <div />
         ) : (
         <div className="border-b border-edge px-2 py-1 text-ink-dim">
-          {summaryLine === null ? null : (
-            <span data-testid="study-planner-summary">{summaryLine}</span>
+          {subLine === null ? null : (
+            <span data-testid="study-planner-summary">{subLine}</span>
           )}
           {notice === null ? null : (
             <span
               data-testid="study-planner-allied-notice"
-              className={summaryLine === null ? "text-warn" : "ml-2 text-warn"}
+              className={subLine === null ? "text-warn" : "ml-2 text-warn"}
             >
               {notice}
             </span>
@@ -286,7 +324,25 @@ export function StudyPlannerDialog({
         </div>
         )}
 
-        {view === "schedule" ? (
+        {view === "orders" ? (
+          <StudyPlannerOrders
+            orders={orders}
+            emptyCopy={
+              turns.length === 0
+                ? {
+                    headline: "Load a report and next turn's orders appear here.",
+                    detail: ""
+                  }
+                : {
+                    headline: `No mage has a plan for turn ${turns[0]}.`,
+                    detail:
+                      "Give a mage a study or a teach on the Schedule and his orders appear here."
+                  }
+            }
+            error={ordersError}
+            onSaveText={onSaveText}
+          />
+        ) : view === "schedule" ? (
           <StudySchedule
             rows={rows}
             groups={groups}

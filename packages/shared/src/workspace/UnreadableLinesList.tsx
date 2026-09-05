@@ -1,12 +1,11 @@
-import { useState } from "react";
 import type { UnreadableLine } from "@atlantis/core-client";
-import { copyText } from "../copyText";
 import {
   unreadableClipboardText,
   unreadableCostNote,
   unreadableKindLabel,
   unreadableLineRange
 } from "../unreadableLines";
+import { CopyButton } from "./CopyButton";
 
 /**
  * Every line of the loaded report the parser could not read, verbatim.
@@ -72,22 +71,12 @@ export function UnreadableCopyButton({
   /** `Borg (73)`, or null when the report does not name both parts. */
   factionLabel: string | null;
 }) {
-  const [copied, setCopied] = useState(false);
-
   return (
-    <button
-      type="button"
-      data-testid="unreadable-copy"
-      onClick={() => {
-        void copyText(unreadableClipboardText(entries, turnNumber, factionLabel)).then((ok) => {
-          if (!ok) return;
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        });
-      }}
+    <CopyButton
+      text={unreadableClipboardText(entries, turnNumber, factionLabel)}
+      label="Copy all"
+      testId="unreadable-copy"
       className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink"
-    >
-      {copied ? "Copied" : "Copy all"}
-    </button>
+    />
   );
 }
