@@ -533,33 +533,56 @@ test("the create form's map fields do not overflow the gate", async ({ page }) =
  * persists across the tests in a file, so a column left hidden here would take positional cell
  * assertions elsewhere with it.
  */
-test("a column is hidden from the Columns tab, leaves the units table, and is still gone after a reload", async ({
-  page
-}) => {
-  await loadReport(page);
-  await selectHex(page, "1:7,53");
+test.describe("the Columns tab", () => {
+  test("a column is hidden from the Columns tab, leaves the units table, and is still gone after a reload", async ({
+    page
+  }) => {
+    await loadReport(page);
+    await selectHex(page, "1:7,53");
 
-  const structure = page.getByRole("columnheader", { name: /Structure/ });
-  const items = page.getByRole("columnheader", { name: /Items/ });
-  await expect(structure).toBeVisible();
+    const structure = page.getByRole("columnheader", { name: /Structure/ });
+    const items = page.getByRole("columnheader", { name: /Items/ });
+    await expect(structure).toBeVisible();
 
-  await page.getByTestId("settings-indicator").click();
-  await page.getByTestId("settings-tab-columns").click();
-  await page.getByTestId("settings-column-structure").uncheck();
-  await page.keyboard.press("Escape");
+    await page.getByTestId("settings-indicator").click();
+    await page.getByTestId("settings-tab-columns").click();
+    await page.getByTestId("settings-column-structure").uncheck();
+    await page.keyboard.press("Escape");
 
-  await expect(structure).toHaveCount(0);
-  await expect(items).toBeVisible();
+    await expect(structure).toHaveCount(0);
+    await expect(items).toBeVisible();
 
-  await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored");
-  await selectHex(page, "1:7,53");
-  await expect(page.getByRole("columnheader", { name: /Structure/ })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId("import-status")).toContainText("restored");
+    await selectHex(page, "1:7,53");
+    await expect(page.getByRole("columnheader", { name: /Structure/ })).toHaveCount(0);
 
-  // Put it back, so the tests after this one see the table they expect.
-  await page.getByTestId("settings-indicator").click();
-  await page.getByTestId("settings-tab-columns").click();
-  await page.getByTestId("settings-show-all-columns").click();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("columnheader", { name: /Structure/ })).toBeVisible();
+    // Put it back through the UI, which is the half of the walk this test is here to pin.
+    await page.getByTestId("settings-indicator").click();
+    await page.getByTestId("settings-tab-columns").click();
+    await page.getByTestId("settings-show-all-columns").click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("columnheader", { name: /Structure/ })).toBeVisible();
+  });
+
+  /**
+   * The restore above runs only if the test got that far. `test:smoke` runs one worker and
+   * localStorage persists across the tests in a file, so a failure partway would leave a column
+   * hidden for every later test - and `workspace.spec.ts` addresses cells positionally. This puts
+   * the preference back whatever happened.
+   */
+  test.afterEach(async ({ page }) => {
+    await page.evaluate(() => {
+      const key = "atlantis-hud-workspace";
+      const raw = window.localStorage.getItem(key);
+      if (!raw) {
+        return;
+      }
+      const stored = JSON.parse(raw) as { state?: Record<string, unknown> };
+      if (stored.state && "unitColumnsShown" in stored.state) {
+        delete stored.state.unitColumnsShown;
+        window.localStorage.setItem(key, JSON.stringify(stored));
+      }
+    });
+  });
 });

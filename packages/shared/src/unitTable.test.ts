@@ -33,6 +33,7 @@ import {
   shareScaleFor,
   mergeShownOrder,
   sortAfterHiding,
+  nextSort,
   type SortState,
   type UnitColumn
 } from "./unitTable";
@@ -999,5 +1000,22 @@ describe("column visibility (ah-20di)", () => {
     expect(sortAfterHiding(sort, allColumnsShown())).toEqual(sort);
     const byName: SortState = { column: "name", direction: "asc", groupOwnFirst: true };
     expect(sortAfterHiding(byName, { ...allColumnsShown(), skills: false })).toEqual(byName);
+  });
+});
+
+describe("nextSort (ah-20di)", () => {
+  it("turns a repeat click into a direction flip and a new column into an ascending sort", () => {
+    const sort: SortState = { column: "name", direction: "asc", groupOwnFirst: true };
+    expect(nextSort(sort, "name")).toEqual({ ...sort, direction: "desc" });
+    expect(nextSort(sort, "men")).toEqual({ ...sort, column: "men", direction: "asc" });
+  });
+
+  it("flips the fallback column on its first click, not its second", () => {
+    // Sorted on a column that has since been hidden: the header shows `name` ascending, so a
+    // click on it must give `name` descending. Reading the raw sort here would write the sort
+    // that is already on screen and look like a dead header.
+    const raw: SortState = { column: "structure", direction: "asc", groupOwnFirst: true };
+    const shown = sortAfterHiding(raw, { ...allColumnsShown(), structure: false });
+    expect(nextSort(shown, "name")).toEqual({ ...raw, column: "name", direction: "desc" });
   });
 });

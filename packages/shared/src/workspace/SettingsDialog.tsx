@@ -354,7 +354,6 @@ export function GlobalSettings() {
         </span>
       </label>
 
-
       <SettingToggle
         title="Movement planner"
         description="Shows the experimental Movement pane for planning MOVE routes on the map."

@@ -788,3 +788,17 @@ export function sortAfterHiding(sort: SortState, shown: ColumnVisibility): SortS
   }
   return { ...sort, column: DEFAULT_SORT.column };
 }
+
+/**
+ * The sort a click on one column's header means, given the sort **currently on screen**.
+ *
+ * `current` is the effective sort - what `sortAfterHiding` derived - and not the raw state, which
+ * is the whole point of extracting this. With a sort on a hidden column the header shows `name`
+ * ascending; a click on `name` read against the raw state takes the "different column" branch and
+ * writes exactly what is already drawn, so the header looks dead until it is clicked twice.
+ */
+export function nextSort(current: SortState, column: SortColumn): SortState {
+  return current.column === column
+    ? { ...current, direction: current.direction === "asc" ? "desc" : "asc" }
+    : { ...current, column, direction: "asc" };
+}

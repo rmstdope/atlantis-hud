@@ -41,6 +41,7 @@ import {
   shownColumns,
   mergeShownOrder,
   sortAfterHiding,
+  nextSort,
   sortUnits,
   windowRange,
   COLUMN_LABELS,
@@ -701,12 +702,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     }
   };
 
-  const sortByColumn = (column: SortColumn) =>
-    setSort((current) =>
-      current.column === column
-        ? { ...current, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { ...current, column, direction: "asc" }
-    );
+  // Against the sort on screen rather than the raw state: with a sort on a hidden column the
+  // header shows `name`, and reading the raw state would write back what is already drawn
+  // (ah-20di).
+  const sortByColumn = (column: SortColumn) => setSort(nextSort(effectiveSort, column));
 
   const moveSelection = (to: number, options: { extend?: boolean } = {}) => {
     const target = visible[Math.min(Math.max(to, 0), visible.length - 1)];
