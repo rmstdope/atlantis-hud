@@ -714,11 +714,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   };
 
   /** Picks a row alone and puts the cursor on it - what a click, Enter and Space all mean. */
-  const settleOn = (pickNext: UnitPick, rowTarget: string, rowRegionId: string) => {
+  const settleOn = (pickNext: UnitPick, rowUnitId: string, rowRegionId: string) => {
     setPick(pickNext);
-    // The row's own hex, even when `rowTarget` is the unit that wrote the FORM: `rules/form` puts a
-    // formed unit "in the same region as the unit which formed it".
-    selectUnit(rowTarget, rowRegionId);
+    // The row's own unit and the row's own hex. Since `ah-ty3s.1` a formed row selects itself
+    // rather than the unit that wrote its `FORM`, and the hex is what tells two `new-1`s apart -
+    // `rules/form` puts a formed unit "in the same region as the unit which formed it".
+    selectUnit(rowUnitId, rowRegionId);
   };
 
   /**
@@ -865,7 +866,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const pressRow = (
     event: PointerEvent<HTMLTableRowElement>,
     unit: ReportUnit,
-    rowTarget: string
+    rowUnitId: string
   ) => {
     if (event.button !== 0) {
       return;
@@ -878,8 +879,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     const outcome = onPress(pick, unitRowKey(unit.regionId, unit.unitId), modifiers, rowKeys);
     if (outcome.now) {
       if (plain) {
-        settleOn(outcome.now, rowTarget, unit.regionId);
-        travelTo(rowTarget, unit.regionId);
+        settleOn(outcome.now, rowUnitId, unit.regionId);
+        travelTo(rowUnitId, unit.regionId);
       } else {
         setPick(outcome.now);
       }
@@ -899,8 +900,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       unit,
       deferred
         ? () => {
-            settleOn(deferred, rowTarget, unit.regionId);
-            travelTo(rowTarget, unit.regionId);
+            settleOn(deferred, rowUnitId, unit.regionId);
+            travelTo(rowUnitId, unit.regionId);
           }
         : undefined
     );
@@ -1025,7 +1026,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const contextRow = (
     event: ReactMouseEvent<HTMLTableRowElement>,
     unit: ReportUnit,
-    rowTarget: string
+    rowUnitId: string
   ) => {
     event.preventDefault();
     const outcome = onPress(
@@ -1035,7 +1036,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       rowKeys
     );
     if (outcome.now) {
-      settleOn(outcome.now, rowTarget, unit.regionId);
+      settleOn(outcome.now, rowUnitId, unit.regionId);
     }
     setMenu({ at: "pointer", point: { x: event.clientX, y: event.clientY } });
   };
@@ -1881,19 +1882,20 @@ function UnitRow({
   onSelect: (unitId: string, regionId: string) => void;
   /**
    * A press on the row, which is where selection now happens - `onClick` would be too late for a
-   * press that may become a drag. Handed the row's own unit and the id the cursor should land on,
-   * because only `UnitRow` knows a formed row from an ordinary one.
+   * press that may become a drag. Handed the row's own unit and the id the cursor should land on -
+   * since `ah-ty3s.1` those are the same id for every row, a formed one included, but the two
+   * arguments are kept apart because the cursor's id is the row's business and not the caller's.
    */
   onPress: (
     event: PointerEvent<HTMLTableRowElement>,
     unit: ReportUnit,
-    rowTarget: string
+    rowUnitId: string
   ) => void;
   /** A right-click on the row: the Army menu, at the pointer. */
   onContextMenu: (
     event: ReactMouseEvent<HTMLTableRowElement>,
     unit: ReportUnit,
-    rowTarget: string
+    rowUnitId: string
   ) => void;
   /** The hex this row stands in, so its silver forecast is looked up by the right key. */
   regionId: string;
