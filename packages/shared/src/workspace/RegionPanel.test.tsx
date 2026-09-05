@@ -9,6 +9,7 @@ import type {
 } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aStructure } from "@atlantis/core-client";
 import type { GameDataEntry, GameDataIndex } from "../gameData";
+import type { RememberedResource } from "../resourceMemory";
 import { SURFACE, type HexNode } from "../hexMapModel";
 import { resetHexNotesStore } from "../hexNotesStore";
 import { RegionPanel } from "./RegionPanel";
@@ -557,5 +558,115 @@ describe("hidden resources in the products line (ah-rx0r.2)", () => {
 
     expect(html).toContain("Products");
     expect(html).toMatch(/0 <button[^>]*>floater hide<\/button>/);
+  });
+});
+
+describe("resource verdicts carried over from earlier turns (ah-tgtp)", () => {
+  const NAMES = indexWith([
+    "equipment:FLOA",
+    "equipment:MUSH",
+    "equipment:LIVE",
+    "equipment:WOOD",
+    "equipment:HERB"
+  ]);
+
+  const revealing = (): GameDataIndex => ({
+    ...NAMES,
+    byId: new Map([
+      ["equipment:FLOA", { id: "equipment:FLOA", category: "equipment", name: "floater hide", tag: "FLOA" }],
+      ["equipment:MUSH", { id: "equipment:MUSH", category: "equipment", name: "mushroom", tag: "MUSH" }],
+      ["equipment:LIVE", { id: "equipment:LIVE", category: "equipment", name: "livestock", tag: "LIVE" }],
+      ["equipment:WOOD", { id: "equipment:WOOD", category: "equipment", name: "wood", tag: "WOOD" }],
+      ["equipment:HERB", { id: "equipment:HERB", category: "equipment", name: "herbs", tag: "HERB" }]
+    ] as [string, GameDataEntry][]),
+    revealedBy: new Map([
+      ["FLOA", { skillTag: "HUNT", skillName: "hunting", level: 3 }],
+      ["MUSH", { skillTag: "HERB", skillName: "herb lore", level: 3 }]
+    ]),
+    terrainResources: new Map([["swamp", ["WOOD", "FLOA", "HERB", "MUSH"]]])
+  });
+
+  /** The same swamp with the hunter gone: turn 39 of g5-f21, where only the herbalist remains. */
+  const hunterless = (): HexNode => ({
+    ...MARKET_HEX,
+    terrain: "swamp",
+    region: aReportRegion({
+      ...MARKET_HEX.region!,
+      terrain: "swamp",
+      products: [
+        { amount: 12, name: "livestock", tag: "LIVE" },
+        { amount: 16, name: "wood", tag: "WOOD" },
+        { amount: 18, name: "herbs", tag: "HERB" }
+      ],
+      units: [
+        aReportUnit({
+          unitId: "9595",
+          skills: [{ name: "herb lore", tag: "HERB", level: 1, points: 50 }]
+        })
+      ]
+    })
+  });
+
+  const memory = (over: Partial<RememberedResource> = {}) =>
+    new Map<string, RememberedResource>([
+      ["FLOA", { tag: "FLOA", amount: 0, name: null, turn: 23, ...over }]
+    ]);
+
+  const draw = (
+    hex: HexNode,
+    gameData: GameDataIndex | null,
+    remembered?: ReadonlyMap<string, RememberedResource>,
+    turn = 39
+  ) =>
+    renderToStaticMarkup(
+      <RegionPanel
+        hex={hex}
+        client={CLIENT}
+        game={GAME}
+        turn={turn}
+        gameData={gameData}
+        remembered={remembered}
+        onOpenGameData={() => {}}
+      />
+    );
+
+  it("shows a remembered absence exactly as a fresh one", () => {
+    const html = draw(hunterless(), revealing(), memory());
+
+    expect(html).toMatch(
+      /0 <button[^>]*data-game-data-entry="equipment:FLOA"[^>]*>floater hide<\/button>/
+    );
+  });
+
+  it("names the turn a remembered absence was proved, in the hover", () => {
+    expect(draw(hunterless(), revealing(), memory())).toContain(
+      "A unit with hunting 3 stood here on turn 23, and that report named no floater hide."
+    );
+  });
+
+  it("shows a remembered presence with its amount", () => {
+    const html = draw(
+      hunterless(),
+      revealing(),
+      memory({ amount: 8, name: "floater hides", turn: 25 })
+    );
+
+    expect(html).toMatch(
+      /8 <button[^>]*data-game-data-entry="equipment:FLOA"[^>]*>floater hides<\/button>/
+    );
+    expect(html).toContain(
+      "A unit with hunting 3 stood here on turn 25, and that report named 8 floater hides."
+    );
+  });
+
+  it("leaves the line alone when nothing is remembered", () => {
+    const html = draw(hunterless(), revealing());
+
+    expect(html).toMatch(
+      /<button[^>]*data-game-data-entry="equipment:FLOA"[^>]*>floater hide<\/button>\?/
+    );
+    expect(html).toMatch(
+      /<button[^>]*data-game-data-entry="equipment:MUSH"[^>]*>mushroom<\/button>\?/
+    );
   });
 });
