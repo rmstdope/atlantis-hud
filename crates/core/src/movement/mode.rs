@@ -620,6 +620,41 @@ mod tests {
         assert_eq!(best_allowance(&ReportUnit::default()), None);
     }
 
+    /// A unit the report never carried has no weight and capacity lines of its own - a unit this
+    /// month's `FORM` creates is the case (`ah-4hux`) - and its settled `movement` is then the only
+    /// statement of speed there is.
+    #[test]
+    fn a_unit_with_no_stated_lines_travels_by_its_settled_movement() {
+        let settled = movement_for_capacities(10, parse_capacities("0/0/15/0").expect("readable"));
+        let unit = ReportUnit {
+            weight: None,
+            capacity: None,
+            movement: Some(settled),
+            ..Default::default()
+        };
+
+        assert_eq!(mobility(&unit), Mobility::Moves(MovementMode::Walk));
+    }
+
+    /// And the report's own lines are read first, so a reported unit answers exactly as it always
+    /// did. They cannot disagree in practice - `report::unit` assigns `movement` from
+    /// `unit_movement` as it parses - which is what makes the fallback above safe; this pins the
+    /// precedence rather than the agreement, so a future writer of `movement` cannot quietly
+    /// overrule what the game printed.
+    #[test]
+    fn the_reports_own_weight_and_capacity_are_read_before_the_settled_movement() {
+        let overloaded =
+            movement_for_capacities(900, parse_capacities("0/0/15/0").expect("readable"));
+        let unit = ReportUnit {
+            weight: Some(10),
+            capacity: Some("0/0/15/0".to_string()),
+            movement: Some(overloaded),
+            ..Default::default()
+        };
+
+        assert_eq!(mobility(&unit), Mobility::Moves(MovementMode::Walk));
+    }
+
     #[test]
     fn movement_uses_fastest_available_mode_and_active_capacity() {
         let movement = unit_movement(&ReportUnit {

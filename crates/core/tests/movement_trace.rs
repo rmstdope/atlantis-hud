@@ -173,6 +173,24 @@ fn a_formed_units_own_move_is_traced_for_the_formed_unit() {
     assert_eq!(trace_document("new-9", document).path, None);
 }
 
+/// A FORM whose alias cannot be read still owns its block's orders - it just owns them as nobody.
+///
+/// `Working::open_form` pushes `None` for a FORM with no argument, `FORM 0`, or an alias already
+/// taken, and applies the block's orders to no unit at all. The trace has to agree, or the parent
+/// draws a line for a MOVE it did not write - which a player typing `FORM` reaches before they have
+/// typed the alias (`ah-4hux`).
+#[test]
+fn a_move_inside_an_unreadable_form_block_belongs_to_nobody() {
+    assert_eq!(
+        trace_document("18642", "unit 18642\nFORM\nMOVE N\nEND\n").path,
+        None
+    );
+    assert_eq!(
+        trace_document("18642", "unit 18642\nFORM 0\nMOVE N\nEND\n").path,
+        None
+    );
+}
+
 /// A FORM block that has been closed gives the unit its own orders back (#95).
 ///
 /// The reader used to close a block on `ENDTURN` and `ENDFORM` and never on plain `END`, so a

@@ -736,6 +736,12 @@ pub(crate) fn inherited_flags(parent_flags: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// The id a `FORM`ed unit is known by until the game issues a real one: `new-1` for `FORM 1`.
+///
+/// Declared here because [`formed_unit`] writes it and both [`formed_unit_as_ordered`] and
+/// `movement::fleet::OrderedUnits` read it back (`ah-4hux`).
+pub(crate) const FORMED_ID_PREFIX: &str = "new-";
+
 /// The unit a `FORM n` creates, as it stands at the start of the turn.
 ///
 /// No items, no skills, no men - flags are the one thing it does carry over, because `rules/form`
@@ -745,12 +751,6 @@ pub(crate) fn inherited_flags(parent_flags: &[String]) -> Vec<String> {
 /// unit to the checks, and it is why `semantics` builds it with this function rather than with one
 /// of its own - two readings of which units a document forms, and of what they are called, is how
 /// the table's rows and the column's figures come to disagree about one turn.
-/// The id a `FORM`ed unit is known by until the game issues a real one: `new-1` for `FORM 1`.
-///
-/// Declared here because [`formed_unit`] writes it and both [`formed_unit_as_ordered`] and
-/// `movement::fleet::OrderedUnits` read it back (`ah-4hux`).
-pub(crate) const FORMED_ID_PREFIX: &str = "new-";
-
 pub(crate) fn formed_unit(
     parent: &ReportUnit,
     alias: &str,

@@ -85,11 +85,21 @@ impl OrderedUnits {
                 // unit below, because `Working` already applies a formed unit's boardings to its
                 // own `structure_id` and `OrderedUnits::structure_of` reads both, so recording
                 // them here as well would apply one order twice.
-                let moving = forming
-                    .last()
-                    .cloned()
-                    .flatten()
-                    .or_else(|| current.clone());
+                // `match` rather than `.flatten().or_else(...)`: `forming` holds `Some(None)` for
+                // a FORM whose alias could not be read, and flattening that to `None` would fall
+                // the order through to the block's own unit - the very thing the `None` entry is
+                // pushed to prevent. `Working::active` answers `None` there and applies the order
+                // to nobody, and these two readers must agree or the parent draws a line for a
+                // MOVE it did not write (`ah-4hux`).
+                //
+                // Alias collisions are not modelled here: `Working::open_form` refuses a second
+                // `FORM 1` in one hex, where this would let the later block's MOVE replace the
+                // earlier one. The disagreement is then confined to the formed unit rather than
+                // leaking onto the parent.
+                let moving = match forming.last() {
+                    Some(formed) => formed.clone(),
+                    None => current.clone(),
+                };
                 if let (Some(unit_id), Some(steps)) = (
                     moving.as_ref(),
                     crate::movement::orders::parse_move(
