@@ -1051,6 +1051,36 @@ describe("the items popup's order", () => {
     expect(popup.lines.map((line) => line.label)).toEqual(["wood WOOD", "grain GRAI"]);
   });
 
+  it("keeps an unmoved item behind a moved one when a tag moved more than once", () => {
+    // The month's order is the order tags *first* appear, not the raw index of each change: a tag
+    // bought at three prices writes three entries, and ranking on the raw index would push a later
+    // moved tag past the unmoved block.
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { name: "zinc", tag: "ZINC", amount: 90 },
+            { name: "grain", tag: "GRAI", amount: 3 },
+            { name: "bread", tag: "BREA", amount: 1 }
+          ],
+          itemChanges: [
+            change("GRAI", 1),
+            change("GRAI", 1),
+            change("GRAI", 1),
+            change("BREA", 1)
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.map((line) => line.label)).toEqual([
+      "grain GRAI",
+      "bread BREA",
+      "zinc ZINC"
+    ]);
+  });
+
   it("keeps an item whose movement the core did not record in the moved block", () => {
     const popup = columnPopup(
       popupForCell(
@@ -1234,6 +1264,61 @@ describe("the items popup's cause sentences", () => {
         itemChanges: [moved({ tag: "IRON", name: "iron", cause: "cast-created", delta: 3 })]
       })[0]
     ).toBe("iron: created 3 by casting.");
+  });
+
+  it("says a transport with no other unit as a bare send", () => {
+    expect(
+      notesFor({
+        items: [{ name: "grain", tag: "GRAI", amount: 8 }],
+        itemChanges: [moved({ cause: "transported-out", delta: -20 })]
+      })[0]
+    ).toBe("grain: sent 20.");
+  });
+
+  it("says an arrival with no other unit as a bare receipt", () => {
+    expect(
+      notesFor({
+        items: [{ name: "grain", tag: "GRAI", amount: 28 }],
+        itemChanges: [moved({ cause: "transported-in", delta: 20 })]
+      })[0]
+    ).toBe("grain: received 20.");
+  });
+
+  it("adds up a tag two casts create", () => {
+    expect(
+      notesFor({
+        items: [{ name: "wolf", tag: "WOLF", amount: 8 }],
+        created: [
+          { fewest: 1, most: 4, tag: "WOLF", summoned: true },
+          { fewest: 2, most: 4, tag: "WOLF", summoned: true }
+        ],
+        itemChanges: [moved({ tag: "WOLF", name: "wolf", cause: "cast-created", delta: 8 })]
+      })[0]
+    ).toBe("wolf: summoned 3-8.");
+  });
+
+  it("says nothing about an item the cap never drew", () => {
+    // S2 promises the prose block can never be longer than the list above it, so a sentence for a
+    // figure the reader cannot see would break the density the decision was made for.
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: Array.from({ length: 14 }, (_, i) => ({
+            name: `t${i}`,
+            tag: `T${String(i).padStart(2, "0")}`,
+            amount: 100 - i
+          })),
+          itemChanges: Array.from({ length: 14 }, (_, i) =>
+            moved({ tag: `T${String(i).padStart(2, "0")}`, name: `t${i}`, cause: "produced", delta: 1 })
+          )
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toHaveLength(12);
+    expect(popup.notes.filter((note) => /^t\d+:/.test(note))).toHaveLength(12);
+    expect(popup.notes.some((note) => note.startsWith("t13:"))).toBe(false);
   });
 
   it("an item whose movement the core did not record gets no sentence", () => {

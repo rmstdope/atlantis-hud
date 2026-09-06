@@ -200,6 +200,22 @@ export function reportedItems(original: string): ReportedItems | undefined {
   return items;
 }
 
+/**
+ * The item's display name alone - `grain`, not `grain GRAI` - which both its line's label and its
+ * cause sentence are built from, so the two can never disagree.
+ *
+ * A gone item is the case that needs the fallbacks: `unit.items` no longer holds it, so the name
+ * comes from its first movement, and the bare tag is all that is left when there is none. The
+ * `items` change's original carries no names at all (`crates/core/src/orders/effects.rs`).
+ */
+function itemLabel(tag: string, unit: PreviewedUnit): string {
+  return (
+    unit.items.find((item) => item.tag === tag)?.name ??
+    (unit.itemChanges ?? []).find((change) => change.tag === tag)?.name ??
+    tag
+  );
+}
+
 /** One item's line, before the cap: what it is, what it stands at, and where it came from. */
 export type ItemLine = { tag: string; line: PopupLine; moved: boolean };
 
@@ -219,13 +235,6 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
   for (const item of unit.created ?? []) {
     shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
   }
-  const changeName = new Map<string, string>();
-  for (const change of changes) {
-    if (!changeName.has(change.tag)) {
-      changeName.set(change.tag, change.name);
-    }
-  }
-
   const tags: string[] = [];
   for (const tag of [...held.keys(), ...(reported?.keys() ?? [])]) {
     if (!tags.includes(tag)) {
@@ -236,16 +245,19 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
   // Decision **B**: everything the month moved first, in the month's own order, so no movement is
   // ever lost to the cap - then a moved tag the core recorded no change for, then the rest. Inside
   // the last two, the cell's own amount-descending order.
+  // Keyed on the order tags *first* appear, not on the raw index of each change: one tag bought at
+  // four prices writes four entries, and ranking on the raw index would run a later tag's rank
+  // past the two fallback bands below and sort an unmoved item ahead of a moved one.
   const monthOrder = new Map<string, number>();
-  for (const [index, change] of changes.entries()) {
+  for (const change of changes) {
     if (!monthOrder.has(change.tag)) {
-      monthOrder.set(change.tag, index);
+      monthOrder.set(change.tag, monthOrder.size);
     }
   }
 
   return tags.map((tag) => {
     const item = held.get(tag);
-    const name = item?.name ?? changeName.get(tag);
+    const name = itemLabel(tag, unit);
     const before = reported?.get(tag);
     const amount = item?.amount;
     const moved =
@@ -253,7 +265,7 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
       (before !== undefined && before !== (amount ?? 0)) ||
       (before === undefined && reported !== undefined);
     const line: PopupLine = {
-      label: name === undefined ? tag : `${name} ${tag}`,
+      label: name === tag ? tag : `${name} ${tag}`,
       value: amount === undefined ? "gone" : rangedValue(amount, shortfall.get(tag) ?? 0)
     };
     const change = changeOf(before, amount, reported);
@@ -398,11 +410,15 @@ function buildSpendPlace(change: ItemChange, unit: PreviewedUnit): string {
 
 /** A cast's own words, and its range where the spell's yield is not yet settled. */
 function castCreatedClause(change: ItemChange, unit: PreviewedUnit, n: number): string {
-  const created = (unit.created ?? []).find((entry) => entry.tag === change.tag);
-  const figure = created && created.fewest !== created.most
-    ? `${created.fewest}-${created.most}`
-    : `${n}`;
-  return created?.summoned ? `summoned ${figure}` : `created ${figure} by casting`;
+  // Summed across every cast of the tag, because one unit may cast the same item twice and a
+  // single entry would report one spell's range as the month's.
+  const casts = (unit.created ?? []).filter((entry) => entry.tag === change.tag);
+  const fewest = casts.reduce((total, entry) => total + entry.fewest, 0);
+  const most = casts.reduce((total, entry) => total + entry.most, 0);
+  const figure = casts.length > 0 && fewest !== most ? `${fewest}-${most}` : `${n}`;
+  return casts.some((entry) => entry.summoned)
+    ? `summoned ${figure}`
+    : `created ${figure} by casting`;
 }
 
 /** How many lines a popup shows before it stops and counts the rest (decision **G-d**). */
@@ -913,10 +929,13 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   // explains (decision **S2**).
   const changes = unit.itemChanges ?? [];
   const causes = entries
+    // Only the entries the cap will draw: **S2** promises the prose block can never be longer
+    // than the list above it, and a sentence for a figure the reader cannot see breaks that.
+    .slice(0, MAX_LINES)
     .filter((entry) => entry.moved)
     .map((entry) =>
       itemCauseSentence(
-        itemLabel(entry, unit),
+        itemLabel(entry.tag, unit),
         changes.filter((c) => c.tag === entry.tag),
         unit
       )
@@ -932,15 +951,6 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
       : null
   };
-}
-
-/** The item's display name alone, which is what leads its cause sentence. */
-function itemLabel(entry: ItemLine, unit: PreviewedUnit): string {
-  return (
-    unit.items.find((item) => item.tag === entry.tag)?.name ??
-    (unit.itemChanges ?? []).find((change) => change.tag === entry.tag)?.name ??
-    entry.tag
-  );
 }
 
 function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {

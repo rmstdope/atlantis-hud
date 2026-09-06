@@ -356,7 +356,19 @@ export function itemsTooltip(
   if (capSentence !== undefined) {
     lines.push(capSentence);
   }
+  const spentTags = new Set(
+    (unit.itemChanges ?? [])
+      .filter((change) => change.cause === "build-spent")
+      .map((change) => change.tag)
+  );
   for (const spend of built) {
+    // Kept for exactly the spend no clause can name: `charge_shared_material` debits the actor
+    // only for what it holds (`crates/core/src/orders/semantics.rs`), so a builder funded by a hex
+    // neighbour records no `build-spent` movement of its own and would otherwise say nothing at
+    // all about the structure it is working on.
+    if (!spentTags.has(spend.tag)) {
+      lines.push(`Spends ${spend.amount} ${spend.tag} ${buildSpendTarget(spend)} this month.`);
+    }
     if (spend.cappedBy === "materials") {
       lines.push(
         `This unit has ${spend.name} for ${spend.amount} units of work, not the ${spend.couldDo} its men could do.`
@@ -371,10 +383,12 @@ export function itemsTooltip(
   if (castCap !== undefined) {
     lines.push(castCap);
   }
-  // Only the refused lines: a refused TRANSPORT moves nothing and so has no `ItemChange`, while
-  // every line that does move is what the `transported-out` clause now says, `toUnshown` included.
+  // Only what no clause can name: a refused TRANSPORT, and one that moved nothing at all - the
+  // core writes the `TransportSent` row unconditionally but records the `TransportedOut` change
+  // only `if moved != 0` (`crates/core/src/orders/effects.rs`). Every line that did move is what
+  // the `transported-out` clause now says, `toUnshown` included.
   for (const sentence of transportSentences(
-    transportSent.filter((sent) => sent.refused),
+    transportSent.filter((sent) => sent.refused || sent.amount === 0),
     transportTargetIssues
   )) {
     lines.push(sentence);

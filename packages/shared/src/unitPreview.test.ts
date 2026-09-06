@@ -724,6 +724,18 @@ describe("formatItems and itemsTooltip", () => {
   it("drops the build's spend line and keeps what capped it", () => {
     const row = previewedUnit({
       items: [{ amount: 120, name: "wood", tag: "WOOD" }],
+      // The builder's own debit, so the Items popup's `build-spent` clause names the spend.
+      itemChanges: [
+        {
+          tag: "WOOD",
+          name: "wood",
+          delta: -15,
+          cause: "build-spent",
+          line: 4,
+          unitPrice: null,
+          other: null
+        }
+      ],
       built: [
         {
           amount: 15,
@@ -739,6 +751,74 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row)).toBe("This unit has wood for 15 units of work, not the 30 its men could do.");
+  });
+
+  it("still says what a build spends when the builder holds none of the material", () => {
+    // `charge_shared_material` debits the actor only for what it holds
+    // (`crates/core/src/orders/semantics.rs`), so a builder funded entirely by a hex neighbour has
+    // no `build-spent` movement of its own and no clause can name the spend.
+    const row = previewedUnit({
+      items: [],
+      itemChanges: [],
+      built: [
+        {
+          amount: 30,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("Spends 30 WOOD on Building 4 this month.");
+  });
+
+  it("leaves the spend line out when the item's own clause already names it", () => {
+    const row = previewedUnit({
+      items: [{ amount: 120, name: "wood", tag: "WOOD" }],
+      itemChanges: [
+        {
+          tag: "WOOD",
+          name: "wood",
+          delta: -30,
+          cause: "build-spent",
+          line: 4,
+          unitPrice: null,
+          other: null
+        }
+      ],
+      built: [
+        {
+          amount: 30,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBeUndefined();
+  });
+
+  it("still says what a transport that moved nothing was going to send", () => {
+    // A non-refused send that moved zero writes a `TransportSent` row and no `ItemChange`
+    // (`crates/core/src/orders/effects.rs`), so no clause can name it either.
+    const row = previewedUnit({
+      items: [],
+      transportSent: [
+        { amount: 0, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 0 }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("Sends 0 STON to unit 6857.");
   });
 
   it("says nothing at all when the only thing to say was the report's own list", () => {
@@ -965,7 +1045,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBeUndefined();
+    expect(itemsTooltip(row)).toBe("Spends 30 WOOD on Building 4 this month.");
   });
 
   it("words the hover for a builder short of material", () => {
@@ -985,7 +1065,10 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe("This unit has wood for 15 units of work, not the 30 its men could do.");
+    expect(itemsTooltip(row)).toBe(
+      "Spends 15 WOOD on Building 4 this month.\n" +
+        "This unit has wood for 15 units of work, not the 30 its men could do."
+    );
   });
 
   it("words the hover for a builder on a nearly finished structure", () => {
@@ -1005,7 +1088,10 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe("Guild Hall needs 6 more units of work, not the 30 its men could do.");
+    expect(itemsTooltip(row)).toBe(
+      "Spends 6 WOOD on Guild Hall this month.\n" +
+        "Guild Hall needs 6 more units of work, not the 30 its men could do."
+    );
   });
 
   it("words the hover for a unit founding a structure", () => {
@@ -1025,7 +1111,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBeUndefined();
+    expect(itemsTooltip(row)).toBe("Spends 30 WOOD on a new Stockade this month.");
   });
 
   it("words the hover for a unit founding a structure it cannot finish this month", () => {
@@ -1045,7 +1131,10 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe("A new Tower needs 10 units of work, not the 30 its men could do.");
+    expect(itemsTooltip(row)).toBe(
+      "Spends 10 STON on a new Tower this month.\n" +
+        "A new Tower needs 10 units of work, not the 30 its men could do."
+    );
   });
 
   it("words the hover for a unit helping another build", () => {
@@ -1065,7 +1154,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBeUndefined();
+    expect(itemsTooltip(row)).toBe("Spends 30 WOOD helping unit 5541 build Building 4 this month.");
   });
 
   it("words the hover for a unit helping another found a structure", () => {
@@ -1085,7 +1174,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBeUndefined();
+    expect(itemsTooltip(row)).toBe("Spends 30 WOOD helping unit 5541 build a new Tower this month.");
   });
 
   it("words the hover for a unit helping a formed unit build", () => {
@@ -1105,7 +1194,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBeUndefined();
+    expect(itemsTooltip(row)).toBe("Spends 30 STON helping NEW 1 build a new Mine this month.");
   });
 
   it("puts the build lines after the production lines", () => {
@@ -1139,6 +1228,7 @@ describe("formatItems and itemsTooltip", () => {
     expect(itemsTooltip(row, silver)).toBe(
       "Production resolves late, so this unit cannot give away or sell what it produces this month.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make.\n" +
+        "Spends 15 WOOD on Building 4 this month.\n" +
         "This unit has wood for 15 units of work, not the 30 its men could do."
     );
   });
@@ -1272,6 +1362,7 @@ describe("formatItems and itemsTooltip", () => {
       "Production resolves late, so this unit cannot give away or sell what it produces this month.\n" +
         "Transport resolves last, so this unit cannot spend what arrives by transport this month.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make.\n" +
+        "Spends 15 WOOD on Building 4 this month.\n" +
         "This unit has wood for 15 units of work, not the 30 its men could do."
     );
   });
@@ -1374,10 +1465,7 @@ describe("a transport target the report cannot show receiving", () => {
     expect(hasUncertainTransportTarget(undefined)).toBe(false);
   });
 
-  // The mockup's mixed card: the block reads in the order it was written. Asserted on
-  // `transportSentences` rather than through `itemsTooltip`, because since `ah-rgkk.3.3` the hover
-  // passes it only the refused lines - the moved ones are the Items popup's `transported-out`
-  // clause now - so the interleaving is no longer observable from there.
+  // The mockup's mixed card: the block reads in the order it was written.
   it("puts a refused target after a refused send written before it", () => {
     expect(
       transportSentences(
