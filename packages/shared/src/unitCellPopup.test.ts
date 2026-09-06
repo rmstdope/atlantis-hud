@@ -970,6 +970,20 @@ describe("the items popup's pairs", () => {
     ]);
   });
 
+  it("draws a cast item's range exactly as the cell does", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "iron", tag: "IRON", amount: 5 }],
+          created: [{ fewest: 2, most: 5, tag: "IRON", summoned: false }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "iron IRON", value: "2-5" }]);
+  });
+
   it("quotes the report's own words when the change cannot be parsed", () => {
     const popup = columnPopup(
       popupForCell(

@@ -205,6 +205,12 @@ export type ItemLine = { tag: string; line: PopupLine; moved: boolean };
 export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefined): ItemLine[] {
   const changes = unit.itemChanges ?? [];
   const held = new Map(unit.items.map((item) => [item.tag, item]));
+  // The same arithmetic `formatItems` does (`unitPreview.ts`), because the cell under the pointer
+  // is drawn from it: it says `2-5 SWOR`, so the popup must not answer `5`.
+  const shortfall = new Map<string, number>();
+  for (const item of unit.created ?? []) {
+    shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
+  }
   const changeName = new Map<string, string>();
   for (const change of changes) {
     if (!changeName.has(change.tag)) {
@@ -230,11 +236,21 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
       (before === undefined && reported !== undefined);
     const line: PopupLine = {
       label: name === undefined ? tag : `${name} ${tag}`,
-      value: amount === undefined ? "gone" : amount.toLocaleString()
+      value: amount === undefined ? "gone" : rangedValue(amount, shortfall.get(tag) ?? 0)
     };
     const change = changeOf(before, amount, reported);
     return { tag, line: change ? { ...line, change } : line, moved };
   });
+}
+
+/**
+ * One item's figure as the cell writes it: the amount, or the range a pending cast leaves it
+ * between. Grouped, as every other popup figure is.
+ */
+function rangedValue(amount: number, gap: number): string {
+  return gap > 0
+    ? `${(amount - gap).toLocaleString()}-${amount.toLocaleString()}`
+    : amount.toLocaleString();
 }
 
 /**
