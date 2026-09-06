@@ -1,0 +1,224 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-rgkk.5.1 — round 2: the chosen panel, word for word</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .line .val { text-align:right; white-space:nowrap; color:var(--ink-soft); }
+  .pop .line.dim span { color:var(--ink-dim); }
+  .pop .line.deciding .lab { color:var(--brass); }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .note.tight { margin-top:2px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:18px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .rule { border-top:1px solid var(--edge); margin:30px 0 0; }
+  .cap { font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 6px; }
+  .say { font:11.5px/1.6 'SF Mono',Menlo,monospace; color:var(--ink-soft); background:var(--panel);
+         border-left:2px solid var(--edge); padding:6px 10px; margin-top:10px; max-width:44ch; }
+  .say b { color:var(--brass); font-weight:600; }
+</style>
+
+<header>
+  <h1>ah-rgkk.5.1 <span>&mdash; round 2: the chosen panel</span></h1>
+  <p>Round 1 settled three things: <b>A</b> &mdash; one line per figure, the deciding capacity marked;
+  <b>P</b> &mdash; one cause sentence per item that moved, from the same call the Items popup uses;
+  <b>N2</b> &mdash; when the load moved but the mode did not, say so rather than
+  <code>Nothing this month changes this.</code></p>
+  <p>This round is the panel <b>word for word</b>, in every state, so nothing is left for the implementer to invent.
+  <b style="color:var(--brass)">One question</b> &mdash; <b>L</b>: what the three capacity lines are called.
+  Everything else below is settled unless you say otherwise; the boxed grey text under each panel is what a screen
+  reader says, which is where the label wording actually bites.</p>
+</header>
+
+<main>
+
+<div class="rule"></div>
+<h3 class="sec">L &mdash; what are the three capacity lines called?</h3>
+<p class="scene">Same panel, same figures, same sentences. <b>Woodsmen (15189)</b>: one wood elf and one horse,
+<code>Weight: 60. Capacity: 0/70/85/0</code>, given 6 grain by <b>Farmers (1502)</b> and so 90 &mdash; over both.
+The brass label is the capacity that decides: the mode it uses, or, when it is overloaded, the largest of the
+three, which is the figure its load has to beat before it can move at all.</p>
+
+<div class="split2">
+  <div>
+    <p class="cap">L1 &mdash; the bare mode word (as drawn in round 1)</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">90</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">85</span></div>
+      <div class="note">Grain: given 6 by Farmers (1502).</div>
+    </div>
+    <div class="say"><b>Read aloud:</b> move Riding, down from Riding. weight 90. fly 0. ride 70. walk 85. Grain: given 6 by Farmers (1502).</div>
+    <ul class="notes">
+      <li>Narrow, tidy, and the five values line up in one short column.</li>
+      <li>The report&rsquo;s own three words, in the report&rsquo;s own order.</li>
+      <li class="con"><code>fly 0</code> reads as a mode, not as a capacity &mdash; it looks like it says the unit is flying zero.</li>
+      <li class="con">Read aloud it is close to meaningless: &ldquo;fly 0. ride 70. walk 85.&rdquo;</li>
+    </ul>
+  </div>
+
+  <div>
+    <p class="cap">L2 &mdash; say what the number is</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">90</span></div>
+      <div class="line dim"><span class="lab">can carry flying</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">can carry riding</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">can carry walking</span><span class="val">85</span></div>
+      <div class="note">Grain: given 6 by Farmers (1502).</div>
+    </div>
+    <div class="say"><b>Read aloud:</b> move Riding, down from Riding. weight 90. can carry flying 0. can carry riding 70. can carry walking 85. Grain: given 6 by Farmers (1502).</div>
+    <ul class="notes">
+      <li>Unambiguous on the page and unambiguous read aloud: the number is a load, not a speed.</li>
+      <li>The <code>sr-only</code> sentence is the only non-visual route to this panel, so it has to stand alone.</li>
+      <li class="con">&ldquo;can carry&rdquo; three times over, in a five-line panel.</li>
+      <li class="con">Roughly twice as wide on the left, so the panel grows.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="rule"></div>
+<h3 class="sec">Settled, unless you say otherwise</h3>
+<p>Drawn with <b>L2</b>. These are decisions I am taking rather than questions &mdash; each is a string or a rule, and
+overruling one costs a sentence.</p>
+
+<div class="pops">
+  <div>
+    <p class="cap">The mode moved</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">90</span></div>
+      <div class="line dim"><span class="lab">can carry flying</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">can carry riding</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">can carry walking</span><span class="val">85</span></div>
+      <div class="note">Grain: given 6 by Farmers (1502).</div>
+      <div class="note tight">Horse: bought 1 at 65 silver each.</div>
+      <div class="note tight">Fur: sold 2 at 40 silver each.</div>
+    </div>
+    <p class="scene" style="max-width:40ch;margin-top:9px">The pair is the family&rsquo;s own notation. <b>Down</b> is red and
+    <b>up</b> is green, ranked <code>Overloaded &lt; Walking &lt; Riding &lt; Flying</code> &mdash; the order the game
+    itself picks a mode in (<code>rules/movement_normal</code>). The cause sentences are the Items popup&rsquo;s own,
+    from the same call, one per item, in the month&rsquo;s order, with a capital because here no line above them
+    repeats the word.</p>
+  </div>
+
+  <div>
+    <p class="cap">The load moved, the mode did not</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding</span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">65</span></div>
+      <div class="line dim"><span class="lab">can carry flying</span><span class="val">0</span></div>
+      <div class="line deciding"><span class="lab">can carry riding</span><span class="val">70</span></div>
+      <div class="line dim"><span class="lab">can carry walking</span><span class="val">85</span></div>
+      <div class="note">Its load changed this month, but not the mode it travels in.</div>
+      <div class="note tight">Grain: given 1 by Farmers (1502).</div>
+    </div>
+    <p class="scene" style="max-width:40ch;margin-top:9px">Round 1&rsquo;s <b>N2</b>. The sentence goes <em>above</em> the
+    causes, and it replaces <code>Nothing this month changes this.</code> rather than joining it. Note the brass mark
+    has moved to <b>riding</b>: it follows the mode the unit is actually using.</p>
+  </div>
+
+  <div>
+    <p class="cap">A month that really moved nothing</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding</span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">60</span></div>
+      <div class="line dim"><span class="lab">can carry flying</span><span class="val">0</span></div>
+      <div class="line deciding"><span class="lab">can carry riding</span><span class="val">70</span></div>
+      <div class="line dim"><span class="lab">can carry walking</span><span class="val">85</span></div>
+      <div class="note">Nothing this month changes this.</div>
+    </div>
+    <p class="scene" style="max-width:40ch;margin-top:9px">No item moved at all, so the shell&rsquo;s own sentence stands
+    exactly as it does on every other column.</p>
+  </div>
+
+  <div>
+    <p class="cap">Only partly counted</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding</span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">60</span></div>
+      <div class="line dim"><span class="lab">can carry flying</span><span class="val">0</span></div>
+      <div class="line deciding"><span class="lab">can carry riding</span><span class="val">70</span></div>
+      <div class="line dim"><span class="lab">can carry walking</span><span class="val">85</span></div>
+      <div class="note">Grain: given 1 by Farmers (1502).</div>
+      <div class="warn">An order this month could not be counted, so these are the report&rsquo;s own figures, not this month&rsquo;s.</div>
+    </div>
+    <p class="scene" style="max-width:40ch;margin-top:9px">The core gives up on the whole recomputation when an order
+    cannot be counted, or when a spell&rsquo;s yield is still a range, and hands back the report&rsquo;s figures
+    untouched. Without this line the panel shows last month&rsquo;s weight as though it were this month&rsquo;s.</p>
+  </div>
+
+  <div>
+    <p class="cap">Not ours</p>
+    <div class="pop">
+      <div class="head">Wolves (2044) &mdash; movement</div>
+      <div class="note">Movement not disclosed.</div>
+    </div>
+    <p class="scene" style="max-width:36ch;margin-top:9px">A report prints weight and capacity for your own units
+    only, so there is nothing to draw and no cause to name. Exactly as today.</p>
+  </div>
+
+  <div>
+    <p class="cap">Twelve items moved, and more</p>
+    <div class="pop">
+      <div class="head">Caravan (1801) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Walking<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">1,240</span></div>
+      <div class="line dim"><span class="lab">can carry flying</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">can carry riding</span><span class="val">700</span></div>
+      <div class="line deciding"><span class="lab">can carry walking</span><span class="val">1,150</span></div>
+      <div class="note">Grain: bought 40 at 12 silver each.</div>
+      <div class="note tight" style="opacity:.55">&hellip; ten more sentences &hellip;</div>
+      <div class="note tight">Wood: given 15 by Foresters (1904).</div>
+      <div class="note tight">&hellip; and 4 more; the Items column has them all.</div>
+    </div>
+    <p class="scene" style="max-width:40ch;margin-top:9px">Twelve sentences at most &mdash; the same cap the popup uses
+    for lines &mdash; then one sentence counting the rest. Figures over a thousand are grouped, as every other popup
+    figure is.</p>
+  </div>
+</div>
+
+</main>
+
+<footer>
+  <p>Mockups are drawn in the app&rsquo;s own palette but are not the app: spacing and type here are indicative.
+  Every figure comes from a lookup &mdash; <code>rules/movement_normal</code> for what each mode requires and the
+  order the game picks them in, <code>data/GRAI</code> for grain&rsquo;s weight of 5, and
+  <code>crates/core/src/movement/mode.rs</code> for the <code>0/70/85/0</code> the server prints for one wood elf
+  and one horse.</p>
+</footer>

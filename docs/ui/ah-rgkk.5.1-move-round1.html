@@ -1,0 +1,333 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-rgkk.5.1 — round 1: what the Move popup draws</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .line .val { text-align:right; white-space:nowrap; color:var(--ink-soft); }
+  .pop .line.dim span { color:var(--ink-dim); }
+  .pop .line.deciding .lab { color:var(--brass); }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .note.tight { margin-top:2px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .pop .why { color:var(--ink-dim); }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; align-items:start; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .rule { border-top:1px solid var(--edge); margin:30px 0 0; }
+  .tag { display:inline-block; font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.1em; text-transform:uppercase;
+         color:var(--ground); background:var(--brass); border-radius:3px; padding:3px 6px; margin-bottom:8px; }
+  .cap { font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 6px; }
+</style>
+
+<header>
+  <h1>ah-rgkk.5.1 <span>&mdash; round 1: the Move popup</span></h1>
+  <p>Resting on the <b>Movement</b> cell today opens a popup with exactly one line in it:
+  <code>move&nbsp;&nbsp;Riding</code>, with <code>was: Walking</code> beside it when the mode moved. It says
+  <b>which mode</b> the unit travels in. It never says <b>how close it is to losing it</b>, and it never says
+  <b>what this month did</b> to bring it there.</p>
+  <p>The wire already carries the rest and nothing draws it: <code>UnitMovement</code> is
+  <code>{ status, load, fly, ride, walk, capacityMode }</code> &mdash; the report&rsquo;s own
+  <code>Weight: 60. Capacity: 0/70/85/0</code>, recomputed after this month&rsquo;s orders.
+  <code>rules/movement_normal</code> is what those figures answer: a unit rides if its horses can carry its people
+  and everything else, walks if its people, horses and wagons can, <em>&ldquo;otherwise the unit cannot issue a MOVE
+  order&rdquo;</em> &mdash; which is what <b>Overloaded</b> means.</p>
+  <p><b style="color:var(--brass)">Three questions.</b> <b>Q1</b> &mdash; which figures the popup draws.
+  <b>Q2</b> &mdash; what it says about <em>why</em>, given a hard limit spelled out below.
+  <b>Q3</b> &mdash; what it says when the load moved but the mode did not. Everything else in the family is settled and
+  is not re-opened: the heading, the twelve-line cap, the pair notation with green up and red down on the after only,
+  the <code>sr-only</code> sentence as the only non-visual route, the single amber warning line, and
+  <code>Movement not disclosed.</code> for a unit that is not ours.</p>
+</header>
+
+<main>
+
+<h3 class="sec">The scene</h3>
+<p class="scene"><b>Woodsmen (15189)</b> is one of ours: one wood elf and one horse. Its report printed
+<code>Weight: 60. Capacity: 0/70/85/0</code> &mdash; it cannot fly, its horse can carry 70, and elf-plus-horse can
+carry 85 on foot. 60 is under 70, so the game gives it the faster of the two and it is <b>Riding</b>.
+This month <b>Farmers (1502) gives it 6 grain</b> (line 5). Grain weighs 5 (<code>data/GRAI</code>), so its load goes
+to <b>90</b> &mdash; over the 85 it could walk with, and over the 70 it could ride with.
+It is <b>Overloaded</b>, and the game will refuse it a MOVE order this month.
+<b>Nothing in the app says so except the one word in the cell.</b></p>
+
+<h3 class="sec">The limit, stated honestly</h3>
+<p class="scene"><code>packages/shared</code> holds no item catalogue, by decision (<code>gameData.ts</code>). So this
+popup can say <em>what moved</em> &mdash; every movement is already itemised with a named cause on
+<code>unit.itemChanges</code> &mdash; but it <b>cannot say which of them were the heavy ones</b>, because it does not
+know what anything weighs. It can say &ldquo;received 6 grain&rdquo;. It cannot say &ldquo;which added 30 to the
+load&rdquo;. <b>Q2 is what we do about that.</b></p>
+
+<div class="rule"></div>
+<h3 class="sec">Q1 &mdash; which figures does the popup draw?</h3>
+<p>All three are the same unit at the same moment, and all three carry Q2&rsquo;s <b>P</b> underneath, so the panels
+differ in one thing only. Ask of each: <em>&ldquo;how much over is it, and by how much would it have to lighten to
+move at all?&rdquo;</em></p>
+
+<div class="split3">
+  <div>
+    <p class="cap">A &mdash; one line per figure</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">90</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">85</span></div>
+      <div class="note">Grain: given 6 by Farmers (1502).</div>
+    </div>
+    <ul class="notes">
+      <li>Every figure the wire holds, each where the eye expects it.</li>
+      <li>The brass label marks the capacity that decides &mdash; the largest, which is the one 90 has to beat.</li>
+      <li class="con">Five lines for a cell that had one, and the reader does the subtraction.</li>
+    </ul>
+  </div>
+
+  <div>
+    <p class="cap">B &mdash; the load against the one that decides</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">90 of 85</span></div>
+      <div class="note tight">It can carry 85 on foot and 70 riding, and cannot fly.</div>
+      <div class="note">Grain: given 6 by Farmers (1502).</div>
+    </div>
+    <ul class="notes">
+      <li>Answers the question in one glance: <b>90 of 85</b>, five over.</li>
+      <li>Two lines, so it stays the size of every other column&rsquo;s popup.</li>
+      <li class="con">The three capacities are prose, so they are not scannable and do not line up.</li>
+    </ul>
+  </div>
+
+  <div>
+    <p class="cap">C &mdash; the report&rsquo;s own line</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">90</span></div>
+      <div class="line"><span class="lab">capacity</span><span class="val"><span class="flat">0 fly</span> &middot; <span class="flat">70 ride</span> &middot; <span style="color:var(--brass)">85 walk</span></span></div>
+      <div class="note">Grain: given 6 by Farmers (1502).</div>
+    </div>
+    <ul class="notes">
+      <li>Three lines, and it reads the way the turn report itself prints it.</li>
+      <li>A player who knows the report recognises it without being taught anything.</li>
+      <li class="con">The one figure that matters is buried in a row of three, and a narrow pane wraps it.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="rule"></div>
+<h3 class="sec">Q2 &mdash; what does it say about why?</h3>
+<p>All three are variant <b>A</b> with a different block underneath. The unit also <b>sold 2 furs</b> and
+<b>bought 1 horse</b> this month, so there is more than one movement to say &mdash; which is the case that decides
+this.</p>
+
+<div class="split3">
+  <div>
+    <p class="cap">P &mdash; one sentence per item that moved</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">90</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">85</span></div>
+      <div class="note">Grain: given 6 by Farmers (1502).</div>
+      <div class="note tight">Horse: bought 1 at 65 silver each.</div>
+      <div class="note tight">Fur: sold 2 at 40 silver each.</div>
+    </div>
+    <ul class="notes">
+      <li>The same sentences the Items popup writes, from the same call &mdash; they cannot drift apart.</li>
+      <li>Everything that moved the load is named, with who and at what price.</li>
+      <li class="con">Repeats the Items popup verbatim, and grows with the month.</li>
+    </ul>
+  </div>
+
+  <div>
+    <p class="cap">Q &mdash; one sentence, pointing at Items</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">90</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">85</span></div>
+      <div class="note">Three items moved this month; the Items column says what.</div>
+    </div>
+    <ul class="notes">
+      <li>Short, and never longer than one line however busy the month was.</li>
+      <li class="con">Makes the reader move the pointer to another cell to learn anything.</li>
+      <li class="con">Answers &ldquo;something moved&rdquo; when the question was &ldquo;what made it too heavy&rdquo;.</li>
+    </ul>
+  </div>
+
+  <div>
+    <p class="cap">R &mdash; only what came in, then the pointer</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding<span class="arrow">&rarr;</span><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">90</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">85</span></div>
+      <div class="note">Grain: given 6 by Farmers (1502).</div>
+      <div class="note tight">Horse: bought 1 at 65 silver each.</div>
+      <div class="note tight">What left the unit is in the Items column.</div>
+    </div>
+    <ul class="notes">
+      <li>Only the movements that could have made it heavier, which is what an overload asks about.</li>
+      <li class="con">A sale is exactly how a player gets <em>out</em> of an overload, and this hides it.</li>
+      <li class="con">A second, different rule about which changes are worth naming.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="rule"></div>
+<h3 class="sec">Q3 &mdash; the load moved, the mode did not</h3>
+<p class="scene">Same unit, but Farmers gives it <b>1</b> grain rather than six. Its load goes 60 &rarr; 65, still under
+the 70 its horse carries, so it is <b>still Riding</b>. The core records a change only when the <em>mode</em> moves, so
+today the shared code would print its standard sentence &mdash; <code>Nothing this month changes this.</code> &mdash;
+directly above three sentences saying what changed. <b>That is the contradiction to settle.</b></p>
+
+<div class="split3">
+  <div>
+    <p class="cap">N1 &mdash; leave it; it is true of the mode</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding</span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">65</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">85</span></div>
+      <div class="note">Nothing this month changes this.</div>
+      <div class="note tight">Grain: given 1 by Farmers (1502).</div>
+    </div>
+    <ul class="notes">
+      <li>One rule, shared with every other column; nothing special to remember.</li>
+      <li class="con">Reads as a flat contradiction of the sentence under it.</li>
+    </ul>
+  </div>
+
+  <div>
+    <p class="cap">N2 &mdash; say what actually held still</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding</span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">65</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">85</span></div>
+      <div class="note">Its load changed this month, but not the mode it travels in.</div>
+      <div class="note tight">Grain: given 1 by Farmers (1502).</div>
+    </div>
+    <ul class="notes">
+      <li>True, and it is the reassurance the reader actually wants.</li>
+      <li>Keeps <code>Nothing this month changes this.</code> for the month that really moved nothing.</li>
+      <li class="con">One sentence this column has that no other column has.</li>
+    </ul>
+  </div>
+
+  <div>
+    <p class="cap">N3 &mdash; say nothing at all</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding</span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">65</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">85</span></div>
+      <div class="note">Grain: given 1 by Farmers (1502).</div>
+    </div>
+    <ul class="notes">
+      <li>No contradiction, because there is no claim.</li>
+      <li class="con">A quiet month and a busy one both end with no sentence &mdash; the reader cannot tell them apart without reading the whole panel.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="rule"></div>
+<h3 class="sec">The states the happy path hides</h3>
+<p>These are not a question &mdash; they are what the chosen variant has to do in every other case, drawn so you can
+say now if any of them is wrong. Shown with <b>A</b> and <b>P</b>.</p>
+
+<div class="pops">
+  <div>
+    <p class="cap">Not ours</p>
+    <div class="pop">
+      <div class="head">Wolves (2044) &mdash; movement</div>
+      <div class="note">Movement not disclosed.</div>
+    </div>
+    <p class="scene" style="max-width:32ch;margin-top:8px">A report prints weight and capacity for your own units only, so there is nothing to draw. Unchanged from today.</p>
+  </div>
+  <div>
+    <p class="cap">Was disclosed, now is not</p>
+    <div class="pop">
+      <div class="head">Scouts (1502) &mdash; movement</div>
+      <div class="note">Movement not disclosed.</div>
+      <div class="note tight">Was: Walking.</div>
+    </div>
+    <p class="scene" style="max-width:32ch;margin-top:8px">Already how the shell behaves for an emptied column. Unchanged.</p>
+  </div>
+  <div>
+    <p class="cap">Only partly counted</p>
+    <div class="pop">
+      <div class="head">Woodsmen (15189) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val">Riding</span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">60</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">70</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">85</span></div>
+      <div class="warn">An order this month could not be counted, so these are the report&rsquo;s own figures, not this month&rsquo;s.</div>
+    </div>
+    <p class="scene" style="max-width:34ch;margin-top:8px">The core falls back to the report&rsquo;s figures whole when it cannot count an order. Without this line the panel would quietly show last month&rsquo;s weight as this month&rsquo;s.</p>
+  </div>
+  <div>
+    <p class="cap">Overloaded, and can never fly</p>
+    <div class="pop">
+      <div class="head">Porters (1610) &mdash; movement</div>
+      <div class="line"><span class="lab">move</span><span class="val"><span class="down">Overloaded</span></span></div>
+      <div class="line"><span class="lab">weight</span><span class="val">140</span></div>
+      <div class="line dim"><span class="lab">fly</span><span class="val">0</span></div>
+      <div class="line dim"><span class="lab">ride</span><span class="val">0</span></div>
+      <div class="line deciding"><span class="lab">walk</span><span class="val">40</span></div>
+      <div class="note">Nothing this month changes this.</div>
+    </div>
+    <p class="scene" style="max-width:34ch;margin-top:8px">Overloaded in the report and overloaded still, so no pair and no cause. The brass label still marks the best of the three.</p>
+  </div>
+</div>
+
+</main>
+
+<footer>
+  <p>Mockups are drawn in the app&rsquo;s own palette but are not the app: spacing and type here are indicative.
+  Every figure above comes from a lookup &mdash; <code>rules/movement_normal</code> for what the modes require,
+  <code>data/GRAI</code> for grain&rsquo;s weight of 5, and <code>crates/core/src/movement/mode.rs</code> for the
+  <code>0/70/85/0</code> line the server prints for one wood elf and one horse.</p>
+</footer>
