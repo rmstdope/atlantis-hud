@@ -104,7 +104,9 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "movement",
-        unit({ movement: { status: "walk", capacityMode: "walk" } as never }),
+        unit({
+          movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" }
+        }),
         facts()
       )
     );
@@ -128,7 +130,7 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "skills",
-        unit({ own: true, skills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }] as never }),
+        unit({ own: true, skills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }] }),
         facts()
       )
     );
@@ -167,7 +169,7 @@ describe("the column popups", () => {
       popupForCell(
         "items",
         unit({
-          items: [{ name: "silver", tag: "SILV", amount: 40 }] as never,
+          items: [{ name: "silver", tag: "SILV", amount: 40 }],
           uncounted: ["@TAX"]
         }),
         facts()
@@ -209,6 +211,38 @@ describe("the column popups", () => {
     );
     expect(popup.lines[0]?.why).toBe("was: —");
     expect(popup.notes).not.toContain("Nothing this month changes this.");
+  });
+
+  it("an empty column still says what the report had there", () => {
+    const moved = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ previewChanges: [{ field: "structureId", original: "Wavecrest [329] · Longship" }] }),
+        facts({ structureLabel: null })
+      )
+    );
+    expect(moved.notes).toEqual([
+      "In no structure.",
+      "Was: Wavecrest [329] · Longship."
+    ]);
+
+    const unflagged = columnPopup(
+      popupForCell(
+        "flags",
+        unit({ flags: [], previewChanges: [{ field: "flags", original: "behind" }] }),
+        facts()
+      )
+    );
+    expect(unflagged.notes).toEqual(["No flags set.", "Was: behind."]);
+
+    const still = columnPopup(
+      popupForCell(
+        "movement",
+        unit({ movement: null, previewChanges: [{ field: "movement", original: "Walking" }] }),
+        facts()
+      )
+    );
+    expect(still.notes).toEqual(["Movement not disclosed.", "Was: Walking."]);
   });
 
   it("the long order popup says another faction's orders are not in your report", () => {
@@ -268,7 +302,7 @@ describe("the column popups", () => {
       tag: `T${index}`,
       amount: 20 - index
     }));
-    const popup = columnPopup(popupForCell("items", unit({ items: items as never }), facts()));
+    const popup = columnPopup(popupForCell("items", unit({ items }), facts()));
     expect(popup.lines).toHaveLength(12);
     expect(popup.notes).toContain("… and 7 more; select the unit to see them all.");
   });

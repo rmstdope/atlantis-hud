@@ -5299,3 +5299,4 @@ test("resting on the faction cell opens nothing", async ({ page }) => {
   await expect(page.getByTestId("unit-cell-popup")).toHaveCount(0);
   await expect(page.getByTestId("unit-tooltip")).toHaveCount(0);
 });
+

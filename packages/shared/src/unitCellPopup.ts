@@ -139,10 +139,17 @@ export function popupForCell(
   }
 
   const body = bodyFor(column, unit, facts);
-  const change = CHANGE_FIELD[column] ? changeFor(unit, CHANGE_FIELD[column]!) : undefined;
+  const field = CHANGE_FIELD[column];
+  const change = field ? changeFor(unit, field) : undefined;
   const notes = [...body.notes];
-  if (CHANGE_FIELD[column] && !change) {
+  if (field && !change) {
     notes.push(`Nothing this month changes ${LISTS.has(column) ? "these" : "this"}.`);
+  }
+  // A column with nothing left to show - moved out of its structure, its last flag dropped, its
+  // movement no longer disclosed - has no line for the report's own figure to hang off, and
+  // dropping it would lose what the cell's `title` used to say. It becomes a sentence instead.
+  if (change && !body.lines.some((line) => line.why !== undefined || line.change !== undefined)) {
+    notes.push(sentence(originalTooltip(change) ?? ""));
   }
 
   // Capped rather than scrolled: the popup is transparent to the pointer, so a wheel over it

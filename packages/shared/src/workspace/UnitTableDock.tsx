@@ -1937,7 +1937,11 @@ function HoveredPopup({
 
   const { unit, column, at } = hovered;
   const silver = unit.own ? (getSilver?.(unit.unitId, unit.regionId) ?? null) : null;
-  const warned = silverWarnings?.has(silverKey(unit.regionId, unit.unitId)) ?? false;
+  // The same guard the row uses (`warned`, below): a finding that names a unit with no forecast
+  // has no working to explain, and without this the popup and the cell's own hidden sentence
+  // would be drawn from different arguments to `summariseUnit`.
+  const warned =
+    silver !== null && (silverWarnings?.has(silverKey(unit.regionId, unit.unitId)) ?? false);
   const dissolving = dissolves(unit);
   const spec = popupForCell(column, unit, {
     structureLabel: unitStructureLabel(unit.structureId, structuresById),
@@ -1976,6 +1980,23 @@ function HoveredPopup({
     />
   );
 }
+
+/**
+ * The columns whose cells carry their own explanation.
+ *
+ * Every column but the five silent ones and the two that open the whole-unit summary — those two
+ * have no `ColumnPopup` to write out, and `name` keeps its own `was: …` span instead.
+ */
+const EXPLAINED_COLUMNS: readonly DrawnColumnId[] = [
+  "men",
+  "movement",
+  "flags",
+  "skills",
+  "items",
+  "structure",
+  "longOrder",
+  "silver"
+];
 
 /** How a changed cell says it shows the coming month rather than the report. */
 const PREDICTED = "italic text-brass";
@@ -2147,20 +2168,37 @@ function UnitRow({
    * the pointer rests on it - as the popup the dock portals. Both come from this one call, so the
    * hidden sentence and the visible panel can never disagree.
    */
-  const popupFacts: PopupFacts = {
+  const explanations = useMemo(() => {
+    const popupFacts: PopupFacts = {
+      structureLabel,
+      longOrder,
+      silver,
+      silverWarned: warned,
+      countUpkeep,
+      derivedSkills: derivedSkillsFor(derivedSkills, unit),
+      dissolving: Boolean(dissolving)
+    };
+    return new Map(
+      EXPLAINED_COLUMNS.map((column) => [column, popupForCell(column, unit, popupFacts)])
+    );
+    // Everything the resolver reads, and nothing else: a row re-renders on selection, on the pick
+    // and on every scroll frame, and none of those changes a word of what a cell means.
+  }, [
+    unit,
     structureLabel,
     longOrder,
     silver,
-    silverWarned: warned,
+    warned,
     countUpkeep,
-    derivedSkills: derivedSkillsFor(derivedSkills, unit),
-    dissolving: Boolean(dissolving)
-  };
+    derivedSkills,
+    dissolving
+  ]);
+
   const explain = (column: DrawnColumnId) => {
-    const spec = popupForCell(column, unit, popupFacts);
+    const spec = explanations.get(column);
     // `data-explains` marks it as the cell's explanation rather than its content, so a test - or
     // anything else reading the table - can tell the two apart (`ah-rgkk.1`).
-    return spec.kind === "column" ? (
+    return spec?.kind === "column" ? (
       <span className="sr-only" data-explains={column}>
         {popupAsText(spec.popup)}
       </span>
