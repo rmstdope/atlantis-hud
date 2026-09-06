@@ -136,3 +136,15 @@ export function groupTurnMessages(messages: readonly TurnMessage[]): TurnMessage
   return general ? [general, ...units] : units;
 }
 
+/**
+ * One unit's event lines, in report order.
+ *
+ * Keyed on `unitId` and nothing else, which is exactly the unit the event is about - see
+ * `splitTurnMessage`. A unit that is only the *target* of somebody else's gift is not matched.
+ */
+export function turnMessagesForUnit(
+  messages: readonly TurnMessage[],
+  unitId: string
+): TurnMessage[] {
+  return messages.filter((message) => message.unitId === unitId);
+}

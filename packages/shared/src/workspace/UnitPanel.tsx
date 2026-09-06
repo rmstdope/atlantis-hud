@@ -8,6 +8,7 @@ import { highestMagicSkill, type MagicTree } from "../magicTree";
 import type { MageStanding } from "../magicStanding";
 import { battleSkillGroups, battleSkillSource } from "../battleSkillPresentation";
 import type { DerivedSkill } from "../battleSkills";
+import type { TurnMessage } from "../turnMessages";
 import { presentUnitMovement } from "../unitMovement";
 import {
   Absent,
@@ -39,7 +40,10 @@ export function UnitPanelBody({
   magicTree = null,
   onOpenMagicTree,
   standing = null,
-  derivedSkills = []
+  derivedSkills = [],
+  events = [],
+  totalEvents = 0,
+  onOpenEvents
 }: {
   unit: ReportUnit | null;
   hex: HexNode | null;
@@ -67,6 +71,12 @@ export function UnitPanelBody({
    * displaces a real one.
    */
   derivedSkills?: readonly DerivedSkill[];
+  /** This unit's event lines from the loaded turn, in report order. Empty when it has none. */
+  events?: readonly TurnMessage[];
+  /** How many events the whole turn has, for the link. 0 means the link is not drawn. */
+  totalEvents?: number;
+  /** Opens the turn report on its Events tab. Absent means the link is not drawn. */
+  onOpenEvents?: () => void;
 }) {
   /** Both must be present: a link with nothing to open is worse than plain text. */
   const linkable = gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
@@ -241,6 +251,31 @@ export function UnitPanelBody({
             ) : null}
           </>
         )}
+      </Section>
+
+      <Section title="Events" count={events.length || undefined}>
+        {events.length === 0 ? (
+          <Absent>No events for this unit this turn.</Absent>
+        ) : (
+          <ul data-testid="unit-events" className="m-0 list-none p-0">
+            {events.map((message, index) => (
+              <li key={index} className="py-0.5">
+                {message.verb ? <span className="pr-2 text-ink-dim">{message.verb}</span> : null}
+                <span className="text-ink">{message.text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {totalEvents > 0 && onOpenEvents ? (
+          <button
+            type="button"
+            data-testid="unit-events-all"
+            onClick={onOpenEvents}
+            className="mt-1 bg-transparent p-0 text-left text-accent underline-offset-2 hover:underline"
+          >
+            All {totalEvents} events this turn
+          </button>
+        ) : null}
       </Section>
     </>
   );

@@ -5208,3 +5208,21 @@ test("a hex reselects the unit that was chosen in it", async ({ page }) => {
 
   await expect(page.getByTestId("panel-unit")).toContainText("5812");
 });
+
+test("the unit pane shows that unit's events and opens the rest", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const panel = page.getByTestId("panel-unit");
+  await expect(panel).toContainText("Claims $50.");
+  await expect(panel).toContainText("Studies observation at a cost of 50 silver [SILV].");
+  await expect(panel).toContainText("Claims 50 silver for maintenance.");
+
+  await panel.getByTestId("unit-events-all").click();
+  await expect(page.getByTestId("turn-report")).toBeVisible();
+  await expect(page.getByTestId("turn-report-tab-events")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+});
