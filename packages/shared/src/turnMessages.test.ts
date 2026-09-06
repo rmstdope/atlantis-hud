@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   groupTurnMessages,
   splitTurnMessage,
-  splitTurnMessages
+  splitTurnMessages,
+  turnMessagesForUnit
 } from "./turnMessages";
 
 /**
@@ -168,5 +169,28 @@ describe("groupTurnMessages", () => {
 
   it("is empty for no messages", () => {
     expect(groupTurnMessages([])).toEqual([]);
+  });
+});
+
+describe("turnMessagesForUnit", () => {
+  it("returns only the lines the unit is the subject of, in report order", () => {
+    const messages = splitTurnMessages([
+      "Two of One (4150): Gives 50 silver [SILV] to Two of Seven (2172).",
+      "Seven of Eight (18642): Claims $50.",
+      "Two of One (4150): Gives 100 silver [SILV] to Drones (3139).",
+    ]);
+
+    expect(turnMessagesForUnit(messages, "4150").map((one) => one.text)).toEqual([
+      "Gives 50 silver [SILV] to Two of Seven (2172).",
+      "Gives 100 silver [SILV] to Drones (3139).",
+    ]);
+  });
+
+  it("does not match a unit only named inside another unit's line", () => {
+    const messages = splitTurnMessages([
+      "Two of One (4150): Gives 50 silver [SILV] to Two of Seven (2172).",
+    ]);
+
+    expect(turnMessagesForUnit(messages, "2172")).toEqual([]);
   });
 });

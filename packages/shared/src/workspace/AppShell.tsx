@@ -17,6 +17,7 @@ import type {
   TradeRoute
 } from "@atlantis/core-client";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
+import { splitTurnMessages, turnMessagesForUnit } from "../turnMessages";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
@@ -1135,6 +1136,30 @@ export function AppShell({
     () => (parsed ? { errors: parsed.header.errors, events: parsed.header.events } : null),
     [parsed]
   );
+
+  /** The turn's events, split once per report rather than once per selection. */
+  const eventMessages = useMemo(
+    () => (messages ? splitTurnMessages(messages.events) : []),
+    [messages]
+  );
+
+  /** The selected unit's own lines out of them. */
+  const unitEvents = useMemo(
+    () => (unit ? turnMessagesForUnit(eventMessages, unit.unitId) : []),
+    [eventMessages, unit]
+  );
+
+  /**
+   * Opens the turn report on its Events tab.
+   *
+   * Not `handleOpenPopover("report")`: that lands on `turnReportOpeningTab`'s answer - the
+   * remembered tab, or the first with rows - which is the right rule for the header chip and the
+   * wrong one for a link that says "events".
+   */
+  const openTurnReportEvents = useCallback(() => {
+    setReportTab("events");
+    setOpenPopover("report");
+  }, []);
 
   /**
    * Where every unit the turn describes is standing.
@@ -5283,6 +5308,9 @@ export function AppShell({
                     magicTree === null ? undefined : (tag) => setMagicTreeOpen({ tag })
                   }
                   derivedSkills={unitDerivedSkills}
+                  events={unitEvents}
+                  totalEvents={eventMessages.length}
+                  onOpenEvents={openTurnReportEvents}
                   planner={
                     movementPlanner
                       ? {

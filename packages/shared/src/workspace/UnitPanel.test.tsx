@@ -9,6 +9,7 @@ import { standingOf } from "../magicStanding";
 import { findByTestId } from "../testing/elementTree";
 import { SURFACE, type HexNode } from "../hexMapModel";
 import { UnitPanel } from "./UnitPanel";
+import { splitTurnMessages } from "../turnMessages";
 
 const HEX: HexNode = {
   regionId: "1:7,53",
@@ -267,5 +268,35 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
 
     expect(html).toContain("Walking");
     expect(html).toContain("was: Riding");
+  });
+});
+
+describe("the Events section", () => {
+  const EVENTS = splitTurnMessages([
+    "Unit (1): Claims $50.",
+    "Unit (1): STUDY: Studies observation at a cost of 50 silver [SILV]."
+  ]);
+
+  it("lists the selected unit's own events", () => {
+    const markup = draw({ events: EVENTS, totalEvents: 452, onOpenEvents: () => {} });
+
+    expect(markup).toContain('data-testid="unit-events"');
+    expect(markup).toContain("Claims $50.");
+    expect(markup).toContain("Studies observation at a cost of 50 silver [SILV].");
+    expect(markup).toContain("STUDY");
+  });
+
+  it("says so when the unit has no events this turn", () => {
+    expect(draw()).toContain("No events for this unit this turn.");
+  });
+
+  it("offers the whole turn's events, and only when the turn has any", () => {
+    const withEvents = draw({ events: EVENTS, totalEvents: 452, onOpenEvents: () => {} });
+    expect(withEvents).toContain("All 452 events this turn");
+    expect(withEvents).toContain('data-testid="unit-events-all"');
+
+    const without = draw({ events: EVENTS, totalEvents: 0, onOpenEvents: () => {} });
+    expect(without).not.toContain("events this turn");
+    expect(without).not.toContain('data-testid="unit-events-all"');
   });
 });
