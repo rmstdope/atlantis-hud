@@ -94,6 +94,13 @@ pub struct UnitPreview {
     /// document order. Empty for a unit whose every transport reached an eligible target
     /// (`ah-64wm`).
     pub transport_target_issues: Vec<TransportTargetIssue>,
+    /// Every item this month's orders move into or out of this unit, each with its cause, **in the
+    /// month's order** (`ah-rgkk.3.1`). Empty for a unit whose month moves nothing.
+    ///
+    /// Overlaps [`produced`](Self::produced), [`built`](Self::built), [`created`](Self::created)
+    /// and the two transport lists on purpose: those say what one kind of order did, and this says
+    /// what happened to the items, which is what the Items popup reads.
+    pub item_changes: Vec<ItemChange>,
     /// The unit a dissolving row's goods revert to, as `<name> (<id>)` - `rules/form`'s "the first
     /// unit you have in that region", named from the preview so a recipient this month's `NAME`
     /// renames reads as the orders leave it.
@@ -459,6 +466,26 @@ pub struct ItemChangeParty {
     pub name: Option<String>,
 }
 
+/// One item this month's orders move into or out of a unit, with its cause (`ah-rgkk.3.1`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemChange {
+    /// The item's tag, as the item list keys it - `HORS`.
+    pub tag: String,
+    /// The catalogue's display name, so a consumer needs no catalogue of its own.
+    pub name: String,
+    /// Signed: positive into the unit, negative out of it. Never zero - a movement of nothing is
+    /// not recorded.
+    pub delta: i64,
+    pub cause: ItemChangeCause,
+    /// The 1-based document line of the order responsible, when one order is.
+    pub line: Option<i64>,
+    /// What the market settled one of these at, in silver. `None` on every cause but
+    /// [`ItemChangeCause::Bought`] and [`ItemChangeCause::Sold`].
+    pub unit_price: Option<i64>,
+    pub other: Option<ItemChangeParty>,
+}
+
 /// One item a `CAST` order creates this month (`ah-ofpb.5`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -711,6 +738,13 @@ pub fn preview_orders_on_map(
         } else {
             entry.study.clone()
         };
+        // `rules/form` dissolves a unit that gains nobody before the month ends, so it never held
+        // anything to move (`ah-rgkk.3.1`), exactly as `produced`, `built` and `created` above.
+        let item_changes = if dissolving {
+            Vec::new()
+        } else {
+            entry.item_changes.clone()
+        };
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
         let transport_target_issues = entry.transport_target_issues.clone();
@@ -724,6 +758,10 @@ pub fn preview_orders_on_map(
             && transport_received.is_empty()
             && transport_target_issues.is_empty()
             && study.is_none()
+            // A unit that buys five of a tag and sells five of the same tag ends the month holding
+            // what it started with, so `changes()` records nothing - and the row would be dropped
+            // along with the explanation of why nothing changed (`ah-rgkk.3.1`).
+            && item_changes.is_empty()
         {
             continue;
         }
@@ -757,6 +795,7 @@ pub fn preview_orders_on_map(
                     produced: produced.clone(),
                     built: built.clone(),
                     created: created.clone(),
+                    item_changes: item_changes.clone(),
                     transport_sent: transport_sent.clone(),
                     transport_received: transport_received.clone(),
                     transport_target_issues: transport_target_issues.clone(),
@@ -786,6 +825,7 @@ pub fn preview_orders_on_map(
                     produced,
                     built,
                     created,
+                    item_changes,
                     transport_sent,
                     transport_received,
                     transport_target_issues,
@@ -814,6 +854,7 @@ pub fn preview_orders_on_map(
                     produced,
                     built,
                     created,
+                    item_changes,
                     transport_sent,
                     transport_received,
                     transport_target_issues,
@@ -1062,6 +1103,13 @@ struct WorkingUnit {
     /// What this unit's `CAST` orders create this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.5`).
     created: Vec<CreatedItem>,
+    /// Every item this month's orders move into or out of this unit, in the month's order.
+    ///
+    /// **Appended to, never assigned**: each phase's writer adds its own, and the writers run in
+    /// the month's order - `apply_transfers` first (`ah-rgkk.3.2`'s seam), then
+    /// `apply_item_effects` with the ledger's already-sorted movements, then `apply_transports`
+    /// last (`ah-rgkk.3.1`).
+    item_changes: Vec<ItemChange>,
     /// What this unit's `TRANSPORT`/`DISTRIBUTE` orders send this month. Written once by
     /// `apply_transports`, after everything else has run (`ah-bxgs`).
     transport_sent: Vec<TransportSent>,
@@ -1418,6 +1466,7 @@ impl Working {
                 produced: Vec::new(),
                 built: Vec::new(),
                 created: Vec::new(),
+                item_changes: Vec::new(),
                 transport_sent: Vec::new(),
                 transport_received: Vec::new(),
                 recruited: Vec::new(),
@@ -1673,6 +1722,18 @@ impl Working {
                 })
                 .collect();
             unit.built = effect.built.clone();
+            // `extend`, never assign: `apply_transfers` has already written this month's GIVE and
+            // TAKE here in the Give phase, and `apply_transports` appends after us (`ah-rgkk.3.1`).
+            unit.item_changes
+                .extend(effect.moved.iter().map(|movement| ItemChange {
+                    tag: movement.tag.clone(),
+                    name: movement.name.clone(),
+                    delta: movement.delta,
+                    cause: movement.cause,
+                    line: movement.line,
+                    unit_price: movement.unit_price,
+                    other: movement.other.clone(),
+                }));
             unit.created = effect
                 .moved
                 .iter()
@@ -1735,6 +1796,7 @@ impl Working {
             produced: Vec::new(),
             built: Vec::new(),
             created: Vec::new(),
+            item_changes: Vec::new(),
             transport_sent: Vec::new(),
             transport_received: Vec::new(),
             recruited: Vec::new(),
@@ -4656,6 +4718,11 @@ mod tests {
         assert!(dissolving.built.is_empty(), "{:?}", dissolving.built);
         assert!(dissolving.created.is_empty(), "{:?}", dissolving.created);
         assert!(
+            dissolving.item_changes.is_empty(),
+            "{:?}",
+            dissolving.item_changes
+        );
+        assert!(
             dissolving.transport_sent.is_empty(),
             "{:?}",
             dissolving.transport_sent
@@ -6000,6 +6067,48 @@ mod tests {
                 .expect("the bought horses are in the previewed list");
             assert_eq!(bought.amount, 5);
             change(unit, "items");
+        }
+
+        /// `ah-rgkk.3.1`, increment 4. The preview says *why* each item moved, not merely what the
+        /// unit ends up holding.
+        #[test]
+        fn a_bought_item_reaches_the_preview_with_its_cause() {
+            let response = preview_over(&report_with_market(), "unit 900\nBUY 5 horse\n");
+            let unit = only_unit(&response);
+
+            assert_eq!(
+                unit.item_changes,
+                vec![ItemChange {
+                    tag: "HORS".to_string(),
+                    name: "horse".to_string(),
+                    delta: 5,
+                    cause: ItemChangeCause::Bought,
+                    line: Some(2),
+                    unit_price: Some(10),
+                    other: None,
+                }]
+            );
+        }
+
+        /// `ah-rgkk.3.1`, increment 4. A month that nets to nothing still has something to say:
+        /// the row must survive so the popup can explain why the stock is unchanged.
+        #[test]
+        fn a_unit_that_buys_and_sells_the_same_goods_keeps_its_row() {
+            let response = preview_over(
+                &report_with_market(),
+                "unit 900\nSELL 5 fur\nWITHDRAW 5 FUR\n",
+            );
+            let unit = only_unit(&response);
+
+            assert_eq!(
+                unit.item_changes
+                    .iter()
+                    .map(|change| change.cause)
+                    .collect::<Vec<_>>(),
+                vec![ItemChangeCause::Sold, ItemChangeCause::Withdrawn],
+                "{:?}",
+                unit.item_changes
+            );
         }
 
         /// Q4's rule, via the existing `take_item`.
