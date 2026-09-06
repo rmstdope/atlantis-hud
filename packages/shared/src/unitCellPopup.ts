@@ -153,6 +153,45 @@ export function columnHasOwnPopup(column: PopupColumn): boolean {
   return columnHasPopup(column) && !WHOLE_UNIT.has(column);
 }
 
+/** The report's own figure for one item, keyed by tag, as the `items` change recorded it. */
+export type ReportedItems = Map<string, number>;
+
+/** One token of the `items` change's original: a whole amount and a bare tag, and nothing else. */
+const REPORTED_ITEM = /^(-?\d+) (\S+)$/;
+
+/**
+ * The report's per-item figures, parsed out of the `items` change's display string.
+ *
+ * `changes()` builds that string as `format!("{} {}", item.amount, item.tag)` joined with `", "`
+ * (`crates/core/src/orders/effects.rs`), so it is `20 SILV, 3 GRAI` and nothing else - no name, no
+ * thousands grouping, no cast range. `undefined` when any token fails to parse, which is the
+ * signal to quote the string instead of drawing pairs from it.
+ *
+ * An empty original is an **empty map, not `undefined`**: a formed unit has no original and so
+ * never any change at all (`changes()` returns early on `self.original == None`), so an empty
+ * `items` original can only mean the report showed this unit holding nothing - a figure, not a
+ * gap. That is the one place this column parts company with `markOrQuote`'s empty-original guard,
+ * which is about `men`, where `""` means the report never recorded it.
+ */
+export function reportedItems(original: string): ReportedItems | undefined {
+  if (original === "") {
+    return new Map();
+  }
+  const items: ReportedItems = new Map();
+  for (const token of original.split(", ")) {
+    const match = REPORTED_ITEM.exec(token);
+    if (!match) {
+      return undefined;
+    }
+    const amount = Number.parseInt(match[1]!, 10);
+    if (Number.isNaN(amount)) {
+      return undefined;
+    }
+    items.set(match[2]!, amount);
+  }
+  return items;
+}
+
 /** How many lines a popup shows before it stops and counts the rest (decision **G-d**). */
 export const MAX_LINES = 12;
 

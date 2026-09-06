@@ -2,7 +2,13 @@ import type { ReportUnit, StudyDoubt, StudyForecast } from "@atlantis/core-clien
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import type { PreviewedUnit } from "./unitPreview";
-import { columnHasPopup, popupAsText, popupForCell, type PopupFacts } from "./unitCellPopup";
+import {
+  columnHasPopup,
+  popupAsText,
+  popupForCell,
+  reportedItems,
+  type PopupFacts
+} from "./unitCellPopup";
 
 const unit = (overrides: Partial<PreviewedUnit> = {}): PreviewedUnit => ({
   ...(aReportUnit({ unitId: "1487", name: "Braves" }) as ReportUnit),
@@ -877,5 +883,25 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
     );
     expect(popup.lines).toHaveLength(12);
     expect(popup.notes.join(" ")).not.toContain("The blue figure is next turn's report");
+  });
+});
+
+describe("reportedItems", () => {
+  it("reads the report's own figure for each item off the items change", () => {
+    expect(reportedItems("20 SILV, 3 GRAI")).toEqual(
+      new Map([
+        ["SILV", 20],
+        ["GRAI", 3]
+      ])
+    );
+  });
+
+  it("reads an empty original as the report saying the unit held nothing", () => {
+    expect(reportedItems("")).toEqual(new Map());
+  });
+
+  it("gives up on an original it cannot parse", () => {
+    expect(reportedItems("was: 20 SILV")).toBeUndefined();
+    expect(reportedItems("~8 SWOR")).toBeUndefined();
   });
 });
