@@ -21,22 +21,21 @@ use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::report::composition;
 use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStatus};
 
-/// How a previewed unit relates to the hex its row sits in.
+/// Where a previewed unit stands relative to the hex its row sits in.
+///
+/// Only that: whether this month's `FORM` creates the unit, and whether `rules/form` dissolves it,
+/// are two further facts a row can carry alongside any of these - see [`UnitPreview::formed`] and
+/// [`UnitPreview::dissolving`]. They used to be arms of this enum, which made a formed unit that
+/// also walks away inexpressible (`ah-4hux`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UnitPreviewStatus {
-    /// Still here next month, with some field changed.
+    /// Still in this hex next month.
     Present,
     /// Ordered out of this hex.
     Departing,
     /// Ordered into this hex from somewhere else.
     Arriving,
-    /// Does not exist yet: a `FORM` order creates it this month.
-    Formed,
-    /// A unit this month's `FORM` creates that gains nobody, so `rules/form` dissolves it before
-    /// the month ends and its goods revert. Drawn rather than skipped since `ah-ty3s.3`, so the
-    /// row does not vanish from under a player editing its orders (decision **K2**).
-    Dissolving,
 }
 
 /// One field the orders change, with what the report said before.
@@ -99,10 +98,23 @@ pub struct UnitPreview {
     /// unit you have in that region", named from the preview so a recipient this month's `NAME`
     /// renames reads as the orders leave it.
     ///
-    /// `None` on every row that is not [`UnitPreviewStatus::Dissolving`], and on a dissolving row
-    /// in a region whose report shows no own unit of ours: there the goods revert to nobody, which
-    /// the core already models by taking nothing from the dissolving row.
+    /// `None` on every row whose [`dissolving`](Self::dissolving) is `false`, and on a dissolving
+    /// row in a region whose report shows no own unit of ours: there the goods revert to nobody,
+    /// which the core already models by taking nothing from the dissolving row.
     pub dissolves_into: Option<String>,
+    /// This month's `FORM` creates this unit: it did not exist when the report was written, and
+    /// its `unit_id` is the synthetic `new-<alias>` rather than a number the game has issued.
+    ///
+    /// Carried on **every** row of such a unit - the row in the hex it was formed in, whether that
+    /// row is `Present` or `Departing`, and the `Arriving` row in the hex it walks to (`ah-4hux`).
+    pub formed: bool,
+    /// `rules/form` dissolves this unit before the month ends: it is one this month's `FORM`
+    /// creates that gains nobody, so it never exists and its goods revert.
+    ///
+    /// Always accompanied by [`formed`](Self::formed) - only a formed unit dissolves - and drawn
+    /// rather than skipped since `ah-ty3s.3` (decision **K2**), so the row does not vanish from
+    /// under a player editing its orders.
+    pub dissolving: bool,
 }
 
 /// One line of what a unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document order
@@ -376,11 +388,12 @@ pub fn preview_orders_on_map(
         let mut arrival = None;
         let mut mode = None;
 
+        let dissolving = dissolved.contains_key(&index);
         // First, so a dissolving row never reaches `trace_move`: it is not going anywhere.
-        let status = if dissolved.contains_key(&index) {
-            UnitPreviewStatus::Dissolving
+        let status = if dissolving {
+            UnitPreviewStatus::Present
         } else if entry.formed {
-            UnitPreviewStatus::Formed
+            UnitPreviewStatus::Present
         } else if let Some(steps) = &entry.move_steps {
             match trace_move(&map, &ruleset, &entry.unit, steps, Some(&ordered)) {
                 // The first month's end is where the unit stands when the next report is written;
@@ -426,6 +439,8 @@ pub fn preview_orders_on_map(
         }
 
         decided.push(Decided {
+            formed: entry.formed,
+            dissolving,
             entry,
             status,
             arrival,
@@ -437,7 +452,11 @@ pub fn preview_orders_on_map(
     for decided in &mut decided {
         // A unit with its own movement order keeps its own destination and gets no marker, and a
         // unit already departing or formed has been decided by its own orders.
-        if decided.entry.move_steps.is_some() || decided.status != UnitPreviewStatus::Present {
+        if decided.entry.move_steps.is_some()
+            || decided.status != UnitPreviewStatus::Present
+            || decided.formed
+            || decided.dissolving
+        {
             continue;
         }
         let Some(structure_id) = decided.entry.unit.structure_id.clone() else {
@@ -459,6 +478,8 @@ pub fn preview_orders_on_map(
         arrival,
         aboard,
         dissolves_into,
+        formed,
+        dissolving,
     } in decided
     {
         let changes = entry.changes();
@@ -472,7 +493,6 @@ pub fn preview_orders_on_map(
         // a unit the market dissolved makes nothing (`ah-ty3s.3`). `uncounted` is kept: it names
         // orders the forecast could not read, which is a fact about the document rather than
         // about the month.
-        let dissolving = status == UnitPreviewStatus::Dissolving;
         let produced = if dissolving {
             Vec::new()
         } else {
@@ -495,8 +515,7 @@ pub fn preview_orders_on_map(
         let departed = status == UnitPreviewStatus::Departing;
         if changes.is_empty()
             && !departed
-            && status != UnitPreviewStatus::Formed
-            && status != UnitPreviewStatus::Dissolving
+            && !formed
             && uncounted.is_empty()
             && transport_sent.is_empty()
             && transport_received.is_empty()
@@ -540,6 +559,8 @@ pub fn preview_orders_on_map(
                     // An arriving row is never dissolving, but the field is set from the same
                     // source on all three pushes rather than relying on that.
                     dissolves_into: dissolves_into.clone(),
+                    formed,
+                    dissolving,
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -560,6 +581,8 @@ pub fn preview_orders_on_map(
                     transport_received,
                     transport_target_issues,
                     dissolves_into: dissolves_into.clone(),
+                    formed,
+                    dissolving,
                 });
         } else {
             regions
@@ -581,6 +604,8 @@ pub fn preview_orders_on_map(
                     transport_received,
                     transport_target_issues,
                     dissolves_into,
+                    formed,
+                    dissolving,
                 });
         }
     }
@@ -601,9 +626,12 @@ struct Decided {
     arrival: Option<String>,
     /// Set on the departing row of a unit carried by a fleet: `<name> [<id>]`.
     aboard: Option<String>,
-    /// Set on a [`UnitPreviewStatus::Dissolving`] row alone: the unit its goods revert to
-    /// (`ah-ty3s.3`).
+    /// Set on a dissolving row alone: the unit its goods revert to (`ah-ty3s.3`).
     dissolves_into: Option<String>,
+    /// This month's `FORM` creates this unit (`ah-4hux`).
+    formed: bool,
+    /// `rules/form` dissolves this unit before the month ends (`ah-4hux`).
+    dissolving: bool,
 }
 
 /// A fleet leaving its hex this month, as its passengers need to read it.
@@ -2784,7 +2812,7 @@ mod tests {
         let formed = response.regions[0]
             .units
             .iter()
-            .find(|unit| unit.status == UnitPreviewStatus::Formed)
+            .find(|unit| unit.formed)
             .expect("a formed unit");
         assert_eq!(formed.unit.structure_id.as_deref(), Some("4"));
     }
@@ -2972,7 +3000,7 @@ mod tests {
         let formed = response.regions[0]
             .units
             .iter()
-            .find(|unit| unit.status == UnitPreviewStatus::Formed)
+            .find(|unit| unit.formed)
             .expect("a formed unit");
         assert_eq!(
             formed.unit.name, "Formed",
@@ -3692,7 +3720,7 @@ mod tests {
             ours.regions[0]
                 .units
                 .iter()
-                .any(|unit| unit.status == UnitPreviewStatus::Formed
+                .any(|unit| unit.formed
                     && unit.unit.items.iter().any(|item| item.tag == "SWOR")),
             "the control must hand the sword to our own formed unit: {:?}",
             ours.regions
@@ -3708,7 +3736,7 @@ mod tests {
         let formed: Vec<_> = response.regions[0]
             .units
             .iter()
-            .filter(|unit| unit.status == UnitPreviewStatus::Formed)
+            .filter(|unit| unit.formed)
             .collect();
         assert_eq!(formed.len(), 1, "one alias, one unit");
         assert_eq!(
@@ -3727,7 +3755,7 @@ mod tests {
         let formed: Vec<_> = response.regions[0]
             .units
             .iter()
-            .filter(|unit| unit.status == UnitPreviewStatus::Formed)
+            .filter(|unit| unit.formed)
             .collect();
         assert_eq!(formed.len(), 1, "one alias, one formed unit: {:?}", formed);
         assert_eq!(
@@ -3752,7 +3780,7 @@ mod tests {
         let formed: Vec<_> = response.regions[0]
             .units
             .iter()
-            .filter(|unit| unit.status == UnitPreviewStatus::Formed)
+            .filter(|unit| unit.formed)
             .collect();
         assert_eq!(formed.len(), 1, "one alias, one formed unit: {:?}", formed);
         assert_eq!(
@@ -3797,7 +3825,7 @@ mod tests {
             .regions
             .iter()
             .flat_map(|region| region.units.iter())
-            .find(|unit| unit.status == UnitPreviewStatus::Formed)
+            .find(|unit| unit.formed)
             .expect("the formed unit");
         assert!(
             !formed.unit.items.iter().any(|item| item.tag == "SWOR"),
@@ -3842,7 +3870,7 @@ mod tests {
             let formed: Vec<_> = region
                 .units
                 .iter()
-                .filter(|unit| unit.status == UnitPreviewStatus::Formed)
+                .filter(|unit| unit.formed)
                 .collect();
             assert_eq!(formed.len(), 1, "one formed unit in {region_id}");
             let bought = formed[0]
@@ -4046,7 +4074,7 @@ mod tests {
         let formed = response.regions[0]
             .units
             .iter()
-            .find(|unit| unit.status == UnitPreviewStatus::Formed)
+            .find(|unit| unit.formed)
             .expect("a formed unit");
         assert_eq!(
             formed.unit.flags,
@@ -4096,7 +4124,7 @@ mod tests {
         let formed = response.regions[0]
             .units
             .iter()
-            .find(|unit| unit.status == UnitPreviewStatus::Formed)
+            .find(|unit| unit.formed)
             .expect("a formed unit");
         assert_eq!(formed.unit.unit_id, "new-1");
         assert_eq!(formed.unit.name, "Recruits");
@@ -4127,7 +4155,8 @@ mod tests {
             .iter()
             .find(|unit| unit.unit.unit_id == "new-1")
             .expect("the formed unit survives its successful recruitment");
-        assert_eq!(formed.status, UnitPreviewStatus::Formed);
+        assert!(formed.formed);
+        assert_eq!(formed.status, UnitPreviewStatus::Present);
         assert_eq!(formed.unit.men, 1, "the recruit was bought");
         assert_eq!(
             formed
@@ -4179,7 +4208,9 @@ mod tests {
             .iter()
             .find(|unit| unit.unit.unit_id == "new-1")
             .expect("the row a player is editing stays on the table");
-        assert_eq!(dissolving.status, UnitPreviewStatus::Dissolving);
+        assert_eq!(dissolving.status, UnitPreviewStatus::Present);
+        assert!(dissolving.formed);
+        assert!(dissolving.dissolving);
         assert!(
             !dissolving
                 .unit
@@ -4303,11 +4334,11 @@ mod tests {
             .iter()
             .find(|unit| unit.unit.unit_id == "new-1")
             .expect("the row is drawn rather than skipped since `ah-ty3s.3`");
-        assert_eq!(
-            dissolving.status,
-            UnitPreviewStatus::Dissolving,
+        assert!(
+            dissolving.dissolving,
             "and says the game will dissolve it"
         );
+        assert!(dissolving.formed);
         assert!(
             dissolving.unit.items.iter().all(|item| item.amount == 0),
             "holding nothing: the goods have reverted: {:?}",
@@ -4403,7 +4434,8 @@ mod tests {
             .iter()
             .find(|unit| unit.unit.unit_id == "new-1")
             .expect("the row is drawn rather than skipped since `ah-ty3s.3`");
-        assert_eq!(dissolving.status, UnitPreviewStatus::Dissolving);
+        assert!(dissolving.dissolving);
+        assert!(dissolving.formed);
         assert!(
             dissolving.transport_sent.is_empty(),
             "and sends nothing: {:?}",
@@ -4495,7 +4527,8 @@ mod tests {
             .iter()
             .find(|unit| unit.unit.unit_id == "new-1")
             .expect("the row is drawn rather than skipped since `ah-ty3s.3`");
-        assert_eq!(dissolving.status, UnitPreviewStatus::Dissolving);
+        assert!(dissolving.dissolving);
+        assert!(dissolving.formed);
         let held = |id: &str, tag: &str| {
             units
                 .iter()
@@ -4541,7 +4574,7 @@ mod tests {
             units
                 .iter()
                 .filter(|unit| unit.unit.unit_id.starts_with("new-"))
-                .all(|unit| unit.status == UnitPreviewStatus::Dissolving),
+                .all(|unit| unit.dissolving),
             "both rows are drawn, both dissolving: {:?}",
             units
                 .iter()
@@ -4599,7 +4632,7 @@ mod tests {
             units
                 .iter()
                 .filter(|unit| unit.unit.unit_id.starts_with("new-"))
-                .all(|unit| unit.status == UnitPreviewStatus::Dissolving),
+                .all(|unit| unit.dissolving),
             "both rows are drawn, both dissolving: {:?}",
             units
                 .iter()
@@ -4630,7 +4663,8 @@ mod tests {
             .iter()
             .find(|unit| unit.unit.unit_id == "new-1")
             .expect("a formed unit holding people survives");
-        assert_eq!(formed.status, UnitPreviewStatus::Formed);
+        assert!(formed.formed);
+        assert_eq!(formed.status, UnitPreviewStatus::Present);
         assert_eq!(formed.unit.men, 1);
     }
 
@@ -4995,7 +5029,7 @@ mod tests {
         let recruit = formed.regions[0]
             .units
             .iter()
-            .find(|unit| unit.status == UnitPreviewStatus::Formed)
+            .find(|unit| unit.formed)
             .expect("a formed unit");
         assert_eq!(
             recruit
