@@ -20980,9 +20980,6 @@ BUILD
         );
     }
 
-    /// A losing PRODUCE is not merely unwarned about - it does nothing at all, so neither the
-    /// SILVER forecast nor the ITEMS column may show its materials leaving or its goods arriving.
-    #[test]
     /// `ah-rgkk.3.1`, increment 3. `rules/sequenceofevents` runs *Market orders* before
     /// *Withdraw orders*, so the month's order is what a reader gets whatever the document says.
     /// `settle_buy_all` runs after the whole phase walk, which is the one case that gets it wrong.
@@ -21013,6 +21010,8 @@ BUILD
         );
     }
 
+    /// A losing PRODUCE is not merely unwarned about - it does nothing at all, so neither the
+    /// SILVER forecast nor the ITEMS column may show its materials leaving or its goods arriving.
     #[test]
     fn a_losing_produce_moves_no_materials_and_creates_no_goods() {
         let smith = with_item(

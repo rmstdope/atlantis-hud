@@ -50,6 +50,7 @@ const previewedRow = (
   transportSent: [],
   transportReceived: [],
   transportTargetIssues: [],
+  itemChanges: [],
   dissolvesInto: null,
   formed: false,
   dissolving: false,
@@ -99,6 +100,31 @@ describe("the skills the preview carries", () => {
   });
 });
 
+describe("itemChanges", () => {
+  it("carries the preview's item changes onto the row", () => {
+    const itemChanges = [
+      {
+        tag: "HORS",
+        name: "horse",
+        delta: 5,
+        cause: "bought" as const,
+        line: 2,
+        unitPrice: 10,
+        other: null
+      }
+    ];
+    const rows = mergePreview([unit({})], preview([previewedRow({}, { itemChanges })]));
+
+    expect(rows[0].itemChanges).toEqual(itemChanges);
+  });
+
+  it("leaves a row the orders left alone without any", () => {
+    const rows = mergePreview([unit({})], preview([]));
+
+    expect(rows[0].itemChanges).toBeUndefined();
+  });
+});
+
 describe("mergePreview", () => {
   it("replaces a changed unit's row with its predicted state, marks kept", () => {
     const rows = mergePreview(
@@ -119,6 +145,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          itemChanges: [],
           dissolvesInto: null,
           formed: false,
           dissolving: false,
@@ -163,6 +190,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          itemChanges: [],
           dissolvesInto: null,
           formed: false,
           dissolving: false,
@@ -187,6 +215,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          itemChanges: [],
           dissolvesInto: null,
           formed: true,
           dissolving: false,
@@ -225,6 +254,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          itemChanges: [],
           dissolvesInto: null,
           formed: false,
           dissolving: false,
@@ -249,6 +279,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          itemChanges: [],
           dissolvesInto: null,
           formed: false,
           dissolving: false,
@@ -284,6 +315,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          itemChanges: [],
           dissolvesInto: null,
           formed: false,
           dissolving: false,
@@ -570,6 +602,7 @@ describe("changeFor and originalTooltip", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          itemChanges: [],
           dissolvesInto: null,
           formed: false,
           dissolving: false,

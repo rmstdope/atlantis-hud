@@ -3,6 +3,7 @@ import type {
   CreatedItem,
   FieldChange,
   ItemAmount,
+  ItemChange,
   OrdersPreviewResponse,
   ProducedItem,
   RegionPreview,
@@ -71,6 +72,11 @@ export type PreviewedUnit = ReportUnit & {
    * receive. Those orders move nothing (`ah-64wm`).
    */
   transportTargetIssues?: TransportTargetIssue[];
+  /**
+   * Every item this month's orders move into or out of this unit, each with its cause, in the
+   * month's order (`ah-rgkk.3.1`).
+   */
+  itemChanges?: ItemChange[];
   /**
    * The unit a dissolving row's goods revert to, as `<name> (<id>)` (`rules/form`, `ah-ty3s.3`).
    * `null` where the hex shows no own unit of ours for them to revert to.
@@ -216,6 +222,7 @@ function rowFor(previewed: UnitPreview): PreviewedUnit {
     transportSent: previewed.transportSent,
     transportReceived: previewed.transportReceived,
     transportTargetIssues: previewed.transportTargetIssues,
+    itemChanges: previewed.itemChanges,
     dissolvesInto: previewed.dissolvesInto,
     skillMerges: previewed.skillMerges,
     reportedSkills: previewed.reportedSkills,
