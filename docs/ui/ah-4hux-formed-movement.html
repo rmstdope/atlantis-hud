@@ -304,6 +304,78 @@ about.</div>
 
 </div>
 
+<h3 class="sec">Round 3 &mdash; I mocked Q3b in a way the code cannot honestly deliver</h3>
+<p>You chose <b>Q3b</b>: draw the destination even for a formed unit that dissolves. I then checked the
+machinery and found my own mockup was lying. A row's <code>&rarr; 1:7,51</code> does not mean &ldquo;the last
+hex of the order&rdquo; &mdash; it means <b>where the unit stands when next month's report is written</b>, which
+needs the unit's speed. Speed comes from the men and goods it carries, and a unit that dissolves is by
+definition one that gained <b>nobody</b>: <code>rules/form</code>, and the code agrees &mdash; a unit with no men
+has no stated speed at all. So the forecast cannot name a hex for it, and the honest row is
+<code>&rarr; &hellip;</code>, which is exactly what it already shows for any other unit whose speed it cannot
+state. The <b>map line is unaffected</b>: the hexes the order walks are known without knowing the speed, and it
+is drawn dotted the whole way, which is how the map already says &ldquo;beyond what I can time&rdquo;.</p>
+
+<div class="grid3">
+
+<div class="card"><h2><em>Q3b&prime;</em> The arrow, unnamed &mdash; and the line on the map</h2>
+<div class="concept">Your Q3b, delivered as the machinery can actually say it.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr class="dim"><td class="id">new&#8209;3</td><td>Unit (new 3)<span class="mk">new</span><span class="mk plain">&rarr; &hellip;</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+  </table>
+</div>
+<div class="map" style="margin-top:8px">
+<svg viewBox="0 0 300 110" width="100%" height="110" role="img" aria-label="A dotted line one hex north">
+  <g fill="none" stroke="#26303d" stroke-width="1">
+    <polygon points="40,78 62,66 84,78 84,102 62,114 40,102" fill="#182028"/>
+    <polygon points="40,32 62,20 84,32 84,56 62,68 40,56" fill="#182028"/>
+  </g>
+  <circle cx="62" cy="90" r="5.5" fill="none" stroke="#eebe63" stroke-width="2"/>
+  <path d="M62,90 L62,44" stroke="#eebe63" stroke-width="2.2" fill="none" stroke-dasharray="4 4"/>
+  <text x="100" y="94" fill="#a3b0c0" font-family="Helvetica Neue,Arial" font-size="11">plain (7,53)</text>
+  <text x="100" y="48" fill="#8a97a8" font-family="Helvetica Neue,Arial" font-size="11">forest (7,52) &mdash; dotted: no speed to time it by</text>
+</svg>
+</div>
+<ul class="notes">
+  <li>You see the order you wrote, on the map, and no marker claims anything the forecast cannot stand behind.</li>
+  <li class="con"><code>&rarr; &hellip;</code> on <em>every</em> dissolving row that moves, always &mdash; there is no case where it names a hex.</li>
+</ul></div>
+
+<div class="card"><h2><em>Q3c</em> Name the end of the order instead</h2>
+<div class="concept">On a dissolving row only, the arrow names the <b>last hex the order walks</b> rather than
+where the month ends &mdash; the <code>1:7,51</code> I drew in the first place.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr class="dim"><td class="id">new&#8209;3</td><td>Unit (new 3)<span class="mk">new</span><span class="mk plain">&rarr; 1:7,51</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Reads as I originally drew it, and a one-hex order is the common case where the two meanings agree anyway.</li>
+  <li class="con">The arrow means two different things on two kinds of row, and nothing on the row says which. A four-hex order on a two-move unit would name a hex it could not reach in the month.</li>
+  <li class="con">A second destination rule to keep working, for a row that describes a unit the game deletes.</li>
+</ul></div>
+
+<div class="card"><h2><em>Q3a</em> Back to no arrow at all</h2>
+<div class="concept">The option you turned down in round 2, restated now that <code>&rarr; &hellip;</code> is what
+Q3b actually buys. The map line could still be drawn, or not &mdash; say which if you take this.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr class="dim"><td class="id">new&#8209;3</td><td>Unit (new 3)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>The shortest row, and the one that promises least.</li>
+  <li class="con">The <code>MOVE</code> you wrote is invisible everywhere on the table.</li>
+</ul></div>
+
+</div>
+
 <div class="verdict">
 <b>Round 1 recommendation (now chosen): O1 and D1.</b> They are the two that change no existing rule &mdash; the departure arrow
 keeps meaning &ldquo;leaving this hex&rdquo;, the arrival row keeps meaning &ldquo;will be standing here&rdquo;,
