@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-rgkk.1 &mdash; Round 2: silence, keyboard, and the states</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#e0b050;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); } .foreign { color:var(--ink-dim); }
+  .unk { color:var(--ink-dim); font-style:italic; }
+  .silent { background:repeating-linear-gradient(135deg,transparent,transparent 5px,rgba(138,151,168,.13) 5px,rgba(138,151,168,.13) 10px); }
+  .live { outline:1px solid var(--brass); outline-offset:-1px; }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         min-width:230px; max-width:340px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:14px; }
+  .pop .why { color:var(--ink-dim); font-style:italic; }
+  .pop .note { color:var(--warn); margin-top:6px; }
+  .up { color:var(--ok); } .down { color:var(--danger); }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:12px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .seq { display:grid; grid-template-columns:auto 1fr; gap:6px 12px; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); }
+  .seq b { color:var(--brass); font-weight:600; }
+  .key { font-family:'SF Mono',Menlo,monospace; background:var(--edge); border-radius:3px; padding:1px 5px; color:var(--brass-bright); font-size:11px; }
+  .legend { font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink-dim); margin-top:8px; }
+</style></head><body>
+<header><h1>ah-rgkk.1 &mdash; <span>round 2: silence, keyboard, and the states</span></h1>
+<p>Settled in round 1: the popup is headed <b>&ldquo;Braves (1487) &mdash; items&rdquo;</b> (unit, then column); a change is marked <b>arrow and signed amount</b>, e.g. <code>12&nbsp;&#9650;&nbsp;+4</code>; moving sideways along a row <b>swaps the popup&rsquo;s contents in place</b> with no second wait; and the <b>whole-unit summary survives on the Name and Id cells</b>. This page is the rest of it.</p></header>
+<main>
+
+<h3 class="sec">E &mdash; Which columns say nothing</h3>
+<p>Hatched = no popup at all; resting there shows nothing. Outlined = has a popup. Both variants keep the round-1 answer that Name and Id give the whole-unit summary. <code>Hex</code>, <code>Seen</code> and <code>Remove</code> are drawn on the right; they exist only for an Army source.</p>
+<div class="card">
+<div class="hexlab">E1 &mdash; only the marker and the remove button are silent</div>
+<div class="stage">
+  <table class="units">
+  <tr><th>&nbsp;</th><th>Unit</th><th>Name</th><th>Faction</th><th>Men</th><th>Move</th><th>Flags</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th>Silver</th><th>Hex</th><th>Seen</th><th>&nbsp;</th></tr>
+  <tr><td class="silent own">*</td><td class="live uid">1487</td><td class="live">Braves</td><td class="live">Ours (12)</td><td class="live">12</td><td class="live">W</td><td class="live">G</td><td class="live">COMB 2</td><td class="live">12 SWOR</td><td class="live">Tower</td><td class="live">STUDY</td><td class="live">40</td><td class="live">(12,8)</td><td class="live">71</td><td class="silent">&nbsp;</td></tr>
+  </table>
+  <div class="legend">Faction explains a concealed owner (&ldquo;not shown&rdquo; &mdash; <code>rules/stealthobs</code>); Hex names the region in full; Seen says how many turns ago this member was last observed.</div>
+</div>
+<ul class="notes">
+  <li>Nothing a player can wonder about is unanswerable &mdash; including the two columns that say &ldquo;not shown&rdquo; and &ldquo;71&rdquo;.</li>
+  <li class="con">Three more content decisions in this shell bead, on columns nobody has complained about.</li>
+</ul>
+</div>
+<div class="card">
+<div class="hexlab">E2 &mdash; only the columns with a story</div>
+<div class="stage">
+  <table class="units">
+  <tr><th>&nbsp;</th><th>Unit</th><th>Name</th><th>Faction</th><th>Men</th><th>Move</th><th>Flags</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th>Silver</th><th>Hex</th><th>Seen</th><th>&nbsp;</th></tr>
+  <tr><td class="silent own">*</td><td class="live uid">1487</td><td class="live">Braves</td><td class="silent">Ours (12)</td><td class="live">12</td><td class="live">W</td><td class="live">G</td><td class="live">COMB 2</td><td class="live">12 SWOR</td><td class="live">Tower</td><td class="live">STUDY</td><td class="live">40</td><td class="silent">(12,8)</td><td class="silent">71</td><td class="silent">&nbsp;</td></tr>
+  </table>
+  <div class="legend">Silent: the ownership marker, Faction, Hex, Seen, Remove. Every one of them already prints its whole truth in the cell.</div>
+</div>
+<ul class="notes">
+  <li>Exactly the columns that carry a <code>title</code> today, plus Silver, plus the whole-unit pair &mdash; content parity and nothing invented.</li>
+  <li>Smaller shell bead; a Faction or Hex popup can be its own bead later if it is ever wanted.</li>
+  <li class="con">Faction&rsquo;s &ldquo;not shown&rdquo; stays unexplained on hover; the player must know the rule.</li>
+</ul>
+</div>
+
+<h3 class="sec">F &mdash; Keyboard, and what replaces <code>title</code> for a screen reader</h3>
+<p>Today the popup is mouse-only by design (<code>byMouse</code>: a finger has no hover to leave). The <code>title</code> attributes were the <i>only</i> non-visual route to this material, and this bead removes all nine of them. The table is one tab stop per row; <span class="key">&uarr;</span><span class="key">&darr;</span> move the cursor, <span class="key">&larr;</span><span class="key">&rarr;</span> are unclaimed and currently scroll a wide table sideways.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">F1 &mdash; no new key; every cell carries its own hidden sentence</div>
+<div class="stage">
+  <div class="seq">
+    <b>mouse</b><span>rest on a cell &rarr; the popup, as round 1 settled</span>
+    <b>keyboard</b><span>unchanged: <span class="key">&uarr;</span><span class="key">&darr;</span> move rows, <span class="key">&larr;</span><span class="key">&rarr;</span> still scroll</span>
+    <b>screen reader</b><span>each cell reads its figure and then its explanation, from an <code>sr-only</code> span &mdash; the pattern Move and Flags already use</span>
+  </div>
+  <div class="stage" style="margin-top:10px">
+    <div class="legend" style="margin:0">Reads as: &ldquo;Items, 12 SWOR 40 SILV 2 HORS. Sword 12, up 4, four bought at 60 silver each. Horse 2, down 1, one given to Scouts 1502.&rdquo;</div>
+  </div>
+</div>
+<ul class="notes">
+  <li>No habit changes, and no key is spent.</li>
+  <li>Strictly better than <code>title</code>, which many screen readers skip entirely.</li>
+  <li class="con">A sighted keyboard user still cannot see the explanation without reaching for the mouse.</li>
+  <li class="con">Every popup&rsquo;s text is built for every visible row, whether or not anyone hovers.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">F2 &mdash; <span class="key">&larr;</span><span class="key">&rarr;</span> become a cell cursor, and the popup follows it</div>
+<div class="stage">
+  <div class="seq">
+    <b>mouse</b><span>rest on a cell &rarr; the popup, as round 1 settled</span>
+    <b><span class="key">&rarr;</span></b><span>moves a cell cursor along the row; the popup opens on that cell at once, no delay</span>
+    <b><span class="key">&uarr;</span><span class="key">&darr;</span></b><span>move rows as now, keeping the column &mdash; the popup follows down the column</span>
+    <b><span class="key">Esc</span></b><span>closes the popup and drops the cell cursor (before its existing meanings)</span>
+  </div>
+</div>
+<ul class="notes">
+  <li>One route for everybody: what the mouse can see, the keyboard can see.</li>
+  <li>The popup is <code>role="dialog"</code>-shaped material already; this gives it a real focus story.</li>
+  <li class="con"><span class="key">&larr;</span><span class="key">&rarr;</span> stop scrolling a wide table sideways &mdash; a habit that exists today.</li>
+  <li class="con">Escape gains a third meaning on a row (it already narrows a pick, then unpins a faction).</li>
+  <li class="con">Materially bigger: a cell cursor is state the table does not have.</li>
+</ul>
+</div>
+</div></div>
+
+<h3 class="sec">G &mdash; The states the happy path hides</h3>
+<p>All four drawn with the round-1 answers applied. These are the wordings that would ship.</p>
+<div class="card"><div class="pops">
+  <div>
+  <div class="hexlab">G-a &mdash; nothing changed this month</div>
+  <div class="pop">
+    <div class="head">Scouts (1502) &mdash; items</div>
+    <div class="line"><span>leather armour</span><span>3</span></div>
+    <div class="line"><span>silver</span><span>15</span></div>
+    <div class="why">Nothing this month changes these.</div>
+  </div>
+  </div>
+  <div>
+  <div class="hexlab">G-b &mdash; a foreign unit&rsquo;s skills</div>
+  <div class="pop">
+    <div class="head">Watazka (4839) &mdash; skills</div>
+    <div class="why">A report never shows another faction&rsquo;s skills.</div>
+  </div>
+  </div>
+  <div>
+  <div class="hexlab">G-c &mdash; the month is partly uncounted</div>
+  <div class="pop">
+    <div class="head">Braves (1487) &mdash; items</div>
+    <div class="line"><span>sword</span><span>12 <span class="up">&#9650;&nbsp;+4</span></span></div>
+    <div class="why">4 bought at 60 silver each</div>
+    <div class="note">&ldquo;+&nbsp;?&rdquo; in the cell: one order could not be read, so this list may be short.</div>
+  </div>
+  </div>
+  <div>
+  <div class="hexlab">G-d &mdash; a very long list</div>
+  <div class="pop">
+    <div class="head">Caravan (2210) &mdash; items</div>
+    <div class="line"><span>silver</span><span>4210</span></div>
+    <div class="line"><span>horse</span><span>60 <span class="up">&#9650;&nbsp;+10</span></span></div>
+    <div class="line"><span>grain</span><span>55 <span class="down">&#9660;&nbsp;&minus;5</span></span></div>
+    <div class="line"><span>livestock</span><span>40</span></div>
+    <div class="line"><span>wagon</span><span>30</span></div>
+    <div class="line"><span>leather armour</span><span>18</span></div>
+    <div class="line"><span>fur</span><span>12</span></div>
+    <div class="why" style="margin-top:5px">&hellip; scrolls inside the popup, capped at 80% of the window height</div>
+  </div>
+  </div>
+</div>
+<ul class="notes">
+  <li class="n">G-a: a popup that says &ldquo;nothing changed&rdquo; is still worth opening &mdash; it answers the question rather than leaving the reader wondering whether the popup failed.</li>
+  <li class="n">G-b: the sentence is the one the current tooltip already ships.</li>
+</ul>
+</div>
+
+<h3 class="sec">H &mdash; A column with genuinely nothing to say</h3>
+<p>Not the same as G-a. Here the <i>cell itself</i> is empty: a foreign unit&rsquo;s Long order, or a unit in no structure. The cell prints nothing at all.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">H1 &mdash; the popup does not open</div>
+<div class="stage"><div class="legend" style="margin:0">Resting on an empty Structure cell shows nothing, exactly as resting on the ownership marker does.</div></div>
+<ul class="notes"><li>No popup that says nothing.</li><li class="con">Indistinguishable from a bug: did the popup fail, or is there nothing?</li></ul>
+</div>
+<div>
+<div class="hexlab">H2 &mdash; it opens and says so</div>
+<div class="stage"><div class="pop">
+  <div class="head">Watazka (4839) &mdash; structure</div>
+  <div class="why">In no structure.</div>
+</div></div>
+<ul class="notes"><li>Every column with a popup always has one; one rule, no cases.</li><li class="con">More popups that say very little.</li></ul>
+</div>
+</div></div>
+
+<footer>Mockup for <code>ah-rgkk.1</code>. Wording shown is what would ship. Per-column content beyond parity with today&rsquo;s <code>title</code> text is the rest of the family, <code>ah-rgkk.2</code>&ndash;<code>.5</code>.</footer>
+</main></body></html>
