@@ -74,6 +74,19 @@ describe("the column popups", () => {
     ]);
   });
 
+  it("the men popup formats both halves of the pair the same way", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({ men: 4255, previewChanges: [{ field: "men", original: "4210" }] }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "men", value: "4,255", change: { direction: "up", from: "4,210" } }
+    ]);
+  });
+
   it("the men popup quotes the report when it recorded no original figure", () => {
     const popup = columnPopup(
       popupForCell(

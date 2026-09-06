@@ -32,7 +32,7 @@ export type PopupColumn = UnitColumn | ExtraColumn;
 /**
  * How a figure moved this month (decision **R1**, `ah-rgkk.6`).
  *
- * `from` is what the report said, already formatted; the line's own `value` is where it stands
+ * `from` is what the report said, grouped as the line's own `value` is; `value` is where it stands
  * now. The two together are the pair the popup draws, and `direction` is what colours the second
  * of them.
  */
@@ -232,10 +232,11 @@ function bodyFor(column: PopupColumn, unit: PreviewedUnit, facts: PopupFacts): B
 }
 
 /**
- * A change the popup can mark with an arrow, or one it can only quote.
+ * A change the popup can draw as a pair, or one it can only quote.
  *
- * Only a figure both sides of which are whole numbers can be subtracted; `~8` is the report's own
- * mark for a count it guessed at, and an arrow drawn from it would claim an arithmetic nobody did.
+ * Only a whole number can stand on the left of the arrow beside the figure that holds now. `~8` is
+ * the report's own mark for a count it guessed at and `""` is a figure it never recorded; neither
+ * is something the pair can be drawn from, so both are quoted in the report's own words instead.
  */
 function markOrQuote(change: ReturnType<typeof changeFor>, now: number): Partial<PopupLine> {
   if (!change) {
@@ -250,7 +251,10 @@ function markOrQuote(change: ReturnType<typeof changeFor>, now: number): Partial
   if (before === now) {
     return {};
   }
-  return { change: { direction: now > before ? "up" : "down", from: change.original } };
+  // Grouped the same way the figure beside it is (`describeMenBriefly`), so a four-figure pair
+  // reads `4,210 → 4,255` rather than mixing two notations. Safe to re-format because the
+  // guard above has already proved `before` a whole number.
+  return { change: { direction: now > before ? "up" : "down", from: before.toLocaleString() } };
 }
 
 /** A sentence the app already ships as a fragment, ended the way every popup sentence ends. */
