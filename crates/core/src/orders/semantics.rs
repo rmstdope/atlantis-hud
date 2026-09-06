@@ -4513,11 +4513,14 @@ pub(crate) fn item_effects(
     //
     // A **stable** sort by phase alone, deliberately not by `(phase, line)`: the ledger's own walk
     // is already phase-ordered (`for phase in phases::ORDER`) and pushes a unit's intents in
-    // document order within a phase, so push order inside one phase already is document order. The
-    // one thing out of place is `settle_buy_all`, which runs after the whole walk and so pushes its
-    // market movements behind the withdrawals. Sorting by line as well would be wrong:
-    // `rules/sequenceofevents` runs every SELL before every BUY, so a block writing `BUY` above
-    // `SELL` must still list the sale first.
+    // document order within a phase, so push order inside one phase already is document order, and
+    // that is what a reader gets within a phase: a block writing `BUY` above `SELL` lists the
+    // purchase first, since both settle in `StatePhase::Market`. The one thing out of place is
+    // `settle_buy_all`, which runs after the whole walk and so pushes its market movements behind
+    // the withdrawals - which is the whole of what this sort puts right. Sorting by `(phase, line)`
+    // is deliberately not attempted: `rules/sequenceofevents` gives the market one phase and does
+    // not order buying against selling within it, so a line order would be a claim this module has
+    // no lookup behind.
     for entry in result.values_mut() {
         entry.moved.sort_by_key(|movement| movement.phase as usize);
     }

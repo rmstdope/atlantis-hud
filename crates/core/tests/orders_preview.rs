@@ -43,7 +43,8 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
     //
     // `ah-rgkk.3.1` adds no row of its own here: the four units writing the standing `@cast earm`
     // record a plate armor leaving, because a cast is charged its materials at the ceiling whether
-    // or not the mage holds them (`ah-ofpb.5`), but none of them holds any - so nothing moves.
+    // or not the mage holds them (`ah-ofpb.5`), but none of them holds any - so nothing moves, and
+    // a row is admitted for an item change only when some change actually moved stock.
     let rows: Vec<_> = response
         .regions
         .iter()

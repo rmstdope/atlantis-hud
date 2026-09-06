@@ -745,6 +745,7 @@ pub fn preview_orders_on_map(
         } else {
             entry.item_changes.clone()
         };
+        let items_moved = !dissolving && entry.items_moved;
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
         let transport_target_issues = entry.transport_target_issues.clone();
@@ -761,7 +762,13 @@ pub fn preview_orders_on_map(
             // A unit that buys five of a tag and sells five of the same tag ends the month holding
             // what it started with, so `changes()` records nothing - and the row would be dropped
             // along with the explanation of why nothing changed (`ah-rgkk.3.1`).
-            && item_changes.is_empty()
+            //
+            // `items_moved` rather than `!item_changes.is_empty()`: a cast charged for materials
+            // the mage does not hold records a change that takes nothing away (`ah-ofpb.5`), and a
+            // row whose every change is one of those has nothing to show - admitting it would put
+            // rows on the units table for orders with no effect at all, which is the leak
+            // `tests/orders_preview.rs` guards against.
+            && !items_moved
         {
             continue;
         }
@@ -1110,6 +1117,14 @@ struct WorkingUnit {
     /// `apply_item_effects` with the ledger's already-sorted movements, then `apply_transports`
     /// last (`ah-rgkk.3.1`).
     item_changes: Vec<ItemChange>,
+    /// Whether any of those changes actually moved stock on this row.
+    ///
+    /// Never on the wire, and not the same question as "is `item_changes` non-empty": a `CAST` is
+    /// charged its materials at the ceiling whether or not the mage holds them (`ah-ofpb.5`), so a
+    /// mage with none of the material records a change that takes nothing away. A row whose every
+    /// change is one of those has nothing to show, and `preview_orders_on_map` skips it - the
+    /// buy-then-sell month that nets to zero is the case the row is kept for (`ah-rgkk.3.1`).
+    items_moved: bool,
     /// What this unit's `TRANSPORT`/`DISTRIBUTE` orders send this month. Written once by
     /// `apply_transports`, after everything else has run (`ah-bxgs`).
     transport_sent: Vec<TransportSent>,
@@ -1467,6 +1482,7 @@ impl Working {
                 built: Vec::new(),
                 created: Vec::new(),
                 item_changes: Vec::new(),
+                items_moved: false,
                 transport_sent: Vec::new(),
                 transport_received: Vec::new(),
                 recruited: Vec::new(),
@@ -1690,6 +1706,7 @@ impl Working {
                             &movement.tag,
                             movement.delta,
                         );
+                        unit.items_moved = true;
                     }
                     std::cmp::Ordering::Less => {
                         // A stock can go negative here - the ledger clamps against a running
@@ -1704,6 +1721,7 @@ impl Working {
                             .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
                         {
                             take_item(&mut unit.unit.items, index, -movement.delta);
+                            unit.items_moved = true;
                         }
                     }
                     std::cmp::Ordering::Equal => {}
@@ -1797,6 +1815,7 @@ impl Working {
             built: Vec::new(),
             created: Vec::new(),
             item_changes: Vec::new(),
+            items_moved: false,
             transport_sent: Vec::new(),
             transport_received: Vec::new(),
             recruited: Vec::new(),
@@ -6143,6 +6162,46 @@ mod tests {
                     .map(|change| change.cause)
                     .collect::<Vec<_>>(),
                 vec![ItemChangeCause::Sold, ItemChangeCause::Withdrawn],
+                "{:?}",
+                unit.item_changes
+            );
+        }
+
+        /// `ah-rgkk.3.1`. A cast is charged its materials at the ceiling whether or not the mage
+        /// holds them (`ah-ofpb.5`), so a mage holding none records a change that takes nothing
+        /// away. A row whose every change is one of those has nothing to show.
+        #[test]
+        fn a_cast_charged_for_materials_the_mage_has_not_got_earns_no_row() {
+            let empty_handed = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "* Enchanter (900), Foo (1), behind, leader [LEAD]. Weight: 10. \
+                 Capacity: 0/0/15/0. Skills: enchant swords [ESWO] 3 (270).",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(&empty_handed, "unit 900\nCAST Enchant_Swords\n");
+
+            assert!(
+                !response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .any(|unit| unit.unit.unit_id == "900"),
+                "nothing moved, so nothing is previewed: {:?}",
+                response.regions
+            );
+
+            // The control: the same cast by a mage who does hold the swords is previewed, and its
+            // materials are among the changes.
+            let response = preview_over(&report_with_a_mage(), "unit 900\nCAST Enchant_Swords\n");
+            let unit = only_unit(&response);
+            assert!(
+                unit.item_changes.iter().any(
+                    |change| change.cause == ItemChangeCause::CastSpent && change.tag == "SWOR"
+                ),
                 "{:?}",
                 unit.item_changes
             );
