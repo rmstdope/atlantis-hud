@@ -823,4 +823,59 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
       })
     ).toBe("combat COMB 1 (53), 2 (98) next turn if it happens.");
   });
+
+  it("a skill at its own maximum names the skill, not a race", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 5, 450)],
+        skills: [skill("combat", "COMB", 5, 450)],
+        study: forecast({
+          levelAfter: 5,
+          pointsAfter: 500,
+          heldBackByCeiling: true,
+          ceilingLevel: 5,
+          limitingRaces: []
+        })
+      })
+    );
+    expect(popup.notes.join(" ")).toContain(
+      "Combat stops at level 5, so the points rise and the level holds."
+    );
+  });
+
+  it("an own unit with nothing to draw still says it has no skills", () => {
+    const popup = skillsPopup(unit({ own: true, skills: [] }));
+    expect(popup.lines).toEqual([]);
+    expect(popup.notes).toContain("No skills.");
+  });
+
+  it("an own unit with no skills at all still gets a line for what it is studying", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [],
+        skills: [],
+        study: forecast({ tag: "RIDI", name: "riding", levelAfter: 1, pointsAfter: 30 })
+      })
+    );
+    expect(popup.lines[0]!.label).toBe("riding RIDI");
+    expect(popup.notes).not.toContain("No skills.");
+  });
+
+  it("the study note promises no blue figure the twelve-line cap has taken away", () => {
+    const many = Array.from({ length: 12 }, (_, index) => ({
+      name: `skill${index}`,
+      tag: `SK${index}`,
+      level: 1,
+      points: 30
+    }));
+    const popup = skillsPopup(
+      own({
+        reportedSkills: many,
+        skills: many,
+        study: forecast({ tag: "RIDI", name: "riding", levelAfter: 1, pointsAfter: 30 })
+      })
+    );
+    expect(popup.lines).toHaveLength(12);
+    expect(popup.notes.join(" ")).not.toContain("The blue figure is next turn's report");
+  });
 });

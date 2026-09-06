@@ -1047,7 +1047,10 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
       }),
       previewOf(
         { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] },
-        { changes: [{ field: "skills", original: "LUMB 1 (30)" }] }
+        {
+          changes: [{ field: "skills", original: "LUMB 1 (30)" }],
+          reportedSkills: [{ name: "lumberjack", tag: "LUMB", level: 1, points: 30 }]
+        }
       )
     );
 
@@ -1056,7 +1059,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
     expect(markup).toContain("LUMB 2 (80)");
     // The chain says what the report had, line by line, so the own branch no longer hangs the
     // report's whole `was: …` quote off the first line (`ah-rgkk.2.3`).
-    expect(markup).toContain("lumberjack LUMB none, up to 2 (80).");
+    expect(markup).toContain("lumberjack LUMB 1 (30), up to 2 (80).");
   });
 
   it("leaves the cell unmarked when a GIVE moved men but skills did not change", () => {

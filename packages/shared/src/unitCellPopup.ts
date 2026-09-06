@@ -520,10 +520,18 @@ function studySentence(study: StudyForecast, projectionDrawn: boolean): string {
     );
   }
   if (study.heldBackByCeiling) {
+    // An empty `limitingRaces` is `StudyCeiling::Global` (`crates/core/src/orders/study.rs`): the
+    // skill's own maximum, or races the catalogue cannot judge. Naming a race there would blame
+    // one for a limit it did not impose, which is the distinction the core's own warning draws.
+    //
     // The catalogue's names are singular by `ah-rgkk.2.2`'s own decision, and `hill dwarf` does
-    // not pluralise by appending `s` - so the construction is one that needs no plural at all.
+    // not pluralise by appending `s` - so the race construction is one that needs no plural.
     clauses.push(
-      `No ${andList(study.limitingRaces.map((race) => race.name))} may take ${study.name} past level ${study.ceilingLevel}, so the points rise and the level holds.`
+      study.limitingRaces.length > 0
+        ? `No ${andList(study.limitingRaces.map((race) => race.name))} may take ${study.name} past level ${study.ceilingLevel}, so the points rise and the level holds.`
+        : sentence(
+            `${study.name} stops at level ${study.ceilingLevel}, so the points rise and the level holds`
+          )
     );
   }
   if (projectionDrawn) {
@@ -577,13 +585,16 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   }
 
   let projectionDrawn = false;
-  const lines: PopupLine[] = tags.map((tag) => {
+  const lines: PopupLine[] = tags.map((tag, index) => {
     const before = reportedByTag.get(tag);
     const now = nowByTag.get(tag);
     const forTag = study?.tag === tag ? study : undefined;
     const name = before?.name ?? now?.name ?? forTag?.name ?? tag;
     const steps = chainFor(before, now, hasReport, forTag);
-    if (forTag && steps.length > 0) {
+    // Only where the eye will actually find it: `popupForCell` caps the lines at `MAX_LINES`
+    // (`ah-rgkk.1`, decision **G-d**), and a studied skill the unit has never held is appended
+    // last - so on a twelve-skill unit the note would promise a blue figure that was cut off.
+    if (forTag && steps.length > 0 && index < MAX_LINES) {
       projectionDrawn = true;
     }
     return {
