@@ -264,3 +264,50 @@ fn a_unit_formed_this_month_walks_away_this_month() {
     assert_eq!(arriving.arriving_from.as_deref(), Some("1:18,44"));
 }
 
+
+/// A formed unit that gains nobody is dissolved by `rules/form`, and the row still shows the MOVE
+/// the player wrote - unnamed, because a unit with no men has no stated speed to time the journey
+/// by (`ah-4hux`, decision **Q3b'**).
+#[test]
+fn a_dissolving_formed_unit_shows_an_unnamed_departure_and_no_arrival() {
+    // The same orders as `a_unit_formed_this_month_walks_away_this_month` without the GIVE, so the
+    // FORM gains nobody and `rules/form` dissolves it.
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        TURN_71,
+        "[]",
+        "#atlantis 95 \"password\"\nunit 15571\nFORM 1\nMOVE SE\nEND\n#end\n",
+    )
+    .expect("the ruleset loads");
+
+    let origin = response
+        .regions
+        .iter()
+        .find(|region| region.region_id == "1:18,44")
+        .expect("the hex the unit is formed in");
+    let departing = origin
+        .units
+        .iter()
+        .find(|unit| unit.unit.unit_id == "new-1")
+        .expect("the row a player is editing stays on the table");
+    assert_eq!(departing.status, UnitPreviewStatus::Departing);
+    assert!(departing.formed);
+    assert!(departing.dissolving);
+    assert_eq!(departing.departing_to, None);
+
+    // And it stands nowhere next month, so no other hex carries a row for it.
+    for region in &response.regions {
+        if region.region_id == "1:18,44" {
+            continue;
+        }
+        assert!(
+            !region
+                .units
+                .iter()
+                .any(|unit| unit.unit.unit_id == "new-1"),
+            "a unit the game deletes gets no arrival row: {}",
+            region.region_id
+        );
+    }
+}
