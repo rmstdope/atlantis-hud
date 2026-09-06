@@ -1,0 +1,277 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-rgkk.5.3 &mdash; round 1: the Structure popup</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; min-width:252px; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; }
+  .pop .line.sep { border-top:1px solid var(--edge-soft); padding-top:3px; margin-top:3px; }
+  .pop .line .val { text-align:right; white-space:nowrap; }
+  .pop .why { color:var(--ink-dim); margin-left:6px; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .note.tight { margin-top:2px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .off { color:var(--ink-dim); }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; align-items:start; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .rule { border-top:1px solid var(--edge); margin:30px 0 0; }
+  .cell { display:inline-block; background:var(--panel); border:1px solid var(--edge); border-radius:4px;
+          padding:2px 8px; font:12px/1.5 'SF Mono',Menlo,monospace; color:var(--ink); }
+  .gone { text-decoration:line-through; color:var(--ink-dim); }
+  table.tbl { border-collapse:collapse; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:10px; }
+  table.tbl th, table.tbl td { border:1px solid var(--edge); padding:4px 10px; text-align:left; color:var(--ink-soft); }
+  table.tbl th { color:var(--brass); font-weight:600; }
+</style>
+
+<header>
+  <h1>ah-rgkk.5.2 <span>&mdash; round 2, revised: F3 without <span class="gone">under strength</span></span></h1>
+<style>
+  .pop .stack { text-align:right; }
+  .pop .stack .down-arrow { color:var(--ink-dim); display:block; line-height:1.1; }
+  .pop .pairline { text-align:right; white-space:normal; }
+  .q { color:var(--brass); font-weight:600; }
+</style>
+
+<header>
+  <h1>ah-rgkk.5.3 <span>&mdash; the Structure popup, round 1</span></h1>
+  <p><b>What is settled and not being re-opened.</b> The popup itself, its heading and its cap
+  (<code>ah-rgkk.1</code>); the family&rsquo;s <span class="mono">before&nbsp;&rarr;&nbsp;after</span> pair
+  (<code>ah-rgkk.6</code>, R1); and <code>ah-rgkk.5.2</code>&rsquo;s <b>V1</b> &mdash; a changed value draws the
+  pair with <b>the order that did it as a dim trailing clause</b>.</p>
+  <p><b style="color:var(--brass)">What is new here.</b> Today the Structure popup shows one line
+  &mdash; <span class="mono">structure</span> valued the full label &mdash; and its &ldquo;why&rdquo; is the report&rsquo;s
+  <b>raw structure number</b>: a unit that moved from a longship into a fort reads
+  <span class="mono">was: 329</span>, and one that walked out reads <span class="mono">was: &mdash;</span>.
+  This bead names <b>both sides the way the cell names them</b> and says <b>which order did it</b>.</p>
+  <p><b style="color:var(--brass)">Why the order can be named at all, and exactly.</b>
+  <code>rules/enter</code>: &ldquo;Attempt to enter the specified object. <b>If issued from inside another object,
+  the unit will first leave the object it is currently in.</b>&rdquo; <code>rules/leave</code>: &ldquo;Leave the object
+  you are currently in.&rdquo; The preview changes a unit&rsquo;s structure from those two orders and nothing else
+  (<code>effects.rs</code>, <span class="mono">board</span>), so the before/after pair determines the order with no
+  guesswork: a structure after means <span class="mono">ENTER &lt;that number&gt;</span> &mdash; a move between two
+  needs no LEAVE, per the rule above &mdash; and nothing after means <span class="mono">LEAVE</span>.
+  <b>No line number is recorded</b>, so the popup can name the order but never the line it sits on.</p>
+  <p><b style="color:var(--brass)">Two questions: Q1 and Q2.</b> Q1 is the one that matters, and it sets a
+  precedent for every long value in this table.</p>
+</header>
+
+<main>
+
+  <p class="scene"><b>The scene.</b> <b>Braves (1487)</b> was found by the report inside
+  <b>Wavecrest [329] &middot; Longship</b>. This month you write <code>ENTER 12</code>, and
+  <span class="mono">Odds and Ends [12] &middot; Fort</span> is where it ends up. The Structure cell reads
+  <span class="cell">Odds and Ends [12] &middot; Fort</span>.</p>
+
+  <h3 class="sec">Q1 &mdash; a pair of two long names does not fit on one line</h3>
+  <p>Every other column&rsquo;s pair is two short figures (<span class="mono">8 &rarr; 12</span>,
+  <span class="mono">on &rarr; off</span>). A structure label is about 25 characters, so two of them and an arrow
+  is wider than the popup has ever been. The popup is <b>384px at its widest</b> &mdash; the frames below are drawn
+  at that width, so what you see is what wraps.</p>
+
+  <div class="split3">
+    <div class="card">
+      <p class="hexlab">L1 &mdash; one line, the family pair, allowed to wrap</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; structure</div>
+        <div class="line"><span>structure</span><span class="val pairline"><span class="flat">Wavecrest [329] &middot; Longship</span><span class="arrow">&rarr;</span><span class="up">Odds and Ends [12] &middot; Fort</span><span class="why">ENTER 12</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>One rule for the whole table. Nothing new to learn, nothing new to build.</li>
+        <li class="con">Wraps to three ragged lines, and the arrow can land at the end of a line where it reads as a hyphen.</li>
+        <li class="con">The label <span class="mono">structure</span> is then stranded beside a three-line block.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">L2 &mdash; two lines, one per side</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; structure</div>
+        <div class="line"><span>was</span><span class="val"><span class="flat">Wavecrest [329] &middot; Longship</span></span></div>
+        <div class="line"><span>structure</span><span class="val"><span class="up">Odds and Ends [12] &middot; Fort</span></span></div>
+        <div class="note tight">Entered by <span class="mono">ENTER 12</span>.</div>
+      </div>
+      <ul class="notes">
+        <li>Never wraps. Both names read straight, left to right, at full length.</li>
+        <li class="con">Abandons the pair notation <code>ah-rgkk.6</code> chose for the whole table &mdash; this column alone would read differently.</li>
+        <li class="con">Two lines that are one fact; a reader has to notice <span class="mono">was</span> to see it moved.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">L3 &mdash; the pair, stacked in the value column</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; structure</div>
+        <div class="line"><span>structure</span><span class="val stack"><span class="flat">Wavecrest [329] &middot; Longship</span><span class="down-arrow">&darr;</span><span class="up">Odds and Ends [12] &middot; Fort</span><span class="why">ENTER 12</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>Still the pair, still one line of the popup, still one label: the arrow simply turns a quarter.</li>
+        <li>Never wraps, however long either name is, and the two names align on the right so the change is obvious.</li>
+        <li class="con">A second arrow direction in the table: <span class="mono">&rarr;</span> for short values, <span class="mono">&darr;</span> for long ones.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">Q2 &mdash; how the order is said</h3>
+  <p><code>ah-rgkk.5.2</code>&rsquo;s <b>V1</b> puts the order verbatim as a dim trailing clause, and the Flags popup
+  ships that today (<span class="mono">GUARD 1</span>, <span class="mono">BEHIND 0</span>). The panels below are all
+  drawn with <b>L3</b>, so only the clause differs.</p>
+
+  <div class="split3">
+    <div class="card">
+      <p class="hexlab">W1 &mdash; the order, verbatim (matches Flags today)</p>
+      <div class="pop">
+        <div class="head">Braves (1487) &mdash; structure</div>
+        <div class="line"><span>structure</span><span class="val stack"><span class="flat">Wavecrest [329] &middot; Longship</span><span class="down-arrow">&darr;</span><span class="up">Odds and Ends [12] &middot; Fort</span><span class="why">ENTER 12</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>The same clause the Flags popup already uses. One habit across the table.</li>
+        <li>It is the line you would go and look for in your orders.</li>
+        <li class="con">Says nothing a reader who does not know the order names can use.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">W2 &mdash; the word for what happened</p>
+      <div class="pop">
+        <div class="head">Braves (1487) &mdash; structure</div>
+        <div class="line"><span>structure</span><span class="val stack"><span class="flat">Wavecrest [329] &middot; Longship</span><span class="down-arrow">&darr;</span><span class="up">Odds and Ends [12] &middot; Fort</span><span class="why">moved in</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>Reads without knowing the game&rsquo;s vocabulary.</li>
+        <li class="con">Three words for three shapes (<span class="mono">entered</span>, <span class="mono">left</span>, <span class="mono">moved in</span>) where the pair already shows all three.</li>
+        <li class="con">Breaks step with Flags, which is the only other popup naming an order.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">W3 &mdash; the order, and a sentence under it</p>
+      <div class="pop">
+        <div class="head">Braves (1487) &mdash; structure</div>
+        <div class="line"><span>structure</span><span class="val stack"><span class="flat">Wavecrest [329] &middot; Longship</span><span class="down-arrow">&darr;</span><span class="up">Odds and Ends [12] &middot; Fort</span><span class="why">ENTER 12</span></span></div>
+        <div class="note tight">An ENTER from inside another object leaves it first.</div>
+      </div>
+      <ul class="notes">
+        <li>Explains the rule that makes one order enough, which is not obvious.</li>
+        <li class="con">A sentence on every move, for a rule you only need told once.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">The other four states, drawn in L3 + W1</h3>
+  <p>These are not questions &mdash; they follow from Q1 and Q2 &mdash; but they are where the popup is most often
+  read, so look at them before answering.</p>
+
+  <div class="pops" style="margin-top:12px">
+    <div class="pop">
+      <div class="head">Watazka (4839) &mdash; structure</div>
+      <div class="line"><span>structure</span><span class="val stack"><span class="off">in the open</span><span class="down-arrow">&darr;</span><span class="up">Odds and Ends [12] &middot; Fort</span><span class="why">ENTER 12</span></span></div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Scouts (1502) &mdash; structure</div>
+      <div class="line"><span>structure</span><span class="val stack"><span class="flat">Odds and Ends [12] &middot; Fort</span><span class="down-arrow">&darr;</span><span class="down">in the open</span><span class="why">LEAVE</span></span></div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Guards (2011) &mdash; structure</div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span></span></div>
+      <div class="note">Nothing this month changes this.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Drifters (7714) &mdash; structure</div>
+      <div class="line"><span>structure</span><span class="val stack"><span class="flat">[329]</span><span class="down-arrow">&darr;</span><span class="up">Odds and Ends [12] &middot; Fort</span><span class="why">ENTER 12</span></span></div>
+      <div class="note">This region&rsquo;s report does not describe [329], so only its number can be given.</div>
+    </div>
+  </div>
+
+  <p class="scene" style="margin-top:16px"><b>On <span class="mono">in the open</span>.</b> The cell is empty for a
+  unit in no structure and the popup says <span class="mono">In no structure.</span> today. A pair needs
+  <em>something</em> on the empty side, and a blank beside an arrow reads as a broken popup, so the two ends of a
+  move are written <span class="mono">in the open</span>. The no-structure popup with nothing to say keeps its
+  existing sentence unchanged.</p>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">What ships &mdash; L2 + W1, every state</h3>
+  <p>You chose <b>L2</b> for the layout and <b>W1</b> for the clause. L2&rsquo;s panel above drew the order as a
+  sentence under the lines; W1 is a <em>dim trailing clause</em>, which is the form the Flags popup already ships.
+  Combined, the order sits at the end of the <span class="mono">structure</span> line &mdash; one form for an order
+  clause across the whole table, rather than a third. These five frames are exactly what the plan specifies.</p>
+
+  <div class="pops">
+    <div class="pop">
+      <div class="head">Braves (1487) &mdash; structure</div>
+      <div class="line"><span>was</span><span class="val"><span class="flat">Wavecrest [329] &middot; Longship</span></span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span><span class="why">ENTER 12</span></span></div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Watazka (4839) &mdash; structure</div>
+      <div class="line"><span>was</span><span class="val"><span class="off">in the open</span></span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span><span class="why">ENTER 12</span></span></div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Scouts (1502) &mdash; structure</div>
+      <div class="line"><span>was</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span></span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="off">in the open</span><span class="why">LEAVE</span></span></div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Guards (2011) &mdash; structure</div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span></span></div>
+      <div class="note">Nothing this month changes this.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Drifters (7714) &mdash; structure</div>
+      <div class="line"><span>was</span><span class="val"><span class="flat">[329]</span></span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span><span class="why">ENTER 12</span></span></div>
+      <div class="note">This region&rsquo;s report does not describe [329], so only its number is shown.</div>
+    </div>
+  </div>
+
+  <p class="scene" style="margin-top:16px"><b>No pair, and no colour.</b> L2 draws two plainly-labelled lines rather
+  than the family&rsquo;s <span class="mono">before&nbsp;&rarr;&nbsp;after</span>, so there is no &ldquo;after&rdquo;
+  to ink: neither line is coloured. Entering and leaving are not better and worse, so there is nothing for
+  <span class="up">green</span> and <span class="down">red</span> to mean here.</p>
+
+</main>
+
+<footer>
+  <p>Frames are drawn at the popup&rsquo;s real maximum width (384px) with its real type sizes, so the wrapping in
+  <b>L1</b> is the wrapping you would ship.</p>
+</footer>
