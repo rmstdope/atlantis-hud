@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-4hux — a newly formed unit that moves</title><style>
+  :root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;
+        --ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;
+        --select:#4a9fd8;--ok:#4fb783;--danger:#d97070;--warn:#d9a441;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif;padding:32px 24px 72px}
+  header,main,footer{max-width:1400px;margin:0 auto}
+  h1{font-size:26px;letter-spacing:.4px} h1 span{color:var(--brass)}
+  header p{color:var(--ink-soft);max-width:96ch;margin-top:10px;font-size:14px}
+  header p+p{margin-top:8px}
+  code,.mono{font-family:'SF Mono',Menlo,Consolas,monospace}
+  header code,p code,li code,td code,div.concept code{color:var(--brass-bright);font-size:12.5px}
+  h3.sec{margin:40px 0 4px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+  h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:14px;max-width:96ch}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;margin-bottom:18px}
+  .card h2{font-size:16px;margin-bottom:5px}
+  .card h2 em{color:var(--brass);font-style:normal;font-size:11.5px;letter-spacing:1.5px;margin-right:8px}
+  .concept{color:var(--ink-soft);font-size:12.5px;margin-bottom:11px;max-width:96ch}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+  .pane{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;overflow:hidden;margin-bottom:10px}
+  .pane-head{display:flex;align-items:baseline;gap:8px;padding:5px 10px;border-bottom:1px solid var(--edge-soft);
+             font:12px/1.4 'Helvetica Neue',Arial,sans-serif;color:var(--ink)}
+  .pane-head .hint{color:var(--ink-dim);font-size:11.5px}
+  table.t{width:100%;border-collapse:collapse;font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif}
+  table.t th{text-align:left;color:var(--ink-dim);font-weight:normal;padding:4px 8px;border-bottom:1px solid var(--edge-soft);
+             font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}
+  table.t th.r,table.t td.r{text-align:right}
+  table.t td{padding:3px 8px;border-bottom:1px solid var(--edge-soft);color:var(--ink);white-space:nowrap}
+  table.t td.id{color:var(--brass-bright);font-family:'SF Mono',Menlo,monospace}
+  table.t tr.sel td{background:#1b2836}
+  table.t tr.dim td{opacity:.6}
+  .mk{margin-left:6px;font-size:10.5px;font-style:italic;color:var(--brass)}
+  .mk.plain{font-style:normal;color:var(--ink-dim)}
+  .mk.warn{color:var(--warn);font-style:normal;letter-spacing:.04em}
+  .dimtxt{color:var(--ink-dim)}
+  .ed{font:11.5px/1.62 'SF Mono',Menlo,Consolas,monospace;padding:6px 10px 8px;white-space:pre;color:var(--ink-soft)}
+  .kw{color:var(--brass-bright)}
+  ul.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px;margin-top:11px}
+  ul.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+  ul.notes li.con::before{content:"\2212 ";color:var(--danger)}
+  ul.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+  .verdict{background:var(--raised);border:1px solid var(--edge);border-left:3px solid var(--brass);
+           border-radius:6px;padding:12px 14px;font-size:13px;color:var(--ink-soft);margin-top:14px;max-width:112ch}
+  .verdict b{color:var(--ink)}
+  .lbl{font:10.5px/1 'Helvetica Neue',Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;
+       color:var(--ink-dim);margin:0 0 6px}
+  footer{margin-top:44px;color:var(--ink-dim);font-size:12.5px;border-top:1px solid var(--edge);padding-top:14px}
+  .map{background:#0c1118;border:1px solid var(--edge-soft);border-radius:8px;padding:8px}
+</style></head><body>
+
+<header>
+<h1>ah&#8209;4hux &mdash; <span>a unit you <code style="font-size:20px">FORM</code> this month, walking away this month</span></h1>
+<p>You reported that a unit created by <code>FORM</code> and then given <code>MOVE</code> orders shows no
+destination on the units table and draws no path on the map. It does not, and I have found why: the forecast
+decides a formed unit's status <em>before</em> it looks at its movement orders, so <code>new&nbsp;1</code> is
+filed as &ldquo;formed&rdquo; and never traced; and the map's trace looks its unit up in the turn report, where
+a unit that does not exist yet cannot be found.</p>
+<p><code>rules/form</code>: the new unit starts &ldquo;in the same region as the unit which formed it, and in
+the same structure if any&rdquo;, and <code>rules/sequenceofevents</code> processes every <code>FORM</code>
+before movement &mdash; so it really does set out from its parent's hex, this month. Nothing about the game is
+in doubt here; what is open is <b>what the two units panes say about it</b>.</p>
+<p><b>The example throughout.</b> Hex <code>plain (7,53)</code>. Unit <code>1922 Tax Collector</code> holds 6 men
+and $540; its orders read:</p>
+<div class="pane" style="max-width:44ch"><div class="ed"><span class="kw">unit</span> 1922
+  <span class="kw">form</span> 1
+    <span class="kw">move</span> n n
+  <span class="kw">end</span>
+  <span class="kw">give</span> new 1 2 leaders
+  <span class="kw">give</span> new 1 200 silv</div></div>
+<p>So <code>new 1</code> gains two leaders and 200 silver, and walks two hexes north to <code>swamp (7,51)</code>.
+Today its row says only <code>new</code>, and the map is blank.</p>
+</header>
+
+<main>
+
+<h3 class="sec">Question 1 &mdash; the row in the hex it was formed in</h3>
+<p>Every other unit ordered out of a hex keeps its row there with a <span style="color:var(--ink-dim)">&rarr; destination</span>
+after its name. A formed unit's row instead carries a brass italic <code>new</code>. This unit is both.
+Look at the <code>new&#8209;1</code> line.</p>
+
+<div class="grid3">
+
+<div class="card"><h2><em>O1</em> Both markers &mdash; <code>new</code> then the arrow</h2>
+<div class="concept">The row says what the unit <em>is</em> and then where it <em>goes</em>, in the order the
+month happens: it is created, then it walks. Same brass italic <code>new</code> as today, same dim arrow as
+every other departure.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">6</td><td class="r">340</td></tr>
+    <tr class="sel"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk plain">&rarr; 1:7,51</span></td><td class="r">2</td><td class="r">200</td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Nothing is lost. The row still says the unit is new, which is the only clue that <code>new&#8209;1</code> is an alias and not a unit number.</li>
+  <li>Reuses two markers that already exist, in their existing colours.</li>
+  <li class="n">Two markers on one name cell; the Unit column is the one that truncates first in a narrow window.</li>
+</ul></div>
+
+<div class="card"><h2><em>O2</em> The arrow only</h2>
+<div class="concept">Once it is going somewhere it reads as a departure like any other, and the
+<code>new&#8209;1</code> in the Id column is left to say it is new.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">6</td><td class="r">340</td></tr>
+    <tr class="sel"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk plain">&rarr; 1:7,51</span></td><td class="r">2</td><td class="r">200</td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Shortest name cell of the three; nothing new on the row at all.</li>
+  <li class="con">A formed unit that stays put keeps its <code>new</code> and one that walks loses it &mdash; the marker now means &ldquo;new <em>and</em> not moving&rdquo;, which is not what it says.</li>
+  <li class="con">Scanning the pane for what this month creates no longer finds it.</li>
+</ul></div>
+
+<div class="card"><h2><em>O3</em> One combined marker</h2>
+<div class="concept">A single italic phrase instead of two markers: <code>new &rarr; 1:7,51</code>, all in brass,
+reading as one fact about a row that did not exist last month.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">1922</td><td>Tax Collector</td><td class="r">6</td><td class="r">340</td></tr>
+    <tr class="sel"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new &rarr; 1:7,51</span></td><td class="r">2</td><td class="r">200</td></tr>
+    <tr><td class="id">2041</td><td>Scouts</td><td class="r">1</td><td class="r">85</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Reads as one thought, and takes a character less than O1.</li>
+  <li class="con">The destination is now brass, where every other destination on this table is dim &mdash; the colour stops meaning &ldquo;departing&rdquo;.</li>
+  <li class="con">A third marker style to maintain, for one case.</li>
+</ul></div>
+
+</div>
+
+<h3 class="sec">Question 2 &mdash; the hex it arrives in</h3>
+<p>When an existing unit is ordered away, the forecast draws it <b>twice</b>: it stays in the hex it leaves with
+a <span style="color:var(--ink-dim)">&rarr;</span>, and it also appears in the hex it reaches with a
+<span style="color:var(--brass)">&larr; origin</span>. So: does <code>new&nbsp;1</code> get that second row in
+<code>swamp (7,51)</code>, and if so what does it say? Every option below assumes <b>O1</b> for the first row.</p>
+
+<div class="grid3">
+
+<div class="card"><h2><em>D1</em> An arrival that still says <code>new</code></h2>
+<div class="concept">The second row carries both markers too: it is new, and it came from (7,53).</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; swamp (7,51)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">8317</td><td>Border Watch</td><td class="r">3</td><td class="r">40</td></tr>
+    <tr class="sel"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">new</span><span class="mk">&larr; 1:7,53</span></td><td class="r">2</td><td class="r">200</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>The hex you are actually planning next month around shows a unit that will be there &mdash; which is what the forecast is for.</li>
+  <li>Still says it is new, so you are not left wondering why a unit number you have never seen is standing there.</li>
+  <li class="n">The same unit is drawn in two hexes, exactly as a departing unit already is.</li>
+</ul></div>
+
+<div class="card"><h2><em>D2</em> An arrival like any other</h2>
+<div class="concept">The second row is an ordinary arrival: <code>&larr; 1:7,53</code> and nothing else. The
+<code>new&#8209;1</code> Id is what says it is new.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; swamp (7,51)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">8317</td><td>Border Watch</td><td class="r">3</td><td class="r">40</td></tr>
+    <tr class="sel"><td class="id">new&#8209;1</td><td>Unit (new 1)<span class="mk">&larr; 1:7,53</span></td><td class="r">2</td><td class="r">200</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Nothing special about this row at all &mdash; the arrival rule already covers it.</li>
+  <li class="con">The one row where &ldquo;this unit does not exist yet&rdquo; matters most is the one that does not say it.</li>
+</ul></div>
+
+<div class="card"><h2><em>D3</em> No second row</h2>
+<div class="concept">The formed unit is drawn only in the hex it was formed in, with its
+<span style="color:var(--ink-dim)">&rarr;</span>. The destination hex shows nothing until the unit is real.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; swamp (7,51)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">8317</td><td>Border Watch</td><td class="r">3</td><td class="r">40</td></tr>
+    <tr class="dim"><td colspan="4" style="color:var(--ink-dim);font-style:italic">no other units forecast here</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li>Nothing on the table is ever a unit the game has not created.</li>
+  <li class="con">Inconsistent: an existing unit walking the same two hexes <em>does</em> get a row here, so the pane's rule becomes &ldquo;arrivals, except the new ones&rdquo;.</li>
+  <li class="con">Costs more to build than D1 or D2 &mdash; the forecast draws the second row for free today, so this one has to be suppressed on purpose.</li>
+</ul></div>
+
+</div>
+
+<h3 class="sec">The map, and the states I am settling myself</h3>
+<p>These are not choices I am putting to you &mdash; they follow from the two answers above, or from decisions
+already made. They are here so you can object to any of them in a sentence.</p>
+
+<div class="grid2">
+
+<div class="card"><h2><em>M</em> The map draws the path, from the parent's hex</h2>
+<div class="concept">Selecting <code>new&nbsp;1</code> draws exactly the line any other unit's written
+<code>MOVE</code> draws: an origin marker on <code>(7,53)</code> and a solid line through the hexes the coming
+month covers, dotted beyond. Nothing about the line says the unit is new &mdash; the units pane and the orders
+pane both do, and the map has no marker vocabulary for it.</div>
+<div class="map">
+<svg viewBox="0 0 420 150" width="100%" height="150" role="img" aria-label="Two hexes north of the origin, joined by a solid line">
+  <defs><marker id="ar" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+    <path d="M0,0 L7,3.5 L0,7 z" fill="#eebe63"/></marker></defs>
+  <g fill="none" stroke="#26303d" stroke-width="1">
+    <polygon points="60,120 82,108 104,120 104,144 82,156 60,144" fill="#182028"/>
+    <polygon points="60,74 82,62 104,74 104,98 82,110 60,98" fill="#182028"/>
+    <polygon points="60,28 82,16 104,28 104,52 82,64 60,52" fill="#182028"/>
+  </g>
+  <circle cx="82" cy="132" r="5.5" fill="none" stroke="#eebe63" stroke-width="2"/>
+  <path d="M82,132 L82,86 L82,42" stroke="#eebe63" stroke-width="2.2" fill="none" marker-end="url(#ar)"/>
+  <text x="120" y="136" fill="#a3b0c0" font-family="Helvetica Neue,Arial" font-size="11">plain (7,53) &mdash; formed here</text>
+  <text x="120" y="90" fill="#8a97a8" font-family="Helvetica Neue,Arial" font-size="11">forest (7,52)</text>
+  <text x="120" y="44" fill="#a3b0c0" font-family="Helvetica Neue,Arial" font-size="11">swamp (7,51) &mdash; month ends here</text>
+</svg>
+</div>
+<ul class="notes">
+  <li class="n">Same colour, same solidity rule, same dotted tail past the month as every other traced order.</li>
+</ul></div>
+
+<div class="card"><h2><em>S</em> The states behind the happy path</h2>
+<div class="concept">Three rows that are not the example above.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr><td class="id">new&#8209;2</td><td>Unit (new 2)<span class="mk">new</span><span class="mk plain">&rarr; &hellip;</span></td><td class="r">2</td><td class="r">0</td></tr>
+    <tr class="dim"><td class="id">new&#8209;3</td><td>Unit (new 3)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+    <tr><td class="id">new&#8209;4</td><td>Unit (new 4)<span class="mk">new</span></td><td class="r">2</td><td class="r">0</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li class="n"><b><code>new 2</code></b> &mdash; it moves, but the forecast cannot say how fast (nothing has told it the unit's speed), so the destination is unnameable. Existing behaviour for any such unit: <code>&rarr; &hellip;</code>, and the map draws the line anyway.</li>
+  <li class="n"><b><code>new 3</code></b> &mdash; ordered to move but given nobody, so <code>rules/form</code> dissolves it. It is not going anywhere: <b>no arrow, no arrival row and no path</b>, and the marker you chose in <code>ah&#8209;ty3s.3</code> already says why. This is the one I am most interested in you disagreeing with.</li>
+  <li class="n"><b><code>new 4</code></b> &mdash; formed and staying put. Exactly as today, unchanged.</li>
+</ul></div>
+
+</div>
+
+
+<h3 class="sec">Round 2 &mdash; the two cases the first round left open</h3>
+<p>You chose <b>O1</b> (both markers, and the row <b>dimmed</b> like any other departure in
+<b>This hex</b>) and <b>D1</b> (an arrival row that still says <code>new</code>). Both are settled and I am
+building them. These two are what is left.</p>
+
+<div class="grid2">
+
+<div class="card"><h2><em>Q3</em> A formed unit ordered to move that gains nobody</h2>
+<div class="concept"><code>rules/form</code>: a new unit that gains no recruits at all is dissolved before the
+month ends. So <code>new 3</code> below has a <code>MOVE N</code> in its block and is never going to walk it.
+Two treatments.</div>
+<div class="lbl">Q3a &mdash; the dissolve wins: no arrow, no arrival row, no path on the map</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr class="dim"><td class="id">new&#8209;3</td><td>Unit (new 3)<span class="mk">new</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+  </table>
+</div>
+<div class="lbl" style="margin-top:12px">Q3b &mdash; the order is still drawn, and the marker explains why it will not run</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53)</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr class="dim"><td class="id">new&#8209;3</td><td>Unit (new 3)<span class="mk">new</span><span class="mk plain">&rarr; 1:7,51</span><span class="mk warn">dissolves &mdash; no recruits</span></td><td class="r">0</td><td class="r"><span class="dimtxt">&mdash;</span></td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li class="n"><b>Q3a</b> is what the code does today for a dissolving row and what I would keep: the table never forecasts a move that cannot happen, and the amber marker already names the fix.</li>
+  <li class="n"><b>Q3b</b> shows you the order you actually wrote, which is arguably what a draft is for &mdash; at the price of a row carrying a destination, a dissolve notice and no men all at once.</li>
+</ul></div>
+
+<div class="card"><h2><em>Q4</em> A formed unit standing in a ship that sails</h2>
+<div class="concept">A <code>FORM</code>ed unit starts in its parent's structure (<code>rules/form</code>). If that
+structure is a fleet and somebody sails it, the new unit goes along without writing a movement order of its
+own &mdash; exactly as an existing passenger does, which the table already draws as
+<code>&rarr; 1:7,51 <span style="color:var(--brass)">aboard Longboat [235]</span></code>. Today a formed
+passenger gets nothing, and the fix for it is a <em>different</em> piece of code from the one this bead is
+about.</div>
+<div class="pane">
+  <div class="pane-head"><b>Units</b><span class="hint">&mdash; plain (7,53), aboard Longboat [235]</span></div>
+  <table class="t">
+    <tr><th>Id</th><th>Name</th><th class="r">Men</th><th class="r">Silver</th></tr>
+    <tr class="dim"><td class="id">10575</td><td>Drones<span class="mk plain">&rarr; 1:7,51</span><span class="mk" style="font-style:normal">aboard Longboat [235]</span></td><td class="r">8</td><td class="r">12</td></tr>
+    <tr><td class="id">new&#8209;5</td><td>Unit (new 5)<span class="mk">new</span><span class="dimtxt" style="margin-left:8px;font-size:10.5px">&mdash; nothing today; should it read like the row above?</span></td><td class="r">2</td><td class="r">0</td></tr>
+  </table>
+</div>
+<ul class="notes">
+  <li class="n"><b>Q4a &mdash; separate bead.</b> This bead ships the unit that writes its own <code>MOVE</code>; I file the passenger case at P4 for you to rank. Keeps this change small and testable.</li>
+  <li class="n"><b>Q4b &mdash; same bead.</b> One bead delivers &ldquo;a formed unit moves like any other&rdquo; whole, at the cost of a second pass over the forecast&rsquo;s fleet code and a longer review.</li>
+</ul></div>
+
+</div>
+
+<div class="verdict">
+<b>Round 1 recommendation (now chosen): O1 and D1.</b> They are the two that change no existing rule &mdash; the departure arrow
+keeps meaning &ldquo;leaving this hex&rdquo;, the arrival row keeps meaning &ldquo;will be standing here&rdquo;,
+and <code>new</code> keeps meaning &ldquo;this month creates it&rdquo;. The formed-and-moving unit is then just a
+row that happens to be both, rather than a fourth case with rules of its own. They are also the cheapest: the
+forecast already draws both rows for anything with a destination, so the work is letting a formed unit
+<em>have</em> a destination.
+</div>
+
+</main>
+<footer>ah&#8209;4hux &mdash; planning mockup, Xavier. Cited: <code>rules/form</code>, <code>rules/sequenceofevents</code>.</footer>
+</body></html>
