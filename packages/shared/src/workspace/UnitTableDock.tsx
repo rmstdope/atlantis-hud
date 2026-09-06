@@ -5,9 +5,11 @@ import type {
   OrdersPreviewResponse,
   RegionPreview,
   ReportUnit,
+  StructureInfo,
   UnitSilver
 } from "@atlantis/core-client";
 import {
+  cloneElement,
   forwardRef,
   Fragment,
   useCallback,
@@ -21,19 +23,28 @@ import {
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent,
+  type ReactElement,
   type ReactNode
 } from "react";
 import type { HexNode } from "../hexMapModel";
 import { unitsForHex } from "../hexMapModel";
 import { unitStructureLabel } from "../structureLabel";
-import { describeMenBriefly, whyEstimated } from "../unitComposition";
+import { describeMenBriefly } from "../unitComposition";
 import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { unitSkillsCell } from "../battleSkillPresentation";
 import { presentUnitMovement } from "../unitMovement";
 import { flagLetters, flagWords } from "../unitFlags";
 import {
+  columnHasOwnPopup,
+  columnHasPopup,
+  popupAsText,
+  popupForCell,
+  type PopupFacts
+} from "../unitCellPopup";
+import {
   DEFAULT_SORT,
   EXTRA_COLUMN_SHARES,
+  UNIT_COLUMNS,
   filterUnits,
   rowHeightAt,
   sharesFor,
@@ -55,18 +66,18 @@ import {
   type ExtraColumn,
   type SortColumn,
   type SortState,
+  type DrawnColumnId,
   type UnitColumn
 } from "../unitTable";
 import { isCursorRow, unitCursor } from "./unitCursor";
 import {
   changeFor,
+  originalTooltip,
   dissolves,
   formatItems,
   hasUncertainTransportTarget,
-  itemsTooltip,
   mergePreview,
   mergePreviewAcross,
-  originalTooltip,
   type PreviewedUnit
 } from "../unitPreview";
 import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
@@ -116,6 +127,7 @@ import { CollapsiblePanel } from "./CollapsiblePanel";
 import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
+import { UnitCellPopup } from "./UnitCellPopup";
 import { UnitTooltip } from "./UnitTooltip";
 
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
@@ -658,23 +670,61 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * ref until the wait is up: following the pointer through state would re-render the table on
    * every mouse move, for a figure only one timeout ever reads.
    */
-  const [hovered, setHovered] = useState<{ unit: PreviewedUnit; at: Point } | null>(null);
+  const [hovered, setHovered] = useState<
+    { unit: PreviewedUnit; column: DrawnColumnId; at: Point } | null
+  >(null);
   const pointerAt = useRef<Point>({ x: 0, y: 0 });
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * The cell the timer is counting for.
+   *
+   * Without it a hand that is not perfectly still never sees a popup at all: every `pointermove`
+   * inside one cell would clear the timer and start it again.
+   */
+  const pending = useRef<{ unitId: string; regionId: string; column: DrawnColumnId } | null>(null);
 
   const forgetHover = () => {
     if (hoverTimer.current !== null) {
       clearTimeout(hoverTimer.current);
       hoverTimer.current = null;
     }
+    pending.current = null;
     setHovered(null);
   };
 
-  const restOn = (unit: PreviewedUnit) => {
+  const restOn = (unit: PreviewedUnit, column: DrawnColumnId | undefined) => {
+    // A spacer row's `colSpan` cell carries no column, and neither does one of the five silent
+    // ones - and resting on either closes what is open rather than leaving a stale popup over it.
+    if (column === undefined || !columnHasPopup(column)) {
+      forgetHover();
+      return;
+    }
+
+    // Already open on this cell's own row: the popup becomes the new column at once and moves to
+    // it, with no second wait (`ah-rgkk.1`, decision **C1**). Reading a row column by column costs
+    // one wait, not one per cell.
+    if (hovered && hovered.unit.unitId === unit.unitId && hovered.unit.regionId === unit.regionId) {
+      if (hovered.column !== column) {
+        setHovered({ unit, column, at: pointerAt.current });
+      }
+      return;
+    }
+
+    if (
+      pending.current !== null &&
+      pending.current.unitId === unit.unitId &&
+      pending.current.regionId === unit.regionId &&
+      pending.current.column === column
+    ) {
+      return;
+    }
+
     forgetHover();
+    pending.current = { unitId: unit.unitId, regionId: unit.regionId, column };
     hoverTimer.current = setTimeout(() => {
       hoverTimer.current = null;
-      setHovered({ unit, at: pointerAt.current });
+      pending.current = null;
+      setHovered({ unit, column, at: pointerAt.current });
     }, HOVER_DELAY_MS);
   };
 
@@ -689,6 +739,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         clearTimeout(hoverTimer.current);
         hoverTimer.current = null;
       }
+      pending.current = null;
       setHovered(null);
     },
     [visible]
@@ -1465,20 +1516,17 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
             </tbody>
           </table>
           </div>
-          {hovered ? (
-            <UnitTooltip
-              unit={hovered.unit}
-              at={hovered.at}
-              silver={
-                hovered.unit.own ? (getSilver?.(hovered.unit.unitId, regionId ?? "") ?? null) : null
-              }
-              warned={silverWarnings?.has(silverKey(regionId ?? "", hovered.unit.unitId)) ?? false}
-              derivedSkills={derivedSkillsFor(derivedSkills, hovered.unit)}
-              dissolving={
-                dissolves(hovered.unit) ? { into: hovered.unit.dissolvesInto ?? null } : null
-              }
-            />
-          ) : null}
+          {/* Which of the two panels opens is the resolver's answer, not this component's, so
+              the popup and the cell's own hidden sentence can never disagree (`ah-rgkk.1`). */}
+          <HoveredPopup
+            hovered={hovered}
+            getSilver={getSilver}
+            getLongOrder={getLongOrder}
+            silverWarnings={silverWarnings}
+            countUpkeep={countUpkeep}
+            derivedSkills={derivedSkills}
+            structuresById={structuresById}
+          />
         </div>
       )}
           {/* D4: the same list the button opens, at the pointer. The three conditions are the ones
@@ -1860,6 +1908,94 @@ function SortableTh({
   );
 }
 
+/**
+ * The one panel a rested-on cell opens: the whole-unit summary, or that column's own popup.
+ *
+ * A component rather than a branch inside the dock's JSX because it is the only place the
+ * resolver's three answers are turned into what is drawn, and because the facts it needs are the
+ * ones the row already had — read here from the dock's own scope rather than carried up through
+ * state, so nothing has to be kept in step with the pointer.
+ */
+function HoveredPopup({
+  hovered,
+  getSilver,
+  getLongOrder,
+  silverWarnings,
+  countUpkeep,
+  derivedSkills,
+  structuresById
+}: {
+  hovered: { unit: PreviewedUnit; column: DrawnColumnId; at: Point } | null;
+  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
+  getLongOrder?: (unitId: string, regionId: string) => string | null;
+  silverWarnings?: ReadonlySet<string>;
+  countUpkeep: boolean;
+  derivedSkills: DerivedSkills;
+  structuresById: ReadonlyMap<string, StructureInfo>;
+}) {
+  if (!hovered) {
+    return null;
+  }
+
+  const { unit, column, at } = hovered;
+  const silver = unit.own ? (getSilver?.(unit.unitId, unit.regionId) ?? null) : null;
+  // The same guard the row uses (`warned`, below): a finding that names a unit with no forecast
+  // has no working to explain, and without this the popup and the cell's own hidden sentence
+  // would be drawn from different arguments to `summariseUnit`.
+  const warned =
+    silver !== null && (silverWarnings?.has(silverKey(unit.regionId, unit.unitId)) ?? false);
+  const dissolving = dissolves(unit);
+  const spec = popupForCell(column, unit, {
+    structureLabel: unitStructureLabel(unit.structureId, structuresById),
+    longOrder: unit.own ? (getLongOrder?.(unit.unitId, unit.regionId) ?? null) : null,
+    silver,
+    silverWarned: warned,
+    countUpkeep,
+    derivedSkills: derivedSkillsFor(derivedSkills, unit),
+    dissolving
+  });
+
+  if (spec.kind === "unit") {
+    return (
+      <UnitTooltip
+        unit={unit}
+        at={at}
+        silver={silver}
+        warned={warned}
+        derivedSkills={derivedSkillsFor(derivedSkills, unit)}
+        dissolving={dissolving ? { into: unit.dissolvesInto ?? null } : null}
+      />
+    );
+  }
+
+  // `silent` cannot be reached: `restOn` refuses to open a popup for a column that has none.
+  if (spec.kind === "silent") {
+    return null;
+  }
+
+  return (
+    <UnitCellPopup
+      popup={spec.popup}
+      column={column}
+      at={at}
+      anchorKey={`${unit.regionId}/${unit.unitId}/${column}`}
+    />
+  );
+}
+
+/**
+ * The columns whose cells carry their own explanation: every one but the five silent ones and the
+ * two that open the whole-unit summary, which has no `ColumnPopup` to write out (`name` keeps its
+ * own `was: …` span instead).
+ *
+ * Derived from the resolver rather than written out, so a column added to the table cannot quietly
+ * lose its explanation by being forgotten in a second list.
+ */
+const EXPLAINED_COLUMNS: readonly DrawnColumnId[] = [
+  ...UNIT_COLUMNS,
+  ...(Object.keys(EXTRA_COLUMN_SHARES) as ExtraColumn[])
+].filter(columnHasOwnPopup);
+
 /** How a changed cell says it shows the coming month rather than the report. */
 const PREDICTED = "italic text-brass";
 
@@ -1934,8 +2070,11 @@ function UnitRow({
   /** The hex this row stands in, so its silver forecast is looked up by the right key. */
   regionId: string;
   onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>, index: number) => void;
-  /** The pointer has arrived: start counting towards this unit's summary. */
-  onPointerRest: (unit: ReportUnit) => void;
+  /**
+   * The pointer is over this cell of this row: start counting towards its popup, swap an open one
+   * to it, or close what is open where the column says nothing.
+   */
+  onPointerRest: (unit: PreviewedUnit, column: DrawnColumnId | undefined) => void;
   /** Where the pointer is now, so the summary opens where the user stopped looking. */
   onPointerAt: (point: Point) => void;
   onPointerGone: () => void;
@@ -1979,10 +2118,6 @@ function UnitRow({
   const structureChange = changeFor(unit, "structureId");
   const movementChange = changeFor(unit, "movement");
   const flagsChange = changeFor(unit, "flags");
-  // The cell truncates, so the whole label belongs in the tooltip whether or not it also changed;
-  // when it did change, what the report said goes on a line beneath it.
-  const structureTitle =
-    [structureLabel, originalTooltip(structureChange)].filter(Boolean).join("\n") || undefined;
   // A row that is somewhere else next month reads dimmed; its marker says where it went.
   const departing = unit.previewStatus === "departing";
   const dissolving = dissolves(unit);
@@ -2024,7 +2159,51 @@ function UnitRow({
    * Every cell, keyed the same way the header's dispatch is, so reordering the columns never means
    * reordering this.
    */
-  const cellsByColumn: Record<UnitColumn, ReactNode> = {
+  /**
+   * What resting on each cell says, resolved once for the row (`ah-rgkk.1`).
+   *
+   * Every cell that has a popup draws its words twice: as an `sr-only` sentence here, and - when
+   * the pointer rests on it - as the popup the dock portals. Both come from this one call, so the
+   * hidden sentence and the visible panel can never disagree.
+   */
+  const explanations = useMemo(() => {
+    const popupFacts: PopupFacts = {
+      structureLabel,
+      longOrder,
+      silver,
+      silverWarned: warned,
+      countUpkeep,
+      derivedSkills: derivedSkillsFor(derivedSkills, unit),
+      dissolving: Boolean(dissolving)
+    };
+    return new Map(
+      EXPLAINED_COLUMNS.map((column) => [column, popupForCell(column, unit, popupFacts)])
+    );
+    // Everything the resolver reads, and nothing else: a row re-renders on selection, on the pick
+    // and on every scroll frame, and none of those changes a word of what a cell means.
+  }, [
+    unit,
+    structureLabel,
+    longOrder,
+    silver,
+    warned,
+    countUpkeep,
+    derivedSkills,
+    dissolving
+  ]);
+
+  const explain = (column: DrawnColumnId) => {
+    const spec = explanations.get(column);
+    // `data-explains` marks it as the cell's explanation rather than its content, so a test - or
+    // anything else reading the table - can tell the two apart (`ah-rgkk.1`).
+    return spec?.kind === "column" ? (
+      <span className="sr-only" data-explains={column}>
+        {popupAsText(spec.popup)}
+      </span>
+    ) : null;
+  };
+
+  const cellsByColumn: Record<UnitColumn, ReactElement<TdProps>> = {
     // The report's own ownership marker, so the distinction reads before the faction name does.
     own: <Td className={unit.own ? "text-ok" : "text-danger"}>{unit.own ? "*" : "−"}</Td>,
     unitId: (
@@ -2045,17 +2224,29 @@ function UnitRow({
         <span
           className={nameChange ? PREDICTED : undefined}
           data-predicted={nameChange ? "true" : undefined}
-          title={originalTooltip(nameChange)}
         >
           {unit.name}
         </span>
+        {/* Name opens the whole-unit summary rather than a column popup, so what the report said
+            has no popup to live in - and it must still be reachable without a mouse. */}
+        {nameChange ? (
+          <span className="sr-only" data-explains="name">
+            {" "}
+            {originalTooltip(nameChange)}
+          </span>
+        ) : null}
         {unit.onGuard ? (
           <span
             className={`ml-1.5 text-pane-sm text-warn${guardChange ? " italic" : ""}`}
             data-predicted={guardChange ? "true" : undefined}
-            title={originalTooltip(guardChange)}
           >
             on guard
+            {guardChange ? (
+              <span className="sr-only" data-explains="name">
+                {" "}
+                {originalTooltip(guardChange)}
+              </span>
+            ) : null}
           </span>
         ) : null}
         {/* First of the markers, before the destination arrow and the hull: the navigator chose
@@ -2135,21 +2326,20 @@ function UnitRow({
     // A tilde marks a count the parser guessed at; the unit panel spells out why. A count the
     // orders changed explains itself with the report's figure instead.
     men: (
-      <Td
-        className={menChange ? PREDICTED : ""}
-        title={originalTooltip(menChange) ?? whyEstimated(unit)}
-      >
+      <Td className={menChange ? PREDICTED : ""}>
         {describeMenBriefly(unit)}
+        {explain("men")}
       </Td>
     ),
     movement: (() => {
       if (unit.movement == null) {
         return (
-          <Td title="Movement not disclosed">
+          <Td>
             <span className="sr-only">Movement not disclosed</span>
             <span aria-hidden className="text-ink-dim">
               —
             </span>
+            {explain("movement")}
           </Td>
         );
       }
@@ -2166,10 +2356,10 @@ function UnitRow({
         <Td
           className={movementChange ? PREDICTED : toneClass}
           predicted={Boolean(movementChange)}
-          title={originalTooltip(movementChange) ?? presentation.label}
         >
           <span className="sr-only">{presentation.label}</span>
           <span aria-hidden>{presentation.code}</span>
+          {explain("movement")}
         </Td>
       );
     })(),
@@ -2178,12 +2368,10 @@ function UnitRow({
     flags: (() => {
       const letters = flagLetters(unit.flags);
       const words = flagWords(unit.flags);
-      const title = [words, originalTooltip(flagsChange)].filter(Boolean).join("\n") || undefined;
       return (
         <Td
           className={`truncate${flagsChange ? ` ${PREDICTED}` : ""}`}
           predicted={Boolean(flagsChange)}
-          title={title}
         >
           <span className="sr-only">{words ?? "No flags set"}</span>
           {letters === "" ? (
@@ -2193,6 +2381,7 @@ function UnitRow({
           ) : (
             <span aria-hidden>{letters}</span>
           )}
+          {explain("flags")}
         </Td>
       );
     })(),
@@ -2203,20 +2392,19 @@ function UnitRow({
       <Td
         className={`truncate${skillsChange ? ` ${PREDICTED}` : ""}`}
         predicted={Boolean(skillsChange)}
-        title={originalTooltip(skillsChange)}
       >
         {skills === "" && !unit.own ? (
           <span className="italic text-ink-dim">not disclosed</span>
         ) : (
           skills
         )}
+        {explain("skills")}
       </Td>
     ),
     items: (
       <Td
         className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`}
         predicted={Boolean(itemsChange)}
-        title={itemsTooltip(unit, silver)}
       >
         {items}
         {/*
@@ -2227,18 +2415,21 @@ function UnitRow({
         {(unit.uncounted && unit.uncounted.length > 0) || hasUncertainTransportTarget(unit) ? (
           <span className="text-ink-dim"> + ?</span>
         ) : null}
+        {explain("items")}
       </Td>
     ),
     structure: (
-      <Td className={`truncate${structureChange ? ` ${PREDICTED}` : ""}`} title={structureTitle}>
+      <Td className={`truncate${structureChange ? ` ${PREDICTED}` : ""}`}>
         {structureLabel ?? ""}
+        {explain("structure")}
       </Td>
     ),
     // A unit of ours spending the month on nothing is worth flagging, hence the red dash; a unit
     // that is not ours simply has nothing to say here.
     longOrder: (
-      <Td className="truncate" title={longOrder ?? undefined}>
+      <Td className="truncate">
         {unit.own ? (longOrder ?? <span className="text-danger">—</span>) : ""}
+        {explain("longOrder")}
       </Td>
     ),
     // What this unit is expected to hold when the month ends (ah-1wcw.1). Red is this unit,
@@ -2278,6 +2469,7 @@ function UnitRow({
             {figure}
           </span>
         )}
+        {explain("silver")}
       </Td>
     )
   };
@@ -2292,7 +2484,7 @@ function UnitRow({
    * one of three hundred rows (`AppShell.tsx:3570-3575`). Its keyboard route is the standing bulk
    * line and the rail.
    */
-  const extraCells: Record<ExtraColumn, ReactNode> = {
+  const extraCells: Record<ExtraColumn, ReactElement<TdProps>> = {
     hex: <Td className={`truncate${fromReport ? "" : " text-ink-dim"}`}>{hexLabel(unit.regionId)}</Td>,
     seen: <Td className={fromReport ? "text-ink-dim" : "text-warn"}>{seen}</Td>,
     remove: (
@@ -2343,17 +2535,22 @@ function UnitRow({
       onKeyDown={(event) => onKeyDown(event, index)}
       // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
       // so a touch would open a summary that never closed. Only a mouse can rest on something.
-      onPointerEnter={(event) => {
+      // `onPointerOver` rather than `onPointerEnter`: only the bubbling one has the cell under
+      // the pointer as its target, and `onPointerEnter`'s target is the `<tr>` itself - from which
+      // no cell can be read at all (`ah-rgkk.1`).
+      onPointerOver={(event) => {
         if (!byMouse(event)) {
           return;
         }
         onPointerAt({ x: event.clientX, y: event.clientY });
-        onPointerRest(unit);
+        onPointerRest(unit, columnOf(event));
       }}
       onPointerMove={(event) => {
-        if (byMouse(event)) {
-          onPointerAt({ x: event.clientX, y: event.clientY });
+        if (!byMouse(event)) {
+          return;
         }
+        onPointerAt({ x: event.clientX, y: event.clientY });
+        onPointerRest(unit, columnOf(event));
       }}
       onPointerLeave={onPointerGone}
       // Only the selected row is in the tab order, so Tab reaches the table once rather than
@@ -2376,38 +2573,59 @@ function UnitRow({
               : "text-ink-soft"
       }${(departing && dimDeparting) || dissolving ? " opacity-60" : ""}`}
     >
+      {/* The column is cloned in rather than written at each cell: the record's key already *is*
+          the column, so fifteen hand-written props are fifteen chances to drift (`ah-rgkk.1`). */}
       {drawn.map((entry) =>
         entry.kind === "unit" ? (
-          <Fragment key={entry.column}>{cellsByColumn[entry.column]}</Fragment>
+          <Fragment key={entry.column}>
+            {cloneElement(cellsByColumn[entry.column], { column: entry.column })}
+          </Fragment>
         ) : (
-          <Fragment key={`extra-${entry.column}`}>{extraCells[entry.column]}</Fragment>
+          <Fragment key={`extra-${entry.column}`}>
+            {cloneElement(extraCells[entry.column], { column: entry.column })}
+          </Fragment>
         )
       )}
     </tr>
   );
 }
 
-function Td({
-  children,
-  className = "",
-  title,
-  predicted
-}: {
+/**
+ * Which column the pointer is actually over, read back off the `<td>` the event came from.
+ *
+ * `undefined` for anything that is not a cell of the table - a spacer row's `colSpan` cell carries
+ * no column - and the caller treats that exactly as it treats a silent one.
+ */
+function columnOf(event: PointerEvent<HTMLTableRowElement>): DrawnColumnId | undefined {
+  const cell = (event.target as HTMLElement | null)?.closest?.("td");
+  return (cell?.dataset.column as DrawnColumnId | undefined) || undefined;
+}
+
+export type TdProps = {
   children?: ReactNode;
   className?: string;
-  /** Hover text, used to explain a figure the cell has no room to qualify. */
-  title?: string;
+  /**
+   * Which column this cell is, stamped on the `<td>` as `data-column`.
+   *
+   * The row's pointer handlers read it back off the element under the pointer, which is how one
+   * handler on the `<tr>` knows which cell was rested on (`ah-rgkk.1`). Not written by hand at
+   * each cell: `UnitRow` clones it in from the key of the record the cell was stored under, so it
+   * cannot drift from the column it is drawn for.
+   */
+  column?: string;
   /**
    * Marks the cell itself as a projection, for the smoke suite to find - exactly as `name`'s
    * inner span already carries `data-predicted` (`ah-agbm`). Only the ITEMS cell has no inner
    * wrapper to carry it, so it goes straight on the `<td>`.
    */
   predicted?: boolean;
-}) {
+};
+
+function Td({ children, className = "", column, predicted }: TdProps) {
   return (
     <td
       className={`border-b border-edge-soft px-2 py-0.5 ${className}`}
-      title={title}
+      data-column={column}
       data-predicted={predicted ? "true" : undefined}
     >
       {children}

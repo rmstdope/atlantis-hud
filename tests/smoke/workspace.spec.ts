@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { readReport } from "@atlantis/fixtures";
 import {
@@ -72,6 +72,25 @@ const F42_T82 = readReport("g3f42t82");
 const F21_T24 = readReport("g5f21t24");
 
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
+/**
+ * What a units-table cell actually shows, without the sentence it carries for a screen reader.
+ *
+ * Since `ah-rgkk.1` every cell with a popup also holds that popup's words in an `sr-only` span,
+ * marked `data-explains`. It is real text and `innerText` reads it, so an assertion about what the
+ * cell *displays* has to take it out first.
+ */
+const withoutExplanations = (nodes: Element[]) =>
+  nodes.map((node) => {
+    const copy = node.cloneNode(true) as HTMLElement;
+    for (const span of copy.querySelectorAll("[data-explains]")) {
+      span.remove();
+    }
+    return (copy.textContent ?? "").trim();
+  });
+
+const visibleText = async (cell: Locator) =>
+  (await cell.evaluateAll(withoutExplanations))[0] ?? "";
+
 const OWN_UNIT = "18642";
 /** Another of the player's units, standing in the ocean at (26,52) - somewhere else entirely. */
 const OTHER_OWN_UNIT = "13401";
@@ -1317,7 +1336,9 @@ test("resting on a unit row summarises it", async ({ page }) => {
   await expect(row).toBeVisible();
   const tip = page.getByTestId("unit-tooltip");
 
-  await row.hover();
+  // The Name cell, not the row's centre: since `ah-rgkk.1` every cell has its own popup, and a
+  // row's centre is whichever column happens to sit there.
+  await row.locator('td[data-column="name"]').hover();
   // A third of the wait, taken from the constant itself rather than written out: shortening the
   // delay must not quietly turn this into a check made after the tooltip was already due.
   await page.waitForTimeout(HOVER_DELAY_MS / 3);
@@ -4374,10 +4395,7 @@ test("orders change the units table to show the coming month", async ({ page }) 
   await fillOrders(page, 'NAME UNIT "Nine of Eight"\nGUARD 1');
 
   await expect(row).toContainText("Nine of Eight");
-  await expect(row.locator('[data-predicted="true"]').first()).toHaveAttribute(
-    "title",
-    "was: Seven of Eight"
-  );
+  await expect(row.locator('td[data-column="name"]')).toContainText("was: Seven of Eight");
   await expect(row).toContainText("on guard");
 
   // AVOID is a flag the table has no column for; the unit panel's flag list shows the coming
@@ -4421,7 +4439,7 @@ test("movement capacity updates in the unit list and detail", async ({ page }) =
   await fillOrders(page, "WITHDRAW 1 HORS");
   await expect(row).toContainText("Riding");
   await expect(panel).toContainText("Riding");
-  await expect(row.locator('td[title="was: Walking"]')).toBeVisible();
+  await expect(row.locator('td[data-column="movement"]')).toContainText("was: Walking");
 
   await fillOrders(page, "");
   await expect(row).toContainText("Walking");
@@ -4461,7 +4479,7 @@ test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
   // uses. The CLAIM predicts the SILVER cell too, which is last, so `.first()` still reaches ITEMS.
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("PERF");
-  await expect(itemsCell).toHaveAttribute("title", /^was: /);
+  await expect(itemsCell).toContainText(/was: /);
 });
 
 /**
@@ -4481,7 +4499,7 @@ test("All my units shows the coming month too", async ({ page }) => {
   const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("PERF");
-  await expect(itemsCell).toHaveAttribute("title", /^was: /);
+  await expect(itemsCell).toContainText(/was: /);
 });
 
 /**
@@ -4501,9 +4519,8 @@ test("a transported item marks the ITEMS cell as a projection", async ({ page })
 
   // `.first()` reaches ITEMS: the CLAIM also predicts the SILVER cell, which is last in the row.
   const itemsCell = row.locator('[data-predicted="true"]').first();
-  await expect(itemsCell).toHaveAttribute("title", /^was: /);
-  await expect(itemsCell).toHaveAttribute(
-    "title",
+  await expect(itemsCell).toContainText(/was: /);
+  await expect(itemsCell).toContainText(
     /Unit 14451 is not a quartermaster, so 1 PERF stay with this unit/
   );
 });
@@ -4525,7 +4542,7 @@ test("a BUY ALL settles and marks the ITEMS cell as a projection", async ({ page
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("PERF");
   await expect(itemsCell).not.toContainText("+ ?");
-  await expect(itemsCell).toHaveAttribute("title", /this market offers/);
+  await expect(itemsCell).toContainText(/this market offers/);
 });
 
 /**
@@ -4557,7 +4574,7 @@ test("a produced item marks the ITEMS cell as a projection", async ({ page }) =>
   const row = page.getByTestId("unit-row-3493");
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("LIVE");
-  await expect(itemsCell).toHaveAttribute("title", /this unit will produce/);
+  await expect(itemsCell).toContainText(/this unit will produce/);
 });
 
 /**
@@ -4582,16 +4599,14 @@ test("a manufacturer draws on the hex's shared stock, and its supplier nets to n
   await selectUnit(page, "2964");
   await fillOrders(page, "PRODUCE sword");
 
-  // By the projection's own title, not `.first()`: forging 36 swords moves the unit's weight too,
-  // so the movement cell is marked as well and sorts ahead of the items one.
-  const smith = page
-    .getByTestId("unit-row-2964")
-    .locator('[data-predicted="true"][title*="will produce"]');
+  // The ITEMS cell by name, not `.first()`: forging 36 swords moves the unit's weight too, so the
+  // movement cell is marked as well and sorts ahead of the items one.
+  const smith = page.getByTestId("unit-row-2964").locator('td[data-column="items"]');
   await expect(smith).toContainText("60 SWOR");
-  await expect(smith).toHaveAttribute("title", /36 SWOR this unit will produce/);
+  await expect(smith).toContainText(/36 SWOR this unit will produce/);
   // The cap sentence reads the same settlement as the cell since `ah-728m.2.2`: before it, this
   // said "materials for 16 swords" beside a cell projecting 36.
-  await expect(smith).toHaveAttribute("title", /materials for 36 swords/);
+  await expect(smith).toContainText(/materials for 36 swords/);
 
   await selectUnit(page, "5105");
   await fillOrders(page, "PRODUCE iron");
@@ -4618,9 +4633,9 @@ test("a build that cannot be counted marks the ITEMS cell", async ({ page }) => 
   const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
   await fillOrders(page, "BUILD Barn");
 
-  const itemsCell = row.locator('td[title*="cannot be counted"]');
+  const itemsCell = row.locator('td[data-column="items"]');
   await expect(itemsCell).toContainText("+ ?");
-  await expect(itemsCell).toHaveAttribute("title", /and more that cannot be counted: BUILD Barn/);
+  await expect(itemsCell).toContainText(/and more that cannot be counted: BUILD Barn/);
 });
 
 /**
@@ -4638,7 +4653,7 @@ test("a cast creation marks the ITEMS cell as a projection", async ({ page }) =>
 
   const itemsCell = page.getByTestId("unit-row-1294").locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("1-8 WOLF");
-  await expect(itemsCell).toHaveAttribute("title", /this unit will summon/);
+  await expect(itemsCell).toContainText(/this unit will summon/);
 });
 
 /**
@@ -5102,11 +5117,11 @@ test("the silver column forecasts our own units and sorts on the figure", async 
   // table windows its rows, so the foreign one is filtered into view rather than scrolled to.
   const cellOf = (unitId: string) =>
     page.getByTestId(`unit-row-${unitId}`).locator("td").last();
-  await expect(cellOf(OWN_UNIT)).toHaveText(/^-?\d+$/);
+  await expect.poll(() => visibleText(cellOf(OWN_UNIT))).toMatch(/^-?\d+$/);
 
   const filter = page.getByTestId("panel-units").getByLabel("Filter units");
   await filter.fill(FOREIGN_UNIT);
-  await expect(cellOf(FOREIGN_UNIT)).toHaveText("");
+  await expect.poll(() => visibleText(cellOf(FOREIGN_UNIT))).toBe("");
   await filter.fill("");
 
   // A unit this month's own FORM orders create gets a figure too (`ah-jw85`): it is not in the
@@ -5122,12 +5137,14 @@ test("the silver column forecasts our own units and sorts on the figure", async 
   await fillOrders(page, "@study obse\nCLAIM 200\nFORM 1\nBUY 1 HDWA\nEND\n");
   const formedRow = page.getByTestId("unit-row-new-1");
   await expect(formedRow).toBeVisible();
-  await expect(formedRow.locator("td").last()).toHaveText(/^-?\d+$/);
+  await expect.poll(() => visibleText(formedRow.locator("td").last())).toMatch(/^-?\d+$/);
   await fillOrders(page, "@study obse");
 
   // Sorting ascending puts the lowest forecast first, and every figure on screen is in order.
   await header.getByRole("button", { name: "Silver", exact: true }).click();
-  const figures = (await page.locator("[data-testid^='unit-row-'] td:last-child").allInnerTexts())
+  const figures = (
+    await page.locator("[data-testid^='unit-row-'] td:last-child").evaluateAll(withoutExplanations)
+  )
     .filter((text) => /^-?\d+$/.test(text))
     .map(Number);
   expect(figures.length).toBeGreaterThan(0);
@@ -5225,4 +5242,60 @@ test("the unit pane shows that unit's events and opens the rest", async ({ page 
     "aria-selected",
     "true"
   );
+});
+
+/**
+ * Every other cell opens a popup about that cell alone (`ah-rgkk.1`).
+ *
+ * The waits are the point of the first two: the first popup is owed the same rest the whole-unit
+ * summary is, and moving along the row is owed no second wait at all (decision **C1**).
+ */
+test("resting on a cell opens a popup about that cell", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await expect(row).toBeVisible();
+  const popup = page.getByTestId("unit-cell-popup");
+
+  await row.locator('td[data-column="items"]').hover();
+  await page.waitForTimeout(HOVER_DELAY_MS / 3);
+  await expect(popup).toHaveCount(0);
+
+  await expect(popup).toBeVisible();
+  await expect(popup).toHaveAttribute("data-column", "items");
+  await expect(popup).toContainText("Seven of Eight (18642) — items");
+});
+
+test("moving along a row swaps the popup without waiting again", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  const popup = page.getByTestId("unit-cell-popup");
+
+  await row.locator('td[data-column="items"]').hover();
+  await expect(popup).toHaveAttribute("data-column", "items");
+
+  await row.locator('td[data-column="skills"]').hover();
+  // Well inside the delay a first popup would have had to wait out.
+  await expect(popup).toHaveAttribute("data-column", "skills", { timeout: HOVER_DELAY_MS / 3 });
+  await expect(popup).toContainText("Seven of Eight (18642) — skills");
+});
+
+test("resting on the faction cell opens nothing", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+
+  await row.locator('td[data-column="items"]').hover();
+  await expect(page.getByTestId("unit-cell-popup")).toBeVisible();
+
+  // A silent column closes what is open rather than leaving a stale popup over it.
+  await row.locator('td[data-column="faction"]').hover();
+  await expect(page.getByTestId("unit-cell-popup")).toHaveCount(0);
+  await page.waitForTimeout(HOVER_DELAY_MS * 2);
+  await expect(page.getByTestId("unit-cell-popup")).toHaveCount(0);
+  await expect(page.getByTestId("unit-tooltip")).toHaveCount(0);
 });
