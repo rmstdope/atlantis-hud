@@ -105,6 +105,17 @@ export function columnHasPopup(column: PopupColumn): boolean {
   return !SILENT.has(column);
 }
 
+/**
+ * Whether this column's popup is one of its own rather than the whole-unit summary — which is the
+ * same question as whether its cell has a sentence to carry for a screen reader.
+ *
+ * Column-only, so the table can build that list rather than keep one by hand: a column added to
+ * the table and forgotten here would silently lose its explanation instead of failing.
+ */
+export function columnHasOwnPopup(column: PopupColumn): boolean {
+  return columnHasPopup(column) && !WHOLE_UNIT.has(column);
+}
+
 /** How many lines a popup shows before it stops and counts the rest (decision **G-d**). */
 export const MAX_LINES = 12;
 
@@ -148,8 +159,14 @@ export function popupForCell(
   // A column with nothing left to show - moved out of its structure, its last flag dropped, its
   // movement no longer disclosed - has no line for the report's own figure to hang off, and
   // dropping it would lose what the cell's `title` used to say. It becomes a sentence instead.
-  if (change && !body.lines.some((line) => line.why !== undefined || line.change !== undefined)) {
-    notes.push(sentence(originalTooltip(change) ?? ""));
+  //
+  // On the emptiness of the body, and deliberately not on "no line carries the change": a line
+  // that carries none may be saying there was none. `markOrQuote` returns nothing at all for an
+  // original equal to the figure beside it, and `itemsBody`'s lines never carry one because
+  // `itemsTooltip` has already put the quote in the notes - so the wider test said `Was: 12.` of a
+  // figure that did not move, and said the items quote twice.
+  if (change && body.lines.length === 0) {
+    notes.push(sentence(originalTooltip(change) as string));
   }
 
   // Capped rather than scrolled: the popup is transparent to the pointer, so a wheel over it
@@ -297,13 +314,17 @@ function skillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     };
   }
 
+  const recovered = groups.flatMap((group) =>
+    group.skills.map((skill) => ({
+      label: `${skill.name} ${skill.tag}`,
+      value: String(skill.level)
+    }))
+  );
+
   return {
-    lines: groups.flatMap((group) =>
-      group.skills.map((skill) => ({
-        label: `${skill.name} ${skill.tag}`,
-        value: String(skill.level)
-      }))
-    ),
+    // The quote goes on the first recovered line, since this body has lines and so is not reached
+    // by `popupForCell`'s empty-column sentence - and the cell's `title` carried it before.
+    lines: recovered.map((line, index) => (index === 0 ? { ...line, ...quoted } : line)),
     notes: [
       ...groups.map((group) => battleSkillSource(group, "read")),
       "A report never shows another faction's skills."

@@ -245,6 +245,49 @@ describe("the column popups", () => {
     expect(still.notes).toEqual(["Movement not disclosed.", "Was: Walking."]);
   });
 
+  it("says the report's own figure once, not twice", () => {
+    // `itemsTooltip` already opens with the quote, so a second sentence for the same fact would
+    // be read out twice - once in the popup and once in the cell's hidden sentence.
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "silver", tag: "SILV", amount: 40 }],
+          previewChanges: [{ field: "items", original: "20 SILV" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual(["was: 20 SILV"]);
+  });
+
+  it("says nothing moved when the report's figure is the one already shown", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({ men: 12, previewChanges: [{ field: "men", original: "12" }] }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "men", value: "12" }]);
+    expect(popup.notes).toEqual([]);
+  });
+
+  it("quotes the report on a foreign unit's recovered skills", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "skills",
+        unit({ own: false, skills: [], previewChanges: [{ field: "skills", original: "" }] }),
+        facts({
+          derivedSkills: [
+            { name: "combat", tag: "COMB", level: 3, turn: 71, coordinate: null, terrain: null }
+          ]
+        })
+      )
+    );
+    expect(popup.lines[0]?.why).toBe("was: —");
+  });
+
   it("the long order popup says another faction's orders are not in your report", () => {
     expect(
       columnPopup(popupForCell("longOrder", unit({ own: false }), facts())).notes

@@ -35,6 +35,7 @@ import { unitSkillsCell } from "../battleSkillPresentation";
 import { presentUnitMovement } from "../unitMovement";
 import { flagLetters, flagWords } from "../unitFlags";
 import {
+  columnHasOwnPopup,
   columnHasPopup,
   popupAsText,
   popupForCell,
@@ -43,6 +44,7 @@ import {
 import {
   DEFAULT_SORT,
   EXTRA_COLUMN_SHARES,
+  UNIT_COLUMNS,
   filterUnits,
   rowHeightAt,
   sharesFor,
@@ -1982,21 +1984,17 @@ function HoveredPopup({
 }
 
 /**
- * The columns whose cells carry their own explanation.
+ * The columns whose cells carry their own explanation: every one but the five silent ones and the
+ * two that open the whole-unit summary, which has no `ColumnPopup` to write out (`name` keeps its
+ * own `was: …` span instead).
  *
- * Every column but the five silent ones and the two that open the whole-unit summary — those two
- * have no `ColumnPopup` to write out, and `name` keeps its own `was: …` span instead.
+ * Derived from the resolver rather than written out, so a column added to the table cannot quietly
+ * lose its explanation by being forgotten in a second list.
  */
 const EXPLAINED_COLUMNS: readonly DrawnColumnId[] = [
-  "men",
-  "movement",
-  "flags",
-  "skills",
-  "items",
-  "structure",
-  "longOrder",
-  "silver"
-];
+  ...UNIT_COLUMNS,
+  ...(Object.keys(EXTRA_COLUMN_SHARES) as ExtraColumn[])
+].filter(columnHasOwnPopup);
 
 /** How a changed cell says it shows the coming month rather than the report. */
 const PREDICTED = "italic text-brass";
