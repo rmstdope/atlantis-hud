@@ -454,6 +454,13 @@ pub struct UnitSilver {
     /// majority of units, and empty for a unit whose sums are doubted - the deferred pass does
     /// not run at all then, exactly as it does not today.
     pub buy_all: Vec<BuyAllShown>,
+    /// Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
+    /// the turn, ties broken by document line.
+    ///
+    /// Empty for a unit whose sums are doubted - [`UnitSilver::doubt`] is `Some` - exactly as
+    /// [`UnitSilver::buy_all`] is: a partial ledger under a figure that is not a number would
+    /// invite a consumer to add the entries up and disagree with the column beside it.
+    pub changes: Vec<SilverChange>,
 }
 
 /// One `BUY ALL` on one unit, as the ITEMS and SILVER hovers say it.
@@ -485,6 +492,63 @@ pub struct BuyAllShown {
     /// The line's unit price, for the same sentence.
     pub price: i64,
     pub capped_by: BuyAllCap,
+}
+
+/// Why a unit's silver moved this month. One variant per term [`forecast_unit`] prices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "kebab-case")]
+pub enum SilverChangeCause {
+    /// A `TAX` order, or the taxing flag - [`UnitSilver::taxes_by_flag`] is what tells them apart.
+    Taxed,
+    Pillaged,
+    /// `CLAIM`, out of the faction's unclaimed fund.
+    Claimed,
+    Sold,
+    /// What a `CAST` earns - Earth Lore and its kin.
+    CastEarned,
+    /// The region's wage, from a `WORK` order or from [`UnitSilver::works_by_default`].
+    Worked,
+    Entertained,
+    /// Silver another unit's `GIVE` hands this one.
+    WasGiven,
+    /// Silver this unit's `TAKE` pulls from a unit the report shows.
+    Took,
+    /// Silver this unit's `TAKE` pulls from a unit the report does not show (`ah-awcm`).
+    TookUnshown,
+    Bought,
+    Studied,
+    /// What a `CAST` costs.
+    CastSpent,
+    /// Silver a `PRODUCE` recipe consumes.
+    ProductionSpent,
+    /// `GIVE` to a unit.
+    GaveAway,
+    /// `GIVE 0 ... SILV`, which destroys it (`rules/give`).
+    Discarded,
+}
+
+/// One movement of a unit's silver this month, and what caused it.
+///
+/// The list is the working behind [`UnitSilver::income`] and [`UnitSilver::expense`]: every term
+/// either total is built from appears here exactly once, so a consumer can say where the money
+/// came from and where it went without deriving anything of its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct SilverChange {
+    /// Signed: positive into the unit, negative out of it. Never zero - a term that moves nothing
+    /// is not recorded.
+    pub amount: i64,
+    pub cause: SilverChangeCause,
+    /// The 1-based document line of the order responsible, when one order is. `None` for the
+    /// taxing flag with no `TAX` order, for a unit set to work by default, and for every receipt,
+    /// whose order is in another unit's block.
+    pub line: Option<i64>,
+    /// The other unit, as `<name> (<id>)` or `unit <id>` - the same two shapes
+    /// [`UnitSilver::givers`] and [`UnitSilver::taken_unshown_from`] already carry. `None` on
+    /// every cause but a gift, a take and a discard.
+    pub other: Option<String>,
 }
 
 /// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
@@ -1304,6 +1368,7 @@ pub fn forecast_unit(
             cast_summons: false,
             formed,
             buy_all: Vec::new(),
+            changes: Vec::new(),
         };
     }
 
@@ -1407,6 +1472,34 @@ pub fn forecast_unit(
     // What each `BUY ALL` in `deferred` settled to, for the hover - filled by the deferred pass
     // below, in document order among the `BUY ALL`s.
     let mut buy_all: Vec<BuyAllShown> = Vec::new();
+
+    // Every term below records itself here as it is priced, tagged with the phase it settles in.
+    // Sorted once at the end rather than pushed in order: the market pass and the wage term are
+    // computed after the walk has already recorded the study and manufacturing spends, so the
+    // push order is not the turn's order.
+    let mut moves: Vec<(phases::StatePhase, SilverChange)> = Vec::new();
+    // A term that moved nothing is not a movement: `SilverChange::amount` is documented as never
+    // zero, and a popup listing "taxed 0" would be worse than saying nothing.
+    fn record(
+        moves: &mut Vec<(phases::StatePhase, SilverChange)>,
+        phase: phases::StatePhase,
+        amount: i64,
+        cause: SilverChangeCause,
+        line: Option<i64>,
+        other: Option<String>,
+    ) {
+        if amount != 0 {
+            moves.push((
+                phase,
+                SilverChange {
+                    amount,
+                    cause,
+                    line,
+                    other,
+                },
+            ));
+        }
+    }
 
     // Whether this unit taxes at all is a property of the unit, not of one line in its block: the
     // taxing flag makes it tax every turn with no `TAX` order, and a unit with both the flag and an
@@ -2109,6 +2202,9 @@ pub fn forecast_unit(
     };
     let short_for_orders = short_before_sharing.map(|short| short.saturating_sub(shared));
 
+    // Stable, so entries sharing a phase keep the document order they were pushed in.
+    moves.sort_by_key(|(phase, _)| *phase);
+
     UnitSilver {
         unit_id: unit_id.to_string(),
         region_id: region_id.to_string(),
@@ -2173,6 +2269,11 @@ pub fn forecast_unit(
         cast_summons: cast.as_ref().is_some_and(|plan| plan.summons),
         formed,
         buy_all,
+        changes: if doubt.is_some() {
+            Vec::new()
+        } else {
+            moves.into_iter().map(|(_, change)| change).collect()
+        },
     }
 }
 
@@ -10022,6 +10123,23 @@ mod tests {
         facts.men_estimated = true;
         let unit = forecast_of(facts);
         assert_eq!(unit.own_food_covered, 0);
+    }
+
+    /// A `PlacedIntent` on a stated line, for the ledger tests that assert line attribution.
+    fn at_line(line: usize, intent: Intent) -> PlacedIntent {
+        PlacedIntent {
+            intent,
+            line,
+            column_start: 0,
+            column_end: 1,
+            keyword: "",
+        }
+    }
+
+    #[test]
+    fn changes_is_empty_for_a_unit_with_no_silver_orders() {
+        let silver = forecast(3, RegionWages::default(), &[]);
+        assert!(silver.changes.is_empty());
     }
 }
 

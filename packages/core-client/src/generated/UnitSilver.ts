@@ -2,6 +2,7 @@
 import type { BuyAllShown } from "./BuyAllShown";
 import type { FormedSubject } from "./FormedSubject";
 import type { ProductionCap } from "./ProductionCap";
+import type { SilverChange } from "./SilverChange";
 import type { SilverDoubt } from "./SilverDoubt";
 import type { SilverSpender } from "./SilverSpender";
 
@@ -315,4 +316,13 @@ formed: FormedSubject | null,
  * majority of units, and empty for a unit whose sums are doubted - the deferred pass does
  * not run at all then, exactly as it does not today.
  */
-buyAll: Array<BuyAllShown>, };
+buyAll: Array<BuyAllShown>, 
+/**
+ * Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
+ * the turn, ties broken by document line.
+ *
+ * Empty for a unit whose sums are doubted - [`UnitSilver::doubt`] is `Some` - exactly as
+ * [`UnitSilver::buy_all`] is: a partial ledger under a figure that is not a number would
+ * invite a consumer to add the entries up and disagree with the column beside it.
+ */
+changes: Array<SilverChange>, };
