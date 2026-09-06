@@ -500,6 +500,16 @@ pub struct ItemChange {
     /// [`ItemChangeCause::Bought`] and [`ItemChangeCause::Sold`].
     pub unit_price: Option<i64>,
     pub other: Option<ItemChangeParty>,
+    /// Whether this tag names people rather than equipment, as `Ruleset::is_man` settles it
+    /// (`crates/core/src/movement/rules.rs`). A centaur counts, being both a race and a mount;
+    /// the catalogue takes that view when it is scraped and nothing here re-decides it
+    /// (`ah-rgkk.4.1`).
+    ///
+    /// A plain `bool` rather than an `Option<bool>`: `Ruleset::validate` refuses a catalogue that
+    /// names no races at all, so "this build cannot say" is not a state a loaded ruleset can be
+    /// in. `false` on a tag the catalogue does not carry, which is the same answer it gives for a
+    /// sword.
+    pub is_man: bool,
 }
 
 /// One item a `CAST` order creates this month (`ah-ofpb.5`).
@@ -1704,8 +1714,14 @@ impl Working {
                     &gift.tag,
                     moved,
                 );
-                // Read before the push: `self.units` is indexed mutably for `recipient` while
-                // `index` is still being read.
+                // Both read before the push: `self.units` is indexed mutably for `recipient`
+                // while `index` is still being read.
+                //
+                // `is_man` is asked with the tag exactly as the report wrote it - `given` is
+                // written from `tags_moved`, which clones the held item's own tag - the same as
+                // every other `is_man` call in this file. If the catalogue lookup ever needs
+                // canonicalising it needs it in `Ruleset::is_man`, not here.
+                let is_man = self.ruleset.is_man(&gift.tag);
                 let dissolving = ItemChangeParty {
                     unit_id: self.units[index].unit.unit_id.clone(),
                     name: Some(self.units[index].unit.name.clone()),
@@ -1721,6 +1737,7 @@ impl Working {
                     line: None,
                     unit_price: None,
                     other: Some(dissolving),
+                    is_man,
                 });
             }
             dissolved.insert(
@@ -1745,6 +1762,8 @@ impl Working {
         &mut self,
         effects: &BTreeMap<super::semantics::UnitKey, super::semantics::UnitItemEffects>,
     ) {
+        // Cloned before the loop: `self.units` is borrowed mutably by it.
+        let ruleset = std::sync::Arc::clone(&self.ruleset);
         for unit in &mut self.units {
             let Some(effect) = effects.get(&super::semantics::unit_key(
                 &unit.unit.region_id,
@@ -1806,6 +1825,7 @@ impl Working {
                     line: movement.line,
                     unit_price: movement.unit_price,
                     other: movement.other.clone(),
+                    is_man: ruleset.is_man(&movement.tag),
                 }));
             unit.created = effect
                 .moved
@@ -2219,6 +2239,8 @@ impl Working {
                             unit_id: id.clone(),
                             name: None,
                         }),
+                        // The refusal above already asked the same question of the same tag.
+                        is_man: self.ruleset.is_man(&tag),
                     });
                     self.units[taker].taken_unshown.push(TakenUnshown {
                         amount: *count,
@@ -2331,6 +2353,8 @@ impl Working {
                 continue;
             };
             take_item(&mut self.units[source].unit.items, held, moved);
+            // Read before the pushes: `self.units` is borrowed mutably below.
+            let is_man = self.ruleset.is_man(&tag);
             // Below all three `continue`s above: a change recorded higher would be a movement that
             // did not happen. `moved` is what `take_item` subtracts and `tags_moved` has already
             // clamped to the stock, so the change and the item list cannot disagree.
@@ -2344,6 +2368,7 @@ impl Working {
                 // different phase of `rules/sequenceofevents`.
                 unit_price: None,
                 other: far_end.clone(),
+                is_man,
             });
             if let Some(receiver) = receiver {
                 add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
@@ -2355,6 +2380,7 @@ impl Working {
                     line,
                     unit_price: None,
                     other: Some(near_end.clone()),
+                    is_man,
                 });
                 // `rules/form` reverts what a dissolving formed unit "was given", so only a GIVE
                 // is recorded here: what the row TAKES is its own doing, not a gift, and must not
@@ -2702,6 +2728,10 @@ impl Working {
                         order_index: index,
                     },
                 ));
+                // One lookup for both sides of the transport: it is the same tag either way.
+                // `false` for every transport today - `can_be_transported` refuses men - and it
+                // is asked rather than assumed so that the answer follows the catalogue.
+                let is_man = self.ruleset.is_man(&tag);
                 if moved != 0 {
                     // Read before the push: `self.units` is borrowed mutably below. The receiver's
                     // name only where this hex's rows show it - a target the report does not show
@@ -2722,6 +2752,7 @@ impl Working {
                             unit_id: pending.to.clone(),
                             name: receiver_name,
                         }),
+                        is_man,
                     });
                 }
                 if let Some(receiver) = pending.receiver {
@@ -2740,6 +2771,7 @@ impl Working {
                                 unit_id: from.clone(),
                                 name: Some(from_name),
                             }),
+                            is_man,
                         });
                     }
                     received[receiver].push((
@@ -6356,8 +6388,64 @@ mod tests {
                     line: Some(2),
                     unit_price: Some(10),
                     other: None,
+                    is_man: false,
                 }]
             );
+        }
+
+        /// `ah-rgkk.4.1`, increment 1. A race is people, and the ledger site must ask the ruleset
+        /// rather than guess: `rules/give` lists `MAN or MEN` among the item classes a GIVE
+        /// accepts, and `data/HUMN` is an item entry like any other.
+        #[test]
+        fn a_bought_race_reaches_the_preview_marked_as_people() {
+            let response = preview_over(
+                &report_with_market_selling_people(),
+                "unit 900\nBUY 5 HUMN\n",
+            );
+            let unit = only_unit(&response);
+
+            let change = unit
+                .item_changes
+                .iter()
+                .find(|change| change.tag == "HUMN")
+                .expect("the bought race reaches the preview");
+            assert!(change.is_man, "{change:?}");
+        }
+
+        /// `ah-rgkk.4.1`, increment 1. The pair is the discriminator: a mount is not people, so an
+        /// implementation that hardcodes the field fails one of the two. `data/horse` is a mount.
+        #[test]
+        fn a_bought_mount_is_not_marked_as_people() {
+            let response = preview_over(&report_with_market(), "unit 900\nBUY 5 horse\n");
+            let unit = only_unit(&response);
+
+            let change = unit
+                .item_changes
+                .iter()
+                .find(|change| change.tag == "HORS")
+                .expect("the bought mount reaches the preview");
+            assert!(!change.is_man, "{change:?}");
+        }
+
+        /// `ah-rgkk.4.1`, increment 2. `Working::apply_transfers` is a different method from the
+        /// ledger's, so men *leaving* a unit need their own test. `GIVE 0` discards, which needs
+        /// no second unit and no visibility rule (`rules/give`: "If 0 is specified as the unit
+        /// number, then the items are discarded").
+        #[test]
+        fn a_race_given_away_is_marked_as_people() {
+            let response = preview_over(
+                &report_with_market_selling_people(),
+                "unit 900\nGIVE 0 5 HUMN\n",
+            );
+            let unit = only_unit(&response);
+
+            let change = unit
+                .item_changes
+                .iter()
+                .find(|change| change.tag == "HUMN")
+                .expect("the discarded race reaches the preview");
+            assert_eq!(change.delta, -5, "{change:?}");
+            assert!(change.is_man, "{change:?}");
         }
 
         /// `ah-rgkk.3.1`, increment 4. A month that nets to nothing still has something to say:
@@ -7874,6 +7962,7 @@ mod tests {
                         unit_id: "902".to_string(),
                         name: Some("Recipient".to_string()),
                     }),
+                    is_man: false,
                 }],
             );
 
@@ -7891,6 +7980,7 @@ mod tests {
                         unit_id: "900".to_string(),
                         name: Some("Source".to_string()),
                     }),
+                    is_man: false,
                 }],
             );
         }
@@ -7959,6 +8049,7 @@ mod tests {
                     line: Some(2),
                     unit_price: None,
                     other: None,
+                    is_man: false,
                 }],
             );
         }
@@ -7984,6 +8075,7 @@ mod tests {
                     line: Some(2),
                     unit_price: None,
                     other: None,
+                    is_man: false,
                 }],
             );
         }
@@ -8084,6 +8176,7 @@ mod tests {
                         unit_id: "900".to_string(),
                         name: Some("Source".to_string()),
                     }),
+                    is_man: false,
                 }],
             );
 
@@ -8101,6 +8194,7 @@ mod tests {
                         unit_id: "901".to_string(),
                         name: Some("Taker".to_string()),
                     }),
+                    is_man: false,
                 }],
             );
         }
@@ -8128,6 +8222,7 @@ mod tests {
                         unit_id: "7777".to_string(),
                         name: None,
                     }),
+                    is_man: false,
                 }],
             );
             assert_eq!(
