@@ -1,0 +1,191 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-ehgy &mdash; round 1: MOVE and the structure a walker leaves behind</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; min-width:252px; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; }
+  .pop .line .val { text-align:right; white-space:nowrap; }
+  .pop .why { color:var(--ink-dim); margin-left:6px; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .note.tight { margin-top:2px; }
+  .off { color:var(--ink-dim); } .flat { color:var(--ink-soft); }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .rule { border-top:1px solid var(--edge); margin:30px 0 0; }
+  .cell { display:inline-block; background:var(--panel); border:1px solid var(--edge); border-radius:4px;
+          padding:2px 8px; font:12px/1.5 'SF Mono',Menlo,monospace; color:var(--ink); }
+  .cellital { font-style:italic; color:var(--brass); }
+  table.tbl { border-collapse:collapse; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:10px; }
+  table.tbl th, table.tbl td { border:1px solid var(--edge); padding:4px 10px; text-align:left; color:var(--ink-soft); }
+  table.tbl th { color:var(--brass); font-weight:600; }
+</style>
+
+<header>
+  <h1>ah-ehgy <span>&mdash; MOVE, and the structure a walker leaves behind (round 1)</span></h1>
+  <p><b>What is settled and not being re-opened.</b> The Structure popup&rsquo;s shape &mdash; two lines,
+  <span class="mono">was</span> above <span class="mono">structure</span>, with the order that did it as a dim
+  trailing clause &mdash; was chosen in <code>ah-rgkk.5.3</code> and ships today. Nothing below changes it.</p>
+  <p><b style="color:var(--brass)">What is wrong today.</b> The preview changes a unit&rsquo;s structure from
+  <code>ENTER</code> and <code>LEAVE</code> and nothing else. But <code>rules/move</code> gives
+  &ldquo;<b>2) A structure number</b>&rdquo; and &ldquo;<b>3) OUT, which will leave the structure that the unit
+  is in</b>&rdquo; as directions of their own. So a unit ordered <code>MOVE OUT</code> or <code>MOVE 12</code>
+  keeps drawing where the report found it, and its popup says
+  <span class="mono">Nothing this month changes this.</span> about a unit that moved. Separately, a unit that
+  <em>walks to another hex</em> cannot take its fort with it &mdash; and its arriving row says
+  <span class="mono">In no structure. Nothing this month changes this.</span> about a unit the report had inside
+  one.</p>
+  <p><b style="color:var(--brass)">One question, Q1</b>, and it is only about the third case &mdash; the walker.
+  Everything else follows from the shape already chosen.</p>
+</header>
+
+<main>
+
+  <h3 class="sec">Settled &mdash; MOVE OUT and MOVE 12 read exactly like LEAVE and ENTER</h3>
+  <p>These are not questions. The pair already says everything; the only new thing is that the trailing clause
+  names the order actually written, so a <code>MOVE OUT</code> is never reported as a <code>LEAVE</code>.</p>
+
+  <div class="pops" style="margin-top:12px">
+    <div class="pop">
+      <div class="head">Scouts (1502) &mdash; structure</div>
+      <div class="line"><span>was</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span></span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="off">in the open</span><span class="why">MOVE OUT</span></span></div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Watazka (4839) &mdash; structure</div>
+      <div class="line"><span>was</span><span class="val"><span class="off">in the open</span></span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span><span class="why">MOVE 12</span></span></div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Braves (1487) &mdash; structure</div>
+      <div class="line"><span>was</span><span class="val"><span class="flat">Wavecrest [329] &middot; Longship</span></span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span><span class="why">MOVE 12</span></span></div>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">Q1 &mdash; the walker&rsquo;s arriving row</h3>
+  <p class="scene"><b>The scene.</b> <b>Rangers (1533)</b> was found by the report inside
+  <b>Odds and Ends [12] &middot; Fort</b> in <b>plain (21,33) in Tanoshi</b>. This month you write
+  <code>MOVE N</code>. Two rows are drawn: a <b>departing</b> row in the origin hex, still inside the fort, and an
+  <b>arriving</b> row in <b>forest (21,31) in Tanoshi</b>. A unit cannot take a building with it, so the arriving
+  row is in no structure &mdash; and today it says so as if nothing had happened.</p>
+  <p class="scene">The Structure cell of that arriving row is <b>empty either way</b>: the unit is in no
+  structure, and the cell has nothing to print. Marking it changed makes it
+  <span class="cell cellital">&nbsp;&nbsp;&nbsp;</span> &mdash; italic brass on nothing at all, which no reader
+  can see. <b>So the whole difference is in the popup</b>, and that is what the three panels below show.</p>
+
+  <div class="split3">
+    <div class="card">
+      <p class="hexlab">A &mdash; a change, like any other</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Rangers (1533) &mdash; structure</div>
+        <div class="line"><span>was</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span></span></div>
+        <div class="line"><span>structure</span><span class="val"><span class="off">in the open</span><span class="why">MOVE N</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>One shape for every structure change in the table &mdash; nothing new to learn.</li>
+        <li>Names the order, so the row and your orders file line up.</li>
+        <li class="con">Says <code>MOVE N</code> did it, when what did it is the rule that a fort stays where it is. A reader may go looking for an <code>OUT</code> they never wrote.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">B &mdash; not a change; a sentence saying what happened</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Rangers (1533) &mdash; structure</div>
+        <div class="line"><span>structure</span><span class="val"><span class="off">in the open</span></span></div>
+        <div class="note">It left Odds and Ends [12] &middot; Fort behind: a unit cannot take a structure with it when it leaves the region.</div>
+      </div>
+      <ul class="notes">
+        <li>Truthful about cause: no order is blamed, because no order did it.</li>
+        <li>Teaches the rule at the one moment it matters.</li>
+        <li class="con">A second way of saying a structure changed, in the one column that already had one.</li>
+        <li class="con">The structure it left is in a sentence rather than on a labelled line, so it does not line up with the departing row.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">C &mdash; the change, and the sentence under it</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Rangers (1533) &mdash; structure</div>
+        <div class="line"><span>was</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span></span></div>
+        <div class="line"><span>structure</span><span class="val"><span class="off">in the open</span></span></div>
+        <div class="note tight">A unit cannot take a structure with it when it leaves the region.</div>
+      </div>
+      <ul class="notes">
+        <li>The same two lines as every other structure change, so the pair still reads.</li>
+        <li>No order is named, because none is owed one &mdash; and the sentence says why the clause is missing.</li>
+        <li class="con">The only structure line in the table with no trailing clause; a reader may read the gap as something the preview failed to work out.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">The states around it &mdash; drawn the same either way</h3>
+  <p>These do not change with your answer, but they are what the walker&rsquo;s popup sits beside, so look at them
+  before choosing.</p>
+
+  <div class="pops" style="margin-top:12px">
+    <div class="pop">
+      <div class="head">Rangers (1533) &mdash; structure &nbsp;<span class="off">(the departing row)</span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span></span></div>
+      <div class="note">Nothing this month changes this.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Marines (2288) &mdash; structure &nbsp;<span class="off">(sailing, arriving row)</span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">Wavecrest [329] &middot; Longship</span></span></div>
+      <div class="note">Nothing this month changes this.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Rangers (1533) &mdash; structure &nbsp;<span class="off">(<span class="mono">MOVE N 12</span>, arriving row)</span></div>
+      <div class="line"><span>was</span><span class="val"><span class="flat">Odds and Ends [12] &middot; Fort</span></span></div>
+      <div class="line"><span>structure</span><span class="val"><span class="flat">[12]</span><span class="why">MOVE 12</span></span></div>
+      <div class="note">This region&rsquo;s report does not describe [12], so only its number is shown.</div>
+    </div>
+  </div>
+
+  <p class="scene" style="margin-top:16px"><b>On the walker that enters something when it gets there.</b>
+  <code>MOVE N 12</code> walks north and then enters structure 12 <em>in the hex it arrives in</em> &mdash; a
+  different building from the one it left, which may happen to carry the same number and which the destination&rsquo;s
+  report often does not describe. That case is drawn above and needs no decision: it is an ordinary
+  <span class="mono">was</span>/<span class="mono">structure</span> pair whose after-side falls back to the bare
+  number, exactly as an undescribed structure does anywhere else.</p>
+
+</main>
+
+<footer>
+  <p>Frames are drawn at the popup&rsquo;s real maximum width (384px) with its real type sizes. Only Q1 is a
+  question; everything else is drawn so you can see what it will sit next to.</p>
+</footer>
