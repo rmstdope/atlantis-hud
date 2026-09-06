@@ -4446,7 +4446,10 @@ pub(crate) fn item_effects(
             }
             // Read here for the same reason `recruited` is: `study_forecasts` borrows the ledger,
             // whose `movements`, `uncounted` and `built` are moved out by value below.
-            for (index, forecast) in study_forecasts(hex, &ledger, ruleset).into_iter().enumerate() {
+            for (index, forecast) in study_forecasts(hex, &ledger, ruleset)
+                .into_iter()
+                .enumerate()
+            {
                 if let Some(forecast) = forecast {
                     result
                         .entry(unit_key(
@@ -9750,7 +9753,6 @@ fn study_forecasts(
     ledger: &Ledger<'_>,
     ruleset: &Ruleset,
 ) -> Vec<Option<super::effects::StudyForecast>> {
-
     let men = ledger.state.men_after_the_market(hex, Some(ruleset));
     let departed = departures_after_load_checks(hex, ledger, Some(ruleset));
     let halved = magic_study_halved(hex, ruleset);
@@ -9812,7 +9814,9 @@ fn one_study_forecast(
     // The identical call the ledger's own `study` makes (`semantics.rs`'s `study`), on the
     // report-era headcount, so the popup's fee is the figure the Silver column charged.
     let priced = price_study(
-        Some(skill.cost).filter(|_| !ordered.unit.men_estimated).flatten(),
+        (!ordered.unit.men_estimated)
+            .then_some(skill.cost)
+            .flatten(),
         ordered.unit.men,
     );
     if skill.cost.is_none() {
@@ -9997,7 +10001,12 @@ fn teaches_a_foreign_unit(
         })
         .flatten()
         .filter_map(party_unit_id)
-        .any(|id| matches!(student_presence(hex, &id, departed), StudentPresence::VisibleForeign))
+        .any(|id| {
+            matches!(
+                student_presence(hex, &id, departed),
+                StudentPresence::VisibleForeign
+            )
+        })
 }
 
 fn gcd(a: i64, b: i64) -> i64 {
@@ -10007,7 +10016,11 @@ fn gcd(a: i64, b: i64) -> i64 {
         b = a % b;
         a = t;
     }
-    if a == 0 { 1 } else { a }
+    if a == 0 {
+        1
+    } else {
+        a
+    }
 }
 
 // --- FORM aliases --------------------------------------------------------------------------------
@@ -34874,7 +34887,11 @@ BUILD
     // --- where this month's study lands (`ah-rgkk.2.2`) ------------------------------------------
 
     /// The study forecast for the unit with this number, if it has one.
-    fn study_of(regions: Vec<ReportRegion>, orders: &str, unit_id: &str) -> Option<effects::StudyForecast> {
+    fn study_of(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        unit_id: &str,
+    ) -> Option<effects::StudyForecast> {
         let effects = item_effects(&report(regions), orders, Some(&ruleset()));
         // A unit whose month moves no item has no entry at all, which is no forecast either.
         effects_for(&effects, unit_id).and_then(|effects| effects.study.clone())
@@ -34882,14 +34899,14 @@ BUILD
 
     #[test]
     fn an_untaught_study_projects_one_months_points() {
-        let student = with_skill_points(
-            with_silver(with_men(unit("900"), 10), 1000),
-            "COMB",
-            1,
-            53,
-        );
-        let study = study_of(vec![region(vec![student])], "unit 900\nSTUDY Combat\n", "900")
-            .expect("a studying unit is forecast");
+        let student =
+            with_skill_points(with_silver(with_men(unit("900"), 10), 1000), "COMB", 1, 53);
+        let study = study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY Combat\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
 
         assert_eq!(study.tag, "COMB");
         assert_eq!(study.level_before, 1);
@@ -34905,7 +34922,11 @@ BUILD
         // `data/HUMN` specializes in combat at 4, against combat's own maximum of 5.
         assert_eq!(study.ceiling_level, 4);
         assert_eq!(
-            study.limiting_races.iter().map(|race| race.tag.clone()).collect::<Vec<_>>(),
+            study
+                .limiting_races
+                .iter()
+                .map(|race| race.tag.clone())
+                .collect::<Vec<_>>(),
             ["HUMN"]
         );
     }
@@ -34913,8 +34934,12 @@ BUILD
     #[test]
     fn a_unit_studying_a_skill_it_has_never_held_starts_from_nothing() {
         let student = with_silver(with_men(unit("900"), 10), 1000);
-        let study = study_of(vec![region(vec![student])], "unit 900\nSTUDY Combat\n", "900")
-            .expect("a studying unit is forecast");
+        let study = study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY Combat\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
 
         assert_eq!(study.level_before, 0);
         assert_eq!(study.points_before, 0);
@@ -34938,8 +34963,12 @@ BUILD
             2,
             170,
         );
-        let study = study_of(vec![region(vec![student])], "unit 900\nSTUDY Combat\n", "900")
-            .expect("a studying unit is forecast");
+        let study = study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY Combat\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
 
         assert_eq!(study.ceiling_level, 2);
         assert_eq!(study.limiting_races.len(), 1, "{study:?}");
@@ -34955,8 +34984,12 @@ BUILD
         // `data/LEAD` lets a leader take every skill to 5, which is combat's own maximum, and
         // `study_ceiling` answers `Global` on equality rather than blaming a race for it.
         let student = with_silver(with_race(unit("900"), 2, "leader", "LEAD"), 1000);
-        let study = study_of(vec![region(vec![student])], "unit 900\nSTUDY Combat\n", "900")
-            .expect("a studying unit is forecast");
+        let study = study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY Combat\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
 
         assert_eq!(study.ceiling_level, 5);
         assert!(study.limiting_races.is_empty(), "{study:?}");
@@ -34968,12 +35001,8 @@ BUILD
     fn one_teacher_over_ten_students_makes_the_month_worth_one_and_a_half() {
         // Combat costs $10 a man, so twenty men owe 200: a fixture that cannot pay would add a
         // `FeeShort` doubt for a reason that has nothing to do with teaching.
-        let student = with_skill_points(
-            with_silver(with_men(unit("1487"), 20), 1000),
-            "COMB",
-            1,
-            53,
-        );
+        let student =
+            with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
         let teacher = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
         let study = study_of(
             vec![region(vec![student, teacher])],
@@ -34995,12 +35024,8 @@ BUILD
 
     #[test]
     fn a_teacher_with_slots_to_spare_doubles_the_month() {
-        let student = with_skill_points(
-            with_silver(with_men(unit("1487"), 5), 1000),
-            "COMB",
-            1,
-            53,
-        );
+        let student =
+            with_skill_points(with_silver(with_men(unit("1487"), 5), 1000), "COMB", 1, 53);
         let teacher = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
         let study = study_of(
             vec![region(vec![student, teacher])],
@@ -35016,12 +35041,8 @@ BUILD
 
     #[test]
     fn a_teacher_who_does_not_outrank_the_student_teaches_nobody() {
-        let student = with_skill_points(
-            with_silver(with_men(unit("1487"), 20), 1000),
-            "COMB",
-            1,
-            53,
-        );
+        let student =
+            with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
         let teacher = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 1);
         let study = study_of(
             vec![region(vec![student, teacher])],
@@ -35037,12 +35058,8 @@ BUILD
 
     #[test]
     fn a_teacher_who_is_not_a_leader_teaches_nobody() {
-        let student = with_skill_points(
-            with_silver(with_men(unit("1487"), 20), 1000),
-            "COMB",
-            1,
-            53,
-        );
+        let student =
+            with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
         let teacher = with_skill(with_men(unit("1774"), 10), "COMB", 3);
         let study = study_of(
             vec![region(vec![student, teacher])],
@@ -35061,8 +35078,12 @@ BUILD
     fn a_study_the_unit_cannot_pay_for_is_doubted() {
         // Tactics costs $200 a man (`rules/skills_studying`).
         let student = with_silver(with_men(unit("900"), 1), 40);
-        let study = study_of(vec![region(vec![student])], "unit 900\nSTUDY Tactics\n", "900")
-            .expect("a studying unit is forecast");
+        let study = study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY Tactics\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
 
         assert_eq!(study.doubts.len(), 1, "{study:?}");
         assert_eq!(study.doubts[0].reason, effects::StudyDoubtReason::FeeShort);
@@ -35073,15 +35094,15 @@ BUILD
 
     #[test]
     fn an_estimated_headcount_is_doubted_and_still_projected() {
-        let mut student = with_skill_points(
-            with_silver(with_men(unit("900"), 10), 1000),
-            "COMB",
-            1,
-            53,
-        );
+        let mut student =
+            with_skill_points(with_silver(with_men(unit("900"), 10), 1000), "COMB", 1, 53);
         student.men_estimated = true;
-        let study = study_of(vec![region(vec![student])], "unit 900\nSTUDY Combat\n", "900")
-            .expect("a studying unit is forecast");
+        let study = study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY Combat\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
 
         assert!(
             study
@@ -35095,12 +35116,8 @@ BUILD
 
     #[test]
     fn a_teacher_whose_eligibility_cannot_be_settled_is_doubted_and_counts_for_nothing() {
-        let student = with_skill_points(
-            with_silver(with_men(unit("1487"), 20), 1000),
-            "COMB",
-            1,
-            53,
-        );
+        let student =
+            with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
         let mut teacher = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
         // `teaching_eligibility` answers `None` on exactly this.
         teacher.men_estimated = true;
@@ -35126,12 +35143,8 @@ BUILD
     /// said - `taught_by`'s blind spot.
     #[test]
     fn a_teacher_teaching_a_foreign_unit_leaves_the_dilution_unknown() {
-        let student = with_skill_points(
-            with_silver(with_men(unit("1487"), 20), 1000),
-            "COMB",
-            1,
-            53,
-        );
+        let student =
+            with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
         let teacher = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
         let study = study_of(
             vec![region(vec![student, teacher, an_ally("2000")])],
@@ -35225,5 +35238,4 @@ BUILD
         assert!(warned);
         assert_eq!(warned, halved);
     }
-
 }

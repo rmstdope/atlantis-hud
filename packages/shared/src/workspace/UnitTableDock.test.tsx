@@ -152,7 +152,8 @@ describe("a unit carried away by a sailing fleet", () => {
         skillMerges: [],
         reportedSkills: [],
         recruitsUnmerged: false,
-        menOfUnknownSkill: []
+        menOfUnknownSkill: [],
+        study: null
       }
     ]
   });
@@ -241,7 +242,8 @@ describe("the structure column", () => {
             skillMerges: [],
             reportedSkills: [],
             recruitsUnmerged: false,
-            menOfUnknownSkill: []
+            menOfUnknownSkill: [],
+            study: null
           }
         ]
       }
@@ -827,6 +829,7 @@ describe("the items column", () => {
         reportedSkills: [],
         recruitsUnmerged: false,
         menOfUnknownSkill: [],
+        study: null,
         ...previewOverrides
       }
     ]
@@ -1025,6 +1028,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         reportedSkills: [],
         recruitsUnmerged: false,
         menOfUnknownSkill: [],
+        study: null,
         ...previewOverrides
       }
     ]
@@ -1347,6 +1351,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     reportedSkills: [],
     recruitsUnmerged: false,
     menOfUnknownSkill: [],
+    study: null,
     ...overrides
   });
 
@@ -1893,6 +1898,7 @@ describe("a row the game dissolves", () => {
     reportedSkills: [],
     recruitsUnmerged: false,
     menOfUnknownSkill: [],
+    study: null,
     ...overrides
   });
 

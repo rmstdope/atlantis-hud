@@ -667,7 +667,11 @@ pub fn preview_orders_on_map(
         } else {
             entry.created.clone()
         };
-        let study = if dissolving { None } else { entry.study.clone() };
+        let study = if dissolving {
+            None
+        } else {
+            entry.study.clone()
+        };
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
         let transport_target_issues = entry.transport_target_issues.clone();
@@ -7739,5 +7743,121 @@ mod tests {
         assert!(unit.unit.men_estimated, "the fixture must stay estimated");
         assert!(!unit.recruits_unmerged);
         assert!(unit.skill_merges.is_empty(), "{:?}", unit.skill_merges);
+}
+
+    /// A unit whose only order is `STUDY` changes nothing this month - `rules/sequenceofevents`
+    /// runs `STUDY` after the market - so its row exists only because the forecast does
+    /// (`ah-rgkk.2.2`).
+    #[test]
+    fn a_studying_unit_gets_a_preview_row_even_though_nothing_changed_this_month() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nSTUDY lumberjack\n",
+        );
+
+        let unit = only_unit(&response);
+        assert!(unit.changes.is_empty(), "{:?}", unit.changes);
+        assert_eq!(unit.status, UnitPreviewStatus::Present);
+        assert!(unit.study.is_some(), "{:?}", unit.study);
+    }
+
+    /// A unit `rules/form` dissolves never exists, so it studies nothing.
+    #[test]
+    fn a_dissolving_unit_forecasts_no_study() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 0 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nSTUDY combat\nEND\n",
+        );
+
+        let dissolving = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the dissolving row is drawn");
+        assert!(dissolving.study.is_none(), "{:?}", dissolving.study);
+    }
+
+    /// The two mirrors of these types are hand-written, and nothing else compares them: this is
+    /// what stands between a misspelled field and a runtime `undefined` (`ah-rgkk.2.2`).
+    #[test]
+    fn the_study_forecast_crosses_the_wire_in_its_camel_case_spelling() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nSTUDY lumberjack\n",
+        );
+        let value = serde_json::to_value(only_unit(&response)).expect("the row serialises");
+        let study = value
+            .get("study")
+            .and_then(serde_json::Value::as_object)
+            .expect("the forecast is on the wire under `study`");
+
+        for field in [
+            "tag",
+            "name",
+            "levelBefore",
+            "pointsBefore",
+            "monthsNumerator",
+            "monthsDenominator",
+            "teachers",
+            "halvedOutsideABuilding",
+            "pointsAfter",
+            "levelAfter",
+            "ceilingLevel",
+            "limitingRaces",
+            "heldBackByCeiling",
+            "doubts",
+        ] {
+            assert!(study.contains_key(field), "{field} is missing: {study:?}");
+        }
+
+        let doubt = serde_json::to_value(StudyDoubt {
+            reason: StudyDoubtReason::FeeShort,
+            fee: 200,
+            short_by: 160,
+            teacher: String::new(),
+        })
+        .expect("a doubt serialises");
+        assert_eq!(
+            doubt.get("reason").and_then(serde_json::Value::as_str),
+            Some("feeShort")
+        );
+        assert_eq!(
+            doubt.get("shortBy").and_then(serde_json::Value::as_i64),
+            Some(160)
+        );
+    }
+
+    /// The forecast's starting figures come from `semantics`'s own skill merge and the popup's
+    /// last this-month step from the preview's; two models, one answer required (`ah-rgkk.2.2`).
+    #[test]
+    fn the_forecast_starts_from_the_same_figures_the_preview_shows() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nBUY 5 HUMN\nSTUDY lumberjack\n",
+        );
+
+        let unit = only_unit(&response);
+        let study = unit.study.as_ref().expect("the study is forecast");
+        // `(10 * 180 + 5 * 0) / 15`, which `merge_skills` truncates.
+        assert_eq!(study.points_before, 120);
+        let shown = unit
+            .unit
+            .skills
+            .iter()
+            .find(|skill| skill.tag.eq_ignore_ascii_case("LUMB"))
+            .expect("the row shows the skill");
+        assert_eq!(study.points_before, shown.points);
     }
 }

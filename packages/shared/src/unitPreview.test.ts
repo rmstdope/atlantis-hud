@@ -4,6 +4,7 @@ import type {
   RegionPreview,
   ReportUnit,
   SkillMerge,
+  StudyForecast,
   TransportTargetIssue
 } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
@@ -56,6 +57,7 @@ const previewedRow = (
   reportedSkills: [],
   recruitsUnmerged: false,
   menOfUnknownSkill: [],
+  study: null,
   ...overrides
 });
 
@@ -123,7 +125,8 @@ describe("mergePreview", () => {
           skillMerges: [],
           reportedSkills: [],
           recruitsUnmerged: false,
-          menOfUnknownSkill: []
+          menOfUnknownSkill: [],
+          study: null
         }
       ])
     );
@@ -166,7 +169,8 @@ describe("mergePreview", () => {
           skillMerges: [],
           reportedSkills: [],
           recruitsUnmerged: false,
-          menOfUnknownSkill: []
+          menOfUnknownSkill: [],
+          study: null
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
@@ -189,7 +193,8 @@ describe("mergePreview", () => {
           skillMerges: [],
           reportedSkills: [],
           recruitsUnmerged: false,
-          menOfUnknownSkill: []
+          menOfUnknownSkill: [],
+          study: null
         }
       ])
     );
@@ -226,7 +231,8 @@ describe("mergePreview", () => {
           skillMerges: [],
           reportedSkills: [],
           recruitsUnmerged: false,
-          menOfUnknownSkill: []
+          menOfUnknownSkill: [],
+          study: null
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -249,7 +255,8 @@ describe("mergePreview", () => {
           skillMerges: [],
           reportedSkills: [],
           recruitsUnmerged: false,
-          menOfUnknownSkill: []
+          menOfUnknownSkill: [],
+          study: null
         }
       ])
     );
@@ -283,7 +290,8 @@ describe("mergePreview", () => {
           skillMerges: [],
           reportedSkills: [],
           recruitsUnmerged: false,
-          menOfUnknownSkill: []
+          menOfUnknownSkill: [],
+          study: null
         }
       ])
     );
@@ -568,7 +576,8 @@ describe("changeFor and originalTooltip", () => {
           skillMerges: [],
           reportedSkills: [],
           recruitsUnmerged: false,
-          menOfUnknownSkill: []
+          menOfUnknownSkill: [],
+          study: null
         }
       ])
     );
@@ -1357,5 +1366,36 @@ describe("a transport target the report cannot show receiving", () => {
 
   it("says nothing about a row with no target issue", () => {
     expect(itemsTooltip(previewedUnit({ items: stone }))).toBeUndefined();
+  });
+});
+
+describe("the study forecast", () => {
+  const forecast: StudyForecast = {
+    tag: "COMB",
+    name: "combat",
+    levelBefore: 1,
+    pointsBefore: 53,
+    monthsNumerator: 3,
+    monthsDenominator: 2,
+    teachers: [{ unitId: "1774", name: "Teacher", slots: 10, students: 20 }],
+    halvedOutsideABuilding: false,
+    pointsAfter: 98,
+    levelAfter: 2,
+    ceilingLevel: 4,
+    limitingRaces: [{ tag: "HUMN", name: "human" }],
+    heldBackByCeiling: false,
+    doubts: []
+  };
+
+  it("carries the study forecast onto the row", () => {
+    const rows = mergePreview([unit({})], preview([previewedRow({}, { study: forecast })]));
+
+    expect(rows[0].study).toEqual(forecast);
+  });
+
+  it("carries a null forecast for a unit not studying", () => {
+    const rows = mergePreview([unit({})], preview([previewedRow({})]));
+
+    expect(rows[0].study).toBeNull();
   });
 });
