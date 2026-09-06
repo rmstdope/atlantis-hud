@@ -89,6 +89,11 @@ export type PreviewedUnit = ReportUnit & {
   /**
    * Why this unit's skills moved this month, one record per merge of arriving men, in the order
    * the merges ran (`ah-rgkk.2.1`).
+   *
+   * Optional only because this whole type is partial - a row the orders left alone carries none of
+   * the preview's extras. The core populates all four of the skill fields on every `UnitPreview`
+   * it emits and never sends `undefined`, so a reader may treat `undefined` and the empty value
+   * alike: both mean the row came from the report rather than from the preview.
    */
   skillMerges?: SkillMerge[];
   /** This unit's skills exactly as the report printed them, typed (`ah-rgkk.2.1`). */

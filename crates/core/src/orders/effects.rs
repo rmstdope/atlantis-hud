@@ -7508,7 +7508,9 @@ mod tests {
     #[test]
     fn the_new_preview_fields_cross_the_wire_in_their_camel_case_spelling() {
         // The `UnitPreview` mirrors in `packages/core-client/src/index.ts` are hand-written and
-        // nothing else compares them: this is what a misspelled field fails against.
+        // nothing compares them to this struct. This pins only the Rust half - the spelling the
+        // wire actually carries - so a mirror written against it has a fixed target. A typo on the
+        // TypeScript side still fails nothing here: that gap is real and uncovered.
         let response = preview_over(&report_with_two_crews(), "unit 900\nGIVE 901 5 HUMN\n");
         let receiver = unit_by_id(&response, "901");
         let json = serde_json::to_value(receiver).expect("a preview serializes");
@@ -7538,5 +7540,87 @@ mod tests {
         ] {
             assert!(merge.contains_key(field), "no {field} on a merge: {json}");
         }
+    }
+
+    #[test]
+    fn a_unit_given_men_and_recruiting_records_both_merges_in_the_order_they_ran() {
+        // `rules/sequenceofevents` runs the Give phase before the market, and the popup's chain
+        // (`ah-rgkk.2`, decision N2) reads the records in that order without re-deriving any of
+        // it - so the order, and the join between one record and the next, are the properties
+        // this feature actually rests on.
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 humans [HUMN] at $38.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN], 400 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 3 (180).",
+            "* Hands (901), Foo (1), 6 humans [HUMN]. Weight: 60. Capacity: 0/0/90/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(&report, "unit 901\nGIVE 900 6 HUMN\nunit 900\nBUY 4 HUMN\n");
+
+        let unit = unit_by_id(&response, "900");
+        assert_eq!(unit.skill_merges.len(), 2, "{:?}", unit.skill_merges);
+        assert_eq!(unit.skill_merges[0].cause, SkillMergeCause::Given);
+        assert_eq!(unit.skill_merges[1].cause, SkillMergeCause::Recruited);
+        // The chain joins up: the recruits weigh against the headcount the gift left behind.
+        assert_eq!(unit.skill_merges[0].men_before, 10);
+        assert_eq!(
+            unit.skill_merges[1].men_before,
+            unit.skill_merges[0].men_before + unit.skill_merges[0].men
+        );
+        // ... and the last record's list is the unit's own, so the popup reads rather than merges.
+        assert_eq!(unit.skill_merges[1].skills, unit.unit.skills);
+    }
+
+    #[test]
+    fn a_merge_that_moved_no_figure_is_recorded_like_any_other() {
+        // Men joining and nothing moving is a fact about the month. Leaving the record out would
+        // make it indistinguishable from no arrival at all.
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN]. Weight: 100. Capacity: 0/0/150/0.",
+            "* Hands (901), Foo (1), 10 humans [HUMN]. Weight: 100. Capacity: 0/0/150/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(&report, "unit 900\nGIVE 901 5 HUMN\n");
+
+        let receiver = unit_by_id(&response, "901");
+        assert!(
+            receiver.unit.skills.is_empty(),
+            "neither side has a skill, so no figure can move"
+        );
+        assert_eq!(
+            receiver.skill_merges.len(),
+            1,
+            "{:?}",
+            receiver.skill_merges
+        );
+        assert_eq!(receiver.skill_merges[0].men, 5);
+        assert!(receiver.skill_merges[0].skills.is_empty());
+    }
+
+    #[test]
+    fn an_estimated_unit_whose_recruits_never_settled_claims_nothing() {
+        // The other half of `recruits_unmerged`: a `BUY ALL` leaves the ledger no exact list, and
+        // an estimated headcount is exactly the unit `settle_headcounts` refuses to infer one for.
+        // So nothing is claimed - saying "your recruits were not merged in" would be asserting a
+        // recruit the core never established.
+        let response = preview_over(
+            &report_with_an_unreadable_item(),
+            "unit 900\nBUY ALL HUMN\n",
+        );
+
+        let unit = only_unit(&response);
+        assert!(unit.unit.men_estimated, "the fixture must stay estimated");
+        assert!(!unit.recruits_unmerged);
+        assert!(unit.skill_merges.is_empty(), "{:?}", unit.skill_merges);
     }
 }
