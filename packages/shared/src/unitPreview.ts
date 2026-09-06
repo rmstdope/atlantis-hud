@@ -73,6 +73,17 @@ export type PreviewedUnit = ReportUnit & {
    * `null` where the hex shows no own unit of ours for them to revert to.
    */
   dissolvesInto?: string | null;
+  /**
+   * This month's FORM creates this unit: it did not exist when the report was written, and its
+   * `unitId` is the synthetic `new-<alias>`. Carried on every row of such a unit, including its
+   * arriving row (`ah-4hux`).
+   */
+  formed?: boolean;
+  /**
+   * `rules/form` dissolves this unit before the month ends - a formed unit that gains nobody.
+   * Always accompanied by `formed`, and drawn rather than skipped (`ah-ty3s.3`, decision K2).
+   */
+  dissolving?: boolean;
 };
 
 /**
@@ -80,7 +91,7 @@ export type PreviewedUnit = ReportUnit & {
  * (`rules/form`, decision **K2** of `ah-ty3s`).
  */
 export function dissolves(unit: PreviewedUnit): boolean {
-  return unit.previewStatus === "dissolving";
+  return unit.dissolving === true;
 }
 
 /**
@@ -107,7 +118,9 @@ export function mergePreview(
  * that spans every hex would otherwise show the same unit twice - and a roster of your own units
  * is not a place for that. Dropping the arrival keeps the unit on the hex the report gave it, with
  * the `-> destination` marker its departing row already carries; a departure the trace could not
- * name a destination for has no arrival row at all, and is kept.
+ * name a destination for has no arrival row at all, and is kept. A formed unit's pair is dropped
+ * the same way: its arriving row goes and the row in the hex it was formed in stays, carrying the
+ * `new` marker and the destination arrow together (`ah-4hux`).
  */
 export function mergePreviewAcross(
   units: ReportUnit[],
@@ -166,6 +179,8 @@ function rowFor(previewed: UnitPreview): PreviewedUnit {
     arrivingFrom: previewed.arrivingFrom,
     departingTo: previewed.departingTo,
     aboard: previewed.aboard,
+    formed: previewed.formed,
+    dissolving: previewed.dissolving,
     uncounted: previewed.uncounted,
     takenUnshown: previewed.takenUnshown,
     produced: previewed.produced,
