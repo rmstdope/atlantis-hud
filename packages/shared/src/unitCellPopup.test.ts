@@ -554,7 +554,7 @@ describe("the column popups", () => {
       ["holding", "off"],
       ["receiving no aid", "off"],
       ["won't cross water", "off"],
-      ["revealing faction", "off"],
+      ["revealing", "off"],
       ["sharing", "off"],
       ["taxing", "off"],
       ["consuming", "silver first"],
@@ -645,27 +645,43 @@ describe("the column popups", () => {
     expect(line("avoiding")?.why).toBe("GUARD 1");
   });
 
-  it("a state the preview cannot have caused draws the pair with no order", () => {
-    const popup = columnPopup(
-      popupForCell(
-        "flags",
-        unit({ flags: ["taxing"], previewChanges: [{ field: "flags", original: "" }] }),
-        facts()
-      )
+  it("every setting names the order that put it in its new state", () => {
+    const cause = (flags: string[], original: string, label: string) =>
+      columnPopup(
+        popupForCell("flags", unit({ flags, previewChanges: [{ field: "flags", original }] }), facts())
+      ).lines.find((line) => line.label === label)?.why;
+
+    expect(cause(["taxing"], "", "taxing")).toBe("AUTOTAX 1");
+    expect(cause([], "taxing", "taxing")).toBe("AUTOTAX 0");
+    expect(cause(["holding"], "", "holding")).toBe("HOLD 1");
+    expect(cause([], "holding", "holding")).toBe("HOLD 0");
+    expect(cause(["receiving no aid"], "", "receiving no aid")).toBe("NOAID 1");
+    expect(cause([], "receiving no aid", "receiving no aid")).toBe("NOAID 0");
+    expect(cause(["won't cross water"], "", "won't cross water")).toBe("NOCROSS 1");
+    expect(cause([], "won't cross water", "won't cross water")).toBe("NOCROSS 0");
+
+    expect(cause(["revealing unit"], "", "revealing")).toBe("REVEAL UNIT");
+    expect(cause(["revealing faction"], "", "revealing")).toBe("REVEAL FACTION");
+    expect(cause([], "revealing faction", "revealing")).toBe("REVEAL");
+
+    expect(cause(["consuming unit's food"], "", "consuming")).toBe("CONSUME UNIT");
+    expect(cause(["consuming faction's food"], "", "consuming")).toBe("CONSUME FACTION");
+    expect(cause([], "consuming unit's food", "consuming")).toBe("CONSUME");
+
+    expect(cause(["walking battle spoils"], "riding battle spoils", "battle spoils")).toBe(
+      "SPOILS WALK"
     );
-    expect(popup.lines.find((entry) => entry.label === "taxing")).toEqual({
-      label: "taxing",
-      value: "on",
-      change: { direction: "up", from: "off" }
-    });
+    expect(cause(["riding battle spoils"], "", "battle spoils")).toBe("SPOILS RIDE");
+    expect(cause(["flying battle spoils"], "", "battle spoils")).toBe("SPOILS FLY");
+    expect(cause(["swimming battle spoils"], "", "battle spoils")).toBe("SPOILS SWIM");
+    expect(cause(["sailing battle spoils"], "", "battle spoils")).toBe("SPOILS SAIL");
+    expect(cause(["weightless battle spoils"], "", "battle spoils")).toBe("SPOILS NONE");
+    expect(cause([], "riding battle spoils", "battle spoils")).toBe("SPOILS ALL");
   });
 
-  it("the flags popup says which flag orders it works out", () => {
+  it("the flags popup no longer says any flag order is unsupported", () => {
     const popup = columnPopup(popupForCell("flags", unit({ own: true, flags: [] }), facts()));
-    expect(popup.notes).toEqual([
-      "Every line is your report's, changed only by this month's GUARD, AVOID, BEHIND and SHARE. " +
-        "AUTOTAX, NOAID, CONSUME, REVEAL, SPOILS, HOLD and NOCROSS are not worked out here."
-    ]);
+    expect(popup.notes).toEqual([]);
   });
 
   it("another faction's flags say nothing about your orders", () => {
@@ -681,9 +697,7 @@ describe("the column popups", () => {
     );
     expect(popup.notes).toEqual([
       "Formed this month, so it inherits its flags from the unit forming it — every one but " +
-        "guard and autotax, which have to be set in its own orders.",
-      "Every line is your report's, changed only by this month's GUARD, AVOID, BEHIND and SHARE. " +
-        "AUTOTAX, NOAID, CONSUME, REVEAL, SPOILS, HOLD and NOCROSS are not worked out here."
+        "guard and autotax, which have to be set in its own orders."
     ]);
   });
 
@@ -694,9 +708,9 @@ describe("the column popups", () => {
     }
   });
 
-  it("a setting moving between two real values reads up, and back to its last state down", () => {
-    // `direction` is `down` only where the setting returns to the **last** of its states, which on
-    // an on/off setting coincides with `off`. These two are the settings where it does not.
+  it("a setting moving between two real values reads up, and back to the default the game names down", () => {
+    // `direction` is `down` only where the setting returns to its `resting` value, which on an
+    // on/off setting coincides with `off`. These are the settings where it does not.
     const spoils = columnPopup(
       popupForCell(
         "flags",
@@ -710,7 +724,8 @@ describe("the column popups", () => {
     expect(spoils.lines.find((line) => line.label === "battle spoils")).toEqual({
       label: "battle spoils",
       value: "riding",
-      change: { direction: "up", from: "flying" }
+      change: { direction: "up", from: "flying" },
+      why: "SPOILS RIDE"
     });
 
     const consuming = columnPopup(
@@ -723,7 +738,22 @@ describe("the column popups", () => {
     expect(consuming.lines.find((line) => line.label === "consuming")).toEqual({
       label: "consuming",
       value: "silver first",
-      change: { direction: "down", from: "unit's food" }
+      change: { direction: "down", from: "unit's food" },
+      why: "CONSUME"
+    });
+
+    const toAll = columnPopup(
+      popupForCell(
+        "flags",
+        unit({ flags: [], previewChanges: [{ field: "flags", original: "riding battle spoils" }] }),
+        facts()
+      )
+    );
+    expect(toAll.lines.find((line) => line.label === "battle spoils")).toEqual({
+      label: "battle spoils",
+      value: "all",
+      change: { direction: "up", from: "riding" },
+      why: "SPOILS ALL"
     });
   });
 
@@ -753,6 +783,11 @@ describe("the column popups", () => {
     expect(line("avoiding")?.stress).toBe("aside");
     expect(line("battle spoils")?.stress).toBeUndefined();
     expect(line("behind")?.stress).toBeUndefined();
+
+    const unordered = columnPopup(popupForCell("flags", unit({ flags: ["behind"] }), facts()));
+    const quiet = (label: string) => unordered.lines.find((entry) => entry.label === label);
+    expect(quiet("battle spoils")?.value).toBe("all");
+    expect(quiet("battle spoils")?.stress).toBeUndefined();
   });
 
   it("the skills popup lists a unit's own skills with their study points", () => {

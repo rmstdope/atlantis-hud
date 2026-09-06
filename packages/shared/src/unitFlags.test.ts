@@ -42,6 +42,13 @@ describe("flagLetters", () => {
   });
 });
 
+describe("flagLetters, both forms of REVEAL", () => {
+  it("gives both forms of REVEAL the same letter", () => {
+    expect(flagLetters(["revealing unit"])).toBe("R");
+    expect(flagLetters(["revealing faction"])).toBe("R");
+  });
+});
+
 describe("flagWords", () => {
   it("puts every flag in the hover text, including the ones with no letter", () => {
     expect(flagWords(["avoiding", "riding battle spoils"])).toBe("avoiding · riding battle spoils");
@@ -77,8 +84,32 @@ describe("FLAG_SETTINGS", () => {
   });
 
   it("a setting with no flag printed falls to its last state", () => {
-    expect(flagState(setting("spoils"), [])).toBe("not shown");
+    expect(flagState(setting("spoils"), [])).toBe("all");
     expect(flagState(setting("consuming"), [])).toBe("silver first");
+  });
+
+  it("battle spoils rests nowhere, and a report that prints none of them reads all", () => {
+    expect(setting("spoils").resting).toBeNull();
+    expect(flagState(setting("spoils"), [])).toBe("all");
+  });
+
+  it("the two spellings of the weightless spoils setting are one state", () => {
+    expect(flagState(setting("spoils"), ["weightless battle spoils"])).toBe("weightless");
+    expect(flagState(setting("spoils"), ["no battle spoils"])).toBe("weightless");
+  });
+
+  it("a setting rests at the default the game names it", () => {
+    expect(setting("consuming").resting).toBe("silver first");
+    expect(setting("revealing").resting).toBe("off");
+    expect(setting("behind").resting).toBe("off");
+  });
+
+  it("revealing is one setting with three states", () => {
+    expect(setting("revealing").label).toBe("revealing");
+    expect(flagState(setting("revealing"), ["revealing unit"])).toBe("unit");
+    expect(flagState(setting("revealing"), ["revealing faction"])).toBe("faction");
+    expect(flagState(setting("revealing"), [])).toBe("off");
+    expect(unsettledFlags(["revealing unit"])).toEqual([]);
   });
 
   it("a flag no setting accounts for is returned on its own", () => {

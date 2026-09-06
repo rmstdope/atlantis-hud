@@ -884,14 +884,42 @@ function movementIsStillTheReport(unit: PreviewedUnit): boolean {
  * The order that put a setting into its new state, as it would be typed - `GUARD 1`, `BEHIND 0` -
  * or `undefined` where no order the preview applies could have done it.
  *
- * Only `GUARD`, `AVOID`, `BEHIND` and `SHARE` reach `read_order`
- * (`crates/core/src/orders/effects.rs`), so every other setting gets the pair and no clause: the
- * popup must not assert an order it cannot derive.
+ * Every one of the eleven settings is reachable by an order the preview applies as of `ah-9g94.1`,
+ * so every moved line names one; the `default` arm remains the guard for a key no setting declares.
  *
  * Guard and avoid are mutually exclusive - `rules/guard` and `rules/avoid` both say setting one
  * cancels the other - so a flag cleared by its opposite names the order the player actually wrote
  * rather than inventing the clear.
  */
+/** `rules/reveal`: `REVEAL UNIT`, `REVEAL FACTION`, and bare `REVEAL` "is used to cancel this". */
+const REVEAL_ORDERS: Readonly<Record<string, string | undefined>> = {
+  unit: "REVEAL UNIT",
+  faction: "REVEAL FACTION",
+  off: "REVEAL"
+};
+
+/** `rules/consume`: "CONSUME tells the unit to use silver before food items (this is the default)". */
+const CONSUME_ORDERS: Readonly<Record<string, string | undefined>> = {
+  "unit's food": "CONSUME UNIT",
+  "faction's food": "CONSUME FACTION",
+  "silver first": "CONSUME"
+};
+
+/**
+ * `rules/spoils`: "The valid values for type are 'NONE', 'WALK', 'RIDE', 'FLY', 'SWIM', 'SAIL' or
+ * 'ALL'", and "SPOILS NONE will instruct the unit to only collect weightless items, such as
+ * silver" - which is why `weightless` is reached by `SPOILS NONE`.
+ */
+const SPOILS_ORDERS: Readonly<Record<string, string | undefined>> = {
+  walking: "SPOILS WALK",
+  riding: "SPOILS RIDE",
+  flying: "SPOILS FLY",
+  swimming: "SPOILS SWIM",
+  sailing: "SPOILS SAIL",
+  weightless: "SPOILS NONE",
+  all: "SPOILS ALL"
+};
+
 function flagCause(
   key: string,
   /**
@@ -913,45 +941,55 @@ function flagCause(
       return on ? "BEHIND 1" : "BEHIND 0";
     case "sharing":
       return on ? "SHARE 1" : "SHARE 0";
+    case "holding":
+      return on ? "HOLD 1" : "HOLD 0";
+    case "noAid":
+      return on ? "NOAID 1" : "NOAID 0";
+    case "noCross":
+      return on ? "NOCROSS 1" : "NOCROSS 0";
+    case "taxing":
+      return on ? "AUTOTAX 1" : "AUTOTAX 0";
+    case "revealing":
+      return REVEAL_ORDERS[to];
+    case "consuming":
+      return CONSUME_ORDERS[to];
+    case "spoils":
+      return SPOILS_ORDERS[to];
     default:
       return undefined;
   }
 }
 
 /**
- * The sentences under the list.
+ * The sentences under the list, of which there are now at most one.
  *
- * The standing one is decision **W1**: seven real flag orders this application accepts and
- * validates never reach `read_order`, so every line is the report's unless one of the four did it.
- * `ah-9g94` deletes this sentence and its test when it wires them up.
+ * `ah-rgkk.5.2`'s standing note - that seven flag orders never reached `read_order` - was deleted
+ * with `ah-9g94`, which wired them. An own unit that was not formed this month has no note at all,
+ * which is the ordinary case: the eleven lines say everything.
  */
 function flagNotes(unit: PreviewedUnit): string[] {
   if (unit.own === false) {
     return ["Another faction's flags, as your report printed them. Nothing you order changes them."];
   }
-  const notes: string[] = [];
   if (unit.formed) {
     // `rules/form`: a formed unit inherits its flags bar guard and autotax. It records no
     // `FieldChange` at all, so without this every one of its lines reads unchanged for no stated
     // reason.
-    notes.push(
+    return [
       "Formed this month, so it inherits its flags from the unit forming it — every one but " +
         "guard and autotax, which have to be set in its own orders."
-    );
+    ];
   }
-  notes.push(
-    "Every line is your report's, changed only by this month's GUARD, AVOID, BEHIND and SHARE. " +
-      "AUTOTAX, NOAID, CONSUME, REVEAL, SPOILS, HOLD and NOCROSS are not worked out here."
-  );
-  return notes;
+  return [];
 }
 
 /**
- * The two states a line is drawn quietly in: a setting resting where the report said nothing about
- * it, and which nothing this month moved (decision **F3**). `silver first` is not among them - it
- * is `rules/consume`'s own named default, so it is a real answer rather than an absence.
+ * The state a line is drawn quietly in: a setting resting where the report said nothing about it
+ * and which nothing this month moved (decision **F3**, `ah-rgkk.5.2`). `silver first` is not among
+ * them - it is `rules/consume`'s own named default, a real answer rather than an absence - and
+ * neither is `all`, for the same reason as of `ah-9g94`.
  */
-const QUIET_STATES: ReadonlySet<string> = new Set(["off", "not shown"]);
+const QUIET_STATES: ReadonlySet<string> = new Set(["off"]);
 
 /**
  * Every setting the game defines an order for, one line each, in `FLAG_SETTINGS` order, with the
@@ -959,7 +997,7 @@ const QUIET_STATES: ReadonlySet<string> = new Set(["off", "not shown"]);
  *
  * Read from `unit.flags` and nothing else - in particular never from `unit.onGuard`. The Flags cell
  * draws its letters from the same list, so a popup taking guard from anywhere else would contradict
- * on screen the cell it exists to explain (`ah-9g94` is where that defect is fixed).
+ * on screen the cell it exists to explain (`ah-9g94` is where that defect was fixed).
  */
 function flagsBody(unit: PreviewedUnit): Body {
   const change = changeFor(unit, "flags");
@@ -984,12 +1022,11 @@ function flagsBody(unit: PreviewedUnit): Body {
         ...(QUIET_STATES.has(to) ? { stress: "aside" as const } : {})
       };
     }
-    const last = setting.states[setting.states.length - 1]![0];
     const why = flagCause(setting.key, from, to, moves);
     return {
       label: setting.label,
       value: to,
-      change: { direction: to === last ? ("down" as const) : ("up" as const), from },
+      change: { direction: to === setting.resting ? ("down" as const) : ("up" as const), from },
       ...(why ? { why } : {})
     };
   });
