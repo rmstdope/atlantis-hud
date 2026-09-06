@@ -125,6 +125,207 @@ describe("the column popups", () => {
     expect(popup.lines).toEqual([{ label: "men", value: "12", why: "was: ~8" }]);
   });
 
+  it("the men popup draws a line for each race, paired against the report", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 15,
+          menByRace: [
+            { amount: 13, name: "humans", tag: "HUMN" },
+            { amount: 2, name: "orcs", tag: "ORC" }
+          ],
+          previewChanges: [
+            { field: "men", original: "14" },
+            { field: "items", original: "10 HUMN, 4 ORC, 380 SILV" }
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "men", value: "15", change: { direction: "up", from: "14" } },
+      { label: "humans HUMN", value: "13", change: { direction: "up", from: "10" } },
+      { label: "orcs ORC", value: "2", change: { direction: "down", from: "4" } }
+    ]);
+  });
+
+  it("a race the report never listed starts at none, and one it no longer holds ends at gone", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 15,
+          menByRace: [{ amount: 15, name: "humans", tag: "HUMN" }],
+          itemChanges: [
+            {
+              tag: "ORC",
+              name: "orcs",
+              delta: -14,
+              cause: "given-away",
+              line: null,
+              unitPrice: null,
+              other: null,
+              isMan: true
+            }
+          ],
+          previewChanges: [{ field: "items", original: "14 ORC" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "men", value: "15" },
+      { label: "humans HUMN", value: "15", change: { direction: "up", from: "none" } },
+      // Its label comes from the `ItemChange`'s own name: `menByRace` no longer carries it.
+      { label: "orcs ORC", value: "gone", change: { direction: "down", from: "14" } }
+    ]);
+  });
+
+  it("the men popup draws no race pairs when the report's item list cannot be parsed", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 15,
+          menByRace: [{ amount: 15, name: "humans", tag: "HUMN" }],
+          previewChanges: [{ field: "items", original: "was: 10 HUMN" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "men", value: "15" },
+      { label: "humans HUMN", value: "15" }
+    ]);
+  });
+
+  it("the men popup draws no race lines for an estimated headcount", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 50,
+          menEstimated: true,
+          menByRace: [{ amount: 50, name: "humans", tag: "HUMN" }],
+          previewChanges: [{ field: "items", original: "50 HUMN" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "men", value: "~50" }]);
+  });
+
+  const manChange = (
+    overrides: Partial<NonNullable<PreviewedUnit["itemChanges"]>[number]>
+  ) =>
+    ({
+      tag: "HUMN",
+      name: "humans",
+      delta: 1,
+      cause: "bought",
+      line: null,
+      unitPrice: null,
+      other: null,
+      isMan: true,
+      ...overrides
+    }) as NonNullable<PreviewedUnit["itemChanges"]>[number];
+
+  it("the men popup names every movement of one race in a single sentence", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 15,
+          menByRace: [
+            { amount: 13, name: "humans", tag: "HUMN" },
+            { amount: 2, name: "orcs", tag: "ORC" }
+          ],
+          previewChanges: [
+            { field: "men", original: "14" },
+            { field: "items", original: "10 HUMN, 4 ORC, 380 SILV" }
+          ],
+          itemChanges: [
+            manChange({ cause: "bought", delta: 6, unitPrice: 60 }),
+            manChange({
+              cause: "given-away",
+              delta: -3,
+              other: { unitId: "1604", name: "Watch" }
+            }),
+            manChange({
+              tag: "ORC",
+              name: "orcs",
+              cause: "was-taken-from",
+              delta: -2,
+              other: { unitId: "1502", name: "Scouts" }
+            })
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.notes).toEqual([
+      "humans: recruited 6 at 60 silver each, gave 3 to Watch (1604).",
+      "orcs: 2 taken by Scouts (1502)."
+    ]);
+  });
+
+  it("the men popup names men taken from a unit the report does not show", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({ men: 15, menOfUnknownSkill: [{ amount: 4, tag: "HUMN", from: "1502" }] }),
+        facts()
+      )
+    );
+    expect(popup.notes).toContain("4 men taken from unit 1502, which your report does not show.");
+  });
+
+  it("the men popup does not claim nothing changed when only the races moved", () => {
+    // Three orcs given away and three humans recruited: the headcount is unmoved, so the core
+    // records no `men` change at all while two races moved.
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 3,
+          menByRace: [{ amount: 3, name: "humans", tag: "HUMN" }],
+          previewChanges: [{ field: "items", original: "3 ORC" }],
+          itemChanges: [manChange({ cause: "bought", delta: 3, unitPrice: 60 })]
+        }),
+        facts()
+      )
+    );
+    expect(popup.notes).not.toContain("Nothing this month changes this.");
+  });
+
+  it("a unit whose men nothing touched still says so", () => {
+    expect(columnPopup(popupForCell("men", unit({ men: 3 }), facts())).notes).toContain(
+      "Nothing this month changes this."
+    );
+  });
+
+  it("the men popup warns that an estimated headcount cannot be worked out", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 50,
+          menEstimated: true,
+          itemChanges: [manChange({ cause: "bought", delta: 6, unitPrice: 60 })]
+        }),
+        facts()
+      )
+    );
+    expect(popup.warning).toBe(
+      "This unit's headcount is a guess, so what this month does to it cannot be worked out."
+    );
+    expect(popup.notes).toContain("humans: recruited 6 at 60 silver each.");
+    expect(popup.notes).toContain(
+      "Estimated: the report has not been matched against the item catalogue, so only the first group of people is counted."
+    );
+  });
+
   it("a column with nothing to change says so", () => {
     expect(columnPopup(popupForCell("men", unit(), facts())).notes).toContain(
       "Nothing this month changes this."

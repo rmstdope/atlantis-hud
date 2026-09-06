@@ -356,9 +356,14 @@ function changeOf(
 export function itemCauseSentence(
   label: string,
   changes: readonly ItemChange[],
-  unit: PreviewedUnit
+  unit: PreviewedUnit,
+  /**
+   * These are people. A market purchase of men is a recruitment rather than a purchase of goods
+   * (`rules/buy`, `rules/economy_recruiting`, New Origins v8.0.0), so the `bought` clause says so.
+   */
+  people?: boolean
 ): string | undefined {
-  const clauses = changes.map((change) => itemCauseClause(change, unit));
+  const clauses = changes.map((change) => itemCauseClause(change, unit, people === true));
   return clauses.length === 0 ? undefined : `${label}: ${clauses.join(", ")}.`;
 }
 
@@ -368,12 +373,12 @@ function party(other: ItemChangeParty): string {
 }
 
 /** One movement, as a fragment. The clauses are joined with `, ` and closed with one full stop. */
-function itemCauseClause(change: ItemChange, unit: PreviewedUnit): string {
+function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolean): string {
   const n = Math.abs(change.delta);
   const each = change.unitPrice === null ? "" : ` at ${change.unitPrice} silver each`;
   switch (change.cause) {
     case "bought":
-      return `bought ${n}${each}`;
+      return `${people ? "recruited" : "bought"} ${n}${each}`;
     case "sold":
       return `sold ${n}${each}`;
     case "withdrawn":
@@ -476,7 +481,7 @@ export function popupForCell(
   const field = CHANGE_FIELD[column];
   const change = field ? changeFor(unit, field) : undefined;
   const notes = [...body.notes];
-  if (field && !change) {
+  if (field && !change && !body.changed) {
     notes.push(`Nothing this month changes ${LISTS.has(column) ? "these" : "this"}.`);
   }
   // A column with nothing left to show - moved out of its structure, its last flag dropped, its
@@ -513,13 +518,20 @@ type Body = {
   lines: PopupLine[];
   notes: string[];
   warning?: string | null;
+  /**
+   * Set by a column that knows the month touched it even though `previewChanges` has no entry for
+   * its field - which the `men` column can be: a unit that gives three orcs away and recruits three
+   * humans ends the month with the same headcount, so the core records no `men` change while two
+   * races moved (`ah-rgkk.4.2`).
+   */
+  changed?: boolean;
 };
 
 /** What one column has to say, before the shared capping and change sentence are applied. */
 function bodyFor(column: PopupColumn, unit: PreviewedUnit, facts: PopupFacts): Body {
   switch (column) {
     case "men":
-      return menBody(unit);
+      return menBody(unit, facts);
     case "movement":
       return movementBody(unit);
     case "flags":
@@ -572,17 +584,141 @@ function sentence(text: string): string {
   return capitalised.endsWith(".") ? capitalised : `${capitalised}.`;
 }
 
-function menBody(unit: PreviewedUnit): Body {
+/** One race's line, before the total is put above it (`ah-rgkk.4.2`). */
+type RaceLine = { tag: string; line: PopupLine; moved: boolean };
+
+/**
+ * Every `ItemChange` of this unit that moved people, in the month's order.
+ *
+ * `isMan` is the core's answer (`ah-rgkk.4.1`) and the only one this package has: `packages/shared`
+ * carries no item catalogue, by decision (`gameData.ts`).
+ */
+function manChanges(unit: PreviewedUnit): ItemChange[] {
+  return (unit.itemChanges ?? []).filter((change) => change.isMan);
+}
+
+/**
+ * The report's own per-tag figures for the Men popup, off the `items` change - not the `men` one:
+ * the per-race before-figures are in the item list, and the `men` change carries only the total.
+ */
+function reportedFor(unit: PreviewedUnit): ReportedItems | undefined {
+  const change = changeFor(unit, CHANGE_FIELD.items!);
+  return change ? reportedItems(change.original) : undefined;
+}
+
+/**
+ * What to call one race: its `menByRace` entry's own name - the report's own word, and so often a
+ * plural - failing that the name of its first movement, failing both the bare tag.
+ *
+ * A race given away in full needs the second: `menByRace` no longer carries it.
+ */
+function raceName(unit: PreviewedUnit, tag: string): string {
+  return (
+    unit.menByRace.find((race) => race.tag === tag)?.name ??
+    manChanges(unit).find((change) => change.tag === tag)?.name ??
+    tag
+  );
+}
+
+/**
+ * The Men popup's per-race lines, in the order they are drawn: `menByRace`'s own order - which is
+ * the item list filtered by `is_man` (`crates/core/src/report/composition.rs`), so the report's -
+ * then any race the unit no longer holds, in the month's order.
+ *
+ * `reported` is the report's per-tag figures (`reportedFor`), or `undefined` when there is no items
+ * change or its string could not be parsed - in which case no line carries a pair.
+ */
+function raceLines(unit: PreviewedUnit, reported: ReportedItems | undefined): RaceLine[] {
+  const held = new Map(unit.menByRace.map((race) => [race.tag, race.amount]));
+  const changes = manChanges(unit);
+  const tags = [...held.keys()];
+  for (const change of changes) {
+    if (!tags.includes(change.tag)) {
+      tags.push(change.tag);
+    }
+  }
+
+  return tags.map((tag) => {
+    const amount = held.get(tag);
+    const before = reported?.get(tag);
+    const line: PopupLine = {
+      label: `${raceName(unit, tag)} ${tag}`,
+      value: amount === undefined ? "gone" : amount.toLocaleString()
+    };
+    const change = changeOf(before, amount, reported);
+    // Deliberately two clauses where `itemLines` has three: it also counts a tag the report never
+    // listed as moved, which earns an item its place ahead of the twelve-line cap. Nothing here is
+    // capped or sorted, and `moved` decides only whether a race is offered a sentence - which a
+    // race with no `ItemChange` never gets anyway (`itemCauseSentence` returns nothing for an empty
+    // list). Do not "fix" this into the third clause.
+    const moved =
+      changes.some((entry) => entry.tag === tag) ||
+      (before !== undefined && before !== (amount ?? 0));
+    return { tag, line: change ? { ...line, change } : line, moved };
+  });
+}
+
+function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
+  const total: PopupLine = {
+    label: "men",
+    value: describeMenBriefly(unit),
+    ...markOrQuote(changeFor(unit, CHANGE_FIELD.men!), unit.men)
+  };
+  const moved = manChanges(unit);
+  const unknown = unit.menOfUnknownSkill ?? [];
+  const touched = moved.length > 0 || unknown.length > 0;
   const why = whyEstimated(unit);
+
+  // An estimated headcount was never settled against the catalogue, so `men_by_race` is still the
+  // report's own list while the item ledger has moved underneath it (`settle_headcounts` returns
+  // early on `men_estimated`, `crates/core/src/orders/effects.rs`). Drawing race lines from it
+  // would pair the report against itself.
+  const entries = unit.menEstimated ? [] : raceLines(unit, reportedFor(unit));
+
+  // The tags to explain, and the order the sentences come in: the drawn races that moved, in the
+  // order their lines are drawn, then any tag that moved but has no line - which is every one of
+  // them for an estimated unit, whose movements are exact even though its base figure is not.
+  const explain: string[] = [];
+  for (const entry of entries) {
+    if (entry.moved) {
+      explain.push(entry.tag);
+    }
+  }
+  for (const change of moved) {
+    if (!explain.includes(change.tag)) {
+      explain.push(change.tag);
+    }
+  }
+
+  const notes: string[] = [];
+  for (const tag of explain) {
+    const said = itemCauseSentence(
+      raceName(unit, tag),
+      moved.filter((change) => change.tag === tag),
+      unit,
+      true
+    );
+    if (said !== undefined) {
+      notes.push(said);
+    }
+  }
+  for (const taken of unknown) {
+    notes.push(
+      `${count(taken.amount, "man", "men")} taken from ${unitReference(taken.from, facts)}, which your report does not show.`
+    );
+  }
+  if (why) {
+    notes.push(sentence(why));
+  }
+
   return {
-    lines: [
-      {
-        label: "men",
-        value: describeMenBriefly(unit),
-        ...markOrQuote(changeFor(unit, CHANGE_FIELD.men!), unit.men)
-      }
-    ],
-    notes: why ? [sentence(why)] : []
+    lines: [total, ...entries.map((entry) => entry.line)],
+    notes,
+    changed: touched,
+    warning:
+      unit.menEstimated && (touched || unit.recruitsUnmerged === true)
+        ? "This unit's headcount is a guess, so what this month does to it cannot be worked out."
+        : null
   };
 }
 
