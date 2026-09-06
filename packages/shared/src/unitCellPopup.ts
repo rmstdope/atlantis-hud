@@ -632,6 +632,11 @@ function raceLines(unit: PreviewedUnit, reported: ReportedItems | undefined): Ra
       value: amount === undefined ? "gone" : amount.toLocaleString()
     };
     const change = changeOf(before, amount, reported);
+    // Deliberately two clauses where `itemLines` has three: it also counts a tag the report never
+    // listed as moved, which earns an item its place ahead of the twelve-line cap. Nothing here is
+    // capped or sorted, and `moved` decides only whether a race is offered a sentence - which a
+    // race with no `ItemChange` never gets anyway (`itemCauseSentence` returns nothing for an empty
+    // list). Do not "fix" this into the third clause.
     const moved =
       changes.some((entry) => entry.tag === tag) ||
       (before !== undefined && before !== (amount ?? 0));
