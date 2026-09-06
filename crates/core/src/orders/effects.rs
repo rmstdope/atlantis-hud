@@ -2155,6 +2155,21 @@ impl Working {
                         return;
                     }
                     add_item(&mut self.units[taker].unit.items, &name, &tag, *count);
+                    // Below the mage refusal and the catalogue and quantity guards, so nothing
+                    // refused is recorded. `taken_unshown` stays exactly as it is - `ah-64wm`'s
+                    // and `ah-agbm`'s sentences read it - and the change is written alongside.
+                    self.units[taker].item_changes.push(ItemChange {
+                        tag: tag.clone(),
+                        name: name.clone(),
+                        delta: *count,
+                        cause: ItemChangeCause::Took,
+                        line: i64::try_from(line).ok(),
+                        unit_price: None,
+                        other: Some(ItemChangeParty {
+                            unit_id: id.clone(),
+                            name: None,
+                        }),
+                    });
                     self.units[taker].taken_unshown.push(TakenUnshown {
                         amount: *count,
                         tag,
@@ -7763,6 +7778,83 @@ mod tests {
                         name: Some("Source".to_string()),
                     }),
                 }],
+            );
+        }
+
+        /// `rules/take`: a TAKE is a GIVE with the direction reversed, so the same movement is
+        /// seen from two sides - the taker took, the source was taken from.
+        #[test]
+        fn a_take_reaches_both_units_as_an_item_change() {
+            let response = preview_over(&report_with_three(), "unit 901\nTAKE FROM 900 4 SWOR\n");
+
+            let taker = row_of(&response, "901");
+            assert_eq!(
+                taker.item_changes,
+                vec![ItemChange {
+                    tag: "SWOR".to_string(),
+                    name: "swords".to_string(),
+                    delta: 4,
+                    cause: ItemChangeCause::Took,
+                    line: Some(2),
+                    unit_price: None,
+                    other: Some(ItemChangeParty {
+                        unit_id: "900".to_string(),
+                        name: Some("Source".to_string()),
+                    }),
+                }],
+            );
+
+            let source = row_of(&response, "900");
+            assert_eq!(
+                source.item_changes,
+                vec![ItemChange {
+                    tag: "SWOR".to_string(),
+                    name: "swords".to_string(),
+                    delta: -4,
+                    cause: ItemChangeCause::WasTakenFrom,
+                    line: Some(2),
+                    unit_price: None,
+                    other: Some(ItemChangeParty {
+                        unit_id: "901".to_string(),
+                        name: Some("Taker".to_string()),
+                    }),
+                }],
+            );
+        }
+
+        /// `ah-agbm`'s bounded optimism has its own exit from `take`, which never reaches
+        /// `move_between` - so the change is pushed there too, and `taken_unshown` is left alone
+        /// for the sentences that already read it.
+        #[test]
+        fn taking_from_a_unit_the_report_does_not_show_records_the_change_on_the_taker() {
+            let response = preview_over(&report_with_three(), "unit 901\nTAKE FROM 7777 3 SWOR\n");
+
+            let taker = row_of(&response, "901");
+            assert_eq!(
+                taker.item_changes,
+                vec![ItemChange {
+                    tag: "SWOR".to_string(),
+                    // The catalogue's own spelling, which is what this path adds to the item
+                    // list as well - no report row was there to supply the plural.
+                    name: "sword".to_string(),
+                    delta: 3,
+                    cause: ItemChangeCause::Took,
+                    line: Some(2),
+                    unit_price: None,
+                    other: Some(ItemChangeParty {
+                        unit_id: "7777".to_string(),
+                        name: None,
+                    }),
+                }],
+            );
+            assert_eq!(
+                taker
+                    .taken_unshown
+                    .iter()
+                    .map(|taken| (taken.tag.as_str(), taken.amount, taken.from.as_str()))
+                    .collect::<Vec<_>>(),
+                vec![("SWOR", 3, "7777")],
+                "the list `ah-64wm`'s and `ah-agbm`'s sentences read is untouched",
             );
         }
 
