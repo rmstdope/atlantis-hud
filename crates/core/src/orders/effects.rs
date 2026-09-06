@@ -2539,9 +2539,46 @@ impl Working {
                         order_index: index,
                     },
                 ));
+                if moved != 0 {
+                    // Read before the push: `self.units` is borrowed mutably below. The receiver's
+                    // name only where this hex's rows show it - a target the report does not show
+                    // is a number and nothing more (`TransportSent::to_unshown`).
+                    let receiver_name = pending
+                        .receiver
+                        .map(|receiver| self.units[receiver].unit.name.clone());
+                    // `line` is `None`: what a transport carries is the order's `order_index`,
+                    // which `TransportSent` already holds, not a document line (`ah-rgkk.3.1`).
+                    self.units[pending.sender].item_changes.push(ItemChange {
+                        tag: tag.clone(),
+                        name: name.clone(),
+                        delta: -moved,
+                        cause: ItemChangeCause::TransportedOut,
+                        line: None,
+                        unit_price: None,
+                        other: Some(ItemChangeParty {
+                            unit_id: pending.to.clone(),
+                            name: receiver_name,
+                        }),
+                    });
+                }
                 if let Some(receiver) = pending.receiver {
                     add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
                     let from = self.units[pending.sender].unit.unit_id.clone();
+                    let from_name = self.units[pending.sender].unit.name.clone();
+                    if moved != 0 {
+                        self.units[receiver].item_changes.push(ItemChange {
+                            tag: tag.clone(),
+                            name: name.clone(),
+                            delta: moved,
+                            cause: ItemChangeCause::TransportedIn,
+                            line: None,
+                            unit_price: None,
+                            other: Some(ItemChangeParty {
+                                unit_id: from.clone(),
+                                name: Some(from_name),
+                            }),
+                        });
+                    }
                     received[receiver].push((
                         pending.sequence,
                         TransportReceived {
@@ -6698,6 +6735,49 @@ mod tests {
                 .changes
                 .iter()
                 .any(|change| change.field == "items"));
+        }
+
+        /// `ah-rgkk.3.1`, increment 5. A transport is an item change on both ends, and it is the
+        /// month's last item phase (`rules/sequenceofevents`), so it comes last.
+        #[test]
+        fn a_transport_reaches_both_units_as_an_item_change() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 6857 30 STON\n");
+
+            let sender = sender_row(&response);
+            let sent = sender
+                .item_changes
+                .iter()
+                .find(|change| change.tag == "STON")
+                .expect("the sender records what left");
+            assert_eq!(sent.cause, ItemChangeCause::TransportedOut);
+            assert_eq!(sent.delta, -30);
+            assert_eq!(
+                sent.other.as_ref().map(|other| other.unit_id.as_str()),
+                Some("6857")
+            );
+
+            let receiver = receiver_row(&response).expect("the receiver is previewed");
+            let arrived = receiver
+                .item_changes
+                .iter()
+                .find(|change| change.tag == "STON")
+                .expect("the receiver records what arrived");
+            assert_eq!(arrived.cause, ItemChangeCause::TransportedIn);
+            assert_eq!(arrived.delta, 30);
+            assert_eq!(
+                arrived.other.as_ref().map(|other| other.unit_id.as_str()),
+                Some("5530")
+            );
+        }
+
+        /// `ah-rgkk.3.1`, increment 5. A refused line moves nothing, so it explains nothing here -
+        /// `transport_sent` already speaks for it (`ah-64wm`).
+        #[test]
+        fn a_refused_transport_records_no_item_change() {
+            let response = two_hex_preview("unit 6857\nTRANSPORT 5531 1 LEAD\n");
+
+            let unit = row(&response, "1:2,2", "6857").expect("the refusal is still reported");
+            assert!(unit.item_changes.is_empty(), "{:?}", unit.item_changes);
         }
 
         #[test]
