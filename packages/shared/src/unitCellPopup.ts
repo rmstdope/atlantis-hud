@@ -225,6 +225,16 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
     }
   }
 
+  // Decision **B**: everything the month moved first, in the month's own order, so no movement is
+  // ever lost to the cap - then a moved tag the core recorded no change for, then the rest. Inside
+  // the last two, the cell's own amount-descending order.
+  const monthOrder = new Map<string, number>();
+  for (const [index, change] of changes.entries()) {
+    if (!monthOrder.has(change.tag)) {
+      monthOrder.set(change.tag, index);
+    }
+  }
+
   return tags.map((tag) => {
     const item = held.get(tag);
     const name = item?.name ?? changeName.get(tag);
@@ -239,8 +249,25 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
       value: amount === undefined ? "gone" : rangedValue(amount, shortfall.get(tag) ?? 0)
     };
     const change = changeOf(before, amount, reported);
-    return { tag, line: change ? { ...line, change } : line, moved };
-  });
+    return { tag, line: change ? { ...line, change } : line, moved, amount: amount ?? 0 };
+  })
+    .sort((a, b) => rank(a, monthOrder) - rank(b, monthOrder) || b.amount - a.amount)
+    .map(({ tag, line, moved }) => ({ tag, line, moved }));
+}
+
+/**
+ * Which block a line sorts into: its place in the month for a recorded movement, then a movement
+ * the core did not record, then everything the month left alone.
+ */
+function rank(
+  entry: { tag: string; moved: boolean },
+  monthOrder: ReadonlyMap<string, number>
+): number {
+  const inMonth = monthOrder.get(entry.tag);
+  if (inMonth !== undefined) {
+    return inMonth;
+  }
+  return entry.moved ? monthOrder.size : monthOrder.size + 1;
 }
 
 /**

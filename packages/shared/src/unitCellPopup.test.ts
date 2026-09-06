@@ -998,3 +998,70 @@ describe("the items popup's pairs", () => {
     expect(popup.lines).toEqual([{ label: "sword SWOR", value: "12", why: "was: ~8 SWOR" }]);
   });
 });
+
+describe("the items popup's order", () => {
+  const change = (tag: string, delta: number) => ({
+    tag,
+    name: tag.toLowerCase(),
+    delta,
+    cause: "produced" as const,
+    line: null,
+    unitPrice: null,
+    other: null
+  });
+
+  it("draws every item this month moved before the ones it did not", () => {
+    // Fifteen tags, of which the two smallest moved: without the moved-first rule both would fall
+    // outside the twelve lines the popup draws.
+    const tags = Array.from({ length: 15 }, (_, i) => `T${String(i).padStart(2, "0")}`);
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: tags.map((tag, i) => ({ name: tag.toLowerCase(), tag, amount: 100 - i })),
+          itemChanges: [change("T13", 1), change("T14", 1)]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.slice(0, 2).map((line) => line.label)).toEqual(["t13 T13", "t14 T14"]);
+    // The rest keep the cell's own amount-descending order.
+    expect(popup.lines.slice(2).map((line) => line.label)).toEqual(
+      tags.slice(0, 10).map((tag) => `${tag.toLowerCase()} ${tag}`)
+    );
+  });
+
+  it("puts the moved items in the month's own order", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { name: "grain", tag: "GRAI", amount: 40 },
+            { name: "wood", tag: "WOOD", amount: 2 }
+          ],
+          itemChanges: [change("WOOD", 2), change("GRAI", 1)]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.map((line) => line.label)).toEqual(["wood WOOD", "grain GRAI"]);
+  });
+
+  it("keeps an item whose movement the core did not record in the moved block", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { name: "grain", tag: "GRAI", amount: 40 },
+            { name: "wood", tag: "WOOD", amount: 5 }
+          ],
+          previewChanges: [{ field: "items", original: "40 GRAI, 2 WOOD" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.map((line) => line.label)).toEqual(["wood WOOD", "grain GRAI"]);
+  });
+});
