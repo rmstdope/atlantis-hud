@@ -7744,7 +7744,7 @@ mod tests {
         assert!(unit.unit.men_estimated, "the fixture must stay estimated");
         assert!(!unit.recruits_unmerged);
         assert!(unit.skill_merges.is_empty(), "{:?}", unit.skill_merges);
-}
+    }
 
     /// A unit whose only order is `STUDY` changes nothing this month - `rules/sequenceofevents`
     /// runs `STUDY` after the market - so its row exists only because the forecast does
