@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>ah-qkhk — The unit pane's Events section</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --edge-soft:#222b37;
+          --ink:#d7dee8; --soft:#aab4c2; --dim:#8a94a3; --brass:#c9a227; --brass-b:#e8bf3a;
+          --warn:#d9a441; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 26px 0 8px; }
+  p.note { color: var(--soft); max-width: 82ch; }
+  p.cost { color: var(--dim); font-size: 13px; margin: 6px 0 0; max-width: 76ch; }
+  .row { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+  .pane { width: 260px; background: var(--panel); border: 1px solid var(--edge);
+          border-radius: 8px; overflow: hidden; }
+  .pane > header { display: flex; align-items: center; gap: 6px; padding: 5px 9px;
+                   border-bottom: 1px solid var(--edge); font-size: 12px; }
+  .pane .title { font-weight: 600; }
+  .pane .hint { color: var(--dim); }
+  .spacer { flex: 1; }
+  .pane .body { padding: 8px 10px; font-size: 11.5px; }
+  dl.fields { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; margin: 0 0 6px; }
+  dl.fields dt { color: var(--dim); }
+  dl.fields dd { margin: 0; }
+  .sect { border-top: 1px solid var(--edge-soft); margin-top: 6px; padding-top: 5px; }
+  .sect h3 { font-size: 11.5px; color: var(--dim); margin: 0 0 3px; font-weight: 600;
+             text-transform: none; }
+  .jump { background: none; border: 0; padding: 0; font: inherit; color: var(--brass);
+          cursor: pointer; text-align: left; }
+  .jump:hover { text-decoration: underline; }
+  .jump.off { color: var(--dim); cursor: default; }
+  .popover { width: 460px; background: var(--panel); border: 1px solid var(--edge);
+             border-radius: 8px; overflow: hidden; font-size: 11.5px; }
+  .popover .head { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+                   border-bottom: 1px solid var(--edge); color: var(--soft); }
+  .tabs { display: flex; gap: 4px; padding: 6px 8px 0; }
+  .tab { border: 1px solid var(--edge); border-radius: 4px; padding: 1px 8px; color: var(--soft);
+         background: none; font: inherit; }
+  .tab.on { border-color: var(--brass); color: var(--brass); }
+  .tab.dis { opacity: .4; }
+  .scroll { max-height: 260px; overflow-y: auto; padding: 8px; }
+  .group { border-top: 1px solid var(--edge-soft); padding: 4px 0; }
+  .group:first-child { border-top: 0; }
+  .group .gh { display: flex; align-items: baseline; gap: 8px; }
+  .group .gh .u { color: var(--brass); }
+  .group .gh .u.plain { color: var(--dim); }
+  .group .gh .n { color: var(--dim); }
+  .group ul { margin: 0; padding-left: 10px; list-style: none; }
+  .group li { padding: 1px 0; }
+  .group.hit { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 4px;
+               background: rgba(201,162,39,.07); }
+  .banner { display: flex; align-items: baseline; gap: 8px; padding: 3px 8px; margin: 0 0 6px;
+            border: 1px solid var(--brass); border-radius: 4px; color: var(--soft); }
+  .banner button { background: none; border: 0; color: var(--brass); font: inherit;
+                   cursor: pointer; padding: 0; }
+  .foot { border-top: 1px solid var(--edge); padding: 5px 8px; color: var(--dim); }
+  .empty { font-style: italic; color: var(--dim); margin: 0; }
+  .cap { color: var(--dim); font-size: 12px; margin: 4px 0 0; }
+</style></head><body>
+<h1>ah-qkhk — The unit pane's Events section</h1>
+<p class="note"><strong>Chosen: Variant C3</strong> — the unit's own event lines are shown in the
+unit pane itself, uncapped, as the last section of the panel, with one link into the turn report's
+Events tab. Variant A (open the report filtered to that unit) and Variant B (open the report scrolled
+to that unit's group and outlined) were both rejected: they move the player somewhere to read three
+lines that fit where they were already looking. Within C, capping the list at three and putting the
+section above Movement were rejected too — the panel body already scrolls, so putting the section
+last costs a long list nothing and never displaces Movement, Flags, Skills or Items. The interview is
+recorded in bead ah-qkhk's design field.</p>
+<p class="note">Before this, reaching the events the engine printed for the unit you were looking at
+meant opening the turn report, switching to Events, and reading down a list of every event in the
+report. The reverse direction already worked: a unit named in the events list is a link back to the
+unit.</p>
+
+<h2>1 — A unit the turn had three events for</h2>
+<div class="row">
+  <div class="pane">
+    <header><span class="title">Unit</span><span class="hint">— Seven of Eight (18642)</span><span class="spacer"></span><span class="hint">▾</span></header>
+    <div class="body" style="max-height:300px;overflow-y:auto">
+      <p style="margin:0 0 6px"><strong style="color:var(--brass)">Borg TNG (95)</strong> · your faction</p>
+      <dl class="fields"><dt>Hex</dt><dd>1:7,53</dd><dt>Men</dt><dd>1 leader</dd>
+      <dt>Weight</dt><dd>10</dd><dt>Capacity</dt><dd>0</dd></dl>
+      <div class="sect"><h3>Movement</h3><p style="margin:0">Walk · 4 left</p></div>
+      <div class="sect"><h3>Flags</h3><p style="margin:0">avoiding · behind · revealing faction</p></div>
+      <div class="sect"><h3>Skills <span style="color:var(--dim)">1</span></h3>
+        <div style="display:flex;justify-content:space-between"><span>observation OBSE</span><span style="color:var(--soft)">2 (90)</span></div></div>
+      <div class="sect"><h3>Items <span style="color:var(--dim)">3</span></h3>
+        <div style="display:flex;justify-content:space-between"><span>leaders LEAD</span><span style="color:var(--soft)">1</span></div>
+        <div style="display:flex;justify-content:space-between"><span>silver SILV</span><span style="color:var(--soft)">50</span></div>
+        <div style="display:flex;justify-content:space-between"><span>staff of fire STAF</span><span style="color:var(--soft)">1</span></div></div>
+      <div class="sect"><h3>Events <span style="color:var(--dim)">3</span></h3>
+        <ul style="margin:0;padding-left:0;list-style:none">
+          <li style="padding:1px 0">Claims $50.</li>
+          <li style="padding:1px 0">Studies observation at a cost of 50 silver [SILV].</li>
+          <li style="padding:1px 0">Claims 50 silver for maintenance.</li>
+        </ul>
+        <button class="jump" style="margin-top:3px">All 452 events this turn</button>
+      </div>
+    </div>
+  </div>
+  <p class="cap" style="max-width:46ch">Uncapped and last, so
+  the three lines sit below everything the panel already showed rather than pushing any of it down.
+  The count beside the heading is this unit's, in the same place Skills and Items put theirs; the
+  link's count is the whole turn's.</p>
+</div>
+
+<h2>2 — A unit the turn had no events for</h2>
+<div class="row">
+  <div class="pane">
+    <header><span class="title">Unit</span><span class="hint">— Nine of Eight (13403)</span><span class="spacer"></span><span class="hint">▾</span></header>
+    <div class="body" style="max-height:300px;overflow-y:auto">
+      <p style="margin:0 0 6px"><strong style="color:var(--brass)">Borg TNG (95)</strong> · your faction</p>
+      <dl class="fields"><dt>Hex</dt><dd>1:7,53</dd><dt>Men</dt><dd>1 leader</dd>
+      <dt>Weight</dt><dd>10</dd><dt>Capacity</dt><dd>0</dd></dl>
+      <div class="sect"><h3>Movement</h3><p style="margin:0">Walk · 4 left</p></div>
+      <div class="sect"><h3>Flags</h3><p style="margin:0">avoiding · behind · revealing faction</p></div>
+      <div class="sect"><h3>Skills <span style="color:var(--dim)">1</span></h3>
+        <div style="display:flex;justify-content:space-between"><span>observation OBSE</span><span style="color:var(--soft)">2 (90)</span></div></div>
+      <div class="sect"><h3>Items <span style="color:var(--dim)">3</span></h3>
+        <div style="display:flex;justify-content:space-between"><span>leaders LEAD</span><span style="color:var(--soft)">1</span></div>
+        <div style="display:flex;justify-content:space-between"><span>silver SILV</span><span style="color:var(--soft)">50</span></div>
+        <div style="display:flex;justify-content:space-between"><span>staff of fire STAF</span><span style="color:var(--soft)">1</span></div></div>
+      <div class="sect"><h3>Events</h3>
+        <p class="empty">No events for this unit this turn.</p>
+        <button class="jump" style="margin-top:3px">All 452 events this turn</button>
+      </div>
+    </div>
+  </div>
+  <p class="cap" style="max-width:46ch">The section is always
+  present and says so in words, so the panel's shape does not change as you walk units with
+  Alt+Arrow. The link stays: the rest of the turn is still worth reaching from here.</p>
+</div>
+
+<h2>3 — A turn with no events at all</h2>
+<div class="row">
+  <div class="pane">
+    <header><span class="title">Unit</span><span class="hint">— Nine of Eight (13403)</span><span class="spacer"></span><span class="hint">▾</span></header>
+    <div class="body" style="max-height:300px;overflow-y:auto">
+      <p style="margin:0 0 6px"><strong style="color:var(--brass)">Borg TNG (95)</strong> · your faction</p>
+      <dl class="fields"><dt>Hex</dt><dd>1:7,53</dd><dt>Men</dt><dd>1 leader</dd>
+      <dt>Weight</dt><dd>10</dd><dt>Capacity</dt><dd>0</dd></dl>
+      <div class="sect"><h3>Movement</h3><p style="margin:0">Walk · 4 left</p></div>
+      <div class="sect"><h3>Flags</h3><p style="margin:0">avoiding · behind · revealing faction</p></div>
+      <div class="sect"><h3>Skills <span style="color:var(--dim)">1</span></h3>
+        <div style="display:flex;justify-content:space-between"><span>observation OBSE</span><span style="color:var(--soft)">2 (90)</span></div></div>
+      <div class="sect"><h3>Items <span style="color:var(--dim)">3</span></h3>
+        <div style="display:flex;justify-content:space-between"><span>leaders LEAD</span><span style="color:var(--soft)">1</span></div>
+        <div style="display:flex;justify-content:space-between"><span>silver SILV</span><span style="color:var(--soft)">50</span></div>
+        <div style="display:flex;justify-content:space-between"><span>staff of fire STAF</span><span style="color:var(--soft)">1</span></div></div>
+      <div class="sect"><h3>Events</h3>
+        <p class="empty">No events for this unit this turn.</p>
+      </div>
+    </div>
+  </div>
+  <p class="cap" style="max-width:46ch">No link, because
+  there is nothing behind it — the report's Events tab would be empty and is disabled anyway.</p>
+</div>
+
+<p class="note">Foreign units get the section on the same terms: a report prints events naming other
+factions' units — “Cpt Stanley (13423) is caught attempting to steal from Cpt Stu (14677) in
+Nurplishglen.” — and the unit pane already shows foreign units in full.</p>
+</body></html>
