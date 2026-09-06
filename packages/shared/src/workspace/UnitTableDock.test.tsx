@@ -206,7 +206,7 @@ describe("the structure column", () => {
     expect(markup).not.toContain("Wavecrest");
     // The structure cell shows nothing but the sentence a screen reader hears (`ah-rgkk.1`).
     const structure = /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
-    expect(structure).toMatch(/^<td[^>]*><span class="sr-only">[^<]*<\/span><\/td>$/);
+    expect(structure).toMatch(/^<td[^>]*><span class="sr-only"[^>]*>[^<]*<\/span><\/td>$/);
     expect(structure).toContain("In no structure.");
   });
 
@@ -1048,7 +1048,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
       )
     );
 
-    const skillsCell = /<td[^>]*>LUMB 5 \(450\)<span class="sr-only">[^<]*<\/span><\/td>/.exec(markup)?.[0];
+    const skillsCell = /<td[^>]*>LUMB 5 \(450\)<span class="sr-only"[^>]*>[^<]*<\/span><\/td>/.exec(markup)?.[0];
     expect(skillsCell).toBeTruthy();
     expect(skillsCell).not.toContain("italic");
     expect(skillsCell).not.toContain("data-predicted");
