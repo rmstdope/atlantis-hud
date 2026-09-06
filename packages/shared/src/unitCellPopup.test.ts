@@ -301,7 +301,7 @@ describe("the column popups", () => {
     expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual(["was: 20 SILV"]);
   });
 
-  it("says the report's own figure once for a unit that gave everything away", () => {
+  it("draws what a unit that gave everything away used to hold", () => {
     const popup = columnPopup(
       popupForCell(
         "items",
@@ -309,8 +309,11 @@ describe("the column popups", () => {
         facts()
       )
     );
-    expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual(["was: 20 SILV"]);
-    expect(popup.notes).toContain("No items.");
+    expect(popup.lines).toEqual([
+      { label: "SILV", value: "gone", change: { direction: "down", from: "20" } }
+    ]);
+    // It has lines, so the shared "Was: ..." sentence never fires and the list is not empty.
+    expect(popup.notes).not.toContain("No items.");
   });
 
   it("says nothing moved when the report's figure is the one already shown", () => {
@@ -903,5 +906,81 @@ describe("reportedItems", () => {
   it("gives up on an original it cannot parse", () => {
     expect(reportedItems("was: 20 SILV")).toBeUndefined();
     expect(reportedItems("~8 SWOR")).toBeUndefined();
+  });
+});
+
+describe("the items popup's pairs", () => {
+  it("pairs each item with what the report said", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "sword", tag: "SWOR", amount: 12 }],
+          previewChanges: [{ field: "items", original: "8 SWOR" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "sword SWOR", value: "12", change: { direction: "up", from: "8" } }
+    ]);
+  });
+
+  it("an item the unit no longer holds ends at gone", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [],
+          previewChanges: [{ field: "items", original: "20 SILV" }],
+          itemChanges: [
+            {
+              tag: "SILV",
+              name: "silver",
+              delta: -20,
+              cause: "given-away",
+              line: 3,
+              unitPrice: null,
+              other: { unitId: "1502", name: "Scouts" }
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "silver SILV", value: "gone", change: { direction: "down", from: "20" } }
+    ]);
+    expect(popup.notes).not.toContain("No items.");
+  });
+
+  it("an item the report never listed starts at none", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "sword", tag: "SWOR", amount: 4 }],
+          previewChanges: [{ field: "items", original: "" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "sword SWOR", value: "4", change: { direction: "up", from: "none" } }
+    ]);
+  });
+
+  it("quotes the report's own words when the change cannot be parsed", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "sword", tag: "SWOR", amount: 12 }],
+          previewChanges: [{ field: "items", original: "~8 SWOR" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "sword SWOR", value: "12", why: "was: ~8 SWOR" }]);
   });
 });

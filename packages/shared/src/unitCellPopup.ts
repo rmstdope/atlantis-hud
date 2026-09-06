@@ -192,6 +192,75 @@ export function reportedItems(original: string): ReportedItems | undefined {
   return items;
 }
 
+/** One item's line, before the cap: what it is, what it stands at, and where it came from. */
+export type ItemLine = { tag: string; line: PopupLine; moved: boolean };
+
+/**
+ * The `items` popup's lines, in the order they are drawn.
+ *
+ * The tags are the union of what the unit holds now and what the report listed, so an item given
+ * away in full still has a line ending at `gone` and one that arrived this month starts at
+ * `none`.
+ */
+export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefined): ItemLine[] {
+  const changes = unit.itemChanges ?? [];
+  const held = new Map(unit.items.map((item) => [item.tag, item]));
+  const changeName = new Map<string, string>();
+  for (const change of changes) {
+    if (!changeName.has(change.tag)) {
+      changeName.set(change.tag, change.name);
+    }
+  }
+
+  const tags: string[] = [];
+  for (const tag of [...held.keys(), ...(reported?.keys() ?? [])]) {
+    if (!tags.includes(tag)) {
+      tags.push(tag);
+    }
+  }
+
+  return tags.map((tag) => {
+    const item = held.get(tag);
+    const name = item?.name ?? changeName.get(tag);
+    const before = reported?.get(tag);
+    const amount = item?.amount;
+    const moved =
+      changes.some((change) => change.tag === tag) ||
+      (before !== undefined && before !== (amount ?? 0)) ||
+      (before === undefined && reported !== undefined);
+    const line: PopupLine = {
+      label: name === undefined ? tag : `${name} ${tag}`,
+      value: amount === undefined ? "gone" : amount.toLocaleString()
+    };
+    const change = changeOf(before, amount, reported);
+    return { tag, line: change ? { ...line, change } : line, moved };
+  });
+}
+
+/**
+ * The pair one item's line draws, or nothing at all.
+ *
+ * A tag held now but absent from the report pairs from `none`; a tag the report listed and the
+ * unit no longer holds ends at `gone` and moves `down`.
+ */
+function changeOf(
+  before: number | undefined,
+  amount: number | undefined,
+  reported: ReportedItems | undefined
+): PopupChange | undefined {
+  if (reported === undefined) {
+    return undefined;
+  }
+  const now = amount ?? 0;
+  if (before === now) {
+    return undefined;
+  }
+  return {
+    direction: now > (before ?? 0) ? "up" : "down",
+    from: before === undefined ? "none" : before.toLocaleString()
+  };
+}
+
 /** How many lines a popup shows before it stops and counts the rest (decision **G-d**). */
 export const MAX_LINES = 12;
 
@@ -695,12 +764,21 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const partlyCounted =
     (unit.uncounted?.length ?? 0) > 0 || hasUncertainTransportTarget(unit);
 
+  const change = changeFor(unit, CHANGE_FIELD.items!);
+  const reported = change ? reportedItems(change.original) : undefined;
+  const entries = itemLines(unit, reported);
+  // The unparseable-original fallback, the same shape `foreignSkillsBody` uses: no line carries a
+  // pair, and the report's own words go on the first line as `why`.
+  const quoteFirst = change !== undefined && reported === undefined && entries.length > 0;
+  const lines = entries.map((entry, index) =>
+    quoteFirst && index === 0 ? { ...entry.line, why: originalTooltip(change) } : entry.line
+  );
+
   return {
-    lines: summariseUnit(unit).items,
-    // `itemsTooltip` opens with the report's own list, so this column never needs the shared
-    // sentence - not even when the unit ends the month holding nothing.
-    quoted: told !== undefined,
-    notes: [...(told ? told.split("\n") : []), ...(unit.items.length === 0 ? ["No items."] : [])],
+    // Off the drawn list rather than off current stock: a unit that gave everything away still
+    // has lines, its items ending at `gone`.
+    notes: [...(told ? told.split("\n") : []), ...(lines.length === 0 ? ["No items."] : [])],
+    lines,
     warning: partlyCounted
       ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
       : null
