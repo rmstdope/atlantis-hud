@@ -15,6 +15,7 @@ use super::forms::{self, Amount, Party, Selector};
 use super::lexer::{Token, TokenKind};
 use super::walk::{self, Depth, Event};
 use crate::movement::orders::MoveStep;
+use crate::report::flags::FlagChange;
 use crate::report::model::ReportRegion;
 
 /// One thing a unit's orders would do.
@@ -165,6 +166,16 @@ pub struct UnitIntents {
     /// set - which means a typo, or an order the game has and this list has not. Carries line
     /// numbers so a message could name one; nothing does yet.
     pub unread: Vec<usize>,
+    /// Every flag order in this unit's own block, in document order, as
+    /// [`crate::report::flags::FlagChange`] describes it.
+    ///
+    /// **Additive, and orthogonal to `intents` and `unread`.** GUARD, AVOID, BEHIND and SHARE
+    /// yield an intent *and* a change; AUTOTAX, NOAID, HOLD, NOCROSS, REVEAL, CONSUME and SPOILS
+    /// yield a change and no intent, and stay free orders rather than unread ones. A flag order
+    /// whose argument the grammar refuses yields neither, exactly as it does today.
+    ///
+    /// Not placed: nothing hangs a finding on a flag order line, so no line number is carried.
+    pub flag_changes: Vec<FlagChange>,
 }
 
 impl UnitIntents {
@@ -215,6 +226,7 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                     line: line.number,
                     intents: Vec::new(),
                     unread: Vec::new(),
+                    flag_changes: Vec::new(),
                 });
             }
         }
@@ -222,6 +234,10 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
         // (see `read_intents`'s own doc); an order inside either is not this reading's business.
         Event::Order { line, depth } if depth == Depth::default() => {
             if let Some(unit) = units.last_mut() {
+                if let Some(change) = super::effects::read_flag_order(line.command, line.arguments)
+                {
+                    unit.flag_changes.push(change);
+                }
                 if let Some(intent) = read_order(line.command, line.arguments) {
                     unit.intents.push(PlacedIntent {
                         intent,
@@ -295,6 +311,9 @@ pub struct FormedBlock {
     /// Order lines inside this block whose keyword is in neither [`FREE_ORDERS`] nor the
     /// month-long set, read exactly as [`UnitIntents::unread`] reads them.
     pub unread: Vec<usize>,
+    /// The flag orders written inside this `FORM` block, read exactly as
+    /// [`UnitIntents::flag_changes`] reads them. An inner `FORM`'s belong to the inner unit.
+    pub flag_changes: Vec<FlagChange>,
 }
 
 /// Every unit this document's `FORM` blocks create this month, in document order.
@@ -428,6 +447,7 @@ impl FormReader<'_> {
             block_line: line_number,
             intents: Vec::new(),
             unread: Vec::new(),
+            flag_changes: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -437,6 +457,9 @@ impl FormReader<'_> {
             return;
         };
         let block = &mut self.results[active];
+        if let Some(change) = super::effects::read_flag_order(command, arguments) {
+            block.flag_changes.push(change);
+        }
         if let Some(intent) = read_order(command, arguments) {
             block.intents.push(PlacedIntent {
                 intent,
@@ -797,6 +820,7 @@ pub fn works_by_default(intents: &[PlacedIntent]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::report::flags::{Group, Setting};
 
     fn only_unit(source: &str) -> UnitIntents {
         let mut units = read_intents(source);
@@ -1177,6 +1201,81 @@ mod tests {
     fn a_share_order_reads_as_an_intent() {
         assert_eq!(intents("unit 5\nSHARE 1\n"), vec![Intent::Share(true)]);
         assert_eq!(intents("unit 5\nSHARE 0\n"), vec![Intent::Share(false)]);
+    }
+
+    // --- flag changes carried out of the document ------------------------------------------
+
+    #[test]
+    fn a_flag_order_is_carried_out_of_the_unit_block() {
+        assert_eq!(
+            only_unit("unit 5\nAUTOTAX 1\n").flag_changes,
+            vec![FlagChange::Toggle {
+                setting: Setting::Taxing,
+                on: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn flag_changes_arrive_in_document_order() {
+        assert_eq!(
+            only_unit("unit 5\nAUTOTAX 1\nCONSUME UNIT\nAUTOTAX 0\n").flag_changes,
+            vec![
+                FlagChange::Toggle {
+                    setting: Setting::Taxing,
+                    on: true,
+                },
+                FlagChange::Choose {
+                    group: Group::Consume,
+                    chosen: Some(Setting::ConsumingUnit),
+                },
+                FlagChange::Toggle {
+                    setting: Setting::Taxing,
+                    on: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_flag_order_that_yields_an_intent_yields_a_change_too() {
+        let guarding = only_unit("unit 5\nGUARD 1\n");
+        assert_eq!(
+            guarding
+                .intents
+                .iter()
+                .map(|placed| placed.intent.clone())
+                .collect::<Vec<_>>(),
+            vec![Intent::Guard(true)]
+        );
+        assert_eq!(
+            guarding.flag_changes,
+            vec![FlagChange::Toggle {
+                setting: Setting::Guarding,
+                on: true,
+            }]
+        );
+
+        let taxing = only_unit("unit 5\nAUTOTAX 1\n");
+        assert!(taxing.intents.is_empty(), "{taxing:?}");
+        assert!(taxing.unread.is_empty(), "{taxing:?}");
+        assert_eq!(taxing.flag_changes.len(), 1, "{taxing:?}");
+    }
+
+    #[test]
+    fn a_flag_order_the_grammar_refuses_carries_no_change() {
+        let refused = only_unit("unit 5\nGUARD 01\n");
+        assert!(refused.intents.is_empty(), "{refused:?}");
+        assert!(refused.flag_changes.is_empty(), "{refused:?}");
+    }
+
+    #[test]
+    fn a_flag_order_in_a_turn_block_is_next_months() {
+        assert!(
+            only_unit("unit 5\nTURN\nAUTOTAX 1\nENDTURN\n")
+                .flag_changes
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1586,6 +1685,30 @@ mod tests {
         let mut regions = BTreeMap::new();
         regions.insert(unit_id, region);
         regions
+    }
+
+    #[test]
+    fn a_flag_order_inside_a_form_belongs_to_the_formed_unit() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let source = "unit 1922\nAUTOTAX 1\nFORM 1\nNOCROSS 1\nEND\n";
+        let formed = read_formed(source, &regions);
+
+        assert_eq!(formed.len(), 1, "{formed:?}");
+        assert_eq!(
+            formed[0].flag_changes,
+            vec![FlagChange::Toggle {
+                setting: Setting::NoCross,
+                on: true,
+            }]
+        );
+        assert_eq!(
+            only_unit(source).flag_changes,
+            vec![FlagChange::Toggle {
+                setting: Setting::Taxing,
+                on: true,
+            }]
+        );
     }
 
     #[test]

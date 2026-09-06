@@ -1815,6 +1815,7 @@ impl OrderedUnits {
             line,
             intents,
             unread,
+            flag_changes: _,
         } in read_intents(source)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {

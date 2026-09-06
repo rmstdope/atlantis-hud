@@ -3050,7 +3050,7 @@ pub(crate) fn merge_skills(
 /// `None` for every other command and for a flag order whose argument the grammar refuses, so a
 /// caller falls through to its next arm. `arguments` is what `consumed_arguments` already trimmed,
 /// so a trailing token a valid order ignores never reaches here.
-fn read_flag_order(
+pub(crate) fn read_flag_order(
     command: &super::lexer::Token,
     arguments: &[super::lexer::Token],
 ) -> Option<FlagChange> {
