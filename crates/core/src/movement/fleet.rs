@@ -92,10 +92,15 @@ impl OrderedUnits {
                 // to nobody, and these two readers must agree or the parent draws a line for a
                 // MOVE it did not write (`ah-4hux`).
                 //
-                // Alias collisions are not modelled here: `Working::open_form` refuses a second
-                // `FORM 1` in one hex, where this would let the later block's MOVE replace the
-                // earlier one. The disagreement is then confined to the formed unit rather than
-                // leaking onto the parent.
+                // A formed unit's id is global here and not in `Working`, which keys its aliases
+                // on `(region_id, alias)` - so two units in *different* hexes each writing `FORM 1`
+                // are two legitimate formed units there - `effects.rs` pins that case - and one
+                // `new-1` in this map, last write winning. The trace then
+                // picks arbitrarily between them. Not modelled rather than overlooked: giving these
+                // ids a region would mean deciding what a formed unit is called everywhere the
+                // synthetic id is read, which is the planner's call and not this bead's. What the
+                // match above does guarantee is that the divergence stays on the formed unit
+                // instead of leaking onto the parent (`ah-4hux`).
                 let moving = match forming.last() {
                     Some(formed) => formed.clone(),
                     None => current.clone(),
