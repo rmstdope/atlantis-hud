@@ -462,6 +462,65 @@ export type SkillMerge = {
   skills: SkillInfo[];
 };
 
+/**
+ * Why a study projection rests on something the report cannot settle (`ah-rgkk.2.2`).
+ *
+ * `shelterUnknown` covers both of its causes: the unit ends the month in a structure the region's
+ * report does not list, and a catalogue carrying no buildings table to seat a mage against.
+ */
+export type StudyDoubtReason =
+  | "feeShort"
+  | "feeUnpriced"
+  | "headcountEstimated"
+  | "teacherUnsettled"
+  | "teacherStudentsUnknown"
+  | "shelterUnknown";
+
+/** One doubt about a study projection, with what its sentence needs. */
+export type StudyDoubt = {
+  reason: StudyDoubtReason;
+  /** The whole fee, for `feeShort`. `0` otherwise. */
+  fee: number;
+  /** How much of it the unit's own silver does not cover, for `feeShort`. `0` otherwise. */
+  shortBy: number;
+  /** `<name> (<id>)` of the teacher, for the two teacher reasons. Empty otherwise. */
+  teacher: string;
+};
+
+/** One unit teaching a studying unit this month. */
+export type StudyTeacher = {
+  unitId: string;
+  name: string;
+  /** Ten student-months per person, so a two-leader unit has twenty. */
+  slots: number;
+  /** How many men it teaches in total this month, this unit's included. */
+  students: number;
+};
+
+/** A race that holds a study down, named singular - `hill dwarf`. */
+export type LimitingRace = { tag: string; name: string };
+
+/** Where this month's STUDY lands next turn, teaching included (`ah-rgkk.2.2`). */
+export type StudyForecast = {
+  tag: string;
+  name: string;
+  levelBefore: number;
+  pointsBefore: number;
+  /** The month's worth in months, as an exact ratio in lowest terms - `3/2` for a taught month. */
+  monthsNumerator: number;
+  monthsDenominator: number;
+  teachers: StudyTeacher[];
+  /** `rules/magic_skills` halves the month; already applied to the ratio. */
+  halvedOutsideABuilding: boolean;
+  pointsAfter: number;
+  levelAfter: number;
+  ceilingLevel: number;
+  limitingRaces: LimitingRace[];
+  /** The points reach a level the ceiling refuses: the figure rises and the level holds. */
+  heldBackByCeiling: boolean;
+  doubts: StudyDoubt[];
+};
+
 /** One unit as the orders leave it: the full predicted state, so the row renders like any other. */
 export type UnitPreview = {
   unit: ReportUnit;
@@ -535,6 +594,11 @@ export type UnitPreview = {
    * therefore left out of every merge (`ah-agbm`, `ah-rgkk.2.1`).
    */
   menOfUnknownSkill: TakenUnshown[];
+  /**
+   * Where this month's STUDY lands next turn, teaching included. `null` for a unit not studying,
+   * for one whose skills this month cannot be said, and for a dissolving unit (`ah-rgkk.2.2`).
+   */
+  study: StudyForecast | null;
 };
 
 /** Every previewed unit standing in (or bound for) one region. */

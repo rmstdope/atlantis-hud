@@ -36,7 +36,10 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
     // which no report carries. So those four rows appear with their counts intact and the order
     // admitted through the hover (`ah-66yi`, which reversed `ah-vcp8.2`'s answer here). The one
     // order with any *other* effect is unit 15571's "MOVE SE SE", so the whole answer is that
-    // departure, its arrival, and the four gifts nothing can settle.
+    // departure, its arrival, the four gifts nothing can settle - and, since `ah-rgkk.2.2`, one
+    // row for each `@study` the template carries. `rules/sequenceofevents` runs `STUDY` after the
+    // market, so a studying unit changes nothing this month: those rows mark no cell and exist
+    // only to carry next turn's forecast, which is exactly what the widened gate is for.
     let rows: Vec<_> = response
         .regions
         .iter()
@@ -47,9 +50,26 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
                 .map(move |unit| (region.region_id.as_str(), unit))
         })
         .collect();
+    let studying: Vec<_> = rows
+        .iter()
+        .filter(|(_, unit)| unit.study.is_some())
+        .collect();
+    // A study row is a row about next turn: it must mark nothing this month.
+    for (_, unit) in &studying {
+        assert_eq!(unit.status, UnitPreviewStatus::Present);
+        assert!(
+            unit.changes.is_empty(),
+            "unit {} studies and so changes nothing this month: {:?}",
+            unit.unit.unit_id,
+            unit.changes
+        );
+    }
+    // Twenty-two of the template's `@study` blocks reach a row, four of which are the gift rows
+    // above studying as well - so eighteen rows are here for the forecast alone.
+    assert_eq!(studying.len(), 22, "the template's `@study` blocks");
     assert_eq!(
         rows.len(),
-        6,
+        6 + 18,
         "rows were: {:?}",
         rows.iter()
             .map(|(region, unit)| format!("{region}: {} {:?}", unit.unit.unit_id, unit.status))

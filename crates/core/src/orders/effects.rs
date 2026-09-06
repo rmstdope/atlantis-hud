@@ -130,6 +130,10 @@ pub struct UnitPreview {
     /// so they are deliberately left out of every merge (`ah-agbm`). The unit's headcount rose and
     /// its skills did not.
     pub men_of_unknown_skill: Vec<TakenUnshown>,
+    /// Where this month's `STUDY` lands next turn, teaching included. `None` for a unit not
+    /// studying, for one whose skills this month cannot be said at all, for a skill the catalogue
+    /// does not know, and for a dissolving unit, which never exists to study (`ah-rgkk.2.2`).
+    pub study: Option<StudyForecast>,
 }
 
 /// One line of what a unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document order
@@ -263,6 +267,109 @@ pub struct SkillMerge {
     pub arriving_skills: Vec<Skill>,
     /// The receiving unit's skills once this merge had run.
     pub skills: Vec<Skill>,
+}
+
+/// Where this month's `STUDY` lands next turn, teaching included (`ah-rgkk.2.2`).
+///
+/// `rules/sequenceofevents` runs `STUDY` in the month-long phase, after the market, so nothing here
+/// moves this month's figures: this is next turn's report, computed from the diluted ones.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StudyForecast {
+    /// The catalogue's tag for the skill being studied, upper case.
+    pub tag: String,
+    /// The catalogue's name for it, as a sentence would say it - `combat`.
+    pub name: String,
+    /// The unit's standing in the skill as the month-long phase opens: what the market left, which
+    /// is the last step of this month's chain and the step the projection is added to.
+    pub level_before: u32,
+    pub points_before: u32,
+    /// What the month is worth, in months, as an exact ratio in lowest terms: `1/1` untaught, `3/2`
+    /// for `rules/skills_teaching`'s own "1 1/2 months" example, `3/4` for that month halved
+    /// outside a building that houses mages. Never a float - the rules state a fraction.
+    pub months_numerator: i64,
+    pub months_denominator: i64,
+    /// Every unit in the hex whose `TEACH` reaches this one, in report order. Empty when nobody
+    /// teaches it.
+    pub teachers: Vec<StudyTeacher>,
+    /// `rules/magic_skills` halves the month: a magic skill above level 2, studied outside a
+    /// building that houses mages. Already applied to the ratio above; carried so the popup can
+    /// say why the month is worth half.
+    pub halved_outside_a_building: bool,
+    /// Where the study leaves the unit next turn. `points_after` is what the ratio buys on top of
+    /// `points_before`; `level_after` is what those points reach, held down to `ceiling_level`.
+    pub points_after: u32,
+    pub level_after: u32,
+    /// The highest level this unit may take the skill to (`rules/skills_limitations`).
+    pub ceiling_level: u32,
+    /// The races that impose `ceiling_level`, in the unit's own `men_by_race` order. Empty when the
+    /// ceiling is the skill's own maximum and no race took anything away.
+    pub limiting_races: Vec<LimitingRace>,
+    /// The points reach a level the ceiling refuses, so the figure rises and the level holds.
+    pub held_back_by_ceiling: bool,
+    /// What the projection rests on that this report cannot settle. Empty for a projection nothing
+    /// is doubted about (decision **U2**).
+    pub doubts: Vec<StudyDoubt>,
+}
+
+/// One unit teaching a studying unit this month (`rules/skills_teaching`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StudyTeacher {
+    pub unit_id: String,
+    pub name: String,
+    /// Student-months this teacher has: ten per **person**, so a two-leader unit has twenty.
+    pub slots: i64,
+    /// How many men it teaches in total this month, this unit's included - what dilutes the month.
+    pub students: i64,
+}
+
+/// A race that holds a study down, named so a sentence can say `hill dwarves`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitingRace {
+    pub tag: String,
+    /// The catalogue's own name, singular - `hill dwarf`. Pluralising is the interface's business.
+    pub name: String,
+}
+
+/// Why a projection rests on something the report cannot settle (`ah-rgkk.2`, decision **U2**).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StudyDoubtReason {
+    /// The unit holds less silver when the month-long phase opens than the fee asks for.
+    FeeShort,
+    /// The catalogue prices this skill nowhere, so the fee cannot be said at all.
+    FeeUnpriced,
+    /// The report could only estimate the headcount, so the fee, the dilution and the diluted
+    /// starting figures all rest on a guess.
+    HeadcountEstimated,
+    /// A unit in the hex teaches this one, and whether it may teach at all cannot be settled from
+    /// this report - so its month is not counted toward the projection.
+    TeacherUnsettled,
+    /// A teacher of this unit also teaches a unit of another faction, whose headcount the report
+    /// does not print - so how far its teaching dilutes cannot be said.
+    TeacherStudentsUnknown,
+    /// Whether `rules/magic_skills` halves this month cannot be said: the unit ends the month in a
+    /// structure this region's report does not list, or the catalogue carries no buildings table
+    /// to seat a mage against. The month is not halved.
+    ShelterUnknown,
+}
+
+/// One doubt, with whatever the sentence explaining it needs (`ah-rgkk.2.2`).
+///
+/// Shaped like [`TransportTargetIssue`]: a reason enum with the fields beside it, rather than a
+/// data-carrying enum, so the wire stays one flat object per entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StudyDoubt {
+    pub reason: StudyDoubtReason,
+    /// The whole fee for `FeeShort`, in silver. `0` for every other reason.
+    pub fee: i64,
+    /// How much of that fee the unit's own silver does not cover, for `FeeShort`. `0` otherwise.
+    pub short_by: i64,
+    /// `<name> (<id>)` of the teacher, for the two teacher reasons. Empty otherwise.
+    pub teacher: String,
 }
 
 /// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
@@ -561,6 +668,11 @@ pub fn preview_orders_on_map(
         } else {
             entry.created.clone()
         };
+        let study = if dissolving {
+            None
+        } else {
+            entry.study.clone()
+        };
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
         let transport_target_issues = entry.transport_target_issues.clone();
@@ -573,6 +685,7 @@ pub fn preview_orders_on_map(
             && transport_sent.is_empty()
             && transport_received.is_empty()
             && transport_target_issues.is_empty()
+            && study.is_none()
         {
             continue;
         }
@@ -609,6 +722,7 @@ pub fn preview_orders_on_map(
                     transport_sent: transport_sent.clone(),
                     transport_received: transport_received.clone(),
                     transport_target_issues: transport_target_issues.clone(),
+                    study: study.clone(),
                     // An arriving row is never dissolving, but the field is set from the same
                     // source on all three pushes rather than relying on that.
                     dissolves_into: dissolves_into.clone(),
@@ -637,6 +751,7 @@ pub fn preview_orders_on_map(
                     transport_sent,
                     transport_received,
                     transport_target_issues,
+                    study,
                     dissolves_into: dissolves_into.clone(),
                     formed,
                     dissolving,
@@ -664,6 +779,7 @@ pub fn preview_orders_on_map(
                     transport_sent,
                     transport_received,
                     transport_target_issues,
+                    study,
                     dissolves_into,
                     formed,
                     dissolving,
@@ -931,6 +1047,9 @@ struct WorkingUnit {
     /// `settle_headcounts` skipped this unit because the report could only estimate its headcount,
     /// and it had settled recruits that were therefore never merged in (`ah-rgkk.2.1`).
     recruits_unmerged: bool,
+    /// Where this unit's `STUDY` lands next turn, copied from `UnitItemEffects::study` by
+    /// `apply_item_effects` (`ah-rgkk.2.2`).
+    study: Option<StudyForecast>,
 }
 
 impl WorkingUnit {
@@ -1268,6 +1387,7 @@ impl Working {
                 skill_merges: Vec::new(),
                 men_of_unknown_skill: Vec::new(),
                 recruits_unmerged: false,
+                study: None,
             });
         }
         let known_units: std::collections::BTreeSet<String> =
@@ -1504,6 +1624,7 @@ impl Working {
             }
             unit.uncounted = effect.uncounted.clone();
             unit.recruited = effect.recruited.clone();
+            unit.study = effect.study.clone();
             unit.produced = effect
                 .moved
                 .iter()
@@ -1583,6 +1704,7 @@ impl Working {
             skill_merges: Vec::new(),
             men_of_unknown_skill: Vec::new(),
             recruits_unmerged: false,
+            study: None,
         });
         self.forming.push(Some(index));
     }
@@ -7622,5 +7744,146 @@ mod tests {
         assert!(unit.unit.men_estimated, "the fixture must stay estimated");
         assert!(!unit.recruits_unmerged);
         assert!(unit.skill_merges.is_empty(), "{:?}", unit.skill_merges);
+    }
+
+    /// A unit whose only order is `STUDY` changes nothing this month - `rules/sequenceofevents`
+    /// runs `STUDY` after the market - so its row exists only because the forecast does
+    /// (`ah-rgkk.2.2`).
+    #[test]
+    fn a_studying_unit_gets_a_preview_row_even_though_nothing_changed_this_month() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nSTUDY lumberjack\n",
+        );
+
+        let unit = only_unit(&response);
+        assert!(unit.changes.is_empty(), "{:?}", unit.changes);
+        assert_eq!(unit.status, UnitPreviewStatus::Present);
+        assert!(unit.study.is_some(), "{:?}", unit.study);
+    }
+
+    /// A unit that moves and studies is one unit with one month, so both of its rows carry the
+    /// same forecast - the reading `produced` and `built` already take of a mover (`ah-rgkk.2.2`).
+    #[test]
+    fn a_mover_carries_its_forecast_onto_both_of_its_rows() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nMOVE SE\nSTUDY lumberjack\n",
+        );
+
+        let rows: Vec<_> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .filter(|unit| unit.unit.unit_id == "900")
+            .collect();
+        assert_eq!(rows.len(), 2, "a departure and its arrival");
+        for row in rows {
+            assert!(
+                row.study.is_some(),
+                "the {:?} row carries the forecast",
+                row.status
+            );
+        }
+    }
+
+    /// A unit `rules/form` dissolves never exists, so it studies nothing.
+    #[test]
+    fn a_dissolving_unit_forecasts_no_study() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 0 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nSTUDY combat\nEND\n",
+        );
+
+        let dissolving = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the dissolving row is drawn");
+        assert!(dissolving.study.is_none(), "{:?}", dissolving.study);
+    }
+
+    /// The two mirrors of these types are hand-written, and nothing else compares them: this is
+    /// what stands between a misspelled field and a runtime `undefined` (`ah-rgkk.2.2`).
+    #[test]
+    fn the_study_forecast_crosses_the_wire_in_its_camel_case_spelling() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nSTUDY lumberjack\n",
+        );
+        let value = serde_json::to_value(only_unit(&response)).expect("the row serialises");
+        let study = value
+            .get("study")
+            .and_then(serde_json::Value::as_object)
+            .expect("the forecast is on the wire under `study`");
+
+        for field in [
+            "tag",
+            "name",
+            "levelBefore",
+            "pointsBefore",
+            "monthsNumerator",
+            "monthsDenominator",
+            "teachers",
+            "halvedOutsideABuilding",
+            "pointsAfter",
+            "levelAfter",
+            "ceilingLevel",
+            "limitingRaces",
+            "heldBackByCeiling",
+            "doubts",
+        ] {
+            assert!(study.contains_key(field), "{field} is missing: {study:?}");
+        }
+
+        let doubt = serde_json::to_value(StudyDoubt {
+            reason: StudyDoubtReason::FeeShort,
+            fee: 200,
+            short_by: 160,
+            teacher: String::new(),
+        })
+        .expect("a doubt serialises");
+        assert_eq!(
+            doubt.get("reason").and_then(serde_json::Value::as_str),
+            Some("feeShort")
+        );
+        assert_eq!(
+            doubt.get("shortBy").and_then(serde_json::Value::as_i64),
+            Some(160)
+        );
+    }
+
+    /// The forecast's starting figures come from `semantics`'s own skill merge and the popup's
+    /// last this-month step from the preview's; two models, one answer required (`ah-rgkk.2.2`).
+    #[test]
+    fn the_forecast_starts_from_the_same_figures_the_preview_shows() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nBUY 5 HUMN\nSTUDY lumberjack\n",
+        );
+
+        let unit = only_unit(&response);
+        let study = unit.study.as_ref().expect("the study is forecast");
+        // `(10 * 180 + 5 * 0) / 15`, which `merge_skills` truncates.
+        assert_eq!(study.points_before, 120);
+        let shown = unit
+            .unit
+            .skills
+            .iter()
+            .find(|skill| skill.tag.eq_ignore_ascii_case("LUMB"))
+            .expect("the row shows the skill");
+        assert_eq!(study.points_before, shown.points);
     }
 }

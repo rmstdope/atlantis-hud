@@ -9,6 +9,7 @@ import type {
   ReportUnit,
   SkillInfo,
   SkillMerge,
+  StudyForecast,
   TakenUnshown,
   TransportReceived,
   TransportSent,
@@ -108,6 +109,8 @@ export type PreviewedUnit = ReportUnit & {
    * therefore left out of every merge (`ah-agbm`, `ah-rgkk.2.1`).
    */
   menOfUnknownSkill?: TakenUnshown[];
+  /** Where this month's STUDY lands next turn, teaching included (`ah-rgkk.2.2`). */
+  study?: StudyForecast | null;
 };
 
 /**
@@ -217,7 +220,8 @@ function rowFor(previewed: UnitPreview): PreviewedUnit {
     skillMerges: previewed.skillMerges,
     reportedSkills: previewed.reportedSkills,
     recruitsUnmerged: previewed.recruitsUnmerged,
-    menOfUnknownSkill: previewed.menOfUnknownSkill
+    menOfUnknownSkill: previewed.menOfUnknownSkill,
+    study: previewed.study
   };
 }
 

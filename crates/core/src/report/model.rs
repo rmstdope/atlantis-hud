@@ -162,6 +162,15 @@ pub struct CombatSpell {
     pub tag: String,
 }
 
+/// Study points one month of study is worth.
+///
+/// `rules/skills_studying` gives the month structure and publishes no point rate; thirty is the
+/// rate [`level_for_points`] is already written against - its thresholds are `30 * n(n+1)/2`, which
+/// is the `15 * (level + 1) * (level + 2)` in its loop. Points that are not multiples of thirty are
+/// ordinary (practice grants them), so this is the rate of a *studied* month and never a guarantee
+/// that points advance by it.
+pub const STUDY_POINTS_PER_MONTH: u32 = 30;
+
 /// The level `points` study points a man buys, as the rules count them: level 1 costs one month,
 /// level 2 two more, level 3 three more, so level `n` stands at `30 * n(n+1)/2` days - the figure
 /// a report prints in brackets, which is per man and not a unit total.
@@ -410,5 +419,11 @@ mod tests {
         assert_eq!(level_for_points(299), 3);
         assert_eq!(level_for_points(300), 4);
         assert_eq!(level_for_points(450), 5);
+    }
+
+    #[test]
+    fn a_studied_month_is_thirty_points() {
+        assert_eq!(level_for_points(STUDY_POINTS_PER_MONTH), 1);
+        assert_eq!(level_for_points(STUDY_POINTS_PER_MONTH - 1), 0);
     }
 }
