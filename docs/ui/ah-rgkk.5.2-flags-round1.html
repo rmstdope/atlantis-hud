@@ -1,0 +1,329 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-rgkk.5.2 — round 1: what the Flags popup draws</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; }
+  .pop .line .val { text-align:right; white-space:nowrap; }
+  .pop .why { color:var(--ink-dim); margin-left:6px; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .note.tight { margin-top:2px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; align-items:start; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .rule { border-top:1px solid var(--edge); margin:30px 0 0; }
+  .cell { display:inline-block; background:var(--panel); border:1px solid var(--edge); border-radius:4px;
+          padding:2px 8px; font:12px/1.5 'SF Mono',Menlo,monospace; color:var(--ink); }
+</style>
+
+<header>
+  <h1>ah-rgkk.5.2 <span>&mdash; round 1: the Flags popup</span></h1>
+  <p>Resting on the <b>Flags</b> cell today opens <b>one</b> line &mdash;
+  <code>flags&nbsp;&nbsp;on guard&nbsp;&middot;&nbsp;behind&nbsp;&middot;&nbsp;taxing</code> &mdash; with
+  <code>was: behind, taxing</code> dimmed after it. Two comma lists, and the reader diffs them by eye. This bead
+  gives each flag a line of its own that says whether the month <b>set</b> it, <b>cleared</b> it or
+  <b>left it alone</b>, and which order did it.</p>
+  <p><b style="color:var(--brass)">Three questions.</b> <b>Q1</b> &mdash; which flags get a line.
+  <b>Q2</b> &mdash; how a flag&rsquo;s state reads on the right. <b>Q3</b> &mdash; what to say about the seven flag
+  orders this preview <i>does not work out at all</i>. Everything else in the family is settled and is not
+  re-opened: the heading, the twelve-line cap, the <span class="mono">before&nbsp;&rarr;&nbsp;after</span> pair with
+  green up and red down on the after only, and the dim trailing clause.</p>
+</header>
+
+<main>
+  <p class="scene" style="margin-top:24px"><b>The scene</b>, used in every panel below. <b>Braves (1487)</b>&rsquo;s
+  report shows it <b>behind</b> and <b>taxing</b> &mdash; the Flags cell reads <span class="cell">BT</span>. This
+  month you write <code>GUARD 1</code>, <code>BEHIND 0</code> and <code>SHARE 1</code>. It ends the month
+  <b>guarding, sharing and taxing</b>, and the cell reads <span class="cell">GST</span>.</p>
+  <p class="scene"><b>What the letters hide.</b> <span class="cell">BT</span> becoming <span class="cell">GST</span>
+  is four separate events, three of which you caused. Nothing on the screen today separates them, and nothing says
+  which order did which.</p>
+
+  <h3 class="sec">Q1 &mdash; which flags get a line?</h3>
+  <p>All three draw <b>Q2</b>&rsquo;s option <b>V1</b> and <b>Q3</b>&rsquo;s option <b>U2</b>, so the panels differ
+  in one thing only.</p>
+
+  <div class="split3">
+
+    <div class="card">
+      <p class="hexlab">F1 &mdash; every flag it ends with, plus every flag the month cleared</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; flags</div>
+        <div class="line"><span>guarding</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">GUARD 1</span></span></div>
+        <div class="line"><span>sharing</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">SHARE 1</span></span></div>
+        <div class="line"><span>behind</span><span class="val"><span class="flat">on</span><span class="arrow">&rarr;</span><span class="down">off</span><span class="why">BEHIND 0</span></span></div>
+        <div class="line"><span>taxing</span><span class="val"><span class="flat">on</span></span></div>
+      </div></div>
+      <ul class="notes">
+        <li><b>Everything the cell&rsquo;s letters stand for is on the screen</b>, named in the report&rsquo;s own
+          words, including the flags that have no letter at all.</li>
+        <li>A cleared flag stays visible for the month that cleared it, which is the one month anybody looks.</li>
+        <li>One rule, no cases: the popup is the cell, spelled out.</li>
+        <li class="con">A settled unit that changes nothing still lists four or five lines that all read
+          <span class="mono">on</span>.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">F2 &mdash; only the flags the month touched; the rest in one dim sentence</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; flags</div>
+        <div class="line"><span>guarding</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">GUARD 1</span></span></div>
+        <div class="line"><span>sharing</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">SHARE 1</span></span></div>
+        <div class="line"><span>behind</span><span class="val"><span class="flat">on</span><span class="arrow">&rarr;</span><span class="down">off</span><span class="why">BEHIND 0</span></span></div>
+        <div class="note">Also set, and unchanged: taxing.</div>
+      </div></div>
+      <ul class="notes">
+        <li>Shortest of the three, and every line on the screen is a line you caused.</li>
+        <li>The month is the whole subject, which is what the family is for.</li>
+        <li class="con"><b>The unchanged flags lose their words</b> and go back to being a comma list &mdash; the
+          exact thing this bead exists to end, kept for the flags that did not move.</li>
+        <li class="con">A month that changes nothing gives a popup that is only a sentence.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">F3 &mdash; every flag the game has, on or off</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; flags</div>
+        <div class="line"><span>guarding</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">GUARD 1</span></span></div>
+        <div class="line"><span>sharing</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">SHARE 1</span></span></div>
+        <div class="line"><span>behind</span><span class="val"><span class="flat">on</span><span class="arrow">&rarr;</span><span class="down">off</span><span class="why">BEHIND 0</span></span></div>
+        <div class="line"><span>taxing</span><span class="val"><span class="flat">on</span></span></div>
+        <div class="line"><span>avoiding</span><span class="val"><span class="flat">off</span></span></div>
+        <div class="line"><span>holding</span><span class="val"><span class="flat">off</span></span></div>
+        <div class="line"><span>receiving no aid</span><span class="val"><span class="flat">off</span></span></div>
+        <div class="line"><span>won&rsquo;t cross water</span><span class="val"><span class="flat">off</span></span></div>
+        <div class="line"><span>revealing faction</span><span class="val"><span class="flat">off</span></span></div>
+        <div class="line"><span>consuming unit&rsquo;s food</span><span class="val"><span class="flat">off</span></span></div>
+      </div></div>
+      <ul class="notes">
+        <li>Answers &ldquo;is this unit avoiding?&rdquo; without the reader knowing that absence means off.</li>
+        <li class="con"><b>Ten or more lines on every single unit in the report</b>, nearly all of them
+          <span class="mono">off</span>. It hits the twelve-line cap on a normal unit.</li>
+        <li class="con">The battle-spoils setting is not a flag with two states but one of seven, so it cannot
+          honestly join a list of on/off rows.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">Q2 &mdash; how does a flag&rsquo;s state read on the right?</h3>
+  <p>Both panels use <b>F1</b>&rsquo;s lines and <b>U2</b>, so again only one thing differs.</p>
+
+  <div class="split2">
+    <div class="card">
+      <p class="hexlab">V1 &mdash; <span class="mono">off &rarr; on</span>, the pair the whole family already draws</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; flags</div>
+        <div class="line"><span>guarding</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">GUARD 1</span></span></div>
+        <div class="line"><span>sharing</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">SHARE 1</span></span></div>
+        <div class="line"><span>behind</span><span class="val"><span class="flat">on</span><span class="arrow">&rarr;</span><span class="down">off</span><span class="why">BEHIND 0</span></span></div>
+        <div class="line"><span>taxing</span><span class="val"><span class="flat">on</span></span></div>
+      </div></div>
+      <ul class="notes">
+        <li><b>Identical in shape to Men, Items, Silver and Move</b> one cell along &mdash; the reader has learned
+          this notation four times already.</li>
+        <li>Where it stood and where it stands are both on the screen, so an unchanged flag and a set one are told
+          apart by shape and not by reading.</li>
+        <li>Needs no new drawing code at all: <code>PopupChange</code> already draws exactly this.</li>
+        <li class="con"><span class="mono">on&nbsp;&rarr;&nbsp;off</span> is inked red, and there is nothing bad
+          about <code>BEHIND 0</code>. The ink means direction, not judgement, everywhere in this family &mdash; but
+          it is still red.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">V2 &mdash; the event in words: <span class="mono">set</span>, <span class="mono">cleared</span>, <span class="mono">on</span></p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; flags</div>
+        <div class="line"><span>guarding</span><span class="val"><span class="up">set</span><span class="why">GUARD 1</span></span></div>
+        <div class="line"><span>sharing</span><span class="val"><span class="up">set</span><span class="why">SHARE 1</span></span></div>
+        <div class="line"><span>behind</span><span class="val"><span class="down">cleared</span><span class="why">BEHIND 0</span></span></div>
+        <div class="line"><span>taxing</span><span class="val"><span class="flat">on</span></span></div>
+      </div></div>
+      <ul class="notes">
+        <li>Says the event in the word a player would use, and never makes anybody read a pair backwards.</li>
+        <li>Half the width, so a long flag name never pushes the popup wide.</li>
+        <li class="con"><b>The only column in the family that does not draw a pair.</b> Four popups on one row
+          would use two notations for the same idea.</li>
+        <li class="con"><b><span class="mono">on</span> and <span class="mono">set</span> are the same state told
+          two ways</b>, and the difference between them &mdash; <i>this month</i> &mdash; is carried by a word the
+          reader has to notice.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">Q3 &mdash; the seven flag orders this preview does not work out</h3>
+  <p><b>The preview applies four flag orders and no others.</b> <code>GUARD</code>, <code>AVOID</code>,
+  <code>BEHIND</code> and <code>SHARE</code> change a flag; <code>AUTOTAX</code>, <code>NOAID</code>,
+  <code>CONSUME</code>, <code>REVEAL</code>, <code>SPOILS</code>, <code>HOLD</code> and <code>NOCROSS</code> are all
+  real orders (<code>rules/autotax</code>, <code>rules/noaid</code>, <code>rules/consume</code>,
+  <code>rules/reveal</code>, <code>rules/spoils</code>, <code>rules/hold</code>, <code>rules/nocross</code>) that
+  this application accepts, validates &mdash; and then shows no effect for. Write <code>AUTOTAX 1</code> and the
+  Flags cell does not move. <b>This bead cannot fix that</b> (it would be work in the Rust core); it can only decide
+  whether the popup admits it.</p>
+  <p>All three panels use <b>F1</b> and <b>V1</b>. The unit here is <b>Watch (1604)</b>, which is
+  <b>behind</b> and whose only order this month was <code>AUTOTAX 1</code> &mdash; so nothing at all moved.</p>
+
+  <div class="split3">
+    <div class="card">
+      <p class="hexlab">U1 &mdash; say it on every Flags popup</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Watch (1604) &mdash; flags</div>
+        <div class="line"><span>behind</span><span class="val"><span class="flat">on</span></span></div>
+        <div class="note">Nothing this month changes this.</div>
+        <div class="note tight">Only GUARD, AVOID, BEHIND and SHARE are worked out here. A flag set by AUTOTAX,
+          NOAID, CONSUME, REVEAL, SPOILS, HOLD or NOCROSS is not shown until the game reports it.</div>
+      </div></div>
+      <ul class="notes">
+        <li><b>Nobody is ever misled</b>, whichever unit they rest on.</li>
+        <li>One rule, no cases, and the same sentence every time so the eye learns to skip it.</li>
+        <li class="con">Two lines of small print on every Flags popup in the report, including the thousand where
+          it is irrelevant.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">U2 &mdash; say it only when the month changed no flag</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Watch (1604) &mdash; flags</div>
+        <div class="line"><span>behind</span><span class="val"><span class="flat">on</span></span></div>
+        <div class="note">Nothing this month changes this.</div>
+        <div class="note tight">Only GUARD, AVOID, BEHIND and SHARE are worked out here. A flag set by AUTOTAX,
+          NOAID, CONSUME, REVEAL, SPOILS, HOLD or NOCROSS is not shown until the game reports it.</div>
+      </div></div>
+      <p class="hexlab" style="margin-top:12px">&hellip; and Braves, which did change something</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; flags</div>
+        <div class="line"><span>guarding</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">GUARD 1</span></span></div>
+        <div class="line"><span>sharing</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">SHARE 1</span></span></div>
+        <div class="line"><span>behind</span><span class="val"><span class="flat">on</span><span class="arrow">&rarr;</span><span class="down">off</span><span class="why">BEHIND 0</span></span></div>
+        <div class="line"><span>taxing</span><span class="val"><span class="flat">on</span></span></div>
+      </div></div>
+      <ul class="notes">
+        <li><b>The sentence appears exactly where the question gets asked</b> &mdash; &ldquo;I wrote a flag order
+          and nothing happened&rdquo; is a popup that says <i>nothing this month changes this</i>.</li>
+        <li>Silent on every unit whose month plainly worked.</li>
+        <li class="con"><b>Two rules instead of one</b>, and it still misses one case: a unit that writes
+          <code>BEHIND 1</code> <i>and</i> <code>REVEAL FACTION</code> sees a change, so it gets no warning about
+          the half that did nothing.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">U3 &mdash; say nothing</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Watch (1604) &mdash; flags</div>
+        <div class="line"><span>behind</span><span class="val"><span class="flat">on</span></span></div>
+        <div class="note">Nothing this month changes this.</div>
+      </div></div>
+      <ul class="notes">
+        <li>The quietest popup, and the one that stops being wrong the day the core learns those seven orders.</li>
+        <li>Keeps the popup about this unit rather than about the application&rsquo;s limits.</li>
+        <li class="con"><b>Silence reads as &ldquo;your order did nothing&rdquo;</b>, and a player who trusts it
+          will write <code>AUTOTAX 1</code> a second time next month.</li>
+        <li class="con">The gap is invisible everywhere else in the application too, so nothing else catches it.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">The states that are mine to settle, drawn so you can overrule them</h3>
+  <p>All of them in <b>F1</b> + <b>V1</b> + <b>U2</b>. These go into the plan as <i>Decided by me</i> whichever way
+  Q1&ndash;Q3 go; say the word and any of them changes.</p>
+
+  <div class="pops">
+    <div class="pop">
+      <div class="head">Scouts (1502) &mdash; flags</div>
+      <div class="line"><span>avoiding</span><span class="val"><span class="flat">off</span><span class="arrow">&rarr;</span><span class="up">on</span><span class="why">AVOID 1</span></span></div>
+      <div class="line"><span>on guard</span><span class="val"><span class="flat">on</span><span class="arrow">&rarr;</span><span class="down">off</span><span class="why">AVOID 1</span></span></div>
+      <div class="line"><span>sharing</span><span class="val"><span class="flat">on</span></span></div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Levy (2871) &mdash; flags</div>
+      <div class="line"><span>behind</span><span class="val"><span class="flat">on</span><span class="arrow">&rarr;</span><span class="down">off</span><span class="why">BEHIND 0</span></span></div>
+      <div class="note">No flags set.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">new unit 1 &mdash; flags</div>
+      <div class="line"><span>avoiding</span><span class="val"><span class="flat">on</span></span></div>
+      <div class="line"><span>behind</span><span class="val"><span class="flat">on</span></span></div>
+      <div class="note">Formed this month, so it inherits its flags from the unit forming it &mdash; every flag but
+        guard and autotax, which have to be set in its own orders.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Rangers (2044) &mdash; flags</div>
+      <div class="line"><span>riding battle spoils</span><span class="val"><span class="flat">on</span></span></div>
+      <div class="line"><span>under strength</span><span class="val"><span class="flat">on</span></span></div>
+      <div class="note">Nothing this month changes this.</div>
+    </div>
+  </div>
+
+  <ul class="notes" style="max-width:105ch;margin-top:14px">
+    <li class="n"><b>A flag cleared by the <i>other</i> order names that order.</b>
+      <code>rules/guard</code> and <code>rules/avoid</code> both say &ldquo;The Guard and Avoid Combat flags are
+      mutually exclusive; setting one automatically cancels the other&rdquo;, so an <code>AVOID 1</code> that clears
+      guard says <span class="mono">AVOID 1</span> on both lines rather than inventing a <code>GUARD 0</code> you
+      never wrote.</li>
+    <li class="n"><b>The cause is the order as you would type it</b> &mdash; <span class="mono">GUARD 1</span>,
+      <span class="mono">BEHIND 0</span> &mdash; not prose such as <i>your guard order</i>. It is the shortest true
+      thing, and it is the line you would go and look for.</li>
+    <li class="n"><b>Line order: the flags the month changed first, then the ones it left alone</b>, each block in
+      the Flags column&rsquo;s own letter order (<span class="mono">A B G H N X R S T C F</span>), and the
+      letterless flags last. Same shape as every other popup in the family: this month first, then the rest.</li>
+    <li class="n"><b>A flag is named in the report&rsquo;s own words</b> &mdash; <span class="mono">on guard</span>
+      where the report wrote that, <span class="mono">guarding</span> where the order set it &mdash; and the game&rsquo;s
+      two spellings for one flag draw <b>one</b> line, not two. That is already how the cell&rsquo;s letters work.</li>
+    <li class="n"><b>A unit that ends the month with no flags at all still shows the ones the month cleared</b>,
+      followed by <i>&ldquo;No flags set.&rdquo;</i> &mdash; the second panel above.</li>
+    <li class="n"><b>A foreign unit gets exactly the same popup.</b> A report prints another faction&rsquo;s flags,
+      and none of your orders can move them, so every line reads unchanged.</li>
+  </ul>
+</main>
+
+<footer>
+  <p>One thing this bead deliberately does <b>not</b> do: <code>GUARD 0</code> and <code>AVOID 1</code> currently
+  fail to clear a guard flag the <i>report</i> printed, because the core matches the order&rsquo;s word
+  <span class="mono">guarding</span> against the report&rsquo;s word <span class="mono">on guard</span>. That is a
+  defect in the Rust core, not in this popup, and this popup will keep agreeing with the cell it explains rather
+  than contradicting it. I am filing it as a separate bug bead for you to rank.</p>
+  <p>The exact wording of every sentence above is mine and goes into the plan under <i>Decided by me</i>.
+  What I need from you is <b>Q1</b>, <b>Q2</b> and <b>Q3</b>.</p>
+</footer>
