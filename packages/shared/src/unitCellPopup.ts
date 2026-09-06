@@ -1194,13 +1194,12 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     // than the list above it, and a sentence for a figure the reader cannot see breaks that.
     .slice(0, MAX_LINES)
     .filter((entry) => entry.moved)
-    .map((entry) =>
-      itemCauseSentence(
-        itemLabel(entry.tag, unit),
-        changes.filter((c) => c.tag === entry.tag),
-        unit
-      )
-    )
+    .map((entry) => {
+      // `itemLines` marks a tag moved even when the core recorded no change for it, so `forTag`
+      // can be empty here — hence `?.`, not the `!` `movementCauses` may use.
+      const forTag = changes.filter((c) => c.tag === entry.tag);
+      return itemCauseSentence(itemLabel(entry.tag, unit), forTag, unit, forTag[0]?.isMan);
+    })
     .filter((note): note is string => note !== undefined);
 
   return {

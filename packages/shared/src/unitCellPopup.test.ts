@@ -1913,6 +1913,7 @@ describe("the items popup's cause sentences", () => {
       line: number | null;
       unitPrice: number | null;
       other: { unitId: string; name: string | null } | null;
+      isMan: boolean;
     }> = {}
   ) =>
     ({
@@ -1929,6 +1930,36 @@ describe("the items popup's cause sentences", () => {
 
   const notesFor = (overrides: Partial<PreviewedUnit>) =>
     columnPopup(popupForCell("items", unit(overrides), facts())).notes;
+
+  it("calls a market purchase of men a recruitment, as the Men and Move popups do", () => {
+    expect(
+      notesFor({
+        items: [{ name: "humans", tag: "HUMN", amount: 16 }],
+        itemChanges: [
+          moved({ tag: "HUMN", name: "humans", isMan: true, cause: "bought", delta: 6, unitPrice: 60 })
+        ]
+      })[0]
+    ).toBe("humans: recruited 6 at 60 silver each.");
+  });
+
+  it("still calls a purchase of goods a purchase", () => {
+    expect(
+      notesFor({
+        items: [{ name: "horse", tag: "HORS", amount: 5 }],
+        itemChanges: [
+          moved({ tag: "HORS", name: "horse", isMan: false, cause: "bought", delta: 1, unitPrice: 65 })
+        ]
+      })[0]
+    ).toBe("horse: bought 1 at 65 silver each.");
+  });
+
+  it("says nothing about a changed item the core recorded no movement for", () => {
+    const notes = notesFor({
+      items: [{ name: "grain", tag: "GRAI", amount: 8 }],
+      previewChanges: [{ field: "items", original: "12 GRAI" }]
+    });
+    expect(notes.some((note) => note.startsWith("grain:"))).toBe(false);
+  });
 
   it("names every movement of one item in a single sentence", () => {
     expect(
