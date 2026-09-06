@@ -146,7 +146,9 @@ describe("a unit carried away by a sailing fleet", () => {
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
-        dissolvesInto: null
+        dissolvesInto: null,
+        formed: false,
+        dissolving: false
       }
     ]
   });
@@ -229,7 +231,9 @@ describe("the structure column", () => {
             transportSent: [],
             transportReceived: [],
             transportTargetIssues: [],
-            dissolvesInto: null
+            dissolvesInto: null,
+            formed: false,
+            dissolving: false
           }
         ]
       }
@@ -808,6 +812,8 @@ describe("the items column", () => {
         transportReceived: [],
         transportTargetIssues: [],
         dissolvesInto: null,
+        formed: false,
+        dissolving: false,
         ...previewOverrides
       }
     ]
@@ -1000,6 +1006,8 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         transportReceived: [],
         transportTargetIssues: [],
         dissolvesInto: null,
+        formed: false,
+        dissolving: false,
         ...previewOverrides
       }
     ]
@@ -1316,6 +1324,8 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     transportReceived: [],
     transportTargetIssues: [],
     dissolvesInto: null,
+    formed: false,
+    dissolving: false,
     ...overrides
   });
 
@@ -1807,8 +1817,6 @@ describe("a row the game dissolves", () => {
   ): RegionPreview["units"][number] => ({
     unit: unit({ unitId: "new-1", name: "new 1", own: true }),
     status: "present",
-    formed: true,
-    dissolving: true,
     changes: [],
     arrivingFrom: null,
     departingTo: null,
@@ -1822,6 +1830,8 @@ describe("a row the game dissolves", () => {
     transportReceived: [],
     transportTargetIssues: [],
     dissolvesInto: "Former (902)",
+    formed: true,
+    dissolving: true,
     ...overrides
   });
 

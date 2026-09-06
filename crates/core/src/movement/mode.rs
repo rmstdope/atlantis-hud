@@ -73,12 +73,14 @@ pub fn parse_capacities(text: &str) -> Option<Capacities> {
 /// answering exactly as it did.
 #[must_use]
 pub fn mobility(unit: &ReportUnit) -> Mobility {
-    unit_movement(unit).or(unit.movement).map_or(Mobility::Unstated, |movement| match movement.status {
-        UnitMovementStatus::Overloaded => Mobility::Overloaded,
-        UnitMovementStatus::Fly => Mobility::Moves(MovementMode::Fly),
-        UnitMovementStatus::Ride => Mobility::Moves(MovementMode::Ride),
-        UnitMovementStatus::Walk => Mobility::Moves(MovementMode::Walk),
-    })
+    unit_movement(unit)
+        .or(unit.movement)
+        .map_or(Mobility::Unstated, |movement| match movement.status {
+            UnitMovementStatus::Overloaded => Mobility::Overloaded,
+            UnitMovementStatus::Fly => Mobility::Moves(MovementMode::Fly),
+            UnitMovementStatus::Ride => Mobility::Moves(MovementMode::Ride),
+            UnitMovementStatus::Walk => Mobility::Moves(MovementMode::Walk),
+        })
 }
 
 /// Classifies a unit using the weight and capacities stated by its report.

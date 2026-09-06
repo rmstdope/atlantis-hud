@@ -74,7 +74,9 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-          dissolvesInto: null
+          dissolvesInto: null,
+          formed: false,
+          dissolving: false
         }
       ])
     );
@@ -111,12 +113,13 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-          dissolvesInto: null
+          dissolvesInto: null,
+          formed: false,
+          dissolving: false
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
           status: "present",
-          formed: true,
           changes: [],
           arrivingFrom: null,
           departingTo: null,
@@ -129,7 +132,9 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-          dissolvesInto: null
+          dissolvesInto: null,
+          formed: true,
+          dissolving: false
         }
       ])
     );
@@ -160,7 +165,9 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-          dissolvesInto: null
+          dissolvesInto: null,
+          formed: false,
+          dissolving: false
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -177,7 +184,9 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-          dissolvesInto: null
+          dissolvesInto: null,
+          formed: false,
+          dissolving: false
         }
       ])
     );
@@ -205,7 +214,9 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-          dissolvesInto: null
+          dissolvesInto: null,
+          formed: false,
+          dissolving: false
         }
       ])
     );
@@ -484,7 +495,9 @@ describe("changeFor and originalTooltip", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
-          dissolvesInto: null
+          dissolvesInto: null,
+          formed: false,
+          dissolving: false
         }
       ])
     );

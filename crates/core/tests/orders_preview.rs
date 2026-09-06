@@ -264,7 +264,6 @@ fn a_unit_formed_this_month_walks_away_this_month() {
     assert_eq!(arriving.arriving_from.as_deref(), Some("1:18,44"));
 }
 
-
 /// A formed unit that gains nobody is dissolved by `rules/form`, and the row still shows the MOVE
 /// the player wrote - unnamed, because a unit with no men has no stated speed to time the journey
 /// by (`ah-4hux`, decision **Q3b'**).
@@ -302,10 +301,7 @@ fn a_dissolving_formed_unit_shows_an_unnamed_departure_and_no_arrival() {
             continue;
         }
         assert!(
-            !region
-                .units
-                .iter()
-                .any(|unit| unit.unit.unit_id == "new-1"),
+            !region.units.iter().any(|unit| unit.unit.unit_id == "new-1"),
             "a unit the game deletes gets no arrival row: {}",
             region.region_id
         );

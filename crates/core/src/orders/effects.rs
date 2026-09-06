@@ -626,7 +626,8 @@ fn settle(
     // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
     // from - so the ITEMS and SILVER cells on one row cannot disagree (`ah-agbm`). `GIVE` is not
     // read here: the walk above already applied every gift through `Working::give`.
-    let item_effects = super::semantics::item_effects(report, orders_document, Some(ruleset.as_ref()));
+    let item_effects =
+        super::semantics::item_effects(report, orders_document, Some(ruleset.as_ref()));
     working.apply_item_effects(&item_effects);
     settle_headcounts(&mut working.units, ruleset);
     // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
@@ -3777,8 +3778,7 @@ mod tests {
             ours.regions[0]
                 .units
                 .iter()
-                .any(|unit| unit.formed
-                    && unit.unit.items.iter().any(|item| item.tag == "SWOR")),
+                .any(|unit| unit.formed && unit.unit.items.iter().any(|item| item.tag == "SWOR")),
             "the control must hand the sword to our own formed unit: {:?}",
             ours.regions
         );
@@ -3924,11 +3924,7 @@ mod tests {
                 .iter()
                 .find(|region| region.region_id == region_id)
                 .unwrap_or_else(|| panic!("no preview for {region_id}"));
-            let formed: Vec<_> = region
-                .units
-                .iter()
-                .filter(|unit| unit.formed)
-                .collect();
+            let formed: Vec<_> = region.units.iter().filter(|unit| unit.formed).collect();
             assert_eq!(formed.len(), 1, "one formed unit in {region_id}");
             let bought = formed[0]
                 .unit
@@ -4391,10 +4387,7 @@ mod tests {
             .iter()
             .find(|unit| unit.unit.unit_id == "new-1")
             .expect("the row is drawn rather than skipped since `ah-ty3s.3`");
-        assert!(
-            dissolving.dissolving,
-            "and says the game will dissolve it"
-        );
+        assert!(dissolving.dissolving, "and says the game will dissolve it");
         assert!(dissolving.formed);
         assert!(
             dissolving.unit.items.iter().all(|item| item.amount == 0),
