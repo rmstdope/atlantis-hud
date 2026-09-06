@@ -1,0 +1,286 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-rgkk.3.3 — the Items popup: the cap, and the sentences</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .legend code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  /* The popup, drawn at the real frame's width: w-max, max-w-sm = 384px. */
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .line .val { text-align:right; white-space:nowrap; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .note.tight { margin-top:2px; }
+  .pop .note.under { margin-top:1px; padding-left:14px; }
+  .pop .more { color:var(--ink-dim); margin-top:6px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .rule { border-top:1px solid var(--edge); margin:26px 0 0; }
+</style>
+
+<header>
+  <h1>ah-rgkk.3.3 <span>&mdash; the Items popup: which lines survive, and how the causes read</span></h1>
+  <p>Everything here sits <b>inside</b> what the family has already settled and does not re-open it: the heading
+  <code>A2</code>, the pair notation <code>8 &rarr; 12</code> (<code>ah-rgkk.6</code>&rsquo;s <code>R1</code>), the
+  twelve-line cap <code>G-d</code>, the sideways swap <code>C1</code>, the hidden <code>sr-only</code> sentence
+  <code>F1</code>, and the amber <code>+ ?</code> wording. Two things the Items column meets that no other column
+  does are yours: <b>Q1</b>, a unit can hold far more than twelve items; and <b>Q2</b>, one item can move several
+  times in one month, so the number of sentences is what decides whether this popup is readable at all.</p>
+</header>
+<p style="max-width:105ch;margin:14px auto 0;color:var(--ink-soft);font-size:14px;">
+<b style="color:var(--brass)">Answered:</b> <b>Q1 = B</b>, everything that moved first and then the rest, hard cap at twelve. <b>Q2 = S2</b>, one joined sentence per changed item, at the foot. Round 2 (<code>ah-rgkk.3.3-items-round2.html</code>) settles what becomes of the sentences the popup already had.</p>
+
+<main>
+  <p class="scene" style="margin-top:22px"><b>The scene.</b> <b>Porters (1913)</b>, a busy trading unit, ends the
+  month holding sixteen kinds of item. This month it <b>sold 12 grain</b> at 12 silver each, <b>bought 4 sword</b> at
+  60 each, <b>gave 2 horse</b> to <b>Scouts (1502)</b>, was <b>given 30 silver</b> by <b>Elders (1774)</b>,
+  <b>produced 5 wood</b> and then <b>spent 10 wood</b> on a build, <b>sent 20 grain</b> to <b>Ferry (4102)</b>, and
+  had <b>3 herbs taken</b> by <b>Watch (1604)</b>. Its <code>iron</code> is untouched and sits fifteenth in the
+  cell&rsquo;s own order, which is by amount, largest first.</p>
+
+  <h3 class="sec">Q1 &mdash; a unit holds more items than the popup can draw. Which twelve lines survive?</h3>
+  <p>The cap is twelve item lines, already agreed. All three keep the same footer shape; they differ in which lines
+  it counts. Watch <code>sword 0 &rarr; 4</code> and <code>iron 40</code>.</p>
+
+  <div class="split3">
+    <div class="card">
+      <p class="hexlab">A &mdash; the cell&rsquo;s own order, hard cap &nbsp;&mdash;&nbsp; rejected</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Porters (1913) &mdash; items</div>
+        <div class="line"><span>silver SILV</span><span class="val"><span class="flat">380</span><span class="arrow">&rarr;</span><span class="up">554</span></span></div>
+        <div class="line"><span>grain GRAI</span><span class="val"><span class="flat">120</span><span class="arrow">&rarr;</span><span class="down">88</span></span></div>
+        <div class="line"><span>wood WOOD</span><span class="val"><span class="flat">60</span><span class="arrow">&rarr;</span><span class="down">55</span></span></div>
+        <div class="line"><span>stone STON</span><span class="val"><span class="flat">48</span></span></div>
+        <div class="line"><span>iron IRON</span><span class="val"><span class="flat">40</span></span></div>
+        <div class="line"><span>fur FUR</span><span class="val"><span class="flat">36</span></span></div>
+        <div class="line"><span>herb HERB</span><span class="val"><span class="flat">30</span><span class="arrow">&rarr;</span><span class="down">27</span></span></div>
+        <div class="line"><span>livestock LIVE</span><span class="val"><span class="flat">24</span></span></div>
+        <div class="line"><span>fish FISH</span><span class="val"><span class="flat">20</span></span></div>
+        <div class="line"><span>leather LEAT</span><span class="val"><span class="flat">18</span></span></div>
+        <div class="line"><span>cotton COTT</span><span class="val"><span class="flat">15</span></span></div>
+        <div class="line"><span>mithril MITH</span><span class="val"><span class="flat">12</span></span></div>
+        <div class="more">&hellip; and 4 more; select the unit to see them all.</div>
+        <div class="note">The sentences go here.</div>
+      </div></div>
+      <ul class="notes">
+        <li>One rule, and the popup reads in exactly the order the cell does.</li>
+        <li class="con"><b>The change falls off the end.</b> <code>horse</code> and <code>sword</code> are small
+          holdings, so both moved this month and neither is on the screen &mdash; in a popup whose whole purpose is
+          to show what moved.</li>
+        <li class="con">The footer count says nothing about how much of the month it hid.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab" style="color:var(--brass-bright)">B &mdash; everything that moved first, then the rest &nbsp;&mdash;&nbsp; CHOSEN</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Porters (1913) &mdash; items</div>
+        <div class="line"><span>grain GRAI</span><span class="val"><span class="flat">120</span><span class="arrow">&rarr;</span><span class="down">88</span></span></div>
+        <div class="line"><span>silver SILV</span><span class="val"><span class="flat">380</span><span class="arrow">&rarr;</span><span class="up">554</span></span></div>
+        <div class="line"><span>sword SWOR</span><span class="val"><span class="flat">none</span><span class="arrow">&rarr;</span><span class="up">4</span></span></div>
+        <div class="line"><span>horse HORS</span><span class="val"><span class="flat">2</span><span class="arrow">&rarr;</span><span class="down">gone</span></span></div>
+        <div class="line"><span>wood WOOD</span><span class="val"><span class="flat">60</span><span class="arrow">&rarr;</span><span class="down">55</span></span></div>
+        <div class="line"><span>herb HERB</span><span class="val"><span class="flat">30</span><span class="arrow">&rarr;</span><span class="down">27</span></span></div>
+        <div class="line"><span>stone STON</span><span class="val"><span class="flat">48</span></span></div>
+        <div class="line"><span>iron IRON</span><span class="val"><span class="flat">40</span></span></div>
+        <div class="line"><span>fur FUR</span><span class="val"><span class="flat">36</span></span></div>
+        <div class="line"><span>livestock LIVE</span><span class="val"><span class="flat">24</span></span></div>
+        <div class="line"><span>fish FISH</span><span class="val"><span class="flat">20</span></span></div>
+        <div class="line"><span>leather LEAT</span><span class="val"><span class="flat">18</span></span></div>
+        <div class="more">&hellip; and 4 more unchanged; select the unit to see them all.</div>
+        <div class="note">The sentences go here.</div>
+      </div></div>
+      <ul class="notes">
+        <li>Every movement of the month is on the screen, always, whatever the unit holds.</li>
+        <li>The changed block reads as the month; the rest reads as the stock.</li>
+        <li class="con"><b>The popup no longer matches the cell.</b> The eye cannot map the third line here to the
+          third line under the pointer, and the two are side by side.</li>
+        <li class="con">A quiet unit&rsquo;s popup silently re-sorts for no gain.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">C &mdash; the cell&rsquo;s order, but the cap eats the unchanged first &nbsp;&mdash;&nbsp; rejected</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Porters (1913) &mdash; items</div>
+        <div class="line"><span>silver SILV</span><span class="val"><span class="flat">380</span><span class="arrow">&rarr;</span><span class="up">554</span></span></div>
+        <div class="line"><span>grain GRAI</span><span class="val"><span class="flat">120</span><span class="arrow">&rarr;</span><span class="down">88</span></span></div>
+        <div class="line"><span>wood WOOD</span><span class="val"><span class="flat">60</span><span class="arrow">&rarr;</span><span class="down">55</span></span></div>
+        <div class="line"><span>stone STON</span><span class="val"><span class="flat">48</span></span></div>
+        <div class="line"><span>iron IRON</span><span class="val"><span class="flat">40</span></span></div>
+        <div class="line"><span>fur FUR</span><span class="val"><span class="flat">36</span></span></div>
+        <div class="line"><span>herb HERB</span><span class="val"><span class="flat">30</span><span class="arrow">&rarr;</span><span class="down">27</span></span></div>
+        <div class="line"><span>livestock LIVE</span><span class="val"><span class="flat">24</span></span></div>
+        <div class="line"><span>fish FISH</span><span class="val"><span class="flat">20</span></span></div>
+        <div class="line"><span>horse HORS</span><span class="val"><span class="flat">2</span><span class="arrow">&rarr;</span><span class="down">gone</span></span></div>
+        <div class="line"><span>sword SWOR</span><span class="val"><span class="flat">none</span><span class="arrow">&rarr;</span><span class="up">4</span></span></div>
+        <div class="more">&hellip; and 5 more unchanged; select the unit to see them all.</div>
+        <div class="note">The sentences go here.</div>
+      </div></div>
+      <ul class="notes">
+        <li>Every movement is on the screen <b>and</b> the order is still the cell&rsquo;s, so line five here is
+          line five under the pointer until the elision.</li>
+        <li>The footer can say <code>unchanged</code> honestly, because only unchanged lines are ever dropped.</li>
+        <li class="con">Two rules rather than one, and the elision is no longer a clean tail &mdash; the lines after
+          it are not simply &ldquo;the rest&rdquo;.</li>
+        <li class="con">A unit with more than twelve <i>changed</i> items still elides a change; the footer then
+          reads <code>&hellip; and 3 more, 3 of them changed; select the unit to see them all.</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">Q2 &mdash; one item can move several times. How do the causes read?</h3>
+  <p>Porters&rsquo; month is <b>eight movements over six items</b>: grain alone was sold, and sent away.
+  Same twelve lines above in each; only the block underneath differs.</p>
+
+  <div class="split3">
+    <div class="card">
+      <p class="hexlab">S1 &mdash; one sentence per movement, all at the foot &nbsp;&mdash;&nbsp; rejected</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Porters (1913) &mdash; items</div>
+        <div class="line"><span>silver SILV</span><span class="val"><span class="flat">380</span><span class="arrow">&rarr;</span><span class="up">554</span></span></div>
+        <div class="line"><span>grain GRAI</span><span class="val"><span class="flat">120</span><span class="arrow">&rarr;</span><span class="down">88</span></span></div>
+        <div class="line"><span>wood WOOD</span><span class="val"><span class="flat">60</span><span class="arrow">&rarr;</span><span class="down">55</span></span></div>
+        <div class="line"><span>horse HORS</span><span class="val"><span class="flat">2</span><span class="arrow">&rarr;</span><span class="down">gone</span></span></div>
+        <div class="line"><span>sword SWOR</span><span class="val"><span class="flat">none</span><span class="arrow">&rarr;</span><span class="up">4</span></span></div>
+        <div class="line"><span>herb HERB</span><span class="val"><span class="flat">30</span><span class="arrow">&rarr;</span><span class="down">27</span></span></div>
+        <div class="note">Given 30 silver by Elders (1774).</div>
+        <div class="note tight">Sold 12 grain at 12 silver each.</div>
+        <div class="note tight">Bought 4 sword at 60 silver each.</div>
+        <div class="note tight">Gave 2 horse to Scouts (1502).</div>
+        <div class="note tight">3 herb taken by Watch (1604).</div>
+        <div class="note tight">Produced 5 wood.</div>
+        <div class="note tight">Spent 10 wood on a build.</div>
+        <div class="note tight">Sent 20 grain to Ferry (4102).</div>
+      </div></div>
+      <ul class="notes">
+        <li>Nothing is ever merged away: every order that moved a thing has its own line.</li>
+        <li>Reads in the month&rsquo;s own order, so the popup tells the month as a story.</li>
+        <li class="con">Eight sentences under twelve figures &mdash; the popup is now mostly prose, and a
+          twenty-order unit is unreadable.</li>
+        <li class="con">Nothing ties a sentence to its line but the item&rsquo;s name.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab" style="color:var(--brass-bright)">S2 &mdash; one sentence per item, movements joined &nbsp;&mdash;&nbsp; CHOSEN</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Porters (1913) &mdash; items</div>
+        <div class="line"><span>silver SILV</span><span class="val"><span class="flat">380</span><span class="arrow">&rarr;</span><span class="up">554</span></span></div>
+        <div class="line"><span>grain GRAI</span><span class="val"><span class="flat">120</span><span class="arrow">&rarr;</span><span class="down">88</span></span></div>
+        <div class="line"><span>wood WOOD</span><span class="val"><span class="flat">60</span><span class="arrow">&rarr;</span><span class="down">55</span></span></div>
+        <div class="line"><span>horse HORS</span><span class="val"><span class="flat">2</span><span class="arrow">&rarr;</span><span class="down">gone</span></span></div>
+        <div class="line"><span>sword SWOR</span><span class="val"><span class="flat">none</span><span class="arrow">&rarr;</span><span class="up">4</span></span></div>
+        <div class="line"><span>herb HERB</span><span class="val"><span class="flat">30</span><span class="arrow">&rarr;</span><span class="down">27</span></span></div>
+        <div class="note">silver: given 30 by Elders (1774).</div>
+        <div class="note tight">grain: sold 12 at 12 silver each, sent 20 to Ferry (4102).</div>
+        <div class="note tight">wood: produced 5, spent 10 on a build.</div>
+        <div class="note tight">horse: gave 2 to Scouts (1502).</div>
+        <div class="note tight">sword: bought 4 at 60 silver each.</div>
+        <div class="note tight">herb: 3 taken by Watch (1604).</div>
+      </div></div>
+      <ul class="notes">
+        <li>One sentence per changed line, so the block can never be longer than the list above it.</li>
+        <li>The leading item name ties each sentence to its figure by eye.</li>
+        <li class="con">A unit that bought the same thing at four prices gets one long, comma-heavy sentence that
+          wraps to three lines &mdash; and the wrap is where the cost bites, not the count.</li>
+        <li class="con">The month&rsquo;s order survives only inside a sentence, not across the block.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">S3 &mdash; each sentence under the line it explains &nbsp;&mdash;&nbsp; rejected</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Porters (1913) &mdash; items</div>
+        <div class="line"><span>silver SILV</span><span class="val"><span class="flat">380</span><span class="arrow">&rarr;</span><span class="up">554</span></span></div>
+        <div class="note under">given 30 by Elders (1774)</div>
+        <div class="line"><span>grain GRAI</span><span class="val"><span class="flat">120</span><span class="arrow">&rarr;</span><span class="down">88</span></span></div>
+        <div class="note under">sold 12 at 12 silver each</div>
+        <div class="note under">sent 20 to Ferry (4102)</div>
+        <div class="line"><span>wood WOOD</span><span class="val"><span class="flat">60</span><span class="arrow">&rarr;</span><span class="down">55</span></span></div>
+        <div class="note under">produced 5</div>
+        <div class="note under">spent 10 on a build</div>
+        <div class="line"><span>horse HORS</span><span class="val"><span class="flat">2</span><span class="arrow">&rarr;</span><span class="down">gone</span></span></div>
+        <div class="note under">gave 2 to Scouts (1502)</div>
+        <div class="line"><span>sword SWOR</span><span class="val"><span class="flat">none</span><span class="arrow">&rarr;</span><span class="up">4</span></span></div>
+        <div class="note under">bought 4 at 60 silver each</div>
+        <div class="line"><span>herb HERB</span><span class="val"><span class="flat">30</span><span class="arrow">&rarr;</span><span class="down">27</span></span></div>
+        <div class="note under">3 taken by Watch (1604)</div>
+      </div></div>
+      <ul class="notes">
+        <li>A figure and its reasons are never more than a line apart, which is the question the popup is opened to
+          answer.</li>
+        <li>Nothing is merged, and nothing has to be matched up by name.</li>
+        <li class="con"><b>It competes with the cap for the same twelve lines.</b> Porters&rsquo; six changed items
+          already cost fourteen; a unit with a busy month cannot also show its untouched stock.</li>
+        <li class="con">The list stops being a scannable column of figures.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">The quiet states, drawn in whichever pair you choose</h3>
+  <p>These are settled by <code>ah-rgkk.1</code> and shown only so you can see them in this column.</p>
+  <div class="pops">
+    <div class="pop">
+      <div class="head">Watazka (4839) &mdash; items</div>
+      <div class="note" style="margin-top:0">No items.</div>
+    </div>
+    <div class="pop">
+      <div class="head">Braves (1487) &mdash; items</div>
+      <div class="line"><span>silver SILV</span><span class="val"><span class="flat">40</span></span></div>
+      <div class="line"><span>grain GRAI</span><span class="val"><span class="flat">12</span></span></div>
+      <div class="note">Nothing this month changes these.</div>
+    </div>
+    <div class="pop">
+      <div class="head">Scouts (1502) &mdash; items</div>
+      <div class="line"><span>silver SILV</span><span class="val"><span class="flat">80</span><span class="arrow">&rarr;</span><span class="up">140</span></span></div>
+      <div class="line"><span>grain GRAI</span><span class="val"><span class="flat">30</span><span class="arrow">&rarr;</span><span class="down">25</span></span></div>
+      <div class="note">Sold 5 grain at 12 silver each.</div>
+      <div class="warn">&ldquo;+ ?&rdquo; in the cell: this month is only partly counted, so this list may be short.</div>
+    </div>
+    <div class="pop">
+      <div class="head">Marauders (7710) &mdash; items</div>
+      <div class="line"><span>sword SWOR</span><span class="val"><span class="flat">12</span></span></div>
+      <div class="line"><span>horse HORS</span><span class="val"><span class="flat">8</span></span></div>
+      <div class="note">Nothing this month changes these.</div>
+      <div class="note tight">A report shows another faction&rsquo;s large items only.</div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>Wording of every cause, spacing, colours and the exact footer string are mine unless you say otherwise; the
+  full list of cause sentences goes in the plan for you to overrule in a sentence. What is yours here is
+  <b>Q1</b> and <b>Q2</b>.</p>
+</footer>
