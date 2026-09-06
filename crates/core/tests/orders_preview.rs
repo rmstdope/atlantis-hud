@@ -311,3 +311,42 @@ fn a_dissolving_formed_unit_shows_an_unnamed_departure_and_no_arrival() {
         );
     }
 }
+
+/// `rules/form` puts the new unit in its parent's structure, so a unit formed aboard a fleet that
+/// sails goes where the fleet goes without writing an order of its own (`ah-4hux`, decision Q4b).
+#[test]
+fn a_unit_formed_aboard_a_sailing_fleet_is_carried_with_it() {
+    // "* Drones (10575)" stands in Ship [235] at (36,44) with 2 gnolls; its SAIL SE reaches
+    // (37,45), which `a_unit_that_boards_a_departing_fleet_is_previewed_as_departing` asserts too.
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        G5_F21_T24,
+        "[]",
+        "unit 10575\nSAIL SE\nFORM 1\nEND\nGIVE NEW 1 1 GNOL\n",
+    )
+    .expect("the ruleset loads");
+
+    let origin = response
+        .regions
+        .iter()
+        .find(|region| region.region_id == "1:36,44")
+        .expect("the hex the fleet sets out from");
+    let carried = origin
+        .units
+        .iter()
+        .find(|unit| unit.unit.unit_id == "new-1")
+        .expect("the formed unit keeps its row in the hex it was formed in");
+    assert_eq!(carried.status, UnitPreviewStatus::Departing);
+    assert!(carried.formed);
+    assert!(!carried.dissolving);
+    assert_eq!(carried.departing_to.as_deref(), Some("1:37,45"));
+    assert!(
+        carried
+            .aboard
+            .as_deref()
+            .is_some_and(|hull| hull.contains("235")),
+        "and names the hull carrying it: {:?}",
+        carried.aboard
+    );
+}

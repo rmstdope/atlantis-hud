@@ -459,11 +459,13 @@ pub fn preview_orders_on_map(
     }
 
     for decided in &mut decided {
-        // A unit with its own movement order keeps its own destination and gets no marker, and a
-        // unit already departing or formed has been decided by its own orders.
+        // A unit with its own movement order keeps its own destination and gets no marker. A row
+        // already departing or arriving has been decided by its own orders; a dissolving one is
+        // never carried anywhere, because it never exists. A `Present` row that is *formed* is
+        // carried like any other passenger: `rules/form` puts the new unit in its parent's
+        // structure, so if that structure sails, it sails (`ah-4hux`, decision **Q4b**).
         if decided.entry.move_steps.is_some()
             || decided.status != UnitPreviewStatus::Present
-            || decided.formed
             || decided.dissolving
         {
             continue;
