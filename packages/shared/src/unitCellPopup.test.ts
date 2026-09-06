@@ -944,7 +944,8 @@ describe("the items popup's pairs", () => {
               cause: "given-away",
               line: 3,
               unitPrice: null,
-              other: { unitId: "1502", name: "Scouts" }
+              other: { unitId: "1502", name: "Scouts" },
+              isMan: false
             }
           ]
         }),
@@ -1017,7 +1018,8 @@ describe("the items popup's order", () => {
     cause: "produced" as const,
     line: null,
     unitPrice: null,
-    other: null
+    other: null,
+    isMan: false
   });
 
   it("draws every item this month moved before the ones it did not", () => {
@@ -1126,6 +1128,7 @@ describe("the items popup's cause sentences", () => {
       line: null,
       unitPrice: null,
       other: null,
+      isMan: false,
       ...overrides
     }) as NonNullable<PreviewedUnit["itemChanges"]>[number];
 

@@ -733,7 +733,8 @@ describe("formatItems and itemsTooltip", () => {
           cause: "build-spent",
           line: 4,
           unitPrice: null,
-          other: null
+          other: null,
+          isMan: false
         }
       ],
       built: [
@@ -788,7 +789,8 @@ describe("formatItems and itemsTooltip", () => {
           cause: "build-spent",
           line: 4,
           unitPrice: null,
-          other: null
+          other: null,
+          isMan: false
         }
       ],
       built: [
@@ -821,7 +823,8 @@ describe("formatItems and itemsTooltip", () => {
           cause: "build-spent",
           line: 4,
           unitPrice: null,
-          other: null
+          other: null,
+          isMan: false
         }
       ],
       built: [
@@ -854,7 +857,8 @@ describe("formatItems and itemsTooltip", () => {
           cause: "build-spent",
           line: 4,
           unitPrice: null,
-          other: { unitId: "1502", name: "Scouts" }
+          other: { unitId: "1502", name: "Scouts" },
+          isMan: false
         }
       ],
       built: [
