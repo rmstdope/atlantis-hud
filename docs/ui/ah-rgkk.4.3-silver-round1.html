@@ -1,0 +1,377 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-rgkk.4.3 — round 1: what the Silver popup draws, and how it explains itself</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .line.total { border-bottom:1px solid var(--edge-soft); padding-bottom:3px; margin-bottom:3px; }
+  .pop .line .val { text-align:right; white-space:nowrap; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .note.tight { margin-top:2px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; align-items:start; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .rule { border-top:1px solid var(--edge); margin:30px 0 0; }
+  .cell { display:inline-block; background:var(--panel); border:1px solid var(--edge); border-radius:4px;
+          padding:2px 8px; font:12px/1.5 'SF Mono',Menlo,monospace; color:var(--ink); }
+</style>
+<style>
+  .pop .line.sub { padding-left:14px; color:var(--ink-soft); }
+  .pop .line.rule { border-bottom:1px solid var(--edge-soft); padding-bottom:3px; margin-bottom:3px; }
+  .pop .why { color:var(--ink-dim); }
+  table.cmp { border-collapse:collapse; font-size:12.5px; margin-top:10px; width:100%; }
+  table.cmp td, table.cmp th { border-top:1px solid var(--edge); padding:5px 8px; text-align:left; vertical-align:top; }
+  table.cmp th { color:var(--brass); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.1em; text-transform:uppercase; }
+  .tag { display:inline-block; font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.1em; text-transform:uppercase;
+         color:var(--ground); background:var(--brass); border-radius:3px; padding:3px 6px; margin-bottom:8px; }
+</style>
+
+<header>
+  <h1>ah-rgkk.4.3 <span>&mdash; round 1: the Silver popup</span></h1>
+  <p>Resting on the <b>Silver</b> cell today opens the same six-row working the whole-unit tooltip shows &mdash;
+  <code>Held now</code>, <code>In, in time</code>, <code>In, too late</code>, <code>Out</code>, <code>Upkeep</code>,
+  <code>At month end</code> &mdash; plus every note that applies, of which there are thirty-odd in
+  <code>SILVER_NOTES</code>. It says <b>how much</b> moved. It never says <b>what moved it</b>, and the red figure and
+  the &#9888; mark on the cell are explained by colour alone.</p>
+  <p><code>ah-rgkk.4.4</code> (planned, in flight) makes the causes knowable: <code>UnitSilver.changes</code>, one entry
+  per movement of this unit&rsquo;s silver, each with an amount, a cause and the order&rsquo;s line, in the turn&rsquo;s
+  own order. This bead spends it.</p>
+  <p><b style="color:var(--brass)">Three questions.</b> <b>Q1</b> &mdash; which figures the popup draws.
+  <b>Q2</b> &mdash; how the red figure and the &#9888; mark are said in words, and where.
+  <b>Q3</b> &mdash; what becomes of the notes the new lines now restate. Everything else in the family is settled and
+  is not re-opened: the heading, the twelve-line cap, the pair notation with green up and red down on the after only,
+  the <code>sr-only</code> sentence as the only non-visual route, and the single amber warning line.</p>
+</header>
+
+<main>
+
+<h3 class="sec">The scene</h3>
+<p class="scene"><b>Collectors (1732)</b> is one of ours, eight men, in a region it can tax. Its report showed
+<b>340 silver</b>. This month it <b>taxes</b> the region (line 4, +200), <b>Watch (1604) gives it 50</b>,
+it <b>studies</b> Combat (line 6, &minus;60), <b>buys 2 horses</b> at 45 (line 7, &minus;90) and
+<b>gives 40 to Scouts (1502)</b> (line 8). Upkeep for eight men is <b>80</b>, and the Silver column is counting it
+(<code>ah-1wcw.4</code>). It ends the month holding <b>320</b> &mdash; twenty <em>less</em> than it started with, after a
+month in which 200 came in from tax alone. <b>That is the case this popup exists for:</b> the figure moved by
+&minus;20 and six separate things moved it.</p>
+
+<div class="rule"></div>
+<h3 class="sec">Q1 &mdash; which figures does the popup draw?</h3>
+<p>All three draw the same words underneath (Q2&rsquo;s <b>W1</b> and Q3&rsquo;s <b>N2</b>, so the panels differ in one
+thing only). Compare where your eye goes to answer <em>&ldquo;why is this unit poorer than last month?&rdquo;</em></p>
+
+<div class="split3">
+  <div class="card">
+    <p class="hexlab">V1 &mdash; the working as it stands today, causes in prose</p>
+    <div class="pop">
+      <div class="head">Collectors (1732) &mdash; silver</div>
+      <div class="line"><span>Held now</span><span class="val">340</span></div>
+      <div class="line"><span>In, in time</span><span class="val">250</span></div>
+      <div class="line"><span>In, too late</span><span class="val">0</span></div>
+      <div class="line"><span>Out</span><span class="val">190</span></div>
+      <div class="line"><span>Upkeep</span><span class="val">80</span></div>
+      <div class="line rule"><span>At month end</span><span class="val">340<span class="arrow">&rarr;</span><span class="down">320</span></span></div>
+      <div class="note tight">In: taxed 200, given 50 by Watch (1604).</div>
+      <div class="note tight">Out: studied 60, bought 2 horses for 90, gave 40 to Scouts (1502).</div>
+    </div>
+    <ul class="notes">
+      <li>Nothing a reader already knows how to read is disturbed &mdash; the same six rows, in the same order, as the
+      whole-unit tooltip one hover away.</li>
+      <li>The in-time / too-late split, which is the whole of <code>ah-uwa3</code>, keeps a row of its own.</li>
+      <li>Bounded: six rows however busy the month, so the twelve-line cap can never bite.</li>
+      <li class="con">No cause carries a figure of its own on a line. <code>taxed 200</code> is prose, and the eye that
+      scans the right-hand column never meets it.</li>
+      <li class="con">Reads nothing like the Items and Men popups one column along, which draw a line per thing and a
+      sentence per thing.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <p class="hexlab">V2 &mdash; the pair, then a line per cause &mdash; the way the Items popup draws items</p>
+    <div class="pop">
+      <div class="head">Collectors (1732) &mdash; silver</div>
+      <div class="line rule"><span>silver</span><span class="val">340<span class="arrow">&rarr;</span><span class="down">320</span></span></div>
+      <div class="line"><span>taxed</span><span class="val"><span class="up">+200</span></span></div>
+      <div class="line"><span>given by Watch (1604)</span><span class="val"><span class="up">+50</span></span></div>
+      <div class="line"><span>studied</span><span class="val"><span class="down">&minus;60</span></span></div>
+      <div class="line"><span>bought</span><span class="val"><span class="down">&minus;90</span> <span class="why">2 horses at 45</span></span></div>
+      <div class="line"><span>gave to Scouts (1502)</span><span class="val"><span class="down">&minus;40</span></span></div>
+      <div class="line"><span>upkeep</span><span class="val"><span class="down">&minus;80</span></span></div>
+    </div>
+    <ul class="notes">
+      <li>Every cause is a figure on the right-hand column, in the turn&rsquo;s own order
+      (<code>rules/sequenceofevents</code>: GIVE and TAKE, then TAX, then the market, then STUDY, then wages, then
+      maintenance).</li>
+      <li>The same shape as the Items popup and the Men popup: a line per thing, the detail beside it.</li>
+      <li>Reads as arithmetic that adds up &mdash; 340 +200 +50 &minus;60 &minus;90 &minus;40 &minus;80 = 320.</li>
+      <li class="con">The in-time / too-late split is gone from the lines. A unit paid in wages needs it, so it has to
+      come back as a clause &mdash; <code>worked &nbsp;+65 &nbsp;arrives too late</code> &mdash; or as prose.</li>
+      <li class="con">A busy unit overflows: eleven movements plus the pair is thirteen lines, and the cap takes the
+      last of them.</li>
+      <li class="con">The four sums the reader has learned &mdash; <code>In, in time</code> and its three neighbours
+      &mdash; are no longer on this surface at all, though the whole-unit tooltip still has them.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <p class="hexlab">V3 &mdash; the working kept, each cause indented under its own row</p>
+    <div class="pop">
+      <div class="head">Collectors (1732) &mdash; silver</div>
+      <div class="line"><span>Held now</span><span class="val">340</span></div>
+      <div class="line"><span>In, in time</span><span class="val">250</span></div>
+      <div class="line sub"><span>taxed</span><span class="val">200</span></div>
+      <div class="line sub"><span>given by Watch (1604)</span><span class="val">50</span></div>
+      <div class="line"><span>In, too late</span><span class="val">0</span></div>
+      <div class="line"><span>Out</span><span class="val">190</span></div>
+      <div class="line sub"><span>studied</span><span class="val">60</span></div>
+      <div class="line sub"><span>bought 2 horses at 45</span><span class="val">90</span></div>
+      <div class="line sub"><span>gave to Scouts (1502)</span><span class="val">40</span></div>
+      <div class="line"><span>Upkeep</span><span class="val">80</span></div>
+      <div class="line rule"><span>At month end</span><span class="val">340<span class="arrow">&rarr;</span><span class="down">320</span></span></div>
+    </div>
+    <ul class="notes">
+      <li>Both frames at once: the sums the reader knows, and every cause beneath the sum it belongs to.</li>
+      <li>Which income arrives too late is answered by <em>where the line sits</em>, with no clause needed.</li>
+      <li class="con">Longest of the three, and the twelve-line cap bites hardest &mdash; this ordinary month is already
+      eleven lines, and the cap would drop a cause rather than a sum.</li>
+      <li class="con">Needs a component change: <code>PopupLine</code> has no notion of a nested line, so this is a new
+      field and a new style, and the <code>sr-only</code> sentence has to say the nesting in words.</li>
+      <li class="con">Two rules to hold in mind instead of one, and the popup&rsquo;s height changes a lot from unit to
+      unit.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="rule"></div>
+<h3 class="sec">Q2 &mdash; how are the red figure and the &#9888; mark said in words?</h3>
+<p>The cell colours a figure red when <b>this unit, counted alone, is in trouble</b>: it ends the month below zero, or
+it cannot pay for its own orders out of silver that reaches it in time (<code>ah-uwa3</code>). It draws
+<b>&#9888;</b> for something else &mdash; a check that <em>names</em> this unit, <code>not-enough-silver</code> (which
+pools across the hex&rsquo;s sharing units) or <code>upkeep-exceeds-unclaimed</code> (<code>ah-fjty</code>). The two
+mean different things on purpose, so a <b>&#9888;</b> on a black, positive figure is not a contradiction. Today
+neither is explained anywhere except by its colour. All three panels use Q1&rsquo;s <b>V2</b>.</p>
+
+<div class="split3">
+  <div class="card">
+    <p class="hexlab">W1 &mdash; one amber line at the foot, in the slot the family already has</p>
+    <div class="pops">
+      <div class="pop">
+        <div class="head">Levy (2871) &mdash; silver</div>
+        <div class="line rule"><span>silver</span><span class="val">40<span class="arrow">&rarr;</span><span class="down">&minus;60</span></span></div>
+        <div class="line"><span>worked</span><span class="val"><span class="up">+65</span> <span class="why">arrives too late</span></span></div>
+        <div class="line"><span>bought</span><span class="val"><span class="down">&minus;135</span> <span class="why">3 horses at 45</span></span></div>
+        <div class="line"><span>upkeep</span><span class="val"><span class="down">&minus;30</span></span></div>
+        <div class="note tight">Wages arrive too late to pay for this month&rsquo;s orders, so this unit is 95 short when it buys.</div>
+        <div class="warn">A red figure in the cell: this unit ends the month 60 short.</div>
+      </div>
+      <div class="pop">
+        <div class="head">Guards (3310) &mdash; silver</div>
+        <div class="line rule"><span>silver</span><span class="val">40<span class="flat">&nbsp;</span></span></div>
+        <div class="line"><span>taxed</span><span class="val"><span class="up">+0</span></span></div>
+        <div class="note tight">There is not enough unclaimed silver to feed every unit that needs it.</div>
+        <div class="warn">&#9888; in the cell: a check warns about this unit&rsquo;s money. Select the unit to read it in the Problems panel.</div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Uses the slot the family already agreed and every other column already uses, so nothing new is invented.</li>
+      <li>Amber is where the eye goes last, which is where an explanation of a mark belongs &mdash; the figure said it
+      first.</li>
+      <li>Each sentence names the mark it explains, the way the Items popup&rsquo;s amber line names
+      <code>&ldquo;+ ?&rdquo;</code>.</li>
+      <li class="con">There is <b>one</b> amber slot, and a unit can carry both marks at once. Then the two sentences
+      are joined into one amber paragraph, which is the longest thing on the popup.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <p class="hexlab">W2 &mdash; the red on the line it colours; the &#9888; in the amber slot</p>
+    <div class="pops">
+      <div class="pop">
+        <div class="head">Levy (2871) &mdash; silver</div>
+        <div class="line rule"><span>silver</span><span class="val">40<span class="arrow">&rarr;</span><span class="down">&minus;60</span> <span class="why">60 short</span></span></div>
+        <div class="line"><span>worked</span><span class="val"><span class="up">+65</span> <span class="why">arrives too late</span></span></div>
+        <div class="line"><span>bought</span><span class="val"><span class="down">&minus;135</span> <span class="why">3 horses at 45</span></span></div>
+        <div class="line"><span>upkeep</span><span class="val"><span class="down">&minus;30</span></span></div>
+        <div class="note tight">Wages arrive too late to pay for this month&rsquo;s orders, so this unit is 95 short when it buys.</div>
+      </div>
+      <div class="pop">
+        <div class="head">Guards (3310) &mdash; silver</div>
+        <div class="line rule"><span>silver</span><span class="val">40</span></div>
+        <div class="line"><span>taxed</span><span class="val"><span class="up">+0</span></span></div>
+        <div class="note tight">There is not enough unclaimed silver to feed every unit that needs it.</div>
+        <div class="warn">&#9888; in the cell: a check warns about this unit&rsquo;s money. Select the unit to read it in the Problems panel.</div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>The explanation sits on the figure it is about &mdash; no hunting to the foot to find out what the colour
+      meant.</li>
+      <li>Uses <code>PopupLine.why</code>, which exists and is already drawn dim after the value; no new field.</li>
+      <li>Frees the single amber slot for the <b>&#9888;</b>, so the two marks never compete for it.</li>
+      <li class="con">The clause has to be very short to fit beside a pair &mdash; <code>60 short</code> says less than
+      a sentence does, and for the orders case (<code>95 short when it buys</code>) it repeats what the note under it
+      already says at length.</li>
+      <li class="con">Two different mechanisms for two marks, so a reader learns the popup twice.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <p class="hexlab">W3 &mdash; both as ordinary notes, no amber at all</p>
+    <div class="pops">
+      <div class="pop">
+        <div class="head">Levy (2871) &mdash; silver</div>
+        <div class="line rule"><span>silver</span><span class="val">40<span class="arrow">&rarr;</span><span class="down">&minus;60</span></span></div>
+        <div class="line"><span>worked</span><span class="val"><span class="up">+65</span> <span class="why">arrives too late</span></span></div>
+        <div class="line"><span>bought</span><span class="val"><span class="down">&minus;135</span> <span class="why">3 horses at 45</span></span></div>
+        <div class="line"><span>upkeep</span><span class="val"><span class="down">&minus;30</span></span></div>
+        <div class="note tight">This unit ends the month 60 short.</div>
+        <div class="note tight">Wages arrive too late to pay for this month&rsquo;s orders, so this unit is 95 short when it buys.</div>
+      </div>
+      <div class="pop">
+        <div class="head">Guards (3310) &mdash; silver</div>
+        <div class="line rule"><span>silver</span><span class="val">40</span></div>
+        <div class="line"><span>taxed</span><span class="val"><span class="up">+0</span></span></div>
+        <div class="note tight">A check warns about this unit&rsquo;s money. Select the unit to read it in the Problems panel.</div>
+        <div class="note tight">There is not enough unclaimed silver to feed every unit that needs it.</div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>One mechanism, however many marks the cell carries &mdash; the notes are a list and simply get longer.</li>
+      <li>Nothing competes for the single amber slot, so the popup&rsquo;s shape never depends on which marks applied.</li>
+      <li class="con">Amber is what this family uses to mean &ldquo;the cell is marked and here is why&rdquo;. Not using
+      it here makes the Silver popup the odd one out, and the one explanation the reader came for reads exactly like the
+      thirty notes around it.</li>
+      <li class="con">A dim sentence under a red figure is the quietest possible way to explain the loudest thing on the
+      row.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="rule"></div>
+<h3 class="sec">Q3 &mdash; what becomes of the notes the new lines now restate?</h3>
+<p>Today the popup pours in <b>every</b> note that applies, in <code>SILVER_NOTES</code> order &mdash; thirty-odd of
+them, and about half a dozen say nothing but an amount the ledger is about to draw as a line of its own. Both panels use
+Q1&rsquo;s <b>V2</b> and Q2&rsquo;s <b>W1</b>; the unit is Collectors (1732) from the scene, with a take added
+&mdash; it also takes 25 from a unit its report does not show.</p>
+
+<div class="split2">
+  <div class="card">
+    <p class="hexlab">N1 &mdash; keep every note, exactly as it fires today</p>
+    <div class="pop">
+      <div class="head">Collectors (1732) &mdash; silver</div>
+      <div class="line rule"><span>silver</span><span class="val">340<span class="arrow">&rarr;</span><span class="down">320</span></span></div>
+      <div class="line"><span>given by Watch (1604)</span><span class="val"><span class="up">+50</span></span></div>
+      <div class="line"><span>taken from unit 999</span><span class="val"><span class="up">+25</span> <span class="why">not shown in your report</span></span></div>
+      <div class="line"><span>taxed</span><span class="val"><span class="up">+200</span></span></div>
+      <div class="line"><span>studied</span><span class="val"><span class="down">&minus;60</span></span></div>
+      <div class="line"><span>bought</span><span class="val"><span class="down">&minus;90</span> <span class="why">2 horses at 45</span></span></div>
+      <div class="line"><span>gave to Scouts (1502)</span><span class="val"><span class="down">&minus;40</span></span></div>
+      <div class="line"><span>upkeep</span><span class="val"><span class="down">&minus;80</span></span></div>
+      <div class="note tight">Includes 50 given by Watch (1604) in this hex.</div>
+      <div class="note tight">Includes 25 taken from unit 999, which your report does not show here.</div>
+      <div class="note tight">This unit is set to tax every turn, so it taxes without an order.</div>
+    </div>
+    <ul class="notes">
+      <li>Nothing agreed in an earlier bead is disturbed, and no wording anybody signed off disappears.</li>
+      <li>The whole-unit tooltip and this popup keep saying identical things, so nobody has to hold two versions in
+      mind.</li>
+      <li class="con">The same gift is on the screen twice, four lines apart, in two different notations.</li>
+      <li class="con">The prose block grows exactly where the lines already grew, so a busy unit gets the longest popup
+      in the table saying everything twice.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <p class="hexlab">N2 &mdash; drop the restated amount, keep the caveat (the Items popup&rsquo;s answer, <code>ah-rgkk.3.3</code>&rsquo;s <b>T2</b>)</p>
+    <div class="pop">
+      <div class="head">Collectors (1732) &mdash; silver</div>
+      <div class="line rule"><span>silver</span><span class="val">340<span class="arrow">&rarr;</span><span class="down">320</span></span></div>
+      <div class="line"><span>given by Watch (1604)</span><span class="val"><span class="up">+50</span></span></div>
+      <div class="line"><span>taken from unit 999</span><span class="val"><span class="up">+25</span> <span class="why">not shown in your report</span></span></div>
+      <div class="line"><span>taxed</span><span class="val"><span class="up">+200</span> <span class="why">no order &mdash; set to tax every turn</span></span></div>
+      <div class="line"><span>studied</span><span class="val"><span class="down">&minus;60</span></span></div>
+      <div class="line"><span>bought</span><span class="val"><span class="down">&minus;90</span> <span class="why">2 horses at 45</span></span></div>
+      <div class="line"><span>gave to Scouts (1502)</span><span class="val"><span class="down">&minus;40</span></span></div>
+      <div class="line"><span>upkeep</span><span class="val"><span class="down">&minus;80</span></span></div>
+    </div>
+    <ul class="notes">
+      <li>Every fact survives; nothing is said twice. The caveat that mattered &mdash; <em>your report does not show
+      unit 999</em> &mdash; moves onto the line it is about.</li>
+      <li>The prose block is then only the things no line can carry: the doubts, the shortfalls, who paid the upkeep,
+      what the market refused.</li>
+      <li>Only this popup changes. The whole-unit tooltip keeps every note it has today, word for word.</li>
+      <li class="con">Two surfaces now say the same month in two different ways, and a reader moving between them has to
+      notice that neither is missing anything.</li>
+      <li class="con">Wording agreed in earlier beads (<code>ah-awcm</code>, <code>ah-tdsi</code>) stops shipping on
+      this surface.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="rule"></div>
+<h3 class="sec">The states the happy path hides</h3>
+<p>Drawn in Q1&rsquo;s <b>V2</b> and Q3&rsquo;s <b>N2</b>. None of these is a question &mdash; they are here so the
+answer to Q1 is given knowing what it costs at the edges.</p>
+
+<div class="pops">
+  <div class="pop">
+    <div class="head">Raiders (4820) &mdash; silver</div>
+    <div class="note tight">Another faction&rsquo;s orders are not in your report.</div>
+  </div>
+  <div class="pop">
+    <div class="head">Recruits (9111) &mdash; silver</div>
+    <div class="note tight">The game dissolves this unit before the month ends, so it has no month end.</div>
+  </div>
+  <div class="pop">
+    <div class="head">Miners (2044) &mdash; silver</div>
+    <div class="line rule"><span>silver</span><span class="val">120<span class="arrow">&rarr;</span><span class="flat">?</span></span></div>
+    <div class="note tight">The report never said what this region&rsquo;s tax base is.</div>
+    <div class="note tight">This month cannot be added up, so what moved this unit&rsquo;s silver is not listed.</div>
+  </div>
+  <div class="pop">
+    <div class="head">Idlers (7702) &mdash; silver</div>
+    <div class="line rule"><span>silver</span><span class="val">85</span></div>
+    <div class="note tight">Nothing this unit is ordered to do moves silver.</div>
+  </div>
+</div>
+<ul class="notes" style="max-width:105ch">
+  <li class="n"><b>A foreign unit</b> and <b>a dissolving unit</b> keep exactly the sentences they have today.</li>
+  <li class="n"><b>A doubted month</b> draws no cause lines at all: <code>ah-rgkk.4.4</code> leaves
+  <code>changes</code> empty whenever the sums are doubted, precisely so a half-ledger cannot be added up and disagreed
+  with. The popup says so in one line rather than looking empty.</li>
+  <li class="n"><b>A quiet unit</b> keeps its one sentence and draws its figure with no pair.</li>
+</ul>
+
+<footer>
+  <p>Every figure here is invented for the mockup. The composition is <code>packages/shared/src/unitCellPopup.ts</code>
+  only &mdash; no Rust, and (under V1 and V2) no component change. The whole-unit tooltip
+  <code>summariseSilver</code> is untouched whichever way these go.</p>
+</footer>
+</main>
