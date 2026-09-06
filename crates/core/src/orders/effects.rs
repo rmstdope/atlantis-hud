@@ -7917,13 +7917,21 @@ mod tests {
                 .iter()
                 .flat_map(|id| row_of(&response, id).item_changes.clone())
                 .collect();
-            assert!(
-                transfer_causes
-                    .iter()
-                    .filter(|cause| changes.iter().any(|change| change.cause == **cause))
-                    .count()
-                    >= 4,
-                "the four ordinary transfer causes are all here: {changes:?}",
+            let seen: Vec<_> = transfer_causes
+                .iter()
+                .copied()
+                .filter(|cause| changes.iter().any(|change| change.cause == *cause))
+                .collect();
+            assert_eq!(
+                seen,
+                vec![
+                    ItemChangeCause::GivenAway,
+                    ItemChangeCause::WasGiven,
+                    ItemChangeCause::Took,
+                    ItemChangeCause::WasTakenFrom,
+                ],
+                "exactly the four this fixture reaches, so one going missing is noticed: \
+                 {changes:?}",
             );
             for change in &changes {
                 if transfer_causes.contains(&change.cause) {
@@ -8012,6 +8020,21 @@ mod tests {
                     .collect::<Vec<_>>(),
                 vec![("HUMN", -10, Some(2)), ("SWOR", -10, Some(2))],
                 "`rules/give`: ITEMS is the combination of every class, men included",
+            );
+
+            // The receiver's side of the same order, men included: moving a race tag also merges
+            // skills and headcounts, and that branch must record the arrival like any other.
+            let recipient = row_of(&response, "902");
+            assert_eq!(
+                recipient
+                    .item_changes
+                    .iter()
+                    .map(|change| (change.tag.as_str(), change.delta, change.cause, change.line))
+                    .collect::<Vec<_>>(),
+                vec![
+                    ("HUMN", 10, ItemChangeCause::WasGiven, Some(2)),
+                    ("SWOR", 10, ItemChangeCause::WasGiven, Some(2)),
+                ],
             );
         }
 
