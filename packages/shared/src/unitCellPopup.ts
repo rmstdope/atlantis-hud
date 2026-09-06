@@ -5,6 +5,7 @@ import type {
   SkillInfo,
   SkillMerge,
   StudyForecast,
+  UnitMovementMode,
   UnitSilver
 } from "@atlantis/core-client";
 import { count } from "./plural";
@@ -86,6 +87,14 @@ export type PopupLine = {
    * `change` are never both set.
    */
   steps?: readonly PopupStep[];
+  /**
+   * How this line stands against its neighbours (`ah-rgkk.5.1`).
+   *
+   * `deciding` is the carrying capacity the unit's mode rests on - the one its load has to beat;
+   * `aside` is one that does not apply. Absent on every other line and every other column, which
+   * are drawn exactly as they are today.
+   */
+  stress?: "deciding" | "aside";
   /** One clause saying why it moved, e.g. `4 bought at 60 silver each`. Absent where unknown. */
   why?: string;
   /**
@@ -448,6 +457,25 @@ function castCreatedClause(change: ItemChange, unit: PreviewedUnit, n: number): 
 export const MAX_LINES = 12;
 
 /**
+ * The four words `movement_status_label` writes (`crates/core/src/orders/effects.rs`), ranked as
+ * the game picks a mode: it tries fly, then ride, then walk, and refuses a MOVE order when none of
+ * them will carry the load (`rules/movement_normal`).
+ */
+const MOVEMENT_RANK: Record<string, number> = {
+  Overloaded: 0,
+  Walking: 1,
+  Riding: 2,
+  Flying: 3
+};
+
+/** The three capacities, in the order the report prints them, and what the popup calls them. */
+const CAPACITY_LINES: readonly { mode: UnitMovementMode; label: string }[] = [
+  { mode: "fly", label: "can carry flying" },
+  { mode: "ride", label: "can carry riding" },
+  { mode: "walk", label: "can carry walking" }
+];
+
+/**
  * The field of `previewChanges` each column's cell is drawn from, for the columns the orders can
  * change. The two columns with no field - `longOrder` and `silver` - say nothing about a change.
  */
@@ -723,20 +751,99 @@ function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 }
 
 function movementBody(unit: PreviewedUnit): Body {
-  if (unit.movement == null) {
+  const movement = unit.movement;
+  if (movement == null) {
     return { lines: [], notes: ["Movement not disclosed."] };
   }
+  const present = presentUnitMovement(movement);
   const change = changeFor(unit, CHANGE_FIELD.movement!);
+  const lines: PopupLine[] = [
+    { label: "move", value: present.label, ...movementPair(change, present.label) },
+    { label: "weight", value: movement.load.toLocaleString() },
+    ...CAPACITY_LINES.map(({ mode, label }) => ({
+      label,
+      value: movement[mode].toLocaleString(),
+      stress: mode === present.active ? ("deciding" as const) : ("aside" as const)
+    }))
+  ];
+  const causes = movementCauses(unit);
+  const notes: string[] = [];
+  if (!change && causes.length > 0) {
+    notes.push("Its load changed this month, but not the mode it travels in.");
+  }
+  notes.push(...causes);
   return {
-    lines: [
-      {
-        label: "move",
-        value: presentUnitMovement(unit.movement).label,
-        ...(change ? { why: originalTooltip(change) } : {})
-      }
-    ],
-    notes: []
+    lines,
+    notes,
+    changed: causes.length > 0,
+    warning: movementIsStillTheReport(unit)
+      ? "An order this month could not be counted, so these are the report\u2019s own figures, not this month\u2019s."
+      : null
   };
+}
+
+/**
+ * The `move` line's pair, or the report's own words where the pair cannot be drawn.
+ *
+ * The core records a `movement` change only when the status word moves, and writes it as one of
+ * four words rather than as a status, so the direction is a comparison of those words. A word this
+ * app does not know can only have come from a newer core; it is quoted rather than ranked, the
+ * same fallback `markOrQuote` uses for a figure it cannot pair.
+ */
+function movementPair(change: ReturnType<typeof changeFor>, now: string): Partial<PopupLine> {
+  if (!change) {
+    return {};
+  }
+  const before = MOVEMENT_RANK[change.original];
+  const after = MOVEMENT_RANK[now];
+  if (before === undefined || after === undefined) {
+    return { why: originalTooltip(change) };
+  }
+  return { change: { direction: after > before ? "up" : "down", from: change.original } };
+}
+
+/**
+ * One sentence per item this month moved, in the month's order, capped and counted.
+ *
+ * The same call the Items popup makes, so the two can never disagree about what moved or why.
+ * `sentence()` is applied here and deliberately not there: in the Items popup the word repeats the
+ * line drawn directly above it, and here nothing does, so it starts a sentence.
+ */
+function movementCauses(unit: PreviewedUnit): string[] {
+  const changes = unit.itemChanges ?? [];
+  const tags: string[] = [];
+  for (const change of changes) {
+    if (!tags.includes(change.tag)) {
+      tags.push(change.tag);
+    }
+  }
+  const said: string[] = [];
+  for (const tag of tags.slice(0, MAX_LINES)) {
+    const forTag = changes.filter((change) => change.tag === tag);
+    const text = itemCauseSentence(itemLabel(tag, unit), forTag, unit, forTag[0]!.isMan);
+    if (text !== undefined) {
+      said.push(sentence(text));
+    }
+  }
+  if (tags.length > MAX_LINES) {
+    said.push(`\u2026 and ${tags.length - MAX_LINES} more; the Items column has them all.`);
+  }
+  return said;
+}
+
+/**
+ * Whether the figures above are last month's rather than this month's.
+ *
+ * `refresh_movement` (`crates/core/src/orders/effects.rs`) gives up on the whole recomputation and
+ * hands back the report's own `movement` when any order could not be counted, or when a CAST's
+ * yield is still a range. Both are visible here; a third case - an item tag the shipped ruleset
+ * does not carry - is not, and is named in the bead's plan rather than guessed at.
+ */
+function movementIsStillTheReport(unit: PreviewedUnit): boolean {
+  return (
+    (unit.uncounted?.length ?? 0) > 0 ||
+    (unit.created ?? []).some((entry) => entry.fewest !== entry.most)
+  );
 }
 
 function flagsBody(unit: PreviewedUnit): Body {
@@ -1427,6 +1534,17 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
  * cell. A change is spelled out in words rather than drawn as an arrow, so the direction survives
  * a reader that says nothing about a glyph.
  */
+/**
+ * The ink one line's label is drawn in (`ah-rgkk.5.1`).
+ *
+ * Exported because `UnitCellPopup` renders a portal, which `packages/shared` cannot render at all
+ * (`packages/shared/src/testing/README.md`); this is the part of that component that has a rule in
+ * it, so this is the part that lives here and is tested.
+ */
+export function popupLabelInk(line: PopupLine): string {
+  return line.stress === "deciding" ? "text-brass" : line.stress === "aside" ? "text-ink-dim" : "";
+}
+
 export function popupAsText(popup: ColumnPopup): string {
   const lines = popup.lines.map((line) => {
     const parts = [`${line.label} ${line.value}`];
@@ -1443,6 +1561,9 @@ export function popupAsText(popup: ColumnPopup): string {
       }
     } else if (line.change) {
       parts.push(`${line.change.direction} from ${line.change.from}`);
+    }
+    if (line.stress === "deciding") {
+      parts.push("which is the one that decides");
     }
     if (line.why) {
       parts.push(line.why);

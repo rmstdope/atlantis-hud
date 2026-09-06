@@ -75,4 +75,10 @@ describe("PopupLineValue", () => {
     });
     expect(markup).toContain("2 (98)?");
   });
+
+  it("draws an aside capacity dimmed", () => {
+    const html = draw({ label: "can carry flying", value: "0", stress: "aside" });
+    expect(html).toContain("text-ink-dim");
+    expect(html).not.toContain("text-ink-soft");
+  });
 });

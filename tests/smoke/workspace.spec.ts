@@ -4439,7 +4439,7 @@ test("movement capacity updates in the unit list and detail", async ({ page }) =
   await fillOrders(page, "WITHDRAW 1 HORS");
   await expect(row).toContainText("Riding");
   await expect(panel).toContainText("Riding");
-  await expect(row.locator('td[data-column="movement"]')).toContainText("was: Walking");
+  await expect(row.locator('td[data-column="movement"]')).toContainText("up from Walking");
 
   await fillOrders(page, "");
   await expect(row).toContainText("Walking");
