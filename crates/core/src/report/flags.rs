@@ -5,53 +5,50 @@
 //! back verbatim, so a spelling the preview invents and the parser does not know would break that
 //! round trip. One declaration serves both.
 
-/// Every setting the game defines a flag order for.
+/// Declares the settings once, as both the enum and the list the vocabulary is walked by.
 ///
-/// A setting, not a flag: `rules/consume`, `rules/reveal` and `rules/spoils` each define one
-/// setting with several states, and the report prints a different word for each state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Setting {
-    Guarding,
-    Avoiding,
-    Behind,
-    Sharing,
-    Taxing,
-    NoAid,
-    Holding,
-    NoCross,
-    RevealingUnit,
-    RevealingFaction,
-    ConsumingUnit,
-    ConsumingFaction,
-    SpoilsWeightless,
-    SpoilsWalking,
-    SpoilsRiding,
-    SpoilsFlying,
-    SpoilsSwimming,
-    SpoilsSailing,
+/// One declaration rather than two, because a variant missing from `ALL_SETTINGS` would drop out
+/// of `known` silently — a previewed unit carrying it would then fail to parse back, and every
+/// test that walks the list would skip it and stay green.
+macro_rules! settings {
+    ($(#[$meta:meta])* $name:ident { $($variant:ident),* $(,)? }) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum $name {
+            $($variant),*
+        }
+
+        /// Every [`Setting`] there is, generated from the same declaration as the enum.
+        pub(crate) const ALL_SETTINGS: &[$name] = &[$($name::$variant),*];
+    };
 }
 
-/// Every `Setting` there is, so the vocabulary can be walked without listing it a second time.
-pub(crate) const ALL_SETTINGS: &[Setting] = &[
-    Setting::Guarding,
-    Setting::Avoiding,
-    Setting::Behind,
-    Setting::Sharing,
-    Setting::Taxing,
-    Setting::NoAid,
-    Setting::Holding,
-    Setting::NoCross,
-    Setting::RevealingUnit,
-    Setting::RevealingFaction,
-    Setting::ConsumingUnit,
-    Setting::ConsumingFaction,
-    Setting::SpoilsWeightless,
-    Setting::SpoilsWalking,
-    Setting::SpoilsRiding,
-    Setting::SpoilsFlying,
-    Setting::SpoilsSwimming,
-    Setting::SpoilsSailing,
-];
+settings! {
+    /// Every setting the game defines a flag order for.
+    ///
+    /// A setting, not a flag: `rules/consume`, `rules/reveal` and `rules/spoils` each define one
+    /// setting with several states, and the report prints a different word for each state.
+    Setting {
+        Guarding,
+        Avoiding,
+        Behind,
+        Sharing,
+        Taxing,
+        NoAid,
+        Holding,
+        NoCross,
+        RevealingUnit,
+        RevealingFaction,
+        ConsumingUnit,
+        ConsumingFaction,
+        SpoilsWeightless,
+        SpoilsWalking,
+        SpoilsRiding,
+        SpoilsFlying,
+        SpoilsSwimming,
+        SpoilsSailing,
+    }
+}
 
 /// A state the engine prints about a unit that no flag order sets, so no [`Setting`] owns it. The
 /// parser must still accept it.
@@ -346,12 +343,14 @@ mod tests {
     }
 
     /// `ALL_SETTINGS` is what `known` and the `write.rs` round trip walk, so a variant missing
-    /// from it would drop out of the vocabulary with every test still green. This match is
-    /// exhaustive, so a new variant fails to compile until it is listed.
+    /// from it would drop out of the vocabulary with every test still green. The `settings!` macro
+    /// is what makes that impossible — it generates the enum and the list from one declaration —
+    /// and this pins that they still come from it.
     #[test]
     fn every_setting_is_in_the_list_the_vocabulary_is_walked_by() {
         for setting in ALL_SETTINGS {
-            let listed = match setting {
+            // Exhaustive, so a variant the macro grew is named here too.
+            let spellings = match setting {
                 Setting::Guarding
                 | Setting::Avoiding
                 | Setting::Behind
@@ -369,11 +368,25 @@ mod tests {
                 | Setting::SpoilsRiding
                 | Setting::SpoilsFlying
                 | Setting::SpoilsSwimming
-                | Setting::SpoilsSailing => *setting,
+                | Setting::SpoilsSailing => setting.spellings(),
             };
-            assert!(ALL_SETTINGS.contains(&listed));
+            assert!(!spellings.is_empty(), "{setting:?} has no spelling");
         }
-        assert_eq!(ALL_SETTINGS.len(), 18);
+    }
+
+    /// A report is not expected to print two spellings of one setting, but if it did, applying the
+    /// setting must leave exactly one — in the first one's place.
+    #[test]
+    fn two_spellings_of_one_setting_collapse_to_the_canonical_one() {
+        let mut flags = list(&["behind", "guarding", "sharing", "on guard"]);
+        apply(
+            &mut flags,
+            FlagChange::Toggle {
+                setting: Setting::Guarding,
+                on: true,
+            },
+        );
+        assert_eq!(flags, list(&["behind", "on guard", "sharing"]));
     }
 
     #[test]
