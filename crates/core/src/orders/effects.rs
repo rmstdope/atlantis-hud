@@ -7781,6 +7781,117 @@ mod tests {
             );
         }
 
+        /// `rules/give`: "If 0 is specified as the unit number, then the items are discarded."
+        /// Nothing receives them, so this is not a gift to somebody unnamed.
+        #[test]
+        fn giving_to_unit_zero_records_a_discard_with_no_other_unit() {
+            let response = preview_over(&report_with_three(), "unit 900\nGIVE 0 4 SWOR\n");
+
+            let giver = row_of(&response, "900");
+            assert_eq!(
+                giver.item_changes,
+                vec![ItemChange {
+                    tag: "SWOR".to_string(),
+                    name: "swords".to_string(),
+                    delta: -4,
+                    cause: ItemChangeCause::Discarded,
+                    line: Some(2),
+                    unit_price: None,
+                    other: None,
+                }],
+            );
+        }
+
+        /// Silver is the one item `rules/give` exempts from the factional rule, so this is the
+        /// foreign gift that moves - and `GivenAway` with no other unit is what says so, which is
+        /// why a discard is a cause of its own.
+        #[test]
+        fn giving_silver_to_another_factions_new_unit_names_no_other_unit() {
+            let response = preview_over(
+                &report_with_market(),
+                "unit 900\nGIVE FACTION 14 NEW 2 3 SILV\n",
+            );
+
+            let giver = row_of(&response, "900");
+            assert_eq!(
+                giver.item_changes,
+                vec![ItemChange {
+                    tag: "SILV".to_string(),
+                    name: "silver".to_string(),
+                    delta: -3,
+                    cause: ItemChangeCause::GivenAway,
+                    line: Some(2),
+                    unit_price: None,
+                    other: None,
+                }],
+            );
+        }
+
+        /// The change records what moved, not what was asked for: `tags_moved` clamps a gift to
+        /// the stock the giver holds.
+        #[test]
+        fn a_gift_clamped_by_what_the_giver_holds_records_what_actually_moved() {
+            let response = preview_over(&report_with_three(), "unit 900\nGIVE 902 99 SWOR\n");
+
+            let giver = row_of(&response, "900");
+            assert_eq!(
+                giver
+                    .item_changes
+                    .iter()
+                    .map(|change| (change.tag.as_str(), change.delta))
+                    .collect::<Vec<_>>(),
+                vec![("SWOR", -10)],
+            );
+        }
+
+        /// `rules/give`'s `ALL [item class]` form is one order, so every tag it moves carries the
+        /// one document line that ordered it.
+        #[test]
+        fn giving_a_whole_class_records_one_change_per_tag_on_one_line() {
+            let response = preview_over(&report_with_three(), "unit 900\nGIVE 902 ALL ITEMS\n");
+
+            let giver = row_of(&response, "900");
+            assert_eq!(
+                giver
+                    .item_changes
+                    .iter()
+                    .map(|change| (change.tag.as_str(), change.delta, change.line))
+                    .collect::<Vec<_>>(),
+                vec![("HUMN", -10, Some(2)), ("SWOR", -10, Some(2))],
+                "`rules/give`: ITEMS is the combination of every class, men included",
+            );
+        }
+
+        /// `GIVE [unit] UNIT` moves no items at all (`rules/give` hands over the whole unit), and
+        /// `uncounted` already tells the player so - this pins that it is not reported twice.
+        #[test]
+        fn giving_the_unit_itself_records_no_item_change() {
+            let response = preview_over(&report_with_three(), "unit 900\nGIVE 901 UNIT\n");
+
+            // 901 is not previewed at all: nothing about it changed, which is the same answer.
+            let giver = row_of(&response, "900");
+            assert!(giver.item_changes.is_empty(), "{:?}", giver.item_changes);
+            assert!(
+                !giver.uncounted.is_empty(),
+                "and the order still reaches the player through `uncounted`",
+            );
+        }
+
+        /// `give_outcome` answers `Uncertain` for a unit the report never prints, so nothing moves
+        /// and the ` + ?` mark speaks for it (`ah-66yi`). A change here would state a movement the
+        /// report cannot support.
+        #[test]
+        fn a_gift_to_an_unshown_unit_records_no_item_change() {
+            let response = preview_over(&report_with_three(), "unit 900\nGIVE 7777 4 SWOR\n");
+
+            let giver = row_of(&response, "900");
+            assert!(
+                giver.item_changes.is_empty(),
+                "{:?}",
+                giver.item_changes
+            );
+        }
+
         /// `rules/take`: a TAKE is a GIVE with the direction reversed, so the same movement is
         /// seen from two sides - the taker took, the source was taken from.
         #[test]
