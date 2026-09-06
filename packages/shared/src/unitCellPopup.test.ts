@@ -2,7 +2,13 @@ import type { ReportUnit, StudyDoubt, StudyForecast } from "@atlantis/core-clien
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import type { PreviewedUnit } from "./unitPreview";
-import { columnHasPopup, popupAsText, popupForCell, type PopupFacts } from "./unitCellPopup";
+import {
+  columnHasPopup,
+  popupAsText,
+  popupForCell,
+  reportedItems,
+  type PopupFacts
+} from "./unitCellPopup";
 
 const unit = (overrides: Partial<PreviewedUnit> = {}): PreviewedUnit => ({
   ...(aReportUnit({ unitId: "1487", name: "Braves" }) as ReportUnit),
@@ -280,8 +286,8 @@ describe("the column popups", () => {
   });
 
   it("says the report's own figure once, not twice", () => {
-    // `itemsTooltip` already opens with the quote, so a second sentence for the same fact would
-    // be read out twice - once in the popup and once in the cell's hidden sentence.
+    // The pair carries the report's figure now, so no note may restate it - it would be read out
+    // twice, once in the popup and once in the cell's hidden sentence.
     const popup = columnPopup(
       popupForCell(
         "items",
@@ -292,10 +298,13 @@ describe("the column popups", () => {
         facts()
       )
     );
-    expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual(["was: 20 SILV"]);
+    expect(popup.lines).toEqual([
+      { label: "silver SILV", value: "40", change: { direction: "up", from: "20" } }
+    ]);
+    expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual([]);
   });
 
-  it("says the report's own figure once for a unit that gave everything away", () => {
+  it("draws what a unit that gave everything away used to hold", () => {
     const popup = columnPopup(
       popupForCell(
         "items",
@@ -303,8 +312,11 @@ describe("the column popups", () => {
         facts()
       )
     );
-    expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual(["was: 20 SILV"]);
-    expect(popup.notes).toContain("No items.");
+    expect(popup.lines).toEqual([
+      { label: "SILV", value: "gone", change: { direction: "down", from: "20" } }
+    ]);
+    // It has lines, so the shared "Was: ..." sentence never fires and the list is not empty.
+    expect(popup.notes).not.toContain("No items.");
   });
 
   it("says nothing moved when the report's figure is the one already shown", () => {
@@ -877,5 +889,453 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
     );
     expect(popup.lines).toHaveLength(12);
     expect(popup.notes.join(" ")).not.toContain("The blue figure is next turn's report");
+  });
+});
+
+describe("reportedItems", () => {
+  it("reads the report's own figure for each item off the items change", () => {
+    expect(reportedItems("20 SILV, 3 GRAI")).toEqual(
+      new Map([
+        ["SILV", 20],
+        ["GRAI", 3]
+      ])
+    );
+  });
+
+  it("reads an empty original as the report saying the unit held nothing", () => {
+    expect(reportedItems("")).toEqual(new Map());
+  });
+
+  it("gives up on an original it cannot parse", () => {
+    expect(reportedItems("was: 20 SILV")).toBeUndefined();
+    expect(reportedItems("~8 SWOR")).toBeUndefined();
+  });
+});
+
+describe("the items popup's pairs", () => {
+  it("pairs each item with what the report said", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "sword", tag: "SWOR", amount: 12 }],
+          previewChanges: [{ field: "items", original: "8 SWOR" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "sword SWOR", value: "12", change: { direction: "up", from: "8" } }
+    ]);
+  });
+
+  it("an item the unit no longer holds ends at gone", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [],
+          previewChanges: [{ field: "items", original: "20 SILV" }],
+          itemChanges: [
+            {
+              tag: "SILV",
+              name: "silver",
+              delta: -20,
+              cause: "given-away",
+              line: 3,
+              unitPrice: null,
+              other: { unitId: "1502", name: "Scouts" },
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "silver SILV", value: "gone", change: { direction: "down", from: "20" } }
+    ]);
+    expect(popup.notes).not.toContain("No items.");
+  });
+
+  it("an item the report never listed starts at none", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "sword", tag: "SWOR", amount: 4 }],
+          previewChanges: [{ field: "items", original: "" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "sword SWOR", value: "4", change: { direction: "up", from: "none" } }
+    ]);
+  });
+
+  it("doubles a tag that is its own display name, as it always did", () => {
+    const popup = columnPopup(
+      popupForCell("items", unit({ items: [{ name: "SILV", tag: "SILV", amount: 4 }] }), facts())
+    );
+    expect(popup.lines).toEqual([{ label: "SILV SILV", value: "4" }]);
+  });
+
+  it("draws a cast item's range exactly as the cell does", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "iron", tag: "IRON", amount: 5 }],
+          created: [{ fewest: 2, most: 5, tag: "IRON", summoned: false }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "iron IRON", value: "2-5" }]);
+  });
+
+  it("quotes the report's own words when the change cannot be parsed", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "sword", tag: "SWOR", amount: 12 }],
+          previewChanges: [{ field: "items", original: "~8 SWOR" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "sword SWOR", value: "12", why: "was: ~8 SWOR" }]);
+  });
+});
+
+describe("the items popup's order", () => {
+  const change = (tag: string, delta: number) => ({
+    tag,
+    name: tag.toLowerCase(),
+    delta,
+    cause: "produced" as const,
+    line: null,
+    unitPrice: null,
+    other: null,
+    isMan: false
+  });
+
+  it("draws every item this month moved before the ones it did not", () => {
+    // Fifteen tags, of which the two smallest moved: without the moved-first rule both would fall
+    // outside the twelve lines the popup draws.
+    const tags = Array.from({ length: 15 }, (_, i) => `T${String(i).padStart(2, "0")}`);
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: tags.map((tag, i) => ({ name: tag.toLowerCase(), tag, amount: 100 - i })),
+          itemChanges: [change("T13", 1), change("T14", 1)]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.slice(0, 2).map((line) => line.label)).toEqual(["t13 T13", "t14 T14"]);
+    // The rest keep the cell's own amount-descending order.
+    expect(popup.lines.slice(2).map((line) => line.label)).toEqual(
+      tags.slice(0, 10).map((tag) => `${tag.toLowerCase()} ${tag}`)
+    );
+  });
+
+  it("puts the moved items in the month's own order", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { name: "grain", tag: "GRAI", amount: 40 },
+            { name: "wood", tag: "WOOD", amount: 2 }
+          ],
+          itemChanges: [change("WOOD", 2), change("GRAI", 1)]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.map((line) => line.label)).toEqual(["wood WOOD", "grain GRAI"]);
+  });
+
+  it("keeps an unmoved item behind a moved one when a tag moved more than once", () => {
+    // The month's order is the order tags *first* appear, not the raw index of each change: a tag
+    // bought at three prices writes three entries, and ranking on the raw index would push a later
+    // moved tag past the unmoved block.
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { name: "zinc", tag: "ZINC", amount: 90 },
+            { name: "grain", tag: "GRAI", amount: 3 },
+            { name: "bread", tag: "BREA", amount: 1 }
+          ],
+          itemChanges: [
+            change("GRAI", 1),
+            change("GRAI", 1),
+            change("GRAI", 1),
+            change("BREA", 1)
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.map((line) => line.label)).toEqual([
+      "grain GRAI",
+      "bread BREA",
+      "zinc ZINC"
+    ]);
+  });
+
+  it("keeps an item whose movement the core did not record in the moved block", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { name: "grain", tag: "GRAI", amount: 40 },
+            { name: "wood", tag: "WOOD", amount: 5 }
+          ],
+          previewChanges: [{ field: "items", original: "40 GRAI, 2 WOOD" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.map((line) => line.label)).toEqual(["wood WOOD", "grain GRAI"]);
+  });
+});
+
+describe("the items popup's cause sentences", () => {
+  const moved = (
+    overrides: Partial<{
+      tag: string;
+      name: string;
+      delta: number;
+      cause: string;
+      line: number | null;
+      unitPrice: number | null;
+      other: { unitId: string; name: string | null } | null;
+    }> = {}
+  ) =>
+    ({
+      tag: "GRAI",
+      name: "grain",
+      delta: -1,
+      cause: "sold",
+      line: null,
+      unitPrice: null,
+      other: null,
+      isMan: false,
+      ...overrides
+    }) as NonNullable<PreviewedUnit["itemChanges"]>[number];
+
+  const notesFor = (overrides: Partial<PreviewedUnit>) =>
+    columnPopup(popupForCell("items", unit(overrides), facts())).notes;
+
+  it("names every movement of one item in a single sentence", () => {
+    expect(
+      notesFor({
+        items: [{ name: "grain", tag: "GRAI", amount: 8 }],
+        itemChanges: [
+          moved({ cause: "sold", delta: -12, unitPrice: 12 }),
+          moved({
+            cause: "transported-out",
+            delta: -20,
+            other: { unitId: "4102", name: "Ferry" }
+          })
+        ]
+      })[0]
+    ).toBe("grain: sold 12 at 12 silver each, sent 20 to Ferry (4102).");
+  });
+
+  const cases: Array<[string, Parameters<typeof moved>[0], string]> = [
+    ["bought with a price", { cause: "bought", delta: 4, unitPrice: 60 }, "bought 4 at 60 silver each"],
+    ["bought without one", { cause: "bought", delta: 4 }, "bought 4"],
+    ["sold without a price", { cause: "sold", delta: -12 }, "sold 12"],
+    ["withdrawn", { cause: "withdrawn", delta: 10 }, "withdrew 10 from the faction's stores"],
+    ["produced", { cause: "produced", delta: 5 }, "produced 5"],
+    [
+      "spent on another unit's production",
+      { cause: "production-spent", delta: -3, other: { unitId: "1487", name: "Braves" } },
+      "used 3 for Braves (1487) to produce"
+    ],
+    ["spent as material", { cause: "production-spent", delta: -3 }, "used 3 as material"],
+    [
+      "spent on another unit's build",
+      { cause: "build-spent", delta: -10, other: { unitId: "1487", name: "Braves" } },
+      "spent 10 for Braves (1487) to build"
+    ],
+    ["consumed by a spell", { cause: "cast-spent", delta: -2 }, "consumed 2 by a spell"],
+    [
+      "transported to a unit the report does not show",
+      { cause: "transported-out", delta: -20, other: { unitId: "4102", name: null } },
+      "sent 20 to unit 4102, which your report does not show"
+    ],
+    [
+      "transported in",
+      { cause: "transported-in", delta: 20, other: { unitId: "1913", name: "Porters" } },
+      "received 20 from Porters (1913)"
+    ],
+    [
+      "abandoned",
+      { cause: "abandoned", delta: -4 },
+      "left behind, unfinished, when the unit leaves the hex"
+    ],
+    [
+      "given away",
+      { cause: "given-away", delta: -2, other: { unitId: "1502", name: "Scouts" } },
+      "gave 2 to Scouts (1502)"
+    ],
+    ["given to a foreign faction", { cause: "given-away", delta: -2 }, "gave 2 to another faction"],
+    [
+      "given to it",
+      { cause: "was-given", delta: 30, other: { unitId: "1774", name: "Elders" } },
+      "given 30 by Elders (1774)"
+    ],
+    [
+      "taken",
+      { cause: "took", delta: 3, other: { unitId: "1604", name: "Watch" } },
+      "took 3 from Watch (1604)"
+    ],
+    [
+      "taken from it",
+      { cause: "was-taken-from", delta: -3, other: { unitId: "1604", name: "Watch" } },
+      "3 taken by Watch (1604)"
+    ],
+    ["discarded", { cause: "discarded", delta: -5 }, "discarded 5"],
+    [
+      "reverted",
+      { cause: "gift-reverted", delta: -2 },
+      "2 reverted from a unit that formed with nobody"
+    ],
+    ["a cause it has not been taught", { cause: "unheard-of", delta: 4 }, "gained 4"],
+    ["a loss it has not been taught", { cause: "unheard-of", delta: -4 }, "lost 4"]
+  ];
+
+  for (const [name, change, clause] of cases) {
+    it(`says ${name} as “${clause}”`, () => {
+      expect(
+        notesFor({
+          items: [{ name: "grain", tag: "GRAI", amount: 8 }],
+          itemChanges: [moved(change)]
+        })[0]
+      ).toBe(`grain: ${clause}.`);
+    });
+  }
+
+  it("names the structure a build spend went into", () => {
+    expect(
+      notesFor({
+        items: [{ name: "wood", tag: "WOOD", amount: 2 }],
+        itemChanges: [moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -10 })],
+        built: [
+          {
+            amount: 10,
+            tag: "WOOD",
+            name: "wood",
+            place: "Fort",
+            founding: false,
+            helping: null,
+            couldDo: 10,
+            cappedBy: null
+          }
+        ]
+      })[0]
+    ).toBe("wood: spent 10 on Fort.");
+  });
+
+  it("falls back to a bare build when it cannot match the spend", () => {
+    expect(
+      notesFor({
+        items: [{ name: "wood", tag: "WOOD", amount: 2 }],
+        itemChanges: [moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -10 })]
+      })[0]
+    ).toBe("wood: spent 10 on a build.");
+  });
+
+  it("says a summoned item was summoned, and gives its range", () => {
+    expect(
+      notesFor({
+        items: [{ name: "imp", tag: "IMP", amount: 3 }],
+        created: [{ fewest: 1, most: 3, tag: "IMP", summoned: true }],
+        itemChanges: [moved({ tag: "IMP", name: "imp", cause: "cast-created", delta: 3 })]
+      })[0]
+    ).toBe("imp: summoned 1-3.");
+  });
+
+  it("says an item made by casting was created by casting", () => {
+    expect(
+      notesFor({
+        items: [{ name: "iron", tag: "IRON", amount: 3 }],
+        created: [{ fewest: 3, most: 3, tag: "IRON", summoned: false }],
+        itemChanges: [moved({ tag: "IRON", name: "iron", cause: "cast-created", delta: 3 })]
+      })[0]
+    ).toBe("iron: created 3 by casting.");
+  });
+
+  it("says a transport with no other unit as a bare send", () => {
+    expect(
+      notesFor({
+        items: [{ name: "grain", tag: "GRAI", amount: 8 }],
+        itemChanges: [moved({ cause: "transported-out", delta: -20 })]
+      })[0]
+    ).toBe("grain: sent 20.");
+  });
+
+  it("says an arrival with no other unit as a bare receipt", () => {
+    expect(
+      notesFor({
+        items: [{ name: "grain", tag: "GRAI", amount: 28 }],
+        itemChanges: [moved({ cause: "transported-in", delta: 20 })]
+      })[0]
+    ).toBe("grain: received 20.");
+  });
+
+  it("adds up a tag two casts create", () => {
+    expect(
+      notesFor({
+        items: [{ name: "wolf", tag: "WOLF", amount: 8 }],
+        created: [
+          { fewest: 1, most: 4, tag: "WOLF", summoned: true },
+          { fewest: 2, most: 4, tag: "WOLF", summoned: true }
+        ],
+        itemChanges: [moved({ tag: "WOLF", name: "wolf", cause: "cast-created", delta: 8 })]
+      })[0]
+    ).toBe("wolf: summoned 3-8.");
+  });
+
+  it("says nothing about an item the cap never drew", () => {
+    // S2 promises the prose block can never be longer than the list above it, so a sentence for a
+    // figure the reader cannot see would break the density the decision was made for.
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: Array.from({ length: 14 }, (_, i) => ({
+            name: `t${i}`,
+            tag: `T${String(i).padStart(2, "0")}`,
+            amount: 100 - i
+          })),
+          itemChanges: Array.from({ length: 14 }, (_, i) =>
+            moved({ tag: `T${String(i).padStart(2, "0")}`, name: `t${i}`, cause: "produced", delta: 1 })
+          )
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toHaveLength(12);
+    expect(popup.notes.filter((note) => /^t\d+:/.test(note))).toHaveLength(12);
+    expect(popup.notes.some((note) => note.startsWith("t13:"))).toBe(false);
+  });
+
+  it("an item whose movement the core did not record gets no sentence", () => {
+    const notes = notesFor({
+      items: [{ name: "grain", tag: "GRAI", amount: 12 }],
+      previewChanges: [{ field: "items", original: "8 GRAI" }]
+    });
+    expect(notes.filter((note) => note.startsWith("grain:"))).toEqual([]);
   });
 });

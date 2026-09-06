@@ -314,40 +314,38 @@ export function itemsTooltip(
     return undefined;
   }
 
-  // In the navigator's S1 state - a unit whose only order cannot be counted - nothing was
-  // projected, so the report's own list is still true and gives line 3's wording something to
-  // follow. Deliberately the same "was:" wording as a real change, not a second sentence for the
-  // same fact.
-  const original = change ? change.original : formatItems(unit.items);
-  const lines = [`was: ${original === "" ? "—" : original}`];
+  // No `was:` lead and no per-item restatement: the Items popup draws every item as the pair the
+  // report and the orders put it between, and names each movement in its own clause
+  // (`ah-rgkk.3.3`, decisions **R1** and **T2**). What is left here is only what no clause can
+  // say - the resolution rules, the caps, and what could not be counted at all.
+  const lines: string[] = [];
   for (const taken of takenUnshown) {
     lines.push(
       `Includes ${taken.amount} ${taken.tag} taken from unit ${taken.from}, which your report does not show here.`
     );
   }
-  for (const item of produced) {
-    // "this unit cannot", not "cannot be spent": since `ah-728m.2.2` a manufacturing output *can*
-    // be spent this month - by a later manufacturer in the same hex, or by a BUILD, both of which
-    // `rules/sequenceofevents` runs after "Manufacturing PRODUCE orders ... are processed". What
-    // stays true is what this unit can do with it: GIVE and the market settle long before either
-    // PRODUCE phase, and its own month is already spent on producing.
+  // "this unit cannot", not "cannot be": since `ah-728m.2.2` a manufacturing output *can* be spent
+  // this month - by a later manufacturer in the same hex, or by a BUILD, both of which
+  // `rules/sequenceofevents` runs after "Manufacturing PRODUCE orders ... are processed". What
+  // stays true is what this unit can do with it: GIVE and the market settle long before either
+  // PRODUCE phase, and its own month is already spent on producing. Said once and naming no item,
+  // because the clause block above has already named every amount.
+  if (produced.length > 0) {
     lines.push(
-      `Includes ${item.amount} ${item.tag} this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.`
+      "Production resolves late, so this unit cannot give away or sell what it produces this month."
     );
   }
   for (const sentence of buyAll) {
     lines.push(sentence);
   }
-  for (const item of created) {
-    const amount = item.fewest === item.most ? `${item.most}` : `${item.fewest}-${item.most}`;
-    const verb = item.summoned ? "summon" : "create by casting";
+  if (created.length > 0) {
     lines.push(
-      `Includes ${amount} ${item.tag} this unit will ${verb}. Casting resolves after GIVE, so they cannot be given away this month.`
+      "Casting resolves after GIVE, so this unit cannot give away what it casts this month."
     );
   }
-  for (const arrival of transportReceived) {
+  if (transportReceived.length > 0) {
     lines.push(
-      `Includes ${arrival.amount} ${arrival.tag} transported from unit ${arrival.from}. Transport resolves last, so they cannot be spent this month.`
+      "Transport resolves last, so this unit cannot spend what arrives by transport this month."
     );
   }
   // Before the cap sentence, because that one quotes "the N its skill and tools could make" and this one is
@@ -358,19 +356,25 @@ export function itemsTooltip(
   if (capSentence !== undefined) {
     lines.push(capSentence);
   }
+  // What this unit's own clause will account for, per tag: `charge_shared_material` debits the
+  // actor only for what it holds (`crates/core/src/orders/semantics.rs`), so a builder funded
+  // wholly or partly by a hex neighbour is debited less than the structure takes - or not at all.
+  const ownDebit = new Map<string, number>();
+  for (const change of unit.itemChanges ?? []) {
+    // `other === null` is the actor's own row: `charge_shared_material` writes a `build-spent`
+    // change to every supplier too, naming the builder in `other`, and material this unit gave to
+    // a neighbour's structure must not hide what its own is taking.
+    if (change.cause === "build-spent" && change.other === null) {
+      ownDebit.set(change.tag, (ownDebit.get(change.tag) ?? 0) + Math.abs(change.delta));
+    }
+  }
   for (const spend of built) {
-    const place = spend.founding ? `a new ${spend.place}` : spend.place;
-    // `new-{alias}` is the canonical id Rust files a unit formed this month under; the player
-    // wrote it as `NEW {alias}` and reads it back in their own spelling (`ah-zxvd`).
-    const target =
-      spend.helping === null
-        ? `on ${place}`
-        : `helping ${
-            spend.helping.startsWith("new-")
-              ? `NEW ${spend.helping.slice("new-".length)}`
-              : `unit ${spend.helping}`
-          } build ${place}`;
-    lines.push(`Spends ${spend.amount} ${spend.tag} ${target} this month.`);
+    // Kept for exactly what the clause cannot name: the whole figure, wherever the unit's own
+    // debit falls short of it. No `cappedBy` fires when the material was there, so without this
+    // the amount the structure actually takes would appear nowhere at all.
+    if ((ownDebit.get(spend.tag) ?? 0) < spend.amount) {
+      lines.push(`Spends ${spend.amount} ${spend.tag} ${buildSpendTarget(spend)} this month.`);
+    }
     if (spend.cappedBy === "materials") {
       lines.push(
         `This unit has ${spend.name} for ${spend.amount} units of work, not the ${spend.couldDo} its men could do.`
@@ -385,13 +389,40 @@ export function itemsTooltip(
   if (castCap !== undefined) {
     lines.push(castCap);
   }
-  for (const sentence of transportSentences(transportSent, transportTargetIssues)) {
+  // Only what no clause can name: a refused TRANSPORT, and one that moved nothing at all - the
+  // core writes the `TransportSent` row unconditionally but records the `TransportedOut` change
+  // only `if moved != 0` (`crates/core/src/orders/effects.rs`). Every line that did move is what
+  // the `transported-out` clause now says, `toUnshown` included.
+  for (const sentence of transportSentences(
+    transportSent.filter((sent) => sent.refused || sent.amount === 0),
+    transportTargetIssues
+  )) {
     lines.push(sentence);
   }
   for (const order of uncounted) {
     lines.push(`and more that cannot be counted: ${order}`);
   }
-  return lines.join("\n");
+  // A unit whose only change is an items change now leaves no line at all, and an empty note is
+  // worse than none.
+  return lines.length === 0 ? undefined : lines.join("\n");
+}
+
+/**
+ * What one BUILD spend was spent on, as a sentence fragment: `on Fort`, `on a new Tower`, or
+ * `helping unit 1502 build Fort`.
+ *
+ * `new-{alias}` is the canonical id Rust files a unit formed this month under; the player wrote it
+ * as `NEW {alias}` and reads it back in their own spelling (`ah-zxvd`).
+ */
+export function buildSpendTarget(spend: BuildSpend): string {
+  const place = spend.founding ? `a new ${spend.place}` : spend.place;
+  if (spend.helping === null) {
+    return `on ${place}`;
+  }
+  const helped = spend.helping.startsWith("new-")
+    ? `NEW ${spend.helping.slice("new-".length)}`
+    : `unit ${spend.helping}`;
+  return `helping ${helped} build ${place}`;
 }
 
 /** One transported line as the hover states it. */

@@ -1432,7 +1432,9 @@ describe("All my units shows the coming month (ah-tguk)", () => {
 
     expect(markup).toContain('data-predicted="true"');
     expect(markup).toContain("1 PERF");
-    expect(markup).toContain("was: —");
+    // An empty items original is the report saying the unit held nothing - a figure, not a gap -
+    // so the popup pairs it from `none` rather than quoting it (`ah-rgkk.3.3`).
+    expect(markup).toContain("up from none");
   });
 
   it("every drawn cell names its column and no cell carries a title", () => {

@@ -1,4 +1,11 @@
-import type { SkillInfo, SkillMerge, StudyForecast, UnitSilver } from "@atlantis/core-client";
+import type {
+  ItemChange,
+  ItemChangeParty,
+  SkillInfo,
+  SkillMerge,
+  StudyForecast,
+  UnitSilver
+} from "@atlantis/core-client";
 import { count } from "./plural";
 import { battleSkillGroups, battleSkillSource } from "./battleSkillPresentation";
 import type { DerivedSkill } from "./battleSkills";
@@ -6,6 +13,7 @@ import { flagWords } from "./unitFlags";
 import { describeMenBriefly, whyEstimated } from "./unitComposition";
 import { presentUnitMovement } from "./unitMovement";
 import {
+  buildSpendTarget,
   changeFor,
   hasUncertainTransportTarget,
   itemsTooltip,
@@ -153,6 +161,270 @@ export function columnHasOwnPopup(column: PopupColumn): boolean {
   return columnHasPopup(column) && !WHOLE_UNIT.has(column);
 }
 
+/** The report's own figure for one item, keyed by tag, as the `items` change recorded it. */
+export type ReportedItems = Map<string, number>;
+
+/** One token of the `items` change's original: a whole amount and a bare tag, and nothing else. */
+const REPORTED_ITEM = /^(-?\d+) (\S+)$/;
+
+/**
+ * The report's per-item figures, parsed out of the `items` change's display string.
+ *
+ * `changes()` builds that string as `format!("{} {}", item.amount, item.tag)` joined with `", "`
+ * (`crates/core/src/orders/effects.rs`), so it is `20 SILV, 3 GRAI` and nothing else - no name, no
+ * thousands grouping, no cast range. `undefined` when any token fails to parse, which is the
+ * signal to quote the string instead of drawing pairs from it.
+ *
+ * An empty original is an **empty map, not `undefined`**: a formed unit has no original and so
+ * never any change at all (`changes()` returns early on `self.original == None`), so an empty
+ * `items` original can only mean the report showed this unit holding nothing - a figure, not a
+ * gap. That is the one place this column parts company with `markOrQuote`'s empty-original guard,
+ * which is about `men`, where `""` means the report never recorded it.
+ */
+export function reportedItems(original: string): ReportedItems | undefined {
+  if (original === "") {
+    return new Map();
+  }
+  const items: ReportedItems = new Map();
+  for (const token of original.split(", ")) {
+    const match = REPORTED_ITEM.exec(token);
+    if (!match) {
+      return undefined;
+    }
+    const amount = Number.parseInt(match[1]!, 10);
+    if (Number.isNaN(amount)) {
+      return undefined;
+    }
+    items.set(match[2]!, amount);
+  }
+  return items;
+}
+
+/**
+ * The item's display name alone - `grain`, not `grain GRAI` - which both its line's label and its
+ * cause sentence are built from, so the two can never disagree.
+ *
+ * A gone item is the case that needs the fallbacks: `unit.items` no longer holds it, so the name
+ * comes from its first movement, and the bare tag is all that is left when there is none. The
+ * `items` change's original carries no names at all (`crates/core/src/orders/effects.rs`).
+ */
+function itemName(tag: string, unit: PreviewedUnit): string | undefined {
+  return (
+    unit.items.find((item) => item.tag === tag)?.name ??
+    (unit.itemChanges ?? []).find((change) => change.tag === tag)?.name
+  );
+}
+
+/** The same name, falling back to the bare tag - which is what a cause sentence is led by. */
+function itemLabel(tag: string, unit: PreviewedUnit): string {
+  return itemName(tag, unit) ?? tag;
+}
+
+/** One item's line, before the cap: what it is, what it stands at, and where it came from. */
+export type ItemLine = { tag: string; line: PopupLine; moved: boolean };
+
+/**
+ * The `items` popup's lines, in the order they are drawn.
+ *
+ * The tags are the union of what the unit holds now and what the report listed, so an item given
+ * away in full still has a line ending at `gone` and one that arrived this month starts at
+ * `none`.
+ */
+export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefined): ItemLine[] {
+  const changes = unit.itemChanges ?? [];
+  const held = new Map(unit.items.map((item) => [item.tag, item]));
+  // The same arithmetic `formatItems` does (`unitPreview.ts`), because the cell under the pointer
+  // is drawn from it: it says `2-5 SWOR`, so the popup must not answer `5`.
+  const shortfall = new Map<string, number>();
+  for (const item of unit.created ?? []) {
+    shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
+  }
+  const tags: string[] = [];
+  for (const tag of [...held.keys(), ...(reported?.keys() ?? [])]) {
+    if (!tags.includes(tag)) {
+      tags.push(tag);
+    }
+  }
+
+  // Decision **B**: everything the month moved first, in the month's own order, so no movement is
+  // ever lost to the cap - then a moved tag the core recorded no change for, then the rest. Inside
+  // the last two, the cell's own amount-descending order.
+  // Keyed on the order tags *first* appear, not on the raw index of each change: one tag bought at
+  // four prices writes four entries, and ranking on the raw index would run a later tag's rank
+  // past the two fallback bands below and sort an unmoved item ahead of a moved one.
+  const monthOrder = new Map<string, number>();
+  for (const change of changes) {
+    if (!monthOrder.has(change.tag)) {
+      monthOrder.set(change.tag, monthOrder.size);
+    }
+  }
+
+  return tags.map((tag) => {
+    const item = held.get(tag);
+    const name = itemName(tag, unit);
+    const before = reported?.get(tag);
+    const amount = item?.amount;
+    const moved =
+      changes.some((change) => change.tag === tag) ||
+      (before !== undefined && before !== (amount ?? 0)) ||
+      (before === undefined && reported !== undefined);
+    const line: PopupLine = {
+      label: name === undefined ? tag : `${name} ${tag}`,
+      value: amount === undefined ? "gone" : rangedValue(amount, shortfall.get(tag) ?? 0)
+    };
+    const change = changeOf(before, amount, reported);
+    return { tag, line: change ? { ...line, change } : line, moved, amount: amount ?? 0 };
+  })
+    .sort((a, b) => rank(a, monthOrder) - rank(b, monthOrder) || b.amount - a.amount)
+    .map(({ tag, line, moved }) => ({ tag, line, moved }));
+}
+
+/**
+ * Which block a line sorts into: its place in the month for a recorded movement, then a movement
+ * the core did not record, then everything the month left alone.
+ */
+function rank(
+  entry: { tag: string; moved: boolean },
+  monthOrder: ReadonlyMap<string, number>
+): number {
+  const inMonth = monthOrder.get(entry.tag);
+  if (inMonth !== undefined) {
+    return inMonth;
+  }
+  return entry.moved ? monthOrder.size : monthOrder.size + 1;
+}
+
+/**
+ * One item's figure as the cell writes it: the amount, or the range a pending cast leaves it
+ * between. Grouped, as every other popup figure is.
+ */
+function rangedValue(amount: number, gap: number): string {
+  return gap > 0
+    ? `${(amount - gap).toLocaleString()}-${amount.toLocaleString()}`
+    : amount.toLocaleString();
+}
+
+/**
+ * The pair one item's line draws, or nothing at all.
+ *
+ * A tag held now but absent from the report pairs from `none`; a tag the report listed and the
+ * unit no longer holds ends at `gone` and moves `down`.
+ */
+function changeOf(
+  before: number | undefined,
+  amount: number | undefined,
+  reported: ReportedItems | undefined
+): PopupChange | undefined {
+  if (reported === undefined) {
+    return undefined;
+  }
+  const now = amount ?? 0;
+  if (before === now) {
+    return undefined;
+  }
+  return {
+    direction: now > (before ?? 0) ? "up" : "down",
+    from: before === undefined ? "none" : before.toLocaleString()
+  };
+}
+
+/**
+ * One changed item's movements as a single sentence, e.g.
+ * `grain: sold 12 at 12 silver each, sent 20 to Ferry (4102).` (decision **S2**).
+ *
+ * `label` is the item's display name alone - `grain`, not `grain GRAI` - and is left lower case,
+ * because it is the same word that leads the line above. `sentence()` is deliberately not applied.
+ *
+ * Movements are neither merged nor capped: one clause each, in the month's order, so a unit that
+ * bought one tag at four prices gets four clauses in one wrapping sentence - the cost the
+ * navigator accepted with **S2**. `undefined` when there is nothing to say.
+ */
+export function itemCauseSentence(
+  label: string,
+  changes: readonly ItemChange[],
+  unit: PreviewedUnit
+): string | undefined {
+  const clauses = changes.map((change) => itemCauseClause(change, unit));
+  return clauses.length === 0 ? undefined : `${label}: ${clauses.join(", ")}.`;
+}
+
+/** The other unit of a movement, as `ah-rgkk.2.3` settled it: `Scouts (1502)`, or `unit 1502`. */
+function party(other: ItemChangeParty): string {
+  return other.name === null ? `unit ${other.unitId}` : `${other.name} (${other.unitId})`;
+}
+
+/** One movement, as a fragment. The clauses are joined with `, ` and closed with one full stop. */
+function itemCauseClause(change: ItemChange, unit: PreviewedUnit): string {
+  const n = Math.abs(change.delta);
+  const each = change.unitPrice === null ? "" : ` at ${change.unitPrice} silver each`;
+  switch (change.cause) {
+    case "bought":
+      return `bought ${n}${each}`;
+    case "sold":
+      return `sold ${n}${each}`;
+    case "withdrawn":
+      return `withdrew ${n} from the faction's stores`;
+    case "produced":
+      return `produced ${n}`;
+    case "production-spent":
+      return change.other ? `used ${n} for ${party(change.other)} to produce` : `used ${n} as material`;
+    case "build-spent":
+      return `spent ${n} ${buildSpendPlace(change, unit)}`;
+    case "cast-created":
+      return castCreatedClause(change, unit, n);
+    case "cast-spent":
+      return `consumed ${n} by a spell`;
+    case "transported-out":
+      return change.other && change.other.name === null
+        ? `sent ${n} to unit ${change.other.unitId}, which your report does not show`
+        : `sent ${n}${change.other ? ` to ${party(change.other)}` : ""}`;
+    case "transported-in":
+      return `received ${n}${change.other ? ` from ${party(change.other)}` : ""}`;
+    case "abandoned":
+      return "left behind, unfinished, when the unit leaves the hex";
+    case "given-away":
+      // `ah-rgkk.3.2` reserves a null party for a GIVE to a foreign faction that names no unit.
+      return change.other ? `gave ${n} to ${party(change.other)}` : `gave ${n} to another faction`;
+    case "was-given":
+      return `given ${n}${change.other ? ` by ${party(change.other)}` : ""}`;
+    case "took":
+      return `took ${n}${change.other ? ` from ${party(change.other)}` : ""}`;
+    case "was-taken-from":
+      return `${n} taken${change.other ? ` by ${party(change.other)}` : ""}`;
+    case "discarded":
+      return `discarded ${n}`;
+    case "gift-reverted":
+      return `${n} reverted from a unit that formed with nobody`;
+    // Required rather than defensive: `ItemChangeCause` is a string union, so a cause from a newer
+    // core is compile-time impossible and runtime real, and `ah-rgkk.3.1` asks a reader to treat
+    // one as "moved, reason not stated". Deliberately not an exhaustiveness `never`.
+    default:
+      return change.delta > 0 ? `gained ${n}` : `lost ${n}`;
+  }
+}
+
+/** What a BUILD spend went into, named from the unit's own `built` list where one matches. */
+function buildSpendPlace(change: ItemChange, unit: PreviewedUnit): string {
+  if (change.other) {
+    return `for ${party(change.other)} to build`;
+  }
+  const spend = (unit.built ?? []).find((entry) => entry.tag === change.tag);
+  return spend ? buildSpendTarget(spend) : "on a build";
+}
+
+/** A cast's own words, and its range where the spell's yield is not yet settled. */
+function castCreatedClause(change: ItemChange, unit: PreviewedUnit, n: number): string {
+  // Summed across every cast of the tag, because one unit may cast the same item twice and a
+  // single entry would report one spell's range as the month's.
+  const casts = (unit.created ?? []).filter((entry) => entry.tag === change.tag);
+  const fewest = casts.reduce((total, entry) => total + entry.fewest, 0);
+  const most = casts.reduce((total, entry) => total + entry.most, 0);
+  const figure = casts.length > 0 && fewest !== most ? `${fewest}-${most}` : `${n}`;
+  return casts.some((entry) => entry.summoned)
+    ? `summoned ${figure}`
+    : `created ${figure} by casting`;
+}
+
 /** How many lines a popup shows before it stops and counts the rest (decision **G-d**). */
 export const MAX_LINES = 12;
 
@@ -200,9 +472,8 @@ export function popupForCell(
   // On the emptiness of the body, and deliberately not on "no line carries the change": a line
   // that carries none may be saying there was none - `markOrQuote` returns nothing at all for an
   // original equal to the figure beside it, and the wider test said `Was: 12.` of a figure that
-  // did not move. `quoted` is the other half of the same care: an empty body is not the same as a
-  // silent one, and a column that has already said it says it once.
-  if (change && body.lines.length === 0 && !body.quoted) {
+  // did not move.
+  if (change && body.lines.length === 0) {
     notes.push(sentence(originalTooltip(change)!));
   }
 
@@ -228,14 +499,6 @@ type Body = {
   lines: PopupLine[];
   notes: string[];
   warning?: string | null;
-  /**
-   * Set by a column that has already said what the report had there, wherever it says it.
-   *
-   * `itemsBody` is the one: `itemsTooltip` opens with `was: …` and is reached whether or not the
-   * unit still holds anything, so a unit that gave everything away has an empty body *and* the
-   * quote already in its notes.
-   */
-  quoted?: boolean;
 };
 
 /** What one column has to say, before the shared capping and change sentence are applied. */
@@ -656,12 +919,38 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const partlyCounted =
     (unit.uncounted?.length ?? 0) > 0 || hasUncertainTransportTarget(unit);
 
+  const change = changeFor(unit, CHANGE_FIELD.items!);
+  const reported = change ? reportedItems(change.original) : undefined;
+  const entries = itemLines(unit, reported);
+  // The unparseable-original fallback, the same shape `foreignSkillsBody` uses: no line carries a
+  // pair, and the report's own words go on the first line as `why`.
+  const quoteFirst = change !== undefined && reported === undefined && entries.length > 0;
+  const lines = entries.map((entry, index) =>
+    quoteFirst && index === 0 ? { ...entry.line, why: originalTooltip(change) } : entry.line
+  );
+
+  // The sentences follow the changed lines, in the same order, so each is under the figure it
+  // explains (decision **S2**).
+  const changes = unit.itemChanges ?? [];
+  const causes = entries
+    // Only the entries the cap will draw: **S2** promises the prose block can never be longer
+    // than the list above it, and a sentence for a figure the reader cannot see breaks that.
+    .slice(0, MAX_LINES)
+    .filter((entry) => entry.moved)
+    .map((entry) =>
+      itemCauseSentence(
+        itemLabel(entry.tag, unit),
+        changes.filter((c) => c.tag === entry.tag),
+        unit
+      )
+    )
+    .filter((note): note is string => note !== undefined);
+
   return {
-    lines: summariseUnit(unit).items,
-    // `itemsTooltip` opens with the report's own list, so this column never needs the shared
-    // sentence - not even when the unit ends the month holding nothing.
-    quoted: told !== undefined,
-    notes: [...(told ? told.split("\n") : []), ...(unit.items.length === 0 ? ["No items."] : [])],
+    // Off the drawn list rather than off current stock: a unit that gave everything away still
+    // has lines, its items ending at `gone`.
+    notes: [...causes, ...(told ? told.split("\n") : []), ...(lines.length === 0 ? ["No items."] : [])],
+    lines,
     warning: partlyCounted
       ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
       : null
