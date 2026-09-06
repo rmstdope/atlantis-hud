@@ -7,12 +7,12 @@
 pub mod battle;
 pub mod composition;
 pub mod export;
+pub mod flags;
 pub mod header;
 pub mod import;
 pub mod level;
 pub mod merge;
 pub mod model;
-pub mod flags;
 pub mod orders;
 pub mod region;
 pub mod scan;

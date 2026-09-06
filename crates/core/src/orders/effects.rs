@@ -3533,7 +3533,9 @@ mod tests {
 
     #[test]
     fn guarding_writes_the_word_a_report_prints() {
-        let unit = &preview("unit 900\nGUARD 1\n").regions[0].units[0].unit.clone();
+        let unit = &preview("unit 900\nGUARD 1\n").regions[0].units[0]
+            .unit
+            .clone();
         assert!(unit.flags.iter().any(|flag| flag == "on guard"));
         assert!(!unit.flags.iter().any(|flag| flag == "guarding"));
     }
@@ -3551,7 +3553,9 @@ mod tests {
         let cleared = preview_over(&report_with_a_flagged_former(), "unit 900\nAUTOTAX 0\n");
         let flags = &only_unit(&cleared).unit.flags;
         assert!(
-            !flags.iter().any(|flag| flag == "taxing" || flag == "autotax"),
+            !flags
+                .iter()
+                .any(|flag| flag == "taxing" || flag == "autotax"),
             "{flags:?}"
         );
     }
@@ -3601,10 +3605,7 @@ mod tests {
         );
         let response = preview_over(&fed, "unit 900\nCONSUME\n");
         let flags = &only_unit(&response).unit.flags;
-        assert!(
-            !flags.iter().any(|flag| flag.contains("food")),
-            "{flags:?}"
-        );
+        assert!(!flags.iter().any(|flag| flag.contains("food")), "{flags:?}");
     }
 
     /// `rules/reveal`: "REVEAL is used to cancel this".
