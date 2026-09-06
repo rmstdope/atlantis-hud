@@ -896,6 +896,16 @@ pub enum SaleAnswer {
 /// an order merely asked for. A gift this pass cannot count - from another hex, from a foreign
 /// unit, or of an `ALL` amount whose giver it cannot price - is silently absent rather than
 /// doubted, which understates income and never overstates it.
+/// One settled transfer of silver into a unit, for the ledger the SILVER column publishes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReceiptMove {
+    pub amount: i64,
+    /// `WasGiven`, `Took` or `TookUnshown`.
+    pub cause: SilverChangeCause,
+    /// The other unit's label, the same string the matching `givers`/`*_from` entry carries.
+    pub other: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Receipts {
     /// Silver given by units whose orders we can read and whose hex matches. Already summed.
@@ -915,6 +925,10 @@ pub struct Receipts {
     /// Those sources, as `unit <id>` - the report gives no name for a unit it does not show. In
     /// settlement order.
     pub taken_unshown_from: Vec<String>,
+    /// Each settled transfer of silver into this unit, in settlement order and **not**
+    /// deduplicated: two gifts from one unit are two entries, because the ledger records what
+    /// moved rather than who moved it.
+    pub silver_moves: Vec<ReceiptMove>,
     /// Whether a `TAKE ... ALL SILV` could not be priced, which silences the unit's whole figure.
     ///
     /// A bool rather than the source's name, because the sentence the interface shows names the
@@ -1209,8 +1223,32 @@ pub fn late_income(
     shares: PoolShares,
     ruleset: Option<&Ruleset>,
 ) -> i64 {
+    late_income_terms(facts, region, shares, ruleset)
+        .iter()
+        .map(|term| term.amount)
+        .sum()
+}
+
+/// One earning that arrives in the turn's last phase.
+pub(crate) struct LateTerm {
+    pub amount: i64,
+    pub cause: SilverChangeCause,
+    /// The order's line, or `None` for a unit set to work by default (`ah-gjq4`).
+    pub line: Option<i64>,
+}
+
+/// The terms [`late_income`] sums: at most one `Worked` and one `Entertained`.
+///
+/// Separate from the sum so [`forecast_unit`] can name each one in its ledger while
+/// `semantics::charge_upkeep` keeps reading the total - one arithmetic, two readers.
+pub(crate) fn late_income_terms(
+    facts: &UnitFacts<'_>,
+    region: RegionWages,
+    shares: PoolShares,
+    ruleset: Option<&Ruleset>,
+) -> Vec<LateTerm> {
     let wants = pool_wants(facts, region, ruleset);
-    let mut late = 0i64;
+    let mut terms: Vec<LateTerm> = Vec::new();
     let mut worked = false;
     let mut entertained = false;
     for placed in facts.intents {
@@ -1220,24 +1258,34 @@ pub fn late_income(
             // the region's pool twice over - the very thing the split exists to stop.
             Intent::Work if !worked => {
                 worked = true;
-                late = late.saturating_add(match shares.wages {
-                    PoolShare::Uncontended => wants.wages.min(region.max_wages.unwrap_or(i64::MAX)),
-                    PoolShare::Share(share) => share,
-                    // Nowhere to put a doubt: this returns a plain number, and `forecast_unit`
-                    // raises `ContestedRegionPool` separately. Zero is the pessimistic direction,
-                    // and `semantics::charge_upkeep` - which has no doubt to raise at all - wants
-                    // exactly that: the full fee charged against no wages.
-                    PoolShare::Unknowable => 0,
+                terms.push(LateTerm {
+                    cause: SilverChangeCause::Worked,
+                    line: Some(placed.line as i64),
+                    amount: match shares.wages {
+                        PoolShare::Uncontended => {
+                            wants.wages.min(region.max_wages.unwrap_or(i64::MAX))
+                        }
+                        PoolShare::Share(share) => share,
+                        // Nowhere to put a doubt: this returns a plain number, and `forecast_unit`
+                        // raises `ContestedRegionPool` separately. Zero is the pessimistic direction,
+                        // and `semantics::charge_upkeep` - which has no doubt to raise at all - wants
+                        // exactly that: the full fee charged against no wages.
+                        PoolShare::Unknowable => 0,
+                    },
                 });
             }
             Intent::Entertain if !entertained => {
                 entertained = true;
-                late = late.saturating_add(match shares.entertainment {
-                    PoolShare::Uncontended => {
-                        wants.entertainment.min(region.entertainment.unwrap_or(0))
-                    }
-                    PoolShare::Share(share) => share,
-                    PoolShare::Unknowable => 0,
+                terms.push(LateTerm {
+                    cause: SilverChangeCause::Entertained,
+                    line: Some(placed.line as i64),
+                    amount: match shares.entertainment {
+                        PoolShare::Uncontended => {
+                            wants.entertainment.min(region.entertainment.unwrap_or(0))
+                        }
+                        PoolShare::Share(share) => share,
+                        PoolShare::Unknowable => 0,
+                    },
                 });
             }
             _ => {}
@@ -1249,13 +1297,17 @@ pub fn late_income(
     // function so `semantics::charge_upkeep` sees it too - wages arrive in the turn's last phase,
     // which is why they pay upkeep and cannot fund this month's orders.
     if is_set_to_work(facts.flags, facts.intents) {
-        late = late.saturating_add(match shares.wages {
-            PoolShare::Uncontended => wants.wages.min(region.max_wages.unwrap_or(i64::MAX)),
-            PoolShare::Share(share) => share,
-            PoolShare::Unknowable => 0,
+        terms.push(LateTerm {
+            cause: SilverChangeCause::Worked,
+            line: None,
+            amount: match shares.wages {
+                PoolShare::Uncontended => wants.wages.min(region.max_wages.unwrap_or(i64::MAX)),
+                PoolShare::Share(share) => share,
+                PoolShare::Unknowable => 0,
+            },
         });
     }
-    late
+    terms
 }
 
 /// The silver a unit can still spend: what it held, plus what has reached it, less what has left.
@@ -1419,6 +1471,8 @@ pub fn forecast_unit(
         count: i64,
         price: i64,
         allowed: i64,
+        /// The document line, so the ledger can name the order that spent the silver.
+        line: i64,
     }
     let mut exact_buys: Vec<ExactBuy> = Vec::new();
     // What the exact buys asked to spend, whatever the unit could pay for. `short_for_orders` and
@@ -1501,6 +1555,19 @@ pub fn forecast_unit(
         }
     }
 
+    // Everything another unit's block already handed over, ahead of this unit's own gifts within
+    // the Give phase, which is where `rules/sequenceofevents` settles GIVE and TAKE.
+    for move_in in &receipts.silver_moves {
+        record(
+            &mut moves,
+            phases::StatePhase::Give,
+            move_in.amount,
+            move_in.cause,
+            None,
+            Some(move_in.other.clone()),
+        );
+    }
+
     // Whether this unit taxes at all is a property of the unit, not of one line in its block: the
     // taxing flag makes it tax every turn with no `TAX` order, and a unit with both the flag and an
     // order taxes once (`ah-fvzu`). Computed here, before the intent loop, so there is exactly one
@@ -1530,6 +1597,19 @@ pub fn forecast_unit(
         .max(0);
         income = income.saturating_add(priced.earns);
         income_doubt = income_doubt.or(priced.doubt);
+        // `None` is the taxing flag doing it, which `taxes_by_flag` already reports.
+        let tax_line = intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Tax))
+            .map(|placed| placed.line as i64);
+        record(
+            &mut moves,
+            phases::StatePhase::Tax,
+            priced.earns,
+            SilverChangeCause::Taxed,
+            tax_line,
+            None,
+        );
     }
 
     // The materials manufacturing works from, kept running so a second `PRODUCE` line sees what
@@ -1547,11 +1627,25 @@ pub fn forecast_unit(
         if !give_settled && phases::phase_of(&placed.intent) > phases::StatePhase::Give {
             give_settled = true;
             if income_doubt.is_none() && expense_doubt.is_none() {
-                let (given, to_nobody) = settle_give_all_silver(
+                let (given, to_nobody, each) = settle_give_all_silver(
                     &deferred,
                     held.saturating_add(give_phase_income)
                         .saturating_sub(expense),
                 );
+                for gift in each {
+                    record(
+                        &mut moves,
+                        phases::StatePhase::Give,
+                        -gift.spent,
+                        if gift.to_nobody {
+                            SilverChangeCause::Discarded
+                        } else {
+                            SilverChangeCause::GaveAway
+                        },
+                        Some(gift.line),
+                        Some(gift.other),
+                    );
+                }
                 expense = expense.saturating_add(given);
                 given_to_nobody = given_to_nobody.saturating_add(to_nobody);
                 gave_all_silver = given > 0;
@@ -1583,6 +1677,14 @@ pub fn forecast_unit(
                 // claimed silver is in the purse a gift empties (`rules/sequenceofevents`,
                 // `ah-tc79`).
                 give_phase_income = give_phase_income.saturating_add(priced.earns);
+                record(
+                    &mut moves,
+                    phases::StatePhase::Claim,
+                    priced.earns,
+                    SilverChangeCause::Claimed,
+                    Some(placed.line as i64),
+                    None,
+                );
                 if let Some(remaining) = &mut claim_remaining {
                     *remaining = remaining.saturating_sub(priced.earns).max(0);
                 }
@@ -1604,6 +1706,14 @@ pub fn forecast_unit(
                 let priced = price_pillage(region.tax_base, region.pillagers, mine);
                 income = income.saturating_add(priced.earns);
                 income_doubt = income_doubt.or(priced.doubt);
+                record(
+                    &mut moves,
+                    phases::StatePhase::Tax,
+                    priced.earns,
+                    SilverChangeCause::Pillaged,
+                    Some(placed.line as i64),
+                    None,
+                );
             }
             // `WORK` and `ENTERTAIN` earn nothing but late income, so [`late_income`] prices them
             // both - once, for this function and for `semantics::charge_upkeep` alike.
@@ -1636,6 +1746,14 @@ pub fn forecast_unit(
                         price,
                     );
                     income = income.saturating_add(line.earns);
+                    record(
+                        &mut moves,
+                        phases::StatePhase::Market,
+                        line.earns,
+                        SilverChangeCause::Sold,
+                        Some(placed.line as i64),
+                        None,
+                    );
                     if let Some(tag) = key {
                         *sold.entry(tag).or_default() += line.quantity;
                     }
@@ -1736,6 +1854,16 @@ pub fn forecast_unit(
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
                         month_long_expense = month_long_expense.saturating_add(priced.spends);
+                        // `phase_of` answers `Manufacturing` for every `PRODUCE`, and only a
+                        // manufacturing recipe has a silver input at all.
+                        record(
+                            &mut moves,
+                            phases::StatePhase::Manufacturing,
+                            -priced.spends,
+                            SilverChangeCause::ProductionSpent,
+                            Some(placed.line as i64),
+                            None,
+                        );
                         // The same running deduction the ITEMS ledger makes, by the same rule and
                         // for silver and materials alike: a tag the list does not carry is pushed
                         // with the negative amount, so a deficit survives to the next `PRODUCE`
@@ -1795,6 +1923,14 @@ pub fn forecast_unit(
                 let priced = price_study(cost, facts.study().men);
                 expense = expense.saturating_add(priced.spends);
                 month_long_expense = month_long_expense.saturating_add(priced.spends);
+                record(
+                    &mut moves,
+                    phases::StatePhase::Study,
+                    -priced.spends,
+                    SilverChangeCause::Studied,
+                    Some(placed.line as i64),
+                    None,
+                );
                 if priced.spends > 0 {
                     spent_on = spent_on.or(Some(SilverSpender::Study));
                 }
@@ -1860,6 +1996,22 @@ pub fn forecast_unit(
                 income = income.saturating_add(priced.earns);
                 expense = expense.saturating_add(priced.spends);
                 cast_expense = cast_expense.saturating_add(priced.spends);
+                record(
+                    &mut moves,
+                    phases::StatePhase::Cast,
+                    priced.earns,
+                    SilverChangeCause::CastEarned,
+                    Some(placed.line as i64),
+                    None,
+                );
+                record(
+                    &mut moves,
+                    phases::StatePhase::Cast,
+                    -priced.spends,
+                    SilverChangeCause::CastSpent,
+                    Some(placed.line as i64),
+                    None,
+                );
                 if priced.spends > 0 {
                     spent_on = spent_on.or(Some(SilverSpender::Cast));
                 }
@@ -1900,6 +2052,7 @@ pub fn forecast_unit(
                             count: *count,
                             price,
                             allowed,
+                            line: placed.line as i64,
                         });
                         if let Some(tag) = tag {
                             *bought.entry(tag).or_default() += asked;
@@ -1913,6 +2066,7 @@ pub fn forecast_unit(
                     // closure would have answered `NotSold` and the arm above doubts before the
                     // amount is read.
                     Amount::All { .. } => deferred.push(Deferred::BuyAll {
+                        line: placed.line as i64,
                         price,
                         share: (lookups.market_share)(item, MarketSide::Buying),
                         market_has,
@@ -1958,6 +2112,8 @@ pub fn forecast_unit(
                                 deferred.push(Deferred::GiveAllSilver {
                                     except: 0,
                                     to_nobody: matches!(to, Party::Discard),
+                                    line: placed.line as i64,
+                                    other: party_label(to),
                                 });
                                 spent_on = spent_on.or(Some(SilverSpender::Give));
                                 continue;
@@ -1996,6 +2152,18 @@ pub fn forecast_unit(
                     TransferShape::Unpriceable => {}
                     TransferShape::Exact(count) => {
                         expense = expense.saturating_add(count);
+                        record(
+                            &mut moves,
+                            phases::StatePhase::Give,
+                            -count,
+                            if to_nobody {
+                                SilverChangeCause::Discarded
+                            } else {
+                                SilverChangeCause::GaveAway
+                            },
+                            Some(placed.line as i64),
+                            Some(party_label(to)),
+                        );
                         if count > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Give));
                         }
@@ -2003,9 +2171,12 @@ pub fn forecast_unit(
                             given_to_nobody = given_to_nobody.saturating_add(count);
                         }
                     }
-                    TransferShape::All { except } => {
-                        deferred.push(Deferred::GiveAllSilver { except, to_nobody })
-                    }
+                    TransferShape::All { except } => deferred.push(Deferred::GiveAllSilver {
+                        except,
+                        to_nobody,
+                        line: placed.line as i64,
+                        other: party_label(to),
+                    }),
                 }
             }
             // WITHDRAW draws on the faction's unclaimed fund, never the unit's own silver, so it is
@@ -2022,11 +2193,25 @@ pub fn forecast_unit(
     // A block whose last order is in the Give phase never crossed the boundary above, and the pass
     // below still needs the gift in `expense` (`ah-m7su`).
     if !give_settled && income_doubt.is_none() && expense_doubt.is_none() {
-        let (given, to_nobody) = settle_give_all_silver(
+        let (given, to_nobody, each) = settle_give_all_silver(
             &deferred,
             held.saturating_add(give_phase_income)
                 .saturating_sub(expense),
         );
+        for gift in each {
+            record(
+                &mut moves,
+                phases::StatePhase::Give,
+                -gift.spent,
+                if gift.to_nobody {
+                    SilverChangeCause::Discarded
+                } else {
+                    SilverChangeCause::GaveAway
+                },
+                Some(gift.line),
+                Some(gift.other),
+            );
+        }
         expense = expense.saturating_add(given);
         given_to_nobody = given_to_nobody.saturating_add(to_nobody);
         gave_all_silver = given > 0;
@@ -2060,7 +2245,18 @@ pub fn forecast_unit(
         }
     }
 
-    let late = late_income(&facts, region, shares, ruleset);
+    let mut late = 0i64;
+    for term in late_income_terms(&facts, region, shares, ruleset) {
+        late = late.saturating_add(term.amount);
+        record(
+            &mut moves,
+            phases::StatePhase::Wages,
+            term.amount,
+            term.cause,
+            term.line,
+            None,
+        );
+    }
     income = income.saturating_add(late);
 
     // Everything that spends what is *left*, by game phase and then in document order, against a
@@ -2119,6 +2315,14 @@ pub fn forecast_unit(
                     SharedMarket::Unmeasured => MarketFunds::Unmeasured,
                 },
             );
+            record(
+                &mut moves,
+                phases::StatePhase::Market,
+                -line.spends,
+                SilverChangeCause::Bought,
+                Some(buy.line),
+                None,
+            );
             market_expense = market_expense.saturating_add(line.spends);
             funds = funds.saturating_sub(line.spends);
             running = running.saturating_sub(line.spends);
@@ -2126,6 +2330,7 @@ pub fn forecast_unit(
 
         for spend in &deferred {
             let Deferred::BuyAll {
+                line,
                 price,
                 share,
                 market_has,
@@ -2161,6 +2366,14 @@ pub fn forecast_unit(
             if priced.spends > 0 {
                 spent_on = spent_on.or(Some(SilverSpender::Buy));
             }
+            record(
+                &mut moves,
+                phases::StatePhase::Market,
+                -priced.spends,
+                SilverChangeCause::Bought,
+                Some(*line),
+                None,
+            );
             expense = expense.saturating_add(priced.spends);
             running = running.saturating_sub(priced.spends);
         }
@@ -2285,6 +2498,8 @@ pub fn forecast_unit(
 enum Deferred {
     /// `BUY ALL`: as many as the unit can afford, and no more than its settled share of the line.
     BuyAll {
+        /// The document line, for the ledger.
+        line: i64,
         price: i64,
         /// This unit's settled share of the line. `None` where nothing was settled, and the
         /// deferred pass then falls back to the whole line, exactly as this arm did inline before
@@ -2297,7 +2512,14 @@ enum Deferred {
         tag: String,
     },
     /// `GIVE ... ALL SILV`, less any `EXCEPT` reserve.
-    GiveAllSilver { except: i64, to_nobody: bool },
+    GiveAllSilver {
+        except: i64,
+        to_nobody: bool,
+        /// The document line, for the ledger.
+        line: i64,
+        /// The target's label, for the ledger.
+        other: String,
+    },
 }
 
 /// What the deferred `GIVE ... ALL SILV` orders of one block hand over, settled the moment the turn
@@ -2309,14 +2531,17 @@ enum Deferred {
 ///
 /// A `Deferred::BuyAll` cannot be in the slice yet - the market runs after the Give phase - but is
 /// skipped rather than matched on, so the function stays correct if it ever is.
-fn settle_give_all_silver(deferred: &[Deferred], purse: i64) -> (i64, i64) {
+fn settle_give_all_silver(deferred: &[Deferred], purse: i64) -> (i64, i64, Vec<GaveAllSilver>) {
     let mut running = purse;
     let mut given = 0i64;
     let mut to_nobody = 0i64;
+    let mut each = Vec::new();
     for spend in deferred {
         let Deferred::GiveAllSilver {
             except,
             to_nobody: discarded,
+            line,
+            other,
         } = spend
         else {
             continue;
@@ -2325,10 +2550,26 @@ fn settle_give_all_silver(deferred: &[Deferred], purse: i64) -> (i64, i64) {
         if *discarded {
             to_nobody = to_nobody.saturating_add(spent);
         }
+        if spent > 0 {
+            each.push(GaveAllSilver {
+                spent,
+                to_nobody: *discarded,
+                line: *line,
+                other: other.clone(),
+            });
+        }
         given = given.saturating_add(spent);
         running = running.saturating_sub(spent);
     }
-    (given, to_nobody)
+    (given, to_nobody, each)
+}
+
+/// One settled `GIVE ... ALL SILV`, in the order the block wrote them.
+struct GaveAllSilver {
+    spent: i64,
+    to_nobody: bool,
+    line: i64,
+    other: String,
 }
 
 /// What one unit owes in maintenance this month, after any food it will spend on it.
@@ -10140,6 +10381,449 @@ mod tests {
     fn changes_is_empty_for_a_unit_with_no_silver_orders() {
         let silver = forecast(3, RegionWages::default(), &[]);
         assert!(silver.changes.is_empty());
+    }
+
+    /// The causes of a unit's ledger, in order, for the assertions below.
+    fn causes(silver: &UnitSilver) -> Vec<SilverChangeCause> {
+        silver.changes.iter().map(|change| change.cause).collect()
+    }
+
+    #[test]
+    fn changes_names_tax_pillage_and_claim() {
+        // CLAIM settles in the instant block, ahead of the tax phase (`rules/sequenceofevents`),
+        // so the ledger reports it first however the block was written.
+        let unit = forecast_holding(
+            8,
+            taxable(Some(40_000)),
+            purse(Some(1_000)),
+            &[at_line(3, Intent::Tax), at_line(5, Intent::Claim(50))],
+        );
+        assert_eq!(
+            causes(&unit),
+            [SilverChangeCause::Claimed, SilverChangeCause::Taxed]
+        );
+        assert_eq!(unit.changes[0].amount, 50);
+        assert_eq!(unit.changes[0].line, Some(5));
+        assert_eq!(unit.changes[0].other, None);
+        assert_eq!(unit.changes[1].line, Some(3));
+        assert_eq!(
+            unit.changes.iter().map(|change| change.amount).sum::<i64>(),
+            unit.income.expect("priced")
+        );
+    }
+
+    #[test]
+    fn changes_leaves_the_line_off_a_tax_the_flag_ordered() {
+        let unit = forecast_flagged(
+            8,
+            taxable(Some(40_000)),
+            PoolShares::default(),
+            &flags(&["taxing"]),
+            &[],
+        );
+        assert_eq!(causes(&unit), [SilverChangeCause::Taxed]);
+        assert_eq!(unit.changes[0].line, None);
+    }
+
+    #[test]
+    fn changes_names_a_pillage() {
+        let unit = forecast_pillaging(80, pillageable(4_000), &[at_line(7, Intent::Pillage)]);
+        assert_eq!(causes(&unit), [SilverChangeCause::Pillaged]);
+        assert_eq!(unit.changes[0].amount, unit.income.expect("priced"));
+        assert_eq!(unit.changes[0].line, Some(7));
+    }
+
+    #[test]
+    fn changes_names_a_sale_and_a_purchase() {
+        let unit = sold(&[selling("furs", Amount::Exact(40))], &wanted(24, 40, 40));
+        assert_eq!(causes(&unit), [SilverChangeCause::Sold]);
+        assert_eq!(unit.changes[0].amount, 960);
+        assert_eq!(unit.changes[0].line, Some(1));
+
+        let bought = spending(
+            60,
+            &[at_line(
+                4,
+                Intent::Buy {
+                    amount: Amount::Exact(5),
+                    item: "grain".to_string(),
+                },
+            )],
+            RegionWages::default(),
+            &sells(12, 40),
+            None,
+        );
+        assert_eq!(causes(&bought), [SilverChangeCause::Bought]);
+        assert_eq!(bought.changes[0].amount, -60);
+        assert_eq!(bought.changes[0].line, Some(4));
+    }
+
+    #[test]
+    fn changes_names_a_study_fee() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let intents = [at_line(
+            9,
+            Intent::Study {
+                skill: "combat".to_string(),
+            },
+        )];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 600,
+                ..facts(6, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+        assert_eq!(causes(&unit), [SilverChangeCause::Studied]);
+        assert_eq!(unit.changes[0].amount, -60);
+        assert_eq!(unit.changes[0].line, Some(9));
+    }
+
+    #[test]
+    fn changes_names_a_production_cost() {
+        let items = catapult_materials_and_silver(3000);
+        let carpenters = [skill("CARP", 4)];
+        let intents = [at_line(
+            2,
+            Intent::Produce {
+                requested: None,
+                item: "CATP".to_string(),
+            },
+        )];
+        let receipts = Receipts::default();
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 3000,
+                items: &items,
+                skills: &carpenters,
+                production_skills: &carpenters,
+                phases: Some(PhaseFacts::uniform(LateFacts {
+                    men: 4,
+                    men_by_race: &[],
+                    items: &items,
+                    before_manufacturing: &items,
+                    shared_materials: &[],
+                })),
+                ..facts(4, &intents, &receipts)
+            },
+            paying("$5.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset()),
+        );
+        let production: Vec<&SilverChange> = unit
+            .changes
+            .iter()
+            .filter(|change| change.cause == SilverChangeCause::ProductionSpent)
+            .collect();
+        assert_eq!(production.len(), 1);
+        assert_eq!(production[0].line, Some(2));
+        assert!(production[0].amount < 0);
+    }
+
+    #[test]
+    fn changes_names_what_a_cast_costs() {
+        let ruleset = ruleset();
+        let casters = [skill("CRPA", 1)];
+        let intents = [at_line(
+            6,
+            Intent::Cast {
+                spell: "Create_Amulet_Of_Protection".to_string(),
+                arguments: Vec::new(),
+            },
+        )];
+        let receipts = Receipts::default();
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 1000,
+                skills: &casters,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+        assert_eq!(causes(&unit), [SilverChangeCause::CastSpent]);
+        assert_eq!(unit.changes[0].line, Some(6));
+        assert_eq!(unit.changes[0].amount, -unit.expense.expect("priced"));
+    }
+
+    #[test]
+    fn changes_names_what_a_cast_earns() {
+        let ruleset = ruleset();
+        let casters = [skill(EARTH_LORE_TAG, 2)];
+        let intents = [at_line(
+            3,
+            Intent::Cast {
+                spell: EARTH_LORE_TAG.to_string(),
+                arguments: Vec::new(),
+            },
+        )];
+        let receipts = Receipts::default();
+        let unit = forecast_unit(
+            UnitFacts {
+                skills: &casters,
+                ..facts(1, &intents, &receipts)
+            },
+            paying("$13.5", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+        // A `CAST` is not a month-long order, so the unit is also set to work (`ah-gjq4`) - the
+        // wage is the second entry, and the cast's earnings are the first.
+        assert_eq!(
+            causes(&unit),
+            [SilverChangeCause::CastEarned, SilverChangeCause::Worked]
+        );
+        assert_eq!(
+            unit.changes[0].amount,
+            unit.income.expect("priced") - unit.late_income.expect("priced")
+        );
+        assert!(unit.changes[0].amount > 0);
+        assert_eq!(unit.changes[0].line, Some(3));
+    }
+
+    #[test]
+    fn changes_names_an_exact_gift_and_who_took_it() {
+        let receipts = Receipts::default();
+        let intents = [at_line(
+            4,
+            Intent::Give {
+                to: Party::Unit("1789".to_string()),
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::Exact(120),
+            },
+        )];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 500,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert_eq!(causes(&unit), [SilverChangeCause::GaveAway]);
+        assert_eq!(unit.changes[0].amount, -120);
+        assert_eq!(unit.changes[0].line, Some(4));
+        assert_eq!(
+            unit.changes[0].other,
+            Some(party_label(&Party::Unit("1789".to_string())))
+        );
+    }
+
+    #[test]
+    fn changes_names_a_discarded_gift() {
+        let receipts = Receipts::default();
+        let intents = [at_line(
+            2,
+            Intent::Give {
+                to: Party::Discard,
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::Exact(40),
+            },
+        )];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 500,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert_eq!(causes(&unit), [SilverChangeCause::Discarded]);
+        assert_eq!(unit.changes[0].amount, -40);
+        assert_eq!(unit.changes[0].line, Some(2));
+    }
+
+    #[test]
+    fn changes_names_each_give_all_silver_separately() {
+        let receipts = Receipts::default();
+        let intents = [
+            at_line(
+                3,
+                Intent::Give {
+                    to: Party::Unit("1789".to_string()),
+                    what: Selector::Item("SILV".to_string()),
+                    amount: Amount::All { except: 300 },
+                },
+            ),
+            at_line(
+                4,
+                Intent::Give {
+                    to: Party::Discard,
+                    what: Selector::Item("SILV".to_string()),
+                    amount: Amount::All { except: 0 },
+                },
+            ),
+        ];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 500,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert_eq!(
+            causes(&unit),
+            [SilverChangeCause::GaveAway, SilverChangeCause::Discarded]
+        );
+        assert_eq!(unit.changes[0].amount, -200);
+        assert_eq!(unit.changes[0].line, Some(3));
+        assert_eq!(unit.changes[1].amount, -300);
+        assert_eq!(unit.changes[1].line, Some(4));
+    }
+
+    #[test]
+    fn changes_puts_the_wage_after_the_market() {
+        let intents = [
+            at_line(2, Intent::Work),
+            at_line(
+                3,
+                Intent::Buy {
+                    amount: Amount::Exact(1),
+                    item: "grain".to_string(),
+                },
+            ),
+        ];
+        let unit = spending(60, &intents, paying("$10.0", None), &sells(12, 40), None);
+        assert_eq!(
+            causes(&unit),
+            [SilverChangeCause::Bought, SilverChangeCause::Worked]
+        );
+        assert_eq!(unit.changes[1].line, Some(2));
+        assert_eq!(unit.changes[1].amount, unit.late_income.expect("priced"));
+    }
+
+    #[test]
+    fn changes_names_a_wage_nobody_ordered() {
+        let unit = forecast(3, paying("$10.0", None), &[]);
+        assert_eq!(causes(&unit), [SilverChangeCause::Worked]);
+        assert_eq!(unit.changes[0].line, None);
+        assert_eq!(unit.changes[0].amount, unit.late_income.expect("priced"));
+    }
+
+    #[test]
+    fn changes_names_each_giver_with_what_they_gave() {
+        let receipts = Receipts {
+            silver: 90,
+            givers: vec!["Scout (1789)".to_string()],
+            silver_moves: vec![ReceiptMove {
+                amount: 90,
+                cause: SilverChangeCause::WasGiven,
+                other: "Scout (1789)".to_string(),
+            }],
+            ..Receipts::default()
+        };
+        let intents = [at_line(
+            4,
+            Intent::Give {
+                to: Party::Discard,
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::Exact(10),
+            },
+        )];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 100,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        // A receipt settles before this unit's own gift within the Give phase.
+        assert_eq!(
+            causes(&unit),
+            [SilverChangeCause::WasGiven, SilverChangeCause::Discarded]
+        );
+        assert_eq!(unit.changes[0].amount, 90);
+        assert_eq!(unit.changes[0].line, None);
+        assert_eq!(unit.changes[0].other.as_deref(), Some("Scout (1789)"));
+    }
+
+    #[test]
+    fn changes_names_a_take_from_a_unit_the_report_does_not_show() {
+        let receipts = Receipts {
+            taken_unshown: 25,
+            taken_unshown_from: vec!["unit 42".to_string()],
+            silver_moves: vec![ReceiptMove {
+                amount: 25,
+                cause: SilverChangeCause::TookUnshown,
+                other: "unit 42".to_string(),
+            }],
+            ..Receipts::default()
+        };
+        let unit = forecast_unit(
+            facts(1, &[], &receipts),
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert_eq!(causes(&unit), [SilverChangeCause::TookUnshown]);
+        assert_eq!(unit.changes[0].amount, 25);
+        assert_eq!(unit.changes[0].other.as_deref(), Some("unit 42"));
+    }
+
+    #[test]
+    fn changes_is_empty_when_a_term_could_not_be_priced() {
+        let receipts = Receipts {
+            take_all_unpriceable: true,
+            ..Receipts::default()
+        };
+        let unit = forecast_unit(
+            facts(1, &[at_line(2, Intent::Tax)], &receipts),
+            taxable(Some(40_000)),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert!(unit.doubt.is_some());
+        assert!(unit.changes.is_empty());
     }
 }
 

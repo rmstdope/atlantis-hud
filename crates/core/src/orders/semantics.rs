@@ -45,8 +45,9 @@ use crate::orders::silver::{
     transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
     MarketFunds, MarketSide, PhaseFacts, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SharedMarket, SilverDoubt,
-    TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SharedMarket,
+    SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
+    UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1768,6 +1769,10 @@ fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<UnitKey, Receipts> {
             entry.taken = entry.taken.saturating_add(receipts.taken);
             entry.taken_unshown = entry.taken_unshown.saturating_add(receipts.taken_unshown);
             entry.take_all_unpriceable |= receipts.take_all_unpriceable;
+            // Movements, not a set: two gifts from one unit are two entries.
+            entry
+                .silver_moves
+                .extend(receipts.silver_moves.iter().cloned());
             for (into, from) in [
                 (&mut entry.givers, &receipts.givers),
                 (&mut entry.taken_from, &receipts.taken_from),
@@ -2591,6 +2596,11 @@ fn apply_transfers(
                                     receipts_by_position.entry(receiver_position).or_default();
                                 entry.taken_unshown = entry.taken_unshown.saturating_add(*count);
                                 let label = format!("unit {id}");
+                                entry.silver_moves.push(ReceiptMove {
+                                    amount: *count,
+                                    cause: SilverChangeCause::TookUnshown,
+                                    other: label.clone(),
+                                });
                                 if !entry.taken_unshown_from.contains(&label) {
                                     entry.taken_unshown_from.push(label);
                                 }
@@ -2745,6 +2755,11 @@ fn apply_transfers(
                         if moved > 0 {
                             let entry = receipts_by_position.entry(receiver_position).or_default();
                             entry.silver = entry.silver.saturating_add(moved);
+                            entry.silver_moves.push(ReceiptMove {
+                                amount: moved,
+                                cause: SilverChangeCause::WasGiven,
+                                other: source_label.clone(),
+                            });
                             if !entry.givers.contains(&source_label) {
                                 entry.givers.push(source_label);
                             }
@@ -2761,6 +2776,11 @@ fn apply_transfers(
                 } else if moved > 0 {
                     let entry = receipts_by_position.entry(transfer.position).or_default();
                     entry.taken = entry.taken.saturating_add(moved);
+                    entry.silver_moves.push(ReceiptMove {
+                        amount: moved,
+                        cause: SilverChangeCause::Took,
+                        other: source_label.clone(),
+                    });
                     if !entry.taken_from.contains(&source_label) {
                         entry.taken_from.push(source_label);
                     }
