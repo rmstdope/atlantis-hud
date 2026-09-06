@@ -5337,6 +5337,42 @@ test("a popup outlives the rows being rebuilt under it", async ({ page }) => {
 });
 
 /**
+ * The other half of the same rule (`ah-3oy3`): a rearrangement that *drops* the hovered row closes
+ * its popup at once, and the row coming back does not reopen it - the pointer has not been near it
+ * since.
+ */
+test("a popup dies with the row it belongs to, and does not come back with it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await page.getByTestId("unit-source-own").click();
+
+  const filter = page.getByTestId("panel-units").getByLabel("Filter units");
+  await filter.fill(OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await expect(row).toBeVisible();
+  const popup = page.getByTestId("unit-cell-popup");
+  await row.locator('td[data-column="items"]').hover();
+  await expect(popup).toBeVisible();
+
+  // Keyboard only, so the pointer never leaves the row it is resting on: this is the rows changing
+  // under a motionless hand, not the user pointing somewhere else.
+  await filter.press("End");
+  await filter.press("9");
+  await expect(row).toHaveCount(0);
+  await expect(popup).toHaveCount(0);
+
+  await filter.press("Backspace");
+  await expect(row).toBeVisible();
+  // The row is back, and the popup does not come back with it: a key kept in state would have
+  // reopened it at the point the pointer left, with no wait. What does happen afterwards is
+  // honest and is not asserted here - the row reappearing beneath a resting pointer makes the
+  // browser dispatch a real `pointerover`, which starts the usual wait from scratch.
+  await page.waitForTimeout(HOVER_DELAY_MS / 3);
+  await expect(popup).toHaveCount(0);
+});
+
+/**
  * The bug as it was reported (`ah-3oy3`): in `All my units` the filter is how a row standing in
  * another hex is brought into the windowed table at all, and the orders preview arriving a moment
  * later used to cancel the wait the pointer had just started.

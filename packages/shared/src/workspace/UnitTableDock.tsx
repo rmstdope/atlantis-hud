@@ -744,6 +744,17 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     }, HOVER_DELAY_MS);
   };
 
+  // A row the table no longer holds is forgotten outright, not merely undrawn: a key kept in state
+  // would reopen the popup untouched if the row came back (a filter character typed and deleted
+  // again), and would short-circuit `restOn`'s C1 branch into opening with no wait at all. This
+  // fires only when the row is genuinely gone, so it reintroduces none of the churn the `[visible]`
+  // cleanup had.
+  useEffect(() => {
+    if (hovered && !hoveredRow) {
+      setHovered(null);
+    }
+  }, [hovered, hoveredRow]);
+
   // Only the timer, and only on unmount: a rearrangement of the rows is no longer a reason to
   // close anything, because `hoveredRow` above cannot name a row that is not there.
   useEffect(
