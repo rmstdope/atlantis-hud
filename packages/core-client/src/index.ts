@@ -397,7 +397,13 @@ export type ItemChangeCause =
   | "cast-spent"
   | "transported-out"
   | "transported-in"
-  | "abandoned";
+  | "abandoned"
+  | "given-away"
+  | "was-given"
+  | "took"
+  | "was-taken-from"
+  | "discarded"
+  | "gift-reverted";
 
 /** The other unit an item change is between (`ah-rgkk.3.1`). */
 export type ItemChangeParty = { unitId: string; name: string | null };
