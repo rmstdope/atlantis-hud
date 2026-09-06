@@ -5299,3 +5299,98 @@ test("resting on the faction cell opens nothing", async ({ page }) => {
   await expect(page.getByTestId("unit-cell-popup")).toHaveCount(0);
   await expect(page.getByTestId("unit-tooltip")).toHaveCount(0);
 });
+
+/**
+ * A rearrangement that keeps the row keeps its popup (`ah-3oy3`).
+ *
+ * The rows are rebuilt from the keyboard so the pointer never moves: nothing re-arms the wait once
+ * it has been cancelled, which is why the reported symptom is a popup that never appears however
+ * long the pointer rests.
+ */
+test("a popup outlives the rows being rebuilt under it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await page.getByTestId("unit-source-own").click();
+
+  const filter = page.getByTestId("panel-units").getByLabel("Filter units");
+  await filter.fill(OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await expect(row).toBeVisible();
+  const popup = page.getByTestId("unit-cell-popup");
+  await row.locator('td[data-column="items"]').hover();
+  await expect(popup).toBeVisible();
+
+  // `locator.press` types with the keyboard and never moves the pointer: a click on the filter box
+  // would take the pointer off the row and close the popup for an honest reason. `End` first, so
+  // the character lands after the existing text rather than replacing a selection. A trailing
+  // space is the rebuild that changes nothing else: the filter is matched on `needle.trim()`
+  // (`unitTable.ts`), so the very same rows come back, in the same order and at the same widths -
+  // and the cell under the motionless pointer is still the one the popup was opened for.
+  await filter.press("End");
+  await filter.press(" ");
+  await expect(filter).toHaveValue(`${OWN_UNIT} `);
+  await expect(row).toBeVisible();
+
+  await expect(popup).toBeVisible();
+  await expect(popup).toHaveAttribute("data-column", "items");
+});
+
+/**
+ * The other half of the same rule (`ah-3oy3`): a rearrangement that *drops* the hovered row closes
+ * its popup at once, and the row coming back does not reopen it - the pointer has not been near it
+ * since.
+ */
+test("a popup dies with the row it belongs to, and does not come back with it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await page.getByTestId("unit-source-own").click();
+
+  const filter = page.getByTestId("panel-units").getByLabel("Filter units");
+  await filter.fill(OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await expect(row).toBeVisible();
+  const popup = page.getByTestId("unit-cell-popup");
+  await row.locator('td[data-column="items"]').hover();
+  await expect(popup).toBeVisible();
+
+  // Keyboard only, so the pointer never leaves the row it is resting on: this is the rows changing
+  // under a motionless hand, not the user pointing somewhere else.
+  await filter.press("End");
+  await filter.press("9");
+  await expect(row).toHaveCount(0);
+  await expect(popup).toHaveCount(0);
+
+  await filter.press("Backspace");
+  await expect(row).toBeVisible();
+  // The row is back, and the popup does not come back with it: a key kept in state would have
+  // reopened it at the point the pointer left, with no wait. What does happen afterwards is
+  // honest and is not asserted here - the row reappearing beneath a resting pointer makes the
+  // browser dispatch a real `pointerover`, which starts the usual wait from scratch. Asserting at
+  // once rather than after a fraction of that wait leaves no window for a loaded machine to open
+  // the popup legitimately and turn this red for something that is not a defect.
+  await expect(popup).toHaveCount(0);
+});
+
+/**
+ * The bug as it was reported (`ah-3oy3`): in `All my units` the filter is how a row standing in
+ * another hex is brought into the windowed table at all, and the orders preview arriving a moment
+ * later used to cancel the wait the pointer had just started.
+ */
+test("resting on a row in a filtered All my units list opens its popup", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await page.getByTestId("unit-source-own").click();
+  await page.getByTestId("panel-units").getByLabel("Filter units").fill(OTHER_OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OTHER_OWN_UNIT}`);
+  await expect(row).toBeVisible();
+  // The row stands in (26,52), not in the selected hex - which is the only way to reach one.
+  await expect(row).toContainText("(26,52)");
+
+  await row.locator('td[data-column="items"]').hover();
+  const popup = page.getByTestId("unit-cell-popup");
+  await expect(popup).toBeVisible();
+  await expect(popup).toContainText(`Seven of Eight (${OTHER_OWN_UNIT})`);
+});

@@ -168,11 +168,10 @@ const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
 /**
  * The empty column maps, shared rather than built per render.
  *
- * `visible` is memoised on these, and the hover that opens a unit's tooltip is cancelled whenever
- * `visible` becomes a fresh array - deliberately, so a tooltip cannot outlive its row. A `new Map()`
- * built afresh each time the memo re-ran made that fire on nothing at all: `getSilver` changes
- * identity on every validation, so the table rebuilt its rows and cancelled the hover 300ms after
- * it began, and the tooltip never appeared (`ah-1wcw.1`, fixed in `ah-1wcw.6`).
+ * `visible` is memoised on these, and a `new Map()` built afresh each time the memo re-ran rebuilt
+ * every row on nothing at all: `getSilver` changes identity on every validation (`ah-1wcw.1`, fixed
+ * in `ah-1wcw.6`). A hovered popup no longer dies of that churn (`ah-3oy3`), but the wasted
+ * re-renders are reason enough to keep these shared.
  */
 const NO_LONG_ORDERS: ReadonlyMap<string, string | null> = new Map();
 const NO_SILVER: ReadonlyMap<string, number | null> = new Map();
@@ -415,10 +414,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * The gate is not an optimisation. `ordersPreview` is a fresh object on every one of the shell's
    * 300ms debounce ticks, whether or not the orders changed anything, so folding it unconditionally
    * would put a changing dependency into `sourced` below - and `sourced` rebuilds `This hex`'s rows
-   * with `unitsForHex`, a fresh array every call. `visible` is memoised over those rows and the
-   * hover that opens a unit's tooltip is cancelled whenever that array's identity changes, so
-   * `This hex`'s tooltip stopped appearing at all (`ah-1wcw.1`, and again here). Gated, this
-   * answers the very same `ownUnits` array for every other source, and `sourced` does not re-run.
+   * with `unitsForHex`, a fresh array every call, so every preview tick would rebuild the whole
+   * table (`ah-1wcw.1`, and again here). Gated, this answers the very same `ownUnits` array for
+   * every other source, and `sourced` does not re-run.
    */
   const ownRows = useMemo(
     () =>
@@ -670,9 +668,26 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * ref until the wait is up: following the pointer through state would re-render the table on
    * every mouse move, for a figure only one timeout ever reads.
    */
-  const [hovered, setHovered] = useState<
-    { unit: PreviewedUnit; column: DrawnColumnId; at: Point } | null
-  >(null);
+  const [hovered, setHovered] = useState<{
+    key: string;
+    column: DrawnColumnId;
+    at: Point;
+  } | null>(null);
+
+  /**
+   * The hovered row as the table currently holds it, or null when the rows no longer have it.
+   *
+   * The lookup is the whole of the guarantee that a popup cannot outlive its row: a rearrangement
+   * that drops the row removes the popup on the next render, and one that merely rebuilds the same
+   * rows keeps it and refreshes its figures.
+   */
+  const hoveredRow = useMemo(() => {
+    if (!hovered) {
+      return null;
+    }
+    const unit = visible.find((one) => unitRowKey(one.regionId, one.unitId) === hovered.key);
+    return unit ? { unit, column: hovered.column, at: hovered.at } : null;
+  }, [hovered, visible]);
   const pointerAt = useRef<Point>({ x: 0, y: 0 });
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /**
@@ -703,9 +718,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // Already open on this cell's own row: the popup becomes the new column at once and moves to
     // it, with no second wait (`ah-rgkk.1`, decision **C1**). Reading a row column by column costs
     // one wait, not one per cell.
-    if (hovered && hovered.unit.unitId === unit.unitId && hovered.unit.regionId === unit.regionId) {
+    const key = unitRowKey(unit.regionId, unit.unitId);
+    if (hovered && hovered.key === key) {
       if (hovered.column !== column) {
-        setHovered({ unit, column, at: pointerAt.current });
+        setHovered({ key, column, at: pointerAt.current });
       }
       return;
     }
@@ -724,25 +740,31 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     hoverTimer.current = setTimeout(() => {
       hoverTimer.current = null;
       pending.current = null;
-      setHovered({ unit, column, at: pointerAt.current });
+      setHovered({ key, column, at: pointerAt.current });
     }, HOVER_DELAY_MS);
   };
 
-  // A tooltip that outlived its row would hang over the map with nothing to point at, and every
-  // rearrangement of the table does that: another hex, another filter, another report of the same
-  // hex, or the panel folded away. `visible` is a fresh array for exactly those and no others, so
-  // depending on it rather than on the things that produce it cannot miss one. The work is in the
-  // cleanup, which React runs both when the rows change and when the table goes.
+  // A row the table no longer holds is forgotten outright, not merely undrawn: a key kept in state
+  // would reopen the popup untouched if the row came back (a filter character typed and deleted
+  // again), and would short-circuit `restOn`'s C1 branch into opening with no wait at all. This
+  // fires only when the row is genuinely gone, so it reintroduces none of the churn the `[visible]`
+  // cleanup had.
+  useEffect(() => {
+    if (hovered && !hoveredRow) {
+      setHovered(null);
+    }
+  }, [hovered, hoveredRow]);
+
+  // Only the timer, and only on unmount: a rearrangement of the rows is no longer a reason to
+  // close anything, because `hoveredRow` above cannot name a row that is not there.
   useEffect(
     () => () => {
       if (hoverTimer.current !== null) {
         clearTimeout(hoverTimer.current);
         hoverTimer.current = null;
       }
-      pending.current = null;
-      setHovered(null);
     },
-    [visible]
+    []
   );
 
   /**
@@ -1519,7 +1541,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           {/* Which of the two panels opens is the resolver's answer, not this component's, so
               the popup and the cell's own hidden sentence can never disagree (`ah-rgkk.1`). */}
           <HoveredPopup
-            hovered={hovered}
+            hovered={hoveredRow}
             getSilver={getSilver}
             getLongOrder={getLongOrder}
             silverWarnings={silverWarnings}
