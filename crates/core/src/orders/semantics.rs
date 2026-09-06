@@ -54,8 +54,8 @@ use crate::orders::targets::{
     give_outcome, give_reach, mage_give_refused, party_label, party_unit_id, GiveOutcome,
     GiveReach, GiveRefusal,
 };
-use crate::report::flags::FlagChange;
 use crate::report::composition;
+use crate::report::flags::FlagChange;
 use crate::report::model::{
     Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Skill, Structure,
 };
@@ -14916,9 +14916,11 @@ mod tests {
             CheckOptions::default(),
         );
         assert!(
-            !flagged.findings.iter().any(|finding| finding.code
-                == codes::UNIT_DOES_NOTHING
-                && finding.unit_id.as_deref() == Some("1")),
+            !flagged
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::UNIT_DOES_NOTHING
+                    && finding.unit_id.as_deref() == Some("1")),
             "{:?}",
             codes(&flagged.findings)
         );
@@ -14929,9 +14931,11 @@ mod tests {
             Some(&ruleset()),
             CheckOptions::default(),
         );
-        assert!(idle.findings.iter().any(|finding| finding.code
-            == codes::UNIT_DOES_NOTHING
-            && finding.unit_id.as_deref() == Some("1")));
+        assert!(idle
+            .findings
+            .iter()
+            .any(|finding| finding.code == codes::UNIT_DOES_NOTHING
+                && finding.unit_id.as_deref() == Some("1")));
     }
 
     #[test]
@@ -14944,9 +14948,11 @@ mod tests {
         );
 
         assert!(
-            review.findings.iter().any(|finding| finding.code
-                == codes::UNIT_DOES_NOTHING
-                && finding.unit_id.as_deref() == Some("1")),
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::UNIT_DOES_NOTHING
+                    && finding.unit_id.as_deref() == Some("1")),
             "{:?}",
             codes(&review.findings)
         );

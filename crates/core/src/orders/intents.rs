@@ -1271,11 +1271,9 @@ mod tests {
 
     #[test]
     fn a_flag_order_in_a_turn_block_is_next_months() {
-        assert!(
-            only_unit("unit 5\nTURN\nAUTOTAX 1\nENDTURN\n")
-                .flag_changes
-                .is_empty()
-        );
+        assert!(only_unit("unit 5\nTURN\nAUTOTAX 1\nENDTURN\n")
+            .flag_changes
+            .is_empty());
     }
 
     #[test]
