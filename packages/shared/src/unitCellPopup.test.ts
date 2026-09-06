@@ -261,6 +261,18 @@ describe("the column popups", () => {
     expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual(["was: 20 SILV"]);
   });
 
+  it("says the report's own figure once for a unit that gave everything away", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({ items: [], previewChanges: [{ field: "items", original: "20 SILV" }] }),
+        facts()
+      )
+    );
+    expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual(["was: 20 SILV"]);
+    expect(popup.notes).toContain("No items.");
+  });
+
   it("says nothing moved when the report's figure is the one already shown", () => {
     const popup = columnPopup(
       popupForCell(

@@ -161,12 +161,12 @@ export function popupForCell(
   // dropping it would lose what the cell's `title` used to say. It becomes a sentence instead.
   //
   // On the emptiness of the body, and deliberately not on "no line carries the change": a line
-  // that carries none may be saying there was none. `markOrQuote` returns nothing at all for an
-  // original equal to the figure beside it, and `itemsBody`'s lines never carry one because
-  // `itemsTooltip` has already put the quote in the notes - so the wider test said `Was: 12.` of a
-  // figure that did not move, and said the items quote twice.
-  if (change && body.lines.length === 0) {
-    notes.push(sentence(originalTooltip(change) as string));
+  // that carries none may be saying there was none - `markOrQuote` returns nothing at all for an
+  // original equal to the figure beside it, and the wider test said `Was: 12.` of a figure that
+  // did not move. `quoted` is the other half of the same care: an empty body is not the same as a
+  // silent one, and a column that has already said it says it once.
+  if (change && body.lines.length === 0 && !body.quoted) {
+    notes.push(sentence(originalTooltip(change)!));
   }
 
   // Capped rather than scrolled: the popup is transparent to the pointer, so a wheel over it
@@ -187,7 +187,19 @@ export function popupForCell(
   };
 }
 
-type Body = { lines: PopupLine[]; notes: string[]; warning?: string | null };
+type Body = {
+  lines: PopupLine[];
+  notes: string[];
+  warning?: string | null;
+  /**
+   * Set by a column that has already said what the report had there, wherever it says it.
+   *
+   * `itemsBody` is the one: `itemsTooltip` opens with `was: …` and is reached whether or not the
+   * unit still holds anything, so a unit that gave everything away has an empty body *and* the
+   * quote already in its notes.
+   */
+  quoted?: boolean;
+};
 
 /** What one column has to say, before the shared capping and change sentence are applied. */
 function bodyFor(column: PopupColumn, unit: PreviewedUnit, facts: PopupFacts): Body {
@@ -347,6 +359,9 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 
   return {
     lines: summariseUnit(unit).items,
+    // `itemsTooltip` opens with the report's own list, so this column never needs the shared
+    // sentence - not even when the unit ends the month holding nothing.
+    quoted: told !== undefined,
     notes: [...(told ? told.split("\n") : []), ...(unit.items.length === 0 ? ["No items."] : [])],
     warning: partlyCounted
       ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
