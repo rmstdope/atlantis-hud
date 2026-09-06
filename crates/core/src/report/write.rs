@@ -717,6 +717,29 @@ mod tests {
         assert_eq!(lines[0].text, long);
     }
 
+    /// `unit_line` writes `unit.flags` back verbatim and `parse_unit` reads them through
+    /// `matching_flag`, so any spelling the preview can write must be one the parser accepts -
+    /// otherwise a previewed unit cannot survive an export and re-import.
+    #[test]
+    fn every_flag_the_preview_can_write_survives_a_round_trip() {
+        for setting in crate::report::flags::ALL_SETTINGS {
+            let spelling = setting.spellings()[0];
+            let mut unit = crate::report::unit::parse_unit(
+                "* Walker (900), Foo (1), 1 leader [LEAD].",
+                true,
+                "1:1,1",
+                None,
+            )
+            .expect("the fixture line parses");
+            unit.flags = vec![spelling.to_string()];
+
+            let written = unit_line(&unit);
+            let read_back = crate::report::unit::parse_unit(&written, true, "1:1,1", None)
+                .unwrap_or_else(|| panic!("{spelling}: {written}"));
+            assert_eq!(read_back.flags, vec![spelling.to_string()], "{written}");
+        }
+    }
+
     #[test]
     fn wraps_an_indented_line_deeper_than_its_own_indent() {
         let long = format!(

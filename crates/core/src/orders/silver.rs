@@ -221,14 +221,17 @@ const LEADER_TAG: &str = "LEAD";
 const CONSUMING_FACTION_FLAG: &str = "consuming faction's food";
 
 /// The two flags that say a unit is set to spend its food before its silver.
-const CONSUMING_FLAGS: [&str; 2] = ["consuming unit's food", CONSUMING_FACTION_FLAG];
+const CONSUMING_FLAGS: [&str; 2] = [
+    crate::report::flags::Setting::ConsumingUnit.spellings()[0],
+    CONSUMING_FACTION_FLAG,
+];
 
 /// The flags the game prints for a unit that taxes every turn without an order.
 ///
-/// Two spellings, both already in the report parser's `KNOWN_FLAGS`
-/// (`crates/core/src/report/unit.rs`): reports print `taxing`, and `autotax` is the order's own
-/// name. Match both, because the parser accepts both.
-pub(crate) const TAXING_FLAGS: [&str; 2] = ["taxing", "autotax"];
+/// Two spellings, both in the report's own vocabulary (`crates/core/src/report/flags.rs`):
+/// reports print `taxing`, and `autotax` is the order's own name. Match both, because the parser
+/// accepts both.
+pub(crate) const TAXING_FLAGS: &[&str] = crate::report::flags::Setting::Taxing.spellings();
 
 /// What one unit's month is expected to do to its silver.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

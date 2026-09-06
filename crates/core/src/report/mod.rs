@@ -7,6 +7,7 @@
 pub mod battle;
 pub mod composition;
 pub mod export;
+pub mod flags;
 pub mod header;
 pub mod import;
 pub mod level;
