@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use super::effects;
+use super::effects::{self, ItemChangeCause, ItemChangeParty};
 use super::forms::{Amount, Party, Selector};
 use super::intents::{
     read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
@@ -3931,10 +3931,22 @@ pub(crate) struct ItemMovement {
     pub name: String,
     /// Signed: positive into the unit, negative out of it.
     pub delta: i64,
-    /// Set on the movement carrying what a `PRODUCE` order makes, so the hover can say the goods
-    /// arrive in the month's last phase and cannot be spent this month. `false` on every other
-    /// movement, the materials that same order consumes included.
-    pub produced: bool,
+    /// Why it moved. Exactly one cause per movement (`ah-rgkk.3.1`).
+    pub cause: ItemChangeCause,
+    /// The phase this movement settles in, so `item_effects` can put a unit's movements into the
+    /// month's order without the consumer needing a phase on the wire. Never serialised.
+    pub phase: StatePhase,
+    /// The 1-based document line of the order that moved it, as [`PlacedIntent::line`] counts.
+    /// `None` only where no single order is responsible - today just
+    /// [`ItemChangeCause::Abandoned`].
+    pub line: Option<i64>,
+    /// What the market settled one of these at, in silver. `Some` only on
+    /// [`ItemChangeCause::Bought`] and [`ItemChangeCause::Sold`].
+    pub unit_price: Option<i64>,
+    /// The other unit this movement is between. `Some` only where a movement is recorded on a unit
+    /// other than the one whose order caused it - today just a shared material, which is charged
+    /// to the supplier (`charge_shared_material`).
+    pub other: Option<ItemChangeParty>,
     /// What a `CAST` creates, on the movement carrying its arrival (`ah-ofpb.5`). `None` on every
     /// other movement, the materials that same cast consumes included.
     pub created: Option<Created>,
@@ -4360,7 +4372,12 @@ fn discard_unfinished_ships_after_movement(
                 tag: item.tag.to_ascii_uppercase(),
                 name: item.name.clone(),
                 delta: -amount,
-                produced: false,
+                cause: ItemChangeCause::Abandoned,
+                phase: StatePhase::Movement,
+                // No one order abandons it: the unit leaving the hex does.
+                line: None,
+                unit_price: None,
+                other: None,
                 created: None,
             });
         }
@@ -5504,7 +5521,11 @@ fn apply(
                     tag: tag.clone(),
                     name: item_name(&tag, hex, ruleset),
                     delta: *count,
-                    produced: false,
+                    cause: ItemChangeCause::Withdrawn,
+                    phase: StatePhase::Withdraw,
+                    line: Some(placed.line as i64),
+                    unit_price: None,
+                    other: None,
                     created: None,
                 });
                 // Only what the catalogue prices a withdrawal of actually arrives.
@@ -5957,7 +5978,11 @@ fn buy(
             tag: tag.clone(),
             name: item_name(&tag, hex, ledger.ruleset),
             delta: bought,
-            produced: false,
+            cause: ItemChangeCause::Bought,
+            phase: StatePhase::Market,
+            line: Some(placed.line as i64),
+            unit_price: Some(offer.price),
+            other: None,
             created: None,
         });
     }
@@ -6047,7 +6072,11 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &
                 tag: deferred.tag.clone(),
                 name: item_name(&deferred.tag, hex, ledger.ruleset),
                 delta: plan.bought,
-                produced: false,
+                cause: ItemChangeCause::Bought,
+                phase: StatePhase::Market,
+                line: Some(deferred.placed.line as i64),
+                unit_price: Some(deferred.price),
+                other: None,
                 created: None,
             });
         }
@@ -6241,6 +6270,7 @@ fn produce(
             &material.tag.to_ascii_uppercase(),
             material.amount,
             placed,
+            ItemChangeCause::ProductionSpent,
         );
     }
     if let Some(tag) = tag.filter(|_| plan.made != 0) {
@@ -6262,7 +6292,11 @@ fn produce(
             name: item_name(&tag, hex, ruleset),
             tag,
             delta: plan.made,
-            produced: true,
+            cause: ItemChangeCause::Produced,
+            phase,
+            line: Some(placed.line as i64),
+            unit_price: None,
+            other: None,
             created: None,
         });
     }
@@ -6493,7 +6527,15 @@ fn build(
     let name = item_name(&tag, hex, Some(ruleset));
     // The spend and its movements: this unit's own stock first, then the hex's sharing units in
     // report order, each debited on its own row (`ah-728m.2.2`).
-    charge_shared_material(ledger, StatePhase::Build, pool, &tag, plan.done, placed);
+    charge_shared_material(
+        ledger,
+        StatePhase::Build,
+        pool,
+        &tag,
+        plan.done,
+        placed,
+        ItemChangeCause::BuildSpent,
+    );
     ledger
         .built
         .entry(who.clone())
@@ -6588,7 +6630,11 @@ fn sell(
             tag: tag.clone(),
             name: item_name(&tag, hex, ledger.ruleset),
             delta: -line.quantity,
-            produced: false,
+            cause: ItemChangeCause::Sold,
+            phase: StatePhase::Market,
+            line: Some(placed.line as i64),
+            unit_price: Some(demand.price),
+            other: None,
             created: None,
         });
     }
@@ -6738,7 +6784,11 @@ fn cast(
                 // number (`ah-ofpb.5`, round 1 Q4). `plan.materials` is already `charged` times the
                 // per-item amount.
                 delta: -material.amount,
-                produced: false,
+                cause: ItemChangeCause::CastSpent,
+                phase: StatePhase::Cast,
+                line: Some(placed.line as i64),
+                unit_price: None,
+                other: None,
                 created: None,
             });
         }
@@ -6751,7 +6801,11 @@ fn cast(
             name: item_name(&tag, hex, ruleset),
             tag,
             delta: plan.made,
-            produced: false,
+            cause: ItemChangeCause::CastCreated,
+            phase: StatePhase::Cast,
+            line: Some(placed.line as i64),
+            unit_price: None,
+            other: None,
             created: Some(Created {
                 fewest: plan.made_certain,
                 summoned: plan.summons,
@@ -7305,6 +7359,8 @@ fn charge_shared_material(
     tag: &str,
     amount: i64,
     placed: &PlacedIntent,
+    // Why the material leaves: a `PRODUCE`'s materials or a `BUILD`'s.
+    cause: ItemChangeCause,
 ) -> Vec<SharedDebit> {
     let mut remaining = amount.max(0);
     let actor_index = pool.actor_index;
@@ -7352,7 +7408,14 @@ fn charge_shared_material(
             tag: tag.to_ascii_uppercase(),
             name: name.clone(),
             delta: -debit.amount,
-            produced: false,
+            cause,
+            phase,
+            line: Some(placed.line as i64),
+            unit_price: None,
+            other: (debit.supplier_index != actor_index).then(|| ItemChangeParty {
+                unit_id: pool.hex.units[actor_index].unit.unit_id.clone(),
+                name: Some(pool.hex.units[actor_index].unit.name.clone()),
+            }),
             created: None,
         });
     }
@@ -17246,7 +17309,9 @@ mod tests {
             effects_for(effects, id).map_or(0, |unit| {
                 unit.moved
                     .iter()
-                    .filter(|movement| movement.produced && movement.tag == tag)
+                    .filter(|movement| {
+                        movement.cause == ItemChangeCause::Produced && movement.tag == tag
+                    })
                     .map(|movement| movement.delta)
                     .sum()
             })
@@ -17453,6 +17518,7 @@ mod tests {
                     "WOOD",
                     18,
                     &somewhere(),
+                    ItemChangeCause::ProductionSpent,
                 );
                 assert_eq!(
                     debits,
@@ -17743,7 +17809,7 @@ BUILD
                         ledger
                             .movements
                             .iter()
-                            .filter(|movement| movement.produced)
+                            .filter(|movement| movement.cause == ItemChangeCause::Produced)
                             .map(|movement| (movement.unit_id.as_str(), movement.delta))
                             .collect::<Vec<_>>(),
                         vec![("900", 5)]
@@ -17775,7 +17841,7 @@ BUILD
                     let made: Vec<(&str, i64)> = ledger
                         .movements
                         .iter()
-                        .filter(|movement| movement.produced)
+                        .filter(|movement| movement.cause == ItemChangeCause::Produced)
                         .map(|movement| (movement.unit_id.as_str(), movement.delta))
                         .collect();
                     assert_eq!(
@@ -17840,7 +17906,7 @@ BUILD
                     ledger
                         .movements
                         .iter()
-                        .filter(|movement| movement.produced)
+                        .filter(|movement| movement.cause == ItemChangeCause::Produced)
                         .map(|movement| (movement.unit_id.clone(), movement.delta))
                         .collect::<Vec<_>>(),
                     balance_of(&ledger, "900", "WAGO"),
@@ -17955,6 +18021,31 @@ BUILD
             let rules = ruleset();
             let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
+        }
+
+        /// An [`ItemMovement`] with the optional attribution left unset - what a test that is not
+        /// about a price or a second unit wants (`ah-rgkk.3.1`).
+        fn movement(
+            unit_id: &str,
+            tag: &str,
+            name: &str,
+            delta: i64,
+            cause: ItemChangeCause,
+            phase: StatePhase,
+            line: Option<i64>,
+        ) -> ItemMovement {
+            ItemMovement {
+                unit_id: unit_id.to_string(),
+                tag: tag.to_string(),
+                name: name.to_string(),
+                delta,
+                cause,
+                phase,
+                line,
+                unit_price: None,
+                other: None,
+                created: None,
+            }
         }
 
         fn line(amount: i64, price: i64, name: &str, tag: &str) -> MarketItem {
@@ -18153,23 +18244,31 @@ BUILD
                     assert_eq!(
                         movement_for("2390"),
                         Some(ItemMovement {
-                            unit_id: "2390".to_string(),
-                            tag: "HORS".to_string(),
-                            name: "horse".to_string(),
-                            delta: 8,
-                            produced: false,
-                            created: None,
+                            unit_price: Some(10),
+                            ..movement(
+                                "2390",
+                                "HORS",
+                                "horse",
+                                8,
+                                ItemChangeCause::Bought,
+                                StatePhase::Market,
+                                Some(2),
+                            )
                         })
                     );
                     assert_eq!(
                         movement_for("2391"),
                         Some(ItemMovement {
-                            unit_id: "2391".to_string(),
-                            tag: "HORS".to_string(),
-                            name: "horse".to_string(),
-                            delta: 4,
-                            produced: false,
-                            created: None,
+                            unit_price: Some(10),
+                            ..movement(
+                                "2391",
+                                "HORS",
+                                "horse",
+                                4,
+                                ItemChangeCause::Bought,
+                                StatePhase::Market,
+                                Some(4),
+                            )
                         })
                     );
                 },
@@ -18637,14 +18736,38 @@ BUILD
                 assert_eq!(
                     ledger.movements,
                     vec![ItemMovement {
-                        unit_id: "2390".to_string(),
-                        tag: "FUR".to_string(),
-                        name: "fur".to_string(),
-                        delta: -15,
-                        produced: false,
-                        created: None,
+                        unit_price: Some(10),
+                        ..movement(
+                            "2390",
+                            "FUR",
+                            "fur",
+                            -15,
+                            ItemChangeCause::Sold,
+                            StatePhase::Market,
+                            Some(2),
+                        )
                     }]
                 );
+            });
+        }
+
+        /// `ah-rgkk.3.1`, increment 1. A movement says *why* it moved and which order line moved
+        /// it, so the Items popup can tell a sale from a purchase.
+        #[test]
+        fn a_sale_records_why_and_which_line_moved_the_goods() {
+            let hex = ReportRegion {
+                wanted: vec![line(100, 10, "fur", "FUR")],
+                ..region(vec![with_item(unit("2390"), 20, "fur", "FUR")])
+            };
+            with_ledger(hex, "unit 2390\nSELL 4 fur\n", |ledger| {
+                let movement = ledger.movements.first().expect("the sale moves goods");
+                assert_eq!(movement.cause, ItemChangeCause::Sold);
+                assert_eq!(
+                    movement.line,
+                    Some(2),
+                    "`SELL` is the document's second line"
+                );
+                assert_eq!(movement.phase, StatePhase::Market);
             });
         }
 
@@ -18930,14 +19053,15 @@ BUILD
             with_ledger(hex_region, "unit 2390\nWITHDRAW 8 GRAI\n", |ledger| {
                 assert_eq!(
                     ledger.movements,
-                    vec![ItemMovement {
-                        unit_id: "2390".to_string(),
-                        tag: "GRAI".to_string(),
-                        name: "grain".to_string(),
-                        delta: 8,
-                        produced: false,
-                        created: None,
-                    }]
+                    vec![movement(
+                        "2390",
+                        "GRAI",
+                        "grain",
+                        8,
+                        ItemChangeCause::Withdrawn,
+                        StatePhase::Withdraw,
+                        Some(2),
+                    )]
                 );
             });
         }
@@ -18991,14 +19115,15 @@ BUILD
                 );
                 assert_eq!(
                     ledger.movements,
-                    vec![ItemMovement {
-                        unit_id: "2390".to_string(),
-                        tag: "WSHD".to_string(),
-                        name: "wooden shield".to_string(),
-                        delta: 6,
-                        produced: false,
-                        created: None,
-                    }],
+                    vec![movement(
+                        "2390",
+                        "WSHD",
+                        "wooden shield",
+                        6,
+                        ItemChangeCause::Withdrawn,
+                        StatePhase::Withdraw,
+                        Some(2),
+                    )],
                     "the existing ItemMovement preview must remain present"
                 );
             });
@@ -19014,14 +19139,15 @@ BUILD
             )]);
             with_ledger(hex_region, "unit 2391\nPRODUCE sword\n", |ledger| {
                 assert!(
-                    ledger.movements.contains(&ItemMovement {
-                        unit_id: "2391".to_string(),
-                        tag: "IRON".to_string(),
-                        name: "iron".to_string(),
-                        delta: -8,
-                        produced: false,
-                        created: None,
-                    }),
+                    ledger.movements.contains(&movement(
+                        "2391",
+                        "IRON",
+                        "iron",
+                        -8,
+                        ItemChangeCause::ProductionSpent,
+                        StatePhase::Manufacturing,
+                        Some(2),
+                    )),
                     "the materials a PRODUCE consumes should be among the recorded movements: {:?}",
                     ledger.movements
                 );
@@ -19050,14 +19176,15 @@ BUILD
             )]);
             with_ledger(hex_region, "unit 2391\nPRODUCE sword\n", |ledger| {
                 assert!(
-                    ledger.movements.contains(&ItemMovement {
-                        unit_id: "2391".to_string(),
-                        tag: "SWOR".to_string(),
-                        name: "sword".to_string(),
-                        delta: 8,
-                        produced: true,
-                        created: None,
-                    }),
+                    ledger.movements.contains(&movement(
+                        "2391",
+                        "SWOR",
+                        "sword",
+                        8,
+                        ItemChangeCause::Produced,
+                        StatePhase::Manufacturing,
+                        Some(2),
+                    )),
                     "the goods a PRODUCE makes should be among the recorded movements: {:?}",
                     ledger.movements
                 );
@@ -19076,22 +19203,24 @@ BUILD
                 assert_eq!(
                     ledger.movements,
                     vec![
-                        ItemMovement {
-                            unit_id: "2391".to_string(),
-                            tag: "IRON".to_string(),
-                            name: "iron".to_string(),
-                            delta: -5,
-                            produced: false,
-                            created: None,
-                        },
-                        ItemMovement {
-                            unit_id: "2391".to_string(),
-                            tag: "SWOR".to_string(),
-                            name: "sword".to_string(),
-                            delta: 5,
-                            produced: true,
-                            created: None,
-                        },
+                        movement(
+                            "2391",
+                            "IRON",
+                            "iron",
+                            -5,
+                            ItemChangeCause::ProductionSpent,
+                            StatePhase::Manufacturing,
+                            Some(2),
+                        ),
+                        movement(
+                            "2391",
+                            "SWOR",
+                            "sword",
+                            5,
+                            ItemChangeCause::Produced,
+                            StatePhase::Manufacturing,
+                            Some(2),
+                        ),
                     ],
                     "eight men could make eight swords, but only five iron is held"
                 );
@@ -19125,14 +19254,15 @@ BUILD
             )]);
             with_ledger(hex_region, "unit 5\nCAST Enchant_Swords\n", |ledger| {
                 assert!(
-                    ledger.movements.contains(&ItemMovement {
-                        unit_id: "5".to_string(),
-                        tag: "SWOR".to_string(),
-                        name: "sword".to_string(),
-                        delta: -15,
-                        produced: false,
-                        created: None,
-                    }),
+                    ledger.movements.contains(&movement(
+                        "5",
+                        "SWOR",
+                        "sword",
+                        -15,
+                        ItemChangeCause::CastSpent,
+                        StatePhase::Cast,
+                        Some(2),
+                    )),
                     "the materials a CAST consumes should be among the recorded movements: {:?}",
                     ledger.movements
                 );
@@ -19364,14 +19494,15 @@ BUILD
         fn a_build_records_the_material_it_consumes() {
             with_ledger(report_with_a_builder(), "unit 900\nBUILD\n", |ledger| {
                 assert!(
-                    ledger.movements.contains(&ItemMovement {
-                        unit_id: "900".to_string(),
-                        tag: "WOOD".to_string(),
-                        name: "wood".to_string(),
-                        delta: -30,
-                        produced: false,
-                        created: None,
-                    }),
+                    ledger.movements.contains(&movement(
+                        "900",
+                        "WOOD",
+                        "wood",
+                        -30,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(2),
+                    )),
                     "the material a BUILD consumes should be among the recorded movements: {:?}",
                     ledger.movements
                 );
@@ -19456,14 +19587,15 @@ BUILD
                     .collect();
                 assert_eq!(
                     for_900,
-                    vec![&ItemMovement {
-                        unit_id: "900".to_string(),
-                        tag: "WOOD".to_string(),
-                        name: "wood".to_string(),
-                        delta: -30,
-                        produced: false,
-                        created: None,
-                    }],
+                    vec![&movement(
+                        "900",
+                        "WOOD",
+                        "wood",
+                        -30,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(2),
+                    )],
                     "a BUILD should charge material and credit nothing else: {for_900:?}"
                 );
             });
@@ -19475,14 +19607,15 @@ BUILD
             hex_region.units[0] = with_item(hex_region.units[0].clone(), 15, "wood", "WOOD");
             with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
                 assert!(
-                    ledger.movements.contains(&ItemMovement {
-                        unit_id: "900".to_string(),
-                        tag: "WOOD".to_string(),
-                        name: "wood".to_string(),
-                        delta: -15,
-                        produced: false,
-                        created: None,
-                    }),
+                    ledger.movements.contains(&movement(
+                        "900",
+                        "WOOD",
+                        "wood",
+                        -15,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(2),
+                    )),
                     "{:?}",
                     ledger.movements
                 );
@@ -19499,14 +19632,15 @@ BUILD
             hex_region.structures[0].needs = Some(6);
             with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
                 assert!(
-                    ledger.movements.contains(&ItemMovement {
-                        unit_id: "900".to_string(),
-                        tag: "WOOD".to_string(),
-                        name: "wood".to_string(),
-                        delta: -6,
-                        produced: false,
-                        created: None,
-                    }),
+                    ledger.movements.contains(&movement(
+                        "900",
+                        "WOOD",
+                        "wood",
+                        -6,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(2),
+                    )),
                     "{:?}",
                     ledger.movements
                 );
@@ -19590,14 +19724,15 @@ BUILD
             )]);
             with_ledger(hex_region, "unit 900\nBUILD Mine\n", |ledger| {
                 assert!(
-                    ledger.movements.contains(&ItemMovement {
-                        unit_id: "900".to_string(),
-                        tag: "WOOD".to_string(),
-                        name: "wood".to_string(),
-                        delta: -10,
-                        produced: false,
-                        created: None,
-                    }),
+                    ledger.movements.contains(&movement(
+                        "900",
+                        "WOOD",
+                        "wood",
+                        -10,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(2),
+                    )),
                     "{:?}",
                     ledger.movements
                 );
@@ -19676,14 +19811,15 @@ BUILD
             )]);
             with_ledger(hex_region, "unit 900\nBUILD Tower\n", |ledger| {
                 assert!(
-                    ledger.movements.contains(&ItemMovement {
-                        unit_id: "900".to_string(),
-                        tag: "STON".to_string(),
-                        name: "stone".to_string(),
-                        delta: -10,
-                        produced: false,
-                        created: None,
-                    }),
+                    ledger.movements.contains(&movement(
+                        "900",
+                        "STON",
+                        "stone",
+                        -10,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(2),
+                    )),
                     "{:?}",
                     ledger.movements
                 );
@@ -19728,14 +19864,15 @@ BUILD
                 "unit 900\nBUILD\nunit 901\nBUILD HELP 900\n",
                 |ledger| {
                     assert!(
-                        ledger.movements.contains(&ItemMovement {
-                            unit_id: "901".to_string(),
-                            tag: "WOOD".to_string(),
-                            name: "wood".to_string(),
-                            delta: -30,
-                            produced: false,
-                            created: None,
-                        }),
+                        ledger.movements.contains(&movement(
+                            "901",
+                            "WOOD",
+                            "wood",
+                            -30,
+                            ItemChangeCause::BuildSpent,
+                            StatePhase::Build,
+                            Some(4),
+                        )),
                         "{:?}",
                         ledger.movements
                     );

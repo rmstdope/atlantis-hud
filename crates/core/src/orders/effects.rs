@@ -421,6 +421,44 @@ pub struct BuildSpend {
     pub capped_by: Option<BuildCap>,
 }
 
+/// Why one item moved into or out of a unit this month (`ah-rgkk.3.1`).
+///
+/// One cause per movement. `ah-rgkk.3.2` adds the GIVE/TAKE cases to this enum; a reader must
+/// treat an unknown cause as "moved, reason not stated" rather than failing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ItemChangeCause {
+    Bought,
+    Sold,
+    Withdrawn,
+    Produced,
+    /// Consumed as the material of a `PRODUCE`.
+    ProductionSpent,
+    /// Consumed as the material of a `BUILD`.
+    BuildSpent,
+    /// Created or summoned by a `CAST`; the [`CreatedItem`] beside it says which and by how much.
+    CastCreated,
+    /// Consumed as the material of a `CAST`.
+    CastSpent,
+    /// Sent by this unit's `TRANSPORT`/`DISTRIBUTE`.
+    TransportedOut,
+    /// Arrived by another unit's `TRANSPORT`/`DISTRIBUTE`.
+    TransportedIn,
+    /// An unfinished ship left behind because the unit leaves the hex.
+    Abandoned,
+}
+
+/// The other unit an item change is between (`ah-rgkk.3.1`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemChangeParty {
+    /// The other unit's number, exactly as the report or the order writes it.
+    pub unit_id: String,
+    /// The other unit's name as the preview leaves it, when this hex's own rows show it. `None`
+    /// where only a number is known - a transport target the report does not show, for one.
+    pub name: Option<String>,
+}
+
 /// One item a `CAST` order creates this month (`ah-ofpb.5`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1628,7 +1666,7 @@ impl Working {
             unit.produced = effect
                 .moved
                 .iter()
-                .filter(|movement| movement.produced)
+                .filter(|movement| movement.cause == ItemChangeCause::Produced)
                 .map(|movement| ProducedItem {
                     amount: movement.delta,
                     tag: movement.tag.clone(),
