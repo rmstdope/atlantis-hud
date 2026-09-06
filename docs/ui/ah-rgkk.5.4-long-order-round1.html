@@ -1,0 +1,328 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-rgkk.5.4 &mdash; round 1: the Long order popup</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; min-width:252px; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; }
+  .pop .line.sep { border-top:1px solid var(--edge-soft); padding-top:3px; margin-top:3px; }
+  .pop .line .val { text-align:right; white-space:nowrap; }
+  .pop .why { color:var(--ink-dim); margin-left:6px; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .note.tight { margin-top:2px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .off { color:var(--ink-dim); }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; align-items:start; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .rule { border-top:1px solid var(--edge); margin:30px 0 0; }
+  .cell { display:inline-block; background:var(--panel); border:1px solid var(--edge); border-radius:4px;
+          padding:2px 8px; font:12px/1.5 'SF Mono',Menlo,monospace; color:var(--ink); }
+  .gone { text-decoration:line-through; color:var(--ink-dim); }
+  table.tbl { border-collapse:collapse; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; margin-top:10px; }
+  table.tbl th, table.tbl td { border:1px solid var(--edge); padding:4px 10px; text-align:left; color:var(--ink-soft); }
+  table.tbl th { color:var(--brass); font-weight:600; }
+</style>
+
+<style>
+  .q { color:var(--brass); font-weight:600; }
+  .pop .pairline { text-align:right; white-space:normal; }
+  .mut { color:var(--ink-dim); }
+</style>
+
+<header>
+  <h1>ah-rgkk.5.4 <span>&mdash; the Long order popup, round 1</span></h1>
+  <p><b>What is settled and not being re-opened.</b> The popup itself, its heading and its cap
+  (<code>ah-rgkk.1</code>); the family&rsquo;s <span class="mono">before&nbsp;&rarr;&nbsp;after</span> pair
+  (<code>ah-rgkk.6</code>, R1); and <code>ah-rgkk.5.3</code>&rsquo;s <b>L2</b> &mdash; where two sides are
+  too long for one line, the Structure popup draws them as two lines, <span class="mono">was</span> above the
+  column&rsquo;s own label.</p>
+
+  <p><b style="color:var(--brass)">What this popup does today.</b> One line &mdash;
+  <span class="mono">long order</span> valued whatever your orders document currently holds &mdash; or one of
+  two sentences (<span class="mono">No long order this month.</span>,
+  <span class="mono">Another faction&rsquo;s orders are not in your report.</span>). It repeats the cell and
+  says nothing more. Unlike every other column it has <b>no</b>
+  <span class="mono">Nothing this month changes this.</span> sentence, because there is no recorded change
+  behind it to hang one on.</p>
+
+  <p><b style="color:var(--brass)">What this bead adds, and where the baseline comes from.</b> Your report
+  carries an <b>orders template</b> &mdash; the <span class="mono">#atlantis&nbsp;&hellip;&nbsp;#end</span> block,
+  one <span class="mono">unit&nbsp;NNNN</span> section each, holding the orders the turn arrived with (in
+  practice your repeating <span class="mono">@</span> orders). That is what seeds your orders document when a
+  report is loaded, so <b>on a freshly loaded turn every unit reads &ldquo;unchanged&rdquo;</b>, and every
+  difference you then see is one you made.</p>
+
+  <p><b style="color:var(--brass)">The eleven.</b> <code>rules/playing_turns</code>: &ldquo;Each unit can also do
+  exactly one action that takes up the entire month&hellip; The orders which take an entire month are ADVANCE,
+  BUILD, ENTERTAIN, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX, TEACH and WORK.&rdquo; One of those eleven, at the
+  top level of the unit&rsquo;s block, is the long order &mdash; on both sides of the comparison.</p>
+
+  <p><b style="color:var(--brass)">Three questions: Q1, Q2, Q3.</b> Q1 is the one that matters.</p>
+</header>
+
+<main>
+
+  <p class="scene"><b>The scene.</b> <b>Braves (1487)</b>. Your report&rsquo;s template holds
+  <span class="mono">@study obse</span> for it. This month you decide it should tax instead, and the block now
+  reads <span class="mono">TAX</span>. The Long order cell reads <span class="cell">TAX</span>.</p>
+
+  <h3 class="sec">Q1 &mdash; how the difference is drawn</h3>
+  <p>The values here are longer and more varied than any other column&rsquo;s: <span class="mono">TAX</span> is
+  three characters and <span class="mono">MOVE N NE NE NW</span> is fifteen, while a
+  <span class="mono">PRODUCE&nbsp;&hellip;</span> or a long <span class="mono">SAIL</span> route can run past thirty.
+  The popup is <b>384px at its widest</b>; the frames below are drawn at that width, so what you see is what
+  wraps.</p>
+
+  <div class="split3">
+    <div class="card">
+      <p class="hexlab">D1 &mdash; two lines, one per side (the Structure popup&rsquo;s L2)</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; long order</div>
+        <div class="line"><span>was</span><span class="val"><span class="flat">@study obse</span></span></div>
+        <div class="line"><span>long order</span><span class="val"><span class="up">TAX</span></span></div>
+      </div>
+      <div style="height:10px"></div>
+      <div class="pop" style="width:384px">
+        <div class="head">Scouts (1502) &mdash; long order</div>
+        <div class="line"><span>was</span><span class="val"><span class="flat">@work</span></span></div>
+        <div class="line"><span>long order</span><span class="val"><span class="up">MOVE N NE NE NW</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>Identical to the Structure popup, which is the only other column with two long sides.</li>
+        <li>Never wraps, whatever the route length, and both sides read straight.</li>
+        <li class="con">Two lines where one figure changed &mdash; more vertical space than the pair.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">D2 &mdash; one line, the family pair</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; long order</div>
+        <div class="line"><span>long order</span><span class="val pairline"><span class="flat">@study obse</span><span class="arrow">&rarr;</span><span class="up">TAX</span></span></div>
+      </div>
+      <div style="height:10px"></div>
+      <div class="pop" style="width:384px">
+        <div class="head">Scouts (1502) &mdash; long order</div>
+        <div class="line"><span>long order</span><span class="val pairline"><span class="flat">@work</span><span class="arrow">&rarr;</span><span class="up">MOVE N NE NE NW</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>One rule for the whole table, and the shortest of the three.</li>
+        <li>Most long orders are short enough that it fits on one line.</li>
+        <li class="con">A long <span class="mono">SAIL</span> or <span class="mono">MOVE</span> wraps, and the
+        arrow can land at a line end where it reads as a hyphen &mdash; the exact reason the Structure popup
+        rejected this.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">D3 &mdash; one line, the report&rsquo;s side as a sentence</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; long order</div>
+        <div class="line"><span>long order</span><span class="val"><span class="up">TAX</span></span></div>
+        <div class="note tight">Your report arrived with <span class="mono">@study obse</span>.</div>
+      </div>
+      <div style="height:10px"></div>
+      <div class="pop" style="width:384px">
+        <div class="head">Scouts (1502) &mdash; long order</div>
+        <div class="line"><span>long order</span><span class="val"><span class="up">MOVE N NE NE NW</span></span></div>
+        <div class="note tight">Your report arrived with <span class="mono">@work</span>.</div>
+      </div>
+      <ul class="notes">
+        <li>The cell&rsquo;s own value stays on the one line it has always been on.</li>
+        <li>Says in words where the other side came from, which neither D1 nor D2 does.</li>
+        <li class="con">A fourth way of writing a before/after in one table, and the report&rsquo;s side is
+        demoted to dim italic where every other column gives it equal weight.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">Q2 &mdash; does the popup say what the order will do?</h3>
+  <p>A <span class="mono">TAX</span> earns silver; a <span class="mono">STUDY</span> costs it and moves a skill.
+  The application already forecasts both &mdash; in the <b>Silver</b> popup and the <b>Skills</b> popup, on the
+  same row.</p>
+
+  <div class="split2">
+    <div class="card">
+      <p class="hexlab">E1 &mdash; no; the difference only</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; long order</div>
+        <div class="line"><span>was</span><span class="val"><span class="flat">@study obse</span></span></div>
+        <div class="line"><span>long order</span><span class="val"><span class="up">TAX</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>One column, one subject: what the unit will spend the month on and whether you changed it.</li>
+        <li>Nothing is said twice. The silver a TAX earns is the Silver popup&rsquo;s working, and it is
+        already there, one cell along.</li>
+        <li class="con">You have to move the pointer to another cell to see the consequence.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">E2 &mdash; yes; one dim clause on the line</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; long order</div>
+        <div class="line"><span>was</span><span class="val"><span class="flat">@study obse</span><span class="why">would have cost 200 silver</span></span></div>
+        <div class="line"><span>long order</span><span class="val"><span class="up">TAX</span><span class="why">earns 145 silver</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>Answers &ldquo;so what?&rdquo; without moving the pointer.</li>
+        <li class="con">Duplicates the Silver and Skills popups, which can disagree with it the moment
+        either changes.</li>
+        <li class="con">Only some of the eleven have a figure at all &mdash; MOVE, ADVANCE, SAIL, BUILD and TEACH have
+        no silver figure at all &mdash; so the clause is absent more often than present.</li>
+        <li class="con">The <span class="mono">was</span> side needs a counterfactual forecast that does not
+        exist anywhere and would have to be built: substantially more work than the rest of this bead.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">Q3 &mdash; what an unchanged long order says</h3>
+  <p>Every other column ends its popup with <span class="mono">Nothing this month changes this.</span> when
+  nothing moved. This column has never had that sentence, because until now it had nothing to compare against.</p>
+
+  <div class="split2">
+    <div class="card">
+      <p class="hexlab">S1 &mdash; the same sentence as every other column</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; long order</div>
+        <div class="line"><span>long order</span><span class="val">@study obse</span></div>
+        <div class="note">Nothing this month changes this.</div>
+      </div>
+      <ul class="notes">
+        <li>Eight columns already end this way; the ninth joining them needs no explaining.</li>
+        <li>Tells you the popup <em>did</em> look, rather than leaving you unsure whether it can.</li>
+        <li class="con">One more line on the commonest state there is.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">S2 &mdash; nothing; the one line, as today</p>
+      <div class="pop" style="width:384px">
+        <div class="head">Braves (1487) &mdash; long order</div>
+        <div class="line"><span>long order</span><span class="val">@study obse</span></div>
+      </div>
+      <ul class="notes">
+        <li>Quietest, and the state you will see most often by far.</li>
+        <li class="con">Indistinguishable from a popup that never compared anything &mdash; and two of the
+        states below <em>are</em> exactly that.</li>
+        <li class="con">Out of step with the other eight columns.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">What ships &mdash; D1 + E1 + S1, every state</h3>
+  <p><b>Chosen.</b> The navigator chose <b>D1</b> (two lines), <b>E1</b> (the difference only) and <b>S1</b>
+  (the family&rsquo;s no-change sentence), and the eight frames below as drawn. This is what the bead builds.
+  Neither line is coloured &mdash; the same answer <code>ah-rgkk.5.3</code> reached: two plain lines draw no
+  <span class="mono">PopupChange</span>, and a long order changing is neither better nor worse.</p>
+
+  <div class="pops">
+    <div class="pop">
+      <div class="head">Braves (1487) &mdash; long order</div>
+      <div class="line"><span>was</span><span class="val"><span>@study obse</span></span></div>
+      <div class="line"><span>long order</span><span class="val"><span>TAX</span></span></div>
+      <div class="note">Changed since your report arrived.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Scouts (1502) &mdash; long order</div>
+      <div class="line"><span>long order</span><span class="val"><span>MOVE N NE</span></span></div>
+      <div class="note">Your report arrived with no long order for this unit.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Diggers (1610) &mdash; long order</div>
+      <div class="line"><span>was</span><span class="val"><span>@work</span></span></div>
+      <div class="note">No long order this month.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Braves (1487) &mdash; long order</div>
+      <div class="line"><span>long order</span><span class="val">@study obse</span></div>
+      <div class="note">Nothing this month changes this.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Diggers (1610) &mdash; long order</div>
+      <div class="note">No long order this month.</div>
+      <div class="note tight">Your report arrived with none either.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Hunters (1744) &mdash; long order</div>
+      <div class="line"><span>long order</span><span class="val">TAX</span></div>
+      <div class="note">Your report carries no orders template, so there is nothing to compare with.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">New Scouts (1801) &mdash; long order</div>
+      <div class="line"><span>long order</span><span class="val">MOVE N</span></div>
+      <div class="note">This unit is not in your report&rsquo;s orders template, so there is nothing to
+      compare with.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Ogres (2210) &mdash; long order</div>
+      <div class="note">Another faction&rsquo;s orders are not in your report.</div>
+    </div>
+  </div>
+
+  <ul class="notes" style="margin-top:14px;max-width:110ch">
+    <li class="n">Row 1 &mdash; <b>changed</b>. Two lines, and the sentence saying which of the three kinds of
+    difference it is.</li>
+    <li class="n">Row 2 &mdash; <b>added</b>. No <span class="mono">was</span> line, because there was nothing
+    there; the sentence carries it instead.</li>
+    <li class="n">Row 3 &mdash; <b>removed</b>. The <span class="mono">was</span> line stands alone above the
+    sentence the popup already says today.</li>
+    <li class="n">Row 4 &mdash; <b>unchanged</b> (Q3&rsquo;s S1).</li>
+    <li class="n">Row 5 &mdash; <b>neither side has one</b>.</li>
+    <li class="n">Rows 6 and 7 &mdash; <b>no baseline</b>: a report generated without the long-format
+    template, and a unit you FORMed this month. Neither is &ldquo;unchanged&rdquo;, and neither is silent
+    about it.</li>
+    <li class="n">Row 8 &mdash; <b>a foreign unit</b>, exactly as today.</li>
+  </ul>
+
+</main>
+
+<footer>
+  <p>Answer with a letter from each of Q1 (D1/D2/D3), Q2 (E1/E2) and Q3 (S1/S2), plus anything you want
+  changed in the sentences above. My recommendation: <b>D1 + E1 + S1</b> &mdash; D1 for step with the
+  Structure popup and because a SAIL route is exactly where D2 breaks; E1 because the Silver and Skills
+  popups already own those figures and E2&rsquo;s <span class="mono">was</span> side would need a forecast
+  that does not exist; S1 because two of the eight states below are &ldquo;I could not compare&rdquo;, and
+  without S1 they are indistinguishable from silence.</p>
+</footer>
