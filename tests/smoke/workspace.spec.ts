@@ -4479,7 +4479,10 @@ test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
   // uses. The CLAIM predicts the SILVER cell too, which is last, so `.first()` still reaches ITEMS.
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("PERF");
-  await expect(itemsCell).toContainText(/was: /);
+  // Since `ah-rgkk.3.3` the popup pairs each item with what the report said and names what moved
+  // it, in place of the old `was: ...` lead.
+  await expect(itemsCell).toContainText(/perfume PERF 1, up from none/);
+  await expect(itemsCell).toContainText(/perfume: bought 1 at \d+ silver each/);
 });
 
 /**
@@ -4499,7 +4502,7 @@ test("All my units shows the coming month too", async ({ page }) => {
   const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("PERF");
-  await expect(itemsCell).toContainText(/was: /);
+  await expect(itemsCell).toContainText(/perfume PERF 1, up from none/);
 });
 
 /**
@@ -4519,7 +4522,7 @@ test("a transported item marks the ITEMS cell as a projection", async ({ page })
 
   // `.first()` reaches ITEMS: the CLAIM also predicts the SILVER cell, which is last in the row.
   const itemsCell = row.locator('[data-predicted="true"]').first();
-  await expect(itemsCell).toContainText(/was: /);
+  await expect(itemsCell).toContainText(/perfume PERF 2, up from none/);
   await expect(itemsCell).toContainText(
     /Unit 14451 is not a quartermaster, so 1 PERF stay with this unit/
   );
@@ -4574,7 +4577,8 @@ test("a produced item marks the ITEMS cell as a projection", async ({ page }) =>
   const row = page.getByTestId("unit-row-3493");
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("LIVE");
-  await expect(itemsCell).toContainText(/this unit will produce/);
+  await expect(itemsCell).toContainText(/livestock: .*produced 34/);
+  await expect(itemsCell).toContainText(/Production resolves late/);
 });
 
 /**
@@ -4603,7 +4607,8 @@ test("a manufacturer draws on the hex's shared stock, and its supplier nets to n
   // movement cell is marked as well and sorts ahead of the items one.
   const smith = page.getByTestId("unit-row-2964").locator('td[data-column="items"]');
   await expect(smith).toContainText("60 SWOR");
-  await expect(smith).toContainText(/36 SWOR this unit will produce/);
+  await expect(smith).toContainText(/swords SWOR 60, up from 24/);
+  await expect(smith).toContainText(/swords: produced 36/);
   // The cap sentence reads the same settlement as the cell since `ah-728m.2.2`: before it, this
   // said "materials for 16 swords" beside a cell projecting 36.
   await expect(smith).toContainText(/materials for 36 swords/);
@@ -4653,7 +4658,8 @@ test("a cast creation marks the ITEMS cell as a projection", async ({ page }) =>
 
   const itemsCell = page.getByTestId("unit-row-1294").locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("1-8 WOLF");
-  await expect(itemsCell).toContainText(/this unit will summon/);
+  await expect(itemsCell).toContainText(/wolf WOLF 1-8, up from none/);
+  await expect(itemsCell).toContainText(/wolf: summoned 1-8/);
 });
 
 /**
