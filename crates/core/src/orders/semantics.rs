@@ -1951,10 +1951,12 @@ struct Ordered<'a> {
     /// processes every flag order in the turn's first batch, before TAX and long before
     /// maintenance, so a flag set this month is in force for this month (`ah-9g94.3`).
     ///
-    /// **Not the place to read whether the unit guards.** [`Ordered::will_guard`] has its own rule
-    /// that AVOID is processed before GUARD regardless of document order (`ah-0wpn`), which is not
-    /// this list's last-order-wins; `unit.on_guard` and `will_guard` are unchanged and stay
-    /// authoritative for guarding.
+    /// **Not the place to read whether the unit guards, or whether it shares.**
+    /// [`Ordered::will_guard`] has its own rule that AVOID is processed before GUARD regardless of
+    /// document order (`ah-0wpn`), which is not this list's last-order-wins; [`Ordered::shares`]
+    /// likewise layers `final_share_order` over the report's own list. Both are deliberately left
+    /// reading `unit.flags` and their own intents, and both stay authoritative for their setting -
+    /// repointing either here would be a behaviour change dressed as a refactor.
     flags: Vec<String>,
     /// The intents that can actually execute this month: every order that does not spend the
     /// month, plus the one month claim that wins (`ah-rzkm`), so every projection and every
@@ -14872,6 +14874,45 @@ mod tests {
     }
 
     #[test]
+    fn autotax_this_month_is_told_the_hex_is_pillaged() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![
+                with_silver(unit("1"), 0),
+                with_silver(with_skill(unit("2"), "COMB", 1), 0),
+            ])
+        };
+        let ordered = OrderedUnits::read("unit 1\nPILLAGE\nunit 2\nAUTOTAX 1\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let mut findings = Vec::new();
+        check_pillaged_tax(&hex, true, &CheckOptions::default(), &mut findings);
+
+        let marked: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("2"))
+            .map(|finding| finding.code.as_str())
+            .collect();
+        assert_eq!(marked, vec![codes::TAXED_A_PILLAGED_HEX.as_str()]);
+    }
+
+    #[test]
+    fn autotax_this_month_is_told_the_hex_is_guarded() {
+        let hex_region = guarded_hex(vec![with_silver(with_skill(unit("683"), "COMB", 1), 0)]);
+        let ordered = OrderedUnits::read("unit 683\nAUTOTAX 1\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let mut findings = Vec::new();
+        check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].unit_id.as_deref(), Some("683"));
+        assert_eq!(findings[0].code, codes::TAXED_A_GUARDED_HEX);
+        assert_eq!(
+            findings[0].column_start, None,
+            "no TAX line to hang it on: {findings:?}"
+        );
+    }
+
+    #[test]
     fn autotax_this_month_earns_the_column_a_tax() {
         let hex_region = ReportRegion {
             tax_base: Some(2500),
@@ -14904,7 +14945,14 @@ mod tests {
 
         let forecast = forecast(&review, "1");
         assert!(!forecast.taxes_by_flag);
-        assert_ne!(forecast.income, Some(50));
+        // The unit works by default once it is not taxing (`silver::is_set_to_work`), so the
+        // figure is the region's wage rather than the tax - and a `None` income, which a broken
+        // `is_set_to_work` would produce, is not good enough.
+        assert!(forecast.works_by_default);
+        assert!(
+            matches!(forecast.income, Some(wage) if wage != 50),
+            "{forecast:?}"
+        );
     }
 
     #[test]
@@ -34755,6 +34803,21 @@ BUILD
             "PRODUCE and TAX orders in 3 regions; this faction may tax and trade in 2, so 1 \
              region's orders will be refused"
         );
+    }
+
+    /// The same, for a flag this month's orders set rather than one the report printed
+    /// (`ah-9g94.3`).
+    #[test]
+    fn autotax_this_month_counts_toward_the_taxed_regions() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,53", 8, 53, vec![unit("6")]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
+        ];
+        let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nAUTOTAX 1\n";
+        let findings = check_trade(regions, orders, "Regions", 2);
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
     }
 
     /// A unit taxing by its flag taxes its region as surely as one with a `TAX` line, so the
