@@ -841,6 +841,39 @@ describe("formatItems and itemsTooltip", () => {
     expect(itemsTooltip(row)).toBe("Spends 30 WOOD on Building 4 this month.");
   });
 
+  it("does not let material given to a neighbour's build hide its own", () => {
+    // `charge_shared_material` writes a `build-spent` change to every supplier too, telling the
+    // actor's own row apart only by `other` being null (`crates/core/src/orders/semantics.rs`).
+    const row = previewedUnit({
+      items: [{ amount: 5, name: "wood", tag: "WOOD" }],
+      itemChanges: [
+        {
+          tag: "WOOD",
+          name: "wood",
+          delta: -30,
+          cause: "build-spent",
+          line: 4,
+          unitPrice: null,
+          other: { unitId: "1502", name: "Scouts" }
+        }
+      ],
+      built: [
+        {
+          amount: 30,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("Spends 30 WOOD on Building 4 this month.");
+  });
+
   it("still says what a transport that moved nothing was going to send", () => {
     // A non-refused send that moved zero writes a `TransportSent` row and no `ItemChange`
     // (`crates/core/src/orders/effects.rs`), so no clause can name it either.

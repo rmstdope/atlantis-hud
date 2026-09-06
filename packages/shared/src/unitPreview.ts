@@ -361,7 +361,10 @@ export function itemsTooltip(
   // wholly or partly by a hex neighbour is debited less than the structure takes - or not at all.
   const ownDebit = new Map<string, number>();
   for (const change of unit.itemChanges ?? []) {
-    if (change.cause === "build-spent") {
+    // `other === null` is the actor's own row: `charge_shared_material` writes a `build-spent`
+    // change to every supplier too, naming the builder in `other`, and material this unit gave to
+    // a neighbour's structure must not hide what its own is taking.
+    if (change.cause === "build-spent" && change.other === null) {
       ownDebit.set(change.tag, (ownDebit.get(change.tag) ?? 0) + Math.abs(change.delta));
     }
   }
