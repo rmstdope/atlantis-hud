@@ -361,6 +361,19 @@ export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): nu
 }
 
 /**
+ * Whether something is wrong with this unit's money: it ends below zero, or its orders spend more
+ * than the silver reaching it in time can cover - a purchase the game will refuse even though the
+ * month ends in credit (`ah-uwa3`).
+ *
+ * Lifted out of `UnitTableDock` so the cell's colour and the popup's amber sentence are one
+ * decision (`ah-rgkk.4.3`).
+ */
+export function silverIsRed(shown: number | null, silver: UnitSilver | null): boolean {
+  if (shown !== null && shown < 0) return true;
+  return (silver?.shortForOrders ?? 0) > 0;
+}
+
+/**
  * A unit's identity across a list that spans hexes: the hex it stands in, then its number.
  *
  * A unit *number* is not unique report-wide. The core mints a unit a `FORM` created this month as

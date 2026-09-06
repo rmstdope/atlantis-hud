@@ -1,6 +1,7 @@
 import type {
   ItemChange,
   ItemChangeParty,
+  SilverChange,
   SkillInfo,
   SkillMerge,
   StudyForecast,
@@ -20,8 +21,14 @@ import {
   originalTooltip,
   type PreviewedUnit
 } from "./unitPreview";
-import { summariseUnit } from "./unitTooltip";
-import { COLUMN_LABELS, type ExtraColumn, type UnitColumn } from "./unitTable";
+import { SILVER_NOTES, summariseUnit, type SilverFacts } from "./unitTooltip";
+import {
+  COLUMN_LABELS,
+  silverIsRed,
+  silverShown,
+  type ExtraColumn,
+  type UnitColumn
+} from "./unitTable";
 
 /**
  * What resting the pointer on one cell of the units table says.
@@ -81,6 +88,13 @@ export type PopupLine = {
   steps?: readonly PopupStep[];
   /** One clause saying why it moved, e.g. `4 bought at 60 silver each`. Absent where unknown. */
   why?: string;
+  /**
+   * How to ink a value that is not a pair - a signed amount on a ledger line (`ah-rgkk.4.3`).
+   *
+   * The same two inks decision **R1** puts on the after of a pair, for the same reason: the sign
+   * already says the direction, so this is decoration, and `popupAsText` says nothing about it.
+   */
+  tone?: "up" | "down";
 };
 
 /** What one column's popup shows. */
@@ -985,8 +999,224 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 }
 
 /**
- * The same working the whole-unit summary shows, drawn from the same call, so the two can never
- * disagree about what the month does to this unit's silver (`ah-1wcw.1`).
+ * The `SILVER_NOTES` this popup does not draw, because its lines now say the whole of what each of
+ * them says (`ah-rgkk.4.3`, decision **N2** - the Items popup's answer, `ah-rgkk.3.3`'s **T2**).
+ *
+ * Nothing is removed from `SILVER_NOTES` itself: the whole-unit tooltip, which has no cause lines,
+ * keeps every one of them word for word.
+ */
+const SILVER_NOTES_RESTATED: ReadonlySet<string> = new Set([
+  "includes-take",
+  "includes-take-unshown",
+  "includes-gift",
+  "given-to-nobody",
+  "taxes-by-flag",
+  "works-by-default"
+]);
+
+/** One cause's line: every `SilverChange` with that cause, merged (decision **V2**). */
+type CauseGroup = {
+  cause: string;
+  /** Summed, signed. */
+  amount: number;
+  /** The `SilverChange` entries behind it, in the order `UnitSilver.changes` carried them. */
+  entries: SilverChange[];
+};
+
+/** What one cause's line is called. An unknown cause falls back to the cause itself, unhyphenated. */
+const SILVER_CAUSE_LABELS: Record<string, string> = {
+  taxed: "taxed",
+  pillaged: "pillaged",
+  claimed: "claimed",
+  sold: "sold",
+  "cast-earned": "earned by casting",
+  worked: "worked",
+  entertained: "entertained",
+  "was-given": "was given",
+  took: "took",
+  bought: "bought",
+  studied: "studied",
+  "cast-spent": "paid to cast",
+  "production-spent": "spent producing",
+  "gave-away": "gave away",
+  discarded: "given to nobody"
+};
+
+/**
+ * What one cause's line is called.
+ *
+ * `SilverChangeCause` is generated, so the core may ship a cause this package has not been taught:
+ * the fallback is what keeps it a readable line rather than nothing at all.
+ */
+function silverCauseLabel(cause: string): string {
+  return SILVER_CAUSE_LABELS[cause] ?? cause.replaceAll("-", " ");
+}
+
+/**
+ * The causes that moved this unit's silver, one group per cause, each in the position of its first
+ * entry - which is the turn's own order, because `UnitSilver.changes` is in it.
+ *
+ * `took` and `took-unshown` merge into one group, keyed `took`: they are one event to a reader, and
+ * which sources the report does not show is said in the clause instead.
+ */
+function silverCauseGroups(changes: readonly SilverChange[]): CauseGroup[] {
+  const groups: CauseGroup[] = [];
+  const byCause = new Map<string, CauseGroup>();
+  for (const change of changes) {
+    const key = change.cause === "took-unshown" ? "took" : change.cause;
+    const existing = byCause.get(key);
+    if (existing) {
+      existing.amount += change.amount;
+      existing.entries.push(change);
+      continue;
+    }
+    const group: CauseGroup = { cause: key, amount: change.amount, entries: [change] };
+    byCause.set(key, group);
+    groups.push(group);
+  }
+  return groups;
+}
+
+/** `+200`, `-90`. An ASCII hyphen-minus, which is what `String(-90)` gives. */
+function signed(amount: number): string {
+  return `${amount > 0 ? "+" : "-"}${Math.abs(amount)}`;
+}
+
+/**
+ * What the market settled, on a `bought` or `sold` line: the one `ItemChange` of the same cause on
+ * the same document line, when there is exactly one and it carries a price.
+ *
+ * `line` is the only thing joining the two ledgers, and both are `null` for a movement no order of
+ * this unit's caused - so a `null` line matches nothing rather than matching every other `null`.
+ */
+function marketClause(group: CauseGroup, itemChanges: readonly ItemChange[]): string | undefined {
+  const priced: string[] = [];
+  for (const entry of group.entries) {
+    if (entry.line === null) {
+      continue;
+    }
+    const matches = itemChanges.filter(
+      (change) => change.cause === group.cause && change.line === entry.line
+    );
+    const only = matches.length === 1 ? matches[0] : undefined;
+    if (only === undefined || only.unitPrice === null) {
+      continue;
+    }
+    priced.push(`${count(Math.abs(only.delta), only.name)} at ${only.unitPrice} each`);
+  }
+  return priced.length > 0 ? andList(priced) : undefined;
+}
+
+/**
+ * The dim clause beside one cause's amount: the other unit, what the market settled, why there was
+ * no order, and whether the money arrives too late - joined with `", "`, no full stop.
+ *
+ * `undefined` when the cause has nothing to add, which is most of them. Every `other` is used
+ * verbatim: the core builds it as `<name> (<id>)` or `unit <id>`, the form `ah-rgkk.2.3` settled.
+ */
+function silverCauseWhy(
+  group: CauseGroup,
+  silver: UnitSilver,
+  itemChanges: readonly ItemChange[]
+): string | undefined {
+  const parts: string[] = [];
+  const others = (entries: readonly SilverChange[]): string[] =>
+    entries.map((entry) => entry.other).filter((other): other is string => other !== null);
+
+  if (group.cause === "was-given") {
+    const from = others(group.entries);
+    if (from.length > 0) {
+      parts.push(`from ${andList(from)}`);
+    }
+  } else if (group.cause === "took") {
+    const shown = others(group.entries.filter((entry) => entry.cause === "took"));
+    const unshown = others(group.entries.filter((entry) => entry.cause === "took-unshown"));
+    if (shown.length > 0) {
+      parts.push(`from ${andList(shown)}`);
+    }
+    if (unshown.length > 0) {
+      parts.push(`from ${andList(unshown)}, which your report does not show`);
+    }
+  } else if (group.cause === "gave-away") {
+    const to = others(group.entries);
+    if (to.length > 0) {
+      parts.push(`to ${andList(to)}`);
+    }
+  }
+
+  if (group.cause === "bought" || group.cause === "sold") {
+    const settled = marketClause(group, itemChanges);
+    if (settled !== undefined) {
+      parts.push(settled);
+    }
+  }
+
+  const noOrder = group.entries.every((entry) => entry.line === null);
+  if (group.cause === "taxed" && silver.taxesByFlag && noOrder) {
+    parts.push("set to tax every turn");
+  }
+  if (group.cause === "worked" && silver.worksByDefault && noOrder) {
+    parts.push("no month-long order");
+  }
+
+  // `rules/sequenceofevents`: ENTERTAIN and WORK are processed after STUDY, after BUY and after
+  // BUILD, so a wage can never pay for any of them.
+  if (group.cause === "worked" || group.cause === "entertained") {
+    parts.push("arrives too late");
+  }
+
+  return parts.length > 0 ? parts.join(", ") : undefined;
+}
+
+/**
+ * The headline: `silver`, the cell's own figure, and the pair from the report's `held` when the
+ * figure is a number and has moved. Never a pair on a `?`.
+ */
+function silverTotalLine(silver: UnitSilver, shown: number | null): PopupLine {
+  if (shown === null || shown === silver.held) {
+    return { label: "silver", value: shown === null ? "?" : String(shown) };
+  }
+  return {
+    label: "silver",
+    value: String(shown),
+    change: { direction: shown > silver.held ? "up" : "down", from: String(silver.held) }
+  };
+}
+
+/**
+ * The amber sentence(s) explaining the cell's marks (decision **W1**), or `null`.
+ *
+ * Red first, because it is the figure itself; the two are joined into one paragraph for a unit that
+ * carries both.
+ */
+function silverMarkWarning(
+  silver: UnitSilver,
+  shown: number | null,
+  warned: boolean
+): string | null {
+  const parts: string[] = [];
+  if (silverIsRed(shown, silver)) {
+    parts.push(
+      shown !== null && shown < 0
+        ? `A red figure in the cell: this unit ends the month ${-shown} short.`
+        : "A red figure in the cell: this unit cannot pay for its own orders out of silver that reaches it in time."
+    );
+  }
+  if (warned) {
+    parts.push(
+      "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel."
+    );
+  }
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
+/**
+ * What moved this unit's silver this month: the cell's own figure against the report's, then one
+ * line per cause in the turn's own order (`ah-rgkk.4.3`, decision **V2**).
+ *
+ * This parts company with the whole-unit tooltip, which keeps `summariseSilver`'s four sums and
+ * every note: one composer cannot serve both, the tooltip being a summary where the sums are the
+ * right density and this being about one cell, which must name causes.
  */
 function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   if (facts.dissolving) {
@@ -995,18 +1225,43 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       notes: ["The game dissolves this unit before the month ends, so it has no month end."]
     };
   }
-  const summary = summariseUnit(
-    unit,
-    facts.silver,
-    facts.silverWarned,
-    facts.countUpkeep,
-    null
-  ).silver;
-
-  if (summary === null) {
+  const silver = facts.silver;
+  if (silver === null || !unit.own) {
     return { lines: [], notes: ["Only your own units have a silver forecast."] };
   }
-  return { lines: summary.rows, notes: summary.note ? summary.note.split("\n") : [] };
+
+  const shown = silverShown(silver, facts.countUpkeep);
+  const lines: PopupLine[] = [silverTotalLine(silver, shown)];
+  for (const group of silverCauseGroups(silver.changes)) {
+    const why = silverCauseWhy(group, silver, unit.itemChanges ?? []);
+    lines.push({
+      label: silverCauseLabel(group.cause),
+      value: signed(group.amount),
+      tone: group.amount > 0 ? "up" : "down",
+      ...(why === undefined ? {} : { why })
+    });
+  }
+  // Last, where `rules/sequenceofevents` puts maintenance - and only while the column counts it,
+  // since with the setting off the cell's figure excludes it (`ah-1wcw.4`).
+  if (facts.countUpkeep && silver.upkeep !== null && silver.upkeep !== 0) {
+    lines.push({ label: "upkeep", value: signed(-silver.upkeep), tone: "down" });
+  }
+
+  const noteFacts: SilverFacts = {
+    unit,
+    silver,
+    warned: facts.silverWarned,
+    countUpkeep: facts.countUpkeep
+  };
+  const notes = SILVER_NOTES.filter((note) => !SILVER_NOTES_RESTATED.has(note.id))
+    .filter((note) => note.when(noteFacts))
+    .flatMap((note) => note.say(noteFacts).split("\n"));
+  if (silver.doubt !== null) {
+    // Above the doubt's own sentence, which says *why* it could not be added up.
+    notes.unshift("This month cannot be added up, so what moved this unit's silver is not listed.");
+  }
+
+  return { lines, notes, warning: silverMarkWarning(silver, shown, facts.silverWarned) };
 }
 
 /**

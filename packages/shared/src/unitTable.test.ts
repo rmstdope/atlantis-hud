@@ -19,6 +19,7 @@ import {
   dropBoundaryX,
   orderOf,
   silverKey,
+  silverIsRed,
   silverShown,
   shareOf,
   REORDERABLE_COLUMNS,
@@ -466,6 +467,27 @@ describe("silverShown", () => {
     // With the setting off an unpriceable upkeep is not consulted at all.
     expect(silverShown(forecast(100, null), false)).toBe(100);
     expect(silverShown(null, true)).toBeNull();
+  });
+});
+
+describe("silverIsRed", () => {
+  const forecast = (overrides: Partial<UnitSilver>): UnitSilver =>
+    aUnitSilver({ regionId: "1:6,52", ...overrides });
+
+  it("marks a unit that ends the month below zero", () => {
+    expect(silverIsRed(-1, forecast({}))).toBe(true);
+    expect(silverIsRed(0, forecast({}))).toBe(false);
+  });
+
+  // `ah-uwa3`: a month that ends in credit still fails if the silver does not reach the unit in
+  // time for the order that spends it.
+  it("marks a unit that cannot pay for its own orders", () => {
+    expect(silverIsRed(40, forecast({ shortForOrders: 95 }))).toBe(true);
+    expect(silverIsRed(40, forecast({ shortForOrders: 0 }))).toBe(false);
+  });
+
+  it("says nothing about a unit with no forecast", () => {
+    expect(silverIsRed(null, null)).toBe(false);
   });
 });
 

@@ -82,6 +82,8 @@ export function PopupLineValue({ line }: { line: PopupLine }) {
             {line.value}
           </span>
         </>
+      ) : line.tone ? (
+        <span className={line.tone === "up" ? "text-ok" : "text-danger"}>{line.value}</span>
       ) : (
         line.value
       )}
