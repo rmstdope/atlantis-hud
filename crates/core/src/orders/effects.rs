@@ -1169,6 +1169,27 @@ struct WorkingUnit {
     study: Option<StudyForecast>,
 }
 
+/// One settled transfer as `move_between` needs it: everything about the order itself, once
+/// `give` and `take` have each resolved which rows it is between.
+///
+/// A struct rather than six more parameters - `move_between` already takes the two row indices,
+/// and clippy's argument limit is a fair reading of how easily two `usize`s and a `bool` are
+/// swapped by mistake.
+#[derive(Clone, Copy)]
+struct Transfer<'a> {
+    what: &'a super::forms::Selector,
+    amount: &'a super::forms::Amount,
+    reach: super::targets::GiveReach,
+    /// `rules/magic` forbids a mage to GIVE men and says nothing about TAKE, so the one rule this
+    /// half applies differently for its two callers needs telling which it is serving (`ah-t8ei`).
+    is_give: bool,
+    /// The 1-based document line of the order responsible.
+    line: usize,
+    /// The transfer's other end as the order wrote it, for the change on the source's side:
+    /// `move_between` is reached with a `receiver` only when a row of ours gains the goods.
+    party: &'a super::forms::Party,
+}
+
 impl WorkingUnit {
     /// The fields the orders changed, each with what the report said.
     ///
@@ -2109,7 +2130,18 @@ impl Working {
             GiveReach::Ours => party_unit_id(target).and_then(|id| self.index_in(&region, &id)),
         };
 
-        self.move_between(giver, receiver, what, amount, reach, true, line, target);
+        self.move_between(
+            giver,
+            receiver,
+            &Transfer {
+                what,
+                amount,
+                reach,
+                is_give: true,
+                line,
+                party: target,
+            },
+        );
     }
 
     /// One settled `TAKE`, which `rules/take` defines as a GIVE with the direction reversed and
@@ -2205,37 +2237,31 @@ impl Working {
         self.move_between(
             source_index,
             Some(taker),
-            what,
-            amount,
-            super::targets::GiveReach::Ours,
-            false,
-            line,
-            source,
+            &Transfer {
+                what,
+                amount,
+                reach: super::targets::GiveReach::Ours,
+                is_give: false,
+                line,
+                party: source,
+            },
         );
     }
 
     /// The half a `GIVE` and a `TAKE` share once each has decided which row holds the goods and
     /// which - if any - receives them: what leaves the source, what arrives, and the skills the
     /// arriving men bring.
-    fn move_between(
-        &mut self,
-        source: usize,
-        receiver: Option<usize>,
-        what: &super::forms::Selector,
-        amount: &super::forms::Amount,
-        reach: super::targets::GiveReach,
-        // `rules/magic` forbids a mage to GIVE men and says nothing about TAKE, so the one rule
-        // this half applies differently for its two callers needs telling which it is serving
-        // (`ah-t8ei`).
-        is_give: bool,
-        // The 1-based document line of the order responsible.
-        line: usize,
-        // The transfer's other end as the order wrote it, for the change on the source's side:
-        // `move_between` is reached with a `receiver` only when a row of ours gains the goods.
-        party: &super::forms::Party,
-    ) {
+    fn move_between(&mut self, source: usize, receiver: Option<usize>, transfer: &Transfer<'_>) {
         use super::targets::GiveReach;
 
+        let &Transfer {
+            what,
+            amount,
+            reach,
+            is_give,
+            line,
+            party,
+        } = transfer;
         let line = i64::try_from(line).ok();
         // What the source's change points at: the receiving row where there is one, otherwise
         // whatever unit id the order named. `party_unit_id` answers `None` for `Party::Discard`
@@ -8012,11 +8038,7 @@ mod tests {
             let response = preview_over(&report_with_three(), "unit 900\nGIVE 7777 4 SWOR\n");
 
             let giver = row_of(&response, "900");
-            assert!(
-                giver.item_changes.is_empty(),
-                "{:?}",
-                giver.item_changes
-            );
+            assert!(giver.item_changes.is_empty(), "{:?}", giver.item_changes);
         }
 
         /// `rules/take`: a TAKE is a GIVE with the direction reversed, so the same movement is
