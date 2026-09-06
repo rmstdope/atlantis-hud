@@ -808,6 +808,39 @@ describe("formatItems and itemsTooltip", () => {
     expect(itemsTooltip(row)).toBeUndefined();
   });
 
+  it("still says the whole of a build the unit only part-funded", () => {
+    // The clause names this unit's own debit (10), and no `cappedBy` fires when the material was
+    // there - so without this line the 30 the structure actually takes appears nowhere.
+    const row = previewedUnit({
+      items: [{ amount: 10, name: "wood", tag: "WOOD" }],
+      itemChanges: [
+        {
+          tag: "WOOD",
+          name: "wood",
+          delta: -10,
+          cause: "build-spent",
+          line: 4,
+          unitPrice: null,
+          other: null
+        }
+      ],
+      built: [
+        {
+          amount: 30,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("Spends 30 WOOD on Building 4 this month.");
+  });
+
   it("still says what a transport that moved nothing was going to send", () => {
     // A non-refused send that moved zero writes a `TransportSent` row and no `ItemChange`
     // (`crates/core/src/orders/effects.rs`), so no clause can name it either.

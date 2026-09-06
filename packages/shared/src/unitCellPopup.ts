@@ -208,12 +208,16 @@ export function reportedItems(original: string): ReportedItems | undefined {
  * comes from its first movement, and the bare tag is all that is left when there is none. The
  * `items` change's original carries no names at all (`crates/core/src/orders/effects.rs`).
  */
-function itemLabel(tag: string, unit: PreviewedUnit): string {
+function itemName(tag: string, unit: PreviewedUnit): string | undefined {
   return (
     unit.items.find((item) => item.tag === tag)?.name ??
-    (unit.itemChanges ?? []).find((change) => change.tag === tag)?.name ??
-    tag
+    (unit.itemChanges ?? []).find((change) => change.tag === tag)?.name
   );
+}
+
+/** The same name, falling back to the bare tag - which is what a cause sentence is led by. */
+function itemLabel(tag: string, unit: PreviewedUnit): string {
+  return itemName(tag, unit) ?? tag;
 }
 
 /** One item's line, before the cap: what it is, what it stands at, and where it came from. */
@@ -257,7 +261,7 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
 
   return tags.map((tag) => {
     const item = held.get(tag);
-    const name = itemLabel(tag, unit);
+    const name = itemName(tag, unit);
     const before = reported?.get(tag);
     const amount = item?.amount;
     const moved =
@@ -265,7 +269,7 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
       (before !== undefined && before !== (amount ?? 0)) ||
       (before === undefined && reported !== undefined);
     const line: PopupLine = {
-      label: name === tag ? tag : `${name} ${tag}`,
+      label: name === undefined ? tag : `${name} ${tag}`,
       value: amount === undefined ? "gone" : rangedValue(amount, shortfall.get(tag) ?? 0)
     };
     const change = changeOf(before, amount, reported);

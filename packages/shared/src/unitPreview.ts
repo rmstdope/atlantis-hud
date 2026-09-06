@@ -356,17 +356,20 @@ export function itemsTooltip(
   if (capSentence !== undefined) {
     lines.push(capSentence);
   }
-  const spentTags = new Set(
-    (unit.itemChanges ?? [])
-      .filter((change) => change.cause === "build-spent")
-      .map((change) => change.tag)
-  );
+  // What this unit's own clause will account for, per tag: `charge_shared_material` debits the
+  // actor only for what it holds (`crates/core/src/orders/semantics.rs`), so a builder funded
+  // wholly or partly by a hex neighbour is debited less than the structure takes - or not at all.
+  const ownDebit = new Map<string, number>();
+  for (const change of unit.itemChanges ?? []) {
+    if (change.cause === "build-spent") {
+      ownDebit.set(change.tag, (ownDebit.get(change.tag) ?? 0) + Math.abs(change.delta));
+    }
+  }
   for (const spend of built) {
-    // Kept for exactly the spend no clause can name: `charge_shared_material` debits the actor
-    // only for what it holds (`crates/core/src/orders/semantics.rs`), so a builder funded by a hex
-    // neighbour records no `build-spent` movement of its own and would otherwise say nothing at
-    // all about the structure it is working on.
-    if (!spentTags.has(spend.tag)) {
+    // Kept for exactly what the clause cannot name: the whole figure, wherever the unit's own
+    // debit falls short of it. No `cappedBy` fires when the material was there, so without this
+    // the amount the structure actually takes would appear nowhere at all.
+    if ((ownDebit.get(spend.tag) ?? 0) < spend.amount) {
       lines.push(`Spends ${spend.amount} ${spend.tag} ${buildSpendTarget(spend)} this month.`);
     }
     if (spend.cappedBy === "materials") {

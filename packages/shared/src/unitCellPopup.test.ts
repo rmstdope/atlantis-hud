@@ -973,6 +973,13 @@ describe("the items popup's pairs", () => {
     ]);
   });
 
+  it("doubles a tag that is its own display name, as it always did", () => {
+    const popup = columnPopup(
+      popupForCell("items", unit({ items: [{ name: "SILV", tag: "SILV", amount: 4 }] }), facts())
+    );
+    expect(popup.lines).toEqual([{ label: "SILV SILV", value: "4" }]);
+  });
+
   it("draws a cast item's range exactly as the cell does", () => {
     const popup = columnPopup(
       popupForCell(
