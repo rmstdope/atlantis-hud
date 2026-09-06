@@ -1068,12 +1068,19 @@ describe("remembering a unit per hex", () => {
     expect(store().hexUnits["1:7,53"]).toBe("5812");
   });
 
-  it("records nothing when the selection is cleared", () => {
+  it("keeps the last choice when the selection is cleared", () => {
     open();
     store().selectUnit("5812", "1:7,53");
     store().selectUnit(null, null);
 
     expect(store().hexUnits["1:7,53"]).toBe("5812");
+  });
+
+  it("records nothing for a selection the app made on the player's behalf", () => {
+    open();
+    store().selectUnit("5812", "1:7,53", { remember: false });
+
+    expect(store().hexUnits).toEqual({});
   });
 
   it("is cleared by resetWorkspaceStore", () => {

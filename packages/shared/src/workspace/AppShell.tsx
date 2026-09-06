@@ -1021,10 +1021,13 @@ export function AppShell({
   }, [openGameId, model, level, setLevel]);
 
   /**
-   * Selects a hex together with the first unit standing in it.
+   * Selects a hex together with the unit the player last chose in it, and otherwise the first unit
+   * standing in it (`ah-17t5`).
    *
-   * `unitsForHex` sorts the player's own units first, so this lands on one of theirs whenever the
-   * hex holds any, and only falls to a foreign unit when it does not.
+   * `unitsForHex` sorts the player's own units first, so the fallback lands on one of theirs
+   * whenever the hex holds any, and only falls to a foreign unit when it does not. The memory is
+   * read with `getState()` rather than a selector: `selectHex` is a dependency of a great many
+   * callbacks, and subscribing here would rebuild all of them on every unit pick.
    */
   const selectHex = useCallback(
     (regionId: string | null) => {
@@ -2549,7 +2552,8 @@ export function AppShell({
         if (useWorkspaceStore.getState().selectedUnitId === null) {
           const firstUnit = firstUnitIn(restored.parsed, selected);
           if (firstUnit !== null) {
-            selectUnit(firstUnit, selected);
+            // An opening fill-in is not a choice, so it is not remembered (`ah-17t5`).
+            selectUnit(firstUnit, selected, { remember: false });
           }
         }
       })

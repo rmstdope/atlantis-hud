@@ -263,7 +263,16 @@ export type WorkspaceState = {
    * same way `selectRegion` does with no default, since a restored hex carries no unit of its own.
    */
   restoreSelection: (regionId: string | null) => void;
-  selectUnit: (unitId: string | null, regionId: string | null) => void;
+  /**
+   * Selects a unit. `options.remember` is false for a selection the app made on the player's
+   * behalf - an opening fill-in, or the first row of a foreign faction's list - which must not be
+   * recorded as the hex's remembered choice (`ah-17t5`).
+   */
+  selectUnit: (
+    unitId: string | null,
+    regionId: string | null,
+    options?: { remember?: boolean }
+  ) => void;
   setLevel: (level: number) => void;
   /** Records that the map committed a viewport for the open game on this level. */
   commitMapView: (viewport: Viewport, level: number) => void;
@@ -515,12 +524,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       // Choosing a unit is what the hex remembers. Clearing the selection deliberately writes
       // nothing: deselecting is not choosing somebody else, and the last real choice is still the
       // better guess when the player comes back.
-      selectUnit: (unitId, regionId) =>
+      selectUnit: (unitId, regionId, options) =>
         set((state) => ({
           selectedUnitId: unitId,
           selectedUnitRegionId: unitId === null ? null : regionId,
           hexUnits:
-            unitId === null || regionId === null
+            unitId === null || regionId === null || options?.remember === false
               ? state.hexUnits
               : withUnitRemembered(state.hexUnits, regionId, unitId)
         })),
