@@ -887,15 +887,6 @@ pub enum SaleAnswer {
     Unknown,
 }
 
-/// Silver this unit is given by others this month.
-///
-/// Gathered once per turn by [`super::semantics::review_turn`] rather than per unit: the giving
-/// orders live all over the document, and re-scanning it per unit would be quadratic in the size
-/// of a faction. Every figure below is what the hex's own transfer settlement actually moved, in
-/// the report order `rules/sequenceofevents` gives the Give phase (`ah-3mwm`) - never a quantity
-/// an order merely asked for. A gift this pass cannot count - from another hex, from a foreign
-/// unit, or of an `ALL` amount whose giver it cannot price - is silently absent rather than
-/// doubted, which understates income and never overstates it.
 /// One settled transfer of silver into a unit, for the ledger the SILVER column publishes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReceiptMove {
@@ -906,6 +897,15 @@ pub struct ReceiptMove {
     pub other: String,
 }
 
+/// Silver this unit is given by others this month.
+///
+/// Gathered once per turn by [`super::semantics::review_turn`] rather than per unit: the giving
+/// orders live all over the document, and re-scanning it per unit would be quadratic in the size
+/// of a faction. Every figure below is what the hex's own transfer settlement actually moved, in
+/// the report order `rules/sequenceofevents` gives the Give phase (`ah-3mwm`) - never a quantity
+/// an order merely asked for. A gift this pass cannot count - from another hex, from a foreign
+/// unit, or of an `ALL` amount whose giver it cannot price - is silently absent rather than
+/// doubted, which understates income and never overstates it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Receipts {
     /// Silver given by units whose orders we can read and whose hex matches. Already summed.
