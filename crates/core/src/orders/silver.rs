@@ -15,7 +15,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::rules::{CastCost, CastOutput, ItemKind, Production, Ruleset, SkillEntry};
+use crate::movement::rules::{
+    CastCost, CastOutput, ItemEntry, ItemKind, Production, Ruleset, SkillEntry,
+};
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::phases;
@@ -3089,6 +3091,27 @@ fn required_riding(description: &str) -> Option<(&str, i64)> {
     Some((skill, level.parse().ok()?))
 }
 
+/// Whether the catalogue calls this item a mount, including a race that is its own mount.
+///
+/// `ItemKind::Mount` is not the test. A centaur is `kind == Man` on purpose - `classify` in
+/// `packages/ruleset/src/data.ts` lets the race marker beat the mount marker so that a race which
+/// is also a mount stays inside the headcount - yet `rules/give`'s `MOUNT` class holds `CTAU`
+/// beside `HORS`, `CAME`, `TURT` and `WING`. That class is the mount fact this reads (`ah-fz7t`).
+///
+/// The kind is the fallback, for a catalogue that carries no `itemClasses` at all (one generated
+/// before `ah-3sp7.1`): [`Ruleset::class_members`] answers `None` for *cannot say*, and falling
+/// back leaves such a catalogue exactly as ready as it is today instead of dropping every mount.
+///
+/// `tag` is already upper-cased by the caller, as the `items` lookup beside it needs.
+fn is_mount(ruleset: &Ruleset, tag: &str, entry: &ItemEntry) -> bool {
+    match ruleset.class_members("MOUNT") {
+        Some(members) => members
+            .iter()
+            .any(|member| member.eq_ignore_ascii_case(tag)),
+        None => entry.kind == ItemKind::Mount,
+    }
+}
+
 /// The combat ready men of the units that ordered `PILLAGE`, and whether any of them could not be
 /// counted.
 ///
@@ -3172,6 +3195,9 @@ impl NearMiss {
 ///   rides something, so the two add up. A weapon needing a skill counts only for a unit holding
 ///   that skill at level 1 or better; a mount counts only for a unit holding the riding level its
 ///   description names ([`required_riding`]).
+/// - **A mount is what `rules/give`'s `MOUNT` class says is one** ([`is_mount`]), not what
+///   `ItemKind` says, so **a race that is its own mount counts for itself** (`ah-fz7t`): a centaur
+///   is both the man and the mount, and `min(men, ...)` is what keeps a mixed unit honest.
 ///
 /// A spell that states no damage - `FEAR`, `SSTO` - does not count, deliberately: that under-counts,
 /// which costs a missing warning and never a false one.
@@ -3221,7 +3247,8 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
     // below already rejects each item for a reason and used to forget why.
     let mut nearest_miss: Option<NearMiss> = None;
     for held in facts.items {
-        let Some(entry) = ruleset.items.get(&held.tag.to_uppercase()) else {
+        let tag = held.tag.to_uppercase();
+        let Some(entry) = ruleset.items.get(&tag) else {
             continue;
         };
         // The skill this item would have needed, where it is a thing a skill could make count at
@@ -3229,7 +3256,7 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
         let wanted: Option<(&str, i64)> = if let Some(weapon) = entry.weapon.as_ref() {
             // `needs` is a *skill* tag, not the item's own: `DBOW` is wielded with `LBOW`.
             weapon.needs.as_deref().map(|skill| (skill, 1))
-        } else if entry.kind == ItemKind::Mount {
+        } else if is_mount(ruleset, &tag, entry) {
             entry.description.as_deref().and_then(required_riding)
         } else {
             None
@@ -3244,7 +3271,7 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
             mounted_or_armed = mounted_or_armed.saturating_add(held.amount.max(0));
         } else if let Some((skill, level)) = wanted {
             let candidate = NearMiss {
-                item: held.tag.to_uppercase(),
+                item: tag.clone(),
                 count: held.amount.max(0),
                 skill: skill.to_string(),
                 level,
@@ -10793,5 +10820,74 @@ mod combat_ready_tests {
         let read = read(10, &[item("HORS", 3)], &[], &[skill("COMB", 1)]).expect("countable");
         assert_eq!(read.ready, 10);
         assert_eq!(read.nearest_miss, None);
+    }
+
+    /// A centaur is the man and the mount at once: `data/CTAU` says it *"is a mount"* and
+    /// *"requires riding [RIDI] of at least level 1 to ride in combat"*, and
+    /// `rules/economy_taxingpillaging` counts a unit that *"has a mount and sufficient skill to
+    /// ride it in combat"* (`ah-fz7t`).
+    #[test]
+    fn a_centaur_that_knows_riding_is_its_own_mount() {
+        assert_eq!(
+            count(10, &[item("CTAU", 10)], &[], &[skill("RIDI", 1)]),
+            Some(10)
+        );
+    }
+
+    /// Without the riding to ride it, the centaur is the near miss that explains why - the player
+    /// was told nothing at all before `ah-fz7t`.
+    #[test]
+    fn a_centaur_without_riding_is_the_nearest_miss() {
+        let read = read(10, &[item("CTAU", 10)], &[], &[]).expect("countable");
+        assert_eq!(read.ready, 0);
+        assert_eq!(
+            read.nearest_miss,
+            Some(NearMiss {
+                item: "CTAU".to_string(),
+                count: 10,
+                skill: "RIDI".to_string(),
+                level: 1,
+                held: 0,
+            })
+        );
+    }
+
+    /// A race that is not in `rules/give`'s `MOUNT` class is untouched by `ah-fz7t`: riding does
+    /// not make a human count.
+    #[test]
+    fn a_race_that_is_not_a_mount_is_unchanged() {
+        assert_eq!(
+            count(10, &[item("HUMN", 10)], &[], &[skill("RIDI", 1)]),
+            Some(0)
+        );
+    }
+
+    /// `min(men, mounted_or_armed)` still caps at the headcount: ten centaurs holding ten horses
+    /// are ten combat ready men, not twenty (`ah-fz7t`).
+    #[test]
+    fn a_centaurs_own_mount_never_counts_past_its_headcount() {
+        assert_eq!(
+            count(
+                10,
+                &[item("CTAU", 10), item("HORS", 10)],
+                &[],
+                &[skill("RIDI", 1)]
+            ),
+            Some(10)
+        );
+    }
+
+    /// `class_members` answers `None` for *cannot say*, so a catalogue generated before the
+    /// classes were scraped must keep counting mounts by kind (`ah-fz7t`).
+    #[test]
+    fn a_catalogue_that_cannot_name_its_classes_still_counts_a_horse() {
+        let mut ruleset = ruleset();
+        ruleset.item_classes.clear();
+        let receipts = Receipts::default();
+        let items = [item("HORS", 10)];
+        let skills = [skill("RIDI", 1)];
+        let read = readiness(&unit(10, &items, &[], &skills, &receipts), Some(&ruleset))
+            .expect("countable");
+        assert_eq!(read.ready, 10);
     }
 }
