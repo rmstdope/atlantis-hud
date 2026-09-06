@@ -6,6 +6,7 @@ import {
   columnHasPopup,
   popupAsText,
   popupForCell,
+  popupLabelInk,
   reportedItems,
   type PopupFacts
 } from "./unitCellPopup";
@@ -351,7 +352,171 @@ describe("the column popups", () => {
         facts()
       )
     );
-    expect(popup.lines).toEqual([{ label: "move", value: "Walking" }]);
+    expect(popup.lines).toEqual([
+      { label: "move", value: "Walking" },
+      { label: "weight", value: "10" },
+      { label: "can carry flying", value: "0", stress: "aside" },
+      { label: "can carry riding", value: "0", stress: "aside" },
+      { label: "can carry walking", value: "20", stress: "deciding" }
+    ]);
+  });
+
+  const movementPopup = (overrides: Partial<PreviewedUnit>) =>
+    columnPopup(popupForCell("movement", unit(overrides), facts()));
+
+  const carried = (
+    overrides: Partial<NonNullable<PreviewedUnit["itemChanges"]>[number]> = {}
+  ) =>
+    ({
+      tag: "GRAI",
+      name: "grain",
+      delta: 6,
+      cause: "was-given",
+      line: null,
+      unitPrice: null,
+      other: { unitId: "1502", name: "Farmers" },
+      isMan: false,
+      ...overrides
+    }) as NonNullable<PreviewedUnit["itemChanges"]>[number];
+
+  it("the movement popup draws the load and each carrying capacity", () => {
+    const popup = movementPopup({
+      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" }
+    });
+    expect(popup.lines).toEqual([
+      { label: "move", value: "Riding" },
+      { label: "weight", value: "60" },
+      { label: "can carry flying", value: "0", stress: "aside" },
+      { label: "can carry riding", value: "70", stress: "deciding" },
+      { label: "can carry walking", value: "85", stress: "aside" }
+    ]);
+  });
+
+  it("marks the largest capacity as the deciding one for an overloaded unit", () => {
+    const popup = movementPopup({
+      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" }
+    });
+    const stress = Object.fromEntries(popup.lines.map((line) => [line.label, line.stress]));
+    expect(stress["can carry walking"]).toBe("deciding");
+    expect(stress["can carry riding"]).toBe("aside");
+    expect(stress["can carry flying"]).toBe("aside");
+  });
+
+  it("draws the mode as a pair when it rose", () => {
+    const popup = movementPopup({
+      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" },
+      previewChanges: [{ field: "movement", original: "Walking" }]
+    });
+    expect(popup.lines[0]).toEqual({
+      label: "move",
+      value: "Riding",
+      change: { direction: "up", from: "Walking" }
+    });
+  });
+
+  it("draws a lost mode as a fall", () => {
+    const popup = movementPopup({
+      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" },
+      previewChanges: [{ field: "movement", original: "Riding" }]
+    });
+    expect(popup.lines[0]).toEqual({
+      label: "move",
+      value: "Overloaded",
+      change: { direction: "down", from: "Riding" }
+    });
+  });
+
+  it("quotes a mode word it does not know rather than ranking it", () => {
+    const popup = movementPopup({
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      previewChanges: [{ field: "movement", original: "Swimming" }]
+    });
+    expect(popup.lines[0]).toEqual({ label: "move", value: "Walking", why: "was: Swimming" });
+  });
+
+  it("names every item the month moved, in the month's order", () => {
+    const popup = movementPopup({
+      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" },
+      items: [
+        { name: "grain", tag: "GRAI", amount: 6 },
+        { name: "horse", tag: "HORS", amount: 1 }
+      ],
+      itemChanges: [
+        carried({}),
+        carried({ tag: "HORS", name: "horse", delta: 1, cause: "bought", unitPrice: 65, other: null })
+      ]
+    });
+    expect(popup.notes.slice(-2)).toEqual([
+      "Grain: given 6 by Farmers (1502).",
+      "Horse: bought 1 at 65 silver each."
+    ]);
+  });
+
+  it("counts the items it does not have room to name", () => {
+    const tags = Array.from({ length: 14 }, (_, index) => `T${index}`);
+    const popup = movementPopup({
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      items: tags.map((tag) => ({ name: tag.toLowerCase(), tag, amount: 1 })),
+      itemChanges: tags.map((tag) => carried({ tag, name: tag.toLowerCase(), other: null }))
+    });
+    // One N2 sentence, twelve named tags, and the counting line.
+    expect(popup.notes).toHaveLength(14);
+    expect(popup.notes[13]).toBe("… and 2 more; the Items column has them all.");
+  });
+
+  it("says the load moved when the mode did not", () => {
+    const popup = movementPopup({
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      items: [{ name: "grain", tag: "GRAI", amount: 6 }],
+      itemChanges: [carried({})]
+    });
+    expect(popup.notes[0]).toBe("Its load changed this month, but not the mode it travels in.");
+    expect(popup.notes).not.toContain("Nothing this month changes this.");
+  });
+
+  it("keeps the shared sentence for a month that moved nothing", () => {
+    const popup = movementPopup({
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" }
+    });
+    expect(popup.notes).toContain("Nothing this month changes this.");
+    expect(popup.notes).not.toContain("Its load changed this month, but not the mode it travels in.");
+  });
+
+  it("warns when an order this month could not be counted", () => {
+    const popup = movementPopup({
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      uncounted: ["BUY 1 ZZZZ"]
+    });
+    expect(popup.warning).toBe(
+      "An order this month could not be counted, so these are the report\u2019s own figures, not this month\u2019s."
+    );
+  });
+
+  it("warns when a cast's yield is still a range", () => {
+    const popup = movementPopup({
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      created: [{ fewest: 1, most: 3, tag: "MITH", summoned: false }]
+    });
+    expect(popup.warning).toBe(
+      "An order this month could not be counted, so these are the report\u2019s own figures, not this month\u2019s."
+    );
+  });
+
+  it("the hidden sentence names the capacity that decides", () => {
+    const popup = movementPopup({
+      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" }
+    });
+    expect(popupAsText(popup)).toContain("can carry riding 70, which is the one that decides.");
+  });
+
+  it("says how a line's label is drawn", () => {
+    expect(popupLabelInk({ label: "can carry riding", value: "70", stress: "deciding" })).toBe(
+      "text-brass"
+    );
+    expect(popupLabelInk({ label: "can carry flying", value: "0", stress: "aside" })).toBe(
+      "text-ink-dim"
+    );
+    expect(popupLabelInk({ label: "move", value: "Riding" })).toBe("");
   });
 
   it("the flags popup names every flag in the report's own words", () => {

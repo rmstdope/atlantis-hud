@@ -1408,7 +1408,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
 
     expect(row).toContain(">R</span>");
     expect(row).toContain('<span class="sr-only">Riding</span>');
-    expect(row).toContain("was: Walking");
+    expect(row).toContain("up from Walking");
     expect(row).not.toContain("title=");
   });
 

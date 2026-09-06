@@ -1,4 +1,5 @@
 import type { ColumnPopup, PopupLine, PopupStep } from "../unitCellPopup";
+import { popupLabelInk } from "../unitCellPopup";
 import type { Point } from "../unitTooltip";
 import { TooltipPortal } from "./TooltipPortal";
 
@@ -35,7 +36,7 @@ export function UnitCellPopup({
 
       {popup.lines.map((line, index) => (
         <div key={`${line.label}-${index}`} className="flex justify-between gap-3">
-          <span>{line.label}</span>
+          <span className={popupLabelInk(line)}>{line.label}</span>
           <PopupLineValue line={line} />
         </div>
       ))}
@@ -63,7 +64,7 @@ export function UnitCellPopup({
  */
 export function PopupLineValue({ line }: { line: PopupLine }) {
   return (
-    <span className="tabular-nums text-ink-soft">
+    <span className={`tabular-nums ${line.stress === "aside" ? "text-ink-dim" : "text-ink-soft"}`}>
       {line.steps ? (
         line.steps.map((step, index) => (
           <span key={index}>
