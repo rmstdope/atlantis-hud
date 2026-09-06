@@ -1,4 +1,5 @@
 import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
+import type { OrdersTemplate } from "@atlantis/core-client";
 import { passwordIsSendable } from "./workspace/ordersUpload";
 
 /**
@@ -937,4 +938,69 @@ export function longOrderOf(orders: string): string | null {
   const own = atTopLevel(orders);
   const mine = orders.split("\n").filter((_line, index) => own[index] === true);
   return commandsOnly(mine.join("\n")).find((line) => LONG_ORDER_LINE.test(line)) ?? null;
+}
+
+/**
+ * What the report's own orders template said this unit would spend the month on.
+ *
+ * Three answers rather than a nullable string, because "the report had no long order for this
+ * unit" and "there is no report side to compare against" are different things and only one of
+ * them is a difference the player made (`ah-rgkk.5.4`).
+ */
+export type ReportedLongOrder =
+  /** The template held a section for this unit; `order` is its long order, or null for none. */
+  | { kind: "known"; order: string | null }
+  /** The report carried no orders template at all - `extract_orders_template` returned `None`. */
+  | { kind: "no-template" }
+  /** The template exists but names no section for this unit - one FORMed this month. */
+  | { kind: "not-listed" };
+
+/**
+ * The shared answer for "no template", so a row that re-renders hands the popup resolver the same
+ * object every time and the row's `explanations` memo is not invalidated by its own default.
+ */
+export const NO_ORDERS_TEMPLATE: ReportedLongOrder = { kind: "no-template" };
+
+/**
+ * Each templated unit's long order, by unit number; `null` when the report carried no template.
+ *
+ * Built once per report rather than searched per row: the template is a flat list and the units
+ * table asks it a question per row per render.
+ */
+export function reportedLongOrders(
+  template: OrdersTemplate | null | undefined
+): ReadonlyMap<string, string | null> | null {
+  if (!template) {
+    return null;
+  }
+  return new Map(template.units.map((unit) => [unit.unitId, longOrderOf(unit.lines.join("\n"))]));
+}
+
+/** One unit's answer, out of {@link reportedLongOrders}' map. */
+export function reportedLongOrderFor(
+  index: ReadonlyMap<string, string | null> | null,
+  unitId: string
+): ReportedLongOrder {
+  if (index === null) {
+    return NO_ORDERS_TEMPLATE;
+  }
+  // `has`, not a truthiness test on `get`: a listed unit with no long order answers `null`, and
+  // that is "the report had none", not "the report never mentioned it".
+  return index.has(unitId)
+    ? { kind: "known", order: index.get(unitId) ?? null }
+    : { kind: "not-listed" };
+}
+
+/**
+ * Whether two long-order lines are the same order.
+ *
+ * Case and run-of-spaces are typing, not meaning: the template writes `@study obse` and everything
+ * this application writes is upper case, so comparing the raw strings would call every untouched
+ * order changed. A leading `@` is deliberately **not** stripped - it is the difference between an
+ * order that repeats next month and one that does not, and losing it is a change worth being told
+ * about (`ah-rgkk.5.4`).
+ */
+export function sameLongOrder(left: string, right: string): boolean {
+  const flatten = (line: string) => line.trim().replace(/\s+/gu, " ").toUpperCase();
+  return flatten(left) === flatten(right);
 }

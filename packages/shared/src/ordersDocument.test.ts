@@ -22,7 +22,11 @@ import {
   hasFactionHeader,
   LONG_ORDER_COMMANDS,
   longOrderOf,
+  NO_ORDERS_TEMPLATE,
   readUnitOrders,
+  reportedLongOrderFor,
+  reportedLongOrders,
+  sameLongOrder,
   seedOrdersDocument,
   regionBannerLine,
   stripLongOrderLines,
@@ -1383,5 +1387,52 @@ describe("nested orders are not the unit's own month-long order", () => {
     expect(longOrderOf(withForm)).toBe("@work");
     expect(longOrderOf(withTurn)).toBe("STUDY COMB");
     expect(longOrderOf(["  claim 200", "FORM 1", "  STUDY COMBAT", "END"].join("\n"))).toBeNull();
+  });
+});
+
+describe("the report's own long orders", () => {
+  const template = (units: { unitId: string; lines: string[] }[]) => ({
+    text: "",
+    factionId: "1",
+    units: units.map((unit, index) => ({ ...unit, lineStart: index + 1 }))
+  });
+
+  const twoUnits = template([
+    { unitId: "1487", lines: [";Braves (1487), behind.", "@study obse", "@claim 50"] },
+    { unitId: "1610", lines: [";Diggers (1610).", "@claim 10"] }
+  ]);
+
+  it("reads each templated unit's long order out of the template", () => {
+    expect(reportedLongOrders(twoUnits)).toEqual(
+      new Map([
+        ["1487", "@study obse"],
+        ["1610", null]
+      ])
+    );
+  });
+
+  it("answers no-template for a report that carried none", () => {
+    expect(reportedLongOrders(null)).toBeNull();
+    expect(reportedLongOrderFor(null, "1487")).toEqual({ kind: "no-template" });
+  });
+
+  it("tells a unit the template never listed from one it listed with no long order", () => {
+    const index = reportedLongOrders(twoUnits);
+    expect(reportedLongOrderFor(index, "1610")).toEqual({ kind: "known", order: null });
+    expect(reportedLongOrderFor(index, "1801")).toEqual({ kind: "not-listed" });
+    expect(NO_ORDERS_TEMPLATE).toEqual({ kind: "no-template" });
+  });
+
+  it("a FORM block's long order is not the unit's own", () => {
+    const index = reportedLongOrders(
+      template([{ unitId: "1487", lines: ["@form 1", "study comb", "end", "@work"] }])
+    );
+    expect(reportedLongOrderFor(index, "1487")).toEqual({ kind: "known", order: "@work" });
+  });
+
+  it("the same order typed differently is the same order", () => {
+    expect(sameLongOrder("@study obse", "@STUDY  OBSE")).toBe(true);
+    expect(sameLongOrder("@study obse", "study obse")).toBe(false);
+    expect(sameLongOrder("TAX", "WORK")).toBe(false);
   });
 });

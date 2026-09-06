@@ -125,6 +125,7 @@ import {
   type UnitSource
 } from "./unitSource";
 import { CollapsiblePanel } from "./CollapsiblePanel";
+import { NO_ORDERS_TEMPLATE, type ReportedLongOrder } from "../ordersDocument";
 import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
@@ -196,6 +197,8 @@ type UnitTableDockProps = {
   ordersPreview?: OrdersPreviewResponse | null;
   /** The month-long order a unit's live orders carry, for the Long order column. */
   getLongOrder?: (unitId: string, regionId: string) => string | null;
+  /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
+  getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
   /** Each own unit's silver forecast, or null where there is none. `ah-1wcw.1`. */
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
@@ -266,6 +269,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       preview = null,
       ordersPreview = null,
       getLongOrder,
+      getReportedLongOrder,
       getSilver,
       silverWarnings,
       onSelectUnit,
@@ -1527,6 +1531,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   dimDeparting={dimsDeparting(source)}
                   onRemove={army ? () => void actions.removeUnit(army.id, unit.unitId) : undefined}
                   getLongOrder={getLongOrder}
+                  getReportedLongOrder={getReportedLongOrder}
                   getSilver={getSilver}
                   silverWarnings={silverWarnings}
                   countUpkeep={countUpkeep}
@@ -1553,6 +1558,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
             hovered={hoveredRow}
             getSilver={getSilver}
             getLongOrder={getLongOrder}
+            getReportedLongOrder={getReportedLongOrder}
             silverWarnings={silverWarnings}
             countUpkeep={countUpkeep}
             derivedSkills={derivedSkills}
@@ -1970,6 +1976,7 @@ function HoveredPopup({
   hovered,
   getSilver,
   getLongOrder,
+  getReportedLongOrder,
   silverWarnings,
   countUpkeep,
   derivedSkills,
@@ -1979,6 +1986,8 @@ function HoveredPopup({
   hovered: { unit: PreviewedUnit; column: DrawnColumnId; at: Point } | null;
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   getLongOrder?: (unitId: string, regionId: string) => string | null;
+  /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
+  getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
   silverWarnings?: ReadonlySet<string>;
   countUpkeep: boolean;
   derivedSkills: DerivedSkills;
@@ -2002,6 +2011,7 @@ function HoveredPopup({
     structureLabel: unitStructureLabel(unit.structureId, structuresById),
     reportedStructureLabel: reportedStructureLabelFor(unit, structuresById),
     longOrder: unit.own ? (getLongOrder?.(unit.unitId, unit.regionId) ?? null) : null,
+    reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
     silver,
     silverWarned: warned,
     countUpkeep,
@@ -2072,6 +2082,7 @@ function UnitRow({
   onPointerAt,
   onPointerGone,
   getLongOrder,
+  getReportedLongOrder,
   getSilver,
   silverWarnings,
   countUpkeep,
@@ -2139,6 +2150,8 @@ function UnitRow({
   onPointerGone: () => void;
   /** The month-long order this unit's live orders carry, where it is one of ours. */
   getLongOrder?: (unitId: string, regionId: string) => string | null;
+  /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
+  getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
   /** This unit's silver forecast, where it is one of ours. `ah-1wcw.1`. */
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
@@ -2232,6 +2245,7 @@ function UnitRow({
       structureLabel,
       reportedStructureLabel,
       longOrder,
+      reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
       silver,
       silverWarned: warned,
       countUpkeep,
@@ -2249,6 +2263,7 @@ function UnitRow({
     structureLabel,
     reportedStructureLabel,
     longOrder,
+    getReportedLongOrder,
     silver,
     warned,
     countUpkeep,
