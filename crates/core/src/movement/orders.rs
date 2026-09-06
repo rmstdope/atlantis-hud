@@ -19,9 +19,14 @@ use crate::report::model::Coordinate;
 pub enum MoveStep {
     /// A step into the neighbouring hex.
     Go(Direction),
-    /// Into a structure, named by id when the order names one.
-    In(Option<String>),
-    /// Out of whatever structure the unit is in.
+    /// Through an inner passage in the structure the unit is currently standing in
+    /// (`rules/move`, 4). It takes no argument: "4) IN, which will move through an inner passage
+    /// in the structure that the unit is currently in".
+    In,
+    /// Into the structure with this id, in whatever hex the unit is in when the step is reached
+    /// (`rules/move`, 2). Numbers are kept as written, exactly as `ReportUnit::structure_id` is.
+    Enter(String),
+    /// Out of whatever structure the unit is in (`rules/move`, 3).
     Out,
 }
 
@@ -74,8 +79,7 @@ pub fn parse_move(line: &str) -> Option<Vec<MoveStep>> {
     }
 
     let mut steps = Vec::new();
-    let mut remaining = tokens.peekable();
-    while let Some(token) = remaining.next() {
+    for token in tokens {
         let token = token.trim_end_matches(['.', ';']);
         if token.is_empty() {
             continue;
@@ -84,15 +88,11 @@ pub fn parse_move(line: &str) -> Option<Vec<MoveStep>> {
         if token.eq_ignore_ascii_case("out") {
             steps.push(MoveStep::Out);
         } else if token.eq_ignore_ascii_case("in") {
-            // `IN 4` enters a numbered structure; a bare `IN` enters the only one there is.
-            let structure = remaining
-                .peek()
-                .filter(|next| next.chars().all(|c| c.is_ascii_digit()))
-                .map(|next| (*next).to_string());
-            if structure.is_some() {
-                remaining.next();
-            }
-            steps.push(MoveStep::In(structure));
+            steps.push(MoveStep::In);
+        } else if !token.is_empty() && token.chars().all(|c| c.is_ascii_digit()) {
+            // "2) A structure number, which will cause the unit to enter the structure with that
+            // number." A number is a direction of its own, not an argument to `IN`.
+            steps.push(MoveStep::Enter(token.to_string()));
         } else {
             // An unreadable direction ends the whole reading rather than shortening the route.
             steps.push(MoveStep::Go(Direction::parse(token)?));
@@ -119,7 +119,10 @@ pub fn render_sail(steps: &[MoveStep]) -> String {
     render_order("SAIL", steps)
 }
 
-fn render_order(command: &str, steps: &[MoveStep]) -> String {
+/// Writes a movement order under `command` - the one writer of a movement order, so a clause in a
+/// popup and an order in the orders file can never spell the same steps two ways.
+#[must_use]
+pub fn render_order(command: &str, steps: &[MoveStep]) -> String {
     let mut order = String::from(command);
 
     for step in steps {
@@ -128,12 +131,10 @@ fn render_order(command: &str, steps: &[MoveStep]) -> String {
                 order.push(' ');
                 order.push_str(direction.abbreviation());
             }
-            MoveStep::In(structure) => {
-                order.push_str(" IN");
-                if let Some(id) = structure {
-                    order.push(' ');
-                    order.push_str(id);
-                }
+            MoveStep::In => order.push_str(" IN"),
+            MoveStep::Enter(id) => {
+                order.push(' ');
+                order.push_str(id);
             }
             MoveStep::Out => order.push_str(" OUT"),
         }

@@ -353,6 +353,12 @@ export type FieldChange = {
   /** The `ReportUnit` field: `name`, `onGuard`, `flags`, `items`, `men` or `structureId`. */
   field: string;
   original: string;
+  /**
+   * The order this change is attributed to, rendered as the game spells it - `ENTER 12`, `LEAVE`,
+   * `MOVE OUT`, `MOVE N NE`. Absent when no single order accounts for the change, which is every
+   * field but `structureId` today.
+   */
+  cause?: string | null;
 };
 
 /** Goods taken from a unit the report does not show in this hex (`ah-agbm`). */
