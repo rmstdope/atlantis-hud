@@ -1,0 +1,218 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-rgkk.2.3 — how many steps the chain draws</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .legend code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  /* The popup, drawn at the real frame's width: w-max, max-w-sm = 384px. */
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .line .val { text-align:right; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .fut { color:var(--select); }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .sums { font:11.5px/1.6 'SF Mono',Menlo,monospace; color:var(--ink-dim); margin-top:8px; white-space:pre; }
+  .rule { border-top:1px solid var(--edge); margin:26px 0 0; }
+</style>
+
+<header>
+  <h1>ah-rgkk.2.3 <span>&mdash; how many steps the chain draws</span></h1>
+  <p>Everything on this page is <b>inside</b> decision <code>N2</code>, which you already took: a Skills line is a
+  chain of <code>level (points)</code> steps, the last one next turn&rsquo;s and drawn in blue. One thing about it was
+  written down two ways and I cannot settle it from the record. <code>ah-rgkk.2</code>&rsquo;s own words say
+  &ldquo;<i>one step per thing that happened</i>&rdquo;; the example beside them, and every popup in
+  <code>docs/ui/ah-rgkk.2-round2.html</code>, draws <b>fewer steps than things that happened</b>. The two readings
+  differ on the screen, so this is yours.</p>
+</header>
+<p style="max-width:105ch;margin:14px auto 0;color:var(--ink-soft);font-size:14px;">
+<b style="color:var(--brass)">Answered:</b> <b>B</b>. A Skills line shows where the month started, where the market
+left it, and &mdash; when the unit is studying &mdash; where next turn lands, in blue. At most three figures, whatever
+happened; a skill nothing touched shows one. Every arrival is still named in the sentences underneath.</p>
+
+<main>
+  <p class="scene" style="margin-top:22px"><b>The scene</b> is round 2&rsquo;s, so the figures are the ones you have already
+  seen. <b>Braves (1487)</b>, 12 men, holding <code>COMB 2 (90)</code>, <code>LUMB 2 (90)</code>,
+  <code>OBSE 1 (30)</code>. This month: <b>Scouts (1502)</b> gives it <b>2 men</b> who know <code>OBSE 3 (180)</code>;
+  it then recruits <b>6 humans</b>; it writes <code>STUDY COMBAT</code>; and <b>Elders (1774)</b>, one leader at
+  <code>COMB 3</code>, writes <code>TEACH 1487</code>.</p>
+  <div class="sums">gift    COMB (12&times;90+2&times;0)/14 = 77   LUMB 77   OBSE (12&times;30+2&times;180)/14 = 51   men 14
+recruit COMB (14&times;77)/20     = 53   LUMB 53   OBSE (14&times;51)/20         = 35   men 20
+study   COMB 53 + 1.5&times;30 = 98 &rarr; level 2</div>
+
+  <h3 class="sec">The question &mdash; does each arrival of men get a step of its own?</h3>
+  <p>Two arrivals happened this month: a gift and a recruit. <b>A</b> draws both. <b>B</b> draws where the month
+  started and where the market left it, and lets the sentences underneath say who did what. Both end in the same blue
+  projection. Three cases each: the scene, a busy unit, and a skill nothing touched.</p>
+
+  <div class="split2">
+    <div class="card">
+      <p class="hexlab">A &mdash; one step per arrival &nbsp;&mdash;&nbsp; rejected</p>
+      <div class="pops">
+        <div class="pop">
+          <div class="head">Braves (1487) &mdash; skills</div>
+          <div class="line"><span>combat COMB</span><span class="val"><span class="flat">2 (90)</span><span class="arrow">&rarr;</span><span class="down">1 (77)</span><span class="arrow">&rarr;</span><span class="down">1 (53)</span><span class="arrow">&rarr;</span><span class="fut">2 (98)</span></span></div>
+          <div class="line"><span>lumberjack LUMB</span><span class="val"><span class="flat">2 (90)</span><span class="arrow">&rarr;</span><span class="down">1 (77)</span><span class="arrow">&rarr;</span><span class="down">1 (53)</span></span></div>
+          <div class="line"><span>observation OBSE</span><span class="val"><span class="flat">1 (30)</span><span class="arrow">&rarr;</span><span class="up">1 (51)</span><span class="arrow">&rarr;</span><span class="down">1 (35)</span></span></div>
+          <div class="note">2 men joined from Scouts (1502), bringing observation 3.</div>
+          <div class="note">6 humans recruited, and recruits bring no skills.</div>
+          <div class="note">Studying combat, taught by Elders (1774): worth one and a half months. The blue figure is next turn&rsquo;s report; everything before it is this month.</div>
+        </div>
+      </div>
+      <p class="hexlab" style="margin-top:16px">a busy unit &mdash; four gifts and a recruit</p>
+      <div class="pops">
+        <div class="pop">
+          <div class="head">Rally (2100) &mdash; skills</div>
+          <div class="line"><span>combat COMB</span><span class="val"><span class="flat">2 (90)</span><span class="arrow">&rarr;</span><span class="down">1 (84)</span><span class="arrow">&rarr;</span><span class="down">1 (79)</span><span class="arrow">&rarr;</span><span class="flat">&hellip;</span><span class="arrow">&rarr;</span><span class="down">1 (48)</span></span></div>
+          <div class="note">3 men joined from Scouts (1502).</div>
+          <div class="note">2 men joined from Watch (1604).</div>
+          <div class="note">4 men joined from Levy (2871).</div>
+          <div class="note">5 men joined from Porters (1913).</div>
+          <div class="note">10 humans recruited, and recruits bring no skills.</div>
+        </div>
+      </div>
+      <p class="hexlab" style="margin-top:16px">a skill neither arrival touched</p>
+      <div class="pops">
+        <div class="pop">
+          <div class="head">Braves (1487) &mdash; skills</div>
+          <div class="line"><span>tactics TACT</span><span class="val"><span class="flat">0 (0)</span><span class="arrow">&rarr;</span><span class="flat">0 (0)</span><span class="arrow">&rarr;</span><span class="flat">0 (0)</span></span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Every figure the game will compute is on the screen, in the order it computes them.</li>
+        <li>Each step lines up with one sentence underneath, so &ldquo;which arrival did that&rdquo; is answerable.</li>
+        <li class="con">The line grows with the number of arrivals; past four steps the middle has to be elided
+          (<code>&hellip;</code>), so the promise of &ldquo;every figure&rdquo; does not hold anyway.</li>
+        <li class="con">A step that moved nothing repeats the figure beside it.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab" style="color:var(--brass-bright)">B &mdash; where the month started, where the market left it &nbsp;&mdash;&nbsp; CHOSEN</p>
+      <div class="pops">
+        <div class="pop">
+          <div class="head">Braves (1487) &mdash; skills</div>
+          <div class="line"><span>combat COMB</span><span class="val"><span class="flat">2 (90)</span><span class="arrow">&rarr;</span><span class="down">1 (53)</span><span class="arrow">&rarr;</span><span class="fut">2 (98)</span></span></div>
+          <div class="line"><span>lumberjack LUMB</span><span class="val"><span class="flat">2 (90)</span><span class="arrow">&rarr;</span><span class="down">1 (53)</span></span></div>
+          <div class="line"><span>observation OBSE</span><span class="val"><span class="flat">1 (30)</span><span class="arrow">&rarr;</span><span class="up">1 (35)</span></span></div>
+          <div class="note">2 men joined from Scouts (1502), bringing observation 3.</div>
+          <div class="note">6 humans recruited, and recruits bring no skills.</div>
+          <div class="note">Studying combat, taught by Elders (1774): worth one and a half months. The blue figure is next turn&rsquo;s report; everything before it is this month.</div>
+        </div>
+      </div>
+      <p class="hexlab" style="margin-top:16px">a busy unit &mdash; four gifts and a recruit</p>
+      <div class="pops">
+        <div class="pop">
+          <div class="head">Rally (2100) &mdash; skills</div>
+          <div class="line"><span>combat COMB</span><span class="val"><span class="flat">2 (90)</span><span class="arrow">&rarr;</span><span class="down">1 (48)</span></span></div>
+          <div class="note">3 men joined from Scouts (1502).</div>
+          <div class="note">2 men joined from Watch (1604).</div>
+          <div class="note">4 men joined from Levy (2871).</div>
+          <div class="note">5 men joined from Porters (1913).</div>
+          <div class="note">10 humans recruited, and recruits bring no skills.</div>
+        </div>
+      </div>
+      <p class="hexlab" style="margin-top:16px">a skill neither arrival touched</p>
+      <div class="pops">
+        <div class="pop">
+          <div class="head">Braves (1487) &mdash; skills</div>
+          <div class="line"><span>tactics TACT</span><span class="val"><span class="flat">0 (0)</span></span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>The line is the same length whatever happened: two figures, three when studying. It never has to elide.</li>
+        <li>A skill nothing moved shows one figure, exactly as every other column does under
+          <code>ah-rgkk.6</code>&rsquo;s pair.</li>
+        <li>The pair reads the same way here as in Items, Men and Silver: what the report said, what it stands at now.</li>
+        <li class="con">The intermediate figure after each arrival is not on the screen &mdash; only the sentence saying
+          who arrived.</li>
+        <li class="con">Where two arrivals pull opposite ways (a skilled gift, then recruits) the net can look small
+          while both moves were large.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">For reference &mdash; already settled, and drawn here so you can see them in place</h3>
+  <p>Nothing below is in question; it is what I will write unless you say otherwise. Identical under A and B.</p>
+  <div class="pops">
+    <div class="pop">
+      <p class="hexlab">a skill diluted out of the list</p>
+      <div class="head">Levy (2871) &mdash; skills</div>
+      <div class="line"><span>combat COMB</span><span class="val"><span class="flat">1 (30)</span><span class="arrow">&rarr;</span><span class="down">0 (6)</span></span></div>
+      <div class="line"><span>riding RIDI</span><span class="val"><span class="flat">1 (30)</span><span class="arrow">&rarr;</span><span class="down">gone</span></span></div>
+      <div class="note">35 peasants recruited, and recruits bring no skills.</div>
+      <div class="note">Riding drops below one point per man, so the unit loses it.</div>
+    </div>
+    <div class="pop">
+      <p class="hexlab">a headcount the report could only guess</p>
+      <div class="head">Rabble (3300) &mdash; skills</div>
+      <div class="line"><span>combat COMB</span><span class="val"><span class="flat">1 (30)</span></span></div>
+      <div class="warn">This unit&rsquo;s headcount is a guess, so what recruiting does to these cannot be worked out.</div>
+    </div>
+    <div class="pop">
+      <p class="hexlab">the fee may not be payable</p>
+      <div class="head">Braves (1487) &mdash; skills</div>
+      <div class="line"><span>combat COMB</span><span class="val"><span class="flat">2 (90)</span><span class="arrow">&rarr;</span><span class="down">1 (53)</span><span class="arrow">&rarr;</span><span class="fut">2 (98)?</span></span></div>
+      <div class="note">6 humans recruited, and recruits bring no skills.</div>
+      <div class="note">Studying combat: worth one month. The blue figure is next turn&rsquo;s report; everything before it is this month.</div>
+      <div class="warn">Studying combat costs 200 silver and this unit is 160 short, so the study may not happen at all.</div>
+    </div>
+    <div class="pop">
+      <p class="hexlab">at the race ceiling</p>
+      <div class="head">Militia (2088) &mdash; skills</div>
+      <div class="line"><span>combat COMB</span><span class="val"><span class="flat">2 (170)</span><span class="arrow">&rarr;</span><span class="fut">2 (200)</span></span></div>
+      <div class="note">Studying combat: worth one month. Hill dwarves may not take combat past level 2, so the points rise and the level holds.</div>
+    </div>
+    <div class="pop">
+      <p class="hexlab">a foreign unit, read out of a battle</p>
+      <div class="head">Watazka (4839) &mdash; skills</div>
+      <div class="line"><span>combat COMB</span><span class="val">3</span></div>
+      <div class="line"><span>riding RIDI</span><span class="val">2</span></div>
+      <div class="note">Read from the battle in plain (12,8) on turn 71.</div>
+      <div class="note">A report never shows another faction&rsquo;s skills.</div>
+    </div>
+    <div class="pop">
+      <p class="hexlab">nothing moved, and nobody is studying</p>
+      <div class="head">Scouts (1502) &mdash; skills</div>
+      <div class="line"><span>observation OBSE</span><span class="val">3 (180)</span></div>
+      <div class="line"><span>stealth STEA</span><span class="val">2 (90)</span></div>
+      <div class="note">Nothing this month changes these.</div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Mockup for <code>ah-rgkk.2.3</code>. The frame is the real one &mdash; <code>w-max</code> capped at
+  <code>max-w-sm</code> (384px) &mdash; so the widths above are the widths you will get. Blue is next turn; amber is a
+  doubt; <code>gone</code> is a skill whose share of the points rounded to zero, which
+  <code>merge_skills</code> drops from the unit&rsquo;s list outright.
+</footer>
