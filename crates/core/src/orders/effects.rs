@@ -339,34 +339,7 @@ pub fn preview_orders_on_map(
 
     let report = cache.classified(raw_report, ruleset_json);
 
-    let mut working = Working::over_own_units(&report, ruleset.clone());
-    super::walk::walk(orders_document, |event| working.visit(event));
-    // `rules/sequenceofevents` settles GIVE and TAKE in one Give phase, before the market - and
-    // processes units in report order, which is why nothing moved while the document was being
-    // read (`ah-3mwm`).
-    working.apply_transfers();
-
-    // What `BUY`, `SELL`, `WITHDRAW` and `TAKE` do to each unit's item list, read from the same
-    // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
-    // from - so the ITEMS and SILVER cells on one row cannot disagree (`ah-agbm`). `GIVE` is not
-    // read here: the walk above already applied every gift through `Working::give`.
-    let item_effects =
-        super::semantics::item_effects(&report, orders_document, Some(ruleset.as_ref()));
-    working.apply_item_effects(&item_effects);
-    settle_headcounts(&mut working.units, &ruleset);
-    // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
-    // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
-    // applied and the headcounts derived from it (`ah-dhga`).
-    let dissolved = working.dissolve_empty_forms();
-    // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
-    // after the market, after movement, after production. A sale takes its goods first, and
-    // whatever a PRODUCE made this month is there to be sent.
-    working.apply_transports(&dissolved);
-    // A dissolving row is drawn now (`ah-ty3s.3`), so its weight, capacity and movement are
-    // settled exactly like any other formed row's rather than left at `formed_unit`'s defaults.
-    for working_unit in working.units.iter_mut() {
-        working_unit.refresh_movement(&ruleset);
-    }
+    let (units, dissolved) = settle(&report, &ruleset, orders_document);
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
@@ -384,7 +357,7 @@ pub fn preview_orders_on_map(
     let mut decided: Vec<Decided> = Vec::new();
     let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
 
-    for (index, entry) in working.units.into_iter().enumerate() {
+    for (index, entry) in units.into_iter().enumerate() {
         let mut arrival = None;
         let mut mode = None;
 
@@ -629,6 +602,73 @@ pub fn preview_orders_on_map(
     })
 }
 
+/// Every own unit as this month's orders leave it, before movement is resolved, with the rows
+/// `rules/form` dissolves and what each one's goods revert to.
+///
+/// Extracted from [`preview_orders_on_map`] rather than duplicated because the map's own trace
+/// needs the same answer for a `FORM`ed unit: its speed comes from the men and goods its block is
+/// given, so a caller that rebuilt the row from [`formed_unit`] alone would trace a unit of
+/// unstated speed (`ah-4hux`). The order of the steps inside is load-bearing and each one's reason
+/// is on the line that runs it.
+fn settle(
+    report: &crate::report::ParsedReport,
+    ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
+    orders_document: &str,
+) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
+    let mut working = Working::over_own_units(report, ruleset.clone());
+    super::walk::walk(orders_document, |event| working.visit(event));
+    // `rules/sequenceofevents` settles GIVE and TAKE in one Give phase, before the market - and
+    // processes units in report order, which is why nothing moved while the document was being
+    // read (`ah-3mwm`).
+    working.apply_transfers();
+
+    // What `BUY`, `SELL`, `WITHDRAW` and `TAKE` do to each unit's item list, read from the same
+    // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
+    // from - so the ITEMS and SILVER cells on one row cannot disagree (`ah-agbm`). `GIVE` is not
+    // read here: the walk above already applied every gift through `Working::give`.
+    let item_effects = super::semantics::item_effects(report, orders_document, Some(ruleset.as_ref()));
+    working.apply_item_effects(&item_effects);
+    settle_headcounts(&mut working.units, ruleset);
+    // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
+    // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
+    // applied and the headcounts derived from it (`ah-dhga`).
+    let dissolved = working.dissolve_empty_forms();
+    // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
+    // after the market, after movement, after production. A sale takes its goods first, and
+    // whatever a PRODUCE made this month is there to be sent.
+    working.apply_transports(&dissolved);
+    // A dissolving row is drawn now (`ah-ty3s.3`), so its weight, capacity and movement are
+    // settled exactly like any other formed row's rather than left at `formed_unit`'s defaults.
+    for working_unit in working.units.iter_mut() {
+        working_unit.refresh_movement(ruleset);
+    }
+
+    (working.units, dissolved)
+}
+
+/// One unit this month's `FORM` creates, as the whole month's orders leave it.
+///
+/// `None` for an id no `FORM` in this document creates, which includes every real unit number and
+/// a `new-<alias>` whose block is not in this document. A dissolving unit **is** returned: the
+/// order it was written is still drawn (decision **Q3b'** of `ah-4hux`).
+pub(crate) fn formed_unit_as_ordered(
+    report: &crate::report::ParsedReport,
+    ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
+    orders_document: &str,
+    unit_id: &str,
+) -> Option<ReportUnit> {
+    // Not an optimisation to skip: without it every trace of an id the report does not carry would
+    // run the whole settling pipeline to find nothing.
+    if !unit_id.starts_with(FORMED_ID_PREFIX) {
+        return None;
+    }
+    let (units, _) = settle(report, ruleset, orders_document);
+    units
+        .into_iter()
+        .find(|entry| entry.formed && entry.unit.unit_id == unit_id)
+        .map(|entry| entry.unit)
+}
+
 /// One unit's verdict, held between the two passes of the preview.
 struct Decided {
     entry: WorkingUnit,
@@ -704,13 +744,19 @@ pub(crate) fn inherited_flags(parent_flags: &[String]) -> Vec<String> {
 /// unit to the checks, and it is why `semantics` builds it with this function rather than with one
 /// of its own - two readings of which units a document forms, and of what they are called, is how
 /// the table's rows and the column's figures come to disagree about one turn.
+/// The id a `FORM`ed unit is known by until the game issues a real one: `new-1` for `FORM 1`.
+///
+/// Declared here because [`formed_unit`] writes it and both [`formed_unit_as_ordered`] and
+/// `movement::fleet::OrderedUnits` read it back (`ah-4hux`).
+pub(crate) const FORMED_ID_PREFIX: &str = "new-";
+
 pub(crate) fn formed_unit(
     parent: &ReportUnit,
     alias: &str,
     reported_flags: &[String],
 ) -> ReportUnit {
     ReportUnit {
-        unit_id: format!("new-{alias}"),
+        unit_id: format!("{FORMED_ID_PREFIX}{alias}"),
         name: format!("Unit (new {alias})"),
         region_id: parent.region_id.clone(),
         faction_id: parent.faction_id.clone(),
