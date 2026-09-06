@@ -646,7 +646,7 @@ test("a formed unit that recruits nobody keeps its row, marked as dissolving", a
 
   const formedRow = page.getByTestId("unit-row-new-1");
   await expect(formedRow).toBeVisible();
-  await expect(formedRow).toHaveAttribute("data-preview-status", "dissolving");
+  await expect(formedRow).toHaveAttribute("data-preview-dissolving", "true");
   await expect(formedRow).toContainText("dissolves — no recruits");
   // The Silver column shows no month end for a unit that will not exist (decision S1).
   await expect(formedRow.getByTestId("unit-silver-new-1")).toHaveCount(0);
@@ -658,7 +658,7 @@ test("a formed unit that recruits nobody keeps its row, marked as dissolving", a
   // Pay for the recruit, and the row reads like any other new unit.
   await fillOrders(page, "@study obse\nCLAIM 200\nFORM 1\nBUY 1 HDWA\nEND\n");
 
-  await expect(formedRow).toHaveAttribute("data-preview-status", "formed");
+  await expect(formedRow).toHaveAttribute("data-preview-formed", "true");
   await expect(formedRow).not.toContainText("dissolves — no recruits");
   await expect(formedRow.locator("td").last()).toHaveText(/\d/);
 });

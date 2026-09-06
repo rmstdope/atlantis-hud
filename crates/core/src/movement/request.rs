@@ -233,10 +233,23 @@ pub fn trace_orders_on_map(
 
     let report = cache.classified(raw_report, ruleset_json);
 
-    let Some(unit) = report.units().find(|unit| unit.unit_id == unit_id).cloned() else {
-        return Ok(MoveOrderTraceResponse { path: None });
-    };
     let ordered = OrderedUnits::from_document(orders_document);
+    let unit = match report.units().find(|unit| unit.unit_id == unit_id).cloned() {
+        Some(unit) => unit,
+        // A unit the report does not carry is either a `FORM`ed unit's synthetic id or a number
+        // that names nothing. The first can still be traced, from the row this month's orders make
+        // of it - and it must be the settled row, not `formed_unit`'s empty shell, because the men
+        // and goods its block is given are what give it a speed to time the journey by (`ah-4hux`).
+        None => match crate::orders::effects::formed_unit_as_ordered(
+            &report,
+            &ruleset,
+            orders_document,
+            unit_id,
+        ) {
+            Some(unit) => unit,
+            None => return Ok(MoveOrderTraceResponse { path: None }),
+        },
+    };
     let Some(steps) = steps_followed_by(&report, &ruleset, &ordered, &unit) else {
         return Ok(MoveOrderTraceResponse { path: None });
     };

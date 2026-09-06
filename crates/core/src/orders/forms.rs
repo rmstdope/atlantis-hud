@@ -67,7 +67,7 @@ pub enum Party {
 /// `is_number` admits ASCII digits and nothing else, so `0`, `00` and `000` are the only ways to
 /// write zero and there is no sign to consider - and an alias of twenty digits stays an alias,
 /// where `i64::from_str` would fail and be read as no alias at all.
-pub(super) fn read_alias(token: &Token) -> Option<&str> {
+pub(crate) fn read_alias(token: &Token) -> Option<&str> {
     (token.kind == TokenKind::Number && !token.text.trim_start_matches('0').is_empty())
         .then_some(token.text.as_str())
 }

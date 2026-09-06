@@ -146,7 +146,9 @@ describe("a unit carried away by a sailing fleet", () => {
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
-        dissolvesInto: null
+        dissolvesInto: null,
+        formed: false,
+        dissolving: false
       }
     ]
   });
@@ -229,7 +231,9 @@ describe("the structure column", () => {
             transportSent: [],
             transportReceived: [],
             transportTargetIssues: [],
-            dissolvesInto: null
+            dissolvesInto: null,
+            formed: false,
+            dissolving: false
           }
         ]
       }
@@ -808,6 +812,8 @@ describe("the items column", () => {
         transportReceived: [],
         transportTargetIssues: [],
         dissolvesInto: null,
+        formed: false,
+        dissolving: false,
         ...previewOverrides
       }
     ]
@@ -1000,6 +1006,8 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         transportReceived: [],
         transportTargetIssues: [],
         dissolvesInto: null,
+        formed: false,
+        dissolving: false,
         ...previewOverrides
       }
     ]
@@ -1316,6 +1324,8 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     transportReceived: [],
     transportTargetIssues: [],
     dissolvesInto: null,
+    formed: false,
+    dissolving: false,
     ...overrides
   });
 
@@ -1415,7 +1425,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
         regions: [
           {
             regionId: "1:6,52",
-            units: [previewed({ unitId: "new-1", name: "Unit (new 1)" }, { status: "formed" })]
+            units: [previewed({ unitId: "new-1", name: "Unit (new 1)" }, { formed: true })]
           }
         ]
       }
@@ -1435,7 +1445,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
             units: [
               previewed(
                 { unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" },
-                { status: "formed" }
+                { formed: true }
               )
             ]
           },
@@ -1444,7 +1454,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
             units: [
               previewed(
                 { unitId: "new-1", name: "Unit (new 1)", regionId: "1:9,55" },
-                { status: "formed" }
+                { formed: true }
               )
             ]
           }
@@ -1472,7 +1482,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
               units: [
                 previewed(
                   { unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" },
-                  { status: "formed" }
+                  { formed: true }
                 )
               ]
             },
@@ -1481,7 +1491,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
               units: [
                 previewed(
                   { unitId: "new-1", name: "Unit (new 1)", regionId: "1:9,55" },
-                  { status: "formed" }
+                  { formed: true }
                 )
               ]
             }
@@ -1806,7 +1816,7 @@ describe("a row the game dissolves", () => {
     overrides: Partial<RegionPreview["units"][number]> = {}
   ): RegionPreview["units"][number] => ({
     unit: unit({ unitId: "new-1", name: "new 1", own: true }),
-    status: "dissolving",
+    status: "present",
     changes: [],
     arrivingFrom: null,
     departingTo: null,
@@ -1820,6 +1830,8 @@ describe("a row the game dissolves", () => {
     transportReceived: [],
     transportTargetIssues: [],
     dissolvesInto: "Former (902)",
+    formed: true,
+    dissolving: true,
     ...overrides
   });
 
@@ -1837,13 +1849,64 @@ describe("a row the game dissolves", () => {
   const rowMarkup = (markup: string): string =>
     /<tr[^>]*data-testid="unit-row-new-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
 
+  /**
+   * A formed unit that walks away reads `new` first and then its destination - the order the
+   * navigator chose (`ah-4hux`, decisions O1 and D1) - and carries both facts as attributes,
+   * since `data-preview-status` no longer says "formed".
+   */
+  it("a formed unit that walks reads `new` before its destination", () => {
+    const row = rowMarkup(
+      drawDissolving({
+        preview: {
+          regionId: "1:6,52",
+          units: [
+            dissolvingRow({
+              dissolving: false,
+              status: "departing",
+              departingTo: "1:7,51",
+              dissolvesInto: null
+            })
+          ]
+        }
+      })
+    );
+
+    expect(row).toContain('data-preview-status="departing"');
+    expect(row).toContain('data-preview-formed="true"');
+    expect(row).not.toContain("data-preview-dissolving");
+    expect(row.indexOf(">new<")).toBeGreaterThan(-1);
+    expect(row.indexOf(">new<")).toBeLessThan(row.indexOf("1:7,51"));
+  });
+
+  /**
+   * And a dissolving one that was given a MOVE shows all three markers in the chosen order: the
+   * arrow is unnamed, because a unit with no men has no stated speed (`ah-4hux`, decision Q3b').
+   */
+  it("a dissolving row that moves reads `new`, then the arrow, then the warning", () => {
+    const row = rowMarkup(
+      drawDissolving({
+        preview: {
+          regionId: "1:6,52",
+          units: [dissolvingRow({ status: "departing", departingTo: null })]
+        }
+      })
+    );
+
+    const newAt = row.indexOf(">new<");
+    const arrowAt = row.indexOf("→ …");
+    const warningAt = row.indexOf("dissolves — no recruits");
+    expect(newAt).toBeGreaterThan(-1);
+    expect(arrowAt).toBeGreaterThan(newAt);
+    expect(warningAt).toBeGreaterThan(arrowAt);
+  });
+
   it("says so and reads dimmed", () => {
     const row = rowMarkup(drawDissolving());
 
     expect(row).toContain(">new<");
     expect(row).toContain('data-testid="unit-dissolving-new-1"');
     expect(row).toContain("dissolves — no recruits");
-    expect(row).toContain('data-preview-status="dissolving"');
+    expect(row).toContain('data-preview-dissolving="true"');
     expect(row).toContain("opacity-60");
   });
 
@@ -1862,6 +1925,9 @@ describe("a row the game dissolves", () => {
                   ...dissolvingRow(),
                   unit: unit({ unitId: "903", name: "Leaver", own: true }),
                   status: "departing",
+                  // An ordinary departure for contrast: neither formed nor dissolving.
+                  formed: false,
+                  dissolving: false,
                   departingTo: "1:7,53",
                   dissolvesInto: null
                 }
@@ -1880,7 +1946,7 @@ describe("a row the game dissolves", () => {
     const row = rowMarkup(markup);
 
     expect(row).toContain("dissolves — no recruits");
-    expect(row).toContain('data-preview-status="dissolving"');
+    expect(row).toContain('data-preview-dissolving="true"');
     expect(row).toContain("opacity-60");
     // Decision A1: the dim is unconditional on the source, and `dimsDeparting` still governs
     // departures alone - a departing row in the same list is not dimmed here.

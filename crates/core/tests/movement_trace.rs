@@ -39,6 +39,20 @@ fn document(unit_id: &str, orders: &str) -> String {
     format!("unit {unit_id}\n{orders}")
 }
 
+/// Traces one unit's orders over a document given whole, for a unit whose orders are not under a
+/// `unit` line of its own: a `FORM`ed unit's sit inside the block of the unit that formed it.
+fn trace_document(unit_id: &str, document: &str) -> MoveOrderTraceResponse {
+    trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        TURN_71,
+        "[]",
+        unit_id,
+        document,
+    )
+    .expect("the ruleset loads")
+}
+
 /// "* Seven of Eight (18642)" stands in the mountain at (7,53); "  North : mountain (7,51)".
 #[test]
 fn a_written_move_is_traced_across_the_map() {
@@ -138,6 +152,42 @@ fn a_move_inside_a_form_block_belongs_to_the_formed_unit() {
         path.steps[0].to,
         at(7, 51),
         "the formed unit's MOVE SE is not this unit's path"
+    );
+}
+
+/// The formed unit's own MOVE is traced for the formed unit, from the hex it was formed in
+/// (`ah-4hux`). Its sibling above pins that the *parent* does not follow it.
+#[test]
+fn a_formed_units_own_move_is_traced_for_the_formed_unit() {
+    let document = "unit 18642\nFORM 2\nMOVE N\nEND\nGIVE NEW 2 1 LEAD\n";
+    let path = trace_document("new-2", document)
+        .path
+        .expect("the formed unit's own MOVE is traced for it");
+
+    // `rules/form` creates the unit "in the same region as the unit which formed it".
+    assert_eq!(path.from, at(7, 53));
+    assert_eq!(path.steps[0].to, at(7, 51));
+
+    // An alias no FORM in this document creates names nothing, exactly like a unit number the
+    // report does not carry.
+    assert_eq!(trace_document("new-9", document).path, None);
+}
+
+/// A FORM whose alias cannot be read still owns its block's orders - it just owns them as nobody.
+///
+/// `Working::open_form` pushes `None` for a FORM with no argument, `FORM 0`, or an alias already
+/// taken, and applies the block's orders to no unit at all. The trace has to agree, or the parent
+/// draws a line for a MOVE it did not write - which a player typing `FORM` reaches before they have
+/// typed the alias (`ah-4hux`).
+#[test]
+fn a_move_inside_an_unreadable_form_block_belongs_to_nobody() {
+    assert_eq!(
+        trace_document("18642", "unit 18642\nFORM\nMOVE N\nEND\n").path,
+        None
+    );
+    assert_eq!(
+        trace_document("18642", "unit 18642\nFORM 0\nMOVE N\nEND\n").path,
+        None
     );
 }
 

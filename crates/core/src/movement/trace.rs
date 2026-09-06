@@ -366,6 +366,10 @@ mod tests {
             .clone();
         unit.weight = None;
         unit.capacity = None;
+        // The settled movement too: `mobility` falls back to it when the report printed no weight
+        // and capacity of its own, so leaving it set would state exactly what this pins as unstated
+        // (`ah-4hux`).
+        unit.movement = None;
 
         let path = trace_move(
             &map,

@@ -215,3 +215,134 @@ fn a_unit_that_boards_a_departing_fleet_is_previewed_as_departing() {
         "with no ENTER, the unit ashore is not carried and has nothing to preview"
     );
 }
+
+/// `rules/form` creates the new unit in its parent's hex and `rules/sequenceofevents` does so
+/// before movement, so a unit formed this month can walk away this month (`ah-4hux`).
+#[test]
+fn a_unit_formed_this_month_walks_away_this_month() {
+    // "* Drones (15571)" stands at (18,44) with 50 lizardmen; south-east lies (19,45), which is
+    // where the committed template's own "MOVE SE SE" sets out for. The GIVE is what keeps the
+    // formed unit alive: a FORM that gains nobody is dissolved by `rules/form`. The gift is a
+    // lizardman rather than a leader because the giver must not be a mage - `rules/magic` forbids
+    // a mage to GIVE men at all, and every leader of this faction in reach is one.
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        TURN_71,
+        "[]",
+        "#atlantis 95 \"password\"\nunit 15571\nFORM 1\nMOVE SE\nEND\nGIVE NEW 1 1 LIZA\n#end\n",
+    )
+    .expect("the ruleset loads");
+
+    let origin = response
+        .regions
+        .iter()
+        .find(|region| region.region_id == "1:18,44")
+        .expect("the hex the unit is formed in");
+    let departing = origin
+        .units
+        .iter()
+        .find(|unit| unit.unit.unit_id == "new-1")
+        .expect("the formed unit keeps its row in the hex it was formed in");
+    assert_eq!(departing.status, UnitPreviewStatus::Departing);
+    assert!(departing.formed);
+    assert!(!departing.dissolving);
+    assert_eq!(departing.departing_to.as_deref(), Some("1:19,45"));
+
+    let destination = response
+        .regions
+        .iter()
+        .find(|region| region.region_id == "1:19,45")
+        .expect("the hex the formed unit walks into");
+    let arriving = destination
+        .units
+        .iter()
+        .find(|unit| unit.unit.unit_id == "new-1")
+        .expect("and gets an arrival row there, still saying `new` (decision D1)");
+    assert_eq!(arriving.status, UnitPreviewStatus::Arriving);
+    assert!(arriving.formed);
+    assert_eq!(arriving.arriving_from.as_deref(), Some("1:18,44"));
+}
+
+/// A formed unit that gains nobody is dissolved by `rules/form`, and the row still shows the MOVE
+/// the player wrote - unnamed, because a unit with no men has no stated speed to time the journey
+/// by (`ah-4hux`, decision **Q3b'**).
+#[test]
+fn a_dissolving_formed_unit_shows_an_unnamed_departure_and_no_arrival() {
+    // The same orders as `a_unit_formed_this_month_walks_away_this_month` without the GIVE, so the
+    // FORM gains nobody and `rules/form` dissolves it.
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        TURN_71,
+        "[]",
+        "#atlantis 95 \"password\"\nunit 15571\nFORM 1\nMOVE SE\nEND\n#end\n",
+    )
+    .expect("the ruleset loads");
+
+    let origin = response
+        .regions
+        .iter()
+        .find(|region| region.region_id == "1:18,44")
+        .expect("the hex the unit is formed in");
+    let departing = origin
+        .units
+        .iter()
+        .find(|unit| unit.unit.unit_id == "new-1")
+        .expect("the row a player is editing stays on the table");
+    assert_eq!(departing.status, UnitPreviewStatus::Departing);
+    assert!(departing.formed);
+    assert!(departing.dissolving);
+    assert_eq!(departing.departing_to, None);
+
+    // And it stands nowhere next month, so no other hex carries a row for it.
+    for region in &response.regions {
+        if region.region_id == "1:18,44" {
+            continue;
+        }
+        assert!(
+            !region.units.iter().any(|unit| unit.unit.unit_id == "new-1"),
+            "a unit the game deletes gets no arrival row: {}",
+            region.region_id
+        );
+    }
+}
+
+/// `rules/form` puts the new unit in its parent's structure, so a unit formed aboard a fleet that
+/// sails goes where the fleet goes without writing an order of its own (`ah-4hux`, decision Q4b).
+#[test]
+fn a_unit_formed_aboard_a_sailing_fleet_is_carried_with_it() {
+    // "* Drones (10575)" stands in Ship [235] at (36,44) with 2 gnolls; its SAIL SE reaches
+    // (37,45), which `a_unit_that_boards_a_departing_fleet_is_previewed_as_departing` asserts too.
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        G5_F21_T24,
+        "[]",
+        "unit 10575\nSAIL SE\nFORM 1\nEND\nGIVE NEW 1 1 GNOL\n",
+    )
+    .expect("the ruleset loads");
+
+    let origin = response
+        .regions
+        .iter()
+        .find(|region| region.region_id == "1:36,44")
+        .expect("the hex the fleet sets out from");
+    let carried = origin
+        .units
+        .iter()
+        .find(|unit| unit.unit.unit_id == "new-1")
+        .expect("the formed unit keeps its row in the hex it was formed in");
+    assert_eq!(carried.status, UnitPreviewStatus::Departing);
+    assert!(carried.formed);
+    assert!(!carried.dissolving);
+    assert_eq!(carried.departing_to.as_deref(), Some("1:37,45"));
+    assert!(
+        carried
+            .aboard
+            .as_deref()
+            .is_some_and(|hull| hull.contains("235")),
+        "and names the hull carrying it: {:?}",
+        carried.aboard
+    );
+}

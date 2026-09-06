@@ -336,13 +336,15 @@ export type MoveOrderTraceResponse = {
   path: TracedPath | null;
 };
 
-/** How a previewed unit relates to the hex its row sits in. */
-export type UnitPreviewStatus =
-  | "present"
-  | "departing"
-  | "arriving"
-  | "formed"
-  | "dissolving";
+/**
+ * Where a previewed unit stands relative to the hex its row sits in.
+ *
+ * Only that: whether this month's FORM creates the unit, and whether `rules/form` dissolves it,
+ * are two further facts a row carries alongside any of these - `UnitPreview.formed` and
+ * `UnitPreview.dissolving`. They used to be values of this union, which made a formed unit that
+ * also walks away inexpressible (`ah-4hux`).
+ */
+export type UnitPreviewStatus = "present" | "departing" | "arriving";
 
 /** One field the orders change, with what the report said before, formatted for a tooltip. */
 export type FieldChange = {
@@ -476,6 +478,17 @@ export type UnitPreview = {
    * every other row, and on a dissolving row in a hex the report shows no own unit in.
    */
   dissolvesInto: string | null;
+  /**
+   * This month's FORM creates this unit: it did not exist when the report was written, and its
+   * `unitId` is the synthetic `new-<alias>`. Carried on every row of such a unit, including its
+   * arriving row (`ah-4hux`).
+   */
+  formed: boolean;
+  /**
+   * `rules/form` dissolves this unit before the month ends - a formed unit that gains nobody.
+   * Always accompanied by `formed`, and drawn rather than skipped (`ah-ty3s.3`, decision K2).
+   */
+  dissolving: boolean;
 };
 
 /** Every previewed unit standing in (or bound for) one region. */

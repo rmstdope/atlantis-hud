@@ -35,20 +35,78 @@ impl OrderedUnits {
     /// Reads every unit's block out of one orders document.
     #[must_use]
     pub fn from_document(orders_document: &str) -> Self {
-        use crate::orders::walk::{walk, Depth, Event};
+        use crate::orders::walk::{walk, BlockKind, Event};
 
         let mut by_unit: BTreeMap<String, Vec<MoveStep>> = BTreeMap::new();
         let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
         let mut sailers = BTreeSet::new();
         let mut current: Option<String> = None;
+        // The `FORM` blocks currently open, innermost last, each holding the id of the unit it
+        // creates - or `None` for a FORM whose alias could not be read, which still opens a block
+        // so its orders do not fall through to the unit outside it. Mirrors `Working::visit`,
+        // which is the other reader of the same blocks (`ah-4hux`).
+        let mut forming: Vec<Option<String>> = Vec::new();
 
         walk(orders_document, |event| match event {
             Event::Unit(line) => {
                 current = line.arguments.first().map(|id| id.text.to_string());
+                forming.clear();
             }
-            Event::Order { line, depth } if depth == Depth::default() => {
+            Event::Directive(_) => {
+                forming.clear();
+            }
+            Event::Open {
+                line,
+                kind: BlockKind::Form,
+                depth,
+            } if depth.turn == 0 => {
+                forming.push(
+                    line.arguments
+                        .first()
+                        .and_then(crate::orders::forms::read_alias)
+                        .map(|alias| {
+                            format!("{}{alias}", crate::orders::effects::FORMED_ID_PREFIX)
+                        }),
+                );
+            }
+            Event::Close {
+                kind: BlockKind::Form,
+                depth,
+                ..
+            } if depth.turn == 0 => {
+                forming.pop();
+            }
+            // `depth.turn == 0` rather than `depth == Depth::default()`: a `TURN` block holds next
+            // month's orders and says nothing about this one, but a `FORM` block's own MOVE is the
+            // formed unit's and must be read (`ah-4hux`). `Depth` counts the two separately.
+            Event::Order { line, depth } if depth.turn == 0 => {
+                // Movement inside an open FORM block is the formed unit's. Only the movement
+                // steps move with it - `sailers`, ENTER and LEAVE stay bound to the block's own
+                // unit below, because `Working` already applies a formed unit's boardings to its
+                // own `structure_id` and `OrderedUnits::structure_of` reads both, so recording
+                // them here as well would apply one order twice.
+                // `match` rather than `.flatten().or_else(...)`: `forming` holds `Some(None)` for
+                // a FORM whose alias could not be read, and flattening that to `None` would fall
+                // the order through to the block's own unit - the very thing the `None` entry is
+                // pushed to prevent. `Working::active` answers `None` there and applies the order
+                // to nobody, and these two readers must agree or the parent draws a line for a
+                // MOVE it did not write (`ah-4hux`).
+                //
+                // A formed unit's id is global here and not in `Working`, which keys its aliases
+                // on `(region_id, alias)` - so two units in *different* hexes each writing `FORM 1`
+                // are two legitimate formed units there - `effects.rs` pins that case - and one
+                // `new-1` in this map, last write winning. The trace then
+                // picks arbitrarily between them. Not modelled rather than overlooked: giving these
+                // ids a region would mean deciding what a formed unit is called everywhere the
+                // synthetic id is read, which is the planner's call and not this bead's. What the
+                // match above does guarantee is that the divergence stays on the formed unit
+                // instead of leaking onto the parent (`ah-4hux`).
+                let moving = match forming.last() {
+                    Some(formed) => formed.clone(),
+                    None => current.clone(),
+                };
                 if let (Some(unit_id), Some(steps)) = (
-                    current.as_ref(),
+                    moving.as_ref(),
                     crate::movement::orders::parse_move(
                         &std::iter::once(line.command.text.as_str())
                             .chain(line.arguments.iter().map(|token| token.text.as_str()))
@@ -58,7 +116,9 @@ impl OrderedUnits {
                 ) {
                     by_unit.insert(unit_id.clone(), steps);
                 }
-                if let Some(unit_id) = current.as_ref() {
+                // Skipped inside a FORM block for the reason above: those orders are applied by
+                // `Working` to the formed unit's own row already.
+                if let Some(unit_id) = current.as_ref().filter(|_| forming.is_empty()) {
                     if line.command.is("sail")
                         && (line.arguments.is_empty()
                             || crate::movement::orders::parse_move(

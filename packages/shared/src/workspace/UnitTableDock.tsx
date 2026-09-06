@@ -1986,6 +1986,8 @@ function UnitRow({
   // A row that is somewhere else next month reads dimmed; its marker says where it went.
   const departing = unit.previewStatus === "departing";
   const dissolving = dissolves(unit);
+  // A unit this month's FORM creates. Orthogonal to `departing`: it can be both (`ah-4hux`).
+  const formed = unit.formed === true;
   // Only for our own units: there is nothing of anybody else's orders to read.
   const longOrder = unit.own ? (getLongOrder?.(unit.unitId, regionId) ?? null) : null;
   // Only our own units have a month to price; `getSilver` returns null for everyone else anyway,
@@ -2056,6 +2058,10 @@ function UnitRow({
             on guard
           </span>
         ) : null}
+        {/* First of the markers, before the destination arrow and the hull: the navigator chose
+            `new → 1:7,51` rather than `→ 1:7,51 new` (`ah-4hux`, decisions O1 and D1). Carried
+            on the arriving row too, where "this unit does not exist yet" matters most. */}
+        {formed ? <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>new</span> : null}
         {/* Where the unit is bound or from, said inline: the row is the story of a move. */}
         {departing && unit.departingTo ? (
           <span className="ml-1.5 text-pane-sm text-ink-dim">→ {unit.departingTo}</span>
@@ -2071,9 +2077,6 @@ function UnitRow({
         ) : null}
         {unit.previewStatus === "arriving" ? (
           <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>← {unit.arrivingFrom ?? "…"}</span>
-        ) : null}
-        {unit.previewStatus === "formed" || dissolving ? (
-          <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>new</span>
         ) : null}
         {/* `rules/form` dissolves a FORM that gains nobody. The row stays while its block stands
             (`ah-ty3s.3`, decision **K2**), and names the cause so the fix - recruit somebody - is
@@ -2324,6 +2327,8 @@ function UnitRow({
       data-selected={selected}
       data-picked={picked}
       data-preview-status={unit.previewStatus}
+      data-preview-formed={formed ? "true" : undefined}
+      data-preview-dissolving={dissolving ? "true" : undefined}
       // Pointerdown rather than click: a press on a row already in the pick must be able to defer
       // what it means until it is known whether it became a drag (`ah-1mpx.4` E2).
       onPointerDown={(event) => onPress(event, unit, unit.unitId)}
