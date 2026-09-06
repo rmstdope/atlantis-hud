@@ -1683,6 +1683,24 @@ impl Working {
                     &gift.tag,
                     moved,
                 );
+                // Read before the push: `self.units` is indexed mutably for `recipient` while
+                // `index` is still being read.
+                let dissolving = ItemChangeParty {
+                    unit_id: self.units[index].unit.unit_id.clone(),
+                    name: Some(self.units[index].unit.name.clone()),
+                };
+                // `moved`, not `gift.amount`: the clamp above is what actually changed hands.
+                self.units[recipient].item_changes.push(ItemChange {
+                    tag: gift.tag.clone(),
+                    name: gift.name.clone(),
+                    delta: moved,
+                    cause: ItemChangeCause::GiftReverted,
+                    // The gift's own line is not kept on `given`, and the revert is not an order
+                    // the player wrote: `rules/form` does it because the unit gained nobody.
+                    line: None,
+                    unit_price: None,
+                    other: Some(dissolving),
+                });
             }
             dissolved.insert(
                 index,
@@ -4811,6 +4829,76 @@ mod tests {
         );
     }
 
+    /// `rules/form`: the goods a dissolving formed unit "was given" revert to the first own unit
+    /// in the region - so that row gains goods, and the Items popup must be able to say why.
+    #[test]
+    fn a_reverted_gift_is_recorded_on_the_row_the_goods_revert_to() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 0 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 10 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 10 SILV\n",
+        );
+
+        let receiver = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the row the goods revert to is previewed");
+        assert_eq!(
+            receiver
+                .item_changes
+                .iter()
+                .map(|change| (
+                    change.tag.as_str(),
+                    change.delta,
+                    change.cause,
+                    change.line,
+                    change.other.as_ref().map(|other| other.unit_id.as_str()),
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    "SWOR",
+                    3,
+                    ItemChangeCause::GiftReverted,
+                    None,
+                    Some("new-1"),
+                ),
+                (
+                    "SILV",
+                    10,
+                    ItemChangeCause::GiftReverted,
+                    None,
+                    Some("new-1"),
+                ),
+            ],
+            "{:?}",
+            receiver.item_changes,
+        );
+
+        let dissolving = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the dissolving row is drawn");
+        assert!(
+            dissolving.item_changes.is_empty(),
+            "the dissolving row states nothing: {:?}",
+            dissolving.item_changes,
+        );
+    }
+
     /// The row names where its goods went, so the hover can say so without a second implementation
     /// of `rules/form`'s "the first unit you have in that region" in the client.
     #[test]
@@ -7779,6 +7867,45 @@ mod tests {
                     }),
                 }],
             );
+        }
+
+        /// No transfer is priced: `rules/give` names no payment, and the market is a different
+        /// phase of `rules/sequenceofevents`. The one invariant a reader cannot see from any
+        /// single push site.
+        #[test]
+        fn no_transfer_change_carries_a_unit_price() {
+            let response = preview_over(
+                &report_with_market(),
+                "unit 900\nBUY 2 HORS\nGIVE 901 3 SWOR\nunit 901\nTAKE FROM 900 2 FUR\n",
+            );
+
+            let transfer_causes = [
+                ItemChangeCause::GivenAway,
+                ItemChangeCause::WasGiven,
+                ItemChangeCause::Took,
+                ItemChangeCause::WasTakenFrom,
+                ItemChangeCause::Discarded,
+                ItemChangeCause::GiftReverted,
+            ];
+            let changes: Vec<_> = ["900", "901"]
+                .iter()
+                .flat_map(|id| row_of(&response, id).item_changes.clone())
+                .collect();
+            assert!(
+                transfer_causes
+                    .iter()
+                    .filter(|cause| changes.iter().any(|change| change.cause == **cause))
+                    .count()
+                    >= 4,
+                "the four ordinary transfer causes are all here: {changes:?}",
+            );
+            for change in &changes {
+                if transfer_causes.contains(&change.cause) {
+                    assert!(change.unit_price.is_none(), "{change:?}");
+                } else if change.cause == ItemChangeCause::Bought {
+                    assert!(change.unit_price.is_some(), "{change:?}");
+                }
+            }
         }
 
         /// `rules/give`: "If 0 is specified as the unit number, then the items are discarded."
