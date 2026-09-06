@@ -1,0 +1,254 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-rgkk.4.2 — round 1: what the Men popup draws, and how it explains itself</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .line.total { border-bottom:1px solid var(--edge-soft); padding-bottom:3px; margin-bottom:3px; }
+  .pop .line .val { text-align:right; white-space:nowrap; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .note.tight { margin-top:2px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; align-items:start; }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .rule { border-top:1px solid var(--edge); margin:30px 0 0; }
+  .cell { display:inline-block; background:var(--panel); border:1px solid var(--edge); border-radius:4px;
+          padding:2px 8px; font:12px/1.5 'SF Mono',Menlo,monospace; color:var(--ink); }
+</style>
+
+<header>
+  <h1>ah-rgkk.4.2 <span>&mdash; round 1: the Men popup</span></h1>
+  <p>Resting on the <b>Men</b> cell today opens one line &mdash; <code>men&nbsp;&nbsp;14</code> &mdash; paired against
+  the report&rsquo;s figure, plus the sentence explaining a tilde. It says the total moved; it never says
+  <b>who</b> or <b>why</b>. This bead fills it, on the shell <code>ah-rgkk.1</code> built and in the pair notation
+  <code>ah-rgkk.6</code> settled.</p>
+  <p><b style="color:var(--brass)">Two questions.</b> <b>Q1</b> &mdash; which figures the popup draws: the total
+  alone, or a line per race as well. <b>Q2</b> &mdash; how the prose underneath reads. Everything else in the family
+  is settled and is not re-opened: the heading, the twelve-line cap, the pair notation with green up and red down on
+  the after only, and the amber warning line.</p>
+</header>
+
+<main>
+  <p class="scene" style="margin-top:24px"><b>The scene</b>, used in every panel below. <b>Braves (1487)</b> is a
+  mixed unit. Its report showed <b>10 humans and 4 orcs</b> &mdash; the Men cell read
+  <span class="cell">14</span>. This month it <b>recruits 6 humans</b> in the market, <b>gives 3 humans</b> to
+  <b>Watch (1604)</b>, and <b>Scouts (1502) takes 2 orcs</b> from it. It ends the month with <b>13 humans and 2
+  orcs</b>, so the cell reads <span class="cell">15</span>.</p>
+  <p class="scene"><b>Note what the total hides.</b> Eleven people moved in and out of this unit and the headline
+  figure changed by one. That is the case Q1 is really about, and it is not rare: a unit that recruits while giving
+  its veterans away is an ordinary month.</p>
+
+  <h3 class="sec">Q1 &mdash; which figures does the popup draw?</h3>
+  <p>All three draw the same prose (Q2&rsquo;s option <b>S</b>, shown here so the panels differ in one thing only).</p>
+
+  <div class="split3">
+
+    <div class="card">
+      <p class="hexlab">M1 &mdash; the total alone</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; men</div>
+        <div class="line"><span>men</span><span class="val"><span class="flat">14</span><span class="arrow">&rarr;</span><span class="up">15</span></span></div>
+        <div class="note">human: 6 recruited, gave 3 to Watch (1604).</div>
+        <div class="note tight">orc: 2 taken by Scouts (1502).</div>
+      </div></div>
+      <ul class="notes">
+        <li>Exactly the cell, enlarged. Nothing to read that the eye did not come for.</li>
+        <li>Shortest popup of the three, and it never repeats a figure.</li>
+        <li>One rule, and it holds for every unit in the game.</li>
+        <li class="con"><b>Where each race stands is never on the screen.</b> The reader is told 6 humans arrived
+          and 3 left, and has to do the arithmetic to learn the unit now holds 13.</li>
+        <li class="con">A race that vanished entirely says so only in prose.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">M2 &mdash; the total, then a line per race &mdash; the way the Items popup draws items</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; men</div>
+        <div class="line total"><span>men</span><span class="val"><span class="flat">14</span><span class="arrow">&rarr;</span><span class="up">15</span></span></div>
+        <div class="line"><span>human HUMN</span><span class="val"><span class="flat">10</span><span class="arrow">&rarr;</span><span class="up">13</span></span></div>
+        <div class="line"><span>orc ORC</span><span class="val"><span class="flat">4</span><span class="arrow">&rarr;</span><span class="down">2</span></span></div>
+        <div class="note">human: 6 recruited, gave 3 to Watch (1604).</div>
+        <div class="note tight">orc: 2 taken by Scouts (1502).</div>
+      </div></div>
+      <ul class="notes">
+        <li><b>Every figure the sentences talk about is on the screen</b>, and each sentence sits under the line it
+          explains.</li>
+        <li>Identical in shape to the Items popup one column along &mdash; a race is an item in Atlantis, and the
+          popup stops pretending otherwise.</li>
+        <li>A race that left entirely reads <span class="mono">4&nbsp;&rarr;&nbsp;gone</span>, a race that arrived
+          <span class="mono">none&nbsp;&rarr;&nbsp;6</span>.</li>
+        <li class="con"><b>A one-race unit says its figure twice</b> &mdash; <span class="mono">men 10 &rarr; 13</span>
+          and <span class="mono">human HUMN 10 &rarr; 13</span> &mdash; and most units in a report are one race.
+          See the panel below.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">M3 &mdash; the total, and race lines only when they add something</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; men</div>
+        <div class="line total"><span>men</span><span class="val"><span class="flat">14</span><span class="arrow">&rarr;</span><span class="up">15</span></span></div>
+        <div class="line"><span>human HUMN</span><span class="val"><span class="flat">10</span><span class="arrow">&rarr;</span><span class="up">13</span></span></div>
+        <div class="line"><span>orc ORC</span><span class="val"><span class="flat">4</span><span class="arrow">&rarr;</span><span class="down">2</span></span></div>
+        <div class="note">human: 6 recruited, gave 3 to Watch (1604).</div>
+        <div class="note tight">orc: 2 taken by Scouts (1502).</div>
+      </div></div>
+      <p class="hexlab" style="margin-top:12px">&hellip; and the one-race unit, where M3 differs from M2</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Levy (2871) &mdash; men</div>
+        <div class="line"><span>men</span><span class="val"><span class="flat">10</span><span class="arrow">&rarr;</span><span class="up">13</span></span></div>
+        <div class="note">human: 3 recruited.</div>
+      </div></div>
+      <ul class="notes">
+        <li>Never says the same figure twice, and keeps M2&rsquo;s answer for the unit that needs it.</li>
+        <li class="con"><b>Two rules instead of one</b>, and the popup&rsquo;s shape changes from unit to unit, so a
+          reader cannot learn where to look.</li>
+        <li class="con">The rule has an edge: a unit holding one race that <b>gained</b> a second this month has to
+          count as &ldquo;more than one race&rdquo; on the strength of the month, not of the report.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">Q2 &mdash; how does the prose read?</h3>
+  <p>Both panels use <b>M2</b>&rsquo;s figures, so again only one thing differs. The family has settled this
+  question twice already, and the two answers disagree: the <b>Items</b> popup joins every movement of one item into
+  one sentence led by the item&rsquo;s name; the <b>Skills</b> popup writes one sentence per arrival of men.</p>
+
+  <div class="split2">
+    <div class="card">
+      <p class="hexlab">S &mdash; one sentence per race, led by its name &nbsp;&mdash;&nbsp; the Items popup&rsquo;s rule</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; men</div>
+        <div class="line total"><span>men</span><span class="val"><span class="flat">14</span><span class="arrow">&rarr;</span><span class="up">15</span></span></div>
+        <div class="line"><span>human HUMN</span><span class="val"><span class="flat">10</span><span class="arrow">&rarr;</span><span class="up">13</span></span></div>
+        <div class="line"><span>orc ORC</span><span class="val"><span class="flat">4</span><span class="arrow">&rarr;</span><span class="down">2</span></span></div>
+        <div class="note">human: 6 recruited, gave 3 to Watch (1604).</div>
+        <div class="note tight">orc: 2 taken by Scouts (1502).</div>
+      </div></div>
+      <ul class="notes">
+        <li>The prose block can never be longer than the list above it &mdash; one sentence per line, at most.</li>
+        <li>The leading name ties each sentence to the figure directly above it.</li>
+        <li>Identical to the Items popup, so the two columns read as one design.</li>
+        <li class="con">A unit whose humans arrived four different ways gets one long sentence that wraps.</li>
+        <li class="con">The month&rsquo;s order is lost across races: a gift that happened before a recruit reads
+          after it if the races differ.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <p class="hexlab">E &mdash; one sentence per movement, in the month&rsquo;s order &nbsp;&mdash;&nbsp; the Skills popup&rsquo;s rule</p>
+      <div class="pops"><div class="pop">
+        <div class="head">Braves (1487) &mdash; men</div>
+        <div class="line total"><span>men</span><span class="val"><span class="flat">14</span><span class="arrow">&rarr;</span><span class="up">15</span></span></div>
+        <div class="line"><span>human HUMN</span><span class="val"><span class="flat">10</span><span class="arrow">&rarr;</span><span class="up">13</span></span></div>
+        <div class="line"><span>orc ORC</span><span class="val"><span class="flat">4</span><span class="arrow">&rarr;</span><span class="down">2</span></span></div>
+        <div class="note">3 humans given to Watch (1604).</div>
+        <div class="note tight">2 orcs taken by Scouts (1502).</div>
+        <div class="note tight">6 humans recruited.</div>
+      </div></div>
+      <ul class="notes">
+        <li><b>The month is told in the order it happens</b> &mdash; gifts and takes first, then the market&rsquo;s
+          recruits, which is the order the rules resolve them in.</li>
+        <li>Each sentence is short, and no sentence ever wraps.</li>
+        <li>Reads like the Skills popup on the same row, which is telling the same story from the other side.</li>
+        <li class="con"><b>The prose grows without limit.</b> A unit that gave men to four units and recruited twice
+          gets six sentences under three figures.</li>
+        <li class="con">Nothing ties a sentence to the line it explains, so a two-race unit&rsquo;s reader has to
+          match names by eye.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3 class="sec">The states that are mine to settle, drawn so you can overrule them</h3>
+  <p>All four in <b>M2</b> + <b>S</b>. These go into the plan as <i>Decided by me</i> whichever way Q1 and Q2 go;
+  say the word and any of them changes.</p>
+
+  <div class="pops">
+    <div class="pop">
+      <div class="head">Scouts (1502) &mdash; men</div>
+      <div class="line total"><span>men</span><span class="val"><span class="flat">14</span><span class="arrow">&rarr;</span><span class="up">15</span></span></div>
+      <div class="line"><span>human HUMN</span><span class="val"><span class="flat">none</span><span class="arrow">&rarr;</span><span class="up">15</span></span></div>
+      <div class="line"><span>orc ORC</span><span class="val"><span class="flat">14</span><span class="arrow">&rarr;</span><span class="down">gone</span></span></div>
+      <div class="note">human: given 15 by Elders (1774).</div>
+      <div class="note tight">orc: gave 14 to Elders (1774).</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Rabble (3310) &mdash; men</div>
+      <div class="line"><span>men</span><span class="val"><span class="flat">~50</span></span></div>
+      <div class="note">humans: gave 3 to Watch (1604).</div>
+      <div class="note tight">was: ~50</div>
+      <div class="note tight">Estimated: the report has not been matched against the item catalogue, so only the
+        first group of people is counted.</div>
+      <div class="warn">This unit&rsquo;s headcount is a guess, so what this month does to it cannot be worked out.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Levy (2871) &mdash; men</div>
+      <div class="line total"><span>men</span><span class="val"><span class="flat">10</span><span class="arrow">&rarr;</span><span class="up">14</span></span></div>
+      <div class="line"><span>human HUMN</span><span class="val"><span class="flat">10</span><span class="arrow">&rarr;</span><span class="up">14</span></span></div>
+      <div class="note">4 men taken from unit 1502, which your report does not show.</div>
+    </div>
+
+    <div class="pop">
+      <div class="head">Watch (1604) &mdash; men</div>
+      <div class="line"><span>men</span><span class="val"><span class="flat">8</span></span></div>
+      <div class="note">Nothing this month changes this.</div>
+    </div>
+  </div>
+
+  <ul class="notes" style="max-width:105ch;margin-top:14px">
+    <li class="n"><b>A race that arrived starts at <span class="mono">none</span>; one that left entirely ends at
+      <span class="mono">gone</span></b> &mdash; the two words <code>ah-rgkk.2.3</code> and
+      <code>ah-rgkk.3.3</code> already chose for the same events.</li>
+    <li class="n"><b>An estimated headcount draws no pairs at all</b>, on any line, and gets no race lines. The
+      report&rsquo;s own figure is quoted instead, and an amber sentence says why. A tilde means the parser guessed
+      the total, so a pair drawn from it would claim a month that was never worked out.</li>
+    <li class="n"><b>Men from a unit your report does not show get their own sentence</b> &mdash; their race line
+      is drawn like any other, because the people were credited to the unit; what is missing is a cause.</li>
+    <li class="n"><b>A unit whose men nothing touched keeps the shared sentence</b>
+      <i>&ldquo;Nothing this month changes this.&rdquo;</i> and shows no race lines.</li>
+    <li class="n"><b>The race label is <span class="mono">human HUMN</span></b> &mdash; name then tag, exactly as
+      the Items popup labels an item.</li>
+  </ul>
+</main>
+
+<footer>
+  <p>The exact wording of every cause clause (<i>recruited</i>, <i>gave n to&hellip;</i>, <i>given n by&hellip;</i>,
+  <i>n taken by&hellip;</i>, <i>took n from&hellip;</i>, <i>discarded</i>) is mine, and goes into the plan in full
+  under <i>Decided by me</i> for you to overrule in a sentence. What I need from you is Q1 and Q2.</p>
+</footer>
