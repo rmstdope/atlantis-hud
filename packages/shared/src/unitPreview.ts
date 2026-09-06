@@ -7,6 +7,8 @@ import type {
   ProducedItem,
   RegionPreview,
   ReportUnit,
+  SkillInfo,
+  SkillMerge,
   TakenUnshown,
   TransportReceived,
   TransportSent,
@@ -84,6 +86,23 @@ export type PreviewedUnit = ReportUnit & {
    * Always accompanied by `formed`, and drawn rather than skipped (`ah-ty3s.3`, decision K2).
    */
   dissolving?: boolean;
+  /**
+   * Why this unit's skills moved this month, one record per merge of arriving men, in the order
+   * the merges ran (`ah-rgkk.2.1`).
+   */
+  skillMerges?: SkillMerge[];
+  /** This unit's skills exactly as the report printed them, typed (`ah-rgkk.2.1`). */
+  reportedSkills?: SkillInfo[];
+  /**
+   * The report could only estimate this unit's headcount, so its recruits were never merged into
+   * its skills (`ah-rgkk.2.1`).
+   */
+  recruitsUnmerged?: boolean;
+  /**
+   * Men credited from a unit the report does not show, whose own skills are unknown and who are
+   * therefore left out of every merge (`ah-agbm`, `ah-rgkk.2.1`).
+   */
+  menOfUnknownSkill?: TakenUnshown[];
 };
 
 /**
@@ -189,7 +208,11 @@ function rowFor(previewed: UnitPreview): PreviewedUnit {
     transportSent: previewed.transportSent,
     transportReceived: previewed.transportReceived,
     transportTargetIssues: previewed.transportTargetIssues,
-    dissolvesInto: previewed.dissolvesInto
+    dissolvesInto: previewed.dissolvesInto,
+    skillMerges: previewed.skillMerges,
+    reportedSkills: previewed.reportedSkills,
+    recruitsUnmerged: previewed.recruitsUnmerged,
+    menOfUnknownSkill: previewed.menOfUnknownSkill
   };
 }
 

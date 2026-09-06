@@ -3,6 +3,7 @@ import type {
   OrdersPreviewResponse,
   RegionPreview,
   ReportUnit,
+  SkillMerge,
   TransportTargetIssue
 } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
@@ -51,7 +52,49 @@ const previewedRow = (
   dissolvesInto: null,
   formed: false,
   dissolving: false,
+  skillMerges: [],
+  reportedSkills: [],
+  recruitsUnmerged: false,
+  menOfUnknownSkill: [],
   ...overrides
+});
+
+describe("the skills the preview carries", () => {
+  const aMerge = (): SkillMerge => ({
+    cause: "given",
+    from: "900",
+    men: 5,
+    menBefore: 10,
+    menArriving: [{ amount: 5, name: "humans", tag: "HUMN" }],
+    countInferred: false,
+    arrivingSkills: [{ name: "lumberjack", tag: "LUMB", level: 3, points: 180 }],
+    skills: [{ name: "lumberjack", tag: "LUMB", level: 1, points: 60 }]
+  });
+
+  it("carries the skill merges and the reported skills onto the row", () => {
+    const merges = [aMerge()];
+    const reported = [{ name: "lumberjack", tag: "LUMB", level: 3, points: 180 }];
+    const rows = mergePreview(
+      [unit({})],
+      preview([
+        previewedRow(
+          {},
+          {
+            changes: [{ field: "skills", original: "LUMB 3 (180)" }],
+            skillMerges: merges,
+            reportedSkills: reported,
+            recruitsUnmerged: true,
+            menOfUnknownSkill: [{ amount: 5, tag: "HUMN", from: "1234" }]
+          }
+        )
+      ])
+    );
+
+    expect(rows[0].skillMerges).toEqual(merges);
+    expect(rows[0].reportedSkills).toEqual(reported);
+    expect(rows[0].recruitsUnmerged).toBe(true);
+    expect(rows[0].menOfUnknownSkill).toEqual([{ amount: 5, tag: "HUMN", from: "1234" }]);
+  });
 });
 
 describe("mergePreview", () => {
@@ -76,7 +119,11 @@ describe("mergePreview", () => {
           transportTargetIssues: [],
           dissolvesInto: null,
           formed: false,
-          dissolving: false
+          dissolving: false,
+          skillMerges: [],
+          reportedSkills: [],
+          recruitsUnmerged: false,
+          menOfUnknownSkill: []
         }
       ])
     );
@@ -115,7 +162,11 @@ describe("mergePreview", () => {
           transportTargetIssues: [],
           dissolvesInto: null,
           formed: false,
-          dissolving: false
+          dissolving: false,
+          skillMerges: [],
+          reportedSkills: [],
+          recruitsUnmerged: false,
+          menOfUnknownSkill: []
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
@@ -134,7 +185,11 @@ describe("mergePreview", () => {
           transportTargetIssues: [],
           dissolvesInto: null,
           formed: true,
-          dissolving: false
+          dissolving: false,
+          skillMerges: [],
+          reportedSkills: [],
+          recruitsUnmerged: false,
+          menOfUnknownSkill: []
         }
       ])
     );
@@ -167,7 +222,11 @@ describe("mergePreview", () => {
           transportTargetIssues: [],
           dissolvesInto: null,
           formed: false,
-          dissolving: false
+          dissolving: false,
+          skillMerges: [],
+          reportedSkills: [],
+          recruitsUnmerged: false,
+          menOfUnknownSkill: []
         },
         {
           unit: unit({ unitId: "901", name: "Passengers" }),
@@ -186,7 +245,11 @@ describe("mergePreview", () => {
           transportTargetIssues: [],
           dissolvesInto: null,
           formed: false,
-          dissolving: false
+          dissolving: false,
+          skillMerges: [],
+          reportedSkills: [],
+          recruitsUnmerged: false,
+          menOfUnknownSkill: []
         }
       ])
     );
@@ -216,7 +279,11 @@ describe("mergePreview", () => {
           transportTargetIssues: [],
           dissolvesInto: null,
           formed: false,
-          dissolving: false
+          dissolving: false,
+          skillMerges: [],
+          reportedSkills: [],
+          recruitsUnmerged: false,
+          menOfUnknownSkill: []
         }
       ])
     );
@@ -497,7 +564,11 @@ describe("changeFor and originalTooltip", () => {
           transportTargetIssues: [],
           dissolvesInto: null,
           formed: false,
-          dissolving: false
+          dissolving: false,
+          skillMerges: [],
+          reportedSkills: [],
+          recruitsUnmerged: false,
+          menOfUnknownSkill: []
         }
       ])
     );
