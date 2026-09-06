@@ -19,6 +19,7 @@ use crate::movement::rules::Ruleset;
 use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::report::composition;
+use crate::report::flags::FlagChange;
 use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStatus};
 
 /// Where a previewed unit stands relative to the hex its row sits in.
@@ -1929,34 +1930,12 @@ impl Working {
             }
         } else if command.is("name") {
             self.rename(active, arguments);
-        } else if command.is("guard") {
-            if let Some(set) = super::forms::read_flag(arguments) {
-                let unit = &mut self.units[active].unit;
-                unit.on_guard = set;
-                set_flag(&mut unit.flags, "guarding", set);
-                // "The Guard and Avoid Combat flags are mutually exclusive; setting one
-                // automatically cancels the other."
-                if set {
-                    set_flag(&mut unit.flags, "avoiding", false);
-                }
-            }
-        } else if command.is("avoid") {
-            if let Some(set) = super::forms::read_flag(arguments) {
-                let unit = &mut self.units[active].unit;
-                set_flag(&mut unit.flags, "avoiding", set);
-                if set {
-                    unit.on_guard = false;
-                    set_flag(&mut unit.flags, "guarding", false);
-                }
-            }
-        } else if command.is("behind") {
-            if let Some(set) = super::forms::read_flag(arguments) {
-                set_flag(&mut self.units[active].unit.flags, "behind", set);
-            }
-        } else if command.is("share") {
-            if let Some(set) = super::forms::read_flag(arguments) {
-                set_flag(&mut self.units[active].unit.flags, "sharing", set);
-            }
+        } else if let Some(change) = read_flag_order(command, arguments) {
+            let unit = &mut self.units[active].unit;
+            crate::report::flags::apply(&mut unit.flags, change);
+            // Derived rather than maintained: keeping `on_guard` and the flag list in step by hand
+            // is exactly the defect this replaces.
+            unit.on_guard = crate::report::flags::is_guarding(&unit.flags);
         } else if command.is("enter") {
             if let Some(structure) = super::forms::read_only_number(arguments) {
                 self.board(active, BoardingOrder::Enter(structure.to_string()));
@@ -3066,13 +3045,89 @@ pub(crate) fn merge_skills(
     merged
 }
 
-/// Adds or removes a flag, in the report's own vocabulary, without disturbing the others' order.
-fn set_flag(flags: &mut Vec<String>, flag: &str, set: bool) {
-    let present = flags.iter().any(|existing| existing == flag);
-    if set && !present {
-        flags.push(flag.to_string());
-    } else if !set && present {
-        flags.retain(|existing| existing != flag);
+/// The flag order this line is, if it is one.
+///
+/// `None` for every other command and for a flag order whose argument the grammar refuses, so a
+/// caller falls through to its next arm. `arguments` is what `consumed_arguments` already trimmed,
+/// so a trailing token a valid order ignores never reaches here.
+fn read_flag_order(
+    command: &super::lexer::Token,
+    arguments: &[super::lexer::Token],
+) -> Option<FlagChange> {
+    use crate::report::flags::{Group, Setting};
+
+    let toggle = |setting: Setting| {
+        super::forms::read_flag(arguments).map(|on| FlagChange::Toggle { setting, on })
+    };
+    let choose = |group: Group, states: &[(&str, Setting)]| match arguments {
+        [] => Some(FlagChange::Choose {
+            group,
+            chosen: None,
+        }),
+        [only] => states
+            .iter()
+            .find(|(word, _)| only.is(word))
+            .map(|(_, setting)| FlagChange::Choose {
+                group,
+                chosen: Some(*setting),
+            }),
+        _ => None,
+    };
+
+    if command.is("guard") {
+        toggle(Setting::Guarding)
+    } else if command.is("avoid") {
+        toggle(Setting::Avoiding)
+    } else if command.is("behind") {
+        toggle(Setting::Behind)
+    } else if command.is("share") {
+        toggle(Setting::Sharing)
+    } else if command.is("autotax") {
+        toggle(Setting::Taxing)
+    } else if command.is("noaid") {
+        toggle(Setting::NoAid)
+    } else if command.is("hold") {
+        toggle(Setting::Holding)
+    } else if command.is("nocross") {
+        toggle(Setting::NoCross)
+    } else if command.is("reveal") {
+        choose(
+            Group::Reveal,
+            &[
+                ("unit", Setting::RevealingUnit),
+                ("faction", Setting::RevealingFaction),
+            ],
+        )
+    } else if command.is("consume") {
+        choose(
+            Group::Consume,
+            &[
+                ("unit", Setting::ConsumingUnit),
+                ("faction", Setting::ConsumingFaction),
+            ],
+        )
+    } else if command.is("spoils") {
+        // `rules/spoils`: bare SPOILS "is equivalent to 'SPOILS ALL'", and ALL is the state no
+        // report prints a flag for - so both clear the group.
+        match arguments {
+            [only] if only.is("all") => Some(FlagChange::Choose {
+                group: Group::Spoils,
+                chosen: None,
+            }),
+            _ => choose(
+                Group::Spoils,
+                &[
+                    ("none", Setting::SpoilsWeightless),
+                    ("walk", Setting::SpoilsWalking),
+                    ("ride", Setting::SpoilsRiding),
+                    ("fly", Setting::SpoilsFlying),
+                    ("swim", Setting::SpoilsSwimming),
+                    ("sail", Setting::SpoilsSailing),
+                ],
+            ),
+        }
+    } else {
+        None
     }
 }
 
@@ -3418,7 +3473,7 @@ mod tests {
         let guarded = preview("unit 900\nAVOID 1\nGUARD 1\n");
         let unit = only_unit(&guarded);
         assert!(unit.unit.on_guard);
-        assert!(unit.unit.flags.iter().any(|flag| flag == "guarding"));
+        assert!(unit.unit.flags.iter().any(|flag| flag == "on guard"));
         assert!(!unit.unit.flags.iter().any(|flag| flag == "avoiding"));
         assert_eq!(change(unit, "onGuard").original, "no");
         // The walker starts with only "behind", so that is the original flag list.
@@ -3428,7 +3483,204 @@ mod tests {
         let unit = only_unit(&avoided);
         assert!(!unit.unit.on_guard, "avoiding cancels the guard");
         assert!(unit.unit.flags.iter().any(|flag| flag == "avoiding"));
-        assert!(!unit.unit.flags.iter().any(|flag| flag == "guarding"));
+        assert!(!unit.unit.flags.iter().any(|flag| flag == "on guard"));
+    }
+
+    /// `set_flag` matched the flag string exactly and the GUARD arm wrote the order's own word
+    /// `guarding`, while every report prints `on guard` - so `GUARD 0` removed nothing from a unit
+    /// the report showed as guarding, and the guard badge and the Flags cell contradicted each
+    /// other.
+    #[test]
+    fn guard_zero_clears_the_flag_the_report_printed() {
+        let response = preview_over(&report_with_a_flagged_former(), "unit 900\nGUARD 0\n");
+
+        let unit = only_unit(&response);
+        assert!(
+            !unit
+                .unit
+                .flags
+                .iter()
+                .any(|flag| flag == "on guard" || flag == "guarding"),
+            "{:?}",
+            unit.unit.flags
+        );
+        assert!(!unit.unit.on_guard);
+        assert_eq!(
+            change(unit, "flags").original,
+            "behind, sharing, on guard, taxing"
+        );
+    }
+
+    /// `rules/guard` and `rules/avoid`: "The Guard and Avoid Combat flags are mutually exclusive;
+    /// setting one automatically cancels the other" - including the guard a report printed.
+    #[test]
+    fn avoiding_cancels_the_guard_the_report_printed() {
+        let response = preview_over(&report_with_a_flagged_former(), "unit 900\nAVOID 1\n");
+
+        let unit = only_unit(&response);
+        assert!(unit.unit.flags.iter().any(|flag| flag == "avoiding"));
+        assert!(
+            !unit
+                .unit
+                .flags
+                .iter()
+                .any(|flag| flag == "on guard" || flag == "guarding"),
+            "{:?}",
+            unit.unit.flags
+        );
+        assert!(!unit.unit.on_guard);
+    }
+
+    #[test]
+    fn guarding_writes_the_word_a_report_prints() {
+        let unit = &preview("unit 900\nGUARD 1\n").regions[0].units[0].unit.clone();
+        assert!(unit.flags.iter().any(|flag| flag == "on guard"));
+        assert!(!unit.flags.iter().any(|flag| flag == "guarding"));
+    }
+
+    /// `rules/autotax`: "causes the unit to attempt to tax every turn"; the report prints `taxing`.
+    #[test]
+    fn autotax_sets_the_flag_the_report_prints_for_it() {
+        let response = preview("unit 900\nAUTOTAX 1\n");
+        assert!(only_unit(&response)
+            .unit
+            .flags
+            .iter()
+            .any(|flag| flag == "taxing"));
+
+        let cleared = preview_over(&report_with_a_flagged_former(), "unit 900\nAUTOTAX 0\n");
+        let flags = &only_unit(&cleared).unit.flags;
+        assert!(
+            !flags.iter().any(|flag| flag == "taxing" || flag == "autotax"),
+            "{flags:?}"
+        );
+    }
+
+    /// `rules/noaid`, `rules/hold` and `rules/nocross`, each with the word its report prints.
+    #[test]
+    fn the_other_three_on_off_flag_orders_reach_the_preview() {
+        for (order, word) in [
+            ("NOAID", "receiving no aid"),
+            ("HOLD", "holding"),
+            ("NOCROSS", "won't cross water"),
+        ] {
+            let set = preview(&format!("unit 900\n{order} 1\n"));
+            let flags = &only_unit(&set).unit.flags;
+            assert!(flags.iter().any(|flag| flag == word), "{order}: {flags:?}");
+
+            let report = report_with_a_flagged_former().replace(
+                "behind, sharing, on guard, taxing",
+                &format!("behind, {word}"),
+            );
+            let cleared = preview_over(&report, &format!("unit 900\n{order} 0\n"));
+            let flags = &only_unit(&cleared).unit.flags;
+            assert!(!flags.iter().any(|flag| flag == word), "{order}: {flags:?}");
+        }
+    }
+
+    /// `rules/consume`: "CONSUME tells the unit to use silver before food items (this is the
+    /// default)", so bare CONSUME leaves the unit with neither food flag.
+    #[test]
+    fn consume_chooses_one_state_and_bare_consume_returns_to_silver() {
+        let response = preview("unit 900\nCONSUME UNIT\n");
+        assert!(only_unit(&response)
+            .unit
+            .flags
+            .iter()
+            .any(|flag| flag == "consuming unit's food"));
+
+        let response = preview("unit 900\nCONSUME UNIT\nCONSUME FACTION\n");
+        let flags = &only_unit(&response).unit.flags;
+        assert!(flags.iter().any(|flag| flag == "consuming faction's food"));
+        assert!(!flags.iter().any(|flag| flag == "consuming unit's food"));
+
+        // Over a report that already printed the flag, so clearing it is a visible change.
+        let fed = report_with_a_flagged_former().replace(
+            "behind, sharing, on guard, taxing",
+            "behind, consuming faction's food",
+        );
+        let response = preview_over(&fed, "unit 900\nCONSUME\n");
+        let flags = &only_unit(&response).unit.flags;
+        assert!(
+            !flags.iter().any(|flag| flag.contains("food")),
+            "{flags:?}"
+        );
+    }
+
+    /// `rules/reveal`: "REVEAL is used to cancel this".
+    #[test]
+    fn reveal_chooses_one_state_and_bare_reveal_cancels_it() {
+        let response = preview("unit 900\nREVEAL FACTION\n");
+        assert!(only_unit(&response)
+            .unit
+            .flags
+            .iter()
+            .any(|flag| flag == "revealing faction"));
+
+        let response = preview("unit 900\nREVEAL FACTION\nREVEAL UNIT\n");
+        let flags = &only_unit(&response).unit.flags;
+        assert!(flags.iter().any(|flag| flag == "revealing unit"));
+        assert!(!flags.iter().any(|flag| flag == "revealing faction"));
+
+        let revealed = report_with_a_flagged_former().replace(
+            "behind, sharing, on guard, taxing",
+            "behind, revealing faction",
+        );
+        let response = preview_over(&revealed, "unit 900\nREVEAL\n");
+        let flags = &only_unit(&response).unit.flags;
+        assert!(
+            !flags.iter().any(|flag| flag.starts_with("revealing")),
+            "{flags:?}"
+        );
+    }
+
+    /// `rules/spoils`: "SPOILS NONE will instruct the unit to only collect weightless items", and
+    /// bare SPOILS "is equivalent to 'SPOILS ALL'".
+    #[test]
+    fn spoils_chooses_one_kind_and_spoils_all_clears_them() {
+        let response = preview("unit 900\nSPOILS WALK\n");
+        assert!(only_unit(&response)
+            .unit
+            .flags
+            .iter()
+            .any(|flag| flag == "walking battle spoils"));
+
+        let response = preview("unit 900\nSPOILS NONE\n");
+        assert!(only_unit(&response)
+            .unit
+            .flags
+            .iter()
+            .any(|flag| flag == "weightless battle spoils"));
+
+        let with_spoils = report_with_a_flagged_former().replace(
+            "behind, sharing, on guard, taxing",
+            "behind, riding battle spoils",
+        );
+        for order in ["SPOILS ALL", "SPOILS"] {
+            let response = preview_over(&with_spoils, &format!("unit 900\n{order}\n"));
+            let flags = &only_unit(&response).unit.flags;
+            assert!(
+                !flags.iter().any(|flag| flag.contains("battle spoils")),
+                "{order}: {flags:?}"
+            );
+        }
+    }
+
+    /// `SPOILS`'s empty form matches, so a trailing token a valid order ignores is trimmed away
+    /// (`consumed_arguments`) and the line reads as a bare `SPOILS` - which `rules/spoils` says is
+    /// `SPOILS ALL`. That is this grammar's existing contract for every order, not a new decision.
+    #[test]
+    fn spoils_with_an_unknown_kind_reads_as_bare_spoils() {
+        let with_spoils = report_with_a_flagged_former().replace(
+            "behind, sharing, on guard, taxing",
+            "behind, riding battle spoils",
+        );
+        let response = preview_over(&with_spoils, "unit 900\nSPOILS SPRINT\n");
+        let flags = &only_unit(&response).unit.flags;
+        assert!(
+            !flags.iter().any(|flag| flag.contains("battle spoils")),
+            "{flags:?}"
+        );
     }
 
     /// `rules/sequenceofevents` settles SHARE in the turn's first batch, so a unit ordering it
