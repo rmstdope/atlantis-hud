@@ -421,6 +421,14 @@ export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
  */
 export type ExtraColumn = "hex" | "seen" | "remove";
 
+/**
+ * Any column a row actually draws — one of the table's own, or one its source added.
+ *
+ * The units table's per-cell popup is keyed on this rather than on `UnitColumn`, because the
+ * pointer can rest on `Hex`, `Seen` or `Remove` just as easily as on `Items` (`ah-rgkk.1`).
+ */
+export type DrawnColumnId = UnitColumn | ExtraColumn;
+
 /** Their shares, against the same nominal 1440px table `DEFAULT_COLUMN_SHARES` is measured on. */
 export const EXTRA_COLUMN_SHARES: Record<ExtraColumn, number> = {
   hex: 79 / NOMINAL_TABLE_PX, // `(11,55)` and its ellipsis

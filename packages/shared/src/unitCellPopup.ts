@@ -79,6 +79,13 @@ export type PopupFacts = {
   countUpkeep: boolean;
   /** Battle-recovered skills for this unit, or `[]` (`ah-1mpx.6.3`). */
   derivedSkills: readonly DerivedSkill[];
+  /**
+   * Whether `rules/form` dissolves this row before the month ends (`ah-ty3s.3`).
+   *
+   * The Silver cell already draws `no month end` for one of these, so the popup must not read out
+   * a working the cell itself refuses to show.
+   */
+  dissolving: boolean;
 };
 
 /** Columns that say nothing when the pointer rests on them (decision **E2**). */
@@ -111,7 +118,9 @@ const CHANGE_FIELD: Partial<Record<PopupColumn, string>> = {
   flags: "flags",
   skills: "skills",
   items: "items",
-  structure: "structure"
+  // The report's own field name, which is not the column's: a structure change is recorded
+  // against `structureId` (`UnitTableDock.tsx`, `structureChange`).
+  structure: "structureId"
 };
 
 /** The columns whose popup lists several things, so the no-change sentence reads as a plural. */
@@ -216,7 +225,7 @@ function menBody(unit: PreviewedUnit): Body {
       {
         label: "men",
         value: describeMenBriefly(unit),
-        ...markOrQuote(changeFor(unit, "men"), unit.men)
+        ...markOrQuote(changeFor(unit, CHANGE_FIELD.men!), unit.men)
       }
     ],
     notes: why ? [sentence(why)] : []
@@ -227,7 +236,7 @@ function movementBody(unit: PreviewedUnit): Body {
   if (unit.movement == null) {
     return { lines: [], notes: ["Movement not disclosed."] };
   }
-  const change = changeFor(unit, "movement");
+  const change = changeFor(unit, CHANGE_FIELD.movement!);
   return {
     lines: [
       {
@@ -242,7 +251,7 @@ function movementBody(unit: PreviewedUnit): Body {
 
 function flagsBody(unit: PreviewedUnit): Body {
   const words = flagWords(unit.flags);
-  const change = changeFor(unit, "flags");
+  const change = changeFor(unit, CHANGE_FIELD.flags!);
   if (words === undefined) {
     return { lines: [], notes: ["No flags set."] };
   }
@@ -258,7 +267,7 @@ function flagsBody(unit: PreviewedUnit): Body {
  * from exactly as the whole-unit summary names it (`ah-1mpx.6.3`).
  */
 function skillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
-  const change = changeFor(unit, "skills");
+  const change = changeFor(unit, CHANGE_FIELD.skills!);
   const quoted = change ? { why: originalTooltip(change) } : {};
 
   if (unit.skills.length > 0) {
@@ -318,7 +327,7 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 }
 
 function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
-  const change = changeFor(unit, "structure");
+  const change = changeFor(unit, CHANGE_FIELD.structure!);
   if (facts.structureLabel === null) {
     return { lines: [], notes: ["In no structure."] };
   }
@@ -349,6 +358,12 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
  * disagree about what the month does to this unit's silver (`ah-1wcw.1`).
  */
 function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
+  if (facts.dissolving) {
+    return {
+      lines: [],
+      notes: ["The game dissolves this unit before the month ends, so it has no month end."]
+    };
+  }
   const summary = summariseUnit(
     unit,
     facts.silver,

@@ -8,6 +8,7 @@ import type {
   UnitSilver
 } from "@atlantis/core-client";
 import {
+  cloneElement,
   forwardRef,
   Fragment,
   useCallback,
@@ -21,6 +22,7 @@ import {
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent,
+  type ReactElement,
   type ReactNode
 } from "react";
 import type { HexNode } from "../hexMapModel";
@@ -31,6 +33,12 @@ import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../batt
 import { unitSkillsCell } from "../battleSkillPresentation";
 import { presentUnitMovement } from "../unitMovement";
 import { flagLetters, flagWords } from "../unitFlags";
+import {
+  columnHasPopup,
+  popupAsText,
+  popupForCell,
+  type PopupFacts
+} from "../unitCellPopup";
 import {
   DEFAULT_SORT,
   EXTRA_COLUMN_SHARES,
@@ -55,6 +63,7 @@ import {
   type ExtraColumn,
   type SortColumn,
   type SortState,
+  type DrawnColumnId,
   type UnitColumn
 } from "../unitTable";
 import { isCursorRow, unitCursor } from "./unitCursor";
@@ -2024,7 +2033,30 @@ function UnitRow({
    * Every cell, keyed the same way the header's dispatch is, so reordering the columns never means
    * reordering this.
    */
-  const cellsByColumn: Record<UnitColumn, ReactNode> = {
+  /**
+   * What resting on each cell says, resolved once for the row (`ah-rgkk.1`).
+   *
+   * Every cell that has a popup draws its words twice: as an `sr-only` sentence here, and - when
+   * the pointer rests on it - as the popup the dock portals. Both come from this one call, so the
+   * hidden sentence and the visible panel can never disagree.
+   */
+  const popupFacts: PopupFacts = {
+    structureLabel,
+    longOrder,
+    silver,
+    silverWarned: warned,
+    countUpkeep,
+    derivedSkills: derivedSkillsFor(derivedSkills, unit),
+    dissolving: Boolean(dissolving)
+  };
+  const explain = (column: DrawnColumnId) => {
+    const spec = popupForCell(column, unit, popupFacts);
+    return spec.kind === "column" ? (
+      <span className="sr-only">{popupAsText(spec.popup)}</span>
+    ) : null;
+  };
+
+  const cellsByColumn: Record<UnitColumn, ReactElement<TdProps>> = {
     // The report's own ownership marker, so the distinction reads before the faction name does.
     own: <Td className={unit.own ? "text-ok" : "text-danger"}>{unit.own ? "*" : "−"}</Td>,
     unitId: (
@@ -2045,7 +2077,6 @@ function UnitRow({
         <span
           className={nameChange ? PREDICTED : undefined}
           data-predicted={nameChange ? "true" : undefined}
-          title={originalTooltip(nameChange)}
         >
           {unit.name}
         </span>
@@ -2053,7 +2084,6 @@ function UnitRow({
           <span
             className={`ml-1.5 text-pane-sm text-warn${guardChange ? " italic" : ""}`}
             data-predicted={guardChange ? "true" : undefined}
-            title={originalTooltip(guardChange)}
           >
             on guard
           </span>
@@ -2135,21 +2165,20 @@ function UnitRow({
     // A tilde marks a count the parser guessed at; the unit panel spells out why. A count the
     // orders changed explains itself with the report's figure instead.
     men: (
-      <Td
-        className={menChange ? PREDICTED : ""}
-        title={originalTooltip(menChange) ?? whyEstimated(unit)}
-      >
+      <Td className={menChange ? PREDICTED : ""}>
         {describeMenBriefly(unit)}
+        {explain("men")}
       </Td>
     ),
     movement: (() => {
       if (unit.movement == null) {
         return (
-          <Td title="Movement not disclosed">
+          <Td>
             <span className="sr-only">Movement not disclosed</span>
             <span aria-hidden className="text-ink-dim">
               —
             </span>
+            {explain("movement")}
           </Td>
         );
       }
@@ -2166,10 +2195,10 @@ function UnitRow({
         <Td
           className={movementChange ? PREDICTED : toneClass}
           predicted={Boolean(movementChange)}
-          title={originalTooltip(movementChange) ?? presentation.label}
         >
           <span className="sr-only">{presentation.label}</span>
           <span aria-hidden>{presentation.code}</span>
+          {explain("movement")}
         </Td>
       );
     })(),
@@ -2178,12 +2207,10 @@ function UnitRow({
     flags: (() => {
       const letters = flagLetters(unit.flags);
       const words = flagWords(unit.flags);
-      const title = [words, originalTooltip(flagsChange)].filter(Boolean).join("\n") || undefined;
       return (
         <Td
           className={`truncate${flagsChange ? ` ${PREDICTED}` : ""}`}
           predicted={Boolean(flagsChange)}
-          title={title}
         >
           <span className="sr-only">{words ?? "No flags set"}</span>
           {letters === "" ? (
@@ -2193,6 +2220,7 @@ function UnitRow({
           ) : (
             <span aria-hidden>{letters}</span>
           )}
+          {explain("flags")}
         </Td>
       );
     })(),
@@ -2203,20 +2231,19 @@ function UnitRow({
       <Td
         className={`truncate${skillsChange ? ` ${PREDICTED}` : ""}`}
         predicted={Boolean(skillsChange)}
-        title={originalTooltip(skillsChange)}
       >
         {skills === "" && !unit.own ? (
           <span className="italic text-ink-dim">not disclosed</span>
         ) : (
           skills
         )}
+        {explain("skills")}
       </Td>
     ),
     items: (
       <Td
         className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`}
         predicted={Boolean(itemsChange)}
-        title={itemsTooltip(unit, silver)}
       >
         {items}
         {/*
@@ -2227,18 +2254,21 @@ function UnitRow({
         {(unit.uncounted && unit.uncounted.length > 0) || hasUncertainTransportTarget(unit) ? (
           <span className="text-ink-dim"> + ?</span>
         ) : null}
+        {explain("items")}
       </Td>
     ),
     structure: (
-      <Td className={`truncate${structureChange ? ` ${PREDICTED}` : ""}`} title={structureTitle}>
+      <Td className={`truncate${structureChange ? ` ${PREDICTED}` : ""}`}>
         {structureLabel ?? ""}
+        {explain("structure")}
       </Td>
     ),
     // A unit of ours spending the month on nothing is worth flagging, hence the red dash; a unit
     // that is not ours simply has nothing to say here.
     longOrder: (
-      <Td className="truncate" title={longOrder ?? undefined}>
+      <Td className="truncate">
         {unit.own ? (longOrder ?? <span className="text-danger">—</span>) : ""}
+        {explain("longOrder")}
       </Td>
     ),
     // What this unit is expected to hold when the month ends (ah-1wcw.1). Red is this unit,
@@ -2278,6 +2308,7 @@ function UnitRow({
             {figure}
           </span>
         )}
+        {explain("silver")}
       </Td>
     )
   };
@@ -2292,7 +2323,7 @@ function UnitRow({
    * one of three hundred rows (`AppShell.tsx:3570-3575`). Its keyboard route is the standing bulk
    * line and the rail.
    */
-  const extraCells: Record<ExtraColumn, ReactNode> = {
+  const extraCells: Record<ExtraColumn, ReactElement<TdProps>> = {
     hex: <Td className={`truncate${fromReport ? "" : " text-ink-dim"}`}>{hexLabel(unit.regionId)}</Td>,
     seen: <Td className={fromReport ? "text-ink-dim" : "text-warn"}>{seen}</Td>,
     remove: (
@@ -2376,38 +2407,48 @@ function UnitRow({
               : "text-ink-soft"
       }${(departing && dimDeparting) || dissolving ? " opacity-60" : ""}`}
     >
+      {/* The column is cloned in rather than written at each cell: the record's key already *is*
+          the column, so fifteen hand-written props are fifteen chances to drift (`ah-rgkk.1`). */}
       {drawn.map((entry) =>
         entry.kind === "unit" ? (
-          <Fragment key={entry.column}>{cellsByColumn[entry.column]}</Fragment>
+          <Fragment key={entry.column}>
+            {cloneElement(cellsByColumn[entry.column], { column: entry.column })}
+          </Fragment>
         ) : (
-          <Fragment key={`extra-${entry.column}`}>{extraCells[entry.column]}</Fragment>
+          <Fragment key={`extra-${entry.column}`}>
+            {cloneElement(extraCells[entry.column], { column: entry.column })}
+          </Fragment>
         )
       )}
     </tr>
   );
 }
 
-function Td({
-  children,
-  className = "",
-  title,
-  predicted
-}: {
+export type TdProps = {
   children?: ReactNode;
   className?: string;
-  /** Hover text, used to explain a figure the cell has no room to qualify. */
-  title?: string;
+  /**
+   * Which column this cell is, stamped on the `<td>` as `data-column`.
+   *
+   * The row's pointer handlers read it back off the element under the pointer, which is how one
+   * handler on the `<tr>` knows which cell was rested on (`ah-rgkk.1`). Not written by hand at
+   * each cell: `UnitRow` clones it in from the key of the record the cell was stored under, so it
+   * cannot drift from the column it is drawn for.
+   */
+  column?: string;
   /**
    * Marks the cell itself as a projection, for the smoke suite to find - exactly as `name`'s
    * inner span already carries `data-predicted` (`ah-agbm`). Only the ITEMS cell has no inner
    * wrapper to carry it, so it goes straight on the `<td>`.
    */
   predicted?: boolean;
-}) {
+};
+
+function Td({ children, className = "", column, predicted }: TdProps) {
   return (
     <td
       className={`border-b border-edge-soft px-2 py-0.5 ${className}`}
-      title={title}
+      data-column={column}
       data-predicted={predicted ? "true" : undefined}
     >
       {children}

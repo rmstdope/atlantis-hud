@@ -16,6 +16,7 @@ const facts = (overrides: Partial<PopupFacts> = {}): PopupFacts => ({
   silverWarned: false,
   countUpkeep: false,
   derivedSkills: [],
+  dissolving: false,
   ...overrides
 });
 
@@ -198,6 +199,18 @@ describe("the column popups", () => {
     expect(popup.lines).toEqual([{ label: "structure", value: "Shaft [1] (Mine)" }]);
   });
 
+  it("the structure popup reads its change off the report's own field name", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ previewChanges: [{ field: "structureId", original: "" }] }),
+        facts({ structureLabel: "Wavecrest [329] · Longship" })
+      )
+    );
+    expect(popup.lines[0]?.why).toBe("was: —");
+    expect(popup.notes).not.toContain("Nothing this month changes this.");
+  });
+
   it("the long order popup says another faction's orders are not in your report", () => {
     expect(
       columnPopup(popupForCell("longOrder", unit({ own: false }), facts())).notes
@@ -227,6 +240,20 @@ describe("the column popups", () => {
     );
     expect(popup.lines[0]).toEqual({ label: "Held now", value: "100" });
     expect(popup.lines.at(-1)?.label).toBe("At month end");
+  });
+
+  it("the silver popup shows no working for a row the game dissolves", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver({ held: 100 }), dissolving: true })
+      )
+    );
+    expect(popup.lines).toEqual([]);
+    expect(popup.notes).toContain(
+      "The game dissolves this unit before the month ends, so it has no month end."
+    );
   });
 
   it("the silver popup says only our own units have a forecast", () => {

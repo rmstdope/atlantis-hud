@@ -189,7 +189,8 @@ describe("the structure column", () => {
   it("names the structure a unit stands in, not just its number", () => {
     const markup = draw(inStructures([unit({ unitId: "901", name: "Passengers", structureId: "329" })]));
 
-    expect(markup).toContain("Wavecrest [329] · Longship");
+    const structure = /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
+    expect(structure).toContain("Wavecrest [329] · Longship");
   });
 
   it("keeps the bare number when the region never described the structure", () => {
@@ -203,14 +204,13 @@ describe("the structure column", () => {
     const markup = draw(inStructures([unit({ unitId: "902", name: "Scout", structureId: null })]));
 
     expect(markup).not.toContain("Wavecrest");
-    // The structure cell renders with nothing in it at all. Long order and then Silver sit after
-    // it (ah-1wcw.1), so the match runs through those two cells rather than to </tr> directly.
-    expect(markup).toMatch(
-      /<td[^>]*><\/td><td[^>]*>(<span class="text-danger">—<\/span>)?<\/td><td[^>]*><\/td><\/tr>/
-    );
+    // The structure cell shows nothing but the sentence a screen reader hears (`ah-rgkk.1`).
+    const structure = /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
+    expect(structure).toMatch(/^<td[^>]*><span class="sr-only">[^<]*<\/span><\/td>$/);
+    expect(structure).toContain("In no structure.");
   });
 
-  it("the tooltip gives the whole label, and what the orders changed beneath it", () => {
+  it("the cell's own sentence gives the whole label, and what the orders changed beneath it", () => {
     const markup = draw(
       inStructures([unit({ unitId: "901", name: "Passengers", structureId: "329" })]),
       {
@@ -239,8 +239,9 @@ describe("the structure column", () => {
       }
     );
 
-    expect(markup).toContain("Wavecrest [329] · Longship\n");
-    expect(markup).toMatch(/title="Wavecrest \[329\] · Longship\n[^"]/);
+    const structure = /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
+    expect(structure).toContain("Wavecrest [329] · Longship");
+    expect(structure).toContain("was: —");
   });
 });
 
@@ -1047,7 +1048,7 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
       )
     );
 
-    const skillsCell = /<td[^>]*>LUMB 5 \(450\)<\/td>/.exec(markup)?.[0];
+    const skillsCell = /<td[^>]*>LUMB 5 \(450\)<span class="sr-only">[^<]*<\/span><\/td>/.exec(markup)?.[0];
     expect(skillsCell).toBeTruthy();
     expect(skillsCell).not.toContain("italic");
     expect(skillsCell).not.toContain("data-predicted");
@@ -1372,7 +1373,8 @@ describe("All my units shows the coming month (ah-tguk)", () => {
 
     expect(row).toContain(">R</span>");
     expect(row).toContain('<span class="sr-only">Riding</span>');
-    expect(row).toContain('title="was: Walking"');
+    expect(row).toContain("was: Walking");
+    expect(row).not.toContain("title=");
   });
 
   it("marks a changed ITEMS cell in a list spanning hexes", () => {
@@ -1395,7 +1397,42 @@ describe("All my units shows the coming month (ah-tguk)", () => {
 
     expect(markup).toContain('data-predicted="true"');
     expect(markup).toContain("1 PERF");
-    expect(markup).toContain('title="was: —"');
+    expect(markup).toContain("was: —");
+  });
+
+  it("every drawn cell names its column and no cell carries a title", () => {
+    const markup = drawOwn([unit({ unitId: "1" })], null);
+    const row = /<tr data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+
+    for (const column of [
+      "own",
+      "unitId",
+      "name",
+      "faction",
+      "men",
+      "movement",
+      "flags",
+      "skills",
+      "items",
+      "structure",
+      "longOrder",
+      "silver"
+    ]) {
+      expect(row).toContain(`data-column="${column}"`);
+    }
+    // The browser's own tooltip is gone from the table entirely: every cell that explained itself
+    // with one now opens a popup and carries the same words for a screen reader (`ah-rgkk.1`).
+    expect(row).not.toContain("title=");
+  });
+
+  it("a cell carries its explanation for a screen reader", () => {
+    const markup = drawOwn([unit({ unitId: "1", men: 3, menEstimated: true })], null);
+    const cell = /<td[^>]*data-column="men"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
+
+    expect(cell).toContain(
+      "Estimated: the report has not been matched against the item catalogue"
+    );
+    expect(cell).toContain("Nothing this month changes this.");
   });
 
   it("draws a moving unit once, where it stands now", () => {
