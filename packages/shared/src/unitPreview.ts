@@ -314,40 +314,38 @@ export function itemsTooltip(
     return undefined;
   }
 
-  // In the navigator's S1 state - a unit whose only order cannot be counted - nothing was
-  // projected, so the report's own list is still true and gives line 3's wording something to
-  // follow. Deliberately the same "was:" wording as a real change, not a second sentence for the
-  // same fact.
-  const original = change ? change.original : formatItems(unit.items);
-  const lines = [`was: ${original === "" ? "—" : original}`];
+  // No `was:` lead and no per-item restatement: the Items popup draws every item as the pair the
+  // report and the orders put it between, and names each movement in its own clause
+  // (`ah-rgkk.3.3`, decisions **R1** and **T2**). What is left here is only what no clause can
+  // say - the resolution rules, the caps, and what could not be counted at all.
+  const lines: string[] = [];
   for (const taken of takenUnshown) {
     lines.push(
       `Includes ${taken.amount} ${taken.tag} taken from unit ${taken.from}, which your report does not show here.`
     );
   }
-  for (const item of produced) {
-    // "this unit cannot", not "cannot be spent": since `ah-728m.2.2` a manufacturing output *can*
-    // be spent this month - by a later manufacturer in the same hex, or by a BUILD, both of which
-    // `rules/sequenceofevents` runs after "Manufacturing PRODUCE orders ... are processed". What
-    // stays true is what this unit can do with it: GIVE and the market settle long before either
-    // PRODUCE phase, and its own month is already spent on producing.
+  // "this unit cannot", not "cannot be": since `ah-728m.2.2` a manufacturing output *can* be spent
+  // this month - by a later manufacturer in the same hex, or by a BUILD, both of which
+  // `rules/sequenceofevents` runs after "Manufacturing PRODUCE orders ... are processed". What
+  // stays true is what this unit can do with it: GIVE and the market settle long before either
+  // PRODUCE phase, and its own month is already spent on producing. Said once and naming no item,
+  // because the clause block above has already named every amount.
+  if (produced.length > 0) {
     lines.push(
-      `Includes ${item.amount} ${item.tag} this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.`
+      "Production resolves late, so this unit cannot give away or sell what it produces this month."
     );
   }
   for (const sentence of buyAll) {
     lines.push(sentence);
   }
-  for (const item of created) {
-    const amount = item.fewest === item.most ? `${item.most}` : `${item.fewest}-${item.most}`;
-    const verb = item.summoned ? "summon" : "create by casting";
+  if (created.length > 0) {
     lines.push(
-      `Includes ${amount} ${item.tag} this unit will ${verb}. Casting resolves after GIVE, so they cannot be given away this month.`
+      "Casting resolves after GIVE, so this unit cannot give away what it casts this month."
     );
   }
-  for (const arrival of transportReceived) {
+  if (transportReceived.length > 0) {
     lines.push(
-      `Includes ${arrival.amount} ${arrival.tag} transported from unit ${arrival.from}. Transport resolves last, so they cannot be spent this month.`
+      "Transport resolves last, so this unit cannot spend what arrives by transport this month."
     );
   }
   // Before the cap sentence, because that one quotes "the N its skill and tools could make" and this one is
@@ -359,7 +357,6 @@ export function itemsTooltip(
     lines.push(capSentence);
   }
   for (const spend of built) {
-    lines.push(`Spends ${spend.amount} ${spend.tag} ${buildSpendTarget(spend)} this month.`);
     if (spend.cappedBy === "materials") {
       lines.push(
         `This unit has ${spend.name} for ${spend.amount} units of work, not the ${spend.couldDo} its men could do.`
@@ -374,13 +371,20 @@ export function itemsTooltip(
   if (castCap !== undefined) {
     lines.push(castCap);
   }
-  for (const sentence of transportSentences(transportSent, transportTargetIssues)) {
+  // Only the refused lines: a refused TRANSPORT moves nothing and so has no `ItemChange`, while
+  // every line that does move is what the `transported-out` clause now says, `toUnshown` included.
+  for (const sentence of transportSentences(
+    transportSent.filter((sent) => sent.refused),
+    transportTargetIssues
+  )) {
     lines.push(sentence);
   }
   for (const order of uncounted) {
     lines.push(`and more that cannot be counted: ${order}`);
   }
-  return lines.join("\n");
+  // A unit whose only change is an items change now leaves no line at all, and an empty note is
+  // worse than none.
+  return lines.length === 0 ? undefined : lines.join("\n");
 }
 
 /**

@@ -286,8 +286,8 @@ describe("the column popups", () => {
   });
 
   it("says the report's own figure once, not twice", () => {
-    // `itemsTooltip` already opens with the quote, so a second sentence for the same fact would
-    // be read out twice - once in the popup and once in the cell's hidden sentence.
+    // The pair carries the report's figure now, so no note may restate it - it would be read out
+    // twice, once in the popup and once in the cell's hidden sentence.
     const popup = columnPopup(
       popupForCell(
         "items",
@@ -298,7 +298,10 @@ describe("the column popups", () => {
         facts()
       )
     );
-    expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual(["was: 20 SILV"]);
+    expect(popup.lines).toEqual([
+      { label: "silver SILV", value: "40", change: { direction: "up", from: "20" } }
+    ]);
+    expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual([]);
   });
 
   it("draws what a unit that gave everything away used to hold", () => {

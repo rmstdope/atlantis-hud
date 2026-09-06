@@ -661,6 +661,95 @@ describe("formatItems and itemsTooltip", () => {
     ).toBe("20 SILV, 6 HERB");
   });
 
+  it("collapses the production caveat to one sentence", () => {
+    const row = previewedUnit({
+      items: [{ amount: 5, name: "sword", tag: "SWOR" }],
+      previewChanges: [{ field: "items", original: "0 SWOR" }],
+      produced: [
+        { amount: 5, tag: "SWOR" },
+        { amount: 2, tag: "SPEA" }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("Production resolves late, so this unit cannot give away or sell what it produces this month.");
+  });
+
+  it("collapses the casting caveat to one sentence", () => {
+    const row = previewedUnit({
+      items: [{ amount: 15, name: "mithril sword", tag: "MSWO" }],
+      created: [
+        { fewest: 15, most: 15, tag: "MSWO", summoned: false },
+        { fewest: 1, most: 12, tag: "WOLF", summoned: true }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("Casting resolves after GIVE, so this unit cannot give away what it casts this month.");
+  });
+
+  it("collapses the transport arrival caveat to one sentence", () => {
+    const row = previewedUnit({
+      items: [{ amount: 12, name: "spear", tag: "SPEA" }],
+      transportReceived: [
+        { amount: 12, tag: "SPEA", from: "5530" },
+        { amount: 30, tag: "STON", from: "6857" }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("Transport resolves last, so this unit cannot spend what arrives by transport this month.");
+  });
+
+  it("says nothing of a transport the clause block now names", () => {
+    const row = previewedUnit({
+      items: [{ amount: 30, name: "stone", tag: "STON" }],
+      transportSent: [
+        { amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 0 }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBeUndefined();
+  });
+
+  it("leaves a refused transport's sentence alone", () => {
+    const row = previewedUnit({
+      items: [{ amount: 30, name: "stone", tag: "STON" }],
+      transportSent: [
+        { amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 0 },
+        { amount: 4, tag: "SILV", to: "6857", toUnshown: false, refused: true, orderIndex: 1 }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("The game will not transport SILV, so they stay with this unit.");
+  });
+
+  it("drops the build's spend line and keeps what capped it", () => {
+    const row = previewedUnit({
+      items: [{ amount: 120, name: "wood", tag: "WOOD" }],
+      built: [
+        {
+          amount: 15,
+          tag: "WOOD",
+          name: "wood",
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: "materials"
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("This unit has wood for 15 units of work, not the 30 its men could do.");
+  });
+
+  it("says nothing at all when the only thing to say was the report's own list", () => {
+    const row = previewedUnit({
+      items: [{ amount: 12, name: "sword", tag: "SWOR" }],
+      previewChanges: [{ field: "items", original: "8 SWOR" }]
+    });
+
+    expect(itemsTooltip(row)).toBeUndefined();
+  });
+
   it("words the hover for a unit that took from an unshown source and could not count an order", () => {
     const row = previewedUnit({
       items: [{ amount: 25, name: "silver", tag: "SILV" }, { amount: 6, name: "herbs", tag: "HERB" }],
@@ -670,8 +759,7 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row)).toBe(
-      "was: 20 SILV, 6 HERB\n" +
-        "Includes 5 GRAI taken from unit 999, which your report does not show here.\n" +
+      "Includes 5 GRAI taken from unit 999, which your report does not show here.\n" +
         "and more that cannot be counted: buy all HORS"
     );
   });
@@ -682,9 +770,7 @@ describe("formatItems and itemsTooltip", () => {
       uncounted: ["buy all HORS"]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 20 SILV, 6 HERB\nand more that cannot be counted: buy all HORS"
-    );
+    expect(itemsTooltip(row)).toBe("and more that cannot be counted: buy all HORS");
   });
 
   it("says nothing for a unit the orders left alone", () => {
@@ -715,8 +801,7 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row, silver)).toBe(
-      "was: 5 IRON, 350 SILV\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
+      "Production resolves late, so this unit cannot give away or sell what it produces this month.\n" +
         "This unit has men for 5 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
@@ -739,8 +824,7 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row, silver)).toBe(
-      "was: 5 IRON, 350 SILV\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
+      "Production resolves late, so this unit cannot give away or sell what it produces this month.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
   });
@@ -758,10 +842,7 @@ describe("formatItems and itemsTooltip", () => {
       productionCappedBy: null
     });
 
-    expect(itemsTooltip(row, silver)).toBe(
-      "was: 0 SWOR\n" +
-        "Includes 8 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month."
-    );
+    expect(itemsTooltip(row, silver)).toBe("Production resolves late, so this unit cannot give away or sell what it produces this month.");
   });
 
   // `ah-6x5u`. The same two lines the SILVER hover shows, in the same words and from the same
@@ -785,8 +866,7 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row, silver)).toBe(
-      "was: 20 IRON\n" +
-        "Includes 8 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
+      "Production resolves late, so this unit cannot give away or sell what it produces this month.\n" +
         "Requested: 10 swords. This month: 8.\n" +
         "Limited by skill and tools. The remaining 2 carry over."
     );
@@ -809,8 +889,7 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row, silver)).toBe(
-      "was: 0 SWOR\n" +
-        "Includes 3 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
+      "Production resolves late, so this unit cannot give away or sell what it produces this month.\n" +
         "Requested: 3 swords. This month: 3."
     );
   });
@@ -824,9 +903,7 @@ describe("formatItems and itemsTooltip", () => {
       productionCappedBy: "materials"
     });
 
-    expect(itemsTooltip(row, silver)).toBe(
-      "was: 3 SWOR\nThis unit has materials for 0 catapults, not the 3 its skill and tools could make."
-    );
+    expect(itemsTooltip(row, silver)).toBe("This unit has materials for 0 catapults, not the 3 its skill and tools could make.");
   });
 
   // `ah-jown`. Positioned after a `produced` line and before a production cap sentence, for the
@@ -859,8 +936,7 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row, silver)).toBe(
-      "was: 0 GRAI\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
+      "Production resolves late, so this unit cannot give away or sell what it produces this month.\n" +
         "This unit has silver for 19 grain, not the 30 this market offers.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
@@ -889,9 +965,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 10 HUMN, 120 WOOD\nSpends 30 WOOD on Building 4 this month."
-    );
+    expect(itemsTooltip(row)).toBeUndefined();
   });
 
   it("words the hover for a builder short of material", () => {
@@ -911,11 +985,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 15 WOOD\n" +
-        "Spends 15 WOOD on Building 4 this month.\n" +
-        "This unit has wood for 15 units of work, not the 30 its men could do."
-    );
+    expect(itemsTooltip(row)).toBe("This unit has wood for 15 units of work, not the 30 its men could do.");
   });
 
   it("words the hover for a builder on a nearly finished structure", () => {
@@ -935,11 +1005,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 120 WOOD\n" +
-        "Spends 6 WOOD on Guild Hall this month.\n" +
-        "Guild Hall needs 6 more units of work, not the 30 its men could do."
-    );
+    expect(itemsTooltip(row)).toBe("Guild Hall needs 6 more units of work, not the 30 its men could do.");
   });
 
   it("words the hover for a unit founding a structure", () => {
@@ -959,9 +1025,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 120 WOOD\nSpends 30 WOOD on a new Stockade this month."
-    );
+    expect(itemsTooltip(row)).toBeUndefined();
   });
 
   it("words the hover for a unit founding a structure it cannot finish this month", () => {
@@ -981,11 +1045,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 120 STON\n" +
-        "Spends 10 STON on a new Tower this month.\n" +
-        "A new Tower needs 10 units of work, not the 30 its men could do."
-    );
+    expect(itemsTooltip(row)).toBe("A new Tower needs 10 units of work, not the 30 its men could do.");
   });
 
   it("words the hover for a unit helping another build", () => {
@@ -1005,9 +1065,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 120 WOOD\nSpends 30 WOOD helping unit 5541 build Building 4 this month."
-    );
+    expect(itemsTooltip(row)).toBeUndefined();
   });
 
   it("words the hover for a unit helping another found a structure", () => {
@@ -1027,9 +1085,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 120 WOOD\nSpends 30 WOOD helping unit 5541 build a new Tower this month."
-    );
+    expect(itemsTooltip(row)).toBeUndefined();
   });
 
   it("words the hover for a unit helping a formed unit build", () => {
@@ -1049,9 +1105,7 @@ describe("formatItems and itemsTooltip", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 30 STON\nSpends 30 STON helping NEW 1 build a new Mine this month."
-    );
+    expect(itemsTooltip(row)).toBeUndefined();
   });
 
   it("puts the build lines after the production lines", () => {
@@ -1083,10 +1137,8 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row, silver)).toBe(
-      "was: 5 IRON, 30 WOOD\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
+      "Production resolves late, so this unit cannot give away or sell what it produces this month.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make.\n" +
-        "Spends 15 WOOD on Building 4 this month.\n" +
         "This unit has wood for 15 units of work, not the 30 its men could do."
     );
   });
@@ -1128,11 +1180,7 @@ describe("formatItems and itemsTooltip", () => {
       created: [{ fewest: 15, most: 15, tag: "MSWO", summoned: false }]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 0 MSWO\n" +
-        "Includes 15 MSWO this unit will create by casting. Casting resolves after GIVE, so they " +
-        "cannot be given away this month."
-    );
+    expect(itemsTooltip(row)).toBe("Casting resolves after GIVE, so this unit cannot give away what it casts this month.");
   });
 
   // Round 3's Q11, S2, quoted verbatim.
@@ -1143,11 +1191,7 @@ describe("formatItems and itemsTooltip", () => {
       created: [{ fewest: 1, most: 12, tag: "WOLF", summoned: true }]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 0 WOLF\n" +
-        "Includes 1-12 WOLF this unit will summon. Casting resolves after GIVE, so they cannot be " +
-        "given away this month."
-    );
+    expect(itemsTooltip(row)).toBe("Casting resolves after GIVE, so this unit cannot give away what it casts this month.");
   });
 
   // `ah-ofpb.1`'s K1, extended to casts by `ah-ofpb.5`'s round 3 Q12: the ITEMS hover repeats the
@@ -1165,9 +1209,7 @@ describe("formatItems and itemsTooltip", () => {
       castSummons: true
     });
 
-    expect(itemsTooltip(row, silver)).toBe(
-      "was: 30 WOLF\nThis unit has room for 6 wolves, not the 12 its level could summon."
-    );
+    expect(itemsTooltip(row, silver)).toBe("This unit has room for 6 wolves, not the 12 its level could summon.");
   });
 
   // `ah-bxgs`. Every string below is quoted verbatim in the plan and is the navigator's own
@@ -1190,11 +1232,8 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row)).toBe(
-      "was: 88 SILV, 15 STON, 2 HORS, 5 FUR\n" +
-        "Includes 12 SPEA transported from unit 5530. Transport resolves last, so they cannot be spent this month.\n" +
-        "Sends 30 STON to unit 16340.\n" +
-        "The game will not transport HORS, so they stay with this unit.\n" +
-        "Sends 5 FUR to unit 4670, which your report does not show."
+      "Transport resolves last, so this unit cannot spend what arrives by transport this month.\n" +
+        "The game will not transport HORS, so they stay with this unit."
     );
   });
 
@@ -1230,13 +1269,10 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row, silver)).toBe(
-      "was: 5 IRON, 30 WOOD\n" +
-        "Includes 5 SWOR this unit will produce. Production resolves late, so this unit cannot give them away or sell them this month.\n" +
-        "Includes 30 STON transported from unit 6857. Transport resolves last, so they cannot be spent this month.\n" +
+      "Production resolves late, so this unit cannot give away or sell what it produces this month.\n" +
+        "Transport resolves last, so this unit cannot spend what arrives by transport this month.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make.\n" +
-        "Spends 15 WOOD on Building 4 this month.\n" +
-        "This unit has wood for 15 units of work, not the 30 its men could do.\n" +
-        "Sends 5 IRON to unit 6857."
+        "This unit has wood for 15 units of work, not the 30 its men could do."
     );
   });
 });
@@ -1338,51 +1374,34 @@ describe("a transport target the report cannot show receiving", () => {
     expect(hasUncertainTransportTarget(undefined)).toBe(false);
   });
 
-  // The mockup's mixed card: the block reads in the order it was written.
-  it("puts a refused target after a send written before it", () => {
-    const row = previewedUnit({
-      items: [
-        { amount: 10, name: "stone", tag: "STON" },
-        { amount: 5, name: "fur", tag: "FUR" }
-      ],
-      previewChanges: [{ field: "items", original: "40 STON, 5 FUR" }],
-      transportSent: [
-        { amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 0 }
-      ],
-      transportTargetIssues: [
-        { to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 1 }
-      ]
-    });
-
-    expect(itemsTooltip(row)).toBe(
-      "was: 40 STON, 5 FUR\n" +
-        "Sends 30 STON to unit 6857.\n" +
-        "Unit 7001 is not a quartermaster, so 5 FUR stay with this unit."
-    );
+  // The mockup's mixed card: the block reads in the order it was written. Asserted on
+  // `transportSentences` rather than through `itemsTooltip`, because since `ah-rgkk.3.3` the hover
+  // passes it only the refused lines - the moved ones are the Items popup's `transported-out`
+  // clause now - so the interleaving is no longer observable from there.
+  it("puts a refused target after a refused send written before it", () => {
+    expect(
+      transportSentences(
+        [{ amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 0 }],
+        [{ to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 1 }]
+      )
+    ).toEqual([
+      "The game will not transport HORS, so they stay with this unit.",
+      "Unit 7001 is not a quartermaster, so 5 FUR stay with this unit."
+    ]);
   });
 
   // The half the two lists cannot state on their own: the refused order was written *first*, and
   // reading the sends before the issues would put the block backwards (`ah-64wm`).
-  it("puts a refused target before a send written after it", () => {
-    const row = previewedUnit({
-      items: [
-        { amount: 10, name: "stone", tag: "STON" },
-        { amount: 5, name: "fur", tag: "FUR" }
-      ],
-      previewChanges: [{ field: "items", original: "40 STON, 5 FUR" }],
-      transportSent: [
-        { amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 1 }
-      ],
-      transportTargetIssues: [
-        { to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 0 }
-      ]
-    });
-
-    expect(itemsTooltip(row)).toBe(
-      "was: 40 STON, 5 FUR\n" +
-        "Unit 7001 is not a quartermaster, so 5 FUR stay with this unit.\n" +
-        "Sends 30 STON to unit 6857."
-    );
+  it("puts a refused target before a refused send written after it", () => {
+    expect(
+      transportSentences(
+        [{ amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 1 }],
+        [{ to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 0 }]
+      )
+    ).toEqual([
+      "Unit 7001 is not a quartermaster, so 5 FUR stay with this unit.",
+      "The game will not transport HORS, so they stay with this unit."
+    ]);
   });
 
   // Every line one order writes shares that order's place, so the pair stays together and an
@@ -1413,10 +1432,7 @@ describe("a transport target the report cannot show receiving", () => {
       ]
     });
 
-    expect(itemsTooltip(row)).toBe(
-      "was: 40 STON\n" +
-        "Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target."
-    );
+    expect(itemsTooltip(row)).toBe("Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target.");
   });
 
   it("says nothing about a row with no target issue", () => {

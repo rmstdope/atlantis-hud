@@ -452,9 +452,8 @@ export function popupForCell(
   // On the emptiness of the body, and deliberately not on "no line carries the change": a line
   // that carries none may be saying there was none - `markOrQuote` returns nothing at all for an
   // original equal to the figure beside it, and the wider test said `Was: 12.` of a figure that
-  // did not move. `quoted` is the other half of the same care: an empty body is not the same as a
-  // silent one, and a column that has already said it says it once.
-  if (change && body.lines.length === 0 && !body.quoted) {
+  // did not move.
+  if (change && body.lines.length === 0) {
     notes.push(sentence(originalTooltip(change)!));
   }
 
@@ -480,14 +479,6 @@ type Body = {
   lines: PopupLine[];
   notes: string[];
   warning?: string | null;
-  /**
-   * Set by a column that has already said what the report had there, wherever it says it.
-   *
-   * `itemsBody` is the one: `itemsTooltip` opens with `was: …` and is reached whether or not the
-   * unit still holds anything, so a unit that gave everything away has an empty body *and* the
-   * quote already in its notes.
-   */
-  quoted?: boolean;
 };
 
 /** What one column has to say, before the shared capping and change sentence are applied. */
