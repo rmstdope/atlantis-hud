@@ -1717,10 +1717,10 @@ impl Working {
                 // Both read before the push: `self.units` is indexed mutably for `recipient`
                 // while `index` is still being read.
                 //
-                // `is_man` looks the tag up in an upper-case-keyed map, and `given` is written in
-                // exactly one place - `Working::apply_transfers` (`add_item(.., &mut ..given, ..)`),
-                // from the canonical tag it has already passed to `is_man` itself - so the tag
-                // reaching here is canonical.
+                // `is_man` is asked with the tag exactly as the report wrote it - `given` is
+                // written from `tags_moved`, which clones the held item's own tag - the same as
+                // every other `is_man` call in this file. If the catalogue lookup ever needs
+                // canonicalising it needs it in `Ruleset::is_man`, not here.
                 let is_man = self.ruleset.is_man(&gift.tag);
                 let dissolving = ItemChangeParty {
                     unit_id: self.units[index].unit.unit_id.clone(),
