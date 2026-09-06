@@ -880,17 +880,6 @@ function movementIsStillTheReport(unit: PreviewedUnit): boolean {
   );
 }
 
-/**
- * The order that put a setting into its new state, as it would be typed - `GUARD 1`, `BEHIND 0` -
- * or `undefined` where no order the preview applies could have done it.
- *
- * Every one of the eleven settings is reachable by an order the preview applies as of `ah-9g94.1`,
- * so every moved line names one; the `default` arm remains the guard for a key no setting declares.
- *
- * Guard and avoid are mutually exclusive - `rules/guard` and `rules/avoid` both say setting one
- * cancels the other - so a flag cleared by its opposite names the order the player actually wrote
- * rather than inventing the clear.
- */
 /** `rules/reveal`: `REVEAL UNIT`, `REVEAL FACTION`, and bare `REVEAL` "is used to cancel this". */
 const REVEAL_ORDERS: Readonly<Record<string, string | undefined>> = {
   unit: "REVEAL UNIT",
@@ -920,6 +909,17 @@ const SPOILS_ORDERS: Readonly<Record<string, string | undefined>> = {
   all: "SPOILS ALL"
 };
 
+/**
+ * The order that put a setting into its new state, as it would be typed - `GUARD 1`, `BEHIND 0` -
+ * or `undefined` where no order the preview applies could have done it.
+ *
+ * Every one of the eleven settings is reachable by an order the preview applies as of `ah-9g94.1`,
+ * so every moved line names one; the `default` arm remains the guard for a key no setting declares.
+ *
+ * Guard and avoid are mutually exclusive - `rules/guard` and `rules/avoid` both say setting one
+ * cancels the other - so a flag cleared by its opposite names the order the player actually wrote
+ * rather than inventing the clear.
+ */
 function flagCause(
   key: string,
   /**
