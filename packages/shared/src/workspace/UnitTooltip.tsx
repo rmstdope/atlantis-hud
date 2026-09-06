@@ -1,23 +1,16 @@
 import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
-import { useLayoutEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { useSettingsStore } from "../settingsStore";
 import { battleSkillGroups, battleSkillSource } from "../battleSkillPresentation";
 import type { DerivedSkill } from "../battleSkills";
-import { placeTooltip, summariseUnit, type Point } from "../unitTooltip";
+import { summariseUnit, type Point } from "../unitTooltip";
 import { Absent, Row, Section } from "./primitives";
+import { TooltipPortal } from "./TooltipPortal";
 
 /**
  * A unit's full skills and items, shown where the pointer came to rest.
  *
- * Rendered into the body rather than beside the row it describes. The panel behind the table is
- * blurred and clips what overflows it, and a blurred ancestor is what a fixed position resolves
- * against — inside the panel this would be trapped in it and cut off at its edge.
- *
- * It is placed after it is measured, so the arithmetic that keeps it on screen works on the size
- * the text actually took. The measuring pass is laid out but not painted: assigning the position
- * happens in a layout effect, which the browser runs before it draws, so there is no frame in
- * which the tooltip is somewhere else.
+ * Portalled and placed by `TooltipPortal`, which the per-cell popup shares (`ah-rgkk.1`), so the
+ * two land the same way and avoid the edges of the window by the same arithmetic.
  */
 export function UnitTooltip({
   unit,
@@ -45,44 +38,13 @@ export function UnitTooltip({
    */
   dissolving?: { into: string | null } | null;
 }) {
-  // The node is held as state rather than a ref so the effect below runs once it exists.
-  const [node, setNode] = useState<HTMLDivElement | null>(null);
-  const [placed, setPlaced] = useState<{ left: number; top: number } | null>(null);
-
-  useLayoutEffect(() => {
-    if (!node) {
-      return;
-    }
-    setPlaced(
-      placeTooltip(
-        at,
-        { width: node.offsetWidth, height: node.offsetHeight },
-        { width: window.innerWidth, height: window.innerHeight }
-      )
-    );
-  }, [node, at, unit.unitId]);
-
   // The Silver column's upkeep setting also decides the hover's fifth row (`ah-1wcw.4`).
   const countUpkeep = useSettingsStore((state) => state.countUpkeep);
   const summary = summariseUnit(unit, silver, warned, countUpkeep, dissolving);
   const groups = derivedSkills.length > 0 ? battleSkillGroups(derivedSkills) : [];
 
-  return createPortal(
-    <div
-      ref={setNode}
-      data-testid="unit-tooltip"
-      role="tooltip"
-      // Hidden until it has been measured and placed, which is one layout pass and no painted
-      // frame: shown, that pass would put it at the corner of the window for an instant.
-      style={{
-        left: placed?.left ?? 0,
-        top: placed?.top ?? 0,
-        visibility: placed ? "visible" : "hidden"
-      }}
-      // Transparent to the pointer, so resting on a row cannot put the tooltip under the cursor
-      // and take away the very hover that opened it.
-      className="pointer-events-none fixed z-50 max-h-[80vh] w-max max-w-sm overflow-hidden rounded-md border border-edge bg-panel/95 px-2.5 py-1.5 text-pane leading-snug text-ink shadow-lg backdrop-blur"
-    >
+  return (
+    <TooltipPortal at={at} anchorKey={unit.unitId} testId="unit-tooltip">
       {groups.length > 0 ? (
         <>
           <p className="m-0 font-medium text-brass">
@@ -152,7 +114,6 @@ export function UnitTooltip({
           ) : null}
         </Section>
       ) : null}
-    </div>,
-    document.body
+    </TooltipPortal>
   );
 }
