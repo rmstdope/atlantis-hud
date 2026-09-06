@@ -3102,6 +3102,11 @@ fn required_riding(description: &str) -> Option<(&str, i64)> {
 /// before `ah-3sp7.1`): [`Ruleset::class_members`] answers `None` for *cannot say*, and falling
 /// back leaves such a catalogue exactly as ready as it is today instead of dropping every mount.
 ///
+/// It narrows as well as widens: an item a catalogue marks `kind: mount` but leaves out of its
+/// stated `MOUNT` class stops counting. The committed catalogue's class is a strict superset of
+/// its mount kinds, so there is nothing there today; a rideable monster is out of scope for
+/// `ah-fz7t`, and the class is where such a thing would be declared if it were ever wanted.
+///
 /// `tag` is already upper-cased by the caller, as the `items` lookup beside it needs.
 fn is_mount(ruleset: &Ruleset, tag: &str, entry: &ItemEntry) -> bool {
     match ruleset.class_members("MOUNT") {

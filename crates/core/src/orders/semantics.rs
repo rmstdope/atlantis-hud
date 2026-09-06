@@ -14533,10 +14533,6 @@ mod tests {
         );
     }
 
-    /// The subject the sentence names - decision **P1** of `ah-q6bt`. `this faction` could send a
-    /// player looking at units in another region entirely (`ah-cw75`); `this region` counted men
-    /// that no longer help, since under decision **G1** only the units ordering `PILLAGE` are
-    /// counted at all.
     /// Pillaging needs *"enough combat ready men in the region"*, and riding centaurs are combat
     /// ready men (`ah-fz7t`, `rules/economy_taxingpillaging`).
     #[test]
@@ -14569,6 +14565,10 @@ mod tests {
         assert_eq!(row.income, Some(17926));
     }
 
+    /// The subject the sentence names - decision **P1** of `ah-q6bt`. `this faction` could send a
+    /// player looking at units in another region entirely (`ah-cw75`); `this region` counted men
+    /// that no longer help, since under decision **G1** only the units ordering `PILLAGE` are
+    /// counted at all.
     #[test]
     fn the_pillage_warning_names_the_units_ordering_pillage() {
         let pillager = with_item(
