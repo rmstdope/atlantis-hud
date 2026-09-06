@@ -2056,9 +2056,14 @@ impl Working {
 
         if crate::movement::orders::is_movement_command(&command.text) {
             if let Some(steps) = super::forms::read_move_line(command, arguments) {
-                // The last movement order wins, because a later order replaces an earlier one
-                // when the game executes them - the command word with it, so a rendered clause
+                // The last movement order wins - the command word with it, so a rendered clause
                 // names the word the player actually typed.
+                //
+                // `rules/move` says otherwise: "Multiple MOVE orders given by one unit will chain
+                // together", which `semantics.rs` already models. Keeping only the last one is a
+                // known divergence this module has always carried, and `ah-ehgy` left it alone on
+                // purpose: chaining here means deciding what a chained route costs and where it
+                // ends, which is a bead of its own.
                 self.units[active].move_steps = Some(steps);
                 self.units[active].move_command = Some(command.text.to_uppercase());
             }
