@@ -55,6 +55,8 @@ export type { OrderDiagnosticSeverity } from "./generated/OrderDiagnosticSeverit
 export type { OrderDiagnostic } from "./generated/OrderDiagnostic";
 export type { OrderValidationResult } from "./generated/OrderValidationResult";
 export type { FormedSubject } from "./generated/FormedSubject";
+export type { SilverChange } from "./generated/SilverChange";
+export type { SilverChangeCause } from "./generated/SilverChangeCause";
 export type { UnitSilver } from "./generated/UnitSilver";
 export type { SilverDoubt } from "./generated/SilverDoubt";
 export type { ProductionCap } from "./generated/ProductionCap";

@@ -45,8 +45,9 @@ use crate::orders::silver::{
     transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
     MarketFunds, MarketSide, PhaseFacts, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, Receipts, RegionShare, RegionWages, SaleAnswer, SharedMarket, SilverDoubt,
-    TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SharedMarket,
+    SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
+    UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1768,6 +1769,10 @@ fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<UnitKey, Receipts> {
             entry.taken = entry.taken.saturating_add(receipts.taken);
             entry.taken_unshown = entry.taken_unshown.saturating_add(receipts.taken_unshown);
             entry.take_all_unpriceable |= receipts.take_all_unpriceable;
+            // Movements, not a set: two gifts from one unit are two entries.
+            entry
+                .silver_moves
+                .extend(receipts.silver_moves.iter().cloned());
             for (into, from) in [
                 (&mut entry.givers, &receipts.givers),
                 (&mut entry.taken_from, &receipts.taken_from),
@@ -2591,6 +2596,11 @@ fn apply_transfers(
                                     receipts_by_position.entry(receiver_position).or_default();
                                 entry.taken_unshown = entry.taken_unshown.saturating_add(*count);
                                 let label = format!("unit {id}");
+                                entry.silver_moves.push(ReceiptMove {
+                                    amount: *count,
+                                    cause: SilverChangeCause::TookUnshown,
+                                    other: label.clone(),
+                                });
                                 if !entry.taken_unshown_from.contains(&label) {
                                     entry.taken_unshown_from.push(label);
                                 }
@@ -2745,6 +2755,11 @@ fn apply_transfers(
                         if moved > 0 {
                             let entry = receipts_by_position.entry(receiver_position).or_default();
                             entry.silver = entry.silver.saturating_add(moved);
+                            entry.silver_moves.push(ReceiptMove {
+                                amount: moved,
+                                cause: SilverChangeCause::WasGiven,
+                                other: source_label.clone(),
+                            });
                             if !entry.givers.contains(&source_label) {
                                 entry.givers.push(source_label);
                             }
@@ -2761,6 +2776,11 @@ fn apply_transfers(
                 } else if moved > 0 {
                     let entry = receipts_by_position.entry(transfer.position).or_default();
                     entry.taken = entry.taken.saturating_add(moved);
+                    entry.silver_moves.push(ReceiptMove {
+                        amount: moved,
+                        cause: SilverChangeCause::Took,
+                        other: source_label.clone(),
+                    });
                     if !entry.taken_from.contains(&source_label) {
                         entry.taken_from.push(source_label);
                     }
@@ -13416,6 +13436,84 @@ mod tests {
             .into_iter()
             .map(|((_, unit_id), receipts)| (unit_id, receipts))
             .collect()
+    }
+
+    /// `ah-rgkk.4.4`: the three producers of [`Receipts::silver_moves`], through the settlement
+    /// that actually writes them rather than a hand-built `Receipts`. Each entry must carry the
+    /// quantity that moved and the same label the `givers`/`taken_from` entry beside it carries -
+    /// the invariant `ReceiptMove::other` documents, and the reason both are written in one `if`.
+    #[test]
+    fn each_settled_silver_transfer_is_recorded_as_a_movement() {
+        let region = region(vec![
+            with_silver(unit("2390"), 500),
+            with_silver(unit("2391"), 500),
+        ]);
+        let source = "unit 2390\nGIVE 2391 200 SILV\nunit 2391\nTAKE FROM 2390 100 SILV\nTAKE FROM 999 25 SILV\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let taker = receipts.get("2391").expect("the receiver has receipts");
+        assert_eq!(
+            taker.silver_moves,
+            vec![
+                ReceiptMove {
+                    amount: 200,
+                    cause: SilverChangeCause::WasGiven,
+                    other: "Unit 2390 (2390)".to_string(),
+                },
+                ReceiptMove {
+                    amount: 100,
+                    cause: SilverChangeCause::Took,
+                    other: "Unit 2390 (2390)".to_string(),
+                },
+                ReceiptMove {
+                    amount: 25,
+                    cause: SilverChangeCause::TookUnshown,
+                    other: "unit 999".to_string(),
+                },
+            ]
+        );
+        // Every movement's label is one the matching label vector already carries, and the
+        // amounts add up to the three sums beside them.
+        for move_in in &taker.silver_moves {
+            assert!(
+                taker.givers.contains(&move_in.other)
+                    || taker.taken_from.contains(&move_in.other)
+                    || taker.taken_unshown_from.contains(&move_in.other),
+                "{} is not among the labels",
+                move_in.other
+            );
+        }
+        assert_eq!(
+            taker.silver_moves.iter().map(|m| m.amount).sum::<i64>(),
+            taker.silver + taker.taken + taker.taken_unshown
+        );
+    }
+
+    /// Two gifts from one unit are two movements, where `givers` deduplicates to one label: the
+    /// ledger records what moved rather than who moved it, and `gather_receipts` merges by
+    /// `extend` for exactly that reason.
+    #[test]
+    fn two_gifts_from_one_unit_are_two_movements_and_one_giver() {
+        let region = region(vec![
+            with_silver(unit("2390"), 500),
+            with_silver(unit("2391"), 0),
+        ]);
+        let source = "unit 2390\nGIVE 2391 100 SILV\nGIVE 2391 50 SILV\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let receiver = receipts.get("2391").expect("the receiver has receipts");
+        assert_eq!(receiver.givers, vec!["Unit 2390 (2390)".to_string()]);
+        assert_eq!(
+            receiver
+                .silver_moves
+                .iter()
+                .map(|move_in| move_in.amount)
+                .collect::<Vec<_>>(),
+            vec![100, 50]
+        );
+        assert_eq!(receiver.silver, 150);
     }
 
     /// `ah-awcm`: a `TAKE` of a stated quantity from a unit the report shows in this hex is the

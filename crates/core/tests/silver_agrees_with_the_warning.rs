@@ -335,6 +335,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         cast_summons: false,
         formed: None,
         buy_all: Vec::new(),
+        changes: Vec::new(),
     }
 }
 
