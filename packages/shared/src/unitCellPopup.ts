@@ -29,8 +29,14 @@ import { COLUMN_LABELS, type ExtraColumn, type UnitColumn } from "./unitTable";
 /** A column of the table as the resolver sees it: one of its own, or one a source added. */
 export type PopupColumn = UnitColumn | ExtraColumn;
 
-/** How a figure moved this month. `amount` is always positive; the direction carries the sign. */
-export type PopupChange = { direction: "up" | "down"; amount: number };
+/**
+ * How a figure moved this month (decision **R1**, `ah-rgkk.6`).
+ *
+ * `from` is what the report said, already formatted; the line's own `value` is where it stands
+ * now. The two together are the pair the popup draws, and `direction` is what colours the second
+ * of them.
+ */
+export type PopupChange = { direction: "up" | "down"; from: string };
 
 /** One line of a column popup. */
 export type PopupLine = {
@@ -236,15 +242,15 @@ function markOrQuote(change: ReturnType<typeof changeFor>, now: number): Partial
     return {};
   }
   const before = Number(change.original);
-  if (!Number.isInteger(before)) {
+  // `Number("")` is 0 and `Number.isInteger(0)` is true, so an original the report left empty
+  // would otherwise read as a real figure of zero and draw a pair with nothing before the arrow.
+  if (change.original.trim() === "" || !Number.isInteger(before)) {
     return { why: originalTooltip(change) };
   }
   if (before === now) {
     return {};
   }
-  return {
-    change: { direction: now > before ? "up" : "down", amount: Math.abs(now - before) }
-  };
+  return { change: { direction: now > before ? "up" : "down", from: change.original } };
 }
 
 /** A sentence the app already ships as a fragment, ended the way every popup sentence ends. */
@@ -434,7 +440,7 @@ export function popupAsText(popup: ColumnPopup): string {
   const lines = popup.lines.map((line) => {
     const parts = [`${line.label} ${line.value}`];
     if (line.change) {
-      parts.push(`${line.change.direction === "up" ? "up" : "down"} ${line.change.amount}`);
+      parts.push(`${line.change.direction} from ${line.change.from}`);
     }
     if (line.why) {
       parts.push(line.why);

@@ -61,7 +61,7 @@ describe("the column popups", () => {
     );
   });
 
-  it("the men popup marks a change as a direction and an amount", () => {
+  it("the men popup marks a change as the pair it came from", () => {
     const popup = columnPopup(
       popupForCell(
         "men",
@@ -70,8 +70,19 @@ describe("the column popups", () => {
       )
     );
     expect(popup.lines).toEqual([
-      { label: "men", value: "12", change: { direction: "up", amount: 4 } }
+      { label: "men", value: "12", change: { direction: "up", from: "8" } }
     ]);
+  });
+
+  it("the men popup quotes the report when it recorded no original figure", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({ men: 12, previewChanges: [{ field: "men", original: "" }] }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "men", value: "12", why: "was: —" }]);
   });
 
   it("the men popup falls back to the report's own words when the original is not a number", () => {
@@ -368,14 +379,19 @@ describe("popupAsText", () => {
     const text = popupAsText({
       title: "Braves (1487) — items",
       lines: [
-        { label: "silver SILV", value: "40", change: { direction: "up", amount: 4 } },
-        { label: "grain GRAI", value: "2", change: { direction: "down", amount: 1 }, why: "1 eaten" }
+        { label: "silver SILV", value: "40", change: { direction: "up", from: "36" } },
+        {
+          label: "grain GRAI",
+          value: "2",
+          change: { direction: "down", from: "3" },
+          why: "1 eaten"
+        }
       ],
       notes: ["was: 36 SILV, 3 GRAI."],
       warning: "This month is only partly counted."
     });
     expect(text).toBe(
-      "silver SILV 40, up 4. grain GRAI 2, down 1, 1 eaten. was: 36 SILV, 3 GRAI. This month is only partly counted."
+      "silver SILV 40, up from 36. grain GRAI 2, down from 3, 1 eaten. was: 36 SILV, 3 GRAI. This month is only partly counted."
     );
   });
 
