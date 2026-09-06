@@ -78,17 +78,20 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "men",
-        unit({ men: 4255, previewChanges: [{ field: "men", original: "4210" }] }),
+        unit({ men: 42255, previewChanges: [{ field: "men", original: "42100" }] }),
         facts()
       )
     );
     // Grouped through `toLocaleString`, which follows the runner's own locale - so the pinned
     // expectation is that both halves are grouped the same way, not that the separator is a comma.
+    // Five figures rather than four: many locales set `minimumGroupingDigits: 2` and leave a
+    // four-figure number ungrouped (`es-ES` gives `4210`), which would make the expectation equal
+    // to the raw string the old code passed through, and the test would pass against it.
     expect(popup.lines).toEqual([
       {
         label: "men",
-        value: (4255).toLocaleString(),
-        change: { direction: "up", from: (4210).toLocaleString() }
+        value: (42255).toLocaleString(),
+        change: { direction: "up", from: (42100).toLocaleString() }
       }
     ]);
   });
