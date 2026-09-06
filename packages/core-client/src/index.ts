@@ -380,6 +380,43 @@ export type BuildSpend = {
   cappedBy: BuildCap | null;
 };
 
+/**
+ * Why one item moved into or out of a unit this month (`ah-rgkk.3.1`).
+ *
+ * `ah-rgkk.3.2` adds the GIVE/TAKE causes; a reader must treat an unknown cause as "moved, reason
+ * not stated" rather than failing.
+ */
+export type ItemChangeCause =
+  | "bought"
+  | "sold"
+  | "withdrawn"
+  | "produced"
+  | "production-spent"
+  | "build-spent"
+  | "cast-created"
+  | "cast-spent"
+  | "transported-out"
+  | "transported-in"
+  | "abandoned";
+
+/** The other unit an item change is between (`ah-rgkk.3.1`). */
+export type ItemChangeParty = { unitId: string; name: string | null };
+
+/** One item this month's orders move into or out of a unit, with its cause (`ah-rgkk.3.1`). */
+export type ItemChange = {
+  tag: string;
+  /** The catalogue's display name, so a consumer needs no catalogue of its own. */
+  name: string;
+  /** Signed: positive into the unit, negative out of it. Never zero. */
+  delta: number;
+  cause: ItemChangeCause;
+  /** The 1-based document line of the order responsible, when one order is. */
+  line: number | null;
+  /** What the market settled one of these at, in silver. `null` on every cause but a buy or sale. */
+  unitPrice: number | null;
+  other: ItemChangeParty | null;
+};
+
 /** One item a CAST order creates this month. `fewest` and `most` are equal when it is certain. */
 export type CreatedItem = { fewest: number; most: number; tag: string; summoned: boolean };
 
@@ -557,6 +594,11 @@ export type UnitPreview = {
    * receive, in document order. Those orders move nothing (`ah-64wm`).
    */
   transportTargetIssues: TransportTargetIssue[];
+  /**
+   * Every item this month's orders move into or out of this unit, each with its cause, in the
+   * month's order (`ah-rgkk.3.1`).
+   */
+  itemChanges: ItemChange[];
   /**
    * The unit a dissolving row's goods revert to, as `<name> (<id>)` (`rules/form`). `null` on
    * every other row, and on a dissolving row in a hex the report shows no own unit in.

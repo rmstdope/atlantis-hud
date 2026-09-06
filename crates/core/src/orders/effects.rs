@@ -94,6 +94,13 @@ pub struct UnitPreview {
     /// document order. Empty for a unit whose every transport reached an eligible target
     /// (`ah-64wm`).
     pub transport_target_issues: Vec<TransportTargetIssue>,
+    /// Every item this month's orders move into or out of this unit, each with its cause, **in the
+    /// month's order** (`ah-rgkk.3.1`). Empty for a unit whose month moves nothing.
+    ///
+    /// Overlaps [`produced`](Self::produced), [`built`](Self::built), [`created`](Self::created)
+    /// and the two transport lists on purpose: those say what one kind of order did, and this says
+    /// what happened to the items, which is what the Items popup reads.
+    pub item_changes: Vec<ItemChange>,
     /// The unit a dissolving row's goods revert to, as `<name> (<id>)` - `rules/form`'s "the first
     /// unit you have in that region", named from the preview so a recipient this month's `NAME`
     /// renames reads as the orders leave it.
@@ -421,6 +428,64 @@ pub struct BuildSpend {
     pub capped_by: Option<BuildCap>,
 }
 
+/// Why one item moved into or out of a unit this month (`ah-rgkk.3.1`).
+///
+/// One cause per movement. `ah-rgkk.3.2` adds the GIVE/TAKE cases to this enum; a reader must
+/// treat an unknown cause as "moved, reason not stated" rather than failing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ItemChangeCause {
+    Bought,
+    Sold,
+    Withdrawn,
+    Produced,
+    /// Consumed as the material of a `PRODUCE`.
+    ProductionSpent,
+    /// Consumed as the material of a `BUILD`.
+    BuildSpent,
+    /// Created or summoned by a `CAST`; the [`CreatedItem`] beside it says which and by how much.
+    CastCreated,
+    /// Consumed as the material of a `CAST`.
+    CastSpent,
+    /// Sent by this unit's `TRANSPORT`/`DISTRIBUTE`.
+    TransportedOut,
+    /// Arrived by another unit's `TRANSPORT`/`DISTRIBUTE`.
+    TransportedIn,
+    /// An unfinished ship left behind because the unit leaves the hex.
+    Abandoned,
+}
+
+/// The other unit an item change is between (`ah-rgkk.3.1`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemChangeParty {
+    /// The other unit's number, exactly as the report or the order writes it.
+    pub unit_id: String,
+    /// The other unit's name as the preview leaves it, when this hex's own rows show it. `None`
+    /// where only a number is known - a transport target the report does not show, for one.
+    pub name: Option<String>,
+}
+
+/// One item this month's orders move into or out of a unit, with its cause (`ah-rgkk.3.1`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemChange {
+    /// The item's tag, as the item list keys it - `HORS`.
+    pub tag: String,
+    /// The catalogue's display name, so a consumer needs no catalogue of its own.
+    pub name: String,
+    /// Signed: positive into the unit, negative out of it. Never zero - a movement of nothing is
+    /// not recorded.
+    pub delta: i64,
+    pub cause: ItemChangeCause,
+    /// The 1-based document line of the order responsible, when one order is.
+    pub line: Option<i64>,
+    /// What the market settled one of these at, in silver. `None` on every cause but
+    /// [`ItemChangeCause::Bought`] and [`ItemChangeCause::Sold`].
+    pub unit_price: Option<i64>,
+    pub other: Option<ItemChangeParty>,
+}
+
 /// One item a `CAST` order creates this month (`ah-ofpb.5`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -673,6 +738,14 @@ pub fn preview_orders_on_map(
         } else {
             entry.study.clone()
         };
+        // `rules/form` dissolves a unit that gains nobody before the month ends, so it never held
+        // anything to move (`ah-rgkk.3.1`), exactly as `produced`, `built` and `created` above.
+        let item_changes = if dissolving {
+            Vec::new()
+        } else {
+            entry.item_changes.clone()
+        };
+        let items_moved = !dissolving && entry.items_moved;
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
         let transport_target_issues = entry.transport_target_issues.clone();
@@ -686,6 +759,16 @@ pub fn preview_orders_on_map(
             && transport_received.is_empty()
             && transport_target_issues.is_empty()
             && study.is_none()
+            // A unit that buys five of a tag and sells five of the same tag ends the month holding
+            // what it started with, so `changes()` records nothing - and the row would be dropped
+            // along with the explanation of why nothing changed (`ah-rgkk.3.1`).
+            //
+            // `items_moved` rather than `!item_changes.is_empty()`: a cast charged for materials
+            // the mage does not hold records a change that takes nothing away (`ah-ofpb.5`), and a
+            // row whose every change is one of those has nothing to show - admitting it would put
+            // rows on the units table for orders with no effect at all, which is the leak
+            // `tests/orders_preview.rs` guards against.
+            && !items_moved
         {
             continue;
         }
@@ -719,6 +802,7 @@ pub fn preview_orders_on_map(
                     produced: produced.clone(),
                     built: built.clone(),
                     created: created.clone(),
+                    item_changes: item_changes.clone(),
                     transport_sent: transport_sent.clone(),
                     transport_received: transport_received.clone(),
                     transport_target_issues: transport_target_issues.clone(),
@@ -748,6 +832,7 @@ pub fn preview_orders_on_map(
                     produced,
                     built,
                     created,
+                    item_changes,
                     transport_sent,
                     transport_received,
                     transport_target_issues,
@@ -776,6 +861,7 @@ pub fn preview_orders_on_map(
                     produced,
                     built,
                     created,
+                    item_changes,
                     transport_sent,
                     transport_received,
                     transport_target_issues,
@@ -1024,6 +1110,21 @@ struct WorkingUnit {
     /// What this unit's `CAST` orders create this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.5`).
     created: Vec<CreatedItem>,
+    /// Every item this month's orders move into or out of this unit, in the month's order.
+    ///
+    /// **Appended to, never assigned**: each phase's writer adds its own, and the writers run in
+    /// the month's order - `apply_transfers` first (`ah-rgkk.3.2`'s seam), then
+    /// `apply_item_effects` with the ledger's already-sorted movements, then `apply_transports`
+    /// last (`ah-rgkk.3.1`).
+    item_changes: Vec<ItemChange>,
+    /// Whether any of those changes actually moved stock on this row.
+    ///
+    /// Never on the wire, and not the same question as "is `item_changes` non-empty": a `CAST` is
+    /// charged its materials at the ceiling whether or not the mage holds them (`ah-ofpb.5`), so a
+    /// mage with none of the material records a change that takes nothing away. A row whose every
+    /// change is one of those has nothing to show, and `preview_orders_on_map` skips it - the
+    /// buy-then-sell month that nets to zero is the case the row is kept for (`ah-rgkk.3.1`).
+    items_moved: bool,
     /// What this unit's `TRANSPORT`/`DISTRIBUTE` orders send this month. Written once by
     /// `apply_transports`, after everything else has run (`ah-bxgs`).
     transport_sent: Vec<TransportSent>,
@@ -1380,6 +1481,8 @@ impl Working {
                 produced: Vec::new(),
                 built: Vec::new(),
                 created: Vec::new(),
+                item_changes: Vec::new(),
+                items_moved: false,
                 transport_sent: Vec::new(),
                 transport_received: Vec::new(),
                 recruited: Vec::new(),
@@ -1603,6 +1706,7 @@ impl Working {
                             &movement.tag,
                             movement.delta,
                         );
+                        unit.items_moved = true;
                     }
                     std::cmp::Ordering::Less => {
                         // A stock can go negative here - the ledger clamps against a running
@@ -1617,6 +1721,7 @@ impl Working {
                             .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
                         {
                             take_item(&mut unit.unit.items, index, -movement.delta);
+                            unit.items_moved = true;
                         }
                     }
                     std::cmp::Ordering::Equal => {}
@@ -1628,13 +1733,25 @@ impl Working {
             unit.produced = effect
                 .moved
                 .iter()
-                .filter(|movement| movement.produced)
+                .filter(|movement| movement.cause == ItemChangeCause::Produced)
                 .map(|movement| ProducedItem {
                     amount: movement.delta,
                     tag: movement.tag.clone(),
                 })
                 .collect();
             unit.built = effect.built.clone();
+            // `extend`, never assign: `apply_transfers` has already written this month's GIVE and
+            // TAKE here in the Give phase, and `apply_transports` appends after us (`ah-rgkk.3.1`).
+            unit.item_changes
+                .extend(effect.moved.iter().map(|movement| ItemChange {
+                    tag: movement.tag.clone(),
+                    name: movement.name.clone(),
+                    delta: movement.delta,
+                    cause: movement.cause,
+                    line: movement.line,
+                    unit_price: movement.unit_price,
+                    other: movement.other.clone(),
+                }));
             unit.created = effect
                 .moved
                 .iter()
@@ -1697,6 +1814,8 @@ impl Working {
             produced: Vec::new(),
             built: Vec::new(),
             created: Vec::new(),
+            item_changes: Vec::new(),
+            items_moved: false,
             transport_sent: Vec::new(),
             transport_received: Vec::new(),
             recruited: Vec::new(),
@@ -2439,9 +2558,46 @@ impl Working {
                         order_index: index,
                     },
                 ));
+                if moved != 0 {
+                    // Read before the push: `self.units` is borrowed mutably below. The receiver's
+                    // name only where this hex's rows show it - a target the report does not show
+                    // is a number and nothing more (`TransportSent::to_unshown`).
+                    let receiver_name = pending
+                        .receiver
+                        .map(|receiver| self.units[receiver].unit.name.clone());
+                    // `line` is `None`: what a transport carries is the order's `order_index`,
+                    // which `TransportSent` already holds, not a document line (`ah-rgkk.3.1`).
+                    self.units[pending.sender].item_changes.push(ItemChange {
+                        tag: tag.clone(),
+                        name: name.clone(),
+                        delta: -moved,
+                        cause: ItemChangeCause::TransportedOut,
+                        line: None,
+                        unit_price: None,
+                        other: Some(ItemChangeParty {
+                            unit_id: pending.to.clone(),
+                            name: receiver_name,
+                        }),
+                    });
+                }
                 if let Some(receiver) = pending.receiver {
                     add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
                     let from = self.units[pending.sender].unit.unit_id.clone();
+                    let from_name = self.units[pending.sender].unit.name.clone();
+                    if moved != 0 {
+                        self.units[receiver].item_changes.push(ItemChange {
+                            tag: tag.clone(),
+                            name: name.clone(),
+                            delta: moved,
+                            cause: ItemChangeCause::TransportedIn,
+                            line: None,
+                            unit_price: None,
+                            other: Some(ItemChangeParty {
+                                unit_id: from.clone(),
+                                name: Some(from_name),
+                            }),
+                        });
+                    }
                     received[receiver].push((
                         pending.sequence,
                         TransportReceived {
@@ -4618,6 +4774,11 @@ mod tests {
         assert!(dissolving.built.is_empty(), "{:?}", dissolving.built);
         assert!(dissolving.created.is_empty(), "{:?}", dissolving.created);
         assert!(
+            dissolving.item_changes.is_empty(),
+            "{:?}",
+            dissolving.item_changes
+        );
+        assert!(
             dissolving.transport_sent.is_empty(),
             "{:?}",
             dissolving.transport_sent
@@ -5964,6 +6125,88 @@ mod tests {
             change(unit, "items");
         }
 
+        /// `ah-rgkk.3.1`, increment 4. The preview says *why* each item moved, not merely what the
+        /// unit ends up holding.
+        #[test]
+        fn a_bought_item_reaches_the_preview_with_its_cause() {
+            let response = preview_over(&report_with_market(), "unit 900\nBUY 5 horse\n");
+            let unit = only_unit(&response);
+
+            assert_eq!(
+                unit.item_changes,
+                vec![ItemChange {
+                    tag: "HORS".to_string(),
+                    name: "horse".to_string(),
+                    delta: 5,
+                    cause: ItemChangeCause::Bought,
+                    line: Some(2),
+                    unit_price: Some(10),
+                    other: None,
+                }]
+            );
+        }
+
+        /// `ah-rgkk.3.1`, increment 4. A month that nets to nothing still has something to say:
+        /// the row must survive so the popup can explain why the stock is unchanged.
+        #[test]
+        fn a_unit_that_buys_and_sells_the_same_goods_keeps_its_row() {
+            let response = preview_over(
+                &report_with_market(),
+                "unit 900\nSELL 5 fur\nWITHDRAW 5 FUR\n",
+            );
+            let unit = only_unit(&response);
+
+            assert_eq!(
+                unit.item_changes
+                    .iter()
+                    .map(|change| change.cause)
+                    .collect::<Vec<_>>(),
+                vec![ItemChangeCause::Sold, ItemChangeCause::Withdrawn],
+                "{:?}",
+                unit.item_changes
+            );
+        }
+
+        /// `ah-rgkk.3.1`. A cast is charged its materials at the ceiling whether or not the mage
+        /// holds them (`ah-ofpb.5`), so a mage holding none records a change that takes nothing
+        /// away. A row whose every change is one of those has nothing to show.
+        #[test]
+        fn a_cast_charged_for_materials_the_mage_has_not_got_earns_no_row() {
+            let empty_handed = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "* Enchanter (900), Foo (1), behind, leader [LEAD]. Weight: 10. \
+                 Capacity: 0/0/15/0. Skills: enchant swords [ESWO] 3 (270).",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(&empty_handed, "unit 900\nCAST Enchant_Swords\n");
+
+            assert!(
+                !response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .any(|unit| unit.unit.unit_id == "900"),
+                "nothing moved, so nothing is previewed: {:?}",
+                response.regions
+            );
+
+            // The control: the same cast by a mage who does hold the swords is previewed, and its
+            // materials are among the changes.
+            let response = preview_over(&report_with_a_mage(), "unit 900\nCAST Enchant_Swords\n");
+            let unit = only_unit(&response);
+            assert!(
+                unit.item_changes.iter().any(
+                    |change| change.cause == ItemChangeCause::CastSpent && change.tag == "SWOR"
+                ),
+                "{:?}",
+                unit.item_changes
+            );
+        }
+
         /// Q4's rule, via the existing `take_item`.
         #[test]
         fn a_sold_out_stock_disappears_from_the_previewed_list() {
@@ -6551,6 +6794,49 @@ mod tests {
                 .changes
                 .iter()
                 .any(|change| change.field == "items"));
+        }
+
+        /// `ah-rgkk.3.1`, increment 5. A transport is an item change on both ends, and it is the
+        /// month's last item phase (`rules/sequenceofevents`), so it comes last.
+        #[test]
+        fn a_transport_reaches_both_units_as_an_item_change() {
+            let response = two_hex_preview("unit 5530\nTRANSPORT 6857 30 STON\n");
+
+            let sender = sender_row(&response);
+            let sent = sender
+                .item_changes
+                .iter()
+                .find(|change| change.tag == "STON")
+                .expect("the sender records what left");
+            assert_eq!(sent.cause, ItemChangeCause::TransportedOut);
+            assert_eq!(sent.delta, -30);
+            assert_eq!(
+                sent.other.as_ref().map(|other| other.unit_id.as_str()),
+                Some("6857")
+            );
+
+            let receiver = receiver_row(&response).expect("the receiver is previewed");
+            let arrived = receiver
+                .item_changes
+                .iter()
+                .find(|change| change.tag == "STON")
+                .expect("the receiver records what arrived");
+            assert_eq!(arrived.cause, ItemChangeCause::TransportedIn);
+            assert_eq!(arrived.delta, 30);
+            assert_eq!(
+                arrived.other.as_ref().map(|other| other.unit_id.as_str()),
+                Some("5530")
+            );
+        }
+
+        /// `ah-rgkk.3.1`, increment 5. A refused line moves nothing, so it explains nothing here -
+        /// `transport_sent` already speaks for it (`ah-64wm`).
+        #[test]
+        fn a_refused_transport_records_no_item_change() {
+            let response = two_hex_preview("unit 6857\nTRANSPORT 5531 1 LEAD\n");
+
+            let unit = row(&response, "1:2,2", "6857").expect("the refusal is still reported");
+            assert!(unit.item_changes.is_empty(), "{:?}", unit.item_changes);
         }
 
         #[test]
