@@ -1,4 +1,4 @@
-import type { ColumnPopup, PopupChange } from "../unitCellPopup";
+import type { ColumnPopup, PopupLine } from "../unitCellPopup";
 import type { Point } from "../unitTooltip";
 import { TooltipPortal } from "./TooltipPortal";
 
@@ -36,11 +36,7 @@ export function UnitCellPopup({
       {popup.lines.map((line, index) => (
         <div key={`${line.label}-${index}`} className="flex justify-between gap-3">
           <span>{line.label}</span>
-          <span className="tabular-nums text-ink-soft">
-            {line.value}
-            {line.change ? <ChangeMark change={line.change} /> : null}
-            {line.why ? <span className="ml-1.5 text-ink-dim">{line.why}</span> : null}
-          </span>
+          <PopupLineValue line={line} />
         </div>
       ))}
 
@@ -56,18 +52,30 @@ export function UnitCellPopup({
 }
 
 /**
- * How much a figure moved, and which way (decision **B1**).
+ * What one line of a popup stands at, and what it stood at before this month (decision **R1**).
  *
- * The arrow and the sign each carry the direction, so neither the colour nor the glyph alone has
- * to be read; the colour is decoration. A true minus (U+2212) rather than a hyphen, so the two
- * signs are the same width in the tabular figures beside them.
+ * The pair is drawn `before → after`, the before in the line's own soft ink and the arrow dimmer
+ * still, so the eye lands on the figure that holds now. Only the after is coloured: the colour is
+ * decoration, and the pair itself is what says the figure moved.
+ *
+ * Exported so it can be tested at all - `UnitCellPopup` renders a portal, which this package
+ * cannot render (`packages/shared/src/testing/README.md`).
  */
-function ChangeMark({ change }: { change: PopupChange }) {
-  const up = change.direction === "up";
+export function PopupLineValue({ line }: { line: PopupLine }) {
   return (
-    <span className={`ml-1.5 ${up ? "text-ok" : "text-danger"}`}>
-      {up ? "▲" : "▼"} {up ? "+" : "−"}
-      {change.amount}
+    <span className="tabular-nums text-ink-soft">
+      {line.change ? (
+        <>
+          {line.change.from}
+          <span className="mx-1 text-ink-dim">→</span>
+          <span className={line.change.direction === "up" ? "text-ok" : "text-danger"}>
+            {line.value}
+          </span>
+        </>
+      ) : (
+        line.value
+      )}
+      {line.why ? <span className="ml-1.5 text-ink-dim">{line.why}</span> : null}
     </span>
   );
 }
