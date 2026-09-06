@@ -1,11 +1,11 @@
 import type {
   ItemChange,
   ItemChangeParty,
-  UnitMovementMode,
   SilverChange,
   SkillInfo,
   SkillMerge,
   StudyForecast,
+  UnitMovementMode,
   UnitSilver
 } from "@atlantis/core-client";
 import { count } from "./plural";

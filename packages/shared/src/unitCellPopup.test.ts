@@ -474,6 +474,16 @@ describe("the column popups", () => {
     expect(popup.notes).not.toContain("Nothing this month changes this.");
   });
 
+  it("names the causes and no N2 sentence when the mode moved too", () => {
+    const popup = movementPopup({
+      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" },
+      items: [{ name: "grain", tag: "GRAI", amount: 6 }],
+      itemChanges: [carried({})],
+      previewChanges: [{ field: "movement", original: "Riding" }]
+    });
+    expect(popup.notes).toEqual(["Grain: given 6 by Farmers (1502)."]);
+  });
+
   it("keeps the shared sentence for a month that moved nothing", () => {
     const popup = movementPopup({
       movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" }
