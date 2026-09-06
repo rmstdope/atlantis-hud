@@ -55,6 +55,7 @@ use crate::orders::targets::{
     GiveReach, GiveRefusal,
 };
 use crate::report::composition;
+use crate::report::flags::FlagChange;
 use crate::report::model::{
     Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Skill, Structure,
 };
@@ -1547,7 +1548,7 @@ fn forecast_hex(
             men_estimated: ordered.unit.men_estimated,
             men_by_race: ordered.early_men_by_race(),
             items: ordered.early_items(),
-            flags: &ordered.unit.flags,
+            flags: &ordered.flags,
             skills: ordered
                 .skills_before_the_market()
                 .unwrap_or(&ordered.unit.skills),
@@ -1805,6 +1806,22 @@ struct UnitOrders {
     intents: Vec<PlacedIntent>,
     /// Whether any line in any of this unit's blocks yielded no intent.
     unread: bool,
+    /// Every flag order in every block this unit has, in document order. Two blocks for one unit
+    /// are read as one turn, so the second block's flag orders follow the first's and the last
+    /// one wins - which is what the server would do.
+    flag_changes: Vec<FlagChange>,
+}
+
+/// `reported` with each change applied in document order, last order winning.
+///
+/// The whole of the flag rules lives in [`crate::report::flags::apply`], including the
+/// guard/avoid cancellation and the group members; this only sequences them.
+fn flags_after_orders(reported: &[String], changes: &[FlagChange]) -> Vec<String> {
+    let mut flags = reported.to_vec();
+    for change in changes {
+        crate::report::flags::apply(&mut flags, *change);
+    }
+    flags
 }
 
 impl OrderedUnits {
@@ -1815,14 +1832,17 @@ impl OrderedUnits {
             line,
             intents,
             unread,
+            flag_changes,
         } in read_intents(source)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
                 block_line: line,
                 intents: Vec::new(),
                 unread: false,
+                flag_changes: Vec::new(),
             });
             entry.intents.extend(intents);
+            entry.flag_changes.extend(flag_changes);
             entry.unread |= !unread.is_empty();
         }
         Self { by_unit }
@@ -1924,6 +1944,20 @@ impl Arrivals {
 /// One of our units, and its orders.
 struct Ordered<'a> {
     unit: &'a ReportUnit,
+    /// The unit's flag list with **this month's flag orders already applied**, which is the list
+    /// every flag reader in this module and in [`super::silver`] must use.
+    ///
+    /// Owned rather than borrowed because it is not the report's list any more. `rules/sequenceofevents`
+    /// processes every flag order in the turn's first batch, before TAX and long before
+    /// maintenance, so a flag set this month is in force for this month (`ah-9g94.3`).
+    ///
+    /// **Not the place to read whether the unit guards, or whether it shares.**
+    /// [`Ordered::will_guard`] has its own rule that AVOID is processed before GUARD regardless of
+    /// document order (`ah-0wpn`), which is not this list's last-order-wins; [`Ordered::shares`]
+    /// likewise layers `final_share_order` over the report's own list. Both are deliberately left
+    /// reading `unit.flags` and their own intents, and both stay authoritative for their setting -
+    /// repointing either here would be a behaviour change dressed as a refactor.
+    flags: Vec<String>,
     /// The intents that can actually execute this month: every order that does not spend the
     /// month, plus the one month claim that wins (`ah-rzkm`), so every projection and every
     /// specialized check describes the executable month.
@@ -2013,6 +2047,10 @@ impl<'a> Hex<'a> {
                 let orders = ordered.get(&unit.unit_id);
                 Ordered {
                     unit,
+                    flags: flags_after_orders(
+                        &unit.flags,
+                        orders.map_or(&[][..], |orders| orders.flag_changes.as_slice()),
+                    ),
                     intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
                     all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
                     teaching_eligible: None,
@@ -2038,6 +2076,7 @@ impl<'a> Hex<'a> {
                 .filter(|formed| formed.unit.region_id == region.region_id)
                 .map(|formed| Ordered {
                     unit: &formed.unit,
+                    flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
                     intents: formed.block.intents.clone(),
                     all_intents: &formed.block.intents,
                     teaching_eligible: None,
@@ -4723,7 +4762,7 @@ fn unit_facts<'a>(
         men_estimated: ordered.unit.men_estimated,
         men_by_race: ordered.early_men_by_race(),
         items: ordered.early_items(),
-        flags: &ordered.unit.flags,
+        flags: &ordered.flags,
         skills: ordered
             .skills_before_the_market()
             .unwrap_or(&ordered.unit.skills),
@@ -5133,7 +5172,7 @@ fn check_pillaged_tax(
         }
         // A unit that taxes by its flag collects nothing here either, and has no line to hang the
         // mark on - so it hangs on the block, which is what `finding_at_block` is for (`ah-fvzu`).
-        if !ordered_to_tax && taxes(&ordered.unit.flags, &ordered.intents) {
+        if !ordered_to_tax && taxes(&ordered.flags, &ordered.intents) {
             findings.push(ordered.finding_at_block(
                 hex,
                 codes::TAXED_A_PILLAGED_HEX,
@@ -5196,7 +5235,7 @@ fn check_guarded_tax(
         // Suppressed in a pillaged hex for the same reason the `TAX` line is: `taxed-a-pillaged-hex`
         // already says the money is certainly gone, and `check_pillaged_tax` marks this same block
         // with it (`ah-cxxa`).
-        if !pillaged && !ordered_to_tax && taxes(&ordered.unit.flags, &ordered.intents) {
+        if !pillaged && !ordered_to_tax && taxes(&ordered.flags, &ordered.intents) {
             findings.push(ordered.finding_at_block(
                 hex,
                 codes::TAXED_A_GUARDED_HEX,
@@ -5220,7 +5259,7 @@ fn check_tax_readiness(
     let nothing = Receipts::default();
     let facts = hex_facts(hex, &nothing, None, ruleset);
     for (ordered, facts) in hex.units.iter().zip(&facts) {
-        if !taxes(ordered.unit.flags.as_slice(), &ordered.intents) {
+        if !taxes(ordered.flags.as_slice(), &ordered.intents) {
             continue;
         }
         let Some(readiness) = readiness(facts, ruleset) else {
@@ -5291,7 +5330,7 @@ fn credit_tax(
     ruleset: Option<&Ruleset>,
     pillaged: bool,
 ) {
-    if !taxes(&actor.unit.flags, &actor.intents) {
+    if !taxes(&actor.flags, &actor.intents) {
         return;
     }
     // "Each taxing character collects $50", capped by what the region has to give. Both of the
@@ -10177,7 +10216,7 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         // `TAX` would be redundant (`ah-fvzu`). The same reasoning `ah-udff` used for a unit with
         // no men. `spends_the_month` takes an `&Intent` and a flagged unit has no intent at all,
         // so the exemption belongs here rather than there.
-        if taxes(&ordered.unit.flags, &ordered.intents) {
+        if taxes(&ordered.flags, &ordered.intents) {
             continue;
         }
         if ordered
@@ -10324,7 +10363,7 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
         // finding cannot disagree. A block with its own `TAX` line is left to the ordinary wording
         // above: the tax it names is the same tax. The finding sits on the block, because the tax
         // has no line of its own and nothing is wrong with the order that beat it.
-        if flagged_to_tax(&ordered.unit.flags)
+        if flagged_to_tax(&ordered.flags)
             && !ordered
                 .all_intents
                 .iter()
@@ -11427,11 +11466,10 @@ fn check_trade_regions(
             .iter()
             .filter(|unit| spends_faction_allowance(unit) && unit.unit.own)
         {
-            let unit = &ordered_unit.unit;
             let region_id = hex.region.region_id.as_str();
             // A unit taxing by its flag taxes this region with no `TAX` line to find, so the
             // region counts against the allowance like any other (`ah-fvzu`).
-            if taxes(&unit.flags, &ordered_unit.intents) {
+            if taxes(&ordered_unit.flags, &ordered_unit.intents) {
                 taxing.insert(region_id);
             }
             for placed in ordered_unit.intents.iter() {
@@ -14746,6 +14784,267 @@ mod tests {
     fn taxing_by_flag(mut unit: ReportUnit) -> ReportUnit {
         unit.flags.push("taxing".to_string());
         with_skill(unit, "COMB", 1)
+    }
+
+    // --- this month's flag orders reach the flag list (`ah-9g94.3`) ---------------------------
+
+    #[test]
+    fn an_ordered_units_flags_follow_this_months_flag_orders() {
+        let hex_region = region(vec![unit("1")]);
+        let ordered = OrderedUnits::read("unit 1\nAUTOTAX 1\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+
+        assert!(
+            hex.units[0]
+                .flags
+                .iter()
+                .any(|flag| flag.eq_ignore_ascii_case("taxing")),
+            "{:?}",
+            hex.units[0].flags
+        );
+        assert!(
+            !hex.units[0]
+                .unit
+                .flags
+                .iter()
+                .any(|flag| flag.eq_ignore_ascii_case("taxing")),
+            "the report's own list must not move: {:?}",
+            hex.units[0].unit.flags
+        );
+    }
+
+    #[test]
+    fn an_autotax_zero_clears_the_flag_the_report_printed() {
+        let hex_region = region(vec![taxing_by_flag(unit("1"))]);
+        let ordered = OrderedUnits::read("unit 1\nAUTOTAX 0\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+
+        assert!(
+            !hex.units[0]
+                .flags
+                .iter()
+                .any(|flag| flag.eq_ignore_ascii_case("taxing")
+                    || flag.eq_ignore_ascii_case("autotax")),
+            "{:?}",
+            hex.units[0].flags
+        );
+    }
+
+    #[test]
+    fn two_blocks_for_one_unit_apply_their_flag_orders_in_order() {
+        let hex_region = region(vec![unit("1")]);
+
+        let off_last = OrderedUnits::read("unit 1\nAUTOTAX 1\n\nunit 1\nAUTOTAX 0\n");
+        let hex = Hex::read(&hex_region, &off_last, &[]);
+        assert!(
+            !hex.units[0]
+                .flags
+                .iter()
+                .any(|flag| flag.eq_ignore_ascii_case("taxing")),
+            "{:?}",
+            hex.units[0].flags
+        );
+
+        let on_last = OrderedUnits::read("unit 1\nAUTOTAX 0\n\nunit 1\nAUTOTAX 1\n");
+        let hex = Hex::read(&hex_region, &on_last, &[]);
+        assert!(
+            hex.units[0]
+                .flags
+                .iter()
+                .any(|flag| flag.eq_ignore_ascii_case("taxing")),
+            "{:?}",
+            hex.units[0].flags
+        );
+    }
+
+    #[test]
+    fn a_formed_units_flags_follow_its_own_block() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(with_skill(unit("900"), "COMB", 1), 1000)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 900\nFORM 1\nAUTOTAX 1\nEND\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(forecast(&review, "new-1").taxes_by_flag);
+    }
+
+    #[test]
+    fn autotax_this_month_is_told_the_hex_is_pillaged() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![
+                with_silver(unit("1"), 0),
+                with_silver(with_skill(unit("2"), "COMB", 1), 0),
+            ])
+        };
+        let ordered = OrderedUnits::read("unit 1\nPILLAGE\nunit 2\nAUTOTAX 1\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let mut findings = Vec::new();
+        check_pillaged_tax(&hex, true, &CheckOptions::default(), &mut findings);
+
+        let marked: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("2"))
+            .map(|finding| finding.code.as_str())
+            .collect();
+        assert_eq!(marked, vec![codes::TAXED_A_PILLAGED_HEX.as_str()]);
+    }
+
+    #[test]
+    fn autotax_this_month_is_told_the_hex_is_guarded() {
+        let hex_region = guarded_hex(vec![with_silver(with_skill(unit("683"), "COMB", 1), 0)]);
+        let ordered = OrderedUnits::read("unit 683\nAUTOTAX 1\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let mut findings = Vec::new();
+        check_guarded_tax(&hex, true, false, &CheckOptions::default(), &mut findings);
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].unit_id.as_deref(), Some("683"));
+        assert_eq!(findings[0].code, codes::TAXED_A_GUARDED_HEX);
+        assert_eq!(
+            findings[0].column_start, None,
+            "no TAX line to hang it on: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn autotax_this_month_earns_the_column_a_tax() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(with_skill(unit("1"), "COMB", 1), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nAUTOTAX 1\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let forecast = forecast(&review, "1");
+        assert_eq!(forecast.income, Some(50));
+        assert!(forecast.taxes_by_flag);
+    }
+
+    #[test]
+    fn autotax_zero_this_month_stops_the_column_taxing() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![with_silver(taxing_by_flag(unit("1")), 0)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nAUTOTAX 0\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let forecast = forecast(&review, "1");
+        assert!(!forecast.taxes_by_flag);
+        // The unit works by default once it is not taxing (`silver::is_set_to_work`), so the
+        // figure is the region's wage rather than the tax - and a `None` income, which a broken
+        // `is_set_to_work` would produce, is not good enough.
+        assert!(forecast.works_by_default);
+        assert!(
+            matches!(forecast.income, Some(wage) if wage != 50),
+            "{forecast:?}"
+        );
+    }
+
+    #[test]
+    fn autotax_this_month_exempts_a_unit_from_doing_nothing() {
+        let flagged = review_turn(
+            &report(vec![region(vec![with_skill(unit("1"), "COMB", 1)])]),
+            "unit 1\nAUTOTAX 1\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            !flagged
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::UNIT_DOES_NOTHING
+                    && finding.unit_id.as_deref() == Some("1")),
+            "{:?}",
+            codes(&flagged.findings)
+        );
+
+        let idle = review_turn(
+            &report(vec![region(vec![with_skill(unit("1"), "COMB", 1)])]),
+            "unit 1\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(idle
+            .findings
+            .iter()
+            .any(|finding| finding.code == codes::UNIT_DOES_NOTHING
+                && finding.unit_id.as_deref() == Some("1")));
+    }
+
+    #[test]
+    fn autotax_zero_this_month_makes_a_unit_do_nothing() {
+        let review = review_turn(
+            &report(vec![region(vec![taxing_by_flag(unit("1"))])]),
+            "unit 1\nAUTOTAX 0\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::UNIT_DOES_NOTHING
+                    && finding.unit_id.as_deref() == Some("1")),
+            "{:?}",
+            codes(&review.findings)
+        );
+    }
+
+    #[test]
+    fn autotax_this_month_loses_the_month_to_a_written_order() {
+        let findings = two_month_long(
+            review_turn(
+                &report(vec![region(vec![with_skill(unit("1"), "COMB", 1)])]),
+                "unit 1\nAUTOTAX 1\nSTUDY COMBAT\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+            .findings,
+        );
+
+        let finding = findings
+            .iter()
+            .find(|finding| finding.unit_id.as_deref() == Some("1"))
+            .expect("a two-month-long finding for unit 1");
+        assert!(
+            finding.message.contains("set to tax every month"),
+            "{}",
+            finding.message
+        );
+    }
+
+    #[test]
+    fn an_unready_taxer_flagged_this_month_is_reported() {
+        let review = review_turn(
+            &report(vec![region(vec![unit("2")])]),
+            "unit 2\nAUTOTAX 1\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let finding = review
+            .findings
+            .iter()
+            .find(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN)
+            .expect("an unready taxer flagged this month should be reported");
+        assert_eq!(finding.unit_id.as_deref(), Some("2"));
+        assert_eq!(finding.line, Some(1));
     }
 
     #[test]
@@ -34502,6 +34801,21 @@ BUILD
         );
     }
 
+    /// The same, for a flag this month's orders set rather than one the report printed
+    /// (`ah-9g94.3`).
+    #[test]
+    fn autotax_this_month_counts_toward_the_taxed_regions() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,53", 8, 53, vec![unit("6")]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
+        ];
+        let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nAUTOTAX 1\n";
+        let findings = check_trade(regions, orders, "Regions", 2);
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+    }
+
     /// A unit taxing by its flag taxes its region as surely as one with a `TAX` line, so the
     /// region counts against the allowance (`ah-fvzu`).
     #[test]
@@ -34730,6 +35044,76 @@ BUILD
         assert_eq!(forecast(&review, "2001").upkeep, Some(0));
         assert_eq!(forecast(&review, "2001").own_food_covered, 50);
         assert_eq!(forecast(&review, "2001").faction_food_covered, 10);
+    }
+
+    /// `rules/consume`: CONSUME UNIT "instructs the unit to use food items in preference to
+    /// silver for maintenance costs", and `rules/sequenceofevents` processes it long before
+    /// maintenance is assessed - so an order written this month pays this month (`ah-9g94.3`).
+    #[test]
+    fn consume_unit_this_month_pays_maintenance_with_food() {
+        let fed = || {
+            with_item(
+                with_men(with_silver(starving(unit("5")), 500), 6),
+                2,
+                "grain",
+                "GRAI",
+            )
+        };
+
+        let ordered = review_turn(
+            &report(vec![region(vec![fed()])]),
+            "unit 5\nCONSUME UNIT\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            forecast(&ordered, "5").own_food_covered > 0,
+            "{:?}",
+            forecast(&ordered, "5")
+        );
+
+        let silent = review_turn(
+            &report(vec![region(vec![fed()])]),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(forecast(&silent, "5").own_food_covered, 0);
+    }
+
+    /// `rules/consume`: bare CONSUME "tells the unit to use silver before food items (this is the
+    /// default)" - so it clears a flag the report printed.
+    #[test]
+    fn bare_consume_this_month_pays_maintenance_with_silver() {
+        let eater = with_item(with_men(with_silver(unit("5"), 500), 6), 2, "grain", "GRAI");
+
+        let review = review_turn(
+            &report(vec![region(vec![eater])]),
+            "unit 5\nCONSUME\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "5").own_food_covered, 0);
+    }
+
+    /// The faction pool is claimed by the flag, and an order written this month sets it.
+    #[test]
+    fn consume_faction_this_month_claims_the_hexs_pool() {
+        let mut granary = with_item(with_silver(starving(unit("2000")), 500), 6, "grain", "GRAI");
+        granary.flags = vec!["consuming faction's food".to_string()];
+        granary.men = 6;
+        let mut eater = starving(unit("2001"));
+        eater.men = 6;
+
+        let review = review_turn(
+            &report(vec![region(vec![granary, eater])]),
+            "unit 2001\nCONSUME FACTION\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "2001").faction_food_covered, 60);
     }
 
     /// The case the navigator reported: the unit that supplied the grain is fed by its own food
