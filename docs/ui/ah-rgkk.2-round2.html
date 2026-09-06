@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-rgkk.2 &mdash; Round 2: the pair, the projection, and what cannot be projected</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#e0b050;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .legend code, .scene code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .live { outline:1px solid var(--brass); outline-offset:-1px; }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         min-width:320px; max-width:430px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:16px; font-variant-numeric:tabular-nums; }
+  .pop .why { color:var(--ink-dim); font-style:italic; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .pop .rule { border-top:1px solid var(--edge); margin:6px 0 5px; }
+  .up { color:var(--ok); } .down { color:var(--danger); } .flat { color:var(--ink-soft); }
+  .fut { color:var(--select); }
+  .arrow { color:var(--ink-dim); }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .legend { font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink-dim); margin-top:8px; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:14px; max-width:115ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .sums { font:11.5px/1.6 'SF Mono',Menlo,monospace; color:var(--ink-dim); margin-top:8px; white-space:pre; }
+</style></head><body>
+<header><h1>ah-rgkk.2 &mdash; <span>round 2</span></h1>
+<p><b>Taken from round 1:</b> every skill is listed, not only the ones that moved; the popup carries a study projection
+including teaching, so all the information is in one place; the sentences underneath explain every change including the
+study; and a foreign unit&rsquo;s battle-recovered skills are listed with the battle named (<b>B1</b>).</p>
+<p><b>Still open, and on this page:</b> what the <code>a &rarr; b</code> pair actually shows and how a line carrying
+both a dilution and a projection reads (<b>N</b>); whether the pair replaces the arrow for the <i>other</i> columns too,
+which reopens a decision in <code>ah-rgkk.1</code> that <b>Rogue is building right now</b> (<b>R</b>); and what the popup
+does when the projection cannot honestly be made (<b>U</b>).</p>
+</header>
+<main>
+
+<div class="scene">The scene, and every figure on this page comes out of it. <b>Braves (1487)</b>, 12 men, holding
+<code>COMB 2 (90)</code>, <code>LUMB 2 (90)</code>, <code>OBSE 1 (30)</code>. This month: <b>Scouts (1502)</b> gives it
+<b>2 men</b> who know <code>OBSE 3 (180)</code>; it recruits <b>6 humans</b>; it writes <code>STUDY COMBAT</code>;
+and <b>Elders (1774)</b>, one leader at <code>COMB 3</code>, writes <code>TEACH 1487</code>.
+<div class="sums">market phase   gift    COMB (12&times;90+2&times;0)/14 = 77   LUMB 77   OBSE (12&times;30+2&times;180)/14 = 51   men 14
+               recruit COMB (14&times;77)/20     = 53   LUMB 53   OBSE (14&times;51)/20         = 35   men 20
+month-long     teach   one leader = 10 slots, 20 students &rarr; 1 + min(1, 10/20) = <b>one and a half months</b>
+               study   COMB 53 + 1.5&times;30 = 98 &rarr; level 2   (untaught it would be 83, still level 1)</div>
+</div>
+
+<div class="stage" style="margin-bottom:22px">
+<table class="units">
+<tr><th>&nbsp;</th><th>Unit</th><th>Name</th><th>Men</th><th>Move</th><th>Flags</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th>Silver</th></tr>
+<tr><td class="own">*</td><td class="uid">1487</td><td>Braves</td><td>20</td><td>W</td><td>G</td><td class="live">COMB 1 (53), LUMB 1 (53), OBSE 1 (35)</td><td>20 SWOR</td><td>Tower</td><td>STUDY COMBAT</td><td>40</td></tr>
+<tr><td class="own">*</td><td class="uid">1774</td><td>Elders</td><td>1</td><td>W</td><td>&nbsp;</td><td>COMB 3 (180)</td><td>1 LEAD</td><td>Tower</td><td>TEACH 1487</td><td>210</td></tr>
+</table>
+<div class="legend">The cell under the pointer shows the figures the <i>market</i> leaves &mdash; that is what the report will print next month for everything except the studied skill.</div>
+</div>
+
+<h3 class="sec">N &mdash; What the pair shows, and how a line carrying both a dilution and a projection reads</h3>
+<p>Three things happen to combat this month, in <code>rules/sequenceofevents</code> order: it is diluted by the gift,
+diluted again by the recruits, and then studied. The three variants differ in how much of that a line shows.</p>
+<div class="card"><div class="split3">
+<div>
+<div class="hexlab">N1 &mdash; levels only, one pair per line</div>
+<div class="stage"><div class="pop">
+  <div class="head">Braves (1487) &mdash; skills</div>
+  <div class="line"><span>combat COMB</span><span><span class="flat">2</span> <span class="arrow">&rarr;</span> <span class="down">1</span> <span class="arrow">&rarr;</span> <span class="fut">2</span></span></div>
+  <div class="line"><span>lumberjack LUMB</span><span><span class="flat">2</span> <span class="arrow">&rarr;</span> <span class="down">1</span></span></div>
+  <div class="line"><span>observation OBSE</span><span><span class="flat">1</span> <span class="arrow">&rarr;</span> <span class="flat">1</span></span></div>
+  <div class="note">2 men joined from Scouts (1502), bringing observation 3.</div>
+  <div class="note">6 humans recruited, and recruits bring no skills.</div>
+  <div class="note">Studying combat, taught by Elders (1774): worth one and a half months. The blue figure is next turn&rsquo;s report; everything before it is this month.</div>
+</div></div>
+<ul class="notes">
+  <li>Shortest, and the numbers are the ones that decide what the unit can do.</li>
+  <li>Matches the study planner, which already writes <code>3 &rarr; 4</code>.</li>
+  <li class="con"><b>Observation reads <code>1 &rarr; 1</code></b> &mdash; it gained 5 points from the gift and the line
+      cannot say so. Lumberjack lost 37 points and shows the same drop as a skill that lost 1.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">N2 &mdash; level and points, one pair per line</div>
+<div class="stage"><div class="pop">
+  <div class="head">Braves (1487) &mdash; skills</div>
+  <div class="line"><span>combat COMB</span><span><span class="flat">2 (90)</span> <span class="arrow">&rarr;</span> <span class="down">1 (53)</span> <span class="arrow">&rarr;</span> <span class="fut">2 (98)</span></span></div>
+  <div class="line"><span>lumberjack LUMB</span><span><span class="flat">2 (90)</span> <span class="arrow">&rarr;</span> <span class="down">1 (53)</span></span></div>
+  <div class="line"><span>observation OBSE</span><span><span class="flat">1 (30)</span> <span class="arrow">&rarr;</span> <span class="up">1 (35)</span></span></div>
+  <div class="note">2 men joined from Scouts (1502), bringing observation 3.</div>
+  <div class="note">6 humans recruited, and recruits bring no skills.</div>
+  <div class="note">Studying combat, taught by Elders (1774): worth one and a half months. The blue figure is next turn&rsquo;s report; everything before it is this month.</div>
+</div></div>
+<ul class="notes">
+  <li>Nothing is silent: observation is green because it really did gain, even though the level held.</li>
+  <li>The same <code>level (points)</code> shape the cell, the whole-unit summary and the report all use.</li>
+  <li class="con">Widest of the three &mdash; a studied skill runs to about 26 characters on the right.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">N3 &mdash; this month only; the projection is its own line</div>
+<div class="stage"><div class="pop">
+  <div class="head">Braves (1487) &mdash; skills</div>
+  <div class="line"><span>combat COMB</span><span><span class="flat">2 (90)</span> <span class="arrow">&rarr;</span> <span class="down">1 (53)</span></span></div>
+  <div class="line"><span>lumberjack LUMB</span><span><span class="flat">2 (90)</span> <span class="arrow">&rarr;</span> <span class="down">1 (53)</span></span></div>
+  <div class="line"><span>observation OBSE</span><span><span class="flat">1 (30)</span> <span class="arrow">&rarr;</span> <span class="up">1 (35)</span></span></div>
+  <div class="rule"></div>
+  <div class="line"><span class="fut">combat, next turn</span><span class="fut">2 (98)</span></div>
+  <div class="why">studying, taught by Elders (1774): one and a half months</div>
+  <div class="note">2 men joined from Scouts (1502), bringing observation 3.</div>
+  <div class="note">6 humans recruited, and recruits bring no skills.</div>
+</div></div>
+<ul class="notes">
+  <li>A hard line between what this month does and what next month&rsquo;s report will say &mdash; nothing projected sits
+      among the figures the report will actually print.</li>
+  <li>The teaching clause sits next to the number it explains rather than three sentences down.</li>
+  <li class="con">Combat appears twice, and a unit studying two skills (rare, but legal across a split) would repeat twice more.</li>
+</ul>
+</div>
+</div></div>
+
+<h3 class="sec">R &mdash; Does the pair replace the arrow everywhere, or only on Skills?</h3>
+<p><b>This one reaches beyond this bead.</b> <code>ah-rgkk.1</code> settled the mark as <b>arrow and signed amount</b>
+(<code>12&nbsp;&#9650;&nbsp;+4</code>), and <b>Rogue is building that now</b>. Items, Men and Silver have no levels &mdash;
+just amounts &mdash; so the pair reads differently there.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">R1 &mdash; the pair everywhere; the arrow goes</div>
+<div class="stage"><div class="pops">
+  <div class="pop" style="min-width:270px">
+    <div class="head">Braves (1487) &mdash; items</div>
+    <div class="line"><span>sword</span><span><span class="flat">8</span> <span class="arrow">&rarr;</span> <span class="up">12</span></span></div>
+    <div class="line"><span>horse</span><span><span class="flat">3</span> <span class="arrow">&rarr;</span> <span class="down">2</span></span></div>
+    <div class="line"><span>silver</span><span><span class="flat">40</span></span></div>
+    <div class="note">4 swords bought at 60 silver each.</div>
+  </div>
+  <div class="pop" style="min-width:270px">
+    <div class="head">Braves (1487) &mdash; men</div>
+    <div class="line"><span>human</span><span><span class="flat">12</span> <span class="arrow">&rarr;</span> <span class="up">20</span></span></div>
+  </div>
+</div></div>
+<ul class="notes">
+  <li>One notation across the whole table; a player learns it once.</li>
+  <li class="con">Reopens <code>ah-rgkk.1</code>&rsquo;s decision B while Rogue is mid-build &mdash; either a message to
+      that session, or a follow-up bead after it merges.</li>
+  <li class="con">On Items it loses the thing the pair cannot carry: <b>how much</b> it moved. <code>4210 &rarr; 4255</code>
+      needs subtracting; <code>4255&nbsp;&#9650;&nbsp;+45</code> does not.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">R2 &mdash; the pair on Skills only; the arrow stays elsewhere</div>
+<div class="stage"><div class="pops">
+  <div class="pop" style="min-width:270px">
+    <div class="head">Braves (1487) &mdash; items</div>
+    <div class="line"><span>sword</span><span>12 <span class="up">&#9650;&nbsp;+4</span></span></div>
+    <div class="line"><span>horse</span><span>2 <span class="down">&#9660;&nbsp;&minus;1</span></span></div>
+    <div class="line"><span>silver</span><span>40</span></div>
+    <div class="note">4 swords bought at 60 silver each.</div>
+  </div>
+  <div class="pop" style="min-width:270px">
+    <div class="head">Braves (1487) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span><span class="flat">2 (90)</span> <span class="arrow">&rarr;</span> <span class="down">1 (53)</span> <span class="arrow">&rarr;</span> <span class="fut">2 (98)</span></span></div>
+  </div>
+</div></div>
+<ul class="notes">
+  <li>Nothing already agreed is disturbed, and Rogue&rsquo;s bead lands as planned.</li>
+  <li>Each notation suits its column: an amount wants &ldquo;how much&rdquo;, a skill wants &ldquo;from what to what&rdquo;
+      and has a three-step story the arrow cannot tell at all.</li>
+  <li class="con">Two notations in one table, one column apart.</li>
+</ul>
+</div>
+</div></div>
+
+<h3 class="sec">U &mdash; When the projection cannot honestly be made</h3>
+<p>Four real cases. The projection needs the after-market headcount, the teachers settled, the fee paid, and a ceiling
+(<code>rules/skills_limitations</code>: a unit of several races may only study as far as the least of them allows). The
+question is one rule for all four: <b>show a figure with a caveat, or withhold the figure and say why?</b></p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">U1 &mdash; withhold the figure; say what is missing</div>
+<div class="stage"><div class="pops">
+  <div class="pop" style="min-width:300px">
+    <div class="hexlab" style="margin:-2px 0 5px">the fee is unaffordable</div>
+    <div class="head">Braves (1487) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span><span class="flat">2 (90)</span> <span class="arrow">&rarr;</span> <span class="down">1 (53)</span></span></div>
+    <div class="warn">Studying combat costs 200 silver and this unit is 160 short, so the study may not happen at all.</div>
+  </div>
+  <div class="pop" style="min-width:300px">
+    <div class="hexlab" style="margin:-2px 0 5px">the headcount is a guess</div>
+    <div class="head">Rabble (3300) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span>1 (30)</span></div>
+    <div class="warn">This unit&rsquo;s headcount is a guess, so neither recruiting nor studying can be worked out for it.</div>
+  </div>
+  <div class="pop" style="min-width:300px">
+    <div class="hexlab" style="margin:-2px 0 5px">already at the race ceiling</div>
+    <div class="head">Militia (2088) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span><span class="flat">2 (170)</span> <span class="arrow">&rarr;</span> <span class="flat">2 (200)</span></span></div>
+    <div class="note">Studying combat: worth one month. Hill dwarves may not take combat past level 2, so the points rise and the level holds.</div>
+  </div>
+</div></div>
+<ul class="notes">
+  <li>No number on the screen is one the game might not produce.</li>
+  <li class="con">The commonest of the four &mdash; a short unit whose neighbour will almost certainly cover it &mdash;
+      loses its projection over a shortfall that may never bite.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">U2 &mdash; show the figure, mark it as resting on something</div>
+<div class="stage"><div class="pops">
+  <div class="pop" style="min-width:300px">
+    <div class="hexlab" style="margin:-2px 0 5px">the fee is unaffordable</div>
+    <div class="head">Braves (1487) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span><span class="flat">2 (90)</span> <span class="arrow">&rarr;</span> <span class="down">1 (53)</span> <span class="arrow">&rarr;</span> <span class="fut">2 (98)?</span></span></div>
+    <div class="warn">Studying combat costs 200 silver and this unit is 160 short, so the study may not happen at all.</div>
+  </div>
+  <div class="pop" style="min-width:300px">
+    <div class="hexlab" style="margin:-2px 0 5px">the headcount is a guess</div>
+    <div class="head">Rabble (3300) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span><span class="flat">1 (30)</span> <span class="arrow">&rarr;</span> <span class="fut">2 (60)?</span></span></div>
+    <div class="warn">This unit&rsquo;s headcount is a guess, so recruiting may pull these back below what is shown.</div>
+  </div>
+  <div class="pop" style="min-width:300px">
+    <div class="hexlab" style="margin:-2px 0 5px">already at the race ceiling</div>
+    <div class="head">Militia (2088) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span><span class="flat">2 (170)</span> <span class="arrow">&rarr;</span> <span class="flat">2 (200)</span></span></div>
+    <div class="note">Studying combat: worth one month. Hill dwarves may not take combat past level 2, so the points rise and the level holds.</div>
+  </div>
+</div></div>
+<ul class="notes">
+  <li>The player sees where the study lands even when something might stop it, which is the case they most want to plan against.</li>
+  <li>A trailing <code>?</code> on the figure and an amber sentence naming the doubt &mdash; the same shape the Items and
+      Silver columns already use for a month they could not fully count.</li>
+  <li class="con">A figure with a caveat is still a figure, and gets remembered without its caveat.</li>
+</ul>
+</div>
+</div></div>
+
+<footer>Mockup for <code>ah-rgkk.2</code>, round 2. Rules behind the arithmetic:
+<code>rules/skills_studying</code> (level thresholds; the fee), <code>rules/skills_teaching</code> (10 students a
+teacher, and the dilution beyond that), <code>rules/skills_limitations</code> (the race ceiling),
+<code>rules/economy_recruiting</code> and <code>rules/buy</code> (recruits bring nothing and dilute),
+<code>rules/sequenceofevents</code> (the market runs before the month-long phase, which is why the study starts from the
+diluted figures). Blue is next turn; amber is a doubt.</footer>
+</main></body></html>

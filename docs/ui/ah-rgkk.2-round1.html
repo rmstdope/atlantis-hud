@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-rgkk.2 &mdash; The Skills popup</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#e0b050;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, .legend code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); } .unk { color:var(--ink-dim); font-style:italic; }
+  .live { outline:1px solid var(--brass); outline-offset:-1px; }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         min-width:300px; max-width:390px; box-shadow:0 6px 18px rgba(0,0,0,.5); vertical-align:top; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:14px; }
+  .pop .why { color:var(--ink-dim); font-style:italic; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .pop .rule { border-top:1px solid var(--edge); margin:6px 0 5px; }
+  .up { color:var(--ok); } .down { color:var(--danger); }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; align-items:start; }
+  .pops { display:flex; flex-wrap:wrap; gap:14px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .legend { font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink-dim); margin-top:8px; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin-bottom:10px; max-width:110ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .sums { font:11.5px/1.6 'SF Mono',Menlo,monospace; color:var(--ink-dim); margin-top:8px; }
+</style></head><body>
+<header><h1>ah-rgkk.2 &mdash; <span>the Skills popup</span></h1>
+<p>Resting on a unit&rsquo;s <b>Skills</b> cell. The frame is settled by <code>ah-rgkk.1</code>: the head is
+<b>&ldquo;unit &mdash; column&rdquo;</b>, a change is an <b>arrow and a signed amount</b>, and dim italic sentences sit
+under the lines. This page is only what goes <i>inside</i> it for Skills, and there are three questions on it: <b>A</b>,
+<b>B</b> and <b>D</b>.</p>
+<p><b>One rule settles section A before we start.</b> <code>rules/skills_studying</code>: a STUDY order buys
+&ldquo;one months worth of training&rdquo;, and <code>rules/sequenceofevents</code> processes STUDY in the month-long
+phase &mdash; so <b>a study never moves this month&rsquo;s figures</b>. It arrives in next turn&rsquo;s report. The only
+thing that changes a unit&rsquo;s skills within the month is <b>men joining it</b>: recruits, who bring nothing
+(<code>rules/economy_recruiting</code>: &ldquo;New recruits will not have any skills or items&rdquo;; <code>rules/buy</code>
+calls the effect <b>dilute</b>), and men arriving by GIVE or TAKE, who bring their own and can push a figure either way.
+Points are per man, so every arrival re-averages <b>every</b> skill at once.</p>
+</header>
+<main>
+
+<div class="scene">The scene used throughout section A. <b>Braves (1487)</b>, 12 men, holding
+<code>COMB 2 (90)</code>, <code>LUMB 2 (90)</code>, <code>OBSE 1 (30)</code>. This month it is given <b>2 men</b> by
+<b>Scouts (1502)</b>, who know <code>OBSE 3 (180)</code>, and then recruits <b>3 barbarians</b>. It also writes
+<code>STUDY COMBAT</code>.
+<div class="sums">gift&nbsp;&nbsp;&nbsp;&nbsp;COMB (12&times;90+2&times;0)/14 = 77 &nbsp;&nbsp;LUMB 77 &nbsp;&nbsp;OBSE (12&times;30+2&times;180)/14 = 51
+recruit&nbsp;COMB (14&times;77+3&times;0)/17 = 63 &nbsp;&nbsp;LUMB 63 &nbsp;&nbsp;OBSE (14&times;51)/17 = 42</div>
+</div>
+
+<div class="stage" style="margin-bottom:22px">
+<table class="units">
+<tr><th>&nbsp;</th><th>Unit</th><th>Name</th><th>Men</th><th>Move</th><th>Flags</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th>Silver</th></tr>
+<tr><td class="own">*</td><td class="uid">1487</td><td>Braves</td><td>17</td><td>W</td><td>G</td><td class="live">COMB 1 (63), LUMB 1 (63), OBSE 1 (42)</td><td>17 SWOR</td><td>Tower</td><td>STUDY COMBAT</td><td>40</td></tr>
+</table>
+<div class="legend">The pointer is on the outlined cell. Combat has gone <i>down</i> in the very month the unit was told to study it &mdash; that is the question this popup exists to answer.</div>
+</div>
+
+<h3 class="sec">A &mdash; What the popup says about the STUDY order</h3>
+<p>All three are the same unit; only the treatment of the study differs.</p>
+<div class="card"><div class="split3">
+<div>
+<div class="hexlab">S1 &mdash; a sentence under the lines</div>
+<div class="stage"><div class="pop">
+  <div class="head">Braves (1487) &mdash; skills</div>
+  <div class="line"><span>combat COMB</span><span>1 (63) <span class="down">&#9660;&nbsp;&minus;27</span></span></div>
+  <div class="line"><span>lumberjack LUMB</span><span>1 (63) <span class="down">&#9660;&nbsp;&minus;27</span></span></div>
+  <div class="line"><span>observation OBSE</span><span>1 (42) <span class="up">&#9650;&nbsp;+12</span></span></div>
+  <div class="note">2 men joined from Scouts (1502), bringing observation 3.</div>
+  <div class="note">3 barbarians recruited, and recruits bring no skills.</div>
+  <div class="note">Studying combat. A study reaches next turn&rsquo;s report, so it moves nothing above.</div>
+</div></div>
+<ul class="notes">
+  <li>Answers the question the player actually has, in the one place they are looking.</li>
+  <li>Costs nothing: the long order is already beside the popup, and the rule is stated, not computed.</li>
+  <li class="con">A third sentence on a popup that already has two.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">S2 &mdash; a projected line for the study</div>
+<div class="stage"><div class="pop">
+  <div class="head">Braves (1487) &mdash; skills</div>
+  <div class="line"><span>combat COMB</span><span>1 (63) <span class="down">&#9660;&nbsp;&minus;27</span></span></div>
+  <div class="line"><span>lumberjack LUMB</span><span>1 (63) <span class="down">&#9660;&nbsp;&minus;27</span></span></div>
+  <div class="line"><span>observation OBSE</span><span>1 (42) <span class="up">&#9650;&nbsp;+12</span></span></div>
+  <div class="rule"></div>
+  <div class="line" style="color:var(--ink-soft)"><span>combat, next turn</span><span>2 (93)</span></div>
+  <div class="why">studying combat: 17 men, one month</div>
+  <div class="note">2 men joined from Scouts (1502), bringing observation 3.</div>
+  <div class="note">3 barbarians recruited, and recruits bring no skills.</div>
+</div></div>
+<ul class="notes">
+  <li>Shows where the study actually lands, a month ahead &mdash; which is what the player wanted to know.</li>
+  <li class="con"><b>A new derivation, and a risky one.</b> A month&rsquo;s training depends on the headcount at the
+      month-long phase, on a TEACH from another unit, on the race ceiling, and on the fee being payable. Nothing in
+      the core computes any of it today, and a wrong projection is worse than none.</li>
+  <li class="con">A projected figure in the same list as reported ones invites being read as fact.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">S3 &mdash; say nothing about the study</div>
+<div class="stage"><div class="pop">
+  <div class="head">Braves (1487) &mdash; skills</div>
+  <div class="line"><span>combat COMB</span><span>1 (63) <span class="down">&#9660;&nbsp;&minus;27</span></span></div>
+  <div class="line"><span>lumberjack LUMB</span><span>1 (63) <span class="down">&#9660;&nbsp;&minus;27</span></span></div>
+  <div class="line"><span>observation OBSE</span><span>1 (42) <span class="up">&#9650;&nbsp;+12</span></span></div>
+  <div class="note">2 men joined from Scouts (1502), bringing observation 3.</div>
+  <div class="note">3 barbarians recruited, and recruits bring no skills.</div>
+</div></div>
+<ul class="notes">
+  <li>The shortest popup, and every sentence in it is about something that moved.</li>
+  <li class="n">The Long order cell already shows <code>STUDY COMBAT</code>, one column along.</li>
+  <li class="con">Leaves the most confusing case on the screen unexplained.</li>
+</ul>
+</div>
+</div></div>
+
+<h3 class="sec">B &mdash; What the arrow measures</h3>
+<p>A skill is a <b>level</b> and a count of <b>study points</b> (<code>rules/skills_studying</code>; the thresholds are
+30, 90, 180, 300, 450). Dilution divides the points among more men, so the <b>points always move and the level only
+sometimes does</b>. Both variants show one unit: 12 men at <code>COMB 2 (90)</code> take 8 recruits, leaving
+<code>(12&times;90)/20 = 54</code> &mdash; still level 1.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">P1 &mdash; the arrow counts study points</div>
+<div class="stage"><div class="pop">
+  <div class="head">Braves (1487) &mdash; skills</div>
+  <div class="line"><span>combat COMB</span><span>1 (54) <span class="down">&#9660;&nbsp;&minus;36</span></span></div>
+  <div class="line"><span>observation OBSE</span><span>1 (30) <span class="down">&#9660;&nbsp;&minus;20</span></span></div>
+  <div class="note">8 barbarians recruited, and recruits bring no skills.</div>
+  <div class="note">Combat falls from level 2 to level 1.</div>
+</div></div>
+<ul class="notes">
+  <li>The arrow is on the thing that always moves, so it is never absent when something happened.</li>
+  <li>The points sit in brackets immediately to its left, so <code>&minus;36</code> reads against <code>(54)</code>.</li>
+  <li>A level crossing gets its own sentence, where it can be said in words.</li>
+  <li class="con">The number the player cares about most &mdash; the level &mdash; carries no mark of its own.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">P2 &mdash; the arrow counts levels</div>
+<div class="stage"><div class="pop">
+  <div class="head">Braves (1487) &mdash; skills</div>
+  <div class="line"><span>combat COMB</span><span>1 <span class="down">&#9660;&nbsp;&minus;1</span></span></div>
+  <div class="why">90 points down to 54</div>
+  <div class="line"><span>observation OBSE</span><span>1</span></div>
+  <div class="why">50 points down to 30</div>
+  <div class="note">8 barbarians recruited, and recruits bring no skills.</div>
+</div></div>
+<ul class="notes">
+  <li>The arrow is on the number that decides what the unit can actually do.</li>
+  <li class="con"><b>Observation has no arrow at all</b> &mdash; it lost 20 points and one more recruit would drop it a
+      level, but the line reads as if nothing happened.</li>
+  <li class="con">The value drops the points, which the cell beneath the pointer and the whole-unit summary both show.</li>
+</ul>
+</div>
+</div></div>
+
+<h3 class="sec">C &mdash; The states the happy path hides</h3>
+<p>Drawn with S1 and P1 applied, purely so they can be drawn at all. These wordings are mine to settle unless you say
+otherwise; they are here so you can see them.</p>
+<div class="card"><div class="pops">
+  <div>
+  <div class="hexlab">C-a &mdash; nothing moved this month</div>
+  <div class="pop">
+    <div class="head">Scouts (1502) &mdash; skills</div>
+    <div class="line"><span>observation OBSE</span><span>3 (180)</span></div>
+    <div class="line"><span>stealth STEA</span><span>2 (90)</span></div>
+    <div class="note">Nothing this month changes these.</div>
+  </div>
+  </div>
+  <div>
+  <div class="hexlab">C-b &mdash; one of ours with no skills</div>
+  <div class="pop">
+    <div class="head">Porters (1913) &mdash; skills</div>
+    <div class="note">No skills.</div>
+  </div>
+  </div>
+  <div>
+  <div class="hexlab">C-c &mdash; a skill diluted out of existence</div>
+  <div class="pop">
+    <div class="head">Levy (2871) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span>0 (6) <span class="down">&#9660;&nbsp;&minus;24</span></span></div>
+    <div class="line" style="color:var(--ink-dim)"><span>riding RIDI</span><span>gone <span class="down">&#9660;&nbsp;&minus;4</span></span></div>
+    <div class="note">35 peasants recruited, and recruits bring no skills.</div>
+    <div class="note">Combat falls from level 1 to level 0. Riding drops below one point per man, so the unit loses it.</div>
+  </div>
+  </div>
+  <div>
+  <div class="hexlab">C-d &mdash; a headcount the report could only estimate</div>
+  <div class="pop">
+    <div class="head">Rabble (3300) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span>1 (30)</span></div>
+    <div class="warn">This unit&rsquo;s headcount is a guess, so what recruiting does to these cannot be worked out.</div>
+  </div>
+  </div>
+</div>
+<ul class="notes">
+  <li class="n">C-c is real: the merge is integer arithmetic, and a skill whose share rounds to zero is dropped from the
+      unit&rsquo;s list outright. It has to be shown, or a skill vanishes from the cell with nothing said.</li>
+  <li class="n">C-d is real: the core refuses to re-derive an estimated headcount rather than guess, so no dilution is
+      computed for such a unit &mdash; and a popup showing unchanged figures without saying so would be lying.</li>
+</ul>
+</div>
+
+<h3 class="sec">D &mdash; A foreign unit whose skills were read out of a battle</h3>
+<p>Since <code>ah-1mpx.6.3</code> the Skills cell of a foreign unit can show skills recovered from a battle roster: the
+cell prints <code>COMB 3, RIDI 2 (turn 71)</code>. <code>ah-rgkk.1</code> settled only the case where <b>nothing</b>
+was recovered, which is where its sentence &ldquo;A report never shows another faction&rsquo;s skills.&rdquo; comes from.
+This is the case where something was.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">B1 &mdash; list them, and say which battle they came from</div>
+<div class="stage"><div class="pop">
+  <div class="head">Watazka (4839) &mdash; skills</div>
+  <div class="line"><span>combat COMB</span><span>3</span></div>
+  <div class="line"><span>riding RIDI</span><span>2</span></div>
+  <div class="note">Read from the battle in plain (12,8) on turn 71.</div>
+  <div class="note">A report never shows another faction&rsquo;s skills; these are what a battle roster gave away.</div>
+</div></div>
+<ul class="notes">
+  <li>Says where the knowledge came from and how old it is &mdash; turn 71 may be many months ago.</li>
+  <li>That sentence already exists and already ships, in the whole-unit summary (<code>battleSkillSource</code>).</li>
+  <li class="con">No points to show &mdash; a battle roster gives a level and nothing else &mdash; so the lines are
+      shorter than an own unit&rsquo;s and the two popups do not look alike.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">B2 &mdash; the one sentence, always</div>
+<div class="stage"><div class="pop">
+  <div class="head">Watazka (4839) &mdash; skills</div>
+  <div class="note">A report never shows another faction&rsquo;s skills.</div>
+</div></div>
+<ul class="notes">
+  <li>One rule for every foreign unit, and the smaller bead.</li>
+  <li class="con">Flatly contradicts the cell the pointer is resting on, which is showing
+      <code>COMB 3, RIDI 2 (turn 71)</code>.</li>
+  <li class="con">Wastes the one place the age of that knowledge could be stated.</li>
+</ul>
+</div>
+</div></div>
+
+<footer>Mockup for <code>ah-rgkk.2</code>. Every figure above is arithmetic the core already does
+(<code>merge_skills</code>: the merged points are the headcount-weighted average, truncated, and a share that rounds to
+zero drops the skill). The frame, the head, the arrow glyphs and the dim sentence style are <code>ah-rgkk.1</code>&rsquo;s
+and are not in question here. <b>The list is every skill the unit holds, in the report&rsquo;s order</b> &mdash; not just
+the ones that moved &mdash; because an arrival re-averages every skill at once, so &ldquo;only what changed&rdquo; would
+be the whole list anyway.</footer>
+</main></body></html>
