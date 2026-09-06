@@ -5189,3 +5189,22 @@ test("arrowing the units table selects without moving the map, and Enter goes", 
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("panel-region")).toContainText("(26,52)");
 });
+
+test("a hex reselects the unit that was chosen in it", async ({ page }) => {
+  await loadReport(page);
+
+  // Landing on the hex selects the player's own unit, which is what the default has always done.
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("panel-unit")).toContainText(OWN_UNIT);
+
+  // A deliberate choice of somebody else's unit in the same hex - "Unit (5812)", of Wanderers.
+  await selectUnit(page, "5812");
+  await expect(page.getByTestId("panel-unit")).toContainText("5812");
+
+  // `1:10,50` rather than `1:9,53`: the plan named the latter, but that hex only exists in this
+  // fixture once the ally report is merged in. `1:10,50` (swamp, Cebo) is in the base turn 71.
+  await selectHex(page, "1:10,50");
+  await selectHex(page, "1:7,53");
+
+  await expect(page.getByTestId("panel-unit")).toContainText("5812");
+});

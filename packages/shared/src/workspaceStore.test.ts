@@ -1011,3 +1011,83 @@ describe("which units-table columns are shown (ah-20di)", () => {
     expect(store().unitColumnsShown).toEqual(allColumnsShown());
   });
 });
+
+describe("remembering a unit per hex", () => {
+  beforeEach(resetWorkspaceStore);
+
+  const open = () =>
+    store().openGame(
+      {
+        gameId: "g1",
+        gameName: "Spring campaign",
+        databasePath: "idb://g1",
+        rulesetId: "neworigins"
+      },
+      null
+    );
+
+  it("records the unit selected in a hex", () => {
+    open();
+    store().selectRegion("1:7,53", "18642");
+    store().selectUnit("5812", "1:7,53");
+
+    expect(store().hexUnits["1:7,53"]).toBe("5812");
+  });
+
+  it("keeps one hex's unit while another hex is worked in", () => {
+    open();
+    store().selectRegion("1:7,53", "18642");
+    store().selectUnit("5812", "1:7,53");
+    store().selectRegion("1:9,53", "1605");
+    store().selectUnit("1605", "1:9,53");
+
+    expect(store().hexUnits).toEqual({ "1:7,53": "5812", "1:9,53": "1605" });
+  });
+
+  it("forgets every hex when a game is opened", () => {
+    open();
+    store().selectUnit("5812", "1:7,53");
+    open();
+
+    expect(store().hexUnits).toEqual({});
+  });
+
+  it("forgets every hex when a game is closed", () => {
+    open();
+    store().selectUnit("5812", "1:7,53");
+    store().closeGame();
+
+    expect(store().hexUnits).toEqual({});
+  });
+
+  it("leaves the memory alone when the level changes", () => {
+    open();
+    store().selectUnit("5812", "1:7,53");
+    store().setLevel(2);
+
+    expect(store().hexUnits["1:7,53"]).toBe("5812");
+  });
+
+  it("keeps the last choice when the selection is cleared", () => {
+    open();
+    store().selectUnit("5812", "1:7,53");
+    store().selectUnit(null, null);
+
+    expect(store().hexUnits["1:7,53"]).toBe("5812");
+  });
+
+  it("records nothing for a selection the app made on the player's behalf", () => {
+    open();
+    store().selectUnit("5812", "1:7,53", { remember: false });
+
+    expect(store().hexUnits).toEqual({});
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    open();
+    store().selectUnit("5812", "1:7,53");
+    resetWorkspaceStore();
+
+    expect(store().hexUnits).toEqual({});
+  });
+});

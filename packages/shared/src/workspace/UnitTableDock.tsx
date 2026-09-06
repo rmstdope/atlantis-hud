@@ -538,7 +538,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // also the cursor, so the Unit panel fills in at once.
     const first = visible[0];
     if (first) {
-      selectUnit(first.unitId, first.regionId);
+      // Not the player choosing: opening a foreign faction's list lands on its first row, and
+      // recording that would make the hex reopen on a foreign unit (`ah-17t5`).
+      selectUnit(first.unitId, first.regionId, { remember: false });
       // The existing scroll-into-view-then-focus machinery, not a second focus effect.
       refocusWanted.current = true;
     } else {
