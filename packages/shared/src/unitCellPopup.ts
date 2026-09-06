@@ -11,7 +11,7 @@ import type {
 import { count } from "./plural";
 import { battleSkillGroups, battleSkillSource } from "./battleSkillPresentation";
 import type { DerivedSkill } from "./battleSkills";
-import { flagWords } from "./unitFlags";
+import { FLAG_SETTINGS, flagState, unsettledFlags } from "./unitFlags";
 import { describeMenBriefly, whyEstimated } from "./unitComposition";
 import { presentUnitMovement } from "./unitMovement";
 import {
@@ -221,6 +221,20 @@ export function reportedItems(original: string): ReportedItems | undefined {
     items.set(match[2]!, amount);
   }
   return items;
+}
+
+/**
+ * The report's own flag list, parsed out of the `flags` change's display string.
+ *
+ * `changes()` builds it as `original.flags.join(", ")` (`crates/core/src/orders/effects.rs`), so it
+ * is `behind, on guard` and nothing else. Splitting on `", "` is safe only because every element is
+ * a `KNOWN_FLAGS` literal and none of them contains a comma.
+ *
+ * An empty original is an **empty list**, not a parse failure: a formed unit records no change at
+ * all, so an empty `flags` original can only mean the report showed this unit carrying none.
+ */
+export function reportedFlags(original: string): readonly string[] {
+  return original === "" ? [] : original.split(", ");
 }
 
 /**
@@ -482,7 +496,10 @@ const CAPACITY_LINES: readonly { mode: UnitMovementMode; label: string }[] = [
 const CHANGE_FIELD: Partial<Record<PopupColumn, string>> = {
   men: "men",
   movement: "movement",
-  flags: "flags",
+  // `flags` is deliberately absent: `flagsBody` reads its own change, and both behaviours this
+  // table drives are wrong for the column now (`ah-rgkk.5.2`). The no-change sentence would repeat
+  // what eleven lines already say one by one, and the `Was: ...` fallback for an empty body cannot
+  // fire, because this body is never empty.
   skills: "skills",
   items: "items",
   // The report's own field name, which is not the column's: a structure change is recorded
@@ -846,15 +863,132 @@ function movementIsStillTheReport(unit: PreviewedUnit): boolean {
   );
 }
 
-function flagsBody(unit: PreviewedUnit): Body {
-  const words = flagWords(unit.flags);
-  const change = changeFor(unit, CHANGE_FIELD.flags!);
-  if (words === undefined) {
-    return { lines: [], notes: ["No flags set."] };
+/**
+ * The order that put a setting into its new state, as it would be typed - `GUARD 1`, `BEHIND 0` -
+ * or `undefined` where no order the preview applies could have done it.
+ *
+ * Only `GUARD`, `AVOID`, `BEHIND` and `SHARE` reach `read_order`
+ * (`crates/core/src/orders/effects.rs`), so every other setting gets the pair and no clause: the
+ * popup must not assert an order it cannot derive.
+ *
+ * Guard and avoid are mutually exclusive - `rules/guard` and `rules/avoid` both say setting one
+ * cancels the other - so a flag cleared by its opposite names the order the player actually wrote
+ * rather than inventing the clear.
+ */
+function flagCause(
+  key: string,
+  /**
+   * The state the setting came from. Every answer below is derivable from `to` and `moves` alone,
+   * but the state it moved out of is what a fifth setting's cause would turn on, and the parameter
+   * is the plan's own signature - so it is carried rather than dropped and re-added.
+   */
+  _from: string,
+  to: string,
+  moves: ReadonlyMap<string, { from: string; to: string }>
+): string | undefined {
+  const on = to === "on";
+  switch (key) {
+    case "guarding":
+      return on ? "GUARD 1" : moves.get("avoiding")?.to === "on" ? "AVOID 1" : "GUARD 0";
+    case "avoiding":
+      return on ? "AVOID 1" : moves.get("guarding")?.to === "on" ? "GUARD 1" : "AVOID 0";
+    case "behind":
+      return on ? "BEHIND 1" : "BEHIND 0";
+    case "sharing":
+      return on ? "SHARE 1" : "SHARE 0";
+    default:
+      return undefined;
   }
+}
+
+/**
+ * The sentences under the list.
+ *
+ * The standing one is decision **W1**: seven real flag orders this application accepts and
+ * validates never reach `read_order`, so every line is the report's unless one of the four did it.
+ * `ah-9g94` deletes this sentence and its test when it wires them up.
+ */
+function flagNotes(unit: PreviewedUnit): string[] {
+  if (unit.own === false) {
+    return ["Another faction's flags, as your report printed them. Nothing you order changes them."];
+  }
+  const notes: string[] = [];
+  if (unit.formed) {
+    // `rules/form`: a formed unit inherits its flags bar guard and autotax. It records no
+    // `FieldChange` at all, so without this every one of its lines reads unchanged for no stated
+    // reason.
+    notes.push(
+      "Formed this month, so it inherits its flags from the unit forming it — every one but " +
+        "guard and autotax, which have to be set in its own orders."
+    );
+  }
+  notes.push(
+    "Every line is your report's, changed only by this month's GUARD, AVOID, BEHIND and SHARE. " +
+      "AUTOTAX, NOAID, CONSUME, REVEAL, SPOILS, HOLD and NOCROSS are not worked out here."
+  );
+  return notes;
+}
+
+/**
+ * The two states a line is drawn quietly in: a setting resting where the report said nothing about
+ * it, and which nothing this month moved (decision **F3**). `silver first` is not among them - it
+ * is `rules/consume`'s own named default, so it is a real answer rather than an absence.
+ */
+const QUIET_STATES: ReadonlySet<string> = new Set(["off", "not shown"]);
+
+/**
+ * Every setting the game defines an order for, one line each, in `FLAG_SETTINGS` order, with the
+ * ones this month moved first (decision **F3**).
+ *
+ * Read from `unit.flags` and nothing else - in particular never from `unit.onGuard`. The Flags cell
+ * draws its letters from the same list, so a popup taking guard from anywhere else would contradict
+ * on screen the cell it exists to explain (`ah-9g94` is where that defect is fixed).
+ */
+function flagsBody(unit: PreviewedUnit): Body {
+  const change = changeFor(unit, "flags");
+  const before = change ? reportedFlags(change.original) : unit.flags;
+
+  const moves = new Map<string, { from: string; to: string }>();
+  const states = FLAG_SETTINGS.map((setting) => {
+    const from = flagState(setting, before);
+    const to = flagState(setting, unit.flags);
+    if (from !== to) {
+      moves.set(setting.key, { from, to });
+    }
+    return { setting, from, to };
+  });
+
+  const lines: PopupLine[] = states.map(({ setting, from, to }) => {
+    const move = moves.get(setting.key);
+    if (!move) {
+      return {
+        label: setting.label,
+        value: to,
+        ...(QUIET_STATES.has(to) ? { stress: "aside" as const } : {})
+      };
+    }
+    const last = setting.states[setting.states.length - 1]![0];
+    const why = flagCause(setting.key, from, to, moves);
+    return {
+      label: setting.label,
+      value: to,
+      change: { direction: to === last ? ("down" as const) : ("up" as const), from },
+      ...(why ? { why } : {})
+    };
+  });
+
+  const changed = lines.filter((line) => line.change);
+  const rest = lines.filter((line) => !line.change);
+  const passengers: PopupLine[] = unsettledFlags(unit.flags).map((flag) => ({
+    label: flag,
+    value: "on"
+  }));
+
   return {
-    lines: [{ label: "flags", value: words, ...(change ? { why: originalTooltip(change) } : {}) }],
-    notes: []
+    // No `changed`: this column is deliberately absent from `CHANGE_FIELD`, so `popupForCell`
+    // never consults it and reporting one would suggest it still drove the no-change sentence.
+    lines: [...changed, ...rest, ...passengers],
+    notes: flagNotes(unit)
   };
 }
 
