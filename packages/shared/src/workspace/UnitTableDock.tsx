@@ -61,6 +61,7 @@ import {
   silverKey,
   unitRowKey,
   unitRowSelector,
+  silverIsRed,
   silverShown,
   type ColumnShares,
   type ExtraColumn,
@@ -2680,16 +2681,6 @@ function Td({ children, className = "", column, predicted }: TdProps) {
  */
 function silverFigure(shown: number | null): string {
   return shown === null ? "?" : String(shown);
-}
-
-/**
- * Whether something is wrong with this unit's money: it ends below zero, or its orders spend more
- * than the silver reaching it in time can cover - a purchase the game will refuse even though the
- * month ends in credit (`ah-uwa3`).
- */
-function silverIsRed(shown: number | null, silver: UnitSilver | null): boolean {
-  if (shown !== null && shown < 0) return true;
-  return (silver?.shortForOrders ?? 0) > 0;
 }
 
 /**

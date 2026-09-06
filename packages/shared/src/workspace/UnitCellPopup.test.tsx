@@ -57,6 +57,13 @@ describe("PopupLineValue", () => {
     }
   });
 
+  // `ah-rgkk.4.3`: a ledger line carries a signed amount rather than a pair, and the sign already
+  // says the direction - the ink is decoration on top of it.
+  it("draws a signed amount in the ink its tone asks for", () => {
+    expect(draw({ label: "taxed", value: "+200", tone: "up" })).toMatch(/text-ok[^>]*>\+200</);
+    expect(draw({ label: "bought", value: "-90", tone: "down" })).toMatch(/text-danger[^>]*>-90</);
+  });
+
   it("an uncertain projection carries a question mark", () => {
     const markup = draw({
       label: "combat COMB",

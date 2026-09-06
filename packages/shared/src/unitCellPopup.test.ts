@@ -365,16 +365,435 @@ describe("the column popups", () => {
     expect(popup.lines).toEqual([{ label: "long order", value: "STUDY COMB" }]);
   });
 
-  it("the silver popup carries the forecast's rows and its notes", () => {
+  // `ah-rgkk.4.3`, decision **V2**: the pair, then one line per cause, in the turn's own order.
+  // The scene is the chosen mockup's - Collectors, holding 340, ending on 320.
+  it("the silver popup draws the month's total as a pair and one line per cause", () => {
     const popup = columnPopup(
       popupForCell(
         "silver",
         unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 100, income: 0, lateIncome: 0, expense: 0 }) })
+        facts({
+          silver: aUnitSilver({
+            held: 340,
+            atMonthEnd: 320,
+            changes: [
+              { amount: 200, cause: "taxed", line: 2, other: null },
+              { amount: 50, cause: "was-given", line: null, other: "Watch (1604)" },
+              { amount: -60, cause: "studied", line: 3, other: null },
+              { amount: -90, cause: "bought", line: 4, other: null },
+              { amount: -40, cause: "gave-away", line: 5, other: "Scouts (1502)" }
+            ]
+          })
+        })
       )
     );
-    expect(popup.lines[0]).toEqual({ label: "Held now", value: "100" });
-    expect(popup.lines.at(-1)?.label).toBe("At month end");
+    expect(popup.lines).toEqual([
+      { label: "silver", value: "320", change: { direction: "down", from: "340" } },
+      { label: "taxed", value: "+200", tone: "up" },
+      { label: "was given", value: "+50", tone: "up", why: "from Watch (1604)" },
+      { label: "studied", value: "-60", tone: "down" },
+      { label: "bought", value: "-90", tone: "down" },
+      { label: "gave away", value: "-40", tone: "down", why: "to Scouts (1502)" }
+    ]);
+  });
+
+  it("the silver popup shows no pair for a figure that did not move or could not be priced", () => {
+    const still = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 100 }) })
+      )
+    );
+    expect(still.lines[0]).toEqual({ label: "silver", value: "100" });
+
+    const doubted = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: null, doubt: "unknown-tax-base" }) })
+      )
+    );
+    expect(doubted.lines[0]).toEqual({ label: "silver", value: "?" });
+  });
+
+  it("the silver popup merges every movement with one cause into one line", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 80,
+            changes: [
+              { amount: 50, cause: "was-given", line: null, other: "Watch (1604)" },
+              { amount: 30, cause: "was-given", line: null, other: "unit 1901" }
+            ]
+          })
+        })
+      )
+    );
+    expect(popup.lines[1]).toEqual({
+      label: "was given",
+      value: "+80",
+      tone: "up",
+      why: "from Watch (1604) and unit 1901"
+    });
+    expect(popup.lines).toHaveLength(2);
+  });
+
+  // `SilverChangeCause` is generated, so the core may ship a cause this package has not been
+  // taught: it still gets a line, a figure and a readable label.
+  it("the silver popup gives a cause it has not been taught a line of its own", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 25,
+            changes: [
+              { amount: 25, cause: "found-treasure" as never, line: null, other: null }
+            ]
+          })
+        })
+      )
+    );
+    expect(popup.lines[1]).toEqual({ label: "found treasure", value: "+25", tone: "up" });
+  });
+
+  it("the silver popup names who gave and who was taken from", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 30,
+            changes: [{ amount: 30, cause: "took", line: 2, other: "Watch (1604)" }]
+          })
+        })
+      )
+    );
+    expect(popup.lines[1]?.why).toBe("from Watch (1604)");
+  });
+
+  it("the silver popup says which sources of a take the report does not show", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 70,
+            changes: [
+              { amount: 30, cause: "took", line: 2, other: "Watch (1604)" },
+              { amount: 40, cause: "took-unshown", line: 2, other: "unit 1901" }
+            ]
+          })
+        })
+      )
+    );
+    expect(popup.lines[1]).toEqual({
+      label: "took",
+      value: "+70",
+      tone: "up",
+      why: "from Watch (1604), from unit 1901, which your report does not show"
+    });
+  });
+
+  it("the silver popup prices a purchase from the item ledger", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({
+          own: true,
+          itemChanges: [
+            {
+              tag: "HORS",
+              name: "horse",
+              delta: 2,
+              cause: "bought",
+              line: 7,
+              unitPrice: 45,
+              other: null,
+              isMan: false
+            }
+          ]
+        }),
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: 10,
+            changes: [{ amount: -90, cause: "bought", line: 7, other: null }]
+          })
+        })
+      )
+    );
+    expect(popup.lines[1]?.why).toBe("2 horses at 45 each");
+  });
+
+  it("the silver popup says when a unit taxes or works without an order", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 250,
+            taxesByFlag: true,
+            worksByDefault: true,
+            changes: [
+              { amount: 200, cause: "taxed", line: null, other: null },
+              { amount: 50, cause: "worked", line: null, other: null }
+            ]
+          })
+        })
+      )
+    );
+    expect(popup.lines[1]?.why).toBe("set to tax every turn");
+    expect(popup.lines[2]?.why).toBe("no month-long order, arrives too late");
+  });
+
+  // `rules/sequenceofevents`: ENTERTAIN and WORK are processed after STUDY, BUY and BUILD, so a
+  // wage cannot pay for any of them.
+  it("the silver popup says that wages arrive too late", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 20,
+            changes: [{ amount: 20, cause: "entertained", line: 2, other: null }]
+          })
+        })
+      )
+    );
+    expect(popup.lines[1]?.why).toBe("arrives too late");
+  });
+
+  it("the silver popup draws upkeep only while the column counts it", () => {
+    const silver = aUnitSilver({
+      held: 340,
+      atMonthEnd: 400,
+      upkeep: 80,
+      changes: [{ amount: 60, cause: "taxed", line: 2, other: null }]
+    });
+    const counted = columnPopup(
+      popupForCell("silver", unit({ own: true }), facts({ silver, countUpkeep: true }))
+    );
+    expect(counted.lines[0]).toEqual({
+      label: "silver",
+      value: "320",
+      change: { direction: "down", from: "340" }
+    });
+    expect(counted.lines.at(-1)).toEqual({ label: "upkeep", value: "-80", tone: "down" });
+
+    const uncounted = columnPopup(
+      popupForCell("silver", unit({ own: true }), facts({ silver, countUpkeep: false }))
+    );
+    expect(uncounted.lines[0]).toEqual({
+      label: "silver",
+      value: "400",
+      change: { direction: "up", from: "340" }
+    });
+    expect(uncounted.lines.map((line) => line.label)).not.toContain("upkeep");
+  });
+
+  // Decision **W1**: one amber line at the foot, each sentence naming the mark it explains.
+  it("the silver popup explains a red figure that ends below zero", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver({ held: 0, atMonthEnd: -60 }) })
+      )
+    );
+    expect(popup.warning).toBe("A red figure in the cell: this unit ends the month 60 short.");
+  });
+
+  it("the silver popup explains a red figure whose orders cannot be paid", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 40, shortForOrders: 95 }) })
+      )
+    );
+    expect(popup.warning).toBe(
+      "A red figure in the cell: this unit cannot pay for its own orders out of silver that reaches it in time."
+    );
+  });
+
+  it("the silver popup explains the warning mark", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 100 }), silverWarned: true })
+      )
+    );
+    expect(popup.warning).toBe(
+      "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel."
+    );
+  });
+
+  it("the silver popup explains both marks in one amber line", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver({ held: 0, atMonthEnd: -60 }), silverWarned: true })
+      )
+    );
+    expect(popup.warning).toBe(
+      "A red figure in the cell: this unit ends the month 60 short. ⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel."
+    );
+  });
+
+  it("the silver popup leaves an unmarked cell without an amber line", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 100 }) })
+      )
+    );
+    expect(popup.warning).toBeNull();
+  });
+
+  // Decision **N2**: the six notes whose whole content the lines now restate stop being drawn on
+  // this surface; every caveat stays.
+  it("the silver popup drops the notes its lines already say", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silverWarned: true,
+          countUpkeep: true,
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 280,
+            upkeep: 10,
+            unclaimedContended: true,
+            received: 50,
+            givers: ["Watch (1604)"],
+            taken: 30,
+            takenFrom: ["Scouts (1502)"],
+            takenUnshown: 40,
+            takenUnshownFrom: ["unit 1901"],
+            givenToNobody: 10,
+            taxesByFlag: true,
+            worksByDefault: true,
+            changes: [
+              { amount: 200, cause: "taxed", line: null, other: null },
+              { amount: 50, cause: "was-given", line: null, other: "Watch (1604)" }
+            ]
+          })
+        })
+      )
+    );
+    const said = popup.notes.join(" ");
+    for (const restated of ["was given", "took", "taxes every turn", "no month-long order"]) {
+      expect(said.toLowerCase()).not.toContain(restated.toLowerCase());
+    }
+    expect(popup.notes).toContain(
+      "There is not enough unclaimed silver to feed every unit that needs it."
+    );
+  });
+
+  // A doubted month draws no cause lines at all, so there is nothing to have restated the notes:
+  // dropping them then would take the sentence away and put nothing in its place.
+  it("the silver popup keeps every note for a month it cannot add up", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: null,
+            doubt: "unknown-tax-base",
+            received: 50,
+            givers: ["Watch (1604)"],
+            givenToNobody: 10,
+            taxesByFlag: true,
+            changes: []
+          })
+        })
+      )
+    );
+    const said = popup.notes.join(" ");
+    expect(said).toContain("Includes 50");
+    expect(said).toContain("Includes 10 given away to nobody.");
+    expect(said).toContain("set to tax every turn");
+  });
+
+  it("the silver popup keeps the taxing note for a unit that taxes nothing", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: 60,
+            taxesByFlag: true,
+            changes: [{ amount: -40, cause: "studied", line: 2, other: null }]
+          })
+        })
+      )
+    );
+    expect(popup.notes.join(" ")).toContain("set to tax every turn");
+  });
+
+  it("the silver popup draws no line for a cause whose movements cancel", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: 100,
+            changes: [
+              { amount: 40, cause: "was-given", line: null, other: "Watch (1604)" },
+              { amount: -40, cause: "was-given", line: null, other: "Scouts (1502)" }
+            ]
+          })
+        })
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "silver", value: "100" }]);
+  });
+
+  it("the silver popup says a doubted month cannot be added up", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: null,
+            doubt: "unknown-tax-base",
+            changes: []
+          })
+        })
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "silver", value: "?" }]);
+    expect(popup.notes[0]).toBe(
+      "This month cannot be added up, so what moved this unit's silver is not listed."
+    );
   });
 
   it("the silver popup shows no working for a row the game dissolves", () => {
