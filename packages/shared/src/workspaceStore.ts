@@ -37,6 +37,11 @@ import {
 } from "./workspace/mapViewState";
 import type { SavedMapView } from "./workspace/mapViewportStorage";
 import type { Viewport } from "./workspace/mapViewport";
+import {
+  NO_HEX_UNITS,
+  withUnitRemembered,
+  type HexUnitMemory
+} from "./workspace/hexUnitMemory";
 
 /**
  * The four panels that can be folded away to open up the map.
@@ -133,6 +138,12 @@ export type WorkspaceState = {
    * called `new-1` (`rules/form`) - so the cursor is the pair (`ah-bubf`).
    */
   selectedUnitRegionId: string | null;
+  /**
+   * Which unit was last chosen in each hex, so returning to a hex returns to that unit rather than
+   * to the first one in it (`ah-17t5`). Session-only: never persisted, and cleared whenever a game
+   * is opened or closed, since a region id like `1:7,53` exists in every game.
+   */
+  hexUnits: HexUnitMemory;
   /**
    * Counts user-initiated selection changes, so the map can replay its lock-on pulse exactly once
    * per change. A restored selection (app load) does not bump it - see `restoreSelection` - which
@@ -402,6 +413,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       selectedRegionId: null,
       selectedUnitId: null,
       selectedUnitRegionId: null,
+      hexUnits: NO_HEX_UNITS,
       selectionEpoch: 0,
       pickEpoch: 0,
       level: DEFAULT_LEVEL,
@@ -427,6 +439,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           selectedRegionId: saved?.regionId ?? null,
           selectedUnitId: null,
           selectedUnitRegionId: null,
+          hexUnits: NO_HEX_UNITS,
           selectionEpoch: 0,
           mapView: mapViewOpened(game.gameId, saved)
         }),
@@ -437,6 +450,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           selectedRegionId: null,
           selectedUnitId: null,
           selectedUnitRegionId: null,
+          hexUnits: NO_HEX_UNITS,
           selectionEpoch: 0,
           mapView: NO_MAP_VIEW
         }),
@@ -498,11 +512,18 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           mapView: mapViewSelectionChanged(state.mapView, regionId)
         })),
 
+      // Choosing a unit is what the hex remembers. Clearing the selection deliberately writes
+      // nothing: deselecting is not choosing somebody else, and the last real choice is still the
+      // better guess when the player comes back.
       selectUnit: (unitId, regionId) =>
-        set({
+        set((state) => ({
           selectedUnitId: unitId,
-          selectedUnitRegionId: unitId === null ? null : regionId
-        }),
+          selectedUnitRegionId: unitId === null ? null : regionId,
+          hexUnits:
+            unitId === null || regionId === null
+              ? state.hexUnits
+              : withUnitRemembered(state.hexUnits, regionId, unitId)
+        })),
 
       // Levels are separate maps, so a selection from one does not carry to another.
       setLevel: (level) =>
@@ -652,6 +673,7 @@ export function resetWorkspaceStore() {
     selectedRegionId: null,
     selectedUnitId: null,
     selectedUnitRegionId: null,
+    hexUnits: NO_HEX_UNITS,
     selectionEpoch: 0,
     pickEpoch: 0,
     level: DEFAULT_LEVEL,

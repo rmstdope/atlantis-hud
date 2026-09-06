@@ -241,6 +241,7 @@ import {
 import { diffOrders, diffTurns } from "../turnDiff";
 import { type MapRect } from "./mapMarquee";
 import { loadSavedView, saveMapView } from "./mapViewportStorage";
+import { unitForHex } from "./hexUnitMemory";
 import type { MapViewState } from "./mapViewState";
 import { getMapTheme } from "./mapThemes";
 import { OrdersPanel } from "./OrdersPanel";
@@ -1035,7 +1036,10 @@ export function AppShell({
         return;
       }
       const target = model.hexes.find((candidate) => candidate.regionId === regionId) ?? null;
-      selectRegion(regionId, unitsForHex(target)[0]?.unitId ?? null);
+      selectRegion(
+        regionId,
+        unitForHex(useWorkspaceStore.getState().hexUnits, regionId, unitsForHex(target))
+      );
     },
     [model, selectRegion, planner.armed, planTo]
   );
@@ -3211,7 +3215,10 @@ export function AppShell({
           setLevel(target);
         }
         const found = model.hexes.find((candidate) => candidate.regionId === regionId) ?? null;
-        selectRegion(regionId, unitsForHex(found)[0]?.unitId ?? null);
+        selectRegion(
+          regionId,
+          unitForHex(useWorkspaceStore.getState().hexUnits, regionId, unitsForHex(found))
+        );
         setDossier(null);
       },
       // The popover no longer lists their units; this sends the reader to the dock's own list of
