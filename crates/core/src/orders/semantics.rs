@@ -9872,14 +9872,18 @@ fn one_study_forecast(
         }
         // "The unit doing the teaching must have a skill level greater than the unit doing the
         // studying" (`rules/skills_teaching`) - `check_one_teacher`'s own test.
-        // `Ordered::skill_level` answers `None` only when the whole skill list cannot be said this
-        // month. The student's is already excluded above, so the live case is the teacher's: it is
-        // a teacher whose standing cannot be settled, not one that teaches nothing (`U2`).
-        let Some(mine) = candidate.skill_level(&skill.tag) else {
+        // `Ordered::skill_level` answers `None` only when a unit's whole skill list cannot be said
+        // this month, and **no fixture reaches this arm**: the student's case is already excluded
+        // by the `ordered.skills()?` above, and every route that leaves a *teacher's* skills
+        // unknowable leaves its races unknowable with them (`apply_recruits` sets the two
+        // together), so `teaching_eligibility` has already answered `None` and taken the doubt
+        // branch above. Defensive, and it doubts rather than dropping the teacher silently, so a
+        // future divergence between the two goes uncertain rather than confidently wrong (`U2`).
+        let (Some(mine), Some(theirs)) = (
+            candidate.skill_level(&skill.tag),
+            ordered.skill_level(&skill.tag),
+        ) else {
             doubts.push(about_teacher(StudyDoubtReason::TeacherUnsettled, candidate));
-            continue;
-        };
-        let Some(theirs) = ordered.skill_level(&skill.tag) else {
             continue;
         };
         if mine <= theirs {
@@ -35286,10 +35290,11 @@ BUILD
         assert_eq!(study.months_denominator, 2);
     }
 
-    /// Two teachers whose contributions are equal is not a decision: the earlier one in report
-    /// order wins, which is what makes the answer stable across runs.
+    /// Two teachers whose contributions are equal produce the same month whichever one wins, so
+    /// the tie-break is not observable on the wire; what is, and what the popup lists, is that
+    /// both are named in report order.
     #[test]
-    fn two_teachers_tied_leave_the_month_to_the_earlier_one() {
+    fn two_teachers_tied_are_both_named_in_report_order() {
         let student =
             with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
         let first = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
@@ -35311,30 +35316,6 @@ BUILD
         );
         assert_eq!(study.months_numerator, 3);
         assert_eq!(study.months_denominator, 2);
-    }
-
-    /// A teacher whose whole skill list cannot be said is a teacher whose standing cannot be
-    /// settled, not one that teaches nothing - accept on doubt, and decision **U2**.
-    #[test]
-    fn a_teacher_whose_skills_cannot_be_said_is_doubted_rather_than_dropped() {
-        let student =
-            with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
-        let teacher = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
-        // A `BUY ALL` of people makes the post-recruit composition - and so the merged skill list -
-        // unknowable, which is one of `skills()`'s three silent routes.
-        let study = study_of(
-            vec![region(vec![student, teacher])],
-            "unit 1487\nSTUDY Combat\nunit 1774\nBUY ALL peasants\nTEACH 1487\n",
-            "1487",
-        )
-        .expect("a studying unit is forecast");
-
-        assert_eq!(study.doubts.len(), 1, "{study:?}");
-        assert_eq!(
-            study.doubts[0].reason,
-            effects::StudyDoubtReason::TeacherUnsettled
-        );
-        assert!(study.teachers.is_empty(), "{study:?}");
     }
 
     /// The doubts are pushed in a fixed order, so the popup's sentences read in one: the headcount
@@ -35385,6 +35366,31 @@ BUILD
                 effects::StudyDoubtReason::TeacherUnsettled,
             ]
         );
+    }
+
+    /// A level never falls. A report showing a unit already past the ceiling its races now impose
+    /// would otherwise project next turn's level *below* this month's.
+    #[test]
+    fn a_unit_already_past_its_ceiling_keeps_the_level_it_has() {
+        // `data/HDWA` allows combat only to level 2; this unit is shown at 3.
+        let student = with_skill_points(
+            with_silver(with_race(unit("900"), 5, "hill dwarf", "HDWA"), 1000),
+            "COMB",
+            3,
+            180,
+        );
+        let study = study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY Combat\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
+
+        assert_eq!(study.ceiling_level, 2);
+        assert_eq!(study.level_before, 3);
+        assert_eq!(study.points_after, 210);
+        assert_eq!(study.level_after, 3);
+        assert!(study.held_back_by_ceiling, "{study:?}");
     }
 
     /// The catalogue prices `annihilation` nowhere, so the fee cannot be said at all - and the
