@@ -1510,6 +1510,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   key={unitRowKey(unit.regionId, unit.unitId)}
                   unit={unit}
                   structureLabel={unitStructureLabel(unit.structureId, structuresById)}
+                  reportedStructureLabel={reportedStructureLabelFor(unit, structuresById)}
                   drawn={drawn}
                   index={start + offset}
                   rowHeight={rowHeight}
@@ -1600,6 +1601,24 @@ const byMouse = (event: PointerEvent<HTMLElement>) => event.pointerType === "mou
  * exactly one live way in at any moment.
  */
 type MenuAnchor = { at: "header" } | { at: "bulk" } | { at: "pointer"; point: Point };
+
+/**
+ * The structure this month's orders moved a unit **out of**, labelled by the same helper and from
+ * the same map as the side it moved into, so the two can never be named differently
+ * (`ah-rgkk.5.3`). An empty original is the report saying "in no structure", which is a `null` id
+ * and not a structure called "" - the same guard `markOrQuote` keeps against `Number("")`.
+ */
+function reportedStructureLabelFor(
+  unit: PreviewedUnit,
+  structuresById: ReadonlyMap<string, StructureInfo>
+): string | null {
+  const change = changeFor(unit, "structureId");
+  if (!change) {
+    return null;
+  }
+  const id = change.original.trim() === "" ? null : change.original;
+  return unitStructureLabel(id, structuresById);
+}
 
 /** Which rail entry a drag may be dropped on. */
 type DropTarget = { kind: "army"; armyId: string } | { kind: "new" };
@@ -1981,6 +2000,7 @@ function HoveredPopup({
   const dissolving = dissolves(unit);
   const spec = popupForCell(column, unit, {
     structureLabel: unitStructureLabel(unit.structureId, structuresById),
+    reportedStructureLabel: reportedStructureLabelFor(unit, structuresById),
     longOrder: unit.own ? (getLongOrder?.(unit.unitId, unit.regionId) ?? null) : null,
     silver,
     silverWarned: warned,
@@ -2037,6 +2057,7 @@ const PREDICTED = "italic text-brass";
 function UnitRow({
   unit,
   structureLabel,
+  reportedStructureLabel,
   drawn,
   index,
   rowHeight,
@@ -2072,6 +2093,8 @@ function UnitRow({
    * described it — and null when the unit stands in the open.
    */
   structureLabel: string | null;
+  /** The structure the unit's orders moved it out of, for the Structure popup (`ah-rgkk.5.3`). */
+  reportedStructureLabel: string | null;
   index: number;
   rowHeight: number;
   selected: boolean;
@@ -2207,6 +2230,7 @@ function UnitRow({
   const explanations = useMemo(() => {
     const popupFacts: PopupFacts = {
       structureLabel,
+      reportedStructureLabel,
       longOrder,
       silver,
       silverWarned: warned,
@@ -2223,6 +2247,7 @@ function UnitRow({
   }, [
     unit,
     structureLabel,
+    reportedStructureLabel,
     longOrder,
     silver,
     warned,

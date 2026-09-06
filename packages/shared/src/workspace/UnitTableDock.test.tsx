@@ -253,7 +253,11 @@ describe("the structure column", () => {
 
     const structure = /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
     expect(structure).toContain("Wavecrest [329] · Longship");
-    expect(structure).toContain("was: —");
+    // Both sides of the move, named the way the cell names them, and the order that did it
+    // (`ah-rgkk.5.3`) - which is also the proof the dock threads `reportedStructureLabel`.
+    expect(structure).toContain("in the open");
+    expect(structure).toContain("ENTER 329");
+    expect(structure).not.toContain("was: —");
   });
 });
 
