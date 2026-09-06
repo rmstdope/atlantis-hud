@@ -18,6 +18,7 @@ const unit = (overrides: Partial<PreviewedUnit> = {}): PreviewedUnit => ({
 
 const facts = (overrides: Partial<PopupFacts> = {}): PopupFacts => ({
   structureLabel: null,
+  reportedStructureLabel: null,
   longOrder: null,
   silver: null,
   silverWarned: false,
@@ -621,26 +622,95 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "structure",
-        unit({ previewChanges: [{ field: "structureId", original: "" }] }),
+        unit({ structureId: "329", previewChanges: [{ field: "structureId", original: "" }] }),
         facts({ structureLabel: "Wavecrest [329] · Longship" })
       )
     );
-    expect(popup.lines[0]?.why).toBe("was: —");
+    expect(popup.lines[0]).toEqual({ label: "was", value: "in the open" });
+    expect(popup.lines[1]?.why).toBe("ENTER 329");
     expect(popup.notes).not.toContain("Nothing this month changes this.");
+  });
+
+  it("the structure popup names both sides of a move and the order that made it", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ structureId: "12", previewChanges: [{ field: "structureId", original: "329" }] }),
+        facts({
+          structureLabel: "Odds and Ends [12] · Fort",
+          reportedStructureLabel: "Wavecrest [329] · Longship"
+        })
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "was", value: "Wavecrest [329] · Longship" },
+      { label: "structure", value: "Odds and Ends [12] · Fort", why: "ENTER 12" }
+    ]);
+    expect(popup.notes).toEqual([]);
+  });
+
+  it("the structure popup says a unit entered from the open", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ structureId: "12", previewChanges: [{ field: "structureId", original: "" }] }),
+        facts({ structureLabel: "Odds and Ends [12] · Fort", reportedStructureLabel: null })
+      )
+    );
+    expect(popup.lines[0]?.value).toBe("in the open");
+    expect(popup.lines[1]?.why).toBe("ENTER 12");
+  });
+
+  it("the structure popup says a unit left into the open", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ structureId: null, previewChanges: [{ field: "structureId", original: "12" }] }),
+        facts({ structureLabel: null, reportedStructureLabel: "Odds and Ends [12] · Fort" })
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "was", value: "Odds and Ends [12] · Fort" },
+      { label: "structure", value: "in the open", why: "LEAVE" }
+    ]);
+    expect(popup.notes).not.toContain("In no structure.");
+    expect(popup.notes.some((note) => note.startsWith("Was: "))).toBe(false);
+  });
+
+  it("the structure popup says when the report never described a structure it names", () => {
+    const moved = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ structureId: "12", previewChanges: [{ field: "structureId", original: "329" }] }),
+        facts({ structureLabel: "Odds and Ends [12] · Fort", reportedStructureLabel: "[329]" })
+      )
+    );
+    expect(moved.notes).toEqual([
+      "This region\u2019s report does not describe [329], so only its number is shown."
+    ]);
+
+    const still = columnPopup(
+      popupForCell("structure", unit({ structureId: "12" }), facts({ structureLabel: "[12]" }))
+    );
+    expect(still.notes).toEqual([
+      "This region\u2019s report does not describe [12], so only its number is shown.",
+      "Nothing this month changes this."
+    ]);
   });
 
   it("an empty column still says what the report had there", () => {
     const moved = columnPopup(
       popupForCell(
         "structure",
-        unit({ previewChanges: [{ field: "structureId", original: "Wavecrest [329] · Longship" }] }),
-        facts({ structureLabel: null })
+        unit({ structureId: null, previewChanges: [{ field: "structureId", original: "329" }] }),
+        facts({ structureLabel: null, reportedStructureLabel: "Wavecrest [329] · Longship" })
       )
     );
-    expect(moved.notes).toEqual([
-      "In no structure.",
-      "Was: Wavecrest [329] · Longship."
+    expect(moved.lines).toEqual([
+      { label: "was", value: "Wavecrest [329] · Longship" },
+      { label: "structure", value: "in the open", why: "LEAVE" }
     ]);
+    expect(moved.notes).toEqual([]);
 
     const unflagged = columnPopup(
       popupForCell(

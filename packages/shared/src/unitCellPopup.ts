@@ -131,6 +131,15 @@ export type PopupSpec =
 export type PopupFacts = {
   /** `unitStructureLabel(unit.structureId, structuresById)`, or null in the open. */
   structureLabel: string | null;
+  /**
+   * The structure this month's orders moved the unit **out of**, labelled exactly as
+   * `structureLabel` is - so the two sides of a move read the same way (`ah-rgkk.5.3`).
+   *
+   * `null` both when the report found the unit in no structure and when nothing moved it. Those
+   * are told apart by the unit's own `structureId` change, which is the only thing that puts this
+   * field on screen at all.
+   */
+  reportedStructureLabel: string | null;
   /** `getLongOrder(...)` for one of ours; null for a foreign unit and for none written. */
   longOrder: string | null;
   /** `getSilver(...)`, or null for a unit with no forecast. */
@@ -1213,20 +1222,54 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   };
 }
 
+/** What the popup writes where a unit stands in no structure at all (`ah-rgkk.5.3`). */
+const IN_THE_OPEN = "in the open";
+
+/**
+ * A sentence for each drawn structure the region's report never described.
+ *
+ * `unitStructureLabel` answers a bare `[id]` for one of those (`structureLabel.ts:36-50`), which is
+ * a real case - a stale hex, or a structure seen from outside - and is not the same as a name
+ * nobody has given. Detected by comparing the label to the number rather than by matching brackets,
+ * so a structure genuinely named `[329]` in the report is not accused of being missing.
+ */
+function undescribedNotes(drawn: readonly (readonly [string | null, string | null])[]): string[] {
+  return drawn
+    .filter(([label, id]) => label !== null && id !== null && label === `[${id}]`)
+    .map(([label]) => `This region\u2019s report does not describe ${label}, so only its number is shown.`);
+}
+
 function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const change = changeFor(unit, CHANGE_FIELD.structure!);
-  if (facts.structureLabel === null) {
-    return { lines: [], notes: ["In no structure."] };
+  if (!change) {
+    if (facts.structureLabel === null) {
+      return { lines: [], notes: ["In no structure."] };
+    }
+    return {
+      lines: [{ label: "structure", value: facts.structureLabel }],
+      notes: undescribedNotes([[facts.structureLabel, unit.structureId]])
+    };
   }
+  // `Number("")` is 0, and an original the report left empty is it saying "in the open" rather
+  // than a structure numbered nothing - the same guard `markOrQuote` keeps.
+  const beforeId = change.original.trim() === "" ? null : change.original;
+  const before = facts.reportedStructureLabel;
   return {
     lines: [
+      { label: "was", value: before ?? IN_THE_OPEN },
       {
         label: "structure",
-        value: facts.structureLabel,
-        ...(change ? { why: originalTooltip(change) } : {})
+        value: facts.structureLabel ?? IN_THE_OPEN,
+        // `rules/enter` leaves the object the unit is in first, so a move between two structures
+        // is one ENTER and needs no LEAVE; `rules/leave` is the only other order the preview
+        // boards on (`effects.rs:1959-1964`). No line number is recorded, so none is named.
+        why: unit.structureId === null ? "LEAVE" : `ENTER ${unit.structureId}`
       }
     ],
-    notes: []
+    notes: undescribedNotes([
+      [before, beforeId],
+      [facts.structureLabel, unit.structureId]
+    ])
   };
 }
 
