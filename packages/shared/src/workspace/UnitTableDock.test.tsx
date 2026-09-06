@@ -2124,6 +2124,7 @@ describe("the skills cell's hidden sentence names where men came from (ah-rgkk.2
               }
             ],
             reportedSkills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }],
+            itemChanges: [],
             recruitsUnmerged: false,
             menOfUnknownSkill: [],
             study: null
