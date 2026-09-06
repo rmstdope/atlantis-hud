@@ -1714,9 +1714,13 @@ impl Working {
                     &gift.tag,
                     moved,
                 );
-                // Read before the push: `self.units` is indexed mutably for `recipient` while
-                // `index` is still being read.
-                // Read before the push for the same reason as `dissolving` below it.
+                // Both read before the push: `self.units` is indexed mutably for `recipient`
+                // while `index` is still being read.
+                //
+                // `is_man` looks the tag up in an upper-case-keyed map, and `given` is written in
+                // exactly one place - `Working::apply_transfers` (`add_item(.., &mut ..given, ..)`),
+                // from the canonical tag it has already passed to `is_man` itself - so the tag
+                // reaching here is canonical.
                 let is_man = self.ruleset.is_man(&gift.tag);
                 let dissolving = ItemChangeParty {
                     unit_id: self.units[index].unit.unit_id.clone(),
@@ -2724,11 +2728,14 @@ impl Working {
                         order_index: index,
                     },
                 ));
+                // One lookup for both sides of the transport: it is the same tag either way.
+                // `false` for every transport today - `can_be_transported` refuses men - and it
+                // is asked rather than assumed so that the answer follows the catalogue.
+                let is_man = self.ruleset.is_man(&tag);
                 if moved != 0 {
                     // Read before the push: `self.units` is borrowed mutably below. The receiver's
                     // name only where this hex's rows show it - a target the report does not show
                     // is a number and nothing more (`TransportSent::to_unshown`).
-                    let is_man = self.ruleset.is_man(&tag);
                     let receiver_name = pending
                         .receiver
                         .map(|receiver| self.units[receiver].unit.name.clone());
@@ -2752,7 +2759,6 @@ impl Working {
                     add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
                     let from = self.units[pending.sender].unit.unit_id.clone();
                     let from_name = self.units[pending.sender].unit.name.clone();
-                    let is_man_in = self.ruleset.is_man(&tag);
                     if moved != 0 {
                         self.units[receiver].item_changes.push(ItemChange {
                             tag: tag.clone(),
@@ -2765,7 +2771,7 @@ impl Working {
                                 unit_id: from.clone(),
                                 name: Some(from_name),
                             }),
-                            is_man: is_man_in,
+                            is_man,
                         });
                     }
                     received[receiver].push((
