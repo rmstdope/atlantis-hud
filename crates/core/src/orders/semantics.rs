@@ -14533,6 +14533,38 @@ mod tests {
         );
     }
 
+    /// Pillaging needs *"enough combat ready men in the region"*, and riding centaurs are combat
+    /// ready men (`ah-fz7t`, `rules/economy_taxingpillaging`).
+    #[test]
+    fn riding_centaurs_meet_the_pillage_threshold() {
+        let pillager = with_skill(
+            with_race(with_silver(unit("683"), 0), 90, "centaurs", "CTAU"),
+            "RIDI",
+            1,
+        );
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![pillager])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            !codes(&review.findings).contains(&codes::PILLAGE_WITHOUT_MEN.as_str()),
+            "{:?}",
+            codes(&review.findings)
+        );
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "683")
+            .expect("the pillaging unit should have a silver row");
+        assert_eq!(row.income, Some(17926));
+    }
+
     /// The subject the sentence names - decision **P1** of `ah-q6bt`. `this faction` could send a
     /// player looking at units in another region entirely (`ah-cw75`); `this region` counted men
     /// that no longer help, since under decision **G1** only the units ordering `PILLAGE` are
@@ -15236,6 +15268,45 @@ mod tests {
             .find(|row| row.unit_id == "1")
             .expect("priced");
         assert_eq!(row.income, Some(5000), "the pillage still pays");
+    }
+
+    /// `rules/economy_taxingpillaging` counts a unit that *"has a mount and sufficient skill to
+    /// ride it in combat"*, and `data/CTAU` makes a centaur its own mount (`ah-fz7t`).
+    #[test]
+    fn a_riding_centaur_may_tax() {
+        let riding = with_skill(with_race(unit("1"), 10, "centaurs", "CTAU"), "RIDI", 1);
+        let review = review_turn(
+            &report(vec![region(vec![riding])]),
+            "unit 1\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            !codes(&review.findings).contains(&codes::TAX_WITHOUT_COMBAT_READY_MEN.as_str()),
+            "{:?}",
+            codes(&review.findings)
+        );
+
+        let unable = review_turn(
+            &report(vec![region(vec![with_race(
+                unit("1"),
+                10,
+                "centaurs",
+                "CTAU",
+            )])]),
+            "unit 1\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let finding = unable
+            .findings
+            .iter()
+            .find(|finding| finding.code == codes::TAX_WITHOUT_COMBAT_READY_MEN)
+            .expect("a centaur that cannot ride is still unready");
+        assert_eq!(
+            finding.message,
+            "cannot tax: its 10 centaurs need riding 1, and it has no riding"
+        );
     }
 
     #[test]
@@ -24733,6 +24804,19 @@ BUILD
                 "unit 5\nMOVE N\nunit 7\nGUARD 1\n"
             ),
             vec![]
+        );
+    }
+
+    /// *"Only units which are able to tax may be on guard"* (`rules/economy_taxingpillaging`), and
+    /// a riding centaur may tax (`ah-fz7t`).
+    #[test]
+    fn a_riding_centaur_may_guard() {
+        let riding = with_skill(with_race(unit("1"), 10, "centaurs", "CTAU"), "RIDI", 1);
+        let findings = check(vec![region(vec![riding])], "unit 1\nGUARD 1\n");
+        assert!(
+            !codes(&findings).contains(&codes::GUARD_WITHOUT_TAX_ABILITY.as_str()),
+            "{:?}",
+            codes(&findings)
         );
     }
 
