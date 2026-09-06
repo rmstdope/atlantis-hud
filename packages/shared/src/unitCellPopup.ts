@@ -864,11 +864,6 @@ function movementIsStillTheReport(unit: PreviewedUnit): boolean {
 }
 
 /**
- * The two states a line is drawn quietly in: a setting resting where the report said nothing about
- * it, and which nothing this month moved (decision **F3**). `silver first` is not among them - it
- * is `rules/consume`'s own named default, so it is a real answer rather than an absence.
- */
-/**
  * The order that put a setting into its new state, as it would be typed - `GUARD 1`, `BEHIND 0` -
  * or `undefined` where no order the preview applies could have done it.
  *
@@ -882,6 +877,11 @@ function movementIsStillTheReport(unit: PreviewedUnit): boolean {
  */
 function flagCause(
   key: string,
+  /**
+   * The state the setting came from. Every answer below is derivable from `to` and `moves` alone,
+   * but the state it moved out of is what a fifth setting's cause would turn on, and the parameter
+   * is the plan's own signature - so it is carried rather than dropped and re-added.
+   */
   _from: string,
   to: string,
   moves: ReadonlyMap<string, { from: string; to: string }>
@@ -929,6 +929,11 @@ function flagNotes(unit: PreviewedUnit): string[] {
   return notes;
 }
 
+/**
+ * The two states a line is drawn quietly in: a setting resting where the report said nothing about
+ * it, and which nothing this month moved (decision **F3**). `silver first` is not among them - it
+ * is `rules/consume`'s own named default, so it is a real answer rather than an absence.
+ */
 const QUIET_STATES: ReadonlySet<string> = new Set(["off", "not shown"]);
 
 /**
@@ -980,9 +985,10 @@ function flagsBody(unit: PreviewedUnit): Body {
   }));
 
   return {
+    // No `changed`: this column is deliberately absent from `CHANGE_FIELD`, so `popupForCell`
+    // never consults it and reporting one would suggest it still drove the no-change sentence.
     lines: [...changed, ...rest, ...passengers],
-    notes: flagNotes(unit),
-    changed: changed.length > 0
+    notes: flagNotes(unit)
   };
 }
 

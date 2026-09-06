@@ -689,6 +689,57 @@ describe("the column popups", () => {
     }
   });
 
+  it("a setting moving between two real values reads up, and back to its last state down", () => {
+    // `direction` is `down` only where the setting returns to the **last** of its states, which on
+    // an on/off setting coincides with `off`. These two are the settings where it does not.
+    const spoils = columnPopup(
+      popupForCell(
+        "flags",
+        unit({
+          flags: ["riding battle spoils"],
+          previewChanges: [{ field: "flags", original: "flying battle spoils" }]
+        }),
+        facts()
+      )
+    );
+    expect(spoils.lines.find((line) => line.label === "battle spoils")).toEqual({
+      label: "battle spoils",
+      value: "riding",
+      change: { direction: "up", from: "flying" }
+    });
+
+    const consuming = columnPopup(
+      popupForCell(
+        "flags",
+        unit({ flags: [], previewChanges: [{ field: "flags", original: "consuming unit's food" }] }),
+        facts()
+      )
+    );
+    expect(consuming.lines.find((line) => line.label === "consuming")).toEqual({
+      label: "consuming",
+      value: "silver first",
+      change: { direction: "down", from: "unit's food" }
+    });
+  });
+
+  it("an unsettled flag comes after the settings the month did not change", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "flags",
+        unit({
+          flags: ["behind", "under strength"],
+          previewChanges: [{ field: "flags", original: "under strength" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines[0]?.label).toBe("behind");
+    expect(popup.lines[popup.lines.length - 1]).toEqual({
+      label: "under strength",
+      value: "on"
+    });
+  });
+
   it("an unchanged off line is drawn quietly", () => {
     const popup = columnPopup(
       popupForCell("flags", unit({ flags: ["behind", "riding battle spoils"] }), facts())
