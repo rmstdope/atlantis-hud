@@ -7,6 +7,7 @@ import {
   popupAsText,
   popupForCell,
   popupLabelInk,
+  reportedFlags,
   reportedItems,
   type PopupFacts
 } from "./unitCellPopup";
@@ -50,6 +51,14 @@ const columnPopup = (spec: ReturnType<typeof popupForCell>) => {
   }
   return spec.popup;
 };
+
+describe("reportedFlags", () => {
+  it("the report's own flag list is read back from the change", () => {
+    expect(reportedFlags("behind, on guard")).toEqual(["behind", "on guard"]);
+    expect(reportedFlags("")).toEqual([]);
+    expect(reportedFlags("avoiding")).toEqual(["avoiding"]);
+  });
+});
 
 describe("the column popups", () => {
   it("heads every popup with the unit and the column", () => {
@@ -529,17 +538,165 @@ describe("the column popups", () => {
     expect(popupLabelInk({ label: "move", value: "Riding" })).toBe("");
   });
 
-  it("the flags popup names every flag in the report's own words", () => {
+  it("the flags popup gives every flag a line, on or off", () => {
     const popup = columnPopup(
-      popupForCell("flags", unit({ flags: ["behind", "avoiding"] }), facts())
+      popupForCell("flags", unit({ flags: ["behind", "riding battle spoils"] }), facts())
     );
-    expect(popup.lines).toEqual([{ label: "flags", value: "behind · avoiding" }]);
+    expect(popup.lines.map((line) => [line.label, line.value])).toEqual([
+      ["avoiding", "off"],
+      ["behind", "on"],
+      ["guarding", "off"],
+      ["holding", "off"],
+      ["receiving no aid", "off"],
+      ["won't cross water", "off"],
+      ["revealing faction", "off"],
+      ["sharing", "off"],
+      ["taxing", "off"],
+      ["consuming", "silver first"],
+      ["battle spoils", "riding"]
+    ]);
   });
 
-  it("the flags popup says so when none are set", () => {
-    expect(columnPopup(popupForCell("flags", unit({ flags: [] }), facts())).notes).toContain(
-      "No flags set."
+  it("a flag the report printed that no setting covers gets its own line last", () => {
+    const popup = columnPopup(popupForCell("flags", unit({ flags: ["under strength"] }), facts()));
+    expect(popup.lines).toHaveLength(12);
+    expect(popup.lines[11]).toEqual({ label: "under strength", value: "on" });
+  });
+
+  it("a flag this month set draws the pair and names the order", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "flags",
+        unit({
+          flags: ["guarding", "sharing"],
+          previewChanges: [{ field: "flags", original: "behind" }]
+        }),
+        facts()
+      )
     );
+    const line = (label: string) => popup.lines.find((entry) => entry.label === label);
+    expect(line("guarding")).toEqual({
+      label: "guarding",
+      value: "on",
+      change: { direction: "up", from: "off" },
+      why: "GUARD 1"
+    });
+    expect(line("sharing")).toEqual({
+      label: "sharing",
+      value: "on",
+      change: { direction: "up", from: "off" },
+      why: "SHARE 1"
+    });
+    expect(line("behind")).toEqual({
+      label: "behind",
+      value: "off",
+      change: { direction: "down", from: "on" },
+      why: "BEHIND 0"
+    });
+  });
+
+  it("the changed flags come first", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "flags",
+        unit({
+          flags: ["guarding", "sharing"],
+          previewChanges: [{ field: "flags", original: "behind" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.slice(0, 4).map((line) => line.label)).toEqual([
+      "behind",
+      "guarding",
+      "sharing",
+      "avoiding"
+    ]);
+  });
+
+  it("an avoid order that cancels guarding names the avoid order on both lines", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "flags",
+        unit({ flags: ["avoiding"], previewChanges: [{ field: "flags", original: "on guard" }] }),
+        facts()
+      )
+    );
+    const line = (label: string) => popup.lines.find((entry) => entry.label === label);
+    expect(line("avoiding")?.why).toBe("AVOID 1");
+    expect(line("guarding")?.why).toBe("AVOID 1");
+  });
+
+  it("a guard order that cancels avoiding names the guard order on both lines", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "flags",
+        unit({ flags: ["guarding"], previewChanges: [{ field: "flags", original: "avoiding" }] }),
+        facts()
+      )
+    );
+    const line = (label: string) => popup.lines.find((entry) => entry.label === label);
+    expect(line("guarding")?.why).toBe("GUARD 1");
+    expect(line("avoiding")?.why).toBe("GUARD 1");
+  });
+
+  it("a state the preview cannot have caused draws the pair with no order", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "flags",
+        unit({ flags: ["taxing"], previewChanges: [{ field: "flags", original: "" }] }),
+        facts()
+      )
+    );
+    expect(popup.lines.find((entry) => entry.label === "taxing")).toEqual({
+      label: "taxing",
+      value: "on",
+      change: { direction: "up", from: "off" }
+    });
+  });
+
+  it("the flags popup says which flag orders it works out", () => {
+    const popup = columnPopup(popupForCell("flags", unit({ own: true, flags: [] }), facts()));
+    expect(popup.notes).toEqual([
+      "Every line is your report's, changed only by this month's GUARD, AVOID, BEHIND and SHARE. " +
+        "AUTOTAX, NOAID, CONSUME, REVEAL, SPOILS, HOLD and NOCROSS are not worked out here."
+    ]);
+  });
+
+  it("another faction's flags say nothing about your orders", () => {
+    const popup = columnPopup(popupForCell("flags", unit({ own: false, flags: [] }), facts()));
+    expect(popup.notes).toEqual([
+      "Another faction's flags, as your report printed them. Nothing you order changes them."
+    ]);
+  });
+
+  it("a unit formed this month says where its flags came from", () => {
+    const popup = columnPopup(
+      popupForCell("flags", unit({ own: true, formed: true, flags: [] }), facts())
+    );
+    expect(popup.notes).toEqual([
+      "Formed this month, so it inherits its flags from the unit forming it — every one but " +
+        "guard and autotax, which have to be set in its own orders.",
+      "Every line is your report's, changed only by this month's GUARD, AVOID, BEHIND and SHARE. " +
+        "AUTOTAX, NOAID, CONSUME, REVEAL, SPOILS, HOLD and NOCROSS are not worked out here."
+    ]);
+  });
+
+  it("the flags popup does not add the family's no-change sentence", () => {
+    for (const own of [true, false]) {
+      const popup = columnPopup(popupForCell("flags", unit({ own, flags: [] }), facts()));
+      expect(popup.notes).not.toContain("Nothing this month changes this.");
+    }
+  });
+
+  it("an unchanged off line is drawn quietly", () => {
+    const popup = columnPopup(
+      popupForCell("flags", unit({ flags: ["behind", "riding battle spoils"] }), facts())
+    );
+    const line = (label: string) => popup.lines.find((entry) => entry.label === label);
+    expect(line("avoiding")?.stress).toBe("aside");
+    expect(line("battle spoils")?.stress).toBeUndefined();
+    expect(line("behind")?.stress).toBeUndefined();
   });
 
   it("the skills popup lists a unit's own skills with their study points", () => {
@@ -649,7 +806,12 @@ describe("the column popups", () => {
         facts()
       )
     );
-    expect(unflagged.notes).toEqual(["No flags set.", "Was: behind."]);
+    expect(unflagged.lines.find((line) => line.label === "behind")).toEqual({
+      label: "behind",
+      value: "off",
+      change: { direction: "down", from: "on" },
+      why: "BEHIND 0"
+    });
 
     const still = columnPopup(
       popupForCell(
