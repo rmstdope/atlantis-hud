@@ -1602,10 +1602,6 @@ const byMouse = (event: PointerEvent<HTMLElement>) => event.pointerType === "mou
  */
 type MenuAnchor = { at: "header" } | { at: "bulk" } | { at: "pointer"; point: Point };
 
-/** Which rail entry a drag may be dropped on. */
-type DropTarget = { kind: "army"; armyId: string } | { kind: "new" };
-
-/** The drag in flight: what it carries, what it is over, and what would refuse it. */
 /**
  * The structure this month's orders moved a unit **out of**, labelled by the same helper and from
  * the same map as the side it moved into, so the two can never be named differently
@@ -1624,6 +1620,10 @@ function reportedStructureLabelFor(
   return unitStructureLabel(id, structuresById);
 }
 
+/** Which rail entry a drag may be dropped on. */
+type DropTarget = { kind: "army"; armyId: string } | { kind: "new" };
+
+/** The drag in flight: what it carries, what it is over, and what would refuse it. */
 type DragState = {
   /** The rows being carried, resolved once when the drag begins. */
   units: readonly ReportUnit[];
