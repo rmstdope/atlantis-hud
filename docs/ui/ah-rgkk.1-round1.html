@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-rgkk.1 &mdash; Round 1: one popup per cell</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#e0b050;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  h4.q { margin:26px 0 6px; font-size:15px; color:var(--ink); }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); } .foreign { color:var(--ink-dim); }
+  .unk { color:var(--ink-dim); font-style:italic; }
+  .cellhi { outline:1px solid var(--brass); outline-offset:-1px; background:rgba(217,164,65,.07); }
+  .cursor { color:var(--brass); font-size:11px; }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         min-width:230px; max-width:330px; box-shadow:0 6px 18px rgba(0,0,0,.5); }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .sub { color:var(--ink-dim); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; margin-bottom:5px; }
+  .pop .line { display:flex; justify-content:space-between; gap:14px; }
+  .pop .why { color:var(--ink-dim); font-style:italic; }
+  .pop .note { color:var(--warn); margin-top:6px; }
+  .pop hr { border:0; border-top:1px solid var(--edge-soft); margin:7px 0; }
+  .up { color:var(--ok); } .down { color:var(--danger); }
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; align-items:start; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:100ch; }
+  .rec { color:var(--ok); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; }
+  .seq { display:grid; grid-template-columns:auto 1fr; gap:6px 12px; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); }
+  .seq b { color:var(--brass); font-weight:600; }
+</style></head><body>
+<header><h1>ah-rgkk.1 &mdash; <span>one popup, for the cell under the pointer</span></h1>
+<p>The units table has two hover mechanisms today: a rich portal tooltip for the <i>whole unit</i> (skills, items, silver, battle skills), and the browser&rsquo;s own <code>title</code> on nine individual cells. This bead replaces both with a single popup that knows <b>which column</b> the pointer is on. This page settles the shape; the rest of the family (<code>ah-rgkk.2</code>&ndash;<code>.5</code>) fills each column&rsquo;s content into it. Everything drawn here uses invented but realistic report material.</p></header>
+<main>
+
+<h3 class="sec">A &mdash; What the popup is headed with</h3>
+<p>The pointer is on <b>Braves (1487)</b>&rsquo;s Items cell. The row is right there under the popup, and the popup is opened by resting on that row &mdash; so does it need to name the unit at all?</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">A1 &mdash; the column is the whole heading</div>
+<div class="stage">
+  <table class="units"><colgroup><col style="width:26px"><col style="width:52px"><col style="width:110px"><col style="width:44px"><col style="width:190px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Items</th></tr>
+  <tr><td class="own">*</td><td class="uid">1487</td><td>Braves</td><td>12</td><td class="cellhi">12 SWOR, 40 SILV, 2 HORS<span class="cursor"> &#9679;</span></td></tr>
+  <tr><td class="own">*</td><td class="uid">1502</td><td>Scouts</td><td>3</td><td>3 LEAT</td></tr>
+  </table>
+  <div style="margin-top:8px"><div class="pop">
+    <div class="head">Items</div>
+    <div class="line"><span>sword</span><span>12 <span class="up">&#9650;&nbsp;+4</span></span></div>
+    <div class="why">4 bought at 60 silver each</div>
+    <div class="line"><span>horse</span><span>2 <span class="down">&#9660;&nbsp;&minus;1</span></span></div>
+    <div class="why">1 given to Scouts (1502)</div>
+    <div class="line"><span>silver</span><span>40</span></div>
+  </div></div>
+</div>
+<ul class="notes">
+  <li>Shortest possible. The heading is the answer to &ldquo;what does this cell mean&rdquo;.</li>
+  <li>Every popup in the family gets the same one-word heading, so the family reads as one thing.</li>
+  <li class="con">A popup that outlives a scroll, or drifts over a neighbouring row, no longer says whose items these are.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">A2 &mdash; the unit, then the column</div>
+<div class="stage">
+  <table class="units"><colgroup><col style="width:26px"><col style="width:52px"><col style="width:110px"><col style="width:44px"><col style="width:190px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Items</th></tr>
+  <tr><td class="own">*</td><td class="uid">1487</td><td>Braves</td><td>12</td><td class="cellhi">12 SWOR, 40 SILV, 2 HORS<span class="cursor"> &#9679;</span></td></tr>
+  <tr><td class="own">*</td><td class="uid">1502</td><td>Scouts</td><td>3</td><td>3 LEAT</td></tr>
+  </table>
+  <div style="margin-top:8px"><div class="pop">
+    <div class="head">Braves (1487) &mdash; items</div>
+    <div class="line"><span>sword</span><span>12 <span class="up">&#9650;&nbsp;+4</span></span></div>
+    <div class="why">4 bought at 60 silver each</div>
+    <div class="line"><span>horse</span><span>2 <span class="down">&#9660;&nbsp;&minus;1</span></span></div>
+    <div class="why">1 given to Scouts (1502)</div>
+    <div class="line"><span>silver</span><span>40</span></div>
+  </div></div>
+</div>
+<ul class="notes">
+  <li>Self-contained: it can be screenshotted, read aloud, or drifted over another row and still be true.</li>
+  <li>Matches the heading the existing whole-unit tooltip already uses (<code>summary.title</code>).</li>
+  <li class="con">One more line on every popup, and the row underneath already says it.</li>
+</ul>
+</div>
+</div></div>
+
+<h3 class="sec">B &mdash; How a change is marked</h3>
+<p>Every popup in this family says <b>what changed and why</b>. The mark must survive a reader who cannot rely on colour, so all three variants below are also drawn colourless on the right of each pair. Same material: swords up 4, horses down 1, silver unchanged.</p>
+<div class="card"><div class="split3">
+<div>
+<div class="hexlab">B1 &mdash; arrow and signed amount</div>
+<div class="stage"><div class="pop">
+  <div class="head">Items</div>
+  <div class="line"><span>sword</span><span>12 <span class="up">&#9650;&nbsp;+4</span></span></div>
+  <div class="line"><span>horse</span><span>2 <span class="down">&#9660;&nbsp;&minus;1</span></span></div>
+  <div class="line"><span>silver</span><span>40</span></div>
+</div></div>
+<div class="stage"><div class="pop">
+  <div class="sub">no colour</div>
+  <div class="line"><span>sword</span><span>12 &#9650;&nbsp;+4</span></div>
+  <div class="line"><span>horse</span><span>2 &#9660;&nbsp;&minus;1</span></div>
+  <div class="line"><span>silver</span><span>40</span></div>
+</div></div>
+<ul class="notes">
+  <li>Direction is carried twice: by the arrow and by the sign.</li>
+  <li>Shortest of the three; a long list stays scannable.</li>
+  <li class="con">The reader has to do <code>12&nbsp;&minus;&nbsp;4</code> to learn what the report said.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">B2 &mdash; before &rarr; after</div>
+<div class="stage"><div class="pop">
+  <div class="head">Items</div>
+  <div class="line"><span>sword</span><span><span class="unk">8</span> &rarr; <span class="up">12</span></span></div>
+  <div class="line"><span>horse</span><span><span class="unk">3</span> &rarr; <span class="down">2</span></span></div>
+  <div class="line"><span>silver</span><span>40</span></div>
+</div></div>
+<div class="stage"><div class="pop">
+  <div class="sub">no colour</div>
+  <div class="line"><span>sword</span><span>8 &rarr; 12</span></div>
+  <div class="line"><span>horse</span><span>3 &rarr; 2</span></div>
+  <div class="line"><span>silver</span><span>40</span></div>
+</div></div>
+<ul class="notes">
+  <li>Both figures present: what the report said, and what the orders make of it.</li>
+  <li>Nothing to compute, and it matches how the rest of the app talks about a projection.</li>
+  <li class="con">Direction is only inferable by comparing two numbers &mdash; the very thing the bead complains of.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">B3 &mdash; word, then before &rarr; after</div>
+<div class="stage"><div class="pop">
+  <div class="head">Items</div>
+  <div class="line"><span>sword</span><span><span class="up">up 4</span> &nbsp;<span class="unk">8&rarr;12</span></span></div>
+  <div class="line"><span>horse</span><span><span class="down">down 1</span> &nbsp;<span class="unk">3&rarr;2</span></span></div>
+  <div class="line"><span>silver</span><span><span class="unk">unchanged</span></span></div>
+</div></div>
+<div class="stage"><div class="pop">
+  <div class="sub">no colour</div>
+  <div class="line"><span>sword</span><span>up 4 &nbsp;8&rarr;12</span></div>
+  <div class="line"><span>horse</span><span>down 1 &nbsp;3&rarr;2</span></div>
+  <div class="line"><span>silver</span><span>unchanged</span></div>
+</div></div>
+<ul class="notes">
+  <li>Reads aloud correctly with no glyph knowledge at all &mdash; best for a screen reader.</li>
+  <li>Says explicitly that a line did <i>not</i> change, which the other two leave silent.</li>
+  <li class="con">Widest, and the widest column is what forces the popup off the edge of a narrow window.</li>
+</ul>
+</div>
+</div></div>
+
+<h3 class="sec">C &mdash; Moving sideways along a row</h3>
+<p>The pointer rests on Skills, the popup opens; then it slides one cell right onto Items without leaving the row. Today&rsquo;s tooltip never noticed, because it only knew the row.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">C1 &mdash; swap the contents in place, no second wait</div>
+<div class="stage">
+  <div class="seq">
+    <b>0 ms</b><span>pointer enters the Skills cell</span>
+    <b>300 ms</b><span>popup opens: <i>Skills</i>, anchored where the pointer rested</span>
+    <b>+1 s</b><span>pointer moves onto Items <b>in the same row</b></span>
+    <b>instantly</b><span>the same popup now reads <i>Items</i>; it does not close, and it re-anchors to the new cell</span>
+    <b>&nbsp;</b><span>pointer leaves the row &rarr; popup closes</span>
+  </div>
+</div>
+<ul class="notes">
+  <li>Reading a row column by column costs one 300&nbsp;ms wait, not one per cell.</li>
+  <li>Feels like one object that follows attention.</li>
+  <li class="con">Crossing a row on the way somewhere else flickers content through several columns.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">C2 &mdash; close, and wait again</div>
+<div class="stage">
+  <div class="seq">
+    <b>0 ms</b><span>pointer enters the Skills cell</span>
+    <b>300 ms</b><span>popup opens: <i>Skills</i></span>
+    <b>+1 s</b><span>pointer moves onto Items &rarr; popup closes at once</span>
+    <b>+1.3 s</b><span>popup opens again: <i>Items</i></span>
+    <b>&nbsp;</b><span>pointer leaves the row &rarr; popup closes</span>
+  </div>
+</div>
+<ul class="notes">
+  <li>One rule for every move: rest 300&nbsp;ms, and only then does anything appear.</li>
+  <li>Nothing flickers &mdash; crossing the table shows nothing at all.</li>
+  <li class="con">Comparing two cells of one unit costs a deliberate pause per cell.</li>
+</ul>
+</div>
+</div></div>
+
+<h3 class="sec">D &mdash; What becomes of the whole-unit summary</h3>
+<p>Today&rsquo;s portal tooltip shows <i>everything</i> &mdash; every skill, every item, the silver working, recovered battle skills, the dissolving note &mdash; wherever in the row the pointer rests. Per-cell popups replace it in the Skills, Items and Silver columns. The question is whether it survives anywhere.</p>
+<div class="card"><div class="split2">
+<div>
+<div class="hexlab">D1 &mdash; it survives, on the Name and Id cells</div>
+<div class="stage">
+  <table class="units"><colgroup><col style="width:26px"><col style="width:52px"><col style="width:110px"><col style="width:44px"><col style="width:170px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Items</th></tr>
+  <tr><td class="own">*</td><td class="uid">1487</td><td class="cellhi">Braves<span class="cursor"> &#9679;</span></td><td>12</td><td>12 SWOR, 40 SILV&hellip;</td></tr>
+  </table>
+  <div style="margin-top:8px"><div class="pop">
+    <div class="head">Braves (1487)</div>
+    <div class="sub">Skills</div>
+    <div class="line"><span>combat 2</span><span>90 pts</span></div>
+    <div class="line"><span>riding 1</span><span>30 pts</span></div>
+    <div class="sub" style="margin-top:6px">Items</div>
+    <div class="line"><span>sword</span><span>12</span></div>
+    <div class="line"><span>horse</span><span>2</span></div>
+    <div class="sub" style="margin-top:6px">Silver</div>
+    <div class="line"><span>ends the month with</span><span>40</span></div>
+  </div></div>
+</div>
+<ul class="notes">
+  <li>Nothing is lost: the everything-view keeps a home, on the two columns that identify the unit.</li>
+  <li>The Name and Id cells have no per-column story of their own, so they cost nothing.</li>
+  <li class="con">Two popup shapes to learn, and the family&rsquo;s promise of &ldquo;one popup per cell&rdquo; has an exception.</li>
+</ul>
+</div>
+<div>
+<div class="hexlab">D2 &mdash; it goes; the unit panel is the everything-view</div>
+<div class="stage">
+  <table class="units"><colgroup><col style="width:26px"><col style="width:52px"><col style="width:110px"><col style="width:44px"><col style="width:170px"></colgroup>
+  <tr><th></th><th>Unit</th><th>Name</th><th>Men</th><th>Items</th></tr>
+  <tr><td class="own">*</td><td class="uid">1487</td><td class="cellhi">Braves<span class="cursor"> &#9679;</span></td><td>12</td><td>12 SWOR, 40 SILV&hellip;</td></tr>
+  </table>
+  <div style="margin-top:8px"><div class="pop">
+    <div class="head">Unit</div>
+    <div class="line"><span>Braves (1487)</span></div>
+    <div class="why">on guard &middot; 12 men</div>
+  </div></div>
+  <ul class="notes" style="margin-top:12px">
+    <li class="n">Hovering Name gives a small identity popup like every other column, or nothing at all.</li>
+    <li class="n">Selecting the unit still opens the panel, which already shows all of it.</li>
+  </ul>
+</div>
+<ul class="notes">
+  <li>One rule, no exception: every cell&rsquo;s popup is about that cell.</li>
+  <li>Kills roughly 200 lines of component that now has no caller.</li>
+  <li class="con">Battle-derived skills (<code>ah-1mpx.6.3</code>) and the silver working lose their fastest route &mdash; a click, not a hover.</li>
+</ul>
+</div>
+</div></div>
+
+<footer>Mockup for <code>ah-rgkk.1</code>. Content is invented; only the shape is being asked about. Round 2 will settle which columns are silent, the keyboard and screen-reader route once the <code>title</code> attributes are gone, the exact wording, and the empty/undisclosed/error states.</footer>
+</main></body></html>
