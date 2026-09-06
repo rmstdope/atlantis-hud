@@ -389,12 +389,15 @@ pub fn preview_orders_on_map(
         let mut mode = None;
 
         let dissolving = dissolved.contains_key(&index);
-        // First, so a dissolving row never reaches `trace_move`: it is not going anywhere.
-        let status = if dissolving {
-            UnitPreviewStatus::Present
-        } else if entry.formed {
-            UnitPreviewStatus::Present
-        } else if let Some(steps) = &entry.move_steps {
+        let mut status = UnitPreviewStatus::Present;
+
+        // The trace runs for a formed unit exactly as for any other: `rules/form` creates it in
+        // its parent's hex and `rules/sequenceofevents` does so before movement, so it can walk
+        // the same month it is formed (`ah-4hux`). It runs for a dissolving one too - the order
+        // the player wrote is still drawn (decision **Q3b'**) - and that row can never name a
+        // destination, because a unit that gained nobody has no men and so no stated speed, which
+        // is what `trace_move` needs to say where the month ends.
+        if let Some(steps) = &entry.move_steps {
             match trace_move(&map, &ruleset, &entry.unit, steps, Some(&ordered)) {
                 // The first month's end is where the unit stands when the next report is written;
                 // the rest of a longer journey is later months' business.
@@ -403,20 +406,26 @@ pub fn preview_orders_on_map(
                     match path.months.first() {
                         Some(month) if month.ends_at.id() != entry.unit.region_id => {
                             arrival = Some(month.ends_at.id());
-                            UnitPreviewStatus::Departing
+                            status = UnitPreviewStatus::Departing;
                         }
                         // A round trip is not a departure, so only the other changes count.
-                        Some(_) => UnitPreviewStatus::Present,
+                        Some(_) => {}
                         // The report never said how the unit travels, so the trace cannot say
                         // where the month ends: a departure to nowhere nameable.
-                        None => UnitPreviewStatus::Departing,
+                        None => status = UnitPreviewStatus::Departing,
                     }
                 }
-                None => UnitPreviewStatus::Departing,
+                None => status = UnitPreviewStatus::Departing,
             }
-        } else {
-            UnitPreviewStatus::Present
-        };
+        }
+
+        // A dissolving row is not standing anywhere next month, so it gets no arrival row however
+        // the trace read - it keeps its `departing_to`, which is what draws the arrow. Today the
+        // trace can never name a destination for one anyway; this says the intent rather than
+        // relying on that.
+        if dissolving {
+            arrival = None;
+        }
 
         // `TracedPath::mode` is the sail test rather than the order word: it is Sail exactly when
         // the unit is aboard a priceable fleet, which is what the map already draws.

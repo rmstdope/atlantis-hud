@@ -65,9 +65,15 @@ pub fn parse_capacities(text: &str) -> Option<Capacities> {
 /// The game gives a unit the fastest mode it can manage, so the capacities are tried in that
 /// order. Swimming is not among them: it decides whether water is passable, not how fast the unit
 /// goes, and this ruleset gives it no allowance of its own.
+///
+/// The weight and capacity lines are read first, since they are what the game itself printed. A
+/// unit the report never carried has neither - a unit this month's `FORM` creates is the case
+/// (`ah-4hux`) - and for one of those the already-settled [`ReportUnit::movement`] is the only
+/// statement of speed there is. Preferring the report's own lines keeps every reported unit
+/// answering exactly as it did.
 #[must_use]
 pub fn mobility(unit: &ReportUnit) -> Mobility {
-    unit_movement(unit).map_or(Mobility::Unstated, |movement| match movement.status {
+    unit_movement(unit).or(unit.movement).map_or(Mobility::Unstated, |movement| match movement.status {
         UnitMovementStatus::Overloaded => Mobility::Overloaded,
         UnitMovementStatus::Fly => Mobility::Moves(MovementMode::Fly),
         UnitMovementStatus::Ride => Mobility::Moves(MovementMode::Ride),
