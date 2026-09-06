@@ -453,6 +453,22 @@ pub enum ItemChangeCause {
     TransportedIn,
     /// An unfinished ship left behind because the unit leaves the hex.
     Abandoned,
+    /// Handed to another unit by this unit's `GIVE`.
+    GivenAway,
+    /// Handed to this unit by another unit's `GIVE`.
+    WasGiven,
+    /// Collected by this unit's `TAKE FROM`.
+    Took,
+    /// Collected from this unit by another unit's `TAKE FROM`.
+    WasTakenFrom,
+    /// `GIVE 0`: `rules/give` discards the goods rather than moving them to a unit, so there is no
+    /// other party at all. Its own cause, because `GivenAway` with no party already means "given
+    /// to somebody this core cannot number" - a `FACTION n NEW m` target, which moves silver.
+    Discarded,
+    /// `rules/form` dissolves a formed unit that gains nobody and reverts what it was given to the
+    /// first own unit in the region. Recorded on the row the goods revert **to**; the dissolving
+    /// row's own changes are dropped with the rest of its preview.
+    GiftReverted,
 }
 
 /// The other unit an item change is between (`ah-rgkk.3.1`).
@@ -2015,6 +2031,7 @@ impl Working {
                     &transfer.party,
                     &transfer.what,
                     &transfer.amount,
+                    transfer.line,
                 );
             } else {
                 self.take(
@@ -2022,6 +2039,7 @@ impl Working {
                     &transfer.party,
                     &transfer.what,
                     &transfer.amount,
+                    transfer.line,
                 );
             }
         }
@@ -2041,6 +2059,8 @@ impl Working {
         target: &super::forms::Party,
         what: &super::forms::Selector,
         amount: &super::forms::Amount,
+        // The 1-based document line of the order, so the change it records can name it.
+        line: usize,
     ) {
         use super::targets::{give_reach, party_unit_id, GiveReach};
 
@@ -2071,7 +2091,7 @@ impl Working {
             GiveReach::Ours => party_unit_id(target).and_then(|id| self.index_in(&region, &id)),
         };
 
-        self.move_between(giver, receiver, what, amount, reach, true);
+        self.move_between(giver, receiver, what, amount, reach, true, line, target);
     }
 
     /// One settled `TAKE`, which `rules/take` defines as a GIVE with the direction reversed and
@@ -2087,6 +2107,8 @@ impl Working {
         source: &super::forms::Party,
         what: &super::forms::Selector,
         amount: &super::forms::Amount,
+        // The 1-based document line of the order, so the change it records can name it.
+        line: usize,
     ) {
         use super::forms::{Amount, Party, Selector};
 
@@ -2154,6 +2176,8 @@ impl Working {
             amount,
             super::targets::GiveReach::Ours,
             false,
+            line,
+            source,
         );
     }
 
@@ -2171,7 +2195,45 @@ impl Working {
         // this half applies differently for its two callers needs telling which it is serving
         // (`ah-t8ei`).
         is_give: bool,
+        // The 1-based document line of the order responsible.
+        line: usize,
+        // The transfer's other end as the order wrote it, for the change on the source's side:
+        // `move_between` is reached with a `receiver` only when a row of ours gains the goods.
+        party: &super::forms::Party,
     ) {
+        use super::targets::GiveReach;
+
+        let line = i64::try_from(line).ok();
+        // What the source's change points at: the receiving row where there is one, otherwise
+        // whatever unit id the order named. `party_unit_id` answers `None` for `Party::Discard`
+        // and `Party::Foreign`, which is the whole of the "no unit to name" case.
+        let far_end: Option<ItemChangeParty> = match receiver {
+            Some(index) => Some(ItemChangeParty {
+                unit_id: self.units[index].unit.unit_id.clone(),
+                name: Some(self.units[index].unit.name.clone()),
+            }),
+            None => super::targets::party_unit_id(party).map(|unit_id| ItemChangeParty {
+                unit_id,
+                // A target no row of ours holds: a foreign unit the region shows, or a number the
+                // report never prints. `ah-rgkk.2.3` writes that as `unit <id>`, which needs no
+                // name.
+                name: None,
+            }),
+        };
+        // What the receiver's change points at - always a real row, since a receiver is an index.
+        let near_end = ItemChangeParty {
+            unit_id: self.units[source].unit.unit_id.clone(),
+            name: Some(self.units[source].unit.name.clone()),
+        };
+        // `receiver_cause` is unread on the `Discard` arm - `give` resolves `GiveReach::Discard`
+        // to `receiver: None` - and is written out anyway so the match stays exhaustive over the
+        // pair without an `unreachable!()`.
+        let (source_cause, receiver_cause) = match (is_give, reach) {
+            (true, GiveReach::Discard) => (ItemChangeCause::Discarded, ItemChangeCause::WasGiven),
+            (true, _) => (ItemChangeCause::GivenAway, ItemChangeCause::WasGiven),
+            (false, _) => (ItemChangeCause::WasTakenFrom, ItemChangeCause::Took),
+        };
+
         for (name, tag, moved) in self.tags_moved(source, what, amount, reach) {
             // `rules/magic`: "mages may not GIVE men at all", whatever the target - a discard
             // included, since `GIVE 0`'s exception is about *transfer* restrictions and this is
@@ -2210,8 +2272,31 @@ impl Working {
                 continue;
             };
             take_item(&mut self.units[source].unit.items, held, moved);
+            // Below all three `continue`s above: a change recorded higher would be a movement that
+            // did not happen. `moved` is what `take_item` subtracts and `tags_moved` has already
+            // clamped to the stock, so the change and the item list cannot disagree.
+            self.units[source].item_changes.push(ItemChange {
+                tag: tag.clone(),
+                name: name.clone(),
+                delta: -moved,
+                cause: source_cause,
+                line,
+                // No transfer is priced: `rules/give` names no payment, and the market is a
+                // different phase of `rules/sequenceofevents`.
+                unit_price: None,
+                other: far_end.clone(),
+            });
             if let Some(receiver) = receiver {
                 add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
+                self.units[receiver].item_changes.push(ItemChange {
+                    tag: tag.clone(),
+                    name: name.clone(),
+                    delta: moved,
+                    cause: receiver_cause,
+                    line,
+                    unit_price: None,
+                    other: Some(near_end.clone()),
+                });
                 // `rules/form` reverts what a dissolving formed unit "was given", so only a GIVE
                 // is recorded here: what the row TAKES is its own doing, not a gift, and must not
                 // revert with the rest (`ah-dhga`, `ah-3mwm`).
@@ -7629,6 +7714,74 @@ mod tests {
                 "",
             ]
             .join("\n")
+        }
+
+        /// The previewed row for `id`, wherever it sits in the response.
+        fn row_of<'a>(response: &'a OrdersPreviewResponse, id: &str) -> &'a UnitPreview {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == id)
+                .unwrap_or_else(|| panic!("unit {id} is previewed"))
+        }
+
+        /// A gift is one movement seen from two sides, so both rows carry it - `rules/give`.
+        #[test]
+        fn a_gift_reaches_both_units_as_an_item_change() {
+            let response = preview_over(&report_with_three(), "unit 900\nGIVE 902 4 SWOR\n");
+
+            let giver = row_of(&response, "900");
+            assert_eq!(
+                giver.item_changes,
+                vec![ItemChange {
+                    tag: "SWOR".to_string(),
+                    name: "swords".to_string(),
+                    delta: -4,
+                    cause: ItemChangeCause::GivenAway,
+                    line: Some(2),
+                    unit_price: None,
+                    other: Some(ItemChangeParty {
+                        unit_id: "902".to_string(),
+                        name: Some("Recipient".to_string()),
+                    }),
+                }],
+            );
+
+            let recipient = row_of(&response, "902");
+            assert_eq!(
+                recipient.item_changes,
+                vec![ItemChange {
+                    tag: "SWOR".to_string(),
+                    name: "swords".to_string(),
+                    delta: 4,
+                    cause: ItemChangeCause::WasGiven,
+                    line: Some(2),
+                    unit_price: None,
+                    other: Some(ItemChangeParty {
+                        unit_id: "900".to_string(),
+                        name: Some("Source".to_string()),
+                    }),
+                }],
+            );
+        }
+
+        /// `rules/sequenceofevents` settles the Give phase before the market, and nothing sorts
+        /// this list: the phases append to it in the order the month runs them.
+        #[test]
+        fn a_gift_is_listed_before_the_months_market_changes() {
+            let response = preview_over(
+                &report_with_market(),
+                "unit 900\nSELL 5 FUR\nGIVE 901 3 SWOR\n",
+            );
+
+            let walker = row_of(&response, "900");
+            assert_eq!(
+                walker.item_changes.first().map(|change| change.cause),
+                Some(ItemChangeCause::GivenAway),
+                "the gift leads, though the sale is written first: {:?}",
+                walker.item_changes,
+            );
         }
 
         fn amount_of(unit: &UnitPreview, tag: &str) -> i64 {
