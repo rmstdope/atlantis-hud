@@ -710,6 +710,71 @@ describe("the column popups", () => {
     );
   });
 
+  // A doubted month draws no cause lines at all, so there is nothing to have restated the notes:
+  // dropping them then would take the sentence away and put nothing in its place.
+  it("the silver popup keeps every note for a month it cannot add up", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: null,
+            doubt: "unknown-tax-base",
+            received: 50,
+            givers: ["Watch (1604)"],
+            givenToNobody: 10,
+            taxesByFlag: true,
+            changes: []
+          })
+        })
+      )
+    );
+    const said = popup.notes.join(" ");
+    expect(said).toContain("Includes 50");
+    expect(said).toContain("Includes 10 given away to nobody.");
+    expect(said).toContain("set to tax every turn");
+  });
+
+  it("the silver popup keeps the taxing note for a unit that taxes nothing", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: 60,
+            taxesByFlag: true,
+            changes: [{ amount: -40, cause: "studied", line: 2, other: null }]
+          })
+        })
+      )
+    );
+    expect(popup.notes.join(" ")).toContain("set to tax every turn");
+  });
+
+  it("the silver popup draws no line for a cause whose movements cancel", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: 100,
+            changes: [
+              { amount: 40, cause: "was-given", line: null, other: "Watch (1604)" },
+              { amount: -40, cause: "was-given", line: null, other: "Scouts (1502)" }
+            ]
+          })
+        })
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "silver", value: "100" }]);
+  });
+
   it("the silver popup says a doubted month cannot be added up", () => {
     const popup = columnPopup(
       popupForCell(

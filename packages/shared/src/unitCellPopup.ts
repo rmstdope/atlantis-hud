@@ -999,20 +999,35 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 }
 
 /**
- * The `SILVER_NOTES` this popup does not draw, because its lines now say the whole of what each of
- * them says (`ah-rgkk.4.3`, decision **N2** - the Items popup's answer, `ah-rgkk.3.3`'s **T2**).
+ * The `SILVER_NOTES` this popup does not draw, **because a line it drew says the whole of what the
+ * note says** (`ah-rgkk.4.3`, decision **N2** - the Items popup's answer, `ah-rgkk.3.3`'s **T2**).
+ *
+ * Keyed by note id, each value asking the lines that were actually drawn whether they restated it.
+ * The condition is not the note's own: a doubted month draws no cause lines at all
+ * (`UnitSilver.changes` is empty there) while `givers`, `takenFrom`, `givenToNobody` and both flags
+ * are still populated, so dropping a note on its own `when` would take the sentence away and put
+ * nothing in its place. Same for a unit set to tax that taxes nothing this month.
  *
  * Nothing is removed from `SILVER_NOTES` itself: the whole-unit tooltip, which has no cause lines,
  * keeps every one of them word for word.
  */
-const SILVER_NOTES_RESTATED: ReadonlySet<string> = new Set([
-  "includes-take",
-  "includes-take-unshown",
-  "includes-gift",
-  "given-to-nobody",
-  "taxes-by-flag",
-  "works-by-default"
-]);
+const SILVER_NOTES_RESTATED: Record<string, (groups: readonly CauseGroup[]) => boolean> = {
+  "includes-gift": (groups) => groups.some((group) => group.cause === "was-given"),
+  "includes-take": (groups) =>
+    groups.some((group) => group.entries.some((entry) => entry.cause === "took")),
+  "includes-take-unshown": (groups) =>
+    groups.some((group) => group.entries.some((entry) => entry.cause === "took-unshown")),
+  "given-to-nobody": (groups) => groups.some((group) => group.cause === "discarded"),
+  // Only where the clause fired, which is the same test `silverCauseWhy` makes.
+  "taxes-by-flag": (groups) => hasOrderlessGroup(groups, "taxed"),
+  "works-by-default": (groups) => hasOrderlessGroup(groups, "worked")
+};
+
+/** Whether one cause was drawn with no order of this unit's behind any of it. */
+function hasOrderlessGroup(groups: readonly CauseGroup[], cause: string): boolean {
+  const group = groups.find((candidate) => candidate.cause === cause);
+  return group !== undefined && group.entries.every((entry) => entry.line === null);
+}
 
 /** One cause's line: every `SilverChange` with that cause, merged (decision **V2**). */
 type CauseGroup = {
@@ -1074,7 +1089,9 @@ function silverCauseGroups(changes: readonly SilverChange[]): CauseGroup[] {
     byCause.set(key, group);
     groups.push(group);
   }
-  return groups;
+  // A cause whose entries cancel moved nothing a reader can act on, and `signed(0)` would draw a
+  // `-0` in the down ink.
+  return groups.filter((group) => group.amount !== 0);
 }
 
 /** `+200`, `-90`. An ASCII hyphen-minus, which is what `String(-90)` gives. */
@@ -1226,13 +1243,14 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     };
   }
   const silver = facts.silver;
-  if (silver === null || !unit.own) {
+  if (silver === null) {
     return { lines: [], notes: ["Only your own units have a silver forecast."] };
   }
 
   const shown = silverShown(silver, facts.countUpkeep);
+  const groups = silverCauseGroups(silver.changes);
   const lines: PopupLine[] = [silverTotalLine(silver, shown)];
-  for (const group of silverCauseGroups(silver.changes)) {
+  for (const group of groups) {
     const why = silverCauseWhy(group, silver, unit.itemChanges ?? []);
     lines.push({
       label: silverCauseLabel(group.cause),
@@ -1253,7 +1271,7 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     warned: facts.silverWarned,
     countUpkeep: facts.countUpkeep
   };
-  const notes = SILVER_NOTES.filter((note) => !SILVER_NOTES_RESTATED.has(note.id))
+  const notes = SILVER_NOTES.filter((note) => !(SILVER_NOTES_RESTATED[note.id]?.(groups) ?? false))
     .filter((note) => note.when(noteFacts))
     .flatMap((note) => note.say(noteFacts).split("\n"));
   if (silver.doubt !== null) {
