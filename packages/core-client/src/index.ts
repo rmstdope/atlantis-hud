@@ -421,6 +421,11 @@ export type ItemChange = {
   /** What the market settled one of these at, in silver. `null` on every cause but a buy or sale. */
   unitPrice: number | null;
   other: ItemChangeParty | null;
+  /**
+   * Whether this tag names people rather than equipment (`ah-rgkk.4.1`). A centaur counts, being
+   * both a race and a mount. `false` for a tag the shipped catalogue does not carry.
+   */
+  isMan: boolean;
 };
 
 /** One item a CAST order creates this month. `fewest` and `most` are equal when it is certain. */

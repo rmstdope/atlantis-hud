@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  ItemChange,
   OrdersPreviewResponse,
   RegionPreview,
   ReportUnit,
@@ -102,15 +103,18 @@ describe("the skills the preview carries", () => {
 
 describe("itemChanges", () => {
   it("carries the preview's item changes onto the row", () => {
-    const itemChanges = [
+    const itemChanges: ItemChange[] = [
       {
-        tag: "HORS",
-        name: "horse",
+        tag: "HUMN",
+        name: "human",
         delta: 5,
         cause: "bought" as const,
         line: 2,
-        unitPrice: 10,
-        other: null
+        unitPrice: 38,
+        other: null,
+        // `ah-rgkk.4.1`: the boundary is hand-mirrored and unchecked, so this literal is what
+        // proves the field crosses it and survives the merge onto the row.
+        isMan: true
       }
     ];
     const rows = mergePreview([unit({})], preview([previewedRow({}, { itemChanges })]));
@@ -127,7 +131,8 @@ describe("itemChanges", () => {
         cause: "was-given" as const,
         line: 2,
         unitPrice: null,
-        other: { unitId: "900", name: "Source" }
+        other: { unitId: "900", name: "Source" },
+        isMan: false
       }
     ];
     const rows = mergePreview([unit({})], preview([previewedRow({}, { itemChanges })]));
