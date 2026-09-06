@@ -38,6 +38,8 @@ import {
   readUnitOrders,
   regionBannerLine,
   repairFormedUnitBlocks,
+  reportedLongOrderFor,
+  reportedLongOrders,
   stripMovementOrderLines,
   writeUnitOrders
 } from "../ordersDocument";
@@ -520,6 +522,20 @@ export function AppShell({
     (unitId: string, regionId: string) =>
       longOrderOf(readUnitOrders(ordersDocument, unitId, unitIdsByRegion.get(regionId)) ?? ""),
     [ordersDocument, unitIdsByRegion]
+  );
+  /**
+   * Each unit's long order as the report's own orders template had it - the baseline the Long
+   * order popup measures this month's against (`ah-rgkk.5.4`). Rebuilt only when a new report is
+   * parsed, never on an edit: the template is the turn's, and editing the document is exactly what
+   * the popup is there to show against it.
+   */
+  const reportedLongOrderIndex = useMemo(
+    () => reportedLongOrders(parsed?.ordersTemplate),
+    [parsed]
+  );
+  const getReportedLongOrder = useCallback(
+    (unitId: string) => reportedLongOrderFor(reportedLongOrderIndex, unitId),
+    [reportedLongOrderIndex]
   );
   /** How many writes to the document did not come from the editor. See `OrdersOrigin`. */
   const [externalOrdersRevision, setExternalOrdersRevision] = useState(0);
@@ -5407,6 +5423,7 @@ export function AppShell({
               preview={hexPreview}
               ordersPreview={ordersPreview}
               getLongOrder={getLongOrder}
+              getReportedLongOrder={getReportedLongOrder}
               getSilver={getSilver}
               silverWarnings={silverWarnings}
               onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId)}

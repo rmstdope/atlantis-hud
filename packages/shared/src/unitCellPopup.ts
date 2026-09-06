@@ -9,6 +9,7 @@ import type {
   UnitSilver
 } from "@atlantis/core-client";
 import { count } from "./plural";
+import { sameLongOrder, type ReportedLongOrder } from "./ordersDocument";
 import { battleSkillGroups, battleSkillSource } from "./battleSkillPresentation";
 import type { DerivedSkill } from "./battleSkills";
 import { FLAG_SETTINGS, flagState, unsettledFlags } from "./unitFlags";
@@ -142,6 +143,13 @@ export type PopupFacts = {
   reportedStructureLabel: string | null;
   /** `getLongOrder(...)` for one of ours; null for a foreign unit and for none written. */
   longOrder: string | null;
+  /**
+   * What the report's own orders template said this unit's long order was (`ah-rgkk.5.4`).
+   *
+   * Required, exactly as `longOrder` is: there are three construction sites and every one of them
+   * must answer it. A foreign unit's value is never read - the body answers on `own` first.
+   */
+  reportedLongOrder: ReportedLongOrder;
   /** `getSilver(...)`, or null for a unit with no forecast. */
   silver: UnitSilver | null;
   /** Whether a `not-enough-silver` or `upkeep-exceeds-unclaimed` finding names this unit. */
@@ -1411,10 +1419,53 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   if (!unit.own) {
     return { lines: [], notes: ["Another faction's orders are not in your report."] };
   }
-  if (facts.longOrder === null) {
-    return { lines: [], notes: ["No long order this month."] };
+  const now = facts.longOrder;
+  const line = (label: string, value: string): PopupLine[] => [{ label, value }];
+  const reported = facts.reportedLongOrder;
+
+  // No baseline: say what the month holds, then say plainly that nothing was compared. Neither of
+  // these is "unchanged", and the popup must not be silent in a way that reads as if it were.
+  if (reported.kind !== "known") {
+    return {
+      lines: now === null ? [] : line("long order", now),
+      notes: [
+        ...(now === null ? ["No long order this month."] : []),
+        reported.kind === "no-template"
+          ? "Your report carries no orders template, so there is nothing to compare with."
+          : "This unit is not in your report\u2019s orders template, so there is nothing to compare with."
+      ]
+    };
   }
-  return { lines: [{ label: "long order", value: facts.longOrder }], notes: [] };
+
+  const was = reported.order;
+  // `now` first, so every later branch has it narrowed to a string and no assertion is needed.
+  if (now === null) {
+    return was === null
+      ? {
+          lines: [],
+          notes: ["No long order this month.", "Your report arrived with none either."]
+        }
+      : { lines: line("was", was), notes: ["No long order this month."] };
+  }
+  if (was === null) {
+    return {
+      lines: line("long order", now),
+      notes: ["Your report arrived with no long order for this unit."]
+    };
+  }
+  if (sameLongOrder(was, now)) {
+    // The sentence `popupForCell` writes for every other column, written here because this column
+    // has no `CHANGE_FIELD` entry to earn it and must not gain one: there is no `longOrder` field
+    // in `previewChanges`, so the guard would fire on every unit.
+    return { lines: line("long order", now), notes: ["Nothing this month changes this."] };
+  }
+  return {
+    lines: [
+      { label: "was", value: was },
+      { label: "long order", value: now }
+    ],
+    notes: ["Changed since your report arrived."]
+  };
 }
 
 /**

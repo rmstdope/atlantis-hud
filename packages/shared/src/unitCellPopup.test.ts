@@ -2,6 +2,7 @@ import type { ReportUnit, StudyDoubt, StudyForecast } from "@atlantis/core-clien
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import type { PreviewedUnit } from "./unitPreview";
+import { NO_ORDERS_TEMPLATE, type ReportedLongOrder } from "./ordersDocument";
 import {
   columnHasPopup,
   popupAsText,
@@ -17,10 +18,13 @@ const unit = (overrides: Partial<PreviewedUnit> = {}): PreviewedUnit => ({
   ...overrides
 });
 
+const reported = (order: string | null): ReportedLongOrder => ({ kind: "known", order });
+
 const facts = (overrides: Partial<PopupFacts> = {}): PopupFacts => ({
   structureLabel: null,
   reportedStructureLabel: null,
   longOrder: null,
+  reportedLongOrder: NO_ORDERS_TEMPLATE,
   silver: null,
   silverWarned: false,
   countUpkeep: false,
@@ -1022,6 +1026,92 @@ describe("the column popups", () => {
       popupForCell("longOrder", unit({ own: true }), facts({ longOrder: "STUDY COMB" }))
     );
     expect(popup.lines).toEqual([{ label: "long order", value: "STUDY COMB" }]);
+  });
+
+  const longOrderPopup = (overrides: Partial<PopupFacts>) =>
+    columnPopup(popupForCell("longOrder", unit({ own: true }), facts(overrides)));
+
+  it("the long order popup names both sides when this month's differs from the report's", () => {
+    const popup = longOrderPopup({ longOrder: "TAX", reportedLongOrder: reported("@study obse") });
+    expect(popup.lines).toEqual([
+      { label: "was", value: "@study obse" },
+      { label: "long order", value: "TAX" }
+    ]);
+    expect(popup.notes).toEqual(["Changed since your report arrived."]);
+  });
+
+  it("the long order popup says the report arrived with none", () => {
+    const popup = longOrderPopup({ longOrder: "MOVE N NE", reportedLongOrder: reported(null) });
+    expect(popup.lines).toEqual([{ label: "long order", value: "MOVE N NE" }]);
+    expect(popup.notes).toEqual(["Your report arrived with no long order for this unit."]);
+  });
+
+  it("the long order popup keeps the report's order when this month has none", () => {
+    const popup = longOrderPopup({ longOrder: null, reportedLongOrder: reported("@work") });
+    expect(popup.lines).toEqual([{ label: "was", value: "@work" }]);
+    expect(popup.notes).toEqual(["No long order this month."]);
+  });
+
+  it("the long order popup says nothing changed when it did not", () => {
+    const popup = longOrderPopup({
+      longOrder: "@study obse",
+      reportedLongOrder: reported("@study obse")
+    });
+    expect(popup.lines).toEqual([{ label: "long order", value: "@study obse" }]);
+    expect(popup.notes).toEqual(["Nothing this month changes this."]);
+  });
+
+  it("the long order popup says when neither side has one", () => {
+    const popup = longOrderPopup({ longOrder: null, reportedLongOrder: reported(null) });
+    expect(popup.lines).toEqual([]);
+    expect(popup.notes).toEqual(["No long order this month.", "Your report arrived with none either."]);
+  });
+
+  it("the long order popup ignores capitalisation and spacing but not the repeat marker", () => {
+    const typed = longOrderPopup({
+      longOrder: "@STUDY  OBSE",
+      reportedLongOrder: reported("@study obse")
+    });
+    expect(typed.lines).toEqual([{ label: "long order", value: "@STUDY  OBSE" }]);
+    expect(typed.notes).toEqual(["Nothing this month changes this."]);
+
+    const marker = longOrderPopup({
+      longOrder: "STUDY OBSE",
+      reportedLongOrder: reported("@study obse")
+    });
+    expect(marker.lines).toEqual([
+      { label: "was", value: "@study obse" },
+      { label: "long order", value: "STUDY OBSE" }
+    ]);
+    expect(marker.notes).toEqual(["Changed since your report arrived."]);
+  });
+
+  it("the long order popup says when the report carried no orders template", () => {
+    const popup = longOrderPopup({ longOrder: "TAX", reportedLongOrder: NO_ORDERS_TEMPLATE });
+    expect(popup.lines).toEqual([{ label: "long order", value: "TAX" }]);
+    expect(popup.notes).toEqual([
+      "Your report carries no orders template, so there is nothing to compare with."
+    ]);
+  });
+
+  it("the long order popup says when the template never listed this unit", () => {
+    const popup = longOrderPopup({
+      longOrder: "MOVE N",
+      reportedLongOrder: { kind: "not-listed" }
+    });
+    expect(popup.lines).toEqual([{ label: "long order", value: "MOVE N" }]);
+    expect(popup.notes).toEqual([
+      "This unit is not in your report\u2019s orders template, so there is nothing to compare with."
+    ]);
+  });
+
+  it("a unit with neither a long order nor a baseline says both", () => {
+    const popup = longOrderPopup({ longOrder: null, reportedLongOrder: NO_ORDERS_TEMPLATE });
+    expect(popup.lines).toEqual([]);
+    expect(popup.notes).toEqual([
+      "No long order this month.",
+      "Your report carries no orders template, so there is nothing to compare with."
+    ]);
   });
 
   // `ah-rgkk.4.3`, decision **V2**: the pair, then one line per cause, in the turn's own order.
