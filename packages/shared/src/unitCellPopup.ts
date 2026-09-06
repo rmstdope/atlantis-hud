@@ -1,4 +1,11 @@
-import type { SkillInfo, SkillMerge, StudyForecast, UnitSilver } from "@atlantis/core-client";
+import type {
+  ItemChange,
+  ItemChangeParty,
+  SkillInfo,
+  SkillMerge,
+  StudyForecast,
+  UnitSilver
+} from "@atlantis/core-client";
 import { count } from "./plural";
 import { battleSkillGroups, battleSkillSource } from "./battleSkillPresentation";
 import type { DerivedSkill } from "./battleSkills";
@@ -6,6 +13,7 @@ import { flagWords } from "./unitFlags";
 import { describeMenBriefly, whyEstimated } from "./unitComposition";
 import { presentUnitMovement } from "./unitMovement";
 import {
+  buildSpendTarget,
   changeFor,
   hasUncertainTransportTarget,
   itemsTooltip,
@@ -302,6 +310,99 @@ function changeOf(
     direction: now > (before ?? 0) ? "up" : "down",
     from: before === undefined ? "none" : before.toLocaleString()
   };
+}
+
+/**
+ * One changed item's movements as a single sentence, e.g.
+ * `grain: sold 12 at 12 silver each, sent 20 to Ferry (4102).` (decision **S2**).
+ *
+ * `label` is the item's display name alone - `grain`, not `grain GRAI` - and is left lower case,
+ * because it is the same word that leads the line above. `sentence()` is deliberately not applied.
+ *
+ * Movements are neither merged nor capped: one clause each, in the month's order, so a unit that
+ * bought one tag at four prices gets four clauses in one wrapping sentence - the cost the
+ * navigator accepted with **S2**. `undefined` when there is nothing to say.
+ */
+export function itemCauseSentence(
+  label: string,
+  changes: readonly ItemChange[],
+  unit: PreviewedUnit
+): string | undefined {
+  const clauses = changes.map((change) => itemCauseClause(change, unit));
+  return clauses.length === 0 ? undefined : `${label}: ${clauses.join(", ")}.`;
+}
+
+/** The other unit of a movement, as `ah-rgkk.2.3` settled it: `Scouts (1502)`, or `unit 1502`. */
+function party(other: ItemChangeParty): string {
+  return other.name === null ? `unit ${other.unitId}` : `${other.name} (${other.unitId})`;
+}
+
+/** One movement, as a fragment. The clauses are joined with `, ` and closed with one full stop. */
+function itemCauseClause(change: ItemChange, unit: PreviewedUnit): string {
+  const n = Math.abs(change.delta);
+  const each = change.unitPrice === null ? "" : ` at ${change.unitPrice} silver each`;
+  switch (change.cause) {
+    case "bought":
+      return `bought ${n}${each}`;
+    case "sold":
+      return `sold ${n}${each}`;
+    case "withdrawn":
+      return `withdrew ${n} from the faction's stores`;
+    case "produced":
+      return `produced ${n}`;
+    case "production-spent":
+      return change.other ? `used ${n} for ${party(change.other)} to produce` : `used ${n} as material`;
+    case "build-spent":
+      return `spent ${n} ${buildSpendPlace(change, unit)}`;
+    case "cast-created":
+      return castCreatedClause(change, unit, n);
+    case "cast-spent":
+      return `consumed ${n} by a spell`;
+    case "transported-out":
+      return change.other && change.other.name === null
+        ? `sent ${n} to unit ${change.other.unitId}, which your report does not show`
+        : `sent ${n}${change.other ? ` to ${party(change.other)}` : ""}`;
+    case "transported-in":
+      return `received ${n}${change.other ? ` from ${party(change.other)}` : ""}`;
+    case "abandoned":
+      return "left behind, unfinished, when the unit leaves the hex";
+    case "given-away":
+      // `ah-rgkk.3.2` reserves a null party for a GIVE to a foreign faction that names no unit.
+      return change.other ? `gave ${n} to ${party(change.other)}` : `gave ${n} to another faction`;
+    case "was-given":
+      return `given ${n}${change.other ? ` by ${party(change.other)}` : ""}`;
+    case "took":
+      return `took ${n}${change.other ? ` from ${party(change.other)}` : ""}`;
+    case "was-taken-from":
+      return `${n} taken${change.other ? ` by ${party(change.other)}` : ""}`;
+    case "discarded":
+      return `discarded ${n}`;
+    case "gift-reverted":
+      return `${n} reverted from a unit that formed with nobody`;
+    // Required rather than defensive: `ItemChangeCause` is a string union, so a cause from a newer
+    // core is compile-time impossible and runtime real, and `ah-rgkk.3.1` asks a reader to treat
+    // one as "moved, reason not stated". Deliberately not an exhaustiveness `never`.
+    default:
+      return change.delta > 0 ? `gained ${n}` : `lost ${n}`;
+  }
+}
+
+/** What a BUILD spend went into, named from the unit's own `built` list where one matches. */
+function buildSpendPlace(change: ItemChange, unit: PreviewedUnit): string {
+  if (change.other) {
+    return `for ${party(change.other)} to build`;
+  }
+  const spend = (unit.built ?? []).find((entry) => entry.tag === change.tag);
+  return spend ? buildSpendTarget(spend) : "on a build";
+}
+
+/** A cast's own words, and its range where the spell's yield is not yet settled. */
+function castCreatedClause(change: ItemChange, unit: PreviewedUnit, n: number): string {
+  const created = (unit.created ?? []).find((entry) => entry.tag === change.tag);
+  const figure = created && created.fewest !== created.most
+    ? `${created.fewest}-${created.most}`
+    : `${n}`;
+  return created?.summoned ? `summoned ${figure}` : `created ${figure} by casting`;
 }
 
 /** How many lines a popup shows before it stops and counts the rest (decision **G-d**). */
@@ -817,15 +918,38 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     quoteFirst && index === 0 ? { ...entry.line, why: originalTooltip(change) } : entry.line
   );
 
+  // The sentences follow the changed lines, in the same order, so each is under the figure it
+  // explains (decision **S2**).
+  const changes = unit.itemChanges ?? [];
+  const causes = entries
+    .filter((entry) => entry.moved)
+    .map((entry) =>
+      itemCauseSentence(
+        itemLabel(entry, unit),
+        changes.filter((c) => c.tag === entry.tag),
+        unit
+      )
+    )
+    .filter((note): note is string => note !== undefined);
+
   return {
     // Off the drawn list rather than off current stock: a unit that gave everything away still
     // has lines, its items ending at `gone`.
-    notes: [...(told ? told.split("\n") : []), ...(lines.length === 0 ? ["No items."] : [])],
+    notes: [...causes, ...(told ? told.split("\n") : []), ...(lines.length === 0 ? ["No items."] : [])],
     lines,
     warning: partlyCounted
       ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
       : null
   };
+}
+
+/** The item's display name alone, which is what leads its cause sentence. */
+function itemLabel(entry: ItemLine, unit: PreviewedUnit): string {
+  return (
+    unit.items.find((item) => item.tag === entry.tag)?.name ??
+    (unit.itemChanges ?? []).find((change) => change.tag === entry.tag)?.name ??
+    entry.tag
+  );
 }
 
 function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {

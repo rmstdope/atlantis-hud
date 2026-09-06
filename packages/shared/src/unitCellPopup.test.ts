@@ -1065,3 +1065,179 @@ describe("the items popup's order", () => {
     expect(popup.lines.map((line) => line.label)).toEqual(["wood WOOD", "grain GRAI"]);
   });
 });
+
+describe("the items popup's cause sentences", () => {
+  const moved = (
+    overrides: Partial<{
+      tag: string;
+      name: string;
+      delta: number;
+      cause: string;
+      line: number | null;
+      unitPrice: number | null;
+      other: { unitId: string; name: string | null } | null;
+    }> = {}
+  ) =>
+    ({
+      tag: "GRAI",
+      name: "grain",
+      delta: -1,
+      cause: "sold",
+      line: null,
+      unitPrice: null,
+      other: null,
+      ...overrides
+    }) as NonNullable<PreviewedUnit["itemChanges"]>[number];
+
+  const notesFor = (overrides: Partial<PreviewedUnit>) =>
+    columnPopup(popupForCell("items", unit(overrides), facts())).notes;
+
+  it("names every movement of one item in a single sentence", () => {
+    expect(
+      notesFor({
+        items: [{ name: "grain", tag: "GRAI", amount: 8 }],
+        itemChanges: [
+          moved({ cause: "sold", delta: -12, unitPrice: 12 }),
+          moved({
+            cause: "transported-out",
+            delta: -20,
+            other: { unitId: "4102", name: "Ferry" }
+          })
+        ]
+      })[0]
+    ).toBe("grain: sold 12 at 12 silver each, sent 20 to Ferry (4102).");
+  });
+
+  const cases: Array<[string, Parameters<typeof moved>[0], string]> = [
+    ["bought with a price", { cause: "bought", delta: 4, unitPrice: 60 }, "bought 4 at 60 silver each"],
+    ["bought without one", { cause: "bought", delta: 4 }, "bought 4"],
+    ["sold without a price", { cause: "sold", delta: -12 }, "sold 12"],
+    ["withdrawn", { cause: "withdrawn", delta: 10 }, "withdrew 10 from the faction's stores"],
+    ["produced", { cause: "produced", delta: 5 }, "produced 5"],
+    [
+      "spent on another unit's production",
+      { cause: "production-spent", delta: -3, other: { unitId: "1487", name: "Braves" } },
+      "used 3 for Braves (1487) to produce"
+    ],
+    ["spent as material", { cause: "production-spent", delta: -3 }, "used 3 as material"],
+    [
+      "spent on another unit's build",
+      { cause: "build-spent", delta: -10, other: { unitId: "1487", name: "Braves" } },
+      "spent 10 for Braves (1487) to build"
+    ],
+    ["consumed by a spell", { cause: "cast-spent", delta: -2 }, "consumed 2 by a spell"],
+    [
+      "transported to a unit the report does not show",
+      { cause: "transported-out", delta: -20, other: { unitId: "4102", name: null } },
+      "sent 20 to unit 4102, which your report does not show"
+    ],
+    [
+      "transported in",
+      { cause: "transported-in", delta: 20, other: { unitId: "1913", name: "Porters" } },
+      "received 20 from Porters (1913)"
+    ],
+    [
+      "abandoned",
+      { cause: "abandoned", delta: -4 },
+      "left behind, unfinished, when the unit leaves the hex"
+    ],
+    [
+      "given away",
+      { cause: "given-away", delta: -2, other: { unitId: "1502", name: "Scouts" } },
+      "gave 2 to Scouts (1502)"
+    ],
+    ["given to a foreign faction", { cause: "given-away", delta: -2 }, "gave 2 to another faction"],
+    [
+      "given to it",
+      { cause: "was-given", delta: 30, other: { unitId: "1774", name: "Elders" } },
+      "given 30 by Elders (1774)"
+    ],
+    [
+      "taken",
+      { cause: "took", delta: 3, other: { unitId: "1604", name: "Watch" } },
+      "took 3 from Watch (1604)"
+    ],
+    [
+      "taken from it",
+      { cause: "was-taken-from", delta: -3, other: { unitId: "1604", name: "Watch" } },
+      "3 taken by Watch (1604)"
+    ],
+    ["discarded", { cause: "discarded", delta: -5 }, "discarded 5"],
+    [
+      "reverted",
+      { cause: "gift-reverted", delta: -2 },
+      "2 reverted from a unit that formed with nobody"
+    ],
+    ["a cause it has not been taught", { cause: "unheard-of", delta: 4 }, "gained 4"],
+    ["a loss it has not been taught", { cause: "unheard-of", delta: -4 }, "lost 4"]
+  ];
+
+  for (const [name, change, clause] of cases) {
+    it(`says ${name} as “${clause}”`, () => {
+      expect(
+        notesFor({
+          items: [{ name: "grain", tag: "GRAI", amount: 8 }],
+          itemChanges: [moved(change)]
+        })[0]
+      ).toBe(`grain: ${clause}.`);
+    });
+  }
+
+  it("names the structure a build spend went into", () => {
+    expect(
+      notesFor({
+        items: [{ name: "wood", tag: "WOOD", amount: 2 }],
+        itemChanges: [moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -10 })],
+        built: [
+          {
+            amount: 10,
+            tag: "WOOD",
+            name: "wood",
+            place: "Fort",
+            founding: false,
+            helping: null,
+            couldDo: 10,
+            cappedBy: null
+          }
+        ]
+      })[0]
+    ).toBe("wood: spent 10 on Fort.");
+  });
+
+  it("falls back to a bare build when it cannot match the spend", () => {
+    expect(
+      notesFor({
+        items: [{ name: "wood", tag: "WOOD", amount: 2 }],
+        itemChanges: [moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -10 })]
+      })[0]
+    ).toBe("wood: spent 10 on a build.");
+  });
+
+  it("says a summoned item was summoned, and gives its range", () => {
+    expect(
+      notesFor({
+        items: [{ name: "imp", tag: "IMP", amount: 3 }],
+        created: [{ fewest: 1, most: 3, tag: "IMP", summoned: true }],
+        itemChanges: [moved({ tag: "IMP", name: "imp", cause: "cast-created", delta: 3 })]
+      })[0]
+    ).toBe("imp: summoned 1-3.");
+  });
+
+  it("says an item made by casting was created by casting", () => {
+    expect(
+      notesFor({
+        items: [{ name: "iron", tag: "IRON", amount: 3 }],
+        created: [{ fewest: 3, most: 3, tag: "IRON", summoned: false }],
+        itemChanges: [moved({ tag: "IRON", name: "iron", cause: "cast-created", delta: 3 })]
+      })[0]
+    ).toBe("iron: created 3 by casting.");
+  });
+
+  it("an item whose movement the core did not record gets no sentence", () => {
+    const notes = notesFor({
+      items: [{ name: "grain", tag: "GRAI", amount: 12 }],
+      previewChanges: [{ field: "items", original: "8 GRAI" }]
+    });
+    expect(notes.filter((note) => note.startsWith("grain:"))).toEqual([]);
+  });
+});

@@ -359,18 +359,7 @@ export function itemsTooltip(
     lines.push(capSentence);
   }
   for (const spend of built) {
-    const place = spend.founding ? `a new ${spend.place}` : spend.place;
-    // `new-{alias}` is the canonical id Rust files a unit formed this month under; the player
-    // wrote it as `NEW {alias}` and reads it back in their own spelling (`ah-zxvd`).
-    const target =
-      spend.helping === null
-        ? `on ${place}`
-        : `helping ${
-            spend.helping.startsWith("new-")
-              ? `NEW ${spend.helping.slice("new-".length)}`
-              : `unit ${spend.helping}`
-          } build ${place}`;
-    lines.push(`Spends ${spend.amount} ${spend.tag} ${target} this month.`);
+    lines.push(`Spends ${spend.amount} ${spend.tag} ${buildSpendTarget(spend)} this month.`);
     if (spend.cappedBy === "materials") {
       lines.push(
         `This unit has ${spend.name} for ${spend.amount} units of work, not the ${spend.couldDo} its men could do.`
@@ -392,6 +381,24 @@ export function itemsTooltip(
     lines.push(`and more that cannot be counted: ${order}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * What one BUILD spend was spent on, as a sentence fragment: `on Fort`, `on a new Tower`, or
+ * `helping unit 1502 build Fort`.
+ *
+ * `new-{alias}` is the canonical id Rust files a unit formed this month under; the player wrote it
+ * as `NEW {alias}` and reads it back in their own spelling (`ah-zxvd`).
+ */
+export function buildSpendTarget(spend: BuildSpend): string {
+  const place = spend.founding ? `a new ${spend.place}` : spend.place;
+  if (spend.helping === null) {
+    return `on ${place}`;
+  }
+  const helped = spend.helping.startsWith("new-")
+    ? `NEW ${spend.helping.slice("new-".length)}`
+    : `unit ${spend.helping}`;
+  return `helping ${helped} build ${place}`;
 }
 
 /** One transported line as the hover states it. */
