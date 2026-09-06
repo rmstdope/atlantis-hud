@@ -5367,8 +5367,9 @@ test("a popup dies with the row it belongs to, and does not come back with it", 
   // The row is back, and the popup does not come back with it: a key kept in state would have
   // reopened it at the point the pointer left, with no wait. What does happen afterwards is
   // honest and is not asserted here - the row reappearing beneath a resting pointer makes the
-  // browser dispatch a real `pointerover`, which starts the usual wait from scratch.
-  await page.waitForTimeout(HOVER_DELAY_MS / 3);
+  // browser dispatch a real `pointerover`, which starts the usual wait from scratch. Asserting at
+  // once rather than after a fraction of that wait leaves no window for a loaded machine to open
+  // the popup legitimately and turn this red for something that is not a defect.
   await expect(popup).toHaveCount(0);
 });
 
