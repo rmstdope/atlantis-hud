@@ -350,8 +350,9 @@ pub enum StudyDoubtReason {
     /// A teacher of this unit also teaches a unit of another faction, whose headcount the report
     /// does not print - so how far its teaching dilutes cannot be said.
     TeacherStudentsUnknown,
-    /// The unit ends the month in a structure this region's report does not list, so whether
-    /// `rules/magic_skills` halves its month cannot be said. The month is not halved.
+    /// Whether `rules/magic_skills` halves this month cannot be said: the unit ends the month in a
+    /// structure this region's report does not list, or the catalogue carries no buildings table
+    /// to seat a mage against. The month is not halved.
     ShelterUnknown,
 }
 
@@ -7759,6 +7760,31 @@ mod tests {
         assert!(unit.changes.is_empty(), "{:?}", unit.changes);
         assert_eq!(unit.status, UnitPreviewStatus::Present);
         assert!(unit.study.is_some(), "{:?}", unit.study);
+    }
+
+    /// A unit that moves and studies is one unit with one month, so both of its rows carry the
+    /// same forecast - the reading `produced` and `built` already take of a mover (`ah-rgkk.2.2`).
+    #[test]
+    fn a_mover_carries_its_forecast_onto_both_of_its_rows() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nMOVE SE\nSTUDY lumberjack\n",
+        );
+
+        let rows: Vec<_> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .filter(|unit| unit.unit.unit_id == "900")
+            .collect();
+        assert_eq!(rows.len(), 2, "a departure and its arrival");
+        for row in rows {
+            assert!(
+                row.study.is_some(),
+                "the {:?} row carries the forecast",
+                row.status
+            );
+        }
     }
 
     /// A unit `rules/form` dissolves never exists, so it studies nothing.

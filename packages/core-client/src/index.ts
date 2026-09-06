@@ -462,7 +462,12 @@ export type SkillMerge = {
   skills: SkillInfo[];
 };
 
-/** Why a study projection rests on something the report cannot settle (`ah-rgkk.2.2`). */
+/**
+ * Why a study projection rests on something the report cannot settle (`ah-rgkk.2.2`).
+ *
+ * `shelterUnknown` covers both of its causes: the unit ends the month in a structure the region's
+ * report does not list, and a catalogue carrying no buildings table to seat a mage against.
+ */
 export type StudyDoubtReason =
   | "feeShort"
   | "feeUnpriced"

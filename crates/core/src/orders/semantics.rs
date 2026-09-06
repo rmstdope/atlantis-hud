@@ -9615,12 +9615,16 @@ fn check_magic_study_prerequisites(
 /// Whether `rules/magic_skills` halves each unit's study month, by its index in `hex.units`.
 ///
 /// `Some(true)` - a magic skill above level 2 studied where nothing houses the mage, so half the
-/// month is wasted. `Some(false)` - not halved, including every non-magic study, every study at
-/// level 1 or below, and every unit not studying at all. `None` - the report cannot say, which is
-/// exactly two cases: the unit ends the month in a structure this region's report does not list,
-/// and a ruleset with no buildings table ([`Ruleset::knows_buildings`]), where `mage_capacity`
-/// would answer `None` for every kind. Mages are seated in report order, which is what makes a
-/// building with `n` seats shelter the first `n` of them.
+/// month is wasted. `Some(false)` - not halved, and it is the answer for every unit the walk does
+/// not reach at all: every non-magic study, every study at level 1 or below, every unit not
+/// studying, a unit whose skills this month cannot be said, and a skill the catalogue does not
+/// know. The last two are `None` to [`study_forecasts`] for their own reasons before this answer
+/// is ever read, which is the only thing that makes a bare `Some(false)` safe for them here.
+/// `None` - the report cannot say whether the mage is sheltered, which is two cases: a structure
+/// this region's report does not list, and a ruleset with no buildings table
+/// ([`Ruleset::knows_buildings`]), where `mage_capacity` would answer `None` for every kind.
+/// Mages are seated in report order, which is what makes a building with `n` seats shelter the
+/// first `n` of them.
 fn magic_study_halved(hex: &Hex<'_>, ruleset: &Ruleset) -> Vec<Option<bool>> {
     let mut answers = vec![Some(false); hex.units.len()];
     // A ruleset cached before buildings were scraped: `mage_capacity` would answer `None` for
@@ -9753,6 +9757,17 @@ fn study_forecasts(
     ledger: &Ledger<'_>,
     ruleset: &Ruleset,
 ) -> Vec<Option<super::effects::StudyForecast>> {
+    // Three hex-wide reads, none of them cheap, on a path that runs on every orders edit: a hex
+    // where nobody studies pays for none of them, exactly as `check_studying` avoids
+    // `men_after_the_market` with its own `get_or_insert_with`.
+    if !hex
+        .units
+        .iter()
+        .any(|ordered| ordered.studies_placed().is_some())
+    {
+        return vec![None; hex.units.len()];
+    }
+
     let men = ledger.state.men_after_the_market(hex, Some(ruleset));
     let departed = departures_after_load_checks(hex, ledger, Some(ruleset));
     let halved = magic_study_halved(hex, ruleset);
@@ -9857,10 +9872,14 @@ fn one_study_forecast(
         }
         // "The unit doing the teaching must have a skill level greater than the unit doing the
         // studying" (`rules/skills_teaching`) - `check_one_teacher`'s own test.
-        let (Some(mine), Some(theirs)) = (
-            candidate.skill_level(&skill.tag),
-            ordered.skill_level(&skill.tag),
-        ) else {
+        // `Ordered::skill_level` answers `None` only when the whole skill list cannot be said this
+        // month. The student's is already excluded above, so the live case is the teacher's: it is
+        // a teacher whose standing cannot be settled, not one that teaches nothing (`U2`).
+        let Some(mine) = candidate.skill_level(&skill.tag) else {
+            doubts.push(about_teacher(StudyDoubtReason::TeacherUnsettled, candidate));
+            continue;
+        };
+        let Some(theirs) = ordered.skill_level(&skill.tag) else {
             continue;
         };
         if mine <= theirs {
@@ -9940,7 +9959,9 @@ fn one_study_forecast(
         teachers,
         halved_outside_a_building,
         points_after,
-        level_after: reached.min(ceiling_level),
+        // A level never falls: a report showing a unit already past the ceiling its races now
+        // impose would otherwise project next turn's level *below* this month's.
+        level_after: reached.min(ceiling_level).max(level_before),
         ceiling_level,
         limiting_races,
         // `rules/skills_limitations` states a level maximum and says nothing about points, so at
@@ -35237,5 +35258,169 @@ BUILD
 
         assert!(warned);
         assert_eq!(warned, halved);
+    }
+
+    /// The month takes the **best** of several teachers rather than their sum
+    /// (`rules/skills_teaching` states the dilution for one teacher and caps learning at "up to
+    /// twice as fast"; it says nothing about combining two).
+    #[test]
+    fn two_teachers_do_not_stack_and_the_better_one_decides_the_month() {
+        let student =
+            with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
+        // Teaching 1487 alone: 10 slots over 20 students, so `3/2`.
+        let better = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
+        // Teaching 1487 and a 30-man sibling: 10 slots over 50 students, so `6/5`.
+        let worse = with_skill(with_race(unit("1775"), 1, "leader", "LEAD"), "COMB", 3);
+        let sibling = with_silver(with_men(unit("1600"), 30), 1000);
+        let study = study_of(
+            vec![region(vec![student, sibling, better, worse])],
+            "unit 1487\nSTUDY Combat\nunit 1774\nTEACH 1487\n\
+             unit 1775\nTEACH 1487 1600\nunit 1600\nSTUDY Combat\n",
+            "1487",
+        )
+        .expect("a studying unit is forecast");
+
+        assert_eq!(study.teachers.len(), 2, "{study:?}");
+        // The sum would be `1 + 1/2 + 1/5`, which is `17/10`; the best of them is `3/2`.
+        assert_eq!(study.months_numerator, 3);
+        assert_eq!(study.months_denominator, 2);
+    }
+
+    /// Two teachers whose contributions are equal is not a decision: the earlier one in report
+    /// order wins, which is what makes the answer stable across runs.
+    #[test]
+    fn two_teachers_tied_leave_the_month_to_the_earlier_one() {
+        let student =
+            with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
+        let first = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
+        let second = with_skill(with_race(unit("1775"), 1, "leader", "LEAD"), "COMB", 3);
+        let study = study_of(
+            vec![region(vec![student, first, second])],
+            "unit 1487\nSTUDY Combat\nunit 1774\nTEACH 1487\nunit 1775\nTEACH 1487\n",
+            "1487",
+        )
+        .expect("a studying unit is forecast");
+
+        assert_eq!(
+            study
+                .teachers
+                .iter()
+                .map(|teacher| teacher.unit_id.clone())
+                .collect::<Vec<_>>(),
+            ["1774", "1775"]
+        );
+        assert_eq!(study.months_numerator, 3);
+        assert_eq!(study.months_denominator, 2);
+    }
+
+    /// A teacher whose whole skill list cannot be said is a teacher whose standing cannot be
+    /// settled, not one that teaches nothing - accept on doubt, and decision **U2**.
+    #[test]
+    fn a_teacher_whose_skills_cannot_be_said_is_doubted_rather_than_dropped() {
+        let student =
+            with_skill_points(with_silver(with_men(unit("1487"), 20), 1000), "COMB", 1, 53);
+        let teacher = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
+        // A `BUY ALL` of people makes the post-recruit composition - and so the merged skill list -
+        // unknowable, which is one of `skills()`'s three silent routes.
+        let study = study_of(
+            vec![region(vec![student, teacher])],
+            "unit 1487\nSTUDY Combat\nunit 1774\nBUY ALL peasants\nTEACH 1487\n",
+            "1487",
+        )
+        .expect("a studying unit is forecast");
+
+        assert_eq!(study.doubts.len(), 1, "{study:?}");
+        assert_eq!(
+            study.doubts[0].reason,
+            effects::StudyDoubtReason::TeacherUnsettled
+        );
+        assert!(study.teachers.is_empty(), "{study:?}");
+    }
+
+    /// The doubts are pushed in a fixed order, so the popup's sentences read in one: the headcount
+    /// first, then the fee, then one per doubtful teacher.
+    #[test]
+    fn several_doubts_are_listed_headcount_first_then_the_fee_then_the_teachers() {
+        let doubtful_teacher = || {
+            let mut teacher = with_skill(with_race(unit("1774"), 1, "leader", "LEAD"), "COMB", 3);
+            teacher.men_estimated = true;
+            teacher
+        };
+        let orders = "unit 1487\nSTUDY Combat\nunit 1774\nTEACH 1487\n";
+
+        // Twenty men owe $200 of combat (`rules/skills_studying`) and hold forty.
+        let poor = with_silver(with_men(unit("1487"), 20), 40);
+        let short = study_of(vec![region(vec![poor, doubtful_teacher()])], orders, "1487")
+            .expect("a studying unit is forecast");
+        assert_eq!(
+            short
+                .doubts
+                .iter()
+                .map(|doubt| doubt.reason)
+                .collect::<Vec<_>>(),
+            [
+                effects::StudyDoubtReason::FeeShort,
+                effects::StudyDoubtReason::TeacherUnsettled,
+            ]
+        );
+
+        // An estimated headcount prices no study at all, so it doubts the headcount rather than
+        // the shortfall - and it is still listed ahead of the teacher.
+        let mut guessed = with_silver(with_men(unit("1487"), 20), 40);
+        guessed.men_estimated = true;
+        let estimated = study_of(
+            vec![region(vec![guessed, doubtful_teacher()])],
+            orders,
+            "1487",
+        )
+        .expect("a studying unit is forecast");
+        assert_eq!(
+            estimated
+                .doubts
+                .iter()
+                .map(|doubt| doubt.reason)
+                .collect::<Vec<_>>(),
+            [
+                effects::StudyDoubtReason::HeadcountEstimated,
+                effects::StudyDoubtReason::TeacherUnsettled,
+            ]
+        );
+    }
+
+    /// The catalogue prices `annihilation` nowhere, so the fee cannot be said at all - and the
+    /// projection is still produced in full beside the doubt (decision **U2**).
+    #[test]
+    fn a_skill_the_catalogue_prices_nowhere_is_doubted_and_still_projected() {
+        let student = with_silver(with_race(unit("900"), 1, "leader", "LEAD"), 1000);
+        let study = study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY annihilation\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
+
+        assert_eq!(
+            study
+                .doubts
+                .iter()
+                .map(|doubt| doubt.reason)
+                .collect::<Vec<_>>(),
+            [effects::StudyDoubtReason::FeeUnpriced]
+        );
+        assert_eq!(study.points_after, 30);
+    }
+
+    /// A skill the catalogue does not know has no ceiling, no fee and no tag to find the unit's
+    /// points under, and guessing at any of them is what accept-on-doubt forbids.
+    #[test]
+    fn a_skill_the_catalogue_does_not_know_forecasts_nothing() {
+        let student = with_silver(with_men(unit("900"), 10), 1000);
+
+        assert!(study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY basketweaving\n",
+            "900"
+        )
+        .is_none());
     }
 }
