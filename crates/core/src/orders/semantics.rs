@@ -4509,6 +4509,19 @@ pub(crate) fn item_effects(
         }
     }
 
+    // Into the month's order, once, after every hex has been walked (`ah-rgkk.3.1`).
+    //
+    // A **stable** sort by phase alone, deliberately not by `(phase, line)`: the ledger's own walk
+    // is already phase-ordered (`for phase in phases::ORDER`) and pushes a unit's intents in
+    // document order within a phase, so push order inside one phase already is document order. The
+    // one thing out of place is `settle_buy_all`, which runs after the whole walk and so pushes its
+    // market movements behind the withdrawals. Sorting by line as well would be wrong:
+    // `rules/sequenceofevents` runs every SELL before every BUY, so a block writing `BUY` above
+    // `SELL` must still list the sale first.
+    for entry in result.values_mut() {
+        entry.moved.sort_by_key(|movement| movement.phase as usize);
+    }
+
     result
 }
 
@@ -20969,6 +20982,37 @@ BUILD
 
     /// A losing PRODUCE is not merely unwarned about - it does nothing at all, so neither the
     /// SILVER forecast nor the ITEMS column may show its materials leaving or its goods arriving.
+    #[test]
+    /// `ah-rgkk.3.1`, increment 3. `rules/sequenceofevents` runs *Market orders* before
+    /// *Withdraw orders*, so the month's order is what a reader gets whatever the document says.
+    /// `settle_buy_all` runs after the whole phase walk, which is the one case that gets it wrong.
+    #[test]
+    fn movements_come_back_in_the_months_order_whatever_the_document_says() {
+        let buyer = with_silver(unit("2390"), 400);
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 5,
+                name: "horse".to_string(),
+                tag: "HORS".to_string(),
+                price: 10,
+            }],
+            ..region(vec![buyer])
+        };
+        let report = report(vec![hex]);
+        let orders = "unit 2390\nWITHDRAW 3 GRAI\nBUY ALL horse\n";
+
+        let effects = item_effects(&report, orders, Some(&ruleset()));
+        let moved = effects_for(&effects, "2390")
+            .map(|unit| unit.moved.clone())
+            .unwrap_or_default();
+        let tags: Vec<&str> = moved.iter().map(|movement| movement.tag.as_str()).collect();
+        assert_eq!(
+            tags,
+            vec!["HORS", "GRAI"],
+            "the market settles before the withdrawal: {moved:?}"
+        );
+    }
+
     #[test]
     fn a_losing_produce_moves_no_materials_and_creates_no_goods() {
         let smith = with_item(
