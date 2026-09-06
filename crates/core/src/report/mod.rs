@@ -12,6 +12,7 @@ pub mod import;
 pub mod level;
 pub mod merge;
 pub mod model;
+pub mod flags;
 pub mod orders;
 pub mod region;
 pub mod scan;

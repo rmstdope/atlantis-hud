@@ -1035,9 +1035,10 @@ pub(crate) fn inherited_flags(parent_flags: &[String]) -> Vec<String> {
     parent_flags
         .iter()
         .filter(|flag| {
-            !crate::report::unit::GUARD_FLAGS
+            !crate::report::flags::Setting::Guarding
+                .spellings()
                 .iter()
-                .chain(crate::orders::silver::TAXING_FLAGS.iter())
+                .chain(crate::report::flags::Setting::Taxing.spellings().iter())
                 .chain(std::iter::once(&"under strength"))
                 .any(|excluded| excluded.eq_ignore_ascii_case(flag))
         })

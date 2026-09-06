@@ -16,36 +16,6 @@ use super::scan::{
     split_top_level,
 };
 
-/// The spellings the game prints for a unit that guards. Both are in `KNOWN_FLAGS`: reports print
-/// `on guard`, and `guarding` is the order's own word.
-pub(crate) const GUARD_FLAGS: [&str; 2] = ["on guard", "guarding"];
-
-/// Flags the game prints for a unit. Anything else in that position is treated as an item.
-const KNOWN_FLAGS: &[&str] = &[
-    "avoiding",
-    "behind",
-    "revealing faction",
-    "holding",
-    "sharing",
-    "on guard",
-    "guarding",
-    "taxing",
-    "no aid",
-    "receiving no aid",
-    "won't cross water",
-    "consuming unit's food",
-    "consuming faction's food",
-    "sailing battle spoils",
-    "swimming battle spoils",
-    "walking battle spoils",
-    "riding battle spoils",
-    "flying battle spoils",
-    "weightless battle spoils",
-    "no battle spoils",
-    "autotax",
-    "under strength",
-];
-
 /// Labelled sections a unit line may carry after its head.
 ///
 /// This is a closed set, which is what makes splitting reliable. Splitting on sentence boundaries
@@ -107,10 +77,7 @@ fn split_sections(body: &str) -> (String, Vec<(String, String)>) {
 /// Reused by `battle.rs` for battle rosters, which are flagged the same way a region's units are.
 pub(crate) fn matching_flag(field: &str) -> Option<&'static str> {
     let normalised = field.trim().trim_end_matches('.');
-    KNOWN_FLAGS
-        .iter()
-        .find(|flag| flag.eq_ignore_ascii_case(normalised))
-        .copied()
+    crate::report::flags::known(normalised)
 }
 
 /// Parses one unit line.
@@ -158,7 +125,10 @@ pub fn parse_unit(
     // itself contain a top-level comma - so the identifier has to be found before the split.
     while let Some((field, after)) = next_top_level_field(rest, ',') {
         if let Some(flag) = matching_flag(field) {
-            if GUARD_FLAGS.contains(&flag) {
+            if crate::report::flags::Setting::Guarding
+                .spellings()
+                .contains(&flag)
+            {
                 unit.on_guard = true;
             }
             unit.flags.push(flag.to_string());
