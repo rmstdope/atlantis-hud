@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-9g94 — Wiring the seven missing flag orders</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; --up:#7fb069; --down:#c96a5e; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 72px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin: 30px 0 6px; border-top:1px solid var(--edge); padding-top:18px; }
+  h3 { font-size: 13.5px; margin: 18px 0 4px; color: var(--brass); }
+  p.note { color: var(--dim); max-width: 86ch; }
+  .cost { color: var(--dim); font-size: 13px; margin: 6px 0 0; max-width: 60ch; }
+  .cost b { color: var(--ink); }
+  .row { display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start; margin:10px 0 4px; }
+  .pop { width: 21rem; background: var(--panel); border:1px solid var(--edge); border-radius:8px;
+         padding: 10px 12px; }
+  .pop h4 { margin:0 0 8px; font-size:11px; color: var(--dim); text-transform:uppercase;
+            letter-spacing:.8px; font-weight:600; }
+  .l { display:flex; gap:8px; padding:1.5px 0; font-size:12.5px; align-items:baseline; }
+  .l .lab { color: var(--soft); width: 8.6rem; flex:none; }
+  .l.aside .lab { color:#5f6875; }
+  .l.aside .val { color:#6d7684; }
+  .val { color: var(--ink); }
+  .pair .from { color: var(--dim); }
+  .up .to { color: var(--up); }
+  .down .to { color: var(--down); }
+  .why { color: var(--dim); font-size:11.5px; margin-left:6px; }
+  .notes { color: var(--dim); font-size:11.5px; margin-top:9px; border-top:1px solid var(--edge);
+           padding-top:7px; }
+  .hit { background:#22303f; border-radius:3px; padding:0 3px; }
+  code { color: var(--brass); font-size: 12.5px; }
+  .orders { background:var(--panel); border:1px solid var(--edge); border-radius:8px;
+            padding:8px 12px; font-family: ui-monospace, monospace; font-size:12.5px;
+            color: var(--soft); white-space:pre; }
+</style>
+</head>
+<body>
+<h1>ah-9g94 — the seven flag orders the preview never applies</h1>
+<p class="note">
+  <code>AUTOTAX</code>, <code>NOAID</code>, <code>HOLD</code>, <code>NOCROSS</code>,
+  <code>REVEAL</code>, <code>CONSUME</code> and <code>SPOILS</code> are accepted, validated, and then
+  change nothing. This bead wires all seven into the core, and fixes the exact-match defect that
+  makes <code>GUARD 0</code> leave <code>on guard</code> in the list. Every line below is the Flags
+  popup <b>as ah-rgkk.5.2 has just specified it</b> — eleven setting lines, this month's changes
+  first, a <span class="from">before →</span> <span class="to" style="color:var(--up)">after</span>
+  pair and the order that did it.
+</p>
+<p class="note">
+  Most of it needs no decision: the six settled orders write the flag the game itself prints, which
+  the popup already has a line for. Three things do.
+</p>
+
+<h2>Everything that is <i>not</i> in question — what the seven orders will do</h2>
+<div class="row">
+  <div class="orders">unit 1421
+AUTOTAX 1
+NOAID 1
+HOLD 1
+NOCROSS 1
+CONSUME FACTION
+SPOILS WALK
+GUARD 0</div>
+  <div class="pop">
+    <h4>Flags — Scout (1421)</h4>
+    <div class="l pair up"><span class="lab">guarding</span><span class="val"><span class="from">on →</span> <span class="to">off</span></span><span class="why">GUARD 0</span></div>
+    <div class="l pair up"><span class="lab">holding</span><span class="val"><span class="from">off →</span> <span class="to">on</span></span><span class="why">HOLD 1</span></div>
+    <div class="l pair up"><span class="lab">receiving no aid</span><span class="val"><span class="from">off →</span> <span class="to">on</span></span><span class="why">NOAID 1</span></div>
+    <div class="l pair up"><span class="lab">won't cross water</span><span class="val"><span class="from">off →</span> <span class="to">on</span></span><span class="why">NOCROSS 1</span></div>
+    <div class="l pair up"><span class="lab">taxing</span><span class="val"><span class="from">off →</span> <span class="to">on</span></span><span class="why">AUTOTAX 1</span></div>
+    <div class="l pair up"><span class="lab">consuming</span><span class="val"><span class="from">silver first →</span> <span class="to">faction's food</span></span><span class="why">CONSUME FACTION</span></div>
+    <div class="l pair up"><span class="lab">battle spoils</span><span class="val"><span class="from">not shown →</span> <span class="to">walking</span></span><span class="why">SPOILS WALK</span></div>
+    <div class="l aside"><span class="lab">avoiding</span><span class="val">off</span></div>
+    <div class="l"><span class="lab">behind</span><span class="val">on</span></div>
+    <div class="l aside"><span class="lab">revealing faction</span><span class="val">off</span></div>
+    <div class="l aside"><span class="lab">sharing</span><span class="val">off</span></div>
+  </div>
+</div>
+<p class="cost"><b>Note the last line but four:</b> <code>GUARD 0</code> reads
+<span class="from">on →</span> <span style="color:var(--up)">off</span> here. Today it reads
+<code>on</code> unchanged, because the core writes <code>guarding</code> and the report printed
+<code>on guard</code>. That repair is the other half of this bead and is not in question.
+The W1 sentence ah-rgkk.5.2 puts under every one of these popups — "AUTOTAX, NOAID, CONSUME, REVEAL,
+SPOILS, HOLD and NOCROSS are not worked out here" — is deleted by this bead.</p>
+
+<h2>Question 1 — <code>REVEAL UNIT</code></h2>
+<p class="note">
+  <code>rules/reveal</code> gives three states: <code>REVEAL UNIT</code> shows the unit,
+  <code>REVEAL FACTION</code> shows it and its faction, bare <code>REVEAL</code> cancels both. But
+  every committed report only ever prints <code>revealing faction</code>; no report in this
+  repository shows a word for a unit revealing only itself, and ah-rgkk.5.2 deliberately left it out
+  ("a twelfth setting… nothing for a line to say"). So there is no report word to copy. Orders shown:
+  <code>REVEAL UNIT</code> on a unit whose report printed nothing about revealing.
+</p>
+
+<h3>Variant A — <code>revealing</code> becomes a three-state setting, like <code>consuming</code></h3>
+<div class="row">
+  <div class="pop">
+    <h4>Flags</h4>
+    <div class="l pair up"><span class="lab hit">revealing</span><span class="val"><span class="from">off →</span> <span class="to">unit</span></span><span class="why">REVEAL UNIT</span></div>
+    <div class="l aside"><span class="lab">avoiding</span><span class="val">off</span></div>
+    <div class="l"><span class="lab">behind</span><span class="val">on</span></div>
+    <div class="l aside"><span class="lab">…</span><span class="val">…</span></div>
+    <div class="l"><span class="lab">consuming</span><span class="val">silver first</span></div>
+    <div class="l aside"><span class="lab">battle spoils</span><span class="val">not shown</span></div>
+  </div>
+  <div class="pop">
+    <h4>Flags — after <code>REVEAL FACTION</code> instead</h4>
+    <div class="l pair up"><span class="lab hit">revealing</span><span class="val"><span class="from">off →</span> <span class="to">faction</span></span><span class="why">REVEAL FACTION</span></div>
+    <div class="l aside"><span class="lab">avoiding</span><span class="val">off</span></div>
+    <div class="l"><span class="lab">behind</span><span class="val">on</span></div>
+  </div>
+</div>
+<p class="cost"><b>Cost:</b> the label ah-rgkk.5.2 agreed, <code>revealing faction</code>, becomes
+<code>revealing</code>, and its values become <code>faction</code> / <code>unit</code> /
+<code>off</code> — the same shape as <code>consuming</code> and <code>battle spoils</code>. The
+preview writes the word <code>revealing unit</code>, which no report has been seen to print; the
+Flags column's <b>R</b> covers both. Still eleven lines.</p>
+
+<h3>Variant B — the setting is untouched; <code>revealing unit</code> arrives as a passenger line</h3>
+<div class="row">
+  <div class="pop">
+    <h4>Flags</h4>
+    <div class="l aside"><span class="lab">avoiding</span><span class="val">off</span></div>
+    <div class="l"><span class="lab">behind</span><span class="val">on</span></div>
+    <div class="l aside"><span class="lab">revealing faction</span><span class="val">off</span></div>
+    <div class="l aside"><span class="lab">…</span><span class="val">…</span></div>
+    <div class="l aside"><span class="lab">battle spoils</span><span class="val">not shown</span></div>
+    <div class="l"><span class="lab hit">revealing unit</span><span class="val">on</span></div>
+  </div>
+</div>
+<p class="cost"><b>Cost:</b> nothing agreed changes — it uses ah-rgkk.5.2's own "a flag no setting
+accounts for gets a line at the bottom saying it is on" rule. But the popup then says
+<code>revealing faction off</code> and <code>revealing unit on</code> as two independent switches,
+which <code>rules/reveal</code> says they are not, and it becomes a twelfth line against a
+twelve-line cap.</p>
+
+<h3>Variant C — <code>REVEAL UNIT</code> stays unmodelled</h3>
+<div class="row">
+  <div class="pop">
+    <h4>Flags</h4>
+    <div class="l aside"><span class="lab">avoiding</span><span class="val">off</span></div>
+    <div class="l"><span class="lab">behind</span><span class="val">on</span></div>
+    <div class="l aside"><span class="lab hit">revealing faction</span><span class="val">off</span></div>
+    <div class="l aside"><span class="lab">…</span><span class="val">…</span></div>
+    <div class="l aside"><span class="lab">battle spoils</span><span class="val">not shown</span></div>
+    <div class="notes">REVEAL UNIT is not worked out here.</div>
+  </div>
+</div>
+<p class="cost"><b>Cost:</b> nothing is invented and ah-rgkk.5.2's surface is untouched, but the
+defect this bead exists to remove survives for one order — and the W1 sentence cannot be deleted
+outright, it has to be replaced by a smaller one naming <code>REVEAL UNIT</code>.</p>
+
+<h2>Question 2 — what <code>SPOILS ALL</code> shows</h2>
+<p class="note">
+  <code>rules/spoils</code>: "SPOILS ALL will allow a unit to collect any spoils which are dropped
+  regardless of weight or capacity", and bare <code>SPOILS</code> "is equivalent to 'SPOILS ALL'".
+  No report fixture prints a flag for it, so <code>SPOILS ALL</code> in the preview means
+  <b>clearing</b> whatever spoils flag the report had. ah-rgkk.5.2 named the no-flag state
+  <code>not shown</code> — deliberately an admission, not a claimed default. That reads oddly when
+  the player has just ordered it. Orders: <code>SPOILS ALL</code> on a unit whose report printed
+  <code>riding battle spoils</code>.
+</p>
+<div class="row">
+  <div class="pop">
+    <h4>Variant A — the pair plus the order</h4>
+    <div class="l pair down"><span class="lab">battle spoils</span><span class="val"><span class="from">riding →</span> <span class="to">not shown</span></span><span class="why">SPOILS ALL</span></div>
+  </div>
+  <div class="pop">
+    <h4>Variant B — a real <code>all</code> state</h4>
+    <div class="l pair up"><span class="lab">battle spoils</span><span class="val"><span class="from">riding →</span> <span class="to">all</span></span><span class="why">SPOILS ALL</span></div>
+    <div class="notes">…and a unit whose report printed no spoils flag would then read
+      <span style="color:#c8d0da">battle spoils &nbsp; all</span> too — claiming a default the rules
+      never state.</div>
+  </div>
+</div>
+<p class="cost"><b>A:</b> nothing agreed changes; the clause <code>SPOILS ALL</code> carries the
+truth, and <code>not shown</code> stays honest for a unit nobody has ordered.
+<b>B:</b> reads correctly for the player who just typed it, at the price of asserting
+<code>all</code> for every unit whose report is silent — which ah-rgkk.5.2 explicitly refused to do
+for this very setting.</p>
+
+<h2>Question 3 — the silver forecast</h2>
+<p class="note">
+  Not a drawing question. <code>silver.rs</code>'s <code>taxes()</code> and
+  <code>is_consuming()</code> already read the <b>previewed</b> flags, not the report's
+  (<code>semantics.rs:1550</code>, <code>4726</code>). So the moment <code>AUTOTAX</code> is wired,
+  writing <code>AUTOTAX 1</code> will also credit the unit a month of tax income, enter it into the
+  region's tax contention against every other taxer, stop it counting as idle
+  (<code>unit-does-nothing</code>), and raise the "taxing a pillaged hex" and "taxing a guarded hex"
+  findings. <code>CONSUME UNIT</code>/<code>FACTION</code> will start paying maintenance in food
+  rather than silver. That is what happens for free; the alternative is extra code to hold the money
+  still while the flag moves.
+</p>
+</body>
+</html>
