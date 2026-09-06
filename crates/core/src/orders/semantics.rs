@@ -19577,6 +19577,130 @@ BUILD
             );
         }
 
+        /// `ah-rgkk.3.1`, increment 2. What the market settled one of these at, taken from the
+        /// market line itself rather than priced a second time.
+        #[test]
+        fn a_purchase_records_what_the_market_charged_for_one() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 17, "horse", "HORS")],
+                ..region(vec![with_silver(unit("2390"), 200)])
+            };
+            with_ledger(hex, "unit 2390\nBUY 3 horse\n", |ledger| {
+                let bought = ledger
+                    .movements
+                    .iter()
+                    .find(|m| m.tag == "HORS")
+                    .expect("the purchase moves goods");
+                assert_eq!(bought.cause, ItemChangeCause::Bought);
+                assert_eq!(bought.unit_price, Some(17), "the market line's own price");
+                assert_eq!(bought.line, Some(2));
+            });
+        }
+
+        /// `ah-rgkk.3.1`, increment 2. A shared material is charged to the supplier
+        /// (`docs/ui/ah-728m.2.2-attribution.html`); `other` is what says whose work took it.
+        #[test]
+        fn a_shared_material_names_the_unit_whose_build_consumed_it() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.units[0]
+                .items
+                .retain(|item| !item.tag.eq_ignore_ascii_case("WOOD"));
+            hex_region
+                .units
+                .push(sharing(with_item(unit("901"), 120, "wood", "WOOD")));
+            with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
+                let debit = ledger
+                    .movements
+                    .iter()
+                    .find(|m| m.unit_id == "901" && m.tag == "WOOD")
+                    .expect("the sharing unit supplies the material");
+                assert_eq!(debit.cause, ItemChangeCause::BuildSpent);
+                assert_eq!(
+                    debit.other,
+                    Some(ItemChangeParty {
+                        unit_id: "900".to_string(),
+                        name: Some("Unit 900".to_string()),
+                    }),
+                    "the negative lands on the supplier, and `other` names the builder"
+                );
+            });
+        }
+
+        /// `ah-rgkk.3.1`. `BUY ALL` settles after the phase walk and carries the same
+        /// attribution as a bounded buy.
+        #[test]
+        fn a_buy_all_records_its_cause_and_the_price_it_settled_at() {
+            let hex_region = ReportRegion {
+                for_sale: vec![line(30, 18, "grain", "GRAI")],
+                ..region(vec![with_silver(unit("2390"), 356)])
+            };
+            with_ledger(hex_region, "unit 2390\nBUY ALL grain\n", |ledger| {
+                let movement = ledger
+                    .movements
+                    .iter()
+                    .find(|m| m.unit_id == "2390" && m.tag == "GRAI")
+                    .expect("the buy-all moves goods");
+                assert_eq!(movement.cause, ItemChangeCause::Bought);
+                assert_eq!(movement.unit_price, Some(18));
+                assert_eq!(movement.line, Some(2));
+                assert_eq!(movement.phase, StatePhase::Market);
+            });
+        }
+
+        /// `ah-rgkk.3.1`. A cast's two sides are told apart by their causes, and only the arrival
+        /// carries a [`Created`].
+        #[test]
+        fn an_item_movement_carries_a_creation_exactly_when_its_cause_is_a_cast_creation() {
+            let hex_region = region(vec![with_skill(
+                with_item(unit("5"), 20, "sword", "SWOR"),
+                "ESWO",
+                3,
+            )]);
+            with_ledger(hex_region, "unit 5\nCAST Enchant_Swords\n", |ledger| {
+                assert!(
+                    ledger
+                        .movements
+                        .iter()
+                        .any(|movement| movement.cause == ItemChangeCause::CastCreated
+                            && movement.tag == "MSWO"),
+                    "the enchantment's arrival is a cast creation: {:?}",
+                    ledger.movements
+                );
+                for movement in &ledger.movements {
+                    assert_eq!(
+                        movement.created.is_some(),
+                        movement.cause == ItemChangeCause::CastCreated,
+                        "only a cast creation carries a `Created`: {movement:?}"
+                    );
+                    assert_eq!(movement.phase, StatePhase::Cast);
+                    assert_eq!(movement.line, Some(2));
+                }
+            });
+        }
+
+        /// `ah-rgkk.3.1`. `rules/economy_ships`: *"If the builder MOVEs ... while they have an
+        /// unfinished ship in their possession, the ship will be discarded and lost."* The loss is
+        /// the move's consequence rather than an order of its own, so no line is responsible.
+        #[test]
+        fn an_abandoned_unfinished_ship_records_why_it_was_left() {
+            let mut hex_region = region(vec![with_men(unit("900"), 10)]);
+            hex_region.units[0].items.push(ItemAmount {
+                amount: 1,
+                name: "unfinished Cog".to_string(),
+                tag: "COG".to_string(),
+            });
+            with_ledger(hex_region, "unit 900\nMOVE N\n", |ledger| {
+                let left = ledger
+                    .movements
+                    .iter()
+                    .find(|m| m.tag == "COG")
+                    .expect("the hull is left behind");
+                assert_eq!(left.cause, ItemChangeCause::Abandoned);
+                assert_eq!(left.line, None, "no one order abandons it");
+                assert_eq!(left.phase, StatePhase::Movement);
+            });
+        }
+
         #[test]
         fn a_build_credits_the_unit_nothing() {
             with_ledger(report_with_a_builder(), "unit 900\nBUILD\n", |ledger| {
