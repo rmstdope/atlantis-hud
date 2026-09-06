@@ -1439,10 +1439,10 @@ function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       {
         label: "structure",
         value: facts.structureLabel ?? IN_THE_OPEN,
-        // `rules/enter` leaves the object the unit is in first, so a move between two structures
-        // is one ENTER and needs no LEAVE; `rules/leave` is the only other order the preview
-        // boards on (`effects.rs:1959-1964`). No line number is recorded, so none is named.
-        why: unit.structureId === null ? "LEAVE" : `ENTER ${unit.structureId}`
+        // The core says which order put the unit here - an ENTER, a LEAVE or a movement step -
+        // rather than this file guessing it back from the result (`ah-ehgy`). No line number is
+        // recorded, so none is named, and no clause is drawn when no order is named.
+        why: change.cause ?? undefined
       }
     ],
     notes: undescribedNotes([

@@ -10,6 +10,8 @@
 //! the preview walker's working state - so the seam is the *input*: each supplies the block's
 //! boardings in the order they were written, and the rule lives here alone.
 
+use crate::movement::orders::MoveStep;
+
 /// A unit's ENTER and LEAVE orders, in the order they were written.
 ///
 /// Only orders the game actually has belong here: an ENTER whose argument is not a single number,
@@ -89,6 +91,65 @@ pub fn could_captain<'a>(
         || boardings
             .into_iter()
             .any(|boarding| boarding == Boarding::Enter(structure_id))
+}
+
+/// Where a movement order leaves a unit on each side of the hex it started the month in.
+///
+/// A MOVE's boardings are composed *on top of* the ENTER/LEAVE answer rather than mixed into it:
+/// `rules/sequenceofevents` runs "LEAVE orders", then "ENTER orders", and only much later
+/// "ADVANCE, MOVE and SAIL orders are processed phase by phase".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoveStanding {
+    /// The structure it is standing in while still in its starting hex.
+    pub origin: Option<String>,
+    /// The step that last set `origin`, when a step of this order set it; `None` when the order
+    /// left the starting hex's answer alone.
+    pub origin_cause: Option<MoveStep>,
+    /// The structure it is standing in when the order ends, in whatever hex that is.
+    pub destination: Option<String>,
+    /// The step that last set `destination`. `None` means nothing entered or left anything after
+    /// the unit crossed out of its starting hex - it is simply outdoors where it arrived.
+    pub destination_cause: Option<MoveStep>,
+}
+
+/// Folds a movement order's steps over the answer the ENTER and LEAVE orders already gave.
+///
+/// `Go` and `In` both cross out of the region the unit was standing in - a hex boundary for the
+/// first, and for the second "an inner passage in the structure that the unit is currently in"
+/// (`rules/move`, 4) - so both fix the starting hex's answer and then clear it.
+#[must_use]
+pub fn standing_through_move(before: Option<&str>, steps: &[MoveStep]) -> MoveStanding {
+    let mut current = before.map(str::to_string);
+    let mut cause: Option<MoveStep> = None;
+    let mut origin: Option<(Option<String>, Option<MoveStep>)> = None;
+
+    for step in steps {
+        match step {
+            MoveStep::Out => {
+                current = None;
+                cause = Some(MoveStep::Out);
+            }
+            MoveStep::Enter(id) => {
+                current = Some(id.clone());
+                cause = Some(step.clone());
+            }
+            MoveStep::Go(_) | MoveStep::In => {
+                if origin.is_none() {
+                    origin = Some((current.clone(), cause.clone()));
+                }
+                current = None;
+                cause = None;
+            }
+        }
+    }
+
+    let (origin, origin_cause) = origin.unwrap_or_else(|| (current.clone(), cause.clone()));
+    MoveStanding {
+        origin,
+        origin_cause,
+        destination: current,
+        destination_cause: cause,
+    }
 }
 
 #[cfg(test)]
@@ -175,5 +236,79 @@ mod tests {
             "4",
             boardings(&[Boarding::Enter("5")])
         ));
+    }
+}
+
+#[cfg(test)]
+mod move_tests {
+    use super::*;
+    use crate::movement::graph::Direction;
+
+    #[test]
+    fn a_move_out_leaves_the_structure_in_the_starting_hex() {
+        let standing = standing_through_move(Some("12"), &[MoveStep::Out]);
+
+        assert_eq!(standing.origin, None);
+        assert_eq!(standing.origin_cause, Some(MoveStep::Out));
+        assert_eq!(standing.destination, None);
+        assert_eq!(standing.destination_cause, Some(MoveStep::Out));
+    }
+
+    #[test]
+    fn a_move_into_a_number_enters_it_before_the_unit_walks() {
+        let standing = standing_through_move(
+            None,
+            &[
+                MoveStep::Enter("12".to_string()),
+                MoveStep::Go(Direction::North),
+            ],
+        );
+
+        assert_eq!(standing.origin.as_deref(), Some("12"));
+        assert_eq!(
+            standing.origin_cause,
+            Some(MoveStep::Enter("12".to_string()))
+        );
+        assert_eq!(standing.destination, None);
+        assert_eq!(standing.destination_cause, None);
+    }
+
+    #[test]
+    fn a_structure_entered_after_a_step_belongs_to_the_hex_it_arrives_in() {
+        let standing = standing_through_move(
+            None,
+            &[
+                MoveStep::Go(Direction::North),
+                MoveStep::Enter("12".to_string()),
+            ],
+        );
+
+        assert_eq!(standing.origin, None);
+        assert_eq!(standing.origin_cause, None);
+        assert_eq!(standing.destination.as_deref(), Some("12"));
+        assert_eq!(
+            standing.destination_cause,
+            Some(MoveStep::Enter("12".to_string()))
+        );
+    }
+
+    #[test]
+    fn crossing_a_hex_boundary_takes_the_unit_out_of_its_building() {
+        let standing = standing_through_move(Some("12"), &[MoveStep::Go(Direction::North)]);
+
+        assert_eq!(standing.origin.as_deref(), Some("12"));
+        assert_eq!(standing.origin_cause, None);
+        assert_eq!(standing.destination, None);
+        assert_eq!(standing.destination_cause, None);
+    }
+
+    #[test]
+    fn an_inner_passage_counts_as_leaving_the_hex() {
+        let standing = standing_through_move(Some("12"), &[MoveStep::In]);
+
+        assert_eq!(standing.origin.as_deref(), Some("12"));
+        assert_eq!(standing.origin_cause, None);
+        assert_eq!(standing.destination, None);
+        assert_eq!(standing.destination_cause, None);
     }
 }

@@ -11019,8 +11019,8 @@ fn check_sailing(
         let move_touches_fleet = hex.units.iter().any(|ordered| {
             ordered.intents.iter().any(|placed| match &placed.intent {
                 Intent::Move { steps } => steps.iter().any(|step| match step {
-                    MoveStep::In(None) => true,
-                    MoveStep::In(Some(id)) => id == &fleet.structure_id,
+                    MoveStep::In => true,
+                    MoveStep::Enter(id) => id == &fleet.structure_id,
                     _ => false,
                 }),
                 _ => false,
@@ -34367,11 +34367,7 @@ BUILD
 
         let end = sail_destination(
             &regions[0],
-            &[
-                MoveStep::Out,
-                MoveStep::Go(Direction::North),
-                MoveStep::In(None),
-            ],
+            &[MoveStep::Out, MoveStep::Go(Direction::North), MoveStep::In],
             &index,
         );
 

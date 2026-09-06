@@ -869,7 +869,10 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "structure",
-        unit({ structureId: "329", previewChanges: [{ field: "structureId", original: "" }] }),
+        unit({
+          structureId: "329",
+          previewChanges: [{ field: "structureId", original: "", cause: "ENTER 329" }]
+        }),
         facts({ structureLabel: "Wavecrest [329] · Longship" })
       )
     );
@@ -882,7 +885,10 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "structure",
-        unit({ structureId: "12", previewChanges: [{ field: "structureId", original: "329" }] }),
+        unit({
+          structureId: "12",
+          previewChanges: [{ field: "structureId", original: "329", cause: "ENTER 12" }]
+        }),
         facts({
           structureLabel: "Odds and Ends [12] · Fort",
           reportedStructureLabel: "Wavecrest [329] · Longship"
@@ -900,7 +906,10 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "structure",
-        unit({ structureId: "12", previewChanges: [{ field: "structureId", original: "" }] }),
+        unit({
+          structureId: "12",
+          previewChanges: [{ field: "structureId", original: "", cause: "ENTER 12" }]
+        }),
         facts({ structureLabel: "Odds and Ends [12] · Fort", reportedStructureLabel: null })
       )
     );
@@ -912,7 +921,10 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "structure",
-        unit({ structureId: null, previewChanges: [{ field: "structureId", original: "12" }] }),
+        unit({
+          structureId: null,
+          previewChanges: [{ field: "structureId", original: "12", cause: "LEAVE" }]
+        }),
         facts({ structureLabel: null, reportedStructureLabel: "Odds and Ends [12] · Fort" })
       )
     );
@@ -922,6 +934,34 @@ describe("the column popups", () => {
     ]);
     expect(popup.notes).not.toContain("In no structure.");
     expect(popup.notes.some((note) => note.startsWith("Was: "))).toBe(false);
+  });
+
+  it("the structure popup names the order the core says did it", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({
+          structureId: null,
+          previewChanges: [{ field: "structureId", original: "12", cause: "MOVE OUT" }]
+        }),
+        facts({ structureLabel: null, reportedStructureLabel: "Odds and Ends [12] · Fort" })
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "was", value: "Odds and Ends [12] · Fort" },
+      { label: "structure", value: "in the open", why: "MOVE OUT" }
+    ]);
+  });
+
+  it("the structure popup leaves the clause off when no order is named", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ structureId: null, previewChanges: [{ field: "structureId", original: "12" }] }),
+        facts({ structureLabel: null, reportedStructureLabel: "Odds and Ends [12] · Fort" })
+      )
+    );
+    expect(popup.lines[1]?.why).toBeUndefined();
   });
 
   it("the structure popup says when the report never described a structure it names", () => {
@@ -949,7 +989,10 @@ describe("the column popups", () => {
     const moved = columnPopup(
       popupForCell(
         "structure",
-        unit({ structureId: null, previewChanges: [{ field: "structureId", original: "329" }] }),
+        unit({
+          structureId: null,
+          previewChanges: [{ field: "structureId", original: "329", cause: "LEAVE" }]
+        }),
         facts({ structureLabel: null, reportedStructureLabel: "Wavecrest [329] · Longship" })
       )
     );

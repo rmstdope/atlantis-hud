@@ -225,7 +225,7 @@ describe("the structure column", () => {
           {
             unit: unit({ unitId: "901", name: "Passengers", structureId: "329" }),
             status: "present",
-            changes: [{ field: "structureId", original: "" }],
+            changes: [{ field: "structureId", original: "", cause: "ENTER 329" }],
             arrivingFrom: null,
             departingTo: null,
             aboard: null,

@@ -96,16 +96,12 @@ fn a_repeating_move_is_still_a_move() {
 fn entering_and_leaving_a_structure_are_read_but_not_confused_with_a_hex() {
     assert_eq!(
         parse_move("MOVE OUT N IN").expect("a MOVE order"),
-        vec![
-            MoveStep::Out,
-            MoveStep::Go(Direction::North),
-            MoveStep::In(None)
-        ]
+        vec![MoveStep::Out, MoveStep::Go(Direction::North), MoveStep::In]
     );
-    // A numbered structure is entered by id.
+    // A structure number is a step of its own, beside the inner passage `IN` names.
     assert_eq!(
         parse_move("MOVE IN 4").expect("a MOVE order"),
-        vec![MoveStep::In(Some("4".to_string()))]
+        vec![MoveStep::In, MoveStep::Enter("4".to_string())]
     );
 }
 
@@ -182,7 +178,7 @@ fn writes_a_route_as_an_order_the_game_would_accept() {
 fn what_is_written_reads_back_as_what_it_was() {
     let steps = vec![
         MoveStep::Go(Direction::North),
-        MoveStep::In(Some("4".to_string())),
+        MoveStep::Enter("4".to_string()),
         MoveStep::Out,
         MoveStep::Go(Direction::Southwest),
     ];
@@ -237,4 +233,30 @@ fn entering_a_structure_does_not_move_the_unit_anywhere() {
 
     assert!(followed.hexes.is_empty());
     assert!(!followed.left_the_map);
+}
+
+/// "2) A structure number, which will cause the unit to enter the structure with that number."
+/// A bare number is a direction in its own right, not an argument to `IN`.
+#[test]
+fn a_bare_structure_number_is_a_boarding_step() {
+    assert_eq!(
+        parse_move("MOVE 12"),
+        Some(vec![MoveStep::Enter("12".to_string())])
+    );
+    assert_eq!(render_move(&[MoveStep::Enter("12".to_string())]), "MOVE 12");
+}
+
+/// `rules/move`'s own worked example: "MOVE N NE 1 IN" - north, north-east, into structure 1, then
+/// through its inner passage.
+#[test]
+fn the_rules_example_order_reads_every_step() {
+    let steps = vec![
+        MoveStep::Go(Direction::North),
+        MoveStep::Go(Direction::Northeast),
+        MoveStep::Enter("1".to_string()),
+        MoveStep::In,
+    ];
+
+    assert_eq!(parse_move("MOVE N NE 1 IN"), Some(steps.clone()));
+    assert_eq!(render_move(&steps), "MOVE N NE 1 IN");
 }

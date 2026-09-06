@@ -51,6 +51,10 @@ pub struct FieldChange {
     /// `men`, `structureId`, `movement`.
     pub field: String,
     pub original: String,
+    /// The order this change is attributed to, rendered as the game spells it - `ENTER 12`,
+    /// `LEAVE`, `MOVE OUT`, `MOVE N NE`. `None` when no single order accounts for the change,
+    /// which is every field but `structureId` today.
+    pub cause: Option<String>,
 }
 
 /// One unit as the orders leave it.
@@ -730,6 +734,15 @@ pub fn preview_orders_on_map(
         // that is arriving and departing at once, since items are not a property of where the
         // unit stands (`ah-agbm`).
         let uncounted = entry.uncounted.clone();
+        // Where the movement order leaves this unit, and what the report said it was standing in -
+        // both needed by the arriving row, which is built after `entry.unit` has been moved away
+        // (`ah-ehgy`).
+        let move_destination = entry.move_destination.clone();
+        let reported_structure = entry
+            .original
+            .as_ref()
+            .and_then(|original| original.structure_id.clone());
+        let has_original = entry.original.is_some();
         let taken_unshown = entry.taken_unshown.clone();
         let skill_merges = entry.skill_merges.clone();
         let men_of_unknown_skill = entry.men_of_unknown_skill.clone();
@@ -810,8 +823,27 @@ pub fn preview_orders_on_map(
             let sails_along = entry.unit.structure_id.as_deref().is_some_and(|id| {
                 sailing.contains_key(&(entry.unit.region_id.clone(), id.to_string()))
             });
+            let mut arriving_changes = changes.clone();
             if !sails_along {
-                arrived.structure_id = None;
+                // A walker cannot take a building with it, but it may board something where it
+                // arrives: `MOVE N 12` ends inside 12, in the destination hex.
+                arrived.structure_id = move_destination
+                    .as_ref()
+                    .and_then(|destination| destination.structure.clone());
+                // A formed unit has no `original` and therefore no changes at all, so this row
+                // never manufactures the first one it has ever had.
+                if has_original {
+                    arriving_changes.retain(|change| change.field != "structureId");
+                    if arrived.structure_id != reported_structure {
+                        arriving_changes.push(FieldChange {
+                            field: "structureId".to_string(),
+                            original: reported_structure.clone().unwrap_or_default(),
+                            cause: move_destination
+                                .as_ref()
+                                .map(|destination| destination.cause.clone()),
+                        });
+                    }
+                }
             }
             regions
                 .entry(destination.clone())
@@ -819,7 +851,7 @@ pub fn preview_orders_on_map(
                 .push(UnitPreview {
                     unit: arrived,
                     status: UnitPreviewStatus::Arriving,
-                    changes: changes.clone(),
+                    changes: arriving_changes,
                     arriving_from: Some(entry.unit.region_id.clone()),
                     departing_to: None,
                     // An arrival says only where the unit came from.
@@ -927,6 +959,12 @@ fn settle(
 ) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
     let mut working = Working::over_own_units(report, ruleset.clone());
     super::walk::walk(orders_document, |event| working.visit(event));
+    // `rules/move` gives a movement order two more directions that change the structure a unit is
+    // standing in - "2) A structure number" and "3) OUT" - and they run in a later phase than the
+    // ENTER and LEAVE orders `visit` already settled, so they are composed on top of that answer
+    // here. After the walk, because a `FORM` reads its parent's structure mid-walk and
+    // `rules/sequenceofevents` creates every formed unit long before any movement (`ah-ehgy`).
+    apply_movement_boardings(&mut working.units);
     // `rules/sequenceofevents` settles GIVE and TAKE in one Give phase, before the market - and
     // processes units in report order, which is why nothing moved while the document was being
     // read (`ah-3mwm`).
@@ -955,6 +993,50 @@ fn settle(
     }
 
     (working.units, dissolved)
+}
+
+/// Folds each unit's movement order over the answer its ENTER and LEAVE orders gave, recording
+/// where it stands on each side of the hex it started the month in and which order put it there.
+fn apply_movement_boardings(units: &mut [WorkingUnit]) {
+    use crate::movement::orders::{render_order, MoveStep};
+
+    for entry in units.iter_mut() {
+        let (Some(steps), Some(command)) = (entry.move_steps.clone(), entry.move_command.clone())
+        else {
+            continue;
+        };
+        // `rules/sail` is "SAIL [dir] ..." - it sails the fleet in the directions given, and the
+        // structure a sailing unit stands in is the hull carrying it. `rules/move`'s OUT and
+        // structure-number directions are the walker's, so a SAIL never unboards anyone here;
+        // `LEAVE` remains the order that takes a unit off a hull before it goes.
+        if command == "SAIL" {
+            continue;
+        }
+        let standing =
+            super::standing::standing_through_move(entry.unit.structure_id.as_deref(), &steps);
+
+        entry.unit.structure_id = standing.origin;
+        entry.move_origin_cause = standing
+            .origin_cause
+            .map(|step| render_order(&command, std::slice::from_ref(&step)));
+        let destination_cause = match standing.destination_cause {
+            Some(step) => render_order(&command, std::slice::from_ref(&step)),
+            // Nothing entered or left anything after the unit crossed out of its starting hex: it
+            // walked, and buildings stay where they are. The directions alone are what did it.
+            None => {
+                let walked: Vec<MoveStep> = steps
+                    .iter()
+                    .filter(|step| matches!(step, MoveStep::Go(_) | MoveStep::In))
+                    .cloned()
+                    .collect();
+                render_order(&command, &walked)
+            }
+        };
+        entry.move_destination = Some(MoveDestination {
+            structure: standing.destination,
+            cause: destination_cause,
+        });
+    }
 }
 
 /// One unit this month's `FORM` creates, as the whole month's orders leave it.
@@ -1092,12 +1174,30 @@ pub(crate) fn formed_unit(
     }
 }
 
+/// The far side of a movement order, as the arriving row needs it.
+#[derive(Debug, Clone)]
+struct MoveDestination {
+    /// The structure the unit stands in when the order ends. `None` is outdoors.
+    structure: Option<String>,
+    /// The order to name for it, already rendered.
+    cause: String,
+}
+
 /// One unit as the walker holds it: the state being changed, and the report's word for diffing.
 struct WorkingUnit {
     unit: ReportUnit,
     original: Option<ReportUnit>,
     formed: bool,
     move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
+    /// The movement command as written, upper-cased: `MOVE`, `ADVANCE` or `SAIL`. Kept beside
+    /// `move_steps` so a rendered order clause names the word the player actually typed.
+    move_command: Option<String>,
+    /// `MOVE OUT`/`MOVE 12`/... when a step of the movement order set this unit's structure in the
+    /// hex it started in. Read by `changes()`.
+    move_origin_cause: Option<String>,
+    /// Where the movement order leaves this unit once it is out of its starting hex, with the
+    /// order that put it there. Read when the arriving row is built.
+    move_destination: Option<MoveDestination>,
     /// Where this unit stood before any of its boarding orders ran: the report's answer, or for a
     /// formed unit the structure its parent stood in when the FORM was read.
     reported: Option<String>,
@@ -1203,6 +1303,30 @@ struct Transfer<'a> {
 }
 
 impl WorkingUnit {
+    /// Which order put this unit where it is standing, for the `structureId` change.
+    ///
+    /// A movement step wins where there was one, because it runs last. Failing that the boarding
+    /// orders say it: `rules/enter` - "If issued from inside another object, the unit will first
+    /// leave the object it is currently in" - is why the last ENTER is the whole answer and needs
+    /// no LEAVE beside it.
+    fn structure_change_cause(&self) -> Option<String> {
+        if let Some(cause) = &self.move_origin_cause {
+            return Some(cause.clone());
+        }
+        if let Some(BoardingOrder::Enter(id)) = self
+            .boardings
+            .iter()
+            .rev()
+            .find(|boarding| matches!(boarding, BoardingOrder::Enter(_)))
+        {
+            return Some(format!("ENTER {id}"));
+        }
+        self.boardings
+            .iter()
+            .any(|boarding| matches!(boarding, BoardingOrder::Leave))
+            .then(|| "LEAVE".to_string())
+    }
+
     /// The fields the orders changed, each with what the report said.
     ///
     /// Formatted for a tooltip rather than typed, because "was: ..." is all the interface does
@@ -1217,6 +1341,7 @@ impl WorkingUnit {
                 changes.push(FieldChange {
                     field: field.to_string(),
                     original,
+                    cause: None,
                 });
             }
         };
@@ -1261,11 +1386,13 @@ impl WorkingUnit {
             self.unit.men != original.men,
             original.men.to_string(),
         );
-        change(
-            "structureId",
-            self.unit.structure_id != original.structure_id,
-            original.structure_id.clone().unwrap_or_default(),
-        );
+        if self.unit.structure_id != original.structure_id {
+            changes.push(FieldChange {
+                field: "structureId".to_string(),
+                original: original.structure_id.clone().unwrap_or_default(),
+                cause: self.structure_change_cause(),
+            });
+        }
         let original_status = original.movement.map(|movement| movement.status);
         let current_status = self.unit.movement.map(|movement| movement.status);
         if original_status != current_status {
@@ -1273,6 +1400,7 @@ impl WorkingUnit {
                 changes.push(FieldChange {
                     field: "movement".to_string(),
                     original: movement_status_label(status).to_string(),
+                    cause: None,
                 });
             }
         }
@@ -1521,6 +1649,9 @@ impl Working {
                 original: Some(unit.clone()),
                 formed: false,
                 move_steps: None,
+                move_command: None,
+                move_origin_cause: None,
+                move_destination: None,
                 reported: unit.structure_id.clone(),
                 reported_flags: unit.flags.clone(),
                 boardings: Vec::new(),
@@ -1882,6 +2013,9 @@ impl Working {
             original: None,
             formed: true,
             move_steps: None,
+            move_command: None,
+            move_origin_cause: None,
+            move_destination: None,
             reported,
             reported_flags,
             boardings: Vec::new(),
@@ -1924,9 +2058,16 @@ impl Working {
 
         if crate::movement::orders::is_movement_command(&command.text) {
             if let Some(steps) = super::forms::read_move_line(command, arguments) {
-                // The last movement order wins, because a later order replaces an earlier one
-                // when the game executes them.
+                // The last movement order wins - the command word with it, so a rendered clause
+                // names the word the player actually typed.
+                //
+                // `rules/move` says otherwise: "Multiple MOVE orders given by one unit will chain
+                // together", which `semantics.rs` already models. Keeping only the last one is a
+                // known divergence this module has always carried, and `ah-ehgy` left it alone on
+                // purpose: chaining here means deciding what a chained route costs and where it
+                // ends, which is a bead of its own.
                 self.units[active].move_steps = Some(steps);
+                self.units[active].move_command = Some(command.text.to_uppercase());
             }
         } else if command.is("name") {
             self.rename(active, arguments);
@@ -6568,6 +6709,128 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Like `report()`, but with a fort in the hex and the walker standing inside it - the case
+    /// every structure change needs, and one neither `report()` nor `fleet_report` can serve.
+    fn report_with_a_fort() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "+ Odds and Ends [12] : Fort.",
+            "  * Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    #[test]
+    fn a_move_out_takes_the_unit_out_of_its_structure() {
+        let response = preview_over(&report_with_a_fort(), "unit 900\nMOVE OUT\n");
+
+        let unit = row(&response, "1:1,1", "900").expect("the unit that moved out");
+        assert_eq!(unit.unit.structure_id, None);
+        let change = change(unit, "structureId");
+        assert_eq!(change.original, "12");
+        assert_eq!(change.cause.as_deref(), Some("MOVE OUT"));
+    }
+
+    #[test]
+    fn a_move_to_a_structure_number_boards_it() {
+        let response = preview_over(&report_with_a_fort(), "unit 901\nMOVE 12\n");
+
+        let unit = row(&response, "1:1,1", "901").expect("the unit that moved in");
+        assert_eq!(unit.unit.structure_id.as_deref(), Some("12"));
+        let change = change(unit, "structureId");
+        assert_eq!(change.original, "");
+        assert_eq!(change.cause.as_deref(), Some("MOVE 12"));
+    }
+
+    #[test]
+    fn an_enter_names_itself_as_the_cause() {
+        let response = preview_over(&report_with_a_fort(), "unit 901\nENTER 12\n");
+
+        let unit = row(&response, "1:1,1", "901").expect("the unit that entered");
+        assert_eq!(
+            change(unit, "structureId").cause.as_deref(),
+            Some("ENTER 12")
+        );
+    }
+
+    #[test]
+    fn a_leave_names_itself_as_the_cause() {
+        let response = preview_over(&report_with_a_fort(), "unit 900\nLEAVE\n");
+
+        let unit = row(&response, "1:1,1", "900").expect("the unit that left");
+        assert_eq!(change(unit, "structureId").cause.as_deref(), Some("LEAVE"));
+    }
+
+    #[test]
+    fn a_walker_arriving_says_which_structure_it_left() {
+        let response = preview_over(&report_with_a_fort(), "unit 900\nMOVE SE\n");
+
+        let arrived = row(&response, "1:2,2", "900").expect("the walker arrives");
+        assert_eq!(arrived.unit.structure_id, None);
+        let change = change(arrived, "structureId");
+        assert_eq!(change.original, "12");
+        assert_eq!(change.cause.as_deref(), Some("MOVE SE"));
+
+        let departing = row(&response, "1:1,1", "900").expect("the walker departs");
+        assert!(
+            departing
+                .changes
+                .iter()
+                .all(|change| change.field != "structureId"),
+            "it is still in the fort until it goes: {:?}",
+            departing.changes
+        );
+    }
+
+    #[test]
+    fn a_sailing_passenger_arrives_with_no_structure_change() {
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\n");
+
+        for unit_id in ["900", "901"] {
+            let arrived =
+                row(&response, "1:2,2", unit_id).unwrap_or_else(|| panic!("{unit_id} arrives"));
+            assert!(
+                arrived
+                    .changes
+                    .iter()
+                    .all(|change| change.field != "structureId"),
+                "a hull carries its passengers and their structure: {:?}",
+                arrived.changes
+            );
+        }
+    }
+
+    #[test]
+    fn a_move_that_ends_in_a_structure_arrives_inside_it() {
+        let response = preview("unit 901\nMOVE SE 5\n");
+
+        let arrived = row(&response, "1:2,2", "901").expect("the walker arrives");
+        assert_eq!(arrived.unit.structure_id.as_deref(), Some("5"));
+        assert_eq!(
+            change(arrived, "structureId").cause.as_deref(),
+            Some("MOVE 5")
+        );
+
+        let departing = row(&response, "1:1,1", "901").expect("the walker departs");
+        assert!(
+            departing
+                .changes
+                .iter()
+                .all(|change| change.field != "structureId"),
+            "it was outdoors where it started: {:?}",
+            departing.changes
+        );
     }
 
     /// Every order this module applies must be one the grammar recognises, so the two cannot
