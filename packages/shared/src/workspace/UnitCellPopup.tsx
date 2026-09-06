@@ -1,4 +1,4 @@
-import type { ColumnPopup, PopupLine } from "../unitCellPopup";
+import type { ColumnPopup, PopupLine, PopupStep } from "../unitCellPopup";
 import type { Point } from "../unitTooltip";
 import { TooltipPortal } from "./TooltipPortal";
 
@@ -64,7 +64,17 @@ export function UnitCellPopup({
 export function PopupLineValue({ line }: { line: PopupLine }) {
   return (
     <span className="tabular-nums text-ink-soft">
-      {line.change ? (
+      {line.steps ? (
+        line.steps.map((step, index) => (
+          <span key={index}>
+            {index > 0 ? <span className="mx-1 text-ink-dim">→</span> : null}
+            <span className={STEP_INK[step.mark]}>
+              {step.value}
+              {step.uncertain ? "?" : null}
+            </span>
+          </span>
+        ))
+      ) : line.change ? (
         <>
           {line.change.from}
           <span className="mx-1 text-ink-dim">→</span>
@@ -79,3 +89,19 @@ export function PopupLineValue({ line }: { line: PopupLine }) {
     </span>
   );
 }
+
+/**
+ * What each figure in a chain is drawn in (`ah-rgkk.2.3`).
+ *
+ * `reported` and `flat` inherit the line's own soft ink; `projected` is the map's selection blue
+ * whichever way it moved, because what sets it apart is that it has not happened yet. The colour
+ * is decoration - the position in the chain already says which figure is which, and `popupAsText`
+ * says it again in words.
+ */
+const STEP_INK: Record<PopupStep["mark"], string> = {
+  reported: "",
+  flat: "",
+  up: "text-ok",
+  down: "text-danger",
+  projected: "text-select"
+};

@@ -1047,14 +1047,19 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
       }),
       previewOf(
         { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] },
-        { changes: [{ field: "skills", original: "LUMB 1 (30)" }] }
+        {
+          changes: [{ field: "skills", original: "LUMB 1 (30)" }],
+          reportedSkills: [{ name: "lumberjack", tag: "LUMB", level: 1, points: 30 }]
+        }
       )
     );
 
     expect(markup).toContain('data-predicted="true"');
     expect(markup).toContain("italic text-brass");
     expect(markup).toContain("LUMB 2 (80)");
-    expect(markup).toContain("was: LUMB 1 (30)");
+    // The chain says what the report had, line by line, so the own branch no longer hangs the
+    // report's whole `was: …` quote off the first line (`ah-rgkk.2.3`).
+    expect(markup).toContain("lumberjack LUMB 1 (30), up to 2 (80).");
   });
 
   it("leaves the cell unmarked when a GIVE moved men but skills did not change", () => {
@@ -2063,5 +2068,71 @@ describe("a row the game dissolves", () => {
     expect(row).toContain("⚠");
     expect(row).toContain("—");
     expect(row).not.toContain("-140");
+  });
+});
+
+describe("the skills cell's hidden sentence names where men came from (ah-rgkk.2.3)", () => {
+  it("a skills cell names the unit its men came from", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [
+            unit({ unitId: "1502", name: "Scouts" }),
+            unit({
+              unitId: "1",
+              name: "Braves",
+              skills: [{ name: "combat", tag: "COMB", level: 1, points: 53 }]
+            })
+          ]
+        })
+      }),
+      {
+        regionId: "1:6,52",
+        units: [
+          {
+            unit: unit({
+              unitId: "1",
+              name: "Braves",
+              skills: [{ name: "combat", tag: "COMB", level: 1, points: 53 }]
+            }),
+            status: "present",
+            changes: [{ field: "skills", original: "COMB 2 (90)" }],
+            arrivingFrom: null,
+            departingTo: null,
+            aboard: null,
+            uncounted: [],
+            takenUnshown: [],
+            produced: [],
+            built: [],
+            created: [],
+            transportSent: [],
+            transportReceived: [],
+            transportTargetIssues: [],
+            dissolvesInto: null,
+            formed: false,
+            dissolving: false,
+            skillMerges: [
+              {
+                cause: "given",
+                from: "1502",
+                men: 2,
+                menBefore: 4,
+                menArriving: [],
+                countInferred: false,
+                arrivingSkills: [],
+                skills: []
+              }
+            ],
+            reportedSkills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }],
+            itemChanges: [],
+            recruitsUnmerged: false,
+            menOfUnknownSkill: [],
+            study: null
+          }
+        ]
+      }
+    );
+
+    expect(markup).toContain("2 men joined from Scouts (1502).");
   });
 });

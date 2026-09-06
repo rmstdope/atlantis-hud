@@ -467,6 +467,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     () => new Map(structures.map((structure) => [structure.structureId, structure])),
     [structures]
   );
+  /** Every row's name by unit number, for a popup naming the unit men came from (`ah-rgkk.2.3`). */
+  const unitNames = useMemo(
+    // `units`, not the filtered rows: a giver the current filter hides is still named.
+    () => new Map(units.map((row) => [row.unitId, row.name])),
+    [units]
+  );
   // Only asked for when the table sorts on it: every other arrangement would read the document
   // once per unit for an answer nothing compares.
   const longOrders = useMemo(() => {
@@ -1523,6 +1529,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   silverWarnings={silverWarnings}
                   countUpkeep={countUpkeep}
                   derivedSkills={derivedSkills}
+                  unitNames={unitNames}
                   onSelectUnit={onSelectUnit}
                   renderFactionName={renderFactionName}
                   onPinFaction={source.kind === "foreign" ? setPin : undefined}
@@ -1548,6 +1555,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
             countUpkeep={countUpkeep}
             derivedSkills={derivedSkills}
             structuresById={structuresById}
+            unitNames={unitNames}
           />
         </div>
       )}
@@ -1945,7 +1953,8 @@ function HoveredPopup({
   silverWarnings,
   countUpkeep,
   derivedSkills,
-  structuresById
+  structuresById,
+  unitNames
 }: {
   hovered: { unit: PreviewedUnit; column: DrawnColumnId; at: Point } | null;
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
@@ -1954,6 +1963,8 @@ function HoveredPopup({
   countUpkeep: boolean;
   derivedSkills: DerivedSkills;
   structuresById: ReadonlyMap<string, StructureInfo>;
+  /** Every row's name by unit number, for a Skills popup naming a giver (`ah-rgkk.2.3`). */
+  unitNames: ReadonlyMap<string, string>;
 }) {
   if (!hovered) {
     return null;
@@ -1974,7 +1985,8 @@ function HoveredPopup({
     silverWarned: warned,
     countUpkeep,
     derivedSkills: derivedSkillsFor(derivedSkills, unit),
-    dissolving
+    dissolving,
+    unitNames
   });
 
   if (spec.kind === "unit") {
@@ -2048,7 +2060,8 @@ function UnitRow({
   fromReport,
   dimDeparting,
   onRemove,
-  derivedSkills
+  derivedSkills,
+  unitNames
 }: {
   unit: PreviewedUnit;
   /** The columns the header is drawing, so a row's cells can never fall out of step with it. */
@@ -2127,6 +2140,8 @@ function UnitRow({
   onRemove?: () => void;
   /** Combat skills recovered from battle rosters, for a foreign unit's Skills cell (`ah-1mpx.6.3`). */
   derivedSkills: DerivedSkills;
+  /** Every row's name by unit number, for a Skills popup naming a giver (`ah-rgkk.2.3`). */
+  unitNames: ReadonlyMap<string, string>;
 }) {
   const skills = unitSkillsCell(unit, derivedSkills);
   const items = formatItems(unit.items, unit.created);
@@ -2196,7 +2211,8 @@ function UnitRow({
       silverWarned: warned,
       countUpkeep,
       derivedSkills: derivedSkillsFor(derivedSkills, unit),
-      dissolving: Boolean(dissolving)
+      dissolving: Boolean(dissolving),
+      unitNames
     };
     return new Map(
       EXPLAINED_COLUMNS.map((column) => [column, popupForCell(column, unit, popupFacts)])
@@ -2211,7 +2227,8 @@ function UnitRow({
     warned,
     countUpkeep,
     derivedSkills,
-    dissolving
+    dissolving,
+    unitNames
   ]);
 
   const explain = (column: DrawnColumnId) => {
