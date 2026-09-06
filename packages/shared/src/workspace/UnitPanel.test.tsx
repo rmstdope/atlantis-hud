@@ -286,6 +286,20 @@ describe("the Events section", () => {
     expect(markup).toContain("STUDY");
   });
 
+  it("lists a single event, with a count of one", () => {
+    const markup = draw({
+      events: splitTurnMessages(["Unit (1): Claims 50 silver for maintenance."]),
+      totalEvents: 452,
+      onOpenEvents: () => {}
+    });
+
+    expect(markup).toContain('data-testid="unit-events"');
+    expect(markup).toContain("Claims 50 silver for maintenance.");
+    // The section's own count, not a stray 1 elsewhere in the markup.
+    expect(markup).toMatch(/Events<span[^>]*text-ink-dim">1<\/span>/);
+    expect(markup.match(/<li /g)).toHaveLength(1);
+  });
+
   it("says so when the unit has no events this turn", () => {
     expect(draw()).toContain("No events for this unit this turn.");
   });
@@ -295,8 +309,9 @@ describe("the Events section", () => {
     expect(withEvents).toContain("All 452 events this turn");
     expect(withEvents).toContain('data-testid="unit-events-all"');
 
-    const without = draw({ events: EVENTS, totalEvents: 0, onOpenEvents: () => {} });
-    expect(without).not.toContain("events this turn");
+    // The real zero case: a turn with no events at all, which is the only way `totalEvents` can be
+    // 0 - `AppShell` derives both from the same array.
+    const without = draw({ events: [], totalEvents: 0, onOpenEvents: () => {} });
     expect(without).not.toContain('data-testid="unit-events-all"');
   });
 });

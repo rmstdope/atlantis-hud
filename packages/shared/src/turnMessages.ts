@@ -136,7 +136,6 @@ export function groupTurnMessages(messages: readonly TurnMessage[]): TurnMessage
   return general ? [general, ...units] : units;
 }
 
-
 /**
  * One unit's event lines, in report order.
  *
