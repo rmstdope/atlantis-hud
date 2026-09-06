@@ -118,6 +118,23 @@ describe("itemChanges", () => {
     expect(rows[0].itemChanges).toEqual(itemChanges);
   });
 
+  it("carries a transfer's cause and the unit at the other end", () => {
+    const itemChanges = [
+      {
+        tag: "SWOR",
+        name: "swords",
+        delta: 4,
+        cause: "was-given" as const,
+        line: 2,
+        unitPrice: null,
+        other: { unitId: "900", name: "Source" }
+      }
+    ];
+    const rows = mergePreview([unit({})], preview([previewedRow({}, { itemChanges })]));
+
+    expect(rows[0].itemChanges).toEqual(itemChanges);
+  });
+
   it("leaves a row the orders left alone without any", () => {
     const rows = mergePreview([unit({})], preview([]));
 
