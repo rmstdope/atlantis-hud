@@ -1,7 +1,7 @@
 /**
  * The letter each flag is drawn as in the units pane's Flags column, and the order the letters are
- * always drawn in. Keyed by the exact spelling `KNOWN_FLAGS` in `crates/core/src/report/unit.rs`
- * emits, because `matching_flag` returns its own canonical string rather than the report's text.
+ * always drawn in. Keyed by the exact spelling `Setting::spellings()` in
+ * `crates/core/src/report/flags.rs` emits, because `matching_flag` returns its own canonical string rather than the report's text.
  *
  * Two flags share a letter where the game has two spellings for one thing, and a flag with no
  * letter is one a single character cannot say anything useful about — every battle-spoils setting,
@@ -14,7 +14,7 @@ export const FLAG_LETTERS: ReadonlyArray<readonly [letter: string, flags: readon
   ["H", ["holding"]],
   ["N", ["receiving no aid", "no aid"]],
   ["X", ["won't cross water"]],
-  ["R", ["revealing faction"]],
+  ["R", ["revealing faction", "revealing unit"]],
   ["S", ["sharing"]],
   ["T", ["taxing", "autotax"]],
   ["C", ["consuming unit's food"]],
@@ -73,30 +73,56 @@ export type FlagSetting = {
   /** The line's label, exactly as it ships. */
   label: string;
   states: ReadonlyArray<readonly [value: string, flags: readonly string[]]>;
+  /**
+   * The value the game itself names as this setting's default, or `null` where it names none.
+   *
+   * A line returning to it is drawn as a fall rather than a rise. It is NOT the same as the last
+   * state: `battle spoils` has no printed flag for `all` and so rests there positionally, but
+   * `rules/spoils` names no default at all, so moving to `all` is a choice the player made rather
+   * than a setting going quiet.
+   */
+  resting: string | null;
 };
 
 /**
  * The eleven settings, in the order the popup lists them: `FLAG_LETTERS`' own letter order, with
- * the letterless battle-spoils setting last. Every spelling is copied from `KNOWN_FLAGS`
- * (`crates/core/src/report/unit.rs`), which is the closed set the report parser will emit.
+ * the letterless battle-spoils setting last. Every spelling is copied from `Setting::spellings()`
+ * (`crates/core/src/report/flags.rs`), which is the closed set the report parser will emit.
  */
 export const FLAG_SETTINGS: readonly FlagSetting[] = [
-  { key: "avoiding", label: "avoiding", states: [["on", ["avoiding"]], ["off", []]] },
-  { key: "behind", label: "behind", states: [["on", ["behind"]], ["off", []]] },
-  { key: "guarding", label: "guarding", states: [["on", ["on guard", "guarding"]], ["off", []]] },
-  { key: "holding", label: "holding", states: [["on", ["holding"]], ["off", []]] },
+  { key: "avoiding", label: "avoiding", resting: "off", states: [["on", ["avoiding"]], ["off", []]] },
+  { key: "behind", label: "behind", resting: "off", states: [["on", ["behind"]], ["off", []]] },
+  { key: "guarding", label: "guarding", resting: "off", states: [["on", ["on guard", "guarding"]], ["off", []]] },
+  { key: "holding", label: "holding", resting: "off", states: [["on", ["holding"]], ["off", []]] },
   {
     key: "noAid",
     label: "receiving no aid",
+    resting: "off",
     states: [["on", ["no aid", "receiving no aid"]], ["off", []]]
   },
-  { key: "noCross", label: "won't cross water", states: [["on", ["won't cross water"]], ["off", []]] },
-  { key: "revealing", label: "revealing faction", states: [["on", ["revealing faction"]], ["off", []]] },
-  { key: "sharing", label: "sharing", states: [["on", ["sharing"]], ["off", []]] },
-  { key: "taxing", label: "taxing", states: [["on", ["taxing", "autotax"]], ["off", []]] },
+  { key: "noCross", label: "won't cross water", resting: "off", states: [["on", ["won't cross water"]], ["off", []]] },
   {
+    // `rules/reveal`: "Cause the unit to either show itself (REVEAL UNIT), or show itself and its
+    // faction affiliation (REVEAL FACTION) ... REVEAL is used to cancel this." One setting with
+    // three states, not two switches. `revealing unit` is a word `ah-9g94.1` adds to the
+    // vocabulary; no report has been observed to print it.
+    key: "revealing",
+    label: "revealing",
+    resting: "off",
+    states: [
+      ["unit", ["revealing unit"]],
+      ["faction", ["revealing faction"]],
+      ["off", []]
+    ]
+  },
+  { key: "sharing", label: "sharing", resting: "off", states: [["on", ["sharing"]], ["off", []]] },
+  { key: "taxing", label: "taxing", resting: "off", states: [["on", ["taxing", "autotax"]], ["off", []]] },
+  {
+    // `rules/consume`: "CONSUME tells the unit to use silver before food items (this is the
+    // default)" - a default the game names, so `silver first` is this setting's resting state.
     key: "consuming",
     label: "consuming",
+    resting: "silver first",
     states: [
       ["unit's food", ["consuming unit's food"]],
       ["faction's food", ["consuming faction's food"]],
@@ -104,17 +130,22 @@ export const FLAG_SETTINGS: readonly FlagSetting[] = [
     ]
   },
   {
+    // `rules/spoils` names seven values and no default, and no report prints a flag for `ALL`, so
+    // `all` is both what `SPOILS ALL` reaches and what a silent report reads as - `resting` is
+    // null because reaching it is a choice, not a setting going quiet. `no battle spoils` and
+    // `weightless battle spoils` are one state: `ah-9g94.1`'s vocabulary makes them two spellings
+    // of the same setting, and the preview writes the first.
     key: "spoils",
     label: "battle spoils",
+    resting: null,
     states: [
       ["walking", ["walking battle spoils"]],
       ["riding", ["riding battle spoils"]],
       ["flying", ["flying battle spoils"]],
       ["swimming", ["swimming battle spoils"]],
       ["sailing", ["sailing battle spoils"]],
-      ["weightless", ["weightless battle spoils"]],
-      ["none", ["no battle spoils"]],
-      ["not shown", []]
+      ["weightless", ["weightless battle spoils", "no battle spoils"]],
+      ["all", []]
     ]
   }
 ];
@@ -123,8 +154,8 @@ export const FLAG_SETTINGS: readonly FlagSetting[] = [
  * Which state this flag list puts one setting in — always one of its `states` values.
  *
  * The comparison is exact, not case-insensitive: `matching_flag`
- * (`crates/core/src/report/unit.rs`) normalises what the report printed to one of `KNOWN_FLAGS`'
- * own spellings before it reaches the wire, and the order arms push those same literals.
+ * (`crates/core/src/report/unit.rs`) normalises what the report printed to one of
+ * `Setting::spellings()`' own spellings before it reaches the wire, and the order arms push those same literals.
  */
 export function flagState(setting: FlagSetting, flags: readonly string[]): string {
   for (const [value, wanted] of setting.states) {
