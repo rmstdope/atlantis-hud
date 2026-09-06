@@ -1,4 +1,4 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { ReportUnit, StudyDoubt, StudyForecast } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import type { PreviewedUnit } from "./unitPreview";
@@ -17,6 +17,7 @@ const facts = (overrides: Partial<PopupFacts> = {}): PopupFacts => ({
   countUpkeep: false,
   derivedSkills: [],
   dissolving: false,
+  unitNames: new Map(),
   ...overrides
 });
 
@@ -421,5 +422,405 @@ describe("popupAsText", () => {
     expect(
       popupAsText({ title: "x", lines: [{ label: "men", value: "12" }], notes: [], warning: null })
     ).toBe("men 12.");
+  });
+});
+
+describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
+  const skill = (name: string, tag: string, level: number, points: number) => ({
+    name,
+    tag,
+    level,
+    points
+  });
+
+  const own = (overrides: Partial<PreviewedUnit> = {}) =>
+    unit({ own: true, previewChanges: [{ field: "skills", original: "COMB 2 (90)" }], ...overrides });
+
+  const skillsPopup = (u: PreviewedUnit, f = facts()) =>
+    columnPopup(popupForCell("skills", u, f));
+
+  const forecast = (overrides: Partial<StudyForecast> = {}): StudyForecast => ({
+    tag: "COMB",
+    name: "combat",
+    levelBefore: 1,
+    pointsBefore: 53,
+    monthsNumerator: 1,
+    monthsDenominator: 1,
+    teachers: [],
+    halvedOutsideABuilding: false,
+    pointsAfter: 98,
+    levelAfter: 2,
+    ceilingLevel: 5,
+    limitingRaces: [],
+    heldBackByCeiling: false,
+    doubts: [],
+    ...overrides
+  });
+
+  it("the skills popup draws what the report said and what the market left", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 1, 53)]
+      })
+    );
+    expect(popup.lines).toEqual([
+      {
+        label: "combat COMB",
+        value: "1 (53)",
+        steps: [
+          { value: "2 (90)", mark: "reported" },
+          { value: "1 (53)", mark: "down" }
+        ]
+      }
+    ]);
+  });
+
+  it("the skills popup draws one figure for a skill this month did not touch", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 2, 90)]
+      })
+    );
+    expect(popup.lines).toEqual([{ label: "combat COMB", value: "2 (90)" }]);
+  });
+
+  it("the skills popup draws one figure for a unit the orders left alone", () => {
+    const popup = skillsPopup(
+      unit({ own: true, skills: [skill("combat", "COMB", 2, 90)] })
+    );
+    expect(popup.lines).toEqual([{ label: "combat COMB", value: "2 (90)" }]);
+  });
+
+  it("a skill diluted out of the list ends its chain at gone", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 1, 30), skill("riding", "RIDI", 1, 30)],
+        skills: [skill("combat", "COMB", 0, 6)]
+      })
+    );
+    expect(popup.lines[1]).toEqual({
+      label: "riding RIDI",
+      value: "gone",
+      steps: [
+        { value: "1 (30)", mark: "reported" },
+        { value: "gone", mark: "down" }
+      ]
+    });
+    expect(popup.notes).toContain("Riding drops below one point per man, so the unit loses it.");
+  });
+
+  it("a skill the arriving men brought starts its chain at none", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 1, 53), skill("observation", "OBSE", 0, 25)]
+      })
+    );
+    expect(popup.lines[1]!.steps).toEqual([
+      { value: "none", mark: "reported" },
+      { value: "0 (25)", mark: "up" }
+    ]);
+  });
+
+  it("the skills popup keeps the report's order, not the core's tag order", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("lumberjack", "LUMB", 2, 90), skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 1, 53), skill("lumberjack", "LUMB", 1, 53)]
+      })
+    );
+    expect(popup.lines.map((line) => line.label)).toEqual(["lumberjack LUMB", "combat COMB"]);
+  });
+
+  it("the skills popup says who joined and what they brought", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 1, 53)],
+        skillMerges: [
+          {
+            cause: "given",
+            from: "1502",
+            men: 2,
+            menBefore: 4,
+            menArriving: [],
+            countInferred: false,
+            arrivingSkills: [skill("observation", "OBSE", 3, 180)],
+            skills: []
+          }
+        ]
+      }),
+      facts({ unitNames: new Map([["1502", "Scouts"]]) })
+    );
+    expect(popup.notes).toContain("2 men joined from Scouts (1502), bringing observation 3.");
+  });
+
+  it("the skills popup names a giver the table is not drawing", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 1, 53)],
+        skillMerges: [
+          {
+            cause: "given",
+            from: "1502",
+            men: 2,
+            menBefore: 4,
+            menArriving: [],
+            countInferred: false,
+            arrivingSkills: [],
+            skills: []
+          }
+        ]
+      })
+    );
+    expect(popup.notes).toContain("2 men joined from unit 1502.");
+  });
+
+  it("the skills popup says recruits bring nothing", () => {
+    const merge = (overrides = {}) => ({
+      cause: "recruited" as const,
+      from: "",
+      men: 6,
+      menBefore: 4,
+      menArriving: [{ amount: 6, name: "human", tag: "HUMN" }],
+      countInferred: false,
+      arrivingSkills: [],
+      skills: [],
+      ...overrides
+    });
+    expect(
+      skillsPopup(own({ reportedSkills: [], skills: [], skillMerges: [merge()] })).notes
+    ).toContain("6 humans recruited, and recruits bring no skills.");
+    expect(
+      skillsPopup(
+        own({
+          reportedSkills: [],
+          skills: [],
+          skillMerges: [merge({ menArriving: [], countInferred: true })]
+        })
+      ).notes
+    ).toContain("6 men recruited, and recruits bring no skills.");
+  });
+
+  it("the skills popup names men whose own skills the report does not show", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 1, 53)],
+        menOfUnknownSkill: [{ amount: 3, tag: "HUMN", from: "1502" }]
+      }),
+      facts({ unitNames: new Map([["1502", "Scouts"]]) })
+    );
+    expect(popup.notes).toContain(
+      "3 men came from Scouts (1502), whose skills the report does not show, so these figures do not count them."
+    );
+  });
+
+  it("the skills popup says when an estimated headcount stopped the dilution being worked out", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 2, 90)],
+        recruitsUnmerged: true
+      })
+    );
+    expect(popup.warning).toBe(
+      "This unit's headcount is a guess, so what recruiting does to these cannot be worked out."
+    );
+  });
+
+  it("the skills popup ends a studied skill's chain in next turn's figure", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 1, 53)],
+        study: forecast({
+          monthsNumerator: 3,
+          monthsDenominator: 2,
+          teachers: [{ unitId: "1774", name: "Elders", slots: 10, students: 5 }]
+        })
+      })
+    );
+    expect(popup.lines[0]!.steps![2]).toEqual({ value: "2 (98)", mark: "projected" });
+    expect(popup.notes).toContain(
+      "Studying combat, taught by Elders (1774): worth one and a half months. The blue figure is next turn's report; everything before it is this month."
+    );
+  });
+
+  it("the skills popup gives a studied skill a line of its own when the unit has never held it", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [],
+        skills: [],
+        study: forecast({ tag: "RIDI", name: "riding", levelAfter: 1, pointsAfter: 30 })
+      })
+    );
+    expect(popup.lines[0]!.label).toBe("riding RIDI");
+    expect(popup.lines[0]!.steps).toEqual([
+      { value: "none", mark: "reported" },
+      { value: "1 (30)", mark: "projected" }
+    ]);
+  });
+
+  it("the skills popup says what the race ceiling holds back", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 1, 53)],
+        skills: [skill("combat", "COMB", 1, 53)],
+        study: forecast({
+          heldBackByCeiling: true,
+          ceilingLevel: 2,
+          limitingRaces: [{ tag: "HDWA", name: "hill dwarf" }]
+        })
+      })
+    );
+    expect(popup.notes.join(" ")).toContain(
+      "Studying combat: worth one month. No hill dwarf may take combat past level 2, so the points rise and the level holds."
+    );
+  });
+
+  it("the skills popup says a magic month spent outside a building is half a month", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("force", "FORC", 1, 53)],
+        skills: [skill("force", "FORC", 1, 53)],
+        study: forecast({
+          tag: "FORC",
+          name: "force",
+          halvedOutsideABuilding: true,
+          monthsNumerator: 1,
+          monthsDenominator: 2
+        })
+      })
+    );
+    expect(popup.notes.join(" ")).toContain(
+      "Studying force: worth half a month. Studying a magic skill past level 2 outside a building that houses mages, so half the month is lost."
+    );
+  });
+
+  it("a month worth no round fraction is said as a figure", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 1, 53)],
+        skills: [skill("combat", "COMB", 1, 53)],
+        study: forecast({ monthsNumerator: 10, monthsDenominator: 13 })
+      })
+    );
+    expect(popup.notes.join(" ")).toContain("worth 0.77 months.");
+  });
+
+  it("a doubted projection carries a question mark and says what the doubt is", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 1, 53)],
+        skills: [skill("combat", "COMB", 1, 53)],
+        study: forecast({
+          doubts: [{ reason: "feeShort", fee: 200, shortBy: 160, teacher: "" }]
+        })
+      })
+    );
+    expect(popup.lines[0]!.steps![1]).toEqual({
+      value: "2 (98)",
+      mark: "projected",
+      uncertain: true
+    });
+    expect(popup.warning).toBe(
+      "Studying combat costs 200 silver and this unit is 160 short, so the study may not happen at all."
+    );
+  });
+
+  it("every doubt has its own sentence", () => {
+    const warningFor = (doubt: StudyDoubt) =>
+      skillsPopup(
+        own({
+          reportedSkills: [skill("combat", "COMB", 1, 53)],
+          skills: [skill("combat", "COMB", 1, 53)],
+          study: forecast({ doubts: [doubt] })
+        })
+      ).warning;
+    const doubt = (overrides: Partial<StudyDoubt>): StudyDoubt => ({
+      reason: "feeShort",
+      fee: 0,
+      shortBy: 0,
+      teacher: "",
+      ...overrides
+    });
+    expect(warningFor(doubt({ reason: "feeShort", fee: 200, shortBy: 160 }))).toBe(
+      "Studying combat costs 200 silver and this unit is 160 short, so the study may not happen at all."
+    );
+    expect(warningFor(doubt({ reason: "feeUnpriced" }))).toBe(
+      "The data page prices combat nowhere, so what studying it costs cannot be said."
+    );
+    expect(warningFor(doubt({ reason: "headcountEstimated" }))).toBe(
+      "This unit's headcount is a guess, so recruiting may pull these back below what is shown."
+    );
+    expect(warningFor(doubt({ reason: "teacherUnsettled", teacher: "Elders (1774)" }))).toBe(
+      "Whether Elders (1774) may teach cannot be settled from this report, so its month is not counted here."
+    );
+    expect(
+      warningFor(doubt({ reason: "teacherStudentsUnknown", teacher: "Elders (1774)" }))
+    ).toBe(
+      "Elders (1774) also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said."
+    );
+    expect(warningFor(doubt({ reason: "shelterUnknown" }))).toBe(
+      "This unit ends the month in a structure this region's report does not list, so whether it shelters a mage cannot be said."
+    );
+  });
+
+  it("an estimated headcount is said once, not twice", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 1, 53)],
+        skills: [skill("combat", "COMB", 1, 53)],
+        recruitsUnmerged: true,
+        study: forecast({
+          doubts: [{ reason: "headcountEstimated", fee: 0, shortBy: 0, teacher: "" }]
+        })
+      })
+    );
+    expect(popup.warning).toBe(
+      "This unit's headcount is a guess, so what recruiting does to these cannot be worked out."
+    );
+  });
+
+  it("a chain reads as figures and directions, not as arrows", () => {
+    expect(
+      popupAsText({
+        title: "Braves (1487) — skills",
+        lines: [
+          {
+            label: "combat COMB",
+            value: "1 (53)",
+            steps: [
+              { value: "2 (90)", mark: "reported" },
+              { value: "1 (53)", mark: "down" },
+              { value: "2 (98)", mark: "projected" }
+            ]
+          }
+        ],
+        notes: [],
+        warning: null
+      })
+    ).toBe("combat COMB 2 (90), down to 1 (53), 2 (98) next turn.");
+    expect(
+      popupAsText({
+        title: "Braves (1487) — skills",
+        lines: [
+          {
+            label: "combat COMB",
+            value: "1 (53)",
+            steps: [
+              { value: "1 (53)", mark: "reported" },
+              { value: "2 (98)", mark: "projected", uncertain: true }
+            ]
+          }
+        ],
+        notes: [],
+        warning: null
+      })
+    ).toBe("combat COMB 1 (53), 2 (98) next turn if it happens.");
   });
 });

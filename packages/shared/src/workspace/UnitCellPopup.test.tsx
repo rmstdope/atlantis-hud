@@ -24,4 +24,48 @@ describe("PopupLineValue", () => {
     expect(markup).not.toContain("text-ok");
     expect(markup).not.toContain("text-danger");
   });
+
+  it("a chain is drawn in order, each arrow between two figures", () => {
+    const markup = draw({
+      label: "combat COMB",
+      value: "1 (53)",
+      steps: [
+        { value: "2 (90)", mark: "reported" },
+        { value: "1 (53)", mark: "down" },
+        { value: "2 (98)", mark: "projected" }
+      ]
+    });
+    expect(markup).toMatch(/2 \(90\)[\s\S]*→[\s\S]*1 \(53\)[\s\S]*→[\s\S]*2 \(98\)/);
+  });
+
+  it("the projected figure is drawn in the selection blue whichever way it moved", () => {
+    for (const projected of ["2 (98)", "1 (30)"]) {
+      const markup = draw({
+        label: "combat COMB",
+        value: "1 (53)",
+        steps: [
+          { value: "2 (90)", mark: "reported" },
+          { value: projected, mark: "projected" }
+        ]
+      });
+      const span = new RegExp(`<span class="([^"]*)">${projected.replace(/[()]/g, "\\$&")}`).exec(
+        markup
+      );
+      expect(span?.[1]).toContain("text-select");
+      expect(span?.[1]).not.toContain("text-ok");
+      expect(span?.[1]).not.toContain("text-danger");
+    }
+  });
+
+  it("an uncertain projection carries a question mark", () => {
+    const markup = draw({
+      label: "combat COMB",
+      value: "1 (53)",
+      steps: [
+        { value: "1 (53)", mark: "reported" },
+        { value: "2 (98)", mark: "projected", uncertain: true }
+      ]
+    });
+    expect(markup).toContain("2 (98)?");
+  });
 });

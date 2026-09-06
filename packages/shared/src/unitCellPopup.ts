@@ -1,4 +1,5 @@
-import type { UnitSilver } from "@atlantis/core-client";
+import type { SkillInfo, SkillMerge, StudyForecast, UnitSilver } from "@atlantis/core-client";
+import { count } from "./plural";
 import { battleSkillGroups, battleSkillSource } from "./battleSkillPresentation";
 import type { DerivedSkill } from "./battleSkills";
 import { flagWords } from "./unitFlags";
@@ -38,6 +39,21 @@ export type PopupColumn = UnitColumn | ExtraColumn;
  */
 export type PopupChange = { direction: "up" | "down"; from: string };
 
+/**
+ * One figure in a Skills line's chain (`ah-rgkk.2.3`).
+ *
+ * `mark` is how this figure stands against the one before it, which is what colours it. `reported`
+ * is always the first step and is never coloured; `projected` is next turn's and is drawn in the
+ * selection blue whichever way it moved, because what marks it out is that it has not happened.
+ */
+export type PopupStep = {
+  /** `2 (90)`, or the words `none` and `gone` for a skill the unit did not or does not hold. */
+  value: string;
+  mark: "reported" | "up" | "down" | "flat" | "projected";
+  /** A trailing `?`: the projection rests on something this report cannot settle (decision **U2**). */
+  uncertain?: boolean;
+};
+
 /** One line of a column popup. */
 export type PopupLine = {
   /** What it is, on the left. Lower case, as the report writes item and skill names. */
@@ -46,6 +62,15 @@ export type PopupLine = {
   value: string;
   /** Absent where nothing changed. */
   change?: PopupChange;
+  /**
+   * The figures this line moved through, when there is more than one to show (`ah-rgkk.2.3`).
+   *
+   * Present only with **two or more** entries, and only on the Skills column. The first entry is
+   * always `reported`; `value` above is the figure the line stands at **now**, which is the last
+   * entry that is not `projected` - a projection is not what the unit stands at. `steps` and
+   * `change` are never both set.
+   */
+  steps?: readonly PopupStep[];
   /** One clause saying why it moved, e.g. `4 bought at 60 silver each`. Absent where unknown. */
   why?: string;
 };
@@ -92,6 +117,12 @@ export type PopupFacts = {
    * a working the cell itself refuses to show.
    */
   dissolving: boolean;
+  /**
+   * Every unit the table is drawing, by unit number, for naming a giver or a taker
+   * (`ah-rgkk.2.3`). A `GIVE` and a `TAKE FROM` are both within one hex, so the source is almost
+   * always a row the table already holds; one it does not is named `unit 1502`.
+   */
+  unitNames: ReadonlyMap<string, string>;
 };
 
 /** Columns that say nothing when the pointer rests on them (decision **E2**). */
@@ -313,6 +344,16 @@ function flagsBody(unit: PreviewedUnit): Body {
  * from exactly as the whole-unit summary names it (`ah-1mpx.6.3`).
  */
 function skillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
+  return unit.own ? ownSkillsBody(unit, facts) : foreignSkillsBody(unit, facts);
+}
+
+/**
+ * A foreign unit's Skills popup: what a battle let us read, and the sentence that a report never
+ * shows another faction's skills (decision **B1**, `ah-rgkk.1`).
+ *
+ * Lifted out of `skillsBody` unchanged by `ah-rgkk.2.3`, which rewrote only the own-unit half.
+ */
+function foreignSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const change = changeFor(unit, CHANGE_FIELD.skills!);
   const quoted = change ? { why: originalTooltip(change) } : {};
 
@@ -328,12 +369,7 @@ function skillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 
   const groups = battleSkillGroups(facts.derivedSkills);
   if (groups.length === 0) {
-    return {
-      lines: [],
-      notes: [
-        unit.own ? "No skills." : "A report never shows another faction's skills."
-      ]
-    };
+    return { lines: [], notes: ["A report never shows another faction's skills."] };
   }
 
   const recovered = groups.flatMap((group) =>
@@ -352,6 +388,248 @@ function skillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       "A report never shows another faction's skills."
     ]
   };
+}
+
+/** `level (points)`, the shape `summariseUnit` already writes a skill in. */
+const figure = (skill: SkillInfo): string => `${skill.level} (${skill.points})`;
+
+/**
+ * The figures one skill moved through: what the report said, what the market left, and - when this
+ * month's STUDY reaches it - next turn's (decision **N2**, as `docs/ui/ah-rgkk.2.3-chain.html`
+ * draws it).
+ *
+ * At most three, whatever happened. The individual arrivals of men are named in the sentences
+ * under the lines rather than drawn as steps of their own, which is what keeps a line the same
+ * length for a unit that took one gift and for one that took five.
+ *
+ * `[]` when there is nothing to show but the figure the line already carries.
+ */
+function chainFor(
+  /** The tag's entry in `unit.reportedSkills`, or undefined for one the report did not list. */
+  reported: SkillInfo | undefined,
+  /** The tag's entry in `unit.skills`, or undefined for one the unit no longer holds. */
+  now: SkillInfo | undefined,
+  /**
+   * `unit.reportedSkills !== undefined` - whether the row carries a preview at all. Without one
+   * there is no report figure to compare against, so no chain is drawn. A unit this month's `FORM`
+   * creates carries `[]`, which is a report figure of `none` for every tag rather than no figure.
+   */
+  hasReport: boolean,
+  /** This month's forecast, when it is for this tag. */
+  study: StudyForecast | undefined
+): PopupStep[] {
+  if (!hasReport) {
+    return [];
+  }
+  const before = reported ? figure(reported) : "none";
+  // A tag the report did not list and the unit does not hold is one only the study reaches: it
+  // stands at nothing, and `gone` would claim it lost something it never had.
+  const after = now ? figure(now) : reported ? "gone" : "none";
+  const steps: PopupStep[] = [{ value: before, mark: "reported" }];
+  if (before !== after) {
+    const mark: PopupStep["mark"] = !now
+      ? "down"
+      : !reported
+        ? "up"
+        : now.points > reported.points
+          ? "up"
+          : now.points < reported.points
+            ? "down"
+            : "flat";
+    steps.push({ value: after, mark });
+  }
+  if (study) {
+    steps.push({
+      value: `${study.levelAfter} (${study.pointsAfter})`,
+      mark: "projected",
+      ...(study.doubts.length > 0 ? { uncertain: true } : {})
+    });
+  }
+  return steps.length > 1 ? steps : [];
+}
+
+/** `a`, `a and b`, `a, b and c` - for a clause naming several things. */
+function andList(parts: readonly string[]): string {
+  if (parts.length <= 1) {
+    return parts[0] ?? "";
+  }
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/** The ratios `rules/studying` states in words; anything else is said as a figure. */
+const MONTHS_IN_WORDS: Record<string, string> = {
+  "1/4": "a quarter of a month",
+  "1/2": "half a month",
+  "3/4": "three quarters of a month",
+  "1/1": "one month",
+  "5/4": "one and a quarter months",
+  "3/2": "one and a half months",
+  "7/4": "one and three quarters months",
+  "2/1": "two months"
+};
+
+/**
+ * What a month of study is worth, in words where the ratio is one the rules state and as a figure
+ * otherwise - a teacher's contribution is `min(1, slots / students)`, so it can be any ratio at
+ * all and a table alone would be a bug waiting for a thirteen-student teacher.
+ */
+function monthsInWords(numerator: number, denominator: number): string {
+  const exact = MONTHS_IN_WORDS[`${numerator}/${denominator}`];
+  if (exact) {
+    return exact;
+  }
+  const quotient = denominator === 0 ? 0 : numerator / denominator;
+  return `${Number(quotient.toFixed(2))} months`;
+}
+
+/** `Scouts (1502)` for a row the table holds, and `unit 1502` for one it does not. */
+function unitReference(from: string, facts: PopupFacts): string {
+  const name = facts.unitNames.get(from);
+  return name ? `${name} (${from})` : `unit ${from}`;
+}
+
+/** Why one merge of arriving men moved - or did not move - this unit's figures. */
+function mergeSentence(merge: SkillMerge, facts: PopupFacts): string {
+  if (merge.cause === "recruited") {
+    const who =
+      merge.menArriving.length > 0
+        ? andList(merge.menArriving.map((item) => count(item.amount, item.name)))
+        : count(merge.men, "man", "men");
+    return `${who} recruited, and recruits bring no skills.`;
+  }
+  const brought =
+    merge.arrivingSkills.length > 0
+      ? `, bringing ${andList(merge.arrivingSkills.map((skill) => `${skill.name} ${skill.level}`))}`
+      : "";
+  const verb = merge.cause === "given" ? "joined from" : "taken from";
+  return `${count(merge.men, "man", "men")} ${verb} ${unitReference(merge.from, facts)}${brought}.`;
+}
+
+/** The one note the study writes, every clause of it in order. */
+function studySentence(study: StudyForecast, projectionDrawn: boolean): string {
+  const taught =
+    study.teachers.length > 0
+      ? `, taught by ${andList(study.teachers.map((teacher) => `${teacher.name} (${teacher.unitId})`))}`
+      : "";
+  const clauses = [
+    `Studying ${study.name}${taught}: worth ${monthsInWords(study.monthsNumerator, study.monthsDenominator)}.`
+  ];
+  if (study.halvedOutsideABuilding) {
+    clauses.push(
+      "Studying a magic skill past level 2 outside a building that houses mages, so half the month is lost."
+    );
+  }
+  if (study.heldBackByCeiling) {
+    // The catalogue's names are singular by `ah-rgkk.2.2`'s own decision, and `hill dwarf` does
+    // not pluralise by appending `s` - so the construction is one that needs no plural at all.
+    clauses.push(
+      `No ${andList(study.limitingRaces.map((race) => race.name))} may take ${study.name} past level ${study.ceilingLevel}, so the points rise and the level holds.`
+    );
+  }
+  if (projectionDrawn) {
+    clauses.push("The blue figure is next turn's report; everything before it is this month.");
+  }
+  return clauses.join(" ");
+}
+
+/** One amber sentence per doubt the projection rests on (decision **U2**). */
+function doubtSentence(doubt: StudyForecast["doubts"][number], study: StudyForecast): string {
+  switch (doubt.reason) {
+    case "feeShort":
+      return `Studying ${study.name} costs ${doubt.fee.toLocaleString()} silver and this unit is ${doubt.shortBy.toLocaleString()} short, so the study may not happen at all.`;
+    case "feeUnpriced":
+      return `The data page prices ${study.name} nowhere, so what studying it costs cannot be said.`;
+    case "headcountEstimated":
+      return "This unit's headcount is a guess, so recruiting may pull these back below what is shown.";
+    case "teacherUnsettled":
+      return `Whether ${doubt.teacher} may teach cannot be settled from this report, so its month is not counted here.`;
+    case "teacherStudentsUnknown":
+      return `${doubt.teacher} also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said.`;
+    case "shelterUnknown":
+      return "This unit ends the month in a structure this region's report does not list, so whether it shelters a mage cannot be said.";
+  }
+}
+
+/**
+ * One of our own units' Skills popup: every skill as a chain of figures, and a sentence under the
+ * lines for every reason one of them moved (`ah-rgkk.2.3`).
+ *
+ * It derives no arithmetic of its own - every figure and every reason comes off the wire from
+ * `ah-rgkk.2.1` and `ah-rgkk.2.2`.
+ */
+function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
+  const reported = unit.reportedSkills ?? [];
+  const hasReport = unit.reportedSkills !== undefined;
+  const study = unit.study ?? null;
+  const reportedByTag = new Map(reported.map((skill) => [skill.tag, skill]));
+  const nowByTag = new Map(unit.skills.map((skill) => [skill.tag, skill]));
+
+  // The report's order, then whatever the month added. `merge_skills` sorts its output by tag
+  // (`crates/core/src/orders/effects.rs`), so `unit.skills` is only ever a source of newcomers.
+  const tags: string[] = [];
+  for (const skill of [...reported, ...unit.skills]) {
+    if (!tags.includes(skill.tag)) {
+      tags.push(skill.tag);
+    }
+  }
+  if (study && !tags.includes(study.tag)) {
+    tags.push(study.tag);
+  }
+
+  let projectionDrawn = false;
+  const lines: PopupLine[] = tags.map((tag) => {
+    const before = reportedByTag.get(tag);
+    const now = nowByTag.get(tag);
+    const forTag = study?.tag === tag ? study : undefined;
+    const name = before?.name ?? now?.name ?? forTag?.name ?? tag;
+    const steps = chainFor(before, now, hasReport, forTag);
+    if (forTag && steps.length > 0) {
+      projectionDrawn = true;
+    }
+    return {
+      label: `${name} ${tag}`,
+      // What the cell under the pointer is drawn from, so the two cannot disagree.
+      value: now ? figure(now) : before ? "gone" : "none",
+      ...(steps.length > 0 ? { steps } : {})
+    };
+  });
+
+  const notes: string[] = [];
+  for (const merge of unit.skillMerges ?? []) {
+    notes.push(mergeSentence(merge, facts));
+  }
+  for (const taken of unit.menOfUnknownSkill ?? []) {
+    notes.push(
+      `${count(taken.amount, "man", "men")} came from ${unitReference(taken.from, facts)}, whose skills the report does not show, so these figures do not count them.`
+    );
+  }
+  for (const skill of reported) {
+    if (!nowByTag.has(skill.tag)) {
+      notes.push(sentence(`${skill.name} drops below one point per man, so the unit loses it`));
+    }
+  }
+  if (study) {
+    notes.push(studySentence(study, projectionDrawn));
+  }
+  if (lines.length === 0) {
+    notes.unshift("No skills.");
+  }
+
+  const warnings: string[] = [];
+  if (unit.recruitsUnmerged) {
+    warnings.push(
+      "This unit's headcount is a guess, so what recruiting does to these cannot be worked out."
+    );
+  }
+  for (const doubt of study?.doubts ?? []) {
+    // The same cause said twice, and the sentence above is the more specific of the two.
+    if (doubt.reason === "headcountEstimated" && unit.recruitsUnmerged) {
+      continue;
+    }
+    warnings.push(doubtSentence(doubt, study!));
+  }
+
+  return { lines, notes, warning: warnings.length > 0 ? warnings.join(" ") : null };
 }
 
 /**
@@ -443,7 +721,18 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 export function popupAsText(popup: ColumnPopup): string {
   const lines = popup.lines.map((line) => {
     const parts = [`${line.label} ${line.value}`];
-    if (line.change) {
+    if (line.steps) {
+      // The label carries the first figure; every later one is a clause of its own, so the
+      // direction is a word rather than a colour and the projection says that it has not happened.
+      parts[0] = `${line.label} ${line.steps[0]!.value}`;
+      for (const step of line.steps.slice(1)) {
+        parts.push(
+          step.mark === "projected"
+            ? `${step.value} next turn${step.uncertain ? " if it happens" : ""}`
+            : `${step.mark === "up" ? "up to" : step.mark === "down" ? "down to" : "still"} ${step.value}`
+        );
+      }
+    } else if (line.change) {
       parts.push(`${line.change.direction} from ${line.change.from}`);
     }
     if (line.why) {
