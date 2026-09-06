@@ -115,6 +115,21 @@ pub struct UnitPreview {
     /// rather than skipped since `ah-ty3s.3` (decision **K2**), so the row does not vanish from
     /// under a player editing its orders.
     pub dissolving: bool,
+    /// Why this unit's skills moved this month: one record per merge of arriving men, in the order
+    /// the merges ran. Empty for a unit no men joined (`ah-rgkk.2.1`).
+    pub skill_merges: Vec<SkillMerge>,
+    /// This unit's skills exactly as the report printed them, typed - so a reader can compare
+    /// `level (points)` against `level (points)` instead of parsing the `skills` [`FieldChange`]'s
+    /// display string. Empty for a unit this month's `FORM` creates, which the report never showed.
+    pub reported_skills: Vec<Skill>,
+    /// The report could only estimate this unit's headcount (`men_estimated`), so `settle_headcounts`
+    /// skipped it and its recruits were **not** merged into its skills: the Skills figures are the
+    /// reported ones, not diluted ones. `false` when nothing was recruited.
+    pub recruits_unmerged: bool,
+    /// Men credited from a unit the report does not show, whose own skills are therefore unknown -
+    /// so they are deliberately left out of every merge (`ah-agbm`). The unit's headcount rose and
+    /// its skills did not.
+    pub men_of_unknown_skill: Vec<TakenUnshown>,
 }
 
 /// One line of what a unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document order
@@ -203,6 +218,51 @@ pub struct TransportTargetIssue {
     /// counter [`TransportSent::order_index`] carries - so a refused order and a successful one
     /// read back in the order they were written (`ah-64wm`).
     pub order_index: i64,
+}
+
+/// Why men joined a unit this month, in `rules/sequenceofevents` order (`ah-rgkk.2.1`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SkillMergeCause {
+    /// Men bought this month. `rules/economy_recruiting`: "New recruits will not have any skills
+    /// or items", so they merge in at zero and dilute what the unit knows (`rules/buy`).
+    Recruited,
+    /// Men another unit's `GIVE` handed over, bringing their own skills.
+    Given,
+    /// Men this unit's own `TAKE` brought in, bringing their own skills.
+    Taken,
+}
+
+/// One merge of arriving men into a unit's skills, as `merge_skills` ran it (`ah-rgkk.2.1`).
+///
+/// One record per call, in the order the calls ran - which is `rules/sequenceofevents` order,
+/// because the Give phase runs before the market's recruits. A merge that left the figures
+/// identical is recorded like any other: that men joined and nothing moved is a fact about the
+/// month, and leaving it out would make "nothing happened" and "we did not look" the same answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillMerge {
+    pub cause: SkillMergeCause,
+    /// The unit number the men came from. Empty for `Recruited`, who come from the market.
+    pub from: String,
+    /// How many men the merge weighted in - the `moved` argument `merge_skills` was called with.
+    pub men: i64,
+    /// The receiver's headcount the merge weighted against, before the men were added - the
+    /// `into_men` argument. Never the headcount afterwards, which is the trap `move_between`'s own
+    /// comment warns about.
+    pub men_before: i64,
+    /// Which man items arrived, one entry per race. Empty when [`count_inferred`](Self::count_inferred)
+    /// is set: a `BUY ALL` leaves no exact list to report.
+    pub men_arriving: Vec<crate::report::model::ItemAmount>,
+    /// `men` was inferred from the net change in the item list rather than read from the settled
+    /// recruits, because a `BUY ALL` makes the exact figure unknowable. Only ever set on a
+    /// `Recruited` record.
+    pub count_inferred: bool,
+    /// The arriving men's own skills, as the source held them at that moment. Empty for
+    /// `Recruited`, who have none.
+    pub arriving_skills: Vec<Skill>,
+    /// The receiving unit's skills once this merge had run.
+    pub skills: Vec<Skill>,
 }
 
 /// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
@@ -472,6 +532,15 @@ pub fn preview_orders_on_map(
         // unit stands (`ah-agbm`).
         let uncounted = entry.uncounted.clone();
         let taken_unshown = entry.taken_unshown.clone();
+        let skill_merges = entry.skill_merges.clone();
+        let men_of_unknown_skill = entry.men_of_unknown_skill.clone();
+        let recruits_unmerged = entry.recruits_unmerged;
+        // The report's own list, typed. `None` for a formed unit, which the report never showed.
+        let reported_skills = entry
+            .original
+            .as_ref()
+            .map(|original| original.skills.clone())
+            .unwrap_or_default();
         // `rules/sequenceofevents` runs the market - where a formed unit's own BUY of peasants
         // decides whether it gained anybody - before PRODUCE, BUILD and the month-long orders, so
         // a unit the market dissolved makes nothing (`ah-ty3s.3`). `uncounted` is kept: it names
@@ -545,6 +614,10 @@ pub fn preview_orders_on_map(
                     dissolves_into: dissolves_into.clone(),
                     formed,
                     dissolving,
+                    skill_merges: skill_merges.clone(),
+                    reported_skills: reported_skills.clone(),
+                    recruits_unmerged,
+                    men_of_unknown_skill: men_of_unknown_skill.clone(),
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -567,6 +640,10 @@ pub fn preview_orders_on_map(
                     dissolves_into: dissolves_into.clone(),
                     formed,
                     dissolving,
+                    skill_merges,
+                    reported_skills,
+                    recruits_unmerged,
+                    men_of_unknown_skill,
                 });
         } else {
             regions
@@ -590,6 +667,10 @@ pub fn preview_orders_on_map(
                     dissolves_into,
                     formed,
                     dissolving,
+                    skill_merges,
+                    reported_skills,
+                    recruits_unmerged,
+                    men_of_unknown_skill,
                 });
         }
     }
@@ -841,6 +922,15 @@ struct WorkingUnit {
     /// This unit's `TRANSPORT`/`DISTRIBUTE` orders whose target the report cannot show as able to
     /// receive. Written once by `apply_transports` (`ah-64wm`).
     transport_target_issues: Vec<TransportTargetIssue>,
+    /// Why this unit's skills moved this month, one record per merge of arriving men, in the order
+    /// the merges ran. Written by `move_between` and by `settle_headcounts` (`ah-rgkk.2.1`).
+    skill_merges: Vec<SkillMerge>,
+    /// Men credited from a unit the report does not show, whose own skills are unknown and who are
+    /// therefore left out of every merge. Written once by `settle_headcounts` (`ah-rgkk.2.1`).
+    men_of_unknown_skill: Vec<TakenUnshown>,
+    /// `settle_headcounts` skipped this unit because the report could only estimate its headcount,
+    /// and it had settled recruits that were therefore never merged in (`ah-rgkk.2.1`).
+    recruits_unmerged: bool,
 }
 
 impl WorkingUnit {
@@ -1175,6 +1265,9 @@ impl Working {
                 transport_received: Vec::new(),
                 recruited: Vec::new(),
                 transport_target_issues: Vec::new(),
+                skill_merges: Vec::new(),
+                men_of_unknown_skill: Vec::new(),
+                recruits_unmerged: false,
             });
         }
         let known_units: std::collections::BTreeSet<String> =
@@ -1487,6 +1580,9 @@ impl Working {
             transport_received: Vec::new(),
             recruited: Vec::new(),
             transport_target_issues: Vec::new(),
+            skill_merges: Vec::new(),
+            men_of_unknown_skill: Vec::new(),
+            recruits_unmerged: false,
         });
         self.forming.push(Some(index));
     }
@@ -1892,12 +1988,37 @@ impl Working {
                 }
                 if let Some(receiver) = receiver {
                     let arriving = self.units[source].unit.skills.clone();
-                    let unit = &mut self.units[receiver].unit;
-                    // The merge runs before the men are added: weighting by the headcount after
-                    // the arrivals is silently wrong.
-                    unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
-                    unit.men += moved;
-                    add_item(&mut unit.men_by_race, &name, &tag, moved);
+                    let from = self.units[source].unit.unit_id.clone();
+                    // Read and cloned inside the block, because the `&mut ...unit` binding below
+                    // blocks a push to `skill_merges` on the same `WorkingUnit` while it lives.
+                    let (men_before, merged) = {
+                        let unit = &mut self.units[receiver].unit;
+                        // The merge runs before the men are added: weighting by the headcount
+                        // after the arrivals is silently wrong.
+                        let men_before = unit.men;
+                        unit.skills = merge_skills(&unit.skills, unit.men, &arriving, moved);
+                        unit.men += moved;
+                        add_item(&mut unit.men_by_race, &name, &tag, moved);
+                        (men_before, unit.skills.clone())
+                    };
+                    self.units[receiver].skill_merges.push(SkillMerge {
+                        cause: if is_give {
+                            SkillMergeCause::Given
+                        } else {
+                            SkillMergeCause::Taken
+                        },
+                        from,
+                        men: moved,
+                        men_before,
+                        men_arriving: vec![crate::report::model::ItemAmount {
+                            name: name.clone(),
+                            tag: tag.clone(),
+                            amount: moved,
+                        }],
+                        count_inferred: false,
+                        arriving_skills: arriving,
+                        skills: merged,
+                    });
                 }
             }
         }
@@ -2364,10 +2485,24 @@ impl Working {
 /// skills exactly as gifted men do, by the same rule in `rules/give`.
 fn settle_headcounts(units: &mut [WorkingUnit], ruleset: &crate::movement::rules::Ruleset) {
     for working in units {
+        // Named before the early return below, so an estimated unit reports them too: men whose
+        // own skills are unknown are left out of every merge, not merged in at zero
+        // (`ah-agbm`, `ah-rgkk.2.1`).
+        working.men_of_unknown_skill = working
+            .taken_unshown
+            .iter()
+            .filter(|taken| ruleset.is_man(&taken.tag))
+            .cloned()
+            .collect();
         // A headcount the report itself could only estimate stays exactly as the parser left it:
         // re-deriving from a list the catalogue cannot fully read is the guess `classify_unit`
         // refuses to make (`composition.rs:56-63`), under another name.
         if working.unit.men_estimated {
+            // The recruits the ledger did settle were therefore never merged in: the unit's
+            // Skills figures are the reported ones, not diluted ones. When the ledger could not
+            // settle them either, nothing is claimed - inferring the count from the item list is
+            // the very derivation this early return refuses to make (`ah-rgkk.2.1`).
+            working.recruits_unmerged = !working.recruited.is_empty();
             continue;
         }
         let before = working.unit.men;
@@ -2400,6 +2535,20 @@ fn settle_headcounts(units: &mut [WorkingUnit], ruleset: &crate::movement::rules
         };
         if recruited > 0 {
             working.unit.skills = merge_skills(&working.unit.skills, before, &[], recruited);
+            working.skill_merges.push(SkillMerge {
+                cause: SkillMergeCause::Recruited,
+                // Recruits come from the market, not from a unit.
+                from: String::new(),
+                men: recruited,
+                men_before: before,
+                // A `BUY ALL` leaves no exact settled list, so there is no race breakdown to
+                // report and the count above came from the item list's net change instead.
+                men_arriving: working.recruited.clone(),
+                count_inferred: working.recruited.is_empty(),
+                // `rules/economy_recruiting`: "New recruits will not have any skills or items".
+                arriving_skills: Vec::new(),
+                skills: working.unit.skills.clone(),
+            });
         }
         working.unit.men_by_race = by_race;
         working.unit.men = total;
@@ -7157,5 +7306,321 @@ mod tests {
                 }]
             );
         }
+    }
+
+    /// Two own crews of men, the first with a skill, so a gift of men re-averages the second's.
+    fn report_with_two_crews() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN], 400 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 3 (180).",
+            "* Hands (901), Foo (1), 10 humans [HUMN]. Weight: 100. Capacity: 0/0/150/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    fn unit_by_id<'a>(response: &'a OrdersPreviewResponse, id: &str) -> &'a UnitPreview {
+        response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit.unit_id == id)
+            .unwrap_or_else(|| panic!("no previewed unit {id}"))
+    }
+
+    #[test]
+    fn a_gift_of_men_records_the_merge_that_diluted_the_receiver() {
+        let response = preview_over(&report_with_two_crews(), "unit 900\nGIVE 901 5 HUMN\n");
+
+        let receiver = unit_by_id(&response, "901");
+        assert_eq!(
+            receiver.skill_merges.len(),
+            1,
+            "{:?}",
+            receiver.skill_merges
+        );
+        let merge = &receiver.skill_merges[0];
+        assert_eq!(merge.cause, SkillMergeCause::Given);
+        assert_eq!(merge.from, "900");
+        assert_eq!(merge.men, 5);
+        assert_eq!(merge.men_before, 10);
+        assert!(!merge.count_inferred);
+        assert_eq!(merge.men_arriving.len(), 1, "{:?}", merge.men_arriving);
+        assert_eq!(merge.men_arriving[0].amount, 5);
+        assert_eq!(merge.men_arriving[0].tag, "HUMN");
+        assert_eq!(merge.arriving_skills, vec![lumberjack(180)]);
+        // (10 * 0 + 5 * 180) / 15 = 60, level 1.
+        assert_eq!(merge.skills, vec![lumberjack(60)]);
+        assert_eq!(receiver.unit.skills, vec![lumberjack(60)]);
+
+        // `rules/give`: dividing evenly among people leaves the giver's points per man alone.
+        let giver = unit_by_id(&response, "900");
+        assert!(giver.skill_merges.is_empty(), "{:?}", giver.skill_merges);
+    }
+
+    #[test]
+    fn a_take_of_men_records_the_merge_as_taken() {
+        let response = preview_over(&report_with_two_crews(), "unit 901\nTAKE FROM 900 5 HUMN\n");
+
+        let receiver = unit_by_id(&response, "901");
+        assert_eq!(
+            receiver.skill_merges.len(),
+            1,
+            "{:?}",
+            receiver.skill_merges
+        );
+        let merge = &receiver.skill_merges[0];
+        assert_eq!(merge.cause, SkillMergeCause::Taken);
+        assert_eq!(merge.from, "900");
+        assert_eq!(merge.men, 5);
+        assert_eq!(merge.men_before, 10);
+        assert_eq!(merge.skills, vec![lumberjack(60)]);
+    }
+
+    #[test]
+    fn recruits_record_the_merge_that_diluted_the_unit() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nBUY 5 HUMN\n",
+        );
+
+        let unit = only_unit(&response);
+        assert_eq!(unit.skill_merges.len(), 1, "{:?}", unit.skill_merges);
+        let merge = &unit.skill_merges[0];
+        assert_eq!(merge.cause, SkillMergeCause::Recruited);
+        assert_eq!(merge.from, "");
+        assert_eq!(merge.men, 5);
+        assert_eq!(merge.men_before, 10);
+        assert!(!merge.count_inferred);
+        assert_eq!(merge.men_arriving.len(), 1, "{:?}", merge.men_arriving);
+        assert_eq!(merge.men_arriving[0].amount, 5);
+        assert_eq!(merge.men_arriving[0].tag, "HUMN");
+        assert!(merge.arriving_skills.is_empty());
+        // (10 * 180 + 5 * 0) / 15 = 120, level 2.
+        assert_eq!(merge.skills, vec![lumberjack(120)]);
+    }
+
+    #[test]
+    fn a_buy_all_records_an_inferred_recruit_count() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nBUY ALL HUMN\n",
+        );
+
+        let unit = only_unit(&response);
+        assert_eq!(unit.skill_merges.len(), 1, "{:?}", unit.skill_merges);
+        let merge = &unit.skill_merges[0];
+        assert_eq!(merge.cause, SkillMergeCause::Recruited);
+        assert!(merge.count_inferred);
+        assert!(merge.men_arriving.is_empty(), "{:?}", merge.men_arriving);
+        // Stated against the settled headcount rather than a literal, so the assertion does not
+        // restate the market arithmetic.
+        assert_eq!(merge.men, unit.unit.men - 10);
+        assert_eq!(merge.men_before, 10);
+    }
+
+    /// [`report_with_market_selling_people`], plus an item no catalogue knows - which is what
+    /// leaves `men_estimated` set and makes `settle_headcounts` skip the unit.
+    fn report_with_an_unreadable_item() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 humans [HUMN] at $38.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN], 3 widgets [WDGT], 400 silver [SILV]. \
+             Weight: 100. Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 3 (180).",
+            "",
+        ]
+        .join("\n")
+    }
+
+    #[test]
+    fn recruits_are_not_merged_into_a_unit_whose_headcount_was_estimated() {
+        let response = preview_over(&report_with_an_unreadable_item(), "unit 900\nBUY 5 HUMN\n");
+
+        let unit = only_unit(&response);
+        // Asserted so a fixture that stops being estimated fails loudly rather than quietly
+        // asserting nothing.
+        assert!(unit.unit.men_estimated, "the fixture must stay estimated");
+        assert!(unit.recruits_unmerged);
+        assert!(unit.skill_merges.is_empty(), "{:?}", unit.skill_merges);
+        assert_eq!(unit.unit.skills, vec![lumberjack(180)]);
+    }
+
+    #[test]
+    fn men_taken_from_a_unit_the_report_does_not_show_are_left_out_of_the_merge() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nTAKE FROM 1234 5 HUMN\n",
+        );
+
+        let unit = only_unit(&response);
+        assert_eq!(
+            unit.men_of_unknown_skill,
+            vec![TakenUnshown {
+                amount: 5,
+                tag: "HUMN".to_string(),
+                from: "1234".to_string(),
+            }]
+        );
+        assert!(unit.skill_merges.is_empty(), "{:?}", unit.skill_merges);
+        assert_eq!(unit.unit.skills, vec![lumberjack(180)]);
+    }
+
+    #[test]
+    fn the_preview_carries_the_reports_own_skill_list_typed() {
+        let response = preview_over(
+            &report_with_market_selling_people(),
+            "unit 900\nBUY 5 HUMN\n",
+        );
+
+        let unit = only_unit(&response);
+        assert_eq!(unit.reported_skills, vec![lumberjack(180)]);
+        assert_eq!(unit.unit.skills, vec![lumberjack(120)]);
+    }
+
+    #[test]
+    fn a_formed_unit_has_no_reported_skills() {
+        // The report never showed a unit this month's FORM creates, so it printed no skills for
+        // it - which `original: None` is exactly what says.
+        let response = preview("unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n");
+
+        let formed = unit_by_id(&response, "new-1");
+        assert!(formed.formed);
+        assert!(
+            formed.reported_skills.is_empty(),
+            "{:?}",
+            formed.reported_skills
+        );
+    }
+
+    #[test]
+    fn the_new_preview_fields_cross_the_wire_in_their_camel_case_spelling() {
+        // The `UnitPreview` mirrors in `packages/core-client/src/index.ts` are hand-written and
+        // nothing compares them to this struct. This pins only the Rust half - the spelling the
+        // wire actually carries - so a mirror written against it has a fixed target. A typo on the
+        // TypeScript side still fails nothing here: that gap is real and uncovered.
+        let response = preview_over(&report_with_two_crews(), "unit 900\nGIVE 901 5 HUMN\n");
+        let receiver = unit_by_id(&response, "901");
+        let json = serde_json::to_value(receiver).expect("a preview serializes");
+
+        let object = json.as_object().expect("an object");
+        for field in [
+            "skillMerges",
+            "reportedSkills",
+            "recruitsUnmerged",
+            "menOfUnknownSkill",
+        ] {
+            assert!(object.contains_key(field), "no {field} on the wire: {json}");
+        }
+
+        let merge = json["skillMerges"][0]
+            .as_object()
+            .expect("one merge on the wire");
+        assert_eq!(merge["cause"], "given");
+        for field in [
+            "from",
+            "men",
+            "menBefore",
+            "menArriving",
+            "countInferred",
+            "arrivingSkills",
+            "skills",
+        ] {
+            assert!(merge.contains_key(field), "no {field} on a merge: {json}");
+        }
+    }
+
+    #[test]
+    fn a_unit_given_men_and_recruiting_records_both_merges_in_the_order_they_ran() {
+        // `rules/sequenceofevents` runs the Give phase before the market, and the popup's chain
+        // (`ah-rgkk.2`, decision N2) reads the records in that order without re-deriving any of
+        // it - so the order, and the join between one record and the next, are the properties
+        // this feature actually rests on.
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "  For Sale: 20 humans [HUMN] at $38.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN], 400 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 3 (180).",
+            "* Hands (901), Foo (1), 6 humans [HUMN]. Weight: 60. Capacity: 0/0/90/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(&report, "unit 901\nGIVE 900 6 HUMN\nunit 900\nBUY 4 HUMN\n");
+
+        let unit = unit_by_id(&response, "900");
+        assert_eq!(unit.skill_merges.len(), 2, "{:?}", unit.skill_merges);
+        assert_eq!(unit.skill_merges[0].cause, SkillMergeCause::Given);
+        assert_eq!(unit.skill_merges[1].cause, SkillMergeCause::Recruited);
+        // The chain joins up: the recruits weigh against the headcount the gift left behind.
+        assert_eq!(unit.skill_merges[0].men_before, 10);
+        assert_eq!(
+            unit.skill_merges[1].men_before,
+            unit.skill_merges[0].men_before + unit.skill_merges[0].men
+        );
+        // ... and the last record's list is the unit's own, so the popup reads rather than merges.
+        assert_eq!(unit.skill_merges[1].skills, unit.unit.skills);
+    }
+
+    #[test]
+    fn a_merge_that_moved_no_figure_is_recorded_like_any_other() {
+        // Men joining and nothing moving is a fact about the month. Leaving the record out would
+        // make it indistinguishable from no arrival at all.
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Crew (900), Foo (1), 10 humans [HUMN]. Weight: 100. Capacity: 0/0/150/0.",
+            "* Hands (901), Foo (1), 10 humans [HUMN]. Weight: 100. Capacity: 0/0/150/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(&report, "unit 900\nGIVE 901 5 HUMN\n");
+
+        let receiver = unit_by_id(&response, "901");
+        assert!(
+            receiver.unit.skills.is_empty(),
+            "neither side has a skill, so no figure can move"
+        );
+        assert_eq!(
+            receiver.skill_merges.len(),
+            1,
+            "{:?}",
+            receiver.skill_merges
+        );
+        assert_eq!(receiver.skill_merges[0].men, 5);
+        assert!(receiver.skill_merges[0].skills.is_empty());
+    }
+
+    #[test]
+    fn an_estimated_unit_whose_recruits_never_settled_claims_nothing() {
+        // The other half of `recruits_unmerged`: a `BUY ALL` leaves the ledger no exact list, and
+        // an estimated headcount is exactly the unit `settle_headcounts` refuses to infer one for.
+        // So nothing is claimed - saying "your recruits were not merged in" would be asserting a
+        // recruit the core never established.
+        let response = preview_over(
+            &report_with_an_unreadable_item(),
+            "unit 900\nBUY ALL HUMN\n",
+        );
+
+        let unit = only_unit(&response);
+        assert!(unit.unit.men_estimated, "the fixture must stay estimated");
+        assert!(!unit.recruits_unmerged);
+        assert!(unit.skill_merges.is_empty(), "{:?}", unit.skill_merges);
     }
 }

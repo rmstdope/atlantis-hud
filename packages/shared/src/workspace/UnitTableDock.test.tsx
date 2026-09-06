@@ -148,7 +148,11 @@ describe("a unit carried away by a sailing fleet", () => {
         transportTargetIssues: [],
         dissolvesInto: null,
         formed: false,
-        dissolving: false
+        dissolving: false,
+        skillMerges: [],
+        reportedSkills: [],
+        recruitsUnmerged: false,
+        menOfUnknownSkill: []
       }
     ]
   });
@@ -233,7 +237,11 @@ describe("the structure column", () => {
             transportTargetIssues: [],
             dissolvesInto: null,
             formed: false,
-            dissolving: false
+            dissolving: false,
+            skillMerges: [],
+            reportedSkills: [],
+            recruitsUnmerged: false,
+            menOfUnknownSkill: []
           }
         ]
       }
@@ -815,6 +823,10 @@ describe("the items column", () => {
         dissolvesInto: null,
         formed: false,
         dissolving: false,
+        skillMerges: [],
+        reportedSkills: [],
+        recruitsUnmerged: false,
+        menOfUnknownSkill: [],
         ...previewOverrides
       }
     ]
@@ -1009,6 +1021,10 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
         dissolvesInto: null,
         formed: false,
         dissolving: false,
+        skillMerges: [],
+        reportedSkills: [],
+        recruitsUnmerged: false,
+        menOfUnknownSkill: [],
         ...previewOverrides
       }
     ]
@@ -1327,6 +1343,10 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     dissolvesInto: null,
     formed: false,
     dissolving: false,
+    skillMerges: [],
+    reportedSkills: [],
+    recruitsUnmerged: false,
+    menOfUnknownSkill: [],
     ...overrides
   });
 
@@ -1869,6 +1889,10 @@ describe("a row the game dissolves", () => {
     dissolvesInto: "Former (902)",
     formed: true,
     dissolving: true,
+    skillMerges: [],
+    reportedSkills: [],
+    recruitsUnmerged: false,
+    menOfUnknownSkill: [],
     ...overrides
   });
 
@@ -1899,6 +1923,10 @@ describe("a row the game dissolves", () => {
           units: [
             dissolvingRow({
               dissolving: false,
+              skillMerges: [],
+              reportedSkills: [],
+              recruitsUnmerged: false,
+              menOfUnknownSkill: [],
               status: "departing",
               departingTo: "1:7,51",
               dissolvesInto: null
@@ -1965,6 +1993,10 @@ describe("a row the game dissolves", () => {
                   // An ordinary departure for contrast: neither formed nor dissolving.
                   formed: false,
                   dissolving: false,
+                  skillMerges: [],
+                  reportedSkills: [],
+                  recruitsUnmerged: false,
+                  menOfUnknownSkill: [],
                   departingTo: "1:7,53",
                   dissolvesInto: null
                 }

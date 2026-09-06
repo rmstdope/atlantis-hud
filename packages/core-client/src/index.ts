@@ -437,6 +437,31 @@ export type TransportTargetIssue = {
   orderIndex: number;
 };
 
+/** Why men joined a unit this month (`ah-rgkk.2.1`). */
+export type SkillMergeCause = "recruited" | "given" | "taken";
+
+/**
+ * One merge of arriving men into a unit's skills, in `rules/sequenceofevents` order
+ * (`ah-rgkk.2.1`). A merge that left every figure identical is recorded like any other.
+ */
+export type SkillMerge = {
+  cause: SkillMergeCause;
+  /** The unit number the men came from. Empty for `recruited`, who come from the market. */
+  from: string;
+  /** How many men the merge weighted in. */
+  men: number;
+  /** The receiver's headcount the merge weighted against, before the men arrived. */
+  menBefore: number;
+  /** Which man items arrived, one entry per race. Empty when `countInferred` is set. */
+  menArriving: ItemAmount[];
+  /** `men` was inferred from the item list because a `BUY ALL` left no exact figure. */
+  countInferred: boolean;
+  /** The arriving men's own skills. Empty for `recruited`, who have none. */
+  arrivingSkills: SkillInfo[];
+  /** The unit's skills once this merge had run. */
+  skills: SkillInfo[];
+};
+
 /** One unit as the orders leave it: the full predicted state, so the row renders like any other. */
 export type UnitPreview = {
   unit: ReportUnit;
@@ -489,6 +514,27 @@ export type UnitPreview = {
    * Always accompanied by `formed`, and drawn rather than skipped (`ah-ty3s.3`, decision K2).
    */
   dissolving: boolean;
+  /**
+   * Why this unit's skills moved this month: one record per merge of arriving men, in the order
+   * the merges ran. Empty for a unit no men joined (`ah-rgkk.2.1`).
+   */
+  skillMerges: SkillMerge[];
+  /**
+   * This unit's skills exactly as the report printed them, typed - so a reader compares
+   * `level (points)` against `level (points)` rather than parsing the `skills` change's display
+   * string. Empty for a unit this month's FORM creates (`ah-rgkk.2.1`).
+   */
+  reportedSkills: SkillInfo[];
+  /**
+   * The report could only estimate this unit's headcount, so its recruits were never merged into
+   * its skills: the figures are the reported ones, not diluted ones (`ah-rgkk.2.1`).
+   */
+  recruitsUnmerged: boolean;
+  /**
+   * Men credited from a unit the report does not show, whose own skills are unknown and who are
+   * therefore left out of every merge (`ah-agbm`, `ah-rgkk.2.1`).
+   */
+  menOfUnknownSkill: TakenUnshown[];
 };
 
 /** Every previewed unit standing in (or bound for) one region. */
