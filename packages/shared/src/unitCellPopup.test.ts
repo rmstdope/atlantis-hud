@@ -82,8 +82,14 @@ describe("the column popups", () => {
         facts()
       )
     );
+    // Grouped through `toLocaleString`, which follows the runner's own locale - so the pinned
+    // expectation is that both halves are grouped the same way, not that the separator is a comma.
     expect(popup.lines).toEqual([
-      { label: "men", value: "4,255", change: { direction: "up", from: "4,210" } }
+      {
+        label: "men",
+        value: (4255).toLocaleString(),
+        change: { direction: "up", from: (4210).toLocaleString() }
+      }
     ]);
   });
 
