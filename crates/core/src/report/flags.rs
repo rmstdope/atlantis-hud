@@ -143,6 +143,41 @@ fn holds(flags: &[String], setting: Setting) -> bool {
     })
 }
 
+/// Puts the setting's canonical spelling in the list, in place if the list already carried another
+/// spelling of it (`guarding` for `on guard`, `autotax` for `taxing`) and appended otherwise.
+///
+/// In place rather than cleared and re-pushed, because the report's flag order is undocumented
+/// (`rules/reportformat` says nothing about it) and a re-set flag must not move.
+fn write(flags: &mut Vec<String>, setting: Setting) {
+    let canonical = setting.spellings()[0];
+    match flags.iter().position(|existing| {
+        setting
+            .spellings()
+            .iter()
+            .any(|spelling| spelling.eq_ignore_ascii_case(existing))
+    }) {
+        Some(at) => {
+            flags[at] = canonical.to_string();
+            // A report is not expected to print two spellings of one setting, but if it did,
+            // only one may survive.
+            let mut seen = false;
+            flags.retain(|existing| {
+                let matches = setting
+                    .spellings()
+                    .iter()
+                    .any(|spelling| spelling.eq_ignore_ascii_case(existing));
+                if !matches {
+                    return true;
+                }
+                let first = !seen;
+                seen = true;
+                first
+            });
+        }
+        None => flags.push(canonical.to_string()),
+    }
+}
+
 /// Applies one change to a flag list, in the report's own spellings, without disturbing the order
 /// of the flags it does not touch.
 ///
@@ -161,9 +196,7 @@ pub(crate) fn apply(flags: &mut Vec<String>, change: FlagChange) {
                 Setting::Avoiding => clear(flags, Setting::Guarding),
                 _ => {}
             }
-            if !holds(flags, setting) {
-                flags.push(setting.spellings()[0].to_string());
-            }
+            write(flags, setting);
         }
         FlagChange::Choose { group, chosen } => {
             for member in group.members() {
@@ -172,9 +205,7 @@ pub(crate) fn apply(flags: &mut Vec<String>, change: FlagChange) {
                 }
             }
             if let Some(setting) = chosen {
-                if !holds(flags, setting) {
-                    flags.push(setting.spellings()[0].to_string());
-                }
+                write(flags, setting);
             }
         }
     }
@@ -276,6 +307,73 @@ mod tests {
             },
         );
         assert_eq!(flags, list(&["on guard"]));
+    }
+
+    /// The report may have printed the setting's other spelling; the preview writes the one the
+    /// player's next report will carry.
+    #[test]
+    fn setting_a_flag_rewrites_an_alternative_spelling_the_report_used() {
+        for (was, becomes, change) in [
+            (
+                "guarding",
+                "on guard",
+                FlagChange::Toggle {
+                    setting: Setting::Guarding,
+                    on: true,
+                },
+            ),
+            (
+                "autotax",
+                "taxing",
+                FlagChange::Toggle {
+                    setting: Setting::Taxing,
+                    on: true,
+                },
+            ),
+            (
+                "no battle spoils",
+                "weightless battle spoils",
+                FlagChange::Choose {
+                    group: Group::Spoils,
+                    chosen: Some(Setting::SpoilsWeightless),
+                },
+            ),
+        ] {
+            let mut flags = list(&["behind", was, "sharing"]);
+            apply(&mut flags, change);
+            assert_eq!(flags, list(&["behind", becomes, "sharing"]));
+        }
+    }
+
+    /// `ALL_SETTINGS` is what `known` and the `write.rs` round trip walk, so a variant missing
+    /// from it would drop out of the vocabulary with every test still green. This match is
+    /// exhaustive, so a new variant fails to compile until it is listed.
+    #[test]
+    fn every_setting_is_in_the_list_the_vocabulary_is_walked_by() {
+        for setting in ALL_SETTINGS {
+            let listed = match setting {
+                Setting::Guarding
+                | Setting::Avoiding
+                | Setting::Behind
+                | Setting::Sharing
+                | Setting::Taxing
+                | Setting::NoAid
+                | Setting::Holding
+                | Setting::NoCross
+                | Setting::RevealingUnit
+                | Setting::RevealingFaction
+                | Setting::ConsumingUnit
+                | Setting::ConsumingFaction
+                | Setting::SpoilsWeightless
+                | Setting::SpoilsWalking
+                | Setting::SpoilsRiding
+                | Setting::SpoilsFlying
+                | Setting::SpoilsSwimming
+                | Setting::SpoilsSailing => *setting,
+            };
+            assert!(ALL_SETTINGS.contains(&listed));
+        }
+        assert_eq!(ALL_SETTINGS.len(), 18);
     }
 
     #[test]
