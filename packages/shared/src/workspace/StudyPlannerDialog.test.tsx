@@ -45,11 +45,12 @@ const GROUPS = plannerGroups({
       index
     ),
     standingOf(
-      // Manipulation and a foundation: not an apprentice, so `plannerGroups` keeps him (ah-n1ph).
+      // Manipulation and force, a Foundation (`rules/magic_foundations`): not an apprentice, so
+      // `plannerGroups` keeps him (ah-n1ph).
       aReportUnit({
         unitId: "882",
         name: "One of Nine",
-        skills: held({ MANI: [3, 180], ILLU: [1, 30] })
+        skills: held({ MANI: [3, 180], FORC: [1, 30] })
       }),
       tree,
       index

@@ -305,18 +305,18 @@ export function plannerSummaryLine(
   const mages = `${total} mage${total === 1 ? "" : "s"}`;
   // The sentence is about who is listed; the omission is its footnote, so it goes last. ` · ` is
   // the separator this pane already uses to join two facts on one line.
-  const left =
+  const omitted =
     apprentices === 0
       ? ""
       : ` · ${apprentices} apprentice${apprentices === 1 ? "" : "s"} not listed`;
   const allyWord = `${allies.length} all${allies.length === 1 ? "y" : "ies"}`;
   if (allied === 0) {
-    return `${mages}, all yours${left}`;
+    return `${mages}, all yours${omitted}`;
   }
   if (own === 0) {
-    return `${mages} from ${allyWord}${left}`;
+    return `${mages} from ${allyWord}${omitted}`;
   }
-  return `${mages} — ${own} yours, ${allied} from ${allyWord}${left}`;
+  return `${mages} — ${own} yours, ${allied} from ${allyWord}${omitted}`;
 }
 
 /** The sentence above a stale mage's detail, or null when he is not from a stale sheet. */

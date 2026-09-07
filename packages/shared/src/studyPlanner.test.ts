@@ -60,7 +60,7 @@ const report = (overrides = {}) =>
 
 /** Force 4, and one skill nothing could move: force is at its ceiling of 4 held by nothing here. */
 const SIX = ownStanding("881", "Six of Seven", { FORC: [4, 325], SPIR: [1, 30] });
-const ONE = ownStanding("882", "One of Nine", { MANI: [3, 180], ILLU: [1, 30] });
+const ONE = ownStanding("882", "One of Nine", { MANI: [3, 180], FORC: [1, 30] });
 /** Manipulation and nothing else: an apprentice, `rules/magic_apprentices`. */
 const APPRENTICE = ownStanding("883", "Two of Nine", { MANI: [3, 180] });
 

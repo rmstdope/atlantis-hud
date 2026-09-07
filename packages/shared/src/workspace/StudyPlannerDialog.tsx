@@ -70,7 +70,7 @@ export function StudyPlannerDialog({
   onDismiss
 }: {
   groups: readonly PlannerGroup[];
-  /** `plannerSummaryLine(groups)`; null hides the sub-line. */
+  /** `plannerSummaryLine(groups, apprentices)`; null hides the sub-line. */
   summaryLine: string | null;
   emptyCopy: { headline: string; detail: string };
   /** The allied-mage store's status, for the loading and error lines. */
