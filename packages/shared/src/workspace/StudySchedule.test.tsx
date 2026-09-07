@@ -581,9 +581,9 @@ describe("the warnings strip", () => {
 });
 
 describe("a month somebody would double is drawn green", () => {
-  /** Ereb (2431) teaching live on turn 26, and Ilna (2432) in his hex studying force. */
-  const taughtRows = (() => {
-    const drawn = scheduleRows({
+  /** Both mages in one hex studying force, Ereb outranking Ilna - and nobody teaching. */
+  const plainRows = (() => {
+    return scheduleRows({
       groups,
       plans: ["2431", "2432"].map((unitId) => ({
         factionId: "12",
@@ -596,9 +596,13 @@ describe("a month somebody would double is drawn green", () => {
       turns,
       seats: new Map([["1:7,53/1", 1]])
     }) as ScheduleRow[];
+  })();
+
+  /** The same hex, with Ereb (2431) teaching live on turn 26. */
+  const taughtRows = (() => {
     const teacher: ScheduleRow = {
-      ...drawn[0],
-      cells: drawn[0].cells.map((cell, at) =>
+      ...plainRows[0],
+      cells: plainRows[0].cells.map((cell, at) =>
         at === 2
           ? {
               kind: "teach" as const,
@@ -610,22 +614,22 @@ describe("a month somebody would double is drawn green", () => {
           : cell
       )
     };
-    return [teacher, drawn[1]];
+    return [teacher, plainRows[1]];
   })();
 
-  const studentMenu = (rows: readonly ScheduleRow[] | undefined) =>
+  const studentMenu = (rows: readonly ScheduleRow[]) =>
     cellMenu({
       mageName: "Ilna",
       turn: 26,
       standing: taughtRows[1].standings[2],
       tree,
       rows,
-      turnIndex: rows === undefined ? undefined : 2,
-      rowKey: rows === undefined ? undefined : "12/2432",
+      turnIndex: 2,
+      rowKey: "12/2432",
       label: (regionId: string) => regionId
     });
 
-  const popoverOf = (rows: readonly ScheduleRow[] | undefined) =>
+  const popoverOf = (rows: readonly ScheduleRow[]) =>
     renderToStaticMarkup(
       <CellPopover
         menu={studentMenu(rows)}
@@ -646,18 +650,20 @@ describe("a month somebody would double is drawn green", () => {
     expect(markup).toContain("text-ok");
   });
 
+  // The grid is passed in full: what makes this row plain is the predicate saying nobody would
+  // teach it, not the absence of rows to ask about.
   it("leaves an untaught dropdown with no green at all", () => {
-    const markup = popoverOf(undefined);
+    const markup = popoverOf(plainRows);
 
     expect(markup).not.toContain("taught by");
     expect(markup).not.toContain("text-ok");
   });
 
-  const paneOf = (rows: readonly ScheduleRow[] | undefined) =>
+  const paneOf = (rows: readonly ScheduleRow[]) =>
     renderToStaticMarkup(
       <MagePaneView
         pane={magePane({
-          row: taughtRows[1],
+          row: rows[1],
           turnIndex: 2,
           turns,
           tree,
@@ -672,7 +678,7 @@ describe("a month somebody would double is drawn green", () => {
     expect(paneOf(taughtRows)).toContain("taught by Ereb");
   });
 
-  it("leaves the pane plain with no rows to read", () => {
-    expect(paneOf(undefined)).not.toContain("text-ok");
+  it("leaves the pane plain when nobody in the hex would teach it", () => {
+    expect(paneOf(plainRows)).not.toContain("text-ok");
   });
 });
