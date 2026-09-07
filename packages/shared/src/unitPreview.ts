@@ -43,6 +43,14 @@ import { unitRowKey } from "./unitTable";
  */
 export type PreviewedUnit = ReportUnit & {
   previewStatus?: UnitPreviewStatus;
+  /**
+   * The hex whose numbering `structureId` is written in, when it is not this row's own.
+   *
+   * Set only by `mergePreviewAcross`' fold, which puts a mover's destination structure on the row
+   * standing in its origin hex (`ah-ehgy`). Absent everywhere else, including every row
+   * `mergePreview` returns, because there `structureId` and `regionId` name the same hex.
+   */
+  structureRegionId?: string;
   previewChanges?: FieldChange[];
   /** Where an arriving unit set out from. */
   arrivingFrom?: string | null;
@@ -169,6 +177,9 @@ export function mergePreviewAcross(
   );
 }
 
+/** A previewed row plus the one thing the fold knows and the wire type cannot carry. */
+type FoldedPreview = UnitPreview & { structureRegionId?: string };
+
 /**
  * The kept row of a moving unit, standing where the month leaves it rather than where it set out.
  *
@@ -187,7 +198,7 @@ export function mergePreviewAcross(
 function standingWhereItArrives(
   departing: UnitPreview,
   arrivals: readonly UnitPreview[]
-): UnitPreview {
+): FoldedPreview {
   if (departing.departingTo === null || departing.departingTo === undefined) {
     return departing;
   }
@@ -209,8 +220,14 @@ function standingWhereItArrives(
   // structure ids are compared only alongside the changes, and never as the whole test: a
   // structure number is scoped to its region (`rules/move`, "a structure number"), so `7` in the
   // origin and `7` in the destination are two different buildings that happen to share a number.
+  // A structure the row keeps still has to say which hex numbered it, even when the two hexes
+  // number one alike: the kept row stands in the origin, so without `structureRegionId` the
+  // destination's `7` would be read in the origin's index and named the origin's building
+  // (`ah-yjhf`). Only a mover in no structure at all has nothing to say, and that is the case the
+  // guard keeps.
   if (
     arrival.unit.structureId === departing.unit.structureId &&
+    arrival.unit.structureId === null &&
     sameChanges(changes, departing.changes)
   ) {
     return departing;
@@ -218,7 +235,8 @@ function standingWhereItArrives(
   return {
     ...departing,
     unit: { ...departing.unit, structureId: arrival.unit.structureId },
-    changes
+    changes,
+    structureRegionId: departing.departingTo
   };
 }
 
@@ -245,7 +263,7 @@ function sameChanges(one: readonly FieldChange[], other: readonly FieldChange[])
  * as orders are typed, so a fresh array every call would cancel the hover 300ms after it began and
  * the tooltip would never appear (`ah-1wcw.1`, fixed in `ah-1wcw.6`).
  */
-function foldIn(units: ReportUnit[], previewed: readonly UnitPreview[]): PreviewedUnit[] {
+function foldIn(units: ReportUnit[], previewed: readonly FoldedPreview[]): PreviewedUnit[] {
   if (previewed.length === 0) {
     return units;
   }
@@ -272,9 +290,10 @@ function foldIn(units: ReportUnit[], previewed: readonly UnitPreview[]): Preview
 }
 
 /** One previewed unit as a table row: the predicted unit, with the preview's extras beside it. */
-function rowFor(previewed: UnitPreview): PreviewedUnit {
+function rowFor(previewed: FoldedPreview): PreviewedUnit {
   return {
     ...previewed.unit,
+    structureRegionId: previewed.structureRegionId,
     previewStatus: previewed.status,
     previewChanges: previewed.changes,
     arrivingFrom: previewed.arrivingFrom,

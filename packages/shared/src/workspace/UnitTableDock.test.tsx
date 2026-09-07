@@ -23,6 +23,7 @@ import {
 import { renderWithStoreState, restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
+import { structuresByRegionOf } from "../structureLabel";
 import { UnitTableDock } from "./UnitTableDock";
 import { FOREIGN_SOURCE } from "./unitSource";
 
@@ -204,6 +205,53 @@ describe("the structure column", () => {
 
     expect(markup).toContain("[77]");
     expect(markup).not.toContain("Wavecrest [77]");
+  });
+
+  it("names each row's structure in the hex it stands in, not the selected hex's", () => {
+    const NORTHKEEP = { ...WAVECREST, structureId: "7", name: "Northkeep", kind: "Fort", baseKind: "Fort" };
+    const SOUTHWATCH = { ...NORTHKEEP, name: "Southwatch" };
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={inStructures([])}
+        ownUnits={[
+          unit({ unitId: "1", regionId: "1:6,52", structureId: "7" }),
+          unit({ unitId: "2", regionId: "1:43,79", structureId: "7" }),
+        ]}
+        structuresByRegion={structuresByRegionOf([
+          { regionId: "1:6,52", structures: [NORTHKEEP] },
+          { regionId: "1:43,79", structures: [SOUTHWATCH] }
+        ])}
+        currentTurn={71}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+    expect(markup).toContain("Northkeep [7] · Fort");
+    expect(markup).toContain("Southwatch [7] · Fort");
+  });
+
+  it("keeps the bare number for a row whose hex the index does not describe", () => {
+    const NORTHKEEP = { ...WAVECREST, structureId: "7", name: "Northkeep", kind: "Fort", baseKind: "Fort" };
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={inStructures([])}
+        ownUnits={[unit({ unitId: "3", regionId: "1:99,99", structureId: "7" })]}
+        structuresByRegion={structuresByRegionOf([{ regionId: "1:6,52", structures: [NORTHKEEP] }])}
+        currentTurn={71}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
+    expect(markup).toContain("[7]");
+    expect(markup).not.toContain("Northkeep");
   });
 
   it("leaves the cell empty for a unit standing in the open", () => {

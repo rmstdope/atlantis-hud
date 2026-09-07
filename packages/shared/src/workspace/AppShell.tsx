@@ -263,7 +263,7 @@ import { magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
-import { structurePaletteLabel } from "../structureLabel";
+import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel";
 import type { Resume, StopKey } from "../diagnosticNav";
 import { diagnosticTargets, resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
@@ -1230,6 +1230,23 @@ export function AppShell({
   const ownUnits = useMemo(
     () => (parsed ? parsed.regions.flatMap((region) => region.units.filter((one) => one.own)) : []),
     [parsed]
+  );
+  /**
+   * Every known region's structures, for the units dock (`ah-yjhf`).
+   *
+   * The known map first, for the remembered hexes it alone carries, and this turn's own regions
+   * after it, so they win where the two disagree. Both, rather than the map alone: a report whose
+   * map could not be drawn (`memory.knownMap === null`) has an empty `model`, and the units panel
+   * goes on working from `parsed` — an index built from the map alone would leave every row in
+   * that report with a bare `[id]`.
+   */
+  const structuresByRegion = useMemo(
+    () =>
+      structuresForUnitDock(
+        model.hexes.flatMap((node) => (node.region ? [node.region] : [])),
+        parsed?.regions ?? []
+      ),
+    [model, parsed]
   );
   /** Its exact complement, for the dock's `Other factions` source (`ah-1mpx.5`). */
   const foreignUnits = useMemo(() => (parsed ? foreignUnitsIn(parsed) : []), [parsed]);
@@ -5420,6 +5437,7 @@ export function AppShell({
             <UnitTableDock
               ref={unitDock}
               hex={hex}
+              structuresByRegion={structuresByRegion}
               preview={hexPreview}
               ordersPreview={ordersPreview}
               getLongOrder={getLongOrder}

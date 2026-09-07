@@ -5,7 +5,6 @@ import type {
   OrdersPreviewResponse,
   RegionPreview,
   ReportUnit,
-  StructureInfo,
   UnitSilver
 } from "@atlantis/core-client";
 import {
@@ -28,7 +27,13 @@ import {
 } from "react";
 import type { HexNode } from "../hexMapModel";
 import { unitsForHex } from "../hexMapModel";
-import { unitStructureLabel } from "../structureLabel";
+import {
+  reportedStructureRegionOf,
+  structureRegionOf,
+  structuresByRegionOf,
+  unitStructureLabelIn,
+  type StructuresByRegion
+} from "../structureLabel";
 import { describeMenBriefly } from "../unitComposition";
 import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { unitSkillsCell } from "../battleSkillPresentation";
@@ -236,6 +241,14 @@ type UnitTableDockProps = {
    * way in (`testing/README.md`).
    */
   initialSource?: UnitSource;
+  /**
+   * Every known region's structures, so a source spanning hexes reads each row's structure number
+   * in the region that numbered it (`ah-yjhf`).
+   *
+   * Absent is a component-test seam exactly like `initialSource`: the pane falls back to the
+   * selected hex alone, which is what it read before this bead. The shell always passes it.
+   */
+  structuresByRegion?: StructuresByRegion;
   /** Every unit in this turn's report that is not yours, for `Other factions` (`ah-1mpx.5`). */
   foreignUnits?: ReportUnit[];
   /**
@@ -282,6 +295,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       onFailure,
       onExportArmy,
       initialSource = HEX_SOURCE,
+      structuresByRegion,
       foreignUnits,
       initialPin = null,
       attitudes = null,
@@ -462,15 +476,14 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
 
   const units = sourced.rows;
   const extras = useMemo(() => extraColumnsFor(source), [source]);
-  // The selected hex's structures. A source spanning hexes has no single such list, and a rebuilt
-  // Army member has no `structureId` at all, so the Structure column simply reads empty there -
-  // which is honest: nobody can see what a remembered unit is standing in.
-  const structures = useMemo(() => hex?.region?.structures ?? [], [hex]);
-  // Built once per hex, not scanned per row: a hex can hold three hundred units across two dozen
-  // structures, and the table re-renders on every scroll frame.
-  const structuresById = useMemo(
-    () => new Map(structures.map((structure) => [structure.structureId, structure])),
-    [structures]
+  // Every known region's structures, so a row is labelled in the region that numbered its
+  // structure: a structure number is scoped to its region (`rules/move`), and the numbers are
+  // heavily reused, so a source spanning hexes must not read them all in the selected hex
+  // (`ah-yjhf`). Built once per map, never scanned per row: a hex can hold three hundred units
+  // across two dozen structures, and the table re-renders on every scroll frame.
+  const structures = useMemo(
+    () => structuresByRegion ?? structuresByRegionOf(hex?.region ? [hex.region] : []),
+    [structuresByRegion, hex]
   );
   /** Every row's name by unit number, for a popup naming the unit men came from (`ah-rgkk.2.3`). */
   const unitNames = useMemo(
@@ -1513,8 +1526,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                 <UnitRow
                   key={unitRowKey(unit.regionId, unit.unitId)}
                   unit={unit}
-                  structureLabel={unitStructureLabel(unit.structureId, structuresById)}
-                  reportedStructureLabel={reportedStructureLabelFor(unit, structuresById)}
+                  structureLabel={unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures)}
+                  reportedStructureLabel={reportedStructureLabelFor(unit, structures)}
                   drawn={drawn}
                   index={start + offset}
                   rowHeight={rowHeight}
@@ -1562,7 +1575,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
             silverWarnings={silverWarnings}
             countUpkeep={countUpkeep}
             derivedSkills={derivedSkills}
-            structuresById={structuresById}
+            structures={structures}
             unitNames={unitNames}
           />
         </div>
@@ -1616,14 +1629,15 @@ type MenuAnchor = { at: "header" } | { at: "bulk" } | { at: "pointer"; point: Po
  */
 function reportedStructureLabelFor(
   unit: PreviewedUnit,
-  structuresById: ReadonlyMap<string, StructureInfo>
+  byRegion: StructuresByRegion
 ): string | null {
   const change = changeFor(unit, "structureId");
   if (!change) {
     return null;
   }
   const id = change.original.trim() === "" ? null : change.original;
-  return unitStructureLabel(id, structuresById);
+  // The `was` value is what the report said, in the hex the unit set out from (`ah-yjhf`).
+  return unitStructureLabelIn(reportedStructureRegionOf(unit), id, byRegion);
 }
 
 /** Which rail entry a drag may be dropped on. */
@@ -1980,7 +1994,7 @@ function HoveredPopup({
   silverWarnings,
   countUpkeep,
   derivedSkills,
-  structuresById,
+  structures,
   unitNames
 }: {
   hovered: { unit: PreviewedUnit; column: DrawnColumnId; at: Point } | null;
@@ -1991,7 +2005,7 @@ function HoveredPopup({
   silverWarnings?: ReadonlySet<string>;
   countUpkeep: boolean;
   derivedSkills: DerivedSkills;
-  structuresById: ReadonlyMap<string, StructureInfo>;
+  structures: StructuresByRegion;
   /** Every row's name by unit number, for a Skills popup naming a giver (`ah-rgkk.2.3`). */
   unitNames: ReadonlyMap<string, string>;
 }) {
@@ -2008,8 +2022,8 @@ function HoveredPopup({
     silver !== null && (silverWarnings?.has(silverKey(unit.regionId, unit.unitId)) ?? false);
   const dissolving = dissolves(unit);
   const spec = popupForCell(column, unit, {
-    structureLabel: unitStructureLabel(unit.structureId, structuresById),
-    reportedStructureLabel: reportedStructureLabelFor(unit, structuresById),
+    structureLabel: unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures),
+    reportedStructureLabel: reportedStructureLabelFor(unit, structures),
     longOrder: unit.own ? (getLongOrder?.(unit.unitId, unit.regionId) ?? null) : null,
     reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
     silver,

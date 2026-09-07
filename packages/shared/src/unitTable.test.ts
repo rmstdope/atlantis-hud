@@ -1,6 +1,7 @@
 import type { ReportUnit, StructureInfo, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
+import { structuresByRegionOf } from "./structureLabel";
 import {
   DEFAULT_SORT,
   filterUnits,
@@ -55,11 +56,13 @@ const unit = (unitId: string, own: boolean, overrides: Partial<ReportUnit> = {})
   });
 
 const ids = (units: ReportUnit[]) => units.map((entry) => entry.unitId);
+const inOneRegion = (structures: StructureInfo[]) =>
+  structuresByRegionOf([{ regionId: aReportUnit().regionId, structures }]);
 const sortBy = (
   units: ReportUnit[],
   overrides: Partial<SortState>,
   structures: StructureInfo[] = []
-) => sortUnits(units, { ...DEFAULT_SORT, ...overrides }, structures);
+) => sortUnits(units, { ...DEFAULT_SORT, ...overrides }, inOneRegion(structures));
 
 describe("windowRange", () => {
   it("returns the rows covering the viewport, end exclusive", () => {
@@ -330,8 +333,8 @@ describe("filterUnits", () => {
       { structureId: "194", name: "Wavecrest", kind: "Longship", baseKind: "Longship", qualifiers: [], vessels: [], description: null, needs: null }
     ];
 
-    expect(ids(filterUnits(units, "wavecrest", structures))).toEqual(["18642"]);
-    expect(ids(filterUnits(units, "194", structures))).toEqual(["18642"]);
+    expect(ids(filterUnits(units, "wavecrest", inOneRegion(structures)))).toEqual(["18642"]);
+    expect(ids(filterUnits(units, "194", inOneRegion(structures)))).toEqual(["18642"]);
   });
 
   it("matches on the structure the unit occupies", () => {
@@ -353,8 +356,8 @@ describe("filterUnits", () => {
     const drawn = new Map([["12538", "RIDI 5 (turn 71)"]]);
     const skillsText = (unit: ReportUnit) => drawn.get(unit.unitId) ?? "";
 
-    expect(ids(filterUnits(units, "turn 71", [], skillsText))).toEqual(["12538"]);
-    expect(ids(filterUnits(units, "RIDI", [], skillsText))).toEqual(["12538"]);
+    expect(ids(filterUnits(units, "turn 71", new Map(), skillsText))).toEqual(["12538"]);
+    expect(ids(filterUnits(units, "RIDI", new Map(), skillsText))).toEqual(["12538"]);
   });
 
   it("without a callback the filter still finds a unit's own report-native skills", () => {
@@ -384,7 +387,7 @@ describe("sorts by the long order, ignoring case and a leading @", () => {
   );
 
   it("puts a repeated order beside its plain, differently-cased twin", () => {
-    const order = ids(sortUnits(units, { ...DEFAULT_SORT, column: "longOrder" }, [], longOrders));
+    const order = ids(sortUnits(units, { ...DEFAULT_SORT, column: "longOrder" }, new Map(), longOrders));
 
     // "@tax" and "TAX" compare as "tax", so they land together ahead of "work".
     expect(order.slice(0, 3)).toEqual(["2", "3", "1"]);
@@ -392,11 +395,11 @@ describe("sorts by the long order, ignoring case and a leading @", () => {
 
   it("sorts a unit with nothing to do to the end, the way an absent structure already does", () => {
     expect(
-      ids(sortUnits(units, { ...DEFAULT_SORT, column: "longOrder" }, [], longOrders)).at(-1)
+      ids(sortUnits(units, { ...DEFAULT_SORT, column: "longOrder" }, new Map(), longOrders)).at(-1)
     ).toBe("4");
     expect(
       ids(
-        sortUnits(units, { ...DEFAULT_SORT, column: "longOrder", direction: "desc" }, [], longOrders)
+        sortUnits(units, { ...DEFAULT_SORT, column: "longOrder", direction: "desc" }, new Map(), longOrders)
       ).at(-1)
     ).toBe("4");
   });
@@ -419,7 +422,7 @@ describe("a sort value belongs to a row, not to a unit number", () => {
     ]);
 
     expect(
-      sortUnits(rows, { ...DEFAULT_SORT, column: "longOrder" }, [], longOrders).map(
+      sortUnits(rows, { ...DEFAULT_SORT, column: "longOrder" }, new Map(), longOrders).map(
         (entry) => entry.regionId
       )
     ).toEqual(["1:8,54", "1:7,53"]);
@@ -432,7 +435,7 @@ describe("a sort value belongs to a row, not to a unit number", () => {
     ]);
 
     expect(
-      sortUnits(rows, { ...DEFAULT_SORT, column: "silver" }, [], new Map(), silver).map(
+      sortUnits(rows, { ...DEFAULT_SORT, column: "silver" }, new Map(), new Map(), silver).map(
         (entry) => entry.regionId
       )
     ).toEqual(["1:8,54", "1:7,53"]);
@@ -857,7 +860,7 @@ describe("the Silver column (ah-1wcw.1)", () => {
     const ascending = sortUnits(
       units,
       { column: "silver", direction: "asc", groupOwnFirst: false },
-      [],
+      new Map(),
       new Map(),
       silver
     ).map((unit) => unit.unitId);
@@ -866,7 +869,7 @@ describe("the Silver column (ah-1wcw.1)", () => {
     const descending = sortUnits(
       units,
       { column: "silver", direction: "desc", groupOwnFirst: false },
-      [],
+      new Map(),
       new Map(),
       silver
     ).map((unit) => unit.unitId);
@@ -915,7 +918,7 @@ describe("the source-dependent columns (ah-1mpx.2)", () => {
       ["3", 40]
     ]);
 
-    const sorted = sortUnits(units, { ...DEFAULT_SORT, column: "seen" }, [], undefined, undefined, seen);
+    const sorted = sortUnits(units, { ...DEFAULT_SORT, column: "seen" }, new Map(), undefined, undefined, seen);
 
     expect(ids(sorted)).toEqual(["3", "1", "2"]);
   });
@@ -925,14 +928,14 @@ describe("the source-dependent columns (ah-1mpx.2)", () => {
     const seen = new Map([["2", 12]]);
 
     expect(
-      ids(sortUnits(units, { ...DEFAULT_SORT, column: "seen" }, [], undefined, undefined, seen))
+      ids(sortUnits(units, { ...DEFAULT_SORT, column: "seen" }, new Map(), undefined, undefined, seen))
     ).toEqual(["2", "1"]);
     expect(
       ids(
         sortUnits(
           units,
           { ...DEFAULT_SORT, column: "seen", direction: "desc" },
-          [],
+          new Map(),
           undefined,
           undefined,
           seen
@@ -1049,5 +1052,32 @@ describe("nextSort (ah-20di)", () => {
       column: DEFAULT_SORT.column,
       direction: "desc"
     });
+  });
+});
+
+describe("structures are read in each row's own region", () => {
+  const northkeep: StructureInfo = {
+    structureId: "7", name: "Northkeep", kind: "Fort", baseKind: "Fort",
+    qualifiers: [], vessels: [], description: null, needs: null
+  };
+  const southwatch: StructureInfo = { ...northkeep, name: "Southwatch" };
+  const index = structuresByRegionOf([
+    { regionId: "1:43,81", structures: [northkeep] },
+    { regionId: "1:43,79", structures: [southwatch] }
+  ]);
+  const rows = [
+    unit("a", true, { regionId: "1:43,81", structureId: "7" }),
+    unit("b", true, { regionId: "1:43,79", structureId: "7" })
+  ];
+
+  it("matches a structure name in the row's own region", () => {
+    expect(ids(filterUnits(rows, "southwatch", index))).toEqual(["b"]);
+    expect(ids(filterUnits(rows, "northkeep", index))).toEqual(["a"]);
+  });
+
+  it("sorts by the name the row's own region gives its structure", () => {
+    expect(
+      ids(sortUnits(rows, { column: "structure", direction: "asc", groupOwnFirst: false }, index))
+    ).toEqual(["a", "b"]);
   });
 });
