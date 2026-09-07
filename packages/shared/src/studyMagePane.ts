@@ -33,8 +33,13 @@ export type MagePaneChoice = {
   /** Upper-cased tag. */
   skill: string;
   name: string;
-  /** `0(0) → 1(30)`: what a plain month of it would leave him at, worded as the dropdown does. */
+  /**
+   * `0(0) → 1(30)`, or `0(0) → 2(60) · taught by Wardweaver` - what a month of it would leave him
+   * at, worded exactly as the dropdown words it.
+   */
   detail: string;
+  /** The mage whose teaching would double this month, by name, or null. */
+  taughtBy: string | null;
 };
 
 export type MagePane = {
@@ -77,24 +82,32 @@ export function magePane(input: {
   factionLabel: string;
   /** Row key to mage name, so a taught month can name its teacher. */
   teacherNames?: ReadonlyMap<string, string>;
+  /** Every row the Schedule drew, so a month somebody would double is shown as doubled. */
+  rows?: readonly ScheduleRow[];
 }): MagePane {
   const { row, turnIndex, turns, tree, factionLabel } = input;
   const standing = row.standings[turnIndex ?? 0] ?? new Map();
   // `cellMenu` for the whole list, not a second walk of the tree: what a mage can study is one
-  // rule, and a pane that answered it its own way would be a second one to keep in step. No rows,
-  // so it does no teaching work we would only throw away.
+  // rule, and a pane that answered it its own way would be a second one to keep in step.
+  //
+  // `turnIndex` of null reaches it as `undefined`, not as 0: his name's column is him as he stands
+  // now, and a doubling from a turn the player is not looking at would be a different claim.
   const choices = cellMenu({
     mageName: row.name,
     turn: turns[turnIndex ?? 0],
     standing,
-    tree
+    tree,
+    rows: input.rows,
+    turnIndex: turnIndex ?? undefined,
+    rowKey: input.rows === undefined ? undefined : row.key
   }).choices;
   // The dropdown's own wording, verbatim: this list and that menu offer the same months, and a
   // player reading one before opening the other should not have to translate between them.
   const canStudy = choices.map((choice) => ({
     skill: choice.skill,
     name: choice.name,
-    detail: choice.detail
+    detail: choice.detail,
+    taughtBy: choice.taughtBy
   }));
 
   if (turnIndex === null) {

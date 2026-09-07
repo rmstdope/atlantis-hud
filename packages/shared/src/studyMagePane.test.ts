@@ -153,3 +153,53 @@ describe("magePane on the mage himself", () => {
     expect(pane(null).foot).toBe("From turn 23's report.");
   });
 });
+
+describe("a month somebody would double", () => {
+  /** Ereb, and a senior mage in his hex teaching live on every turn. */
+  function rowsWithTeacher(): ScheduleRow[] {
+    const student = row();
+    const teacher: ScheduleRow = {
+      ...student,
+      key: "21/881",
+      unitId: "881",
+      name: "Wardweaver",
+      cells: student.cells.map(() => ({
+        kind: "teach" as const,
+        students: [],
+        live: true,
+        outcome: { taught: ["21/2431"], refused: [], worth: 2 },
+        label: "TEACH"
+      })),
+      standings: student.standings.map(
+        () => new Map([["FORC", { level: 5, points: 450 }]]) as ScheduleRow["standings"][number]
+      )
+    };
+    return [teacher, student];
+  }
+
+  function paneWithRows(turnIndex: number | null) {
+    const rows = rowsWithTeacher();
+    return magePane({
+      row: rows[1],
+      turnIndex,
+      turns,
+      tree,
+      factionLabel: "Wardens of the North (12)",
+      rows
+    });
+  }
+
+  it("shows the Can study list a month somebody would double", () => {
+    const forc = paneWithRows(0).canStudy.find((one) => one.skill === "FORC");
+
+    expect(forc?.taughtBy).toBe("Wardweaver");
+    expect(forc?.detail).toContain("· taught by Wardweaver");
+  });
+
+  it("leaves the mage's own column plain, there being no turn to teach in", () => {
+    const forc = paneWithRows(null).canStudy.find((one) => one.skill === "FORC");
+
+    expect(forc?.taughtBy).toBeNull();
+    expect(forc?.detail).not.toContain("taught by");
+  });
+});
