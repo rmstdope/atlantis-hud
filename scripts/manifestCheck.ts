@@ -104,8 +104,11 @@ export function successNotice(verdict: ManifestVerdict): string | null {
 export async function fetchStatus(url: string): Promise<Status> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    // Captured before the drain: a body read that fails on a healthy answer must not turn a known
+    // status into the status-less 0, which would be retried as though nothing had been learned.
+    const status = response.status;
     await response.arrayBuffer();
-    return response.status;
+    return status;
   } catch {
     return 0;
   }
@@ -114,20 +117,31 @@ export async function fetchStatus(url: string): Promise<Status> {
 const invokedDirectly =
   process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-if (invokedDirectly) {
-  const site = process.argv[2];
+/**
+ * The CLI, as a promise rather than a top-level `await`.
+ *
+ * `scripts/` has no `"type": "module"` above it, so `tsx` transforms these files as CJS and a
+ * top-level `await` is a hard transform error - the script would fail to run at all, on every deploy.
+ * Not covered by tests directly; `manifestCheck.cli.test.ts` runs it as a subprocess instead.
+ */
+function runCli(site: string | undefined): void {
   if (site === undefined || site.length === 0) {
     process.stderr.write("::error::Usage: manifestCheck.ts <site root>\n");
     process.exitCode = 1;
-  } else {
-    const verdict = await checkManifest(site, fetchStatus, (ms) =>
-      new Promise<void>((done) => setTimeout(done, ms))
-    );
-    const notice = successNotice(verdict);
-    if (notice !== null) process.stdout.write(`::notice::${notice}\n`);
-    if (!verdict.ok) {
-      process.stdout.write(`::error::${failureMessage(verdict)}\n`);
-      process.exitCode = 1;
-    }
+    return;
   }
+  void checkManifest(site, fetchStatus, (ms) => new Promise<void>((done) => setTimeout(done, ms))).then(
+    (verdict) => {
+      const notice = successNotice(verdict);
+      if (notice !== null) process.stdout.write(`::notice::${notice}\n`);
+      if (!verdict.ok) {
+        process.stdout.write(`::error::${failureMessage(verdict)}\n`);
+        process.exitCode = 1;
+      }
+    }
+  );
+}
+
+if (invokedDirectly) {
+  runCli(process.argv[2]);
 }

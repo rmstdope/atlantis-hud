@@ -9,19 +9,28 @@ import {
   failureMessage,
   fetchStatus,
   isRetryable,
+  MANIFEST_PATH,
   manifestUrl,
   RETRY_DELAY_MS,
   successNotice,
   type Status
 } from "./manifestCheck";
 
-/** A fetcher answering a scripted list of statuses, repeating the last one once exhausted. */
-function scriptedFetcher(statuses: Status[]): (url: string) => Promise<Status> {
+/**
+ * A fetcher answering a scripted list of statuses, repeating the last one once exhausted, and
+ * recording every URL it was asked for - so a check that asks for the wrong path is visible.
+ */
+function scriptedFetcher(statuses: Status[]): { urls: string[]; fetch: (url: string) => Promise<Status> } {
+  const urls: string[] = [];
   let index = 0;
-  return () => {
-    const status = statuses[Math.min(index, statuses.length - 1)];
-    index += 1;
-    return Promise.resolve(status as Status);
+  return {
+    urls,
+    fetch: (url: string) => {
+      urls.push(url);
+      const status = statuses[Math.min(index, statuses.length - 1)];
+      index += 1;
+      return Promise.resolve(status as Status);
+    }
   };
 }
 
@@ -40,28 +49,33 @@ function recordingSleeper(): { delays: number[]; sleep: (ms: number) => Promise<
 describe("the manifest retry policy", () => {
   it("passes when the manifest is throttled once and served on the retry", async () => {
     const { delays, sleep } = recordingSleeper();
-    const verdict = await checkManifest("https://example.test", scriptedFetcher([429, 200]), sleep);
+    const fetcher = scriptedFetcher([429, 200]);
+    const verdict = await checkManifest("https://example.test", fetcher.fetch, sleep);
     expect(verdict).toEqual({ ok: true, status: 200, attempts: 2 });
     expect(delays).toEqual([RETRY_DELAY_MS]);
+    expect(fetcher.urls).toEqual([
+      "https://example.test/manifest.webmanifest",
+      "https://example.test/manifest.webmanifest"
+    ]);
   });
 
   it("fails when every attempt is throttled", async () => {
     const { delays, sleep } = recordingSleeper();
-    const verdict = await checkManifest("https://example.test", scriptedFetcher([429]), sleep);
+    const verdict = await checkManifest("https://example.test", scriptedFetcher([429]).fetch, sleep);
     expect(verdict).toEqual({ ok: false, status: 429, attempts: ATTEMPTS });
     expect(delays).toHaveLength(ATTEMPTS - 1);
   });
 
   it("gives up at once on a status that will not change", async () => {
     const { delays, sleep } = recordingSleeper();
-    const verdict = await checkManifest("https://example.test", scriptedFetcher([404]), sleep);
+    const verdict = await checkManifest("https://example.test", scriptedFetcher([404]).fetch, sleep);
     expect(verdict).toEqual({ ok: false, status: 404, attempts: 1 });
     expect(delays).toEqual([]);
   });
 
   it("retries a 5xx and a request that never got a status", async () => {
     const { sleep } = recordingSleeper();
-    const verdict = await checkManifest("https://example.test", scriptedFetcher([503, 0, 200]), sleep);
+    const verdict = await checkManifest("https://example.test", scriptedFetcher([503, 0, 200]).fetch, sleep);
     expect(verdict).toEqual({ ok: true, status: 200, attempts: 3 });
     expect(isRetryable(503)).toBe(true);
     expect(isRetryable(0)).toBe(true);
@@ -105,7 +119,12 @@ describe("against a server that really throttles", () => {
   /** Starts a server answering 429 to the first `throttled` requests and 200 after that. */
   async function start(throttled: number): Promise<void> {
     let seen = 0;
-    server = createServer((_request, response) => {
+    server = createServer((request, response) => {
+      if (request.url !== `/${MANIFEST_PATH}`) {
+        response.writeHead(404);
+        response.end("not the manifest");
+        return;
+      }
       seen += 1;
       if (seen <= throttled) {
         response.writeHead(429, { "retry-after": "5" });
