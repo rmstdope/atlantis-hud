@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-af7i — does the pupil list stay live?</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --brass:#c8a05a; --warn:#d9a441; --good:#7fb069;
+          --sel:#4a9fd8; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 30px 0 6px; border-top: 1px solid var(--edge); padding-top: 16px; }
+  h3 { font-size: 13px; margin: 18px 0 4px; color: var(--soft); }
+  p.lead { color: var(--soft); max-width: 92ch; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  .row { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; margin: 12px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 5px; }
+  .cap b { color: var(--ink); font-weight: 600; }
+  table.grid { border-collapse: collapse; font: 11.5px/1.4 ui-monospace, Menlo, monospace;
+               background: var(--panel); border: 1px solid var(--edge); }
+  table.grid th, table.grid td { border: 1px solid var(--edge); padding: 4px 7px; text-align: left; }
+  table.grid th { color: var(--dim); font-weight: 600; font-size: 10.5px; }
+  td.teach { background: #2a2418; color: var(--brass); }
+  td.study { color: var(--ink); }
+  td.chg { outline: 1px solid var(--sel); }
+  .pop { width: 320px; background: var(--raised); border: 1px solid var(--edge); border-radius: 5px;
+         padding: 8px; box-shadow: 0 6px 18px #0008; }
+  .pop p.head { margin: 0 0 4px; font-size: 12.5px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li button { display: block; width: 100%; text-align: left; background: none; border: 0;
+              color: inherit; font: 12px/1.5 system-ui, sans-serif; padding: 1px 4px;
+              border-radius: 3px; }
+  .mark { display: inline-block; width: 12px; color: var(--brass); }
+  .off .mark { color: transparent; }
+  .blocked { color: var(--dim); }
+  .det { color: var(--dim); }
+  .acts { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+  .btn { border: 1px solid var(--edge); border-radius: 3px; padding: 2px 9px; font-size: 12px;
+         color: var(--soft); }
+  .btn.set { border-color: var(--brass); color: var(--brass); }
+  code { font-family: ui-monospace, Menlo, monospace; background: var(--panel); padding: 0 4px;
+         border-radius: 3px; }
+  .banner { background: var(--panel); border: 1px solid var(--edge); border-left: 3px solid var(--brass);
+            padding: 10px 14px; border-radius: 4px; max-width: 92ch; margin: 14px 0; color: var(--soft); }
+  table.cmp { border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table.cmp th, table.cmp td { border: 1px solid var(--edge); padding: 5px 10px; text-align: left;
+                               vertical-align: top; }
+  table.cmp th { color: var(--dim); font-weight: 600; }
+  .step { font-size: 11px; color: var(--sel); letter-spacing: .05em; text-transform: uppercase;
+          margin: 0 0 4px; }
+</style>
+</head>
+<body>
+
+<h1>ah-af7i — does the pupil list stay live, or is it a snapshot?</h1>
+<p class="lead">Independent of which pupils arrive ticked. The question is what a teach cell
+<em>means</em> once it is set, and it only shows itself when the rest of the plan changes
+afterwards.</p>
+<p class="note">The story below is three edits in a row, on the same hex, turn 26. Six of Seven
+teaches; Two, Four and Five of Seven are studying skills he outranks. Then the player gives
+<b>Three of Seven</b>, who had nothing planned, a month of force shield — making him a fourth
+eligible pupil.</p>
+
+<div class="banner" style="border-left-color:#7fb069"><strong>Chosen: Q — live until edited.</strong>
+An untouched teach cell means “teach whoever is eligible this turn” and is recomputed as the rest of
+the plan changes; the first tick or untick freezes it into a fixed list. The heading carries
+<em>— everyone eligible</em> and the grid cell reads <code>TEACH everyone (3)</code> while it is live.
+Rejected: <em>P</em>, the snapshot, which leaves a teacher quietly under-used whenever a pupil becomes
+eligible after the cell was set, with nothing on screen saying so. Paired with <strong>A</strong> —
+see the companion mockup, <code>teach-pupils-preselected.html</code>. The full interview is in bead
+ah-af7i's design field.</div>
+
+<h2 class="sec">P — snapshot</h2>
+<p class="note">The pupils are chosen when <code>Teaches…</code> is picked, then stored — exactly as
+a hand-ticked list is stored today. Nothing recomputes them.</p>
+<div class="row">
+  <div>
+    <p class="step">step 1 — Teaches… is chosen</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26</p>
+      <ul>
+        <li><button><span class="mark">✓</span>Two of Seven (2517) <span class="det">gate lore 1 → 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Three of Seven (2518) <span class="det">nothing planned</span></span></button></li>
+        <li><button><span class="mark">✓</span>Four of Seven (2519) <span class="det">force shield 1 → 2</span></button></li>
+        <li><button><span class="mark">✓</span>Five of Seven (2520) <span class="det">pattern lore 1 → 2</span></button></li>
+      </ul>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+  </div>
+  <div>
+    <p class="step">step 2 — the grid after Set</p>
+    <table class="grid">
+      <tr><th>mage</th><th>t26</th><th>t27</th></tr>
+      <tr><td>Six of Seven</td><td class="teach">TEACH 3 mages</td><td class="study">GATE 2→3</td></tr>
+      <tr><td>Two of Seven</td><td class="study">GATE 1→2 ×2</td><td class="study">GATE 2→3</td></tr>
+      <tr><td>Three of Seven</td><td class="study">—</td><td class="study">—</td></tr>
+      <tr><td>Four of Seven</td><td class="study">FSHI 1→2 ×2</td><td class="study">FSHI 2→3</td></tr>
+      <tr><td>Five of Seven</td><td class="study">PATT 1→2 ×2</td><td class="study">PATT 2→3</td></tr>
+    </table>
+  </div>
+  <div>
+    <p class="step">step 3 — Three of Seven is given force shield</p>
+    <table class="grid">
+      <tr><th>mage</th><th>t26</th><th>t27</th></tr>
+      <tr><td>Six of Seven</td><td class="teach">TEACH 3 mages</td><td class="study">GATE 2→3</td></tr>
+      <tr><td>Two of Seven</td><td class="study">GATE 1→2 ×2</td><td class="study">GATE 2→3</td></tr>
+      <tr><td>Three of Seven</td><td class="study chg">FSHI 0→1</td><td class="study">FSHI 1→2</td></tr>
+      <tr><td>Four of Seven</td><td class="study">FSHI 1→2 ×2</td><td class="study">FSHI 2→3</td></tr>
+      <tr><td>Five of Seven</td><td class="study">PATT 1→2 ×2</td><td class="study">PATT 2→3</td></tr>
+    </table>
+    <p class="note" style="width:34ch"><b>Three of Seven is not taught.</b> No <code>×2</code> on his
+    cell, and nothing on screen says he could have had one. The teacher has seven slots idle. The
+    player must remember to reopen the teach cell.</p>
+  </div>
+</div>
+
+<h2 class="sec">Q — live until edited</h2>
+<p class="note">A teach cell the player has not ticked or unticked means "teach whoever is eligible
+this turn", and is recomputed as the rest of the plan changes. The first tick or untick freezes it
+into a fixed list.</p>
+<div class="row">
+  <div>
+    <p class="step">step 1 — Teaches… is chosen</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26 — everyone eligible</p>
+      <ul>
+        <li><button><span class="mark">✓</span>Two of Seven (2517) <span class="det">gate lore 1 → 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Three of Seven (2518) <span class="det">nothing planned</span></span></button></li>
+        <li><button><span class="mark">✓</span>Four of Seven (2519) <span class="det">force shield 1 → 2</span></button></li>
+        <li><button><span class="mark">✓</span>Five of Seven (2520) <span class="det">pattern lore 1 → 2</span></button></li>
+      </ul>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+    <p class="note" style="width:34ch">The heading carries the extra clause
+    <em>— everyone eligible</em>. That clause is the whole visible difference at this point.</p>
+  </div>
+  <div>
+    <p class="step">step 2 — the grid after Set</p>
+    <table class="grid">
+      <tr><th>mage</th><th>t26</th><th>t27</th></tr>
+      <tr><td>Six of Seven</td><td class="teach">TEACH everyone (3)</td><td class="study">GATE 2→3</td></tr>
+      <tr><td>Two of Seven</td><td class="study">GATE 1→2 ×2</td><td class="study">GATE 2→3</td></tr>
+      <tr><td>Three of Seven</td><td class="study">—</td><td class="study">—</td></tr>
+      <tr><td>Four of Seven</td><td class="study">FSHI 1→2 ×2</td><td class="study">FSHI 2→3</td></tr>
+      <tr><td>Five of Seven</td><td class="study">PATT 1→2 ×2</td><td class="study">PATT 2→3</td></tr>
+    </table>
+    <p class="note" style="width:34ch">The cell reads <code>TEACH everyone (3)</code> rather than
+    <code>TEACH 3 mages</code> — the one place the live state is visible without opening the cell.</p>
+  </div>
+  <div>
+    <p class="step">step 3 — Three of Seven is given force shield</p>
+    <table class="grid">
+      <tr><th>mage</th><th>t26</th><th>t27</th></tr>
+      <tr><td>Six of Seven</td><td class="teach chg">TEACH everyone (4)</td><td class="study">GATE 2→3</td></tr>
+      <tr><td>Two of Seven</td><td class="study">GATE 1→2 ×2</td><td class="study">GATE 2→3</td></tr>
+      <tr><td>Three of Seven</td><td class="study chg">FSHI 0→1 ×2</td><td class="study">FSHI 1→2</td></tr>
+      <tr><td>Four of Seven</td><td class="study">FSHI 1→2 ×2</td><td class="study">FSHI 2→3</td></tr>
+      <tr><td>Five of Seven</td><td class="study">PATT 1→2 ×2</td><td class="study">PATT 2→3</td></tr>
+    </table>
+    <p class="note" style="width:34ch"><b>Three of Seven is taught.</b> Two cells changed from one
+    edit, and the second of them is a cell the player was not looking at.</p>
+  </div>
+</div>
+
+<h3>What freezing looks like</h3>
+<div class="row">
+  <div>
+    <p class="cap"><b>after one untick</b> — the clause is gone from the heading and the cell</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26</p>
+      <ul>
+        <li><button><span class="mark">✓</span>Two of Seven (2517) <span class="det">gate lore 1 → 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>Three of Seven (2518) <span class="det">force shield 0 → 1</span></button></li>
+        <li><button><span class="mark">✓</span>Four of Seven (2519) <span class="det">force shield 1 → 2</span></button></li>
+        <li><button><span class="mark">✓</span>Five of Seven (2520) <span class="det">pattern lore 1 → 2</span></button></li>
+      </ul>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>the frozen cell</b></p>
+    <table class="grid">
+      <tr><th>mage</th><th>t26</th></tr>
+      <tr><td>Six of Seven</td><td class="teach">TEACH 3 mages</td></tr>
+    </table>
+    <p class="note" style="width:34ch">There is no way back to live except by emptying the cell and
+    choosing <code>Teaches…</code> again — which is the honest cost of Q: two meanings behind one
+    control, told apart by one word.</p>
+  </div>
+</div>
+
+<h2 class="sec">Side by side</h2>
+<table class="cmp">
+  <tr><th></th><th>P — snapshot</th><th>Q — live until edited</th></tr>
+  <tr><th>What the cell stores</th><td>a list of unit ids</td><td>either a list, or "everyone eligible"</td></tr>
+  <tr><th>New pupil appears later</th><td>not taught; nothing says so</td><td>taught automatically</td></tr>
+  <tr><th>Pupil stops being eligible</th><td>silently dropped at resolution, as today</td><td>silently dropped, as today</td></tr>
+  <tr><th>Cell reads</th><td><code>TEACH 3 mages</code></td><td><code>TEACH everyone (3)</code> until edited</td></tr>
+  <tr><th>Orders written</th><td>the stored ids</td><td>the ids eligible at export time</td></tr>
+  <tr><th>Surprises</th><td>a teacher quietly under-used</td><td>a cell changing while you edit another</td></tr>
+  <tr><th>Cost to build</th><td>seeding only</td><td>a second cell kind through the store, the grid and the export</td></tr>
+</table>
+
+<div class="banner"><b>Note the scope difference.</b> P touches only the moment
+<code>Teaches…</code> is chosen. Q changes what a stored teach goal <em>is</em> —
+<code>StudyGoal</code>, the projection, the grid label and the order writer all learn a second
+shape. That is a larger bead, and possibly two.</div>
+
+</body>
+</html>
