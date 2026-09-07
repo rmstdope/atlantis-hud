@@ -573,3 +573,19 @@ test("a teacher is set up before any pupil exists", async ({ page }) => {
   await expect(cell).toContainText("TEACH everyone (1)");
   await expect(studentCell).toContainText("×2");
 });
+
+/** "One of Eight" (18636), a manipulation-only unit of the player's faction: an apprentice. */
+const APPRENTICE = "18636";
+
+test("the planner leaves apprentices out and says how many", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await expect(page.getByTestId("study-planner-dialog")).toBeVisible();
+
+  await expect(page.getByTestId(`study-planner-mage-95/${MAGE}`)).toBeVisible();
+  await expect(page.getByTestId(`study-planner-mage-95/${APPRENTICE}`)).toHaveCount(0);
+  await expect(page.getByTestId("study-planner-summary")).toContainText(
+    "apprentices not listed"
+  );
+});

@@ -45,7 +45,12 @@ const GROUPS = plannerGroups({
       index
     ),
     standingOf(
-      aReportUnit({ unitId: "882", name: "One of Nine", skills: held({ MANI: [3, 180] }) }),
+      // Manipulation and a foundation: not an apprentice, so `plannerGroups` keeps him (ah-n1ph).
+      aReportUnit({
+        unitId: "882",
+        name: "One of Nine",
+        skills: held({ MANI: [3, 180], ILLU: [1, 30] })
+      }),
       tree,
       index
     ),

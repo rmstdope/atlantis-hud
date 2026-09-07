@@ -168,6 +168,27 @@ export function standingOf(
 }
 
 /**
+ * True when his only magic skill is manipulation: `rules/magic_apprentices` says manipulation makes
+ * an apprentice, who may use a mage's items but casts no spell.
+ *
+ * Narrower than `!adept`, which is also true of a unit holding no magic skill at all - a shape the
+ * allied-sheet route can produce, and one that is not an apprentice.
+ */
+export function isApprentice(standing: MageStanding): boolean {
+  let mani = false;
+  for (const [tag, held] of standing.byTag) {
+    if (held.kind === "open" || held.kind === "locked") {
+      continue;
+    }
+    if (tag !== "MANI") {
+      return false;
+    }
+    mani = true;
+  }
+  return mani;
+}
+
+/**
  * The units holding at least one magic skill, adepts first and each group in the report's own
  * order. Empty when the report has none.
  *

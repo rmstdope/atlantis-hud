@@ -60,7 +60,9 @@ const report = (overrides = {}) =>
 
 /** Force 4, and one skill nothing could move: force is at its ceiling of 4 held by nothing here. */
 const SIX = ownStanding("881", "Six of Seven", { FORC: [4, 325], SPIR: [1, 30] });
-const ONE = ownStanding("882", "One of Nine", { MANI: [3, 180] });
+const ONE = ownStanding("882", "One of Nine", { MANI: [3, 180], ILLU: [1, 30] });
+/** Manipulation and nothing else: an apprentice, `rules/magic_apprentices`. */
+const APPRENTICE = ownStanding("883", "Two of Nine", { MANI: [3, 180] });
 
 const groupsOf = (options: {
   ownMages?: ReturnType<typeof ownStanding>[];
@@ -223,6 +225,28 @@ describe("plannerGroups", () => {
     expect(mage?.summary).toBe(`force 4 · ${mage?.canStudy.length} can study`);
   });
 
+  it("leaves an apprentice out of your own group", () => {
+    const own = groupsOf({ ownMages: [SIX, APPRENTICE] }).at(0);
+    expect(own?.mages.map((mage) => mage.unitId)).toEqual(["881"]);
+  });
+
+  it("pushes no own group when every own mage is an apprentice", () => {
+    expect(groupsOf({ ownMages: [APPRENTICE] })).toEqual([]);
+  });
+
+  it("pushes no allied group when every mage on the sheet is an apprentice", () => {
+    const groups = groupsOf({
+      ownMages: [SIX],
+      alliedMages: [alliedRecord("17", "Creeping Death", "300", 71, { MANI: [3, 180] })]
+    });
+    expect(groups.map((group) => group.factionId)).toEqual(["95"]);
+  });
+
+  it("keeps a unit holding manipulation and a foundation", () => {
+    const own = groupsOf({ ownMages: [ONE] }).at(0);
+    expect(own?.mages.map((mage) => mage.unitId)).toEqual(["882"]);
+  });
+
   it("keys a mage by his faction and his unit", () => {
     const mage = groupsOf({}).at(0)?.mages[0];
     expect(mage?.key).toBe(`95/${mage?.unitId}`);
@@ -230,7 +254,7 @@ describe("plannerGroups", () => {
 });
 
 describe("plannerSummaryLine", () => {
-  const line = (own: number, allied: [string, number][]) =>
+  const line = (own: number, allied: [string, number][], apprentices = 0) =>
     plannerSummaryLine(
       plannerGroups({
         report: report(),
@@ -245,7 +269,8 @@ describe("plannerSummaryLine", () => {
         tree,
         index,
         viewedTurn: 71
-      })
+      }),
+      apprentices
     );
 
   it("counts yours and your allies' apart", () => {
@@ -254,6 +279,16 @@ describe("plannerSummaryLine", () => {
     expect(line(0, [["17", 3], ["21", 1]])).toBe("4 mages from 2 allies");
     expect(line(0, [["17", 1]])).toBe("1 mage from 1 ally");
     expect(line(0, [])).toBeNull();
+  });
+
+  it("says how many of your own apprentices were left out", () => {
+    expect(line(3, [], 15)).toBe("3 mages, all yours · 15 apprentices not listed");
+    expect(line(3, [], 1)).toBe("3 mages, all yours · 1 apprentice not listed");
+    expect(line(3, [], 0)).toBe("3 mages, all yours");
+    expect(line(3, [["17", 3], ["21", 1]], 15)).toBe(
+      "7 mages — 3 yours, 4 from 2 allies · 15 apprentices not listed"
+    );
+    expect(line(0, [], 15)).toBeNull();
   });
 });
 
@@ -306,14 +341,27 @@ describe("plannerAlliedNotice", () => {
 
 describe("plannerEmptyCopy", () => {
   it("explains where mages come from", () => {
-    expect(plannerEmptyCopy({ reportLoaded: false })).toEqual({
+    expect(plannerEmptyCopy({ reportLoaded: false, apprentices: 15 })).toEqual({
       headline: "No mages yet.",
       detail:
         "Your own mages appear when a report is loaded. An ally's appear when you open a mage sheet they sent you."
     });
-    expect(plannerEmptyCopy({ reportLoaded: true })).toEqual({
+    expect(plannerEmptyCopy({ reportLoaded: true, apprentices: 0 })).toEqual({
       headline: "No mage in this faction has begun a magic skill.",
       detail: "A one-man leader unit that studies a Foundation becomes one."
+    });
+  });
+
+  it("says so when every magic unit you have is an apprentice", () => {
+    expect(plannerEmptyCopy({ reportLoaded: true, apprentices: 15 })).toEqual({
+      headline: "No mage in this faction can cast a spell.",
+      detail:
+        "Your 15 apprentices are not listed: manipulation makes an apprentice, who may use a mage's items but casts no spell. A one-man leader unit that studies a Foundation becomes a mage."
+    });
+    expect(plannerEmptyCopy({ reportLoaded: true, apprentices: 1 })).toEqual({
+      headline: "No mage in this faction can cast a spell.",
+      detail:
+        "Your 1 apprentice is not listed: manipulation makes an apprentice, who may use a mage's items but casts no spell. A one-man leader unit that studies a Foundation becomes a mage."
     });
   });
 });

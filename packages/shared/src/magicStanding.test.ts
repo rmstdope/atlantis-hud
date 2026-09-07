@@ -4,7 +4,7 @@ import { aReportUnit } from "@atlantis/core-client";
 import type { SkillInfo } from "@atlantis/core-client";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
-import { magesOf, openingMage, standingOf, standingsFrom } from "./magicStanding";
+import { isApprentice, magesOf, openingMage, standingOf, standingsFrom } from "./magicStanding";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -146,5 +146,19 @@ describe("openingMage", () => {
     expect(openingMage(MAGES, "20")?.unitId).toBe("12");
     expect(openingMage(MAGES, null)?.unitId).toBe("12");
     expect(openingMage([], null)).toBeNull();
+  });
+});
+
+describe("isApprentice", () => {
+  it("is true when manipulation is the only magic skill he holds", () => {
+    expect(isApprentice(standing({ MANI: 3 }))).toBe(true);
+  });
+
+  it("is false for a unit holding manipulation and a foundation", () => {
+    expect(isApprentice(standing({ MANI: 3, FORC: 2 }))).toBe(false);
+  });
+
+  it("is false for a unit holding no magic skill at all", () => {
+    expect(isApprentice(standing({ OBSE: 5 }))).toBe(false);
   });
 });
