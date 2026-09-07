@@ -894,8 +894,8 @@ function ChoiceMark({ on }: { on: boolean }) {
 }
 
 /**
- * The dropdown's rows in the agreed order: `— nothing`, `Teaches…` when it is offered, then the
- * skills.
+ * The dropdown's rows in the agreed order: `— nothing`, `Teaches…`, then the skills. The
+ * `Teaches…` row is always offered, whether or not anybody is yet teachable (ah-12h7).
  *
  * A list rather than three blocks of JSX, so the arrow-key walk can number them and the order is
  * one thing rather than three.
