@@ -3921,7 +3921,13 @@ export function AppShell({
           },
           { prefix: "could not list the turns to compare" }
         );
-        if (summaries !== undefined) {
+        // Asked again on the far side of the await, and for the same reasons: the listing is a
+        // core round trip, and a second Fetch or a game switch during it would make this list the
+        // older answer. Last write wins only if the last writer is the one that checked last.
+        const stillCurrent =
+          openGameIdRef.current === runGameId &&
+          (fetchAbort.current === null || fetchAbort.current === controller);
+        if (summaries !== undefined && stillCurrent) {
           setTurnSummaries(summaries);
         }
       }

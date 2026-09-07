@@ -290,18 +290,21 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   await page.getByTestId("newage-fetch-cancel").click();
   await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
 
-  // Turn 70's report was already in flight when Cancel landed, so it still arrives and is stored:
-  // waiting for its row is what makes the assertion below about a settled screen rather than a
-  // race with the delayed reply.
+  // Turn 70's report was already in flight when Cancel landed, so it still arrives and is stored.
+  // Waiting for its own line settles the screen before anything is asserted about it, rather than
+  // racing the delayed reply - and the line is asserted whole, because `runSummary` says
+  // `1 turn stored for history` for a run of one and a substring test would not see it.
+  await expect(page.getByTestId("import-status")).toHaveText(
+    "turn 70 stored for history; still showing turn 72."
+  );
+
+  // And the turn that landed is reachable, which is the whole promise of stopping rather than
+  // discarding. Opening the picker re-lists the turns itself, so these rows assert that promise
+  // and not the run's own end-of-run refresh.
   await page.getByTestId("turn-chip").click();
   await expect(page.getByTestId("turn-picker")).toBeVisible();
   await expect(page.getByTestId("turn-row-70")).toBeVisible();
   await expect(page.getByTestId("turn-row-72")).toContainText("playing");
-
-  // Nothing claims the run finished. `loadReport` writes `turn 70 stored for history; …` for the
-  // one turn that landed, which is true and stays; what must not appear is `runSummary`'s plural
-  // count, which would say a run the player stopped had run to the end.
-  await expect(page.getByTestId("import-status")).not.toContainText("turns stored for history");
 });
 
 test("keeps this turn when the world would not say which turns it holds", async ({ page }) => {
