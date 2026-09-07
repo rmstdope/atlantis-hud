@@ -608,15 +608,17 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
     );
   }
   return (
-    // Both lists at once, each scrolling in its own half: a mage deep in the tree knows twenty
-    // skills and can study thirty, and one scroller for the pair put `Can study` below the fold on
-    // every mage worth reading about. Their headings sit outside the scrollers, so neither list
-    // scrolls away from the words that name it.
+    // `Knows` is a fact about the mage, so it is shown whole at any length and never scrolls: a
+    // skill cut off the bottom of a half-height box reads as one he does not have, which is what
+    // this pane is opened to answer. `Can study` is a list you browse rather than a fact you check,
+    // so it takes whatever height is left and scrolls there, fading where it is cut. The pane's own
+    // `overflow-y-auto` is what keeps the `Can study` heading and the footnote reachable when
+    // `Knows` alone is taller than the pane.
     <aside
       data-testid="study-schedule-mage-pane"
-      className="grid min-h-0 grid-rows-[auto_auto_1fr_auto_1fr_auto] overflow-hidden border-l border-edge p-2"
+      className="flex min-h-0 flex-col overflow-y-auto border-l border-edge p-2"
     >
-      <div>
+      <div className="shrink-0">
         <p className="m-0 text-ink">{pane.heading}</p>
         <p className="m-0 text-ink-dim">{pane.sub}</p>
         {/* Above the skills, not below them: a note says where his studies are heading, which is
@@ -632,8 +634,10 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
         )}
       </div>
 
-      <p className="m-0 mt-2 text-ink-soft">Knows</p>
-      <ul className="m-0 min-h-0 list-none overflow-y-auto p-0">
+      <p className="m-0 mt-2 shrink-0 text-ink-soft" data-testid="study-schedule-knows">
+        {pane.knowsHeading}
+      </p>
+      <ul className="m-0 shrink-0 list-none p-0">
         {pane.knows.map((line) => (
           <li
             key={line.name}
@@ -645,10 +649,10 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
         ))}
       </ul>
 
-      <p className="m-0 mt-2 text-ink-soft" data-testid="study-schedule-can-study">
+      <p className="m-0 mt-2 shrink-0 text-ink-soft" data-testid="study-schedule-can-study">
         {pane.canStudyHeading}
       </p>
-      <ul className="m-0 min-h-0 list-none overflow-y-auto p-0">
+      <ul className="fade-bottom m-0 min-h-0 flex-1 list-none overflow-y-auto p-0">
         {pane.canStudy.map((choice) => (
           <li
             key={choice.skill}
@@ -660,7 +664,7 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
         ))}
       </ul>
 
-      <p className="m-0 mt-2 text-ink-dim">{pane.foot}</p>
+      <p className="m-0 mt-2 shrink-0 text-ink-dim">{pane.foot}</p>
     </aside>
   );
 }
