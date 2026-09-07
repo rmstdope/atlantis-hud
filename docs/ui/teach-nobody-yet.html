@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-12h7 — Teaches… with nobody eligible yet</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --brass:#c8a05a; --warn:#d9a441; --good:#7fb069;
+          --sel:#4a9fd8; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 30px 0 6px; border-top: 1px solid var(--edge); padding-top: 16px; }
+  p.lead { color: var(--soft); max-width: 92ch; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  .row { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; margin: 12px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 5px; max-width: 36ch; }
+  .cap b { color: var(--ink); font-weight: 600; }
+  table.grid { border-collapse: collapse; font: 11.5px/1.4 ui-monospace, Menlo, monospace;
+               background: var(--panel); border: 1px solid var(--edge); }
+  table.grid th, table.grid td { border: 1px solid var(--edge); padding: 4px 7px; text-align: left; }
+  table.grid th { color: var(--dim); font-weight: 600; font-size: 10.5px; }
+  td.teach { background: #2a2418; color: var(--brass); }
+  td.study { color: var(--ink); }
+  td.none { color: var(--dim); }
+  td.chg { outline: 1px solid var(--sel); }
+  .pop { width: 330px; background: var(--raised); border: 1px solid var(--edge); border-radius: 5px;
+         padding: 8px; box-shadow: 0 6px 18px #0008; }
+  .pop p.head { margin: 0 0 4px; font-size: 12.5px; }
+  ul.menu { list-style: none; margin: 0; padding: 0; }
+  ul.menu li button { display: block; width: 100%; text-align: left; background: none; border: 0;
+              color: inherit; font: 12px/1.5 system-ui, sans-serif; padding: 1px 4px;
+              border-radius: 3px; }
+  ul.menu li button.hi { background: #223041; }
+  .mark { display: inline-block; width: 12px; color: var(--brass); }
+  .off .mark { color: transparent; }
+  .blocked { color: var(--dim); }
+  .det { color: var(--dim); }
+  .acts { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+  .btn { border: 1px solid var(--edge); border-radius: 3px; padding: 2px 9px; font-size: 12px;
+         color: var(--soft); }
+  .btn.set { border-color: var(--brass); color: var(--brass); }
+  code { font-family: ui-monospace, Menlo, monospace; background: var(--panel); padding: 0 4px;
+         border-radius: 3px; }
+  .banner { background: var(--panel); border: 1px solid var(--edge); border-left: 3px solid var(--good);
+            padding: 10px 14px; border-radius: 4px; max-width: 92ch; margin: 14px 0; color: var(--soft); }
+  .arrow { color: var(--dim); align-self: center; font-size: 20px; }
+  .step { font-size: 11px; color: var(--sel); letter-spacing: .05em; text-transform: uppercase;
+          margin: 0 0 4px; }
+  table.cmp { border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table.cmp th, table.cmp td { border: 1px solid var(--edge); padding: 5px 10px; text-align: left;
+                               vertical-align: top; }
+  table.cmp th { color: var(--dim); font-weight: 600; }
+  ul.plain { max-width: 92ch; color: var(--soft); }
+</style>
+</head>
+<body>
+
+<h1>ah-12h7 — <code>Teaches…</code> when nobody is eligible yet</h1>
+<p class="lead">Today the <code>Teaches…</code> row appears only once somebody in the teacher's hex
+already has a teachable month planned, so every pupil must be planned before the teacher can be
+opened at all. The player wants the other order: name the teacher first, then fill in who he
+teaches.</p>
+
+<div class="banner"><strong>Chosen: the row is always offered, and with nobody tickable it commits
+in one click.</strong> No second step, whatever dim rows the list would have held. Rejected:
+opening the step on an empty or all-refused list so the reasons can be read first — three clicks
+for a cell that has nothing to choose in it. The one exception is a cell already holding a list the
+player ticked by hand, which always opens the step so that list is never silently discarded.</div>
+
+<p class="note">The scene: <b>turn 26</b>, Blackthorn (12,8). <b>Six of Seven</b> is a force shield 3
+mage. Two and Three of Seven are in his hex with nothing planned; Four of Seven is elsewhere. Nobody
+is eligible. A live teach cell already resolves to <code>TEACH nobody</code> and picks pupils up as
+they are planned — all that was missing was a way in.</p>
+
+<h2 class="sec">The whole change, in three steps</h2>
+<div class="row">
+  <div>
+    <p class="step">1 — the dropdown</p>
+    <p class="cap"><b>The row is there, and says why it is empty.</b> Detail
+    <code>nobody eligible yet</code> in place of the usual <code>2 he could teach</code>.</p>
+    <div class="pop">
+      <p class="head">Six of Seven — turn 26</p>
+      <ul class="menu">
+        <li><button class="off"><span class="mark">✓</span>— nothing</button></li>
+        <li><button class="hi off"><span class="mark">✓</span>Teaches… <span class="det">nobody eligible yet</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>force shield <span class="det">3(270) → 4(300)</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>pattern <span class="det">1(30) → 2(60)</span></button></li>
+      </ul>
+    </div>
+  </div>
+  <div class="arrow">→</div>
+  <div>
+    <p class="step">2 — one click</p>
+    <p class="cap"><b>It commits and closes,</b> exactly as a skill row does. There is nothing to
+    tick, so there is no second step to show.</p>
+    <table class="grid">
+      <tr><th>Mage</th><th>Turn 26</th></tr>
+      <tr><td>Six of Seven</td><td class="teach chg">TEACH nobody</td></tr>
+      <tr><td>Two of Seven</td><td class="none">—</td></tr>
+      <tr><td>Three of Seven</td><td class="none">—</td></tr>
+    </table>
+  </div>
+  <div class="arrow">→</div>
+  <div>
+    <p class="step">3 — then the pupils</p>
+    <p class="cap"><b>The teacher follows on his own.</b> The cell is live, so planning the pupils
+    afterwards raises the count with no further touch on the teacher.</p>
+    <table class="grid">
+      <tr><th>Mage</th><th>Turn 26</th></tr>
+      <tr><td>Six of Seven</td><td class="teach chg">TEACH everyone (2)</td></tr>
+      <tr><td>Two of Seven</td><td class="study">FORC 1→2 ×2</td></tr>
+      <tr><td>Three of Seven</td><td class="study">FORC 1→2 ×2</td></tr>
+    </table>
+  </div>
+</div>
+<p class="note">Step 3 already worked before this change. This is only about step 1 and step 2.</p>
+
+<h2 class="sec">What is <em>not</em> shown, and why that is the choice</h2>
+<p class="lead">The second step is never blank: every other mage in the grid already gets a dim row
+with a reason. Skipping the step means those reasons are not read on the way past.</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>What the step would have contained.</b> No row is tickable, so none of it
+    changes what the click can do.</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26 — everyone eligible</p>
+      <ul class="menu">
+        <li><button class="off blocked"><span class="mark">✓</span>Two of Seven (2517) <span class="det">nothing planned</span></button></li>
+        <li><button class="off blocked"><span class="mark">✓</span>Three of Seven (2519) <span class="det">nothing planned</span></button></li>
+        <li><button class="off blocked"><span class="mark">✓</span>Four of Seven (2521) <span class="det">in Redmarsh (14,10), not here</span></button></li>
+      </ul>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>The step is still exactly this</b> the moment one pupil becomes eligible —
+    ticked, with the rest dim beneath. Nothing about the two-step shape changes; it simply is not
+    entered when there is nothing in it to choose.</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26 — everyone eligible</p>
+      <ul class="menu">
+        <li><button><span class="mark">✓</span>Two of Seven (2517) <span class="det">force shield 1 → force shield 2</span></button></li>
+        <li><button class="off blocked"><span class="mark">✓</span>Three of Seven (2519) <span class="det">nothing planned</span></button></li>
+        <li><button class="off blocked"><span class="mark">✓</span>Four of Seven (2521) <span class="det">in Redmarsh (14,10), not here</span></button></li>
+      </ul>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+  </div>
+</div>
+
+<table class="cmp">
+  <tr><th>Cell being opened</th><th>Clicking <code>Teaches…</code></th></tr>
+  <tr><td>Nothing planned in it, nobody eligible</td><td>Commits <code>TEACH nobody</code>, live, and closes</td></tr>
+  <tr><td>Nothing planned in it, somebody eligible</td><td>Opens the step, pupils ticked — unchanged</td></tr>
+  <tr><td>Already live, nobody eligible</td><td>Commits the same thing again and closes; nothing visibly changes</td></tr>
+  <tr><td>Already a hand-ticked list, nobody eligible</td><td><b>Opens the step</b> with those ticks intact — the shortcut never discards a named list</td></tr>
+</table>
+
+<h2 class="sec">Settled alongside it</h2>
+<ul class="plain">
+  <li>The dialog heading keeps its wording from ah-af7i —
+    <code>Six of Seven teaches on turn 26 — everyone eligible</code>. Everyone eligible of nobody is
+    nobody, and the cell really is live.</li>
+  <li>The grid cell reads <code>TEACH nobody</code>, which it already does.</li>
+  <li>The order file writes no <code>TEACH</code> line, only the comment it already writes:
+    <code>; TEACH — nobody can be taught this turn</code>. The order's syntax is
+    <code>TEACH [unit] ...</code>, so a bare <code>TEACH</code> naming nobody is not a legal order.</li>
+  <li>No new warning for a teacher who teaches nobody. That is now a deliberate move rather than an
+    oversight, and warning about it would nag about the very thing this change is for.</li>
+</ul>
+
+</body>
+</html>
