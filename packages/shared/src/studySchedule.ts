@@ -429,6 +429,10 @@ export function projectAll(input: {
         // Nobody named these mages, so a refusal is skipped silently: there is nothing to warn
         // about, and the ten slots of `rules/skills_teaching` cap what the planner chooses itself
         // (ah-af7i, navigator's option A).
+        //
+        // The cap breaks after ten *successes*, not ten candidates, so a live teacher walks the
+        // whole fleet in the worst case: O(mages) per live teacher per turn. With the tens of
+        // mages a report describes that is nothing, and the named path is unchanged.
         for (const student of input.mages) {
           if (taught.length === TEACHING_SLOTS) {
             break;

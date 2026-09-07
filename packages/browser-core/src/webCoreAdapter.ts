@@ -291,9 +291,22 @@ function withGoals(
     comment: plan.comment,
     updatedAt: plan.updatedAt,
     goals: goals.map((goal) => {
-      const one = goal as { kind?: string; turn?: number; skill?: string; students?: string[] };
+      const one = goal as {
+        kind?: string;
+        turn?: number;
+        skill?: string;
+        students?: string[];
+        live?: boolean;
+      };
       return one.kind === "teach"
-        ? { kind: "teach" as const, turn: one.turn ?? 0, students: one.students ?? [] }
+        ? {
+            kind: "teach" as const,
+            turn: one.turn ?? 0,
+            students: one.students ?? [],
+            // ah-af7i: a goal rebuilt without this reads as a frozen empty list, and the mage
+            // teaches nobody. Absent is false: every row stored before that bead is a fixed list.
+            live: one.live === true
+          }
         : { kind: "study" as const, turn: one.turn ?? 0, skill: one.skill ?? "" };
     })
   };

@@ -115,10 +115,4 @@ describe("plannedGoals", () => {
     const goals = [study(25, "FORC"), study(26, "PATT")];
     expect(plannedGoals(goals)).toEqual(goals);
   });
-
-  it("a teach goal stored without live reads as a fixed list", () => {
-    const goal = { kind: "teach", turn: 25, students: ["2517"] } as StudyGoal;
-    const [kept] = plannedGoals([goal]);
-    expect((kept as { live?: boolean }).live).not.toBe(true);
-  });
 });

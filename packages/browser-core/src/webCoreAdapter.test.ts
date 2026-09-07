@@ -1069,6 +1069,32 @@ describe("web core adapter", () => {
     expect(await adapter.listStudyPlans(DB, "p")).toEqual([plan]);
   });
 
+  // ah-af7i: `withGoals` rebuilds each goal field by field, so a field it does not name is
+  // dropped on every read. A live teach goal read back as a frozen empty one teaches nobody.
+  it("lists a live teach goal back as live, and one stored without the flag as a fixed list", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const live: StudyPlanRecord = {
+      ...aStudyPlan("9001"),
+      goals: [{ kind: "teach", turn: 25, students: [], live: true }]
+    };
+    const named: StudyPlanRecord = {
+      ...aStudyPlan("9002"),
+      goals: [{ kind: "teach", turn: 25, students: ["2517"] }]
+    };
+
+    await adapter.saveStudyPlans(DB, "p", [live, named], []);
+
+    const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
+    const goalOf = (unitId: string) =>
+      listed.find((plan) => plan.unitId === unitId)?.goals[0] as {
+        students: string[];
+        live?: boolean;
+      };
+    expect(goalOf("9001")).toMatchObject({ students: [], live: true });
+    expect(goalOf("9002").students).toEqual(["2517"]);
+    expect(goalOf("9002").live).not.toBe(true);
+  });
+
   it("removes the study plans named in the same call that stores the rest", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     await adapter.saveStudyPlans(DB, "p", [aStudyPlan("9001"), aStudyPlan("9002")], []);
@@ -1167,7 +1193,7 @@ describe("web core adapter", () => {
 
     expect(listed.map((plan) => plan.goals)).toEqual([
       [{ kind: "study", turn: 0, skill: "FORC" }],
-      [{ kind: "teach", turn: 0, students: ["2517"] }]
+      [{ kind: "teach", turn: 0, students: ["2517"], live: false }]
     ]);
   });
 
