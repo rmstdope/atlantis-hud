@@ -4,7 +4,7 @@ import { factionLabelOf } from "./factionLabel";
 import type { GameDataIndex } from "./gameData";
 import { openingMage, standingOf, type MageStanding, type SkillStanding } from "./magicStanding";
 import type { MagicSkillNode, MagicTree } from "./magicTree";
-import { projectedLevel } from "./studyProgress";
+import { pointsForLevel, projectedLevel } from "./studyProgress";
 
 /**
  * Every row, every group and every string the study planner shows (`ah-lyg6.2.2`), as pure
@@ -33,7 +33,26 @@ export type KnownSkill = {
    * the mage is not from a stale sheet. Always greater than `level` when it is not null.
    */
   projected: number | null;
+  /** The points the report printed for it, or null when it printed none. */
+  points: number | null;
+  /**
+   * `340 of 450` - those points against the threshold of the level above, and against the level
+   * he is at once there is no level above. Null exactly when `points` is.
+   */
+  progress: string | null;
 };
+
+/**
+ * A known skill as the planner's detail chips it: `force 4 (340 of 450)`, and
+ * `spirit 3 (270 of 300) → up to 4` for a mage whose sheet is old enough to have moved.
+ *
+ * The points are there because a level alone hides the whole month a mage may be from the next one
+ * (navigator, 2026-09-07) - the same reason the Schedule's cells carry them.
+ */
+export function knownChip(skill: KnownSkill): string {
+  const held = `${skill.name} ${skill.level}${skill.progress === null ? "" : ` (${skill.progress})`}`;
+  return skill.projected === null ? held : `${held} → up to ${skill.projected}`;
+}
 
 /** One mage in the planner: whose he is, where he stands, and how old the news about him is. */
 export type PlannerMage = {
@@ -89,8 +108,11 @@ function knownSkills(
   skills: readonly SkillInfo[] | null,
   monthsUnreported: number
 ): KnownSkill[] {
+  // `standing.skills` is what a report printed for one of your own mages; `skills` is the sheet's
+  // own list, which an allied mage's row is read from instead. Both carry the points, and neither
+  // is always the one present.
   const byTag = new Map<string, SkillInfo>();
-  for (const skill of skills ?? []) {
+  for (const skill of skills ?? standing.skills) {
     // Upper-cased before it is looked up: a report and the ruleset do not always agree on case,
     // and `levelsOf` upper-cases for exactly this reason.
     byTag.set(skill.tag.toUpperCase(), skill);
@@ -114,12 +136,20 @@ function knownSkills(
       reported === undefined || monthsUnreported === 0
         ? null
         : projectedLevel(reported, monthsUnreported, node.maxLevel);
+    // The threshold of the level above, and the level he is at once there is none above: the rule
+    // `hoverCard` and the Schedule's cells already count points by.
+    const against = Math.min(node.maxLevel, skillStanding.level + 1);
     rows.push({
       tag,
       name: node.name,
       level: skillStanding.level,
       standing: skillStanding,
-      projected: projection !== null && projection > skillStanding.level ? projection : null
+      projected: projection !== null && projection > skillStanding.level ? projection : null,
+      points: reported?.points ?? null,
+      progress:
+        reported === undefined
+          ? null
+          : `${Math.round(reported.points)} of ${pointsForLevel(against)}`
     });
   }
   return rows.sort((a, b) => b.level - a.level || (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0));

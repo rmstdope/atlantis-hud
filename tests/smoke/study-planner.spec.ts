@@ -51,6 +51,25 @@ test("F4 opens the planner, arrows walk it, and Escape closes it", async ({ page
   await expect(dialog).toHaveCount(0);
 });
 
+test("All mages shows the points behind each level, three lists abreast", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  const detail = page.getByTestId("study-planner-detail");
+  // A level alone hid the whole month a mage may be from the next one.
+  await expect(page.getByTestId("study-planner-knows-FORC")).toContainText(/force 4 \(\d+ of 450\)/);
+
+  // Side by side rather than stacked: the three answer one question between them, so `Can study
+  // now` and `Held back` start no lower down the pane than `Knows` does.
+  const knows = await detail.getByText("Knows", { exact: true }).boundingBox();
+  const canStudy = await page.getByTestId("study-planner-can-study-heading").boundingBox();
+  const heldBack = await detail.getByText("Held back", { exact: true }).boundingBox();
+  expect(knows?.y).toBe(canStudy?.y);
+  expect(knows?.y).toBe(heldBack?.y);
+  expect(canStudy?.x ?? 0).toBeGreaterThan(knows?.x ?? 0);
+  expect(heldBack?.x ?? 0).toBeGreaterThan(canStudy?.x ?? 0);
+});
+
 test("the palette offers the planner with its key beside it", async ({ page }) => {
   await loadReport(page);
 

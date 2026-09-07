@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { paletteKeyReduce, PALETTE_PAGE_ROWS } from "../commandPalette";
 import {
+  knownChip,
   openingPlannerMage,
   plannerAlliedNotice,
   unreportedLine,
@@ -296,14 +297,11 @@ export function StudyPlannerDialog({
         // caps every modal at 90vh as a `:where()` default at zero specificity, so this 80vh
         // simply wins with no `!` needed.
         //
-        // Wider for the Schedule alone (navigator, 2026-09-07): the mage pane takes 18rem beside
-        // six turn columns, and taking that out of 56rem would have squeezed the columns the plan
-        // is actually written in. The other two views have nothing to spend it on. Both widths are
-        // whole class literals rather than an assembled string - Tailwind's scanner reads source
-        // text, and `w-[${...}]` is a class it never sees.
-        className={`grid max-h-[80vh] ${
-          view === "schedule" ? "w-[74rem]" : "w-[56rem]"
-        } max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg`}
+        // 74rem rather than the 56 this was (navigator, 2026-09-07): the Schedule's mage pane takes
+        // 20rem beside six turn columns, and All mages spends the same width on standing its three
+        // lists side by side. One width for all three views, so the dialog does not resize under
+        // the pointer as the tabs are walked.
+        className="grid max-h-[80vh] w-[74rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
       >
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
           <span className="text-ink-soft">Study planner</span>
@@ -634,55 +632,69 @@ export function StudyPlannerDetail({
         onSave={onSaveNote}
       />
 
-      <p className="mt-3 text-ink-soft">Knows</p>
-      <ul>
-        {mage.knows.map((skill) => (
-          <li key={skill.tag} data-testid={`study-planner-knows-${skill.tag}`} className="text-ink">
-            <span
-              className={`rounded border px-1 text-pane-xs ${STANDING_CHIP[skill.standing.kind]}`}
-            >
-              {skill.projected === null
-                ? `${skill.name} ${skill.level}`
-                : `${skill.name} ${skill.level} → up to ${skill.projected}`}
-            </span>{" "}
-            <span className="text-ink-dim">{standingWords(skill.standing)}</span>
-          </li>
-        ))}
-      </ul>
+      {/* Three columns rather than three stacked lists (navigator, 2026-09-07): they answer one
+          question between them - where this mage stands - and a reader who has to scroll from one
+          to the next is holding two of the three answers in their head. The dialog is 74rem for
+          the Schedule's pane anyway, so the width was already paid for. */}
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <section>
+          <p className="m-0 text-ink-soft">Knows</p>
+          <ul className="m-0 list-none p-0">
+            {mage.knows.map((skill) => (
+              <li
+                key={skill.tag}
+                data-testid={`study-planner-knows-${skill.tag}`}
+                className="text-ink"
+              >
+                <span
+                  className={`rounded border px-1 text-pane-xs ${STANDING_CHIP[skill.standing.kind]}`}
+                >
+                  {knownChip(skill)}
+                </span>{" "}
+                <span className="text-ink-dim">{standingWords(skill.standing)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
 
-      <p className="mt-3 text-ink-soft" data-testid="study-planner-can-study-heading">
-        Can study now — {mage.canStudy.length}
-      </p>
-      <ul>
-        {mage.canStudy.map((node) => (
-          <li key={node.tag} data-testid={`study-planner-open-${node.tag}`}>
-            <span className={`rounded border px-1 text-pane-xs ${STANDING_CHIP.open}`}>
-              {node.name}
-            </span>
-          </li>
-        ))}
-      </ul>
+        <section>
+          <p className="m-0 text-ink-soft" data-testid="study-planner-can-study-heading">
+            Can study now — {mage.canStudy.length}
+          </p>
+          <ul className="m-0 list-none p-0">
+            {mage.canStudy.map((node) => (
+              <li key={node.tag} data-testid={`study-planner-open-${node.tag}`}>
+                <span className={`rounded border px-1 text-pane-xs ${STANDING_CHIP.open}`}>
+                  {node.name}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
 
-      <p className="mt-3 text-ink-soft">Held back</p>
-      {heldBack.length === 0 ? (
-        <p className="text-ink-dim">Nothing he holds is at a prerequisite&apos;s ceiling.</p>
-      ) : (
-        <ul>
-          {heldBack.map((skill) => (
-            <li key={skill.tag} className="text-ink">
-              {`${skill.name} — ${standingWords(skill.standing)}`}
-            </li>
-          ))}
-        </ul>
-      )}
+        <section>
+          <p className="m-0 text-ink-soft">Held back</p>
+          {heldBack.length === 0 ? (
+            <p className="m-0 text-ink-dim">Nothing he holds is at a prerequisite&apos;s ceiling.</p>
+          ) : (
+            <ul className="m-0 list-none p-0">
+              {heldBack.map((skill) => (
+                <li key={skill.tag} className="text-ink">
+                  {`${skill.name} — ${standingWords(skill.standing)}`}
+                </li>
+              ))}
+            </ul>
+          )}
 
-      {missing.length === 0 ? null : (
-        <p className="mt-3 text-ink-dim" data-testid="study-planner-missing">
-          {missing.length === 1
-            ? "Also knows 1 skill this ruleset does not describe."
-            : `Also knows ${missing.length} skills this ruleset does not describe.`}
-        </p>
-      )}
+          {missing.length === 0 ? null : (
+            <p className="mt-3 text-ink-dim" data-testid="study-planner-missing">
+              {missing.length === 1
+                ? "Also knows 1 skill this ruleset does not describe."
+                : `Also knows ${missing.length} skills this ruleset does not describe.`}
+            </p>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

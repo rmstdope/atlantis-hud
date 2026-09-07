@@ -6,6 +6,7 @@ import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import { standingOf } from "./magicStanding";
 import {
+  knownChip,
   openingPlannerMage,
   plannerAlliedNotice,
   plannerEmptyCopy,
@@ -155,6 +156,61 @@ describe("plannerGroups", () => {
     const mage = groupsOf({}).at(0)?.mages.find((row) => row.unitId === "881");
     expect(mage?.monthsUnreported).toBe(0);
     expect(mage?.knows.every((skill) => skill.projected === null)).toBe(true);
+  });
+
+  it("carries how far into the level each known skill has got", () => {
+    // The chip said `force 4` and nothing else, so a mage one month from level 5 looked exactly
+    // like one who had just reached 4 (navigator, 2026-09-07).
+    const mage = plannerGroups({
+      report: report(),
+      ownMages: [ownStanding("890", "Tied", { FORC: [4, 340], SPIR: [3, 180] })],
+      alliedMages: [],
+      tree,
+      index,
+      viewedTurn: 71
+    })[0].mages[0];
+
+    expect(mage.knows.find((skill) => skill.tag === "FORC")?.progress).toBe("340 of 450");
+    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe(
+      "force 4 (340 of 450)"
+    );
+    // Level 3 of a skill whose maximum is 5: the threshold named is the next one, 300.
+    expect(knownChip(mage.knows.find((skill) => skill.tag === "SPIR")!)).toBe(
+      "spirit 3 (180 of 300)"
+    );
+  });
+
+  it("counts a maxed skill against the level it is at, there being no level above it", () => {
+    const mage = plannerGroups({
+      report: report(),
+      ownMages: [ownStanding("890", "Topped", { FORC: [5, 460] })],
+      alliedMages: [],
+      tree,
+      index,
+      viewedTurn: 71
+    })[0].mages[0];
+
+    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe(
+      "force 5 (460 of 450)"
+    );
+  });
+
+  it("keeps the estimate on the chip of a stale sheet's mage, beside his points", () => {
+    const groups = groupsOf({
+      alliedMages: [alliedRecord("17", "Creeping Death", "300", 69, { SPIR: [3, 270] })]
+    });
+    const spirit = groups[1].mages[0].knows.find((skill) => skill.tag === "SPIR")!;
+
+    expect(knownChip(spirit)).toBe("spirit 3 (270 of 300) → up to 4");
+  });
+
+  it("says only the level when the report printed no points for the skill", () => {
+    // An allied sheet can name a skill with no figure behind it; the chip then says what it knows
+    // rather than inventing a zero.
+    const mage = groupsOf({}).at(0)?.mages.find((row) => row.unitId === "881");
+    const invented = { ...mage!.knows[0], points: null, progress: null };
+
+    expect(knownChip(invented)).toBe(`${invented.name} ${invented.level}`);
   });
 
   it("lists what he knows strongest first and what he may study in tree order", () => {
