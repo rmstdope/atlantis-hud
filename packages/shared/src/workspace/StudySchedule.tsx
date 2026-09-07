@@ -672,9 +672,10 @@ export function CellPopover({
                 data-testid={`study-schedule-teach-${choice.unitId}`}
                 aria-checked={mode.students.includes(choice.unitId)}
                 disabled={choice.blocked !== null}
+                onPointerMove={(event) => event.currentTarget.focus({ preventScroll: true })}
                 onClick={() => onEvent({ kind: "teach-toggled", unitId: choice.unitId })}
                 className={`w-full rounded px-1 text-left ${
-                  choice.blocked === null ? "" : "text-ink-dim"
+                  choice.blocked === null ? ROW_HIGHLIGHT : "text-ink-dim"
                 }`}
               >
                 <span className="text-ink">{choice.label}</span>{" "}
@@ -750,8 +751,15 @@ export function CellPopover({
               data-testid={row.testId}
               data-row={index}
               aria-pressed={row.pressed}
+              // The pointer moves the same highlight the arrows do, so the row a click would take
+              // and the row `↵` would take are always the one row. `pointermove` rather than
+              // `pointerenter`, for the reason the palette gives (`CommandPalette.tsx`): the list
+              // scrolls, and entering a row that slid under a still mouse would hand the highlight
+              // back from wherever the arrows had just put it. `preventScroll` because the arrows
+              // are what should scroll this list, never the mouse.
+              onPointerMove={(event) => event.currentTarget.focus({ preventScroll: true })}
               onClick={row.onClick(onEvent, onChoose, current)}
-              className="w-full rounded px-1 text-left"
+              className={`w-full rounded px-1 text-left ${ROW_HIGHLIGHT}`}
             >
               <span className="text-ink">{row.name}</span>
               {row.detail === null ? null : (
@@ -773,6 +781,16 @@ export function CellPopover({
     </div>
   );
 }
+
+/**
+ * What marks the row a click or `↵` would take.
+ *
+ * The browser's own ring is all this had, and it is a hairline the eye misses - and it is not
+ * drawn at all when focus was moved by script rather than by Tab, which is every way into this
+ * menu: opening it focuses a row, and the arrows focus the next one. A filled row is what says
+ * "this one", and `bg-select/25` is what the unit dock already fills its current row with.
+ */
+const ROW_HIGHLIGHT = "hover:bg-select/25 focus:bg-select/25";
 
 /**
  * The dropdown's rows in the agreed order: `— nothing`, `Teaches…` when it is offered, then the

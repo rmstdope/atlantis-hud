@@ -195,6 +195,41 @@ test("a dropdown moved to a second cell keeps focus inside itself", async ({ pag
   await expect(popover).toHaveCount(0);
 });
 
+/**
+ * The row a choice would land on is filled, and one highlight follows both the arrows and the
+ * pointer.
+ *
+ * Asserted on the computed background rather than on a class, because what failed here was
+ * visible-to-a-person: the browser's focus ring is a hairline, and it is not drawn at all for the
+ * script-moved focus this menu runs on, so the arrows appeared to do nothing.
+ */
+test("the dropdown fills the row the arrows and the pointer land on", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
+
+  const row = (at: number) => page.locator(`[data-testid="study-schedule-popover"] [data-row="${at}"]`);
+  const fill = (at: number) =>
+    row(at).evaluate((element) => getComputedStyle(element).backgroundColor);
+  const CLEAR = "rgba(0, 0, 0, 0)";
+
+  // The menu opens on a marked row, so there is never a moment where nothing is marked.
+  expect(await fill(0)).not.toBe(CLEAR);
+
+  await page.keyboard.press("ArrowDown");
+  expect(await fill(0)).toBe(CLEAR);
+  expect(await fill(1)).not.toBe(CLEAR);
+
+  // And the pointer moves that same mark rather than lighting a second one.
+  await row(3).hover();
+  await expect(row(3)).toBeFocused();
+  expect(await fill(1)).toBe(CLEAR);
+  expect(await fill(3)).not.toBe(CLEAR);
+});
+
 test("a note written in All mages shows as a pencil in the Schedule", async ({ page }) => {
   await loadReport(page);
 
