@@ -4,6 +4,7 @@ import { SURFACE_LEVEL } from "../hexMapModel";
 import { AppHeader } from "./AppHeader";
 import { resetWorkspaceStore } from "../workspaceStore";
 import { failedStatus, noticeStatus, routineStatus, warningStatus } from "./shellStatus";
+import { FETCH_CONTROL_LABEL } from "./newAgeFetchView";
 
 const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
   renderToStaticMarkup(
@@ -411,40 +412,14 @@ describe("the New Age world control", () => {
     expect(draw({ newAge: undefined })).not.toContain("newage-control");
   });
 
-  it("offers signing in for a New Age game, and names the faction once signed in", () => {
-    const signedOut = draw({
-      newAge: {
-        label: "Sign in to Arcanum",
-        signedIn: false,
-        summary: "",
-        onSignIn: () => {},
-        onSignOut: () => {},
-        onFetchReport: () => {},
-        onFetchEarlierTurns: () => {},
-        historyBusy: false,
-        fetching: false
-      }
+  it("offers one Fetch button for a New Age world", () => {
+    const markup = draw({
+      newAge: { label: FETCH_CONTROL_LABEL, onFetch: () => {} }
     });
-    expect(signedOut).toContain("Sign in to Arcanum");
-    expect(controlTag(signedOut)).toContain("border-edge");
-    expect(controlTag(signedOut)).not.toContain("aria-haspopup");
 
-    const signedIn = draw({
-      newAge: {
-        label: "Merchant Guild",
-        signedIn: true,
-        summary: "Signed in to New Age: Arcanum as Merchant Guild (27).",
-        onSignIn: () => {},
-        onSignOut: () => {},
-        onFetchReport: () => {},
-        onFetchEarlierTurns: () => {},
-        historyBusy: false,
-        fetching: false
-      }
-    });
-    expect(signedIn).toContain("Merchant Guild");
-    expect(controlTag(signedIn)).toContain("border-brass");
-    expect(controlTag(signedIn)).toContain('aria-haspopup="dialog"');
+    expect(markup).toContain("Fetch");
+    expect(controlTag(markup)).toContain("border-brass");
+    expect(controlTag(markup)).not.toContain("aria-haspopup");
   });
 });
 

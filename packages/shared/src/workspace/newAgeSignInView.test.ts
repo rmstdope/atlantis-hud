@@ -3,21 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { NewAgeFailure } from "./newAgeApi";
 import {
   NEW_AGE_HOST,
-  SIGNED_OUT_ON_CLOSE,
-  SIGN_IN_NOTE,
-  SESSION_ENDED,
-  factionLabelOfNewAge,
+  credentialNote,
   factionNumberProblem,
   signInFailure,
-  signInIsReady,
-  signInMetaLine,
-  signInTitle,
-  signedInLabel,
-  signedInSummary,
-  signedOutLabel
+  signInMetaLine
 } from "./newAgeSignInView";
-
-const ready = { kind: "ready" } as const;
 
 describe("newAgeSignInView", () => {
   it("refuses a faction number that is not digits, and says nothing about an empty one until asked", () => {
@@ -61,39 +51,26 @@ describe("newAgeSignInView", () => {
     }
   });
 
-  it("names the world, the host and the turn", () => {
-    expect(signInTitle("New Age: Arcanum")).toBe("Sign in to New Age: Arcanum");
+  it("names the host and the turn, and says what a credential is used for", () => {
     expect(signInMetaLine("atlantis-newage.com", 83)).toBe("atlantis-newage.com · turn 83");
     expect(signInMetaLine("atlantis-newage.com", null)).toBe("atlantis-newage.com");
     expect(NEW_AGE_HOST).toBe("atlantis-newage.com");
-    expect(SIGN_IN_NOTE).toBe(
-      "Kept only while the app is open. Nothing is written to this machine."
+    expect(credentialNote("fetch")).toBe(
+      "Used for this fetch only. Nothing is written to this machine."
     );
-    expect(SIGNED_OUT_ON_CLOSE).toBe("Nothing is stored: closing Atlantis HUD signs you out.");
-    expect(SESSION_ENDED).toBe("Your session has ended. Sign in again to continue.");
-  });
-
-  it("labels the control before and after signing in", () => {
-    expect(signedOutLabel("Arcanum")).toBe("Sign in to Arcanum");
-    expect(signedInLabel({ id: 27, name: "Merchant Guild", status: "" })).toBe("Merchant Guild");
-    expect(signedInLabel({ id: 27, name: "  ", status: "" })).toBe("Faction 27");
-    expect(factionLabelOfNewAge({ id: 27, name: "Merchant Guild", status: "" })).toBe(
-      "Merchant Guild (27)"
-    );
-    expect(factionLabelOfNewAge({ id: 27, name: "", status: "" })).toBe("Faction 27");
-    expect(signedInSummary("New Age: Arcanum", { id: 27, name: "Merchant Guild", status: "" })).toBe(
-      "Signed in to New Age: Arcanum as Merchant Guild (27)."
+    expect(credentialNote("send")).toBe(
+      "Used for this send only. Nothing is written to this machine."
     );
   });
 
-  it("will not sign in without a password or with a bad faction number", () => {
-    expect(signInIsReady("27", "hunter2", ready)).toBe(true);
-    expect(signInIsReady("27", "  ", ready)).toBe(false);
-    expect(signInIsReady("", "hunter2", ready)).toBe(false);
-    expect(signInIsReady("27a", "hunter2", ready)).toBe(false);
-    expect(signInIsReady("27", "hunter2", { kind: "signingIn" })).toBe(false);
-    expect(
-      signInIsReady("27", "hunter2", { kind: "failed", message: "no", retype: true })
-    ).toBe(true);
+  it("drops the nothing-was-sent clause when nothing was being sent", () => {
+    expect(signInFailure({ kind: "unreachable" }, NEW_AGE_HOST, { nothingSent: false })).toEqual({
+      message: "Could not reach atlantis-newage.com.",
+      retype: false
+    });
+    expect(signInFailure({ kind: "unreachable" }, NEW_AGE_HOST)).toEqual({
+      message: "Could not reach atlantis-newage.com. Nothing was sent.",
+      retype: false
+    });
   });
 });

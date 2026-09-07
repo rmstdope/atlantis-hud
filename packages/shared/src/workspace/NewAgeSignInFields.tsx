@@ -1,69 +1,56 @@
 import type { RefObject } from "react";
 
-import {
-  SIGN_IN_NOTE,
-  factionNumberProblem,
-  type NewAgeSignInPhase
-} from "./newAgeSignInView";
+import { factionNumberProblem, type NewAgeSignInPhase } from "./newAgeSignInView";
 
 /**
- * The two fields a New Age sign-in asks for, the note under them, and whatever is wrong.
+ * The two fields a New Age world asks for, the note under them, and whatever is wrong.
  *
- * Exported on its own because `ah-lbd9.3` and `ah-lbd9.4` embed it: a session that has run out is
- * asked for again inside the dialog the player is already in, so nothing they have typed is lost.
- * That is the navigator's E1 decision, and this component is what it costs.
+ * Exported on its own because both the fetch and the send dialog ask for exactly these, and each
+ * asks at the moment it acts: there is no session, so the fields are always both shown.
  *
  * Controlled throughout: neither value is held here, so the embedding dialog owns the password and
  * dies with it. Both fields are disabled rather than removed while a sign-in is in flight, so the
  * panel does not resize under the pointer.
  */
 export function NewAgeSignInFields({
-  asksToSignIn,
   factionNumber,
   password,
+  note,
   phase,
   fieldRef,
   onFactionNumber,
   onPassword
 }: {
-  /**
-   * Whether these fields are asking for a sign-in, or only for a password.
-   *
-   * Absent or true is the sign-in: the faction number, the password, and the note saying nothing
-   * is written to this machine. False is the send dialog with a session already in hand - the
-   * password alone, and no note, because nothing is being kept.
-   */
-  asksToSignIn?: boolean;
   factionNumber: string;
   password: string;
+  /** Under the password field: `credentialNote("fetch")` or `credentialNote("send")`. */
+  note: string;
   phase: NewAgeSignInPhase;
   /** The password input, so a refusal can clear it and put focus back in it. */
   fieldRef?: RefObject<HTMLInputElement | null>;
   onFactionNumber: (value: string) => void;
   onPassword: (value: string) => void;
 }) {
-  const asks = asksToSignIn !== false;
   const busy = phase.kind === "signingIn";
   // A blank field the player has not finished typing in is not nagged at.
   const problem = factionNumberProblem(factionNumber, { blankIsAProblem: false });
 
   return (
     <>
-      {!asks ? null : (
-        <label className="flex flex-col gap-1">
-          <span className="text-ink-soft">Faction number</span>
-          <input
-            data-testid="newage-faction-number"
-            aria-label="Faction number"
-            type="text"
-            inputMode="numeric"
-            value={factionNumber}
-            disabled={busy}
-            onChange={(event) => onFactionNumber(event.target.value)}
-            className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
-          />
-        </label>
-      )}
+      <label className="flex flex-col gap-1">
+        <span className="text-ink-soft">Faction number</span>
+        <input
+          data-testid="newage-faction-number"
+          aria-label="Faction number"
+          type="text"
+          inputMode="numeric"
+          placeholder="Required"
+          value={factionNumber}
+          disabled={busy}
+          onChange={(event) => onFactionNumber(event.target.value)}
+          className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+        />
+      </label>
 
       <label className="flex flex-col gap-1">
         <span className="text-ink-soft">Faction password</span>
@@ -81,9 +68,9 @@ export function NewAgeSignInFields({
         />
       </label>
 
-      {!asks ? null : <p className="text-ink-dim">{SIGN_IN_NOTE}</p>}
+      <p className="text-ink-dim">{note}</p>
 
-      {!asks || problem === null ? null : (
+      {problem === null ? null : (
         <p data-testid="newage-signin-problem" className="text-danger">
           {problem}
         </p>

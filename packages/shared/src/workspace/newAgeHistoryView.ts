@@ -1,6 +1,5 @@
 /**
- * What the earlier-turns dialog says, and every rule about what a row means, decided apart from
- * how it is drawn.
+ * What fetching earlier turns from a New Age world says, decided apart from how it is drawn.
  *
  * Split out for the reason `newAgeSignInView.ts`, `sendOrdersView.ts` and `newAgeFetchView.ts` all
  * give: this package has no jsdom (ah-nass), so a rule is only testable by a unit test when it
@@ -11,79 +10,13 @@
  */
 
 import type { NewAgeFailure } from "./newAgeApi";
-import { SESSION_ENDED, type NewAgeSignInPhase } from "./newAgeSignInView";
 import { failedStatus, noticeStatus, warningStatus, type StatusLine } from "./shellStatus";
-
-/** Where the turn dialog has got to, or `null` when it is closed. */
-export type NewAgeHistoryPhase =
-  | { kind: "listing" }
-  /** The world answered, and named no turn this game does not already have. */
-  | { kind: "empty" }
-  /** The listing call itself failed. `message` is the whole sentence, ready to draw. */
-  | { kind: "listFailed"; message: string }
-  | {
-      kind: "ready";
-      /** Every turn the world listed, as it listed them. */
-      worldTurns: readonly number[];
-      /** Turns this visit has fetched and stored, so a row reads `stored` with no reload. */
-      fetched: readonly number[];
-      /** Why a row failed, this visit. Keyed by turn number. */
-      failures: ReadonlyMap<number, string>;
-      /** The run in progress, or null when nothing is in flight. */
-      run: { turnNumber: number; done: number; total: number } | null;
-    }
-  /**
-   * The session ran out mid-fetch. The dialog stays mounted behind the sign-in dialog, and
-   * `remaining` is what the run still owed - signing in resumes exactly that (the navigator, E2).
-   */
-  | {
-      kind: "reauth";
-      signIn: NewAgeSignInPhase;
-      behind: Extract<NewAgeHistoryPhase, { kind: "ready" }>;
-      remaining: readonly number[];
-    };
-
-/** What one row of the list is. */
-export type HistoryRowState =
-  | { kind: "playing" }
-  | { kind: "stored" }
-  | { kind: "missing" }
-  | { kind: "fetching" }
-  | { kind: "failed"; reason: string };
-
-export type HistoryRow = {
-  turnNumber: number;
-  /**
-   * The season, when the game holds this turn. `null` - drawn as an em dash - when only the world
-   * knows of it: the world's list is turn numbers and nothing else.
-   */
-  season: string | null;
-  state: HistoryRowState;
-};
-
-/** The popover item that opens the dialog. Plural: the dialog behind it takes more than one. */
-export const HISTORY_ITEM = "Fetch earlier turns…";
-
-/** Under the heading, so nobody fears their screen is about to change. */
-export const HISTORY_BLURB =
-  "A fetched turn is stored for comparison. What is on screen does not change.";
-
-export const HISTORY_CLOSE = "Close";
-export const HISTORY_RETRY = "Try again";
 
 /** A row's mark when the game would not store what the world gave. Not a `NewAgeFailure`. */
 export const HISTORY_NOT_STORED = "not stored";
 
-export function historyTitle(worldName: string): string {
-  return `Earlier turns on ${worldName}`;
-}
-
 export function historyListing(worldName: string): string {
   return `Asking ${worldName} which turns it holds…`;
-}
-
-export function historyEmpty(worldName: string): string {
-  return `${worldName} holds no earlier turns for you.`;
 }
 
 export function historyListFailed(worldName: string, reason: string): string {
@@ -91,7 +24,7 @@ export function historyListFailed(worldName: string, reason: string): string {
 }
 
 /**
- * A row's failure mark: a short phrase, not the whole sentence. A 24rem dialog has no room for
+ * A failed turn's mark: a short phrase, not the whole sentence. A 24rem dialog has no room for
  * `could not reach atlantis-newage.com` in a right-aligned mark; the sentence goes to the status
  * line, where the single-turn path already puts it.
  *
@@ -115,16 +48,6 @@ export function historyRowFailure(failure: NewAgeFailure): string {
   }
 }
 
-/** `Fetch 1 missing`, `Fetch all 4 missing`. */
-export function fetchAllLabel(missingCount: number): string {
-  return missingCount === 1 ? "Fetch 1 missing" : `Fetch all ${missingCount} missing`;
-}
-
-/** `Fetching 2 of 3…` - `done` is how many have been attempted before this one. */
-export function runningLabel(done: number, total: number): string {
-  return `Fetching ${done + 1} of ${total}…`;
-}
-
 /** In front of one turn's fetch failure on the status line: `could not fetch turn 80`. */
 export function fetchTurnPrefix(turnNumber: number): string {
   return `could not fetch turn ${turnNumber}`;
@@ -145,70 +68,26 @@ export function fetchedTurnName(worldName: string, turnNumber: number): string {
 }
 
 /**
- * The rows to draw, turn ascending - the order `TurnPicker` and `sortImportedTurnSummaries` both
- * use.
- *
- * `stored` beats `missing`, `playing` beats `stored`, and an in-flight or failed turn beats both:
- * a row says what is happening to it now, and what it is otherwise.
- */
-export function historyRows(
-  phase: Extract<NewAgeHistoryPhase, { kind: "ready" }>,
-  stored: readonly { turnNumber: number; season: string | null }[],
-  workingTurn: number | null
-): HistoryRow[] {
-  const seasons = new Map(stored.map((entry) => [entry.turnNumber, entry.season]));
-  const fetched = new Set(phase.fetched);
-  return [...phase.worldTurns]
-    .sort((left, right) => left - right)
-    .map((turnNumber) => ({
-      turnNumber,
-      season: seasons.has(turnNumber) ? (seasons.get(turnNumber) ?? null) : null,
-      state: rowState(phase, seasons, fetched, turnNumber, workingTurn)
-    }));
-}
-
-function rowState(
-  phase: Extract<NewAgeHistoryPhase, { kind: "ready" }>,
-  seasons: ReadonlyMap<number, string | null>,
-  fetched: ReadonlySet<number>,
-  turnNumber: number,
-  workingTurn: number | null
-): HistoryRowState {
-  if (phase.run !== null && phase.run.turnNumber === turnNumber) {
-    return { kind: "fetching" };
-  }
-  const failure = phase.failures.get(turnNumber);
-  if (failure !== undefined) {
-    return { kind: "failed", reason: failure };
-  }
-  if (turnNumber === workingTurn) {
-    return { kind: "playing" };
-  }
-  return seasons.has(turnNumber) || fetched.has(turnNumber) ? { kind: "stored" } : { kind: "missing" };
-}
-
-/**
- * The turns a `Fetch all missing` press would ask for, turn ascending: every listed *earlier* turn
- * that is neither the working turn nor already stored. A turn that failed earlier this visit is
- * missing again, so pressing the button retries it.
+ * The turns a history fetch asks for, turn ascending: every listed *earlier* turn
+ * that is neither the working turn nor already stored. A run is one pass, so there is nothing
+ * fetched-this-visit to exclude: `stored` is read after this turn has landed and says everything.
  *
  * A turn **newer** than the one on screen is never asked for in bulk: `routeReport` answers `load`
- * for it, so it would take the screen - exactly what `HISTORY_BLURB` promises will not happen. Its
- * row stays pressable, like the working turn's, because pressing one row is a deliberate act.
+ * for it, so loading it would take the screen, which a fetch of earlier turns must not do.
  */
 export function missingTurns(
-  phase: Extract<NewAgeHistoryPhase, { kind: "ready" }>,
+  worldTurns: readonly number[],
   stored: readonly { turnNumber: number }[],
   workingTurn: number | null
 ): number[] {
-  const held = new Set([...stored.map((entry) => entry.turnNumber), ...phase.fetched]);
-  return [...phase.worldTurns]
+  const held = new Set(stored.map((entry) => entry.turnNumber));
+  return [...worldTurns]
     .sort((left, right) => left - right)
     .filter(
       (turnNumber) =>
         turnNumber !== workingTurn &&
         (workingTurn === null || turnNumber < workingTurn) &&
-        (phase.failures.has(turnNumber) || !held.has(turnNumber))
+        !held.has(turnNumber)
     );
 }
 
@@ -240,17 +119,3 @@ export function runSummary(
     `${turns(storedCount)} stored for history, ${failedCount} could not be fetched${tail}`
   );
 }
-
-/** The heading, notice and buttons the sign-in dialog wears when a history fetch ran out. */
-export const HISTORY_REAUTH_PURPOSE: {
-  heading: string;
-  notice: string;
-  confirmLabel: string;
-  ariaLabel: string;
-} = {
-  // Singular: it is up because one turn failed.
-  heading: "Fetch an earlier turn",
-  notice: SESSION_ENDED,
-  confirmLabel: "Sign in and fetch",
-  ariaLabel: "Sign in again to fetch an earlier turn"
-};

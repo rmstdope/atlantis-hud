@@ -2,84 +2,30 @@ import { describe, expect, it } from "vitest";
 import type { NewAgeFailure } from "./newAgeApi";
 import {
   HISTORY_NOT_STORED,
-  fetchAllLabel,
   fetchTurnPrefix,
   fetchedTurnName,
   fetchingTurnStatus,
-  historyEmpty,
   historyListFailed,
   historyListing,
   historyRowFailure,
-  historyRows,
-  historyTitle,
   missingTurns,
-  runSummary,
-  runningLabel,
-  type NewAgeHistoryPhase
+  runSummary
 } from "./newAgeHistoryView";
 
-function ready(
-  over: Partial<Extract<NewAgeHistoryPhase, { kind: "ready" }>> = {}
-): Extract<NewAgeHistoryPhase, { kind: "ready" }> {
-  return {
-    kind: "ready",
-    worldTurns: [70, 71, 72],
-    fetched: [],
-    failures: new Map(),
-    run: null,
-    ...over
-  };
-}
-
-describe("historyRows", () => {
-  it("orders rows by turn and marks the working turn as playing", () => {
-    const rows = historyRows(
-      ready({ worldTurns: [72, 70, 71], fetched: [70], failures: new Map([[72, "no report"]]) }),
-      [{ turnNumber: 71, season: "Spring, Year 3" }],
-      71
-    );
-
-    expect(rows.map((row) => [row.turnNumber, row.state])).toEqual([
-      [70, { kind: "stored" }],
-      [71, { kind: "playing" }],
-      [72, { kind: "failed", reason: "no report" }]
-    ]);
-  });
-
-  it("shows a season only for a turn the game already holds", () => {
-    const rows = historyRows(ready(), [{ turnNumber: 71, season: "Spring, Year 3" }], 71);
-
-    expect(rows.map((row) => row.season)).toEqual([null, "Spring, Year 3", null]);
-  });
-
-  it("marks the turn in flight as fetching", () => {
-    const rows = historyRows(ready({ run: { turnNumber: 72, done: 1, total: 2 } }), [], null);
-
-    expect(rows[2]).toEqual({ turnNumber: 72, season: null, state: { kind: "fetching" } });
-    expect(rows[0].state).toEqual({ kind: "missing" });
-  });
-});
-
 describe("missingTurns", () => {
-  it("counts a turn that failed this visit as missing again", () => {
-    expect(
-      missingTurns(ready({ failures: new Map([[70, "no report"]]) }), [{ turnNumber: 70 }], 72)
-    ).toEqual([70, 71]);
-  });
-
   it("leaves out the working turn and the turns already stored", () => {
-    expect(missingTurns(ready(), [{ turnNumber: 70 }], 72)).toEqual([71]);
+    expect(missingTurns([70, 71, 72], [{ turnNumber: 70 }], 72)).toEqual([71]);
   });
 
-  it("never asks for a turn newer than the one on screen", () => {
-    // `routeReport` answers `load` for a newer turn, which would take the screen - exactly what
-    // the dialog's blurb promises will not happen.
-    expect(missingTurns(ready({ worldTurns: [70, 71, 72] }), [], 70)).toEqual([]);
-    expect(missingTurns(ready({ worldTurns: [70, 71, 72] }), [], 72)).toEqual([70, 71]);
+  it("never lists a turn newer than the one on screen", () => {
+    // `routeReport` answers `load` for a newer turn, so loading it would take the screen -
+    // exactly what a fetch of earlier turns must not do.
+    expect(missingTurns([70, 71, 72], [], 70)).toEqual([]);
+    expect(missingTurns([70, 71, 72], [], 72)).toEqual([70, 71]);
   });
 
-  it("counts a turn fetched this visit as no longer missing", () => {
-    expect(missingTurns(ready({ fetched: [70] }), [], 72)).toEqual([71]);
+  it("lists every listed turn in order when nothing is on screen yet", () => {
+    expect(missingTurns([72, 70, 71], [], null)).toEqual([70, 71, 72]);
   });
 });
 
@@ -98,16 +44,11 @@ describe("the words", () => {
     expect(HISTORY_NOT_STORED).toBe("not stored");
   });
 
-  it("says what the dialog says in each of its states", () => {
-    expect(historyTitle("Arcanum")).toBe("Earlier turns on Arcanum");
+  it("says what a history fetch says in each of its states", () => {
     expect(historyListing("Arcanum")).toBe("Asking Arcanum which turns it holds…");
-    expect(historyEmpty("Arcanum")).toBe("Arcanum holds no earlier turns for you.");
     expect(historyListFailed("Arcanum", "could not reach atlantis-newage.com")).toBe(
       "Arcanum would not say which turns it holds: could not reach atlantis-newage.com."
     );
-    expect(fetchAllLabel(1)).toBe("Fetch 1 missing");
-    expect(fetchAllLabel(4)).toBe("Fetch all 4 missing");
-    expect(runningLabel(1, 3)).toBe("Fetching 2 of 3…");
     expect(fetchTurnPrefix(80)).toBe("could not fetch turn 80");
     expect(fetchingTurnStatus(80, "Arcanum")).toBe("Fetching turn 80 from Arcanum…");
     expect(fetchedTurnName("Arcanum", 80)).toBe("turn 80 from Arcanum");
