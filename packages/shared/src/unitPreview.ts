@@ -200,17 +200,39 @@ function standingWhereItArrives(
   if (!arrival) {
     return departing;
   }
-  if (arrival.unit.structureId === departing.unit.structureId) {
+  const changes = [
+    ...departing.changes.filter((change) => change.field !== "structureId"),
+    ...arrival.changes.filter((change) => change.field === "structureId")
+  ];
+  // Nothing to fold: the same object back, because `UnitTableDock`'s memoisation is keyed on row
+  // identity and a fresh object every preview tick cancels an open tooltip (`ah-1wcw.1`). The
+  // structure ids are compared only alongside the changes, and never as the whole test: a
+  // structure number is scoped to its region (`rules/move`, "a structure number"), so `7` in the
+  // origin and `7` in the destination are two different buildings that happen to share a number.
+  if (
+    arrival.unit.structureId === departing.unit.structureId &&
+    sameChanges(changes, departing.changes)
+  ) {
     return departing;
   }
   return {
     ...departing,
     unit: { ...departing.unit, structureId: arrival.unit.structureId },
-    changes: [
-      ...departing.changes.filter((change) => change.field !== "structureId"),
-      ...arrival.changes.filter((change) => change.field === "structureId")
-    ]
+    changes
   };
+}
+
+/** Whether two change lists say the same things in the same order. */
+function sameChanges(one: readonly FieldChange[], other: readonly FieldChange[]): boolean {
+  return (
+    one.length === other.length &&
+    one.every(
+      (change, index) =>
+        change.field === other[index].field &&
+        change.original === other[index].original &&
+        change.cause === other[index].cause
+    )
+  );
 }
 
 /**
