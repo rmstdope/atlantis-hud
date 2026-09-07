@@ -180,52 +180,24 @@ import { MapCanvas, type MapCanvasHandle } from "./MapCanvas";
 import { ArmyExportDialog } from "./ArmyExportDialog";
 import { MapExportDialog } from "./MapExportDialog";
 import { SendOrdersDialog } from "./SendOrdersDialog";
-import { NewAgeSignInDialog } from "./NewAgeSignInDialog";
+import { NewAgeFetchDialog } from "./NewAgeFetchDialog";
 import { NewAgeSendDialog } from "./NewAgeSendDialog";
 import type { HttpTransport } from "./httpTransport";
 import { newAgeClient } from "./newAgeApi";
 import { newAgeWorldFor } from "./newAgeWorlds";
 import {
+  FETCH_CONTROL_LABEL,
   FETCH_FAILURE_PREFIX,
-  FETCH_REAUTH_PURPOSE,
-  fetchFailureReason,
+  FETCH_REFUSED_MID_RUN,
   fetchedReportName,
-  fetchingStatus,
-  type NewAgeFetchPhase
+  type NewAgeFetchPhase,
+  type NewAgeFetchScope
 } from "./newAgeFetchView";
-import {
-  HISTORY_NOT_STORED,
-  HISTORY_REAUTH_PURPOSE,
-  fetchTurnPrefix,
-  fetchedTurnName,
-  fetchingTurnStatus,
-  historyListFailed,
-  historyRows,
-  missingTurns,
-  runSummary,
-  type NewAgeHistoryPhase
-} from "./newAgeHistoryView";
-import { runHistoryFetch } from "./newAgeHistoryRun";
-import { NewAgeHistoryDialog } from "./NewAgeHistoryDialog";
-import {
-  NO_NEW_AGE_SESSIONS,
-  newAgeFactionOf,
-  newAgeSessionFor,
-  withNewAgeSession,
-  withoutNewAgeSession,
-  type NewAgeSessions
-} from "./newAgeSession";
+import { runNewAgeFetch } from "./newAgeFetchRun";
+import { fetchedTurnName, runSummary } from "./newAgeHistoryView";
 import { performNewAgeSend } from "./newAgeSend";
 import type { NewAgeSendPhase } from "./newAgeSendView";
-import {
-  NEW_AGE_HOST,
-  SESSION_ENDED,
-  signInFailure,
-  signedInLabel,
-  signedInSummary,
-  signedOutLabel,
-  type NewAgeSignInPhase
-} from "./newAgeSignInView";
+import { NEW_AGE_HOST, signInFailure } from "./newAgeSignInView";
 import type { SendOrdersPhase } from "./sendOrdersView";
 import { sendDisabledReason } from "./sendOrdersView";
 import { performOrdersSend } from "./sendOrders";
@@ -1822,6 +1794,21 @@ export function AppShell({
    * when `runReported` caught a failure - which is what lets a caller fetching several turns tell
    * a stored turn from a refused one.
    */
+  /**
+   * What is on screen, as `loadReport` routes against - kept in step with `parsed`, and set the
+   * moment a load succeeds rather than waiting for the render that follows it.
+   *
+   * Several reports are loaded back to back inside one action now: a Fetch that brings this turn's
+   * report and then every earlier turn the world holds. `parsed` does not change until React has
+   * re-rendered, so routing the second report against it decides against what was on screen
+   * *before* the first - and an earlier turn that should have been stored takes the screen instead
+   * (caught by `newage-fetch.spec.ts`'s bulk walk, which ended showing turn 71 rather than 72).
+   */
+  const viewerRef = useRef<ParsedReport | null>(parsed);
+  useEffect(() => {
+    viewerRef.current = parsed;
+  }, [parsed]);
+
   const loadReport = useCallback(
     (text: string, fileName: string): Promise<ReportLoadOutcome | undefined> =>
       runReported<ReportLoadOutcome>(
@@ -1846,13 +1833,14 @@ export function AppShell({
           // older-than-you-hold refusal exists to prevent. Only a mage sheet pays for this.
           const held = await heldMagesFor(source);
 
+          const viewer = viewerRef.current;
           const route = routeReport(
-            parsed,
+            viewer,
             source,
             fileName,
             new Set(model.hexes.map((hex) => hex.regionId)),
             {
-              viewerFactionId: parsed?.header.factionId ?? null,
+              viewerFactionId: viewer?.header.factionId ?? null,
               hasGame: game !== null,
               heldTurnByFaction: heldTurnsByFaction(held)
             }
@@ -1892,6 +1880,9 @@ export function AppShell({
             return "stored";
           }
 
+          // Before the await returns, so a second report loaded in the same action routes against
+          // this one rather than against whatever the last render saw.
+          viewerRef.current = report;
           await applyReport(report, text, fileName);
           return "loaded";
         },
@@ -1900,9 +1891,10 @@ export function AppShell({
       ),
     // `ruleset` belongs here: without it the callback closes over the value at first render, which
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
-    // `parsed` because the routing above is decided against whatever is on screen, and `model`
-    // because the map-export prompt counts its hexes against the map the player already has.
-    [client, ruleset, parsed, model, heldMagesFor, applyReport, storeReportOnly, takeInMageSheet]
+    // What is on screen is read through `viewerRef` rather than closed over, for the reason that
+    // ref states; `model` because the map-export prompt counts its hexes against the map the
+    // player already has.
+    [client, ruleset, model, heldMagesFor, applyReport, storeReportOnly, takeInMageSheet]
   );
 
   /**
@@ -2857,9 +2849,6 @@ export function AppShell({
           return describeError(error);
         }
         setGames(result.games);
-        // The game is gone, so its token has nothing left to authenticate. Memory only either
-        // way, but a session outliving the game it belongs to is not what this map is for.
-        setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, gameId));
         if (result.closedOpenGame) {
           if (result.opened) {
             enterGame(result.opened);
@@ -3652,44 +3641,19 @@ export function AppShell({
 
   /** Where a New Age send has got to, or null when its dialog is closed. */
   const [newAgeSendPhase, setNewAgeSendPhase] = useState<NewAgeSendPhase | null>(null);
-  /**
-   * Whether that dialog is asking for a faction number as well as a password.
-   *
-   * Held here rather than derived from `newAgeSession`, which changes under the dialog: a session
-   * stored mid-send would otherwise take the faction-number field away while the request is in
-   * flight and resize the panel under the pointer. Set when the dialog opens and again when a
-   * token runs out; never cleared while it is open.
-   */
-  const [newAgeSendAsksSignIn, setNewAgeSendAsksSignIn] = useState(false);
   const newAgeSendAbort = useRef<AbortController | null>(null);
 
   /**
-   * Signed-in New Age sessions, one per game. Memory only: nothing is persisted, so a reload signs
-   * the player out - the navigator's decision on ah-lbd9, made mechanical.
+   * Where the Fetch dialog has got to, or null when it is closed.
+   *
+   * The dialog is mounted only while this is non-null, which is what makes its scope choice reset
+   * on every open by construction. No token is held anywhere here: `runNewAgeFetch` keeps one in a
+   * local for the length of one call, which is the whole of what "no session" means.
    */
-  const [newAgeSessions, setNewAgeSessions] = useState<NewAgeSessions>(NO_NEW_AGE_SESSIONS);
-  /** Where the sign-in dialog has got to, or null when it is closed. */
-  const [signInPhase, setSignInPhase] = useState<NewAgeSignInPhase | null>(null);
-  const signInAbort = useRef<AbortController | null>(null);
-  /** Where a report fetch has got to, or null when none is running. */
   const [fetchPhase, setFetchPhase] = useState<NewAgeFetchPhase | null>(null);
   const fetchAbort = useRef<AbortController | null>(null);
-  /**
-   * Where the earlier-turns dialog has got to, or null when it is closed.
-   *
-   * Held here rather than in the dialog because the run outlives the reauth detour, and because
-   * the shell already owns `newAgeApi`, `loadReport` and `turnSummaries`. Nothing new is
-   * persisted: like `newAgeSessions`, closing the window forgets it.
-   */
-  const [historyPhase, setHistoryPhase] = useState<NewAgeHistoryPhase | null>(null);
-  const historyAbort = useRef<AbortController | null>(null);
-  /**
-   * The sign-in this dialog's own 401 put up. Its own ref rather than `signInAbort`, which belongs
-   * to the header's sign-in: closing this dialog must not abort an unrelated sign-in.
-   */
-  const historySignInAbort = useRef<AbortController | null>(null);
-  /** Set when the dialog is dismissed mid-run; `runHistoryFetch` reads it at each turn boundary. */
-  const historyAbandoned = useRef(false);
+  /** Set when the dialog is dismissed mid-run; the run reads it at each boundary. */
+  const fetchAbandoned = useRef(false);
 
   /** The faction the orders name, which is what the server is told to file them under. */
   const sendFactionId = ordersFileFaction(ordersDocument);
@@ -3699,7 +3663,6 @@ export function AppShell({
   // one short word, which is what the header control uses in any case.
   const newAgeRulesetLabel =
     rulesetById(game?.manifest.metadata.rulesetId ?? "")?.label ?? newAgeWorld?.worldName ?? "";
-  const newAgeSession = newAgeSessionFor(newAgeSessions, openGameId, newAgeWorld?.worldId ?? null);
   const newAgeApi = useMemo(
     () =>
       newAgeTransport === undefined || newAgeWorld === null
@@ -3713,7 +3676,7 @@ export function AppShell({
   // A New Age world takes the other road - the REST API rather than an upload form - so it needs
   // no `ordersUploadUrl`. On the web build `newAgeTransport` is absent, so `newAgeApi` is null and
   // this is false, which is still the whole of what keeps New Age out of that bundle.
-  /** Whether this game could be sent to over the New Age API, session or no session. */
+  /** Whether this game could be sent to over the New Age API. */
   const newAgeSendable = newAgeApi !== null && newAgeWorld !== null && openGameId !== null;
   const canSendOrders =
     ordersDocument.length > 0 &&
@@ -3754,68 +3717,14 @@ export function AppShell({
   );
 
   /**
-   * Exchanges a faction number and password for a token, and remembers it for this game.
-   *
-   * The password arrives from the dialog, is handed to `newAgeApi.login`, and is not kept: only the
-   * token comes back here, and it is only ever put in an `Authorization` header. Nothing is logged.
+   * Cancel, Escape and the backdrop. Stops a run at its next boundary; what landed stays landed,
+   * because abandoning mid-write would abandon a report half-stored.
    */
-  const signInToNewAge = useCallback(
-    async (factionNumber: string, password: string) => {
-      if (newAgeApi === null || openGameId === null || newAgeWorld === null) {
-        return;
-      }
-      const controller = new AbortController();
-      signInAbort.current = controller;
-      setSignInPhase({ kind: "signingIn" });
-      const result = await newAgeApi.login(factionNumber, password, controller.signal);
-      // A dismissal replaced or cleared the controller while this was in flight: the player has
-      // moved on, and a token minted for a dialog they closed is not stored.
-      if (signInAbort.current !== controller) {
-        return;
-      }
-      signInAbort.current = null;
-      if (result.kind === "ok") {
-        setNewAgeSessions((sessions) =>
-          withNewAgeSession(sessions, openGameId, {
-            worldId: newAgeWorld.worldId,
-            factionId: String(result.value.faction.id),
-            factionName: result.value.faction.name,
-            token: result.value.accessToken
-          })
-        );
-        setSignInPhase(null);
-        return;
-      }
-      const { message, retype } = signInFailure(result, NEW_AGE_HOST);
-      setSignInPhase({ kind: "failed", message, retype });
-    },
-    [newAgeApi, openGameId, newAgeWorld]
-  );
-
-  /** Cancel, Escape and the backdrop all mean the same thing: stop, and close. */
-  const dismissSignIn = useCallback(() => {
-    signInAbort.current?.abort();
-    signInAbort.current = null;
-    setSignInPhase(null);
-  }, []);
-
-  /** Cancel, Escape and the backdrop, from either the fetch or the dialog it put up. */
   const dismissFetch = useCallback(() => {
+    fetchAbandoned.current = true;
     fetchAbort.current?.abort();
     fetchAbort.current = null;
-    signInAbort.current?.abort();
-    signInAbort.current = null;
     setFetchPhase(null);
-  }, []);
-
-  /** Stops a run at its next turn boundary and forgets the dialog. Stored turns stay stored. */
-  const dismissHistory = useCallback(() => {
-    historyAbandoned.current = true;
-    historyAbort.current?.abort();
-    historyAbort.current = null;
-    historySignInAbort.current?.abort();
-    historySignInAbort.current = null;
-    setHistoryPhase(null);
   }, []);
 
   /** Cancel, Escape and the backdrop. Aborts a sign-in or a send, whichever is in flight. */
@@ -3823,124 +3732,21 @@ export function AppShell({
     newAgeSendAbort.current?.abort();
     newAgeSendAbort.current = null;
     setNewAgeSendPhase(null);
-    setNewAgeSendAsksSignIn(false);
   }, []);
 
   // A dialog belongs to the game and the world it was opened over. Switching either closes it and
   // aborts anything in flight: without this the phase survives, and coming back would pop the
   // dialog open uninvited - the failure `openPopover` already guards against. The ruleset can
   // change under the same game in Settings, which is why the world is a dependency of its own: a
-  // dialog headed `Sign in to New Age: Arcanum` must not sit over a game that is now Trident.
+  // dialog headed `Fetch from New Age: Arcanum` must not sit over a game that is now Trident.
   useEffect(() => {
-    dismissSignIn();
     dismissFetch();
     dismissNewAgeSend();
-    dismissHistory();
-  }, [
-    openGameId,
-    newAgeWorld?.worldId,
-    dismissSignIn,
-    dismissFetch,
-    dismissNewAgeSend,
-    dismissHistory
-  ]);
+  }, [openGameId, newAgeWorld?.worldId, dismissFetch, dismissNewAgeSend]);
 
-  /** Forgets this game's token. Nothing to revoke: the world has no logout endpoint. */
-  const signOutOfNewAge = useCallback(() => {
-    if (openGameId === null) {
-      return;
-    }
-    setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, openGameId));
-    setOpenPopover(null);
-  }, [openGameId]);
-
-  /**
-   * Fetches this turn's report and hands it to `loadReport`, which is the same door a dropped file
-   * goes through: nothing about arriving over the network changes what it does to what is on
-   * screen (the navigator, 2026-09-04).
-   *
-   * The token is a parameter rather than read from state so the reauth path can fetch with a token
-   * `setNewAgeSessions` has not applied yet.
-   */
-  const fetchNewAgeReportWith = useCallback(
-    async (token: string) => {
-      if (newAgeApi === null || newAgeWorld === null || openGameId === null) {
-        return;
-      }
-      const controller = new AbortController();
-      fetchAbort.current = controller;
-      setFetchPhase({ kind: "fetching" });
-      setStatus(routineStatus(fetchingStatus(newAgeWorld.worldName)));
-      const result = await newAgeApi.report(token, controller.signal);
-      // A dismissal replaced or cleared the controller while this was in flight: the player has
-      // moved on, and a report fetched for an action they abandoned is not loaded.
-      if (fetchAbort.current !== controller) {
-        return;
-      }
-      fetchAbort.current = null;
-      if (result.kind === "ok") {
-        setFetchPhase(null);
-        await loadReport(result.value, fetchedReportName(newAgeWorld.worldName));
-        return;
-      }
-      if (result.kind === "unauthorized") {
-        // The token is dead, so it is dropped before anything else: the header chip goes back to
-        // `Sign in to Arcanum` and no later action can present it again.
-        setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, openGameId));
-        setFetchPhase({ kind: "reauth", signIn: { kind: "ready" } });
-        return;
-      }
-      setFetchPhase(null);
-      setStatus(
-        failedStatus(`${FETCH_FAILURE_PREFIX}: ${fetchFailureReason(result, NEW_AGE_HOST)}`)
-      );
-    },
-    [newAgeApi, newAgeWorld, openGameId, loadReport]
-  );
-
-  /** What the popover item calls. Closes the popover, then fetches with this game's token. */
-  const fetchNewAgeReport = useCallback(() => {
-    setOpenPopover(null);
-    if (newAgeSession === null) {
-      return;
-    }
-    void fetchNewAgeReportWith(newAgeSession.token);
-  }, [newAgeSession, fetchNewAgeReportWith]);
-
-  /** Signs in again from inside a fetch, and then fetches - the navigator's E1, made concrete. */
-  const signInAndFetch = useCallback(
-    async (factionNumber: string, password: string) => {
-      if (newAgeApi === null || openGameId === null || newAgeWorld === null) {
-        return;
-      }
-      const controller = new AbortController();
-      signInAbort.current = controller;
-      setFetchPhase({ kind: "reauth", signIn: { kind: "signingIn" } });
-      const result = await newAgeApi.login(factionNumber, password, controller.signal);
-      if (signInAbort.current !== controller) {
-        return;
-      }
-      signInAbort.current = null;
-      if (result.kind === "ok") {
-        const session = {
-          worldId: newAgeWorld.worldId,
-          factionId: String(result.value.faction.id),
-          factionName: result.value.faction.name,
-          token: result.value.accessToken
-        };
-        setNewAgeSessions((sessions) => withNewAgeSession(sessions, openGameId, session));
-        await fetchNewAgeReportWith(session.token);
-        return;
-      }
-      const { message, retype } = signInFailure(result, NEW_AGE_HOST);
-      setFetchPhase({ kind: "reauth", signIn: { kind: "failed", message, retype } });
-    },
-    [newAgeApi, openGameId, newAgeWorld, fetchNewAgeReportWith]
-  );
-
-  /** The turn on screen, which the earlier-turns list marks `playing` and never asks for. */
+  /** The turn on screen, which a bulk history fetch never asks for: loading it would take it. */
   const workingTurn = parsed?.header.turnNumber ?? null;
-  /** What the game already holds, in the shape `newAgeHistoryView` reads. */
+  /** What the game already holds, in the shape `missingTurns` reads. */
   const storedTurns = useMemo(
     () => turnSummaries.map((summary) => ({
       turnNumber: summary.key.turnNumber,
@@ -3950,105 +3756,89 @@ export function AppShell({
   );
 
   /**
-   * Fetches each turn in `turns`, one at a time, and files each into the game's stored history.
-   *
-   * `carried` is what an interrupted leg of this same run already achieved, so the summary after a
-   * reauth resume counts the whole run rather than only what followed the password.
+   * `heldTurns` reads these at call time rather than through the closure: both change while a run
+   * is in flight, and the whole point of reading them after this turn has landed is to see it.
    */
-  const runHistoryFetchFrom = useCallback(
-    async (
-      turns: readonly number[],
-      token: string,
-      carried: { stored: readonly number[]; failed: ReadonlyMap<string, string> } = {
-        stored: [],
-        failed: new Map()
-      }
-    ) => {
-      if (newAgeApi === null || newAgeWorld === null || openGameId === null || turns.length === 0) {
+  const heldTurnsRef = useRef({ stored: storedTurns, workingTurn });
+  heldTurnsRef.current = { stored: storedTurns, workingTurn };
+
+  /**
+   * One press of Fetch: sign in with what the dialog was given, bring this turn's report, and -
+   * when asked - every earlier turn the world holds that this game does not.
+   *
+   * The credentials arrive from the dialog for this one call and are kept nowhere; the token lives
+   * inside `runNewAgeFetch` and dies with it. Nothing is logged.
+   */
+  const fetchFromNewAge = useCallback(
+    async (factionNumber: string, password: string, scope: NewAgeFetchScope) => {
+      if (newAgeApi === null || newAgeWorld === null || openGameId === null) {
         return;
       }
+      const api = newAgeApi;
       const worldName = newAgeWorld.worldName;
       const controller = new AbortController();
-      historyAbort.current = controller;
-      historyAbandoned.current = false;
+      fetchAbort.current = controller;
+      fetchAbandoned.current = false;
 
-      const outcome = await runHistoryFetch(turns, {
-        fetch: (turnNumber) => newAgeApi.historyReport(token, turnNumber, controller.signal),
+      const outcome = await runNewAgeFetch(scope, { factionNumber, password }, worldName, {
+        login: (id, secret) => api.login(id, secret, controller.signal),
+        report: (token) => api.report(token, controller.signal),
+        historyTurns: (token) => api.historyTurns(token, controller.signal),
+        historyReport: (token, turnNumber) =>
+          api.historyReport(token, turnNumber, controller.signal),
         // `loadReport` is the same door a dropped file goes through, and it reports its own reason
-        // on the status line - so a turn it would not take is a `false` rather than a rejection.
+        // on the status line - so a report it would not take is a `false` rather than a rejection.
         store: async (turnNumber, reportText) =>
-          (await loadReport(reportText, fetchedTurnName(worldName, turnNumber))) !== undefined,
-        onProgress: (turnNumber, done) => {
-          setHistoryPhase((phase) =>
-            phase !== null && phase.kind === "ready"
-              ? { ...phase, run: { turnNumber, done, total: turns.length } }
-              : phase
-          );
-          setStatus(routineStatus(fetchingTurnStatus(turnNumber, worldName)));
-        },
-        abandoned: () => historyAbandoned.current || historyAbort.current !== controller
+          (await loadReport(
+            reportText,
+            turnNumber === null
+              ? fetchedReportName(worldName)
+              : fetchedTurnName(worldName, turnNumber)
+          )) !== undefined,
+        heldTurns: () => heldTurnsRef.current,
+        onPhase: setFetchPhase,
+        abandoned: () => fetchAbandoned.current || fetchAbort.current !== controller
       });
 
-      if (historyAbort.current !== controller) {
+      if (fetchAbort.current !== controller) {
         // The dialog was dismissed or replaced while this ran: nothing more is said about it.
         return;
       }
-      historyAbort.current = null;
+      fetchAbort.current = null;
 
-      const stored = [...carried.stored, ...outcome.stored];
-      const failed = new Map([...carried.failed, ...outcome.failed]);
-
-      const folded = (phase: NewAgeHistoryPhase | null): Extract<NewAgeHistoryPhase, { kind: "ready" }> | null => {
-        const ready = phase === null ? null : phase.kind === "ready" ? phase : phase.kind === "reauth" ? phase.behind : null;
-        if (ready === null) {
-          return null;
-        }
-        // Merged, not replaced: a mark from an earlier press in this visit still describes that
-        // turn, unless this run has just stored it.
-        const failures = new Map(ready.failures);
-        for (const turnNumber of stored) {
-          failures.delete(turnNumber);
-        }
-        for (const [turnNumber, reason] of failed) {
-          failures.set(Number(turnNumber), reason);
-        }
-        return {
-          ...ready,
-          fetched: [...new Set([...ready.fetched, ...stored])],
-          failures,
-          run: null
-        };
-      };
-
-      if (outcome.remaining !== null) {
-        // The token is dead, so it is dropped before anything else: the header chip goes back to
-        // `Sign in to Arcanum` and no later action can present it again.
-        setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, openGameId));
-        setHistoryPhase((phase) => {
-          const behind = folded(phase);
-          return behind === null
-            ? phase
-            : { kind: "reauth", signIn: { kind: "ready" }, behind, remaining: outcome.remaining ?? [] };
-        });
+      if (outcome.kind === "refused") {
+        // The dialog stays up, asking again with the password cleared.
+        setFetchPhase({ kind: "ready", message: outcome.message, retype: outcome.retype });
         return;
       }
-
-      setHistoryPhase((phase) => folded(phase) ?? phase);
-      const onlyFailure = stored.length === 0 && failed.size === 1 ? [...failed][0] : null;
-      if (stored.length + failed.size > 1) {
-        // A run of one that landed says nothing further: `loadReport` has already written
-        // `turn 80 stored for history; still showing turn 83.` and a second line would repeat it.
-        setStatus(runSummary(stored.length, failed.size, workingTurn));
-      } else if (onlyFailure !== null && onlyFailure[1] !== HISTORY_NOT_STORED) {
-        // But a run of one that *failed at the fetch* called `loadReport` not at all, so without
-        // this the routine `Fetching turn 70 from Arcanum…` would stay up for ever. A turn the
-        // game would not store is left alone: `loadReport` reported its own reason.
-        setStatus(failedStatus(`${fetchTurnPrefix(Number(onlyFailure[0]))}: ${onlyFailure[1]}`));
+      setFetchPhase(null);
+      if (outcome.kind === "abandoned") {
+        return;
       }
-      // Once, at the end: a refresh is a core round trip, and mid-run the rows already say what
-      // happened from the run's own state.
+      if (outcome.kind === "reportFailed") {
+        setStatus(failedStatus(`${FETCH_FAILURE_PREFIX}: ${outcome.reason}`));
+        return;
+      }
+      if (outcome.listFailed !== null) {
+        setStatus(warningStatus(outcome.listFailed));
+      } else if (outcome.history !== null) {
+        setStatus(
+          outcome.history.refusedMidRun
+            ? failedStatus(FETCH_REFUSED_MID_RUN)
+            : runSummary(
+                outcome.history.stored.length,
+                outcome.history.failed.size,
+                heldTurnsRef.current.workingTurn
+              )
+        );
+      }
+      // `loadReport` has already written its own line for this turn, so a plain `thisTurn` fetch
+      // adds nothing here.
+
+      // Once, at the end: a refresh is a core round trip, and the run has already said what
+      // happened to each turn.
       const factionId = parsed?.header.factionId ?? null;
-      if (game && factionId !== null) {
+      if (outcome.history !== null && game && factionId !== null) {
         const summaries = await runReported(
           () =>
             listComparableTurns(client, game.databasePath, game.manifest.metadata.gameId, factionId),
@@ -4060,148 +3850,14 @@ export function AppShell({
         }
       }
     },
-    [newAgeApi, newAgeWorld, openGameId, loadReport, workingTurn, client, game, parsed]
-  );
-
-  /** Asks the world which turns it holds, and opens the dialog on the answer. */
-  const openNewAgeHistory = useCallback(async (withToken?: string) => {
-    // The token is a parameter rather than read from state so the reauth path can list with a token
-    // `setNewAgeSessions` has not applied yet - the rule `fetchNewAgeReportWith` already follows.
-    const token = withToken ?? newAgeSession?.token;
-    if (newAgeApi === null || newAgeWorld === null || token === undefined) {
-      return;
-    }
-    setOpenPopover(null);
-    const controller = new AbortController();
-    historyAbort.current = controller;
-    setHistoryPhase({ kind: "listing" });
-    const result = await newAgeApi.historyTurns(token, controller.signal);
-    if (historyAbort.current !== controller) {
-      return;
-    }
-    historyAbort.current = null;
-    if (result.kind === "ok") {
-      // A world listing turns the game already stores still gets the list, because those rows are
-      // re-fetchable: only a list holding nothing but the turn on screen is empty.
-      setHistoryPhase(
-        result.value.filter((turnNumber) => turnNumber !== workingTurn).length === 0
-          ? { kind: "empty" }
-          : {
-              kind: "ready",
-              worldTurns: result.value,
-              fetched: [],
-              failures: new Map(),
-              run: null
-            }
-      );
-      return;
-    }
-    if (result.kind === "unauthorized") {
-      if (openGameId !== null) {
-        setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, openGameId));
-      }
-      setHistoryPhase({
-        kind: "reauth",
-        signIn: { kind: "ready" },
-        behind: { kind: "ready", worldTurns: [], fetched: [], failures: new Map(), run: null },
-        remaining: []
-      });
-      return;
-    }
-    setHistoryPhase({
-      kind: "listFailed",
-      message: historyListFailed(newAgeWorld.worldName, fetchFailureReason(result, NEW_AGE_HOST))
-    });
-  }, [newAgeApi, newAgeWorld, newAgeSession?.token, workingTurn, openGameId]);
-
-  /** One row, pressed. A run of exactly one, so a click and the button share one path. */
-  const fetchOneEarlierTurn = useCallback(
-    (turnNumber: number) => {
-      if (newAgeSession === null) {
-        return;
-      }
-      void runHistoryFetchFrom([turnNumber], newAgeSession.token);
-    },
-    [newAgeSession, runHistoryFetchFrom]
-  );
-
-  const historyReady =
-    historyPhase === null
-      ? null
-      : historyPhase.kind === "ready"
-        ? historyPhase
-        : historyPhase.kind === "reauth"
-          ? historyPhase.behind
-          : null;
-
-  const historyMissing = useMemo(
-    () => (historyReady === null ? [] : missingTurns(historyReady, storedTurns, workingTurn)),
-    [historyReady, storedTurns, workingTurn]
-  );
-
-  /** The primary button, pressed: every turn the world holds that the game does not. */
-  const fetchAllMissingTurns = useCallback(() => {
-    if (newAgeSession === null) {
-      return;
-    }
-    void runHistoryFetchFrom(historyMissing, newAgeSession.token);
-  }, [newAgeSession, historyMissing, runHistoryFetchFrom]);
-
-  /** Signs in again from inside a run, and finishes exactly what the run still owed (E2). */
-  const signInAndFetchHistory = useCallback(
-    async (factionNumber: string, password: string) => {
-      if (newAgeApi === null || openGameId === null || newAgeWorld === null) {
-        return;
-      }
-      const phase = historyPhase;
-      if (phase === null || phase.kind !== "reauth") {
-        return;
-      }
-      const controller = new AbortController();
-      historySignInAbort.current = controller;
-      setHistoryPhase({ ...phase, signIn: { kind: "signingIn" } });
-      const result = await newAgeApi.login(factionNumber, password, controller.signal);
-      if (historySignInAbort.current !== controller) {
-        return;
-      }
-      historySignInAbort.current = null;
-      if (result.kind === "ok") {
-        const session = {
-          worldId: newAgeWorld.worldId,
-          factionId: String(result.value.faction.id),
-          factionName: result.value.faction.name,
-          token: result.value.accessToken
-        };
-        setNewAgeSessions((sessions) => withNewAgeSession(sessions, openGameId, session));
-        setHistoryPhase(phase.behind);
-        if (phase.remaining.length === 0) {
-          // The listing itself was what ran out: ask again with the fresh token, which state does
-          // not carry yet.
-          await openNewAgeHistory(session.token);
-          return;
-        }
-        await runHistoryFetchFrom([...phase.remaining], session.token, {
-          stored: phase.behind.fetched,
-          failed: new Map(
-            [...phase.behind.failures].map(([turnNumber, reason]) => [String(turnNumber), reason])
-          )
-        });
-        return;
-      }
-      const { message, retype } = signInFailure(result, NEW_AGE_HOST);
-      setHistoryPhase({ ...phase, signIn: { kind: "failed", message, retype } });
-    },
-    [newAgeApi, openGameId, newAgeWorld, historyPhase, runHistoryFetchFrom, openNewAgeHistory]
+    [newAgeApi, newAgeWorld, openGameId, loadReport, client, game, parsed]
   );
 
   /**
-   * One send to a New Age world, signing in first when there is no token.
+   * One send to a New Age world: sign in, then upload, every time.
    *
-   * The navigator's chosen shape on ah-lbd9.4: one step, and the dialog then shows what came back.
-   * The token is held in a local rather than read back out of state, for the reason
-   * `fetchNewAgeReportWith` takes its own as an argument: `setNewAgeSessions` is asynchronous.
-   *
-   * The password reaches `newAgeApi.login` and `performNewAgeSend` and is kept nowhere.
+   * There is no session, so there is no token to reuse: the credentials are asked for at the
+   * moment they are used and are kept nowhere, and the token is a local that dies with the call.
    */
   const sendToNewAge = useCallback(
     async (factionNumber: string, password: string) => {
@@ -4211,32 +3867,20 @@ export function AppShell({
       const controller = new AbortController();
       newAgeSendAbort.current = controller;
 
-      let token = newAgeSession?.token ?? null;
-      if (token === null) {
-        setNewAgeSendPhase({ kind: "signingIn" });
-        const login = await newAgeApi.login(factionNumber, password, controller.signal);
-        if (newAgeSendAbort.current !== controller) {
-          return;
-        }
-        if (login.kind !== "ok") {
-          newAgeSendAbort.current = null;
-          const { message, retype } = signInFailure(login, NEW_AGE_HOST);
-          setNewAgeSendPhase({ kind: "failed", message, retype });
-          return;
-        }
-        token = login.value.accessToken;
-        setNewAgeSessions((sessions) =>
-          withNewAgeSession(sessions, openGameId, {
-            worldId: newAgeWorld.worldId,
-            factionId: String(login.value.faction.id),
-            factionName: login.value.faction.name,
-            token: login.value.accessToken
-          })
-        );
+      setNewAgeSendPhase({ kind: "signingIn" });
+      const login = await newAgeApi.login(factionNumber, password, controller.signal);
+      if (newAgeSendAbort.current !== controller) {
+        return;
+      }
+      if (login.kind !== "ok") {
+        newAgeSendAbort.current = null;
+        const { message, retype } = signInFailure(login, NEW_AGE_HOST);
+        setNewAgeSendPhase({ kind: "failed", message, retype });
+        return;
       }
 
       setNewAgeSendPhase({ kind: "sending" });
-      const bound = token;
+      const bound = login.value.accessToken;
       const outcome = await performNewAgeSend({
         flush,
         upload: (text, boundary, signal) => newAgeApi.uploadOrders(bound, text, boundary, signal),
@@ -4254,11 +3898,9 @@ export function AppShell({
       }
       newAgeSendAbort.current = null;
       if (outcome.kind === "expired") {
-        // The token is dead, so it is dropped before anything else: the header chip goes back to
-        // `Sign in to Arcanum` and no later action can present it again.
-        setNewAgeSessions((sessions) => withoutNewAgeSession(sessions, openGameId));
-        setNewAgeSendAsksSignIn(true);
-        setNewAgeSendPhase({ kind: "ready", notice: SESSION_ENDED });
+        // A 401 on the upload seconds after a successful login: the world changed its mind rather
+        // than a session expiring, so the password is asked for again with that said plainly.
+        setNewAgeSendPhase({ kind: "failed", message: FETCH_REFUSED_MID_RUN, retype: true });
         return;
       }
       setNewAgeSendPhase(outcome);
@@ -4267,7 +3909,6 @@ export function AppShell({
       newAgeApi,
       newAgeWorld,
       openGameId,
-      newAgeSession,
       flush,
       ordersDocument,
       ordersTemplateText
@@ -5039,8 +4680,7 @@ export function AppShell({
             ? undefined
             : () => {
                 if (newAgeSendable) {
-                  setNewAgeSendAsksSignIn(newAgeSession === null);
-                  setNewAgeSendPhase({ kind: "ready", notice: null });
+                  setNewAgeSendPhase({ kind: "ready" });
                   return;
                 }
                 setSendPhase({ kind: "ready" });
@@ -5052,21 +4692,8 @@ export function AppShell({
           newAgeApi === null || newAgeWorld === null || openGameId === null
             ? undefined
             : {
-                label:
-                  newAgeSession === null
-                    ? signedOutLabel(newAgeWorld.worldName)
-                    : signedInLabel(newAgeFactionOf(newAgeSession)),
-                signedIn: newAgeSession !== null,
-                summary:
-                  newAgeSession === null
-                    ? ""
-                    : signedInSummary(newAgeRulesetLabel, newAgeFactionOf(newAgeSession)),
-                onSignIn: () => setSignInPhase({ kind: "ready" }),
-                onSignOut: signOutOfNewAge,
-                onFetchReport: fetchNewAgeReport,
-                fetching: fetchPhase?.kind === "fetching",
-                historyBusy: historyPhase !== null,
-                onFetchEarlierTurns: () => void openNewAgeHistory()
+                label: FETCH_CONTROL_LABEL,
+                onFetch: () => setFetchPhase({ kind: "ready", message: null, retype: false })
               }
         }
         onExportOrdersLong={exportOrdersLong}
@@ -5503,7 +5130,6 @@ export function AppShell({
           factionLabel={factionLabel ?? `Faction ${sendFactionId ?? "?"}`}
           turnNumber={parsed?.header.turnNumber ?? null}
           host={NEW_AGE_HOST}
-          asksSignIn={newAgeSendAsksSignIn}
           suggestedFactionNumber={
             parsed?.header.factionId && /^\d+$/.test(parsed.header.factionId)
               ? parsed.header.factionId
@@ -5514,9 +5140,10 @@ export function AppShell({
           onDismiss={dismissNewAgeSend}
         />
       )}
-      {signInPhase === null || newAgeWorld === null ? null : (
-        <NewAgeSignInDialog
+      {fetchPhase === null || newAgeWorld === null ? null : (
+        <NewAgeFetchDialog
           rulesetLabel={newAgeRulesetLabel}
+          worldName={newAgeWorld.worldName}
           host={NEW_AGE_HOST}
           turnNumber={parsed?.header.turnNumber ?? null}
           // Only when the report's own faction id is digits: prefilling anything else would put a
@@ -5526,55 +5153,10 @@ export function AppShell({
               ? parsed.header.factionId
               : null
           }
-          phase={signInPhase}
-          onSignIn={(factionNumber, password) => void signInToNewAge(factionNumber, password)}
-          onDismiss={dismissSignIn}
-        />
-      )}
-      {/* Before the sign-in dialog below in JSX order: both are `z-30`, so the sign-in dialog a
-          run's 401 puts up must paint over the dialog it interrupted. Escape reaches the topmost
-          dismiss layer only, so it closes the sign-in first. */}
-      {historyPhase === null || newAgeWorld === null || game === null ? null : (
-        <NewAgeHistoryDialog
-          worldName={newAgeWorld.worldName}
-          phase={historyPhase}
-          rows={historyReady === null ? [] : historyRows(historyReady, storedTurns, workingTurn)}
-          missingCount={historyMissing.length}
-          onFetchTurn={fetchOneEarlierTurn}
-          onFetchAllMissing={fetchAllMissingTurns}
-          onRetryList={() => void openNewAgeHistory()}
-          onDismiss={dismissHistory}
-        />
-      )}
-      {historyPhase === null || historyPhase.kind !== "reauth" || newAgeWorld === null ? null : (
-        <NewAgeSignInDialog
-          rulesetLabel={newAgeRulesetLabel}
-          host={NEW_AGE_HOST}
-          turnNumber={parsed?.header.turnNumber ?? null}
-          suggestedFactionNumber={
-            parsed?.header.factionId && /^\d+$/.test(parsed.header.factionId)
-              ? parsed.header.factionId
-              : null
+          phase={fetchPhase}
+          onFetch={(factionNumber, password, scope) =>
+            void fetchFromNewAge(factionNumber, password, scope)
           }
-          purpose={HISTORY_REAUTH_PURPOSE}
-          phase={historyPhase.signIn}
-          onSignIn={(factionNumber, password) => void signInAndFetchHistory(factionNumber, password)}
-          onDismiss={dismissHistory}
-        />
-      )}
-      {fetchPhase === null || fetchPhase.kind !== "reauth" || newAgeWorld === null ? null : (
-        <NewAgeSignInDialog
-          rulesetLabel={newAgeRulesetLabel}
-          host={NEW_AGE_HOST}
-          turnNumber={parsed?.header.turnNumber ?? null}
-          suggestedFactionNumber={
-            parsed?.header.factionId && /^\d+$/.test(parsed.header.factionId)
-              ? parsed.header.factionId
-              : null
-          }
-          purpose={FETCH_REAUTH_PURPOSE}
-          phase={fetchPhase.signIn}
-          onSignIn={(factionNumber, password) => void signInAndFetch(factionNumber, password)}
           onDismiss={dismissFetch}
         />
       )}

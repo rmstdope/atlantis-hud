@@ -3,20 +3,16 @@ import { describe, expect, it } from "vitest";
 
 import type { NewAgeOrderVerdict } from "./newAgeApi";
 import { NewAgeSendDialog } from "./NewAgeSendDialog";
-import { NEW_AGE_HOST, SESSION_ENDED, SIGN_IN_NOTE } from "./newAgeSignInView";
+import { NEW_AGE_HOST, credentialNote } from "./newAgeSignInView";
 import type { NewAgeSendPhase } from "./newAgeSendView";
 
-const draw = (
-  phase: NewAgeSendPhase,
-  { asksSignIn = false, turnNumber = 84 as number | null } = {}
-) =>
+const draw = (phase: NewAgeSendPhase, { turnNumber = 84 as number | null } = {}) =>
   renderToStaticMarkup(
     <NewAgeSendDialog
       worldName="Arcanum"
       factionLabel="Merchant Guild (27)"
       turnNumber={turnNumber}
       host={NEW_AGE_HOST}
-      asksSignIn={asksSignIn}
       suggestedFactionNumber="27"
       phase={phase}
       onSend={() => {}}
@@ -43,7 +39,7 @@ function verdictPhase(overrides: Partial<NewAgeOrderVerdict> = {}): NewAgeSendPh
 const buttonTag = (markup: string, testId: string) =>
   markup.match(new RegExp(`<button[^>]*data-testid="${testId}"[^>]*>`))?.[0] ?? "";
 
-const ready: NewAgeSendPhase = { kind: "ready", notice: null };
+const ready: NewAgeSendPhase = { kind: "ready" };
 
 describe("the New Age send dialog", () => {
   it("names the world, the faction and the turn, and cannot send with an empty password", () => {
@@ -51,19 +47,16 @@ describe("the New Age send dialog", () => {
     expect(markup).toContain("Send orders to Arcanum");
     expect(markup).toContain("Merchant Guild (27) · turn 84 · atlantis-newage.com");
     expect(markup).toContain("Faction password");
-    expect(markup).not.toContain("newage-faction-number");
-    expect(markup).not.toContain(SIGN_IN_NOTE);
+    expect(markup).toContain(credentialNote("send"));
     expect(markup).toContain(">Send</button>");
     expect(buttonTag(markup, "newage-send-confirm")).toContain("disabled");
-    expect(markup).not.toContain("newage-send-notice");
     expect(markup).not.toContain("newage-send-outcome");
   });
 
-  it("asks for a faction number and reads `Sign in and send` when there is no session", () => {
-    const markup = draw(ready, { asksSignIn: true });
+  it("always asks for the faction number, prefilled from the loaded report", () => {
+    const markup = draw(ready);
     expect(markup).toContain("newage-faction-number");
     expect(markup).toContain('value="27"');
-    expect(markup).toContain(">Sign in and send</button>");
   });
 
   it("sets out the errors and the warnings in two lists", () => {
@@ -108,16 +101,8 @@ describe("the New Age send dialog", () => {
     expect(markup).not.toContain("newage-send-close");
   });
 
-  it("shows the session-ended notice above the fields", () => {
-    const markup = draw({ kind: "ready", notice: SESSION_ENDED }, { asksSignIn: true });
-    expect(markup).toContain("newage-send-notice");
-    expect(markup).toContain(SESSION_ENDED);
-    expect(markup.indexOf(SESSION_ENDED)).toBeLessThan(markup.indexOf("newage-password"));
-    expect(markup).toContain("newage-faction-number");
-  });
-
   it("quiets both fields while it is sending", () => {
-    const markup = draw({ kind: "sending" }, { asksSignIn: true });
+    const markup = draw({ kind: "sending" });
     expect(markup).toContain("Sending orders…");
     expect(markup).toContain("text-ink-soft");
     expect(
