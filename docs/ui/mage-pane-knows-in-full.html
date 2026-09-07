@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-9g3f — the mage pane shows everything he knows</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --soft:#aab3c0;
+          --dim:#8a94a3; --brass:#c8a24a; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 26px 0 8px; }
+  p.note { color: var(--dim); max-width: 84ch; }
+  .row { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+  .frame { width: 320px; height: 520px; background: var(--panel);
+           border-left: 1px solid var(--edge); font-size: 12.5px; box-sizing: border-box; }
+  .pane { height: 100%; box-sizing: border-box; padding: 8px;
+          display: flex; flex-direction: column; overflow-y: auto; }
+  .pane > * { flex: 0 0 auto; }
+  .head, .sub { margin: 0; }
+  .sub { color: var(--dim); }
+  .pnote { color: var(--soft); margin: 8px 0 0; border-left: 2px solid var(--edge);
+           padding-left: 8px; }
+  .lbl { color: var(--soft); margin: 8px 0 0; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: 0 4px; }
+  li.studying { background: #23303f; border-radius: 3px; color: var(--brass); }
+  .dim { color: var(--dim); }
+  .foot { color: var(--dim); margin: 8px 0 0; }
+  .choices { position: relative; flex: 1 1 0; min-height: 0; }
+  .choices > ul { height: 100%; overflow-y: auto; }
+  .choices::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 24px;
+      pointer-events: none;
+      background: linear-gradient(to bottom, rgba(23,30,40,0), rgba(23,30,40,1)); }
+  .cap { color: var(--dim); width: 320px; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>ah-9g3f — the Schedule’s mage pane, with <em>Knows</em> shown whole</h1>
+<p class="note"><strong>Chosen: Variant C, and C2 at the edge.</strong> <em>Knows</em> grows to its
+full length and never scrolls, at any length; <em>Can study</em> takes whatever height is left and
+scrolls there, fading into its bottom edge so a cut list looks cut. Both headings carry a count, so
+what is on screen can be checked against what there is.</p>
+<p class="note">Rejected: <strong>A</strong>, which kept the two equal halves and only added the
+count and the fade — the last skills still needed a scroll inside a 170px box. <strong>B</strong>,
+one scroller for the whole pane with sticky headings — reachable in one gesture, but it put
+<em>Can study</em> below the fold for exactly the deep mages the pane is opened for, which is
+ah-lyg6’s argument unchanged. At the edge, <strong>C1</strong> — a four-row floor under
+<em>Can study</em>, letting <em>Knows</em> scroll again once it could not fit — was rejected because
+it gives back the guarantee the whole bead is about.</p>
+
+<h2>The reported mage — eleven known, twenty-one studiable</h2>
+<div class="row">
+<div class="frame"><div class="pane">
+    <p class="head">Five of Ten (916) — turn 24</p>
+    <p class="sub">Borg TNG (95) · studying pattern</p>
+    <p class="pnote">Wants gate lore 3 before the winter move.</p>
+    <p class="lbl">Knows — 11</p>
+    <ul>
+      <li>bird lore <span class="dim">1(60)</span></li>
+      <li>earth lore <span class="dim">2(120)</span></li>
+      <li>energy shield <span class="dim">1(30)</span></li>
+      <li>fire <span class="dim">1(70)</span></li>
+      <li>force <span class="dim">2(140)</span></li>
+      <li>gate lore <span class="dim">1(30)</span></li>
+      <li>illusion <span class="dim">1(85)</span></li>
+      <li class="studying">pattern <span class="dim">2(170)</span></li>
+      <li>phantasmal entertainment <span class="dim">1(30)</span></li>
+      <li>spirit <span class="dim">1(30)</span></li>
+      <li>wolf lore <span class="dim">2(90)</span></li>
+    </ul>
+    <p class="lbl">Can study on turn 24 — 21</p>
+    <div class="choices"><ul>
+      <li>bird lore <span class="dim">1(60) → 1(90)</span></li>
+      <li>create phantasmal beasts <span class="dim">0(0) → 1(30)</span></li>
+      <li>create phantasmal demons <span class="dim">0(0) → 1(30)</span></li>
+      <li>demon lore <span class="dim">0(0) → 1(30)</span></li>
+      <li>dispel illusions <span class="dim">0(0) → 1(30)</span></li>
+      <li>earth lore <span class="dim">2(120) → 2(150)</span></li>
+      <li>energy shield <span class="dim">1(30) → 1(60)</span></li>
+      <li>farsight <span class="dim">0(0) → 1(30)</span></li>
+      <li>fire <span class="dim">1(70) → 1(100)</span></li>
+      <li>force <span class="dim">2(140) → 2(170)</span></li>
+      <li>force shield <span class="dim">0(0) → 1(30)</span></li>
+      <li>gate lore <span class="dim">1(30) → 1(60)</span></li>
+      <li>illusion <span class="dim">1(85) → 1(115)</span></li>
+      <li>invisibility <span class="dim">0(0) → 1(30)</span></li>
+      <li>necromancy <span class="dim">0(0) → 1(30)</span></li>
+      <li>pattern <span class="dim">2(170) → 2(200)</span></li>
+      <li>phantasmal entertainment <span class="dim">1(30) → 1(60)</span></li>
+      <li>spirit <span class="dim">1(30) → 1(60)</span></li>
+      <li>spirit shield <span class="dim">0(0) → 1(30)</span></li>
+      <li>summon wind <span class="dim">0(0) → 1(30)</span></li>
+      <li>wolf lore <span class="dim">2(90) → 2(120)</span></li>
+    </ul></div>
+    <p class="foot">From turn 23’s report.</p>
+  </div></div>
+<p class="cap">Every known skill is on screen, ending at <em>wolf lore 2(90)</em> — the skill the
+report said was missing. The choice list takes the rest and fades where it is cut.</p>
+</div>
+
+<h2>A very deep mage — eighteen known (C2)</h2>
+<div class="row">
+<div class="frame"><div class="pane">
+    <p class="head">Six of Seven (881) — turn 24</p>
+    <p class="sub">Borg TNG (95) · studying pattern</p>
+    <p class="lbl">Knows — 18</p>
+    <ul>
+      <li>banish undead <span class="dim">1(30)</span></li>
+      <li>bird lore <span class="dim">3(180)</span></li>
+      <li>create phantasmal demons <span class="dim">3(180)</span></li>
+      <li>dragon lore <span class="dim">3(180)</span></li>
+      <li>earth lore <span class="dim">3(200)</span></li>
+      <li>farsight <span class="dim">2(90)</span></li>
+      <li>fire <span class="dim">2(95)</span></li>
+      <li>force <span class="dim">4(325)</span></li>
+      <li>gate lore <span class="dim">1(30)</span></li>
+      <li>illusion <span class="dim">3(195)</span></li>
+      <li>necromancy <span class="dim">2(90)</span></li>
+      <li class="studying">pattern <span class="dim">3(250)</span></li>
+      <li>phantasmal entertainment <span class="dim">1(50)</span></li>
+      <li>spirit <span class="dim">3(185)</span></li>
+      <li>summon tornado <span class="dim">3(180)</span></li>
+      <li>true seeing <span class="dim">2(90)</span></li>
+      <li>weather lore <span class="dim">3(180)</span></li>
+      <li>wolf lore <span class="dim">3(190)</span></li>
+    </ul>
+    <p class="lbl">Can study on turn 24 — 10</p>
+    <div class="choices"><ul>
+      <li>artifact lore <span class="dim">2(140) → 2(170)</span></li>
+      <li>bird lore <span class="dim">3(180) → 3(210)</span></li>
+      <li>dragon lore <span class="dim">3(180) → 3(210)</span></li>
+      <li>earth lore <span class="dim">3(200) → 3(230)</span></li>
+      <li>force <span class="dim">4(325) → 4(355)</span></li>
+      <li>gate lore <span class="dim">1(30) → 1(60)</span></li>
+      <li>pattern <span class="dim">3(250) → 3(280)</span></li>
+      <li>spirit <span class="dim">3(185) → 3(215)</span></li>
+      <li>weather lore <span class="dim">3(180) → 3(210)</span></li>
+      <li>wolf lore <span class="dim">3(190) → 3(220)</span></li>
+    </ul></div>
+    <p class="foot">From turn 23’s report.</p>
+  </div></div>
+<p class="cap"><em>Knows</em> is still whole. <em>Can study</em> has been squeezed to nothing but
+its heading, which still counts the choices; the pane itself scrolls, so the heading and the
+footnote can still be reached. This is C2, chosen deliberately: what he knows is never cut.</p>
+</div>
+
+<h2>A shallow mage, and no mage</h2>
+<div class="row">
+<div class="frame"><div class="pane">
+    <p class="head">Two of Nine (1201) — turn 24</p>
+    <p class="sub">Borg TNG (95) · studying force</p>
+    <p class="lbl">Knows — 3</p>
+    <ul>
+      <li>earth lore <span class="dim">1(30)</span></li>
+      <li class="studying">force <span class="dim">1(30)</span></li>
+      <li>pattern <span class="dim">1(30)</span></li>
+    </ul>
+    <p class="lbl">Can study on turn 24 — 4</p>
+    <div class="choices"><ul>
+      <li>earth lore <span class="dim">1(30) → 1(60)</span></li>
+      <li>force <span class="dim">1(30) → 1(60)</span></li>
+      <li>pattern <span class="dim">1(30) → 1(60)</span></li>
+      <li>spirit <span class="dim">0(0) → 1(30)</span></li>
+    </ul></div>
+    <p class="foot">From turn 23’s report.</p>
+  </div></div>
+<div class="frame"><div class="pane"><p class="dim" style="margin:0">Point at a mage, or at one of his months, to see what he knows and what he could study.</p></div></div>
+<p class="cap">Nothing scrolls and nothing fades — the gradient lies over empty panel, so it cannot
+be seen. The pane before anything is pointed at is unchanged.</p>
+</div>
+</body>
+</html>
