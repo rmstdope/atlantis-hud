@@ -8,7 +8,7 @@ import type { StudyGoal } from "@atlantis/core-client";
 import {
   cellMenu,
   goalsAfterChoice,
-  seededStudents,
+  teachClick,
   teachWarning,
   type CellMenu
 } from "../studyCell";
@@ -894,8 +894,8 @@ function ChoiceMark({ on }: { on: boolean }) {
 }
 
 /**
- * The dropdown's rows in the agreed order: `— nothing`, `Teaches…` when it is offered, then the
- * skills.
+ * The dropdown's rows in the agreed order: `— nothing`, `Teaches…`, then the skills. The
+ * `Teaches…` row is always offered, whether or not anybody is yet teachable (ah-12h7).
  *
  * A list rather than three blocks of JSX, so the arrow-key walk can number them and the order is
  * one thing rather than three.
@@ -924,27 +924,30 @@ function rowsOf(
       pressed: current === null,
       onClick: (_onEvent, onChoose) => () => onChoose(null)
     },
-    ...(menu.teachDetail === null
-      ? []
-      : [
-          {
-            key: "teach",
-            testId: "study-schedule-choice-teach",
-            name: "Teaches…",
-            detail: menu.teachDetail,
-            pressed: current?.kind === "teach",
-            onClick:
-              (onEvent: (event: CellEvent) => void) =>
-              () =>
-                onEvent(
-                  // A frozen cell reopens with exactly its stored ticks; a live one stores none, so
-                  // its seed is recomputed here, as does a cell holding no teach goal (ah-af7i).
-                  current?.kind === "teach" && !current.live
-                    ? { kind: "teach-opened", students: current.students, live: false }
-                    : { kind: "teach-opened", students: seededStudents(menu.teach), live: true }
-                )
+    {
+      key: "teach",
+      testId: "study-schedule-choice-teach",
+      name: "Teaches…",
+      detail: menu.teachDetail,
+      pressed: current?.kind === "teach",
+      onClick:
+        (
+          onEvent: (event: CellEvent) => void,
+          onChoose: (pick: CellPick | null) => void,
+          current: CellPick | null
+        ) =>
+        () => {
+          // A frozen cell reopens with exactly its stored ticks; a live one stores none, so its
+          // seed is recomputed (ah-af7i). With nothing tickable there is no second step to open,
+          // so the row commits outright (ah-12h7).
+          const click = teachClick(menu.teach, current);
+          if (click.kind === "commit") {
+            onChoose({ kind: "teach", students: [], live: true });
+            return;
           }
-        ]),
+          onEvent({ kind: "teach-opened", students: click.students, live: click.live });
+        }
+    },
     ...menu.choices.map((choice) => ({
       key: choice.skill,
       testId: `study-schedule-choice-${choice.skill}`,

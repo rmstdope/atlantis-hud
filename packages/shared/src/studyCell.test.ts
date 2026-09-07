@@ -3,7 +3,7 @@ import { readRuleset } from "@atlantis/fixtures";
 import type { StudyGoal } from "@atlantis/core-client";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
-import { cellMenu, goalsAfterChoice, seededStudents, teachWarning } from "./studyCell";
+import { cellMenu, goalsAfterChoice, seededStudents, teachClick, teachWarning } from "./studyCell";
 import type { TeachChoice } from "./studyCell";
 import { blockedBecause, projectAll, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import { standingsFrom } from "./magicStanding";
@@ -229,17 +229,17 @@ describe("the teach row of the dropdown", () => {
     expect(teachingMenu([...rows, second]).teachDetail).toBe("2 he could teach");
   });
 
-  it("offers no Teaches… row when nobody is teachable", () => {
+  it("offers the Teaches… row with nobody eligible yet", () => {
     const rows = rowsOf();
-    // Everybody a hex away: nothing to teach, and no dead end offered.
+    // Everybody a hex away: nobody teachable, and the row is offered all the same.
     const away = rows.slice(1).map((row) => ({ ...row, regionId: "2:8" }));
 
-    expect(teachingMenu([rows[0], ...away]).teachDetail).toBeNull();
+    expect(teachingMenu([rows[0], ...away]).teachDetail).toBe("nobody eligible yet");
   });
 
-  it("offers no Teaches… row when the grid was not passed at all", () => {
+  it("offers the Teaches… row even with no grid", () => {
     expect(menu().teach).toEqual([]);
-    expect(menu().teachDetail).toBeNull();
+    expect(menu().teachDetail).toBe("nobody eligible yet");
   });
 
   it("warns when every ticked student is refused", () => {
@@ -290,5 +290,37 @@ describe("seededStudents", () => {
       "u8",
       "u9"
     ]);
+  });
+});
+
+describe("teachClick", () => {
+  const choice = (unitId: string, blocked: string | null): TeachChoice => ({
+    unitId,
+    label: `Unit (${unitId})`,
+    detail: blocked ?? "force 1 → force 2",
+    blocked
+  });
+
+  it("teachClick commits when no pupil is tickable", () => {
+    const all = [choice("1", "nothing planned"), choice("2", "in Dunmoor, not here"), choice("3", "nothing planned")];
+
+    expect(teachClick(all, null)).toEqual({ kind: "commit" });
+    expect(teachClick([], null)).toEqual({ kind: "commit" });
+  });
+
+  it("teachClick opens with the seed when somebody is eligible", () => {
+    const some = [choice("1", "nothing planned"), choice("2517", null), choice("3", "nothing planned")];
+
+    expect(teachClick(some, null)).toEqual({ kind: "open", students: ["2517"], live: true });
+  });
+
+  it("teachClick opens a frozen list even with nobody eligible", () => {
+    const none = [choice("1", "nothing planned"), choice("2", "nothing planned")];
+
+    expect(teachClick(none, { kind: "teach", students: ["2517", "2688"], live: false })).toEqual({
+      kind: "open",
+      students: ["2517", "2688"],
+      live: false
+    });
   });
 });
