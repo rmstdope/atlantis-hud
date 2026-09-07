@@ -426,6 +426,18 @@ html {
   }
 }
 
+/*
+ * A list that fades out at its bottom edge, so a list too long for its box looks cut rather than
+ * merely ending. A mask rather than a gradient overlay: a pane is painted at
+ * `100 - --pane-transparency` percent (see `.bg-pane` below), so an opaque gradient would read as a
+ * solid band lying over the map. Where the list is shorter than its box the fade lies over empty
+ * space and cannot be seen, which is why nothing has to measure anything.
+ */
+.fade-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1rem), transparent);
+  mask-image: linear-gradient(to bottom, black calc(100% - 1rem), transparent);
+}
+
 .bg-pane {
   background-color: color-mix(
     in srgb,

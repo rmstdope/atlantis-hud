@@ -202,8 +202,17 @@ describe("MagePaneView", () => {
     const written = shown(0, "heading for gate lore");
 
     expect(written).toContain("heading for gate lore");
-    expect(written.indexOf("heading for gate lore")).toBeLessThan(written.indexOf(">Knows<"));
+    expect(written.indexOf("heading for gate lore")).toBeLessThan(written.indexOf('data-testid="study-schedule-knows"'));
     expect(shown(0)).not.toContain('data-testid="study-schedule-note"');
+  });
+
+  it("shows every known skill, with no scroller of its own", () => {
+    const markup = shown(0);
+
+    expect(markup).toContain('data-testid="study-schedule-knows"');
+    expect(markup).toContain("Knows — ");
+    expect(markup).not.toContain("grid-rows-[auto_auto_1fr_auto_1fr_auto]");
+    expect(markup).toContain("fade-bottom");
   });
 
   it("says what it is for before anything has been pointed at", () => {

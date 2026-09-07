@@ -141,6 +141,14 @@ describe("magePane on the mage himself", () => {
     expect(shown.canStudy.find((choice) => choice.skill === "FORC")?.detail).toBe("3(270) → 4(300)");
   });
 
+  it("counts what he knows in the heading", () => {
+    expect(pane(null).knowsHeading).toBe("Knows — 1");
+    // COMB is not in the magic tree, so a mage holding only it knows nothing the pane can name.
+    expect(pane(null, [{ tag: "COMB", level: 3, points: 180 }]).knowsHeading).toBe(
+      "Nothing he knows yet."
+    );
+  });
+
   it("names the report the figures are his from", () => {
     expect(pane(null).foot).toBe("From turn 23's report.");
   });

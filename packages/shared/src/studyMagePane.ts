@@ -49,6 +49,8 @@ export type MagePane = {
    * the thing to have read *before* a month is chosen for him (navigator, 2026-09-07).
    */
   note: string;
+  /** `Knows — 11`, or the whole sentence when he knows nothing. */
+  knowsHeading: string;
   knows: MagePaneLine[];
   /** `Can study on turn 26 — 12`, or the whole sentence when there is nothing. */
   canStudyHeading: string;
@@ -56,6 +58,11 @@ export type MagePane = {
   /** Where the figures come from, as the card it replaced said it. */
   foot: string;
 };
+
+/** The `Knows` heading, counted the way `canStudyHeading` counts its own list. */
+function knowsWords(knows: MagePaneLine[]): string {
+  return knows.length === 0 ? "Nothing he knows yet." : `Knows — ${knows.length}`;
+}
 
 export function magePane(input: {
   row: ScheduleRow;
@@ -91,11 +98,13 @@ export function magePane(input: {
   }));
 
   if (turnIndex === null) {
+    const knows = knownNow(standing, tree);
     return {
       heading: `${row.name} (${row.unitId}) — now`,
       sub: factionLabel,
       note: row.note,
-      knows: knownNow(standing, tree),
+      knowsHeading: knowsWords(knows),
+      knows,
       canStudyHeading:
         canStudy.length === 0 ? "Nothing he can study now." : `Can study now — ${canStudy.length}`,
       canStudy,
@@ -112,11 +121,13 @@ export function magePane(input: {
     input.teacherNames
   );
   const turn = turns[turnIndex];
+  const knows = card.lines;
   return {
     heading: card.heading,
     sub: card.sub,
     note: row.note,
-    knows: card.lines,
+    knowsHeading: knowsWords(knows),
+    knows,
     canStudyHeading:
       canStudy.length === 0
         ? `Nothing he can study on turn ${turn}.`

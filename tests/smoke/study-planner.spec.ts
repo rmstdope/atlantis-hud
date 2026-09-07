@@ -305,12 +305,49 @@ test("a note written in All mages shows as a pencil and in the mage pane", async
   const pane = page.getByTestId("study-schedule-mage-pane");
   await expect(pane.getByTestId("study-schedule-note")).toContainText("heading for Gate Lore");
   const shown = await pane.getByTestId("study-schedule-note").boundingBox();
-  const knows = await pane.getByText("Knows", { exact: true }).boundingBox();
+  const knows = await pane.getByTestId("study-schedule-knows").boundingBox();
   expect(shown?.y ?? 0).toBeLessThan(knows?.y ?? 0);
 
   // A mage nobody has written about carries nothing in its place.
   await page.getByTestId("study-schedule-cell-12878-72").hover();
   await expect(pane.getByTestId("study-schedule-note")).toHaveCount(0);
+});
+
+test("the mage pane shows every skill a deep mage knows", async ({ page }) => {
+  // Deliberately shorter than PINNED_VIEWPORT, and only here: at 720 the whole of Six of Seven's
+  // Knows list fitted even the old half-height box, so the case this bead is about was not being
+  // exercised at all. Nothing else in the suite may depend on this size.
+  await page.setViewportSize({ width: 1280, height: 620 });
+  await loadReport(page);
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).hover();
+
+  const pane = page.getByTestId("study-schedule-mage-pane");
+  const rows = pane.getByTestId(/^study-schedule-knows-/);
+  // Six of Seven knows sixteen magic skills - the case the pane used to cut. If this ever drops
+  // below twelve the fixture has changed and the test is no longer about anything.
+  expect(await rows.count()).toBeGreaterThanOrEqual(12);
+
+  // Nothing he knows is hidden inside the Knows list itself: it is laid out at its full length, so
+  // its scroll height is its client height and there is nothing scrolled out of sight there. This
+  // is what the old two-scroller pane failed - it clipped the tail of the list inside a box that
+  // gave no sign it had more in it.
+  const list = await rows.first().evaluate((row) => {
+    const ul = row.parentElement as HTMLElement;
+    return { scrollHeight: ul.scrollHeight, clientHeight: ul.clientHeight };
+  });
+  expect(list.scrollHeight).toBeLessThanOrEqual(list.clientHeight + 1);
+
+  // And where the whole pane is then taller than its box, the pane itself is what scrolls, so the
+  // last skill can still be brought on screen. `boundingBox()` gives `{x, y, width, height}` and no
+  // `bottom`, so the arithmetic is written out; the one pixel of slack is for sub-pixel layout.
+  await rows.last().scrollIntoViewIfNeeded();
+  const box = await pane.boundingBox();
+  const last = await rows.last().boundingBox();
+  expect((last?.y ?? 0) + (last?.height ?? 0)).toBeLessThanOrEqual(
+    (box?.y ?? 0) + (box?.height ?? 0) + 1
+  );
 });
 
 test("the mage pane follows the pointer and the focus, and keeps what it last showed", async ({
