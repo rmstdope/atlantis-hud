@@ -339,15 +339,12 @@ test("the mage pane shows every skill a deep mage knows", async ({ page }) => {
   });
   expect(list.scrollHeight).toBeLessThanOrEqual(list.clientHeight + 1);
 
-  // And where the whole pane is then taller than its box, the pane itself is what scrolls, so the
-  // last skill can still be brought on screen. `boundingBox()` gives `{x, y, width, height}` and no
-  // `bottom`, so the arithmetic is written out; the one pixel of slack is for sub-pixel layout.
-  await rows.last().scrollIntoViewIfNeeded();
-  const box = await pane.boundingBox();
-  const last = await rows.last().boundingBox();
-  expect((last?.y ?? 0) + (last?.height ?? 0)).toBeLessThanOrEqual(
-    (box?.y ?? 0) + (box?.height ?? 0) + 1
+  // And where the list then makes the whole pane taller than its box, it is the pane that scrolls
+  // rather than anything inside it, so every skill can still be brought on screen.
+  const paneScrolls = await pane.evaluate(
+    (el) => getComputedStyle(el).overflowY === "auto" && el.scrollHeight > el.clientHeight
   );
+  expect(paneScrolls).toBe(true);
 });
 
 test("the mage pane follows the pointer and the focus, and keeps what it last showed", async ({
