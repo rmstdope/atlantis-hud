@@ -7,7 +7,8 @@ import type { MagicTree } from "../magicTree";
 import type { StudyGoal } from "@atlantis/core-client";
 import { cellMenu, goalsAfterChoice, teachWarning, type CellMenu } from "../studyCell";
 import { plannedGoals } from "../studyPlans";
-import { cellLabel, hoverCard, type ScheduleRow } from "../studySchedule";
+import { cellLabel, type ScheduleRow } from "../studySchedule";
+import { magePane, type MagePane } from "../studyMagePane";
 import { noticeSummary, type PlannerNotice } from "../studyTeaching";
 import type { PlannerGroup } from "../studyPlanner";
 import type { CellEvent, CellMode, CellPick } from "./studyCellState";
@@ -22,13 +23,18 @@ import { keyToAction } from "./studyCellState";
  * says and what a choice writes lives in `studyCell.ts` and `studySchedule.ts`; nothing here
  * decides anything.
  *
- * Both the dropdown and the hover card **hang off the cell they belong to** rather than sitting in
- * the flow under the table, where they read as a second pane opening rather than as that cell's
- * own menu: `FloatingAtCell` measures the cell by the `data-cell` address the arrow keys already
- * use and places the card against it with `placeUnderAnchor`.
+ * The dropdown **hangs off the cell it belongs to** rather than sitting in the flow under the
+ * table, where it read as a second pane opening rather than as that cell's own menu:
+ * `FloatingAtCell` measures the cell by the `data-cell` address the arrow keys already use and
+ * places the menu against it with `placeUnderAnchor`.
+ *
+ * Beside the six columns stands the **mage pane** (navigator, 2026-09-07), which replaced a
+ * floating hover card. It fills from whatever the pointer or the focus is on - a turn cell for
+ * that turn, the mage's name for where he stands now - and keeps what it last showed when the
+ * pointer leaves, so it can be read without holding the mouse still on a row.
  *
  * **Split hook-free**, the way `MagePicker` and `StudyPlannerList` are: `packages/shared` has no
- * jsdom (ah-nass), so `ScheduleGrid`, `ScheduleHoverCard` and `CellPopover` take everything as
+ * jsdom (ah-nass), so `ScheduleGrid`, `MagePaneView` and `CellPopover` take everything as
  * props and are what the unit tests render. Focus, the arrow keys and a dropdown actually opening
  * belong to the smoke suite.
  */
@@ -67,9 +73,10 @@ export function StudySchedule({
   /** How a region id reads to a player, for a teach row naming a student's hex. */
   label?: (regionId: string) => string;
 }) {
-  // The card follows the *focused* cell as well as the hovered one, or it would be unreachable
-  // without a mouse - and the grid is walked with the arrow keys, which is what moves focus.
-  const [at, setAt] = useState<{ rowKey: string; turnIndex: number } | null>(null);
+  // The pane follows the *focused* cell as well as the hovered one, or it would be unreachable
+  // without a mouse - and the grid is walked with the arrow keys, which is what moves focus. A
+  // null `turnIndex` is the mage's name rather than one of his months.
+  const [at, setAt] = useState<{ rowKey: string; turnIndex: number | null } | null>(null);
   // Folded when the pane opens, every time, and not remembered - the same reasoning ah-lyg6.2.2
   // gave for the picked mage and ah-lyg6.2.3 for the view switch. **Above every return**, like
   // every other hook in this body; see the comment below.
@@ -85,17 +92,17 @@ export function StudySchedule({
   const empty = turns.length === 0;
 
   const hovered = at === null ? null : rows.find((row) => row.key === at.rowKey) ?? null;
-  const card =
+  const pane =
     hovered === null || at === null
       ? null
-      : hoverCard(
-          hovered,
-          at.turnIndex,
+      : magePane({
+          row: hovered,
+          turnIndex: at.turnIndex,
           turns,
           tree,
-          factionLabelOf(groups, hovered.factionId),
-          new Map(rows.map((row) => [row.key, row.name] as const))
-        );
+          factionLabel: factionLabelOf(groups, hovered.factionId),
+          teacherNames: new Map(rows.map((row) => [row.key, row.name] as const))
+        });
 
   const editing = mode.kind === "choosing" || mode.kind === "teaching" ? mode : null;
   const open = editing === null ? null : rows.find((row) => row.key === editing.rowKey) ?? null;
@@ -184,27 +191,21 @@ export function StudySchedule({
         )}
       </div>
       </div>
-      <div className="min-h-0 overflow-auto">
-      <ScheduleGrid
-        rows={rows}
-        groups={groups}
-        turns={turns}
-        mode={mode}
-        onEvent={onEvent}
-        onAt={setAt}
-        notices={notices}
-      />
+      {/* The grid scrolls; the pane beside it is a column of its own and does not. */}
+      <div className="grid min-h-0 grid-cols-[1fr_20rem] overflow-hidden">
+        <div className="min-h-0 overflow-auto">
+          <ScheduleGrid
+            rows={rows}
+            groups={groups}
+            turns={turns}
+            mode={mode}
+            onEvent={onEvent}
+            onAt={setAt}
+            notices={notices}
+          />
+        </div>
+        <MagePaneView pane={pane} />
       </div>
-      {/* The card stands down while a dropdown is open: both hang off the same cell, so showing
-          them together would put one on top of the other. */}
-      {card === null || at === null || menu !== null ? null : (
-        <FloatingAtCell
-          cell={`${rows.findIndex((row) => row.key === at.rowKey)}:${at.turnIndex}`}
-          className="pointer-events-none"
-        >
-          <ScheduleHoverCard card={card} />
-        </FloatingAtCell>
-      )}
       {menu === null || open === null || editing === null ? null : (
         <CellPopoverLayer
           menu={menu}
@@ -396,8 +397,12 @@ export function ScheduleGrid({
   turns: readonly number[];
   mode: CellMode;
   onEvent: (event: CellEvent) => void;
-  /** Which cell the pointer or the focus is on, for the hover card. Null when neither is. */
-  onAt?: (at: { rowKey: string; turnIndex: number } | null) => void;
+  /**
+   * Which cell the pointer or the focus is on, for the mage pane; `turnIndex` is null for the
+   * mage's name. Never called with null: the pane keeps its last mage rather than emptying as the
+   * pointer crosses a gap.
+   */
+  onAt?: (at: { rowKey: string; turnIndex: number | null }) => void;
   /** Everything the planner has to say, so a cell can be tinted and titled by what it raised. */
   notices?: readonly PlannerNotice[];
 }) {
@@ -433,11 +438,7 @@ export function ScheduleGrid({
       ?.focus();
   };
   return (
-    <table
-      className="w-full border-collapse text-pane"
-      onKeyDown={walk}
-      onMouseLeave={() => onAt?.(null)}
-    >
+    <table className="w-full border-collapse text-pane" onKeyDown={walk}>
       <thead>
         <tr>
           <th className="sticky left-0 top-0 z-20 bg-panel-raised px-2 py-1 text-left text-ink-soft">
@@ -498,7 +499,7 @@ function FactionRows({
   turns: readonly number[];
   mode: CellMode;
   onEvent: (event: CellEvent) => void;
-  onAt?: (at: { rowKey: string; turnIndex: number } | null) => void;
+  onAt?: (at: { rowKey: string; turnIndex: number | null }) => void;
   notices?: readonly PlannerNotice[];
 }) {
   return (
@@ -515,7 +516,13 @@ function FactionRows({
         }
         return (
           <tr key={row.key} data-testid={`study-schedule-row-${row.unitId}`}>
-            <td className="sticky left-0 z-10 bg-panel-raised px-2 py-1 align-top">
+            {/* The name fills the pane with the mage as he stands now - the one reading no column
+                can give, every column being a month that has already happened. */}
+            <td
+              data-testid={`study-schedule-name-${row.unitId}`}
+              onMouseEnter={() => onAt?.({ rowKey: row.key, turnIndex: null })}
+              className="sticky left-0 z-10 bg-panel-raised px-2 py-1 align-top"
+            >
               <span className="text-ink">
                 {row.name} ({row.unitId})
               </span>
@@ -578,28 +585,70 @@ function FactionRows({
   );
 }
 
-/** What a mage knows at the hovered or focused cell's turn, the studied skill highlighted. */
-export function ScheduleHoverCard({ card }: { card: ReturnType<typeof hoverCard> }) {
+/**
+ * The pane beside the turns: what the mage under the pointer knows, and what he could study.
+ *
+ * Hook-free like every other piece of this file, and it holds no state of its own - what it shows
+ * is `at` in `StudySchedule`, which the grid sets and nothing clears, so the pane keeps its last
+ * mage when the pointer leaves the table.
+ */
+export function MagePaneView({ pane }: { pane: MagePane | null }) {
+  if (pane === null) {
+    return (
+      <aside
+        data-testid="study-schedule-mage-pane"
+        className="min-h-0 overflow-y-auto border-l border-edge p-2"
+      >
+        <p className="m-0 text-ink-dim">
+          Point at a mage, or at one of his months, to see what he knows and what he could study.
+        </p>
+      </aside>
+    );
+  }
   return (
-    <div
-      data-testid="study-schedule-hover"
-      className="rounded border border-edge bg-panel p-2 shadow-lg"
+    // Both lists at once, each scrolling in its own half: a mage deep in the tree knows twenty
+    // skills and can study thirty, and one scroller for the pair put `Can study` below the fold on
+    // every mage worth reading about. Their headings sit outside the scrollers, so neither list
+    // scrolls away from the words that name it.
+    <aside
+      data-testid="study-schedule-mage-pane"
+      className="grid min-h-0 grid-rows-[auto_auto_1fr_auto_1fr_auto] overflow-hidden border-l border-edge p-2"
     >
-      <p className="m-0 text-ink">{card.heading}</p>
-      <p className="m-0 text-ink-dim">{card.sub}</p>
-      <ul className="m-0 max-h-[45vh] list-none overflow-y-auto p-0">
-        {card.lines.map((line) => (
+      <div>
+        <p className="m-0 text-ink">{pane.heading}</p>
+        <p className="m-0 text-ink-dim">{pane.sub}</p>
+      </div>
+
+      <p className="m-0 mt-2 text-ink-soft">Knows</p>
+      <ul className="m-0 min-h-0 list-none overflow-y-auto p-0">
+        {pane.knows.map((line) => (
           <li
             key={line.name}
-            data-testid={`study-schedule-hover-${line.name.replace(/\s+/g, "-")}`}
+            data-testid={`study-schedule-knows-${line.name.replace(/\s+/g, "-")}`}
             className={line.studying ? `rounded px-1 ${STANDING_CHIP.known}` : "px-1 text-ink"}
           >
             {line.name} <span className="text-ink-dim">{line.right}</span>
           </li>
         ))}
       </ul>
-      <p className="m-0 text-ink-dim">{card.foot}</p>
-    </div>
+
+      <p className="m-0 mt-2 text-ink-soft" data-testid="study-schedule-can-study">
+        {pane.canStudyHeading}
+      </p>
+      <ul className="m-0 min-h-0 list-none overflow-y-auto p-0">
+        {pane.canStudy.map((choice) => (
+          <li
+            key={choice.skill}
+            data-testid={`study-schedule-can-study-${choice.skill}`}
+            className="px-1 text-ink"
+          >
+            {choice.name} <span className="text-ink-dim">{choice.detail}</span>
+          </li>
+        ))}
+      </ul>
+
+      <p className="m-0 mt-2 text-ink-dim">{pane.foot}</p>
+    </aside>
   );
 }
 

@@ -5,10 +5,11 @@ import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
 import { cellMenu } from "../studyCell";
-import { hoverCard, scheduleRows, scheduleTurns, type ScheduleRow } from "../studySchedule";
+import { scheduleRows, scheduleTurns, type ScheduleRow } from "../studySchedule";
+import { magePane } from "../studyMagePane";
 import type { PlannerGroup } from "../studyPlanner";
 import { STANDING_CHIP } from "./standingChip";
-import { CellPopover, ScheduleGrid, ScheduleHoverCard, StudySchedule } from "./StudySchedule";
+import { CellPopover, MagePaneView, ScheduleGrid, StudySchedule } from "./StudySchedule";
 import type { CellMode, CellPick } from "./studyCellState";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
@@ -159,16 +160,49 @@ describe("StudySchedule", () => {
   });
 });
 
-describe("ScheduleHoverCard", () => {
-  it("draws what he knows then, with the studied skill marked", () => {
-    const card = hoverCard(rows[0], 0, turns, tree, "Wardens of the North (12)");
-    const markup = renderToStaticMarkup(<ScheduleHoverCard card={card} />);
+describe("MagePaneView", () => {
+  const shown = (turnIndex: number | null) =>
+    renderToStaticMarkup(
+      <MagePaneView
+        pane={magePane({
+          row: rows[0],
+          turnIndex,
+          turns,
+          tree,
+          factionLabel: "Wardens of the North (12)"
+        })}
+      />
+    );
+
+  it("draws what he knows at that turn, with the studied skill marked", () => {
+    const markup = shown(0);
 
     expect(markup).toContain("Ereb (2431) — turn 24");
     expect(markup).toContain("Wardens of the North (12) · studying force");
     expect(markup).toContain("3 → 4  (300 of 300)");
-    const line = markup.slice(markup.indexOf('study-schedule-hover-force'));
+    const line = markup.slice(markup.indexOf("study-schedule-knows-force"));
     expect(line.slice(0, 200)).toContain(STANDING_CHIP.known);
+  });
+
+  it("draws what he could study then, under a heading that counts them", () => {
+    const markup = shown(0);
+
+    expect(markup).toContain("Can study on turn 24 —");
+    expect(markup).toContain('data-testid="study-schedule-can-study-PATT"');
+  });
+
+  it("reads him as he stands now when the pointer is on his name", () => {
+    const markup = shown(null);
+
+    expect(markup).toContain("Ereb (2431) — now");
+    expect(markup).toContain("Can study now —");
+  });
+
+  it("says what it is for before anything has been pointed at", () => {
+    const markup = renderToStaticMarkup(<MagePaneView pane={null} />);
+
+    expect(markup).toContain("Point at a mage");
+    expect(markup).toContain('data-testid="study-schedule-mage-pane"');
   });
 });
 

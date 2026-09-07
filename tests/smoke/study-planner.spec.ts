@@ -253,21 +253,38 @@ test("a note written in All mages shows as a pencil in the Schedule", async ({ p
   await expect(page.getByTestId("study-schedule-note-881")).toBeVisible();
 });
 
-test("the hover card follows the pointer and the focus", async ({ page }) => {
+test("the mage pane follows the pointer and the focus, and keeps what it last showed", async ({
+  page
+}) => {
   await loadReport(page);
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  const card = page.getByTestId("study-schedule-hover");
-  await expect(card).toHaveCount(0);
+  const pane = page.getByTestId("study-schedule-mage-pane");
+  // It is a pane rather than a card: it stands there from the start, saying what it is for.
+  await expect(pane).toBeVisible();
+  await expect(pane).toContainText("Point at a mage");
 
   await page.getByTestId(`study-schedule-cell-${MAGE}-72`).hover();
-  await expect(card).toContainText("Six of Seven (881) — turn 72");
+  await expect(pane).toContainText("Six of Seven (881) — turn 72");
+  await expect(pane).toContainText("Knows");
+  await expect(pane).toContainText("Can study on turn 72 —");
 
-  // Reachable without a mouse: the arrow keys walk the grid and the card follows the focus.
+  // The name reads him as he stands now, which no column can show: every column is a month that
+  // has already happened.
+  await page.getByTestId(`study-schedule-name-${MAGE}`).hover();
+  await expect(pane).toContainText("Six of Seven (881) — now");
+  await expect(pane).toContainText("Can study now —");
+
+  // Reachable without a mouse: the arrow keys walk the grid and the pane follows the focus.
   await page.getByTestId(`study-schedule-cell-${MAGE}-72`).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(card).toContainText("turn 73");
+  await expect(pane).toContainText("turn 73");
+
+  // And it keeps its mage when the pointer leaves the table, so the pane can be read without
+  // holding the mouse still on a row.
+  await page.getByTestId("study-planner-view-schedule").hover();
+  await expect(pane).toContainText("Six of Seven (881) — turn 73");
 });
 
 test("Escape closes the cell popover and leaves the pane open", async ({ page }) => {

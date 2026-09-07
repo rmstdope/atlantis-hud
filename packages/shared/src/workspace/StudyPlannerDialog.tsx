@@ -295,7 +295,15 @@ export function StudyPlannerDialog({
         // 10vh below, matching the `pt-[10vh]` above: the two must be changed together. theme.css
         // caps every modal at 90vh as a `:where()` default at zero specificity, so this 80vh
         // simply wins with no `!` needed.
-        className="grid max-h-[80vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
+        //
+        // Wider for the Schedule alone (navigator, 2026-09-07): the mage pane takes 18rem beside
+        // six turn columns, and taking that out of 56rem would have squeezed the columns the plan
+        // is actually written in. The other two views have nothing to spend it on. Both widths are
+        // whole class literals rather than an assembled string - Tailwind's scanner reads source
+        // text, and `w-[${...}]` is a class it never sees.
+        className={`grid max-h-[80vh] ${
+          view === "schedule" ? "w-[74rem]" : "w-[56rem]"
+        } max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg`}
       >
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
           <span className="text-ink-soft">Study planner</span>
