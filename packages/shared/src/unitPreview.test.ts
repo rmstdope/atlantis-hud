@@ -409,6 +409,153 @@ describe("mergePreviewAcross", () => {
     expect(mine[0].departingTo).toBe("1:35,3");
   });
 
+  it("shows a walker standing where it arrives, not where it set out from", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "916", regionId: "1:43,81", structureId: "7" })],
+      across([
+        {
+          regionId: "1:43,81",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,81", structureId: "7" },
+              { status: "departing", departingTo: "1:43,79" }
+            )
+          ]
+        },
+        {
+          regionId: "1:43,79",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,79", structureId: null },
+              {
+                status: "arriving",
+                arrivingFrom: "1:43,81",
+                changes: [{ field: "structureId", original: "7", cause: "MOVE N" }]
+              }
+            )
+          ]
+        }
+      ])
+    );
+
+    const mine = rows.filter((row) => row.unitId === "916");
+    expect(mine).toHaveLength(1);
+    expect(mine[0].regionId).toBe("1:43,81");
+    expect(mine[0].structureId).toBeNull();
+    expect(mine[0].previewChanges).toEqual([
+      { field: "structureId", original: "7", cause: "MOVE N" }
+    ]);
+  });
+
+  it("boards the destination's structure when the walk ends inside one", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "916", regionId: "1:43,81", structureId: "7" })],
+      across([
+        {
+          regionId: "1:43,81",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,81", structureId: "7" },
+              { status: "departing", departingTo: "1:43,79" }
+            )
+          ]
+        },
+        {
+          regionId: "1:43,79",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,79", structureId: "12" },
+              {
+                status: "arriving",
+                arrivingFrom: "1:43,81",
+                changes: [{ field: "structureId", original: "7", cause: "MOVE 12" }]
+              }
+            )
+          ]
+        }
+      ])
+    );
+
+    const mine = rows.filter((row) => row.unitId === "916");
+    expect(mine).toHaveLength(1);
+    expect(mine[0].structureId).toBe("12");
+    expect(mine[0].previewChanges).toEqual([
+      { field: "structureId", original: "7", cause: "MOVE 12" }
+    ]);
+  });
+
+  it("keeps the arrival's answer when both hexes number a structure alike", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "916", regionId: "1:43,81", structureId: "7" })],
+      across([
+        {
+          regionId: "1:43,81",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,81", structureId: "7" },
+              {
+                status: "departing",
+                departingTo: "1:43,79",
+                changes: [{ field: "structureId", original: "", cause: "ENTER 7" }]
+              }
+            )
+          ]
+        },
+        {
+          regionId: "1:43,79",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,79", structureId: "7" },
+              {
+                status: "arriving",
+                arrivingFrom: "1:43,81",
+                changes: [{ field: "structureId", original: "", cause: "MOVE 7" }]
+              }
+            )
+          ]
+        }
+      ])
+    );
+
+    const mine = rows.filter((row) => row.unitId === "916");
+    expect(mine).toHaveLength(1);
+    expect(mine[0].structureId).toBe("7");
+    expect(mine[0].previewChanges).toEqual([
+      { field: "structureId", original: "", cause: "MOVE 7" }
+    ]);
+  });
+
+  it("leaves a sailing unit's structure alone, hull and all", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "916", regionId: "1:43,81", structureId: "7" })],
+      across([
+        {
+          regionId: "1:43,81",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,81", structureId: "7" },
+              { status: "departing", departingTo: "1:43,79", aboard: "Wave [7]" }
+            )
+          ]
+        },
+        {
+          regionId: "1:43,79",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,79", structureId: "7" },
+              { status: "arriving", arrivingFrom: "1:43,81" }
+            )
+          ]
+        }
+      ])
+    );
+
+    const mine = rows.filter((row) => row.unitId === "916");
+    expect(mine).toHaveLength(1);
+    expect(mine[0].structureId).toBe("7");
+    expect(mine[0].previewChanges).toEqual([]);
+  });
+
   it("keeps a departure whose destination the trace could not name", () => {
     const rows = mergePreviewAcross(
       [unit({ unitId: "5105", regionId: "1:36,4" })],

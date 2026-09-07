@@ -159,11 +159,79 @@ export function mergePreviewAcross(
   units: ReportUnit[],
   preview: OrdersPreviewResponse | null | undefined
 ): PreviewedUnit[] {
+  const all = (preview?.regions ?? []).flatMap((region) => region.units);
+  const arrivals = all.filter((one) => one.status === "arriving");
   return foldIn(
     units,
-    (preview?.regions ?? [])
-      .flatMap((region) => region.units)
+    all
       .filter((one) => one.status !== "arriving")
+      .map((one) => standingWhereItArrives(one, arrivals))
+  );
+}
+
+/**
+ * The kept row of a moving unit, standing where the month leaves it rather than where it set out.
+ *
+ * `mergePreviewAcross` keeps one row per unit and it is the *departing* one, so without this the
+ * Structure column of a walker that left a fort behind goes on naming the fort - beside the very
+ * `-> destination` arrow that says the unit will not be there (`ah-ehgy`). The arriving row is
+ * where the core settles a mover's structure: it clears it for a walker, keeps it for a unit whose
+ * fleet sails (`crates/core/src/orders/effects.rs`, `sails_along`), and records the `structureId`
+ * change with the movement order as its cause. So the structure - the field and its change alike -
+ * is taken from the arrival and everything else from the departure, which owns the hex, the arrow
+ * and every other column.
+ *
+ * The pair is matched on both hexes as well as the unit id, never on the id alone: a formed unit's
+ * alias (`new-1`) is reused hex by hex, so two of them can share an id in one response.
+ */
+function standingWhereItArrives(
+  departing: UnitPreview,
+  arrivals: readonly UnitPreview[]
+): UnitPreview {
+  if (departing.departingTo === null || departing.departingTo === undefined) {
+    return departing;
+  }
+  const arrival = arrivals.find(
+    (one) =>
+      one.unit.unitId === departing.unit.unitId &&
+      one.unit.regionId === departing.departingTo &&
+      one.arrivingFrom === departing.unit.regionId
+  );
+  if (!arrival) {
+    return departing;
+  }
+  const changes = [
+    ...departing.changes.filter((change) => change.field !== "structureId"),
+    ...arrival.changes.filter((change) => change.field === "structureId")
+  ];
+  // Nothing to fold: the same object back, because `UnitTableDock`'s memoisation is keyed on row
+  // identity and a fresh object every preview tick cancels an open tooltip (`ah-1wcw.1`). The
+  // structure ids are compared only alongside the changes, and never as the whole test: a
+  // structure number is scoped to its region (`rules/move`, "a structure number"), so `7` in the
+  // origin and `7` in the destination are two different buildings that happen to share a number.
+  if (
+    arrival.unit.structureId === departing.unit.structureId &&
+    sameChanges(changes, departing.changes)
+  ) {
+    return departing;
+  }
+  return {
+    ...departing,
+    unit: { ...departing.unit, structureId: arrival.unit.structureId },
+    changes
+  };
+}
+
+/** Whether two change lists say the same things in the same order. */
+function sameChanges(one: readonly FieldChange[], other: readonly FieldChange[]): boolean {
+  return (
+    one.length === other.length &&
+    one.every(
+      (change, index) =>
+        change.field === other[index].field &&
+        change.original === other[index].original &&
+        change.cause === other[index].cause
+    )
   );
 }
 
