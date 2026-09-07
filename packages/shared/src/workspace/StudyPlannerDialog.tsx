@@ -308,36 +308,9 @@ export function StudyPlannerDialog({
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
           <span className="text-ink-soft">Study planner</span>
           <span role="tablist" aria-label="Study planner view" className="flex gap-1">
-            <button
-              type="button"
-              role="tab"
-              data-testid="study-planner-view-all"
-              aria-selected={view === "all"}
-              onClick={() => setView("all")}
-              className="rounded px-1.5"
-            >
-              All mages
-            </button>
-            <button
-              type="button"
-              role="tab"
-              data-testid="study-planner-view-schedule"
-              aria-selected={view === "schedule"}
-              onClick={() => setView("schedule")}
-              className="rounded px-1.5"
-            >
-              Schedule
-            </button>
-            <button
-              type="button"
-              role="tab"
-              data-testid="study-planner-view-orders"
-              aria-selected={view === "orders"}
-              onClick={() => setView("orders")}
-              className="rounded px-1.5"
-            >
-              Orders
-            </button>
+            <ViewTab view="all" label="All mages" open={view} onOpen={setView} />
+            <ViewTab view="schedule" label="Schedule" open={view} onOpen={setView} />
+            <ViewTab view="orders" label="Orders" open={view} onOpen={setView} />
           </span>
           <span className="flex-1" />
           {view === "orders" && orders.sections.length > 0 ? (
@@ -486,6 +459,51 @@ export function StudyPlannerDialog({
 }
 
 /** The mage list, grouped by faction with a sticky heading each. Hook-free, so a test can walk it. */
+/**
+ * One of the planner's three views, as a chip that shows it can be pressed and whether it is open.
+ *
+ * The three were plain text on the top bar (navigator, 2026-09-07): nothing said they were
+ * buttons, and nothing said which view was showing. Bordered, brass when open, is what
+ * `SettingsDialog` and `ChangesDialog` already dress a dialog's tabs in, so this is the third
+ * place that habit is kept rather than a fourth look. Hovering brightens rather than turning brass,
+ * unlike those two: with a brass edge under the pointer as well as on the open tab, the two read
+ * alike at a glance, and telling them apart is the whole of what this is for.
+ *
+ * No roving `tabIndex`, unlike those two: a tablist that takes one Tab stop needs the arrow keys
+ * to reach the rest, and neither of them handles those - so three ordinary Tab stops is what
+ * actually reaches all three views from a keyboard here.
+ */
+function ViewTab({
+  view,
+  label,
+  open,
+  onOpen
+}: {
+  view: "all" | "schedule" | "orders";
+  label: string;
+  /** Which view is showing. */
+  open: "all" | "schedule" | "orders";
+  onOpen: (view: "all" | "schedule" | "orders") => void;
+}) {
+  const selected = view === open;
+  return (
+    <button
+      type="button"
+      role="tab"
+      data-testid={`study-planner-view-${view}`}
+      aria-selected={selected}
+      onClick={() => onOpen(view)}
+      className={`rounded border px-2 py-0.5 ${
+        selected
+          ? "border-brass bg-panel text-brass"
+          : "border-edge bg-panel-raised text-ink-soft hover:bg-panel hover:text-ink"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function StudyPlannerList({
   groups,
   picked,

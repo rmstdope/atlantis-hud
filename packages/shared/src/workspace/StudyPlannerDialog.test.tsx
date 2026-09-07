@@ -260,6 +260,24 @@ describe("the Orders tab", () => {
     expect(markup).not.toContain('data-testid="study-planner-orders"');
   });
 
+  it("the_view_tabs_look_pressable_and_the_open_one_is_marked", () => {
+    // They were plain text on the top bar: nothing said they could be pressed, and nothing said
+    // which view was showing. The app's other dialog tabs are bordered chips, brass when open.
+    const markup = dialog([]);
+    const tab = (view: string) =>
+      markup.slice(markup.indexOf(`data-testid="study-planner-view-${view}"`)).slice(0, 300);
+
+    expect(tab("all")).toContain('aria-selected="true"');
+    expect(tab("all")).toContain("border-brass");
+    expect(tab("all")).toContain("text-brass");
+
+    expect(tab("schedule")).toContain('aria-selected="false"');
+    expect(tab("schedule")).toContain("border-edge");
+    expect(tab("schedule")).not.toContain("text-brass");
+    // And a hover state, which is the other half of "this can be pressed".
+    expect(tab("schedule")).toContain("hover:");
+  });
+
   it("save_all_is_offered_only_on_the_orders_tab_and_only_with_sections", () => {
     expect(dialog([])).not.toContain('data-testid="study-planner-save-all"');
   });
