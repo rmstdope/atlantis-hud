@@ -259,6 +259,25 @@ test("the dropdown fills the row the arrows and the pointer land on", async ({ p
   expect(await fill(3)).not.toBe(CLEAR);
 });
 
+test("no row of the dropdown wraps onto a second line", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
+
+  // Measured rather than pinned to a width: a wrapped row is two lines tall, whatever the font,
+  // the cap and the longest skill in the ruleset happen to be. `create phantasmal beasts 0 → 1
+  // (30 of 30)` is the row this used to break on.
+  const heights = await page
+    .locator('[data-testid="study-schedule-popover"] [data-row]')
+    .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+
+  expect(heights.length).toBeGreaterThan(10);
+  expect(Math.max(...heights)).toBeLessThan(Math.min(...heights) * 1.5);
+});
+
 test("a note written in All mages shows as a pencil in the Schedule", async ({ page }) => {
   await loadReport(page);
 

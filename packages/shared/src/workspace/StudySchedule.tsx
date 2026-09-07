@@ -304,15 +304,7 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
  * `CellPopoverLayer` focuses a row inside it on mount, and focus does not land on anything inside
  * a `visibility: hidden` box.
  */
-function FloatingAtCell({
-  cell,
-  className,
-  children
-}: {
-  cell: string;
-  className?: string;
-  children: ReactNode;
-}) {
+function FloatingAtCell({ cell, children }: { cell: string; children: ReactNode }) {
   // The node is held as state rather than a ref so the effect below runs once it exists, as
   // `UnitContextMenu` does for the same reason.
   const [node, setNode] = useState<HTMLDivElement | null>(null);
@@ -358,7 +350,11 @@ function FloatingAtCell({
     <div
       ref={setNode}
       style={{ left: placed?.left ?? -9999, top: placed?.top ?? -9999 }}
-      className={`fixed z-50 w-max max-w-[24rem] ${className ?? ""}`}
+      // `w-max` up to a cap that no row reaches: a menu row is one line - `create phantasmal
+      // demons 3 → 3  (180 of 300)` - and a wrapped one is read twice before it is understood.
+      // A step smaller than the grid it hangs off (13px to 12px) for the same reason: it is what
+      // takes the longest rows off the second line, and a menu is read one row at a time anyway.
+      className="fixed z-50 w-max max-w-[32rem] text-pane-sm"
     >
       {children}
     </div>,
