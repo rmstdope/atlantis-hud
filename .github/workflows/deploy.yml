@@ -187,9 +187,5 @@ jobs:
             echo "::error::$site/ answered, but the page served is not this build - no manifest link in it."
             exit 1
           fi
-          manifest="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$site/manifest.webmanifest" || echo 000)"
-          if [ "$manifest" != "200" ]; then
-            echo "::error::The manifest returned $manifest. Without it the application cannot be installed."
-            exit 1
-          fi
+          pnpm exec tsx scripts/manifestCheck.ts "$site"
           echo "::notice::Published to $site"
