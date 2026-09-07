@@ -757,7 +757,15 @@ function StudyPlannerNote({
           {noteCountText(draft)}
         </span>
         <span className="flex-1" />
-        <button type="button" data-testid="study-planner-note-save" onClick={save}>
+        <button
+          type="button"
+          data-testid="study-planner-note-save"
+          onClick={save}
+          // Bordered, like every other action in this workspace that commits something: it was
+          // bare text beside a bare counter, which is what a label looks like rather than a
+          // control (navigator, 2026-09-07).
+          className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
+        >
           Save
         </button>
       </div>

@@ -734,10 +734,14 @@ export function CellPopover({
         )}
         <div className="mt-2 flex gap-2">
           <span className="flex-1" />
+          {/* Bordered, like every other action in this workspace: bare text beside bare text is a
+              pair of labels rather than the two controls this step ends on. `Set` carries the
+              brass of a commit, `Cancel` the plain edge of a way out. */}
           <button
             type="button"
             data-testid="study-schedule-cancel"
             onClick={() => onEvent({ kind: "cancelled" })}
+            className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
           >
             Cancel
           </button>
@@ -745,6 +749,7 @@ export function CellPopover({
             type="button"
             data-testid="study-schedule-set"
             onClick={() => onChoose({ kind: "teach", students: [...mode.students] })}
+            className="rounded border border-brass px-2 py-0.5 text-brass"
           >
             Set
           </button>

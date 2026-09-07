@@ -299,7 +299,7 @@ describe("CellPopover", () => {
   it("has no Set button and no level select", () => {
     const markup = popover();
 
-    expect(markup).not.toContain(">Set<");
+    expect(markup).not.toContain('data-testid="study-schedule-set"');
     expect(markup).not.toContain("study-schedule-level");
     expect(markup).not.toContain("Clear from here");
   });
@@ -349,8 +349,11 @@ describe("CellPopover", () => {
 
     expect(markup).toContain("Ereb teaches on turn 26");
     expect(markup).toContain('data-testid="study-schedule-teach-2432"');
-    expect(markup).toContain(">Cancel<");
-    expect(markup).toContain(">Set<");
+    expect(markup).toContain('data-testid="study-schedule-cancel"');
+    expect(markup).toContain('data-testid="study-schedule-set"');
+    // Both are bordered controls rather than bare words: `Set` commits, so it carries the brass.
+    const set = markup.slice(markup.indexOf('data-testid="study-schedule-set"'));
+    expect(set.slice(0, 200)).toContain("border-brass");
   });
 });
 
