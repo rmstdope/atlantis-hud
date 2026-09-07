@@ -148,6 +148,20 @@ describe("itemChanges", () => {
 });
 
 describe("mergePreview", () => {
+  it("leaves the structure's hex unsaid when nothing was folded", () => {
+    const rows = mergePreview(
+      [unit({ structureId: "7" })],
+      preview([
+        previewedRow(
+          { structureId: "7", name: "Renamed" },
+          { status: "present", changes: [{ field: "name", original: "Walker" }] }
+        )
+      ])
+    );
+
+    expect(rows[0].structureRegionId).toBeUndefined();
+  });
+
   it("replaces a changed unit's row with its predicted state, marks kept", () => {
     const rows = mergePreview(
       [unit({}), unit({ unitId: "901", name: "Bystander" })],
@@ -482,6 +496,41 @@ describe("mergePreviewAcross", () => {
     expect(mine[0].previewChanges).toEqual([
       { field: "structureId", original: "7", cause: "MOVE 12" }
     ]);
+  });
+
+  it("says which hex numbered the structure it folded in", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "916", regionId: "1:43,81", structureId: "7" })],
+      across([
+        {
+          regionId: "1:43,81",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,81", structureId: "7" },
+              { status: "departing", departingTo: "1:43,79" }
+            )
+          ]
+        },
+        {
+          regionId: "1:43,79",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,79", structureId: "12" },
+              {
+                status: "arriving",
+                arrivingFrom: "1:43,81",
+                changes: [{ field: "structureId", original: "7", cause: "MOVE 12" }]
+              }
+            )
+          ]
+        }
+      ])
+    );
+
+    const mine = rows.filter((row) => row.unitId === "916");
+    expect(mine).toHaveLength(1);
+    expect(mine[0].regionId).toBe("1:43,81");
+    expect(mine[0].structureRegionId).toBe("1:43,79");
   });
 
   it("keeps the arrival's answer when both hexes number a structure alike", () => {

@@ -1,6 +1,11 @@
-import type { ReportUnit, StructureInfo, UnitSilver } from "@atlantis/core-client";
+import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
 
-import { unitStructureLabel } from "./structureLabel";
+import {
+  structureRegionOf,
+  unitStructureLabelIn,
+  type StructureBearingRow,
+  type StructuresByRegion
+} from "./structureLabel";
 import { compareUnitIds, idNumber } from "./unitOrder";
 
 /**
@@ -142,21 +147,20 @@ export function windowRange(
 export function filterUnits(
   units: ReportUnit[],
   needle: string,
-  structures: readonly StructureInfo[] = [],
+  structures: StructuresByRegion = new Map(),
   skillsText: (unit: ReportUnit) => string = defaultSkillsText
 ): ReportUnit[] {
   const wanted = needle.trim().toLowerCase();
   if (!wanted) {
     return units;
   }
-  const byId = indexById(structures);
   return units.filter((unit) =>
     [
       unit.name,
       unit.unitId,
       unit.factionName ?? "",
       unit.structureId ?? "",
-      unitStructureLabel(unit.structureId, byId) ?? "",
+      unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures) ?? "",
       skillsText(unit)
     ]
       .join(" ")
@@ -164,9 +168,6 @@ export function filterUnits(
       .includes(wanted)
   );
 }
-
-const indexById = (structures: readonly StructureInfo[]) =>
-  new Map(structures.map((structure) => [structure.structureId, structure]));
 
 /** `filterUnits`' default `skillsText`: exactly the report-native text the Skills cell has always shown. */
 const defaultSkillsText = (unit: ReportUnit): string =>
@@ -199,7 +200,7 @@ function compareValues(
 function valueOf(
   unit: ReportUnit,
   column: SortColumn,
-  structures: ReadonlyMap<string, StructureInfo>,
+  structures: StructuresByRegion,
   longOrders: ReadonlyMap<string, string | null>,
   silver: ReadonlyMap<string, number | null>,
   seen: ReadonlyMap<string, number>
@@ -214,7 +215,7 @@ function valueOf(
     case "men":
       return unit.men;
     case "structure":
-      return structureKey(unit.structureId, structures);
+      return structureKey(unit, structures);
     // Both of these are keyed by hex and unit, because a unit number is unique to a hex and not to
     // a turn: two hexes can each hold a `new-1` (`ah-9o0c.2`), and a lookup on the id alone hands
     // one hex's row the other's answer.
@@ -261,14 +262,13 @@ function longOrderKey(order: string | null): string | null {
 /** Sorts after every real name, so an undescribed structure lands beneath the named ones. */
 const UNNAMED = "\uffff";
 
-function structureKey(
-  structureId: string | null,
-  structures: ReadonlyMap<string, StructureInfo>
-): string | null {
+function structureKey(row: StructureBearingRow, byRegion: StructuresByRegion): string | null {
+  const structureId = row.structureId;
   if (structureId === null) {
     return null;
   }
-  const name = structures.get(structureId)?.name.toLowerCase() ?? UNNAMED;
+  const name =
+    byRegion.get(structureRegionOf(row))?.get(structureId)?.name.toLowerCase() ?? UNNAMED;
   const numeric = idNumber(structureId);
   const tieBreak = numeric === null ? structureId : String(numeric).padStart(12, "0");
   return `${name}\u0000${tieBreak}`;
@@ -289,7 +289,7 @@ function structureKey(
 export function sortUnits(
   units: ReportUnit[],
   sort: SortState,
-  structures: readonly StructureInfo[] = [],
+  structures: StructuresByRegion = new Map(),
   /** Each own unit's month-long order, for the column that sorts on it. */
   longOrders: ReadonlyMap<string, string | null> = new Map(),
   /** Each own unit's forecast silver at month end, for the column that sorts on it. `ah-1wcw.1`. */
@@ -298,7 +298,6 @@ export function sortUnits(
   seen: ReadonlyMap<string, number> = new Map()
 ): ReportUnit[] {
   const direction = sort.direction === "asc" ? 1 : -1;
-  const byId = indexById(structures);
 
   return [...units].sort((left, right) => {
     if (sort.groupOwnFirst && left.own !== right.own) {
@@ -306,8 +305,8 @@ export function sortUnits(
     }
 
     const outcome = compareValues(
-      valueOf(left, sort.column, byId, longOrders, silver, seen),
-      valueOf(right, sort.column, byId, longOrders, silver, seen)
+      valueOf(left, sort.column, structures, longOrders, silver, seen),
+      valueOf(right, sort.column, structures, longOrders, silver, seen)
     );
     const decided = "settled" in outcome ? outcome.settled : outcome.compare * direction;
     return decided !== 0 ? decided : compareUnitIds(left.unitId, right.unitId);

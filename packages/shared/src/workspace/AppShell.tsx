@@ -263,7 +263,7 @@ import { magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
-import { structurePaletteLabel } from "../structureLabel";
+import { structurePaletteLabel, structuresByRegionOf } from "../structureLabel";
 import type { Resume, StopKey } from "../diagnosticNav";
 import { diagnosticTargets, resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
@@ -1230,6 +1230,17 @@ export function AppShell({
   const ownUnits = useMemo(
     () => (parsed ? parsed.regions.flatMap((region) => region.units.filter((one) => one.own)) : []),
     [parsed]
+  );
+  /**
+   * Every known region's structures, for the units dock (`ah-yjhf`).
+   *
+   * From the known map rather than from `parsed`, because the map is a superset: it carries this
+   * turn's own regions (`known_map.rs`, rule 4) **and** remembered ones, which is what keeps a
+   * stale selected hex naming its structures exactly as it did before.
+   */
+  const structuresByRegion = useMemo(
+    () => structuresByRegionOf(model.hexes.flatMap((node) => (node.region ? [node.region] : []))),
+    [model]
   );
   /** Its exact complement, for the dock's `Other factions` source (`ah-1mpx.5`). */
   const foreignUnits = useMemo(() => (parsed ? foreignUnitsIn(parsed) : []), [parsed]);
@@ -5420,6 +5431,7 @@ export function AppShell({
             <UnitTableDock
               ref={unitDock}
               hex={hex}
+              structuresByRegion={structuresByRegion}
               preview={hexPreview}
               ordersPreview={ordersPreview}
               getLongOrder={getLongOrder}
