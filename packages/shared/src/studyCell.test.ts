@@ -252,6 +252,66 @@ describe("the teach row of the dropdown", () => {
   });
 });
 
+describe("a month somebody would double", () => {
+  /** Ereb (force 3), teaching live on turn 24, and Sable (force 1) in his hex. */
+  function taughtRows(): ScheduleRow[] {
+    const plan = (skill: string): StudyGoal[] =>
+      TURNS.map((turn) => ({ kind: "study" as const, turn, skill }));
+    const base = rowOf(at({ FORC: [3, 270] }), plan("FORC"));
+    const teacher: ScheduleRow = {
+      ...base,
+      cells: base.cells.map((cell, at) =>
+        at === 0
+          ? {
+              kind: "teach" as const,
+              students: [],
+              live: true,
+              outcome: { taught: ["21/2517"], refused: [], worth: 2 },
+              label: "TEACH"
+            }
+          : cell
+      )
+    };
+    const student = {
+      ...rowOf(at({ FORC: [1, 30] }), plan("FORC")),
+      key: "21/2517",
+      unitId: "2517",
+      name: "Sable"
+    };
+    return [teacher, student];
+  }
+
+  function studentMenu(rows: ScheduleRow[]) {
+    return cellMenu({
+      mageName: "Sable",
+      turn: 24,
+      standing: rows[1].standings[0],
+      tree,
+      rows,
+      turnIndex: 0,
+      rowKey: "21/2517"
+    });
+  }
+
+  it("shows the doubled month for a skill somebody is teaching", () => {
+    const forc = studentMenu(taughtRows()).choices.find((one) => one.skill === "FORC");
+
+    expect(forc?.taughtBy).toBe("Ereb");
+    expect(forc?.detail).toBe("1(30) → 2(90) · taught by Ereb");
+  });
+
+  it("leaves a skill nobody teaches plain", () => {
+    const patt = studentMenu(taughtRows()).choices.find((one) => one.skill === "PATT");
+
+    expect(patt?.taughtBy).toBeNull();
+    expect(patt?.detail).not.toContain("taught by");
+  });
+
+  it("leaves every row plain when there is no grid to read", () => {
+    expect(menu().choices.every((one) => one.taughtBy === null)).toBe(true);
+  });
+});
+
 describe("seededStudents", () => {
   function choice(unitId: string, blocked: string | null): TeachChoice {
     return { unitId, label: `M (${unitId})`, detail: "force 1 → force 2", blocked };

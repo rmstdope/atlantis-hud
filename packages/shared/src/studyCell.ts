@@ -16,7 +16,7 @@ import type { MagicTree } from "./magicTree";
 import { standingsFrom } from "./magicStanding";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
-import { TEACHING_SLOTS } from "./studyTeaching";
+import { TEACHING_SLOTS, doublingTeacher } from "./studyTeaching";
 import type { CellPick } from "./workspace/studyCellState";
 
 /** One skill the dropdown offers, and what a month of it buys. */
@@ -27,10 +27,15 @@ export type CellChoice = {
   name: string;
   /** The level he holds as the turn begins. */
   from: number;
-  /** The level a plain month leaves him at. */
+  /** The level the month this row offers leaves him at - doubled when `taughtBy` is set. */
   to: number;
-  /** `3(270) → 4(300)`: the level and the points at each end of the month. */
+  /**
+   * `3(270) → 4(300)`, or `3(240) → 4(300) · taught by Wardweaver` when the month would be
+   * doubled.
+   */
   detail: string;
+  /** The mage whose teaching would double this month, by name, or null. */
+  taughtBy: string | null;
 };
 
 /** One mage the teacher could name this turn. */
@@ -95,10 +100,24 @@ export function cellMenu(input: {
       continue;
     }
     const held = input.standing.get(tag) ?? { level: 0, points: 0 };
-    // A plain month: unsheltered, untaught. The dropdown cannot know what the cell will be worth,
-    // because teaching and shelter depend on choices not yet made; the grid's own cell is where
-    // `×2` and `×½` are accounted for.
-    const points = held.points + STUDY_POINTS_PER_MONTH;
+    // Teaching is accounted for; shelter is not. The grid it was drawn from already says who
+    // teaches whom this turn, so a month somebody would in fact double is shown doubled
+    // (`rules/skills_teaching`) - but shelter depends on choices not yet made, so the grid's own
+    // cell is still where `×½` is accounted for.
+    const taughtBy =
+      input.rows === undefined || input.turnIndex === undefined || input.rowKey === undefined
+        ? null
+        : doublingTeacher({
+            rows: input.rows,
+            turnIndex: input.turnIndex,
+            rowKey: input.rowKey,
+            skill: tag,
+            studentLevel: held.level
+          });
+    // Two whole months, never `taughtWorth(...)`: `doublingTeacher` admits only a teacher still
+    // within his ten slots, and a taught month is undiluted up to those (`rules/skills_teaching`).
+    const months = taughtBy === null ? 1 : 2;
+    const points = held.points + months * STUDY_POINTS_PER_MONTH;
     const to = Math.min(node.maxLevel, levelForPoints(points));
     // `3(270) → 4(300)`: a level with its points in brackets is how a report prints a skill and
     // how a player says one out loud (navigator, 2026-09-07), so the row is that, twice - where he
@@ -109,7 +128,10 @@ export function cellMenu(input: {
       name: node.name,
       from: held.level,
       to,
-      detail: `${held.level}(${Math.round(held.points)}) → ${to}(${Math.round(points)})`
+      detail:
+        `${held.level}(${Math.round(held.points)}) → ${to}(${Math.round(points)})` +
+        (taughtBy === null ? "" : ` · taught by ${taughtBy}`),
+      taughtBy
     });
   }
 
