@@ -3666,6 +3666,7 @@ mod tests {
                 StudyGoal::Teach {
                     turn: 26,
                     students: vec!["2517".to_string()],
+                    live: false,
                 },
             ],
             comment: String::new(),
