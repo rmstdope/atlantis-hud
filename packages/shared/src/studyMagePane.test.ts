@@ -53,9 +53,13 @@ function row(skills?: { tag: string; level: number; points: number }[]): Schedul
   })[0];
 }
 
-function pane(turnIndex: number | null, skills?: { tag: string; level: number; points: number }[]) {
+function pane(
+  turnIndex: number | null,
+  skills?: { tag: string; level: number; points: number }[],
+  comment = ""
+) {
   return magePane({
-    row: row(skills),
+    row: { ...row(skills), note: comment, hasNote: comment !== "" },
     turnIndex,
     turns,
     tree,
@@ -103,6 +107,19 @@ describe("magePane on a turn", () => {
 
   it("says where its figures come from", () => {
     expect(pane(2).foot).toBe("Projected from turn 23's report at 30 points a studied month.");
+  });
+});
+
+describe("the mage's own note", () => {
+  it("is carried whichever way the pane is being read", () => {
+    // Written in All mages and read here: the pane is where a mage is looked at while his months
+    // are being planned, so what the player wrote about him belongs in it (navigator, 2026-09-07).
+    expect(pane(2, undefined, "heading for gate lore").note).toBe("heading for gate lore");
+    expect(pane(null, undefined, "heading for gate lore").note).toBe("heading for gate lore");
+  });
+
+  it("is empty for a mage nobody has written about", () => {
+    expect(pane(2).note).toBe("");
   });
 });
 

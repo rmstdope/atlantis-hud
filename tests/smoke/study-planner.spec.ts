@@ -282,7 +282,7 @@ test("no row of the dropdown wraps onto a second line", async ({ page }) => {
   expect(Math.max(...heights)).toBeLessThan(Math.min(...heights) * 1.5);
 });
 
-test("a note written in All mages shows as a pencil in the Schedule", async ({ page }) => {
+test("a note written in All mages shows as a pencil and in the mage pane", async ({ page }) => {
   await loadReport(page);
 
   await page.keyboard.press("F4");
@@ -293,6 +293,18 @@ test("a note written in All mages shows as a pencil in the Schedule", async ({ p
 
   await page.getByTestId("study-planner-view-schedule").click();
   await expect(page.getByTestId("study-schedule-note-881")).toBeVisible();
+
+  // And it is readable where the month is chosen, above what he knows rather than a tab away.
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).hover();
+  const pane = page.getByTestId("study-schedule-mage-pane");
+  await expect(pane.getByTestId("study-schedule-note")).toContainText("heading for Gate Lore");
+  const shown = await pane.getByTestId("study-schedule-note").boundingBox();
+  const knows = await pane.getByText("Knows", { exact: true }).boundingBox();
+  expect(shown?.y ?? 0).toBeLessThan(knows?.y ?? 0);
+
+  // A mage nobody has written about carries nothing in its place.
+  await page.getByTestId("study-schedule-cell-12878-72").hover();
+  await expect(pane.getByTestId("study-schedule-note")).toHaveCount(0);
 });
 
 test("the mage pane follows the pointer and the focus, and keeps what it last showed", async ({

@@ -161,11 +161,11 @@ describe("StudySchedule", () => {
 });
 
 describe("MagePaneView", () => {
-  const shown = (turnIndex: number | null) =>
+  const shown = (turnIndex: number | null, note = "") =>
     renderToStaticMarkup(
       <MagePaneView
         pane={magePane({
-          row: rows[0],
+          row: { ...rows[0], note, hasNote: note !== "" },
           turnIndex,
           turns,
           tree,
@@ -196,6 +196,14 @@ describe("MagePaneView", () => {
 
     expect(markup).toContain("Ereb (2431) — now");
     expect(markup).toContain("Can study now —");
+  });
+
+  it("shows the mage's own note above what he knows, and nothing when there is none", () => {
+    const written = shown(0, "heading for gate lore");
+
+    expect(written).toContain("heading for gate lore");
+    expect(written.indexOf("heading for gate lore")).toBeLessThan(written.indexOf(">Knows<"));
+    expect(shown(0)).not.toContain('data-testid="study-schedule-note"');
   });
 
   it("says what it is for before anything has been pointed at", () => {

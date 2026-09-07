@@ -23,6 +23,7 @@ const aRow = (over: Partial<ScheduleRow> & { cells: ScheduleCell[] }): ScheduleR
   name: "Ereb",
   regionId: "r1",
   summary: "",
+  note: "",
   hasNote: false,
   goals: [],
   standings: [standing({})],

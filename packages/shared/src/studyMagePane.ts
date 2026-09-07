@@ -42,6 +42,13 @@ export type MagePane = {
   heading: string;
   /** `Wardens of the North (12) · studying force`. */
   sub: string;
+  /**
+   * What the player wrote about this mage in All mages, verbatim, or the empty string.
+   *
+   * It heads the pane rather than trailing it: a note says where his studies are heading, which is
+   * the thing to have read *before* a month is chosen for him (navigator, 2026-09-07).
+   */
+  note: string;
   knows: MagePaneLine[];
   /** `Can study on turn 26 — 12`, or the whole sentence when there is nothing. */
   canStudyHeading: string;
@@ -87,6 +94,7 @@ export function magePane(input: {
     return {
       heading: `${row.name} (${row.unitId}) — now`,
       sub: factionLabel,
+      note: row.note,
       knows: knownNow(standing, tree),
       canStudyHeading:
         canStudy.length === 0 ? "Nothing he can study now." : `Can study now — ${canStudy.length}`,
@@ -107,6 +115,7 @@ export function magePane(input: {
   return {
     heading: card.heading,
     sub: card.sub,
+    note: row.note,
     knows: card.lines,
     canStudyHeading:
       canStudy.length === 0

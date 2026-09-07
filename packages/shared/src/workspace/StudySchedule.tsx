@@ -613,6 +613,17 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
       <div>
         <p className="m-0 text-ink">{pane.heading}</p>
         <p className="m-0 text-ink-dim">{pane.sub}</p>
+        {/* Above the skills, not below them: a note says where his studies are heading, which is
+            the thing to have read before a month is chosen for him. `whitespace-pre-wrap` because
+            the editor that wrote it takes several lines and keeps them. */}
+        {pane.note === "" ? null : (
+          <p
+            data-testid="study-schedule-note"
+            className="m-0 mt-2 border-l-2 border-edge pl-2 whitespace-pre-wrap text-ink-soft"
+          >
+            {pane.note}
+          </p>
+        )}
       </div>
 
       <p className="m-0 mt-2 text-ink-soft">Knows</p>

@@ -49,6 +49,7 @@ describe("what the planner has to say about a plan", () => {
       unitId: over.key.split("/")[1] ?? "1",
       regionId: "1:7",
       summary: "",
+      note: "",
       hasNote: false,
       goals: [],
       cells: [],
@@ -349,7 +350,8 @@ describe("a teacher who names himself", () => {
         regionId: "1:7",
         name: "Ereb",
         summary: "",
-        hasNote: false,
+        note: "",
+      hasNote: false,
         goals: [],
         cells: [
           {

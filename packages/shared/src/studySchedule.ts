@@ -94,6 +94,11 @@ export type ScheduleRow = {
   regionId: string;
   /** `force 3` - his strongest magic skill, the line under the name. */
   summary: string;
+  /**
+   * The mage's stored note, verbatim, or the empty string. Read by the mage pane, which shows it
+   * above what he knows; `hasNote` is this being non-empty, and is what draws the pencil.
+   */
+  note: string;
   /** True when the mage has a non-empty comment: the pencil. */
   hasNote: boolean;
   /**
@@ -626,6 +631,7 @@ export function scheduleRows(input: {
         name: mage.name,
         regionId: mage.regionId,
         summary: scheduleSummary({ start, tree: input.tree }),
+        note: plan?.comment ?? "",
         hasNote: (plan?.comment ?? "") !== "",
         goals,
         cells,

@@ -119,6 +119,7 @@ function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
     name: "Ereb",
     regionId: "1:7",
     summary: "",
+    note: "",
     hasNote: false,
     goals,
     cells,
