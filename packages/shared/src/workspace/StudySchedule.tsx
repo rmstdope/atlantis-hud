@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { placeUnderAnchor, type Placement } from "../unitTooltip";
 import { STANDING_CHIP } from "./standingChip";
 import { useEscapeToDismiss } from "./dismissLayer";
 import type { MagicTree } from "../magicTree";
@@ -19,6 +21,11 @@ import { keyToAction } from "./studyCellState";
  * a choice changes exactly the cell that was clicked. Every rule about what a cell offers, what it
  * says and what a choice writes lives in `studyCell.ts` and `studySchedule.ts`; nothing here
  * decides anything.
+ *
+ * Both the dropdown and the hover card **hang off the cell they belong to** rather than sitting in
+ * the flow under the table, where they read as a second pane opening rather than as that cell's
+ * own menu: `FloatingAtCell` measures the cell by the `data-cell` address the arrow keys already
+ * use and places the card against it with `placeUnderAnchor`.
  *
  * **Split hook-free**, the way `MagePicker` and `StudyPlannerList` are: `packages/shared` has no
  * jsdom (ah-nass), so `ScheduleGrid`, `ScheduleHoverCard` and `CellPopover` take everything as
@@ -188,7 +195,16 @@ export function StudySchedule({
         notices={notices}
       />
       </div>
-      {card === null ? null : <ScheduleHoverCard card={card} />}
+      {/* The card stands down while a dropdown is open: both hang off the same cell, so showing
+          them together would put one on top of the other. */}
+      {card === null || at === null || menu !== null ? null : (
+        <FloatingAtCell
+          cell={`${rows.findIndex((row) => row.key === at.rowKey)}:${at.turnIndex}`}
+          className="pointer-events-none"
+        >
+          <ScheduleHoverCard card={card} />
+        </FloatingAtCell>
+      )}
       {menu === null || open === null || editing === null ? null : (
         <CellPopoverLayer
           menu={menu}
@@ -245,7 +261,7 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
       root.querySelector<HTMLElement>("[data-row]") ??
       root.querySelector<HTMLElement>("button:not([disabled])") ??
       root;
-    target.focus();
+    target.focus({ preventScroll: true });
   }, [cell, step]);
   // Focus goes back to the cell the dropdown came from, by the `[data-cell="r:c"]` address the
   // arrow-key walk and `focusCell` already use: anything else strands a keyboard player at the
@@ -258,9 +274,87 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
     [cell]
   );
   return (
-    <div ref={box} tabIndex={-1}>
-      <CellPopover {...props} />
-    </div>
+    <FloatingAtCell cell={cell}>
+      <div ref={box} tabIndex={-1}>
+        <CellPopover {...props} />
+      </div>
+    </FloatingAtCell>
+  );
+}
+
+/**
+ * A card that hangs off the grid cell at `cell` - the `row:turn` address the arrow-key walk and
+ * `focusCell` already use - instead of sitting in the flow beneath the table.
+ *
+ * Fixed and portalled to the body, the way `UnitContextMenu` is: the planner is a modal whose body
+ * scrolls and clips, and a menu anchored inside it would be cut off at the pane's edge on the very
+ * rows - the last ones - where it is most likely to open.
+ *
+ * Placed in a layout effect the browser runs before it draws, from the cell measured then rather
+ * than from a rect held in state: the grid scrolls under the card, so the anchor moves without
+ * anything re-rendering. While it is still unmeasured it sits off-screen rather than hidden -
+ * `CellPopoverLayer` focuses a row inside it on mount, and focus does not land on anything inside
+ * a `visibility: hidden` box.
+ */
+function FloatingAtCell({
+  cell,
+  className,
+  children
+}: {
+  cell: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  // The node is held as state rather than a ref so the effect below runs once it exists, as
+  // `UnitContextMenu` does for the same reason.
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const [placed, setPlaced] = useState<Placement | null>(null);
+
+  useLayoutEffect(() => {
+    if (node === null) {
+      return;
+    }
+    const place = () => {
+      const anchor = document.querySelector<HTMLElement>(`[data-cell="${cell}"]`);
+      if (anchor === null) {
+        return;
+      }
+      const box = anchor.getBoundingClientRect();
+      const next = placeUnderAnchor(
+        { left: box.left, top: box.top, width: box.width, height: box.height },
+        { width: node.offsetWidth, height: node.offsetHeight },
+        { width: window.innerWidth, height: window.innerHeight }
+      );
+      // Same place, same object: the size observer below fires on every layout of the card, and a
+      // fresh object each time would re-render the whole dropdown for nothing.
+      setPlaced((was) =>
+        was !== null && was.left === next.left && was.top === next.top ? was : next
+      );
+    };
+    place();
+    // The card changes size as its content does - the teach step is a different list from the
+    // dropdown - and a taller card near the bottom edge has to flip.
+    const sizes = new ResizeObserver(place);
+    sizes.observe(node);
+    window.addEventListener("resize", place);
+    // Capture, because the grid's own scroller does not bubble its scroll events to the window.
+    window.addEventListener("scroll", place, true);
+    return () => {
+      sizes.disconnect();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [node, cell]);
+
+  return createPortal(
+    <div
+      ref={setNode}
+      style={{ left: placed?.left ?? -9999, top: placed?.top ?? -9999 }}
+      className={`fixed z-50 w-max max-w-[24rem] ${className ?? ""}`}
+    >
+      {children}
+    </div>,
+    document.body
   );
 }
 
@@ -490,10 +584,13 @@ function FactionRows({
 /** What a mage knows at the hovered or focused cell's turn, the studied skill highlighted. */
 export function ScheduleHoverCard({ card }: { card: ReturnType<typeof hoverCard> }) {
   return (
-    <div data-testid="study-schedule-hover" className="rounded border border-edge bg-panel p-2">
+    <div
+      data-testid="study-schedule-hover"
+      className="rounded border border-edge bg-panel p-2 shadow-lg"
+    >
       <p className="m-0 text-ink">{card.heading}</p>
       <p className="m-0 text-ink-dim">{card.sub}</p>
-      <ul className="m-0 list-none p-0">
+      <ul className="m-0 max-h-[45vh] list-none overflow-y-auto p-0">
         {card.lines.map((line) => (
           <li
             key={line.name}
@@ -547,7 +644,7 @@ export function CellPopover({
         data-testid="study-schedule-popover"
         role="dialog"
         aria-label={`${mageName} teaches on turn ${turn}`}
-        className="rounded border border-edge bg-panel-raised p-2"
+        className="rounded border border-edge bg-panel-raised p-2 shadow-lg"
         // `Cmd/Ctrl+Enter` only. **Escape is not handled here and must not be**: the layer's
         // `useEscapeToDismiss` is a capture-phase document listener that stops propagation before
         // React dispatches, so a `cancel` branch on this element would be dead code reading like
@@ -566,7 +663,7 @@ export function CellPopover({
         }}
       >
         <p className="m-0 text-ink">{`${mageName} teaches on turn ${turn}`}</p>
-        <ul className="m-0 list-none p-0">
+        <ul className="m-0 max-h-[45vh] list-none overflow-y-auto p-0">
           {menu.teach.map((choice) => (
             <li key={choice.unitId}>
               <button
@@ -617,11 +714,16 @@ export function CellPopover({
       data-testid="study-schedule-popover"
       role="dialog"
       aria-label={menu.heading}
-      className="rounded border border-edge bg-panel-raised p-2"
+      className="rounded border border-edge bg-panel-raised p-2 shadow-lg"
     >
       <p className="m-0 text-ink">{menu.heading}</p>
       <ul
-        className="m-0 list-none p-0"
+        // Every list in this menu scrolls rather than grows, at the same height. A menu whose last
+        // row is below the bottom edge cannot be chosen from and has nowhere left to flip to: the
+        // teach step, the longest of them, stood 794px tall in a 720px window and put `Set` out of
+        // reach. The cap is on the list rather than on the panel so the heading, the warning and
+        // the buttons are on screen whatever the list holds.
+        className="m-0 max-h-[45vh] list-none overflow-y-auto p-0"
         // `↑↓` move between the rows, wrapping at both ends; `↵` activates the focused button
         // natively, so nothing handles it. Scoped to this list, as `ScheduleGrid`'s own walk is.
         onKeyDown={(event) => {

@@ -115,6 +115,37 @@ export function placeTooltip(pointer: Point, size: Size, viewport: Size): Placem
   };
 }
 
+/** A box something hangs off, in viewport coordinates. */
+export type AnchorBox = { left: number; top: number; width: number; height: number };
+
+/**
+ * How close a menu sits to the cell it belongs to. Smaller than `GAP`, which exists to keep a
+ * tooltip out from under the pointer: a menu has no pointer to clear and reads as the cell's own
+ * only while it touches it.
+ */
+const ANCHOR_GAP = 4;
+
+/**
+ * Where to put a menu that hangs off a box rather than off a pointer, in viewport coordinates.
+ *
+ * It sits under the box and lined up with its left edge, and flips to sit *above* it rather than
+ * cross the bottom edge — a menu half off the screen cannot be chosen from. Sideways it slides
+ * instead of flipping: the box is what the menu belongs to, and one thrown to the far side of a
+ * cell near the right edge would point at the wrong column.
+ *
+ * The clamp afterwards is for what neither side can hold, and pins the beginning of the menu to
+ * the top-left the way `placeTooltip` does.
+ */
+export function placeUnderAnchor(anchor: AnchorBox, size: Size, viewport: Size): Placement {
+  const below = anchor.top + anchor.height + ANCHOR_GAP;
+  const top = below + size.height <= viewport.height ? below : anchor.top - ANCHOR_GAP - size.height;
+
+  return {
+    left: Math.max(0, Math.min(anchor.left, viewport.width - size.width)),
+    top: Math.max(0, Math.min(top, viewport.height - size.height))
+  };
+}
+
 /**
  * What the unit calls the food of a given tag, for the sentences that name it. Report food names
  * are already mass nouns - `grain`, `livestock`, `fish` - so nothing is pluralised; the tag itself,

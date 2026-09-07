@@ -6,6 +6,7 @@ import {
   SILVER_NOTES,
   buyAllSentences,
   placeTooltip,
+  placeUnderAnchor,
   productionStatusSentence,
   productionMenSentence,
   summariseUnit,
@@ -122,6 +123,41 @@ describe("placeTooltip", () => {
   it("never places the tooltip above the top of the viewport", () => {
     const tall = { width: 200, height: 900 };
     expect(placeTooltip({ x: 100, y: 750 }, tall, viewport)).toEqual({ left: 112, top: 0 });
+  });
+});
+
+/**
+ * A menu hanging off a cell, rather than a tooltip hanging off a pointer: it lines up with the
+ * cell's left edge and hugs its bottom, which is what makes it read as that cell's dropdown.
+ */
+describe("placeUnderAnchor", () => {
+  const viewport = { width: 1000, height: 800 };
+  const size = { width: 200, height: 100 };
+  const cell = { left: 300, top: 200, width: 80, height: 24 };
+
+  it("hangs just under the cell, lined up with its left edge", () => {
+    expect(placeUnderAnchor(cell, size, viewport)).toEqual({ left: 300, top: 228 });
+  });
+
+  it("flips above the cell rather than run off the bottom edge", () => {
+    expect(placeUnderAnchor({ ...cell, top: 760 }, size, viewport)).toEqual({
+      left: 300,
+      top: 656
+    });
+  });
+
+  it("slides left rather than run off the right edge, staying beside its cell", () => {
+    // Sliding, not flipping: the cell is what the menu belongs to, and a menu thrown to the far
+    // side of it would point at the wrong column.
+    expect(placeUnderAnchor({ ...cell, left: 900 }, size, viewport)).toEqual({
+      left: 800,
+      top: 228
+    });
+  });
+
+  it("stays on screen when neither side has room", () => {
+    const tall = { width: 200, height: 900 };
+    expect(placeUnderAnchor(cell, tall, viewport)).toEqual({ left: 300, top: 0 });
   });
 });
 
