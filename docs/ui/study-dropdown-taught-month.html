@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-r04r — a green, doubled month in the study dropdown</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --brass:#c8a05a; --warn:#d9a441; --good:#4fb783;
+          --sel:#4a9fd8; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 30px 0 6px; border-top: 1px solid var(--edge); padding-top: 16px; }
+  p.lead { color: var(--soft); max-width: 92ch; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  .row { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; margin: 12px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 5px; max-width: 40ch; }
+  .cap b { color: var(--ink); font-weight: 600; }
+  table.grid { border-collapse: collapse; font: 11.5px/1.4 ui-monospace, Menlo, monospace;
+               background: var(--panel); border: 1px solid var(--edge); }
+  table.grid th, table.grid td { border: 1px solid var(--edge); padding: 4px 7px; text-align: left; }
+  table.grid th { color: var(--dim); font-weight: 600; font-size: 10.5px; }
+  td.teach { background: #2a2418; color: var(--brass); }
+  td.study { color: var(--ink); }
+  td.none { color: var(--dim); }
+  td.away { color: var(--dim); font-style: italic; }
+  .pop { width: 350px; background: var(--raised); border: 1px solid var(--edge); border-radius: 5px;
+         padding: 8px; box-shadow: 0 6px 18px #0008; }
+  .pop p.head { margin: 0 0 4px; font-size: 12.5px; }
+  .pop p.foot { margin: 8px 0 0; font-size: 11px; color: var(--dim); }
+  ul.menu { list-style: none; margin: 0; padding: 0; }
+  ul.menu li button { display: block; width: 100%; text-align: left; background: none; border: 0;
+              color: inherit; font: 12px/1.5 system-ui, sans-serif; padding: 1px 4px;
+              border-radius: 3px; }
+  ul.menu li button.hi { background: #223041; }
+  .mark { display: inline-block; width: 12px; color: var(--brass); }
+  .off .mark { color: transparent; }
+  .det { color: var(--dim); }
+  .taught { color: var(--good); }
+  .name-taught { color: var(--good); }
+  code { font-family: ui-monospace, Menlo, monospace; background: var(--panel); padding: 0 4px;
+         border-radius: 3px; }
+  .banner { background: var(--panel); border: 1px solid var(--edge); border-left: 3px solid var(--sel);
+            padding: 10px 14px; border-radius: 4px; max-width: 92ch; margin: 14px 0; color: var(--soft); }
+  .step { font-size: 11px; color: var(--sel); letter-spacing: .05em; text-transform: uppercase;
+          margin: 0 0 4px; }
+  table.cmp { border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table.cmp th, table.cmp td { border: 1px solid var(--edge); padding: 5px 10px; text-align: left;
+                               vertical-align: top; }
+  table.cmp th { color: var(--dim); font-weight: 600; }
+  ul.plain { max-width: 92ch; color: var(--soft); }
+  ul.plain li { margin-bottom: 4px; }
+  .yes { color: var(--good); }
+  .no { color: var(--dim); }
+</style>
+</head>
+<body>
+<h1>ah-r04r &mdash; the study dropdown shows a doubled month</h1>
+<p class="lead">Green means <b>the doubling is already arranged</b>: somebody in the hex has a
+<code>Teaches…</code> month planned for turn 26, outranks Ereb in that skill, and has fewer than ten
+pupils. Pick the skill and the doubling happens with no further click &mdash; a live teach cell picks
+new pupils up on its own.</p>
+<div class="banner"><b>Chosen by the navigator, 2026-09-08.</b>
+<ul style="margin:6px 0 0">
+<li><b>Which teachers count:</b> variant A &mdash; only a mage in the same hex whose turn is already
+a <code>Teaches&hellip;</code> month, who outranks him in that skill, and who has a slot spare.
+Rejected: B, which also counted a senior mage with a free month (green would then have two meanings,
+one a fact and one an offer); C, which counted anyone senior in the hex (green becomes the usual
+case, and silently offers a trade costing another mage his own study month).</li>
+<li><b>A teacher already at ten pupils:</b> D2 &mdash; no slot, no green. Rejected: D1, showing the
+real diluted figure, which would have made green mean &ldquo;better than plain&rdquo; and nudged the
+player into diluting ten other mages' months.</li>
+<li><b>The mage pane:</b> M1 &mdash; its <code>Can study</code> list shows the same green, doubled
+month. Rejected: M2, holding the pane plain.</li>
+<li><b>Shelter:</b> not accounted for here, as it never has been. The grid cell stays the place
+<code>&times;&frac12;</code> is applied, and the warnings strip stays where an unsheltered month is
+explained.</li>
+</ul></div>
+
+<h2 class="sec">The scene</h2>
+<p class="note"><b>Turn 26, Blackthorn (12,8).</b> The player has clicked <b>Ereb (2431)</b>'s turn-26
+cell. Ereb stands at <code>force 3 (240)</code>, <code>pattern 1 (60)</code>,
+<code>spirit 2 (150)</code>. Four other mages are on the grid.</p>
+<table class="grid">
+  <tr><th>Mage</th><th>Where</th><th>Best in&hellip;</th><th>Turn 26</th><th>Could he teach Ereb?</th></tr>
+  <tr><td>Ereb (2431)</td><td>Blackthorn</td><td>force 3</td><td class="none">&mdash; (the open cell)</td><td class="no">&mdash;</td></tr>
+  <tr><td>Wardweaver (2517)</td><td>Blackthorn</td><td>force 5</td><td class="teach">TEACH everyone (2)</td><td>already teaching, 8 slots spare</td></tr>
+  <tr><td>Sable (2688)</td><td>Blackthorn</td><td>pattern 3</td><td class="none">&mdash; nothing planned</td><td>free, but not set to teach</td></tr>
+  <tr><td>Corvid (2701)</td><td>Blackthorn</td><td>spirit 4</td><td class="study">SPIR 4&rarr;4</td><td>only by giving up his own month</td></tr>
+  <tr><td>Kestrel (2733)</td><td class="away">Cape Verde</td><td>force 5</td><td class="none">&mdash;</td><td class="no">wrong hex &mdash; never counts</td></tr>
+</table>
+<p class="note">Each of Ereb's three skills has a different kind of would-be teacher, and only the first
+of them counts. <b>Doubling matters:</b> a plain month takes force from
+240 to 270, which is still level 3; a taught month takes it to 300, which is level 4. The player
+cannot see that today.</p>
+
+<h2 class="sec">The dropdown, before and after</h2>
+<div class="row">
+  <div>
+    <p class="step">today</p>
+    <p class="cap"><b>Every month is a plain month.</b> Nothing says Wardweaver is teaching in this
+    very hex with eight slots free.</p>
+    <div class="pop">
+<p class="head">Ereb — turn 26</p>
+<ul class="menu">
+<li><button class="off"><span class="mark">✓</span>— nothing</button></li>
+<li><button class="off"><span class="mark">✓</span>Teaches… <span class="det">3 he could teach</span></button></li>
+<li><button class="hi off"><span class="mark">✓</span>force <span class="det">3(240) → 3(270)</span></button></li>
+<li><button class="off"><span class="mark">✓</span>pattern <span class="det">1(60) → 2(90)</span></button></li>
+<li><button class="off"><span class="mark">✓</span>spirit <span class="det">2(150) → 3(180)</span></button></li>
+</ul>
+<p class="foot">Today — every row a plain month, no colour</p>
+</div>
+  </div>
+  <div>
+    <p class="step">after</p>
+    <p class="cap"><b>force alone is green.</b> Sable is free but is not teaching; Corvid is busy studying.</p>
+    <div class="pop">
+<p class="head">Ereb — turn 26</p>
+<ul class="menu">
+<li><button class="off"><span class="mark">✓</span>— nothing</button></li>
+<li><button class="off"><span class="mark">✓</span>Teaches… <span class="det">3 he could teach</span></button></li>
+<li><button class="hi off"><span class="mark">✓</span><span class="name-taught">force</span> <span class="taught">3(240) → 4(300) · taught by Wardweaver</span></button></li>
+<li><button class="off"><span class="mark">✓</span>pattern <span class="det">1(60) → 2(90)</span></button></li>
+<li><button class="off"><span class="mark">✓</span>spirit <span class="det">2(150) → 3(180)</span></button></li>
+</ul>
+<p class="foot">↑↓ to move · ↵ to choose · Esc to close</p>
+</div>
+  </div>
+</div>
+
+<h2 class="sec">What this choice costs</h2>
+<ul class="plain">
+<li><span class="yes">Green never lies.</span> Choosing a green row really does buy the
+doubled month, this turn, with nothing else to change.</li>
+<li><span class="no">It hides opportunities.</span> Sable is sitting idle beside Ereb and could
+double his pattern for nothing &mdash; the dropdown will not say so, and the player must notice it
+himself.</li>
+<li><span class="no">Order of work matters.</span> The player must plan the teacher before the
+pupil, or see no green at all.</li>
+</ul>
+
+<h2 class="sec">The other state: nobody in the hex can teach him anything</h2>
+<p class="cap"><b>Every row plain, exactly as today.</b> Green has to be rare to mean anything: a
+dropdown where every row is green says nothing at all. This is Ereb alone in Blackthorn.</p>
+<div class="pop">
+<p class="head">Ereb — turn 26</p>
+<ul class="menu">
+<li><button class="off"><span class="mark">✓</span>— nothing</button></li>
+<li><button class="off"><span class="mark">✓</span>Teaches… <span class="det">3 he could teach</span></button></li>
+<li><button class="hi off"><span class="mark">✓</span>force <span class="det">3(240) → 3(270)</span></button></li>
+<li><button class="off"><span class="mark">✓</span>pattern <span class="det">1(60) → 2(90)</span></button></li>
+<li><button class="off"><span class="mark">✓</span>spirit <span class="det">2(150) → 3(180)</span></button></li>
+</ul>
+<p class="foot">↑↓ to move · ↵ to choose · Esc to close</p>
+</div>
+
+<h2 class="sec">A teacher who is already full &mdash; no slot, no green</h2>
+<p class="note">Same scene, one number changed: <b>Wardweaver is already teaching ten pupils.</b>
+By <code>rules/skills_teaching</code> an eleventh does not simply fail &mdash; everybody's month is
+diluted instead, so Ereb would gain <b>1.9 months</b>, not two: force 240 &rarr; 297, which is still
+level 3. <em>And the ten pupils already there each drop from two months to 1.9.</em></p>
+<div class="row">
+  <div><p class="step">D1 — rejected</p>
+  <p class="cap"><b>The truth, in full.</b> The row is green and shows what the diluted month
+  actually buys, and says why it is not two months. Green now means &ldquo;better than plain&rdquo;
+  rather than &ldquo;doubled&rdquo;.</p>
+  <div class="pop"><p class="head">Ereb — turn 26</p><ul class="menu"><li><button class="off"><span class="mark">✓</span>— nothing</button></li><li><button class="off"><span class="mark">✓</span>Teaches… <span class="det">3 he could teach</span></button></li><li><button class="off"><span class="mark">✓</span><span class="name-taught">force</span> <span class="taught">3(240) → 3(297) · taught by Wardweaver, 11 on 10 slots</span></button></li><li><button class="off"><span class="mark">✓</span>pattern <span class="det">1(60) → 2(90)</span></button></li><li><button class="off"><span class="mark">✓</span>spirit <span class="det">2(150) → 3(180)</span></button></li></ul><p class="foot">D1 — a diluted month is still shown, in green</p></div></div>
+  <div><p class="step">D2 — chosen</p>
+  <p class="cap"><b>&ldquo;A slot available&rdquo; taken literally.</b> A teacher at capacity has no
+  slot, so the row stays plain and says nothing. Green then always means a whole extra month, and
+  the player is never nudged into diluting ten other mages' study.</p>
+  <div class="pop"><p class="head">Ereb — turn 26</p><ul class="menu"><li><button class="off"><span class="mark">✓</span>— nothing</button></li><li><button class="off"><span class="mark">✓</span>Teaches… <span class="det">3 he could teach</span></button></li><li><button class="off"><span class="mark">✓</span>force <span class="det">3(240) → 3(270)</span></button></li><li><button class="off"><span class="mark">✓</span>pattern <span class="det">1(60) → 2(90)</span></button></li><li><button class="off"><span class="mark">✓</span>spirit <span class="det">2(150) → 3(180)</span></button></li></ul><p class="foot">D2 — plain, exactly as today</p></div></div>
+</div>
+
+<h2 class="sec">The mage pane follows the dropdown</h2>
+<p class="note">The pane's <b>Can study</b> list is built from the very same code as the dropdown, so
+it will follow the dropdown unless it is deliberately held back. It appears on hover, for whichever
+mage and column the pointer is on.</p>
+<div class="row">
+  <div><p class="step">M1 — chosen</p>
+  <p class="cap"><b>One vocabulary.</b> The same skill reads the same way in both places, and the
+  player sees the doubling while merely running the pointer along a row &mdash; before opening
+  anything.</p>
+  <div class="pop" style="width:270px"><p class="head">Ereb (2431) — turn 26</p><p class="foot" style="margin:0 0 6px">Wardens of the North (12) · studying force</p><p class="head" style="font-size:11.5px;color:var(--dim)">Can study on turn 26 — 3</p><ul class="menu" style="font-size:12px"><li><span class="name-taught">force</span> <span class="taught">3(240) → 4(300)</span></li><li><span class="">pattern</span> <span class="det">1(60) → 2(90)</span></li><li><span class="">spirit</span> <span class="det">2(150) → 3(180)</span></li></ul></div></div>
+  <div><p class="step">M2 — rejected</p>
+  <p class="cap"><b>The pane describes the mage; the dropdown describes the choice.</b> Green stays
+  a thing you meet only when you are actually picking a month, so it cannot wash over the screen as
+  the pointer moves.</p>
+  <div class="pop" style="width:270px"><p class="head">Ereb (2431) — turn 26</p><p class="foot" style="margin:0 0 6px">Wardens of the North (12) · studying force</p><p class="head" style="font-size:11.5px;color:var(--dim)">Can study on turn 26 — 3</p><ul class="menu" style="font-size:12px"><li><span class="">force</span> <span class="det">3(240) → 3(270)</span></li><li><span class="">pattern</span> <span class="det">1(60) → 2(90)</span></li><li><span class="">spirit</span> <span class="det">2(150) → 3(180)</span></li></ul></div></div>
+</div>
+<p class="note">Whichever is chosen, the pane's <b>Knows</b> list above it is untouched.</p>
+<h2 class="sec">Unchanged</h2>
+<ul class="plain">
+  <li>Shelter is still ignored here. A mage above level 2 studying in the open gets half a month,
+  and the dropdown has never said so; the grid cell is still where <code>&times;&frac12;</code> is
+  accounted for.</li>
+  <li>A mage in another hex never counts, however senior &mdash; Kestrel is force 5 and invisible to
+  this.</li>
+  <li>The <code>&mdash; nothing</code> and <code>Teaches&hellip;</code> rows are untouched.</li>
+  <li>Green is the existing <code>--color-ok</code> token, the one the planner already uses for a
+  good standing, so it is legible on parchment as well as on this dark ground.</li>
+</ul>
+</body>
+</html>
