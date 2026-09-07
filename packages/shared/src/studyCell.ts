@@ -5,8 +5,8 @@
  * `renderToStaticMarkup`, and everything it would have to click to discover lives here instead.
  *
  * The navigator's round-four redesign: a cell is one turn, and the dropdown offers **only** what
- * that mage can actually study on it, plus a `Teaches…` row when there is somebody he could teach,
- * plus `— nothing`. Nothing impossible is offered, so nothing has to explain itself; an earlier
+ * that mage can actually study on it, plus a `Teaches…` row - always, so a teacher can be set up
+ * before his pupils exist (ah-12h7) - plus `— nothing`. Nothing impossible is offered, so nothing has to explain itself; an earlier
  * cell changed afterwards can still make a later one impossible, which is what `ScheduleCell.blocked`
  * and the warnings strip are for.
  */
