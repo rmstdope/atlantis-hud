@@ -17,6 +17,7 @@ import {
   type ScheduleRow,
   type SkillPoints
 } from "./studySchedule";
+import { taughtWorth } from "./studyTeaching";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -174,6 +175,12 @@ describe("planLine", () => {
     expect(planLine([{ kind: "teach", turn: 24, students: ["2517"] }], 24, tree)).toBe(
       "Next turn: teaches 2517"
     );
+  });
+
+  it("names a live teach goal", () => {
+    expect(
+      planLine([{ kind: "teach", turn: 24, students: [], live: true }], 24, tree)
+    ).toBe("Next turn: teaches everyone eligible");
   });
 
   it("says a teach month with no students teaches nobody", () => {
@@ -446,6 +453,122 @@ describe("projectAll across the whole fleet", () => {
     expect(cell?.kind === "study" && cell.worth).toBe(2);
     expect(cell?.kind === "study" && cell.taughtBy).toBe("a");
     expect(out.get("b")?.standings[1].get("FORC")?.points).toBe(90);
+  });
+
+  const teachesEveryone = (): StudyGoal[] =>
+    FLEET_TURNS.map((turn) => ({ kind: "teach", turn, students: [], live: true }));
+
+  it("a live teach goal teaches every eligible mage in row order", () => {
+    const out = fleet([
+      {
+        key: "a",
+        unitId: "1",
+        name: "Ereb",
+        start: at({ FORC: [3, 270] }),
+        goals: teachesEveryone()
+      },
+      { key: "b", unitId: "2", name: "Sable", start: at({ FORC: [1, 30] }), goals: studies("FORC") },
+      { key: "c", unitId: "3", name: "Vess", start: at({ FORC: [1, 30] }), goals: studies("FORC") },
+      { key: "d", unitId: "4", name: "Tarn", start: at({ FORC: [1, 30] }), goals: studies("FORC") },
+      { key: "e", unitId: "5", name: "Idle", start: at({ FORC: [1, 30] }), goals: [] }
+    ]);
+
+    const cell = out.get("a")?.cells[0];
+    expect(cell?.kind === "teach" && cell.outcome.taught).toEqual(["b", "c", "d"]);
+    expect(cell?.kind === "teach" && cell.outcome.refused).toEqual([]);
+    expect(cell?.kind === "teach" && cell.outcome.worth).toBe(2);
+    for (const key of ["b", "c", "d"]) {
+      const taught = out.get(key)?.cells[0];
+      expect(taught?.kind === "study" && taught.worth).toBe(2);
+      expect(taught?.kind === "study" && taught.taughtBy).toBe("a");
+    }
+  });
+
+  it("a live teach goal stops at ten", () => {
+    const pupils = Array.from({ length: 12 }, (_, n) => ({
+      key: `p${n}`,
+      unitId: `${n + 2}`,
+      name: `Pupil ${n}`,
+      start: at({ FORC: [1, 30] as [number, number] }),
+      goals: studies("FORC")
+    }));
+    const out = fleet([
+      {
+        key: "a",
+        unitId: "1",
+        name: "Ereb",
+        start: at({ FORC: [3, 270] }),
+        goals: teachesEveryone()
+      },
+      ...pupils
+    ]);
+
+    const cell = out.get("a")?.cells[0];
+    expect(cell?.kind === "teach" && cell.outcome.taught).toEqual(
+      Array.from({ length: 10 }, (_, n) => `p${n}`)
+    );
+    expect(cell?.kind === "teach" && cell.outcome.worth).toBe(2);
+    for (const key of ["p10", "p11"]) {
+      const left = out.get(key)?.cells[0];
+      expect(left?.kind === "study" && left.worth).toBe(1);
+      expect(left?.kind === "study" && left.taughtBy).toBeNull();
+    }
+  });
+
+  it("a named teach goal still dilutes past ten", () => {
+    const pupils = Array.from({ length: 12 }, (_, n) => ({
+      key: `p${n}`,
+      unitId: `${n + 2}`,
+      name: `Pupil ${n}`,
+      start: at({ FORC: [1, 30] as [number, number] }),
+      goals: studies("FORC")
+    }));
+    const out = fleet([
+      {
+        key: "a",
+        unitId: "1",
+        name: "Ereb",
+        start: at({ FORC: [3, 270] }),
+        goals: teaches(pupils.map((pupil) => pupil.unitId))
+      },
+      ...pupils
+    ]);
+
+    const cell = out.get("a")?.cells[0];
+    expect(cell?.kind === "teach" && cell.outcome.taught.length).toBe(12);
+    expect(cell?.kind === "teach" && cell.outcome.worth).toBe(taughtWorth(12));
+  });
+
+  it("a live teach cell reads TEACH everyone", () => {
+    const out = fleet([
+      {
+        key: "a",
+        unitId: "1",
+        name: "Ereb",
+        start: at({ FORC: [3, 270] }),
+        goals: teachesEveryone()
+      },
+      { key: "b", unitId: "2", name: "Sable", start: at({ FORC: [1, 30] }), goals: studies("FORC") },
+      { key: "c", unitId: "3", name: "Vess", start: at({ FORC: [1, 30] }), goals: studies("FORC") },
+      { key: "d", unitId: "4", name: "Tarn", start: at({ FORC: [1, 30] }), goals: studies("FORC") }
+    ]);
+
+    expect(out.get("a")?.cells[0]).toMatchObject({ label: "TEACH everyone (3)" });
+  });
+
+  it("a live teach cell teaching nobody reads TEACH nobody", () => {
+    const out = fleet([
+      {
+        key: "a",
+        unitId: "1",
+        name: "Ereb",
+        start: at({ FORC: [3, 270] }),
+        goals: teachesEveryone()
+      },
+      { key: "b", unitId: "2", name: "Sable", start: at({ FORC: [1, 30] }), goals: [] }
+    ]);
+
+    expect(out.get("a")?.cells[0]).toMatchObject({ label: "TEACH nobody" });
   });
 
   it("names the students it actually teaches", () => {

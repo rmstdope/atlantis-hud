@@ -10,16 +10,17 @@ describe("reduce", () => {
   });
 
   it("teach-opened carries the ticks the cell already had", () => {
-    expect(reduce(choosing, { kind: "teach-opened", students: ["2517"] })).toEqual({
+    expect(reduce(choosing, { kind: "teach-opened", students: ["2517"], live: false })).toEqual({
       kind: "teaching",
       rowKey: "21/2431",
       turnIndex: 2,
-      students: ["2517"]
+      students: ["2517"],
+      live: false
     });
   });
 
   it("teach-toggled ticks and unticks in order", () => {
-    const teaching = reduce(choosing, { kind: "teach-opened", students: [] });
+    const teaching = reduce(choosing, { kind: "teach-opened", students: [], live: false });
     const one = reduce(teaching, { kind: "teach-toggled", unitId: "2517" });
     const two = reduce(one, { kind: "teach-toggled", unitId: "2688" });
 
@@ -30,7 +31,7 @@ describe("reduce", () => {
   });
 
   it("cancelled from teaching returns to choosing on the same cell", () => {
-    const teaching = reduce(choosing, { kind: "teach-opened", students: ["2517"] });
+    const teaching = reduce(choosing, { kind: "teach-opened", students: ["2517"], live: false });
 
     expect(reduce(teaching, { kind: "cancelled" })).toEqual(choosing);
   });
@@ -44,7 +45,7 @@ describe("reduce", () => {
   });
 
   it("ignores every event but cell-opened while idle", () => {
-    expect(reduce(idle, { kind: "teach-opened", students: ["2517"] })).toEqual(idle);
+    expect(reduce(idle, { kind: "teach-opened", students: ["2517"], live: false })).toEqual(idle);
     expect(reduce(idle, { kind: "teach-toggled", unitId: "2517" })).toEqual(idle);
     expect(reduce(idle, { kind: "cancelled" })).toEqual(idle);
     expect(reduce(idle, { kind: "closed" })).toEqual(idle);
@@ -58,5 +59,30 @@ describe("keyToAction", () => {
     expect(keyToAction({ key: "Escape", metaKey: false, ctrlKey: false })).toBe("cancel");
     expect(keyToAction({ key: "Enter", metaKey: false, ctrlKey: false })).toBeNull();
     expect(keyToAction({ key: "a", metaKey: false, ctrlKey: false })).toBeNull();
+  });
+});
+
+describe("a live teach step", () => {
+  const choosing = { kind: "choosing" as const, rowKey: "r", turnIndex: 1 };
+
+  it("freezes on the first untick", () => {
+    const teaching = reduce(choosing, {
+      kind: "teach-opened",
+      students: ["a", "b", "c"],
+      live: true
+    });
+    expect(teaching).toEqual({ ...choosing, kind: "teaching", students: ["a", "b", "c"], live: true });
+
+    const frozen = reduce(teaching, { kind: "teach-toggled", unitId: "b" });
+
+    expect(frozen).toEqual({ ...choosing, kind: "teaching", students: ["a", "c"], live: false });
+  });
+
+  it("a frozen teach step stays frozen", () => {
+    const teaching = reduce(choosing, { kind: "teach-opened", students: ["a"], live: false });
+
+    const after = reduce(teaching, { kind: "teach-toggled", unitId: "b" });
+
+    expect(after).toEqual({ ...choosing, kind: "teaching", students: ["a", "b"], live: false });
   });
 });

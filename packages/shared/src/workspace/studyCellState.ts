@@ -15,19 +15,22 @@
  */
 export type CellPick =
   | { kind: "study"; skill: string }
-  | { kind: "teach"; students: string[] };
+  | { kind: "teach"; students: string[]; live: boolean };
 
 export type CellMode =
   | { kind: "idle" }
   /** The dropdown is open on this cell. */
   | { kind: "choosing"; rowKey: string; turnIndex: number }
   /** `Teaches…` was chosen, and the student list is open on the same cell. */
-  | { kind: "teaching"; rowKey: string; turnIndex: number; students: string[] };
+  | { kind: "teaching"; rowKey: string; turnIndex: number; students: string[]; live: boolean };
 
 export type CellEvent =
   | { kind: "cell-opened"; rowKey: string; turnIndex: number }
-  /** `students` seeds the ticks from whatever the cell already holds. */
-  | { kind: "teach-opened"; students: readonly string[] }
+  /**
+   * `students` seeds the ticks; `live` says whether they are a standing instruction - "teach
+   * whoever is eligible this turn" - or the fixed list the cell already holds.
+   */
+  | { kind: "teach-opened"; students: readonly string[]; live: boolean }
   | { kind: "teach-toggled"; unitId: string }
   /** Escape or Cancel: `teaching` goes back to `choosing`, `choosing` goes idle. */
   | { kind: "cancelled" }
@@ -41,7 +44,7 @@ export function reduce(mode: CellMode, event: CellEvent): CellMode {
       return { kind: "choosing", rowKey: event.rowKey, turnIndex: event.turnIndex };
     case "teach-opened":
       return mode.kind === "choosing"
-        ? { ...mode, kind: "teaching", students: [...event.students] }
+        ? { ...mode, kind: "teaching", students: [...event.students], live: event.live }
         : mode;
     case "teach-toggled": {
       if (mode.kind !== "teaching") {
@@ -50,6 +53,9 @@ export function reduce(mode: CellMode, event: CellEvent): CellMode {
       // Tick order is kept: it is the order the export will write the unit ids in.
       return {
         ...mode,
+        // The first tick or untick freezes a live cell into the list it is showing: from here on
+        // the ticks are the whole answer and nothing is recomputed (ah-af7i).
+        live: false,
         students: mode.students.includes(event.unitId)
           ? mode.students.filter((unitId) => unitId !== event.unitId)
           : [...mode.students, event.unitId]
