@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
-import { cellMenu } from "../studyCell";
+import { cellMenu, seededStudents } from "../studyCell";
 import { scheduleRows, scheduleTurns, type ScheduleRow } from "../studySchedule";
 import { magePane } from "../studyMagePane";
 import type { PlannerGroup } from "../studyPlanner";
@@ -323,7 +323,7 @@ describe("CellPopover", () => {
       renderToStaticMarkup(
         <CellPopover
           menu={menu}
-          mode={{ kind: "teaching", rowKey: "12/2431", turnIndex: 2, students }}
+          mode={{ kind: "teaching", rowKey: "12/2431", turnIndex: 2, students, live: false }}
           mageName="Ereb"
           turn={26}
           current={null}
@@ -341,11 +341,51 @@ describe("CellPopover", () => {
     expect(row(teaching([]))).not.toContain("✓");
   });
 
+  it("the teach step arrives with its pupils ticked", () => {
+    const seeded = seededStudents(menu.teach);
+    expect(seeded).toEqual(["2432"]);
+
+    const markup = renderToStaticMarkup(
+      <CellPopover
+        menu={menu}
+        mode={{ kind: "teaching", rowKey: "12/2431", turnIndex: 2, students: seeded, live: true }}
+        mageName="Ereb"
+        turn={26}
+        current={null}
+        rowIndex={0}
+        onEvent={() => {}}
+        onChoose={() => {}}
+      />
+    );
+
+    const row = markup.slice(markup.indexOf('data-testid="study-schedule-teach-2432"'));
+    expect(row.slice(0, 400)).toContain('aria-checked="true"');
+    expect(markup).toContain("Ereb teaches on turn 26 — everyone eligible");
+  });
+
+  it("a frozen teach step drops the clause", () => {
+    const markup = renderToStaticMarkup(
+      <CellPopover
+        menu={menu}
+        mode={{ kind: "teaching", rowKey: "12/2431", turnIndex: 2, students: ["2432"], live: false }}
+        mageName="Ereb"
+        turn={26}
+        current={null}
+        rowIndex={0}
+        onEvent={() => {}}
+        onChoose={() => {}}
+      />
+    );
+
+    expect(markup).toContain("Ereb teaches on turn 26");
+    expect(markup).not.toContain("everyone eligible");
+  });
+
   it("shows the students, Cancel and Set in the teach step", () => {
     const markup = renderToStaticMarkup(
       <CellPopover
         menu={menu}
-        mode={{ kind: "teaching", rowKey: "12/2431", turnIndex: 2, students: [] }}
+        mode={{ kind: "teaching", rowKey: "12/2431", turnIndex: 2, students: [], live: false }}
         mageName="Ereb"
         turn={26}
         current={null}

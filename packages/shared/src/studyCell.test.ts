@@ -3,7 +3,8 @@ import { readRuleset } from "@atlantis/fixtures";
 import type { StudyGoal } from "@atlantis/core-client";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
-import { cellMenu, goalsAfterChoice, teachWarning } from "./studyCell";
+import { cellMenu, goalsAfterChoice, seededStudents, teachWarning } from "./studyCell";
+import type { TeachChoice } from "./studyCell";
 import { blockedBecause, projectAll, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import { standingsFrom } from "./magicStanding";
 
@@ -155,8 +156,17 @@ describe("goalsAfterChoice", () => {
 
   it("writes a teach entry on that turn", () => {
     expect(
-      goalsAfterChoice([forc(24)], 26, { kind: "teach", students: ["2517", "2688"] })
-    ).toEqual([forc(24), { kind: "teach", turn: 26, students: ["2517", "2688"] }]);
+      goalsAfterChoice([forc(24)], 26, { kind: "teach", students: ["2517", "2688"], live: false })
+    ).toEqual([
+      forc(24),
+      { kind: "teach", turn: 26, students: ["2517", "2688"], live: false }
+    ]);
+  });
+
+  it("stores no list for a live pick", () => {
+    expect(
+      goalsAfterChoice([], 26, { kind: "teach", students: ["a", "b"], live: true })
+    ).toEqual([{ kind: "teach", turn: 26, students: [], live: true }]);
   });
 
   it("stays ascending by turn however the goals arrived", () => {
@@ -239,5 +249,46 @@ describe("the teach row of the dropdown", () => {
       "Ereb can teach nobody on turn 24. The plan will say so anyway."
     );
     expect(teachWarning(listed.teach, 24, "Ereb")).toBeNull();
+  });
+});
+
+describe("seededStudents", () => {
+  function choice(unitId: string, blocked: string | null): TeachChoice {
+    return { unitId, label: `M (${unitId})`, detail: "force 1 → force 2", blocked };
+  }
+
+  it("takes every teachable pupil in row order", () => {
+    const teach = [
+      choice("a", null),
+      choice("b", "elsewhere"),
+      choice("c", null),
+      choice("d", "already taught"),
+      choice("e", null)
+    ];
+
+    expect(seededStudents(teach)).toEqual(["a", "c", "e"]);
+  });
+
+  it("stops at ten", () => {
+    const teach: TeachChoice[] = [];
+    for (let n = 0; n < 12; n += 1) {
+      teach.push(choice(`u${n}`, null));
+      if (n % 4 === 0) {
+        teach.push(choice(`x${n}`, "elsewhere"));
+      }
+    }
+
+    expect(seededStudents(teach)).toEqual([
+      "u0",
+      "u1",
+      "u2",
+      "u3",
+      "u4",
+      "u5",
+      "u6",
+      "u7",
+      "u8",
+      "u9"
+    ]);
   });
 });

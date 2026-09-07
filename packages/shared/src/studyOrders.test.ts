@@ -64,6 +64,7 @@ const aTeachCell = ({
 }): ScheduleCell => ({
   kind: "teach",
   students: taught.map((key) => key.slice(key.indexOf("/") + 1)),
+  live: false,
   label: "TEACH",
   ...over,
   outcome: { taught, refused: [], worth: 2 }
@@ -193,6 +194,13 @@ describe("studyOrders", () => {
     ];
     const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
     expect(section.text.split("\n")[2]).toBe("  ; TEACH 4021 — nobody can be taught this turn");
+  });
+
+  // ah-af7i: a live cell stores no student list, so there are no ids to name in the comment.
+  it("a_live_teach_month_that_teaches_nobody_names_no_ids", () => {
+    const rows = [aRow({ cells: [aTeachCell({ taught: [], students: [], live: true })] })];
+    const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
+    expect(section.text.split("\n")[2]).toBe("  ; TEACH — nobody can be taught this turn");
   });
 
   it("a_mage_with_nothing_planned_is_named_in_a_comment_and_gets_no_unit_block", () => {

@@ -157,7 +157,10 @@ function contributionOf(
     orderLine = annotated(`  ${entry.order}`, entry.annotation ?? "");
   } else {
     entry = { ...base, order: null, annotation: null, skipReason: "nobody can be taught this turn" };
-    orderLine = `  ; TEACH ${cell.students.join(" ")} — ${entry.skipReason ?? ""}`;
+    // `cell.students` is empty for a live cell (ah-af7i), which nobody named - so the comment
+    // names the ids only when the player wrote them down.
+    const named = cell.live ? "" : cell.students.join(" ");
+    orderLine = `  ; TEACH${named === "" ? "" : ` ${named}`} — ${entry.skipReason ?? ""}`;
   }
 
   const lines = [annotated(`UNIT ${row.unitId}`, row.name), orderLine];

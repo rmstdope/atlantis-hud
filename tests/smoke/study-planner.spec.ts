@@ -20,6 +20,12 @@ const MAGE = "881";
  */
 const STUDENT = "12878";
 
+/**
+ * "Three of Seven", a third mage of the same faction in the same hex, and teachable on the same
+ * terms as `STUDENT`. Made eligible after the teach cell is set, to show a live cell recomputing.
+ */
+const SECOND_STUDENT = "12879";
+
 test("F4 opens the planner, arrows walk it, and Escape closes it", async ({ page }) => {
   await loadReport(page);
 
@@ -396,8 +402,12 @@ test("a teach month is planned in the popover, warned about in the strip, and su
   await page.keyboard.press("Escape");
   await expect(popover).toContainText("Six of Seven — turn 72");
 
+  // The pupil arrives ticked (ah-af7i), so Set alone is the whole of planning this month.
   await page.getByTestId("study-schedule-choice-teach").click();
-  await page.getByTestId(`study-schedule-teach-${STUDENT}`).click();
+  await expect(page.getByTestId(`study-schedule-teach-${STUDENT}`)).toHaveAttribute(
+    "aria-checked",
+    "true"
+  );
   await page.getByTestId("study-schedule-set").click();
   await expect(popover).toHaveCount(0);
   await expect(cell).toContainText("TEACH");
@@ -443,4 +453,58 @@ test("the strip counts a warning, opens on a click, and focuses the cell it name
   await expect(page.getByTestId("study-planner-warnings")).toBeVisible();
   await page.getByTestId("study-planner-warning-0").click();
   await expect(page.locator("[data-cell]:focus")).toHaveCount(1);
+});
+
+/**
+ * A teach cell arrives with its pupils chosen and follows the plan until the player edits it
+ * (ah-af7i).
+ *
+ * The recomputation is the half of this that no unit test can show: it happens because an edit to
+ * *another* mage's row changed who is eligible, and only a real grid re-renders on that.
+ */
+test("teaching arrives with its pupils chosen and follows the plan", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  const firstCell = page.getByTestId(`study-schedule-cell-${STUDENT}-72`);
+  await firstCell.click();
+  await page.getByTestId("study-schedule-choice-GATE").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  await cell.click();
+  const popover = page.getByTestId("study-schedule-popover");
+  await page.getByTestId("study-schedule-choice-teach").click();
+
+  // Ticked without a click, and the heading says why.
+  await expect(page.getByTestId(`study-schedule-teach-${STUDENT}`)).toHaveAttribute(
+    "aria-checked",
+    "true"
+  );
+  await expect(popover).toContainText("Six of Seven teaches on turn 72 — everyone eligible");
+
+  await page.getByTestId("study-schedule-set").click();
+  await expect(popover).toHaveCount(0);
+  await expect(cell).toContainText("TEACH everyone (1)");
+
+  // A second pupil made eligible elsewhere in the grid is picked up with no further interaction
+  // with the teacher's cell at all.
+  const secondCell = page.getByTestId(`study-schedule-cell-${SECOND_STUDENT}-72`);
+  await secondCell.click();
+  await page.getByTestId("study-schedule-choice-GATE").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await expect(cell).toContainText("TEACH everyone (2)");
+  await expect(secondCell).toContainText("×2");
+
+  // The first untick freezes it: the clause goes, and so does the live behaviour.
+  await cell.click();
+  await page.getByTestId("study-schedule-choice-teach").click();
+  await page.getByTestId(`study-schedule-teach-${SECOND_STUDENT}`).click();
+  await expect(popover).not.toContainText("everyone eligible");
+  await page.getByTestId("study-schedule-set").click();
+  await expect(popover).toHaveCount(0);
+  await expect(cell).toContainText("TEACH");
+  await expect(cell).not.toContainText("everyone");
 });

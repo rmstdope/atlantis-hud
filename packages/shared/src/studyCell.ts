@@ -16,6 +16,7 @@ import type { MagicTree } from "./magicTree";
 import { standingsFrom } from "./magicStanding";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
+import { TEACHING_SLOTS } from "./studyTeaching";
 import type { CellPick } from "./workspace/studyCellState";
 
 /** One skill the dropdown offers, and what a month of it buys. */
@@ -138,7 +139,14 @@ export function goalsAfterChoice(
   if (choice !== null) {
     kept.push(
       choice.kind === "teach"
-        ? { kind: "teach", turn, students: [...choice.students] }
+        ? {
+            kind: "teach",
+            turn,
+            // A live cell stores no list: the list is not a fact about the plan, it is recomputed
+            // from it on every projection (ah-af7i).
+            students: choice.live ? [] : [...choice.students],
+            live: choice.live
+          }
         : { kind: "study", turn, skill: choice.skill }
     );
   }
@@ -213,6 +221,20 @@ function teachChoices(input: {
     });
   }
   return choices;
+}
+
+/**
+ * The pupils a teach cell arrives with: every teachable row in the list's own order, stopping at
+ * `TEACHING_SLOTS`.
+ *
+ * Row order and not merit: the eleventh eligible pupil is simply the one furthest down the grid,
+ * which is a rule a player can predict by looking (navigator, option A).
+ */
+export function seededStudents(teach: readonly TeachChoice[]): string[] {
+  return teach
+    .filter((choice) => choice.blocked === null)
+    .slice(0, TEACHING_SLOTS)
+    .map((choice) => choice.unitId);
 }
 
 /** The warning under a teach goal every one of whose students is refused, or null. */

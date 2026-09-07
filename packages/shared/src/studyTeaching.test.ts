@@ -63,6 +63,7 @@ describe("what the planner has to say about a plan", () => {
   const teachCell = (refused: TeachRefusal[], taught: string[] = []): ScheduleCell => ({
     kind: "teach",
     students: [],
+    live: false,
     outcome: { taught, refused, worth: taughtWorth(taught.length) },
     label: "TEACH nobody"
   });
@@ -357,6 +358,7 @@ describe("a teacher who names himself", () => {
           {
             kind: "teach",
             students: ["881"],
+            live: false,
             outcome: { taught: [], refused: [{ kind: "self", unitId: "881" }], worth: 1 },
             label: "TEACH nobody"
           }

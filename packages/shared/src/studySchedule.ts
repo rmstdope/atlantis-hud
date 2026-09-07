@@ -18,7 +18,13 @@
 
 import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import { shelterKey, type ShelterSeats } from "./studyShelter";
-import { monthWords, taughtWorth, type TeachOutcome, type TeachRefusal } from "./studyTeaching";
+import {
+  TEACHING_SLOTS,
+  monthWords,
+  taughtWorth,
+  type TeachOutcome,
+  type TeachRefusal
+} from "./studyTeaching";
 import { standingsFrom, type SkillStanding } from "./magicStanding";
 import type { MagicTree } from "./magicTree";
 import { plannedGoals } from "./studyPlans";
@@ -73,8 +79,16 @@ export type ScheduleCell =
     }
   | {
       kind: "teach";
-      /** The stored student list, unchanged - what the popover reopens with. */
+      /**
+       * The stored student list, unchanged - what the popover reopens with. **Empty when `live`
+       * is true**, in which case the popover recomputes the seed instead (ah-af7i).
+       */
       students: readonly string[];
+      /**
+       * True while the cell means "teach whoever is eligible this turn": the pupils below were
+       * chosen by this projection rather than named by the player.
+       */
+      live: boolean;
       /** Who was actually taught, and who was refused and why. */
       outcome: TeachOutcome;
       /** `TEACH Sable`, `TEACH Sable, Vess`, `TEACH 3 mages`, `TEACH nobody`. */
@@ -184,8 +198,14 @@ export type ProjectedMage = {
   goals: readonly StudyGoal[];
 };
 
-/** `TEACH Sable`, `TEACH Sable, Vess`, `TEACH 3 mages`, `TEACH nobody`. */
-function teachLabel(taughtNames: readonly string[]): string {
+/**
+ * `TEACH Sable`, `TEACH Sable, Vess`, `TEACH 3 mages`, `TEACH nobody` - and
+ * `TEACH everyone (3)` while the cell is live (ah-af7i, the navigator's wording).
+ */
+function teachLabel(taughtNames: readonly string[], live: boolean): string {
+  if (live && taughtNames.length > 0) {
+    return `TEACH everyone (${taughtNames.length})`;
+  }
   if (taughtNames.length === 0) {
     // The month is still spent - that is the navigator's E1 - so the grid must show it being spent.
     return "TEACH nobody";
@@ -260,6 +280,9 @@ export function worthMark(worth: number, modified = false): string {
   return `×${Math.round(worth * 10) / 10}`;
 }
 
+/** One candidate student, judged against one teacher. */
+type Judged = { ok: true; key: string } | { ok: false; refusal: TeachRefusal };
+
 /** What one mage intends this turn, before anyone else's month is taken into account. */
 type Intent =
   | { kind: "none" }
@@ -271,7 +294,7 @@ type Intent =
       maxLevel: number;
       blocked: string | null;
     }
-  | { kind: "teach"; students: readonly string[] };
+  | { kind: "teach"; students: readonly string[]; live: boolean };
 
 /**
  * Every mage's turns, projected together.
@@ -317,7 +340,7 @@ export function projectAll(input: {
         continue;
       }
       if (goal.kind === "teach") {
-        intents.set(mage.key, { kind: "teach", students: goal.students });
+        intents.set(mage.key, { kind: "teach", students: goal.students, live: goal.live === true });
         continue;
       }
       const node = input.tree.byTag.get(goal.skill);
@@ -342,6 +365,59 @@ export function projectAll(input: {
     // 3. Teaching, resolved in mage order so a student named twice goes to the first teacher.
     const outcomes = new Map<string, TeachOutcome>();
     const taughtBy = new Map<string, string>();
+
+    /**
+     * The five tests of `rules/skills_teaching`, in the order the refusals are worded, applied to
+     * one candidate student against one teacher.
+     *
+     * Defined inside the turn loop because `standing`, `intents` and `taughtBy` are all rebuilt per
+     * turn, and `taughtBy` is read as the teachers resolve rather than snapshotted.
+     */
+    function judge(teacher: ProjectedMage, student: ProjectedMage, unitId: string): Judged {
+      if (student.key === teacher.key) {
+        // Distinct from `unknown`: he is on screen, so "no such mage" would be a false sentence.
+        return { ok: false, refusal: { kind: "self", unitId } };
+      }
+      if (student.regionId !== teacher.regionId) {
+        return { ok: false, refusal: { kind: "elsewhere", unitId, regionId: student.regionId } };
+      }
+      const studentIntent = intents.get(student.key);
+      if (studentIntent?.kind !== "study" || studentIntent.blocked !== null) {
+        return { ok: false, refusal: { kind: "not-studying", unitId } };
+      }
+      const already = taughtBy.get(student.key);
+      if (already !== undefined) {
+        // `rules/skills_teaching` describes one doubling and says nothing about a second
+        // teacher, so the planner takes the conservative reading and does not stack them.
+        return {
+          ok: false,
+          refusal: {
+            kind: "taken",
+            unitId,
+            byName: input.mages.find((mage) => mage.key === already)?.name ?? already
+          }
+        };
+      }
+      // `rules/skills_teaching`: "must have a skill level greater than the unit doing the
+      // studying" - strictly greater, taken from this turn's standing.
+      const teacherLevel = standing.get(teacher.key)?.get(studentIntent.skill)?.level ?? 0;
+      const studentLevel = studentIntent.before.level;
+      if (teacherLevel <= studentLevel) {
+        return {
+          ok: false,
+          refusal: {
+            kind: "outranked",
+            unitId,
+            skill: studentIntent.skill,
+            skillName: studentIntent.name,
+            teacherLevel,
+            studentLevel
+          }
+        };
+      }
+      return { ok: true, key: student.key };
+    }
+
     for (const teacher of input.mages) {
       const intent = intents.get(teacher.key);
       if (intent?.kind !== "teach") {
@@ -349,54 +425,42 @@ export function projectAll(input: {
       }
       const taught: string[] = [];
       const refused: TeachRefusal[] = [];
-      for (const unitId of intent.students) {
-        const student = byUnitId.get(unitId);
-        if (student === undefined) {
-          refused.push({ kind: "unknown", unitId });
-          continue;
+      if (intent.live) {
+        // Nobody named these mages, so a refusal is skipped silently: there is nothing to warn
+        // about, and the ten slots of `rules/skills_teaching` cap what the planner chooses itself
+        // (ah-af7i, navigator's option A).
+        //
+        // The cap breaks after ten *successes*, not ten candidates, so a live teacher walks the
+        // whole fleet in the worst case: O(mages) per live teacher per turn. With the tens of
+        // mages a report describes that is nothing, and the named path is unchanged.
+        for (const student of input.mages) {
+          if (taught.length === TEACHING_SLOTS) {
+            break;
+          }
+          if (student.key === teacher.key) {
+            continue;
+          }
+          const verdict = judge(teacher, student, student.unitId);
+          if (verdict.ok) {
+            taught.push(verdict.key);
+            taughtBy.set(verdict.key, teacher.key);
+          }
         }
-        if (student.key === teacher.key) {
-          // Distinct from `unknown`: he is on screen, so "no such mage" would be a false sentence.
-          refused.push({ kind: "self", unitId });
-          continue;
+      } else {
+        for (const unitId of intent.students) {
+          const student = byUnitId.get(unitId);
+          if (student === undefined) {
+            refused.push({ kind: "unknown", unitId });
+            continue;
+          }
+          const verdict = judge(teacher, student, unitId);
+          if (verdict.ok) {
+            taught.push(verdict.key);
+            taughtBy.set(verdict.key, teacher.key);
+            continue;
+          }
+          refused.push(verdict.refusal);
         }
-        if (student.regionId !== teacher.regionId) {
-          refused.push({ kind: "elsewhere", unitId, regionId: student.regionId });
-          continue;
-        }
-        const studentIntent = intents.get(student.key);
-        if (studentIntent?.kind !== "study" || studentIntent.blocked !== null) {
-          refused.push({ kind: "not-studying", unitId });
-          continue;
-        }
-        const already = taughtBy.get(student.key);
-        if (already !== undefined) {
-          // `rules/skills_teaching` describes one doubling and says nothing about a second
-          // teacher, so the planner takes the conservative reading and does not stack them.
-          refused.push({
-            kind: "taken",
-            unitId,
-            byName: input.mages.find((mage) => mage.key === already)?.name ?? already
-          });
-          continue;
-        }
-        // `rules/skills_teaching`: "must have a skill level greater than the unit doing the
-        // studying" - strictly greater, taken from this turn's standing.
-        const teacherLevel = standing.get(teacher.key)?.get(studentIntent.skill)?.level ?? 0;
-        const studentLevel = studentIntent.before.level;
-        if (teacherLevel <= studentLevel) {
-          refused.push({
-            kind: "outranked",
-            unitId,
-            skill: studentIntent.skill,
-            skillName: studentIntent.name,
-            teacherLevel,
-            studentLevel
-          });
-          continue;
-        }
-        taught.push(student.key);
-        taughtBy.set(student.key, teacher.key);
       }
       outcomes.set(teacher.key, { taught, refused, worth: taughtWorth(taught.length) });
     }
@@ -453,11 +517,11 @@ export function projectAll(input: {
         row.cells.push({
           kind: "teach",
           students: intent.students,
+          live: intent.live,
           outcome,
           label: teachLabel(
-            outcome.taught.map(
-              (key) => input.mages.find((one) => one.key === key)?.name ?? key
-            )
+            outcome.taught.map((key) => input.mages.find((one) => one.key === key)?.name ?? key),
+            intent.live
           )
         });
         continue;
@@ -538,6 +602,11 @@ export function planLine(
     return `Nothing planned for turn ${turn}.`;
   }
   if (goal.kind === "teach") {
+    if (goal.live === true) {
+      // Countless on purpose: `planLine` has the goals and a name map but no projection, so it
+      // cannot say how many without being given one (ah-af7i).
+      return "Next turn: teaches everyone eligible";
+    }
     if (goal.students.length === 0) {
       return "Next turn: teaches nobody";
     }
