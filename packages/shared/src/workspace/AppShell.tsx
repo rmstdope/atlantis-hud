@@ -231,7 +231,7 @@ import type { Viewport } from "./mapViewport";
 import { parseGameData } from "../gameData";
 import { shelterNames, shelterSeats } from "../studyShelter";
 import { buildMagicTree } from "../magicTree";
-import { magesOf, openingMage } from "../magicStanding";
+import { isApprentice, magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
@@ -610,6 +610,12 @@ export function AppShell({
           ),
     [parsed, magicTree, gameData]
   );
+
+  /**
+   * Your own apprentices, which the study planner drops. Your own only: an ally's mage sheet is
+   * whatever units he chose to export, not a census of his faction.
+   */
+  const apprentices = useMemo(() => mages.filter(isApprentice).length, [mages]);
   /**
    * Which mage the tree is tinted for, remembered for the app session.
    *
@@ -4499,8 +4505,8 @@ export function AppShell({
           groups={plannerGroupRows}
           seats={shelter}
           structureNames={shelterNamesByKey}
-          summaryLine={plannerSummaryLine(plannerGroupRows)}
-          emptyCopy={plannerEmptyCopy({ reportLoaded: parsed !== null })}
+          summaryLine={plannerSummaryLine(plannerGroupRows, apprentices)}
+          emptyCopy={plannerEmptyCopy({ reportLoaded: parsed !== null, apprentices })}
           alliedStatus={alliedStatus}
           selectedUnitId={unit?.unitId ?? null}
           label={hexLabel}

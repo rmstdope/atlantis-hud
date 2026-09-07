@@ -2,7 +2,7 @@ import type { AlliedMageRecord, ParsedReport, SkillInfo } from "@atlantis/core-c
 import { mageSheetRows } from "./alliedMageChip";
 import { factionLabelOf } from "./factionLabel";
 import type { GameDataIndex } from "./gameData";
-import { openingMage, standingOf, type MageStanding, type SkillStanding } from "./magicStanding";
+import { isApprentice, openingMage, standingOf, type MageStanding, type SkillStanding } from "./magicStanding";
 import type { MagicSkillNode, MagicTree } from "./magicTree";
 import { projectedLevel } from "./studyProgress";
 
@@ -211,7 +211,12 @@ export function plannerGroups(input: {
 }): PlannerGroup[] {
   const groups: PlannerGroup[] = [];
 
-  if (input.ownMages.length > 0) {
+  // Apprentices are not planned here: `rules/magic_apprentices` says manipulation makes an
+  // apprentice, who may use a mage's items but casts no spell, and this pane plans spellcasters.
+  // One filter, because rows, counts, teachers and pupils all derive from these groups.
+  const ownMages = input.ownMages.filter((standing) => !isApprentice(standing));
+
+  if (ownMages.length > 0) {
     const label = factionLabelOf(input.report) ?? OWN_FACTION_LABEL;
     // "Borg TNG (95) — your faction, turn 71"; "Your faction — turn 71" when the report names no
     // faction, because "Your faction — your faction" would be absurd; and either without the turn
@@ -226,7 +231,7 @@ export function plannerGroups(input: {
       source: "own",
       heading: `${label}${role}${turn}`,
       stale: false,
-      mages: input.ownMages.map((standing) =>
+      mages: ownMages.map((standing) =>
         plannerMage({
           standing,
           factionId: input.report?.header.factionId ?? "",
@@ -241,16 +246,25 @@ export function plannerGroups(input: {
   }
 
   for (const row of mageSheetRows(input.alliedMages, input.viewedTurn)) {
-    const records = input.alliedMages.filter((record) => record.factionId === row.factionId);
+    const records = input.alliedMages
+      .filter((record) => record.factionId === row.factionId)
+      .map((record) => ({
+        record,
+        standing: standingOf(record.unit, input.tree, input.index)
+      }))
+      .filter(({ standing }) => !isApprentice(standing));
+    if (records.length === 0) {
+      continue;
+    }
     groups.push({
       factionId: row.factionId,
       factionLabel: row.factionLabel,
       source: "sheet",
       heading: `${row.factionLabel} — ${row.turnText}`,
       stale: row.turnsOld > 0,
-      mages: records.map((record) =>
+      mages: records.map(({ record, standing }) =>
         plannerMage({
-          standing: standingOf(record.unit, input.tree, input.index),
+          standing,
           factionId: record.factionId,
           factionLabel: row.factionLabel,
           tree: input.tree,
@@ -270,8 +284,15 @@ export function plannerGroups(input: {
   return groups;
 }
 
-/** "7 mages — 3 yours, 4 from 2 allies". Null when there are none: the empty state speaks instead. */
-export function plannerSummaryLine(groups: readonly PlannerGroup[]): string | null {
+/**
+ * "7 mages — 3 yours, 4 from 2 allies · 15 apprentices not listed". Null when there is no mage at
+ * all: the empty state speaks instead, so the apprentice clause never stands on its own.
+ */
+export function plannerSummaryLine(
+  groups: readonly PlannerGroup[],
+  /** Your own apprentices, dropped from `groups`. Zero appends nothing. */
+  apprentices: number
+): string | null {
   const own = groups
     .filter((group) => group.source === "own")
     .reduce((count, group) => count + group.mages.length, 0);
@@ -282,14 +303,20 @@ export function plannerSummaryLine(groups: readonly PlannerGroup[]): string | nu
     return null;
   }
   const mages = `${total} mage${total === 1 ? "" : "s"}`;
+  // The sentence is about who is listed; the omission is its footnote, so it goes last. ` · ` is
+  // the separator this pane already uses to join two facts on one line.
+  const omitted =
+    apprentices === 0
+      ? ""
+      : ` · ${apprentices} apprentice${apprentices === 1 ? "" : "s"} not listed`;
   const allyWord = `${allies.length} all${allies.length === 1 ? "y" : "ies"}`;
   if (allied === 0) {
-    return `${mages}, all yours`;
+    return `${mages}, all yours${omitted}`;
   }
   if (own === 0) {
-    return `${mages} from ${allyWord}`;
+    return `${mages} from ${allyWord}${omitted}`;
   }
-  return `${mages} — ${own} yours, ${allied} from ${allyWord}`;
+  return `${mages} — ${own} yours, ${allied} from ${allyWord}${omitted}`;
 }
 
 /** The sentence above a stale mage's detail, or null when he is not from a stale sheet. */
@@ -359,7 +386,11 @@ export function plannerAlliedNotice(
  * the Foundation magic skills. Only one man units, with the man being a leader, are permitted to
  * study these skills." That sentence is where the second headline's detail comes from.
  */
-export function plannerEmptyCopy(input: { reportLoaded: boolean }): {
+export function plannerEmptyCopy(input: {
+  reportLoaded: boolean;
+  /** Your own apprentices. Chooses the second headline when a report is loaded and this is > 0. */
+  apprentices: number;
+}): {
   headline: string;
   detail: string;
 } {
@@ -368,6 +399,15 @@ export function plannerEmptyCopy(input: { reportLoaded: boolean }): {
       headline: "No mages yet.",
       detail:
         "Your own mages appear when a report is loaded. An ally's appear when you open a mage sheet they sent you."
+    };
+  }
+  if (input.apprentices > 0) {
+    // The middle clause is the magic tree's own Apprenticeship blurb, so the two panes say the
+    // same thing about apprentices in the same words.
+    const they = input.apprentices === 1 ? "apprentice is" : "apprentices are";
+    return {
+      headline: "No mage in this faction can cast a spell.",
+      detail: `Your ${input.apprentices} ${they} not listed: manipulation makes an apprentice, who may use a mage's items but casts no spell. A one-man leader unit that studies a Foundation becomes a mage.`
     };
   }
   return {
