@@ -192,19 +192,14 @@ function teachLabel(taughtNames: readonly string[]): string {
 }
 
 /**
- * `×2`, `×1½`, `×½`, `×1`, `×1.3`; the empty string when nothing modified the month.
- *
- * `modified` is what tells the two apart at a worth of exactly 1: a taught but unsheltered month
- * is worth one because the two effects cancelled, and silence there would hide that from the
- * player. An ordinary month is silent.
- */
-/**
  * What one cell of the grid says.
  *
- * `ARTI 2 (140)` for a studied month: the report's own notation for a skill (`[ARTI] 2 (140)`),
- * chosen with the navigator over the skill's full name because six columns of `artifact lore`
- * scrolled the pane sideways, and because the tag is what a player reads in their report anyway.
- * The worth mark follows, so a doubled or halved month still says so.
+ * `ARTI 2(140)` for a studied month: the tag, the level and the points, which is the shape a
+ * report prints a skill in - `lumberjack [LUMB] 2 (90)` - with the space closed up so that a level
+ * and its points read as one token (navigator, 2026-09-07). The tag rather than the skill's name,
+ * because six columns of `artifact lore` scrolled the pane sideways, and because the tag is what a
+ * player reads in their own report anyway. The worth mark follows, so a doubled or halved month
+ * still says so.
  *
  * Here rather than in the component for the reason the rest of this module exists: `packages/shared`
  * has no jsdom (ah-nass), so a string a test needs to see cannot live in JSX.
@@ -219,24 +214,31 @@ export function cellLabel(cell: ScheduleCell | undefined): string {
   // Rounded **for display only**, exactly as `hoverCard` rounds: a taught or halved month makes
   // points fractional, and a cell reading `(122.5)` is the arithmetic leaking through the glass.
   const mark = worthMark(cell.worth, cell.taughtBy !== null || cell.unsheltered);
-  return `${cell.skill} ${cell.level} (${Math.round(cell.points)})${mark === "" ? "" : ` ${mark}`}`;
+  return `${cell.skill} ${cell.level}(${Math.round(cell.points)})${mark === "" ? "" : ` ${mark}`}`;
 }
 
 /**
- * A skill as it stands, nothing having happened to it: `4 (325)`.
+ * A skill as it stands, nothing having happened to it: `4(325)`.
  *
- * The level with its points in brackets and nothing else - how a report writes a skill, and how a
- * player says one (navigator, 2026-09-07). The threshold of the level above was here and is not:
- * a player planning knows what 450 buys, and every line of a list that repeats it is a line whose
- * one moving figure is harder to find.
+ * The level with its points in brackets and nothing else, closed up into one token - what a report
+ * prints as `2 (90)` (navigator, 2026-09-07). The threshold of the level above was here and is
+ * not: a player planning knows what 450 buys, and every line of a list that repeats it is a line
+ * whose one moving figure is harder to find.
  *
  * Shared with `studyMagePane.ts`, so a skill standing still reads the same whether the pane is
  * showing a turn or the mage himself.
  */
 export function heldWords(held: { level: number; points: number }): string {
-  return `${held.level} (${Math.round(held.points)})`;
+  return `${held.level}(${Math.round(held.points)})`;
 }
 
+/**
+ * `×2`, `×1½`, `×½`, `×1`, `×1.3`; the empty string when nothing modified the month.
+ *
+ * `modified` is what tells the two apart at a worth of exactly 1: a taught but unsheltered month
+ * is worth one because the two effects cancelled, and silence there would hide that from the
+ * player. An ordinary month is silent.
+ */
 export function worthMark(worth: number, modified = false): string {
   if (worth === 1) {
     return modified ? "×1" : "";
@@ -671,8 +673,8 @@ export function hoverCard(
     if (held.level <= 0 && ends.level <= 0 && tag !== studying) {
       continue;
     }
-    // `4 (390) → 4 (420)`: a level with its points in brackets at each end of the month, the way a
-    // report writes a skill and the way the dropdown offers one (navigator, 2026-09-07). **Only
+    // `4(390) → 4(420)`: a level with its points in brackets at each end of the month, the way a
+    // report prints a skill and the way the dropdown offers one (navigator, 2026-09-07). **Only
     // where the month moved it**: one skill of the twenty a mage knows is being studied, and an
     // arrow between two readings of the same figure, nineteen times over, hides the one line that
     // is actually going somewhere. A skill standing still is a standing, and reads as one.
@@ -683,7 +685,7 @@ export function hoverCard(
       // Rounded **for display only**: a taught or halved month makes points fractional, and a line
       // reading `(133.33333333333334)` is the arithmetic leaking through the glass.
       right: moved
-        ? `${held.level} (${Math.round(held.points)}) → ${ends.level} (${Math.round(ends.points)})`
+        ? `${held.level}(${Math.round(held.points)}) → ${ends.level}(${Math.round(ends.points)})`
         : heldWords(held),
       studying: tag === studying
     });

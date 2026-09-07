@@ -320,18 +320,18 @@ describe("hoverCard", () => {
       "x"
     );
 
-    expect(card.lines.find((line) => line.name === "pattern")?.right).toBe("2 (100)");
+    expect(card.lines.find((line) => line.name === "pattern")?.right).toBe("2(100)");
     expect(card.lines.find((line) => line.name === "force")?.right).toContain("→");
   });
 
   it("carries a level and its points at each end of the month", () => {
     // The turn a level is gained: 270 points and level 3 in, 300 and level 4 out.
     const gaining = hoverCard(row(), 0, turns, tree, "Wardens of the North (12)");
-    expect(gaining.lines.find((line) => line.name === "force")?.right).toBe("3 (270) → 4 (300)");
+    expect(gaining.lines.find((line) => line.name === "force")?.right).toBe("3(270) → 4(300)");
 
     // And the turn after, climbing inside a level.
     const climbing = hoverCard(row(), 1, turns, tree, "Wardens of the North (12)");
-    expect(climbing.lines.find((line) => line.name === "force")?.right).toBe("4 (300) → 4 (330)");
+    expect(climbing.lines.find((line) => line.name === "force")?.right).toBe("4(300) → 4(330)");
   });
 
   it("gives a skill he begins that turn a line of its own", () => {
@@ -355,7 +355,7 @@ describe("hoverCard", () => {
     expect(card.sub).toBe("x · studying pattern");
     const pattern = card.lines.find((line) => line.name === "pattern");
     expect(pattern?.studying).toBe(true);
-    expect(pattern?.right).toBe("0 (0) → 1 (30)");
+    expect(pattern?.right).toBe("0(0) → 1(30)");
   });
 
   it("leaves a maxed skill standing where it is", () => {
@@ -370,7 +370,7 @@ describe("hoverCard", () => {
 
     // Nothing moved it, so it is a standing rather than a month: the level with its points, and
     // no arrow.
-    expect(card.lines.find((line) => line.name === "force")?.right).toBe("5 (450)");
+    expect(card.lines.find((line) => line.name === "force")?.right).toBe("5(450)");
   });
 
   it("says what it was projected from", () => {
@@ -588,8 +588,9 @@ describe("projectAll across the whole fleet", () => {
 });
 
 /**
- * What a cell says, in the report's own notation: `[ARTI] 2 (140)` is how a report prints a skill,
- * so `ARTI 2 (140)` is how the grid prints a planned month of it (navigator, 2026-09-07).
+ * What a cell says: the tag, the level and the points, in the shape a report prints a skill in -
+ * `lumberjack [LUMB] 2 (90)` - with the space closed up, so a level and its points read as one
+ * token (navigator, 2026-09-07).
  */
 describe("cellLabel", () => {
   const studying = (over: Partial<Extract<ScheduleCell, { kind: "study" }>> = {}) =>
@@ -609,19 +610,19 @@ describe("cellLabel", () => {
     }) satisfies Extract<ScheduleCell, { kind: "study" }>;
 
   it("names the skill by its tag, with the level and the points it stands at", () => {
-    expect(cellLabel(studying())).toBe("ARTI 2 (140)");
+    expect(cellLabel(studying())).toBe("ARTI 2(140)");
   });
 
   it("rounds the points a taught or halved month left fractional", () => {
-    expect(cellLabel(studying({ points: 122.5 }))).toBe("ARTI 2 (123)");
+    expect(cellLabel(studying({ points: 122.5 }))).toBe("ARTI 2(123)");
   });
 
   it("keeps the worth mark after the points", () => {
     expect(cellLabel(studying({ worth: 2, taughtBy: "95/881", points: 170 }))).toBe(
-      "ARTI 2 (170) ×2"
+      "ARTI 2(170) ×2"
     );
     expect(cellLabel(studying({ worth: 0.5, unsheltered: true, points: 125 }))).toBe(
-      "ARTI 2 (125) ×½"
+      "ARTI 2(125) ×½"
     );
   });
 

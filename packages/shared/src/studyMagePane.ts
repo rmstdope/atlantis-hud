@@ -22,7 +22,7 @@ import { heldWords, hoverCard, type ScheduleRow } from "./studySchedule";
 export type MagePaneLine = {
   /** `MagicSkillNode.name`, lower case. */
   name: string;
-  /** `4 (330) → 4 (360)` where the month moved it, `3 (270)` where it did not. */
+  /** `4(330) → 4(360)` where the month moved it, `3(270)` where it did not. */
   right: string;
   /** True for the skill this turn's plan studies: the marked line. */
   studying: boolean;
@@ -33,7 +33,7 @@ export type MagePaneChoice = {
   /** Upper-cased tag. */
   skill: string;
   name: string;
-  /** `0 (0) → 1 (30)`: what a plain month of it would leave him at, worded as the dropdown does. */
+  /** `0(0) → 1(30)`: what a plain month of it would leave him at, worded as the dropdown does. */
   detail: string;
 };
 
@@ -120,7 +120,7 @@ export function magePane(input: {
 /**
  * What he knows as he stands, with no month applied.
  *
- * Deliberately not an arrow with the same reading at both ends: `4 (325) → 4 (325)` for a turn
+ * Deliberately not an arrow with the same reading at both ends: `4(325) → 4(325)` for a turn
  * nothing happened in promises a change and then denies it. `heldWords` is what a turn's own lines
  * fall back to for a skill the month did not move, so a standing reads the same either way.
  */

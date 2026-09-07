@@ -37,18 +37,42 @@ export function joinNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-/** The chip's words. Spends words making the ceiling explicit rather than leaning on the colour. */
-export function standingWords(standing: SkillStanding): string {
+/**
+ * What stops this skill, without saying where it stands: `ceiling 5`, `held by bird lore`.
+ *
+ * For a list that has already said the level - the planner's `Knows`, whose chip reads
+ * `force 4 (325)` - where `at 4` beside it is the same number twice (navigator, 2026-09-07).
+ */
+export function standingLimit(standing: SkillStanding): string {
   switch (standing.kind) {
     case "known":
-      return `at ${standing.level}, ceiling ${standing.ceiling}`;
+      return `ceiling ${standing.ceiling}`;
     case "ceiling":
-      return `at ${standing.level}, held by ${joinNames(standing.heldBy.map((need) => need.name))}`;
+      return `held by ${joinNames(standing.heldBy.map((need) => need.name))}`;
     case "maxed":
-      return `at ${standing.level}, the highest there is`;
+      return "the highest there is";
     case "open":
       return "can study";
     case "locked":
       return "";
+  }
+}
+
+/**
+ * The chip's words. Spends words making the ceiling explicit rather than leaning on the colour.
+ *
+ * Says the level as well, for the callers that have not: the magic tree's rows carry this chip and
+ * nothing else that names a level.
+ */
+export function standingWords(standing: SkillStanding): string {
+  const limit = standingLimit(standing);
+  switch (standing.kind) {
+    case "known":
+    case "ceiling":
+    case "maxed":
+      return `at ${standing.level}, ${limit}`;
+    case "open":
+    case "locked":
+      return limit;
   }
 }

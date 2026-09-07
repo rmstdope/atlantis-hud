@@ -179,7 +179,7 @@ describe("MagePaneView", () => {
 
     expect(markup).toContain("Ereb (2431) — turn 24");
     expect(markup).toContain("Wardens of the North (12) · studying force");
-    expect(markup).toContain("3 (270) → 4 (300)");
+    expect(markup).toContain("3(270) → 4(300)");
     const line = markup.slice(markup.indexOf("study-schedule-knows-force"));
     expect(line.slice(0, 200)).toContain(STANDING_CHIP.known);
   });

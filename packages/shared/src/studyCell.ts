@@ -28,7 +28,7 @@ export type CellChoice = {
   from: number;
   /** The level a plain month leaves him at. */
   to: number;
-  /** `3 (270) → 4 (300)`: the level and the points at each end of the month. */
+  /** `3(270) → 4(300)`: the level and the points at each end of the month. */
   detail: string;
 };
 
@@ -95,7 +95,7 @@ export function cellMenu(input: {
     // `×2` and `×½` are accounted for.
     const points = held.points + STUDY_POINTS_PER_MONTH;
     const to = Math.min(node.maxLevel, levelForPoints(points));
-    // `3 (270) → 4 (300)`: a level with its points in brackets is how a report writes a skill and
+    // `3(270) → 4(300)`: a level with its points in brackets is how a report prints a skill and
     // how a player says one out loud (navigator, 2026-09-07), so the row is that, twice - where he
     // stands and where the month leaves him. Rounded for display, a projected standing being
     // fractional after a taught or halved month.
@@ -104,7 +104,7 @@ export function cellMenu(input: {
       name: node.name,
       from: held.level,
       to,
-      detail: `${held.level} (${Math.round(held.points)}) → ${to} (${Math.round(points)})`
+      detail: `${held.level}(${Math.round(held.points)}) → ${to}(${Math.round(points)})`
     });
   }
 

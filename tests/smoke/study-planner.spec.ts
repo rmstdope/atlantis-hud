@@ -56,8 +56,12 @@ test("All mages shows the points behind each level, three lists abreast", async 
 
   await page.keyboard.press("F4");
   const detail = page.getByTestId("study-planner-detail");
-  // A level alone hid the whole month a mage may be from the next one.
-  await expect(page.getByTestId("study-planner-knows-FORC")).toContainText(/force 4 \(\d+\)/);
+  // A level alone hid the whole month a mage may be from the next one - and the words beside the
+  // chip say what stops the skill, not where it stands, the chip having just said that.
+  const forc = page.getByTestId("study-planner-knows-FORC");
+  await expect(forc).toContainText(/force 4\(\d+\)/);
+  await expect(forc).toContainText("ceiling 5");
+  await expect(forc).not.toContainText("at 4");
 
   // Side by side rather than stacked: the three answer one question between them, so `Can study
   // now` and `Held back` start no lower down the pane than `Knows` does.
@@ -106,7 +110,7 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   // Every row says both ends of the month, level and points, so the choice is made against how far
   // he has actually got rather than against a level alone.
   await expect(page.getByTestId("study-schedule-choice-FORC")).toContainText(
-    /\d \(\d+\) → \d \(\d+\)/
+    /\d\(\d+\) → \d\(\d+\)/
   );
 
   // One click is one choice: no Set, and nothing to its right moves.
@@ -114,8 +118,8 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   // Waits for the popover to close rather than for the cell's text: the row is written
   // optimistically, so its text can be the new one before the write has landed.
   await expect(popover).toHaveCount(0);
-  // The report's own notation for a skill - `[FORC] 4 (355)` - so the cell carries the points too.
-  await expect(cell).toContainText(/FORC \d \(\d+\)/);
+  // The shape a report prints a skill in - `[FORC] 4 (355)` - with the space closed up.
+  await expect(cell).toContainText(/FORC \d\(\d+\)/);
   await expect(neighbour).toContainText("—");
 
   // Opening it again shows the choice that is stored, and `— nothing` empties that cell alone.

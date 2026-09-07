@@ -132,7 +132,7 @@ describe("StudyPlannerDetail", () => {
       "From a mage sheet of turn 69, 2 turns old. Up to 2 months of study since it are estimated below and marked →."
     );
     // The estimate still on the chip, now beside the points the sheet printed.
-    expect(stale).toContain("spirit 3 (270) → up to 4");
+    expect(stale).toContain("spirit 3(270) → up to 4");
   });
 
   it("says neither about one of your own", () => {

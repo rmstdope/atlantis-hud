@@ -10,7 +10,7 @@ import {
   type PlannerMage
 } from "../studyPlanner";
 import { useEscapeToDismiss } from "./dismissLayer";
-import { STANDING_CHIP, standingWords } from "./standingChip";
+import { STANDING_CHIP, standingLimit, standingWords } from "./standingChip";
 import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
 import { planLine, scheduleRows, scheduleTurns } from "../studySchedule";
@@ -651,7 +651,10 @@ export function StudyPlannerDetail({
                 >
                   {knownChip(skill)}
                 </span>{" "}
-                <span className="text-ink-dim">{standingWords(skill.standing)}</span>
+                {/* Not `standingWords`: the chip beside it has just said `force 4`, and `at 4`
+                    after it is the same number twice. The `Held back` list keeps the full wording,
+                    having no chip of its own. */}
+                <span className="text-ink-dim">{standingLimit(skill.standing)}</span>
               </li>
             ))}
           </ul>

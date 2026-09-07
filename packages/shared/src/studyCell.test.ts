@@ -55,18 +55,18 @@ describe("cellMenu", () => {
     expect(positions).toEqual([...positions].sort((left, right) => left - right));
   });
 
-  it("says what a month buys, as `3 (270) → 4 (300)`", () => {
+  it("says what a month buys, as `3(270) → 4(300)`", () => {
     // pattern 2 is 90 points; he holds 100, and a 30-point month reaches 130 - still level 2. Both
-    // ends carry their points, which is how a report writes a skill and how a player says one.
+    // ends carry their points, in the shape a report prints a skill in with the space closed up.
     const pattern = menu().choices.find((choice) => choice.skill === "PATT");
-    expect(pattern?.detail).toBe("2 (100) → 2 (130)");
+    expect(pattern?.detail).toBe("2(100) → 2(130)");
     expect(pattern).toMatchObject({ from: 2, to: 2 });
 
     // force 3 at 270: a month reaches 300, which is level 4.
     const climbing = menu(26, at({ FORC: [3, 270] })).choices.find(
       (choice) => choice.skill === "FORC"
     );
-    expect(climbing?.detail).toBe("3 (270) → 4 (300)");
+    expect(climbing?.detail).toBe("3(270) → 4(300)");
   });
 
   it("never carries a level past the skill's own maximum", () => {
@@ -74,7 +74,7 @@ describe("cellMenu", () => {
     const topping = menu(26, at({ FORC: [4, 420] })).choices.find(
       (choice) => choice.skill === "FORC"
     );
-    expect(topping?.detail).toBe("4 (420) → 5 (450)");
+    expect(topping?.detail).toBe("4(420) → 5(450)");
   });
 
   it("rounds the points it prints, having been given a taught or halved month's fraction", () => {
@@ -83,7 +83,7 @@ describe("cellMenu", () => {
     const odd = menu(26, at({ PATT: [2, 92.5] })).choices.find(
       (choice) => choice.skill === "PATT"
     );
-    expect(odd?.detail).toBe("2 (93) → 2 (123)");
+    expect(odd?.detail).toBe("2(93) → 2(123)");
   });
 
   it("names the case when he can study nothing", () => {

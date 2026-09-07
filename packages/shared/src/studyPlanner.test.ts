@@ -171,8 +171,8 @@ describe("plannerGroups", () => {
     })[0].mages[0];
 
     expect(mage.knows.find((skill) => skill.tag === "FORC")?.points).toBe(340);
-    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe("force 4 (340)");
-    expect(knownChip(mage.knows.find((skill) => skill.tag === "SPIR")!)).toBe("spirit 3 (180)");
+    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe("force 4(340)");
+    expect(knownChip(mage.knows.find((skill) => skill.tag === "SPIR")!)).toBe("spirit 3(180)");
   });
 
   it("says a maxed skill's points like any other's", () => {
@@ -185,7 +185,7 @@ describe("plannerGroups", () => {
       viewedTurn: 71
     })[0].mages[0];
 
-    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe("force 5 (460)");
+    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe("force 5(460)");
   });
 
   it("keeps the estimate on the chip of a stale sheet's mage, beside his points", () => {
@@ -194,7 +194,7 @@ describe("plannerGroups", () => {
     });
     const spirit = groups[1].mages[0].knows.find((skill) => skill.tag === "SPIR")!;
 
-    expect(knownChip(spirit)).toBe("spirit 3 (270) → up to 4");
+    expect(knownChip(spirit)).toBe("spirit 3(270) → up to 4");
   });
 
   it("says only the level when the report printed no points for the skill", () => {

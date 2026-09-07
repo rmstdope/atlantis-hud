@@ -38,16 +38,18 @@ export type KnownSkill = {
 };
 
 /**
- * A known skill as the planner's detail chips it: `force 4 (340)`, and `spirit 3 (270) → up to 4`
+ * A known skill as the planner's detail chips it: `force 4(340)`, and `spirit 3(270) → up to 4`
  * for a mage whose sheet is old enough to have moved.
  *
  * The points are there because a level alone hides the whole month a mage may be from the next one
  * (navigator, 2026-09-07) - the same reason the Schedule's cells carry them, and the same form:
- * the level with its points in brackets, which is how a report writes a skill.
+ * the level with its points in brackets. A report writes that `lumberjack [LUMB] 2 (90)`; the
+ * planner closes the space up to `2(90)`, so a level and its points read as one token in a list of
+ * them (navigator, 2026-09-07).
  */
 export function knownChip(skill: KnownSkill): string {
   const held = `${skill.name} ${skill.level}${
-    skill.points === null ? "" : ` (${Math.round(skill.points)})`
+    skill.points === null ? "" : `(${Math.round(skill.points)})`
   }`;
   return skill.projected === null ? held : `${held} → up to ${skill.projected}`;
 }

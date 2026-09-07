@@ -73,7 +73,7 @@ describe("magePane on a turn", () => {
   });
 
   it("says where each skill stands at both ends of that turn", () => {
-    expect(pane(1).knows.find((line) => line.name === "force")?.right).toBe("4 (300) → 4 (330)");
+    expect(pane(1).knows.find((line) => line.name === "force")?.right).toBe("4(300) → 4(330)");
   });
 
   it("lists what he could study then, and counts them", () => {
@@ -83,8 +83,8 @@ describe("magePane on a turn", () => {
     expect(shown.canStudy.length).toBeGreaterThan(0);
     // Worded exactly as the dropdown words the same month, so nothing has to be translated
     // between the pane and the menu it is read beside.
-    expect(shown.canStudy.find((choice) => choice.skill === "FORC")?.detail).toBe("4 (330) → 4 (360)");
-    expect(shown.canStudy.find((choice) => choice.skill === "PATT")?.detail).toBe("0 (0) → 1 (30)");
+    expect(shown.canStudy.find((choice) => choice.skill === "FORC")?.detail).toBe("4(330) → 4(360)");
+    expect(shown.canStudy.find((choice) => choice.skill === "PATT")?.detail).toBe("0(0) → 1(30)");
   });
 
   it("offers nothing it would be pointless to offer", () => {
@@ -113,7 +113,7 @@ describe("magePane on the mage himself", () => {
     expect(shown.heading).toBe("Ereb (2431) — now");
     expect(shown.sub).toBe("Wardens of the North (12)");
     // No arrow: nothing has happened yet, so there is no before and after to put one between.
-    expect(shown.knows.find((line) => line.name === "force")?.right).toBe("3 (270)");
+    expect(shown.knows.find((line) => line.name === "force")?.right).toBe("3(270)");
     expect(shown.knows.every((line) => !line.studying)).toBe(true);
   });
 
@@ -121,7 +121,7 @@ describe("magePane on the mage himself", () => {
     const shown = pane(null);
 
     expect(shown.canStudyHeading).toBe(`Can study now — ${shown.canStudy.length}`);
-    expect(shown.canStudy.find((choice) => choice.skill === "FORC")?.detail).toBe("3 (270) → 4 (300)");
+    expect(shown.canStudy.find((choice) => choice.skill === "FORC")?.detail).toBe("3(270) → 4(300)");
   });
 
   it("names the report the figures are his from", () => {
