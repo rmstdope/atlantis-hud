@@ -865,8 +865,19 @@ export type StudyGoal =
       kind: "teach";
       /** The game turn this month is planned for, as the report numbers turns. */
       turn: number;
-      /** The unit numbers taught, as the report writes them, in the order the player ticked them. */
+      /**
+       * The unit numbers taught, as the report writes them, in the order the player ticked them.
+       * **Empty whenever `live` is true**: a live cell stores no list, because the list is not a
+       * fact about the plan - it is recomputed from it.
+       */
       students: string[];
+      /**
+       * True while the cell means "teach whoever is eligible this turn". The projection chooses the
+       * pupils on every render and `students` is empty. Set to false the moment the player ticks or
+       * unticks anyone, from which point `students` is the whole answer. Absent reads as false:
+       * every goal stored before ah-af7i is a fixed list.
+       */
+      live?: boolean;
     };
 
 /**

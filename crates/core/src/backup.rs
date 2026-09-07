@@ -314,7 +314,14 @@ pub enum StudyGoal {
         #[serde(default)]
         turn: u32,
         /// The unit numbers taught, as the report writes them, in the order the player ticked them.
+        ///
+        /// Empty whenever `live` is true: a live cell stores no list, because the list is not a
+        /// fact about the plan - it is recomputed from it.
         students: Vec<String>,
+        /// True while the cell means "teach whoever is eligible this turn"; `students` is then empty.
+        /// `#[serde(default)]` for every row written before ah-af7i, which is a fixed list.
+        #[serde(default)]
+        live: bool,
     },
 }
 
@@ -1325,6 +1332,7 @@ mod tests {
                 StudyGoal::Teach {
                     turn: 25,
                     students: vec!["2517".to_string(), "2688".to_string()],
+                    live: false,
                 },
                 StudyGoal::Study {
                     turn: 26,
@@ -1345,6 +1353,39 @@ mod tests {
             vec![plan],
             "a month spent teaching comes back naming the same students, in order"
         );
+    }
+
+    /// ah-af7i: `live` says a teach cell means "teach whoever is eligible this turn". Every row
+    /// written before that bead has no such key and must read back as a fixed list.
+    #[test]
+    fn a_teach_goal_without_live_reads_as_a_fixed_list() {
+        let goal: StudyGoal =
+            serde_json::from_str(r#"{"kind":"teach","turn":25,"students":["2517"]}"#)
+                .expect("deserializes");
+
+        assert_eq!(
+            goal,
+            StudyGoal::Teach {
+                turn: 25,
+                students: vec!["2517".to_string()],
+                live: false,
+            },
+            "a goal stored before ah-af7i is a fixed list"
+        );
+    }
+
+    #[test]
+    fn a_live_teach_goal_round_trips() {
+        let goal = StudyGoal::Teach {
+            turn: 25,
+            students: vec![],
+            live: true,
+        };
+
+        let json = serde_json::to_string(&goal).expect("serializes");
+        let back: StudyGoal = serde_json::from_str(&json).expect("deserializes");
+
+        assert_eq!(back, goal, "a live teach goal survives a round trip");
     }
 
     #[test]
