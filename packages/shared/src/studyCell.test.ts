@@ -55,18 +55,38 @@ describe("cellMenu", () => {
     expect(positions).toEqual([...positions].sort((left, right) => left - right));
   });
 
-  it("says what a month buys, as `3 → 4`", () => {
-    // pattern 2 is 90 points; he holds 100, and a 30-point month reaches 130 - still level 2.
-    // force 4 is 300 points; 5 is 450, so his month leaves him at 4.
+  it("says what a month buys, as `3 → 4  (300 of 450)`", () => {
+    // pattern 2 is 90 points; he holds 100, and a 30-point month reaches 130 - still level 2, and
+    // 180 is what level 3 would want. The points are where the month LEAVES him, which is what the
+    // arrow already describes, and the wording is the hover card's own.
     const pattern = menu().choices.find((choice) => choice.skill === "PATT");
-    expect(pattern?.detail).toBe("2 → 2");
+    expect(pattern?.detail).toBe("2 → 2  (130 of 180)");
     expect(pattern).toMatchObject({ from: 2, to: 2 });
 
-    // force 3 at 270: a month reaches 300, which is level 4.
+    // force 3 at 270: a month reaches 300, which is level 4 - and on the turn a level is gained the
+    // threshold named is the one just crossed, as the hover card names it.
     const climbing = menu(26, at({ FORC: [3, 270] })).choices.find(
       (choice) => choice.skill === "FORC"
     );
-    expect(climbing?.detail).toBe("3 → 4");
+    expect(climbing?.detail).toBe("3 → 4  (300 of 300)");
+  });
+
+  it("counts the points against the skill's own maximum rather than past it", () => {
+    // force 4 at 420: a month reaches 450, which is level 5 and the skill's maximum. There is no
+    // level 6 threshold in the game, so 5 is what the row counts against.
+    const topping = menu(26, at({ FORC: [4, 420] })).choices.find(
+      (choice) => choice.skill === "FORC"
+    );
+    expect(topping?.detail).toBe("4 → 5  (450 of 450)");
+  });
+
+  it("rounds the points it prints, having been given a taught or halved month's fraction", () => {
+    // A halved month leaves 22.5 points on a projection, and a dropdown reading `(122.5 of 180)`
+    // is the arithmetic leaking through the glass - the hover card rounds for the same reason.
+    const odd = menu(26, at({ PATT: [2, 92.5] })).choices.find(
+      (choice) => choice.skill === "PATT"
+    );
+    expect(odd?.detail).toBe("2 → 2  (123 of 180)");
   });
 
   it("names the case when he can study nothing", () => {

@@ -71,6 +71,7 @@ describe("what the planner has to say about a plan", () => {
     skill: "FORC",
     name: "force",
     level: 3,
+    points: 180,
     gained: false,
     blocked: null,
     worth: 1,

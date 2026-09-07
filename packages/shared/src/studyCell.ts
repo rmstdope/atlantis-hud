@@ -14,7 +14,7 @@
 import type { StudyGoal } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
 import { standingsFrom } from "./magicStanding";
-import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
+import { STUDY_POINTS_PER_MONTH, levelForPoints, pointsForLevel } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import type { CellPick } from "./workspace/studyCellState";
 
@@ -28,7 +28,7 @@ export type CellChoice = {
   from: number;
   /** The level a plain month leaves him at. */
   to: number;
-  /** `3 → 4`, from `from` and `to`. */
+  /** `3 → 4  (300 of 450)`: where the month leaves him, worded as the hover card words it. */
   detail: string;
 };
 
@@ -93,13 +93,19 @@ export function cellMenu(input: {
     // A plain month: unsheltered, untaught. The dropdown cannot know what the cell will be worth,
     // because teaching and shelter depend on choices not yet made; the grid's own cell is where
     // `×2` and `×½` are accounted for.
-    const to = Math.min(node.maxLevel, levelForPoints(held.points + STUDY_POINTS_PER_MONTH));
+    const points = held.points + STUDY_POINTS_PER_MONTH;
+    const to = Math.min(node.maxLevel, levelForPoints(points));
+    // The threshold the row counts against, by `hoverCard`'s rule and for its reasons: the level
+    // just crossed on the turn one is gained, the next one otherwise, and never past the skill's
+    // own maximum - `pointsForLevel` extrapolates its formula happily, and the game has no such
+    // level to extrapolate to.
+    const against = Math.min(node.maxLevel, to > held.level ? to : to + 1);
     choices.push({
       skill: tag,
       name: node.name,
       from: held.level,
       to,
-      detail: `${held.level} → ${to}`
+      detail: `${held.level} → ${to}  (${Math.round(points)} of ${pointsForLevel(against)})`
     });
   }
 

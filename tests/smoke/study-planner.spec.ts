@@ -84,12 +84,19 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await expect(popover).toBeVisible();
   await expect(popover).toContainText("Six of Seven — turn 72");
 
+  // Every row says where the month would leave him, in levels and in points, so the choice is made
+  // against how far he has actually got rather than against a level alone.
+  await expect(page.getByTestId("study-schedule-choice-FORC")).toContainText(
+    /\d → \d {2}\(\d+ of \d+\)/
+  );
+
   // One click is one choice: no Set, and nothing to its right moves.
   await page.getByTestId("study-schedule-choice-FORC").click();
   // Waits for the popover to close rather than for the cell's text: the row is written
   // optimistically, so its text can be the new one before the write has landed.
   await expect(popover).toHaveCount(0);
-  await expect(cell).toContainText("force");
+  // The report's own notation for a skill - `[FORC] 4 (355)` - so the cell carries the points too.
+  await expect(cell).toContainText(/FORC \d \(\d+\)/);
   await expect(neighbour).toContainText("—");
 
   // Opening it again shows the choice that is stored, and `— nothing` empties that cell alone.
@@ -122,7 +129,7 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await expect(force).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(popover).toHaveCount(0);
-  await expect(cell).toContainText("force");
+  await expect(cell).toContainText("FORC");
 
   await cell.click();
   await page.getByTestId("study-schedule-choice-nothing").click();
@@ -145,8 +152,8 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   // `force` is a write that has landed. Reloading without it kills a transaction still in flight.
   // It does not hide the case above - the two clicks are still not gated on each other, which is
   // the window - and `studyPlansStore.test.ts` pins the payload rule directly.
-  await expect(cell).toContainText("force");
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("force");
+  await expect(cell).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
 
   // The reload has to finish restoring the game before F4 means anything: the shortcut is
   // ignored while there is no report, exactly as `persistence.spec.ts` waits for this line.
@@ -154,8 +161,8 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("force");
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("force");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
   await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("—");
 });
 
@@ -301,7 +308,7 @@ test("a teach month is planned in the popover, warned about in the strip, and su
   await studentCell.click();
   await page.getByTestId("study-schedule-choice-GATE").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
-  await expect(studentCell).toContainText("gate lore");
+  await expect(studentCell).toContainText("GATE");
 
   const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
   await cell.click();

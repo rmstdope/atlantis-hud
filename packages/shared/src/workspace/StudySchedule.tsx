@@ -7,7 +7,7 @@ import type { MagicTree } from "../magicTree";
 import type { StudyGoal } from "@atlantis/core-client";
 import { cellMenu, goalsAfterChoice, teachWarning, type CellMenu } from "../studyCell";
 import { plannedGoals } from "../studyPlans";
-import { hoverCard, worthMark, type ScheduleRow } from "../studySchedule";
+import { cellLabel, hoverCard, type ScheduleRow } from "../studySchedule";
 import { noticeSummary, type PlannerNotice } from "../studyTeaching";
 import type { PlannerGroup } from "../studyPlanner";
 import type { CellEvent, CellMode, CellPick } from "./studyCellState";
@@ -559,17 +559,7 @@ function FactionRows({
                     }
                     className={`w-full rounded border px-1 text-left ${tint}`}
                   >
-                    {cell === undefined || cell.kind === "idle"
-                      ? "—"
-                      : cell.kind === "teach"
-                        ? cell.label
-                        : `${cell.name} ${cell.level}${(() => {
-                            const mark = worthMark(
-                              cell.worth,
-                              cell.taughtBy !== null || cell.unsheltered
-                            );
-                            return mark === "" ? "" : ` ${mark}`;
-                          })()}`}
+                    {cellLabel(cell)}
                   </button>
                 </td>
               );

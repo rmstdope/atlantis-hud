@@ -5,6 +5,7 @@ import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import {
   SCHEDULE_TURNS,
+  cellLabel,
   hoverCard,
   planLine,
   projectAll,
@@ -569,6 +570,61 @@ describe("projectAll across the whole fleet", () => {
     expect(cell?.kind === "study" && cell.unsheltered).toBe(false);
     expect(cell?.kind === "study" && cell.shelterUnknown).toBe(true);
     expect(cell?.kind === "study" && cell.worth).toBe(1);
+  });
+});
+
+/**
+ * What a cell says, in the report's own notation: `[ARTI] 2 (140)` is how a report prints a skill,
+ * so `ARTI 2 (140)` is how the grid prints a planned month of it (navigator, 2026-09-07).
+ */
+describe("cellLabel", () => {
+  const studying = (over: Partial<Extract<ScheduleCell, { kind: "study" }>> = {}) =>
+    ({
+      kind: "study",
+      skill: "ARTI",
+      name: "artifact lore",
+      level: 2,
+      points: 140,
+      gained: false,
+      blocked: null,
+      worth: 1,
+      unsheltered: false,
+      shelterUnknown: false,
+      taughtBy: null,
+      ...over
+    }) satisfies Extract<ScheduleCell, { kind: "study" }>;
+
+  it("names the skill by its tag, with the level and the points it stands at", () => {
+    expect(cellLabel(studying())).toBe("ARTI 2 (140)");
+  });
+
+  it("rounds the points a taught or halved month left fractional", () => {
+    expect(cellLabel(studying({ points: 122.5 }))).toBe("ARTI 2 (123)");
+  });
+
+  it("keeps the worth mark after the points", () => {
+    expect(cellLabel(studying({ worth: 2, taughtBy: "95/881", points: 170 }))).toBe(
+      "ARTI 2 (170) ×2"
+    );
+    expect(cellLabel(studying({ worth: 0.5, unsheltered: true, points: 125 }))).toBe(
+      "ARTI 2 (125) ×½"
+    );
+  });
+
+  it("draws a dash for a turn with nothing planned", () => {
+    expect(cellLabel({ kind: "idle" })).toBe("—");
+    expect(cellLabel(undefined)).toBe("—");
+  });
+
+  it("leaves a teach cell the label it already carries", () => {
+    expect(
+      cellLabel({
+        kind: "teach",
+        students: ["2517"],
+        outcome: { taught: [], refused: [], worth: 1 },
+        label: "TEACH Sable"
+      })
+    ).toBe("TEACH Sable");
   });
 });
 

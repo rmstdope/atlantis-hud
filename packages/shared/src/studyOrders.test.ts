@@ -36,6 +36,7 @@ const aStudyCell = (over: Partial<Extract<ScheduleCell, { kind: "study" }>> = {}
   skill: "FORC",
   name: "force",
   level: 4,
+  points: 300,
   gained: true,
   blocked: null,
   worth: 1,

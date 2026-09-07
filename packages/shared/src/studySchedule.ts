@@ -42,6 +42,11 @@ export type ScheduleCell =
       name: string;
       /** The level he ends this turn at. */
       level: number;
+      /**
+       * The points he ends this turn on, as a report would print them - `[ARTI] 2 (140)`. Left
+       * fractional, for the reason `projectAll` gives; whoever prints it rounds.
+       */
+      points: number;
       /** True when the level rose this turn: the cell that is tinted. */
       gained: boolean;
       /**
@@ -193,6 +198,30 @@ function teachLabel(taughtNames: readonly string[]): string {
  * is worth one because the two effects cancelled, and silence there would hide that from the
  * player. An ordinary month is silent.
  */
+/**
+ * What one cell of the grid says.
+ *
+ * `ARTI 2 (140)` for a studied month: the report's own notation for a skill (`[ARTI] 2 (140)`),
+ * chosen with the navigator over the skill's full name because six columns of `artifact lore`
+ * scrolled the pane sideways, and because the tag is what a player reads in their report anyway.
+ * The worth mark follows, so a doubled or halved month still says so.
+ *
+ * Here rather than in the component for the reason the rest of this module exists: `packages/shared`
+ * has no jsdom (ah-nass), so a string a test needs to see cannot live in JSX.
+ */
+export function cellLabel(cell: ScheduleCell | undefined): string {
+  if (cell === undefined || cell.kind === "idle") {
+    return "—";
+  }
+  if (cell.kind === "teach") {
+    return cell.label;
+  }
+  // Rounded **for display only**, exactly as `hoverCard` rounds: a taught or halved month makes
+  // points fractional, and a cell reading `(122.5)` is the arithmetic leaking through the glass.
+  const mark = worthMark(cell.worth, cell.taughtBy !== null || cell.unsheltered);
+  return `${cell.skill} ${cell.level} (${Math.round(cell.points)})${mark === "" ? "" : ` ${mark}`}`;
+}
+
 export function worthMark(worth: number, modified = false): string {
   if (worth === 1) {
     return modified ? "×1" : "";
@@ -420,6 +449,7 @@ export function projectAll(input: {
           skill: intent.skill,
           name: intent.name,
           level: intent.before.level,
+          points: intent.before.points,
           gained: false,
           blocked: intent.blocked,
           worth: 0,
@@ -447,6 +477,7 @@ export function projectAll(input: {
         skill: intent.skill,
         name: intent.name,
         level,
+        points,
         gained: level > intent.before.level,
         blocked: null,
         worth,
