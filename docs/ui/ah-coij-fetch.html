@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-coij — Fetch, and the password each time</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1320px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:38px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:4.4em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+        font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; margin-bottom:10px; }
+  .ui h4 { font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; font-family:inherit; }
+  .ui .meta { color:var(--ink-soft); margin-bottom:9px; }
+  .ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+  .ui .field { margin-bottom:9px; }
+  .ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+     color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+  .ui input::placeholder { color:var(--ink-dim); }
+  .ui input:disabled { opacity:.5; }
+  .ui .hint { color:var(--ink-dim); margin:2px 0 9px; }
+  .ui .danger { color:var(--danger); margin:2px 0 9px; }
+  .ui .soft { color:var(--ink-soft); margin:6px 0 9px; }
+  .ui .radio { display:flex; align-items:flex-start; gap:6px; color:var(--ink-soft); margin-top:5px; }
+  .ui .radio.off { opacity:.5; }
+  .ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+  .ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink-soft);
+             border-radius:4px; padding:4px 10px; font:inherit; }
+  .ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+  .ui .btn.off { opacity:.45; }
+  .bar { height:5px; border:1px solid var(--edge); border-radius:3px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:var(--brass); }
+  .hdr { display:flex; align-items:center; gap:8px; justify-content:flex-end;
+         font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px;
+         background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px; }
+  .hdr .chip { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:3px 9px; }
+  .hdr .chip.brass { border-color:var(--brass); color:var(--brass); }
+  .caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; }
+  .tag { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+         font-family:system-ui,sans-serif; display:block; margin:14px 0 5px; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:6px;
+          font-family:system-ui,sans-serif; }
+  th, td { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { color:var(--brass); font-weight:normal; letter-spacing:.6px; }
+  td { color:var(--ink-soft); }
+  td b { color:var(--ink); font-weight:600; }
+  .gone { color:var(--ink-soft); font-size:13.5px; max-width:100ch; }
+  .gone li { margin:6px 0 6px 18px; }
+  .gone li b { color:var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ah-coij — <span>the sign-in goes away; the password is asked for each time</span></h1>
+  <p>There is no signed-in state on a New Age world any more, on <b>Arcanum</b> or on <b>Trident</b>.
+  Nothing is held between actions: each of <b>Fetch</b> and <b>Send</b> logs in with the faction
+  number and password typed into its own dialog, does the one thing it was asked to do, and forgets
+  the token. A reload, a game switch and a ruleset change all become uneventful, because there was
+  never anything to lose.</p>
+  <p>The header chip that read <code>Sign in to Arcanum</code>, and the faction-name chip with its
+  popover behind it, are replaced by one button that always says <b>Fetch</b> and always does the
+  same thing.</p>
+</header>
+
+<main>
+
+<h3 class="sec">The header</h3>
+<p>One button, one meaning, whether or not a report is loaded.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>BEFORE</em> a chip that changed meaning</h2>
+    <div class="hdr"><span class="chip">Export ▾</span><span class="chip">Sign in to Arcanum</span><span class="chip">Send</span></div>
+    <span class="tag">and, once signed in</span>
+    <div class="hdr"><span class="chip">Export ▾</span><span class="chip brass">Merchant Guild ▾</span><span class="chip">Send</span></div>
+    <p class="caption">Both fetch actions lived inside the popover behind that second chip, so both
+    needed a new home.</p>
+  </div>
+  <div class="card">
+    <h2><em>AFTER</em> a button that fetches</h2>
+    <div class="hdr"><span class="chip">Export ▾</span><span class="chip brass">Fetch</span><span class="chip">Send</span></div>
+    <ul class="notes">
+      <li>Same label and same behaviour in every state — no popover, no chevron, no faction name.</li>
+      <li>Still between <b>Export</b> and <b>Send</b>, and still absent on a game that is not played
+      under a New Age world.</li>
+      <li><b>Send</b> keeps its own button and its own dialog, unchanged except that it now always
+      asks for the faction number as well as the password.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">The Fetch dialog</h3>
+<p>Two fields and two choices. The dialog stays up while it works, so there is one place to watch and
+one place to stop, and it closes itself when the work is done.</p>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>READY</em> a report is loaded</h2>
+    <p class="concept">The faction number is prefilled from the report on screen and stays editable.
+    <b>This turn's report</b> is selected every time the dialog opens; the choice is not remembered.</p>
+    <div class="ui">
+      <h4>Fetch from New Age: Arcanum</h4>
+      <p class="meta">atlantis-newage.com · turn 83</p>
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <p class="hint">Used for this fetch only. Nothing is written to this machine.</p>
+      <label class="radio"><input type="radio" name="r1" checked><span>This turn's report</span></label>
+      <label class="radio"><input type="radio" name="r1"><span>This turn's report and every earlier turn not yet loaded</span></label>
+      <div class="foot"><button class="btn">Cancel</button><button class="btn primary">Fetch</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>EMPTY</em> no report loaded yet</h2>
+    <p class="concept">Nothing to prefill from, so the faction number is blank and the meta line drops
+    its turn. <b>Fetch</b> stays off until both fields are filled — the rule the sign-in already had.</p>
+    <div class="ui">
+      <h4>Fetch from New Age: Arcanum</h4>
+      <p class="meta">atlantis-newage.com</p>
+      <div class="field"><label>Faction number</label><input type="text" placeholder="Required"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <p class="hint">Used for this fetch only. Nothing is written to this machine.</p>
+      <label class="radio"><input type="radio" name="r2" checked><span>This turn's report</span></label>
+      <label class="radio"><input type="radio" name="r2"><span>This turn's report and every earlier turn not yet loaded</span></label>
+      <div class="foot"><button class="btn">Cancel</button><button class="btn primary off">Fetch</button></div>
+    </div>
+    <p class="caption">This is the first run on a new game, and the only way to reach a New Age
+    world at all before a report exists.</p>
+  </div>
+  <div class="card">
+    <h2><em>REFUSED</em> the world said no</h2>
+    <p class="concept">The password is cleared and takes focus back; the faction number and the choice
+    are left as typed. There is no <q>session ended</q> notice, because there is no session to end.</p>
+    <div class="ui">
+      <h4>Fetch from New Age: Arcanum</h4>
+      <p class="meta">atlantis-newage.com · turn 83</p>
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required" style="border-color:var(--danger)"></div>
+      <p class="danger">The world did not accept that faction number and password.</p>
+      <label class="radio"><input type="radio" name="r3" checked><span>This turn's report</span></label>
+      <label class="radio"><input type="radio" name="r3"><span>This turn's report and every earlier turn not yet loaded</span></label>
+      <div class="foot"><button class="btn">Cancel</button><button class="btn primary off">Fetch</button></div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">While it works</h3>
+<p>The fields go away, the dialog does not. <b>Cancel</b> is in the same place throughout, and
+<b>Escape</b> does the same thing as pressing it.</p>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>WORKING</em> one turn</h2>
+    <p class="concept">A login and a download. Over quickly, and the dialog closes itself when the
+    report has been read.</p>
+    <div class="ui">
+      <h4>Fetch from New Age: Arcanum</h4>
+      <p class="meta">atlantis-newage.com · turn 83</p>
+      <p class="soft">Signing in…</p>
+      <div class="foot"><button class="btn">Cancel</button></div>
+    </div>
+    <div class="ui">
+      <h4>Fetch from New Age: Arcanum</h4>
+      <p class="meta">atlantis-newage.com · turn 83</p>
+      <p class="soft">Fetching this turn's report from Arcanum…</p>
+      <div class="foot"><button class="btn">Cancel</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>WORKING</em> every missing turn</h2>
+    <p class="concept">This turn's report is fetched and read first, so the run knows which turn is on
+    screen before it asks the world what else there is. Then the missing turns, oldest first, one at
+    a time.</p>
+    <div class="ui">
+      <h4>Fetch from New Age: Arcanum</h4>
+      <p class="meta">atlantis-newage.com · turn 83</p>
+      <p class="soft">Asking Arcanum which turns it holds…</p>
+      <div class="foot"><button class="btn">Cancel</button></div>
+    </div>
+    <div class="ui">
+      <h4>Fetch from New Age: Arcanum</h4>
+      <p class="meta">atlantis-newage.com · turn 83</p>
+      <p class="soft">Fetching turn 80 from Arcanum — 3 of 9…</p>
+      <div class="bar"><i style="width:33%"></i></div>
+      <div class="foot"><button class="btn">Cancel</button></div>
+    </div>
+    <p class="caption">Cancel stops the run at the next turn boundary. Everything already read stays
+    loaded — the rule the earlier-turns run follows today.</p>
+  </div>
+  <div class="card">
+    <h2><em>DONE</em> the status bar has the last word</h2>
+    <p class="concept">The dialog closes and the status bar says what landed, in the sentences those
+    two paths already write. Nothing new is invented for the end of a fetch.</p>
+    <span class="tag">one turn</span>
+    <div class="ui"><p style="color:var(--ink)">turn 83 loaded — 4 regions, 11 units.</p></div>
+    <span class="tag">a clean run</span>
+    <div class="ui"><p style="color:var(--ink)">9 turns stored for history; still showing turn 83.</p></div>
+    <span class="tag">a run that partly failed</span>
+    <div class="ui"><p style="color:var(--ink)">7 turns stored for history, 2 could not be fetched; still showing turn 83.</p></div>
+    <span class="tag">nothing at all</span>
+    <div class="ui"><p style="color:var(--ink)">could not fetch this turn's report: could not reach atlantis-newage.com</p></div>
+  </div>
+</div>
+
+<h3 class="sec">The Send dialog</h3>
+<p>Almost unchanged: it already asked for a password on every send. What changes is that the faction
+number is always asked for too, and that a refusal is now just a refusal.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>SEND</em> as it will be</h2>
+    <div class="ui">
+      <h4>Send orders to Arcanum</h4>
+      <p class="meta">Merchant Guild (27) · turn 83 · atlantis-newage.com</p>
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <p class="hint">Used for this send only. Nothing is written to this machine.</p>
+      <div class="foot"><button class="btn">Cancel</button><button class="btn primary">Send</button></div>
+    </div>
+    <ul class="notes">
+      <li>The confirm button always reads <b>Send</b>. <q>Sign in and send</q> described a state that
+      no longer exists.</li>
+      <li>Every verdict sentence — saved, saved with errors, not saved, unreachable — is unchanged.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>GONE</em> what this deletes</h2>
+    <ul class="gone">
+      <li><b>The sign-in dialog</b>, and every re-authentication path that put it back up mid-action.</li>
+      <li><b>The earlier-turns dialog</b> and its per-turn list. The second radio replaces it; a
+      single old turn can no longer be asked for on its own.</li>
+      <li><b>Sign out</b>, and <q>Nothing is stored: closing Atlantis HUD signs you out.</q></li>
+      <li><b>Your session has ended. Sign in again to continue.</b> — a refusal mid-action is now an
+      ordinary refusal, and the dialog you are already in says so.</li>
+      <li><b>The faction-name chip</b> and its popover summary,
+      <q>Signed in to New Age: Arcanum as Merchant Guild (27).</q></li>
+      <li><b>Dropping a token</b> when a game closes, a game is deleted, or a ruleset changes — there
+      is no token to drop between one press and the next.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Every string on the page</h3>
+<p>Quoted as they will ship. Nothing here is a paraphrase.</p>
+
+<table>
+  <tr><th>Where</th><th>What it says</th></tr>
+  <tr><td><b>Header button</b></td><td>Fetch</td></tr>
+  <tr><td><b>Dialog heading</b></td><td>Fetch from New Age: Arcanum <span style="color:var(--ink-dim)">(the ruleset's own label)</span></td></tr>
+  <tr><td><b>Meta line</b></td><td>atlantis-newage.com · turn 83 <span style="color:var(--ink-dim)">— host alone when no report is loaded</span></td></tr>
+  <tr><td><b>Fields</b></td><td>Faction number · Faction password, both placeheld <q>Required</q></td></tr>
+  <tr><td><b>Note under the fields</b></td><td>Used for this fetch only. Nothing is written to this machine.</td></tr>
+  <tr><td><b>Note, in Send</b></td><td>Used for this send only. Nothing is written to this machine.</td></tr>
+  <tr><td><b>First choice</b></td><td>This turn's report</td></tr>
+  <tr><td><b>Second choice</b></td><td>This turn's report and every earlier turn not yet loaded</td></tr>
+  <tr><td><b>Buttons</b></td><td>Cancel · Fetch <span style="color:var(--ink-dim)">— Cancel alone while working</span></td></tr>
+  <tr><td><b>Signing in</b></td><td>Signing in…</td></tr>
+  <tr><td><b>Fetching this turn</b></td><td>Fetching this turn's report from Arcanum…</td></tr>
+  <tr><td><b>Listing</b></td><td>Asking Arcanum which turns it holds…</td></tr>
+  <tr><td><b>Fetching an earlier turn</b></td><td>Fetching turn 80 from Arcanum — 3 of 9…</td></tr>
+  <tr><td><b>Refused</b></td><td>The world did not accept that faction number and password.</td></tr>
+  <tr><td><b>Refused mid-run</b></td><td>The world stopped accepting that faction number and password.</td></tr>
+  <tr><td><b>Unreachable, fetching</b></td><td>Could not reach atlantis-newage.com.</td></tr>
+  <tr><td><b>Unreachable, sending</b></td><td>Could not reach atlantis-newage.com. Nothing was sent.</td></tr>
+</table>
+
+</main>
+</body>
+</html>
