@@ -46,13 +46,12 @@ export function NewAgeSendDialog({
   factionLabel: string;
   turnNumber: number | null;
   host: string;
-  /** True when there is no session for this game, so the faction number is asked for too. */
   /** Prefills the faction number; the player can change it. */
   suggestedFactionNumber: string | null;
   phase: NewAgeSendPhase;
   /**
-   * The faction number is `""` when it was not asked for. Cancel and Escape abort, so this
-   * promises nothing about delivery.
+   * Both are asked for every send - there is no session to lean on. Cancel and Escape abort, so
+   * this promises nothing about delivery.
    */
   onSend: (factionNumber: string, password: string) => void;
   onDismiss: () => void;
@@ -127,7 +126,7 @@ export function NewAgeSendDialog({
           {metaLine(factionLabel, turnNumber, host)}
         </p>
 
-                {settled ? null : (
+        {settled ? null : (
           <NewAgeSignInFields
             note={credentialNote("send")}
             factionNumber={factionNumber}

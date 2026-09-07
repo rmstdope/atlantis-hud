@@ -80,6 +80,9 @@ export async function runNewAgeFetch(
     // No point asking which turns exist for a fetch that could not deliver the one asked for.
     return { kind: "reportFailed", reason: fetchFailureReason(report, NEW_AGE_HOST) };
   }
+  // The boolean is deliberately not read: a report the game would not keep has already had its own
+  // reason written to the status line by `loadReport`, and this turn still reached the world - so
+  // the run carries on to the listing rather than claiming the fetch itself failed.
   await effects.store(null, report.value);
 
   if (scope === "thisTurn") {
@@ -114,10 +117,15 @@ export async function runNewAgeFetch(
     abandoned: effects.abandoned
   });
 
+  // `remaining` is non-null only on a 401 and null both when the run finished and when it was
+  // abandoned, so it cannot tell those two apart - `abandoned()` is asked directly. Whatever
+  // landed before the Cancel stays landed; it is already in the game's history.
+  if (outcome.remaining === null && effects.abandoned()) {
+    return ABANDONED;
+  }
+
   return {
     kind: "done",
-    // `remaining` is non-null only on a 401; it is null when the run was abandoned as well as
-    // when it finished, so what landed is read from `stored` and `failed` either way.
     history: {
       stored: outcome.stored,
       failed: outcome.failed,

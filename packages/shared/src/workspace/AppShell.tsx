@@ -1671,6 +1671,9 @@ export function AppShell({
         if (outcome) {
           applyLoadedTurn(outcome.loaded, outcome.settledRuleset);
         }
+        // Whether the turn actually reached the screen. `runReported` catches, so a failure
+        // resolves here like a success - and `loadReport`'s `viewerRef` must not advance on one.
+        return outcome !== undefined;
       }),
     [client, game, rulesetForThisLoad, applyLoadedTurn]
   );
@@ -1880,10 +1883,14 @@ export function AppShell({
             return "stored";
           }
 
-          // Before the await returns, so a second report loaded in the same action routes against
-          // this one rather than against whatever the last render saw.
-          viewerRef.current = report;
-          await applyReport(report, text, fileName);
+          const applied = await applyReport(report, text, fileName);
+          if (applied) {
+            // Only once it is actually on screen, and before the render that follows: a second
+            // report loaded in the same action routes against this one rather than against
+            // whatever the last render saw. An apply that failed leaves `parsed` alone, so the
+            // ref must be left alone too.
+            viewerRef.current = report;
+          }
           return "loaded";
         },
         (message) => setStatus(failedStatus(message)),
@@ -1892,8 +1899,10 @@ export function AppShell({
     // `ruleset` belongs here: without it the callback closes over the value at first render, which
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
     // What is on screen is read through `viewerRef` rather than closed over, for the reason that
-    // ref states; `model` because the map-export prompt counts its hexes against the map the
-    // player already has.
+    // ref states. `model` stays a dependency and is read from the closure: it is used only to
+    // count how much of a *map export* is new, and a map export arrives one file at a time from a
+    // drop or the import button - never inside a multi-turn run, which is the only thing that
+    // loads several reports before a render.
     [client, ruleset, model, heldMagesFor, applyReport, storeReportOnly, takeInMageSheet]
   );
 
@@ -3744,8 +3753,6 @@ export function AppShell({
     dismissNewAgeSend();
   }, [openGameId, newAgeWorld?.worldId, dismissFetch, dismissNewAgeSend]);
 
-  /** The turn on screen, which a bulk history fetch never asks for: loading it would take it. */
-  const workingTurn = parsed?.header.turnNumber ?? null;
   /** What the game already holds, in the shape `missingTurns` reads. */
   const storedTurns = useMemo(
     () => turnSummaries.map((summary) => ({
@@ -3756,11 +3763,21 @@ export function AppShell({
   );
 
   /**
-   * `heldTurns` reads these at call time rather than through the closure: both change while a run
-   * is in flight, and the whole point of reading them after this turn has landed is to see it.
+   * What the game already holds, read at call time rather than through the closure: it changes
+   * while a run is in flight.
+   *
+   * The turn *on screen* is not read from here at all - it comes from `viewerRef`, which is set
+   * the moment a report is applied rather than on the render that follows. Reading it from a
+   * render would make "the turn just fetched is never fetched again" true only by timing, which
+   * is the trap `missingTurns` exists to close.
    */
-  const heldTurnsRef = useRef({ stored: storedTurns, workingTurn });
-  heldTurnsRef.current = { stored: storedTurns, workingTurn };
+  const storedTurnsRef = useRef(storedTurns);
+  storedTurnsRef.current = storedTurns;
+  /** The turn on screen as the run sees it, without waiting for a render. */
+  const currentWorkingTurn = useCallback(
+    () => viewerRef.current?.header.turnNumber ?? null,
+    []
+  );
 
   /**
    * One press of Fetch: sign in with what the dialog was given, bring this turn's report, and -
@@ -3795,50 +3812,65 @@ export function AppShell({
               ? fetchedReportName(worldName)
               : fetchedTurnName(worldName, turnNumber)
           )) !== undefined,
-        heldTurns: () => heldTurnsRef.current,
+        heldTurns: () => ({
+          stored: storedTurnsRef.current,
+          workingTurn: currentWorkingTurn()
+        }),
         onPhase: setFetchPhase,
         abandoned: () => fetchAbandoned.current || fetchAbort.current !== controller
       });
 
+      let stillOurs = true;
       if (fetchAbort.current !== controller) {
-        // The dialog was dismissed or replaced while this ran: nothing more is said about it.
-        return;
+        // The dialog was dismissed or replaced while this ran, so it is told nothing - but a
+        // cancelled run still landed whatever it landed, and the picker below is refreshed for it.
+        stillOurs = false;
+      } else {
+        fetchAbort.current = null;
       }
-      fetchAbort.current = null;
 
-      if (outcome.kind === "refused") {
-        // The dialog stays up, asking again with the password cleared.
-        setFetchPhase({ kind: "ready", message: outcome.message, retype: outcome.retype });
-        return;
+      if (stillOurs) {
+        if (outcome.kind === "refused") {
+          // The dialog stays up, asking again with the password cleared.
+          setFetchPhase({ kind: "ready", message: outcome.message, retype: outcome.retype });
+          return;
+        }
+        setFetchPhase(null);
+        if (outcome.kind === "reportFailed") {
+          setStatus(failedStatus(`${FETCH_FAILURE_PREFIX}: ${outcome.reason}`));
+        } else if (outcome.kind === "done") {
+          if (outcome.listFailed !== null) {
+            setStatus(warningStatus(outcome.listFailed));
+          } else if (outcome.history !== null) {
+            setStatus(
+              outcome.history.refusedMidRun
+                ? failedStatus(FETCH_REFUSED_MID_RUN)
+                : runSummary(
+                    outcome.history.stored.length,
+                    outcome.history.failed.size,
+                    currentWorkingTurn()
+                  )
+            );
+          }
+          // For a plain `thisTurn` fetch nothing is added: `loadReport` has already written its
+          // own line for the turn that just landed.
+        }
+        // `abandoned` says nothing at all: the player closed the dialog, and a line about a run
+        // they stopped is noise.
       }
-      setFetchPhase(null);
-      if (outcome.kind === "abandoned") {
-        return;
-      }
-      if (outcome.kind === "reportFailed") {
-        setStatus(failedStatus(`${FETCH_FAILURE_PREFIX}: ${outcome.reason}`));
-        return;
-      }
-      if (outcome.listFailed !== null) {
-        setStatus(warningStatus(outcome.listFailed));
-      } else if (outcome.history !== null) {
-        setStatus(
-          outcome.history.refusedMidRun
-            ? failedStatus(FETCH_REFUSED_MID_RUN)
-            : runSummary(
-                outcome.history.stored.length,
-                outcome.history.failed.size,
-                heldTurnsRef.current.workingTurn
-              )
-        );
-      }
-      // `loadReport` has already written its own line for this turn, so a plain `thisTurn` fetch
-      // adds nothing here.
 
-      // Once, at the end: a refresh is a core round trip, and the run has already said what
-      // happened to each turn.
-      const factionId = parsed?.header.factionId ?? null;
-      if (outcome.history !== null && game && factionId !== null) {
+      // Once, at the end, and outside the guard above: a run that stored earlier turns put them in
+      // the game whether it finished or was cancelled, and a turn the picker cannot see is a turn
+      // the player cannot compare against. A refresh is a core round trip, so it happens only when
+      // the run actually reached its per-turn stage.
+      const storedSomething =
+        outcome.kind === "abandoned" || (outcome.kind === "done" && outcome.history !== null);
+      // From `viewerRef`, not from the render's `parsed`: this run is what put a report on screen,
+      // and the closure still holds whatever was there when Fetch was pressed - `null`, on the
+      // first fetch of a fresh game. Reading that would skip the refresh and leave every turn the
+      // run stored out of the picker.
+      const factionId = viewerRef.current?.header.factionId ?? null;
+      if (storedSomething && game && factionId !== null) {
         const summaries = await runReported(
           () =>
             listComparableTurns(client, game.databasePath, game.manifest.metadata.gameId, factionId),
@@ -3850,7 +3882,7 @@ export function AppShell({
         }
       }
     },
-    [newAgeApi, newAgeWorld, openGameId, loadReport, client, game, parsed]
+    [newAgeApi, newAgeWorld, openGameId, loadReport, currentWorkingTurn, client, game]
   );
 
   /**

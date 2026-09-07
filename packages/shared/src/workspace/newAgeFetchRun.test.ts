@@ -143,6 +143,26 @@ describe("runNewAgeFetch", () => {
     expect(calls).toEqual([]);
   });
 
+  it("stops a run that was cancelled, and keeps the turns that already landed", async () => {
+    let cancelled = false;
+    const { calls, effects } = harness({
+      historyTurns: async () => ({ kind: "ok", value: [80, 81, 82] }),
+      historyReport: async (_token, turnNumber) => {
+        // Cancel lands while turn 80 is in flight; the run stops at the next turn boundary.
+        cancelled = true;
+        return { kind: "ok", value: `turn ${turnNumber}` };
+      },
+      abandoned: () => cancelled
+    });
+
+    const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
+
+    expect(outcome).toEqual({ kind: "abandoned" });
+    // Turn 80 was stored before the cancel was noticed, and 81 and 82 were never asked for.
+    expect(calls).toContain("store 80");
+    expect(calls).not.toContain("historyReport 81");
+  });
+
   it("reads which turns are held only after this turn has landed", async () => {
     let landed = false;
     const { askedTurns, effects } = harness({

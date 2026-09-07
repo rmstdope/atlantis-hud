@@ -48,6 +48,11 @@ test.beforeEach(async ({ page }, testInfo) => {
       (
         window as unknown as { __ATLANTIS_HISTORY__: HistoryStandIn }
       ).__ATLANTIS_HISTORY__ = { turns: { status: 500, body: "" }, reports: {} };
+      // The stand-in answers instantly, so a whole multi-turn run is over before a walk could
+      // press anything. A delay on each history report is what makes "mid-run" reachable at all.
+      (
+        window as unknown as { __ATLANTIS_HISTORY_DELAY_MS__: number }
+      ).__ATLANTIS_HISTORY_DELAY_MS__ = 0;
       (
         window as unknown as { __ATLANTIS_LOGIN_REPLY__: { status: number; body: string } }
       ).__ATLANTIS_LOGIN_REPLY__ = {
@@ -81,6 +86,11 @@ test.beforeEach(async ({ page }, testInfo) => {
               return history.turns;
             }
             const turn = /\/files\/history\/(\d+)\/report/.exec(request.url)?.[1] ?? "";
+            const delay = (window as unknown as { __ATLANTIS_HISTORY_DELAY_MS__: number })
+              .__ATLANTIS_HISTORY_DELAY_MS__;
+            if (delay > 0) {
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
             return history.reports[turn] ?? { status: 500, body: "" };
           }
           if (request.url.includes("/auth/login")) {
@@ -115,6 +125,14 @@ async function replyWith(
       window as unknown as { __ATLANTIS_REPORT_REPLY__: { status: number; body: string } }
     ).__ATLANTIS_REPORT_REPLY__ = next;
   }, reply);
+}
+
+/** Makes each history report take this long, so a run can be caught while it is going. */
+async function historyDelay(page: import("@playwright/test").Page, ms: number) {
+  await page.evaluate((next) => {
+    (window as unknown as { __ATLANTIS_HISTORY_DELAY_MS__: number }).__ATLANTIS_HISTORY_DELAY_MS__ =
+      next;
+  }, ms);
 }
 
 /** Sets what the login endpoint answers next. */
@@ -248,6 +266,36 @@ test("fetches every missing turn in one press and says what happened", async ({ 
     .filter((url) => url.includes("/files/history/") && !url.includes("/turns"));
   expect(historyCalls.filter((url) => url.includes("/history/72/"))).toEqual([]);
   expect(historyCalls).toHaveLength(2);
+});
+
+test("stops a run when the dialog is cancelled and keeps what landed", async ({ page }) => {
+  await clearGames(page);
+  await arcanumGame(page);
+  await replyWith(page, { status: 200, body: TURN_72 });
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ turns: [70, 71, 72] }) },
+    reports: {
+      "70": { status: 200, body: TURN_70 },
+      "71": { status: 200, body: TURN_71 }
+    }
+  });
+
+  await historyDelay(page, 2000);
+
+  await fetchWith(page, { scope: "history" });
+
+  // Cancel while turn 70 is in flight. The run stops at the next turn boundary rather than here,
+  // which is what keeps a report from being abandoned half-written - so turn 70 still lands.
+  await expect(page.getByTestId("newage-fetch-working")).toContainText("Fetching turn");
+  await page.getByTestId("newage-fetch-cancel").click();
+  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
+
+  // Nothing claims the run finished, and the turn already stored is in the picker.
+  await expect(page.getByTestId("import-status")).not.toContainText("stored for history;");
+  await page.getByTestId("turn-chip").click();
+  await expect(page.getByTestId("turn-picker")).toBeVisible();
+  await expect(page.getByTestId("turn-row-70")).toBeVisible();
+  await expect(page.getByTestId("turn-row-72")).toContainText("playing");
 });
 
 test("keeps this turn when the world would not say which turns it holds", async ({ page }) => {
