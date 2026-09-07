@@ -1,4 +1,4 @@
-import type { StructureInfo } from "@atlantis/core-client";
+import type { ReportRegion, StructureInfo } from "@atlantis/core-client";
 
 /**
  * How a structure is named wherever it is written out in full: `Odds and Ends [12] · Fort`.
@@ -63,4 +63,80 @@ export function structurePaletteLabel(structure: StructureInfo, hexLabel: string
   const unnamed = ["building", "ship"].includes(structure.name.toLowerCase());
   const kind = unnamed ? `${structure.kind} · ` : "";
   return `${structure.name} [${structure.structureId}] · ${kind}${hexLabel}`;
+}
+
+/**
+ * Every known region's structures, by region id and then by structure id.
+ *
+ * Nested rather than one map under a composite key, so it is structurally distinct from the
+ * `ReadonlyMap<string, StructureInfo>` a single region's index is: a structure number is scoped to
+ * its region (`rules/move`, "2) A structure number"), the two are not interchangeable, and a
+ * mistaken pass must fail typecheck rather than silently label from the wrong hex.
+ */
+export type StructuresByRegion = ReadonlyMap<string, ReadonlyMap<string, StructureInfo>>;
+
+/** No structures at all, so an unknown region allocates nothing per row. */
+const NO_STRUCTURES: ReadonlyMap<string, StructureInfo> = new Map();
+
+/** The index, built once per known map rather than per row. */
+export function structuresByRegionOf(
+  regions: Iterable<Pick<ReportRegion, "regionId" | "structures">>
+): StructuresByRegion {
+  return new Map(
+    [...regions].map((region) => [
+      region.regionId,
+      new Map(region.structures.map((structure) => [structure.structureId, structure]))
+    ])
+  );
+}
+
+/**
+ * The units dock's index: the remembered map's regions, overridden by this turn's own.
+ *
+ * Both, rather than the map alone. The map is a superset *when there is one* - a report whose map
+ * could not be drawn has no regions at all, and the units panel goes on working from the parsed
+ * report, so a map-only index would leave every row in that report with a bare `[id]` (`ah-yjhf`).
+ * The reported regions come last, so where the two disagree this turn wins over what was
+ * remembered.
+ */
+export function structuresForUnitDock(
+  known: Iterable<Pick<ReportRegion, "regionId" | "structures">>,
+  reported: Iterable<Pick<ReportRegion, "regionId" | "structures">>
+): StructuresByRegion {
+  return structuresByRegionOf([...known, ...reported]);
+}
+
+/**
+ * The parts of a row that say which region numbered the structure it names.
+ *
+ * A `ReportUnit` satisfies it with both optional fields absent; a `PreviewedUnit` carries them.
+ * Declared structurally rather than imported from `unitPreview.ts`, which imports `unitTable.ts`,
+ * which imports this module: a runtime edge the other way would close a cycle.
+ */
+export type StructureBearingRow = {
+  regionId: string;
+  structureId: string | null;
+  /** Set only by `mergePreviewAcross`' fold: the hex whose numbering `structureId` is written in. */
+  structureRegionId?: string;
+  /** Where an arriving row set out from — the hex that numbered its reported structure. */
+  arrivingFrom?: string | null;
+};
+
+/** Which region's numbering `row.structureId` is written in. */
+export function structureRegionOf(row: StructureBearingRow): string {
+  return row.structureRegionId ?? row.regionId;
+}
+
+/** Which region's numbering the row's reported (`was`) structure id is written in. */
+export function reportedStructureRegionOf(row: StructureBearingRow): string {
+  return row.arrivingFrom ?? row.regionId;
+}
+
+/** `unitStructureLabel`, resolved in the region that numbered the structure. */
+export function unitStructureLabelIn(
+  regionId: string,
+  structureId: string | null,
+  byRegion: StructuresByRegion
+): string | null {
+  return unitStructureLabel(structureId, byRegion.get(regionId) ?? NO_STRUCTURES);
 }
