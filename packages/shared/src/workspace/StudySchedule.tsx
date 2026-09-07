@@ -107,7 +107,8 @@ export function StudySchedule({
           turns,
           tree,
           factionLabel: factionLabelOf(groups, hovered.factionId),
-          teacherNames: new Map(rows.map((row) => [row.key, row.name] as const))
+          teacherNames: new Map(rows.map((row) => [row.key, row.name] as const)),
+          rows
         });
 
   const editing = mode.kind === "choosing" || mode.kind === "teaching" ? mode : null;
@@ -659,7 +660,10 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
             data-testid={`study-schedule-can-study-${choice.skill}`}
             className="px-1 text-ink"
           >
-            {choice.name} <span className="text-ink-dim">{choice.detail}</span>
+            {choice.name}{" "}
+            <span className={choice.taughtBy === null ? "text-ink-dim" : "text-ok"}>
+              {choice.detail}
+            </span>
           </li>
         ))}
       </ul>
@@ -848,7 +852,7 @@ export function CellPopover({
               {row.detail === null ? null : (
                 <>
                   {" "}
-                  <span className="text-ink-dim">{row.detail}</span>
+                  <span className={row.taught ? "text-ok" : "text-ink-dim"}>{row.detail}</span>
                 </>
               )}
             </button>
@@ -912,6 +916,8 @@ function rowsOf(
   testId: string;
   name: string;
   detail: string | null;
+  /** True for a month somebody would double: the row is drawn green rather than dim. */
+  taught: boolean;
   pressed: boolean;
   onClick: (
     onEvent: (event: CellEvent) => void,
@@ -925,6 +931,7 @@ function rowsOf(
       testId: "study-schedule-choice-nothing",
       name: "— nothing",
       detail: null,
+      taught: false,
       pressed: current === null,
       onClick: (_onEvent, onChoose) => () => onChoose(null)
     },
@@ -933,6 +940,7 @@ function rowsOf(
       testId: "study-schedule-choice-teach",
       name: "Teaches…",
       detail: menu.teachDetail,
+      taught: false,
       pressed: current?.kind === "teach",
       onClick:
         (
@@ -957,6 +965,7 @@ function rowsOf(
       testId: `study-schedule-choice-${choice.skill}`,
       name: choice.name,
       detail: choice.detail,
+      taught: choice.taughtBy !== null,
       pressed: current?.kind === "study" && current.skill === choice.skill,
       onClick:
         (

@@ -579,3 +579,100 @@ describe("the warnings strip", () => {
     expect(markup).not.toContain('data-testid="study-planner-warnings-toggle"');
   });
 });
+
+describe("a month somebody would double is drawn green", () => {
+  /** Ereb (2431) teaching live on turn 26, and Ilna (2432) in his hex studying force. */
+  const taughtRows = (() => {
+    const drawn = scheduleRows({
+      groups,
+      plans: ["2431", "2432"].map((unitId) => ({
+        factionId: "12",
+        unitId,
+        goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+        comment: "",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      })),
+      tree,
+      turns,
+      seats: new Map([["1:7,53/1", 1]])
+    }) as ScheduleRow[];
+    const teacher: ScheduleRow = {
+      ...drawn[0],
+      cells: drawn[0].cells.map((cell, at) =>
+        at === 2
+          ? {
+              kind: "teach" as const,
+              students: [],
+              live: true,
+              outcome: { taught: ["12/2432"], refused: [], worth: 2 },
+              label: "TEACH"
+            }
+          : cell
+      )
+    };
+    return [teacher, drawn[1]];
+  })();
+
+  const studentMenu = (rows: readonly ScheduleRow[] | undefined) =>
+    cellMenu({
+      mageName: "Ilna",
+      turn: 26,
+      standing: taughtRows[1].standings[2],
+      tree,
+      rows,
+      turnIndex: rows === undefined ? undefined : 2,
+      rowKey: rows === undefined ? undefined : "12/2432",
+      label: (regionId: string) => regionId
+    });
+
+  const popoverOf = (rows: readonly ScheduleRow[] | undefined) =>
+    renderToStaticMarkup(
+      <CellPopover
+        menu={studentMenu(rows)}
+        mode={{ kind: "choosing" as const, rowKey: "12/2432", turnIndex: 2 }}
+        mageName="Ilna"
+        turn={26}
+        current={null}
+        rowIndex={1}
+        onEvent={() => {}}
+        onChoose={() => {}}
+      />
+    );
+
+  it("tints the dropdown's taught row and names the teacher", () => {
+    const markup = popoverOf(taughtRows);
+
+    expect(markup).toContain("taught by Ereb");
+    expect(markup).toContain("text-ok");
+  });
+
+  it("leaves an untaught dropdown with no green at all", () => {
+    const markup = popoverOf(undefined);
+
+    expect(markup).not.toContain("taught by");
+    expect(markup).not.toContain("text-ok");
+  });
+
+  const paneOf = (rows: readonly ScheduleRow[] | undefined) =>
+    renderToStaticMarkup(
+      <MagePaneView
+        pane={magePane({
+          row: taughtRows[1],
+          turnIndex: 2,
+          turns,
+          tree,
+          factionLabel: "Wardens of the North (12)",
+          rows
+        })}
+      />
+    );
+
+  it("tints the pane's Can study row too", () => {
+    expect(paneOf(taughtRows)).toContain("text-ok");
+    expect(paneOf(taughtRows)).toContain("taught by Ereb");
+  });
+
+  it("leaves the pane plain with no rows to read", () => {
+    expect(paneOf(undefined)).not.toContain("text-ok");
+  });
+});
