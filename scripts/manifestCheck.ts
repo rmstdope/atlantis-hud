@@ -130,16 +130,21 @@ function runCli(site: string | undefined): void {
     process.exitCode = 1;
     return;
   }
-  void checkManifest(site, fetchStatus, (ms) => new Promise<void>((done) => setTimeout(done, ms))).then(
-    (verdict) => {
+  void checkManifest(site, fetchStatus, (ms) => new Promise<void>((done) => setTimeout(done, ms)))
+    .then((verdict) => {
       const notice = successNotice(verdict);
       if (notice !== null) process.stdout.write(`::notice::${notice}\n`);
       if (!verdict.ok) {
         process.stdout.write(`::error::${failureMessage(verdict)}\n`);
         process.exitCode = 1;
       }
-    }
-  );
+    })
+    .catch((error: unknown) => {
+      // Nothing here rejects today, but an unhandled rejection would reach the workflow log as a
+      // stack trace rather than as the `::error::` line the step is built to read.
+      process.stdout.write(`::error::The manifest check itself failed: ${String(error)}\n`);
+      process.exitCode = 1;
+    });
 }
 
 if (invokedDirectly) {
