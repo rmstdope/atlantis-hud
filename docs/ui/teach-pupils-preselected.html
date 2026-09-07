@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-af7i — which pupils arrive ticked</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --brass:#c8a05a; --warn:#d9a441; --good:#7fb069; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 30px 0 6px; border-top: 1px solid var(--edge); padding-top: 16px; }
+  p.lead { color: var(--soft); max-width: 92ch; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  .row { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; margin: 12px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 5px; }
+  .cap b { color: var(--ink); font-weight: 600; }
+  .pop { width: 330px; background: var(--raised); border: 1px solid var(--edge); border-radius: 5px;
+         padding: 8px; box-shadow: 0 6px 18px #0008; }
+  .pop p.head { margin: 0 0 4px; font-size: 12.5px; }
+  ul { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; }
+  li button { display: block; width: 100%; text-align: left; background: none; border: 0;
+              color: inherit; font: 12px/1.5 system-ui, sans-serif; padding: 1px 4px;
+              border-radius: 3px; cursor: default; }
+  li button:hover { background: #ffffff0d; }
+  .mark { display: inline-block; width: 12px; color: var(--brass); }
+  .off .mark { color: transparent; }
+  .blocked { color: var(--dim); }
+  .det { color: var(--dim); }
+  .warnline { margin: 4px 0 0; color: var(--warn); font-size: 11.5px; }
+  .acts { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+  .btn { border: 1px solid var(--edge); border-radius: 3px; padding: 2px 9px; font-size: 12px;
+         color: var(--soft); background: none; }
+  .btn.set { border-color: var(--brass); color: var(--brass); }
+  code { font-family: ui-monospace, Menlo, monospace; background: var(--panel); padding: 0 4px;
+         border-radius: 3px; }
+  table.cmp { border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table.cmp th, table.cmp td { border: 1px solid var(--edge); padding: 5px 10px; text-align: left;
+                               vertical-align: top; }
+  table.cmp th { color: var(--dim); font-weight: 600; }
+  .banner { background: var(--panel); border: 1px solid var(--edge); border-left: 3px solid var(--brass);
+            padding: 10px 14px; border-radius: 4px; max-width: 92ch; margin: 14px 0; color: var(--soft); }
+</style>
+</head>
+<body>
+
+<h1>ah-af7i — a teaching mage arrives with his pupils already chosen</h1>
+<p class="lead">Choosing <code>Teaches…</code> opens the same second step it does today, with the
+same rows in the same order and the same reasons beside the ones who cannot be taught. The only
+change is which rows arrive already ticked. Everything stays editable: untick anyone, tick anyone
+eligible who was left out, press <code>Set</code>.</p>
+<p class="note">The scene below is one hex on turn 26. <b>Twelve</b> mages are eligible — enough to
+exceed the teacher's ten slots, which is what separates the three options — and three more are
+listed with a reason and cannot be ticked at all.</p>
+
+<div class="banner" style="border-left-color:#7fb069"><strong>Chosen: A — the first ten in row order.</strong>
+Every pupil keeps a full doubled month, the dilution warning never fires from a list the planner
+chose itself, and the rule is one a player can predict by looking down the list. Rejected: <em>B</em>,
+which quietly turns every taught cell's ×2 into ×1.8 and makes the player read a warning to find out;
+and <em>C</em>, which needs a value ranking nobody has specified and scatters the skipped rows through
+the list with nothing saying why those two. Paired with <strong>Q</strong> — see the companion mockup,
+<code>teach-pupils-live.html</code>. The full interview is in bead ah-af7i's design field.</div>
+
+<h2 class="sec">A — everyone eligible, capped at ten, in row order</h2>
+<p class="note">Tick eligible pupils down the list until ten are ticked, then stop. Never dilutes
+a month. Which two get left out is simply "the last two in grid order".</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>Option A</b> — ten ticked, two eligible left untouched, no warning</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26</p>
+      <ul>
+        <li><button><span class="mark">✓</span>Two of Seven (2517) <span class="det">gate lore 1 → gate lore 2</span></button></li>
+        <li><button><span class="mark">✓</span>Three of Seven (2518) <span class="det">force shield 2 → force shield 3</span></button></li>
+        <li><button><span class="mark">✓</span>Four of Seven (2519) <span class="det">force shield 1 → force shield 2</span></button></li>
+        <li><button><span class="mark">✓</span>Five of Seven (2520) <span class="det">pattern lore 1 → pattern lore 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Seven of Seven (2522) <span class="det">in Corryn Wood, not here</span></span></button></li>
+        <li><button><span class="mark">✓</span>One of Eight (2601) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+        <li><button><span class="mark">✓</span>Two of Eight (2602) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+        <li><button><span class="mark">✓</span>Three of Eight (2603) <span class="det">gate lore 1 → gate lore 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Four of Eight (2604) <span class="det">nothing planned</span></span></button></li>
+        <li><button><span class="mark">✓</span>Five of Eight (2605) <span class="det">force shield 0 → force shield 1</span></button></li>
+        <li><button><span class="mark">✓</span>Six of Eight (2606) <span class="det">force shield 0 → force shield 1</span></button></li>
+        <li><button><span class="mark">✓</span>Seven of Eight (2607) <span class="det">pattern lore 0 → pattern lore 1</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>Eight of Eight (2608) <span class="det">pattern lore 0 → pattern lore 1</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>Nine of Eight (2609) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Ten of Eight (2610) <span class="det">taught by Ninth of Nine</span></span></button></li>
+      </ul>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+  </div>
+  <div style="max-width:34ch">
+    <p class="note"><b>Costs.</b> Two eligible pupils sit untouched with no explanation of why they
+    were skipped — the player has to count to see that ten is the reason. It is the only option
+    that never needs the dilution warning.</p>
+  </div>
+</div>
+
+<h2 class="sec">B — everyone eligible, uncapped</h2>
+<p class="note">Tick all twelve and let the existing dilution warning speak. Twelve taught at
+1.8 months each is more months in total than ten at two.</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>Option B</b> — all twelve ticked, warning under the list</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26</p>
+      <ul>
+        <li><button><span class="mark">✓</span>Two of Seven (2517) <span class="det">gate lore 1 → gate lore 2</span></button></li>
+        <li><button><span class="mark">✓</span>Three of Seven (2518) <span class="det">force shield 2 → force shield 3</span></button></li>
+        <li><button><span class="mark">✓</span>Four of Seven (2519) <span class="det">force shield 1 → force shield 2</span></button></li>
+        <li><button><span class="mark">✓</span>Five of Seven (2520) <span class="det">pattern lore 1 → pattern lore 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Seven of Seven (2522) <span class="det">in Corryn Wood, not here</span></span></button></li>
+        <li><button><span class="mark">✓</span>One of Eight (2601) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+        <li><button><span class="mark">✓</span>Two of Eight (2602) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+        <li><button><span class="mark">✓</span>Three of Eight (2603) <span class="det">gate lore 1 → gate lore 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Four of Eight (2604) <span class="det">nothing planned</span></span></button></li>
+        <li><button><span class="mark">✓</span>Five of Eight (2605) <span class="det">force shield 0 → force shield 1</span></button></li>
+        <li><button><span class="mark">✓</span>Six of Eight (2606) <span class="det">force shield 0 → force shield 1</span></button></li>
+        <li><button><span class="mark">✓</span>Seven of Eight (2607) <span class="det">pattern lore 0 → pattern lore 1</span></button></li>
+        <li><button><span class="mark">✓</span>Eight of Eight (2608) <span class="det">pattern lore 0 → pattern lore 1</span></button></li>
+        <li><button><span class="mark">✓</span>Nine of Eight (2609) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Ten of Eight (2610) <span class="det">taught by Ninth of Nine</span></span></button></li>
+      </ul>
+      <p class="warnline">Six of Seven teaches 12 on turn 26; each gains 1.8 months, not 2.</p>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+  </div>
+  <div style="max-width:34ch">
+    <p class="note"><b>Costs.</b> Every cell in the grid that says <em>×2</em> now means <em>×1.8</em>
+    for twelve mages, and the player has to read the warning to know it. It is the option that gives
+    the most total training and the least predictable per-pupil month.</p>
+    <p class="note">The warning is the wording the existing dilution notice already uses — this
+    option simply makes it the default rather than something the player opts into.</p>
+  </div>
+</div>
+
+<h2 class="sec">C — best value first, capped at ten</h2>
+<p class="note">Rank eligible pupils by what the doubled month actually buys — one who crosses a
+level on the doubling ahead of one who only banks points — and tick the top ten. The two left out
+are the two the doubling helps least.</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>Option C</b> — ten ticked, chosen by value; row order unchanged</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26</p>
+      <ul>
+        <li><button><span class="mark">✓</span>Two of Seven (2517) <span class="det">gate lore 1 → gate lore 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>Three of Seven (2518) <span class="det">force shield 2 → force shield 3</span></button></li>
+        <li><button><span class="mark">✓</span>Four of Seven (2519) <span class="det">force shield 1 → force shield 2</span></button></li>
+        <li><button><span class="mark">✓</span>Five of Seven (2520) <span class="det">pattern lore 1 → pattern lore 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Seven of Seven (2522) <span class="det">in Corryn Wood, not here</span></span></button></li>
+        <li><button><span class="mark">✓</span>One of Eight (2601) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+        <li><button><span class="mark">✓</span>Two of Eight (2602) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+        <li><button><span class="mark">✓</span>Three of Eight (2603) <span class="det">gate lore 1 → gate lore 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Four of Eight (2604) <span class="det">nothing planned</span></span></button></li>
+        <li><button><span class="mark">✓</span>Five of Eight (2605) <span class="det">force shield 0 → force shield 1</span></button></li>
+        <li><button><span class="mark">✓</span>Six of Eight (2606) <span class="det">force shield 0 → force shield 1</span></button></li>
+        <li><button><span class="mark">✓</span>Seven of Eight (2607) <span class="det">pattern lore 0 → pattern lore 1</span></button></li>
+        <li><button><span class="mark">✓</span>Eight of Eight (2608) <span class="det">pattern lore 0 → pattern lore 1</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>Nine of Eight (2609) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Ten of Eight (2610) <span class="det">taught by Ninth of Nine</span></span></button></li>
+      </ul>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+  </div>
+  <div style="max-width:34ch">
+    <p class="note"><b>Costs.</b> The skipped rows are scattered through the list rather than at the
+    bottom, so nothing on screen says why <em>those</em> two. A rule nobody has written yet, and one
+    a player cannot predict — which matters for something they are meant to trust and then edit.</p>
+    <p class="note">Note <em>Three of Seven</em>, unticked here and ticked in A: he is already
+    force shield 2 and a doubled month leaves him short of 3, so the doubling banks points and
+    crosses nothing.</p>
+  </div>
+</div>
+
+<h2 class="sec">The states, whichever option wins</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>ten or fewer eligible</b> — every option agrees, all ticked, no warning</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26</p>
+      <ul>
+        <li><button><span class="mark">✓</span>Two of Seven (2517) <span class="det">gate lore 1 → gate lore 2</span></button></li>
+        <li><button><span class="mark">✓</span>Four of Seven (2519) <span class="det">force shield 1 → force shield 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span><span class="blocked">Four of Eight (2604) <span class="det">nothing planned</span></span></button></li>
+      </ul>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>nobody eligible</b> — the <code>Teaches…</code> row is not offered at all, so
+    this step is unreachable (unchanged today)</p>
+    <div class="pop">
+      <p class="head">Six of Seven — turn 26</p>
+      <ul>
+        <li><button class="off"><span class="mark">✓</span>— nothing</button></li>
+        <li><button class="off"><span class="mark">✓</span>gate lore <span class="det">2(180) → 3(210)</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>force shield <span class="det">1(90) → 2(120)</span></button></li>
+      </ul>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>reopening a cell already set</b> — the stored ticks are shown, never re-seeded
+    (unchanged today)</p>
+    <div class="pop">
+      <p class="head">Six of Seven teaches on turn 26</p>
+      <ul>
+        <li><button><span class="mark">✓</span>Two of Seven (2517) <span class="det">gate lore 1 → gate lore 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>Four of Seven (2519) <span class="det">force shield 1 → force shield 2</span></button></li>
+        <li><button class="off"><span class="mark">✓</span>One of Eight (2601) <span class="det">gate lore 0 → gate lore 1</span></button></li>
+      </ul>
+      <div class="acts"><span class="btn">Cancel</span><span class="btn set">Set</span></div>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">Side by side</h2>
+<table class="cmp">
+  <tr><th></th><th>A — first ten</th><th>B — all of them</th><th>C — best ten</th></tr>
+  <tr><th>Ticked here</th><td>10</td><td>12</td><td>10</td></tr>
+  <tr><th>Each pupil's month</th><td>2 months</td><td>1.8 months</td><td>2 months</td></tr>
+  <tr><th>Total months taught</th><td>10 extra</td><td>10 extra (spread over 12)</td><td>10 extra</td></tr>
+  <tr><th>Warning shown</th><td>never</td><td>whenever over ten</td><td>never</td></tr>
+  <tr><th>Predictable</th><td>yes — top down</td><td>yes — everyone</td><td>no — needs a rule read</td></tr>
+  <tr><th>New logic</th><td>a counter</td><td>none</td><td>a value ranking nobody has specified</td></tr>
+</table>
+
+</body>
+</html>
