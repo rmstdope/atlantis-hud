@@ -101,10 +101,13 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
 
   // Opening it again shows the choice that is stored, and `— nothing` empties that cell alone.
   await cell.click();
-  await expect(page.getByTestId("study-schedule-choice-FORC")).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
+  const chosen = page.getByTestId("study-schedule-choice-FORC");
+  await expect(chosen).toHaveAttribute("aria-pressed", "true");
+  // Shown, not merely stated: the row carries a tick, and the list opens scrolled to it rather
+  // than to its top - force is far enough down the magic tree to be off the end of it.
+  await expect(chosen).toContainText("✓");
+  await expect(chosen).toBeInViewport();
+  await expect(chosen).toBeFocused();
   await page.getByTestId("study-schedule-choice-nothing").click();
   await expect(popover).toHaveCount(0);
   await expect(cell).toContainText("—");

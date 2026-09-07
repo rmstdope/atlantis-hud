@@ -238,6 +238,9 @@ describe("CellPopover", () => {
     );
 
     expect(pressed.slice(0, 200)).toContain('aria-pressed="true"');
+    // And says it to the eye as well: `aria-pressed` alone left the row that is set looking
+    // exactly like every row that is not.
+    expect(pressed.slice(0, 400)).toContain("✓");
   });
 
   it("marks — nothing when the cell holds nothing", () => {
@@ -245,6 +248,18 @@ describe("CellPopover", () => {
     const row = markup.slice(markup.indexOf('data-testid="study-schedule-choice-nothing"'));
 
     expect(row.slice(0, 200)).toContain('aria-pressed="true"');
+    expect(row.slice(0, 400)).toContain("✓");
+  });
+
+  it("leaves the rows the cell does not hold unmarked", () => {
+    const markup = popover();
+    const nothing = markup.slice(
+      markup.indexOf('data-testid="study-schedule-choice-nothing"'),
+      markup.indexOf('data-testid="study-schedule-choice-teach"')
+    );
+
+    expect(nothing).toContain('aria-pressed="false"');
+    expect(nothing).not.toContain("✓");
   });
 
   it("has no Set button and no level select", () => {
@@ -257,6 +272,31 @@ describe("CellPopover", () => {
 
   it("says how the dropdown is worked", () => {
     expect(popover()).toContain("↑↓ to move · ↵ to choose · Esc to close");
+  });
+
+  it("ticks the students already named, and only those", () => {
+    // The same hole the dropdown had, and worse for being a list of several: `aria-checked` was
+    // all a ticked student carried, so clicking one changed nothing anybody could see.
+    const teaching = (students: string[]) =>
+      renderToStaticMarkup(
+        <CellPopover
+          menu={menu}
+          mode={{ kind: "teaching", rowKey: "12/2431", turnIndex: 2, students }}
+          mageName="Ereb"
+          turn={26}
+          current={null}
+          rowIndex={0}
+          onEvent={() => {}}
+          onChoose={() => {}}
+        />
+      );
+    const row = (markup: string) =>
+      markup.slice(markup.indexOf('data-testid="study-schedule-teach-2432"')).slice(0, 400);
+
+    expect(row(teaching(["2432"]))).toContain('aria-checked="true"');
+    expect(row(teaching(["2432"]))).toContain("✓");
+    expect(row(teaching([]))).toContain('aria-checked="false"');
+    expect(row(teaching([]))).not.toContain("✓");
   });
 
   it("shows the students, Cancel and Set in the teach step", () => {

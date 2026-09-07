@@ -262,6 +262,13 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
       root.querySelector<HTMLElement>("button:not([disabled])") ??
       root;
     target.focus({ preventScroll: true });
+    // ...and then brought into view inside its own list. `preventScroll` is there because the card
+    // is still off-screen for the layout pass in which this runs, and letting the browser chase it
+    // would move whatever it could reach; `scrollIntoView` afterwards is the narrow version of the
+    // same thing - the list is the only scroller between the row and a fixed wrapper, and `nearest`
+    // moves it as little as it can. Without it a mage with a plan opened on a row nobody could see,
+    // which read as a menu with nothing chosen at all.
+    target.scrollIntoView({ block: "nearest" });
   }, [cell, step]);
   // Focus goes back to the cell the dropdown came from, by the `[data-cell="r:c"]` address the
   // arrow-key walk and `focusCell` already use: anything else strands a keyboard player at the
@@ -668,6 +675,7 @@ export function CellPopover({
                   choice.blocked === null ? ROW_HIGHLIGHT : "text-ink-dim"
                 }`}
               >
+                <ChoiceMark on={mode.students.includes(choice.unitId)} />
                 <span className="text-ink">{choice.label}</span>{" "}
                 <span className="text-ink-dim">{choice.detail}</span>
               </button>
@@ -751,6 +759,7 @@ export function CellPopover({
               onClick={row.onClick(onEvent, onChoose, current)}
               className={`w-full rounded px-1 text-left ${ROW_HIGHLIGHT}`}
             >
+              <ChoiceMark on={row.pressed} />
               <span className="text-ink">{row.name}</span>
               {row.detail === null ? null : (
                 <>
@@ -781,6 +790,28 @@ export function CellPopover({
  * "this one", and `bg-select/25` is what the unit dock already fills its current row with.
  */
 const ROW_HIGHLIGHT = "hover:bg-select/25 focus:bg-select/25";
+
+/**
+ * The tick on the row that is already chosen - the cell's own study or teach, and each student
+ * already named in the teach step.
+ *
+ * `aria-pressed` and `aria-checked` said this to a screen reader and to nobody else, so a menu
+ * opened on a planned cell looked exactly like one opened on an empty cell. It is a mark rather
+ * than a second background, because the row that is *chosen* and the row a click would *take* are
+ * different things that are true at the same time - the menu opens with both on the same row, and
+ * one arrow key separates them.
+ *
+ * A slot of a fixed width whether it holds the tick or not, so every label in the list starts at
+ * the same column; `aria-hidden`, because the ARIA state above already says it and a screen reader
+ * should not hear it twice.
+ */
+function ChoiceMark({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden="true" className="inline-block w-4 text-select">
+      {on ? "✓" : ""}
+    </span>
+  );
+}
 
 /**
  * The dropdown's rows in the agreed order: `— nothing`, `Teaches…` when it is offered, then the
