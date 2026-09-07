@@ -263,7 +263,7 @@ import { magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
-import { structurePaletteLabel, structuresByRegionOf } from "../structureLabel";
+import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel";
 import type { Resume, StopKey } from "../diagnosticNav";
 import { diagnosticTargets, resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
@@ -1242,10 +1242,10 @@ export function AppShell({
    */
   const structuresByRegion = useMemo(
     () =>
-      structuresByRegionOf([
-        ...model.hexes.flatMap((node) => (node.region ? [node.region] : [])),
-        ...(parsed?.regions ?? [])
-      ]),
+      structuresForUnitDock(
+        model.hexes.flatMap((node) => (node.region ? [node.region] : [])),
+        parsed?.regions ?? []
+      ),
     [model, parsed]
   );
   /** Its exact complement, for the dock's `Other factions` source (`ah-1mpx.5`). */

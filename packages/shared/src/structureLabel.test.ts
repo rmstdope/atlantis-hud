@@ -6,6 +6,7 @@ import {
   structureLabel,
   structureRegionOf,
   structuresByRegionOf,
+  structuresForUnitDock,
   unitStructureLabel,
   unitStructureLabelIn
 } from "./structureLabel";
@@ -99,5 +100,31 @@ describe("structureRegionOf and reportedStructureRegionOf", () => {
         arrivingFrom: "1:43,81"
       })
     ).toBe("1:43,81");
+  });
+});
+
+describe("structuresForUnitDock", () => {
+  const northkeep = aStructure({ structureId: "7", name: "Northkeep" });
+  const southwatch = aStructure({ structureId: "7", name: "Southwatch" });
+
+  it("names structures from the report when the map could not be drawn", () => {
+    const index = structuresForUnitDock([], [{ regionId: "1:43,79", structures: [southwatch] }]);
+
+    expect(unitStructureLabelIn("1:43,79", "7", index)).toBe("Southwatch [7] · Fort");
+  });
+
+  it("keeps a remembered hex the report does not carry", () => {
+    const index = structuresForUnitDock([{ regionId: "1:6,52", structures: [northkeep] }], []);
+
+    expect(unitStructureLabelIn("1:6,52", "7", index)).toBe("Northkeep [7] · Fort");
+  });
+
+  it("lets this turn's report win over what was remembered", () => {
+    const index = structuresForUnitDock(
+      [{ regionId: "1:43,79", structures: [northkeep] }],
+      [{ regionId: "1:43,79", structures: [southwatch] }]
+    );
+
+    expect(unitStructureLabelIn("1:43,79", "7", index)).toBe("Southwatch [7] · Fort");
   });
 });

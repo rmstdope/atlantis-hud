@@ -91,6 +91,22 @@ export function structuresByRegionOf(
 }
 
 /**
+ * The units dock's index: the remembered map's regions, overridden by this turn's own.
+ *
+ * Both, rather than the map alone. The map is a superset *when there is one* - a report whose map
+ * could not be drawn has no regions at all, and the units panel goes on working from the parsed
+ * report, so a map-only index would leave every row in that report with a bare `[id]` (`ah-yjhf`).
+ * The reported regions come last, so where the two disagree this turn wins over what was
+ * remembered.
+ */
+export function structuresForUnitDock(
+  known: Iterable<Pick<ReportRegion, "regionId" | "structures">>,
+  reported: Iterable<Pick<ReportRegion, "regionId" | "structures">>
+): StructuresByRegion {
+  return structuresByRegionOf([...known, ...reported]);
+}
+
+/**
  * The parts of a row that say which region numbered the structure it names.
  *
  * A `ReportUnit` satisfies it with both optional fields absent; a `PreviewedUnit` carries them.
