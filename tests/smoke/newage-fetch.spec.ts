@@ -290,12 +290,18 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   await page.getByTestId("newage-fetch-cancel").click();
   await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
 
-  // Nothing claims the run finished, and the turn already stored is in the picker.
-  await expect(page.getByTestId("import-status")).not.toContainText("stored for history;");
+  // Turn 70's report was already in flight when Cancel landed, so it still arrives and is stored:
+  // waiting for its row is what makes the assertion below about a settled screen rather than a
+  // race with the delayed reply.
   await page.getByTestId("turn-chip").click();
   await expect(page.getByTestId("turn-picker")).toBeVisible();
   await expect(page.getByTestId("turn-row-70")).toBeVisible();
   await expect(page.getByTestId("turn-row-72")).toContainText("playing");
+
+  // Nothing claims the run finished. `loadReport` writes `turn 70 stored for history; …` for the
+  // one turn that landed, which is true and stays; what must not appear is `runSummary`'s plural
+  // count, which would say a run the player stopped had run to the end.
+  await expect(page.getByTestId("import-status")).not.toContainText("turns stored for history");
 });
 
 test("keeps this turn when the world would not say which turns it holds", async ({ page }) => {

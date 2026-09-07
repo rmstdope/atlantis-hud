@@ -41,7 +41,13 @@ export type NewAgeFetchEffects = {
   report: (token: string) => Promise<NewAgeResult<string>>;
   historyTurns: (token: string) => Promise<NewAgeResult<number[]>>;
   historyReport: (token: string, turnNumber: number) => Promise<NewAgeResult<string>>;
-  /** `loadReport`, already bound to its name. Resolves false when the game kept nothing. */
+  /**
+   * `loadReport`, already bound to its name.
+   *
+   * Answers whether the game kept the report. Nothing reads it for this turn's own report - see
+   * the call - and `runHistoryFetch` reads it for an earlier turn, where `false` becomes a failed
+   * row carrying `HISTORY_NOT_STORED`.
+   */
   store: (turnNumber: number | null, reportText: string) => Promise<boolean>;
   /** Which turns the game holds, and which is on screen - read AFTER this turn has landed. */
   heldTurns: () => { stored: readonly { turnNumber: number }[]; workingTurn: number | null };

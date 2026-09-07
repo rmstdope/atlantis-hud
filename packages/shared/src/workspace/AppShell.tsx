@@ -3773,6 +3773,9 @@ export function AppShell({
    */
   const storedTurnsRef = useRef(storedTurns);
   storedTurnsRef.current = storedTurns;
+  /** Which game is open now, for a run deciding whether its own game is still the one on screen. */
+  const openGameIdRef = useRef(openGameId);
+  openGameIdRef.current = openGameId;
   /** The turn on screen as the run sees it, without waiting for a render. */
   const currentWorkingTurn = useCallback(
     () => viewerRef.current?.header.turnNumber ?? null,
@@ -3793,9 +3796,15 @@ export function AppShell({
       }
       const api = newAgeApi;
       const worldName = newAgeWorld.worldName;
+      // The game this run belongs to, captured now: the refresh at the end writes into whatever
+      // game is open when it lands, and the player may have left this one meanwhile.
+      const runGameId = openGameId;
+      const runGame = game;
       const controller = new AbortController();
       fetchAbort.current = controller;
       fetchAbandoned.current = false;
+      /** Whether the run ever reached a per-turn fetch, so a refresh could find something new. */
+      let reachedTurns = false;
 
       const outcome = await runNewAgeFetch(scope, { factionNumber, password }, worldName, {
         login: (id, secret) => api.login(id, secret, controller.signal),
@@ -3816,7 +3825,12 @@ export function AppShell({
           stored: storedTurnsRef.current,
           workingTurn: currentWorkingTurn()
         }),
-        onPhase: setFetchPhase,
+        onPhase: (phase) => {
+          if (phase.kind === "fetchingTurn") {
+            reachedTurns = true;
+          }
+          setFetchPhase(phase);
+        },
         abandoned: () => fetchAbandoned.current || fetchAbort.current !== controller
       });
 
@@ -3861,20 +3875,50 @@ export function AppShell({
 
       // Once, at the end, and outside the guard above: a run that stored earlier turns put them in
       // the game whether it finished or was cancelled, and a turn the picker cannot see is a turn
-      // the player cannot compare against. A refresh is a core round trip, so it happens only when
-      // the run actually reached its per-turn stage.
+      // the player cannot compare against.
+      //
+      // Three things have to be true, and each of them has a way of going wrong that the old blanket
+      // early return used to cover:
+      //
+      // - The run reached a per-turn fetch. `abandoned` is returned from three points before that,
+      //   and none of them can have stored anything worth a core round trip.
+      // - The game has not changed under it. `dismissFetch` is what a game or ruleset switch calls
+      //   too, so without this a run torn down by a switch would list the game the player just left
+      //   and write that list into the shell now showing another one.
+      // - No later run has taken over. A second Fetch pressed after a cancel sets its own
+      //   controller; the first run's list would then land on top of the second's and briefly hide
+      //   turns the second one stored. A cleared controller is the plain cancel, and is fine.
+      const superseded = fetchAbort.current !== null && fetchAbort.current !== controller;
       const storedSomething =
-        outcome.kind === "abandoned" || (outcome.kind === "done" && outcome.history !== null);
+        reachedTurns &&
+        (outcome.kind === "abandoned" || (outcome.kind === "done" && outcome.history !== null));
       // From `viewerRef`, not from the render's `parsed`: this run is what put a report on screen,
       // and the closure still holds whatever was there when Fetch was pressed - `null`, on the
       // first fetch of a fresh game. Reading that would skip the refresh and leave every turn the
       // run stored out of the picker.
       const factionId = viewerRef.current?.header.factionId ?? null;
-      if (storedSomething && game && factionId !== null) {
+      if (
+        storedSomething &&
+        !superseded &&
+        openGameIdRef.current === runGameId &&
+        runGame &&
+        factionId !== null
+      ) {
         const summaries = await runReported(
           () =>
-            listComparableTurns(client, game.databasePath, game.manifest.metadata.gameId, factionId),
-          (message) => setStatus(failedStatus(message)),
+            listComparableTurns(
+              client,
+              runGame.databasePath,
+              runGame.manifest.metadata.gameId,
+              factionId
+            ),
+          // Silent unless this dialog is still ours: a run the player cancelled says nothing, and
+          // a red line about listing turns they did not ask to list would be exactly that.
+          (message) => {
+            if (stillOurs) {
+              setStatus(failedStatus(message));
+            }
+          },
           { prefix: "could not list the turns to compare" }
         );
         if (summaries !== undefined) {
