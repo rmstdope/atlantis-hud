@@ -216,7 +216,6 @@ describe("the structure column", () => {
         ownUnits={[
           unit({ unitId: "1", regionId: "1:6,52", structureId: "7" }),
           unit({ unitId: "2", regionId: "1:43,79", structureId: "7" }),
-          unit({ unitId: "3", regionId: "1:99,99", structureId: "7" })
         ]}
         structuresByRegion={structuresByRegionOf([
           { regionId: "1:6,52", structures: [NORTHKEEP] },
@@ -233,8 +232,26 @@ describe("the structure column", () => {
 
     expect(markup).toContain("Northkeep [7] · Fort");
     expect(markup).toContain("Southwatch [7] · Fort");
-    // The hex the index does not describe keeps the bare number.
+  });
+
+  it("keeps the bare number for a row whose hex the index does not describe", () => {
+    const NORTHKEEP = { ...WAVECREST, structureId: "7", name: "Northkeep", kind: "Fort", baseKind: "Fort" };
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={inStructures([])}
+        ownUnits={[unit({ unitId: "3", regionId: "1:99,99", structureId: "7" })]}
+        structuresByRegion={structuresByRegionOf([{ regionId: "1:6,52", structures: [NORTHKEEP] }])}
+        currentTurn={71}
+        client={{} as never}
+        game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
+        initialSource={{ kind: "own" }}
+      />,
+      useArmiesStore,
+      { gameId: "aug-2026", status: "ready", armies: [] }
+    );
+
     expect(markup).toContain("[7]");
+    expect(markup).not.toContain("Northkeep");
   });
 
   it("leaves the cell empty for a unit standing in the open", () => {

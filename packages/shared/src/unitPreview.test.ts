@@ -498,6 +498,38 @@ describe("mergePreviewAcross", () => {
     ]);
   });
 
+  it("says which hex numbered a kept structure the two hexes number alike", () => {
+    const rows = mergePreviewAcross(
+      [unit({ unitId: "916", regionId: "1:43,81", structureId: "7" })],
+      across([
+        {
+          regionId: "1:43,81",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,81", structureId: "7" },
+              { status: "departing", departingTo: "1:43,79" }
+            )
+          ]
+        },
+        {
+          regionId: "1:43,79",
+          units: [
+            previewedRow(
+              { unitId: "916", regionId: "1:43,79", structureId: "7" },
+              { status: "arriving", arrivingFrom: "1:43,81" }
+            )
+          ]
+        }
+      ])
+    );
+
+    const mine = rows.filter((row) => row.unitId === "916");
+    expect(mine).toHaveLength(1);
+    // The `7` is the destination's, and the row stands in the origin: say so, or it is named from
+    // the wrong hex's index.
+    expect(mine[0].structureRegionId).toBe("1:43,79");
+  });
+
   it("says which hex numbered the structure it folded in", () => {
     const rows = mergePreviewAcross(
       [unit({ unitId: "916", regionId: "1:43,81", structureId: "7" })],

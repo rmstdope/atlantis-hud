@@ -1234,13 +1234,19 @@ export function AppShell({
   /**
    * Every known region's structures, for the units dock (`ah-yjhf`).
    *
-   * From the known map rather than from `parsed`, because the map is a superset: it carries this
-   * turn's own regions (`known_map.rs`, rule 4) **and** remembered ones, which is what keeps a
-   * stale selected hex naming its structures exactly as it did before.
+   * The known map first, for the remembered hexes it alone carries, and this turn's own regions
+   * after it, so they win where the two disagree. Both, rather than the map alone: a report whose
+   * map could not be drawn (`memory.knownMap === null`) has an empty `model`, and the units panel
+   * goes on working from `parsed` — an index built from the map alone would leave every row in
+   * that report with a bare `[id]`.
    */
   const structuresByRegion = useMemo(
-    () => structuresByRegionOf(model.hexes.flatMap((node) => (node.region ? [node.region] : []))),
-    [model]
+    () =>
+      structuresByRegionOf([
+        ...model.hexes.flatMap((node) => (node.region ? [node.region] : [])),
+        ...(parsed?.regions ?? [])
+      ]),
+    [model, parsed]
   );
   /** Its exact complement, for the dock's `Other factions` source (`ah-1mpx.5`). */
   const foreignUnits = useMemo(() => (parsed ? foreignUnitsIn(parsed) : []), [parsed]);

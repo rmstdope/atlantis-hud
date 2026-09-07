@@ -220,8 +220,14 @@ function standingWhereItArrives(
   // structure ids are compared only alongside the changes, and never as the whole test: a
   // structure number is scoped to its region (`rules/move`, "a structure number"), so `7` in the
   // origin and `7` in the destination are two different buildings that happen to share a number.
+  // A structure the row keeps still has to say which hex numbered it, even when the two hexes
+  // number one alike: the kept row stands in the origin, so without `structureRegionId` the
+  // destination's `7` would be read in the origin's index and named the origin's building
+  // (`ah-yjhf`). Only a mover in no structure at all has nothing to say, and that is the case the
+  // guard keeps.
   if (
     arrival.unit.structureId === departing.unit.structureId &&
+    arrival.unit.structureId === null &&
     sameChanges(changes, departing.changes)
   ) {
     return departing;

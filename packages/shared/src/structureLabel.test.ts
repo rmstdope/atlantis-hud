@@ -31,6 +31,15 @@ describe("structureLabel", () => {
 describe("unitStructureLabel", () => {
   const structures = [aStructure(), aStructure({ structureId: "329", name: "Wavecrest", kind: "Longship" })];
 
+  it("lets a later region win, so this turn's report overrides the remembered map", () => {
+    const overridden = structuresByRegionOf([
+      { regionId: "1:43,79", structures: [aStructure({ structureId: "7", name: "Stale" })] },
+      { regionId: "1:43,79", structures: [aStructure({ structureId: "7", name: "Southwatch" })] }
+    ]);
+
+    expect(unitStructureLabelIn("1:43,79", "7", overridden)).toBe("Southwatch [7] · Fort");
+  });
+
   it("gives nothing at all for a unit standing in the open", () => {
     expect(unitStructureLabel(null, structures)).toBeNull();
   });
