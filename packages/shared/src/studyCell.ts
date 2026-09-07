@@ -14,7 +14,7 @@
 import type { StudyGoal } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
 import { standingsFrom } from "./magicStanding";
-import { STUDY_POINTS_PER_MONTH, levelForPoints, pointsForLevel } from "./studyProgress";
+import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import type { CellPick } from "./workspace/studyCellState";
 
@@ -28,7 +28,7 @@ export type CellChoice = {
   from: number;
   /** The level a plain month leaves him at. */
   to: number;
-  /** `3 → 4  (300 of 450)`: where the month leaves him, worded as the hover card words it. */
+  /** `3 (270) → 4 (300)`: the level and the points at each end of the month. */
   detail: string;
 };
 
@@ -95,17 +95,16 @@ export function cellMenu(input: {
     // `×2` and `×½` are accounted for.
     const points = held.points + STUDY_POINTS_PER_MONTH;
     const to = Math.min(node.maxLevel, levelForPoints(points));
-    // The threshold the row counts against, by `hoverCard`'s rule and for its reasons: the level
-    // just crossed on the turn one is gained, the next one otherwise, and never past the skill's
-    // own maximum - `pointsForLevel` extrapolates its formula happily, and the game has no such
-    // level to extrapolate to.
-    const against = Math.min(node.maxLevel, to > held.level ? to : to + 1);
+    // `3 (270) → 4 (300)`: a level with its points in brackets is how a report writes a skill and
+    // how a player says one out loud (navigator, 2026-09-07), so the row is that, twice - where he
+    // stands and where the month leaves him. Rounded for display, a projected standing being
+    // fractional after a taught or halved month.
     choices.push({
       skill: tag,
       name: node.name,
       from: held.level,
       to,
-      detail: `${held.level} → ${to}  (${Math.round(points)} of ${pointsForLevel(against)})`
+      detail: `${held.level} (${Math.round(held.points)}) → ${to} (${Math.round(points)})`
     });
   }
 

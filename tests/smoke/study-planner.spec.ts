@@ -103,10 +103,10 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await expect(popover).toBeVisible();
   await expect(popover).toContainText("Six of Seven — turn 72");
 
-  // Every row says where the month would leave him, in levels and in points, so the choice is made
-  // against how far he has actually got rather than against a level alone.
+  // Every row says both ends of the month, level and points, so the choice is made against how far
+  // he has actually got rather than against a level alone.
   await expect(page.getByTestId("study-schedule-choice-FORC")).toContainText(
-    /\d → \d {2}\(\d+ of \d+\)/
+    /\d \(\d+\) → \d \(\d+\)/
   );
 
   // One click is one choice: no Set, and nothing to its right moves.
