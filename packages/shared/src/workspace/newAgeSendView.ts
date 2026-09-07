@@ -22,14 +22,11 @@ import { passwordProblem } from "./sendOrdersView";
 /**
  * Where a New Age send has got to, or `null` when the dialog is closed.
  *
- * `ready.notice` is the expiry path: a sentence shown above the fields when the token ran out
- * mid-send. It is not a failure - nothing was refused, and the fields are live.
- *
  * `verdict` is neither a success nor a failure on its own. `saved` and `valid` are independent:
  * ask `newAgeSendSettles` and `newAgeSendAsksRetype`, never `verdict.valid` directly.
  */
 export type NewAgeSendPhase =
-  | { kind: "ready"; notice: string | null }
+  | { kind: "ready" }
   | { kind: "signingIn" }
   | { kind: "sending" }
   | { kind: "failed"; message: string; retype: boolean }
@@ -39,9 +36,9 @@ export type NewAgeSendPhase =
 /**
  * What one attempt produced, before the shell decides what to do about it.
  *
- * `expired` is a state of the *session* rather than of the dialog, which is why it is here and not
- * in `NewAgeSendPhase`: the shell drops the session and puts the dialog back to `ready` with a
- * notice. A phase that must never be stored would be a trap.
+ * `expired` is a 401 on the upload seconds after a successful login - a world changing its mind
+ * rather than a session expiring, since there is no session. The shell turns it into a `failed`
+ * phase carrying `FETCH_REFUSED_MID_RUN`.
  */
 export type NewAgeSendOutcome =
   | { kind: "verdict"; verdict: NewAgeOrderVerdict }
@@ -76,10 +73,8 @@ export function newAgeSendTitle(worldName: string): string {
   return `Send orders to ${worldName}`;
 }
 
-/** `Send`, or `Sign in and send` when the faction number is being asked for too. */
-export function newAgeSendConfirmLabel(asksSignIn: boolean): string {
-  return asksSignIn ? "Sign in and send" : "Send";
-}
+/** The confirm button. Always `Send`: there is no sign-in step to name. */
+export const NEW_AGE_SEND_CONFIRM = "Send";
 
 /** `The world refused the orders: ` + the detail, or `(` + the status + `)` when it gave none. */
 export function newAgeSendRefused(status: number, detail: string | null): string {
@@ -90,7 +85,6 @@ export function newAgeSendRefused(status: number, detail: string | null): string
 
 /** Whether these fields can be sent as they stand. */
 export function newAgeSendIsReady(
-  asksSignIn: boolean,
   factionNumber: string,
   password: string,
   phase: NewAgeSendPhase
@@ -101,7 +95,7 @@ export function newAgeSendIsReady(
   if (passwordProblem(password) !== null) {
     return false;
   }
-  return !asksSignIn || factionNumberProblem(factionNumber) === null;
+  return factionNumberProblem(factionNumber) === null;
 }
 
 /** The phase `NewAgeSignInFields` should wear: busy while anything is in flight, else ready. */

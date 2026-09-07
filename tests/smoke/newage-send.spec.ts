@@ -108,8 +108,8 @@ async function ordersReplyWith(page: import("@playwright/test").Page, reply: Rep
   }, reply);
 }
 
-/** A signed-in Arcanum game with turn 71 loaded, so there are orders to send. */
-async function signedInWithTurn(page: import("@playwright/test").Page) {
+/** An Arcanum game with turn 71 fetched, so there are orders to send. */
+async function withTurnLoaded(page: import("@playwright/test").Page) {
   await clearGames(page);
   await page.getByTestId("game-ruleset").selectOption("newage-arcanum");
   await createGame(page, "Arcanum game");
@@ -130,23 +130,19 @@ async function signedInWithTurn(page: import("@playwright/test").Page) {
   await page.getByTestId("newage-control").click();
   await page.getByTestId("newage-faction-number").fill("95");
   await page.getByTestId("newage-password").fill("right");
-  await page.getByTestId("newage-signin-confirm").click();
-  await expect(page.getByTestId("newage-control")).toContainText("Merchant Guild");
-
-  await page.getByTestId("newage-control").click();
-  await page.getByTestId("newage-fetch-report").click();
+  await page.getByTestId("newage-fetch-confirm").click();
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
 }
 
 test("sends orders and reports that the world saved them with errors", async ({ page }) => {
-  await signedInWithTurn(page);
+  await withTurnLoaded(page);
 
   await page.getByTestId("send-orders").click();
   await expect(page.getByTestId("newage-send-meta")).toContainText(
     "turn 71 · atlantis-newage.com"
   );
-  // A session is already in hand, so only the password is asked for.
-  await expect(page.getByTestId("newage-faction-number")).toHaveCount(0);
+  // Both are asked for, every send: there is no session to lean on.
+  await expect(page.getByTestId("newage-faction-number")).toHaveValue("95");
   await expect(page.getByTestId("newage-send-confirm")).toHaveText("Send");
 
   await page.getByTestId("newage-password").fill("hunter2");
@@ -173,30 +169,8 @@ test("sends orders and reports that the world saved them with errors", async ({ 
   );
 });
 
-test("signs in as part of sending when the session has run out", async ({ page }) => {
-  await signedInWithTurn(page);
-
-  await page.getByTestId("newage-control").click();
-  await page.getByTestId("newage-signout").click();
-  await expect(page.getByTestId("newage-control")).toContainText("Sign in to Arcanum");
-
-  await page.getByTestId("send-orders").click();
-  // The loaded report's own faction is what the field is prefilled with.
-  await expect(page.getByTestId("newage-faction-number")).toHaveValue("95");
-  await expect(page.getByTestId("newage-send-confirm")).toHaveText("Sign in and send");
-
-  await page.getByTestId("newage-password").fill("hunter2");
-  await page.getByTestId("newage-send-confirm").click();
-
-  await expect(page.getByTestId("newage-send-outcome")).toHaveText(
-    "Orders for turn 71 were saved, but the world found 2 errors in them."
-  );
-  // The sign-in happened inside the send: the chip behind the dialog names the faction again.
-  await expect(page.getByTestId("newage-control")).toContainText("Merchant Guild");
-});
-
 test("says so when the world saved nothing, and keeps the password field", async ({ page }) => {
-  await signedInWithTurn(page);
+  await withTurnLoaded(page);
   await ordersReplyWith(page, {
     status: 200,
     body: JSON.stringify({
@@ -210,6 +184,7 @@ test("says so when the world saved nothing, and keeps the password field", async
   });
 
   await page.getByTestId("send-orders").click();
+  await page.getByTestId("newage-faction-number").fill("95");
   await page.getByTestId("newage-password").fill("wrong");
   await page.getByTestId("newage-send-confirm").click();
 
@@ -224,7 +199,7 @@ test("says so when the world saved nothing, and keeps the password field", async
 });
 
 test("returns focus to Send when the dialog is dismissed", async ({ page }) => {
-  await signedInWithTurn(page);
+  await withTurnLoaded(page);
 
   await page.getByTestId("send-orders").click();
   await expect(page.getByTestId("newage-send-panel")).toBeVisible();

@@ -11,7 +11,6 @@ import {
 } from "../turnReport";
 import { ExportMenu } from "./ExportMenu";
 import { ChipPopover } from "./popover";
-import { NewAgeWorldPanel } from "./NewAgeWorldPanel";
 import type { StatusLine, StatusTone } from "./shellStatus";
 
 /** The status line's dot colour by tone; `routine` has no dot (see the render site). */
@@ -35,31 +34,19 @@ export type HeaderPopoverId =
   | "mageSheets"
   | "report"
   | "trade"
-  | "export"
-  | "newage";
+  | "export";
 
 /**
  * The New Age world control, as the shell hands it over.
  *
- * One object rather than five props, because they are only ever all present or all absent: the
- * control exists for a game played under a New Age world in a shell that can reach one.
+ * One object rather than two props, because they are only ever both present or both absent: the
+ * control exists for a game played under a New Age world in a shell that can reach one. There is
+ * no signed-in state to name any more - the button reads `Fetch` and opens the fetch dialog.
  */
 export type NewAgeHeaderControl = {
-  /** `Sign in to Arcanum` when signed out; the faction's name once signed in. */
+  /** Always `FETCH_CONTROL_LABEL`. A field so the header still owns no strings. */
   label: string;
-  signedIn: boolean;
-  /** The popover's first line, shown only while signed in. */
-  summary: string;
-  onSignIn: () => void;
-  onSignOut: () => void;
-  /** Fetches this turn's report. Called only from the popover, so only while signed in. */
-  onFetchReport: () => void;
-  /** True while that fetch is in flight. */
-  fetching: boolean;
-  /** Opens the earlier-turns dialog. Called only from the popover, so only while signed in. */
-  onFetchEarlierTurns: () => void;
-  /** True while that dialog is open or its list is being asked for: both items are off. */
-  historyBusy: boolean;
+  onFetch: () => void;
 };
 
 /**
@@ -675,42 +662,15 @@ export function AppHeader({
 
       {/*
         The New Age world, between Export and Send: it is about the world the orders are going to,
-        so it belongs beside Send rather than beside the settings cog. One `data-testid` across
-        both states, so a walk reads the label off one locator rather than choosing between two.
+        so it belongs beside Send rather than beside the settings cog. Brass-bordered because it is
+        now the world's primary action rather than a state to leave.
       */}
-      {newAge === undefined ? null : newAge.signedIn ? (
-        <ChipPopover
-          open={openPopover === "newage"}
-          onDismiss={close}
-          panel={<NewAgeWorldPanel
-                  summary={newAge.summary}
-                  fetching={newAge.fetching}
-                  historyBusy={newAge.historyBusy}
-                  onFetchReport={newAge.onFetchReport}
-                  onFetchEarlierTurns={newAge.onFetchEarlierTurns}
-                  onSignOut={newAge.onSignOut}
-                />}
-        >
-          <button
-            type="button"
-            data-testid="newage-control"
-            aria-haspopup="dialog"
-            aria-expanded={openPopover === "newage"}
-            onClick={() => toggle("newage")}
-            className="rounded border border-brass bg-panel-raised px-2.5 py-1 text-brass"
-          >
-            {newAge.label}
-            <span aria-hidden className="ml-1 text-ink-dim">
-              ▾
-            </span>
-          </button>
-        </ChipPopover>
-      ) : (
+      {newAge === undefined ? null : (
         <button
           type="button"
           data-testid="newage-control"
-          onClick={newAge.onSignIn}
-          className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink"
+          onClick={newAge.onFetch}
+          className="rounded border border-brass bg-panel-raised px-2.5 py-1 text-brass"
         >
           {newAge.label}
         </button>

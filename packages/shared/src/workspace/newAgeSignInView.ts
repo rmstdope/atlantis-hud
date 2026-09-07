@@ -11,7 +11,7 @@
  * of a refusal, which `newAgeApi.ts` has already redacted.
  */
 
-import { NEW_AGE_API_ORIGIN, type NewAgeFaction, type NewAgeFailure } from "./newAgeApi";
+import { NEW_AGE_API_ORIGIN, type NewAgeFailure } from "./newAgeApi";
 
 /**
  * Where the sign-in has got to. `failed` carries a sentence and never a reply body.
@@ -29,14 +29,15 @@ export type NewAgeSignInPhase =
 /** The host every sentence here names, from `NEW_AGE_API_ORIGIN` rather than typed out again. */
 export const NEW_AGE_HOST: string = new URL(NEW_AGE_API_ORIGIN).host;
 
-/** Under the fields, in every frame this is embedded in. */
-export const SIGN_IN_NOTE = "Kept only while the app is open. Nothing is written to this machine.";
-
-/** The popover's second line. */
-export const SIGNED_OUT_ON_CLOSE = "Nothing is stored: closing Atlantis HUD signs you out.";
-
-/** What a caller shows when a call came back `unauthorized` - `ah-lbd9.3` and `.4` embed this. */
-export const SESSION_ENDED = "Your session has ended. Sign in again to continue.";
+/**
+ * Under the password field. `action` is the word the dialog's own verb uses.
+ *
+ * A credential is held for the length of one call and not beyond it, so this says what is true of
+ * that call rather than of a session, which no longer exists.
+ */
+export function credentialNote(action: "fetch" | "send"): string {
+  return `Used for this ${action} only. Nothing is written to this machine.`;
+}
 
 /** The one sentence for a faction number that is not digits, said in this surface's vocabulary. */
 const DIGITS_ONLY = "A faction number is digits only.";
@@ -60,11 +61,6 @@ export function factionNumberProblem(
   return null;
 }
 
-/** `Sign in to New Age: Arcanum` - the dialog's heading, from the ruleset's own label. */
-export function signInTitle(rulesetLabel: string): string {
-  return `Sign in to ${rulesetLabel}`;
-}
-
 /** `atlantis-newage.com · turn 83`, or just the host when no report is loaded. */
 export function signInMetaLine(host: string, turnNumber: number | null): string {
   return turnNumber === null ? host : `${host} · turn ${turnNumber}`;
@@ -80,7 +76,8 @@ export function signInMetaLine(host: string, turnNumber: number | null): string 
  */
 export function signInFailure(
   failure: NewAgeFailure,
-  host: string
+  host: string,
+  { nothingSent = true }: { nothingSent?: boolean } = {}
 ): { message: string; retype: boolean } {
   switch (failure.kind) {
     case "unauthorized":
@@ -89,7 +86,10 @@ export function signInFailure(
         retype: true
       };
     case "unreachable":
-      return { message: `Could not reach ${host}. Nothing was sent.`, retype: false };
+      return {
+        message: nothingSent ? `Could not reach ${host}. Nothing was sent.` : `Could not reach ${host}.`,
+        retype: false
+      };
     case "refused":
       return {
         message:
@@ -103,43 +103,4 @@ export function signInFailure(
     case "unsendable":
       return { message: DIGITS_ONLY, retype: false };
   }
-}
-
-/** `Sign in to Arcanum` - the header control, signed out. */
-export function signedOutLabel(worldName: string): string {
-  return `Sign in to ${worldName}`;
-}
-
-/** The faction's own name when it has one, else `Faction <id>`. */
-function factionName(faction: NewAgeFaction): string | null {
-  return faction.name.trim() === "" ? null : faction.name.trim();
-}
-
-/** `Merchant Guild` - the header control, signed in. Falls back to the id when there is no name. */
-export function signedInLabel(faction: NewAgeFaction): string {
-  return factionName(faction) ?? `Faction ${faction.id}`;
-}
-
-/** `Merchant Guild (27)` - the faction as the popover names it. */
-export function factionLabelOfNewAge(faction: NewAgeFaction): string {
-  const name = factionName(faction);
-  return name === null ? `Faction ${faction.id}` : `${name} (${faction.id})`;
-}
-
-/** `Signed in to New Age: Arcanum as Merchant Guild (27).` */
-export function signedInSummary(rulesetLabel: string, faction: NewAgeFaction): string {
-  return `Signed in to ${rulesetLabel} as ${factionLabelOfNewAge(faction)}.`;
-}
-
-/** Whether these two fields can be sent as they stand. */
-export function signInIsReady(
-  factionNumber: string,
-  password: string,
-  phase: NewAgeSignInPhase
-): boolean {
-  return (
-    phase.kind !== "signingIn" &&
-    password.trim() !== "" &&
-    factionNumberProblem(factionNumber, { blankIsAProblem: true }) === null
-  );
 }

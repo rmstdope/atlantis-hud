@@ -5,7 +5,7 @@ import { useEscapeToDismiss } from "./dismissLayer";
 import { NewAgeSignInFields } from "./NewAgeSignInFields";
 import {
   newAgeSendAsksRetype,
-  newAgeSendConfirmLabel,
+  NEW_AGE_SEND_CONFIRM,
   newAgeSendErrors,
   newAgeSendFieldsPhase,
   newAgeSendIsReady,
@@ -17,6 +17,7 @@ import {
   type NewAgeSendPhase,
   type NewAgeSendTone
 } from "./newAgeSendView";
+import { credentialNote } from "./newAgeSignInView";
 import { metaLine } from "./sendOrdersView";
 
 /**
@@ -34,7 +35,6 @@ export function NewAgeSendDialog({
   factionLabel,
   turnNumber,
   host,
-  asksSignIn,
   suggestedFactionNumber,
   phase,
   onSend,
@@ -46,14 +46,12 @@ export function NewAgeSendDialog({
   factionLabel: string;
   turnNumber: number | null;
   host: string;
-  /** True when there is no session for this game, so the faction number is asked for too. */
-  asksSignIn: boolean;
-  /** Prefills the faction number; the player can change it. Ignored when `asksSignIn` is false. */
+  /** Prefills the faction number; the player can change it. */
   suggestedFactionNumber: string | null;
   phase: NewAgeSendPhase;
   /**
-   * The faction number is `""` when it was not asked for. Cancel and Escape abort, so this
-   * promises nothing about delivery.
+   * Both are asked for every send - there is no session to lean on. Cancel and Escape abort, so
+   * this promises nothing about delivery.
    */
   onSend: (factionNumber: string, password: string) => void;
   onDismiss: () => void;
@@ -88,12 +86,11 @@ export function NewAgeSendDialog({
   }, [phase]);
 
   const settled = newAgeSendSettles(phase);
-  const canSend = newAgeSendIsReady(asksSignIn, factionNumber, password, phase);
+  const canSend = newAgeSendIsReady(factionNumber, password, phase);
   const outcome = newAgeSendOutcome(phase, turnNumber);
   const errors = newAgeSendErrors(phase);
   const warnings = newAgeSendWarnings(phase);
   const worldMessage = newAgeSendWorldMessage(phase);
-  const notice = phase.kind === "ready" ? phase.notice : null;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -129,15 +126,9 @@ export function NewAgeSendDialog({
           {metaLine(factionLabel, turnNumber, host)}
         </p>
 
-        {notice === null ? null : (
-          <p data-testid="newage-send-notice" className="text-danger">
-            {notice}
-          </p>
-        )}
-
         {settled ? null : (
           <NewAgeSignInFields
-            asksToSignIn={asksSignIn}
+            note={credentialNote("send")}
             factionNumber={factionNumber}
             password={password}
             phase={newAgeSendFieldsPhase(phase)}
@@ -224,7 +215,7 @@ export function NewAgeSendDialog({
                 disabled={!canSend}
                 className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
               >
-                {newAgeSendConfirmLabel(asksSignIn)}
+                {NEW_AGE_SEND_CONFIRM}
               </button>
             </>
           )}

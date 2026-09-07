@@ -74,7 +74,6 @@ export * from "./workspace/OrdersPanel";
 export * from "./workspace/httpTransport";
 export * from "./workspace/newAgeApi";
 export * from "./workspace/newAgeWorlds";
-export * from "./workspace/newAgeSession";
 export * from "./workspace/newAgeSignInView";
 export * from "./workspace/newAgeFetchView";
 export * from "./workspace/newAgeSendView";

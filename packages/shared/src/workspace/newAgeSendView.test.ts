@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import type { NewAgeOrderVerdict } from "./newAgeApi";
-import { SESSION_ENDED } from "./newAgeSignInView";
 import {
   NEW_AGE_NOT_SAVED,
   NEW_AGE_ORDERS_UNSENDABLE,
@@ -9,7 +8,7 @@ import {
   NEW_AGE_VERDICT_UNREADABLE,
   type NewAgeSendPhase,
   newAgeSendAsksRetype,
-  newAgeSendConfirmLabel,
+  NEW_AGE_SEND_CONFIRM,
   newAgeSendErrors,
   newAgeSendFieldsPhase,
   newAgeSendIsReady,
@@ -38,7 +37,7 @@ function verdictPhase(overrides: Partial<NewAgeOrderVerdict> = {}): NewAgeSendPh
 }
 
 const allPhases: NewAgeSendPhase[] = [
-  { kind: "ready", notice: null },
+  { kind: "ready" },
   { kind: "signingIn" },
   { kind: "sending" },
   { kind: "failed", message: "no", retype: true },
@@ -106,8 +105,7 @@ describe("newAgeSendOutcome", () => {
   });
 
   it("says nothing while the dialog is still asking, and names each thing in flight", () => {
-    expect(newAgeSendOutcome({ kind: "ready", notice: null }, 84)).toBeNull();
-    expect(newAgeSendOutcome({ kind: "ready", notice: SESSION_ENDED }, 84)).toBeNull();
+    expect(newAgeSendOutcome({ kind: "ready" }, 84)).toBeNull();
     expect(newAgeSendOutcome({ kind: "signingIn" }, 84)).toEqual({
       text: "Signing in…",
       tone: "soft"
@@ -148,7 +146,7 @@ describe("the sentences that never vary", () => {
 
 describe("newAgeSendSettles", () => {
   it("settles on a saved verdict and on an unreachable world, and not on a refusal", () => {
-    expect(newAgeSendSettles({ kind: "ready", notice: null })).toBe(false);
+    expect(newAgeSendSettles({ kind: "ready" })).toBe(false);
     expect(newAgeSendSettles({ kind: "signingIn" })).toBe(false);
     expect(newAgeSendSettles({ kind: "sending" })).toBe(false);
     expect(newAgeSendSettles({ kind: "failed", message: "no", retype: false })).toBe(false);
@@ -165,7 +163,7 @@ describe("newAgeSendAsksRetype", () => {
     expect(newAgeSendAsksRetype({ kind: "failed", message: "no", retype: false })).toBe(false);
     expect(newAgeSendAsksRetype(verdictPhase({ saved: false, valid: false }))).toBe(true);
     expect(newAgeSendAsksRetype(verdictPhase())).toBe(false);
-    expect(newAgeSendAsksRetype({ kind: "ready", notice: null })).toBe(false);
+    expect(newAgeSendAsksRetype({ kind: "ready" })).toBe(false);
     expect(newAgeSendAsksRetype({ kind: "signingIn" })).toBe(false);
     expect(newAgeSendAsksRetype({ kind: "sending" })).toBe(false);
     expect(newAgeSendAsksRetype({ kind: "unreachable" })).toBe(false);
@@ -173,27 +171,26 @@ describe("newAgeSendAsksRetype", () => {
 });
 
 describe("newAgeSendIsReady", () => {
-  const ready: NewAgeSendPhase = { kind: "ready", notice: null };
+  const ready: NewAgeSendPhase = { kind: "ready" };
 
-  it("will not send without a password, or without a faction number when it is asking for one", () => {
-    expect(newAgeSendIsReady(false, "", "hunter2", ready)).toBe(true);
-    expect(newAgeSendIsReady(false, "", "", ready)).toBe(false);
-    expect(newAgeSendIsReady(false, "", 'has"quote', ready)).toBe(false);
-    expect(newAgeSendIsReady(true, "", "hunter2", ready)).toBe(false);
-    expect(newAgeSendIsReady(true, "abc", "hunter2", ready)).toBe(false);
-    expect(newAgeSendIsReady(true, "95", "hunter2", ready)).toBe(true);
+  it("will not send without a password or without a faction number - it always asks for both", () => {
+    expect(newAgeSendIsReady("95", "hunter2", ready)).toBe(true);
+    expect(newAgeSendIsReady("95", "", ready)).toBe(false);
+    expect(newAgeSendIsReady("95", 'has"quote', ready)).toBe(false);
+    expect(newAgeSendIsReady("", "hunter2", ready)).toBe(false);
+    expect(newAgeSendIsReady("abc", "hunter2", ready)).toBe(false);
   });
 
   it("is false while anything is in flight and once the send has settled", () => {
-    expect(newAgeSendIsReady(false, "", "hunter2", { kind: "signingIn" })).toBe(false);
-    expect(newAgeSendIsReady(false, "", "hunter2", { kind: "sending" })).toBe(false);
-    expect(newAgeSendIsReady(false, "", "hunter2", { kind: "unreachable" })).toBe(false);
-    expect(newAgeSendIsReady(false, "", "hunter2", verdictPhase())).toBe(false);
+    expect(newAgeSendIsReady("95", "hunter2", { kind: "signingIn" })).toBe(false);
+    expect(newAgeSendIsReady("95", "hunter2", { kind: "sending" })).toBe(false);
+    expect(newAgeSendIsReady("95", "hunter2", { kind: "unreachable" })).toBe(false);
+    expect(newAgeSendIsReady("95", "hunter2", verdictPhase())).toBe(false);
     expect(
-      newAgeSendIsReady(false, "", "hunter2", verdictPhase({ saved: false, valid: false }))
+      newAgeSendIsReady("95", "hunter2", verdictPhase({ saved: false, valid: false }))
     ).toBe(true);
     expect(
-      newAgeSendIsReady(false, "", "hunter2", { kind: "failed", message: "no", retype: true })
+      newAgeSendIsReady("95", "hunter2", { kind: "failed", message: "no", retype: true })
     ).toBe(true);
   });
 });
@@ -247,7 +244,6 @@ describe("the world's own words", () => {
 describe("the dialog's own words", () => {
   it("labels the button for a send and for a sign-in and send", () => {
     expect(newAgeSendTitle("Arcanum")).toBe("Send orders to Arcanum");
-    expect(newAgeSendConfirmLabel(false)).toBe("Send");
-    expect(newAgeSendConfirmLabel(true)).toBe("Sign in and send");
+    expect(NEW_AGE_SEND_CONFIRM).toBe("Send");
   });
 });
