@@ -57,7 +57,7 @@ test("All mages shows the points behind each level, three lists abreast", async 
   await page.keyboard.press("F4");
   const detail = page.getByTestId("study-planner-detail");
   // A level alone hid the whole month a mage may be from the next one.
-  await expect(page.getByTestId("study-planner-knows-FORC")).toContainText(/force 4 \(\d+ of 450\)/);
+  await expect(page.getByTestId("study-planner-knows-FORC")).toContainText(/force 4 \(\d+\)/);
 
   // Side by side rather than stacked: the three answer one question between them, so `Can study
   // now` and `Held back` start no lower down the pane than `Knows` does.

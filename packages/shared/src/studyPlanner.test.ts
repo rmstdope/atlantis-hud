@@ -170,17 +170,12 @@ describe("plannerGroups", () => {
       viewedTurn: 71
     })[0].mages[0];
 
-    expect(mage.knows.find((skill) => skill.tag === "FORC")?.progress).toBe("340 of 450");
-    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe(
-      "force 4 (340 of 450)"
-    );
-    // Level 3 of a skill whose maximum is 5: the threshold named is the next one, 300.
-    expect(knownChip(mage.knows.find((skill) => skill.tag === "SPIR")!)).toBe(
-      "spirit 3 (180 of 300)"
-    );
+    expect(mage.knows.find((skill) => skill.tag === "FORC")?.points).toBe(340);
+    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe("force 4 (340)");
+    expect(knownChip(mage.knows.find((skill) => skill.tag === "SPIR")!)).toBe("spirit 3 (180)");
   });
 
-  it("counts a maxed skill against the level it is at, there being no level above it", () => {
+  it("says a maxed skill's points like any other's", () => {
     const mage = plannerGroups({
       report: report(),
       ownMages: [ownStanding("890", "Topped", { FORC: [5, 460] })],
@@ -190,9 +185,7 @@ describe("plannerGroups", () => {
       viewedTurn: 71
     })[0].mages[0];
 
-    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe(
-      "force 5 (460 of 450)"
-    );
+    expect(knownChip(mage.knows.find((skill) => skill.tag === "FORC")!)).toBe("force 5 (460)");
   });
 
   it("keeps the estimate on the chip of a stale sheet's mage, beside his points", () => {
@@ -201,14 +194,14 @@ describe("plannerGroups", () => {
     });
     const spirit = groups[1].mages[0].knows.find((skill) => skill.tag === "SPIR")!;
 
-    expect(knownChip(spirit)).toBe("spirit 3 (270 of 300) → up to 4");
+    expect(knownChip(spirit)).toBe("spirit 3 (270) → up to 4");
   });
 
   it("says only the level when the report printed no points for the skill", () => {
     // An allied sheet can name a skill with no figure behind it; the chip then says what it knows
     // rather than inventing a zero.
     const mage = groupsOf({}).at(0)?.mages.find((row) => row.unitId === "881");
-    const invented = { ...mage!.knows[0], points: null, progress: null };
+    const invented = { ...mage!.knows[0], points: null };
 
     expect(knownChip(invented)).toBe(`${invented.name} ${invented.level}`);
   });

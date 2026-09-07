@@ -22,7 +22,7 @@ import { monthWords, taughtWorth, type TeachOutcome, type TeachRefusal } from ".
 import { standingsFrom, type SkillStanding } from "./magicStanding";
 import type { MagicTree } from "./magicTree";
 import { plannedGoals } from "./studyPlans";
-import { STUDY_POINTS_PER_MONTH, levelForPoints, pointsForLevel } from "./studyProgress";
+import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
 import { joinNames } from "./workspace/standingChip";
 
@@ -223,16 +223,18 @@ export function cellLabel(cell: ScheduleCell | undefined): string {
 }
 
 /**
- * A skill as it stands, nothing having happened to it: `4 (325 of 450)`.
+ * A skill as it stands, nothing having happened to it: `4 (325)`.
  *
- * The threshold is the level above, and the level he is at once there is none above -
- * `pointsForLevel` extrapolates its formula happily past a sixth level the game does not have.
+ * The level with its points in brackets and nothing else - how a report writes a skill, and how a
+ * player says one (navigator, 2026-09-07). The threshold of the level above was here and is not:
+ * a player planning knows what 450 buys, and every line of a list that repeats it is a line whose
+ * one moving figure is harder to find.
+ *
  * Shared with `studyMagePane.ts`, so a skill standing still reads the same whether the pane is
  * showing a turn or the mage himself.
  */
-export function heldWords(held: { level: number; points: number }, maxLevel: number): string {
-  const against = Math.min(maxLevel, held.level + 1);
-  return `${held.level} (${Math.round(held.points)} of ${pointsForLevel(against)})`;
+export function heldWords(held: { level: number; points: number }): string {
+  return `${held.level} (${Math.round(held.points)})`;
 }
 
 export function worthMark(worth: number, modified = false): string {
@@ -673,8 +675,7 @@ export function hoverCard(
     // report writes a skill and the way the dropdown offers one (navigator, 2026-09-07). **Only
     // where the month moved it**: one skill of the twenty a mage knows is being studied, and an
     // arrow between two readings of the same figure, nineteen times over, hides the one line that
-    // is actually going somewhere. A skill standing still is a standing, and reads as one - with
-    // the threshold, which is what a line with no arrow has room to answer.
+    // is actually going somewhere. A skill standing still is a standing, and reads as one.
     const moved =
       ends.level !== held.level || Math.round(ends.points) !== Math.round(held.points);
     lines.push({
@@ -683,7 +684,7 @@ export function hoverCard(
       // reading `(133.33333333333334)` is the arithmetic leaking through the glass.
       right: moved
         ? `${held.level} (${Math.round(held.points)}) → ${ends.level} (${Math.round(ends.points)})`
-        : heldWords(held, node.maxLevel),
+        : heldWords(held),
       studying: tag === studying
     });
   }

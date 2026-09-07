@@ -22,7 +22,7 @@ import { heldWords, hoverCard, type ScheduleRow } from "./studySchedule";
 export type MagePaneLine = {
   /** `MagicSkillNode.name`, lower case. */
   name: string;
-  /** `4 (330) → 4 (360)` where the month moved it, `3 (270 of 300)` where it did not. */
+  /** `4 (330) → 4 (360)` where the month moved it, `3 (270)` where it did not. */
   right: string;
   /** True for the skill this turn's plan studies: the marked line. */
   studying: boolean;
@@ -136,7 +136,7 @@ function knownNow(
     }
     lines.push({
       name: node.name,
-      right: heldWords(held, node.maxLevel),
+      right: heldWords(held),
       studying: false
     });
   }

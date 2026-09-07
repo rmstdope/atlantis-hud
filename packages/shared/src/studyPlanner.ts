@@ -4,7 +4,7 @@ import { factionLabelOf } from "./factionLabel";
 import type { GameDataIndex } from "./gameData";
 import { openingMage, standingOf, type MageStanding, type SkillStanding } from "./magicStanding";
 import type { MagicSkillNode, MagicTree } from "./magicTree";
-import { pointsForLevel, projectedLevel } from "./studyProgress";
+import { projectedLevel } from "./studyProgress";
 
 /**
  * Every row, every group and every string the study planner shows (`ah-lyg6.2.2`), as pure
@@ -35,22 +35,20 @@ export type KnownSkill = {
   projected: number | null;
   /** The points the report printed for it, or null when it printed none. */
   points: number | null;
-  /**
-   * `340 of 450` - those points against the threshold of the level above, and against the level
-   * he is at once there is no level above. Null exactly when `points` is.
-   */
-  progress: string | null;
 };
 
 /**
- * A known skill as the planner's detail chips it: `force 4 (340 of 450)`, and
- * `spirit 3 (270 of 300) → up to 4` for a mage whose sheet is old enough to have moved.
+ * A known skill as the planner's detail chips it: `force 4 (340)`, and `spirit 3 (270) → up to 4`
+ * for a mage whose sheet is old enough to have moved.
  *
  * The points are there because a level alone hides the whole month a mage may be from the next one
- * (navigator, 2026-09-07) - the same reason the Schedule's cells carry them.
+ * (navigator, 2026-09-07) - the same reason the Schedule's cells carry them, and the same form:
+ * the level with its points in brackets, which is how a report writes a skill.
  */
 export function knownChip(skill: KnownSkill): string {
-  const held = `${skill.name} ${skill.level}${skill.progress === null ? "" : ` (${skill.progress})`}`;
+  const held = `${skill.name} ${skill.level}${
+    skill.points === null ? "" : ` (${Math.round(skill.points)})`
+  }`;
   return skill.projected === null ? held : `${held} → up to ${skill.projected}`;
 }
 
@@ -136,20 +134,13 @@ function knownSkills(
       reported === undefined || monthsUnreported === 0
         ? null
         : projectedLevel(reported, monthsUnreported, node.maxLevel);
-    // The threshold of the level above, and the level he is at once there is none above: the rule
-    // `hoverCard` and the Schedule's cells already count points by.
-    const against = Math.min(node.maxLevel, skillStanding.level + 1);
     rows.push({
       tag,
       name: node.name,
       level: skillStanding.level,
       standing: skillStanding,
       projected: projection !== null && projection > skillStanding.level ? projection : null,
-      points: reported?.points ?? null,
-      progress:
-        reported === undefined
-          ? null
-          : `${Math.round(reported.points)} of ${pointsForLevel(against)}`
+      points: reported?.points ?? null
     });
   }
   return rows.sort((a, b) => b.level - a.level || (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0));

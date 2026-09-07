@@ -320,7 +320,7 @@ describe("hoverCard", () => {
       "x"
     );
 
-    expect(card.lines.find((line) => line.name === "pattern")?.right).toBe("2 (100 of 180)");
+    expect(card.lines.find((line) => line.name === "pattern")?.right).toBe("2 (100)");
     expect(card.lines.find((line) => line.name === "force")?.right).toContain("→");
   });
 
@@ -368,9 +368,9 @@ describe("hoverCard", () => {
     })[0];
     const card = hoverCard(maxed, 0, turns, tree, "x");
 
-    // Nothing moved it, so it is a standing rather than a month: no arrow, and the threshold it
-    // counts against is its own maximum, there being no level above.
-    expect(card.lines.find((line) => line.name === "force")?.right).toBe("5 (450 of 450)");
+    // Nothing moved it, so it is a standing rather than a month: the level with its points, and
+    // no arrow.
+    expect(card.lines.find((line) => line.name === "force")?.right).toBe("5 (450)");
   });
 
   it("says what it was projected from", () => {

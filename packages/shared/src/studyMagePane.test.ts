@@ -113,7 +113,7 @@ describe("magePane on the mage himself", () => {
     expect(shown.heading).toBe("Ereb (2431) — now");
     expect(shown.sub).toBe("Wardens of the North (12)");
     // No arrow: nothing has happened yet, so there is no before and after to put one between.
-    expect(shown.knows.find((line) => line.name === "force")?.right).toBe("3 (270 of 300)");
+    expect(shown.knows.find((line) => line.name === "force")?.right).toBe("3 (270)");
     expect(shown.knows.every((line) => !line.studying)).toBe(true);
   });
 
