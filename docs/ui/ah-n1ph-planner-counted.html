@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-n1ph — Apprentices out of the mage study</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; --warn:#e0a35a; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin: 28px 0 6px; }
+  p.note { color: var(--dim); max-width: 86ch; }
+  .dialog { width: 40rem; background: var(--panel); border: 1px solid var(--edge);
+            border-radius: 10px; overflow: hidden; }
+  .head { display:flex; justify-content:space-between; align-items:center;
+          padding: 8px 12px; border-bottom: 1px solid var(--edge); }
+  .head h3 { margin:0; font-size:15px; }
+  .head .close { color: var(--dim); font-size: 13px; }
+  .sub { padding: 4px 12px; border-bottom: 1px solid var(--edge); color: var(--dim);
+         font-size: 13px; }
+  .sub em { font-style: normal; color: var(--soft); }
+  .group { padding: 6px 12px 2px; font-size: 11px; letter-spacing: .8px;
+           text-transform: uppercase; color: var(--dim); }
+  .row { padding: 4px 12px; display:flex; justify-content:space-between; gap: 12px; }
+  .row.sel { background:#1d2532; }
+  .row .n { color: var(--ink); }
+  .row .s { color: var(--dim); font-size: 12.5px; }
+  .empty { padding: 26px 12px 30px; text-align:center; }
+  .empty .h { color: var(--ink); }
+  .empty .d { color: var(--dim); font-size: 12.5px; max-width: 50ch; margin: 6px auto 0; }
+  .cost { color: var(--dim); font-size: 13px; max-width: 70ch; margin: 10px 0 0; }
+  .cost b { color: var(--ink); }
+</style>
+</head>
+<body>
+<h1>ah-n1ph — Variant B: the apprentices are gone, and the pane says how many — CHOSEN</h1>
+<p class="note">
+  Same exclusion as A — no apprentice row, no apprentice in a count, none offered as teacher or
+  pupil — but the line under the title ends with the number left out, so a player who wonders where
+  fifteen units went is answered without leaving the pane. The number is <b>your own</b>
+  apprentices only; an ally's are not counted, because his sheet is not a census of his faction.
+</p>
+
+<p class="note">
+  <b>Decisions (recorded from the planning discussion, 2026-09-07):</b> variant B (count them) over
+  variant A (silent); the same rule applies to an ally's mage sheet, and an ally left with no mage
+  loses his group heading entirely; a unit holding manipulation <em>and</em> a foundation stays,
+  so the filter is written on "only manipulation" and never on "has manipulation"; the count is
+  your own apprentices only, because an ally's sheet is not a census of his faction. Every string
+  on this page ships exactly as written.
+</p>
+<h2>1. The usual case — a faction with mages and apprentices</h2>
+<div class="dialog">
+  <div class="head"><h3>Study planner</h3><span class="close">Close</span></div>
+  <div class="sub"><span>6 mages, all yours <em>· 15 apprentices not listed</em></span></div>
+  <div class="group">Borg TNG (95) — your faction, turn 71</div>
+  <div class="row sel"><span class="n">Six of Seven (881)</span><span class="s">force 4 · 21 can study</span></div>
+  <div class="row"><span class="n">Two of Seven (884)</span><span class="s">pattern 3 · 12 can study</span></div>
+  <div class="row"><span class="n">Three of Seven (885)</span><span class="s">spirit 2 · 9 can study</span></div>
+  <div class="row"><span class="n">Seven of Eight (18642)</span><span class="s">force 2 · 7 can study</span></div>
+  <div class="row"><span class="n">Drones (14451)</span><span class="s">artifact lore 1 · 4 can study</span></div>
+  <div class="row"><span class="n">Drones (15571)</span><span class="s">artifact lore 1 · 4 can study</span></div>
+</div>
+<p class="cost">One apprentice reads <b>"· 1 apprentice not listed"</b>. A faction with none reads
+<b>"6 mages, all yours"</b> and nothing more — the clause appears only when something was left out.</p>
+
+<h2>2. A faction that has apprentices and no mage at all</h2>
+<div class="dialog">
+  <div class="head"><h3>Study planner</h3><span class="close">Close</span></div>
+  <div class="empty">
+    <div class="h">No mage in this faction can cast a spell.</div>
+    <div class="d">Your 15 apprentices are not listed: manipulation makes an apprentice, who may
+      use a mage's items but casts no spell. A one-man leader unit that studies a Foundation
+      becomes a mage.</div>
+  </div>
+</div>
+<p class="cost">A second empty state, used only when the faction has apprentices. With no
+apprentices either, the existing one is unchanged: <b>"No mage in this faction has begun a magic
+skill." / "A one-man leader unit that studies a Foundation becomes one."</b></p>
+
+<h2>3. An ally whose sheet holds only apprentices</h2>
+<div class="dialog">
+  <div class="head"><h3>Study planner</h3><span class="close">Close</span></div>
+  <div class="sub"><span>6 mages, all yours <em>· 15 apprentices not listed</em></span></div>
+  <div class="group">Borg TNG (95) — your faction, turn 71</div>
+  <div class="row sel"><span class="n">Six of Seven (881)</span><span class="s">force 4 · 21 can study</span></div>
+  <div class="row"><span class="n">Two of Seven (884)</span><span class="s">pattern 3 · 12 can study</span></div>
+</div>
+<p class="cost">Same as A: the ally's group heading is <b>gone entirely</b>, and the count clause
+never mentions an ally's apprentices.</p>
+</body>
+</html>
