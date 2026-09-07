@@ -16,14 +16,13 @@
 
 import type { MagicTree } from "./magicTree";
 import { cellMenu } from "./studyCell";
-import { pointsForLevel } from "./studyProgress";
-import { hoverCard, type ScheduleRow } from "./studySchedule";
+import { heldWords, hoverCard, type ScheduleRow } from "./studySchedule";
 
 /** One skill he holds, worded as the pane shows it. */
 export type MagePaneLine = {
   /** `MagicSkillNode.name`, lower case. */
   name: string;
-  /** `4 → 4  (330 of 450)` at a turn, `3  (270 of 300)` as he stands now. */
+  /** `4 (330) → 4 (360)` where the month moved it, `3 (270 of 300)` where it did not. */
   right: string;
   /** True for the skill this turn's plan studies: the marked line. */
   studying: boolean;
@@ -34,7 +33,7 @@ export type MagePaneChoice = {
   /** Upper-cased tag. */
   skill: string;
   name: string;
-  /** `0 → 1`: what a plain month of it would leave him at. */
+  /** `0 (0) → 1 (30)`: what a plain month of it would leave him at, worded as the dropdown does. */
   detail: string;
 };
 
@@ -76,10 +75,12 @@ export function magePane(input: {
     standing,
     tree
   }).choices;
+  // The dropdown's own wording, verbatim: this list and that menu offer the same months, and a
+  // player reading one before opening the other should not have to translate between them.
   const canStudy = choices.map((choice) => ({
     skill: choice.skill,
     name: choice.name,
-    detail: `${choice.from} → ${choice.to}`
+    detail: choice.detail
   }));
 
   if (turnIndex === null) {
@@ -119,10 +120,9 @@ export function magePane(input: {
 /**
  * What he knows as he stands, with no month applied.
  *
- * Deliberately not `hoverCard`'s `before → after` with the two ends equal: `4 → 4` for a turn
- * nothing happened in is an arrow that promises a change and then denies it. The points are worded
- * as they are everywhere else, against the threshold of the next level and never past the skill's
- * own maximum.
+ * Deliberately not an arrow with the same reading at both ends: `4 (325) → 4 (325)` for a turn
+ * nothing happened in promises a change and then denies it. `heldWords` is what a turn's own lines
+ * fall back to for a skill the month did not move, so a standing reads the same either way.
  */
 function knownNow(
   standing: ReadonlyMap<string, { level: number; points: number }>,
@@ -134,10 +134,9 @@ function knownNow(
     if (node === undefined || held.level <= 0) {
       continue;
     }
-    const against = Math.min(node.maxLevel, held.level + 1);
     lines.push({
       name: node.name,
-      right: `${held.level}  (${Math.round(held.points)} of ${pointsForLevel(against)})`,
+      right: heldWords(held, node.maxLevel),
       studying: false
     });
   }

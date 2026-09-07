@@ -222,6 +222,19 @@ export function cellLabel(cell: ScheduleCell | undefined): string {
   return `${cell.skill} ${cell.level} (${Math.round(cell.points)})${mark === "" ? "" : ` ${mark}`}`;
 }
 
+/**
+ * A skill as it stands, nothing having happened to it: `4 (325 of 450)`.
+ *
+ * The threshold is the level above, and the level he is at once there is none above -
+ * `pointsForLevel` extrapolates its formula happily past a sixth level the game does not have.
+ * Shared with `studyMagePane.ts`, so a skill standing still reads the same whether the pane is
+ * showing a turn or the mage himself.
+ */
+export function heldWords(held: { level: number; points: number }, maxLevel: number): string {
+  const against = Math.min(maxLevel, held.level + 1);
+  return `${held.level} (${Math.round(held.points)} of ${pointsForLevel(against)})`;
+}
+
 export function worthMark(worth: number, modified = false): string {
   if (worth === 1) {
     return modified ? "×1" : "";
@@ -656,17 +669,21 @@ export function hoverCard(
     if (held.level <= 0 && ends.level <= 0 && tag !== studying) {
       continue;
     }
-    // The agreed wording: `4 → 4  (390 of 450)` while he is climbing, and `2 → 3  (220 of 180)`
-    // on the turn a level is gained - the threshold he has just crossed, not the next one. Capped
-    // at the skill's own maximum, because `pointsForLevel` extrapolates its formula happily past
-    // it and there is no such threshold in the game.
-    const gained = ends.level > held.level;
-    const against = Math.min(node.maxLevel, gained ? ends.level : ends.level + 1);
+    // `4 (390) → 4 (420)`: a level with its points in brackets at each end of the month, the way a
+    // report writes a skill and the way the dropdown offers one (navigator, 2026-09-07). **Only
+    // where the month moved it**: one skill of the twenty a mage knows is being studied, and an
+    // arrow between two readings of the same figure, nineteen times over, hides the one line that
+    // is actually going somewhere. A skill standing still is a standing, and reads as one - with
+    // the threshold, which is what a line with no arrow has room to answer.
+    const moved =
+      ends.level !== held.level || Math.round(ends.points) !== Math.round(held.points);
     lines.push({
       name: node.name,
-      // Rounded **for display only**: a taught or halved month makes points fractional, and a
-      // card reading `(133.33333333333334 of 150)` is the arithmetic leaking through the glass.
-      right: `${held.level} → ${ends.level}  (${Math.round(ends.points)} of ${pointsForLevel(against)})`,
+      // Rounded **for display only**: a taught or halved month makes points fractional, and a line
+      // reading `(133.33333333333334)` is the arithmetic leaking through the glass.
+      right: moved
+        ? `${held.level} (${Math.round(held.points)}) → ${ends.level} (${Math.round(ends.points)})`
+        : heldWords(held, node.maxLevel),
       studying: tag === studying
     });
   }

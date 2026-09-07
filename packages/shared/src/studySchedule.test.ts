@@ -309,16 +309,29 @@ describe("hoverCard", () => {
     expect(card.lines.find((line) => line.name === "force")?.studying).toBe(true);
   });
 
-  it("names the threshold he has just crossed on the turn a level is gained", () => {
-    const card = hoverCard(row(), 0, turns, tree, "Wardens of the North (12)");
+  it("leaves a skill the month did not move standing, with no arrow", () => {
+    // Ereb studies force every turn; pattern sits there. Nineteen arrows between two readings of
+    // the same figure would hide the one line that is going somewhere.
+    const card = hoverCard(
+      row({ skills: [{ tag: "FORC", level: 3, points: 270 }, { tag: "PATT", level: 2, points: 100 }] }),
+      1,
+      turns,
+      tree,
+      "x"
+    );
 
-    expect(card.lines.find((line) => line.name === "force")?.right).toBe("3 → 4  (300 of 300)");
+    expect(card.lines.find((line) => line.name === "pattern")?.right).toBe("2 (100 of 180)");
+    expect(card.lines.find((line) => line.name === "force")?.right).toContain("→");
   });
 
-  it("names the next threshold while he is still climbing towards it", () => {
-    const card = hoverCard(row(), 1, turns, tree, "Wardens of the North (12)");
+  it("carries a level and its points at each end of the month", () => {
+    // The turn a level is gained: 270 points and level 3 in, 300 and level 4 out.
+    const gaining = hoverCard(row(), 0, turns, tree, "Wardens of the North (12)");
+    expect(gaining.lines.find((line) => line.name === "force")?.right).toBe("3 (270) → 4 (300)");
 
-    expect(card.lines.find((line) => line.name === "force")?.right).toBe("4 → 4  (330 of 450)");
+    // And the turn after, climbing inside a level.
+    const climbing = hoverCard(row(), 1, turns, tree, "Wardens of the North (12)");
+    expect(climbing.lines.find((line) => line.name === "force")?.right).toBe("4 (300) → 4 (330)");
   });
 
   it("gives a skill he begins that turn a line of its own", () => {
@@ -342,10 +355,10 @@ describe("hoverCard", () => {
     expect(card.sub).toBe("x · studying pattern");
     const pattern = card.lines.find((line) => line.name === "pattern");
     expect(pattern?.studying).toBe(true);
-    expect(pattern?.right).toBe("0 → 1  (30 of 30)");
+    expect(pattern?.right).toBe("0 (0) → 1 (30)");
   });
 
-  it("never names a threshold above the skill's own maximum", () => {
+  it("leaves a maxed skill standing where it is", () => {
     const maxed = scheduleRows({
       groups: groupOf({ skills: [{ tag: "FORC", level: 5, points: 450 }] }),
       plans: [],
@@ -355,8 +368,9 @@ describe("hoverCard", () => {
     })[0];
     const card = hoverCard(maxed, 0, turns, tree, "x");
 
-    // 630 is what the level formula gives for a sixth level the game does not have.
-    expect(card.lines.find((line) => line.name === "force")?.right).toBe("5 → 5  (450 of 450)");
+    // Nothing moved it, so it is a standing rather than a month: no arrow, and the threshold it
+    // counts against is its own maximum, there being no level above.
+    expect(card.lines.find((line) => line.name === "force")?.right).toBe("5 (450 of 450)");
   });
 
   it("says what it was projected from", () => {
