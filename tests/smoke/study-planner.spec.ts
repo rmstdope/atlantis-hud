@@ -508,3 +508,34 @@ test("teaching arrives with its pupils chosen and follows the plan", async ({ pa
   await expect(cell).toContainText("TEACH");
   await expect(cell).not.toContainText("everyone");
 });
+
+/**
+ * The teacher can be named before any pupil exists (ah-12h7): the `Teaches…` row is offered with
+ * nobody eligible, and one click commits a live cell that then picks pupils up.
+ */
+test("a teacher is set up before any pupil exists", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  // Nothing planned for anybody, so nobody in the hex is teachable yet.
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  await cell.click();
+  const teachRow = page.getByTestId("study-schedule-choice-teach");
+  await expect(teachRow).toContainText("nobody eligible yet");
+  await teachRow.click();
+
+  // No second step: the row committed and closed on its own.
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await expect(cell).toContainText("TEACH nobody");
+
+  const studentCell = page.getByTestId(`study-schedule-cell-${STUDENT}-72`);
+  await studentCell.click();
+  await page.getByTestId("study-schedule-choice-GATE").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+
+  // Picked up with no further interaction with the teacher's cell.
+  await expect(cell).toContainText("TEACH everyone (1)");
+  await expect(studentCell).toContainText("×2");
+});

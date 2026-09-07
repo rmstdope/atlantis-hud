@@ -51,10 +51,14 @@ export type CellMenu = {
   heading: string;
   /** Only the skills he can study that turn, in the magic tree's order. */
   choices: CellChoice[];
-  /** The students the second step lists. Empty, or with no unblocked entry, means no `Teaches…` row. */
+  /** The students the second step lists, each with a reason on the ones who cannot be taught. */
   teach: TeachChoice[];
-  /** `2 he could teach`, or null when the `Teaches…` row is not offered. */
-  teachDetail: string | null;
+  /**
+   * `2 he could teach`, or `nobody eligible yet` when no row of `teach` is unblocked. Never null:
+   * the `Teaches…` row is always offered, so a teacher can be set up before his pupils exist
+   * (ah-12h7).
+   */
+  teachDetail: string;
   /** `Nothing he can study this turn.`, or null when `choices` is not empty. */
   empty: string | null;
 };
@@ -116,9 +120,7 @@ export function cellMenu(input: {
     heading: `${input.mageName} — turn ${input.turn}`,
     choices,
     teach,
-    // Offered only when it leads somewhere: a teacher with nobody teachable gets no row and no
-    // dead end.
-    teachDetail: teachable === 0 ? null : `${teachable} he could teach`,
+    teachDetail: teachable === 0 ? "nobody eligible yet" : `${teachable} he could teach`,
     empty: choices.length === 0 ? "Nothing he can study this turn." : null
   };
 }
@@ -247,4 +249,31 @@ export function teachWarning(
     return null;
   }
   return `${mageName} can teach nobody on turn ${turn}. The plan will say so anyway.`;
+}
+
+/**
+ * What clicking `Teaches…` does: open the second step with these ticks, or commit a live teach
+ * cell outright because there is nothing in the step to choose.
+ */
+export type TeachClick =
+  | { kind: "open"; students: string[]; live: boolean }
+  | { kind: "commit" };
+
+/**
+ * `commit` when no pupil is tickable, so the second step would hold nothing but reasons; `open`
+ * otherwise. A cell already holding a hand-ticked list always opens, whatever is eligible, so the
+ * shortcut can never discard a list the player named (navigator, ah-12h7).
+ */
+export function teachClick(
+  teach: readonly TeachChoice[],
+  current: CellPick | null
+): TeachClick {
+  if (current?.kind === "teach" && !current.live) {
+    return { kind: "open", students: [...current.students], live: false };
+  }
+  const seeded = seededStudents(teach);
+  if (seeded.length === 0) {
+    return { kind: "commit" };
+  }
+  return { kind: "open", students: seeded, live: true };
 }

@@ -257,6 +257,36 @@ describe("CellPopover", () => {
     );
   }
 
+  it("the Teaches… row is drawn with nobody eligible", () => {
+    // Only Ereb has a plan in `rows`, so Ilna is dim and nobody is tickable - the row is offered
+    // all the same (ah-12h7).
+    const bare = cellMenu({
+      mageName: "Ereb",
+      turn: 26,
+      standing: (rows[0] as ScheduleRow).standings[2],
+      tree,
+      rows,
+      turnIndex: 2,
+      rowKey: "12/2431",
+      label: (regionId: string) => regionId
+    });
+    const markup = renderToStaticMarkup(
+      <CellPopover
+        menu={bare}
+        mode={mode}
+        mageName="Ereb"
+        turn={26}
+        current={null}
+        rowIndex={0}
+        onEvent={() => {}}
+        onChoose={() => {}}
+      />
+    );
+
+    expect(markup).toContain('data-testid="study-schedule-choice-teach"');
+    expect(markup).toContain("nobody eligible yet");
+  });
+
   it("heads the dropdown with the mage and the turn", () => {
     expect(popover()).toContain("Ereb — turn 26");
   });
