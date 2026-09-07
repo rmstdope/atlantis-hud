@@ -589,3 +589,36 @@ test("the planner leaves apprentices out and says how many", async ({ page }) =>
     "apprentices not listed"
   );
 });
+
+/**
+ * The dropdown shows the doubled month for a skill somebody in the hex would teach (ah-r04r).
+ *
+ * `rules/skills_teaching`: "A unit with a teacher can learn up to twice as fast as normal." The
+ * before-and-after is the point: the same cell, the same skill, plain until a teacher exists in
+ * the hex and taught afterwards - which only a real grid can show, the teaching arrangement being
+ * a fact about another mage's row.
+ */
+test("a skill somebody would teach shows its month doubled", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  // Before: nobody is teaching, so the row is the plain month.
+  const studentCell = page.getByTestId(`study-schedule-cell-${SECOND_STUDENT}-72`);
+  await studentCell.click();
+  await expect(page.getByTestId("study-schedule-choice-GATE")).not.toContainText("taught by");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+
+  // With nobody yet eligible the Teaches… row commits a live teach cell outright and closes.
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await page.getByTestId("study-schedule-choice-teach").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+
+  // After: the same row of the same dropdown names the teacher.
+  await studentCell.click();
+  await expect(page.getByTestId("study-schedule-choice-GATE")).toContainText(
+    "taught by Six of Seven"
+  );
+});

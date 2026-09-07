@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   TEACHING_SLOTS,
+  doublingTeacher,
   noticeSummary,
   plannerNotices,
   taughtWorth,
@@ -372,5 +373,177 @@ describe("a teacher who names himself", () => {
     const notices = plannerNotices({ rows, turns: [24], label: (regionId) => regionId });
 
     expect(notices[0].text).toBe("Ereb names himself on turn 24, and a mage cannot teach himself.");
+  });
+});
+
+describe("who would double a month", () => {
+  /** One row, with the cells and standings a case needs and nothing else real about it. */
+  function row(over: Partial<ScheduleRow> & { key: string; name: string }): ScheduleRow {
+    return {
+      factionId: "21",
+      unitId: over.key.split("/")[1] ?? "1",
+      regionId: "1:7",
+      summary: "",
+      note: "",
+      hasNote: false,
+      goals: [],
+      cells: [],
+      standings: [],
+      monthsUnreported: 0,
+      sheetTurn: null,
+      ...over
+    } as ScheduleRow;
+  }
+
+  const standing = (level: number) =>
+    new Map([["FORC", { level, points: 0 }]]) as ScheduleRow["standings"][number];
+
+  const teachCell = (
+    over: Partial<Extract<ScheduleCell, { kind: "teach" }>> = {}
+  ): ScheduleCell => ({
+    kind: "teach",
+    students: [],
+    live: true,
+    outcome: { taught: [], refused: [], worth: 2 },
+    label: "TEACH",
+    ...over
+  });
+
+  const studyCell = (): ScheduleCell => ({
+    kind: "study",
+    skill: "FORC",
+    name: "force",
+    level: 3,
+    points: 180,
+    gained: false,
+    blocked: null,
+    worth: 1,
+    unsheltered: false,
+    shelterUnknown: false,
+    taughtBy: null
+  });
+
+  /** The student every case asks about: force 3, in `1:7`. */
+  const student = row({
+    key: "21/2517",
+    name: "Sable",
+    cells: [studyCell()],
+    standings: [standing(3), standing(3)]
+  });
+
+  const ask = (rows: readonly ScheduleRow[]) =>
+    doublingTeacher({ rows, turnIndex: 0, rowKey: "21/2517", skill: "FORC", studentLevel: 3 });
+
+  it("names the live teacher in his hex who outranks him", () => {
+    const teacher = row({
+      key: "21/881",
+      name: "Ereb",
+      cells: [teachCell({ outcome: { taught: ["21/9"], refused: [], worth: 2 } })],
+      standings: [standing(5), standing(5)]
+    });
+    expect(ask([teacher, student])).toBe("Ereb");
+  });
+
+  it("is null for a teacher in another hex", () => {
+    const teacher = row({
+      key: "21/881",
+      name: "Ereb",
+      regionId: "2:8",
+      cells: [teachCell()],
+      standings: [standing(5), standing(5)]
+    });
+    expect(ask([teacher, student])).toBeNull();
+  });
+
+  it("is null for a mage who is studying rather than teaching", () => {
+    const other = row({
+      key: "21/881",
+      name: "Ereb",
+      cells: [studyCell()],
+      standings: [standing(5), standing(5)]
+    });
+    expect(ask([other, student])).toBeNull();
+  });
+
+  it("is null for a frozen teach cell that does not name him", () => {
+    const teacher = row({
+      key: "21/881",
+      name: "Ereb",
+      cells: [teachCell({ live: false, students: ["9999"] })],
+      standings: [standing(5), standing(5)]
+    });
+    expect(ask([teacher, student])).toBeNull();
+  });
+
+  it("names a frozen teacher who does name him", () => {
+    const teacher = row({
+      key: "21/881",
+      name: "Ereb",
+      cells: [teachCell({ live: false, students: ["2517"] })],
+      standings: [standing(5), standing(5)]
+    });
+    expect(ask([teacher, student])).toBe("Ereb");
+  });
+
+  // `rules/skills_teaching`: the teacher's level must be *greater* than the student's.
+  it("is null when the teacher is only his equal", () => {
+    const teacher = row({
+      key: "21/881",
+      name: "Ereb",
+      cells: [teachCell()],
+      standings: [standing(3), standing(3)]
+    });
+    expect(ask([teacher, student])).toBeNull();
+  });
+
+  it("is null when the ten slots are full and he is not among them", () => {
+    const taught = Array.from({ length: TEACHING_SLOTS }, (_, at) => `21/${100 + at}`);
+    const teacher = row({
+      key: "21/881",
+      name: "Ereb",
+      cells: [teachCell({ outcome: { taught, refused: [], worth: 2 } })],
+      standings: [standing(5), standing(5)]
+    });
+    expect(ask([teacher, student])).toBeNull();
+  });
+
+  it("names a full teacher who is already teaching him", () => {
+    const taught = [
+      "21/2517",
+      ...Array.from({ length: TEACHING_SLOTS - 1 }, (_, at) => `21/${100 + at}`)
+    ];
+    const teacher = row({
+      key: "21/881",
+      name: "Ereb",
+      cells: [teachCell({ outcome: { taught, refused: [], worth: 2 } })],
+      standings: [standing(5), standing(5)]
+    });
+    expect(ask([teacher, student])).toBe("Ereb");
+  });
+
+  it("names the first qualifying row when two teachers would do", () => {
+    const first = row({
+      key: "21/881",
+      name: "Ereb",
+      cells: [teachCell()],
+      standings: [standing(5), standing(5)]
+    });
+    const second = row({
+      key: "21/882",
+      name: "Wardweaver",
+      cells: [teachCell()],
+      standings: [standing(5), standing(5)]
+    });
+    expect(ask([first, second, student])).toBe("Ereb");
+  });
+
+  it("is null when the student is not among the rows", () => {
+    const teacher = row({
+      key: "21/881",
+      name: "Ereb",
+      cells: [teachCell()],
+      standings: [standing(5), standing(5)]
+    });
+    expect(ask([teacher])).toBeNull();
   });
 });

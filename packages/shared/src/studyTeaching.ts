@@ -33,6 +33,64 @@ export function taughtWorth(students: number): number {
   return 1 + Math.min(1, TEACHING_SLOTS / students);
 }
 
+/**
+ * The mage whose teaching month would double a month of `skill` for this one, or null when
+ * nobody's would.
+ *
+ * `rules/skills_teaching`: "A unit with a teacher can learn up to twice as fast as normal ... The
+ * unit doing the teaching must have a skill level greater than the unit doing the studying ...
+ * Each person can only teach up to 10 students in a month". So the answer is yes only for a mage
+ * in the same hex, teaching that turn, strictly above him in that skill, with a slot spare - and
+ * the name is the teacher's, so the dropdown can say whose month it is.
+ *
+ * Deliberately conservative in one case: a full live teacher whose mage order would in fact drop a
+ * current pupil for this student is reported as having no slot, so the row stays plain rather than
+ * nudging the player into displacing somebody.
+ */
+export function doublingTeacher(input: {
+  /** Every row the Schedule drew, in the order `projectAll` resolved the teachers in. */
+  rows: readonly ScheduleRow[];
+  turnIndex: number;
+  /** The would-be student's row key, `${factionId}/${unitId}`. */
+  rowKey: string;
+  /** Upper-cased tag of the skill he would study. */
+  skill: string;
+  /** The level he holds in it as that turn begins. */
+  studentLevel: number;
+}): string | null {
+  const student = input.rows.find((one) => one.key === input.rowKey);
+  if (student === undefined) {
+    return null;
+  }
+  for (const row of input.rows) {
+    if (row.key === input.rowKey || row.regionId !== student.regionId) {
+      continue;
+    }
+    const cell = row.cells[input.turnIndex];
+    if (cell?.kind !== "teach") {
+      continue;
+    }
+    // A frozen cell teaches exactly the unit ids it names; a live one picks up every eligible mage
+    // on every projection. So a frozen teacher who has not named him would not double his month
+    // however senior he is.
+    if (!cell.live && !cell.students.includes(student.unitId)) {
+      continue;
+    }
+    if ((row.standings[input.turnIndex]?.get(input.skill)?.level ?? 0) <= input.studentLevel) {
+      continue;
+    }
+    // `outcome.taught` holds row keys; `cell.students` above holds unit ids.
+    const after = cell.outcome.taught.includes(student.key)
+      ? cell.outcome.taught.length
+      : cell.outcome.taught.length + 1;
+    if (after > TEACHING_SLOTS) {
+      continue;
+    }
+    return row.name;
+  }
+  return null;
+}
+
 /** Why one named student cannot be taught this turn. */
 export type TeachRefusal =
   | { kind: "unknown"; unitId: string }
