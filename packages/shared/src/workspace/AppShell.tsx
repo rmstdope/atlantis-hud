@@ -1234,11 +1234,8 @@ export function AppShell({
   /**
    * Every known region's structures, for the units dock (`ah-yjhf`).
    *
-   * The known map first, for the remembered hexes it alone carries, and this turn's own regions
-   * after it, so they win where the two disagree. Both, rather than the map alone: a report whose
-   * map could not be drawn (`memory.knownMap === null`) has an empty `model`, and the units panel
-   * goes on working from `parsed` — an index built from the map alone would leave every row in
-   * that report with a bare `[id]`.
+   * The remembered map and this turn's report both, in that order; `structuresForUnitDock` is
+   * where why lives.
    */
   const structuresByRegion = useMemo(
     () =>
