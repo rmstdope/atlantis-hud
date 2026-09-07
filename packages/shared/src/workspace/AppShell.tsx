@@ -3924,6 +3924,11 @@ export function AppShell({
         // Asked again on the far side of the await, and for the same reasons: the listing is a
         // core round trip, and a second Fetch or a game switch during it would make this list the
         // older answer. Last write wins only if the last writer is the one that checked last.
+        //
+        // One window is left, knowingly: a second run that both starts and finishes inside this
+        // await clears the controller back to null, and this older list would then write over its
+        // newer one. Closing it wants a run counter rather than a controller identity, and the
+        // window is a whole fetch inside one listing round trip.
         const stillCurrent =
           openGameIdRef.current === runGameId &&
           (fetchAbort.current === null || fetchAbort.current === controller);

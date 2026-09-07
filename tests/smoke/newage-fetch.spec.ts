@@ -305,6 +305,18 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   await expect(page.getByTestId("turn-picker")).toBeVisible();
   await expect(page.getByTestId("turn-row-70")).toBeVisible();
   await expect(page.getByTestId("turn-row-72")).toContainText("playing");
+
+  // The proof that the run stopped, and the last thing asserted because it is the only claim here
+  // that cannot be satisfied in passing. Every assertion above is about a moment: a run that
+  // carried on writes turn 70's line too, and only replaces it with `2 turns stored for history`
+  // a couple of seconds later - so a poll can match the good text while the bad run is still
+  // going. The request list cannot un-record a call, and turn 71 is requested the instant turn 70
+  // is stored, so by the time the picker has been opened it would be here.
+  const historyCalls = (await httpCalls(page))
+    .map((call) => call[2])
+    .filter((url) => url.includes("/files/history/") && !url.includes("/turns"));
+  expect(historyCalls).toHaveLength(1);
+  expect(historyCalls[0]).toContain("/history/70/");
 });
 
 test("keeps this turn when the world would not say which turns it holds", async ({ page }) => {
