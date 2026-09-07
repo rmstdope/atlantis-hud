@@ -759,6 +759,7 @@ describe("cellLabel", () => {
       cellLabel({
         kind: "teach",
         students: ["2517"],
+        live: false,
         outcome: { taught: [], refused: [], worth: 1 },
         label: "TEACH Sable"
       })

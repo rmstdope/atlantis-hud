@@ -5,7 +5,13 @@ import { STANDING_CHIP } from "./standingChip";
 import { useEscapeToDismiss } from "./dismissLayer";
 import type { MagicTree } from "../magicTree";
 import type { StudyGoal } from "@atlantis/core-client";
-import { cellMenu, goalsAfterChoice, teachWarning, type CellMenu } from "../studyCell";
+import {
+  cellMenu,
+  goalsAfterChoice,
+  seededStudents,
+  teachWarning,
+  type CellMenu
+} from "../studyCell";
 import { plannedGoals } from "../studyPlans";
 import { cellLabel, type ScheduleRow } from "../studySchedule";
 import { magePane, type MagePane } from "../studyMagePane";
@@ -369,7 +375,7 @@ function pickOf(row: ScheduleRow, turn: number): CellPick | null {
     return null;
   }
   return goal.kind === "teach"
-    ? { kind: "teach", students: [...goal.students] }
+    ? { kind: "teach", students: [...goal.students], live: goal.live === true }
     : { kind: "study", skill: goal.skill };
 }
 
@@ -660,6 +666,17 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
 }
 
 /**
+ * The teach dialog's heading, and its `aria-label` - one function so the accessible name and the
+ * visible line cannot diverge. The em dash with a space either side is the navigator's wording
+ * (ah-af7i).
+ */
+function teachHeading(mageName: string, turn: number, live: boolean): string {
+  return live
+    ? `${mageName} teaches on turn ${turn} — everyone eligible`
+    : `${mageName} teaches on turn ${turn}`;
+}
+
+/**
  * The cell's dropdown, and the teach step behind it. Hook-free, so the markup can be tested
  * without a DOM.
  *
@@ -696,7 +713,7 @@ export function CellPopover({
       <div
         data-testid="study-schedule-popover"
         role="dialog"
-        aria-label={`${mageName} teaches on turn ${turn}`}
+        aria-label={teachHeading(mageName, turn, mode.live)}
         className="rounded border border-edge bg-panel-raised p-2 shadow-lg"
         // `Cmd/Ctrl+Enter` only. **Escape is not handled here and must not be**: the layer's
         // `useEscapeToDismiss` is a capture-phase document listener that stops propagation before
@@ -711,11 +728,11 @@ export function CellPopover({
             }) === "set"
           ) {
             event.preventDefault();
-            onChoose({ kind: "teach", students: [...mode.students] });
+            onChoose({ kind: "teach", students: [...mode.students], live: mode.live });
           }
         }}
       >
-        <p className="m-0 text-ink">{`${mageName} teaches on turn ${turn}`}</p>
+        <p className="m-0 text-ink">{teachHeading(mageName, turn, mode.live)}</p>
         <ul className="m-0 max-h-[45vh] list-none overflow-y-auto p-0">
           {menu.teach.map((choice) => (
             <li key={choice.unitId}>
@@ -759,7 +776,9 @@ export function CellPopover({
           <button
             type="button"
             data-testid="study-schedule-set"
-            onClick={() => onChoose({ kind: "teach", students: [...mode.students] })}
+            onClick={() =>
+              onChoose({ kind: "teach", students: [...mode.students], live: mode.live })
+            }
             className="rounded border border-brass px-2 py-0.5 text-brass"
           >
             Set
@@ -917,10 +936,13 @@ function rowsOf(
             onClick:
               (onEvent: (event: CellEvent) => void) =>
               () =>
-                onEvent({
-                  kind: "teach-opened",
-                  students: current?.kind === "teach" ? current.students : []
-                })
+                onEvent(
+                  // A frozen cell reopens with exactly its stored ticks; a live one stores none, so
+                  // its seed is recomputed here, as does a cell holding no teach goal (ah-af7i).
+                  current?.kind === "teach" && !current.live
+                    ? { kind: "teach-opened", students: current.students, live: false }
+                    : { kind: "teach-opened", students: seededStudents(menu.teach), live: true }
+                )
           }
         ]),
     ...menu.choices.map((choice) => ({

@@ -64,6 +64,7 @@ const aTeachCell = ({
 }): ScheduleCell => ({
   kind: "teach",
   students: taught.map((key) => key.slice(key.indexOf("/") + 1)),
+  live: false,
   label: "TEACH",
   ...over,
   outcome: { taught, refused: [], worth: 2 }
