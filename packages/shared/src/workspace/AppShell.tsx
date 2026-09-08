@@ -1955,7 +1955,7 @@ export function AppShell({
     // and never has to be rebuilt when one arrives. `client` goes the same way - `parseReport` is
     // memoised on it, so listing it here would be listing it twice.
     // `game` is the one entry here that changes a *decision* rather than a closure: `game !== null`
-    // is `hasGame` in the routing call below, so without it a report could be routed against
+    // is `hasGame` in the routing call above, so without it a report could be routed against
     // whether a game was open at the render this callback was last built on.
     // What is on screen is read through `viewerRef` rather than closed over, for the reason that
     // ref states. `model` stays a dependency and is read from the closure: it is used only to
