@@ -4,6 +4,7 @@ import { factionLabelOf } from "./factionLabel";
 import type { GameDataIndex } from "./gameData";
 import { isApprentice, openingMage, standingOf, type MageStanding, type SkillStanding } from "./magicStanding";
 import type { MagicSkillNode, MagicTree } from "./magicTree";
+import { skillWords } from "./skillReading";
 import { projectedLevel } from "./studyProgress";
 
 /**
@@ -45,12 +46,10 @@ export type KnownSkill = {
  * (navigator, 2026-09-07) - the same reason the Schedule's cells carry them, and the same form:
  * the level with its points in brackets. A report writes that `lumberjack [LUMB] 2 (90)`; the
  * planner closes the space up to `2(90)`, so a level and its points read as one token in a list of
- * them (navigator, 2026-09-07).
+ * them (navigator, 2026-09-07). The reading itself comes from `skillReading.ts`.
  */
 export function knownChip(skill: KnownSkill): string {
-  const held = `${skill.name} ${skill.level}${
-    skill.points === null ? "" : `(${Math.round(skill.points)})`
-  }`;
+  const held = `${skill.name} ${skillWords(skill)}`;
   return skill.projected === null ? held : `${held} → up to ${skill.projected}`;
 }
 

@@ -13,6 +13,7 @@
 
 import type { StudyGoal } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
+import { skillWords } from "./skillReading";
 import { standingsFrom } from "./magicStanding";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
@@ -121,15 +122,19 @@ export function cellMenu(input: {
     const to = Math.min(node.maxLevel, levelForPoints(points));
     // `3(270) → 4(300)`: a level with its points in brackets is how a report prints a skill and
     // how a player says one out loud (navigator, 2026-09-07), so the row is that, twice - where he
-    // stands and where the month leaves him. Rounded for display, a projected standing being
-    // fractional after a taught or halved month.
+    // stands and where the month leaves him.
+    //
+    // `skillWords` collapses an arrow whose two ends read the same; it cannot fire here, because a
+    // month is worth 30 or 60 points (`STUDY_POINTS_PER_MONTH`) and the projected reading is
+    // therefore always above the held one. A rule that ever made a month worth nothing would take
+    // this row's arrow away with it.
     choices.push({
       skill: tag,
       name: node.name,
       from: held.level,
       to,
       detail:
-        `${held.level}(${Math.round(held.points)}) → ${to}(${Math.round(points)})` +
+        skillWords(held, { level: to, points }) +
         (taughtBy === null ? "" : ` · taught by ${taughtBy}`),
       taughtBy
     });
