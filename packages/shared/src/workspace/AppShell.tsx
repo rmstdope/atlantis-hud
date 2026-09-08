@@ -1421,7 +1421,7 @@ export function AppShell({
           break;
       }
     },
-    [orderedOwnUnitIds, unit, goToUnit, walkProblems, gameData]
+    [orderedOwnUnitIds, unit, goToUnit, walkProblems, gameData, magicTree]
   );
 
   // The global keyboard layer: one bubble-phase listener, so every widget's own keys - the
@@ -1652,7 +1652,7 @@ export function AppShell({
         }
       }
     },
-    [clearPlan, selectRegion, closePopover]
+    [clearPlan, selectRegion, closePopover, writeOrdersDocument]
   );
 
   /**
@@ -1930,14 +1930,25 @@ export function AppShell({
         (message) => setStatus(failedStatus(message)),
         { busy: setBusy, prefix: `could not read ${fileName}` }
       ),
-    // `ruleset` belongs here: without it the callback closes over the value at first render, which
-    // is null, and every report is parsed unclassified however long the ruleset took to arrive.
+    // The ruleset is not a dependency and must not be: `parseReport` waits for it and reads it
+    // through refs (`parserWaitingForRuleset`), so the callback never closes over a null ruleset
+    // and never has to be rebuilt when one arrives. `client` goes the same way - `parseReport` is
+    // memoised on it, so listing it here would be listing it twice.
     // What is on screen is read through `viewerRef` rather than closed over, for the reason that
     // ref states. `model` stays a dependency and is read from the closure: it is used only to
     // count how much of a *map export* is new, and a map export arrives one file at a time from a
     // drop or the import button - never inside a multi-turn run, which is the only thing that
     // loads several reports before a render.
-    [client, ruleset, model, heldMagesFor, applyReport, storeReportOnly, takeInMageSheet]
+    [
+      model,
+      heldMagesFor,
+      applyReport,
+      storeReportOnly,
+      takeInMageSheet,
+      flush,
+      game,
+      parseReport
+    ]
   );
 
   /**
@@ -2265,7 +2276,9 @@ export function AppShell({
 
       await runBatch(batch, choice.factionId);
     },
-    [client, ruleset, parsed, loadReport, flush, runBatch, chooseOrdersImport]
+    // Neither `client` nor `ruleset` is read here: both are reached through `parseReport`, which
+    // is memoised on the client and waits for the ruleset through refs.
+    [parsed, loadReport, flush, runBatch, chooseOrdersImport, parseReport]
   );
 
   // The ruleset is a served file rather than something compiled in, so a movement value can be
@@ -2705,7 +2718,7 @@ export function AppShell({
       // otherwise open on whichever level the game before it was left on.
       openGameInStore(workspaceGameOf(opened), loadSavedView(opened.manifest.metadata.gameId));
     },
-    [clearPlan, openGameInStore]
+    [clearPlan, openGameInStore, writeOrdersDocument]
   );
 
   /**
@@ -2732,7 +2745,7 @@ export function AppShell({
         setGames(outcome.games);
         closePopover("games");
       }),
-    [client, enterGame, flush, runGameAction]
+    [client, closePopover, enterGame, flush, runGameAction]
   );
 
   /**
@@ -2823,7 +2836,7 @@ export function AppShell({
         setGames(outcome.games);
         closePopover("games");
       }),
-    [client, enterGame, flush, runGameAction]
+    [client, closePopover, enterGame, flush, runGameAction]
   );
 
 
@@ -2903,7 +2916,7 @@ export function AppShell({
         // `runGameAction` resolves `undefined` only when the work threw; the `?? null` below is the
         // type-level tail of that, not a lost message.
       }).then((failure) => failure ?? null),
-    [client, closeGameInStore, enterGame, game, runGameAction, writer]
+    [client, closeGameInStore, closePopover, enterGame, game, runGameAction, writer]
   );
 
   /**
@@ -2937,7 +2950,7 @@ export function AppShell({
         closePopover("games");
         return null;
       }).then((failure) => failure ?? null),
-    [client, enterGame, game, runGameAction, writer]
+    [client, closePopover, enterGame, game, runGameAction, writer]
   );
 
   const exportGameBackup = useCallback(
@@ -2954,7 +2967,7 @@ export function AppShell({
         }
         closePopover("games");
       }),
-    [client, flush, games, runGameAction, saveTextFile]
+    [client, closePopover, flush, games, runGameAction, saveTextFile]
   );
 
   const importGameBackup = useCallback(
@@ -2981,7 +2994,7 @@ export function AppShell({
         closePopover("games");
         setSettingsOpen(false);
       }, `could not import ${file.name}`),
-    [client, enterGame, flush, game, runGameAction, writer]
+    [client, closePopover, enterGame, flush, game, runGameAction, writer]
   );
 
   // A destination and a unit are all the planner needs; the answer carries either a route or the
@@ -3707,7 +3720,7 @@ export function AppShell({
       newAgeTransport === undefined || newAgeWorld === null
         ? null
         : newAgeClient(newAgeTransport, newAgeWorld.worldId),
-    [newAgeTransport, newAgeWorld?.worldId]
+    [newAgeTransport, newAgeWorld]
   );
   // A plain number, because that is all the server's form accepts: `#atlantis foo` names no faction
   // it could file the turn under, so the control stays off rather than failing at the last step.
