@@ -41,7 +41,18 @@ function studies(skill: string, ...turns: number[]): StudyGoal[] {
 function project(start: SkillPoints, goals: readonly StudyGoal[], turns: readonly number[] = TURNS) {
   const projected = projectAll({
     mages: [
-      { key: "21/2431", unitId: "2431", name: "Ereb", regionId: "1:7", structureId: "1", start, goals }
+      {
+        key: "21/2431",
+        unitId: "2431",
+        name: "Ereb",
+        regionId: "1:7",
+        structureId: "1",
+        offMap: false,
+        leftBuilding: null,
+        leftBy: null,
+        start,
+        goals
+      }
     ],
     tree,
     turns,
@@ -257,7 +268,8 @@ describe("scheduleRows", () => {
       ],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     });
 
     expect(rows).toHaveLength(1);
@@ -267,7 +279,8 @@ describe("scheduleRows", () => {
   });
 
   it("gives a mage with no plan an idle row and no pencil", () => {
-    const rows = scheduleRows({ groups: groupOf(), plans: [], tree, turns, seats: new Map() });
+    const rows = scheduleRows({ groups: groupOf(), plans: [], tree, turns, seats: new Map() ,
+      after: new Map()});
 
     expect(rows[0].hasNote).toBe(false);
     expect(rows[0].summary).toBe("force 3");
@@ -280,7 +293,8 @@ describe("scheduleRows", () => {
       plans: [],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     });
 
     expect(rows[0].standings[0].get("FORC")).toEqual({ level: 3, points: 270 });
@@ -304,7 +318,8 @@ describe("hoverCard", () => {
       ],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     })[0];
   }
 
@@ -355,7 +370,8 @@ describe("hoverCard", () => {
       ],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     })[0];
     const card = hoverCard(beginning, 0, turns, tree, "x");
 
@@ -371,7 +387,8 @@ describe("hoverCard", () => {
       plans: [],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     })[0];
     const card = hoverCard(maxed, 0, turns, tree, "x");
 
@@ -407,6 +424,9 @@ describe("projectAll across the whole fleet", () => {
       name: string;
       regionId?: string;
       structureId?: string | null;
+      offMap?: boolean;
+      leftBuilding?: string | null;
+      leftBy?: "move" | "leave" | null;
       start: SkillPoints;
       goals: readonly StudyGoal[];
     }[],
@@ -417,6 +437,9 @@ describe("projectAll across the whole fleet", () => {
       mages: mages.map((mage) => ({
         regionId: "1:7",
         structureId: null,
+        offMap: false,
+        leftBuilding: null,
+        leftBy: null,
         ...mage
       })),
       tree,
@@ -707,6 +730,66 @@ describe("projectAll across the whole fleet", () => {
     expect(cell?.kind === "study" && cell.unsheltered).toBe(false);
     expect(cell?.kind === "study" && cell.shelterUnknown).toBe(true);
     expect(cell?.kind === "study" && cell.worth).toBe(1);
+  });
+
+  // ah-zpq3: `ProjectedMage.structureId` is where he stands once this month's orders have run, so
+  // a mage the report found in the open but whose ENTER seats him is not halved.
+  it("does not halve a mage whose orders put him in a seated building", () => {
+    const out = fleet(
+      [
+        {
+          key: "a",
+          unitId: "1",
+          name: "Kesh",
+          structureId: "4",
+          start: at({ FORC: [2, 90] }),
+          goals: studies("FORC")
+        }
+      ],
+      new Map([["1:7/4", 1]])
+    );
+
+    for (const cell of out.get("a")?.cells ?? []) {
+      expect(cell).toMatchObject({ unsheltered: false, shelterUnknown: false, worth: 1 });
+    }
+  });
+
+  // Nothing is halved on ignorance, and the strip says nothing either (navigator, 2026-09-08).
+  it("says nothing about a mage who studies off the map", () => {
+    const out = fleet([
+      {
+        key: "a",
+        unitId: "1",
+        name: "Kesh",
+        offMap: true,
+        start: at({ FORC: [2, 90] }),
+        goals: studies("FORC")
+      }
+    ]);
+
+    const cell = out.get("a")?.cells[0];
+    expect(cell?.kind === "study" && cell.unsheltered).toBe(false);
+    expect(cell?.kind === "study" && cell.shelterUnknown).toBe(false);
+    expect(cell?.kind === "study" && cell.worth).toBe(1);
+  });
+
+  // There are orders for one month; on the next turn he is simply somewhere.
+  it("names the building only on the first turn", () => {
+    const out = fleet([
+      {
+        key: "a",
+        unitId: "1",
+        name: "Kesh",
+        leftBuilding: "Castle [4]",
+        leftBy: "move",
+        start: at({ FORC: [2, 90] }),
+        goals: studies("FORC")
+      }
+    ]);
+
+    const cells = out.get("a")?.cells ?? [];
+    expect(cells[0]).toMatchObject({ leftBuilding: "Castle [4]", leftBy: "move" });
+    expect(cells[1]).toMatchObject({ leftBuilding: null, leftBy: null });
   });
 });
 

@@ -63,7 +63,8 @@ const rows = scheduleRows({
   ],
   tree,
   turns,
-  seats: new Map([["1:7,53/1", 1]])
+  seats: new Map([["1:7,53/1", 1]]),
+  after: new Map()
 });
 
 function grid(mode: CellMode = { kind: "idle" }) {
@@ -238,7 +239,8 @@ describe("CellPopover", () => {
     })),
     tree,
     turns,
-    seats: new Map([["1:7,53/1", 1]])
+    seats: new Map([["1:7,53/1", 1]]),
+    after: new Map()
   });
   const menu = cellMenu({
     mageName: "Ereb",
@@ -471,7 +473,8 @@ describe("a teaching month in the grid", () => {
     ],
     tree,
     turns,
-    seats: new Map()
+    seats: new Map(),
+    after: new Map()
   });
 
   function teachingGrid(notices: PlannerNotice[] = []) {
@@ -594,7 +597,8 @@ describe("a month somebody would double is drawn green", () => {
       })),
       tree,
       turns,
-      seats: new Map([["1:7,53/1", 1]])
+      seats: new Map([["1:7,53/1", 1]]),
+      after: new Map()
     }) as ScheduleRow[];
   })();
 
