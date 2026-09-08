@@ -295,7 +295,6 @@ test("a note written in All mages shows as a pencil and in the mage pane", async
   await expect(page.getByTestId("study-planner-plan-line")).toBeVisible();
   const note = page.getByTestId("study-planner-note").locator("textarea");
   await note.fill("heading for Gate Lore");
-  await note.press("ControlOrMeta+Enter");
 
   await page.getByTestId("study-planner-view-schedule").click();
   await expect(page.getByTestId("study-schedule-note-881")).toBeVisible();
@@ -311,6 +310,37 @@ test("a note written in All mages shows as a pencil and in the mage pane", async
   // A mage nobody has written about carries nothing in its place.
   await page.getByTestId("study-schedule-cell-12878-72").hover();
   await expect(pane.getByTestId("study-schedule-note")).toHaveCount(0);
+});
+
+test("a note is kept without pressing anything", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await expect(page.getByTestId("study-planner-plan-line")).toBeVisible();
+  const note = page.getByTestId("study-planner-note").locator("textarea");
+  await note.fill("heading for Gate Lore");
+
+  // Nothing is pressed: switching mage unmounts the note, which writes what is owed.
+  await page.getByTestId("study-planner-mage-95/12878").click();
+  await expect(note).toHaveValue("");
+  await page.getByTestId(`study-planner-mage-95/${MAGE}`).click();
+  await expect(note).toHaveValue("heading for Gate Lore");
+
+  // Closing the window is the other way out, and it must write too - so this types again, with
+  // something owed, before Escape. The margin is load-bearing: the fill and the Escape must land
+  // inside STUDY_NOTE_AUTOSAVE_MS (400ms), or the debounce writes on its own and this stops
+  // proving the unmount flush. Two CDP round-trips is generous room, but do not add work between
+  // these two lines. Escape is the window's and not the note's: it closes the dialog
+  // from inside the textarea.
+  await note.fill("heading for Gate Lore, then Portals");
+  await note.press("Escape");
+  await expect(page.getByTestId("study-planner-dialog")).toBeHidden();
+
+  await page.keyboard.press("F4");
+  await page.getByTestId(`study-planner-mage-95/${MAGE}`).click();
+  await expect(page.getByTestId("study-planner-note").locator("textarea")).toHaveValue(
+    "heading for Gate Lore, then Portals"
+  );
 });
 
 test("the mage pane shows every skill a deep mage knows", async ({ page }) => {

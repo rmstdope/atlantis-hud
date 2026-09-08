@@ -4523,7 +4523,7 @@ export function AppShell({
             void saveStudyPlan(factionId, unitId, { goals: edit }, "Could not save this plan.")
           }
           onSaveNote={(factionId, unitId, comment) =>
-            void saveStudyPlan(factionId, unitId, { comment }, "Could not save this note.")
+            void saveStudyPlan(factionId, unitId, { comment }, "Could not save this note. It is still here — keep typing and it will try again.")
           }
           onDismiss={() => setStudyPlannerOpen(false)}
         />
