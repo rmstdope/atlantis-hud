@@ -724,6 +724,26 @@ function StudyPlannerNote({
   const autosave = useRef<NoteAutosave | null>(null);
   autosave.current ??= createNoteAutosave((next) => latestSave.current(next), comment);
 
+  // Storage can move under a mounted editor: the unmount flush is fire-and-forget
+  // (`AppShell`'s `void saveStudyPlan`), and the store caches only once the write has landed
+  // (`studyPlansStore.save`), so closing the window and reopening it at once mounts this on the
+  // note as it was *before* the last write. `draft` is seeded once, so without this the field
+  // would show the stale note for the rest of the mount - and typing there would overwrite the
+  // note that was actually saved.
+  //
+  // Adjusting state while rendering, rather than in an effect: React's own answer for state
+  // derived from a prop, and it avoids a frame in which the stale text is on screen.
+  const seen = useRef(comment);
+  if (seen.current !== comment) {
+    seen.current = comment;
+    // What the player is typing always wins over what storage says: their text is newer, and it
+    // is owed a write of its own.
+    if (autosave.current !== null && !autosave.current.owes()) {
+      autosave.current.adopted(comment);
+      setDraft(comment);
+    }
+  }
+
   // The editor going away is the last chance to write: switching mage remounts this component and
   // closing the window unmounts it. `saveStudyPlan` lives in `AppShell`, which is not unmounting,
   // so the write started here completes.
