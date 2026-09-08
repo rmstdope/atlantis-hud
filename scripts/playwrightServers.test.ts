@@ -15,19 +15,28 @@ import { serverPolicy } from "./playwrightServers";
  * server is a stale bundle by construction — and a stale bundle passes and proves nothing, or fails
  * and reads exactly like a broken branch.
  */
-const CONFIGS = ["playwright.config.ts", "playwright.pwa.config.ts"] as const;
+/**
+ * Each config and how many servers it starts. The count is pinned as well as the values: deleting
+ * a `reuseExistingServer` line would otherwise leave the suite green, and Playwright's own types do
+ * not document the default — so an omitted line is a silent unknown rather than a guaranteed
+ * `false`.
+ */
+const CONFIGS = [
+  { path: "playwright.config.ts", servers: 2 },
+  { path: "playwright.pwa.config.ts", servers: 1 }
+] as const;
 
 describe("the browser suites' server policy", () => {
   it("decides server reuse from no CI variable at all", () => {
-    for (const path of CONFIGS) {
+    for (const { path } of CONFIGS) {
       expect(serverPolicy(readFileSync(path, "utf8")).readsCi, path).toBe(false);
     }
   });
 
   it("tells every webServer never to reuse one it did not start", () => {
-    for (const path of CONFIGS) {
+    for (const { path, servers } of CONFIGS) {
       const { reuseSettings } = serverPolicy(readFileSync(path, "utf8"));
-      expect(reuseSettings.length, `${path}: no webServer entries found`).toBeGreaterThan(0);
+      expect(reuseSettings.length, `${path}: wrong number of webServer entries`).toBe(servers);
       for (const setting of reuseSettings) {
         expect(setting, path).toBe("false");
       }
@@ -35,7 +44,7 @@ describe("the browser suites' server policy", () => {
   });
 
   it("passes --strictPort to every vite preview", () => {
-    for (const path of CONFIGS) {
+    for (const { path } of CONFIGS) {
       expect(
         serverPolicy(readFileSync(path, "utf8")).previewCommandsWithoutStrictPort,
         path

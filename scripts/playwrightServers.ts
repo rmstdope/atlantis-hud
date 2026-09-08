@@ -8,7 +8,17 @@
  */
 
 export interface ServerPolicy {
-  /** Does any decision in this file depend on `process.env.CI`? It must not — see below. */
+  /**
+   * Does the file's code mention `process.env.CI` at all, comments aside?
+   *
+   * Deliberately broader than "does server reuse depend on it". `CI` is not banned from a
+   * Playwright config on principle — a `retries` that doubles on a runner is perfectly reasonable —
+   * but this repository has just paid for one variable carrying two meanings, and the cheapest
+   * guard against the second meaning creeping back is to notice the variable rather than to
+   * pattern-match the one expression it was last spelled with. A config that genuinely needs `CI`
+   * should say so by changing this test and this comment together, which is the conversation the
+   * broad check exists to force.
+   */
   readsCi: boolean;
   /** The right-hand side of every `reuseExistingServer:` in the file, in order. */
   reuseSettings: string[];

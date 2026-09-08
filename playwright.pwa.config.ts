@@ -47,8 +47,8 @@ export default defineConfig({
      * Never reuse a server this run did not start.
      *
      * The build is a prerequisite run once by the caller, so a reused server is whatever bundle
-     * happened to be built last — and a stale bundle passes and proves nothing, or fails and reads exactly like
-     * a broken branch. `!process.env.CI` said this indirectly and cost the fleet twice over: three
+     * happened to be built last — and a stale bundle passes and proves nothing, or fails and
+     * reads exactly like a broken branch. `!process.env.CI` said this indirectly and cost the fleet twice over: three
      * sightings of a suite answering from another checkout's server, and a machine-wide gate lock
      * (`scripts/withGateLock.ts`, which skips itself under `CI`) that every agent silently switched
      * off by exporting `CI=1` to get this behaviour. Off is now the answer everywhere; Playwright
