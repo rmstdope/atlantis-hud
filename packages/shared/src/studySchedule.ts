@@ -30,6 +30,7 @@ import type { MagicTree } from "./magicTree";
 import { plannedGoals } from "./studyPlans";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
+import type { StandingAfterOrders } from "./studyStanding";
 import { joinNames } from "./workspace/standingChip";
 
 /** How many turns the Schedule draws. Six, chosen with the navigator. */
@@ -74,6 +75,14 @@ export type ScheduleCell =
        * that is not in your report. Nothing is halved on ignorance; the strip says why instead.
        */
       shelterUnknown: boolean;
+      /**
+       * `Kesh walks out of the Castle [4]` / `Vess leaves the Castle [4]` - the building the
+       * warning names, or null. Set **only on the first projected turn**, the one month there are
+       * orders for, and only when he ends it outside a building.
+       */
+      leftBuilding: string | null;
+      /** `StandingAfterOrders.leftBy`, carried beside `leftBuilding` and null with it. */
+      leftBy: "move" | "leave" | null;
       /** The key of the mage teaching him this turn, or null. */
       taughtBy: string | null;
     }
@@ -192,8 +201,26 @@ export type ProjectedMage = {
   key: string;
   unitId: string;
   name: string;
+  /**
+   * Where the **report** found him, unchanged by this month's orders. What teaching co-location is
+   * judged on, and what a refusal names; whether TEACH follows a MOVE is a separate question from
+   * this bead's, and is deliberately left alone (ah-zpq3).
+   */
   regionId: string;
+  /**
+   * The hex he **studies** in, once this month's orders have run - `StandingAfterOrders.regionId`,
+   * or the report's own hex for a mage those orders do not move. Read for his shelter and nothing
+   * else.
+   */
+  studyRegionId: string;
+  /** The building he studies in then, or null in the open. Same source as `studyRegionId`. */
   structureId: string | null;
+  /** `StandingAfterOrders.offMap`: nothing can be said about his shelter, so nothing is. */
+  offMap: boolean;
+  /** `StandingAfterOrders.leftBuilding` - `Castle [4]`, or null. */
+  leftBuilding: string | null;
+  /** `StandingAfterOrders.leftBy`. */
+  leftBy: "move" | "leave" | null;
   start: SkillPoints;
   goals: readonly StudyGoal[];
 };
@@ -476,12 +503,18 @@ export function projectAll(input: {
       if (intent?.kind !== "study" || intent.blocked !== null || intent.before.level < 2) {
         continue;
       }
+      if (mage.offMap) {
+        // He walks into a hex the report does not show. Nothing is halved on ignorance, and the
+        // strip says nothing either (navigator, 2026-09-08): unlike an ally's unseen hex, this is
+        // a mage the player can see leaving, so a suggestion would add a line to a plan that has
+        // nothing wrong with it.
+        continue;
+      }
       if (mage.structureId === null) {
-        // Standing outside a building is a fact the report states, not an unknown.
         unsheltered.add(mage.key);
         continue;
       }
-      const key = shelterKey(mage.regionId, mage.structureId);
+      const key = shelterKey(mage.studyRegionId, mage.structureId);
       const seats = input.seats.get(key);
       if (seats === undefined || seats === null) {
         shelterUnknown.add(mage.key);
@@ -541,6 +574,8 @@ export function projectAll(input: {
           worth: 0,
           unsheltered: false,
           shelterUnknown: false,
+          leftBuilding: null,
+          leftBy: null,
           taughtBy: null
         });
         continue;
@@ -569,6 +604,10 @@ export function projectAll(input: {
         worth,
         unsheltered: halved,
         shelterUnknown: shelterUnknown.has(mage.key),
+        // Only the first projected column: there are orders for one month, and on every later turn
+        // he is simply somewhere rather than going somewhere.
+        leftBuilding: turn === 0 && halved && mage.leftBuilding !== null ? mage.leftBuilding : null,
+        leftBy: turn === 0 && halved && mage.leftBuilding !== null ? mage.leftBy : null,
         taughtBy: teacher
       });
     }
@@ -656,6 +695,11 @@ export function scheduleRows(input: {
   turns: readonly number[];
   /** From `shelterSeats(...)`; an empty map means every shelter is unknown. */
   seats: ShelterSeats;
+  /**
+   * `standingAfterOrders(...)` - where each own mage stands once this month's orders have run.
+   * An absent key, and an empty map, both mean the report's own answer.
+   */
+  after: ReadonlyMap<string, StandingAfterOrders>;
 }): ScheduleRow[] {
   const byKey = new Map(input.plans.map((plan) => [`${plan.factionId}/${plan.unitId}`, plan]));
 
@@ -666,12 +710,17 @@ export function scheduleRows(input: {
   const names = new Map<string, string>();
   for (const group of input.groups) {
     for (const mage of group.mages) {
+      const stood = input.after.get(mage.key);
       mages.push({
         key: mage.key,
         unitId: mage.unitId,
         name: mage.name,
         regionId: mage.regionId,
-        structureId: mage.structureId,
+        studyRegionId: stood?.regionId ?? mage.regionId,
+        structureId: stood === undefined ? mage.structureId : stood.structureId,
+        offMap: stood?.offMap ?? false,
+        leftBuilding: stood?.leftBuilding ?? null,
+        leftBy: stood?.leftBy ?? null,
         start: startOf(mage.skills),
         goals: plannedGoals(byKey.get(mage.key)?.goals ?? [])
       });

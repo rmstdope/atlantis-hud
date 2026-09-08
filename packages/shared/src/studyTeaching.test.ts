@@ -80,6 +80,8 @@ describe("what the planner has to say about a plan", () => {
     worth: 1,
     unsheltered: false,
     shelterUnknown: false,
+    leftBuilding: null,
+    leftBy: null,
     taughtBy: null,
     ...over
   });
@@ -271,6 +273,51 @@ describe("what the planner has to say about a plan", () => {
     );
   });
 
+  // ah-zpq3: a mage whose own orders take him out of a building is told which one, and how.
+  it("names the move that took a mage out of his building", () => {
+    const notices = notice([
+      row({
+        key: "21/1",
+        name: "Kesh",
+        cells: [
+          studyCell({
+            name: "pattern",
+            unsheltered: true,
+            worth: 0.5,
+            leftBuilding: "Castle [4]",
+            leftBy: "move"
+          })
+        ]
+      })
+    ]);
+
+    expect(notices[0].text).toBe(
+      "Kesh walks out of the Castle [4] this month, so he studies pattern outside any building on turn 24. Above level 2 a month is worth half."
+    );
+  });
+
+  it("names a LEAVE that took a mage out of his building", () => {
+    const notices = notice([
+      row({
+        key: "21/1",
+        name: "Vess",
+        cells: [
+          studyCell({
+            name: "pattern",
+            unsheltered: true,
+            worth: 0.5,
+            leftBuilding: "Castle [4]",
+            leftBy: "leave"
+          })
+        ]
+      })
+    ]);
+
+    expect(notices[0].text).toBe(
+      "Vess leaves the Castle [4] this month, so he studies pattern outside any building on turn 24. Above level 2 a month is worth half."
+    );
+  });
+
   it("says a building's seats are taken", () => {
     const notices = plannerNotices({
       rows: [row({ key: "21/1", name: "Ereb", cells: [studyCell({ unsheltered: true, worth: 0.5 })] })],
@@ -420,6 +467,8 @@ describe("who would double a month", () => {
     worth: 1,
     unsheltered: false,
     shelterUnknown: false,
+    leftBuilding: null,
+    leftBy: null,
     taughtBy: null
   });
 

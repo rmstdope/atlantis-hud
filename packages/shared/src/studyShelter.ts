@@ -14,6 +14,8 @@
 
 import type { ParsedReport } from "@atlantis/core-client";
 import { structureEntryId, type GameDataIndex } from "./gameData";
+import type { PlannerGroup } from "./studyPlanner";
+import type { StandingAfterOrders } from "./studyStanding";
 
 /**
  * How many mages each structure seats, keyed `${regionId}/${structureId}`.
@@ -87,4 +89,41 @@ export function shelterNames(report: ParsedReport | null): ReadonlyMap<string, s
     }
   }
   return names;
+}
+
+/**
+ * Which building each mage studies in, and how many mages it seats - `plannerNotices`' `shelters`.
+ *
+ * Absent means the open, which is what `plannerNotices` reads it as, and so does a building whose
+ * seats are not known: nothing is said about a shelter nobody can count.
+ *
+ * The standing is the one this month's orders leave him in (`standingAfterOrders`), the same
+ * question `scheduleRows` asks - or a mage who enters a full Fort is told about the building the
+ * report found him in rather than the one he studies in (ah-zpq3).
+ */
+export function mageShelters(input: {
+  groups: readonly PlannerGroup[];
+  seats: ShelterSeats;
+  /** `shelterNames(report)`. */
+  names: ReadonlyMap<string, string>;
+  after: ReadonlyMap<string, StandingAfterOrders>;
+}): ReadonlyMap<string, { name: string; seats: number }> {
+  const found = new Map<string, { name: string; seats: number }>();
+  for (const group of input.groups) {
+    for (const mage of group.mages) {
+      const stood = input.after.get(mage.key);
+      const regionId = stood?.regionId ?? mage.regionId;
+      const structureId = stood === undefined ? mage.structureId : stood.structureId;
+      if (stood?.offMap === true || structureId === null) {
+        continue;
+      }
+      const key = shelterKey(regionId, structureId);
+      const held = input.seats.get(key);
+      if (held === undefined || held === null) {
+        continue;
+      }
+      found.set(mage.key, { name: input.names.get(key) ?? "building", seats: held });
+    }
+  }
+  return found;
 }

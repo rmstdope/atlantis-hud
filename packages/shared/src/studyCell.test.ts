@@ -107,7 +107,19 @@ describe("cellMenu", () => {
 function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
   const { cells, standings } = projectAll({
     mages: [
-      { key: "21/2431", unitId: "2431", name: "Ereb", regionId: "1:7", structureId: "1", start, goals }
+      {
+        key: "21/2431",
+        unitId: "2431",
+        name: "Ereb",
+        regionId: "1:7",
+        studyRegionId: "1:7",
+        structureId: "1",
+        offMap: false,
+        leftBuilding: null,
+        leftBy: null,
+        start,
+        goals
+      }
     ],
     tree,
     turns: TURNS,

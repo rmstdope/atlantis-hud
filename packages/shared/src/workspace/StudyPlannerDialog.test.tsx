@@ -269,6 +269,7 @@ describe("the Orders tab", () => {
         selectedUnitId={null}
         label={label}
         seats={new Map()}
+        after={new Map()}
         structureNames={new Map()}
         tree={tree}
         plans={plans}

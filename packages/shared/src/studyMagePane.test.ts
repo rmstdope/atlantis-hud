@@ -49,7 +49,8 @@ function row(skills?: { tag: string; level: number; points: number }[]): Schedul
     ],
     tree,
     turns,
-    seats: new Map([["1:7,53/1", 1]])
+    seats: new Map([["1:7,53/1", 1]]),
+    after: new Map()
   })[0];
 }
 

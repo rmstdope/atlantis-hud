@@ -41,7 +41,19 @@ function studies(skill: string, ...turns: number[]): StudyGoal[] {
 function project(start: SkillPoints, goals: readonly StudyGoal[], turns: readonly number[] = TURNS) {
   const projected = projectAll({
     mages: [
-      { key: "21/2431", unitId: "2431", name: "Ereb", regionId: "1:7", structureId: "1", start, goals }
+      {
+        key: "21/2431",
+        unitId: "2431",
+        name: "Ereb",
+        regionId: "1:7",
+        studyRegionId: "1:7",
+        structureId: "1",
+        offMap: false,
+        leftBuilding: null,
+        leftBy: null,
+        start,
+        goals
+      }
     ],
     tree,
     turns,
@@ -257,7 +269,8 @@ describe("scheduleRows", () => {
       ],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     });
 
     expect(rows).toHaveLength(1);
@@ -266,8 +279,56 @@ describe("scheduleRows", () => {
     expect(rows[0].cells).toHaveLength(SCHEDULE_TURNS);
   });
 
+  // ah-zpq3: the report found him in the open, his ENTER seats him, and the schedule reads the
+  // second rather than the first. This is the bug, so it goes through `scheduleRows` and `after`.
+  it("does not halve a mage whose orders put him in a seated building", () => {
+    const call = (after: Parameters<typeof scheduleRows>[0]["after"]) =>
+      scheduleRows({
+        // Standing in the open, which is what the report says and what used to halve him.
+        groups: groupOf().map((group) => ({
+          ...group,
+          mages: group.mages.map((mage) => ({ ...mage, structureId: null }))
+        })) as ReturnType<typeof groupOf>,
+        plans: [
+          {
+            factionId: "21",
+            unitId: "2431",
+            goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+            comment: "",
+            updatedAt: "2026-01-01T00:00:00.000Z"
+          }
+        ],
+        tree,
+        turns,
+        seats: new Map([["1:7,53/4", 1]]),
+        after
+      });
+
+    const reported = call(new Map());
+    expect(reported[0].cells[0]).toMatchObject({ unsheltered: true, worth: 0.5 });
+
+    const entered = call(
+      new Map([
+        [
+          "21/2431",
+          {
+            regionId: "1:7,53",
+            structureId: "4",
+            offMap: false,
+            leftBuilding: null,
+            leftBy: null
+          }
+        ]
+      ])
+    );
+    for (const cell of entered[0].cells) {
+      expect(cell).toMatchObject({ unsheltered: false, shelterUnknown: false, worth: 1 });
+    }
+  });
+
   it("gives a mage with no plan an idle row and no pencil", () => {
-    const rows = scheduleRows({ groups: groupOf(), plans: [], tree, turns, seats: new Map() });
+    const rows = scheduleRows({ groups: groupOf(), plans: [], tree, turns, seats: new Map() ,
+      after: new Map()});
 
     expect(rows[0].hasNote).toBe(false);
     expect(rows[0].summary).toBe("force 3");
@@ -280,7 +341,8 @@ describe("scheduleRows", () => {
       plans: [],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     });
 
     expect(rows[0].standings[0].get("FORC")).toEqual({ level: 3, points: 270 });
@@ -304,7 +366,8 @@ describe("hoverCard", () => {
       ],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     })[0];
   }
 
@@ -355,7 +418,8 @@ describe("hoverCard", () => {
       ],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     })[0];
     const card = hoverCard(beginning, 0, turns, tree, "x");
 
@@ -371,7 +435,8 @@ describe("hoverCard", () => {
       plans: [],
       tree,
       turns,
-      seats: new Map()
+      seats: new Map(),
+      after: new Map()
     })[0];
     const card = hoverCard(maxed, 0, turns, tree, "x");
 
@@ -406,7 +471,11 @@ describe("projectAll across the whole fleet", () => {
       unitId: string;
       name: string;
       regionId?: string;
+      studyRegionId?: string;
       structureId?: string | null;
+      offMap?: boolean;
+      leftBuilding?: string | null;
+      leftBy?: "move" | "leave" | null;
       start: SkillPoints;
       goals: readonly StudyGoal[];
     }[],
@@ -417,7 +486,12 @@ describe("projectAll across the whole fleet", () => {
       mages: mages.map((mage) => ({
         regionId: "1:7",
         structureId: null,
-        ...mage
+        offMap: false,
+        leftBuilding: null,
+        leftBy: null,
+        ...mage,
+        // Where he studies follows where he stands unless a case says otherwise.
+        studyRegionId: mage.studyRegionId ?? mage.regionId ?? "1:7"
       })),
       tree,
       turns,
@@ -708,6 +782,44 @@ describe("projectAll across the whole fleet", () => {
     expect(cell?.kind === "study" && cell.shelterUnknown).toBe(true);
     expect(cell?.kind === "study" && cell.worth).toBe(1);
   });
+
+  // Nothing is halved on ignorance, and the strip says nothing either (navigator, 2026-09-08).
+  it("says nothing about a mage who studies off the map", () => {
+    const out = fleet([
+      {
+        key: "a",
+        unitId: "1",
+        name: "Kesh",
+        offMap: true,
+        start: at({ FORC: [2, 90] }),
+        goals: studies("FORC")
+      }
+    ]);
+
+    const cell = out.get("a")?.cells[0];
+    expect(cell?.kind === "study" && cell.unsheltered).toBe(false);
+    expect(cell?.kind === "study" && cell.shelterUnknown).toBe(false);
+    expect(cell?.kind === "study" && cell.worth).toBe(1);
+  });
+
+  // There are orders for one month; on the next turn he is simply somewhere.
+  it("names the building only on the first turn", () => {
+    const out = fleet([
+      {
+        key: "a",
+        unitId: "1",
+        name: "Kesh",
+        leftBuilding: "Castle [4]",
+        leftBy: "move",
+        start: at({ FORC: [2, 90] }),
+        goals: studies("FORC")
+      }
+    ]);
+
+    const cells = out.get("a")?.cells ?? [];
+    expect(cells[0]).toMatchObject({ leftBuilding: "Castle [4]", leftBy: "move" });
+    expect(cells[1]).toMatchObject({ leftBuilding: null, leftBy: null });
+  });
 });
 
 /**
@@ -728,6 +840,8 @@ describe("cellLabel", () => {
       worth: 1,
       unsheltered: false,
       shelterUnknown: false,
+      leftBuilding: null,
+      leftBy: null,
       taughtBy: null,
       ...over
     }) satisfies Extract<ScheduleCell, { kind: "study" }>;

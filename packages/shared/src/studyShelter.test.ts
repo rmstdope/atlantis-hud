@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
 import type { ParsedReport } from "@atlantis/core-client";
 import { parseGameData, type GameDataIndex } from "./gameData";
-import { shelterKey, shelterSeats } from "./studyShelter";
+import { mageShelters, shelterKey, shelterSeats } from "./studyShelter";
+import type { PlannerGroup } from "./studyPlanner";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 
@@ -76,5 +77,130 @@ describe("where a mage can study above level 2", () => {
     expect(shelterSeats({ report: reportWith("1:7", [{ structureId: "3", baseKind: "Fort" }]), index: null }).size).toBe(
       0
     );
+  });
+});
+
+// ah-zpq3: the same question `scheduleRows` asks, so a mage who enters a full Fort is told his seat
+// is taken rather than that he is standing outside.
+describe("mageShelters", () => {
+  const groups = [
+    {
+      factionId: "21",
+      factionLabel: "Your faction",
+      source: "own",
+      heading: "Your faction",
+      stale: false,
+      mages: [
+        {
+          key: "21/2431",
+          factionId: "21",
+          unitId: "2431",
+          name: "Kesh",
+          regionId: "1:7",
+          structureId: null
+        }
+      ]
+    }
+  ] as unknown as PlannerGroup[];
+  // `1:7/9` is the report's own structure whose kind the catalogue cannot count - `null` is "not
+  // known", which is a different fact from a key the map does not hold at all.
+  const seats = new Map<string, number | null>([
+    ["1:7/4", 1],
+    ["1:7/9", null]
+  ]);
+  const names = new Map([["1:7/4", "Castle"]]);
+
+  it("says nothing about a mage the report found in the open", () => {
+    expect(mageShelters({ groups, seats, names, after: new Map() }).size).toBe(0);
+  });
+
+  it("names the building this month's orders put him in", () => {
+    const shelters = mageShelters({
+      groups,
+      seats,
+      names,
+      after: new Map([
+        [
+          "21/2431",
+          {
+            regionId: "1:7",
+            structureId: "4",
+            offMap: false,
+            leftBuilding: null,
+            leftBy: null
+          }
+        ]
+      ])
+    });
+
+    expect(shelters.get("21/2431")).toEqual({ name: "Castle", seats: 1 });
+  });
+
+  // A building the report shows but the catalogue cannot count is not a shelter anybody can talk
+  // about: `plannerNotices` reads an absent entry as the open, which is what it should say.
+  it("says nothing about a building whose seats are not known", () => {
+    const shelters = mageShelters({
+      groups,
+      seats,
+      names,
+      after: new Map([
+        [
+          "21/2431",
+          {
+            regionId: "1:7",
+            structureId: "9",
+            offMap: false,
+            leftBuilding: null,
+            leftBy: null
+          }
+        ]
+      ])
+    });
+
+    expect(shelters.size).toBe(0);
+  });
+
+  it("says nothing about a structure the report never showed", () => {
+    const shelters = mageShelters({
+      groups,
+      seats,
+      names,
+      after: new Map([
+        [
+          "21/2431",
+          {
+            regionId: "1:7",
+            structureId: "12",
+            offMap: false,
+            leftBuilding: null,
+            leftBy: null
+          }
+        ]
+      ])
+    });
+
+    expect(shelters.size).toBe(0);
+  });
+
+  it("says nothing about a mage who ends the month off the map", () => {
+    const shelters = mageShelters({
+      groups,
+      seats,
+      names,
+      after: new Map([
+        [
+          "21/2431",
+          {
+            regionId: "9:9",
+            structureId: null,
+            offMap: true,
+            leftBuilding: null,
+            leftBy: null
+          }
+        ]
+      ])
+    });
+
+    expect(shelters.size).toBe(0);
   });
 });

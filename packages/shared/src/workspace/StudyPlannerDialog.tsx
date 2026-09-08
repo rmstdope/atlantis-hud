@@ -17,7 +17,8 @@ import { planLine, scheduleRows, scheduleTurns } from "../studySchedule";
 import { plannerNotices } from "../studyTeaching";
 import { studyOrders } from "../studyOrders";
 import { studyWritePlan } from "../studyOrdersWrite";
-import { shelterKey, type ShelterSeats } from "../studyShelter";
+import type { StandingAfterOrders } from "../studyStanding";
+import { mageShelters, type ShelterSeats } from "../studyShelter";
 import { planFor, plannedGoals } from "../studyPlans";
 import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
 import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
@@ -55,6 +56,7 @@ export function StudyPlannerDialog({
   label,
   seats,
   structureNames,
+  after,
   tree,
   plans,
   viewedTurn,
@@ -82,6 +84,11 @@ export function StudyPlannerDialog({
   seats: ShelterSeats;
   /** `shelterNames(...)` - what each of those structures is called, for a notice about one. */
   structureNames: ReadonlyMap<string, string>;
+  /**
+   * Where each own mage stands once this month's orders have run - `standingAfterOrders(...)`,
+   * built in `AppShell` because it is the only place the preview and the report are both in hand.
+   */
+  after: ReadonlyMap<string, StandingAfterOrders>;
   /** The magic tree, for the Schedule's projection and its menus. */
   tree: MagicTree;
   /** Every stored plan of this game, from `useStudyPlansStore`. */
@@ -125,29 +132,13 @@ export function StudyPlannerDialog({
     [groups]
   );
   const rows = useMemo(
-    () => scheduleRows({ groups, plans, tree, turns, seats }),
-    [groups, plans, tree, turns, seats]
+    () => scheduleRows({ groups, plans, tree, turns, seats, after }),
+    [groups, plans, tree, turns, seats, after]
   );
-  // Which building each mage stands in, and how many mages it seats - so an unsheltered mage in a
-  // full Fort is told his seat is taken rather than that he is standing outside. Absent means the
-  // open, which is what `plannerNotices` reads it as.
-  const shelters = useMemo(() => {
-    const found = new Map<string, { name: string; seats: number }>();
-    for (const group of groups) {
-      for (const mage of group.mages) {
-        if (mage.structureId === null) {
-          continue;
-        }
-        const key = shelterKey(mage.regionId, mage.structureId);
-        const held = seats.get(key);
-        if (held === undefined || held === null) {
-          continue;
-        }
-        found.set(mage.key, { name: structureNames.get(key) ?? "building", seats: held });
-      }
-    }
-    return found;
-  }, [groups, seats, structureNames]);
+  const shelters = useMemo(
+    () => mageShelters({ groups, seats, names: structureNames, after }),
+    [groups, seats, structureNames, after]
+  );
   const notices = useMemo(
     () => plannerNotices({ rows, turns, label, factionLabels, shelters }),
     [rows, turns, label, factionLabels, shelters]

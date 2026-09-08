@@ -311,7 +311,9 @@ export function plannerNotices(input: {
           add(
             "magic-study-outside-building",
             "warning",
-            `${row.name} studies ${cell.name} outside any building on turn ${turn}. Above level 2 a month is worth half.`
+            cell.leftBuilding === null
+              ? `${row.name} studies ${cell.name} outside any building on turn ${turn}. Above level 2 a month is worth half.`
+              : `${row.name} ${cell.leftBy === "move" ? "walks out of" : "leaves"} the ${cell.leftBuilding} this month, so he studies ${cell.name} outside any building on turn ${turn}. Above level 2 a month is worth half.`
           );
         } else if (shelter.seats === 0) {
           add(
