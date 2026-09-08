@@ -9,6 +9,7 @@
  */
 
 import type { ParsedReport, ReportRegion } from "@atlantis/core-client";
+import { isAtlaClientMap } from "./atlaClientImport";
 import { isMageSheet } from "./mageSheetImport";
 import { firstLineOf } from "./firstLine";
 
@@ -33,6 +34,15 @@ export const MAP_EXPORT_NEEDS_A_MAP =
 export const MAP_EXPORT_NAMES_NO_FACTION = "the map export does not say which faction wrote it";
 export const MAP_EXPORT_NAMES_NO_TURN = "the map export does not say which turn it was written on";
 export const MAP_EXPORT_HAS_NO_HEXES = "the map export has no hexes in it";
+/**
+ * The only refusal an AtlaClient map has of its own.
+ *
+ * It names no faction and no turn header, and that is normal rather than a fault - recognition
+ * itself requires a stamp, which always carries the turn - so the other three cannot apply.
+ */
+export const ATLACLIENT_MAP_HAS_NO_HEXES = "the AtlaClient map has no hexes in it";
+/** What the prompt calls a file that names no faction. */
+export const ATLACLIENT_LABEL = "AtlaClient";
 
 /**
  * A parsed file, classified once, that both the single-file and batch import routes consume.
@@ -45,10 +55,14 @@ export const MAP_EXPORT_HAS_NO_HEXES = "the map export has no hexes in it";
 export type ReportImportSource =
   | { kind: "report"; report: ParsedReport; text: string }
   | { kind: "mapExport"; report: ParsedReport; text: string }
+  | { kind: "atlaClientMap"; report: ParsedReport; text: string }
   | { kind: "mageSheet"; report: ParsedReport; text: string };
 
 /** The narrowed half of {@link ReportImportSource} that only a map export can be. */
 export type MapExportImportSource = Extract<ReportImportSource, { kind: "mapExport" }>;
+
+/** The narrowed half of {@link ReportImportSource} that only an AtlaClient map can be. */
+export type AtlaClientMapImportSource = Extract<ReportImportSource, { kind: "atlaClientMap" }>;
 
 /** A map export whose three intrinsic questions - faction, turn, hexes - are all answered. */
 export type UsableMapExport = {
@@ -74,7 +88,14 @@ export function classifyReportImport(report: ParsedReport, text: string): Report
   if (isMageSheet(text)) {
     return { kind: "mageSheet", report, text };
   }
-  return isMapExport(text) ? { kind: "mapExport", report, text } : { kind: "report", report, text };
+  if (isMapExport(text)) {
+    return { kind: "mapExport", report, text };
+  }
+  // After our own marker, so a file carrying both is ours - the same order `plan_merge` uses.
+  if (isAtlaClientMap(text)) {
+    return { kind: "atlaClientMap", report, text };
+  }
+  return { kind: "report", report, text };
 }
 
 /**

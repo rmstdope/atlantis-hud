@@ -1,3 +1,4 @@
+import { readAtlaClientMap } from "@atlantis/fixtures";
 import { describe, expect, it } from "vitest";
 import {
   MAP_EXPORT_HAS_NO_HEXES,
@@ -96,6 +97,22 @@ describe("classifyReportImport", () => {
 
     expect(ordinarySource).toEqual({ kind: "report", report: ordinaryReport, text: ordinaryText });
     expect(exportSource).toEqual({ kind: "mapExport", report: exportReport, text: exportText });
+  });
+
+  it("classifies a map exported by AtlaClient as its own kind", () => {
+    const report = reportWith(["1:4,50"]);
+    const text = readAtlaClientMap("t16");
+
+    expect(classifyReportImport(report, text)).toEqual({ kind: "atlaClientMap", report, text });
+  });
+
+  // Our own marker is tested first, which is the same order `plan_merge` uses: a file carrying
+  // both is ours.
+  it("keeps one of our own exports ours even if it carries a stamp too", () => {
+    const report = reportWith(["1:4,50"]);
+    const text = `${MAP_EXPORT}\n--------------------;16-11\n`;
+
+    expect(classifyReportImport(report, text).kind).toBe("mapExport");
   });
 });
 

@@ -1,3 +1,4 @@
+import { readAtlaClientMap } from "@atlantis/fixtures";
 import { describe, expect, it } from "vitest";
 import {
   aParsedReport,
@@ -16,6 +17,7 @@ import {
   MAP_EXPORT_HAS_NO_HEXES,
   MAP_EXPORT_NAMES_NO_FACTION,
   MAP_EXPORT_NAMES_NO_TURN,
+  ATLACLIENT_MAP_HAS_NO_HEXES,
   MAP_EXPORT_NEEDS_A_MAP,
   type ReportImportSource
 } from "./mapExportImport";
@@ -67,6 +69,25 @@ const file = (
     fileName,
     source,
     usable: usable ?? judgeReportUsable(source.report),
+    unreadableCount: 0
+  };
+};
+
+/**
+ * A map exported by AtlaClient, as `prepareBatch` would have marked it: no faction, no turn
+ * header, and its turn read from the stamps in the text instead.
+ */
+const atlaClientMap = (fileName: string, over: { hasRegions?: boolean } = {}): BatchCandidate => {
+  const built = reportSource("mapExport", null, null, over.hasRegions ?? true);
+  const source = {
+    kind: "atlaClientMap" as const,
+    report: built.report,
+    text: readAtlaClientMap("t16")
+  };
+  return {
+    fileName,
+    source,
+    usable: judgeReportUsable(source.report),
     unreadableCount: 0
   };
 };
@@ -433,7 +454,7 @@ describe("planning a batch holding a map export", () => {
     const plan = planReportBatch(viewer("95", 71), [mapExport("map.txt", "95", 71)]);
 
     expect(plan.steps).toEqual([
-      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 71, hexesAdded: null }
+      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 71, hexesAdded: null, source: "ours" }
     ]);
     expect(plan.finalTurn).toBeNull();
   });
@@ -443,7 +464,7 @@ describe("planning a batch holding a map export", () => {
     const plan = planReportBatch(viewer("95", 71), [mapExport("map.txt", "73", 40)]);
 
     expect(plan.steps).toEqual([
-      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 40, hexesAdded: null }
+      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 40, hexesAdded: null, source: "ours" }
     ]);
   });
 
@@ -456,7 +477,7 @@ describe("planning a batch holding a map export", () => {
     const plan = planReportBatch(viewer("95", 71), [mapExport("map.txt", "73", 90), ally(90)]);
 
     expect(plan.steps).toEqual([
-      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 90, hexesAdded: null }
+      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 90, hexesAdded: null, source: "ours" }
     ]);
     expect(plan.skipped).toEqual([
       { index: 1, fileName: "f73-t90.rep", reason: "turn 90 is newer than your own turn 71" }
@@ -637,5 +658,68 @@ describe("a mage sheet in a batch", () => {
         borg(71)
       ])
     ).toEqual({ kind: "decided", factionId: "95" });
+  });
+});
+
+describe("planning a batch holding a map exported by AtlaClient", () => {
+  const viewer = (factionId: string | null, turnNumber: number | null = null) => ({
+    factionId,
+    turnNumber
+  });
+
+  it("lands it as a map export, naming no faction and taking its turn from the stamps", () => {
+    const plan = planReportBatch(viewer("95", 71), [atlaClientMap("atlaclient-map.16")]);
+
+    expect(plan.steps).toEqual([
+      {
+        kind: "mapExport",
+        index: 0,
+        fileName: "atlaclient-map.16",
+        turnNumber: 16,
+        hexesAdded: null,
+        source: "atlaClient"
+      }
+    ]);
+    expect(plan.skipped).toEqual([]);
+  });
+
+  /**
+   * It names no faction at all, which for one of our own exports is a refusal - so a batch that
+   * applied the faction rules to it would skip the one file this bead exists to import.
+   */
+  it("is not skipped for naming no faction", () => {
+    const plan = planReportBatch(viewer("95", 71), [atlaClientMap("atlaclient-map.16")]);
+
+    expect(plan.skipped).toEqual([]);
+  });
+
+  it("is skipped when it has no hexes in it", () => {
+    const plan = planReportBatch(viewer("95", 71), [
+      atlaClientMap("atlaclient-map.16", { hasRegions: false })
+    ]);
+
+    expect(plan.steps).toEqual([]);
+    expect(plan.skipped).toEqual([
+      { index: 0, fileName: "atlaclient-map.16", reason: ATLACLIENT_MAP_HAS_NO_HEXES }
+    ]);
+  });
+
+  it("is skipped when there is no map to add it to", () => {
+    const plan = planReportBatch(viewer(null, null), [atlaClientMap("atlaclient-map.16")]);
+
+    expect(plan.skipped).toEqual([
+      { index: 0, fileName: "atlaclient-map.16", reason: MAP_EXPORT_NEEDS_A_MAP }
+    ]);
+  });
+
+  /**
+   * An AtlaClient map names no faction, so it can never be a candidate for the viewer - and this
+   * pins that the new branch did not start counting it as one.
+   */
+  it("never contributes to the choice of viewer faction", () => {
+    expect(chooseViewerFaction(null, [atlaClientMap("atlaclient-map.16")])).toEqual({
+      kind: "decided",
+      factionId: null
+    });
   });
 });

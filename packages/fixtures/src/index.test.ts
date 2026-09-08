@@ -2,10 +2,13 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ATLACLIENT_MAPS,
   MAGE_SHEETS,
   REPORTS,
+  readAtlaClientMap,
   readMageSheet,
   readReport,
+  type AtlaClientMapKey,
   type MageSheetKey,
   type ReportKey
 } from "./index";
@@ -72,6 +75,29 @@ describe("the committed mage sheets", () => {
       expect(match, `${file} should match the expected pattern`).not.toBeNull();
       const [, g, f, t, variant] = match as RegExpMatchArray;
       expect(key).toBe(`g${g}f${f}t${t}${(variant ?? "").replace(/-/gu, "")}`);
+    }
+  });
+});
+
+const atlaClientDir = join(__dirname, "..", "..", "..", "tests", "fixtures", "atlaclient");
+
+describe("the committed AtlaClient maps", () => {
+  it("are every one named here, and nothing named here is missing from disk", () => {
+    const onDisk = readdirSync(atlaClientDir)
+      .filter((name) => name.endsWith(".txt"))
+      .sort();
+    const named = Object.values(ATLACLIENT_MAPS).slice().sort();
+
+    expect(named).toEqual(onDisk);
+  });
+
+  /**
+   * The stamp, not merely that the file is readable: an AtlaClient map that lost its stamps is
+   * indistinguishable from a headerless turn report, and would import as one.
+   */
+  it("each key reads its file, which carries AtlaClient's turn stamps", () => {
+    for (const key of Object.keys(ATLACLIENT_MAPS) as AtlaClientMapKey[]) {
+      expect(readAtlaClientMap(key)).toMatch(/^-{3,};\d+(?:-\d+)?$/m);
     }
   });
 });

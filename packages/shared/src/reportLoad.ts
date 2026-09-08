@@ -36,10 +36,14 @@ import type { StatusLine } from "./workspace/shellStatus";
 import { commitTurn, rememberTurn, type MemoryOutcome } from "./gameMemory";
 import { documentFor, draftKeyFor } from "./orderDraft";
 import { decideReportLoad, judgeReportUsable } from "./reportLoadDecision";
+import { readAtlaClientAges, type AtlaClientAges } from "./atlaClientImport";
 import {
+  ATLACLIENT_LABEL,
+  ATLACLIENT_MAP_HAS_NO_HEXES,
   MAP_EXPORT_NEEDS_A_MAP,
   hexesNewToMap,
   judgeMapExportUsable,
+  type AtlaClientMapImportSource,
   type MapExportImportSource,
   type ReportImportSource
 } from "./mapExportImport";
@@ -269,8 +273,18 @@ export type PendingMapExport = {
   totalHexes: number;
   /** Of those, the ones the player's map does not hold at all. */
   newHexes: number;
-  /** One export covers one level, so the first region speaks for all of them. */
-  level: number;
+  /**
+   * The level the hexes are on, or `null` when they are not all on one.
+   *
+   * One of our own exports covers a single level by construction, but an AtlaClient map need not -
+   * so the status line names a level only when there is one level to name.
+   */
+  level: number | null;
+  /**
+   * How old an AtlaClient map's hexes are, or `null` for one of our own exports, which carries one
+   * turn for the whole file.
+   */
+  atlaClient: AtlaClientAges | null;
   viewer: { factionId: string; factionLabel: string; turnNumber: number };
 };
 
@@ -329,6 +343,12 @@ export function routeReport(
     return routeMapExport(viewer, source, fileName, knownRegionIds);
   }
 
+  // A map exported by AtlaClient is a map export in every way that matters downstream; what differs
+  // is that it names no faction and carries a turn per hex rather than one for the file.
+  if (source.kind === "atlaClientMap") {
+    return routeAtlaClientMap(viewer, source, fileName, knownRegionIds);
+  }
+
   const { report, text } = source;
   const usable = judgeReportUsable(report);
   if (!usable.ok) {
@@ -366,6 +386,62 @@ export function routeReport(
   }
 
   return { kind: "load" };
+}
+
+/**
+ * The AtlaClient-map route.
+ *
+ * The same shape as {@link routeMapExport} with two differences, both of which follow from the file
+ * itself: it names no faction and no turn header, so `judgeMapExportUsable`'s first two refusals
+ * cannot apply and would name the wrong thing to go looking for; and its hexes carry a turn each,
+ * which is what the prompt's age line is built from.
+ */
+function routeAtlaClientMap(
+  viewer: ParsedReport | null,
+  source: AtlaClientMapImportSource,
+  fileName: string,
+  knownRegionIds: ReadonlySet<string>
+): ReportRoute {
+  // The same precondition, for the same reason: a map is added to a map.
+  if (viewer === null || viewer.header.factionId === null || viewer.header.turnNumber === null) {
+    return { kind: "reject", reason: MAP_EXPORT_NEEDS_A_MAP };
+  }
+
+  const { report, text } = source;
+  const firstRegion = report.regions[0];
+  if (firstRegion === undefined) {
+    return { kind: "reject", reason: ATLACLIENT_MAP_HAS_NO_HEXES };
+  }
+
+  // Recognition required a stamp, and a stamp always carries the file's turn, so this is present.
+  const ages = readAtlaClientAges(text);
+  if (ages === null) {
+    return { kind: "reject", reason: ATLACLIENT_MAP_HAS_NO_HEXES };
+  }
+
+  const levels = new Set(report.regions.map((region) => region.coordinate.z));
+
+  return {
+    kind: "mapExport",
+    pending: {
+      report,
+      text,
+      fileName,
+      // An AtlaClient map names no faction at all, so it can never be the viewer's own.
+      ownFaction: false,
+      incomingFactionLabel: ATLACLIENT_LABEL,
+      incomingTurn: ages.fileTurn,
+      totalHexes: report.regions.length,
+      newHexes: hexesNewToMap(report, knownRegionIds),
+      level: levels.size === 1 ? firstRegion.coordinate.z : null,
+      atlaClient: ages,
+      viewer: {
+        factionId: viewer.header.factionId,
+        factionLabel: factionLabelOf(viewer) ?? "an unnamed faction",
+        turnNumber: viewer.header.turnNumber
+      }
+    }
+  };
 }
 
 /**
@@ -411,6 +487,7 @@ function routeMapExport(
       totalHexes: report.regions.length,
       newHexes: hexesNewToMap(report, knownRegionIds),
       level: firstRegion.coordinate.z,
+      atlaClient: null,
       viewer: {
         factionId: viewer.header.factionId,
         factionLabel: factionLabelOf(viewer) ?? "an unnamed faction",

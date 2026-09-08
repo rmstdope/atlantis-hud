@@ -23,7 +23,16 @@ const mapped = (fileName: string, hexesAdded: number, turnNumber = 71): BatchSte
   index: next++,
   fileName,
   turnNumber,
-  hexesAdded
+  hexesAdded,
+  source: "ours"
+});
+const fromAtlaClient = (fileName: string, hexesAdded: number): BatchStep => ({
+  kind: "mapExport",
+  index: next++,
+  fileName,
+  turnNumber: 16,
+  hexesAdded,
+  source: "atlaClient"
 });
 const skip = (fileName: string, reason: string) => ({ index: next++, fileName, reason });
 
@@ -330,5 +339,23 @@ describe("a mage sheet in the summary", () => {
 
     expect(copy.headline).toBe("1 mage sheet taken in.");
     expect(copy.headline).not.toContain("Nothing was imported.");
+  });
+});
+
+describe("a map exported by AtlaClient in a batch", () => {
+  it("is named as one on its own line, with what it added", () => {
+    const copy = summary({ steps: [fromAtlaClient("atlaclient-map.16", 61)] });
+
+    expect(copy.lines.map((line) => line.text)).toContain(
+      "atlaclient-map.16 — AtlaClient map, 61 hexes added"
+    );
+  });
+
+  it("says so when it added nothing", () => {
+    const copy = summary({ steps: [fromAtlaClient("atlaclient-map.16", 0)] });
+
+    expect(copy.lines.map((line) => line.text)).toContain(
+      "atlaclient-map.16 — AtlaClient map, nothing new to your map"
+    );
   });
 });

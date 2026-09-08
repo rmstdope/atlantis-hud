@@ -138,6 +138,36 @@ pub const ALL_MAGE_SHEETS: &[&MageSheet] = &[
     &MAGES_G7_F62_T18,
 ];
 
+/// One committed AtlaClient map export: a map written by AtlaClient, another Atlantis client, in
+/// the game's own region syntax with a turn stamp welded onto each region's underline.
+///
+/// These live in `tests/fixtures/atlaclient/` rather than beside the reports for the same reason
+/// the mage sheets do: every guard over `tests/fixtures/reports/` lists `.rep` files only.
+pub struct AtlaClientMap {
+    pub name: &'static str,
+    pub file: &'static str,
+    /// The turn the file was written on, as its stamps say.
+    pub file_turn: u32,
+    pub text: &'static str,
+}
+
+macro_rules! atlaclient_map {
+    ($name:ident, $file:literal, $file_turn:literal) => {
+        AtlaClientMap {
+            name: stringify!($name),
+            file: $file,
+            file_turn: $file_turn,
+            text: include_str!(concat!("../../../tests/fixtures/atlaclient/", $file)),
+        }
+    };
+}
+
+pub const ATLACLIENT_T16: AtlaClientMap =
+    atlaclient_map!(ATLACLIENT_T16, "atlaclient-map-t16.txt", 16);
+
+/// Every committed AtlaClient map, for the lockstep test and for anything that walks them all.
+pub const ALL_ATLACLIENT_MAPS: &[&AtlaClientMap] = &[&ATLACLIENT_T16];
+
 /// The shipped ruleset, `config/public/ruleset.json`, which the tests parse against.
 pub const RULESET_JSON: &str = include_str!("../../../config/public/ruleset.json");
 
@@ -207,6 +237,35 @@ mod tests {
                 report.file
             );
         }
+    }
+
+    fn atlaclient_dir() -> std::path::PathBuf {
+        std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/atlaclient"
+        ))
+        .to_path_buf()
+    }
+
+    #[test]
+    fn every_atlaclient_map_on_disk_is_named_here() {
+        let on_disk: BTreeSet<String> = fs::read_dir(atlaclient_dir())
+            .expect("tests/fixtures/atlaclient should exist")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".txt"))
+            .collect();
+        let named: BTreeSet<String> = ALL_ATLACLIENT_MAPS
+            .iter()
+            .map(|map| map.file.to_string())
+            .collect();
+
+        let on_disk_only: Vec<_> = on_disk.difference(&named).collect();
+        let named_only: Vec<_> = named.difference(&on_disk).collect();
+        assert!(
+            on_disk_only.is_empty() && named_only.is_empty(),
+            "AtlaClient maps on disk but not named: {on_disk_only:?}; named but missing from disk: {named_only:?}"
+        );
     }
 
     fn mage_sheets_dir() -> std::path::PathBuf {

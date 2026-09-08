@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { mapExportPromptCopy } from "../mapExportPrompt";
+import { mapExportPromptParagraphs } from "../mapExportPrompt";
 import type { PendingMapExport } from "../reportLoad";
 
 /**
@@ -56,9 +56,12 @@ export function MapExportPrompt({
       aria-label="Map export"
       className="flex-none border-b border-edge bg-panel px-3 py-2 text-pane whitespace-normal"
     >
-      {mapExportPromptCopy(pending).map((paragraph) => (
-        <p key={paragraph} className="max-w-3xl text-ink-soft">
-          {paragraph}
+      {mapExportPromptParagraphs(pending).map((paragraph) => (
+        <p
+          key={paragraph.text}
+          className={`max-w-3xl ${paragraph.dim ? "text-ink-dim" : "text-ink-soft"}`}
+        >
+          {paragraph.text}
         </p>
       ))}
 

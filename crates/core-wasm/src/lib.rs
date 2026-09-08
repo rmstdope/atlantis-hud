@@ -15,8 +15,8 @@ use atlantis_hud_core::report::merge::{
 };
 use atlantis_hud_core::report::sighting::RegionSighting;
 use atlantis_hud_core::{
-    diff_imported_turn, engine_info, plan_merge, reject_import, ImportedTurnSnapshot, MergePlan,
-    OrderCheckOptions, ReportParseResult, ReportParseResultWire,
+    diff_imported_turn, engine_info, plan_merge, reject_import, reserved_merge_identity,
+    ImportedTurnSnapshot, MergePlan, OrderCheckOptions, ReportParseResult, ReportParseResultWire,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -307,7 +307,16 @@ pub fn prepare_report_merge_state(
         viewer_turn_number,
         &viewer_faction_id,
     );
-    let map_export = matches!(plan, MergePlan::MapExport { .. });
+    // True for an AtlaClient map too: everything downstream that reads this means "this is a map,
+    // not a turn", which is exactly what an AtlaClient export is.
+    let map_export = matches!(
+        plan,
+        MergePlan::MapExport { .. } | MergePlan::AtlaClientMap { .. }
+    );
+    // An AtlaClient map names no faction, so its provenance is a reserved identity rather than one
+    // read from the file. Decided here rather than after the merge, because the ordinary path
+    // reads the ally from `detected_factions`, which is empty for this file by construction.
+    let atlaclient_identity = reserved_merge_identity(&plan);
     let outcome = match plan {
         MergePlan::Refused(rejection) => {
             return to_js(&PreparedMergeDto {
@@ -324,7 +333,7 @@ pub fn prepare_report_merge_state(
         MergePlan::AlliedReport => {
             merge_report_into_sightings(&existing, &report, viewer_turn_number)
         }
-        MergePlan::MapExport { file_turn, ages } => {
+        MergePlan::MapExport { file_turn, ages } | MergePlan::AtlaClientMap { file_turn, ages } => {
             merge_map_export_into_sightings(&existing, &report, file_turn, &ages)
         }
     };
@@ -334,8 +343,14 @@ pub fn prepare_report_merge_state(
 
     to_js(&PreparedMergeDto {
         turn_number: Some(viewer_turn_number),
-        merged_faction_id: ally.map(|faction| faction.faction_id.clone()),
-        merged_faction_name: ally.map(|faction| faction.name.clone()),
+        merged_faction_id: atlaclient_identity
+            .as_ref()
+            .map(|(id, _)| id.clone())
+            .or_else(|| ally.map(|faction| faction.faction_id.clone())),
+        merged_faction_name: atlaclient_identity
+            .as_ref()
+            .map(|(_, name)| name.clone())
+            .or_else(|| ally.map(|faction| faction.name.clone())),
         region_sightings: outcome.sightings,
         merged_region_count: u32::try_from(outcome.merged_region_count).unwrap_or(u32::MAX),
         new_region_count: u32::try_from(outcome.new_region_count).unwrap_or(u32::MAX),

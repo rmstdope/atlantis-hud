@@ -615,7 +615,6 @@ export function AppHeader({
         ref={fileRef}
         type="file"
         multiple
-        accept=".rep,.txt,.report,.ord,text/plain"
         onChange={onPick}
         className="hidden"
       />

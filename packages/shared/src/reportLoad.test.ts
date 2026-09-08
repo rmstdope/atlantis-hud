@@ -1,3 +1,4 @@
+import { readAtlaClientMap } from "@atlantis/fixtures";
 import type {
   CoreClient,
   KnownMap,
@@ -19,6 +20,7 @@ import {
   MAP_EXPORT_MARKER,
   MAP_EXPORT_NAMES_NO_FACTION,
   MAP_EXPORT_NAMES_NO_TURN,
+  ATLACLIENT_MAP_HAS_NO_HEXES,
   MAP_EXPORT_NEEDS_A_MAP,
   classifyReportImport
 } from "./mapExportImport";
@@ -372,6 +374,106 @@ describe("storeOlderTurn", () => {
 function mapExportText(): string {
   return `${MAP_EXPORT_MARKER}\n; level 1, hexes (4,50) to (8,54), 1 region\n\nforest (4,50) in Elsewhere.\n`;
 }
+
+describe("routeReport, given a map exported by AtlaClient", () => {
+  const atlaClientText = readAtlaClientMap("t16");
+
+  it("is never loaded as a turn", () => {
+    const viewer = report({ turnNumber: 71 });
+    const incoming = report({ turnNumber: 71 });
+
+    const route = routeReport(
+      viewer,
+      classifyReportImport(incoming, atlaClientText),
+      "atlaclient-map.16",
+      new Set(),
+      NO_SHEETS
+    );
+
+    expect(route.kind).toBe("mapExport");
+  });
+
+  it("names AtlaClient and the file's turn, and carries how old its hexes are", () => {
+    const viewer = report({ turnNumber: 71 });
+    const incoming = report({ turnNumber: 71 }, [
+      aReportRegion({ regionId: "1:4,50", coordinate: { x: 4, y: 50, z: 1 } }),
+      aReportRegion({ regionId: "1:5,51", coordinate: { x: 5, y: 51, z: 1 } })
+    ]);
+
+    const route = routeReport(
+      viewer,
+      classifyReportImport(incoming, atlaClientText),
+      "atlaclient-map.16",
+      new Set(["1:4,50"]),
+      NO_SHEETS
+    );
+
+    if (route.kind !== "mapExport") {
+      throw new Error(`expected a map export route, got ${route.kind}`);
+    }
+    expect(route.pending).toMatchObject({
+      fileName: "atlaclient-map.16",
+      ownFaction: false,
+      incomingFactionLabel: "AtlaClient",
+      incomingTurn: 16,
+      totalHexes: 2,
+      newHexes: 1,
+      level: 1
+    });
+    expect(route.pending.atlaClient).toEqual({
+      fileTurn: 16,
+      currentHexes: 49,
+      olderHexes: 29,
+      oldestTurn: 5,
+      undatedHexes: 5
+    });
+  });
+
+  it("names no level when the hexes are not all on one", () => {
+    const viewer = report({ turnNumber: 71 });
+    const incoming = report({ turnNumber: 71 }, [
+      aReportRegion({ regionId: "1:4,50", coordinate: { x: 4, y: 50, z: 1 } }),
+      aReportRegion({ regionId: "2:5,51", coordinate: { x: 5, y: 51, z: 2 } })
+    ]);
+
+    const route = routeReport(
+      viewer,
+      classifyReportImport(incoming, atlaClientText),
+      "atlaclient-map.16",
+      new Set(),
+      NO_SHEETS
+    );
+
+    if (route.kind !== "mapExport") {
+      throw new Error(`expected a map export route, got ${route.kind}`);
+    }
+    expect(route.pending.level).toBeNull();
+  });
+
+  it("refuses one when there is no map to add it to", () => {
+    const route = routeReport(
+      null,
+      classifyReportImport(report({ turnNumber: 71 }), atlaClientText),
+      "atlaclient-map.16",
+      new Set(),
+      NO_SHEETS
+    );
+
+    expect(route).toEqual({ kind: "reject", reason: MAP_EXPORT_NEEDS_A_MAP });
+  });
+
+  it("refuses one with no hexes in it", () => {
+    const route = routeReport(
+      report({ turnNumber: 71 }),
+      classifyReportImport(report({ turnNumber: 71 }, []), atlaClientText),
+      "atlaclient-map.16",
+      new Set(),
+      NO_SHEETS
+    );
+
+    expect(route).toEqual({ kind: "reject", reason: ATLACLIENT_MAP_HAS_NO_HEXES });
+  });
+});
 
 describe("routeReport, given a map export", () => {
   /**

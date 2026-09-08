@@ -1,6 +1,7 @@
 import type { MergedReportRecord } from "@atlantis/core-client";
 import { POPOVER_BODY_MAX_H } from "./primitives";
 import { PopoverFrame } from "./popover";
+import { mergedFactionLabel } from "./mergedFactionLabel";
 
 /**
  * Whose eyes the map is showing.
@@ -47,7 +48,7 @@ export function MergedFactionsPanel({
             data-testid={`merged-faction-${record.mergedFactionId}`}
             className="border-t border-edge-soft py-1 text-ink first:border-t-0"
           >
-            {record.mergedFactionName} ({record.mergedFactionId})
+            {mergedFactionLabel(record)}
             <span className="text-ink-dim"> · turn {record.turnNumber}</span>
           </li>
         ))}

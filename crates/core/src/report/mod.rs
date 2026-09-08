@@ -4,6 +4,7 @@
 //! input the parser does not recognise produces a structured warning and partial results, never a
 //! hard failure, because a player would rather see most of a turn than none of it.
 
+pub mod atlaclient;
 pub mod battle;
 pub mod composition;
 pub mod export;

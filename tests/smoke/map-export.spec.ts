@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { readReport } from "@atlantis/fixtures";
+import { readAtlaClientMap, readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
@@ -19,6 +19,8 @@ import {
 const TURN_71 = readReport("g7f95t71");
 /** An ally's report for the same turn, which raises the *other* question a dropped file can raise. */
 const ALLY_REPORT = readReport("g8f73t71");
+/** A map written by AtlaClient, another Atlantis client: 83 hexes stamped over eleven turns. */
+const ATLACLIENT_MAP = readAtlaClientMap("t16");
 
 
 /**
@@ -281,4 +283,67 @@ test("a map export replaces a question already on screen, and is replaced by one
 
   await expect(page.getByTestId("foreign-report-prompt")).toBeVisible();
   await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
+});
+
+/**
+ * A map from another client entirely, through the same front door.
+ *
+ * The one walk that proves the whole chain for a foreign file: the shell recognises it by the turn
+ * stamps alone, the core plans it as a map rather than a turn, its hexes land at the turn each was
+ * actually seen, and the turn on screen survives. Nothing else compares the TypeScript stamp
+ * pattern with the Rust one - they are two literals in two languages - so this walk is the check
+ * between them, exactly as the round trip above is for our own marker.
+ */
+test("imports a map exported by AtlaClient", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "AtlaClient game");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  // Through the file input, which is what the Import button opens: the picker's `accept` filter is
+  // gone, and AtlaClient names its exports after the turn number and nothing else.
+  await page.setInputFiles('input[type="file"]', [
+    {
+      name: "atlaclient-map.16",
+      mimeType: "text/plain",
+      buffer: Buffer.from(ATLACLIENT_MAP, "utf8")
+    }
+  ]);
+
+  const prompt = page.getByTestId("map-export-prompt");
+  await expect(prompt).toBeVisible();
+  await expect(prompt).toContainText("is a map exported from AtlaClient on turn 16");
+  await expect(prompt).toContainText("29 are older, back to turn 5");
+
+  await page.getByTestId("map-export-add").click();
+
+  await expect(page.getByTestId("import-status")).toContainText(/\d+ hexes added to your map/);
+  await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
+
+  // The turn on screen survived, faction and all.
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+
+  // Where the hexes came from, answerable after a reload. The browser adapter files an AtlaClient
+  // map under a reserved id rather than a faction number - this is the only place that identity is
+  // asserted on the web path - and the row names the source alone, with no `(atlaclient)` suffix.
+  await page.getByTestId("merged-factions-chip").click();
+  const mergedPanel = page.getByTestId("merged-factions");
+  await expect(mergedPanel).toContainText("AtlaClient, turn 16");
+  await expect(mergedPanel).not.toContainText("(atlaclient)");
+  await page.keyboard.press("Escape");
+
+  // A second import of the same file adds nothing: every hex is already known, at least as new.
+  await page.setInputFiles('input[type="file"]', [
+    {
+      name: "atlaclient-map.16",
+      mimeType: "text/plain",
+      buffer: Buffer.from(ATLACLIENT_MAP, "utf8")
+    }
+  ]);
+  await expect(page.getByTestId("map-export-prompt")).toBeVisible();
+  await page.getByTestId("map-export-add").click();
+  await expect(page.getByTestId("import-status")).toContainText(
+    "nothing added — your map already had all of it"
+  );
 });
