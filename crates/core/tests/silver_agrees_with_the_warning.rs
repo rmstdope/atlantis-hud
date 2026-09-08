@@ -995,8 +995,12 @@ fn a_buy_all_is_not_shrunk_by_the_study_that_follows_it() {
         "20 grain [GRAI] at $20.",
         &["* Students (900), Foo (1), orc [ORC], 105 silver [SILV]. Weight: 10. Capacity: 0/0/15/0."],
     );
-    let (column_bought, items_bought, warned) =
-        both_surfaces(&text, "unit 900\nBUY ALL grain\nSTUDY combat\n", "900", "GRAI");
+    let (column_bought, items_bought, warned) = both_surfaces(
+        &text,
+        "unit 900\nBUY ALL grain\nSTUDY combat\n",
+        "900",
+        "GRAI",
+    );
 
     assert_eq!(
         column_bought, 5,
@@ -1091,7 +1095,10 @@ fn a_contended_taxers_buy_all_is_sized_as_the_ledger_sizes_it() {
         "GRAI",
     );
 
-    assert_eq!(items_bought, 15, "the ledger's optimistic tax pays for fifteen");
+    assert_eq!(
+        items_bought, 15,
+        "the ledger's optimistic tax pays for fifteen"
+    );
     assert_eq!(
         column_bought, 15,
         "and the column now says what the ledger settled"

@@ -158,7 +158,12 @@ fn a_cast_still_shrinks_what_a_buy_all_can_afford() {
 #[test]
 fn a_study_does_not_shrink_what_a_buy_all_can_afford() {
     let text = report(QUIET, "20 grain [GRAI] at $20.", &[&buyer(100)]);
-    let (row, held) = both_surfaces(&text, "unit 900\nSTUDY combat\nBUY ALL grain\n", "900", "GRAI");
+    let (row, held) = both_surfaces(
+        &text,
+        "unit 900\nSTUDY combat\nBUY ALL grain\n",
+        "900",
+        "GRAI",
+    );
 
     assert_eq!(row.buy_all[0].bought, 5, "100 silver buys five at 20");
     assert_eq!(held, 5, "and the ITEMS ledger says the same");

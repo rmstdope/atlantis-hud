@@ -47,8 +47,9 @@ use crate::orders::silver::{
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
     MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare,
     PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages,
-    SaleAnswer, SharedMarket, SilverChangeCause, SilverDoubt, TransferShape, Transmuting,
-    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce, SettledBuyAll,};
+    SaleAnswer, SettledBuyAll, SharedMarket, SilverChangeCause, SilverDoubt, TransferShape,
+    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+};
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
     give_endpoint, give_outcome, mage_give_refused, party_label, party_unit_id, GiveEndpoint,
@@ -17078,9 +17079,7 @@ mod tests {
         // Exactly, not merely "some": the market runs first, so all $100 goes on grain.
         assert_eq!(grain, 10, "the buy-all takes the whole hundred");
         assert_eq!(
-            ledger
-                .state
-                .balance_at(StatePhase::Market, "2390", "SILV"),
+            ledger.state.balance_at(StatePhase::Market, "2390", "SILV"),
             0,
             "the market spends every coin it was left"
         );
