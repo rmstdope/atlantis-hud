@@ -2354,6 +2354,9 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
+  // Keyed on the ruleset id rather than on `game` on purpose (ah-lkw, see above): a rename would
+  // refetch and flash 'loading' for a change the ruleset file has nothing to do with.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openGameId, game?.manifest.metadata.rulesetId, gameEpoch]);
 
   useEffect(() => {
@@ -2458,6 +2461,9 @@ export function AppShell({
     } else {
       useHexNotesStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (see above): a rename hands the shell a fresh
+  // `game` under the same id, and the notes it would reload are the same notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /**
@@ -2470,6 +2476,9 @@ export function AppShell({
     } else {
       useArmiesStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (ah-1mpx.1, see above): a rename hands the shell
+  // a fresh `game` under the same id, and the armies it would reload are the same armies.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /**
@@ -2482,6 +2491,9 @@ export function AppShell({
     } else {
       useAlliedMagesStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (ah-lyg6.1.2.2, see above): a rename hands the
+  // shell a fresh `game` under the same id, and the allied mages reloaded are the same mages.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /** And the study plans themselves, keyed the same way and for the same reason. */
@@ -2491,6 +2503,9 @@ export function AppShell({
     } else {
       useStudyPlansStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (see above): a rename hands the shell a fresh
+  // `game` under the same id, and the study plans it would reload are the same plans.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /**
@@ -2503,6 +2518,10 @@ export function AppShell({
     } else {
       useBattleSkillsStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (ah-1mpx.6.2, see above): a rename hands the
+  // shell a fresh `game` under the same id, and re-running the whole battle-skills scan for it
+  // would cost the same answer.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /**
@@ -2516,6 +2535,10 @@ export function AppShell({
     } else {
       useResourceMemoryStore.getState().clear();
     }
+  // Keyed on openGameId, gameEpoch and gameData on purpose (ah-tgtp, see above): a rename hands
+  // the shell a fresh `game` under the same id, and re-running the whole resource-memory scan for
+  // it would cost the same answer.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch, gameData]);
 
   /**
@@ -2694,6 +2717,10 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
+  // `game` and `writeOrdersDocument` are omitted on purpose (ah-lkw, see above): keyed on the id,
+  // a rename would redo an entire turn restore, with the busy focus-blur around it, for a change
+  // of name.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, ruleset, rulesetText, selectRegion, selectUnit, gameEpoch]);
 
   /**
