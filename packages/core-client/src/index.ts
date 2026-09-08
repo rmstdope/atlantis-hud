@@ -70,6 +70,30 @@ export type { AlliedMageKey } from "./generated/AlliedMageKey";
 export type { StudyGoal } from "./generated/StudyGoal";
 export type { StudyPlanRecord } from "./generated/StudyPlanRecord";
 export type { StudyPlanKey } from "./generated/StudyPlanKey";
+export type { UnitPreviewStatus } from "./generated/UnitPreviewStatus";
+export type { FieldChange } from "./generated/FieldChange";
+export type { UnitPreview } from "./generated/UnitPreview";
+export type { TransportSent } from "./generated/TransportSent";
+export type { TransportReceived } from "./generated/TransportReceived";
+export type { TransportTargetReason } from "./generated/TransportTargetReason";
+export type { TransportTargetIssue } from "./generated/TransportTargetIssue";
+export type { SkillMergeCause } from "./generated/SkillMergeCause";
+export type { SkillMerge } from "./generated/SkillMerge";
+export type { StudyForecast } from "./generated/StudyForecast";
+export type { StudyTeacher } from "./generated/StudyTeacher";
+export type { LimitingRace } from "./generated/LimitingRace";
+export type { StudyDoubtReason } from "./generated/StudyDoubtReason";
+export type { StudyDoubt } from "./generated/StudyDoubt";
+export type { TakenUnshown } from "./generated/TakenUnshown";
+export type { ProducedItem } from "./generated/ProducedItem";
+export type { BuildCap } from "./generated/BuildCap";
+export type { BuildSpend } from "./generated/BuildSpend";
+export type { ItemChangeCause } from "./generated/ItemChangeCause";
+export type { ItemChangeParty } from "./generated/ItemChangeParty";
+export type { ItemChange } from "./generated/ItemChange";
+export type { CreatedItem } from "./generated/CreatedItem";
+export type { RegionPreview } from "./generated/RegionPreview";
+export type { OrdersPreviewResponse } from "./generated/OrdersPreviewResponse";
 
 export {
   aBattle,
@@ -86,7 +110,6 @@ export {
 
 import type { Coordinate } from "./generated/Coordinate";
 import type { ReportRegion } from "./generated/ReportRegion";
-import type { ReportUnit } from "./generated/ReportUnit";
 import type { SettlementInfo } from "./generated/SettlementInfo";
 import type { ReportParseResult } from "./generated/ReportParseResult";
 import type { OrderValidationResult } from "./generated/OrderValidationResult";
@@ -98,6 +121,7 @@ import type { AlliedMageRecord } from "./generated/AlliedMageRecord";
 import type { AlliedMageKey } from "./generated/AlliedMageKey";
 import type { StudyPlanRecord } from "./generated/StudyPlanRecord";
 import type { StudyPlanKey } from "./generated/StudyPlanKey";
+import type { OrdersPreviewResponse } from "./generated/OrdersPreviewResponse";
 
 export type OpenedGame = {
   gameFilePath: string;
@@ -345,344 +369,6 @@ export type TracedPath = {
 /** The traced order, or nothing when the unit has no readable movement order to draw. */
 export type MoveOrderTraceResponse = {
   path: TracedPath | null;
-};
-
-/**
- * Where a previewed unit stands relative to the hex its row sits in.
- *
- * Only that: whether this month's FORM creates the unit, and whether `rules/form` dissolves it,
- * are two further facts a row carries alongside any of these - `UnitPreview.formed` and
- * `UnitPreview.dissolving`. They used to be values of this union, which made a formed unit that
- * also walks away inexpressible (`ah-4hux`).
- */
-export type UnitPreviewStatus = "present" | "departing" | "arriving";
-
-/** One field the orders change, with what the report said before, formatted for a tooltip. */
-export type FieldChange = {
-  /** The `ReportUnit` field: `name`, `onGuard`, `flags`, `items`, `men` or `structureId`. */
-  field: string;
-  original: string;
-  /**
-   * The order this change is attributed to, rendered as the game spells it - `ENTER 12`, `LEAVE`,
-   * `MOVE OUT`, `MOVE N NE`. Absent when no single order accounts for the change, which is every
-   * field but `structureId` today.
-   */
-  cause?: string | null;
-};
-
-/** Goods taken from a unit the report does not show in this hex (`ah-agbm`). */
-export type TakenUnshown = {
-  amount: number;
-  tag: string;
-  from: string;
-};
-
-/** One item a PRODUCE order makes this month. */
-export type ProducedItem = { amount: number; tag: string };
-
-/** Which limit decided how much work a BUILD does, when it was not the unit's men. */
-export type BuildCap = "materials" | "needs";
-
-/** What one BUILD order spends this month (`ah-ofpb.2`). */
-export type BuildSpend = {
-  amount: number;
-  tag: string;
-  /** The material's display name, as the cap sentence says it - "wood". */
-  name: string;
-  /** The structure worked on: its label, or the kind being founded. */
-  place: string;
-  founding: boolean;
-  helping: string | null;
-  couldDo: number;
-  cappedBy: BuildCap | null;
-};
-
-/**
- * Why one item moved into or out of a unit this month (`ah-rgkk.3.1`).
- *
- * `ah-rgkk.3.2` adds the GIVE/TAKE causes; a reader must treat an unknown cause as "moved, reason
- * not stated" rather than failing.
- */
-export type ItemChangeCause =
-  | "bought"
-  | "sold"
-  | "withdrawn"
-  | "produced"
-  | "production-spent"
-  | "build-spent"
-  | "cast-created"
-  | "cast-spent"
-  | "transported-out"
-  | "transported-in"
-  | "abandoned"
-  | "given-away"
-  | "was-given"
-  | "took"
-  | "was-taken-from"
-  | "discarded"
-  | "gift-reverted";
-
-/** The other unit an item change is between (`ah-rgkk.3.1`). */
-export type ItemChangeParty = { unitId: string; name: string | null };
-
-/** One item this month's orders move into or out of a unit, with its cause (`ah-rgkk.3.1`). */
-export type ItemChange = {
-  tag: string;
-  /** The catalogue's display name, so a consumer needs no catalogue of its own. */
-  name: string;
-  /** Signed: positive into the unit, negative out of it. Never zero. */
-  delta: number;
-  cause: ItemChangeCause;
-  /** The 1-based document line of the order responsible, when one order is. */
-  line: number | null;
-  /** What the market settled one of these at, in silver. `null` on every cause but a buy or sale. */
-  unitPrice: number | null;
-  other: ItemChangeParty | null;
-  /**
-   * Whether this tag names people rather than equipment (`ah-rgkk.4.1`). A centaur counts, being
-   * both a race and a mount. `false` for a tag the shipped catalogue does not carry.
-   */
-  isMan: boolean;
-};
-
-/** One item a CAST order creates this month. `fewest` and `most` are equal when it is certain. */
-export type CreatedItem = { fewest: number; most: number; tag: string; summoned: boolean };
-
-/** One line of what a unit's TRANSPORT/DISTRIBUTE orders send this month, in document order. */
-export type TransportSent = {
-  amount: number;
-  tag: string;
-  to: string;
-  toUnshown: boolean;
-  refused: boolean;
-  /**
-   * Which of this unit's TRANSPORT/DISTRIBUTE orders wrote this line: its place among the readable
-   * ones in its block, counting from `0` in document order. Shared with
-   * `TransportTargetIssue.orderIndex`, so the two lists read back interleaved as written; one
-   * order selecting several tags writes several lines under one index (`ah-64wm`).
-   */
-  orderIndex: number;
-};
-
-/** One item arriving by another unit's TRANSPORT/DISTRIBUTE this month. */
-export type TransportReceived = { amount: number; tag: string; from: string };
-
-/**
- * Why the report cannot show a TRANSPORT/DISTRIBUTE target receiving what was sent (`ah-64wm`).
- *
- * The first two are certain: `rules/transport` wants the quartermaster skill, which our report
- * prints in full for our own units, and `rules/economy_transport` wants ownership of a
- * Caravanserai, whose owner `rules/world_structures` makes the first unit listed inside it. The
- * last two are gaps in the report - a unit it never described, foreign skills it never discloses,
- * and a foreign faction's attitude toward ours, which is not in our report at all
- * (`rules/com_attitudes`).
- */
-export type TransportTargetReason =
-  | "notQuartermaster"
-  | "notCaravanseraiOwner"
-  | "eligibilityUnknown"
-  | "acceptanceUnknown";
-
-/**
- * One TRANSPORT/DISTRIBUTE the target gate stopped, once for the order rather than once per tag
- * (`ah-64wm`).
- */
-export type TransportTargetIssue = {
-  /** The unit number the order named. */
-  to: string;
-  /** What the order would have moved. `0` when the sentence names no amount - see `tag`. */
-  amount: number;
-  /** Empty when the order has no per-tag claim to make and speaks of the order alone. */
-  tag: string;
-  reason: TransportTargetReason;
-  /**
-   * Which of this unit's TRANSPORT/DISTRIBUTE orders this issue belongs to, on the same counter
-   * `TransportSent.orderIndex` carries (`ah-64wm`).
-   */
-  orderIndex: number;
-};
-
-/** Why men joined a unit this month (`ah-rgkk.2.1`). */
-export type SkillMergeCause = "recruited" | "given" | "taken";
-
-/**
- * One merge of arriving men into a unit's skills, in `rules/sequenceofevents` order
- * (`ah-rgkk.2.1`). A merge that left every figure identical is recorded like any other.
- */
-export type SkillMerge = {
-  cause: SkillMergeCause;
-  /** The unit number the men came from. Empty for `recruited`, who come from the market. */
-  from: string;
-  /** How many men the merge weighted in. */
-  men: number;
-  /** The receiver's headcount the merge weighted against, before the men arrived. */
-  menBefore: number;
-  /** Which man items arrived, one entry per race. Empty when `countInferred` is set. */
-  menArriving: ItemAmount[];
-  /** `men` was inferred from the item list because a `BUY ALL` left no exact figure. */
-  countInferred: boolean;
-  /** The arriving men's own skills. Empty for `recruited`, who have none. */
-  arrivingSkills: SkillInfo[];
-  /** The unit's skills once this merge had run. */
-  skills: SkillInfo[];
-};
-
-/**
- * Why a study projection rests on something the report cannot settle (`ah-rgkk.2.2`).
- *
- * `shelterUnknown` covers both of its causes: the unit ends the month in a structure the region's
- * report does not list, and a catalogue carrying no buildings table to seat a mage against.
- */
-export type StudyDoubtReason =
-  | "feeShort"
-  | "feeUnpriced"
-  | "headcountEstimated"
-  | "teacherUnsettled"
-  | "teacherStudentsUnknown"
-  | "shelterUnknown";
-
-/** One doubt about a study projection, with what its sentence needs. */
-export type StudyDoubt = {
-  reason: StudyDoubtReason;
-  /** The whole fee, for `feeShort`. `0` otherwise. */
-  fee: number;
-  /** How much of it the unit's own silver does not cover, for `feeShort`. `0` otherwise. */
-  shortBy: number;
-  /** `<name> (<id>)` of the teacher, for the two teacher reasons. Empty otherwise. */
-  teacher: string;
-};
-
-/** One unit teaching a studying unit this month. */
-export type StudyTeacher = {
-  unitId: string;
-  name: string;
-  /** Ten student-months per person, so a two-leader unit has twenty. */
-  slots: number;
-  /** How many men it teaches in total this month, this unit's included. */
-  students: number;
-};
-
-/** A race that holds a study down, named singular - `hill dwarf`. */
-export type LimitingRace = { tag: string; name: string };
-
-/** Where this month's STUDY lands next turn, teaching included (`ah-rgkk.2.2`). */
-export type StudyForecast = {
-  tag: string;
-  name: string;
-  levelBefore: number;
-  pointsBefore: number;
-  /** The month's worth in months, as an exact ratio in lowest terms - `3/2` for a taught month. */
-  monthsNumerator: number;
-  monthsDenominator: number;
-  teachers: StudyTeacher[];
-  /** `rules/magic_skills` halves the month; already applied to the ratio. */
-  halvedOutsideABuilding: boolean;
-  pointsAfter: number;
-  levelAfter: number;
-  ceilingLevel: number;
-  limitingRaces: LimitingRace[];
-  /** The points reach a level the ceiling refuses: the figure rises and the level holds. */
-  heldBackByCeiling: boolean;
-  doubts: StudyDoubt[];
-};
-
-/** One unit as the orders leave it: the full predicted state, so the row renders like any other. */
-export type UnitPreview = {
-  unit: ReportUnit;
-  status: UnitPreviewStatus;
-  changes: FieldChange[];
-  /** Where an arriving unit set out from. */
-  arrivingFrom: string | null;
-  /** Where a departing unit ends the month, when the trace can say. */
-  departingTo: string | null;
-  /**
-   * The fleet carrying this unit away, as `<name> [<id>]`, when it is departing because the ship it
-   * stands in is. Never set on an arriving row: an arrival says only where it came from.
-   */
-  aboard: string | null;
-  /**
-   * This unit's orders whose effect on its items could not be counted, verbatim, in document
-   * order (`ah-agbm`).
-   */
-  uncounted: string[];
-  /** Silver or goods taken from a unit the report does not show in this hex (`ah-agbm`). */
-  takenUnshown: TakenUnshown[];
-  /** What this unit's PRODUCE orders make this month (`ah-ofpb.1`). */
-  produced: ProducedItem[];
-  /** What this unit's BUILD orders spend this month (`ah-ofpb.2`). */
-  built: BuildSpend[];
-  /** What this unit's CAST orders create this month (`ah-ofpb.5`). */
-  created: CreatedItem[];
-  /** What this unit's TRANSPORT/DISTRIBUTE orders send this month, in document order (`ah-bxgs`). */
-  transportSent: TransportSent[];
-  /** What arrives at this unit by another unit's TRANSPORT/DISTRIBUTE this month (`ah-bxgs`). */
-  transportReceived: TransportReceived[];
-  /**
-   * This unit's TRANSPORT/DISTRIBUTE orders whose target the report cannot show as able to
-   * receive, in document order. Those orders move nothing (`ah-64wm`).
-   */
-  transportTargetIssues: TransportTargetIssue[];
-  /**
-   * Every item this month's orders move into or out of this unit, each with its cause, in the
-   * month's order (`ah-rgkk.3.1`).
-   */
-  itemChanges: ItemChange[];
-  /**
-   * The unit a dissolving row's goods revert to, as `<name> (<id>)` (`rules/form`). `null` on
-   * every other row, and on a dissolving row in a hex the report shows no own unit in.
-   */
-  dissolvesInto: string | null;
-  /**
-   * This month's FORM creates this unit: it did not exist when the report was written, and its
-   * `unitId` is the synthetic `new-<alias>`. Carried on every row of such a unit, including its
-   * arriving row (`ah-4hux`).
-   */
-  formed: boolean;
-  /**
-   * `rules/form` dissolves this unit before the month ends - a formed unit that gains nobody.
-   * Always accompanied by `formed`, and drawn rather than skipped (`ah-ty3s.3`, decision K2).
-   */
-  dissolving: boolean;
-  /**
-   * Why this unit's skills moved this month: one record per merge of arriving men, in the order
-   * the merges ran. Empty for a unit no men joined (`ah-rgkk.2.1`).
-   */
-  skillMerges: SkillMerge[];
-  /**
-   * This unit's skills exactly as the report printed them, typed - so a reader compares
-   * `level (points)` against `level (points)` rather than parsing the `skills` change's display
-   * string. Empty for a unit this month's FORM creates (`ah-rgkk.2.1`).
-   */
-  reportedSkills: SkillInfo[];
-  /**
-   * The report could only estimate this unit's headcount, so its recruits were never merged into
-   * its skills: the figures are the reported ones, not diluted ones (`ah-rgkk.2.1`).
-   */
-  recruitsUnmerged: boolean;
-  /**
-   * Men credited from a unit the report does not show, whose own skills are unknown and who are
-   * therefore left out of every merge (`ah-agbm`, `ah-rgkk.2.1`).
-   */
-  menOfUnknownSkill: TakenUnshown[];
-  /**
-   * Where this month's STUDY lands next turn, teaching included. `null` for a unit not studying,
-   * for one whose skills this month cannot be said, and for a dissolving unit (`ah-rgkk.2.2`).
-   */
-  study: StudyForecast | null;
-};
-
-/** Every previewed unit standing in (or bound for) one region. */
-export type RegionPreview = {
-  regionId: string;
-  units: UnitPreview[];
-};
-
-/**
- * What the orders document changes, region by region. Regions and units the orders leave alone
- * are absent, so an empty answer means the report already shows the coming month.
- */
-export type OrdersPreviewResponse = {
-  regions: RegionPreview[];
 };
 
 /** Everything the planner has to say about one proposed move. */

@@ -30,6 +30,7 @@ use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStat
 /// also walks away inexpressible (`ah-4hux`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum UnitPreviewStatus {
     /// Still in this hex next month.
     Present,
@@ -46,20 +47,30 @@ pub enum UnitPreviewStatus {
 /// needs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct FieldChange {
     /// The `ReportUnit` field, in its wire spelling: `name`, `onGuard`, `flags`, `items`, `skills`,
     /// `men`, `structureId`, `movement`.
     pub field: String,
     pub original: String,
     /// The order this change is attributed to, rendered as the game spells it - `ENTER 12`,
-    /// `LEAVE`, `MOVE OUT`, `MOVE N NE`. `None` when no single order accounts for the change,
+    /// `LEAVE`, `MOVE OUT`, `MOVE N NE`. Absent when no single order accounts for the change,
     /// which is every field but `structureId` today.
+    //
+    // `skip_serializing_if` is load-bearing and not tidying: the TypeScript this type generates
+    // says `cause?: string`, a key that may be absent and is never `null`, and only the skip makes
+    // that true of the wire - `ts(optional)` alone would leave the type saying one thing and the
+    // serializer writing another. `an_unattributed_change_writes_no_cause_key` holds it. Kept out
+    // of the doc comment on purpose: it is about this boundary, not about the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub cause: Option<String>,
 }
 
 /// One unit as the orders leave it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct UnitPreview {
     /// The full predicted state, so the row renders exactly like a reported one.
     pub unit: ReportUnit,
@@ -152,6 +163,7 @@ pub struct UnitPreview {
 /// (`ah-bxgs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TransportSent {
     /// How much leaves. `0` on a refused line, which moves nothing.
     pub amount: i64,
@@ -180,6 +192,7 @@ pub struct TransportSent {
 /// One item arriving by another unit's `TRANSPORT`/`DISTRIBUTE` (`ah-bxgs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TransportReceived {
     pub amount: i64,
     pub tag: String,
@@ -197,6 +210,7 @@ pub struct TransportReceived {
 /// other factions rather than theirs toward us.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum TransportTargetReason {
     /// One of ours, and the report - which prints our own units' skills in full - shows no
     /// quartermaster skill on it.
@@ -219,6 +233,7 @@ pub enum TransportTargetReason {
 /// was sent to, moves nothing, and is recorded once for the order rather than once per tag.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TransportTargetIssue {
     /// The unit number the order named.
     pub to: String,
@@ -239,6 +254,7 @@ pub struct TransportTargetIssue {
 /// Why men joined a unit this month, in `rules/sequenceofevents` order (`ah-rgkk.2.1`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum SkillMergeCause {
     /// Men bought this month. `rules/economy_recruiting`: "New recruits will not have any skills
     /// or items", so they merge in at zero and dilute what the unit knows (`rules/buy`).
@@ -257,6 +273,7 @@ pub enum SkillMergeCause {
 /// month, and leaving it out would make "nothing happened" and "we did not look" the same answer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct SkillMerge {
     pub cause: SkillMergeCause,
     /// The unit number the men came from. Empty for `Recruited`, who come from the market.
@@ -287,6 +304,7 @@ pub struct SkillMerge {
 /// moves this month's figures: this is next turn's report, computed from the diluted ones.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct StudyForecast {
     /// The catalogue's tag for the skill being studied, upper case.
     pub tag: String,
@@ -327,6 +345,7 @@ pub struct StudyForecast {
 /// One unit teaching a studying unit this month (`rules/skills_teaching`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct StudyTeacher {
     pub unit_id: String,
     pub name: String,
@@ -339,6 +358,7 @@ pub struct StudyTeacher {
 /// A race that holds a study down, named so a sentence can say `hill dwarves`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct LimitingRace {
     pub tag: String,
     /// The catalogue's own name, singular - `hill dwarf`. Pluralising is the interface's business.
@@ -348,6 +368,7 @@ pub struct LimitingRace {
 /// Why a projection rests on something the report cannot settle (`ah-rgkk.2`, decision **U2**).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum StudyDoubtReason {
     /// The unit holds less silver when the month-long phase opens than the fee asks for.
     FeeShort,
@@ -374,6 +395,7 @@ pub enum StudyDoubtReason {
 /// data-carrying enum, so the wire stays one flat object per entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct StudyDoubt {
     pub reason: StudyDoubtReason,
     /// The whole fee for `FeeShort`, in silver. `0` for every other reason.
@@ -387,6 +409,7 @@ pub struct StudyDoubt {
 /// Goods taken from a unit the report does not show in this hex (`ah-agbm`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TakenUnshown {
     pub amount: i64,
     pub tag: String,
@@ -396,6 +419,7 @@ pub struct TakenUnshown {
 /// One item a `PRODUCE` order makes this month (`ah-ofpb.1`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ProducedItem {
     pub amount: i64,
     pub tag: String,
@@ -404,6 +428,7 @@ pub struct ProducedItem {
 /// Which limit decided how much work a `BUILD` does, when it was not the unit's men.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum BuildCap {
     /// The unit holds less of the material than its men could work.
     Materials,
@@ -414,6 +439,7 @@ pub enum BuildCap {
 /// What one `BUILD` order spends this month (`ah-ofpb.2`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct BuildSpend {
     /// Material consumed, which is also the units of work done.
     pub amount: i64,
@@ -439,6 +465,7 @@ pub struct BuildSpend {
 /// treat an unknown cause as "moved, reason not stated" rather than failing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum ItemChangeCause {
     Bought,
     Sold,
@@ -479,6 +506,7 @@ pub enum ItemChangeCause {
 /// The other unit an item change is between (`ah-rgkk.3.1`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ItemChangeParty {
     /// The other unit's number, exactly as the report or the order writes it.
     pub unit_id: String,
@@ -490,6 +518,7 @@ pub struct ItemChangeParty {
 /// One item this month's orders move into or out of a unit, with its cause (`ah-rgkk.3.1`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ItemChange {
     /// The item's tag, as the item list keys it - `HORS`.
     pub tag: String,
@@ -517,9 +546,11 @@ pub struct ItemChange {
     pub is_man: bool,
 }
 
-/// One item a `CAST` order creates this month (`ah-ofpb.5`).
+/// One item a `CAST` order creates this month (`ah-ofpb.5`). `fewest` and `most` are equal when it
+/// is certain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct CreatedItem {
     /// The fewest the cast may bring.
     pub fewest: i64,
@@ -533,6 +564,7 @@ pub struct CreatedItem {
 /// Every previewed unit standing in (or bound for) one region.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct RegionPreview {
     pub region_id: String,
     pub units: Vec<UnitPreview>,
@@ -544,6 +576,7 @@ pub struct RegionPreview {
 /// report already shows the coming month.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct OrdersPreviewResponse {
     pub regions: Vec<RegionPreview>,
 }
@@ -3311,6 +3344,36 @@ fn add_item(items: &mut Vec<crate::report::model::ItemAmount>, name: &str, tag: 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unattributed_change_writes_no_cause_key() {
+        let change = super::FieldChange {
+            field: "name".to_string(),
+            original: "Scouts".to_string(),
+            cause: None,
+        };
+
+        let wire = serde_json::to_value(&change).expect("a FieldChange serializes");
+
+        assert!(
+            wire.get("cause").is_none(),
+            "an unattributed change must leave the key out rather than write null, because the \
+             generated `cause?: string` says the key may be absent and is never null: {wire}"
+        );
+    }
+
+    #[test]
+    fn an_attributed_change_writes_its_cause() {
+        let change = super::FieldChange {
+            field: "structureId".to_string(),
+            original: "".to_string(),
+            cause: Some("ENTER 12".to_string()),
+        };
+
+        let wire = serde_json::to_value(&change).expect("a FieldChange serializes");
+
+        assert_eq!(wire.get("cause").and_then(|c| c.as_str()), Some("ENTER 12"));
+    }
+
     use super::*;
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
