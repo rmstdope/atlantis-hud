@@ -811,6 +811,8 @@ describe("cellLabel", () => {
       worth: 1,
       unsheltered: false,
       shelterUnknown: false,
+      leftBuilding: null,
+      leftBy: null,
       taughtBy: null,
       ...over
     }) satisfies Extract<ScheduleCell, { kind: "study" }>;

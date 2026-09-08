@@ -8,6 +8,8 @@ import { cellMenu, seededStudents } from "../studyCell";
 import { scheduleRows, scheduleTurns, type ScheduleRow } from "../studySchedule";
 import { magePane } from "../studyMagePane";
 import type { PlannerGroup } from "../studyPlanner";
+import { plannerNotices } from "../studyTeaching";
+import type { StandingAfterOrders } from "../studyStanding";
 import { STANDING_CHIP } from "./standingChip";
 import { CellPopover, MagePaneView, ScheduleGrid, StudySchedule } from "./StudySchedule";
 import type { CellMode, CellPick } from "./studyCellState";
@@ -684,5 +686,69 @@ describe("a month somebody would double is drawn green", () => {
 
   it("leaves the pane plain when nobody in the hex would teach it", () => {
     expect(paneOf(plainRows)).not.toContain("text-ok");
+  });
+});
+
+// ah-zpq3: the strip reads where a mage stands once this month's orders have run, so a mage the
+// report found in the open but whose ENTER seats him is not warned about standing outside.
+describe("a mage whose orders take him into a building", () => {
+  const plans = [
+    {
+      factionId: "12",
+      unitId: "2431",
+      goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+      comment: "",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    }
+  ];
+
+  // The shared fixture leaves `structureId` off; this case is about where he stands, so it says so.
+  const inTheOpen = [
+    { ...groups[0], mages: groups[0].mages.map((mage) => ({ ...mage, structureId: null })) }
+  ] as unknown as PlannerGroup[];
+
+  function strip(after: ReadonlyMap<string, StandingAfterOrders>) {
+    const built = scheduleRows({
+      groups: inTheOpen,
+      plans,
+      tree,
+      turns,
+      seats: new Map([["1:7,53/4", 1]]),
+      after
+    });
+    return renderToStaticMarkup(
+      <StudySchedule
+        rows={built}
+        groups={inTheOpen}
+        turns={turns}
+        tree={tree}
+        mode={{ kind: "idle" }}
+        onEvent={() => {}}
+        onCommit={() => {}}
+        saveError={null}
+        notices={plannerNotices({ rows: built, turns, label: (regionId) => regionId })}
+        label={(regionId) => regionId}
+      />
+    );
+  }
+
+  it("a mage entering a building is not warned", () => {
+    expect(strip(new Map())).toContain("outside any building");
+    expect(
+      strip(
+        new Map([
+          [
+            "12/2431",
+            {
+              regionId: "1:7,53",
+              structureId: "4",
+              offMap: false,
+              leftBuilding: null,
+              leftBy: null
+            }
+          ]
+        ])
+      )
+    ).not.toContain("outside any building");
   });
 });

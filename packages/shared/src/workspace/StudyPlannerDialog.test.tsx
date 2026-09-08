@@ -240,6 +240,7 @@ describe("the Orders tab", () => {
         selectedUnitId={null}
         label={label}
         seats={new Map()}
+        after={new Map()}
         structureNames={new Map()}
         tree={tree}
         plans={plans}
@@ -289,3 +290,4 @@ describe("the Orders tab", () => {
     expect(dialog([])).not.toContain('data-testid="study-planner-save-all"');
   });
 });
+

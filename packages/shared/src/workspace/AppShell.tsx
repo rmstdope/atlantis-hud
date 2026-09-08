@@ -230,6 +230,7 @@ import type { MagicTreeView } from "./magicGraphLayout";
 import type { Viewport } from "./mapViewport";
 import { parseGameData } from "../gameData";
 import { shelterNames, shelterSeats } from "../studyShelter";
+import { standingAfterOrders } from "../studyStanding";
 import { buildMagicTree } from "../magicTree";
 import { isApprentice, magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
@@ -710,6 +711,22 @@ export function AppShell({
             viewedTurn: parsed?.header.turnNumber ?? null
           }),
     [parsed, mages, alliedMages, magicTree, gameData]
+  );
+
+  /**
+   * Where each of your own mages stands once this month's orders have run, for the study planner.
+   * `ordersPreview` is debounced by 300 ms, so this is briefly the report's own answer after a
+   * keystroke and then corrects itself - the same latency the units table already has (ah-zpq3).
+   */
+  const plannerStanding = useMemo(
+    () =>
+      standingAfterOrders({
+        groups: plannerGroupRows,
+        preview: ordersPreview,
+        report: parsed,
+        names: shelterNamesByKey
+      }),
+    [plannerGroupRows, ordersPreview, parsed, shelterNamesByKey]
   );
 
   /**
@@ -4505,6 +4522,7 @@ export function AppShell({
           groups={plannerGroupRows}
           seats={shelter}
           structureNames={shelterNamesByKey}
+          after={plannerStanding}
           summaryLine={plannerSummaryLine(plannerGroupRows, apprentices)}
           emptyCopy={plannerEmptyCopy({ reportLoaded: parsed !== null, apprentices })}
           alliedStatus={alliedStatus}

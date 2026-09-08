@@ -467,6 +467,8 @@ describe("who would double a month", () => {
     worth: 1,
     unsheltered: false,
     shelterUnknown: false,
+    leftBuilding: null,
+    leftBy: null,
     taughtBy: null
   });
 
