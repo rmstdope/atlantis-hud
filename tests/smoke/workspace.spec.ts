@@ -5412,9 +5412,11 @@ test("a hex where a battle was fought carries a badge, and the badge switches it
   await loadReport(page, "Battle smoke game", readReport("g7f95t72"), "regions");
 
   const map = page.getByTestId("map-canvas");
-  // The default theme is Cartographer's Table, whose battle mark is crossed swords.
+  // The default theme is Cartographer's Table, whose battle mark is crossed swords. Counted rather
+  // than looked at: the initial fit can leave a battle hex outside the viewport, and whether the
+  // map drew the mark at all is what this walk is about - the theme suites pin how it looks.
   const battles = map.locator('[data-mark="battle"]');
-  await expect(battles.first()).toBeVisible();
+  await expect(battles).not.toHaveCount(0);
 
   const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true });
   await trigger.click();
@@ -5423,5 +5425,5 @@ test("a hex where a battle was fought carries a badge, and the badge switches it
   await expect(battles).toHaveCount(0);
 
   await badges.getByRole("button", { name: "All", exact: true }).click();
-  await expect(battles.first()).toBeVisible();
+  await expect(battles).not.toHaveCount(0);
 });
