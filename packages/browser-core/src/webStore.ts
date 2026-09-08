@@ -542,33 +542,97 @@ export function createIndexedDbWebStore(): WebStore {
  */
 export function createMemoryWebStore(): WebStore {
   const games = new Map<string, StoredGame>();
-  const turns = new Map<string, StoredTurn>();
-  const drafts = new Map<string, StoredOrderDraft>();
-  const sightings = new Map<string, StoredRegionSighting>();
-  const merges = new Map<string, StoredMergedReport>();
-  const hexNotes = new Map<string, StoredHexNote>();
-  const armies = new Map<string, StoredArmy>();
-  const alliedMages = new Map<string, StoredAlliedMage>();
-  const studyPlans = new Map<string, StoredStudyPlan>();
 
-  // The database handle leads the key here for the same reason it selects the database in the
-  // IndexedDB store: it is what keeps one game's records out of another's.
-  const composite = (databasePath: string, factionId: string, turnNumber: number) =>
-    JSON.stringify([databasePath, factionId, turnNumber]);
-  const notesComposite = (databasePath: string, id: string) => JSON.stringify([databasePath, id]);
-  // Three parts rather than the two `notesComposite` takes: a mage is identified by his faction as
-  // well as his unit number. It serves two stores - allied mages and study plans - which key
-  // alike.
-  const mageComposite = (databasePath: string, factionId: string, unitId: string) =>
-    JSON.stringify([databasePath, factionId, unitId]);
-
-  const dropDatabase = (map: Map<string, { databasePath: string }>, databasePath: string) => {
-    for (const [key, value] of map) {
-      if (value.databasePath === databasePath) {
-        map.delete(key);
+  // One table per declared collection. The database handle leads every key for the same reason it
+  // selects the database in the IndexedDB store: it is what keeps one game's records out of
+  // another's.
+  const tables = new Map(
+    gameCollections.map((collection) => [
+      collection.name as string,
+      {
+        keyPath: collection.keyPath as readonly string[],
+        rows: new Map<string, { databasePath: string }>()
       }
+    ])
+  );
+
+  const table = (storeName: string) => {
+    const found = tables.get(storeName);
+    if (!found) {
+      throw new Error(`unknown collection: ${storeName}`);
+    }
+    return found;
+  };
+
+  const memoryKey = (databasePath: string, key: IDBValidKey) =>
+    JSON.stringify([databasePath, ...(Array.isArray(key) ? key : [key])]);
+
+  const rowKey = (storeName: string, databasePath: string, row: unknown) =>
+    JSON.stringify([
+      databasePath,
+      ...table(storeName).keyPath.map((path) => keyPathValue(row, path))
+    ]);
+
+  const read = async <T>(
+    databasePath: string,
+    storeName: string,
+    key: IDBValidKey
+  ): Promise<T | null> =>
+    (table(storeName).rows.get(memoryKey(databasePath, key)) as T | undefined) ?? null;
+
+  const write = async (databasePath: string, storeName: string, value: unknown): Promise<void> => {
+    const { rows } = table(storeName);
+    rows.set(rowKey(storeName, databasePath, value), value as { databasePath: string });
+  };
+
+  /** Deletes each key and then stores each value, as the IndexedDB store's one transaction does. */
+  const writeMany = async (
+    databasePath: string,
+    storeName: string,
+    values: readonly unknown[],
+    keys: readonly IDBValidKey[]
+  ): Promise<void> => {
+    const { rows } = table(storeName);
+    for (const key of keys) {
+      rows.delete(memoryKey(databasePath, key));
+    }
+    for (const value of values) {
+      rows.set(rowKey(storeName, databasePath, value), value as { databasePath: string });
     }
   };
+
+  /** Deletes one row by key. Resolves to whether it existed. */
+  const remove = async (
+    databasePath: string,
+    storeName: string,
+    key: IDBValidKey
+  ): Promise<boolean> => {
+    const { rows } = table(storeName);
+    const memory = memoryKey(databasePath, key);
+    const existed = rows.has(memory);
+    rows.delete(memory);
+    return existed;
+  };
+
+  /** Everything in one store matching a prefix of its key path. */
+  const readAll = async <T>(
+    databasePath: string,
+    storeName: string,
+    prefix: IDBValidKey[]
+  ): Promise<T[]> => {
+    const { keyPath, rows } = table(storeName);
+    return [...rows.values()].filter(
+      (row) =>
+        row.databasePath === databasePath &&
+        prefix.every((part, index) => keyPathValue(row, keyPath[index] ?? "") === part)
+    ) as T[];
+  };
+
+  /** A whole store, for one game. */
+  const readStore = async <T>(databasePath: string, storeName: string): Promise<T[]> =>
+    [...table(storeName).rows.values()].filter(
+      (row) => row.databasePath === databasePath
+    ) as T[];
 
   return {
     async listGames() {
@@ -589,124 +653,64 @@ export function createMemoryWebStore(): WebStore {
       await this.dropGameData(stored.databasePath);
     },
     async dropGameData(databasePath) {
-      dropDatabase(turns, databasePath);
-      dropDatabase(drafts, databasePath);
-      dropDatabase(sightings, databasePath);
-      dropDatabase(merges, databasePath);
-      dropDatabase(hexNotes, databasePath);
-      dropDatabase(armies, databasePath);
-      dropDatabase(alliedMages, databasePath);
-      dropDatabase(studyPlans, databasePath);
-    },
-    async putImportedTurn(turn) {
-      turns.set(composite(turn.databasePath, turn.factionId, turn.turnNumber), turn);
-    },
-    async getImportedTurn(databasePath, _gameId, factionId, turnNumber) {
-      return turns.get(composite(databasePath, factionId, turnNumber)) ?? null;
-    },
-    async getImportedTurns(databasePath, _gameId) {
-      return [...turns.values()].filter((turn) => turn.databasePath === databasePath);
-    },
-    async getOrderDrafts(databasePath, _gameId) {
-      return [...drafts.values()].filter((draft) => draft.databasePath === databasePath);
-    },
-    async putRegionSightings(incoming) {
-      for (const sighting of incoming) {
-        const key = JSON.stringify([
-          sighting.databasePath,
-          sighting.factionId,
-          sighting.regionId
-        ]);
-        sightings.set(key, sighting);
+      for (const { rows } of tables.values()) {
+        for (const [key, row] of rows) {
+          if (row.databasePath === databasePath) {
+            rows.delete(key);
+          }
+        }
       }
     },
-    async getRegionSightings(databasePath, _gameId, factionId) {
-      return [...sightings.values()].filter(
-        (sighting) =>
-          sighting.databasePath === databasePath && sighting.factionId === factionId
-      );
-    },
-    async getAllRegionSightings(databasePath, _gameId) {
-      return [...sightings.values()].filter((sighting) => sighting.databasePath === databasePath);
-    },
-    async putMergedReport(record) {
-      merges.set(
-        JSON.stringify([
-          record.databasePath,
-          record.factionId,
-          record.turnNumber,
-          record.mergedFactionId
-        ]),
-        record
-      );
-    },
-    async getMergedReports(databasePath, _gameId, factionId, turnNumber) {
-      return [...merges.values()].filter(
-        (record) =>
-          record.databasePath === databasePath &&
-          record.factionId === factionId &&
-          record.turnNumber === turnNumber
-      );
-    },
-    async getAllMergedReports(databasePath, _gameId) {
-      return [...merges.values()].filter((record) => record.databasePath === databasePath);
-    },
-    async putOrderDraft(draft) {
-      drafts.set(composite(draft.databasePath, draft.factionId, draft.turnNumber), draft);
-    },
-    async getOrderDraft(databasePath, _gameId, factionId, turnNumber) {
-      return drafts.get(composite(databasePath, factionId, turnNumber)) ?? null;
-    },
-    async getHexNotes(databasePath, _gameId) {
-      return [...hexNotes.values()].filter((note) => note.databasePath === databasePath);
-    },
-    async putHexNote(note) {
-      hexNotes.set(notesComposite(note.databasePath, note.id), note);
-    },
-    async deleteHexNote(databasePath, _gameId, noteId) {
-      const key = notesComposite(databasePath, noteId);
-      const existed = hexNotes.has(key);
-      hexNotes.delete(key);
-      return existed;
-    },
-    async getArmies(databasePath, _gameId) {
-      return [...armies.values()].filter((army) => army.databasePath === databasePath);
-    },
-    async putArmy(army) {
-      armies.set(notesComposite(army.databasePath, army.id), army);
-    },
-    async deleteArmy(databasePath, _gameId, armyId) {
-      const key = notesComposite(databasePath, armyId);
-      const existed = armies.has(key);
-      armies.delete(key);
-      return existed;
-    },
-    async getAlliedMages(databasePath, _gameId) {
-      return [...alliedMages.values()].filter((mage) => mage.databasePath === databasePath);
-    },
-    async putAlliedMages(databasePath, mages, removed) {
-      for (const key of removed) {
-        alliedMages.delete(mageComposite(databasePath, key.factionId, key.unitId));
-      }
-      for (const mage of mages) {
-        // The handle comes from the parameter for both halves, as it does for the removals above:
-        // one transaction must not read it from two places.
-        alliedMages.set(mageComposite(databasePath, mage.factionId, mage.unit.unitId), mage);
+    putImportedTurn: (turn) => write(turn.databasePath, IMPORTED_TURN_STORE, turn),
+    getImportedTurn: (databasePath, _gameId, factionId, turnNumber) =>
+      read<StoredTurn>(databasePath, IMPORTED_TURN_STORE, [factionId, turnNumber]),
+    getImportedTurns: (databasePath, _gameId) =>
+      readStore<StoredTurn>(databasePath, IMPORTED_TURN_STORE),
+    getOrderDrafts: (databasePath, _gameId) =>
+      readStore<StoredOrderDraft>(databasePath, ORDER_DRAFT_STORE),
+    async putRegionSightings(sightings) {
+      // Each row's own handle, not the first row's: this store has no transaction to scope, and
+      // taking the handle per row is what it has always done.
+      for (const sighting of sightings) {
+        await write(sighting.databasePath, REGION_SIGHTING_STORE, sighting);
       }
     },
-    async getStudyPlans(databasePath, _gameId) {
-      return [...studyPlans.values()].filter((plan) => plan.databasePath === databasePath);
-    },
-    async putStudyPlans(databasePath, plans, removed) {
-      for (const key of removed) {
-        studyPlans.delete(mageComposite(databasePath, key.factionId, key.unitId));
-      }
-      for (const plan of plans) {
-        // The handle comes from the parameter for both halves, as it does for the removals above:
-        // one transaction must not read it from two places.
-        studyPlans.set(mageComposite(databasePath, plan.factionId, plan.unitId), plan);
-      }
-    }
+    getRegionSightings: (databasePath, _gameId, factionId) =>
+      readAll<StoredRegionSighting>(databasePath, REGION_SIGHTING_STORE, [factionId]),
+    getAllRegionSightings: (databasePath, _gameId) =>
+      readStore<StoredRegionSighting>(databasePath, REGION_SIGHTING_STORE),
+    putMergedReport: (record) => write(record.databasePath, MERGED_REPORT_STORE, record),
+    getMergedReports: (databasePath, _gameId, factionId, turnNumber) =>
+      readAll<StoredMergedReport>(databasePath, MERGED_REPORT_STORE, [factionId, turnNumber]),
+    getAllMergedReports: (databasePath, _gameId) =>
+      readStore<StoredMergedReport>(databasePath, MERGED_REPORT_STORE),
+    putOrderDraft: (draft) => write(draft.databasePath, ORDER_DRAFT_STORE, draft),
+    getOrderDraft: (databasePath, _gameId, factionId, turnNumber) =>
+      read<StoredOrderDraft>(databasePath, ORDER_DRAFT_STORE, [factionId, turnNumber]),
+    getHexNotes: (databasePath, _gameId) => readStore<StoredHexNote>(databasePath, HEX_NOTE_STORE),
+    putHexNote: (note) => write(note.databasePath, HEX_NOTE_STORE, note),
+    deleteHexNote: (databasePath, _gameId, noteId) => remove(databasePath, HEX_NOTE_STORE, noteId),
+    getArmies: (databasePath, _gameId) => readStore<StoredArmy>(databasePath, ARMY_STORE),
+    putArmy: (army) => write(army.databasePath, ARMY_STORE, army),
+    deleteArmy: (databasePath, _gameId, armyId) => remove(databasePath, ARMY_STORE, armyId),
+    getAlliedMages: (databasePath, _gameId) =>
+      readStore<StoredAlliedMage>(databasePath, ALLIED_MAGE_STORE),
+    putAlliedMages: (databasePath, mages, removed) =>
+      writeMany(
+        databasePath,
+        ALLIED_MAGE_STORE,
+        mages,
+        removed.map((key) => [key.factionId, key.unitId])
+      ),
+    getStudyPlans: (databasePath, _gameId) =>
+      readStore<StoredStudyPlan>(databasePath, STUDY_PLAN_STORE),
+    putStudyPlans: (databasePath, plans, removed) =>
+      writeMany(
+        databasePath,
+        STUDY_PLAN_STORE,
+        plans,
+        removed.map((key) => [key.factionId, key.unitId])
+      )
   };
 }
 
