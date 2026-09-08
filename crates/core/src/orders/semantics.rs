@@ -314,11 +314,40 @@ fn where_the_report_shows_each_unit(report: &ParsedReport) -> BTreeMap<&str, &Re
 /// `new-{alias}`, and `rules/form` scopes an alias to its region - so two hexes may each write
 /// `FORM 1` and both units are called `new-1`. Every map that spans hexes keys on this pair
 /// (`ah-9o0c.1`).
-pub(crate) type UnitKey = (String, String);
+/// A struct rather than a tuple alias, and that is the whole point: a report-wide map declared as
+/// `BTreeMap<String, _>` cannot be filled by [`unit_key`], so the next one is a compile error
+/// rather than something a reviewer has to notice. Fields in this order, so `Ord` sorts by hex and
+/// then by number exactly as the tuple did and no map's iteration order moves.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct UnitKey {
+    pub region_id: String,
+    pub unit_id: String,
+}
+
+// Four families of map deliberately stay keyed on a bare unit number, and are not the defect this
+// type guards against:
+//
+// - Every id-keyed field of `Ledger` and `PhaseState` (`:3773-3925`). A `Ledger` is built one per
+//   hex (`ledger_for`), and `parse_region_block` refuses a repeated unit number within a region,
+//   so a per-hex map is sound on a bare number. `ah-bm0d` settled this.
+// - The report-wide *sets of numbers* - `unit_ids_in`, `foreign_unit_ids`, `Hex::shown_anywhere`,
+//   and `effects::Working`'s `known_units`, `foreign_units` and `quartermasters`. These answer "is
+//   this number one the report prints anywhere?", which is what a `GIVE 1234` target asks, so a
+//   bare number is the input and the right key.
+// - `OrderedUnits::by_unit`, keyed by the number an orders *document* writes on its `unit` lines,
+//   which carries no region at all.
+// - `effects::transport_target_facts` and `effects::Working::by_id`, which index units the report
+//   physically prints - never a `new-{alias}` - and the game numbers a printed unit once.
+//
+// `pub` rather than `pub(crate)` is forced: `silver::UpkeepSettlement` is a `pub` struct with
+// `pub` fields of this type, and a `pub(crate)` type in a `pub` field is E0446.
 
 /// One unit's [`UnitKey`]: the hex it stands in, then its number.
-pub(crate) fn unit_key(region_id: &str, unit_id: &str) -> UnitKey {
-    (region_id.to_string(), unit_id.to_string())
+pub fn unit_key(region_id: &str, unit_id: &str) -> UnitKey {
+    UnitKey {
+        region_id: region_id.to_string(),
+        unit_id: unit_id.to_string(),
+    }
 }
 
 /// Every unit the report prints, by unit number - the unit itself rather than its region.
@@ -11939,6 +11968,17 @@ mod tests {
     use crate::orders::silver::plan_cast;
     use crate::report::model::{level_for_points, Exit, Skill};
 
+    #[test]
+    fn a_unit_key_names_its_hex_and_its_number() {
+        let key = unit_key("1:7,53", "new-1");
+        assert_eq!(key.region_id, "1:7,53");
+        assert_eq!(key.unit_id, "new-1");
+        assert!(
+            unit_key("1:7,53", "new-1") < unit_key("1:8,54", "new-1"),
+            "ordering is by hex and then by number, as the tuple's was"
+        );
+    }
+
     /// The item effects of the unit with this number, whatever hex it stands in. [`item_effects`]
     /// keys on [`UnitKey`] because two hexes may each hold a `new-1` (`rules/form`); a test whose
     /// fixture holds one such unit only can still ask by number.
@@ -11946,7 +11986,7 @@ mod tests {
         effects: &'a BTreeMap<UnitKey, UnitItemEffects>,
         unit_id: &str,
     ) -> Option<&'a UnitItemEffects> {
-        let mut matching = effects.iter().filter(|((_, id), _)| id == unit_id);
+        let mut matching = effects.iter().filter(|(key, _)| key.unit_id == unit_id);
         let first = matching.next();
         assert!(
             matching.next().is_none(),
@@ -13472,7 +13512,7 @@ mod tests {
         );
         gather_receipts(std::slice::from_ref(&hex))
             .into_iter()
-            .map(|((_, unit_id), receipts)| (unit_id, receipts))
+            .map(|(key, receipts)| (key.unit_id, receipts))
             .collect()
     }
 
