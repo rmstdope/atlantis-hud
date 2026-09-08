@@ -327,7 +327,10 @@ test("a note is kept without pressing anything", async ({ page }) => {
   await expect(note).toHaveValue("heading for Gate Lore");
 
   // Closing the window is the other way out, and it must write too - so this types again, with
-  // something owed, before Escape. Escape is the window's and not the note's: it closes the dialog
+  // something owed, before Escape. The margin is load-bearing: the fill and the Escape must land
+  // inside STUDY_NOTE_AUTOSAVE_MS (400ms), or the debounce writes on its own and this stops
+  // proving the unmount flush. Two CDP round-trips is generous room, but do not add work between
+  // these two lines. Escape is the window's and not the note's: it closes the dialog
   // from inside the textarea.
   await note.fill("heading for Gate Lore, then Portals");
   await note.press("Escape");
