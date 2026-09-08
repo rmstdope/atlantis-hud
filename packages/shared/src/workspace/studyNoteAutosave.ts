@@ -17,6 +17,13 @@ export type NoteAutosave = {
    * completeness; the note editor never calls it, since every way out of the note is a flush.
    */
   cancel: () => void;
+  /** True while text the player typed has not been written yet. Empty text counts as owed. */
+  owes: () => boolean;
+  /**
+   * Storage now holds `stored` and nothing is owed against it. For an editor adopting a note that
+   * changed underneath it; never call this while `owes()` is true.
+   */
+  adopted: (stored: string) => void;
 };
 
 /**
@@ -74,6 +81,14 @@ export function createNoteAutosave(
     cancel() {
       clearTimer();
       owed = null;
+    },
+
+    owes() {
+      return owed !== null;
+    },
+
+    adopted(stored) {
+      lastWritten = normalizeStudyNote(stored);
     }
   };
 }
