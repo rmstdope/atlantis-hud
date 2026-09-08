@@ -1,5 +1,6 @@
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
+import reactHooks from "eslint-plugin-react-hooks";
 
 export default [
   {
@@ -16,10 +17,15 @@ export default [
       }
     },
     plugins: {
-      "@typescript-eslint": tseslint
+      "@typescript-eslint": tseslint,
+      "react-hooks": reactHooks
     },
     rules: {
-      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+      "react-hooks/rules-of-hooks": "error",
+      // Registered but off: 29 findings across AppShell.tsx and MapCanvas.tsx, and every package
+      // lints with --max-warnings=0, so there is no warn-only middle ground. ah-cy9j clears them.
+      "react-hooks/exhaustive-deps": "off"
     }
   }
 ];
