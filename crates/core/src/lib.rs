@@ -498,6 +498,20 @@ pub fn reject_map_export(parsed: &ReportParseResult) -> Option<String> {
     None
 }
 
+/// Why a map exported by AtlaClient may not be added, or `None` when it may.
+///
+/// Deliberately shorter than [`reject_map_export`]: an AtlaClient map names no faction, and that is
+/// normal rather than a fault, and recognition itself requires a stamp, so the turn is always
+/// known. What is left is the one thing the merge cannot do without.
+#[must_use]
+pub fn reject_atlaclient_map(parsed: &ReportParseResult) -> Option<String> {
+    if parsed.regions.is_empty() {
+        return Some("the AtlaClient map has no hexes in it".to_string());
+    }
+
+    None
+}
+
 /// What a merge should do with one file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MergePlan {
@@ -511,6 +525,31 @@ pub enum MergePlan {
         file_turn: u32,
         ages: std::collections::BTreeMap<String, u32>,
     },
+    /// A map exported by AtlaClient: merged exactly as a map export is, but it names no faction, so
+    /// its provenance row is filed under [`report::atlaclient::ATLACLIENT_SOURCE_ID`].
+    AtlaClientMap {
+        file_turn: u32,
+        ages: std::collections::BTreeMap<String, u32>,
+    },
+}
+
+/// Who the hexes of a merge are filed under, when the file itself does not say.
+///
+/// An AtlaClient map names no faction — that is normal rather than a fault — so its provenance row
+/// is filed under [`report::atlaclient::ATLACLIENT_SOURCE_ID`] and named after the turn it was
+/// written on. `None` for every other plan, which means "read the ally from the report" as before.
+///
+/// It lives here rather than in either adapter because both must file it the same way, and because
+/// the reserved id is the one thing that keeps the row from being mistaken for a faction number.
+#[must_use]
+pub fn reserved_merge_identity(plan: &MergePlan) -> Option<(String, String)> {
+    match plan {
+        MergePlan::AtlaClientMap { file_turn, .. } => Some((
+            report::atlaclient::ATLACLIENT_SOURCE_ID.to_string(),
+            format!("AtlaClient, turn {file_turn}"),
+        )),
+        _ => None,
+    }
 }
 
 /// Which of the three a file warrants.
@@ -537,6 +576,22 @@ pub fn plan_merge(
         return MergePlan::MapExport {
             file_turn,
             ages: report::export::map_export_ages(raw_report),
+        };
+    }
+
+    // After our own marker, so a file carrying both is ours.
+    if report::atlaclient::is_atlaclient_map(raw_report) {
+        if let Some(rejection) = reject_atlaclient_map(parsed) {
+            return MergePlan::Refused(rejection);
+        }
+
+        // Recognition required a stamp, and a stamp always carries the file's turn - so the
+        // fallback here is unreachable rather than a default worth thinking about.
+        let file_turn =
+            report::atlaclient::atlaclient_file_turn(raw_report).unwrap_or(viewer_turn_number);
+        return MergePlan::AtlaClientMap {
+            file_turn,
+            ages: report::atlaclient::atlaclient_ages(raw_report),
         };
     }
 
@@ -1330,6 +1385,73 @@ mod tests {
             ages.get("1:12,34"),
             None,
             "a hex from the export's own turn carries no age"
+        );
+    }
+
+    #[test]
+    fn an_atlaclient_map_is_planned_as_one() {
+        let text = atlantis_hud_fixtures::ATLACLIENT_T16.text;
+
+        let MergePlan::AtlaClientMap { file_turn, ages } =
+            plan_merge(text, &parse_report(text), 71, "95")
+        else {
+            panic!("an AtlaClient map should be planned as one");
+        };
+
+        assert_eq!(file_turn, 16);
+        assert_eq!(ages, report::atlaclient::atlaclient_ages(text));
+    }
+
+    #[test]
+    fn an_atlaclient_map_is_filed_under_the_reserved_source() {
+        let text = atlantis_hud_fixtures::ATLACLIENT_T16.text;
+        let plan = plan_merge(text, &parse_report(text), 71, "95");
+
+        assert_eq!(
+            reserved_merge_identity(&plan),
+            Some(("atlaclient".to_string(), "AtlaClient, turn 16".to_string()))
+        );
+        assert_eq!(
+            reserved_merge_identity(&MergePlan::AlliedReport),
+            None,
+            "an ordinary merge reads its identity from the report"
+        );
+    }
+
+    #[test]
+    fn an_atlaclient_map_with_no_hexes_is_refused() {
+        let text = "------------------------;16\n";
+
+        assert_eq!(
+            plan_merge(text, &parse_report(text), 71, "95"),
+            MergePlan::Refused("the AtlaClient map has no hexes in it".to_string())
+        );
+    }
+
+    #[test]
+    fn our_own_map_export_is_still_a_map_export() {
+        use crate::report::export::{export_map, MapExportRequest};
+        use crate::report::write::ExportContent;
+
+        let text = export_map(
+            &report::parse_report_full(MINI_REPORT),
+            &[],
+            &MapExportRequest {
+                level: 1,
+                from_x: -1000,
+                from_y: -1000,
+                to_x: 1000,
+                to_y: 1000,
+                content: ExportContent::default(),
+            },
+        );
+
+        assert!(
+            matches!(
+                plan_merge(&text, &parse_report(&text), 71, "95"),
+                MergePlan::MapExport { .. }
+            ),
+            "our own marker is tested first, so a file carrying both is ours"
         );
     }
 }

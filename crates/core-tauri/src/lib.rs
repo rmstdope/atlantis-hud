@@ -18,7 +18,7 @@ pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
     completions_at_caret, engine_info, order_argument_completions, order_commands,
     order_vocabulary, parse_report, plan_merge, reject_import, CaretCompletions, EngineInfo,
-    MergePlan, OrderCheckOptions, OrderCompletion, OrderValidationResult, ReportParseResult,
+    reserved_merge_identity, MergePlan, OrderCheckOptions, OrderCompletion, OrderValidationResult, ReportParseResult,
     ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
@@ -940,11 +940,19 @@ pub mod commands {
             return Err(rejection);
         }
 
-        // Clearing the threshold means the report named its faction, so this is present.
-        let ally = parse_result
-            .detected_factions
-            .first()
-            .ok_or_else(|| "parsed report does not name the faction it belongs to".to_string())?;
+        // Who these hexes came from. An AtlaClient map names no faction - that is normal rather
+        // than a fault - so it is filed under a reserved id instead, and this must be decided
+        // before the ordinary lookup below, which errors when nothing named a faction.
+        let (merged_faction_id, merged_faction_name) = match reserved_merge_identity(&plan) {
+            Some(reserved) => reserved,
+            None => {
+                // Clearing the threshold means the report named its faction, so this is present.
+                let ally = parse_result.detected_factions.first().ok_or_else(|| {
+                    "parsed report does not name the faction it belongs to".to_string()
+                })?;
+                (ally.faction_id.clone(), ally.name.clone())
+            }
+        };
         let existing: Vec<StoredSighting> =
             load_region_sightings(Path::new(database_path), game_id, viewer_faction_id)
                 .map_err(|error| error.to_string())?
@@ -956,7 +964,8 @@ pub mod commands {
             MergePlan::AlliedReport => {
                 merge_report_into_sightings(&existing, &report, viewer_turn_number)
             }
-            MergePlan::MapExport { file_turn, ages } => {
+            MergePlan::MapExport { file_turn, ages }
+            | MergePlan::AtlaClientMap { file_turn, ages } => {
                 merge_map_export_into_sightings(&existing, &report, *file_turn, ages)
             }
         };
@@ -972,8 +981,11 @@ pub mod commands {
         // A map export of the viewer's own map writes no provenance row: its key would name the
         // viewer as their own ally, which is nonsense in front of anything reading merged reports.
         // An ally's map export still writes one, which is the provenance worth keeping.
+        // An AtlaClient map can never satisfy this: the reserved id is not a faction number, so
+        // its row is always written, which is what the panel needs to answer "where did these
+        // turn-5 hexes on my turn-71 map come from".
         let own_map_export =
-            matches!(plan, MergePlan::MapExport { .. }) && ally.faction_id == viewer_faction_id;
+            matches!(plan, MergePlan::MapExport { .. }) && merged_faction_id == viewer_faction_id;
         if !own_map_export {
             upsert_merged_report(
                 Path::new(database_path),
@@ -981,8 +993,8 @@ pub mod commands {
                     game_id: game_id.to_string(),
                     faction_id: viewer_faction_id.to_string(),
                     turn_number: viewer_turn_number,
-                    merged_faction_id: ally.faction_id.clone(),
-                    merged_faction_name: ally.name.clone(),
+                    merged_faction_id: merged_faction_id.clone(),
+                    merged_faction_name: merged_faction_name.clone(),
                     merged_at: merged_at.to_string(),
                 },
             )
@@ -991,8 +1003,8 @@ pub mod commands {
 
         Ok(ReportMergeResultDto {
             turn_number: viewer_turn_number,
-            merged_faction_id: ally.faction_id.clone(),
-            merged_faction_name: ally.name.clone(),
+            merged_faction_id,
+            merged_faction_name,
             merged_region_count: u32::try_from(outcome.merged_region_count).unwrap_or(u32::MAX),
             new_region_count: u32::try_from(outcome.new_region_count).unwrap_or(u32::MAX),
         })
@@ -2010,6 +2022,7 @@ mod merge_tests {
     const TURN_2: &str = atlantis_hud_fixtures::G8_F73_T2.text;
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
     const MERGED_AT: &str = "2026-08-10T18:30:00Z";
+    const ATLACLIENT_MAP: &str = atlantis_hud_fixtures::ATLACLIENT_T16.text;
 
     /// A game with faction 95's turn 71 already imported, which is the state a merge starts from.
     fn game_with_turn_71(directory: &std::path::Path) -> OpenedGameDto {
@@ -2215,6 +2228,74 @@ mod merge_tests {
             rejection,
             "a report from turn 2 cannot be merged into turn 71"
         );
+    }
+
+    /// A hex lands at the turn its own stamp names, not at the file's turn and not at the
+    /// viewer's: an AtlaClient map is a lifetime's accumulation, and the shading depends on it.
+    #[test]
+    fn an_atlaclient_map_merges_at_the_turn_each_hex_names() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game_with_turn_71(directory.path());
+        let ages = atlantis_hud_core::report::atlaclient::atlaclient_ages(ATLACLIENT_MAP);
+
+        command_merge_report(
+            &created.database_path,
+            "faction-95",
+            "95",
+            71,
+            ATLACLIENT_MAP,
+            None,
+            MERGED_AT,
+        )
+        .expect("the merge succeeds");
+
+        let map = command_load_region_sightings(&created.database_path, "faction-95", "95")
+            .expect("the sightings load");
+
+        for wanted in [16, 5, 0] {
+            let (region_id, _) = ages
+                .iter()
+                .find(|(_, &turn)| turn == wanted)
+                .unwrap_or_else(|| panic!("the fixture has a hex stamped {wanted}"));
+            let sighting = map
+                .iter()
+                .find(|remembered| {
+                    remembered.region["regionId"].as_str() == Some(region_id.as_str())
+                })
+                .unwrap_or_else(|| panic!("{region_id} should be on the map"));
+            assert_eq!(
+                sighting.last_seen_turn, wanted,
+                "{region_id} is stamped {wanted}"
+            );
+        }
+    }
+
+    /// An AtlaClient map names no faction, so its provenance row is filed under a reserved id -
+    /// and it is written rather than skipped, which is the whole point of the row.
+    #[test]
+    fn an_atlaclient_map_is_filed_under_the_reserved_source() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game_with_turn_71(directory.path());
+
+        let result = command_merge_report(
+            &created.database_path,
+            "faction-95",
+            "95",
+            71,
+            ATLACLIENT_MAP,
+            None,
+            MERGED_AT,
+        )
+        .expect("the merge succeeds");
+
+        assert_eq!(result.merged_faction_id, "atlaclient");
+        assert_eq!(result.merged_faction_name, "AtlaClient, turn 16");
+
+        let merged = command_load_merged_reports(&created.database_path, "faction-95", "95", 71)
+            .expect("the record loads");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].merged_faction_id, "atlaclient");
+        assert_eq!(merged[0].merged_faction_name, "AtlaClient, turn 16");
     }
 
     /// A faction's own report is loaded, not merged. Allowing it would write the turn's regions
