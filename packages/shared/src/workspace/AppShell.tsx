@@ -187,7 +187,6 @@ import { newAgeClient } from "./newAgeApi";
 import { newAgeWorldFor } from "./newAgeWorlds";
 import {
   FETCH_CONTROL_LABEL,
-  FETCH_FAILURE_PREFIX,
   FETCH_REFUSED_MID_RUN,
   fetchedReportName,
   type NewAgeFetchPhase,
@@ -198,7 +197,7 @@ import {
   newAgeListingStillCurrent
 } from "./newAgeFetchAftermath";
 import { runNewAgeFetch } from "./newAgeFetchRun";
-import { fetchedTurnName, runSummary } from "./newAgeHistoryView";
+import { fetchedTurnName } from "./newAgeHistoryView";
 import { performNewAgeSend } from "./newAgeSend";
 import type { NewAgeSendPhase } from "./newAgeSendView";
 import { NEW_AGE_HOST, signInFailure } from "./newAgeSignInView";
