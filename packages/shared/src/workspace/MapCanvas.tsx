@@ -624,6 +624,27 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     }
   }, [arrow, size, insets, commit]);
 
+  /**
+   * Peeks at the hex a dossier row is on while the reader is on that row, and puts the view back
+   * when they leave it (ah-mwqa).
+   *
+   * A sibling of the trade-arrow travel just above rather than a shared mechanism: the two differ
+   * in their rule, in their debounce and in what abandons them, and merging them to share a ref
+   * would cost more than it saves. The rule itself is `peekStep`, in `dossierPeek.ts`, because this
+   * package has no jsdom and a rule written inside a component is a rule no test can read.
+   */
+  const viewBeforePeek = useRef<Viewport | null>(null);
+  /**
+   * Abandons the way back, leaving the map wherever the peek left it.
+   *
+   * Called wherever the reader takes control - a drag, a zoom, the keyboard nudge, the right-click
+   * recentre - because snapping the map back out from under somebody who has just moved it
+   * themselves is fighting them.
+   */
+  const clearPeekRestore = useCallback(() => {
+    viewBeforePeek.current = null;
+  }, []);
+
   // React attaches `wheel` passively, so `preventDefault` inside an `onWheel` prop does nothing and
   // the page zooms instead of the map. This has to be a manual listener.
   useEffect(() => {
@@ -650,7 +671,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     };
     root.addEventListener("wheel", onWheel, { passive: false });
     return () => root.removeEventListener("wheel", onWheel);
-  }, [commit]);
+  }, [commit, clearPeekRestore]);
 
   /**
    * Drags out the export rectangle, hung on Shift so the plain drag stays a pan.
@@ -780,7 +801,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       clearPeekRestore();
       commit(zoomAt(viewRef.current, steps, size.width / 2, size.height / 2));
     },
-    [commit, size]
+    [commit, size, clearPeekRestore]
   );
 
   const frameAll = useCallback(() => {
@@ -941,27 +962,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     const coordinate = highlightedRegionId === null ? null : parseRegionId(highlightedRegionId);
     return coordinate && coordinate.z === level ? coordinate : null;
   }, [highlightedRegionId, level]);
-
-  /**
-   * Peeks at the hex a dossier row is on while the reader is on that row, and puts the view back
-   * when they leave it (ah-mwqa).
-   *
-   * A sibling of the trade-arrow travel just above rather than a shared mechanism: the two differ
-   * in their rule, in their debounce and in what abandons them, and merging them to share a ref
-   * would cost more than it saves. The rule itself is `peekStep`, in `dossierPeek.ts`, because this
-   * package has no jsdom and a rule written inside a component is a rule no test can read.
-   */
-  const viewBeforePeek = useRef<Viewport | null>(null);
-  /**
-   * Abandons the way back, leaving the map wherever the peek left it.
-   *
-   * Called wherever the reader takes control - a drag, a zoom, the keyboard nudge, the right-click
-   * recentre - because snapping the map back out from under somebody who has just moved it
-   * themselves is fighting them.
-   */
-  const clearPeekRestore = useCallback(() => {
-    viewBeforePeek.current = null;
-  }, []);
 
   // Selecting anything is taking control too, so it abandons the restore the same way a pan does -
   // which is also what makes clicking a dossier row leave the map on the hex it just took you to.
