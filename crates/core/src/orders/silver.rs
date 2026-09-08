@@ -1056,6 +1056,50 @@ pub struct LateFacts<'a> {
 /// `rules/sequenceofevents` runs STUDY, then manufacturing PRODUCE, then BUILD, then primary
 /// PRODUCE, ENTERTAIN and WORK, and assesses maintenance last, so a term must say which picture it
 /// takes rather than sharing one "late" view with terms phases away from it (`ah-728m.2.3`).
+/// One unit's silver as the ledger holds it at each phase of `rules/sequenceofevents`.
+///
+/// The seam that carries [`super::semantics`]'s per-phase balances into this module, exactly as
+/// [`LateFacts`] carries its per-phase item pictures. This module holds no `semantics` types, so
+/// `semantics` fills the value and everything here only reads it (`ah-6m7b`).
+///
+/// Each slot is the balance **after** that phase has settled, which is how `PhaseState::apply`
+/// writes it - a delta lands at the named phase and at every later slot. So what a phase may
+/// *spend* is the slot of the phase before it, and the accessors below are named for the phase
+/// they open rather than for the slot they read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PhaseSilver {
+    after: [i64; phases::StatePhase::COUNT],
+}
+
+impl PhaseSilver {
+    /// Filled by `semantics` from one unit's `SILV` row. `pub(crate)` because the array's length
+    /// is a crate-private constant.
+    pub(crate) fn from_balances(after: [i64; phases::StatePhase::COUNT]) -> Self {
+        Self { after }
+    }
+
+    /// What a `CAST` may spend, clamped at zero.
+    ///
+    /// `rules/sequenceofevents` settles the instant orders (CLAIM among them), then *Give orders*,
+    /// then *Tax orders*, before *"Spells are CAST"*, and opens the market after it - so this is
+    /// the balance the Tax phase leaves. The slot named `Cast` is **not** it: once the ledger is
+    /// complete that slot already carries this unit's own cast, and `semantics::cast` reads it only
+    /// because it reads it before charging.
+    #[must_use]
+    pub fn as_the_cast_opens(&self) -> i64 {
+        self.after[phases::StatePhase::Tax as usize].max(0)
+    }
+
+    /// What a manufacturing `PRODUCE` may spend, clamped at zero: the market, WITHDRAW, movement
+    /// and STUDY have all run and no PRODUCE has been charged. The silver twin of the picture
+    /// [`PhaseFacts::production`] already carries in items, and the same slot
+    /// `PhaseState::BEFORE_MANUFACTURING` names.
+    #[must_use]
+    pub fn as_manufacturing_opens(&self) -> i64 {
+        self.after[phases::StatePhase::Study as usize].max(0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PhaseFacts<'a> {
     /// What STUDY sees: the market has run, no study fee has been taken.
@@ -1065,6 +1109,11 @@ pub struct PhaseFacts<'a> {
     pub production: LateFacts<'a>,
     /// What maintenance, WORK and ENTERTAIN see.
     pub maintenance: LateFacts<'a>,
+    /// The same unit's silver at every phase, or `None` for a caller that has no ledger to read
+    /// one from - which is every test that builds its own `PhaseFacts`. The two caps in
+    /// [`forecast_unit`] then fall back to this walk's own running total, which is what they
+    /// always read.
+    pub silver: Option<PhaseSilver>,
 }
 
 impl<'a> PhaseFacts<'a> {
@@ -1076,6 +1125,7 @@ impl<'a> PhaseFacts<'a> {
             study: facts,
             production: facts,
             maintenance: facts,
+            silver: None,
         }
     }
 }
@@ -1100,6 +1150,13 @@ impl<'a> UnitFacts<'a> {
     pub fn maintenance(&self) -> LateFacts<'a> {
         self.phases
             .map_or_else(|| self.early(), |phases| phases.maintenance)
+    }
+
+    /// The ledger's own silver for this unit, at every phase. `None` where there is no ledger, and
+    /// then the two caps below keep the running total they always read.
+    #[must_use]
+    pub fn phase_silver(&self) -> Option<PhaseSilver> {
+        self.phases.and_then(|phases| phases.silver)
     }
 
     /// The early picture, for a caller that has no ledger to read a late one from.
@@ -6823,6 +6880,9 @@ mod tests {
                 study: picture(3),
                 production: picture(5),
                 maintenance: picture(7),
+                // No ledger behind this literal, so the caps keep the running total they always
+                // read (`ah-6m7b.1`).
+                silver: None,
             }),
             ..facts(9, &intents, &receipts)
         };

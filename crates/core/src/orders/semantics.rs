@@ -44,7 +44,7 @@ use crate::orders::silver::{
     readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
     transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
-    MarketFunds, MarketSide, PhaseFacts, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
+    MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
     PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SharedMarket,
     SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
     UpkeepSettlement, Workforce,
@@ -3715,6 +3715,21 @@ impl PhaseState {
         }
     }
 
+    /// One unit's silver at every phase, for the SILVER column to read instead of re-deriving a
+    /// balance of its own (`ah-6m7b`).
+    ///
+    /// Zero at every phase for a unit the report shows holding no silver, exactly as
+    /// [`PhaseState::balance_at`] answers. `balances` is keyed on an upper-cased tag, and `SILVER`
+    /// is already upper case.
+    fn phase_silver(&self, unit_id: &str) -> PhaseSilver {
+        PhaseSilver::from_balances(
+            self.balances
+                .get(&(unit_id.to_owned(), SILVER.to_owned()))
+                .copied()
+                .unwrap_or([0; StatePhase::COUNT]),
+        )
+    }
+
     fn balance_at(&self, phase: StatePhase, unit_id: &str, tag: &str) -> i64 {
         self.balances
             .get(&(unit_id.to_owned(), tag.to_ascii_uppercase()))
@@ -3819,6 +3834,11 @@ impl PhaseState {
             study: LateHoldings::assemble(study, &men),
             production: LateHoldings::assemble(production, &men),
             maintenance: LateHoldings::assemble(maintenance, &men),
+            silver: hex
+                .units
+                .iter()
+                .map(|ordered| self.phase_silver(&ordered.unit.unit_id))
+                .collect(),
         }
     }
 
@@ -3845,6 +3865,9 @@ struct PhaseHoldings {
     production: LateHoldings,
     /// What maintenance, WORK and ENTERTAIN see.
     maintenance: LateHoldings,
+    /// Each unit's silver at every phase, in `hex.units` order - the one projection that is not a
+    /// picture of items, and the only one the SILVER column's caps read (`ah-6m7b`).
+    silver: Vec<PhaseSilver>,
 }
 
 impl PhaseHoldings {
@@ -3854,6 +3877,7 @@ impl PhaseHoldings {
             study: self.study.of(index),
             production: self.production.of(index),
             maintenance: self.maintenance.of(index),
+            silver: Some(self.silver[index]),
         }
     }
 
@@ -3872,6 +3896,7 @@ impl PhaseHoldings {
                 .production
                 .of_with(index, before_manufacturing, shared_materials),
             maintenance: self.maintenance.of(index),
+            silver: Some(self.silver[index]),
         }
     }
 }
@@ -12153,6 +12178,31 @@ mod tests {
         assert_eq!(state.balance_at(StatePhase::Movement, "1", "IRON"), 13);
         assert_eq!(state.balance_at(StatePhase::Manufacturing, "1", "IRON"), 9);
         assert_eq!(state.balance_at(StatePhase::Maintenance, "1", "IRON"), 9);
+    }
+
+    /// `ah-6m7b.1`: the seam that carries the ledger's own silver into the SILVER column. The
+    /// slots a `CAST` and a manufacturing `PRODUCE` open are different slots, a later charge is
+    /// invisible to an earlier one, and a unit with no `SILV` row reads zero rather than negative.
+    #[test]
+    fn phase_silver_reads_the_balance_the_tax_and_study_phases_leave() {
+        let mut state = PhaseState {
+            balances: [(("900".to_owned(), SILVER.to_owned()), [100; StatePhase::COUNT])]
+                .into_iter()
+                .collect(),
+            uncertain: BTreeMap::new(),
+        };
+        state.apply(StatePhase::Tax, "900", "SILV", 300);
+        state.apply(StatePhase::Manufacturing, "900", "SILV", -250);
+        assert_eq!(state.phase_silver("900").as_the_cast_opens(), 400);
+        assert_eq!(state.phase_silver("900").as_manufacturing_opens(), 400);
+
+        state.apply(StatePhase::Study, "900", "SILV", -100);
+        assert_eq!(state.phase_silver("900").as_the_cast_opens(), 400);
+        assert_eq!(state.phase_silver("900").as_manufacturing_opens(), 300);
+
+        state.apply(StatePhase::Give, "901", "SILV", -50);
+        assert_eq!(state.phase_silver("901").as_the_cast_opens(), 0);
+        assert_eq!(state.phase_silver("901").as_manufacturing_opens(), 0);
     }
 
     #[test]
