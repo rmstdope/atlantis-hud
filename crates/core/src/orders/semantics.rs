@@ -12183,6 +12183,34 @@ mod tests {
         assert_eq!(state.phase_silver("901").as_manufacturing_opens(), 0);
     }
 
+    /// `ah-6m7b.2`: the slot the market opens on is the one the Cast phase leaves, and the
+    /// market's own charge is invisible to it - which is the whole reason it is not the slot named
+    /// `Market`.
+    #[test]
+    fn the_market_opens_on_the_balance_the_cast_phase_leaves() {
+        let mut state = PhaseState {
+            balances: [(
+                ("900".to_owned(), SILVER.to_owned()),
+                [100; StatePhase::COUNT],
+            )]
+            .into_iter()
+            .collect(),
+            uncertain: BTreeMap::new(),
+        };
+        state.apply(StatePhase::Tax, "900", "SILV", 300);
+        assert_eq!(state.phase_silver("900").as_the_market_opens(), 400);
+
+        state.apply(StatePhase::Cast, "900", "SILV", -150);
+        assert_eq!(state.phase_silver("900").as_the_market_opens(), 250);
+        assert_eq!(state.phase_silver("900").as_manufacturing_opens(), 250);
+
+        state.apply(StatePhase::Market, "900", "SILV", -200);
+        assert_eq!(state.phase_silver("900").as_the_market_opens(), 250);
+
+        state.apply(StatePhase::Give, "901", "SILV", -50);
+        assert_eq!(state.phase_silver("901").as_the_market_opens(), 0);
+    }
+
     #[test]
     fn phase_state_keeps_an_uncertain_gift_unknown_at_every_later_phase() {
         let mut state = PhaseState {

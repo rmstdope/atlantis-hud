@@ -915,12 +915,12 @@ fn a_hedged_pillager_is_doubted_by_the_column_too() {
 // without anything going red. These cases close that gap (`ah-6m7b.2`).
 
 /// One hex, one market, and whatever own units the caller names.
-fn buy_all_report(region: &str, units: &[&str]) -> String {
+fn market_report(region: &str, for_sale: &str, units: &[&str]) -> String {
     let mut lines = vec![
         "Foo (1) Report".to_string(),
         String::new(),
         region.to_string(),
-        "  For Sale: 20 grain [GRAI] at $20.".to_string(),
+        format!("  For Sale: {for_sale}"),
         String::new(),
         "Exits:".to_string(),
         "  Southeast : plain (2,2) in Nowhere.".to_string(),
@@ -990,8 +990,9 @@ fn both_surfaces(text: &str, script: &str, unit_id: &str, tag: &str) -> (i64, i6
 /// already propagated, and bought four (`ah-6m7b.2`).
 #[test]
 fn a_buy_all_is_not_shrunk_by_the_study_that_follows_it() {
-    let text = buy_all_report(
+    let text = market_report(
         "plain (1,1) in Nowhere, 1000 peasants (orcs), $500.",
+        "20 grain [GRAI] at $20.",
         &["* Students (900), Foo (1), orc [ORC], 105 silver [SILV]. Weight: 10. Capacity: 0/0/15/0."],
     );
     let (column_bought, items_bought, warned) =
@@ -1007,4 +1008,57 @@ fn a_buy_all_is_not_shrunk_by_the_study_that_follows_it() {
         warned,
         "the study is 5 short, and the shortfall warning says so"
     );
+}
+
+/// `ah-omn7` Q2, re-expressed against a real ledger (`ah-6m7b.2`): a bounded `BUY`'s quantity is
+/// capped against the *hopeful* purse - a contended tax assumed to arrive in full - while the
+/// money columns keep the settled figure.
+///
+/// This lived in `silver.rs`'s own `mod tests` as
+/// `a_taxed_bounded_buy_is_funded_by_the_uncontended_tax`, built on a `phases: None` `UnitFacts`
+/// and funded by a `hopeful_tax` compensation term. The term is gone: a ledger-backed column reads
+/// `PhaseSilver::as_the_market_opens`, into which `credit_tax` has already put the uncontended
+/// figure (`PoolShare::Uncontended`, `semantics.rs`). So the property is unchanged and is now
+/// pinned where production actually runs, across both surfaces.
+///
+/// `rules/economy_taxingpillaging` gives each taxing man $50, so each of these two units asks $500
+/// of a $300 region. The column settles 900's share at $150; the ledger credits it the full $300.
+/// Four swords at $40 cost $160 - more than the settled share and less than the uncontended one.
+#[test]
+fn a_taxed_bounded_buy_is_funded_by_the_uncontended_tax() {
+    let text = market_report(
+        "plain (1,1) in Nowhere, 1000 peasants (orcs), $300.",
+        "100 swords [SWOR] at $40.",
+        &[
+            "* Buyers (900), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: combat [COMB] 1 (30).",
+            "* Taxers (901), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: combat [COMB] 1 (30).",
+        ],
+    );
+    let ruleset = ruleset();
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset);
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let orders = format!("{template}\nunit 900\nTAX\nBUY 4 sword\nunit 901\nTAX\n");
+    let review = review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default());
+    let row = review
+        .silver
+        .iter()
+        .find(|row| row.unit_id == "900")
+        .expect("the column has a row for the buyer");
+
+    assert_eq!(
+        row.income,
+        Some(150),
+        "the column settles the contended tax at this unit's share"
+    );
+    assert_eq!(
+        row.expense,
+        Some(160),
+        "but all four swords are bought: the uncontended reading pays for them"
+    );
+    assert_eq!(row.wanted_for_orders, Some(160));
 }

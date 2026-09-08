@@ -1085,6 +1085,22 @@ impl PhaseSilver {
         self.after[phases::StatePhase::Tax as usize].max(0)
     }
 
+    /// What a market line may spend, clamped at zero.
+    ///
+    /// `rules/sequenceofevents` settles the instant orders, *Give orders*, *Tax orders* and
+    /// *"Spells are CAST"* before *"Market orders"*, so this is the balance the Cast phase leaves.
+    /// The slot named `Market` is **not** it: once the ledger is complete that slot already
+    /// carries every one of this unit's own market charges, and `semantics::buy` reads it only
+    /// because it reads it line by line as it charges. The caller draws its own earlier lines off
+    /// instead.
+    ///
+    /// A unit already overdrawn as the market opens reads `0` here and buys nothing, which is what
+    /// `price_purchase` answers for the ledger's negative figure too.
+    #[must_use]
+    pub fn as_the_market_opens(&self) -> i64 {
+        self.after[phases::StatePhase::Cast as usize].max(0)
+    }
+
     /// What a manufacturing `PRODUCE` may spend, clamped at zero: the market, WITHDRAW, movement
     /// and STUDY have all run and no PRODUCE has been charged. The silver twin of the picture
     /// [`PhaseFacts::production`] already carries in items, and the same slot
@@ -1641,25 +1657,12 @@ pub fn forecast_unit(
     //
     // Placing it before the loop makes a tax doubt win over a later order's, whichever line the
     // player typed first. Deliberate, and tested.
-    // How much more a contended tax would earn if it arrived in full. The bounded `BUY` cap reads
-    // the *hopeful* purse, as the ledger does, while the money columns keep the settled figure
-    // (`ah-omn7`, Q2). `0` for a unit that does not tax, and for one nobody contends with.
-    let mut hopeful_tax = 0i64;
     if taxes(unit_flags, intents) {
         let men = taxing_men(&facts, ruleset);
         // The settlement is what the column shows: this unit's actual take once its faction-mates
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].
         let priced = price_tax(men, region.tax_base, region.pillaged, shares.tax);
-        hopeful_tax = price_tax(
-            men,
-            region.tax_base,
-            region.pillaged,
-            PoolShare::Uncontended,
-        )
-        .earns
-        .saturating_sub(priced.earns)
-        .max(0);
         income = income.saturating_add(priced.earns);
         income_doubt = income_doubt.or(priced.doubt);
         // `None` is the taxing flag doing it, which `taxes_by_flag` already reports.
@@ -2392,8 +2395,18 @@ pub fn forecast_unit(
             SharedMarket::Adds(adds) => adds,
             SharedMarket::Unmeasured => 0,
         };
-        let mut funds = running.saturating_add(hopeful_tax);
+        // What the market opens on. The ledger's own figure wherever there is a ledger, so the two
+        // surfaces cannot answer one `BUY` differently (`ah-6m7b.2`); the running total this walk
+        // has always kept where there is none, which is every caller with `phases: None`.
+        let opening = match facts.phase_silver() {
+            Some(silver) => silver.as_the_market_opens(),
+            None => running,
+        };
+        // This unit's own earlier market lines, drawn off as `semantics::buy` draws them out of
+        // the `StatePhase::Market` slot line by line.
+        let mut market_spent = 0i64;
         for buy in &exact_buys {
+            let funds = opening.saturating_sub(market_spent).max(0);
             let line = price_purchase(
                 buy.count,
                 buy.price,
@@ -2412,7 +2425,7 @@ pub fn forecast_unit(
                 None,
             );
             market_expense = market_expense.saturating_add(line.spends);
-            funds = funds.saturating_sub(line.spends);
+            market_spent = market_spent.saturating_add(line.spends);
             running = running.saturating_sub(line.spends);
         }
 
@@ -9496,45 +9509,6 @@ mod tests {
         assert_eq!(unit.at_month_end, Some(1));
         assert_eq!(unit.short_for_orders, Some(35));
         assert_eq!(unit.short_on, Some(SilverSpender::Buy));
-    }
-
-    /// The quantity is capped against the *hopeful* purse - a contended tax assumed to arrive in
-    /// full - while the money columns keep the settled figure (`ah-omn7`, Q2).
-    #[test]
-    fn a_taxed_bounded_buy_is_funded_by_the_uncontended_tax() {
-        let intents = vec![
-            placed(Intent::Tax),
-            placed(Intent::Buy {
-                amount: Amount::Exact(4),
-                item: "sword".to_string(),
-            }),
-        ];
-        let receipts = Receipts::default();
-        let purchase = sells(100, 40);
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 100,
-                ..facts(10, &intents, &receipts)
-            },
-            taxable(Some(500)),
-            PoolShares {
-                tax: PoolShare::Share(250),
-                ..PoolShares::default()
-            },
-            FactionPurse::default(),
-            0,
-            Lookups {
-                purchase: &purchase,
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            None,
-        );
-        // the column settles the tax at its share
-        assert_eq!(unit.income, Some(250));
-        // but all four swords are bought: the uncontended reading pays for them
-        assert_eq!(unit.expense, Some(400));
-        assert_eq!(unit.wanted_for_orders, Some(400));
     }
 
     #[test]
