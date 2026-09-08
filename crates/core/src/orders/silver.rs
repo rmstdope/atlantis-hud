@@ -1051,11 +1051,6 @@ pub struct LateFacts<'a> {
     pub shared_materials: &'a [(usize, Vec<ItemAmount>)],
 }
 
-/// One unit as each of the phases after the market sees it.
-///
-/// `rules/sequenceofevents` runs STUDY, then manufacturing PRODUCE, then BUILD, then primary
-/// PRODUCE, ENTERTAIN and WORK, and assesses maintenance last, so a term must say which picture it
-/// takes rather than sharing one "late" view with terms phases away from it (`ah-728m.2.3`).
 /// One unit's silver as the ledger holds it at each phase of `rules/sequenceofevents`.
 ///
 /// The seam that carries [`super::semantics`]'s per-phase balances into this module, exactly as
@@ -1100,6 +1095,11 @@ impl PhaseSilver {
     }
 }
 
+/// One unit as each of the phases after the market sees it.
+///
+/// `rules/sequenceofevents` runs STUDY, then manufacturing PRODUCE, then BUILD, then primary
+/// PRODUCE, ENTERTAIN and WORK, and assesses maintenance last, so a term must say which picture it
+/// takes rather than sharing one "late" view with terms phases away from it (`ah-728m.2.3`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PhaseFacts<'a> {
     /// What STUDY sees: the market has run, no study fee has been taken.
