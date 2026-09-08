@@ -261,7 +261,15 @@ pub struct GameBackupArmy {
 /// The unit is kept whole rather than flattened: the study planner reads an allied mage through
 /// `standing_of`'s TypeScript counterpart, which takes a `ReportUnit`, so a narrower row would
 /// need a conversion back and a second definition of what a mage is.
+///
+/// There is no `game_id`: every call that reads or writes these rows is scoped to one game and
+/// takes it as a parameter.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "AlliedMageRecord", export_to = "AlliedMageRecord.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct AlliedMage {
     /// The sending faction, from the sheet's own header - never from a unit line.
@@ -278,6 +286,11 @@ pub struct AlliedMage {
 
 /// One stored mage's identity: which ally, and which unit of his.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "AlliedMageKey", export_to = "AlliedMageKey.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct AlliedMageKey {
     pub faction_id: String,
@@ -294,6 +307,11 @@ pub struct AlliedMageKey {
 /// The per-variant `rename_all` rather than the container-level `rename_all_fields`: the latter
 /// needs serde 1.0.181 or newer, and this crate has never declared a serde floor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "StudyGoal", export_to = "StudyGoal.ts")
+)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum StudyGoal {
     #[serde(rename_all = "camelCase")]
@@ -319,6 +337,8 @@ pub enum StudyGoal {
         /// fact about the plan - it is recomputed from it.
         students: Vec<String>,
         /// True while the cell means "teach whoever is eligible this turn"; `students` is then empty.
+        /// Set to false the moment the player ticks or unticks anyone, from which point `students`
+        /// is the whole answer.
         /// `#[serde(default)]` for every row written before ah-af7i, which is a fixed list.
         #[serde(default)]
         live: bool,
@@ -330,6 +350,11 @@ pub enum StudyGoal {
 /// There is no `game_id`: every call that reads or writes these rows is scoped to one game and
 /// takes it as a parameter, exactly as `AlliedMage` is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "StudyPlanRecord", export_to = "StudyPlanRecord.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct StudyPlan {
     /// Whose mage this is - the player's own faction, or an ally's, as `AlliedMage::faction_id`.
@@ -347,6 +372,11 @@ pub struct StudyPlan {
 
 /// One stored plan's identity: whose mage, and which unit of his.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "StudyPlanKey", export_to = "StudyPlanKey.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct StudyPlanKey {
     pub faction_id: String,

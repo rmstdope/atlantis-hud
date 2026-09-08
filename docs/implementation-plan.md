@@ -23,7 +23,10 @@
 
 The report model and the parse family - `ParsedReport`, `ReportParseResultWire` (as
 `ReportParseResult`), `EngineInfo`, `OrderValidationResult`, and everything reachable from them - are
-generated as TypeScript from the Rust types in `crates/core`, rather than mirrored by hand.
+generated as TypeScript from the Rust types in `crates/core`, rather than mirrored by hand. So are
+the persisted study-plan and allied-mage records in `crates/core/src/backup.rs`. Two of those cross
+under a different name - `AlliedMage` and `StudyPlan` reach TypeScript as `AlliedMageRecord` and
+`StudyPlanRecord`, which is what the `ts(rename = ..., export_to = ...)` pair on them is for.
 
 They are generated with `#[cfg_attr(test, derive(ts_rs::TS), ts(export))]` on the Rust type, a
 dev-only dependency so nothing about it reaches the wasm or desktop build, and a `[env]` table in

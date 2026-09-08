@@ -273,41 +273,46 @@ function requireAdmissible(prepared: PreparedImport): number {
  * study plans were never in a release before goals were - so this is a courtesy, not a contract,
  * and it can be deleted once no such browser is left.
  */
+/** A goal as a stored row may actually carry it: any of the three legacy shapes below. */
+type StoredGoal = {
+  kind?: string;
+  turn?: number;
+  skill?: string;
+  students?: string[];
+  live?: boolean;
+  /** The pre-ah-lyg6.2.3 flat column. Dropped, never carried through. */
+  targetLevel?: number;
+};
+
 function withGoals(
   plan: StudyPlanRecord & { skill?: string | null; targetLevel?: number | null }
 ): StudyPlanRecord {
+  // ah-5r9j.1: a spread minus the two legacy columns rather than a field-by-field rebuild, so a
+  // field added to StudyPlan or StudyGoal on the Rust side reaches the caller instead of being
+  // silently dropped - which is the general form of the bug ah-af7i fixed one field at a time.
+  const { skill: legacySkill, targetLevel: _legacyTargetLevel, ...carried } = plan;
   // `turn: 0` for anything written before ah-lyg6.2.3's redesign, exactly as the desktop reader
   // answers: a queue of goals names no turn and cannot be converted without the report it was
   // projected against, so `plannedGoals` drops it and the next save rewrites the row.
-  const goals =
-    plan.goals ?? (plan.skill ? [{ kind: "study" as const, turn: 0, skill: plan.skill }] : []);
-  // Built field by field rather than spread-minus-the-legacy-ones, so a flat `skill` or
-  // `targetLevel` column cannot reach a caller however many of them a stored row turns out to
-  // carry. A goal written before ah-lyg6.3 carries no discriminant, and is stamped here for the
-  // same reason and deletable on the same day: study plans were never in a release.
+  const stored: StoredGoal[] =
+    plan.goals ?? (legacySkill ? [{ kind: "study", turn: 0, skill: legacySkill }] : []);
   return {
-    factionId: plan.factionId,
-    unitId: plan.unitId,
-    comment: plan.comment,
-    updatedAt: plan.updatedAt,
-    goals: goals.map((goal) => {
-      const one = goal as {
-        kind?: string;
-        turn?: number;
-        skill?: string;
-        students?: string[];
-        live?: boolean;
-      };
-      return one.kind === "teach"
+    ...carried,
+    goals: stored.map((goal) => {
+      const { targetLevel: _legacyGoalTargetLevel, ...rest } = goal;
+      // A goal written before ah-lyg6.3 carries no discriminant, and is stamped here for the same
+      // reason and deletable on the same day: study plans were never in a release.
+      return rest.kind === "teach"
         ? {
+            ...rest,
             kind: "teach" as const,
-            turn: one.turn ?? 0,
-            students: one.students ?? [],
+            turn: rest.turn ?? 0,
+            students: rest.students ?? [],
             // ah-af7i: a goal rebuilt without this reads as a frozen empty list, and the mage
             // teaches nobody. Absent is false: every row stored before that bead is a fixed list.
-            live: one.live === true
+            live: rest.live === true
           }
-        : { kind: "study" as const, turn: one.turn ?? 0, skill: one.skill ?? "" };
+        : { ...rest, kind: "study" as const, turn: rest.turn ?? 0, skill: rest.skill ?? "" };
     })
   };
 }

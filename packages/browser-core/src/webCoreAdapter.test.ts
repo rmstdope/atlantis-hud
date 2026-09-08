@@ -1077,10 +1077,12 @@ describe("web core adapter", () => {
       ...aStudyPlan("9001"),
       goals: [{ kind: "teach", turn: 25, students: [], live: true }]
     };
-    const named: StudyPlanRecord = {
+    // The cast is the point of this row: it omits `live` because it models a plan stored before
+    // that field existed. Do not "tidy" it by adding `live: false` - that deletes its premise.
+    const named = {
       ...aStudyPlan("9002"),
       goals: [{ kind: "teach", turn: 25, students: ["2517"] }]
-    };
+    } as unknown as StudyPlanRecord;
 
     await adapter.saveStudyPlans(DB, "p", [live, named], []);
 
@@ -1093,6 +1095,35 @@ describe("web core adapter", () => {
     expect(goalOf("9001")).toMatchObject({ students: [], live: true });
     expect(goalOf("9002").students).toEqual(["2517"]);
     expect(goalOf("9002").live).not.toBe(true);
+  });
+
+  // ah-5r9j.1: withGoals now spreads rather than naming every field, so a field added to
+  // StudyGoal or StudyPlan on the Rust side is no longer dropped on the web read path. This is
+  // the general form of the bug ah-af7i fixed one field at a time.
+  it("lists back a goal field it does not name", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const stored = {
+      ...aStudyPlan("9001"),
+      goals: [{ kind: "teach", turn: 25, students: [], live: true, fieldAddedLater: "kept" }]
+    } as unknown as StudyPlanRecord;
+
+    await adapter.saveStudyPlans(DB, "p", [stored], []);
+
+    const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
+    expect(listed[0].goals[0]).toMatchObject({ fieldAddedLater: "kept" });
+  });
+
+  it("lists back a plan field it does not name", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const stored = {
+      ...aStudyPlan("9001"),
+      fieldAddedLater: "kept"
+    } as unknown as StudyPlanRecord;
+
+    await adapter.saveStudyPlans(DB, "p", [stored], []);
+
+    const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
+    expect(listed[0]).toMatchObject({ fieldAddedLater: "kept" });
   });
 
   it("removes the study plans named in the same call that stores the rest", async () => {
