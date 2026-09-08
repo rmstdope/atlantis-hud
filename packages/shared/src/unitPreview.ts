@@ -26,6 +26,7 @@ import {
   productionMenSentence
 } from "./unitTooltip";
 import { unitRowKey } from "./unitTable";
+import { previewPairs, type PreviewPair } from "./unitPreviewRows";
 
 /**
  * How the orders preview folds into the units table.
@@ -141,6 +142,9 @@ export function dissolves(unit: PreviewedUnit): boolean {
  * A previewed unit replaces its report row in place, so the table keeps its arrangement; units
  * the report has no row for - arriving from another hex, or formed this month - are appended.
  * Untouched units come through as the very same objects, so memoization over them survives.
+ *
+ * There is no departing/arriving choice to make here, unlike `mergePreviewAcross`: the core files a
+ * mover's arrival under the destination hex, so within one region a unit has at most one row.
  */
 export function mergePreview(
   units: ReportUnit[],
@@ -167,13 +171,9 @@ export function mergePreviewAcross(
   units: ReportUnit[],
   preview: OrdersPreviewResponse | null | undefined
 ): PreviewedUnit[] {
-  const all = (preview?.regions ?? []).flatMap((region) => region.units);
-  const arrivals = all.filter((one) => one.status === "arriving");
   return foldIn(
     units,
-    all
-      .filter((one) => one.status !== "arriving")
-      .map((one) => standingWhereItArrives(one, arrivals))
+    [...previewPairs(preview).values()].map((pair) => foldArrivalStructure(pair))
   );
 }
 
@@ -193,24 +193,19 @@ type FoldedPreview = UnitPreview & { structureRegionId?: string };
  * and every other column.
  *
  * The pair is matched on both hexes as well as the unit id, never on the id alone: a formed unit's
- * alias (`new-1`) is reused hex by hex, so two of them can share an id in one response.
+ * alias (`new-1`) is reused hex by hex, so two of them can share an id in one response. That
+ * matching is `previewPairs`' job (`unitPreviewRows.ts`), not this function's - which is the whole
+ * point of `ah-sdjy`: the departing/arriving choice is made in one place and named in the type, so
+ * a caller here cannot reason about one of the two sources while meaning the other.
  */
-function standingWhereItArrives(
-  departing: UnitPreview,
-  arrivals: readonly UnitPreview[]
-): FoldedPreview {
-  if (departing.departingTo === null || departing.departingTo === undefined) {
+function foldArrivalStructure(pair: PreviewPair): FoldedPreview {
+  const departing = pair.setOut.row;
+  if (pair.ends === null) {
+    // Either the trace could not name a destination, or the response holds no arrival to pair with
+    // this departure. Neither has anything to fold.
     return departing;
   }
-  const arrival = arrivals.find(
-    (one) =>
-      one.unit.unitId === departing.unit.unitId &&
-      one.unit.regionId === departing.departingTo &&
-      one.arrivingFrom === departing.unit.regionId
-  );
-  if (!arrival) {
-    return departing;
-  }
+  const arrival = pair.ends.row;
   const changes = [
     ...departing.changes.filter((change) => change.field !== "structureId"),
     ...arrival.changes.filter((change) => change.field === "structureId")
@@ -236,7 +231,9 @@ function standingWhereItArrives(
     ...departing,
     unit: { ...departing.unit, structureId: arrival.unit.structureId },
     changes,
-    structureRegionId: departing.departingTo
+    // The destination, taken from the hex the arrival was filed under rather than from
+    // `departingTo`: they are the same hex, and this is the one the kept structure is numbered in.
+    structureRegionId: pair.ends.regionId
   };
 }
 
