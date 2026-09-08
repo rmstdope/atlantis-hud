@@ -407,16 +407,23 @@ fn food_uncertain_after_gifts(ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) 
 fn formed_units(report: &ParsedReport, source: &str) -> Vec<Formed> {
     let unit_regions = where_the_report_shows_each_unit(report);
     let unit_by_id = units_by_id(report);
-    let mut minted: BTreeMap<String, ReportUnit> = BTreeMap::new();
+    // Report-wide, so keyed on [`UnitKey`]: `rules/form` scopes an alias to its region, so two
+    // hexes may each mint a `new-1`. The correctness of the lookup below does not rest on that
+    // alone - a nested block's parent is the block pushed immediately before it, so document order
+    // already puts the right unit in reach - but a map spanning hexes keyed on a bare number is
+    // one edit away from being wrong, which is what this bead is about.
+    let mut minted: BTreeMap<UnitKey, ReportUnit> = BTreeMap::new();
     read_formed(source, &unit_regions)
         .into_iter()
         .filter_map(|block| {
+            // The first lookup stays on a bare number: it resolves a unit the report physically
+            // prints, whose number the game assigns once.
             let parent = unit_by_id
                 .get(block.formed_by.as_str())
                 .copied()
-                .or_else(|| minted.get(block.formed_by.as_str()))?;
+                .or_else(|| minted.get(&unit_key(&block.region_id, &block.formed_by)))?;
             let unit = effects::formed_unit(parent, &block.alias, &parent.flags);
-            minted.insert(unit.unit_id.clone(), unit.clone());
+            minted.insert(unit_key(&unit.region_id, &unit.unit_id), unit.clone());
             Some(Formed { unit, block })
         })
         .collect()
@@ -21996,6 +22003,36 @@ BUILD
                 tag: "SWOR".to_string(),
                 short: 30,
             }]
+        );
+    }
+
+    /// `rules/form` scopes a `FORM` alias to its region, so each hex holds its own `new-1` and
+    /// `new-2`. A nested block's parent must be its *own* hex's `new-1`.
+    #[test]
+    fn a_nested_form_takes_its_parent_from_its_own_hex() {
+        let orders = "unit 5\nFORM 1\nFORM 2\nEND\nEND\nunit 6\nFORM 1\nFORM 2\nEND\nEND\n";
+        let parsed = report(vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,54", 8, 54, vec![unit("6")]),
+        ]);
+        let formed = formed_units(&parsed, orders);
+
+        let minted: Vec<_> = formed
+            .iter()
+            .map(|one| (one.unit.unit_id.as_str(), one.unit.region_id.as_str()))
+            .collect();
+        let nested: Vec<_> = formed
+            .iter()
+            .filter(|one| one.unit.unit_id == "new-2")
+            .collect();
+        assert_eq!(nested.len(), 2, "one nested unit per hex: {minted:?}");
+        assert_eq!(
+            nested
+                .iter()
+                .map(|one| one.unit.region_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["1:7,53", "1:8,54"],
+            "a nested FORM's parent is its own hex's new-1, not the other hex's: {minted:?}"
         );
     }
 
