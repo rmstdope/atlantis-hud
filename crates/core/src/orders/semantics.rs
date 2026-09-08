@@ -10855,8 +10855,10 @@ fn check_take_from_another_faction(
             let Intent::Take { from, .. } = &placed.intent else {
                 continue;
             };
-            // The id is needed for the message; the reach rules answer `Foreign` only for a
-            // `Party::Unit`, so every other party is settled by the comparison below.
+            // The destructure is what excludes `Party::Foreign`, which reaches `Foreign` too
+            // (`targets.rs`) and would otherwise be warned about as another faction's unit - a
+            // `FACTION n NEW m` target is exactly the unit the game creates here, and no mistake.
+            // The id is needed for the message anyway.
             let Party::Unit(id) = from else {
                 continue;
             };
