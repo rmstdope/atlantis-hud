@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   describeAtlaClientAges,
+  mapExportPromptParagraphs,
   describeMapExportAdded,
   mapExportPromptCopy
 } from "./mapExportPrompt";
@@ -189,5 +190,21 @@ describe("mapExportPromptCopy, given a map exported by AtlaClient", () => {
     const copy = mapExportPromptCopy(pending({ ...fromAtlaClient, newHexes: 0 }));
     expect(copy).toHaveLength(3);
     expect(copy[2]).toBe("There is nothing in it to add. Adding it anyway changes nothing.");
+  });
+});
+
+describe("how the prompt's paragraphs are set", () => {
+  it("dims nothing for one of our own exports", () => {
+    expect(mapExportPromptParagraphs(pending()).map((p) => p.dim)).toEqual([false, false]);
+  });
+
+  // Settled with the navigator at Q1: the age line is context for the decision rather than part
+  // of it, and the committed mockup sets it dimmer than the two either side.
+  it("dims the age line, and only the age line, for an AtlaClient map", () => {
+    const paragraphs = mapExportPromptParagraphs(
+      pending({ atlaClient: ages(), incomingTurn: 16, totalHexes: 83, newHexes: 61 })
+    );
+
+    expect(paragraphs.map((p) => p.dim)).toEqual([false, true, false]);
   });
 });

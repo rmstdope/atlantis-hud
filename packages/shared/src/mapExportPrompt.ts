@@ -22,6 +22,21 @@ import type { PendingMapExport } from "./reportLoad";
  * before pressing Add rather than something to discover afterwards from the map's shading.
  */
 export function mapExportPromptCopy(pending: PendingMapExport): string[] {
+  return mapExportPromptParagraphs(pending).map((paragraph) => paragraph.text);
+}
+
+/** One paragraph of the prompt, and whether it is set dimmer than the others. */
+export type MapExportParagraph = { text: string; dim: boolean };
+
+/**
+ * The same paragraphs, each saying how it is set.
+ *
+ * The age line is dimmer than the two either side of it: it is context for the decision rather
+ * than part of it, and the navigator settled that at Q1 alongside the words themselves. The
+ * component reads this; {@link mapExportPromptCopy} is the words alone, which is what the tests
+ * and any other reader want.
+ */
+export function mapExportPromptParagraphs(pending: PendingMapExport): MapExportParagraph[] {
   const { fileName, incomingFactionLabel, incomingTurn, newHexes, atlaClient, viewer } = pending;
 
   const from = pending.ownFaction
@@ -34,12 +49,18 @@ export function mapExportPromptCopy(pending: PendingMapExport): string[] {
       : `${fileName} is a map exported from AtlaClient on turn ${incomingTurn}. ${holds(pending)}`;
 
   return [
-    opening,
-    ...(atlaClient === null ? [] : [describeAtlaClientAges(atlaClient)]),
-    newHexes > 0
-      ? "Add to map takes every hex your own map does not already know more recently. " +
-        `You stay on ${viewer.factionLabel}, turn ${viewer.turnNumber}, and nothing you have is replaced.`
-      : "There is nothing in it to add. Adding it anyway changes nothing."
+    { text: opening, dim: false },
+    ...(atlaClient === null
+      ? []
+      : [{ text: describeAtlaClientAges(atlaClient), dim: true }]),
+    {
+      text:
+        newHexes > 0
+          ? "Add to map takes every hex your own map does not already know more recently. " +
+            `You stay on ${viewer.factionLabel}, turn ${viewer.turnNumber}, and nothing you have is replaced.`
+          : "There is nothing in it to add. Adding it anyway changes nothing.",
+      dim: false
+    }
   ];
 }
 

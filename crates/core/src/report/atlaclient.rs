@@ -157,6 +157,34 @@ mod tests {
         let text = fixture().replace('\n', "\r\n");
         assert!(is_atlaclient_map(&text));
         assert_eq!(atlaclient_file_turn(&text), Some(16));
+        // The one that actually decides a Windows export's merge: it reaches the stamps through
+        // `unwrap_lines` rather than through `read_stamp`'s own trim, so it is a separate path.
+        assert_eq!(atlaclient_ages(&text), atlaclient_ages(fixture()));
+    }
+
+    /// A region the player annotated in AtlaClient is written as `(their note) forest (30,18) ...`
+    /// (`ARegion::FullName`), and `opens_a_region` requires the first word to be all lowercase, so
+    /// such a header is not a header and its hex is dropped. Its stamp is still a stamp, though -
+    /// which is why the ages are keyed by region id, and why the count of stamps in the file and
+    /// the count of hexes that merge can legitimately differ. Pinned rather than fixed: widening
+    /// `opens_a_region` is out of this bead's scope.
+    #[test]
+    fn a_hex_the_player_annotated_is_dropped_while_its_stamp_is_still_a_stamp() {
+        let text = "(my note) forest (42,26) in Sonchizel.\n\
+                    ------------------------;16-11\n\
+                    plain (44,26) in Sonchizel.\n\
+                    ------------------------;16\n";
+
+        assert!(is_atlaclient_map(text));
+        assert_eq!(atlaclient_file_turn(text), Some(16));
+
+        let ages = atlaclient_ages(text);
+        assert_eq!(
+            ages.len(),
+            1,
+            "the annotated hex has no header to key it by"
+        );
+        assert_eq!(parse_report_full(text).regions.len(), 1);
     }
 
     #[test]

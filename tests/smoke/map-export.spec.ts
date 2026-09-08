@@ -324,6 +324,15 @@ test("imports a map exported by AtlaClient", async ({ page }) => {
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 
+  // Where the hexes came from, answerable after a reload. The browser adapter files an AtlaClient
+  // map under a reserved id rather than a faction number - this is the only place that identity is
+  // asserted on the web path - and the row names the source alone, with no `(atlaclient)` suffix.
+  await page.getByTestId("merged-factions-chip").click();
+  const mergedPanel = page.getByTestId("merged-factions");
+  await expect(mergedPanel).toContainText("AtlaClient, turn 16");
+  await expect(mergedPanel).not.toContainText("(atlaclient)");
+  await page.keyboard.press("Escape");
+
   // A second import of the same file adds nothing: every hex is already known, at least as new.
   await page.setInputFiles('input[type="file"]', [
     {
