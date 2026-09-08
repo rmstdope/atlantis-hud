@@ -927,6 +927,42 @@ export function stripMovementOrderLines(orders: string): string {
 }
 
 /**
+ * The document with a planned route written into one unit's block, replacing any movement order
+ * already there.
+ *
+ * The block is created when `banner` is non-null, because a planned route is never empty and a
+ * unit the planner can route may have no block yet. {@link ensureUnitBlock} refuses a `new-<n>` id
+ * of its own accord (`formedAlias`), so a formed unit is written into the `FORM` block it already
+ * has rather than given a literal `unit new-1` block the server would reject.
+ *
+ * MOVE, ADVANCE and SAIL all count as the movement order being replaced - see
+ * {@link stripMovementOrderLines}.
+ */
+export function writeRouteOrder(input: {
+  /** The orders document as it stands. */
+  document: string;
+  /** The unit being routed - a reported id, or a `new-<n>` alias of a unit this month's FORM creates. */
+  unitId: string;
+  /** The `;***` banner a new block for this unit goes under, or null when the map cannot say. */
+  banner: string | null;
+  /** The reported units of the hex on screen, which is what lets a `new-<n>` id resolve. */
+  regionUnitIds?: ReadonlySet<string>;
+  /** The route line to write, e.g. `MOVE N NE`. */
+  order: string;
+}): string {
+  const base =
+    input.banner === null
+      ? input.document
+      : ensureUnitBlock(input.document, input.unitId, input.banner);
+  const existing = readUnitOrders(base, input.unitId, input.regionUnitIds) ?? "";
+  const withoutMove = stripMovementOrderLines(existing);
+  // Truthy rather than `!== ""`: `stripMovementOrderLines` ends in `.trim()`, so a block that held
+  // only a movement order leaves `""`, and joining that would write the route under a blank line.
+  const next = withoutMove ? `${withoutMove}\n${input.order}` : input.order;
+  return writeUnitOrders(base, input.unitId, next, input.regionUnitIds);
+}
+
+/**
  * A unit's orders with every month-long order line removed, so a newly written one replaces
  * whichever was there rather than standing beside it: a unit spends its month on one of the eleven
  * (`rules/sequenceofevents`, and {@link LONG_ORDER_COMMANDS}).

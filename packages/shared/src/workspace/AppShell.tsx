@@ -33,17 +33,15 @@ import { type TextFileSaver } from "../downloadFile";
 import type { OrdersUploader } from "./ordersUpload";
 import {
   applyUnitOrders,
-  ensureUnitBlock,
   longOrderOf,
   readUnitOrders,
   regionBannerLine,
   repairFormedUnitBlocks,
   reportedLongOrderFor,
   reportedLongOrders,
-  stripMovementOrderLines,
-  writeUnitOrders
+  writeRouteOrder
 } from "../ordersDocument";
-import { isOrdersFile, routeOrdersImport } from "../ordersImport";
+import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { rulesetById } from "../rulesets";
 import { silverKey } from "../unitTable";
@@ -84,6 +82,7 @@ import {
 } from "../reportLoad";
 import { chooseViewerFaction } from "../reportBatch";
 import {
+  batchFinish,
   batchSummary,
   prepareBatch,
   viewerFactionOptions,
@@ -2156,35 +2155,27 @@ export function AppShell({
             (done, total) => setImportProgress({ done, total })
           );
 
-          if (walk.finish) {
-            // What ends up on screen: the batch's newest own turn, applied the way a single report
-            // is so that the orders, the selection and the map all land identically. Read back
-            // rather than committed again - the walk has already written this turn and the allies
-            // of it, and a second commit would rewrite the turn's sightings from this report alone,
-            // dropping every ally contribution to a hex the viewer also stood in. A landed import
-            // step is proof `viewerFactionId` was not null (`walkBatch`'s note on why).
+          const finish = batchFinish(walk, viewerFactionId);
+          if (finish.kind === "apply-turn") {
             const finishMemory = await readMemory(
               client,
               game,
-              viewerFactionId as string,
-              walk.finish.step.turnNumber,
-              walk.finish.source.text,
+              finish.factionId,
+              finish.step.turnNumber,
+              finish.source.text,
               rulesetText
             );
             await applyReport(
-              walk.finish.source.report,
-              walk.finish.source.text,
-              walk.finish.step.fileName,
+              finish.source.report,
+              finish.source.text,
+              finish.step.fileName,
               finishMemory
             );
-          } else if (viewerFactionId) {
-            // Nothing of the viewer's own landed, so the turn on screen has not changed - only the
-            // map under it, which the merges have grown. Nothing to read back at all when the batch
-            // never had a faction to act under - every file is already accounted for in the summary.
+          } else if (finish.kind === "grow-map") {
             const grownMemory = await readMemory(
               client,
               game,
-              viewerFactionId,
+              finish.factionId,
               parsed?.header.turnNumber ?? null,
               rawReport,
               rulesetText
@@ -2217,8 +2208,9 @@ export function AppShell({
    */
   const importReports = useCallback(
     async (files: File[]) => {
-      const only = files[0];
-      if (files.length === 1 && only) {
+      const route = routeFileImport(files);
+      if (route.kind === "single") {
+        const only = route.file;
         try {
           const text = await only.text();
           // Sniffed before any report parse: an orders file fed to `parseReportClassified` fails in
@@ -3572,15 +3564,13 @@ export function AppShell({
         return;
       }
       writeOrdersDocument("external", (document) => {
-        // A planned route is never empty, so the block is made unconditionally.
-        const base =
-          newBlockBanner === null
-            ? document
-            : ensureUnitBlock(document, unit.unitId, newBlockBanner);
-        const existing = readUnitOrders(base, unit.unitId, regionUnitIds) ?? "";
-        const withoutMove = stripMovementOrderLines(existing);
-        const next = withoutMove ? `${withoutMove}\n${order}` : order;
-        const written = writeUnitOrders(base, unit.unitId, next, regionUnitIds);
+        const written = writeRouteOrder({
+          document,
+          unitId: unit.unitId,
+          banner: newBlockBanner,
+          regionUnitIds,
+          order
+        });
         writer.markDirty(game, draftKey, written);
         return written;
       });

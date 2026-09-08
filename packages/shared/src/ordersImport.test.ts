@@ -1,7 +1,7 @@
 import type { OpenedGame, OrderDiagnostic, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
 import { aParsedReport, aReportHeaderInfo } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { describeOrdersImport, isOrdersFile, ordersFileFaction, routeOrdersImport, unitLabelForDiagnostic } from "./ordersImport";
+import { describeOrdersImport, isOrdersFile, ordersFileFaction, routeFileImport, routeOrdersImport, unitLabelForDiagnostic } from "./ordersImport";
 
 /** Shaped exactly like the template a real report carries. */
 const ORDERS_FILE = [
@@ -245,5 +245,21 @@ describe("naming a diagnostic's subject", () => {
     expect(
       unitLabelForDiagnostic("unit 1815\n@work\n", diagnostic({ lineStart: 2, lineEnd: 2 }))
     ).toBe("1815");
+  });
+});
+
+describe("routeFileImport", () => {
+  it("routes one chosen file to the single-file path", () => {
+    const file = { name: "turn.71.txt" };
+    expect(routeFileImport([file])).toEqual({ kind: "single", file });
+  });
+
+  it("routes two or more chosen files to a batch", () => {
+    const files = [{ name: "a.txt" }, { name: "b.txt" }];
+    expect(routeFileImport(files)).toEqual({ kind: "batch", files });
+  });
+
+  it("routes an empty selection to a batch of nothing", () => {
+    expect(routeFileImport([])).toEqual({ kind: "batch", files: [] });
   });
 });

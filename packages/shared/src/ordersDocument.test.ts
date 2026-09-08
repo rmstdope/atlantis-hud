@@ -35,6 +35,7 @@ import {
   withoutTrailingBlankLines,
   withFactionPassword,
   withUnitComments,
+  writeRouteOrder,
   writeUnitOrders
 } from "./ordersDocument";
 
@@ -1465,5 +1466,115 @@ describe("the report's own long orders", () => {
     expect(sameLongOrder("@study obse", "@STUDY  OBSE")).toBe(true);
     expect(sameLongOrder("@study obse", "study obse")).toBe(false);
     expect(sameLongOrder("TAX", "WORK")).toBe(false);
+  });
+});
+
+describe("writeRouteOrder", () => {
+  const region = new Set(["1655", "3832"]);
+  const document = [
+    "#atlantis 62",
+    "",
+    BANNER_43_81,
+    "",
+    "unit 1655",
+    "; heading north",
+    "move n",
+    "@tax",
+    "",
+    "unit 3832",
+    "move s",
+    "",
+    "#end",
+    ""
+  ].join("\n");
+
+  it("replaces a movement order already in the block with the planned route", () => {
+    expect(
+      writeRouteOrder({
+        document,
+        unitId: "1655",
+        banner: BANNER_43_81,
+        regionUnitIds: region,
+        order: "MOVE NE SE"
+      })
+    ).toBe(
+      [
+        "#atlantis 62",
+        "",
+        BANNER_43_81,
+        "",
+        "unit 1655",
+        "; heading north",
+        "@tax",
+        "MOVE NE SE",
+        "",
+        "unit 3832",
+        "move s",
+        "",
+        "#end",
+        ""
+      ].join("\n")
+    );
+  });
+
+  it("writes the route on its own when the block held nothing but a movement order", () => {
+    const written = writeRouteOrder({
+      document,
+      unitId: "3832",
+      banner: BANNER_43_81,
+      regionUnitIds: region,
+      order: "MOVE NW"
+    });
+    expect(written).toContain("unit 3832\nMOVE NW");
+    expect(written).not.toContain("unit 3832\n\n");
+  });
+
+  it("creates the block under the banner when the unit has none", () => {
+    const written = writeRouteOrder({
+      document,
+      unitId: "1656",
+      banner: BANNER_43_81,
+      regionUnitIds: region,
+      order: "MOVE N"
+    });
+    expect(written).toContain("unit 1656\nMOVE N");
+  });
+
+  it("leaves a unit with no block alone when there is no banner", () => {
+    expect(
+      writeRouteOrder({
+        document,
+        unitId: "1656",
+        banner: null,
+        regionUnitIds: region,
+        order: "MOVE N"
+      })
+    ).toBe(document);
+  });
+
+  it("routes a formed unit through the region's reported units", () => {
+    const formed = [
+      "#atlantis 62",
+      "",
+      BANNER_43_81,
+      "",
+      "unit 1922",
+      "form 1",
+      "buy 1 hdwa",
+      "move s",
+      "end",
+      "",
+      "#end",
+      ""
+    ].join("\n");
+    const written = writeRouteOrder({
+      document: formed,
+      unitId: "new-1",
+      banner: BANNER_43_81,
+      regionUnitIds: new Set(["1922"]),
+      order: "MOVE N"
+    });
+    expect(written).toContain("buy 1 hdwa\nMOVE N\nend");
+    expect(written).not.toContain("unit new-1");
   });
 });

@@ -1,7 +1,7 @@
 import type { CoreClient, OpenedGame, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
 import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { batchSummary, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
+import { batchFinish, batchSummary, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
 import type { BatchCandidate } from "./reportBatch";
 import { REPORT_HAS_NOTHING_IN_IT, judgeReportUsable } from "./reportLoadDecision";
 import { MAP_EXPORT_MARKER, classifyReportImport, type ReportImportSource } from "./mapExportImport";
@@ -505,5 +505,49 @@ describe("walkBatch, given a mage sheet", () => {
     await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
 
     expect(core.listAlliedMages).not.toHaveBeenCalled();
+  });
+});
+
+describe("batchFinish", () => {
+  async function ownWalk() {
+    const batch = {
+      candidates: [candidateFor("own.rep", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), "own"))]
+    };
+    return walkBatch(client(), OPEN_GAME, batch, "95", null, RULESET, NOW, () => {});
+  }
+
+  async function allyWalk() {
+    const batch = {
+      candidates: [candidateFor("ally.rep", classifyReportImport(report({ factionId: "73", turnNumber: 71 }), "ally"))]
+    };
+    return walkBatch(client(), OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+  }
+
+  it("applies the finishing turn when one of the viewer's own landed", async () => {
+    const walk = await ownWalk();
+    expect(walk.finish).not.toBeNull();
+    expect(batchFinish(walk, "95")).toEqual({
+      kind: "apply-turn",
+      factionId: "95",
+      step: walk.finish?.step,
+      source: walk.finish?.source
+    });
+  });
+
+  it("grows the map when nothing of the viewer's own landed", async () => {
+    const walk = await allyWalk();
+    expect(walk.finish).toBeNull();
+    expect(batchFinish(walk, "95")).toEqual({ kind: "grow-map", factionId: "95" });
+  });
+
+  it("does nothing when the batch had no faction to act under", async () => {
+    const walk = await allyWalk();
+    expect(batchFinish(walk, null)).toEqual({ kind: "nothing" });
+    expect(batchFinish(walk, "")).toEqual({ kind: "nothing" });
+  });
+
+  it("does nothing rather than acting on a finish with no faction", async () => {
+    const walk = await ownWalk();
+    expect(batchFinish(walk, null)).toEqual({ kind: "nothing" });
   });
 });
