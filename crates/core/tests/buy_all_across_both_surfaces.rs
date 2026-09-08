@@ -1,6 +1,10 @@
 //! Every property of a `BUY ALL` that `silver.rs`'s own `mod tests` used to pin, held across
 //! **both** walks that answer for one (`ah-6m7b.2`).
 //!
+//! An eleventh, `a_taxed_bounded_buy_is_funded_by_the_uncontended_tax`, moved for the same reason
+//! to `silver_agrees_with_the_warning.rs`, where it is the evidence that deleting `hopeful_tax`
+//! preserved shipped behaviour rather than merely removing its test.
+//!
 //! These ten tests were unit tests over a `UnitFacts` with `phases: None` - a `forecast_unit`
 //! call with no ledger behind it. Since `ah-6m7b.2` a `BUY ALL` is priced in exactly one place,
 //! `semantics::settle_buy_all`, and the SILVER column reports what that decided through
@@ -108,14 +112,20 @@ fn a_buy_all_says_what_it_bought_and_what_stopped_it() {
     assert_eq!(held, 19, "and the ITEMS ledger says the same");
 }
 
-/// Silver is the cap, and the whole of it is spent.
+/// The silver cap is arithmetic on the price, not a whole-purse spend: 500 at $12 buys
+/// forty-one, which is more than this market's forty, so the count is the market's and the
+/// remainder stays in the purse.
 #[test]
 fn buying_all_spends_what_the_unit_can_afford() {
-    let text = report(QUIET, "40 grain [GRAI] at $12.", &[&buyer(500)]);
+    let text = report(QUIET, "50 grain [GRAI] at $12.", &[&buyer(500)]);
     let (row, held) = both_surfaces(&text, "unit 900\nBUY ALL grain\n", "900", "GRAI");
 
-    assert_eq!(row.buy_all[0].bought, 40, "500 silver would buy forty-one");
-    assert_eq!(held, 40);
+    assert_eq!(
+        row.buy_all[0].bought, 41,
+        "500 silver buys forty-one at 12, and the eight left over buys no forty-second"
+    );
+    assert_eq!(row.buy_all[0].capped_by, BuyAllCap::Silver);
+    assert_eq!(held, 41);
 }
 
 /// The market is the other cap, and a rich unit stops at the line.
@@ -280,14 +290,13 @@ fn a_second_buy_all_cannot_take_its_share_twice() {
         "GRAI",
     );
 
-    let share = row.buy_all[0].bought;
-    assert!(
-        share > 0 && share < 20,
-        "the line is contended, so this unit gets a share of it: {share}"
+    assert_eq!(
+        row.buy_all[0].bought, 10,
+        "two units ask for the whole line, so each is settled half of the twenty"
     );
     assert_eq!(
         row.buy_all[1].bought, 0,
         "and its second line cannot take that share a second time"
     );
-    assert_eq!(held, share, "and the ITEMS ledger says the same");
+    assert_eq!(held, 10, "and the ITEMS ledger says the same");
 }

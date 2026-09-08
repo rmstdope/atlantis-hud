@@ -1152,9 +1152,12 @@ pub struct PhaseFacts<'a> {
     /// What maintenance, WORK and ENTERTAIN see.
     pub maintenance: LateFacts<'a>,
     /// This unit's `BUY ALL` lines as the ledger settled them, in document order. Empty for a
-    /// caller with no ledger to read them from, and for a doubted unit, which `settle_buy_all`
-    /// skips - and the market block below is skipped on doubt too, so the two agree by
-    /// construction.
+    /// caller with no ledger to read them from, and for a unit `settle_buy_all` skipped.
+    ///
+    /// Its skip is `ledger.doubted`, which is **not** the column's own `income_doubt` /
+    /// `expense_doubt` guard: a unit doubted only by the ledger's gift tracking shows no `BUY ALL`
+    /// sentence here, and the line is reported to the player through `ledger.uncounted` instead
+    /// (`ah-6m7b.2`).
     pub buy_all: &'a [SettledBuyAll],
     /// The same unit's silver at every phase, or `None` for a caller that has no ledger to read
     /// one from - which is every test that builds its own `PhaseFacts`. The two caps in
@@ -2396,18 +2399,24 @@ pub fn forecast_unit(
         // the turn leaves it (`ah-m7su`) - so `expense` here carries the exact gifts *and* the
         // deferred ones, and what is left is what the market opens on. A study and a manufacture
         // are charged in the turn's last block and neither makes the gift smaller (`ah-a5ci`).
-        let mut running = held.saturating_add(give_phase_income).saturating_sub(
-            expense
-                .saturating_sub(cast_expense)
-                .saturating_sub(month_long_expense),
-        );
+        //
         // Everything the Give phase could not spend is in the purse by the time the market opens:
         // TAX and PILLAGE settle in the tax phase, both before "SELL orders are processed". A cast
         // settles in *Instant Magic*, after the tax phase and still before the market, and has
         // already been paid for, so its cost comes off here and not above. `late` stays out -
         // wages earned this month cannot pay for anything this month's orders buy (`ah-uwa3`) -
         // and so does `month_long_expense`, which the market never reaches (`ah-a5ci`).
-        running = running
+        //
+        // Read once, by `opening` below, and never drawn down: since `ah-6m7b.2` the loops keep
+        // their own accumulator and this is the `phases: None` fallback alone. `ah-6m7b.4` deletes
+        // it outright when `income` and `expense` become projections.
+        let running = held
+            .saturating_add(give_phase_income)
+            .saturating_sub(
+                expense
+                    .saturating_sub(cast_expense)
+                    .saturating_sub(month_long_expense),
+            )
             .saturating_add(income)
             .saturating_sub(give_phase_income)
             .saturating_sub(late)
@@ -2451,7 +2460,6 @@ pub fn forecast_unit(
             );
             market_expense = market_expense.saturating_add(line.spends);
             market_spent = market_spent.saturating_add(line.spends);
-            running = running.saturating_sub(line.spends);
         }
 
         // Every `BUY ALL` as the ledger settled it. Nothing is priced here: `settle_buy_all` has
