@@ -81,7 +81,8 @@ pub(crate) enum Selection {
 ///
 /// `held` is a closure rather than a slice because each caller holds a different shape - a report
 /// unit's item list, or the running `BTreeMap` the headcount walk keeps - and it follows
-/// [`item_named`]'s own convention for the same reason. It is called at most three times.
+/// [`item_named`]'s own convention for the same reason. Each call walks the holdings, and the
+/// named-item arms make one per candidate spelling `item_named` tries, plus one for the entry.
 pub(crate) fn selected<'a, I: Iterator<Item = &'a ItemAmount>>(
     ruleset: &Ruleset,
     what: &Selector,
@@ -261,9 +262,9 @@ mod tests {
         // The unclamped ask, which the headcount walk compares `moved` against.
         assert_eq!(quantity_requested(&Amount::Exact(30), 20), 30);
         assert_eq!(quantity_requested(&Amount::All { except: 5 }, 20), 15);
-        // `saturating_sub` on `i64` saturates at `i64::MIN`, not at zero: an `EXCEPT` reserve
-        // larger than the stock asks for a negative amount, and it is the clamp in
-        // `quantity_moved` alone that floors it.
+        // The ask is a plain subtraction and may be negative: an `EXCEPT` reserve larger than
+        // the stock asks for less than nothing, and it is the clamp in `quantity_moved` alone
+        // that floors it at zero.
         assert_eq!(quantity_requested(&Amount::All { except: 50 }, 20), -30);
     }
 
