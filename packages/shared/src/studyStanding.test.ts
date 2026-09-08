@@ -203,6 +203,41 @@ describe("standingAfterOrders", () => {
     expect(after.get("21/2431")?.regionId).toBe("1:8");
   });
 
+  it("keeps the report's snapshot for a mage the preview shows only arriving", () => {
+    // No `departing` row to pair the arrival with, which the core never emits
+    // (`crates/core/src/orders/effects.rs` pushes the two together). Nothing is claimed about a
+    // half-response: the report's own snapshot stands, as it does for any mage with no row.
+    const after = standingAfterOrders({
+      groups: own(mage("2431", "1:7", null)),
+      preview: preview(row("1:8", "2431", null, "arriving", "1:7")),
+      report: report("1:7", "1:8"),
+      names
+    });
+    expect(after.has("21/2431")).toBe(false);
+  });
+
+  it("ignores another hex's row that shares his unit number", () => {
+    // A formed unit's alias is reused hex by hex (`ah-4hux`), so a row for `2431` in a hex that is
+    // not his says nothing about him: the pair is keyed on the hex as well as the number. His own
+    // row is a departure with no arrival, so the month leaves him where the preview cannot say.
+    const after = standingAfterOrders({
+      groups: own(mage("2431", "1:7", null)),
+      preview: preview(
+        row("1:7", "2431", null, "departing", "1:8"),
+        row("1:9", "2431", "4", "present")
+      ),
+      report: report("1:7", "1:9"),
+      names
+    });
+    expect(after.get("21/2431")).toEqual({
+      regionId: "1:7",
+      structureId: null,
+      offMap: true,
+      leftBuilding: null,
+      leftBy: null
+    });
+  });
+
   it("says nothing about an ally's mage", () => {
     const groups: PlannerGroup[] = [
       {

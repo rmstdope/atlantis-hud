@@ -81,6 +81,10 @@ export function standingAfterOrders(input: {
   // hex it reaches. Which of the two stands for him is `unitPreviewRows` decision, made once for
   // every reader of a preview (`ah-sdjy`); STUDY runs after movement, so the one meant here is
   // where the month `ends` for him.
+  // An `arriving` row with no departure to pair it with, and a departure whose arrival is missing,
+  // are both half a response: the core pushes the two rows together, so neither reaches a real
+  // preview. Neither is followed - the first keeps the report's snapshot, the second reads as
+  // off-map - and both are pinned below rather than left to be discovered.
   const pairs = previewPairs(preview);
 
   for (const group of input.groups) {
