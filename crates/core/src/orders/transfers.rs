@@ -190,11 +190,18 @@ impl ClassMembers<'_> {
 /// this rule - its `TransferShape::Exact` arm does not clamp to the source's stock at all, which
 /// is its uncertainty model rather than a duplicated rule.
 pub(crate) fn quantity_moved(amount: &Amount, held: i64) -> i64 {
-    let requested = match amount {
+    quantity_requested(amount, held).clamp(0, held)
+}
+
+/// How much of a held stock one `Amount` *asks* for, before the holder's stock clamps it.
+///
+/// Split from [`quantity_moved`] because the headcount walk needs both: a man tag whose gift was
+/// clamped marks the receiver `men_clamped`, and that test is `moved < requested`.
+pub(crate) fn quantity_requested(amount: &Amount, held: i64) -> i64 {
+    match amount {
         Amount::All { except } => held.saturating_sub(*except),
         Amount::Exact(count) => *count,
-    };
-    requested.clamp(0, held)
+    }
 }
 
 /// Whether `rules/give` defines a class form carrying this amount.
@@ -250,6 +257,14 @@ mod tests {
         assert_eq!(quantity_moved(&Amount::All { except: 5 }, 20), 15);
         assert_eq!(quantity_moved(&Amount::All { except: 50 }, 20), 0);
         assert_eq!(quantity_moved(&Amount::Exact(-1), 20), 0);
+
+        // The unclamped ask, which the headcount walk compares `moved` against.
+        assert_eq!(quantity_requested(&Amount::Exact(30), 20), 30);
+        assert_eq!(quantity_requested(&Amount::All { except: 5 }, 20), 15);
+        // `saturating_sub` on `i64` saturates at `i64::MIN`, not at zero: an `EXCEPT` reserve
+        // larger than the stock asks for a negative amount, and it is the clamp in
+        // `quantity_moved` alone that floors it.
+        assert_eq!(quantity_requested(&Amount::All { except: 50 }, 20), -30);
     }
 
     #[test]

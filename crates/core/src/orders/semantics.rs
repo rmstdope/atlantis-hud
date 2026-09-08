@@ -2804,10 +2804,7 @@ fn apply_transfers(
                 .held
                 .get(tag.as_str())
                 .map_or(0, |item| item.amount);
-            let requested = match &*transfer.amount {
-                Amount::All { except } => held.saturating_sub(*except),
-                Amount::Exact(count) => *count,
-            };
+            let requested = transfers::quantity_requested(&transfer.amount, held);
             let moved = transfers::quantity_moved(&transfer.amount, held);
             // Read above the `moved == 0` return so `source_state`'s borrow ends here: the block
             // below takes a second `working.entry`, which will not compile while it lives.
