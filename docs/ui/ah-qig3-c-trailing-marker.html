@@ -1,0 +1,102 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-qig3 &mdash; a trailing marker beside the skills</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1200px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  table.units { width:100%; border-collapse:collapse; font:12px/1.5 'Helvetica Neue',Arial,sans-serif;
+                font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-weight:600; color:var(--brass); font-size:10.5px; letter-spacing:.1em;
+                   text-transform:uppercase; border-bottom:1px solid var(--edge); padding:3px 8px; }
+  table.units td { border-bottom:1px solid var(--edge-soft); padding:2px 8px; vertical-align:top; }
+  table.units.narrow { width:560px; }
+  table.units.narrow td.sk, table.units.narrow th.sk { max-width:150px; overflow:hidden;
+     text-overflow:ellipsis; white-space:nowrap; }
+  .own { color:var(--ok); } .pred { font-style:italic; color:var(--brass); }
+  .fut { color:var(--select); } .futi { font-style:italic; color:var(--select); }
+  .dim { color:var(--ink-dim); } .sel { color:var(--select); }
+  .badge { font-size:10.5px; margin-left:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:5px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); margin-top:12px; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .flat { color:var(--ink-soft); } .down { color:var(--danger); } .up { color:var(--ok); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin:16px 0 6px; max-width:110ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+</style>
+<header>
+  <h1>ah-qig3 <span>&mdash; a trailing marker beside the skills</span></h1>
+  <p>A unit writing <code>STUDY</code> has its next-turn skills forecast drawn in the Skills popup, but the
+  <b>cell itself says nothing</b>, so the forecast is only found by resting the pointer on it by accident. Every other
+  previewed change marks its cell <i style="color:var(--brass)">italic brass</i>. This page is <b>variant C</b> of
+  three; open all three before choosing.</p>
+  <p class="scene"><b>The scene.</b> Five own units in one hex. <b>Braves&nbsp;(1487)</b> writes
+  <code>STUDY COMBAT</code> and nothing else touches its skills. <b>Scouts&nbsp;(1502)</b> both takes two men from
+  another unit (which moves its figures <i>this</i> month) <b>and</b> writes <code>STUDY OBSERVATION</code>.
+  <b>Trappers&nbsp;(1774)</b> only takes men &mdash; today&rsquo;s brass mark, unchanged by this bead.
+  <b>Hunters&nbsp;(1901)</b> writes <code>STUDY MAGIC</code> but is short of the fee, so the projection is
+  <b>doubted</b>. <b>Watch&nbsp;(1620)</b> does nothing.</p>
+</header>
+<main>
+<h3 class="sec">C &mdash; the skills text is left alone and a blue marker is appended</h3>
+<p>The cell&rsquo;s text keeps whatever it already says &mdash; plain, or italic brass when this month moved it &mdash; and a small blue <code>&rarr; COMB 2</code> is appended, naming the skill and the level the study lands on. This is the shape the row already uses for <code>new</code> and <code>&larr; 1234</code> in the Unit cell. A doubted projection gets a trailing <code>?</code>, the same mark the popup uses.</p>
+<div class="card"><p class="hexlab">wide column</p>
+    <table class="units">
+      <tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th class="sk">Skills</th><th>Items</th></tr>
+      <tr><td class="own">*</td><td class="sel">1487</td><td>Braves</td><td>12</td><td class="sk">COMB 2, LUMB 2, OBSE 1<span class="badge fut">&rarr; COMB 2</span></td><td>12 leather armour</td></tr>
+      <tr><td class="own">*</td><td class="sel">1502</td><td>Scouts</td><td class="pred">14</td><td class="sk"><span class="pred">COMB 1, LUMB 1, OBSE 1</span><span class="badge fut">&rarr; OBSE 2</span></td><td class="pred">14 horse</td></tr>
+      <tr><td class="own">*</td><td class="sel">1774</td><td>Trappers</td><td class="pred">9</td><td class="sk"><span class="pred">LUMB 2, MINI 1</span></td><td>9 axe</td></tr>
+      <tr><td class="own">*</td><td class="sel">1901</td><td>Hunters</td><td>3</td><td class="sk">FORC 1, PATT 1<span class="badge fut">&rarr; FORC 2?</span></td><td>3 bow</td></tr>
+      <tr><td class="own">*</td><td class="sel">1620</td><td>Watch</td><td>6</td><td class="sk">COMB 1</td><td>6 sword</td></tr>
+    </table>
+<ul class="notes">
+  <li>The only variant where <b>Scouts</b> shows both facts at once: brass for what this month did, blue for what next month brings.</li>
+  <li>Says <i>which</i> skill and <i>what level</i> without hovering &mdash; the popup becomes the detail rather than the discovery.</li>
+  <li>Carries doubt onto the row: <code>&rarr; FORC 2?</code>.</li>
+  <li class="con">The widest option. In a narrow Skills column the marker is what gets truncated away, which is the one thing that must not be lost.</li>
+  <li class="con">A new idiom for this table: no other cell appends a projection to its own contents.</li>
+</ul></div>
+<div class="card"><p class="hexlab">narrow column &mdash; the marker truncates first, and disappears</p>
+    <table class="units narrow">
+      <tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th class="sk">Skills</th><th>Items</th></tr>
+      <tr><td class="own">*</td><td class="sel">1487</td><td>Braves</td><td>12</td><td class="sk">COMB 2, LUMB 2, OBSE 1<span class="badge fut">&rarr; COMB 2</span></td><td>12 leather armour</td></tr>
+      <tr><td class="own">*</td><td class="sel">1502</td><td>Scouts</td><td class="pred">14</td><td class="sk"><span class="pred">COMB 1, LUMB 1, OBSE 1</span><span class="badge fut">&rarr; OBSE 2</span></td><td class="pred">14 horse</td></tr>
+      <tr><td class="own">*</td><td class="sel">1774</td><td>Trappers</td><td class="pred">9</td><td class="sk"><span class="pred">LUMB 2, MINI 1</span></td><td>9 axe</td></tr>
+      <tr><td class="own">*</td><td class="sel">1901</td><td>Hunters</td><td>3</td><td class="sk">FORC 1, PATT 1<span class="badge fut">&rarr; FORC 2?</span></td><td>3 bow</td></tr>
+      <tr><td class="own">*</td><td class="sel">1620</td><td>Watch</td><td>6</td><td class="sk">COMB 1</td><td>6 sword</td></tr>
+    </table>
+<ul class="notes"><li class="con">Braves and Scouts lose their marker entirely at this width. A bare <code style="color:var(--select)">&rarr;</code> with no words would survive, but then the level has to be hovered for anyway.</li></ul>
+</div>
+<h3 class="sec">The popup, unchanged in all three variants</h3><p>Whatever the cell does, resting on it still draws this.</p>
+    <div class="pop">
+      <div class="head">Braves (1487) &mdash; skills</div>
+      <div class="line"><span>combat COMB</span><span><span class="flat">2 (90)</span><span class="arrow">&rarr;</span><span class="fut">2 (120)</span></span></div>
+      <div class="line"><span>lumberjack LUMB</span><span class="flat">2 (90)</span></div>
+      <div class="line"><span>observation OBSE</span><span class="flat">1 (30)</span></div>
+      <div class="note">Studying combat: worth one month. The blue figure is next turn&rsquo;s report; everything before it is this month.</div>
+    </div>
+</main>
+<footer>Colours are the application&rsquo;s own tokens: brass <code>#d9a441</code> for a previewed change,
+selection blue <code>#5aa9de</code> for a next-turn projection &mdash; the same blue the Skills popup already
+uses for the third figure in its chain.</footer>
