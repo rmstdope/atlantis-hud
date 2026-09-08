@@ -29,6 +29,8 @@ mod standing_agreement;
 /// Core-internal: the one race-aware study ceiling both `semantics` and `completion` read.
 mod study;
 pub mod targets;
+#[cfg(test)]
+mod transfer_agreement;
 pub mod vocabulary;
 pub mod walk;
 

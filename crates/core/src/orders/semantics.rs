@@ -2166,6 +2166,112 @@ fn hex_with_transfers<'a>(
     hex
 }
 
+/// Test-only: what the headcount walk and the hex ledger each make of one turn's Give phase.
+///
+/// One entry per own unit of every region, in `hex.units` order. Built through exactly the calls
+/// [`review_turn`] opens with - `OrderedUnits::read`, `foreign_unit_ids`, `unit_ids_in`,
+/// `formed_units`, then `hex_with_transfers` per region - so the seam and the shipping path cannot
+/// answer differently. Nothing here is compiled into a release build.
+///
+/// It exists because `crates/core/tests/` is a separate crate that cannot see `Ordered`, `Hex`,
+/// `Ledger` or `HoldingsAfterGifts`, all private to this module. The seam is `#[cfg(test)]`
+/// precisely so no shipping visibility has to widen for `super::transfer_agreement`.
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub(super) struct TransferProjection {
+    pub(super) region_id: String,
+    pub(super) unit_id: String,
+    /// This month's `FORM` creates this unit: its id is the synthetic `new-{alias}` and the report
+    /// printed no item list for it, so `reported_items` is empty.
+    pub(super) formed: bool,
+    /// `ReportUnit::men_estimated`. `Holdings::men` is deliberately not re-derived for such a unit
+    /// (see [`Holdings::men`]), so its headcount proves nothing about the walk.
+    pub(super) men_estimated: bool,
+    /// The report's own headcount, before this month's transfers.
+    pub(super) reported_men: i64,
+    /// The report's own item list - the baseline all three surfaces move from.
+    pub(super) reported_items: Vec<ItemAmount>,
+    /// `HoldingsAfterGifts::Moved(holdings).items`; `reported_items` for `Unchanged`; `None` for
+    /// `Unknowable`.
+    pub(super) walked_items: Option<Vec<ItemAmount>>,
+    /// `Ordered::early_men()`: the headcount the walk settled.
+    pub(super) walked_men: i64,
+    /// `PhaseState::holdings_at(StatePhase::Claim, unit_id)` - the ledger's stock as the Give
+    /// phase opens.
+    pub(super) ledger_before_give: BTreeMap<String, i64>,
+    /// The same at `StatePhase::Give`, so the difference is what the Give phase moved and nothing
+    /// earlier. `StatePhase::Claim` immediately precedes `Give` (`super::phases`), and `CLAIM` is
+    /// the only order settling before it that moves anything at all.
+    pub(super) ledger_after_give: BTreeMap<String, i64>,
+    /// `Ledger::doubted` names this unit: a line of its own the ledger could not follow.
+    pub(super) ledger_doubted: bool,
+    /// The tags `PhaseState::uncertain` marks for this unit - `ah-66yi`'s `+ ?`, where the
+    /// target's declaration toward us is unknown and the ledger picks no side.
+    pub(super) ledger_uncertain_tags: BTreeSet<String>,
+}
+
+/// Test-only: the walk's and the ledger's Give-phase answers for every own unit of `report`.
+#[cfg(test)]
+pub(super) fn transfer_projection_for_tests(
+    report: &ParsedReport,
+    source: &str,
+    ruleset: Option<&Ruleset>,
+) -> Vec<TransferProjection> {
+    let ordered = OrderedUnits::read(source);
+    let foreign_unit_ids = foreign_unit_ids(report);
+    let shown_anywhere = unit_ids_in(report);
+    let formed: Vec<Formed> = formed_units(report, source);
+
+    let mut projections = Vec::new();
+    for region in &report.regions {
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &formed,
+            ruleset,
+            &foreign_unit_ids,
+            &shown_anywhere,
+        );
+        // `ledger_for` rather than the `ledger_for_with_production` `review_turn` reaches through
+        // `settle_recruits_before_production`: production settles at `StatePhase::Manufacturing`
+        // and `PrimaryProduction`, and recruits at `Market`, all of which follow `Give` in
+        // `phases::ORDER`. Nothing either of them changes can reach a Give-phase balance.
+        let ledger = ledger_for(&hex, ruleset);
+        for ordered_unit in &hex.units {
+            let unit_id = ordered_unit.unit.unit_id.clone();
+            let walked_items = match &ordered_unit.holdings_after_gifts {
+                HoldingsAfterGifts::Moved(holdings) => Some(holdings.items.clone()),
+                HoldingsAfterGifts::Unchanged => Some(ordered_unit.unit.items.clone()),
+                HoldingsAfterGifts::Unknowable => None,
+            };
+            let ledger_uncertain_tags = ledger
+                .state
+                .uncertain
+                .keys()
+                .filter(|(id, _)| *id == unit_id)
+                .map(|(_, tag)| tag.clone())
+                .collect();
+            projections.push(TransferProjection {
+                region_id: region.region_id.clone(),
+                // `effects::formed_unit` and `Party::New(alias)` both spell a formed unit's id
+                // this way.
+                formed: unit_id.starts_with("new-"),
+                men_estimated: ordered_unit.unit.men_estimated,
+                reported_men: ordered_unit.unit.men,
+                reported_items: ordered_unit.unit.items.clone(),
+                walked_items,
+                walked_men: ordered_unit.early_men(),
+                ledger_before_give: ledger.state.holdings_at(StatePhase::Claim, &unit_id),
+                ledger_after_give: ledger.state.holdings_at(StatePhase::Give, &unit_id),
+                ledger_doubted: ledger.doubted.contains(&unit_id),
+                ledger_uncertain_tags,
+                unit_id,
+            });
+        }
+    }
+    projections
+}
+
 /// One unit's skills and running holdings while a hex's transfers are resolved by
 /// `apply_transfers`.
 struct Working {
