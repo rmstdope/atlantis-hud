@@ -6241,8 +6241,11 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &
     };
 
     for deferred in lines {
-        // A doubted unit is left uncounted: `forecast_unit` skips its whole deferred pass when
-        // either side is doubted, so there is no figure on the column to agree with.
+        // A doubted unit is left uncounted, and the line reaches the player through `uncounted`
+        // rather than through the column. `ledger.doubted` is **not** the column's own
+        // `income_doubt` / `expense_doubt`: this one is the gift tracking `forecast_unit` never
+        // sees, so a unit doubted only here shows no `BUY ALL` sentence at all rather than one
+        // both surfaces suppressed together (`ah-6m7b.2`).
         if ledger.doubted.contains(who) {
             ledger
                 .uncounted
