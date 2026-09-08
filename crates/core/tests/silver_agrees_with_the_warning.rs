@@ -907,3 +907,104 @@ fn a_hedged_pillager_is_doubted_by_the_column_too() {
     );
     assert_eq!(transporter.income, None);
 }
+
+// --- BUY ALL beside a month-long spend, on both surfaces ------------------------------------
+//
+// `docs/retrospectives/ah-gdd3.1.md` records that no test in this repository pairs a `BUY ALL`
+// with a month-long spend, which is how the two surfaces came to answer one order differently
+// without anything going red. These cases close that gap (`ah-6m7b.2`).
+
+/// One hex, one market, and whatever own units the caller names.
+fn buy_all_report(region: &str, units: &[&str]) -> String {
+    let mut lines = vec![
+        "Foo (1) Report".to_string(),
+        String::new(),
+        region.to_string(),
+        "  For Sale: 20 grain [GRAI] at $20.".to_string(),
+        String::new(),
+        "Exits:".to_string(),
+        "  Southeast : plain (2,2) in Nowhere.".to_string(),
+        String::new(),
+    ];
+    lines.extend(units.iter().map(|unit| (*unit).to_string()));
+    lines.push(String::new());
+    lines.join("\n")
+}
+
+/// Both surfaces' answers about one unit, for a hand-built report and a document.
+fn both_surfaces(text: &str, script: &str, unit_id: &str, tag: &str) -> (i64, i64, bool) {
+    let ruleset = ruleset();
+    let mut parsed = parse_report_full(text);
+    classify_units(&mut parsed, &ruleset);
+    let template = extract_orders_template(text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let orders = format!("{template}\n{script}");
+
+    let review = review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default());
+    let row = review
+        .silver
+        .iter()
+        .find(|row| row.unit_id == unit_id)
+        .expect("the column has a row for the unit");
+    let column_bought = row
+        .buy_all
+        .first()
+        .expect("the column priced the BUY ALL")
+        .bought;
+    let warned = review.findings.iter().any(|finding| {
+        finding.unit_id.as_deref() == Some(unit_id) && finding.code.as_str() == "not-enough-silver"
+    });
+
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        text,
+        "[]",
+        &orders,
+    )
+    .expect("the committed ruleset loads");
+    let items_bought: i64 = preview
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.unit.unit_id == unit_id)
+        .expect("the preview has the unit")
+        .unit
+        .items
+        .iter()
+        .filter(|item| item.tag == tag)
+        .map(|item| item.amount)
+        .sum();
+
+    (column_bought, items_bought, warned)
+}
+
+/// `rules/sequenceofevents` lists *"Market orders. ... BUY orders are processed."* **before**
+/// *"Month long orders. ... STUDY orders are processed."*, so a `BUY ALL` spends the silver the
+/// study has not yet taken. `data/COMB` prices a month of combat study at 10 silver per man, so
+/// one orc with 105 silver buys five grain at $20 and is then 5 short for the study - which is
+/// exactly what the `not-enough-silver` warning exists to say.
+///
+/// The ledger used to size the line from `StatePhase::Maintenance`, where the study fee had
+/// already propagated, and bought four (`ah-6m7b.2`).
+#[test]
+fn a_buy_all_is_not_shrunk_by_the_study_that_follows_it() {
+    let text = buy_all_report(
+        "plain (1,1) in Nowhere, 1000 peasants (orcs), $500.",
+        &["* Students (900), Foo (1), orc [ORC], 105 silver [SILV]. Weight: 10. Capacity: 0/0/15/0."],
+    );
+    let (column_bought, items_bought, warned) =
+        both_surfaces(&text, "unit 900\nBUY ALL grain\nSTUDY combat\n", "900", "GRAI");
+
+    assert_eq!(
+        column_bought, 5,
+        "105 silver buys five grain at 20, before any study fee"
+    );
+    assert_eq!(items_bought, 5, "and the ITEMS ledger says the same");
+    assert_eq!(column_bought, items_bought, "the two surfaces agree");
+    assert!(
+        warned,
+        "the study is 5 short, and the shortfall warning says so"
+    );
+}

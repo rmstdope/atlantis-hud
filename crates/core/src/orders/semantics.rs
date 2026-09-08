@@ -4383,11 +4383,10 @@ fn ledger_for_with_production<'a>(
         }
     }
 
-    // After the whole walk, not inside the market phase. `settle_buy_all` reads the balance at
-    // `StatePhase::Maintenance`, which carries only the deltas already *applied* - so settling it
-    // at `Market` would spend silver the unit's own STUDY or manufacturing PRODUCE has not yet
-    // charged for. `forecast_unit` settles its deferred `BUY ALL` after its whole walk for the same reason
-    // (`crates/core/src/orders/silver.rs`, `Deferred::BuyAll`), and the two must agree.
+    // After the whole walk, not inside the market phase: the call site is what makes a `BUY ALL`'s
+    // item movements sort behind the rest of the block's (`ah-gdd3.1`). What it is *sized* from is
+    // the `StatePhase::Market` balance, which `rules/sequenceofevents` says is what the market may
+    // spend - a later STUDY does not shrink a purchase the turn has already made (`ah-6m7b.2`).
     for (index, ordered) in hex.units.iter().enumerate() {
         settle_buy_all(&mut ledger, hex, index, ordered);
     }
@@ -6210,11 +6209,11 @@ fn buy(
 /// applied.
 ///
 /// Called from `ledger_for` once every phase of `phases::ORDER` has run for every unit in the hex,
-/// which is the moment the unit's silver balance matches `forecast_unit`'s `running` - report
-/// holding, plus every credit, less every eager charge, and **not** the late income, which
-/// `charge_upkeep` nets off the fee rather than crediting (`ah-uwa3`). Settling it earlier - inside
-/// the market phase, say - would spend silver a later phase has not yet charged for: STUDY and
-/// manufacturing PRODUCE both charge `SILV` after it (`ah-gdd3.1`).
+/// so that a `BUY ALL`'s movements sort behind the block's (`ah-gdd3.1`). The **figure** it is
+/// sized from is not the balance at that moment: it is the balance at `StatePhase::Market`, which
+/// is what `rules/sequenceofevents` leaves the market to spend - *"BUY orders are processed"* runs
+/// before *"STUDY orders are processed"*, so a later study cannot shrink a purchase the turn has
+/// already made (`ah-6m7b.2`).
 fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &Ordered<'_>) {
     let who = &actor.unit.unit_id;
     let Some(lines) = ledger.buy_all.remove(who) else {
@@ -6245,10 +6244,20 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &
         // nothing rather than lifting the cap: a `BUY ALL` has always been silver-capped, and
         // turning that off on doubt would let one buy goods it can afford none of (`ah-szye`).
         let shared = ledger.market_purse.adds_for(index).unwrap_or(0);
+        // What `rules/sequenceofevents` leaves the market to spend: TAX, PILLAGE, GIVE/TAKE and
+        // CAST have run; STUDY, manufacturing PRODUCE and the wages have not. **Not**
+        // `balance_of`, which reads at `StatePhase::Maintenance` and would let a later STUDY
+        // shrink a purchase the turn had already made - the same reason `buy` above reads this
+        // phase (`ah-6m7b.2`). The call site stays where it is, after the whole walk: only the
+        // figure moves, so this unit's own earlier market lines are already drawn out of the slot
+        // and the ledger's movement order is unchanged.
+        let silver_available = ledger
+            .state
+            .balance_at(StatePhase::Market, who, SILVER)
+            .saturating_add(overcharged)
+            .saturating_add(shared);
         let (priced, plan) = price_buy_all(
-            balance_of(ledger, who, SILVER)
-                .saturating_add(overcharged)
-                .saturating_add(shared),
+            silver_available,
             deferred.price,
             available,
             deferred.market_has,
@@ -16977,16 +16986,16 @@ mod tests {
         );
     }
 
-    /// `ah-gdd3.1`: `BUY ALL` is settled from what every *other* order leaves, so a month-long
-    /// spend written under it still holds its money back.
+    /// `ah-6m7b.2`: a `BUY ALL` is sized from the silver the **market** phase leaves, so a
+    /// month-long spend written under it does *not* hold its money back.
     ///
-    /// The phase-major dispatch moved the market ahead of `Study`, and `settle_buy_all` reads the
-    /// balance at `StatePhase::Maintenance` - which only carries deltas already applied. Settling
-    /// the `BUY ALL` inside the market phase would therefore spend silver the study still wants,
-    /// and would disagree with `forecast_unit`, which settles its deferred `BUY ALL` after the
-    /// whole walk. Both surfaces are read here, because agreeing is the point.
+    /// `rules/sequenceofevents` lists *"BUY orders are processed"* before *"STUDY orders are
+    /// processed"*, so the buy takes what it can and the study is then short - which is what the
+    /// `not-enough-silver` warning exists to say. This test pinned the opposite until `ah-6m7b.2`:
+    /// `settle_buy_all` read `StatePhase::Maintenance`, into which `PhaseState::apply` had already
+    /// propagated the study fee, and bought nine where the game buys ten.
     #[test]
-    fn a_buy_all_leaves_a_month_long_spend_its_money() {
+    fn a_buy_all_is_sized_before_the_month_long_spend_below_it() {
         let hex = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 100,
@@ -17007,16 +17016,21 @@ mod tests {
             .copied()
             .expect("the buy-all bought grain at all");
 
-        // Exactly, not merely fewer than ten: `< 10` would pass just as well if the order were
-        // doubted away entirely, which is not what this pins. The study takes $10 of the $100, so
-        // nine grain at $10 is every coin the month leaves.
-        assert_eq!(grain, 9, "the buy-all takes what the study leaves");
+        // Exactly, not merely "some": the market runs first, so all $100 goes on grain.
+        assert_eq!(grain, 10, "the buy-all takes the whole hundred");
+        assert_eq!(
+            ledger
+                .state
+                .balance_at(StatePhase::Market, "2390", "SILV"),
+            0,
+            "the market spends every coin it was left"
+        );
         assert_eq!(
             ledger
                 .state
                 .balance_at(StatePhase::Maintenance, "2390", "SILV"),
-            0,
-            "and between them they spend the whole hundred"
+            -10,
+            "and the study is then $10 short, which is what the warning says"
         );
     }
 
