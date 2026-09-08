@@ -65,7 +65,9 @@ pub enum GiveReach {
     Unshown,
     /// Definitely no target: a unit the report shows somewhere else - `rules/sequenceofevents`
     /// settles gifts in phase 4, before anything moves - a `NEW` alias no `FORM` here creates, and
-    /// a unit giving to itself, which the server refuses. The order does nothing at all.
+    /// a unit giving to itself, which the server refuses. The order does nothing at all: the whole
+    /// transfer is void and the giver is not charged either, exactly as `effects::give` returns
+    /// early for these without touching it.
     Nowhere,
 }
 
