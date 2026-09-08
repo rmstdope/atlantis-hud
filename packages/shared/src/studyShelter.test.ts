@@ -102,7 +102,12 @@ describe("mageShelters", () => {
       ]
     }
   ] as unknown as PlannerGroup[];
-  const seats = new Map([["1:7/4", 1]]);
+  // `1:7/9` is the report's own structure whose kind the catalogue cannot count - `null` is "not
+  // known", which is a different fact from a key the map does not hold at all.
+  const seats = new Map<string, number | null>([
+    ["1:7/4", 1],
+    ["1:7/9", null]
+  ]);
   const names = new Map([["1:7/4", "Castle"]]);
 
   it("says nothing about a mage the report found in the open", () => {
@@ -144,6 +149,28 @@ describe("mageShelters", () => {
           {
             regionId: "1:7",
             structureId: "9",
+            offMap: false,
+            leftBuilding: null,
+            leftBy: null
+          }
+        ]
+      ])
+    });
+
+    expect(shelters.size).toBe(0);
+  });
+
+  it("says nothing about a structure the report never showed", () => {
+    const shelters = mageShelters({
+      groups,
+      seats,
+      names,
+      after: new Map([
+        [
+          "21/2431",
+          {
+            regionId: "1:7",
+            structureId: "12",
             offMap: false,
             leftBuilding: null,
             leftBy: null
