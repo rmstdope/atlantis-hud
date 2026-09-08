@@ -265,14 +265,6 @@ function requireAdmissible(prepared: PreparedImport): number {
   return prepared.turnNumber;
 }
 
-/**
- * A row stored before goals existed, read as a one-goal queue.
- *
- * The desktop's 0012 migration does this in SQL; IndexedDB has no migration step, so the browser
- * does it here, on the one path every read takes. Rows like these only exist in a local build -
- * study plans were never in a release before goals were - so this is a courtesy, not a contract,
- * and it can be deleted once no such browser is left.
- */
 /** A goal as a stored row may actually carry it: any of the three legacy shapes below. */
 type StoredGoal = {
   kind?: string;
@@ -284,6 +276,14 @@ type StoredGoal = {
   targetLevel?: number;
 };
 
+/**
+ * A row stored before goals existed, read as a one-goal queue.
+ *
+ * The desktop's 0012 migration does this in SQL; IndexedDB has no migration step, so the browser
+ * does it here, on the one path every read takes. Rows like these only exist in a local build -
+ * study plans were never in a release before goals were - so this is a courtesy, not a contract,
+ * and it can be deleted once no such browser is left.
+ */
 // ah-5r9j.1: a spread minus the two legacy columns rather than a field-by-field rebuild, so a
 // field added to StudyPlan or StudyGoal on the Rust side reaches the caller instead of being
 // silently dropped - which is the general form of the bug ah-af7i fixed one field at a time. The

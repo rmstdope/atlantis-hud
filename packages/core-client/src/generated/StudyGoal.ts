@@ -5,7 +5,8 @@
  *
  * A plan is one of these per planned turn - at most one for any turn, and turns with none are
  * simply unplanned. `rules/study`: `STUDY [skill]` is the bare one-month form, which is what a
- * planned month exports as. `rules/teach`: `TEACH [unit] ...` names the units taught, and the
+ * planned month exports as - the two-argument `STUDY [skill] [level]` means "continue from turn to
+ * turn until he reaches that level", which would override the turns the player planned by hand. `rules/teach`: `TEACH [unit] ...` names the units taught, and the
  * teacher studies nothing that month, so a teach goal is always exactly one month.
  *
  * The per-variant `rename_all` rather than the container-level `rename_all_fields`: the latter
@@ -36,8 +37,8 @@ turn: number,
  */
 students: Array<string>, 
 /**
- * True while the cell means "teach whoever is eligible this turn"; `students` is then empty.
- * Set to false the moment the player ticks or unticks anyone, from which point `students`
+ * True while the cell means "teach whoever is eligible this turn"; `students` is then empty,
+ * and the projection chooses the pupils on every render. Set to false the moment the player ticks or unticks anyone, from which point `students`
  * is the whole answer.
  * `#[serde(default)]` for every row written before ah-af7i, which is a fixed list.
  */
