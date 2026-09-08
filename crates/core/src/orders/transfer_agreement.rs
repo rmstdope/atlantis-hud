@@ -451,7 +451,8 @@ fn the_three_surfaces_agree_on_every_transfer_in_the_corpus() {
 /// added or dropped does not fail it: the floors say "this comparison still sees real transfers",
 /// not "the corpus is exactly this size". Measured 2026-09-08: 1,392 own units, 319 of them with a
 /// transfer, 39 `WalkUnknowable`, 9 `LedgerDoubted`, 5 `LedgerUncertain`, 18 `LedgerOverdrawn`,
-/// and 343 (unit, tag) pairs compared against all three surfaces with no exemption at all.
+/// and 337 (unit, tag) pairs compared against all three surfaces at once - every surface unexempt,
+/// the walk included.
 #[test]
 fn the_corpus_actually_exercises_the_agreement() {
     let ruleset = ruleset();
@@ -469,6 +470,7 @@ fn the_corpus_actually_exercises_the_agreement() {
     let mut overdrawn = 0;
     let mut compared_pairs = 0;
     for case in &cases {
+        let walk_exempt = walk_exemption(case).is_some();
         for tag in tags_mentioned(case) {
             match ledger_exemption(case, &tag, &ruleset) {
                 Some(Exempt::LedgerDoubted) => doubted += 1,
@@ -476,8 +478,18 @@ fn the_corpus_actually_exercises_the_agreement() {
                 Some(Exempt::LedgerOverdrawn) => overdrawn += 1,
                 // `ManTag` has no floor: the corpus moves no men at all, and the case below is
                 // where that arm is exercised instead.
-                Some(Exempt::ManTag | Exempt::WalkUnknowable) => {}
-                None => compared_pairs += 1,
+                Some(Exempt::ManTag) => {}
+                // Unreachable, and asserted rather than silently absorbed: `WalkUnknowable` only
+                // ever comes from `walk_exemption`, and an arm that quietly accepted it here
+                // would read as though walk exemptions were accounted for in this count.
+                Some(Exempt::WalkUnknowable) => {
+                    unreachable!("ledger_exemption never answers WalkUnknowable")
+                }
+                // Held to *all three*, so the walk must be unexempt too: a pair whose walk
+                // answered `Unknowable` was compared against two surfaces, not three, and
+                // counting it here would overstate what this floor guards.
+                None if !walk_exempt => compared_pairs += 1,
+                None => {}
             }
         }
     }
@@ -486,7 +498,7 @@ fn the_corpus_actually_exercises_the_agreement() {
     assert!(moving > 20, "units whose month moves an item: {moving}");
     assert!(
         compared_pairs > 100,
-        "(unit, tag) pairs held to all three surfaces: {compared_pairs}"
+        "(unit, tag) pairs held to all three surfaces at once: {compared_pairs}"
     );
     assert!(
         walk_unknowable > 0,
