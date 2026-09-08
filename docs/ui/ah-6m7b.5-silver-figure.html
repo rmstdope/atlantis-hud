@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The ITEMS popup's silver line (ah-6m7b.5)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:6px; }
+  .il { font-size:12px; color:var(--ink-soft); padding:3px 0; border-bottom:1px solid var(--edge-soft); }
+  .il:last-child { border-bottom:0; }
+  .il b { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .il .s { display:block; color:var(--ink-dim); font-size:11.5px; font-style:italic; margin-top:2px; }
+  .new { color:var(--ok); }
+  .il.newline { background:rgba(79,183,131,.07); border-left:2px solid var(--ok); padding-left:7px; }
+  .il.badline { background:rgba(217,112,112,.08); border-left:2px solid var(--danger); padding-left:7px; }
+  .bad { color:var(--danger); }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; } .cap b { color:var(--ink); }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-6m7b.5</span> — the ITEMS popup's silver line has a figure as well as a sentence</h1>
+  <p>You chose <strong>option A</strong> on 2026-09-08: the ITEMS popup gains the seven silver
+  causes, so its silver line stops being half a story. Planning that child found the mockup you
+  chose from was <strong>wrong about what the line says today</strong>, and the correction opens one
+  question I cannot answer for you.</p>
+  <blockquote>The old mockup drew today's line as <code>silver&nbsp;&nbsp;1000 &rarr; 1216</code> —
+  a figure that already moves with the tax and the wage. It does not. Today the ITEMS column moves a
+  unit's silver <strong>only for a GIVE, a TAKE and a TRANSPORT</strong>. A tax, a wage, a purchase,
+  a study fee and a cast fee leave it untouched, on purpose: <code>orders/effects.rs:5292</code>
+  pins it in as many words — <em>"the ITEMS column shows silver for every other unit that BUYs — the
+  spend belongs to the SILVER column"</em> (<code>ah-agbm</code>).</p>
+  <p>So the line has two halves and they are governed by different rules. Naming the seven causes
+  fixes the <em>sentence</em>. What should happen to the <em>figure</em> beside it is the question.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>The month</em> one unit, five orders</h2>
+  <p><code>TAX</code>, <code>@WORK</code>, <code>STUDY COMB</code>, <code>BUY 2 grain</code>,
+  <code>GIVE 901 100 SILV</code>. It holds 1000 silver, taxes 250, works 190, studies for 100, buys
+  24 of grain and gives 100 away. The SILVER column says it ends the month on <strong>1216</strong>.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Items — today, corrected</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>grain</b> &nbsp;10 &rarr; 12
+        <span class="s">grain: bought 2 at 12 silver each.</span></div>
+      <div class="il badline"><b>silver</b> &nbsp;1000 &rarr; 900
+        <span class="s">silver: gave 100 to Ferry (901).</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver — today</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>month end</b> &nbsp;1216
+        <span class="s">taxed +250 · worked +190 · bought &minus;24 · studied &minus;100 · gave away &minus;100</span></div>
+    </div>
+  </div>
+  <p class="cap"><b>900 against 1216 on one row</b>, and neither number is wrong by its own rule —
+  the ITEMS figure counts only what physically moved between units, the SILVER figure counts the
+  whole month. That is the disagreement this family exists to end, and it is bigger than the
+  sentence you were shown.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option A</em> the figure moves too — the two columns finally agree</h2>
+  <p>The ledger records every silver movement, so the ITEMS column's silver figure becomes the
+  month's end, and the sentence names all of it.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Items</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>grain</b> &nbsp;10 &rarr; 12
+        <span class="s">grain: bought 2 at 12 silver each.</span></div>
+      <div class="il newline"><b>silver</b> &nbsp;1000 &rarr; 1216 <span class="new">&nbsp;changed</span>
+        <span class="s">silver: gave 100 to Ferry (901), taxed 250, bought 2 at 12 silver each,
+        studied for 100, worked 190.</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver — unchanged</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>month end</b> &nbsp;1216
+        <span class="s">taxed +250 · worked +190 · bought &minus;24 · studied &minus;100 · gave away &minus;100</span></div>
+    </div>
+  </div>
+  <p class="cap"><b>One number for a unit's silver, wherever a player looks.</b> The cost is that a
+  figure changes on nearly every unit you own — any unit that taxes, works, buys or studies — and it
+  reverses a rule the codebase decided on purpose (<code>ah-agbm</code>) and pins with a test. It
+  also makes the ITEMS cell's silver a forecast rather than a count of goods moved, which is a
+  different kind of number from every other tag on that popup.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option B</em> the sentence names everything, the figure keeps its own rule</h2>
+  <p>Exactly what you chose in September, with the correction made explicit: the sentence gains the
+  seven causes, the figure still counts only what moved between units.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Items</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>grain</b> &nbsp;10 &rarr; 12
+        <span class="s">grain: bought 2 at 12 silver each.</span></div>
+      <div class="il newline"><b>silver</b> &nbsp;1000 &rarr; 900
+        <span class="s">silver: gave 100 to Ferry (901), taxed 250, bought 2 at 12 silver each,
+        studied for 100, worked 190.</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver — unchanged</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>month end</b> &nbsp;1216
+        <span class="s">taxed +250 · worked +190 · bought &minus;24 · studied &minus;100 · gave away &minus;100</span></div>
+    </div>
+  </div>
+  <p class="cap"><b>No figure anywhere changes</b>, and the refactoring still lands whole. The cost
+  is on one line: the sentence now says <em>taxed 250, worked 190</em> beside a figure that moved by
+  neither, so the line contradicts itself more loudly than it does today. Today it is merely
+  silent about the tax; here it names it and still does not count it.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option C</em> the ITEMS popup stops talking about silver at all</h2>
+  <p>Silver is the SILVER column's tag. The ITEMS popup drops its <code>silver SILV</code> line and
+  its sentence entirely, and a player reading about money reads one column.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Items</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>grain</b> &nbsp;10 &rarr; 12
+        <span class="s">grain: bought 2 at 12 silver each.</span></div>
+      <div class="il"><span class="s" style="font-style:normal">Silver is in the SILVER column.</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver — unchanged</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>month end</b> &nbsp;1216
+        <span class="s">taxed +250 · worked +190 · bought &minus;24 · studied &minus;100 · gave away &minus;100</span></div>
+    </div>
+  </div>
+  <p class="cap"><b>Nothing can contradict anything</b>, and the seven new causes need never reach
+  the ITEMS vocabulary at all — the smallest change of the three. The cost is that a player looking
+  at what a GIVE moved now has to look in two places for one gift: the goods in ITEMS, the silver in
+  SILVER. That is a habit some players already have the other way round.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>What each costs to build</em></h2>
+  <table class="q">
+    <tr><th></th><th>A — figure moves</th><th>B — sentence only</th><th>C — no silver line</th></tr>
+    <tr><td class="k">new <code>ItemChangeCause</code> arms</td><td>seven</td><td>seven</td><td>none</td></tr>
+    <tr><td class="k">ledger records silver</td><td>every cause</td><td>every cause, not applied to the item figure</td><td>no change</td></tr>
+    <tr><td class="k">existing tests reversed</td>
+        <td class="bad"><code>effects.rs:5292</code> and its rule</td><td>none</td><td>a handful of popup tests</td></tr>
+    <tr><td class="k">figures a player sees move</td>
+        <td class="bad">nearly every own unit</td><td>none</td><td>none, one line disappears</td></tr>
+    <tr><td class="k">roughly</td><td>two children</td><td>two children</td><td>one child</td></tr>
+  </table>
+  <blockquote>Whichever you pick, the SILVER column itself is untouched: same rows, same wording,
+  same numbers. And whichever you pick, this child is too big for one increment and I will split it
+  — the answer decides how.</blockquote>
+</section>
+
+<section>
+  <h2 class="rule"><em>You chose C</em> — and the cell has to follow, or it cannot</h2>
+  <p>The ITEMS <strong>cell</strong> lists every tag the unit holds, silver among them, as
+  <code>2 LEAD, 1000 SILV, 12 GRAI</code> (<code>formatItems</code>,
+  <code>packages/shared/src/unitPreview.ts:335</code>). The popup exists to explain that cell. So if
+  the popup stops talking about silver, the cell is left showing a number the popup will not
+  explain. Two ways to finish the thought:</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">C1 — silver leaves the ITEMS column entirely</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>cell</b> &nbsp;2 LEAD, 12 GRAI</div>
+      <div class="il"><b>grain</b> &nbsp;10 &rarr; 12
+        <span class="s">grain: bought 2 at 12 silver each.</span></div>
+      <div class="il"><span class="s" style="font-style:normal">No silver line. Silver is the SILVER column's.</span></div>
+      <div class="il"><span class="s">Consistent: the cell and the popup say the same thing about
+        silver, which is nothing. But the cell stops showing a number that has been on it since the
+        first version, and a player scanning holdings loses it from that scan.</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">C2 — the cell keeps silver, the popup stays silent</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>cell</b> &nbsp;2 LEAD, 1000 SILV, 12 GRAI</div>
+      <div class="il"><b>grain</b> &nbsp;10 &rarr; 12
+        <span class="s">grain: bought 2 at 12 silver each.</span></div>
+      <div class="il badline"><span class="s" style="font-style:normal">No silver line, though the cell shows 1000 SILV.</span></div>
+      <div class="il"><span class="s">The cell keeps the holding a player is used to seeing, and it
+        is the report's own figure. But the popup now omits one of the cell's own tags, which is the
+        one thing that popup has never done.</span></div>
+    </div>
+  </div>
+  <p class="cap">Under either, today's <code>silver: gave 100 to Ferry (901)</code> sentence goes
+  away — that is what C means. A gift of silver is then read in the SILVER column, which already
+  says <em>gave away &minus;100 · to Ferry (901)</em>.</p>
+</section>
+</main>
+</body>
+</html>
