@@ -223,3 +223,85 @@ fn the_items_column_and_its_warning_agree_with_it() {
         assert_eq!(warned, case.warns, "case {}: not-enough-silver", index + 1);
     }
 }
+
+/// `ah-6m7b.1`: a contended tax pool is where the two surfaces disagreed. The SILVER column
+/// settles the pool and credits each taxer its proportional share; the ledger stays optimistic and
+/// credits the full ask capped at the region's base only (`credit_tax`, `PoolShare::Uncontended`,
+/// pinned by `the_ledger_stays_optimistic_about_a_contended_tax_pool`). So the ITEMS column has
+/// always made the amulet the settled share could not pay for, and the SILVER column said it could
+/// not. It now reads the ledger's own figure, which is the one `semantics::cast` prices this very
+/// spell against.
+fn contended_report() -> String {
+    [
+        "Foo (1) Report",
+        "",
+        "plain (1,1) in Nowhere, 10 peasants (orcs), $300.",
+        "",
+        "Exits:",
+        "  Southeast : plain (2,2) in Nowhere.",
+        "",
+        "* Mages (900), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+         Skills: create amulet of protection [CRPA] 1 (30), combat [COMB] 1 (30).",
+        "* Guards (901), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+         Skills: combat [COMB] 1 (30).",
+        "",
+    ]
+    .join("\n")
+}
+
+fn contended_orders() -> String {
+    let text = contended_report();
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    format!("{template}\nunit 900\nTAX\nCAST Create_Amulet_Of_Protection\nunit 901\nTAX\n")
+}
+
+#[test]
+fn a_contended_tax_funds_the_cast_the_items_column_already_makes() {
+    let text = contended_report();
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset());
+    let review = review_turn(
+        &parsed,
+        &contended_orders(),
+        Some(&ruleset()),
+        CheckOptions::default(),
+    );
+    let silver = review
+        .silver
+        .iter()
+        .find(|silver| silver.unit_id == "900")
+        .expect("the silver column has a row for the mage");
+
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &text,
+        "[]",
+        &contended_orders(),
+    )
+    .expect("the ruleset loads");
+    let amulets: i64 = preview
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.unit.unit_id == "900")
+        .expect("the preview has the mage")
+        .created
+        .iter()
+        .filter(|created| created.tag == "AMPR")
+        .map(|created| created.most)
+        .sum();
+
+    assert_eq!(
+        silver.cast_made, 1,
+        "the mage casts the amulet the ledger's silver pays for"
+    );
+    assert_eq!(silver.cast_capped_by, None, "and nothing capped it");
+    assert_eq!(amulets, 1, "the ITEMS column has always said one");
+    assert_eq!(
+        silver.cast_made, amulets,
+        "and the two surfaces agree"
+    );
+}

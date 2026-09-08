@@ -1517,6 +1517,11 @@ pub fn forecast_unit(
     // What "Instant Magic ... Spells are CAST" charges: after *Give orders* and before *Market
     // orders*, so it comes off the market's running total but not the gift's (`ah-a5ci`).
     let mut cast_expense = 0i64;
+    // What this unit's earlier `CAST` lines have already earned, so a second spell is priced
+    // against what the first left - the running draw-down `semantics::cast` makes by charging the
+    // ledger line by line. Beside `cast_expense`, which is the spending half of the same answer
+    // and is already kept for the market's own total (`ah-a5ci`).
+    let mut cast_earned = 0i64;
     let mut market_expense;
     // Whether the walk has passed out of the Give phase and settled the block's `GIVE ... ALL SILV`
     // orders. Once, and never again: `phases::in_phase_order` sorts the block, so the phase cannot
@@ -2045,17 +2050,23 @@ pub fn forecast_unit(
                 let caster = Caster {
                     skills: facts.skills,
                     held: facts.items,
-                    // `rules/sequenceofevents` settles CLAIM, GIVE/TAKE and TAX before `Spells are
-                    // CAST`, and opens the market after it. This walk is in that order, so the
-                    // running balance is the whole answer: `income` already carries the gathered
-                    // gifts (`ah-ofpb.4`, R4), and adding them again here would count each twice.
-                    silver_available: available_silver(held, income, expense),
+                    silver_available: match facts.phase_silver() {
+                        // As at the manufacturing cap: `semantics::cast` prices this same spell
+                        // from this same figure, through this same `price_cast` (`ah-6m7b.1`).
+                        Some(silver) => silver
+                            .as_the_cast_opens()
+                            .saturating_add(cast_earned)
+                            .saturating_sub(cast_expense)
+                            .max(0),
+                        None => available_silver(held, income, expense),
+                    },
                     transmuting,
                 };
                 let (priced, plan) = price_cast(resolved, &caster, region);
                 income = income.saturating_add(priced.earns);
                 expense = expense.saturating_add(priced.spends);
                 cast_expense = cast_expense.saturating_add(priced.spends);
+                cast_earned = cast_earned.saturating_add(priced.earns);
                 record(
                     &mut moves,
                     phases::StatePhase::Cast,
