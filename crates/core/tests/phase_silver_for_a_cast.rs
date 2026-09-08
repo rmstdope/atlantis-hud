@@ -300,8 +300,5 @@ fn a_contended_tax_funds_the_cast_the_items_column_already_makes() {
     );
     assert_eq!(silver.cast_capped_by, None, "and nothing capped it");
     assert_eq!(amulets, 1, "the ITEMS column has always said one");
-    assert_eq!(
-        silver.cast_made, amulets,
-        "and the two surfaces agree"
-    );
+    assert_eq!(silver.cast_made, amulets, "and the two surfaces agree");
 }

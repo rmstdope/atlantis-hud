@@ -44,10 +44,10 @@ use crate::orders::silver::{
     readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
     transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
-    MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SharedMarket,
-    SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
-    UpkeepSettlement, Workforce,
+    MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare,
+    PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages,
+    SaleAnswer, SharedMarket, SilverChangeCause, SilverDoubt, TransferShape, Transmuting,
+    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -12186,9 +12186,12 @@ mod tests {
     #[test]
     fn phase_silver_reads_the_balance_the_tax_and_study_phases_leave() {
         let mut state = PhaseState {
-            balances: [(("900".to_owned(), SILVER.to_owned()), [100; StatePhase::COUNT])]
-                .into_iter()
-                .collect(),
+            balances: [(
+                ("900".to_owned(), SILVER.to_owned()),
+                [100; StatePhase::COUNT],
+            )]
+            .into_iter()
+            .collect(),
             uncertain: BTreeMap::new(),
         };
         state.apply(StatePhase::Tax, "900", "SILV", 300);
