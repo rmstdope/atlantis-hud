@@ -2275,14 +2275,21 @@ impl Working {
         // The 1-based document line of the order, so the change it records can name it.
         line: usize,
     ) {
-        use super::targets::{give_reach, party_unit_id, GiveReach};
+        use super::targets::{give_endpoint, GiveEndpoint, GiveReach};
 
         let region = self.units[giver].unit.region_id.clone();
         let giver_id = self.units[giver].unit.unit_id.clone();
-        let reach = give_reach(
+        let GiveEndpoint {
+            reach,
+            // `None` for `Discard`, `Foreign` and `Unshown` alike: the goods leave and no row of
+            // ours gains them. `Unshown` moves nothing at all, because `tags_moved` returns no tag
+            // for it - `rules/give` may or may not let the gift through and this column says so
+            // with `+ ?` rather than a figure (`ah-66yi`).
+            row: receiver,
+        } = give_endpoint(
             target,
             &giver_id,
-            |id| self.index_in(&region, id).is_some(),
+            |id| self.index_in(&region, id),
             |id| {
                 self.shown_in_region
                     .get(&region)
@@ -2292,17 +2299,10 @@ impl Working {
             // the report never prints, which may be a hidden Friendly target (`ah-66yi`).
             |id| self.known_units.contains(id),
         );
-        let receiver = match reach {
-            // Nothing at all: not even the giver loses what it named (`ah-vcp8.2`).
-            GiveReach::Nowhere => return,
-            // The goods leave and no row of ours gains them. `Unshown` reaches here too and moves
-            // nothing at all, because `tags_moved` returns no tag for it - `rules/give` may or may
-            // not let the gift through and this column says so with `+ ?` rather than a figure
-            // (`ah-66yi`).
-            GiveReach::Discard | GiveReach::Foreign | GiveReach::Unshown => None,
-            // Decided by this same lookup a line ago, so it answers again.
-            GiveReach::Ours => party_unit_id(target).and_then(|id| self.index_in(&region, &id)),
-        };
+        // Nothing at all: not even the giver loses what it named (`ah-vcp8.2`).
+        if reach == GiveReach::Nowhere {
+            return;
+        }
 
         self.move_between(
             giver,

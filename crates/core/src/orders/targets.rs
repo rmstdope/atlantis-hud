@@ -65,7 +65,9 @@ pub enum GiveReach {
     Unshown,
     /// Definitely no target: a unit the report shows somewhere else - `rules/sequenceofevents`
     /// settles gifts in phase 4, before anything moves - a `NEW` alias no `FORM` here creates, and
-    /// a unit giving to itself, which the server refuses. The order does nothing at all.
+    /// a unit giving to itself, which the server refuses. The order does nothing at all: the whole
+    /// transfer is void and the giver is not charged either, exactly as `effects::give` returns
+    /// early for these without touching it.
     Nowhere,
 }
 
@@ -126,36 +128,91 @@ pub fn give_reach(
     shown_here: impl Fn(&str) -> bool,
     shown_anywhere: impl Fn(&str) -> bool,
 ) -> GiveReach {
+    give_endpoint(
+        party,
+        giver_id,
+        |id| ours_here(id).then_some(()),
+        shown_here,
+        shown_anywhere,
+    )
+    .reach
+}
+
+/// Where a transfer lands, and which of our own rows receives it.
+///
+/// The step every surface takes after [`give_reach`], written once: three surfaces each had their
+/// own copy of it and a fourth read it backwards (`ah-1zca.2`).
+///
+/// `row` is `Some` exactly when `reach` is [`GiveReach::Ours`], and that is structural rather than
+/// a promise: `row_of` is the same lookup that decides `Ours`, so the two cannot disagree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GiveEndpoint<T> {
+    pub reach: GiveReach,
+    pub row: Option<T>,
+}
+
+impl<T> GiveEndpoint<T> {
+    /// One of our own rows, known without a lookup - the giver's side of a `GIVE` and the taker's
+    /// side of a `TAKE`, each of which is the ordered unit itself.
+    #[must_use]
+    pub fn ours(row: T) -> Self {
+        Self {
+            reach: GiveReach::Ours,
+            row: Some(row),
+        }
+    }
+
+    /// No row of ours receives: the goods leave, or may leave, and nothing here gains them.
+    #[must_use]
+    pub fn elsewhere(reach: GiveReach) -> Self {
+        Self { reach, row: None }
+    }
+}
+
+/// Where a `GIVE` from `giver_id` lands, and which of our own rows receives it.
+///
+/// `row_of` answers "is this unit id one of ours, standing in this region - and if so, which row",
+/// replacing the separate `ours_here` predicate [`give_reach`] takes: one closure, so the answer
+/// that decides [`GiveReach::Ours`] and the row that is then credited cannot come from two
+/// lookups. `shown_here` and `shown_anywhere` are unchanged - see [`give_reach`] for what each
+/// separates and why.
+#[must_use]
+pub fn give_endpoint<T>(
+    party: &Party,
+    giver_id: &str,
+    row_of: impl Fn(&str) -> Option<T>,
+    shown_here: impl Fn(&str) -> bool,
+    shown_anywhere: impl Fn(&str) -> bool,
+) -> GiveEndpoint<T> {
     let id = match party {
-        Party::Discard => return GiveReach::Discard,
+        Party::Discard => return GiveEndpoint::elsewhere(GiveReach::Discard),
         // The game creates that unit in this region and it is not ours: the goods reach a target
         // whose faction we cannot read. It is not "named nowhere" however little we can see.
-        Party::Foreign { .. } => return GiveReach::Foreign,
+        Party::Foreign { .. } => return GiveEndpoint::elsewhere(GiveReach::Foreign),
         Party::Unit(id) => id.clone(),
         // Only this month's own orders can create such a unit, so no report could ever show it and
-        // `ours_here` is the whole question. A miss is a definite no-op, never uncertainty.
+        // `row_of` is the whole question. A miss is a definite no-op, never uncertainty.
         Party::New(alias) => {
             let id = format!("new-{alias}");
-            return if id != giver_id && ours_here(&id) {
-                GiveReach::Ours
-            } else {
-                GiveReach::Nowhere
+            if id == giver_id {
+                return GiveEndpoint::elsewhere(GiveReach::Nowhere);
+            }
+            return match row_of(&id) {
+                Some(row) => GiveEndpoint::ours(row),
+                None => GiveEndpoint::elsewhere(GiveReach::Nowhere),
             };
         }
     };
     if id == giver_id {
         // `rules/give`: the server refuses a unit giving to itself, and a net-zero application
         // would reorder the item list into a phantom "items changed" row (`effects::give`).
-        return GiveReach::Nowhere;
+        return GiveEndpoint::elsewhere(GiveReach::Nowhere);
     }
-    if ours_here(&id) {
-        GiveReach::Ours
-    } else if shown_here(&id) {
-        GiveReach::Foreign
-    } else if shown_anywhere(&id) {
-        GiveReach::Nowhere
-    } else {
-        GiveReach::Unshown
+    match row_of(&id) {
+        Some(row) => GiveEndpoint::ours(row),
+        None if shown_here(&id) => GiveEndpoint::elsewhere(GiveReach::Foreign),
+        None if shown_anywhere(&id) => GiveEndpoint::elsewhere(GiveReach::Nowhere),
+        None => GiveEndpoint::elsewhere(GiveReach::Unshown),
     }
 }
 
@@ -278,6 +335,64 @@ mod tests {
             |id| shown.contains(&id),
             |id| anywhere.contains(&id),
         )
+    }
+
+    /// The same hex as [`reach`], but asking for the row as well: `row_of` is the very lookup that
+    /// decides `Ours`, so a row is present exactly when the reach is.
+    fn endpoint(party: &Party, giver: &str) -> GiveEndpoint<usize> {
+        let ours = ["900", "901", "new-1"];
+        let shown = ["900", "901", "4573"];
+        let anywhere = ["900", "901", "4573", "8000"];
+        give_endpoint(
+            party,
+            giver,
+            |id| ours.iter().position(|&o| o == id),
+            |id| shown.contains(&id),
+            |id| anywhere.contains(&id),
+        )
+    }
+
+    #[test]
+    fn an_endpoint_carries_the_row_that_decided_ours() {
+        assert_eq!(
+            endpoint(&Party::Unit("901".to_string()), "900"),
+            GiveEndpoint {
+                reach: GiveReach::Ours,
+                row: Some(1)
+            }
+        );
+        assert_eq!(
+            endpoint(&Party::New("1".to_string()), "900"),
+            GiveEndpoint {
+                reach: GiveReach::Ours,
+                row: Some(2)
+            }
+        );
+    }
+
+    #[test]
+    fn every_other_reach_carries_no_row() {
+        for (party, giver, reach) in [
+            (Party::Discard, "900", GiveReach::Discard),
+            (
+                Party::Foreign {
+                    faction: "2".to_string(),
+                    alias: "1".to_string(),
+                },
+                "900",
+                GiveReach::Foreign,
+            ),
+            (Party::Unit("4573".to_string()), "900", GiveReach::Foreign),
+            (Party::Unit("8000".to_string()), "900", GiveReach::Nowhere),
+            (Party::Unit("999".to_string()), "900", GiveReach::Unshown),
+            (Party::Unit("900".to_string()), "900", GiveReach::Nowhere),
+        ] {
+            assert_eq!(
+                endpoint(&party, giver),
+                GiveEndpoint { reach, row: None },
+                "{party:?} from {giver}"
+            );
+        }
     }
 
     #[test]
