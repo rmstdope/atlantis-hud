@@ -31,6 +31,9 @@ mod study;
 pub mod targets;
 #[cfg(test)]
 mod transfer_agreement;
+/// Core-internal: the one Give-phase transfer record and report order both `effects` and
+/// `semantics` read.
+mod transfers;
 pub mod vocabulary;
 pub mod walk;
 
