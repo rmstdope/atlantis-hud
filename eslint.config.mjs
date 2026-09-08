@@ -23,9 +23,7 @@ export default [
     rules: {
       "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
       "react-hooks/rules-of-hooks": "error",
-      // Registered but off: 29 findings across AppShell.tsx and MapCanvas.tsx, and every package
-      // lints with --max-warnings=0, so there is no warn-only middle ground. ah-cy9j clears them.
-      "react-hooks/exhaustive-deps": "off"
+      "react-hooks/exhaustive-deps": "error"
     }
   }
 ];
