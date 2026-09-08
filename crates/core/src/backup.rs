@@ -211,6 +211,28 @@ pub struct GameBackupHexNote {
     pub updated_at: String,
 }
 
+/// One player-written note on a hex, keyed by id; `region_id` is `Coordinate::id`'s `"z:x,y"`.
+///
+/// The stored row, which carries its game; `GameBackupHexNote` above is the same note inside a
+/// backup document, where the game is the document's and so is not repeated per row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "HexNoteRecord", export_to = "HexNoteRecord.ts")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct HexNote {
+    pub id: String,
+    pub game_id: String,
+    pub region_id: String,
+    pub text: String,
+    pub on_map: bool,
+    pub turn: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// One unit as an Army remembers it: the last report that showed it, whichever turn that was.
 ///
 /// A member the current report does not mention is kept and still exported - it may be another
@@ -220,6 +242,11 @@ pub struct GameBackupHexNote {
 /// It lives here, rather than in `core-persistence`, because the backup carries it too and both
 /// stores read it; `core-persistence` re-exports it, as it already does `GameManifest`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "ArmyMemberRecord", export_to = "ArmyMemberRecord.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ArmyMember {
     /// The report's unit number. The key: stable across turns, and never withheld.
@@ -250,6 +277,26 @@ pub struct ArmyMember {
 #[serde(rename_all = "camelCase")]
 pub struct GameBackupArmy {
     pub id: String,
+    pub name: String,
+    pub members: Vec<ArmyMember>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A named group of units, scoped to the game and outliving any one turn.
+///
+/// The stored row, which carries its game; `GameBackupArmy` above is the same Army inside a backup
+/// document, where the game is the document's and so is not repeated per row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "ArmyRecord", export_to = "ArmyRecord.ts")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct Army {
+    pub id: String,
+    pub game_id: String,
     pub name: String,
     pub members: Vec<ArmyMember>,
     pub created_at: String,
@@ -974,6 +1021,73 @@ mod tests {
                 study_plans: vec![],
             },
         }
+    }
+
+    #[test]
+    fn an_army_round_trips_as_camel_case() {
+        let army = Army {
+            id: "army-1".to_string(),
+            game_id: "faction-12".to_string(),
+            name: "Northern escort".to_string(),
+            members: vec![ArmyMember {
+                unit_id: "204".to_string(),
+                name: "Pikes".to_string(),
+                faction_id: None,
+                faction_name: None,
+                own: false,
+                region_id: "1:7,53".to_string(),
+                flags: vec!["behind".to_string()],
+                items: vec![],
+                skills: vec![],
+                combat_spell: None,
+                men: 12,
+                seen_turn: 68,
+                seen_at: "2026-08-07T12:00:00Z".to_string(),
+            }],
+            created_at: "2026-08-07T12:00:00Z".to_string(),
+            updated_at: "2026-08-07T12:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&army).expect("serialises");
+
+        assert!(json.contains("\"gameId\""));
+        assert!(json.contains("\"createdAt\""));
+        assert!(json.contains("\"updatedAt\""));
+        assert!(json.contains("\"unitId\""));
+        assert!(json.contains("\"factionId\""));
+        assert!(json.contains("\"factionName\""));
+        assert!(json.contains("\"regionId\""));
+        assert!(json.contains("\"combatSpell\""));
+        assert!(json.contains("\"seenTurn\""));
+        assert!(json.contains("\"seenAt\""));
+        assert_eq!(
+            serde_json::from_str::<Army>(&json).expect("round trips"),
+            army
+        );
+    }
+
+    #[test]
+    fn a_hex_note_round_trips_as_camel_case() {
+        let note = HexNote {
+            id: "note-1".to_string(),
+            game_id: "faction-12".to_string(),
+            region_id: "1:7,53".to_string(),
+            text: "Mustn't forget the mountain pass".to_string(),
+            on_map: true,
+            turn: 12,
+            created_at: "2026-08-07T12:00:00Z".to_string(),
+            updated_at: "2026-08-07T12:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&note).expect("serialises");
+
+        assert!(json.contains("\"gameId\""));
+        assert!(json.contains("\"regionId\""));
+        assert!(json.contains("\"onMap\""));
+        assert!(json.contains("\"createdAt\""));
+        assert!(json.contains("\"updatedAt\""));
+        assert_eq!(
+            serde_json::from_str::<HexNote>(&json).expect("round trips"),
+            note
+        );
     }
 
     #[test]
