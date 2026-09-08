@@ -27,7 +27,7 @@ const CONFIGS = [
 ] as const;
 
 describe("the browser suites' server policy", () => {
-  it("decides server reuse from no CI variable at all", () => {
+  it("mentions no CI variable in its code at all", () => {
     for (const { path } of CONFIGS) {
       expect(serverPolicy(readFileSync(path, "utf8")).readsCi, path).toBe(false);
     }
