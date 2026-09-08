@@ -202,6 +202,7 @@ import type { SendOrdersPhase } from "./sendOrdersView";
 import { sendDisabledReason } from "./sendOrdersView";
 import { performOrdersSend } from "./sendOrders";
 import { BattlesDialog } from "./BattlesDialog";
+import { battleHexes } from "./battles";
 import { ChangesDialog } from "./ChangesDialog";
 import {
   changesTabs,
@@ -668,6 +669,12 @@ export function AppShell({
   const [gamesLoaded, setGamesLoaded] = useState(false);
   // The map's note pins (ah-o1t.3); the panel reads the same store directly.
   const hexNotes = useHexNotesStore((state) => state.notes);
+  // Where the turn on screen's battles were fought, so the map can mark those hexes. Only this
+  // report's battles: nothing accumulates them across turns.
+  const battleHexIds = useMemo(
+    () => battleHexes(parsed?.battles ?? [], parsed?.header.factionId ?? null),
+    [parsed]
+  );
   // Subscribed, not read through `getState()`: the refresh effect below depends on it, so the
   // Armies that arrive after an asynchronous load are still refreshed against the turn on screen.
   const armiesStatus = useArmiesStore((state) => state.status);
@@ -4927,6 +4934,7 @@ export function AppShell({
           gameId={game?.manifest.metadata.gameId ?? null}
           model={model}
           notes={hexNotes}
+          battles={battleHexIds}
           theme={getMapTheme(mapThemeId)}
           level={level}
           selectedRegionId={selectedRegionId}

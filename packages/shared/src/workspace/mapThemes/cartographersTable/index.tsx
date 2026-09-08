@@ -260,11 +260,12 @@ function MarkLayer({ views }: LayerProps) {
                 </g>
               )}
 
-              {/* Crossed swords, north-east. Reserved, as the gate is. */}
+              {/* Crossed swords, north-east: blood for your own fight, faded sepia for one seen. */}
               {view.battle && (
                 <g
-                  className="ct-glyph ct-battle"
+                  className={`ct-glyph ${view.battle === "own" ? "ct-battle" : "ct-battle-other"}`}
                   data-mark="battle"
+                  data-battle={view.battle}
                   transform={at(ANCHORS.battle)}
                   strokeWidth={2.2}
                   strokeLinecap="round"

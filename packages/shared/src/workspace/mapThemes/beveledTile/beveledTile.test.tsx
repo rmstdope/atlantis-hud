@@ -38,6 +38,13 @@ function viewWith(changes: Partial<HexView>): HexView {
   return { ...base, ...changes };
 }
 
+/** The battle group alone, so a class assertion cannot pass on some other mark's class. */
+function battleGroup(svg: string, involvement: string): string {
+  const start = svg.indexOf(`data-battle="${involvement}"`);
+  expect(start).toBeGreaterThan(-1);
+  return svg.slice(svg.lastIndexOf("<g", start), svg.indexOf("</g>", start));
+}
+
 function marks(views: HexView[]): string {
   return renderToStaticMarkup(
     <svg>
@@ -54,7 +61,7 @@ const BARE: Partial<HexView> = {
   buildings: 0,
   shafts: 0,
   lairs: 0,
-  battle: false,
+  battle: null,
   gate: false
 };
 
@@ -380,5 +387,15 @@ describe("unsurveyed ground, drawn light and rimmed", () => {
     expect(draw(beveledTile.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
       "url(#biome-texture-jungle)"
     );
+  });
+});
+
+describe("the battle fought in a hex last turn", () => {
+  it("reddens the chip of a battle the viewer fought in and greys one they watched", () => {
+    const own = battleGroup(marks([viewWith({ ...BARE, battle: "own" })]), "own");
+    const other = battleGroup(marks([viewWith({ ...BARE, battle: "other" })]), "other");
+
+    expect(own).toContain('class="bt-chip-battle"');
+    expect(other).toContain('class="bt-chip-battle-other"');
   });
 });

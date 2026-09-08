@@ -33,6 +33,13 @@ function viewWith(changes: Partial<HexView>): HexView {
   return { ...base, ...changes };
 }
 
+/** The battle group alone, so a class assertion cannot pass on some other mark's class. */
+function battleGroup(svg: string, involvement: string): string {
+  const start = svg.indexOf(`data-battle="${involvement}"`);
+  expect(start).toBeGreaterThan(-1);
+  return svg.slice(svg.lastIndexOf("<g", start), svg.indexOf("</g>", start));
+}
+
 function marks(views: HexView[]): string {
   return renderToStaticMarkup(
     <svg>
@@ -161,17 +168,24 @@ describe("workshops, the roofs between the settlement and the monsters", () => {
   });
 });
 
-describe("the marks the reports do not describe yet", () => {
-  it("keeps a battle and a gate ready to draw the day the parser reads them", () => {
-    // Reserved anchors: the design states where they go, so nothing about the layout moves when
-    // the data arrives.
-    const svg = marks([viewWith({ battle: true, gate: true })]);
+describe("the battle fought in a hex, and the gate no report describes yet", () => {
+  it("draws crossed swords at their anchor for a battle and a gate", () => {
+    const svg = marks([viewWith({ battle: "own", gate: true })]);
 
     expect(svg).toContain('data-mark="battle"');
     expect(svg).toContain('data-mark="gate"');
   });
 
-  it("draws neither of them from a real report, which never says so yet", () => {
+  it("bloodies a battle the viewer fought in and fades one they only watched", () => {
+    const own = battleGroup(marks([viewWith({ battle: "own" })]), "own");
+    const other = battleGroup(marks([viewWith({ battle: "other" })]), "other");
+
+    expect(own).toContain("ct-battle");
+    expect(own).not.toContain("ct-battle-other");
+    expect(other).toContain("ct-battle-other");
+  });
+
+  it("draws neither from a report with no battles in it and no gate", () => {
     const svg = marks(buildHexViews(CONGESTED_HEXES, ALL_ON));
 
     expect(svg).not.toContain('data-mark="battle"');

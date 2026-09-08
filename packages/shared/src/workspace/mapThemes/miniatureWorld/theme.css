@@ -70,6 +70,7 @@
   --mw-arch: #8bd0f0;
   --mw-smoke: #00000055;
   --mw-blades: #e8d9a8;
+  --mw-blades-other: #a6a49a;
 
   --mw-own: #4caf7d;
   --mw-foreign: #5ec8f0;
@@ -136,6 +137,7 @@
   --mw-arch: #2f8fc4;
   --mw-smoke: #00000033;
   --mw-blades: #7a6a34;
+  --mw-blades-other: #8d887c;
 
   --mw-own: #2f8c5c;
   --mw-foreign: #2d7fa8;
@@ -324,6 +326,9 @@
 }
 .mw-blades {
   stroke: var(--mw-blades);
+}
+.mw-blades-other {
+  stroke: var(--mw-blades-other);
 }
 
 /* The people. */

@@ -26,6 +26,7 @@
   --bt-terrain-other: #5a606a;
 
   --bt-chip-battle: #c05252;
+  --bt-chip-battle-other: #6d7580;
   --bt-chip-gate: #8a63b8;
   --bt-chip-shaft: #a8863c;
   --bt-chip-lair: #7d2b23;
@@ -73,6 +74,7 @@
   --bt-terrain-other: #b7bec7;
 
   --bt-chip-battle: #a83e3e;
+  --bt-chip-battle-other: #5a626c;
   --bt-chip-gate: #6b4a99;
   --bt-chip-shaft: #7a6420;
   --bt-chip-lair: #8a3a30;
@@ -167,6 +169,9 @@
 
 .bt-chip-battle {
   fill: var(--bt-chip-battle);
+}
+.bt-chip-battle-other {
+  fill: var(--bt-chip-battle-other);
 }
 .bt-chip-gate {
   fill: var(--bt-chip-gate);

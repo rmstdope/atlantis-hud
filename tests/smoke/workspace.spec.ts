@@ -5400,3 +5400,30 @@ test("resting on a row in a filtered All my units list opens its popup", async (
   await expect(popup).toBeVisible();
   await expect(popup).toContainText(`Seven of Eight (${OTHER_OWN_UNIT})`);
 });
+
+/**
+ * A battle is the one event that changes what you do this turn, so the hex it was fought in carries
+ * a mark of its own, switchable like every other badge. Turn 72 is the fixture with battles in it -
+ * turn 71, which the rest of this file loads, has none.
+ */
+test("a hex where a battle was fought carries a badge, and the badge switches it off", async ({
+  page
+}) => {
+  await loadReport(page, "Battle smoke game", readReport("g7f95t72"), "regions");
+
+  const map = page.getByTestId("map-canvas");
+  // The default theme is Cartographer's Table, whose battle mark is crossed swords. Counted rather
+  // than looked at: the initial fit can leave a battle hex outside the viewport, and whether the
+  // map drew the mark at all is what this walk is about - the theme suites pin how it looks.
+  const battles = map.locator('[data-mark="battle"]');
+  await expect(battles).not.toHaveCount(0);
+
+  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true });
+  await trigger.click();
+  const badges = page.getByTestId("badge-menu");
+  await badges.getByRole("checkbox", { name: "Battles", exact: true }).uncheck();
+  await expect(battles).toHaveCount(0);
+
+  await badges.getByRole("button", { name: "All", exact: true }).click();
+  await expect(battles).not.toHaveCount(0);
+});

@@ -254,9 +254,14 @@ function MarkLayer({ views }: LayerProps) {
                 </Badge>
               )}
 
-              {/* Reserved: no report read yet says a battle happened in a hex. */}
+              {/* Last turn's battle: the viewer's own fight lit, one they only watched muted. */}
               {view.battle && (
-                <g className="hud-battle" data-station="battle" transform={at(STATIONS.battle)}>
+                <g
+                  className={view.battle === "own" ? "hud-battle" : "hud-battle-other"}
+                  data-station="battle"
+                  data-battle={view.battle}
+                  transform={at(STATIONS.battle)}
+                >
                   <path
                     d="M0,-8 L8,6 H-8 Z"
                     className="hud-badge"
@@ -273,7 +278,7 @@ function MarkLayer({ views }: LayerProps) {
                 </g>
               )}
 
-              {/* Reserved, as the battle is. */}
+              {/* Reserved: no report read yet says a hex holds a gate the parser missed. */}
               {view.gate && (
                 <Badge station="gate" at={STATIONS.gate} tone="hud-gate">
                   <path

@@ -16,6 +16,7 @@
 
 import type { ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
+import type { BattleInvolvement } from "../battles";
 import { worldOf } from "../mapViewport";
 import { hexPaint, terrainTexturePatternId, terrainTextureUrl } from "../mapHexView";
 
@@ -136,10 +137,10 @@ export type HexView = {
   shafts: number;
   lairs: number;
   /**
-   * Reserved. Every theme's layout keeps a slot for a battle; it turns true when the parser learns
-   * to read one, and no layout changes when it does.
+   * The battle fought here last turn, if any: `own` when the viewer's faction was in it, `other`
+   * when the report only gave them sight of it, `null` when there was none or the badge is off.
    */
-  battle: boolean;
+  battle: BattleMark;
   /** Whether the hex holds a gateway, the magical passage between levels. */
   gate: boolean;
 };
@@ -151,9 +152,9 @@ export type HexView = {
  * "structures" - across all nine, so hiding the buildings on a crowded level also took the ships,
  * the shafts, the lairs and the roads with them.
  *
- * `battle` is deliberately absent: it is a reserved field that is always false, and a control that
- * does nothing is worse than no control. It joins this list the day the parser reads it - which is
- * what `gate` did in ah-lcyn, once a Gateway was read from the report.
+ * Every mark a theme can draw has a control here. Two joined late, each the day its data reached
+ * the map: `gate` in ah-lcyn, once a Gateway was read from the report, and `battles` in ah-sdw5,
+ * once the report's battle blocks were placed on their hexes.
  */
 export type BadgeName =
   | "settlements"
@@ -161,6 +162,7 @@ export type BadgeName =
   | "foreignUnits"
   | "monsters"
   | "guard"
+  | "battles"
   | "ships"
   | "buildings"
   | "shafts"
@@ -177,6 +179,7 @@ export const BADGES: ReadonlyArray<{ name: BadgeName; label: string }> = [
   { name: "foreignUnits", label: "Foreign units" },
   { name: "monsters", label: "Monsters" },
   { name: "guard", label: "Guard" },
+  { name: "battles", label: "Battles" },
   { name: "ships", label: "Ships" },
   { name: "buildings", label: "Buildings" },
   { name: "shafts", label: "Shafts" },
@@ -206,10 +209,18 @@ export function allBadges(
   return { ...badges, ...overrides };
 }
 
+/** Whether a battle was fought in this hex last turn, and whether the viewer's faction was in it. */
+export type BattleMark = BattleInvolvement | null;
+
 export type HexViewOptions = {
   showStaleness: boolean;
   showTextures: boolean;
   badges: Record<BadgeName, boolean>;
+  /**
+   * Where last turn's battles were fought, from `battleHexes`, keyed by `HexNode.regionId`.
+   * Absent means no battle data reached this call - a tool or a test - and no hex gets a mark.
+   */
+  battles?: ReadonlyMap<string, BattleInvolvement>;
   /** The theme's `MapTheme.fogDamping`; 1 when absent, so a caller not drawing through a theme
    * (tests, tools) gets the shared fade whole. */
   fogDamping?: number;
@@ -434,7 +445,7 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     buildings: badges.buildings ? structures.buildings : 0,
     shafts: badges.shafts ? structures.shafts : 0,
     lairs: badges.lairs ? structures.lairs : 0,
-    battle: false,
+    battle: badges.battles ? (options.battles?.get(hex.regionId) ?? null) : null,
     gate: badges.gate && structures.gates > 0
   };
 }

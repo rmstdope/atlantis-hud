@@ -263,10 +263,13 @@ function MarkLayer({ views }: LayerProps) {
                 />
               )}
 
-              {/* Reserved: no report read yet says a battle happened in a hex. */}
+              {/* Last turn's battle: the viewer's own fight reddened, one they watched greyed. */}
               {view.battle && (
-                <g data-chip="battle" transform={at(battle)}>
-                  <circle r={CHIP_RADIUS} className="bt-chip-battle" />
+                <g data-chip="battle" data-battle={view.battle} transform={at(battle)}>
+                  <circle
+                    r={CHIP_RADIUS}
+                    className={view.battle === "own" ? "bt-chip-battle" : "bt-chip-battle-other"}
+                  />
                   <g className="bt-chip-ink" strokeWidth={1.5} strokeLinecap="round" fill="none">
                     <line x1={-3.2} y1={-3.2} x2={3.2} y2={3.2} />
                     <line x1={3.2} y1={-3.2} x2={-3.2} y2={3.2} />

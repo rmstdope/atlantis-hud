@@ -30,6 +30,13 @@ function viewWith(changes: Partial<HexView>): HexView {
   return { ...base, ...changes };
 }
 
+/** The battle group alone, so a class assertion cannot pass on some other mark's class. */
+function battleGroup(svg: string, involvement: string): string {
+  const start = svg.indexOf(`data-battle="${involvement}"`);
+  expect(start).toBeGreaterThan(-1);
+  return svg.slice(svg.lastIndexOf("<g", start), svg.indexOf("</g>", start));
+}
+
 function marks(views: HexView[]): string {
   return renderToStaticMarkup(
     <svg>
@@ -47,7 +54,7 @@ const BARE: Partial<HexView> = {
   buildings: 0,
   shafts: 0,
   lairs: 0,
-  battle: false,
+  battle: null,
   gate: false
 };
 
@@ -72,7 +79,7 @@ describe("one emblem, chosen by a fixed priority", () => {
       "settlement"
     );
     expect(
-      emblemFor(view({ settlement: { name: "X", tier: "city" }, battle: true }))
+      emblemFor(view({ settlement: { name: "X", tier: "city" }, battle: "own" }))
     ).toBe("battle");
   });
 
@@ -83,7 +90,7 @@ describe("one emblem, chosen by a fixed priority", () => {
   /** The acceptance criterion, stated as its own test because it is the design's whole claim. */
   it("puts a battle over a settlement, and leaves the settlement as a dot", () => {
     const svg = marks([
-      viewWith({ ...BARE, battle: true, settlement: { name: "Marn", tier: "city" } })
+      viewWith({ ...BARE, battle: "own", settlement: { name: "Marn", tier: "city" } })
     ]);
 
     expect(svg).toContain('data-emblem="battle"');
@@ -379,5 +386,16 @@ describe("unsurveyed ground, drawn light and rimmed", () => {
     expect(draw(emblemAndDots.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
       "url(#biome-texture-jungle)"
     );
+  });
+});
+
+describe("the battle fought in a hex last turn", () => {
+  it("marks the emblem in the fought tone and the watched tone", () => {
+    const own = battleGroup(marks([viewWith({ ...BARE, battle: "own" })]), "own");
+    const other = battleGroup(marks([viewWith({ ...BARE, battle: "other" })]), "other");
+
+    expect(own).toContain('class="ed-battle"');
+    expect(own).not.toContain("ed-battle-other");
+    expect(other).toContain('class="ed-battle-other"');
   });
 });
