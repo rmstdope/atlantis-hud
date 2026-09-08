@@ -1954,6 +1954,9 @@ export function AppShell({
     // through refs (`parserWaitingForRuleset`), so the callback never closes over a null ruleset
     // and never has to be rebuilt when one arrives. `client` goes the same way - `parseReport` is
     // memoised on it, so listing it here would be listing it twice.
+    // `game` is the one entry here that changes a *decision* rather than a closure: `game !== null`
+    // is `hasGame` in the routing call below, so without it a report could be routed against
+    // whether a game was open at the render this callback was last built on.
     // What is on screen is read through `viewerRef` rather than closed over, for the reason that
     // ref states. `model` stays a dependency and is read from the closure: it is used only to
     // count how much of a *map export* is new, and a map export arrives one file at a time from a
@@ -3775,6 +3778,9 @@ export function AppShell({
       newAgeTransport === undefined || newAgeWorld === null
         ? null
         : newAgeClient(newAgeTransport, newAgeWorld.worldId),
+    // The whole world rather than its id: `newAgeWorldFor` returns an entry of the module-level
+    // `NEW_AGE_WORLDS` table (`newAgeWorlds.ts`), so a given id always yields the same object. A
+    // version of it that *built* its answer would rebuild this client every render.
     [newAgeTransport, newAgeWorld]
   );
   // A plain number, because that is all the server's form accepts: `#atlantis foo` names no faction
