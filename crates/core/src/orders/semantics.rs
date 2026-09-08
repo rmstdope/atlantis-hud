@@ -16,6 +16,7 @@
 //! silences the unit's shortfall rather than guessing at it. A false warning costs the player their
 //! confidence in every other line on the screen, which is a far worse trade than a missed one.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
@@ -54,6 +55,7 @@ use crate::orders::targets::{
     give_endpoint, give_outcome, mage_give_refused, party_label, party_unit_id, GiveEndpoint,
     GiveOutcome, GiveReach, GiveRefusal,
 };
+use crate::orders::transfers::{in_report_order, PendingTransfer};
 use crate::report::composition;
 use crate::report::flags::FlagChange;
 use crate::report::model::{
@@ -2632,37 +2634,28 @@ fn apply_transfers(
         .map(|unit| unit.unit_id.as_str())
         .collect();
 
-    struct Transfer<'a> {
-        position: usize,
-        line: usize,
-        party: &'a Party,
-        what: &'a Selector,
-        amount: &'a Amount,
-        is_give: bool,
-    }
-
-    let mut transfers: Vec<Transfer<'_>> = units
+    let mut transfers: Vec<PendingTransfer<'_>> = units
         .iter()
         .enumerate()
-        .flat_map(|(position, ordered)| {
+        .flat_map(|(actor, ordered)| {
             ordered
                 .intents
                 .iter()
                 .filter_map(move |placed| match &placed.intent {
-                    Intent::Give { to, what, amount } => Some(Transfer {
-                        position,
+                    Intent::Give { to, what, amount } => Some(PendingTransfer {
+                        actor,
                         line: placed.line,
-                        party: to,
-                        what,
-                        amount,
+                        party: Cow::Borrowed(to),
+                        what: Cow::Borrowed(what),
+                        amount: Cow::Borrowed(amount),
                         is_give: true,
                     }),
-                    Intent::Take { from, what, amount } => Some(Transfer {
-                        position,
+                    Intent::Take { from, what, amount } => Some(PendingTransfer {
+                        actor,
                         line: placed.line,
-                        party: from,
-                        what,
-                        amount,
+                        party: Cow::Borrowed(from),
+                        what: Cow::Borrowed(what),
+                        amount: Cow::Borrowed(amount),
                         is_give: false,
                     }),
                     _ => None,
@@ -2673,13 +2666,7 @@ fn apply_transfers(
         // Nothing moves in this hex, so nothing is allocated for it.
         return;
     }
-    // `rules/sequenceofevents`: GIVE and TAKE are one Give phase, and where nothing else orders
-    // units within it "units will be processed in the order they appear on the report" -
-    // `transfer.position` is exactly that order, since `Hex::read` fills `units` from
-    // `region.units` and appends this month's formed units after them. The line is the secondary
-    // key alone: it still settles several transfers written by one actor in the order they were
-    // written. Ties cannot occur: one order per line.
-    transfers.sort_by_key(|transfer| (transfer.position, transfer.line));
+    in_report_order(&mut transfers);
 
     let mut working: BTreeMap<usize, Working> = BTreeMap::new();
     // Accumulated rather than written straight onto `units[position].refused_transfers`: the loop
@@ -2693,30 +2680,30 @@ fn apply_transfers(
 
     for transfer in &transfers {
         if !transfer.is_give
-            && matches!(transfer.party, Party::Unit(id) if foreign_unit_ids.contains(id))
+            && matches!(&*transfer.party, Party::Unit(id) if foreign_unit_ids.contains(id))
         {
             continue;
         }
-        if matches!(transfer.what, Selector::WholeUnit) {
+        if matches!(&*transfer.what, Selector::WholeUnit) {
             // `rules/give`: it "gives the entire unit to the specified unit's faction" - a change
             // of ownership, and nobody's holdings move.
             continue;
         }
 
-        // For a GIVE, `transfer.position` is the source and `transfer.party` names the receiver -
+        // For a GIVE, `transfer.actor` is the source and `transfer.party` names the receiver -
         // resolved exactly as `effects::give` resolves it. `rules/take`: a TAKE "works just like
         // the GIVE order, except that the direction of transfer is reversed" - so for a TAKE,
-        // `transfer.party` names the source and `transfer.position` is the receiver instead.
-        let giver_id = units[transfer.position].unit.unit_id.as_str();
+        // `transfer.party` names the source and `transfer.actor` is the receiver instead.
+        let giver_id = units[transfer.actor].unit.unit_id.as_str();
         let source = if transfer.is_give {
-            GiveEndpoint::ours(transfer.position)
+            GiveEndpoint::ours(transfer.actor)
         } else {
             resolve_give_endpoint(
                 &position_of,
                 &shown_here,
                 shown_anywhere,
                 giver_id,
-                transfer.party,
+                &transfer.party,
             )
         };
         let receiver = if transfer.is_give {
@@ -2725,10 +2712,10 @@ fn apply_transfers(
                 &shown_here,
                 shown_anywhere,
                 giver_id,
-                transfer.party,
+                &transfer.party,
             )
         } else {
-            GiveEndpoint::ours(transfer.position)
+            GiveEndpoint::ours(transfer.actor)
         };
 
         let source = match source.row {
@@ -2748,14 +2735,14 @@ fn apply_transfers(
                 // `Nowhere` so this arm answers exactly as the deleted per-walk resolver's
                 // `map_or(Nowhere, ...)` did (`ah-1zca.2`).
                 GiveReach::Nowhere | GiveReach::Unshown | GiveReach::Ours => {
-                    let receiver_position = transfer.position;
-                    let resolved = match transfer.what {
+                    let receiver_position = transfer.actor;
+                    let resolved = match &*transfer.what {
                         Selector::Item(text) => ruleset.find_item(text),
                         Selector::UnfinishedShip(_) => None,
                         Selector::Class(_) => None,
                         Selector::WholeUnit => unreachable!("filtered above"),
                     };
-                    match (resolved, transfer.amount) {
+                    match (resolved, &*transfer.amount) {
                         (Some(entry), Amount::Exact(count)) if *count > 0 => {
                             let tag = entry.tag.to_ascii_uppercase();
                             let is_man = ruleset.is_man(&tag);
@@ -2765,7 +2752,7 @@ fn apply_transfers(
                                 // The report gives no name for a unit it does not show, so the label
                                 // is the number alone; an alias that was never formed names nothing
                                 // at all and is left uncredited.
-                                if let Party::Unit(id) = transfer.party {
+                                if let Party::Unit(id) = &*transfer.party {
                                     let entry =
                                         receipts_by_position.entry(receiver_position).or_default();
                                     entry.taken_unshown =
@@ -2838,7 +2825,12 @@ fn apply_transfers(
         let source_state = working
             .entry(source)
             .or_insert_with(|| seed_working(units, source));
-        let tags = match moves(&source_state.held, transfer.what, transfer.amount, ruleset) {
+        let tags = match moves(
+            &source_state.held,
+            &transfer.what,
+            &transfer.amount,
+            ruleset,
+        ) {
             Moves::Tags(tags) => tags,
             Moves::Unknowable => {
                 source_state.items_unknowable = true;
@@ -2868,7 +2860,7 @@ fn apply_transfers(
                 .held
                 .get(tag.as_str())
                 .map_or(0, |item| item.amount);
-            let requested = match transfer.amount {
+            let requested = match &*transfer.amount {
                 Amount::All { except } => held.saturating_sub(*except),
                 Amount::Exact(count) => *count,
             };
@@ -2942,16 +2934,16 @@ fn apply_transfers(
                             }
                         }
                     }
-                } else if matches!(transfer.amount, Amount::All { .. }) {
+                } else if matches!(&*transfer.amount, Amount::All { .. }) {
                     // `ah-awcm`: what the source will have left to give depends on its own month,
                     // which this pass has not run - so an `ALL` take silences the figure rather
                     // than promising the report's own holding.
                     receipts_by_position
-                        .entry(transfer.position)
+                        .entry(transfer.actor)
                         .or_default()
                         .take_all_unpriceable = true;
                 } else if moved > 0 {
-                    let entry = receipts_by_position.entry(transfer.position).or_default();
+                    let entry = receipts_by_position.entry(transfer.actor).or_default();
                     entry.taken = entry.taken.saturating_add(moved);
                     entry.silver_moves.push(ReceiptMove {
                         amount: moved,
@@ -2991,7 +2983,7 @@ fn apply_transfers(
                     // something any check may reason from, and the tag is remembered so the Silver
                     // column and every later order that reads it say so too (`ah-66yi`).
                     GiveOutcome::Uncertain => {
-                        let target = party_label(transfer.party);
+                        let target = party_label(&transfer.party);
                         let source_state = working
                             .get_mut(&source)
                             .expect("seeded above this same transfer");
@@ -3072,7 +3064,7 @@ fn apply_transfers(
         if !refused.is_empty() || !refused_to_another_faction.is_empty() || !into_a_mage.is_empty()
         {
             refused_by_position.push((
-                transfer.position,
+                transfer.actor,
                 RefusedTransfer {
                     line: transfer.line,
                     is_give: transfer.is_give,

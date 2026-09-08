@@ -10,6 +10,7 @@
 //! The governing policy is the validator's own **accept on doubt**: an order that cannot be read,
 //! or whose target cannot be found, changes nothing rather than changing something wrong.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,7 @@ use crate::cache::ReportCache;
 use crate::movement::rules::Ruleset;
 use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::standing::{standing_after, BoardingOrder};
+use crate::orders::transfers::{in_report_order, PendingTransfer};
 use crate::report::composition;
 use crate::report::flags::FlagChange;
 use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStatus};
@@ -1527,7 +1529,7 @@ struct Working {
     /// been read. `rules/sequenceofevents` settles both in one Give phase and processes units
     /// "in the order they appear on the report", which is not the order their blocks were
     /// written in (`ah-3mwm`).
-    transfers: Vec<PendingTransfer>,
+    transfers: Vec<PendingTransfer<'static>>,
     /// Every unit id the report shows holding the quartermaster skill, resolved through the
     /// catalogue rather than by tag spelling - `QUAM` is quartermaster and `QUAR` is quarrying
     /// (`ah-d0ku`).
@@ -1536,23 +1538,6 @@ struct Working {
     /// keyed by unit id. A target missing from here is one the report never described
     /// (`ah-64wm`).
     transport_targets: BTreeMap<String, TransportTargetFacts>,
-}
-
-/// One `GIVE` or `TAKE`, held until the whole document has been read so the Give phase can be
-/// settled in report order (`ah-3mwm`).
-struct PendingTransfer {
-    /// The unit whose block the order is in - its position in `Working::units`, which is report
-    /// order for reported units and, after them, the order the `FORM` blocks created them in.
-    actor: usize,
-    /// The document line, the secondary key: report order chooses between actors, and this still
-    /// chooses between several transfers one actor wrote.
-    line: usize,
-    /// The other end. For a `GIVE` this is the receiver; for a `TAKE`, `rules/take` reverses the
-    /// direction and it is the source.
-    party: super::forms::Party,
-    what: super::forms::Selector,
-    amount: super::forms::Amount,
-    is_give: bool,
 }
 
 /// What the report shows about one unit that a `TRANSPORT` could name (`ah-64wm`).
@@ -2197,9 +2182,9 @@ impl Working {
         self.transfers.push(PendingTransfer {
             actor: giver,
             line,
-            party: target,
-            what,
-            amount,
+            party: Cow::Owned(target),
+            what: Cow::Owned(what),
+            amount: Cow::Owned(amount),
             is_give: true,
         });
     }
@@ -2219,24 +2204,20 @@ impl Working {
         self.transfers.push(PendingTransfer {
             actor: taker,
             line,
-            party: source,
-            what,
-            amount,
+            party: Cow::Owned(source),
+            what: Cow::Owned(what),
+            amount: Cow::Owned(amount),
             is_give: false,
         });
     }
 
     /// Settles this month's Give phase.
     ///
-    /// `rules/sequenceofevents` processes GIVE and TAKE together and, where nothing else orders
-    /// units within a phase, "units will be processed in the order they appear on the report" -
-    /// which is `Working::units`' own order, reported units first and this month's formed units
-    /// after them. The line is the secondary key alone, so one actor's own transfers still settle
-    /// in the order it wrote them. `sort_by_key` is stable, so equal keys - which cannot occur,
-    /// one order per line - would keep document order anyway.
+    /// The order is `rules/sequenceofevents`' own, which [`in_report_order`] holds for both this
+    /// walk and `semantics`'.
     fn apply_transfers(&mut self) {
         let mut pending = std::mem::take(&mut self.transfers);
-        pending.sort_by_key(|transfer| (transfer.actor, transfer.line));
+        in_report_order(&mut pending);
         for transfer in pending {
             if transfer.is_give {
                 self.give(
