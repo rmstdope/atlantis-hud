@@ -3076,22 +3076,29 @@ fn recruited_people(
     ledger: &Ledger<'_>,
     ruleset: &Ruleset,
 ) -> Option<Vec<ItemAmount>> {
-    // `buy` returns early for `Amount::All` and credits nothing to `Ledger::bought`'s exact form -
-    // `settle_buy_all` writes it there instead, keyed the same way, so a `BUY ALL` of a man tag
-    // cannot be told apart from a `BUY ALL` of anything else here. `BUY ALL PEASANTS` cannot be
-    // told from `BUY ALL SWORDS` either - `PEASANTS` names no catalogue item at all - so the test
-    // is on the amount, not the item. `ah-jown` makes this arm deletable. Checked ahead of
-    // `bought` itself, which `settle_buy_all` also writes to.
-    let buys_all_people = ordered.intents().any(|intent| {
-        matches!(
-            intent,
-            Intent::Buy {
-                amount: Amount::All { .. },
-                ..
-            }
-        )
+    // `rules/buy`: "When buying people, specify the race of the people as the [item], or you may
+    // use PEASANT or PEASANTS to recruit whichever race is present in the region." That spelling
+    // names no catalogue item in any committed world, so the market lookup answers `NotSold`,
+    // nothing ever reaches `Ledger::bought`, and a recruit that really happened is invisible to
+    // the walk below. The amount does not enter into it - `BUY 5 PEASANTS` is exactly as
+    // invisible as `BUY ALL PEASANTS`, and both leave the unit unjudged.
+    //
+    // Every other spelling names a race or a good, and both reach `Ledger::bought`: an exact
+    // amount through `buy`, an `Amount::All` through `settle_buy_all` since `ah-jown`. So the old
+    // guard on the *amount* is gone (`ah-4b6n`); it silenced every `BUY ALL` of goods along with
+    // the one case it was aimed at.
+    let buys_unnamed_recruits = ordered.intents().any(|intent| match intent {
+        Intent::Buy { item, .. } => {
+            let written = item.replace('_', " ");
+            let names_peasants = item_spellings(&written)
+                .into_iter()
+                .flatten()
+                .any(|spelling| spelling.eq_ignore_ascii_case("peasant"));
+            names_peasants
+        }
+        _ => false,
     });
-    if buys_all_people {
+    if buys_unnamed_recruits {
         return None;
     }
 
@@ -34345,13 +34352,46 @@ BUILD
         );
     }
 
-    /// Decision 3: `BUY ALL PEASANTS` cannot be told from `BUY ALL SWORDS` here - `PEASANTS` names
-    /// no catalogue item at all (`rules/buy`: "you may use PEASANT or PEASANTS to recruit whichever
-    /// race is present in the region") - so the guard in `apply_recruits` is on the *amount*, not
-    /// the item, and it over-silences `BUY ALL SWOR` too. That is the accepted cost until `ah-jown`
-    /// resolves `BUY ALL` into a quantity.
+    /// A `BUY ALL` of goods says nothing about the unit's headcount, so it must leave the skills
+    /// alone: the guard that used to silence it tested the *amount*, and blanked the production
+    /// forecast of every unit that wrote one (`ah-4b6n`).
     #[test]
-    fn buying_all_of_anything_leaves_the_unit_unjudged() {
+    fn buying_all_of_a_good_leaves_the_skills_alone() {
+        let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 10,
+            }],
+            ..region(vec![crew])
+        };
+        let orders = "unit 900\nBUY ALL SWOR\nPRODUCE WOOD\n";
+        let ordered = OrderedUnits::read(orders);
+
+        let hex = hex_after_orders(&region, &ordered);
+
+        let skills = hex
+            .find("900")
+            .unwrap()
+            .skills()
+            .expect("skills are knowable");
+        assert_eq!(
+            skills
+                .iter()
+                .find(|skill| skill.tag == "LUMB")
+                .map(|skill| skill.points),
+            Some(30)
+        );
+    }
+
+    /// `rules/buy`: "you may use PEASANT or PEASANTS to recruit whichever race is present in the
+    /// region". That spelling names no catalogue item, so nothing reaches `Ledger::bought` and a
+    /// recruit that really happened is invisible - whatever the amount. The exact form was never
+    /// covered before `ah-4b6n`, because the guard tested the amount instead of the item.
+    #[test]
+    fn buying_peasants_leaves_the_unit_unjudged() {
         let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
         let region = ReportRegion {
             for_sale: vec![MarketItem {
@@ -34363,12 +34403,13 @@ BUILD
             ..region(vec![crew])
         };
 
-        for item in ["PEAS", "SWOR"] {
-            let orders = format!("unit 900\nBUY ALL {item}\nPRODUCE WOOD\n");
-            let findings = check(vec![region.clone()], &orders);
+        for line in ["BUY ALL PEASANTS", "BUY 5 PEASANTS", "BUY 5 peasant"] {
+            let orders = format!("unit 900\n{line}\nPRODUCE WOOD\n");
+            let ordered = OrderedUnits::read(&orders);
+            let hex = hex_after_orders(&region, &ordered);
             assert!(
-                !codes(&findings).contains(&"produce-without-skill"),
-                "{item}: {findings:?}"
+                hex.find("900").unwrap().skills().is_none(),
+                "{line}: the recruits are invisible, so the skills cannot be known"
             );
         }
     }

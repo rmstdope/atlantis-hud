@@ -8926,8 +8926,11 @@ mod tests {
         assert_eq!(merge.skills, vec![lumberjack(120)]);
     }
 
+    /// Since `ah-4b6n` a `BUY ALL` of a race settles an exact list through `Ledger::bought`, just
+    /// as a bounded `BUY n` does, so the count is read rather than inferred and the race
+    /// breakdown can be named.
     #[test]
-    fn a_buy_all_records_an_inferred_recruit_count() {
+    fn a_buy_all_records_an_exact_recruit_count() {
         let response = preview_over(
             &report_with_market_selling_people(),
             "unit 900\nBUY ALL HUMN\n",
@@ -8937,11 +8940,13 @@ mod tests {
         assert_eq!(unit.skill_merges.len(), 1, "{:?}", unit.skill_merges);
         let merge = &unit.skill_merges[0];
         assert_eq!(merge.cause, SkillMergeCause::Recruited);
-        assert!(merge.count_inferred);
-        assert!(merge.men_arriving.is_empty(), "{:?}", merge.men_arriving);
+        assert!(!merge.count_inferred);
+        assert_eq!(merge.men_arriving.len(), 1, "{:?}", merge.men_arriving);
+        assert_eq!(merge.men_arriving[0].tag, "HUMN");
         // Stated against the settled headcount rather than a literal, so the assertion does not
         // restate the market arithmetic.
         assert_eq!(merge.men, unit.unit.men - 10);
+        assert_eq!(merge.men_arriving[0].amount, merge.men);
         assert_eq!(merge.men_before, 10);
     }
 
@@ -9127,11 +9132,11 @@ mod tests {
     }
 
     #[test]
-    fn an_estimated_unit_whose_recruits_never_settled_claims_nothing() {
-        // The other half of `recruits_unmerged`: a `BUY ALL` leaves the ledger no exact list, and
-        // an estimated headcount is exactly the unit `settle_headcounts` refuses to infer one for.
-        // So nothing is claimed - saying "your recruits were not merged in" would be asserting a
-        // recruit the core never established.
+    fn an_estimated_unit_that_buys_all_of_a_race_says_its_recruits_are_unmerged() {
+        // Since `ah-4b6n` a `BUY ALL` of a race settles an exact list, so this unit is in exactly
+        // the position `recruits_are_not_merged_into_a_unit_whose_headcount_was_estimated`
+        // describes: real recruits the merge cannot weight, because the headcount they would be
+        // weighted against is only a guess. It is told so rather than left silent.
         let response = preview_over(
             &report_with_an_unreadable_item(),
             "unit 900\nBUY ALL HUMN\n",
@@ -9139,7 +9144,7 @@ mod tests {
 
         let unit = only_unit(&response);
         assert!(unit.unit.men_estimated, "the fixture must stay estimated");
-        assert!(!unit.recruits_unmerged);
+        assert!(unit.recruits_unmerged);
         assert!(unit.skill_merges.is_empty(), "{:?}", unit.skill_merges);
     }
 

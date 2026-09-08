@@ -77,11 +77,17 @@ struct Surfaces {
 }
 
 fn surfaces_for(silver: i64, market_amount: i64) -> Surfaces {
+    surfaces_for_orders(silver, market_amount, ORDERS)
+}
+
+/// `surfaces_for`, for one script rather than the file's own `ORDERS`. Every expectation the
+/// `ah-40c9` table states is reached through `surfaces_for` and is untouched by this seam.
+fn surfaces_for_orders(silver: i64, market_amount: i64, orders: &str) -> Surfaces {
     let text = report(silver, market_amount);
 
     let mut parsed = parse_report_full(&text);
     classify_units(&mut parsed, &ruleset());
-    let review = review_turn(&parsed, ORDERS, Some(&ruleset()), CheckOptions::default());
+    let review = review_turn(&parsed, orders, Some(&ruleset()), CheckOptions::default());
 
     let produce_without_skill = review.findings.iter().any(|finding| {
         finding.unit_id.as_deref() == Some("900")
@@ -99,7 +105,7 @@ fn surfaces_for(silver: i64, market_amount: i64) -> Surfaces {
         &text,
         "[]",
         &format!(
-            "{}\n{ORDERS}",
+            "{}\n{orders}",
             atlantis_hud_core::report::orders::extract_orders_template(&text)
                 .map(|template| template.text)
                 .unwrap_or_default()
@@ -135,6 +141,27 @@ fn surfaces_for(silver: i64, market_amount: i64) -> Surfaces {
         silver_produced,
         preview_swor,
     }
+}
+
+/// The same eight orc weaponsmiths, recruiting with `BUY ALL` instead of an exact amount
+/// (`ah-4b6n`). `rules/buy`: "If the second form is specified, the unit will attempt to buy as
+/// many as it can afford." Before this bead the whole unit was `Unknowable` and every surface
+/// fell silent; it must now dilute exactly as the bounded `BUY 8 ORC` row of the table above does.
+#[test]
+fn buying_all_of_a_race_dilutes_every_surface_alike() {
+    let surfaces = surfaces_for_orders(80, 8, "unit 900\nBUY ALL ORC\nPRODUCE SWOR\n");
+
+    assert_eq!(surfaces.men, 16, "projected men");
+    assert_eq!(
+        surfaces.weaponsmith_points, 15,
+        "projected weaponsmith points"
+    );
+    assert!(surfaces.produce_without_skill, "produce-without-skill");
+    assert_eq!(
+        surfaces.silver_produced, 0,
+        "SILVER column's produced swords"
+    );
+    assert_eq!(surfaces.preview_swor, 0, "unit preview's produced swords");
 }
 
 /// `(silver, market_amount, (men, weaponsmith_points, produce_without_skill, swords))` for one
