@@ -1783,52 +1783,99 @@ pub fn load_order_draft(
         .map_err(PersistenceError::from)
 }
 
-/// Inserts or updates one persisted hex note. An edit keeps its original `created_at`.
-pub fn upsert_hex_note(database_path: &Path, note: &HexNote) -> Result<(), PersistenceError> {
+/// A per-game collection keyed on a surrogate `id TEXT PRIMARY KEY`, written one row at a time.
+///
+/// The other shape is `UnitKeyedCollection`, which keys on `(game_id, faction_id, unit_id)` and
+/// saves a whole collection at once.
+trait IdKeyedCollection: GameScopedRows {
+    /// The columns written after `id` and `game_id` that an edit also updates, in the order
+    /// `write_params` returns them first.
+    const VALUE_COLUMNS: &'static [&'static str];
+
+    /// The columns written on insert and left alone by an edit, in the order `write_params`
+    /// returns them last. Both implementations give `["created_at"]`, because an edit keeps a
+    /// row's original creation stamp; it is a slice rather than one named column so the rule is
+    /// stated where the SQL is built rather than assumed in two places.
+    const INSERT_ONLY_COLUMNS: &'static [&'static str];
+
+    /// This row's primary key.
+    fn id(&self) -> &str;
+
+    /// The game this row belongs to. Read from the row on insert, because the caller passes the
+    /// whole row; the delete takes the game separately, because it has only an id.
+    fn game_id(&self) -> &str;
+
+    /// The bindings for `VALUE_COLUMNS` then `INSERT_ONLY_COLUMNS`, in that order. Owned, because
+    /// the JSON columns are built here and building them can fail.
+    fn write_params(&self) -> Result<Vec<Box<dyn rusqlite::ToSql>>, PersistenceError>;
+}
+
+/// The upsert: every written column named, and only `VALUE_COLUMNS` in the update set.
+///
+/// The conflict target is `id` alone, which is the primary key these tables declare; `game_id`
+/// carries only a non-unique index, so naming it here would match no unique constraint and SQLite
+/// would reject the statement at runtime.
+fn id_keyed_upsert_sql<C: IdKeyedCollection>() -> String {
+    let columns: Vec<&str> = std::iter::once("id")
+        .chain(std::iter::once("game_id"))
+        .chain(C::VALUE_COLUMNS.iter().copied())
+        .chain(C::INSERT_ONLY_COLUMNS.iter().copied())
+        .collect();
+    let placeholders = (1..=columns.len())
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let assignments = C::VALUE_COLUMNS
+        .iter()
+        .map(|column| format!("{column} = excluded.{column}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(id) DO UPDATE SET {}",
+        C::TABLE,
+        columns.join(", "),
+        placeholders,
+        assignments
+    )
+}
+
+/// `DELETE FROM <TABLE> WHERE game_id = ?1 AND id = ?2`.
+///
+/// Game-scoped although `id` alone identifies the row: it is what stops one game's delete reaching
+/// another game's row.
+fn id_keyed_delete_sql<C: IdKeyedCollection>() -> String {
+    format!("DELETE FROM {} WHERE game_id = ?1 AND id = ?2", C::TABLE)
+}
+
+/// Inserts or updates one row: the missing-file guard, `open_database`, `apply_migrations`, then
+/// one `execute`. No transaction - it is a single statement.
+fn upsert_id_keyed<C: IdKeyedCollection>(
+    database_path: &Path,
+    row: &C,
+) -> Result<(), PersistenceError> {
     if !database_path.exists() {
         return Err(PersistenceError::DatabaseFileMissing(
             database_path.to_string_lossy().to_string(),
         ));
     }
 
+    let values = row.write_params()?;
     let mut connection = open_database(database_path)?;
     apply_migrations(&mut connection)?;
-    connection.execute(
-        "INSERT INTO hex_notes (
-            id,
-            game_id,
-            region_id,
-            text,
-            on_map,
-            turn,
-            created_at,
-            updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-         ON CONFLICT(id) DO UPDATE SET
-            region_id = excluded.region_id,
-            text = excluded.text,
-            on_map = excluded.on_map,
-            turn = excluded.turn,
-            updated_at = excluded.updated_at",
-        params![
-            note.id.as_str(),
-            note.game_id.as_str(),
-            note.region_id.as_str(),
-            note.text.as_str(),
-            i64::from(note.on_map),
-            note.turn,
-            note.created_at.as_str(),
-            note.updated_at.as_str(),
-        ],
-    )?;
+    let id = row.id();
+    let game_id = row.game_id();
+    let mut bound: Vec<&dyn rusqlite::ToSql> = vec![&id, &game_id];
+    bound.extend(values.iter().map(|value| value.as_ref()));
+    connection.execute(&id_keyed_upsert_sql::<C>(), bound.as_slice())?;
     Ok(())
 }
 
-/// Lists a game's hex notes, in no particular order — the client orders them.
-pub fn list_hex_notes(
+/// Deletes one row of `C` from one game; `Ok(true)` when a row existed, `Ok(false)` otherwise.
+fn delete_id_keyed<C: IdKeyedCollection>(
     database_path: &Path,
     game_id: &str,
-) -> Result<Vec<HexNote>, PersistenceError> {
+    id: &str,
+) -> Result<bool, PersistenceError> {
     if !database_path.exists() {
         return Err(PersistenceError::DatabaseFileMissing(
             database_path.to_string_lossy().to_string(),
@@ -1837,12 +1884,24 @@ pub fn list_hex_notes(
 
     let mut connection = open_database(database_path)?;
     apply_migrations(&mut connection)?;
-    let mut statement = connection.prepare(
-        "SELECT id, game_id, region_id, text, on_map, turn, created_at, updated_at
-           FROM hex_notes
-          WHERE game_id = ?1",
-    )?;
-    let rows = statement.query_map(params![game_id], |row| {
+    let rows_affected = connection.execute(&id_keyed_delete_sql::<C>(), params![game_id, id])?;
+    Ok(rows_affected > 0)
+}
+
+impl GameScopedRows for HexNote {
+    const TABLE: &'static str = "hex_notes";
+    const SELECT_COLUMNS: &'static [&'static str] = &[
+        "id",
+        "game_id",
+        "region_id",
+        "text",
+        "on_map",
+        "turn",
+        "created_at",
+        "updated_at",
+    ];
+
+    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
         Ok(HexNote {
             id: row.get(0)?,
             game_id: row.get(1)?,
@@ -1853,10 +1912,45 @@ pub fn list_hex_notes(
             created_at: row.get(6)?,
             updated_at: row.get(7)?,
         })
-    })?;
+    }
+}
 
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(PersistenceError::from)
+impl IdKeyedCollection for HexNote {
+    const VALUE_COLUMNS: &'static [&'static str] =
+        &["region_id", "text", "on_map", "turn", "updated_at"];
+    const INSERT_ONLY_COLUMNS: &'static [&'static str] = &["created_at"];
+
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn game_id(&self) -> &str {
+        &self.game_id
+    }
+
+    fn write_params(&self) -> Result<Vec<Box<dyn rusqlite::ToSql>>, PersistenceError> {
+        Ok(vec![
+            Box::new(self.region_id.clone()),
+            Box::new(self.text.clone()),
+            Box::new(i64::from(self.on_map)),
+            Box::new(self.turn),
+            Box::new(self.updated_at.clone()),
+            Box::new(self.created_at.clone()),
+        ])
+    }
+}
+
+/// Inserts or updates one persisted hex note. An edit keeps its original `created_at`.
+pub fn upsert_hex_note(database_path: &Path, note: &HexNote) -> Result<(), PersistenceError> {
+    upsert_id_keyed(database_path, note)
+}
+
+/// Lists a game's hex notes, in no particular order — the client orders them.
+pub fn list_hex_notes(
+    database_path: &Path,
+    game_id: &str,
+) -> Result<Vec<HexNote>, PersistenceError> {
+    list_game_scoped::<HexNote>(database_path, game_id)
 }
 
 /// Deletes one hex note; `Ok(true)` when a row existed, `Ok(false)` otherwise.
@@ -1865,19 +1959,7 @@ pub fn delete_hex_note(
     game_id: &str,
     note_id: &str,
 ) -> Result<bool, PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    let rows_affected = connection.execute(
-        "DELETE FROM hex_notes WHERE game_id = ?1 AND id = ?2",
-        params![game_id, note_id],
-    )?;
-    Ok(rows_affected > 0)
+    delete_id_keyed::<HexNote>(database_path, game_id, note_id)
 }
 
 /// Inserts or updates one Army. An edit keeps its original `created_at`.
@@ -2337,6 +2419,29 @@ mod tests {
     const GAME_ID: &str = "faction-12";
     const CREATED_AT: &str = "2026-08-01T09:00:00Z";
     const IMPORTED_AT: &str = "2026-08-01T10:00:00Z";
+
+    #[test]
+    fn id_keyed_upsert_sql_for_hex_notes_names_the_key_and_every_value_column() {
+        let sql = id_keyed_upsert_sql::<HexNote>();
+
+        assert!(sql.contains(
+            "INSERT INTO hex_notes (id, game_id, region_id, text, on_map, turn, updated_at, created_at)"
+        ));
+        assert!(sql.contains("ON CONFLICT(id) DO UPDATE SET"));
+        assert!(sql.contains("text = excluded.text"));
+        assert!(sql.contains("updated_at = excluded.updated_at"));
+        assert!(!sql.contains("id = excluded.id"));
+        assert!(!sql.contains("game_id = excluded.game_id"));
+        assert!(!sql.contains("created_at = excluded.created_at"));
+    }
+
+    #[test]
+    fn id_keyed_delete_sql_for_hex_notes_scopes_the_delete_to_the_game() {
+        assert_eq!(
+            id_keyed_delete_sql::<HexNote>(),
+            "DELETE FROM hex_notes WHERE game_id = ?1 AND id = ?2"
+        );
+    }
 
     #[test]
     fn unit_keyed_upsert_sql_for_allied_mages_names_the_key_and_every_value_column() {
@@ -3253,6 +3358,38 @@ mod tests {
             created.schema_version, 13,
             "a goal becoming a tagged union added migration 13"
         );
+    }
+
+    /// Green from the moment it was written: it is the only test that would catch a generated
+    /// SELECT that lost its `WHERE game_id = ?1`, which the army suite already has and this one
+    /// did not.
+    #[test]
+    fn list_hex_notes_returns_only_the_given_games_notes() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let mine = HexNote {
+            id: "note-mine".to_string(),
+            game_id: GAME_ID.to_string(),
+            region_id: "1:7,53".to_string(),
+            text: "Mine".to_string(),
+            on_map: true,
+            turn: 12,
+            created_at: CREATED_AT.to_string(),
+            updated_at: CREATED_AT.to_string(),
+        };
+        let theirs = HexNote {
+            id: "note-theirs".to_string(),
+            game_id: "other-game".to_string(),
+            text: "Theirs".to_string(),
+            ..mine.clone()
+        };
+        upsert_hex_note(&created.database_path, &mine).expect("note should persist");
+        upsert_hex_note(&created.database_path, &theirs).expect("other game's note should persist");
+
+        let listed = list_hex_notes(&created.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(listed, vec![mine]);
     }
 
     #[test]
