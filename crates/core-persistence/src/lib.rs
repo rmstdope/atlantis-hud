@@ -1962,6 +1962,52 @@ pub fn delete_hex_note(
     delete_id_keyed::<HexNote>(database_path, game_id, note_id)
 }
 
+impl GameScopedRows for Army {
+    const TABLE: &'static str = "armies";
+    const SELECT_COLUMNS: &'static [&'static str] = &[
+        "id",
+        "game_id",
+        "name",
+        "members_json",
+        "created_at",
+        "updated_at",
+    ];
+
+    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
+        let members_json = row.get::<_, String>(3)?;
+        Ok(Army {
+            id: row.get(0)?,
+            game_id: row.get(1)?,
+            name: row.get(2)?,
+            members: serde_json::from_str(&members_json)?,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+        })
+    }
+}
+
+impl IdKeyedCollection for Army {
+    const VALUE_COLUMNS: &'static [&'static str] = &["name", "members_json", "updated_at"];
+    const INSERT_ONLY_COLUMNS: &'static [&'static str] = &["created_at"];
+
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn game_id(&self) -> &str {
+        &self.game_id
+    }
+
+    fn write_params(&self) -> Result<Vec<Box<dyn rusqlite::ToSql>>, PersistenceError> {
+        Ok(vec![
+            Box::new(self.name.clone()),
+            Box::new(serde_json::to_string(&self.members)?),
+            Box::new(self.updated_at.clone()),
+            Box::new(self.created_at.clone()),
+        ])
+    }
+}
+
 /// Inserts or updates one Army. An edit keeps its original `created_at`.
 ///
 /// Members are stored as one JSON text column - one row per Army, matching the web side, where
@@ -1973,38 +2019,7 @@ pub fn delete_hex_note(
 /// Returns an error when the database is missing, cannot be opened, or the members cannot be
 /// serialized.
 pub fn upsert_army(database_path: &Path, army: &Army) -> Result<(), PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let members_json = serde_json::to_string(&army.members)?;
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    connection.execute(
-        "INSERT INTO armies (
-            id,
-            game_id,
-            name,
-            members_json,
-            created_at,
-            updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            members_json = excluded.members_json,
-            updated_at = excluded.updated_at",
-        params![
-            army.id.as_str(),
-            army.game_id.as_str(),
-            army.name.as_str(),
-            members_json.as_str(),
-            army.created_at.as_str(),
-            army.updated_at.as_str(),
-        ],
-    )?;
-    Ok(())
+    upsert_id_keyed(database_path, army)
 }
 
 /// Lists a game's Armies, in no particular order — the client orders them.
@@ -2016,43 +2031,7 @@ pub fn upsert_army(database_path: &Path, army: &Army) -> Result<(), PersistenceE
 /// silently empty Army looks to the player exactly like one that lost its units, and this is the
 /// last layer that can still tell the difference.
 pub fn list_armies(database_path: &Path, game_id: &str) -> Result<Vec<Army>, PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    let mut statement = connection.prepare(
-        "SELECT id, game_id, name, members_json, created_at, updated_at
-           FROM armies
-          WHERE game_id = ?1",
-    )?;
-    let rows = statement.query_map(params![game_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-            row.get::<_, String>(5)?,
-        ))
-    })?;
-
-    let mut armies = Vec::new();
-    for row in rows {
-        let (id, game_id, name, members_json, created_at, updated_at) = row?;
-        armies.push(Army {
-            id,
-            game_id,
-            name,
-            members: serde_json::from_str(&members_json)?,
-            created_at,
-            updated_at,
-        });
-    }
-    Ok(armies)
+    list_game_scoped::<Army>(database_path, game_id)
 }
 
 /// Deletes one Army; `Ok(true)` when a row existed, `Ok(false)` otherwise.
@@ -2065,19 +2044,7 @@ pub fn delete_army(
     game_id: &str,
     army_id: &str,
 ) -> Result<bool, PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    let rows_affected = connection.execute(
-        "DELETE FROM armies WHERE game_id = ?1 AND id = ?2",
-        params![game_id, army_id],
-    )?;
-    Ok(rows_affected > 0)
+    delete_id_keyed::<Army>(database_path, game_id, army_id)
 }
 
 /// The `(faction_id, unit_id)` half of a stored row's identity.
@@ -2441,6 +2408,19 @@ mod tests {
             id_keyed_delete_sql::<HexNote>(),
             "DELETE FROM hex_notes WHERE game_id = ?1 AND id = ?2"
         );
+    }
+
+    #[test]
+    fn id_keyed_upsert_sql_for_armies_names_the_key_and_every_value_column() {
+        let sql = id_keyed_upsert_sql::<Army>();
+
+        assert!(sql.contains(
+            "INSERT INTO armies (id, game_id, name, members_json, updated_at, created_at)"
+        ));
+        assert!(sql.contains("ON CONFLICT(id) DO UPDATE SET"));
+        assert!(sql.contains("members_json = excluded.members_json"));
+        assert!(!sql.contains("created_at = excluded.created_at"));
+        assert!(!sql.contains("game_id = excluded.game_id"));
     }
 
     #[test]
