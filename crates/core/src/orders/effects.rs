@@ -1502,7 +1502,7 @@ struct Working {
     current: Option<usize>,
     /// Formed units being described, innermost last. `None` marks a FORM that could not be read,
     /// so its orders are swallowed rather than applied to whoever came before.
-    forming: Vec<Option<usize>>,
+    forms: super::blocks::FormStack<usize>,
     /// Consulted only to tell people from equipment when a GIVE moves a race.
     ruleset: std::sync::Arc<crate::movement::rules::Ruleset>,
     /// Every `TRANSPORT`/`DISTRIBUTE` this document writes, in document order, to be applied once
@@ -1732,7 +1732,7 @@ impl Working {
             by_id,
             by_alias: BTreeMap::new(),
             current: None,
-            forming: Vec::new(),
+            forms: super::blocks::FormStack::new(),
             ruleset,
             transports: Vec::new(),
             quartermasters,
@@ -1763,10 +1763,10 @@ impl Working {
             Event::Directive(_) => {
                 // `#atlantis` and `#end` bound the document; neither leaves a unit's block open.
                 self.current = None;
-                self.forming.clear();
+                self.forms.reset();
             }
             Event::Unit(line) => {
-                self.forming.clear();
+                self.forms.reset();
                 self.current = line
                     .arguments
                     .first()
@@ -1786,7 +1786,7 @@ impl Working {
                 depth,
                 ..
             } if depth.turn == 0 => {
-                self.forming.pop();
+                self.forms.close();
             }
             Event::Close { .. } | Event::Stray { .. } | Event::Abandoned(_) => {}
             Event::Order { line, depth } if depth.turn == 0 => {
@@ -1798,9 +1798,10 @@ impl Working {
 
     /// The unit the next order belongs to: the formed unit being described, or the block's own.
     fn active(&self) -> Option<usize> {
-        match self.forming.last() {
-            Some(formed) => *formed,
-            None => self.current,
+        match self.forms.owner() {
+            super::blocks::Owner::Block => self.current,
+            super::blocks::Owner::Formed(index) => Some(*index),
+            super::blocks::Owner::Nobody => None,
         }
     }
 
@@ -2003,7 +2004,7 @@ impl Working {
         let (Some(alias), Some(parent)) = (alias, self.active()) else {
             // A FORM that cannot be read still opens a block, or its orders would fall through
             // to the unit outside it.
-            self.forming.push(None);
+            self.forms.open(None);
             return;
         };
 
@@ -2016,7 +2017,7 @@ impl Working {
         if self.by_alias.contains_key(&key) {
             // The alias is taken, so the server would refuse this FORM; its block is swallowed
             // rather than applied to the unit the alias already names.
-            self.forming.push(None);
+            self.forms.open(None);
             return;
         }
 
@@ -2054,7 +2055,7 @@ impl Working {
             recruits_unmerged: false,
             study: None,
         });
-        self.forming.push(Some(index));
+        self.forms.open(Some(index));
     }
 
     /// Applied through the grammar's own consumed prefix (`ah-86vk`), like [`super::intents`]:
