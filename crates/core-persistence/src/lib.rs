@@ -731,9 +731,9 @@ fn read_backup_collections(
         })
         .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
-    let allied_mages = read_unit_keyed::<AlliedMage>(connection, game_id)?;
+    let allied_mages = read_game_scoped::<AlliedMage>(connection, game_id)?;
 
-    let study_plans = read_unit_keyed::<StudyPlan>(connection, game_id)?;
+    let study_plans = read_game_scoped::<StudyPlan>(connection, game_id)?;
 
     Ok(EncodedGameBackupCollections {
         imported_turns,
@@ -2027,21 +2027,34 @@ impl UnitKey for StudyPlanKey {
     }
 }
 
-/// A per-game collection whose rows are keyed on `(game_id, faction_id, unit_id)`.
+/// A table whose rows belong to one game: the table, its SELECT list and a one-row codec.
 ///
-/// An implementation supplies the table, its columns and the codec for one row; the reading and
-/// writing are `read_unit_keyed`, `list_unit_keyed` and `save_unit_keyed` below.
-trait UnitKeyedCollection: Sized {
-    /// What a caller names in `save_unit_keyed`'s `removed` list.
-    type Key: UnitKey;
-
+/// This is the read half of a per-game collection, and it is a trait of its own because three
+/// kinds of type need it and only two of them are ever written through this crate's seams:
+/// `HexNote` and `Army` (written by `upsert_id_keyed`), `AlliedMage` and `StudyPlan` (written by
+/// `save_unit_keyed`), and `GameBackupHexNote` / `GameBackupArmy`, which the backup export reads
+/// and the backup import writes with a plain INSERT of its own.
+trait GameScopedRows: Sized {
     /// The SQLite table these rows live in. A `const`, never a value reaching this crate from a
     /// caller: it is interpolated into SQL rather than bound.
     const TABLE: &'static str;
 
-    /// The SELECT list, in the order `read_row` indexes it. Not derivable from the value columns:
-    /// `allied_mages` never selects `unit_id`, which lives inside `unit_json`.
+    /// The SELECT list, in the order `read_row` indexes it. Not derivable from the write columns:
+    /// `GameBackupArmy` never selects `game_id`, and `AlliedMage` never selects `unit_id`.
     const SELECT_COLUMNS: &'static [&'static str];
+
+    /// Decodes one row of `SELECT_COLUMNS`. Fallible beyond SQLite's own errors, because a JSON
+    /// column that will not parse is reported rather than rounded down to an empty row.
+    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError>;
+}
+
+/// A per-game collection whose rows are keyed on `(game_id, faction_id, unit_id)`.
+///
+/// An implementation supplies the write half; the read half is `GameScopedRows`, and the reading
+/// and writing are `read_game_scoped`, `list_game_scoped` and `save_unit_keyed` below.
+trait UnitKeyedCollection: GameScopedRows {
+    /// What a caller names in `save_unit_keyed`'s `removed` list.
+    type Key: UnitKey;
 
     /// The columns the upsert writes after `game_id`, `faction_id` and `unit_id`, in the order
     /// `write_params` returns them.
@@ -2050,10 +2063,6 @@ trait UnitKeyedCollection: Sized {
     /// swapped between this list and `write_params` and still compile. Only the round-trip tests
     /// catch it, and only because their fixtures give each field a distinct value.
     const VALUE_COLUMNS: &'static [&'static str];
-
-    /// Decodes one row of `SELECT_COLUMNS`. Fallible beyond SQLite's own errors, because a JSON
-    /// column that will not parse is reported rather than rounded down to an empty row.
-    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError>;
 
     /// This row's `(faction_id, unit_id)`.
     fn key(&self) -> (&str, &str);
@@ -2064,7 +2073,7 @@ trait UnitKeyedCollection: Sized {
 }
 
 /// `SELECT <SELECT_COLUMNS> FROM <TABLE> WHERE game_id = ?1`.
-fn unit_keyed_select_sql<C: UnitKeyedCollection>() -> String {
+fn game_scoped_select_sql<C: GameScopedRows>() -> String {
     format!(
         "SELECT {} FROM {} WHERE game_id = ?1",
         C::SELECT_COLUMNS.join(", "),
@@ -2105,11 +2114,11 @@ fn unit_keyed_delete_sql<C: UnitKeyedCollection>() -> String {
 ///
 /// `Statement::query` rather than `query_map`: a `query_map` closure may only fail with
 /// `rusqlite::Error`, which is what forces a second decoding pass on the callers this replaced.
-fn read_unit_keyed<C: UnitKeyedCollection>(
+fn read_game_scoped<C: GameScopedRows>(
     connection: &Connection,
     game_id: &str,
 ) -> Result<Vec<C>, PersistenceError> {
-    let mut statement = connection.prepare(&unit_keyed_select_sql::<C>())?;
+    let mut statement = connection.prepare(&game_scoped_select_sql::<C>())?;
     let mut rows = statement.query(params![game_id])?;
     let mut decoded = Vec::new();
     while let Some(row) = rows.next()? {
@@ -2119,7 +2128,7 @@ fn read_unit_keyed<C: UnitKeyedCollection>(
 }
 
 /// Every row of `C` for one game, in whatever order SQLite produced them - the client orders these.
-fn list_unit_keyed<C: UnitKeyedCollection>(
+fn list_game_scoped<C: GameScopedRows>(
     database_path: &Path,
     game_id: &str,
 ) -> Result<Vec<C>, PersistenceError> {
@@ -2131,7 +2140,7 @@ fn list_unit_keyed<C: UnitKeyedCollection>(
 
     let mut connection = open_database(database_path)?;
     apply_migrations(&mut connection)?;
-    read_unit_keyed::<C>(&connection, game_id)
+    read_game_scoped::<C>(&connection, game_id)
 }
 
 /// One decision's worth of change in a single transaction: `removed` first, then `rows`.
@@ -2171,9 +2180,7 @@ fn save_unit_keyed<C: UnitKeyedCollection>(
     Ok(())
 }
 
-impl UnitKeyedCollection for AlliedMage {
-    type Key = AlliedMageKey;
-
+impl GameScopedRows for AlliedMage {
     const TABLE: &'static str = "allied_mages";
     const SELECT_COLUMNS: &'static [&'static str] = &[
         "faction_id",
@@ -2182,8 +2189,6 @@ impl UnitKeyedCollection for AlliedMage {
         "sheet_turn",
         "received_at",
     ];
-    const VALUE_COLUMNS: &'static [&'static str] =
-        &["faction_name", "unit_json", "sheet_turn", "received_at"];
 
     fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
         let unit_json = row.get::<_, String>(2)?;
@@ -2195,6 +2200,13 @@ impl UnitKeyedCollection for AlliedMage {
             received_at: row.get(4)?,
         })
     }
+}
+
+impl UnitKeyedCollection for AlliedMage {
+    type Key = AlliedMageKey;
+
+    const VALUE_COLUMNS: &'static [&'static str] =
+        &["faction_name", "unit_json", "sheet_turn", "received_at"];
 
     fn key(&self) -> (&str, &str) {
         (&self.faction_id, &self.unit.unit_id)
@@ -2210,9 +2222,7 @@ impl UnitKeyedCollection for AlliedMage {
     }
 }
 
-impl UnitKeyedCollection for StudyPlan {
-    type Key = StudyPlanKey;
-
+impl GameScopedRows for StudyPlan {
     const TABLE: &'static str = "study_plans";
     const SELECT_COLUMNS: &'static [&'static str] = &[
         "faction_id",
@@ -2221,7 +2231,6 @@ impl UnitKeyedCollection for StudyPlan {
         "comment",
         "updated_at",
     ];
-    const VALUE_COLUMNS: &'static [&'static str] = &["goals_json", "comment", "updated_at"];
 
     fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
         let goals_json = row.get::<_, String>(2)?;
@@ -2233,6 +2242,12 @@ impl UnitKeyedCollection for StudyPlan {
             updated_at: row.get(4)?,
         })
     }
+}
+
+impl UnitKeyedCollection for StudyPlan {
+    type Key = StudyPlanKey;
+
+    const VALUE_COLUMNS: &'static [&'static str] = &["goals_json", "comment", "updated_at"];
 
     fn key(&self) -> (&str, &str) {
         (&self.faction_id, &self.unit_id)
@@ -2260,7 +2275,7 @@ pub fn list_allied_mages(
     database_path: &Path,
     game_id: &str,
 ) -> Result<Vec<AlliedMage>, PersistenceError> {
-    list_unit_keyed::<AlliedMage>(database_path, game_id)
+    list_game_scoped::<AlliedMage>(database_path, game_id)
 }
 
 /// Writes one sheet's worth of change in a single transaction: `removed` first, then `mages`.
@@ -2291,7 +2306,7 @@ pub fn list_study_plans(
     database_path: &Path,
     game_id: &str,
 ) -> Result<Vec<StudyPlan>, PersistenceError> {
-    list_unit_keyed::<StudyPlan>(database_path, game_id)
+    list_game_scoped::<StudyPlan>(database_path, game_id)
 }
 
 /// Writes one decision's worth of change in a single transaction: `removed` first, then `plans`.
