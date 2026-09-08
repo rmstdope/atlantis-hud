@@ -755,14 +755,12 @@ function StudyPlannerNote({
           autosave.current?.typed(event.target.value);
         }}
       />
-      <div className="mt-1 flex items-center gap-2">
-        <span
-          data-testid="study-planner-note-count"
-          className={[...draft].length > 400 ? "text-warn" : "text-ink-dim"}
-        >
-          {noteCountText(draft)}
-        </span>
-      </div>
+      <span
+        data-testid="study-planner-note-count"
+        className={["mt-1 block", [...draft].length > 400 ? "text-warn" : "text-ink-dim"].join(" ")}
+      >
+        {noteCountText(draft)}
+      </span>
       {saveError === null ? null : (
         <p data-testid="study-planner-note-error" className="m-0 text-warn">
           {saveError}

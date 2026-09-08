@@ -326,10 +326,18 @@ test("a note is kept without pressing anything", async ({ page }) => {
   await page.getByTestId(`study-planner-mage-95/${MAGE}`).click();
   await expect(note).toHaveValue("heading for Gate Lore");
 
-  // And Escape is the window's, not the note's: it closes the dialog from inside the textarea.
-  await note.click();
+  // Closing the window is the other way out, and it must write too - so this types again, with
+  // something owed, before Escape. Escape is the window's and not the note's: it closes the dialog
+  // from inside the textarea.
+  await note.fill("heading for Gate Lore, then Portals");
   await note.press("Escape");
   await expect(page.getByTestId("study-planner-dialog")).toBeHidden();
+
+  await page.keyboard.press("F4");
+  await page.getByTestId(`study-planner-mage-95/${MAGE}`).click();
+  await expect(page.getByTestId("study-planner-note").locator("textarea")).toHaveValue(
+    "heading for Gate Lore, then Portals"
+  );
 });
 
 test("the mage pane shows every skill a deep mage knows", async ({ page }) => {

@@ -63,6 +63,16 @@ describe("createNoteAutosave", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it("normalises the stored note it starts from", () => {
+    const write = vi.fn();
+    const autosave = createNoteAutosave(write, "  old  ");
+
+    autosave.typed("old");
+    vi.advanceTimersByTime(400);
+
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it("writes the note trimmed", () => {
     const write = vi.fn();
     const autosave = createNoteAutosave(write, "");
