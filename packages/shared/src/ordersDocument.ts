@@ -786,25 +786,6 @@ export function hasFactionHeader(document: string): boolean {
   return document.split("\n").some((line) => ATLANTIS_HEADER_LINE.test(line.trim()));
 }
 
-/** A line that is one of the core's movement orders, `@`-repeated or not. */
-const MOVEMENT_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${MOVEMENT_ORDER_COMMANDS.join("|")})\\b`, "iu");
-
-/**
- * A unit's orders with any existing movement order removed, so a newly planned route replaces
- * whichever one was there before rather than sitting alongside it.
- *
- * MOVE, ADVANCE and SAIL are all movement orders in this sense: a planned land route always
- * replaces a land order, and a planned sea route always replaces a written SAIL, whichever kind was
- * there originally - the planner only ever writes the one that matches the mode it found.
- */
-export function stripMovementOrderLines(orders: string): string {
-  return orders
-    .split("\n")
-    .filter((line) => !MOVEMENT_ORDER_LINE.test(line))
-    .join("\n")
-    .trim();
-}
-
 /**
  * The document with the typed password written into its `#atlantis` line, on a copy.
  *
@@ -912,6 +893,40 @@ function atTopLevel(orders: string): boolean[] {
 }
 
 /**
+ * The orders with every line the unit itself issued that matches `command` removed, leaving the
+ * lines of a nested `FORM` or `TURN` block exactly as they were.
+ *
+ * Both strippers in this module answer the same question - "which of these lines is this unit's own
+ * order of some kind, so a newly written one replaces it" - and differ only in which commands count
+ * and in whether the result is trimmed.
+ */
+function stripOwnOrderLines(orders: string, command: RegExp): string {
+  const own = atTopLevel(orders);
+  return orders
+    .split("\n")
+    .filter((line, index) => !(own[index] === true && command.test(line)))
+    .join("\n");
+}
+
+/** A line that is one of the core's movement orders, `@`-repeated or not. */
+const MOVEMENT_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${MOVEMENT_ORDER_COMMANDS.join("|")})\\b`, "iu");
+
+/**
+ * A unit's orders with any existing movement order removed, so a newly planned route replaces
+ * whichever one was there before rather than sitting alongside it.
+ *
+ * MOVE, ADVANCE and SAIL are all movement orders in this sense: a planned land route always
+ * replaces a land order, and a planned sea route always replaces a written SAIL, whichever kind was
+ * there originally - the planner only ever writes the one that matches the mode it found.
+ *
+ * Only the unit's own lines are removed. A `MOVE` inside a `FORM ... END` block belongs to the unit
+ * that block creates, and one inside `TURN ... ENDTURN` is a later month's - see {@link atTopLevel}.
+ */
+export function stripMovementOrderLines(orders: string): string {
+  return stripOwnOrderLines(orders, MOVEMENT_ORDER_LINE).trim();
+}
+
+/**
  * A unit's orders with every month-long order line removed, so a newly written one replaces
  * whichever was there rather than standing beside it: a unit spends its month on one of the eleven
  * (`rules/sequenceofevents`, and {@link LONG_ORDER_COMMANDS}).
@@ -921,11 +936,7 @@ function atTopLevel(orders: string): boolean[] {
  * indentation is part of what they wrote.
  */
 export function stripLongOrderLines(orders: string): string {
-  const own = atTopLevel(orders);
-  return orders
-    .split("\n")
-    .filter((line, index) => !(own[index] === true && LONG_ORDER_LINE.test(line)))
-    .join("\n");
+  return stripOwnOrderLines(orders, LONG_ORDER_LINE);
 }
 
 /**

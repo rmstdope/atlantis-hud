@@ -505,6 +505,37 @@ describe("stripping a unit's existing movement order", () => {
       expect(stripMovementOrderLines(`${command} N\n@study obse`)).toBe("@study obse");
     }
   });
+
+  /** `rules/form`: the orders after FORM belong to the new unit, until END. */
+  const withFormedMove = ["@claim 50", "MOVE N", "FORM 1", "  BUY 5 Plainsmen", "  MOVE S", "END"].join(
+    "\n"
+  );
+  /** `rules/turn`: orders inside TURN/ENDTURN are next month's, not this one's. */
+  const withQueuedMove = ["MOVE N", "TURN", "  MOVE S", "ENDTURN"].join("\n");
+
+  it("a_move_inside_a_form_block_is_not_this_units_move", () => {
+    expect(stripMovementOrderLines(withFormedMove)).toBe(
+      ["@claim 50", "FORM 1", "  BUY 5 Plainsmen", "  MOVE S", "END"].join("\n")
+    );
+  });
+
+  it("a_move_inside_a_turn_block_is_a_later_months", () => {
+    expect(stripMovementOrderLines(withQueuedMove)).toBe(
+      ["TURN", "  MOVE S", "ENDTURN"].join("\n")
+    );
+  });
+
+  it("a_repeating_turn_blocks_move_is_nested_too", () => {
+    expect(stripMovementOrderLines(["SAIL N", "@TURN", "  MOVE S S S", "ENDTURN"].join("\n"))).toBe(
+      ["@TURN", "  MOVE S S S", "ENDTURN"].join("\n")
+    );
+  });
+
+  it("the_units_own_move_after_an_end_is_still_removed", () => {
+    expect(stripMovementOrderLines(["FORM 1", "  MOVE S", "END", "ADVANCE NE"].join("\n"))).toBe(
+      ["FORM 1", "  MOVE S", "END"].join("\n")
+    );
+  });
 });
 
 describe("withFactionPassword", () => {
