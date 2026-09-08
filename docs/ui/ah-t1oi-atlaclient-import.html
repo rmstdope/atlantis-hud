@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-t1oi — importing an AtlaClient map</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --brass:#c8a05a; --warn:#d9a441; --good:#4fb783;
+          --danger:#e0705f; --sel:#4a9fd8; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 30px 0 6px; border-top: 1px solid var(--edge); padding-top: 16px; }
+  p.lead { color: var(--soft); max-width: 92ch; }
+  p.note { color: var(--dim); max-width: 92ch; font-size: 12.5px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 6px; max-width: 70ch; }
+  .cap b { color: var(--ink); font-weight: 600; }
+  .prompt { max-width: 78ch; background: var(--panel); border: 1px solid var(--edge);
+            border-radius: 4px; padding: 8px 12px 10px; margin: 10px 0 4px; }
+  .prompt p { color: var(--soft); margin: 0 0 3px; }
+  .prompt p.age { color: var(--dim); }
+  .btns { display: flex; gap: 6px; margin-top: 7px; }
+  .btn { border: 1px solid var(--edge); border-radius: 4px; padding: 3px 10px; color: var(--soft);
+         background: none; font: 13px system-ui, sans-serif; }
+  .btn.pri { border-color: var(--brass); color: var(--brass); }
+  .btn.pri.focus { outline: 2px solid var(--sel); outline-offset: 1px; }
+  .status { max-width: 78ch; margin: 8px 0 0; font-size: 12.5px; color: var(--good);
+            border-left: 2px solid var(--good); padding-left: 8px; }
+  .status.bad { color: var(--danger); border-color: var(--danger); }
+  code { font-family: ui-monospace, Menlo, monospace; background: var(--raised); padding: 0 4px;
+         border-radius: 3px; font-size: 12.5px; }
+  pre { background: var(--raised); border: 1px solid var(--edge); border-radius: 4px;
+        padding: 8px 10px; overflow-x: auto; font: 12px/1.45 ui-monospace, Menlo, monospace;
+        color: var(--soft); max-width: 92ch; }
+  .gone { opacity: .45; }
+</style>
+</head>
+<body>
+<h1>ah&#8209;t1oi &mdash; importing a map exported by AtlaClient</h1>
+<p class="lead">Chosen by the navigator, 2026&#8209;09&#8209;08, from two variants. The file is recognised on the way in like every other kind of file, and gets the same box under the header that one of our own map exports gets &mdash; the same two buttons, the same focus and <b>Esc</b> behaviour. Two paragraphs are reworded, because an AtlaClient map names no faction, and there is <b>a third paragraph</b> that breaks the file's hexes
+down by the turn they were actually seen. An AtlaClient map is unlike one of ours in exactly this
+way: ours is normally one player's current knowledge of a rectangle, while an AtlaClient map is a
+lifetime's accumulation with turn stamps ranging over the whole game. The extra line is what makes
+<b>Cancel</b> a real choice rather than a formality.</p>
+
+<h2 class="sec">What the file looks like</h2>
+<p class="cap">Real, from the navigator's own game. <code>;16</code> means &ldquo;this hex as of
+turn&nbsp;16&rdquo;; <code>;16&#8209;11</code> means &ldquo;file written on turn&nbsp;16, this hex
+last seen on turn&nbsp;11&rdquo;; <code>;16&#8209;0</code> means AtlaClient itself does not know
+when &mdash; the hex came into it from some other tool's import.</p>
+<pre>forest (30,18) in Sonchizel, 2216 peasants (wood elves), $1240.
+------------------------------------------------------;16-11
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $507).
+   Products: 24 livestock [LIVE], 22 wood [WOOD], 11 furs [FUR].
+...
+plain (28,30) in La'eldstan, 2232 peasants (gnolls), $937.
+-------------------------------------------------------;16-0</pre>
+<p class="note">In the navigator's own file: <b>83 hexes &mdash; 49 as of turn&nbsp;16,
+29 from turns&nbsp;5 to&nbsp;15, and 5 with no turn at all.</b></p>
+
+<h2 class="sec">Today &mdash; one of our own map exports</h2>
+<p class="cap">For comparison. This is the box as it ships; B leaves it exactly as it is.</p>
+<div class="prompt gone">
+  <p>Borg&#8209;t71&#8209;map.txt is a map export from your own faction, Borg TNG (95), written on
+  turn 71. It holds 60 hexes, 12 of them new to your map.</p>
+  <p>Add to map takes every hex your own map does not already know more recently. You stay on
+  Borg TNG (95), turn 71, and nothing you have is replaced.</p>
+  <div class="btns"><button class="btn pri">Add to map</button><button class="btn">Cancel</button></div>
+</div>
+
+<h2 class="sec">An AtlaClient map, hexes to add</h2>
+<div class="prompt">
+  <p>atlaclient&#8209;map.16 is a map exported from AtlaClient on turn 16. It holds 83 hexes,
+  41 of them new to your map.</p>
+  <p class="age">49 hexes are as new as turn 16; 29 are older, back to turn 5; 5 do not say when
+  they were seen and are added as turn 0.</p>
+  <p>Add to map takes every hex your own map does not already know more recently. You stay on
+  Borg TNG (95), turn 71, and nothing you have is replaced.</p>
+  <div class="btns"><button class="btn pri focus">Add to map</button><button class="btn">Cancel</button></div>
+</div>
+<p class="note">The middle paragraph is dimmer than the other two: it is detail, not the decision.
+Each of its three clauses disappears when its count is zero, so a file whose hexes are all current
+says only &ldquo;83 hexes are as new as turn 16.&rdquo;</p>
+<p class="status">41 hexes added to your map</p>
+
+<h2 class="sec">A file with nothing stale in it</h2>
+<div class="prompt">
+  <p>atlaclient&#8209;map.16 is a map exported from AtlaClient on turn 16. It holds 22 hexes,
+  9 of them new to your map.</p>
+  <p class="age">All 22 hexes are as new as turn 16.</p>
+  <p>Add to map takes every hex your own map does not already know more recently. You stay on
+  Borg TNG (95), turn 71, and nothing you have is replaced.</p>
+  <div class="btns"><button class="btn pri focus">Add to map</button><button class="btn">Cancel</button></div>
+</div>
+
+<h2 class="sec">Nothing new in it</h2>
+<div class="prompt">
+  <p>atlaclient&#8209;map.16 is a map exported from AtlaClient on turn 16. It holds 83 hexes,
+  none of them new to your map.</p>
+  <p class="age">49 hexes are as new as turn 16; 29 are older, back to turn 5; 5 do not say when
+  they were seen and are added as turn 0.</p>
+  <p>There is nothing in it to add. Adding it anyway changes nothing.</p>
+  <div class="btns"><button class="btn pri focus">Add to map</button><button class="btn">Cancel</button></div>
+</div>
+<p class="status">nothing added &mdash; your map already had all of it</p>
+
+<h2 class="sec">Refusals</h2>
+<p class="status bad">could not read atlaclient&#8209;map.16 &mdash; a map export adds to a map you already have &mdash; load a turn report first</p>
+<p class="status bad">could not read atlaclient&#8209;map.16 &mdash; the AtlaClient map does not say which turn it was written on</p>
+<p class="status bad">could not read atlaclient&#8209;map.16 &mdash; the AtlaClient map has no hexes in it</p>
+<p class="note">The faction refusal our own exports have cannot apply: an AtlaClient map never names
+a faction, and that is normal rather than a fault.</p>
+
+<h2 class="sec">The other three decisions</h2>
+<p class="note"><b>Recognition is automatic, from the file's content</b>, like every other kind of
+file this application takes. The tell is the 60&#8209;character underline ending in
+<code>;16</code> or <code>;16&#8209;11</code>, which no real turn report has.</p>
+<p class="note"><b>Hexes with no turn are added as turn&nbsp;0</b> &mdash; the oldest a hex can be,
+so they can never displace anything the map already knows and the map's own shading calls them very
+old. Their terrain and province name is most of what a never&#8209;seen hex is worth.</p>
+<p class="note"><b>The Import button's file filter goes.</b> AtlaClient names its exports after the
+turn number and nothing else, so <code>atlaclient&#8209;map.16</code> is greyed out by today's
+<code>accept</code> list and can only be dragged in. Everything is judged by content anyway, so the
+filter buys nothing and costs a file that cannot be picked.</p>
+<p class="note"><b>An AtlaClient import leaves a row in Merged reports</b>, reading
+<code>AtlaClient &middot; turn 16</code>. One of our own map exports leaves none, because it is our
+own map; this one can drop turn&#8209;5 hexes onto a turn&#8209;71 map, and the panel exists to
+answer where they came from a week later.</p>
+
+<h2 class="sec">The cost</h2>
+<p class="note">One more sentence of counting in the core (three numbers out of the ages the reader
+already builds) and one more paragraph of prose with its own test. No new surface, no new control,
+no new state.</p>
+</body>
+</html>
