@@ -81,7 +81,7 @@ impl OrderedUnits {
             }
             // `depth.turn == 0` rather than `depth == Depth::default()`: a `TURN` block holds next
             // month's orders and says nothing about this one, but a `FORM` block's own MOVE is the
-            // formed unit's and must be read (`ah-4hux`).  `Depth` counts the two separately.
+            // formed unit's and must be read (`ah-4hux`). `Depth` counts the two separately.
             Event::Order { line, depth } if depth.turn == 0 => {
                 // Read through `orders::intents::read_order`, which is the same function
                 // `orders::semantics` reads a line with - so the map and the preview cannot read
