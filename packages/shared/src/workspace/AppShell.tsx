@@ -3046,6 +3046,10 @@ export function AppShell({
 
   // A destination and a unit are all the planner needs; the answer carries either a route or the
   // reason there is none.
+  //
+  // `mapJson` is a dependency because the answer is computed against the map: correcting the game's
+  // size in Settings while a route is drawn must re-ask, not leave a route planned across the old
+  // wrap. It is a string, so this costs nothing on an ordinary render.
   useEffect(() => {
     const destination = planner.destinationId;
     if (!destination || !unit?.own || ruleset.status !== "ready" || !rawReport) {
@@ -3075,7 +3079,7 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client, planner.destinationId, unit, ruleset, rawReport, rememberedJson]);
+  }, [client, planner.destinationId, unit, ruleset, rawReport, rememberedJson, mapJson]);
 
   // A trace answers a question about one unit, so it must not outlive the selection that asked
   // it: without this, unit A's path stays on the map for the debounce-plus-round-trip it takes
@@ -3128,7 +3132,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, unit, ordersDocument, ruleset, rawReport, rememberedJson, layers.movement]);
+  }, [client, unit, ordersDocument, ruleset, rawReport, rememberedJson, mapJson, layers.movement]);
 
   // Validation follows the document, debounced so it does not run on every keystroke. Kept whole
   // rather than counted here: the orders panel shows one unit, and which of these belong to it is a
@@ -3418,7 +3422,8 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client, ruleset, rawReport, rememberedJson]);
+    // `mapJson` for the reason the route planner gives.
+  }, [client, ruleset, rawReport, rememberedJson, mapJson]);
 
   // The whole document previewed at once, unlike the per-unit trace, because GIVE crosses units
   // and MOVE crosses hexes: only the full text says what a hex looks like next month. Same
@@ -3446,7 +3451,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument, ruleset, rawReport, rememberedJson]);
+  }, [client, ordersDocument, ruleset, rawReport, rememberedJson, mapJson]);
 
   /** The selected unit as the orders leave it, for the unit panel. */
   const unitPreview = useMemo(() => {
