@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-zpq3 — where a mage stands once his orders have run</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --brass:#c8a05a; --warn:#d9a441; --good:#4fb783;
+          --sel:#4a9fd8; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 30px 0 6px; border-top: 1px solid var(--edge); padding-top: 16px; }
+  p.lead { color: var(--soft); max-width: 92ch; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  .row { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; margin: 12px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 5px; max-width: 46ch; }
+  .cap b { color: var(--ink); font-weight: 600; }
+  table.grid { border-collapse: collapse; font: 11.5px/1.4 ui-monospace, Menlo, monospace;
+               background: var(--panel); border: 1px solid var(--edge); }
+  table.grid th, table.grid td { border: 1px solid var(--edge); padding: 4px 7px; text-align: left; }
+  table.grid th { color: var(--dim); font-weight: 600; font-size: 10.5px; }
+  td.study { color: var(--ink); }
+  td.none { color: var(--dim); }
+  td.half { color: var(--warn); }
+  .pop { width: 360px; background: var(--raised); border: 1px solid var(--edge); border-radius: 5px;
+         padding: 9px; box-shadow: 0 6px 18px #0008; font-size: 12px; }
+  .pop p.head { margin: 0 0 2px; font-size: 12.5px; }
+  .pop p.sub { margin: 0 0 6px; font-size: 11px; color: var(--dim); }
+  .pop dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; font-size: 11.5px; }
+  .pop dt { margin: 0; color: var(--soft); }
+  .pop dd { margin: 0; font-family: ui-monospace, Menlo, monospace; color: var(--ink); }
+  .pop dt.on, .pop dd.on { color: var(--sel); }
+  .pop p.foot { margin: 8px 0 0; font-size: 11px; color: var(--dim); }
+  .strip { background: var(--panel); border: 1px solid var(--edge); border-radius: 4px;
+           padding: 8px 12px; max-width: 92ch; }
+  .strip p { margin: 3px 0; font-size: 12px; }
+  .strip .w::before { content: "\26A0"; color: var(--warn); margin-right: 7px; }
+  .strip .s::before { content: "\2022"; color: var(--sel); margin-right: 7px; }
+  .strip .empty { color: var(--dim); font-style: italic; }
+  code { font-family: ui-monospace, Menlo, monospace; background: var(--panel); padding: 0 4px;
+         border-radius: 3px; }
+  .banner { background: var(--panel); border: 1px solid var(--edge); border-left: 3px solid var(--sel);
+            padding: 10px 14px; border-radius: 4px; max-width: 92ch; margin: 14px 0; color: var(--soft); }
+  ul.plain { max-width: 92ch; color: var(--soft); }
+  ul.plain li { margin-bottom: 5px; }
+  .ord { background: var(--panel); border: 1px solid var(--edge); border-radius: 4px; padding: 8px 12px;
+         font: 11.5px/1.6 ui-monospace, Menlo, monospace; color: var(--soft); display: inline-block; }
+  .tag { font-size: 10px; letter-spacing:.06em; text-transform: uppercase; color: var(--sel); margin: 0 0 4px; }
+</style>
+</head>
+<body>
+<h1>ah-zpq3 &mdash; the study planner reads where a mage stands once his orders have run</h1>
+<p class="lead">The shelter rule stops reading the report's snapshot and reads <b>where the mage
+stands once this month's LEAVE, ENTER and MOVE orders have run</b>. Nothing is added to the screen:
+the wrong <code>&times;&frac12;</code> and the wrong warning simply stop appearing.</p>
+
+<div class="banner"><b>Chosen by the navigator, 2026-09-08.</b>
+<ul style="margin:6px 0 0">
+<li><b>Whether the planner says it read your ENTER:</b> variant <b>A</b> &mdash; it says nothing.
+The wrong mark and the wrong warning just stop appearing. Rejected: B, one line in the hover card
+naming the building his orders put him in (&ldquo;He enters the Castle [4] this month: it seats two
+mages.&rdquo;); and C, that line plus a blue suggestion per mage in the warnings strip, which would
+have stopped the strip meaning &ldquo;something needs your attention&rdquo;.</li>
+<li><b>Whether a MOVE is followed:</b> <b>yes</b>. <code>rules/sequenceofevents</code> processes
+STUDY after movement, so a mage who walks out studies in the hex he arrives in, outside any building
+&mdash; and is warned, where today he is told nothing. Rejected: ENTER/LEAVE only, which keeps a
+familiar falsehood; and following the move silently, which would decline to say a month is halved
+when it plainly is.</li>
+<li><b>What a mage who walks out is told:</b> the warning <b>names the move</b> &mdash;
+<i>&ldquo;Kesh walks out of the Castle [4] this month, so he studies pattern outside any building on
+turn 25. Above level 2 a month is worth half.&rdquo;</i> Rejected: today's bare sentence, which is
+true but points at nothing.</li>
+<li><b>A mage who walks into a hex your report does not show:</b> <b>silent</b>. No
+<code>&times;&frac12;</code> &mdash; nothing is halved on ignorance, which is already the planner's
+rule &mdash; and no line in the strip either. Rejected: a blue suggestion saying nothing can be said
+about his shelter.</li>
+</ul></div>
+
+<div class="banner"><b>The scene, in all four panels below.</b> Turn 24's report. Two of your mages,
+<b>Ereb (2015)</b> and <b>Sable (2019)</b>, stand in the open in plain (12,8). Your orders for this
+month give both <code>ENTER 4</code> &mdash; <b>Castle [4]</b>, which seats two mages. Both are at
+Pattern 2 and the schedule plans Pattern for turns 25&ndash;30.</div>
+
+<div class="ord">unit 2015<br>ENTER 4<br><br>unit 2019<br>ENTER 4</div>
+
+<h2 class="sec">1 &mdash; The schedule grid</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>Today (wrong).</b> Both mages are held outside for all six turns, so every
+    month is halved and the levels crawl.</p>
+    <table class="grid">
+      <tr><th>Mage</th><th>25</th><th>26</th><th>27</th><th>28</th><th>29</th><th>30</th></tr>
+      <tr><td>Ereb</td><td class="half">Patt 2(105) &times;&frac12;</td><td class="half">Patt 2(120) &times;&frac12;</td><td class="half">Patt 2(135) &times;&frac12;</td><td class="half">Patt 2(150) &times;&frac12;</td><td class="half">Patt 2(165) &times;&frac12;</td><td class="half">Patt 3(180) &times;&frac12;</td></tr>
+      <tr><td>Sable</td><td class="half">Patt 2(105) &times;&frac12;</td><td class="half">Patt 2(120) &times;&frac12;</td><td class="half">Patt 2(135) &times;&frac12;</td><td class="half">Patt 2(150) &times;&frac12;</td><td class="half">Patt 2(165) &times;&frac12;</td><td class="half">Patt 3(180) &times;&frac12;</td></tr>
+    </table>
+  </div>
+  <div>
+    <p class="cap"><b>Variant A.</b> Both took a Castle seat this month, so no cell is marked and
+    Pattern 3 lands on turn 27 instead of turn 30.</p>
+    <table class="grid">
+      <tr><th>Mage</th><th>25</th><th>26</th><th>27</th><th>28</th><th>29</th><th>30</th></tr>
+      <tr><td>Ereb</td><td class="study">Patt 2(120)</td><td class="study">Patt 2(150)</td><td class="study">Patt 3(180)</td><td class="study">Patt 3(210)</td><td class="study">Patt 3(240)</td><td class="study">Patt 3(270)</td></tr>
+      <tr><td>Sable</td><td class="study">Patt 2(120)</td><td class="study">Patt 2(150)</td><td class="study">Patt 3(180)</td><td class="study">Patt 3(210)</td><td class="study">Patt 3(240)</td><td class="study">Patt 3(270)</td></tr>
+    </table>
+  </div>
+</div>
+
+<h2 class="sec">2 &mdash; The warnings strip</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>Today (wrong).</b> Twelve warnings about a plan that needs no changing.</p>
+    <div class="strip">
+      <p class="w">Ereb studies pattern outside any building on turn 25. Above level 2 a month is worth half.</p>
+      <p class="w">Ereb studies pattern outside any building on turn 26. Above level 2 a month is worth half.</p>
+      <p class="w">Sable studies pattern outside any building on turn 25. Above level 2 a month is worth half.</p>
+      <p class="w" style="color:var(--dim)">&hellip; and nine more.</p>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>Variant A.</b> Nothing at all. The strip is empty, exactly as it is for any
+    plan with nothing wrong with it.</p>
+    <div class="strip"><p class="empty">Nothing to flag.</p></div>
+  </div>
+</div>
+
+<h2 class="sec">3 &mdash; The hover card, turn 25</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>Today (wrong).</b></p>
+    <div class="pop">
+      <p class="head">Ereb (2015) &mdash; turn 25</p>
+      <p class="sub">Your faction &middot; studying pattern</p>
+      <dl>
+        <dt class="on">pattern</dt><dd class="on">2(90) &rarr; 2(105)</dd>
+        <dt>force</dt><dd>1(30)</dd>
+      </dl>
+      <p class="foot">Projected from turn 24's report at 30 points a studied month.
+      No mage seat here: this month is worth half.</p>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>Variant A.</b> The half-month line is gone; the card says nothing about where
+    he is standing, exactly as it says nothing today when he is already in a Castle.</p>
+    <div class="pop">
+      <p class="head">Ereb (2015) &mdash; turn 25</p>
+      <p class="sub">Your faction &middot; studying pattern</p>
+      <dl>
+        <dt class="on">pattern</dt><dd class="on">2(90) &rarr; 2(120)</dd>
+        <dt>force</dt><dd>1(30)</dd>
+      </dl>
+      <p class="foot">Projected from turn 24's report at 30 points a studied month.</p>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">4 &mdash; The cases that must warn, and the one that must not</h2>
+<p class="note">The first two are silent today and must not be. The cause clause &mdash;
+<i>leaves the &hellip;</i>, <i>walks out of the &hellip;</i> &mdash; appears <b>only on turn 25</b>,
+the one month there are orders for; turns 26&ndash;30 carry today's bare sentence, because by then
+he is simply somewhere, not going somewhere.</p>
+<div class="strip">
+  <p class="w"><b>LEAVE.</b> Vess (2031) is inside the Castle and his orders say <code>LEAVE</code>:
+  <i>Vess leaves the Castle [4] this month, so he studies pattern outside any building on turn 25.
+  Above level 2 a month is worth half.</i></p>
+  <p class="w"><b>MOVE.</b> Kesh (2044) is inside the Castle and his orders say <code>MOVE NE</code>.
+  Study runs after movement, so he studies in the next hex, outside: <i>Kesh walks out of the Castle
+  [4] this month, so he studies pattern outside any building on turn 25. Above level 2 a month is
+  worth half.</i></p>
+  <p class="w"><b>A full building.</b> A third mage <code>ENTER 9</code>s a Fort that seats one and is
+  already taken: <i>&hellip; studies pattern in the Fort on turn 25, but its one seat is taken. A month is worth half.</i></p>
+  <p class="w"><b>Turn 26, the same Kesh.</b> <i>Kesh studies pattern outside any building on turn 26.
+  Above level 2 a month is worth half.</i> &mdash; no clause: this month's orders are two months behind him.</p>
+  <p class="s"><b>Off the map.</b> Kesh instead gives <code>MOVE NE NE NE</code> and the third hex is
+  not in your report. <b>Nothing at all</b> &mdash; no mark on the cell, no line here.</p>
+</div>
+
+<h2 class="sec">What this costs, and what is assumed</h2>
+<ul class="plain">
+  <li>The screen gets <b>quieter and nothing else</b>. A player who saw twelve wrong warnings
+  yesterday sees none today and is given no reason why. That was the chosen trade.</li>
+  <li>An <code>ENTER</code> the game later refuses &mdash; the object is occupied by a faction that
+  has not declared you Friendly (<code>rules/enter</code>) &mdash; makes all six turns silently
+  optimistic, with nothing on the screen recording that a seat was assumed.</li>
+  <li><b>Turns 26&ndash;30 assume he stays put.</b> There are orders for one month only, so where
+  this month's orders leave him is where the planner holds him for every later column.</li>
+  <li><b>An ally's mages are unaffected.</b> You hold no orders document for another faction, so
+  their shelter is still read from the mage sheet exactly as today.</li>
+  <li><b>Every LEAVE runs before any ENTER</b> (<code>rules/enter</code>: an ENTER issued from
+  inside another object leaves it first). A block holding both ends <i>inside</i>, so such a mage
+  is sheltered and no clause about leaving is ever shown for him.</li>
+</ul>
+</body>
+</html>
