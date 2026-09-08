@@ -731,63 +731,9 @@ fn read_backup_collections(
         })
         .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
-    let mut allied_mage_rows = connection.prepare(
-        "SELECT faction_id, faction_name, unit_json, sheet_turn, received_at
-           FROM allied_mages
-          WHERE game_id = ?1",
-    )?;
-    let allied_mages = allied_mage_rows
-        .query_map(params![game_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, u32>(3)?,
-                row.get::<_, String>(4)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .map(
-            |(faction_id, faction_name, unit_json, sheet_turn, received_at)| {
-                Ok(AlliedMage {
-                    faction_id,
-                    faction_name,
-                    unit: serde_json::from_str(&unit_json)?,
-                    sheet_turn,
-                    received_at,
-                })
-            },
-        )
-        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+    let allied_mages = read_unit_keyed::<AlliedMage>(connection, game_id)?;
 
-    let mut study_plan_rows = connection.prepare(
-        "SELECT faction_id, unit_id, goals_json, comment, updated_at
-           FROM study_plans
-          WHERE game_id = ?1",
-    )?;
-    let study_plans = study_plan_rows
-        .query_map(params![game_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .map(|(faction_id, unit_id, goals_json, comment, updated_at)| {
-            Ok(StudyPlan {
-                faction_id,
-                unit_id,
-                goals: serde_json::from_str(&goals_json)?,
-                comment,
-                updated_at,
-            })
-        })
-        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+    let study_plans = read_unit_keyed::<StudyPlan>(connection, game_id)?;
 
     Ok(EncodedGameBackupCollections {
         imported_turns,
