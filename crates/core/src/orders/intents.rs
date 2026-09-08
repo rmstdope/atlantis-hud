@@ -337,7 +337,7 @@ pub fn read_formed(source: &str, regions: &BTreeMap<&str, &ReportRegion>) -> Vec
         regions,
         current: None,
         current_region: None,
-        forming: Vec::new(),
+        forms: super::blocks::FormStack::new(),
         by_alias: BTreeMap::new(),
         results: Vec::new(),
     };
@@ -355,7 +355,7 @@ struct FormReader<'a> {
     /// The forming unit at each open `FORM` depth, innermost last. `None` for a block that could
     /// not be read or whose alias was already taken - its orders are swallowed rather than falling
     /// through to whatever encloses it.
-    forming: Vec<Option<usize>>,
+    forms: super::blocks::FormStack<usize>,
     by_alias: BTreeMap<(String, String), usize>,
     results: Vec<FormedBlock>,
 }
@@ -366,10 +366,10 @@ impl FormReader<'_> {
             Event::Directive(_) => {
                 self.current = None;
                 self.current_region = None;
-                self.forming.clear();
+                self.forms.reset();
             }
             Event::Unit(line) => {
-                self.forming.clear();
+                self.forms.reset();
                 self.current = line
                     .arguments
                     .first()
@@ -394,7 +394,7 @@ impl FormReader<'_> {
                 depth,
                 ..
             } if depth.turn == 0 => {
-                self.forming.pop();
+                self.forms.close();
             }
             Event::Close { .. }
             | Event::Stray { .. }
@@ -409,17 +409,22 @@ impl FormReader<'_> {
 
     /// The `FormedBlock` the next order belongs to, or `None` outside any valid `FORM`.
     fn active(&self) -> Option<usize> {
-        self.forming.last().copied().flatten()
+        match self.forms.owner() {
+            super::blocks::Owner::Formed(index) => Some(*index),
+            super::blocks::Owner::Block | super::blocks::Owner::Nobody => None,
+        }
     }
 
     /// The unit whose block the next `FORM` sits in: the innermost forming unit's synthetic id, or
     /// the physically reported unit's own - `None` where neither is known, which swallows the
     /// block exactly as a taken alias does.
     fn parent_id(&self) -> Option<String> {
-        match self.forming.last() {
-            Some(Some(index)) => Some(format!("new-{}", self.results[*index].alias)),
-            Some(None) => None,
-            None => self.current.clone(),
+        match self.forms.owner() {
+            super::blocks::Owner::Block => self.current.clone(),
+            super::blocks::Owner::Formed(index) => {
+                Some(format!("new-{}", self.results[*index].alias))
+            }
+            super::blocks::Owner::Nobody => None,
         }
     }
 
@@ -433,7 +438,7 @@ impl FormReader<'_> {
         else {
             // A FORM that cannot be read still opens a block, or its orders would fall through to
             // whatever encloses it.
-            self.forming.push(None);
+            self.forms.open(None);
             return;
         };
 
@@ -441,7 +446,7 @@ impl FormReader<'_> {
         if self.by_alias.contains_key(&key) {
             // The alias is taken, so the server would refuse this FORM; its block is swallowed
             // rather than applied to the unit the alias already names.
-            self.forming.push(None);
+            self.forms.open(None);
             return;
         }
 
@@ -456,7 +461,7 @@ impl FormReader<'_> {
             unread: Vec::new(),
             flag_changes: Vec::new(),
         });
-        self.forming.push(Some(index));
+        self.forms.open(Some(index));
     }
 
     fn record_order(&mut self, command: &Token, arguments: &[Token], line_number: usize) {
@@ -558,11 +563,14 @@ fn is_free_order(command: &Token) -> bool {
 /// Every reader below that keys on an exact argument shape reads it through
 /// [`super::grammar::consumed_arguments`] rather than the raw slice, so trailing text the
 /// validator now ignores (`ah-86vk`) cannot make a line unreadable here that the checker accepts.
+/// [`crate::movement::fleet`] reads its lines through this function too, so the map and the
+/// preview cannot read one order line two ways.
+///
 /// Three keywords are read from the raw slice instead: `ANNIHILATE`, a bare `CAST` and a
 /// `PRODUCE` whose shape does not read as a priced item already fall back to a `MonthLong` intent
 /// when their own arguments do not parse (documented at each arm below), and gating them on the
 /// grammar's success would turn that deliberate fallback into no intent at all.
-fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
+pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
     let name = command.text.to_ascii_uppercase();
 
     match name.as_str() {

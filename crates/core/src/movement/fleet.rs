@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::movement::orders::MoveStep;
+use crate::orders::intents::Intent;
 use crate::orders::standing::{self, standing_after, Boarding, BoardingOrder};
 use crate::report::model::ReportUnit;
 use crate::report::ParsedReport;
@@ -43,24 +44,26 @@ impl OrderedUnits {
         let mut current: Option<String> = None;
         // The `FORM` blocks currently open, innermost last, each holding the id of the unit it
         // creates - or `None` for a FORM whose alias could not be read, which still opens a block
-        // so its orders do not fall through to the unit outside it. Mirrors `Working::visit`,
-        // which is the other reader of the same blocks (`ah-4hux`).
-        let mut forming: Vec<Option<String>> = Vec::new();
+        // so its orders do not fall through to the unit outside it. The nesting rules themselves
+        // live in `orders::blocks`, driven by this reader, `Working::visit` and
+        // `intents::FormReader` alike, so they cannot drift apart again (`ah-i33f`).
+        let mut forms: crate::orders::blocks::FormStack<String> =
+            crate::orders::blocks::FormStack::new();
 
         walk(orders_document, |event| match event {
             Event::Unit(line) => {
                 current = line.arguments.first().map(|id| id.text.to_string());
-                forming.clear();
+                forms.reset();
             }
             Event::Directive(_) => {
-                forming.clear();
+                forms.reset();
             }
             Event::Open {
                 line,
                 kind: BlockKind::Form,
                 depth,
             } if depth.turn == 0 => {
-                forming.push(
+                forms.open(
                     line.arguments
                         .first()
                         .and_then(crate::orders::forms::read_alias)
@@ -74,85 +77,84 @@ impl OrderedUnits {
                 depth,
                 ..
             } if depth.turn == 0 => {
-                forming.pop();
+                forms.close();
             }
             // `depth.turn == 0` rather than `depth == Depth::default()`: a `TURN` block holds next
             // month's orders and says nothing about this one, but a `FORM` block's own MOVE is the
-            // formed unit's and must be read (`ah-4hux`). `Depth` counts the two separately.
+            // formed unit's and must be read (`ah-4hux`).  `Depth` counts the two separately.
             Event::Order { line, depth } if depth.turn == 0 => {
-                // Movement inside an open FORM block is the formed unit's. Only the movement
-                // steps move with it - `sailers`, ENTER and LEAVE stay bound to the block's own
-                // unit below, because `Working` already applies a formed unit's boardings to its
-                // own `structure_id` and `OrderedUnits::structure_of` reads both, so recording
-                // them here as well would apply one order twice.
-                // `match` rather than `.flatten().or_else(...)`: `forming` holds `Some(None)` for
-                // a FORM whose alias could not be read, and flattening that to `None` would fall
-                // the order through to the block's own unit - the very thing the `None` entry is
-                // pushed to prevent. `Working::active` answers `None` there and applies the order
-                // to nobody, and these two readers must agree or the parent draws a line for a
-                // MOVE it did not write (`ah-4hux`).
+                // Read through `orders::intents::read_order`, which is the same function
+                // `orders::semantics` reads a line with - so the map and the preview cannot read
+                // one line two ways. Before `ah-i33f` this walk read the raw token slice and
+                // refused an `ENTER 5 junk` the validator and the preview both accept, so one
+                // document put a unit ashore in the pane and left it aboard on the map.
+                let Some(intent) = crate::orders::intents::read_order(line.command, line.arguments)
+                else {
+                    return;
+                };
+                let owner = forms.owner();
+                // Movement moves with the formed unit; SAIL participation and the boardings stay
+                // with the block's own unit, because `Working` already applies a formed unit's
+                // boardings to its own `structure_id` and `structure_of` reads both - recording
+                // them here as well would apply one order twice (`ah-4hux`).
+                //
+                // `Owner::Nobody` - a FORM whose alias could not be read - moves nobody, rather
+                // than falling the order through to the block's own unit. `Working::active`
+                // answers `None` there too, and these two readers must agree or the parent draws a
+                // line for a MOVE it did not write (`ah-4hux`).
                 //
                 // A formed unit's id is global here and not in `Working`, which keys its aliases
-                // on `(region_id, alias)` - so two units in *different* hexes each writing `FORM 1`
-                // are two legitimate formed units there - `effects.rs` pins that case - and one
-                // `new-1` in this map, last write winning. The trace then
-                // picks arbitrarily between them. Not modelled rather than overlooked: giving these
-                // ids a region would mean deciding what a formed unit is called everywhere the
+                // on `(region_id, alias)` - so two units in *different* hexes each writing
+                // `FORM 1` are two legitimate formed units there - `effects.rs` pins that case -
+                // and one `new-1` in this map, last write winning. The trace then picks
+                // arbitrarily between them. Not modelled rather than overlooked: giving these ids
+                // a region would mean deciding what a formed unit is called everywhere the
                 // synthetic id is read, which is the planner's call and not this bead's. What the
-                // match above does guarantee is that the divergence stays on the formed unit
+                // match below does guarantee is that the divergence stays on the formed unit
                 // instead of leaking onto the parent (`ah-4hux`).
-                let moving = match forming.last() {
-                    Some(formed) => formed.clone(),
-                    None => current.clone(),
+                let moving = match &owner {
+                    crate::orders::blocks::Owner::Block => current.clone(),
+                    crate::orders::blocks::Owner::Formed(id) => Some((*id).clone()),
+                    crate::orders::blocks::Owner::Nobody => None,
                 };
-                if let (Some(unit_id), Some(steps)) = (
-                    moving.as_ref(),
-                    crate::movement::orders::parse_move(
-                        &std::iter::once(line.command.text.as_str())
-                            .chain(line.arguments.iter().map(|token| token.text.as_str()))
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    ),
-                ) {
-                    by_unit.insert(unit_id.clone(), steps);
+                if let (Some(unit_id), Intent::Move { steps } | Intent::Sail { steps }) =
+                    (moving, &intent)
+                {
+                    // An order that goes nowhere is not a movement order: `parse_move` already
+                    // refuses an empty route, and a bare `SAIL` reaches here with no steps. Without
+                    // this guard `steps_for` starts answering `Some(&[])` for a bare SAIL, and
+                    // `steps_followed_by` returns that empty route instead of looking for the
+                    // hull's.
+                    if !steps.is_empty() {
+                        by_unit.insert(unit_id, steps.clone());
+                    }
                 }
                 // Skipped inside a FORM block for the reason above: those orders are applied by
                 // `Working` to the formed unit's own row already.
-                if let Some(unit_id) = current.as_ref().filter(|_| forming.is_empty()) {
-                    if line.command.is("sail")
-                        && (line.arguments.is_empty()
-                            || crate::movement::orders::parse_move(
-                                &std::iter::once(line.command.text.as_str())
-                                    .chain(line.arguments.iter().map(|token| token.text.as_str()))
-                                    .collect::<Vec<_>>()
-                                    .join(" "),
-                            )
-                            .is_some_and(|steps| {
-                                steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
-                            }))
+                let (crate::orders::blocks::Owner::Block, Some(unit_id)) =
+                    (owner, current.as_ref())
+                else {
+                    return;
+                };
+                match intent {
+                    // A bare SAIL participates; one with a route departs. `In`, `Out` and a
+                    // structure number are not a departure, which is why this is not simply "has
+                    // steps".
+                    Intent::Sail { ref steps }
+                        if steps.is_empty()
+                            || steps.iter().any(|step| matches!(step, MoveStep::Go(_))) =>
                     {
                         sailers.insert(unit_id.clone());
                     }
-                    // Read exactly as `orders::intents` reads them, through the same
-                    // `read_only_number`: an ENTER with anything but one numeric argument, or a
-                    // LEAVE with any argument at all, is an order the game does not have, and a
-                    // reader that acted on it would move a unit the server leaves alone. What the
-                    // orders then mean is `orders::standing`'s to say, not this walk's.
-                    if line.command.is("enter") {
-                        if let Some(structure) =
-                            crate::orders::forms::read_only_number(line.arguments)
-                        {
-                            boardings_by_unit
-                                .entry(unit_id.clone())
-                                .or_default()
-                                .push(BoardingOrder::Enter(structure.to_string()));
-                        }
-                    } else if line.command.is("leave") && line.arguments.is_empty() {
-                        boardings_by_unit
-                            .entry(unit_id.clone())
-                            .or_default()
-                            .push(BoardingOrder::Leave);
-                    }
+                    Intent::Enter { structure } => boardings_by_unit
+                        .entry(unit_id.clone())
+                        .or_default()
+                        .push(BoardingOrder::Enter(structure)),
+                    Intent::Leave => boardings_by_unit
+                        .entry(unit_id.clone())
+                        .or_default()
+                        .push(BoardingOrder::Leave),
+                    _ => {}
                 }
             }
             _ => {}
@@ -485,16 +487,20 @@ mod tests {
         assert_eq!(structure_after("unit 10594\nLeAvE\n", "10594"), None);
     }
 
-    /// Read exactly as `orders::intents` reads them: an ENTER with anything but one numeric
-    /// argument, or a LEAVE with any argument, is not an order the game has, and moves nobody.
+    /// `ah-86vk` let a valid order carry trailing text the validator ignores, and
+    /// `orders::intents` and the preview both read the order underneath it. This reader used to
+    /// refuse the whole line, so one document put a unit ashore in the pane and left it aboard on
+    /// the map (`ah-i33f`).
     #[test]
-    fn an_unreadable_enter_or_leave_leaves_the_unit_where_the_report_found_it() {
-        assert_eq!(structure_after("unit 1297\nENTER 235 X\n", "1297"), None);
-        assert_eq!(structure_after("unit 1297\nENTER shed\n", "1297"), None);
+    fn trailing_text_does_not_make_an_enter_or_a_leave_unreadable() {
         assert_eq!(
-            structure_after("unit 10594\nLEAVE 3\n", "10594"),
+            structure_after("unit 1297\nENTER 235 X\n", "1297"),
             Some("235".to_string())
         );
+        assert_eq!(structure_after("unit 10594\nLEAVE 3\n", "10594"), None);
+        // An ENTER whose argument is not a structure number is still no order at all: the number
+        // is required, not merely tolerated.
+        assert_eq!(structure_after("unit 1297\nENTER shed\n", "1297"), None);
     }
 
     /// **`ah-8myf`, the failed verification of 2026-08-25.** Frozen Tomb [194] in barren (32,50)

@@ -9,8 +9,11 @@
 //! it alone. The regression bar for that is a real report: the orders template committed as
 //! `atlantis_hud_fixtures::G7_F95_T71` must validate with nothing to say.
 
+pub mod blocks;
 pub mod completion;
 pub mod effects;
+#[cfg(test)]
+mod form_agreement;
 pub mod forms;
 pub mod grammar;
 pub mod intents;

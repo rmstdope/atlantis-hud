@@ -152,3 +152,16 @@ fn no_boarding_orders_leaves_the_reports_answer() {
 fn entering_a_structure_the_report_does_not_list_is_still_where_it_stands() {
     assert_eq!(agreed(Some("4"), "ENTER 77\n"), some("77"));
 }
+
+/// `ah-86vk` let the validator ignore trailing text on an otherwise valid line, and the preview
+/// followed it through `consumed_arguments`. The map read the raw tokens and refused the order,
+/// so one document put the unit ashore in the pane and left it aboard on the map.
+#[test]
+fn an_enter_with_trailing_text_still_enters() {
+    assert_eq!(agreed(Some("4"), "ENTER 5 junk\n"), some("5"));
+}
+
+#[test]
+fn a_leave_with_trailing_text_still_leaves() {
+    assert_eq!(agreed(Some("4"), "LEAVE junk\n"), None);
+}
