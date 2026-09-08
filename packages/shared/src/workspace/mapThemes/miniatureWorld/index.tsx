@@ -370,11 +370,15 @@ function MarkLayer({ views }: LayerProps) {
                 </g>
               )}
 
-              {/* Smoke and blades over the settlement. Reserved. */}
+              {/* Smoke and blades: bright blades for your own fight, dull for one you watched. */}
               {view.battle && (
-                <g data-scene="battle" transform={at(GROUNDS.battle)}>
+                <g data-scene="battle" data-battle={view.battle} transform={at(GROUNDS.battle)}>
                   <circle r={8.5} className="mw-smoke" />
-                  <g className="mw-blades" strokeWidth={2} strokeLinecap="round">
+                  <g
+                    className={view.battle === "own" ? "mw-blades" : "mw-blades-other"}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                  >
                     <line x1={-5.5} y1={-5.5} x2={5.5} y2={5.5} />
                     <line x1={5.5} y1={-5.5} x2={-5.5} y2={5.5} />
                   </g>

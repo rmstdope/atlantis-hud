@@ -12,6 +12,7 @@
 import { HEX_RADIUS } from "../../mapViewport";
 import { HEX_POINTS } from "../geometry";
 import { roadLayer, type RoadStyle } from "../roadLayer";
+import type { BattleMark } from "../hexView";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
   BAR,
@@ -145,10 +146,16 @@ const ROAD_STYLE: RoadStyle = {
 };
 
 /** What each emblem is drawn as, inside the medallion. */
-function EmblemGlyph({ feature }: { feature: Feature }) {
+function EmblemGlyph({ feature, battle }: { feature: Feature; battle: BattleMark }) {
   if (feature === "battle") {
     return (
-      <g className="ed-battle" strokeWidth={2.4} strokeLinecap="round" fill="none">
+      <g
+        className={battle === "own" ? "ed-battle" : "ed-battle-other"}
+        data-battle={battle}
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        fill="none"
+      >
         <line x1={-6} y1={-6} x2={6} y2={6} />
         <line x1={6} y1={-6} x2={-6} y2={6} />
         <line x1={-5.5} y1={2.5} x2={-2} y2={6} strokeWidth={1.6} />
@@ -241,7 +248,7 @@ function MarkLayer({ views }: LayerProps) {
                     strokeWidth={1.2}
                     vectorEffect="non-scaling-stroke"
                   />
-                  <EmblemGlyph feature={emblem} />
+                  <EmblemGlyph feature={emblem} battle={view.battle} />
                 </g>
               )}
 

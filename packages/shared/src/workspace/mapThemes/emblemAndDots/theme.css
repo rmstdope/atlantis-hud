@@ -33,6 +33,7 @@
 
   /* Feature tones, shared by an emblem and its dot. */
   --ed-battle: #d9a441;
+  --ed-battle-other: #8d9aa8;
   --ed-settlement: #f0e2bd;
   --ed-gate: #b48ce0;
   --ed-shaft: #e0c98c;
@@ -74,6 +75,7 @@
   --ed-medallion-rim: #8f8778;
 
   --ed-battle: #8a6414;
+  --ed-battle-other: #5b6874;
   --ed-settlement: #6f5c22;
   --ed-gate: #6b4a99;
   --ed-shaft: #7a6420;
@@ -147,6 +149,9 @@
 }
 .ed-battle {
   stroke: var(--ed-battle);
+}
+.ed-battle-other {
+  stroke: var(--ed-battle-other);
 }
 .ed-settlement {
   fill: var(--ed-settlement);

@@ -45,10 +45,27 @@ const model: HexMapModel = {
   currentTurn: 71
 };
 
+/** A theme whose mark layer states each hex's battle tone, so the prop can be followed through. */
+function battleProbe(): MapTheme {
+  return {
+    ...probe(),
+    MarkLayer: (props: LayerProps) => (
+      <g data-layer="marks">
+        {props.views
+          .filter((view) => view.battle !== null)
+          .map((view) => (
+            <g key={view.key} data-battle={view.battle} data-region={view.key} />
+          ))}
+      </g>
+    )
+  };
+}
+
 function draw(
   theme: MapTheme = probe(),
   notes: HexNoteRecord[] = [],
-  badges = allBadges(true)
+  badges = allBadges(true),
+  battles?: ReadonlyMap<string, "own" | "other">
 ): string {
   return renderToStaticMarkup(
     <MapCanvas
@@ -64,6 +81,7 @@ function draw(
       showTextures={false}
       badges={badges}
       notes={notes}
+      battles={battles}
     />
   );
 }
@@ -556,5 +574,18 @@ describe("a map that joins back onto itself", () => {
   it("draws no ghosts for an odd width", () => {
     // The lattice holds only positions where x + y is even, so an odd width does not join.
     expect(ghosts(drawShaped({ width: 71, height: 96, wrapX: true, wrapY: false }))).toHaveLength(0);
+  });
+});
+
+describe("the battles of the turn on screen", () => {
+  it("marks the hex a battle was fought in, in the tone the prop gives it", () => {
+    const svg = draw(battleProbe(), [], allBadges(true), new Map([["1:7,53", "other" as const]]));
+
+    expect(svg).toContain('data-region="1:7,53"');
+    expect(svg).toContain('data-battle="other"');
+  });
+
+  it("marks nothing when no battles reached it at all", () => {
+    expect(draw(battleProbe())).not.toContain("data-battle");
   });
 });

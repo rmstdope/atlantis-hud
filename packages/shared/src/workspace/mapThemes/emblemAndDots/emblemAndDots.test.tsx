@@ -47,7 +47,7 @@ const BARE: Partial<HexView> = {
   buildings: 0,
   shafts: 0,
   lairs: 0,
-  battle: false,
+  battle: null,
   gate: false
 };
 
@@ -72,7 +72,7 @@ describe("one emblem, chosen by a fixed priority", () => {
       "settlement"
     );
     expect(
-      emblemFor(view({ settlement: { name: "X", tier: "city" }, battle: true }))
+      emblemFor(view({ settlement: { name: "X", tier: "city" }, battle: "own" }))
     ).toBe("battle");
   });
 
@@ -83,7 +83,7 @@ describe("one emblem, chosen by a fixed priority", () => {
   /** The acceptance criterion, stated as its own test because it is the design's whole claim. */
   it("puts a battle over a settlement, and leaves the settlement as a dot", () => {
     const svg = marks([
-      viewWith({ ...BARE, battle: true, settlement: { name: "Marn", tier: "city" } })
+      viewWith({ ...BARE, battle: "own", settlement: { name: "Marn", tier: "city" } })
     ]);
 
     expect(svg).toContain('data-emblem="battle"');
@@ -380,4 +380,17 @@ describe("unsurveyed ground, drawn light and rimmed", () => {
       "url(#biome-texture-jungle)"
     );
   });
+});
+
+describe("the battle fought in a hex last turn", () => {
+  it("marks the emblem in the fought tone and the watched tone", () => {
+    const own = marks([viewWith({ ...BARE, battle: "own" })]);
+    const other = marks([viewWith({ ...BARE, battle: "other" })]);
+
+    expect(own).toContain('data-battle="own"');
+    expect(own).toContain('class="ed-battle"');
+    expect(other).toContain('data-battle="other"');
+    expect(other).toContain('class="ed-battle-other"');
+  });
+
 });

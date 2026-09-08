@@ -17,6 +17,7 @@
   /* Feature tones, one per station. */
   --hud-ship: #9fb4c8;
   --hud-battle: #d9a441;
+  --hud-battle-other: #8d9aa8;
   --hud-gate: #b48ce0;
   --hud-shaft: #e8d9a8;
   --hud-monster: #f07070;
@@ -51,6 +52,7 @@
 
   --hud-ship: #4a6076;
   --hud-battle: #8a6414;
+  --hud-battle-other: #5b6874;
   --hud-gate: #6b4a99;
   --hud-shaft: #7a6a34;
   --hud-monster: #b04a4a;
@@ -142,6 +144,9 @@
 }
 .hud-battle {
   stroke: var(--hud-battle);
+}
+.hud-battle-other {
+  stroke: var(--hud-battle-other);
 }
 .hud-gate {
   stroke: var(--hud-gate);

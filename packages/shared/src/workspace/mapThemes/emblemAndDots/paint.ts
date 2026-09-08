@@ -49,7 +49,7 @@ export const EMBLEM_PRIORITY: Feature[] = [
 function has(view: HexView, feature: Feature): boolean {
   switch (feature) {
     case "battle":
-      return view.battle;
+      return view.battle !== null;
     case "settlement":
       return view.settlement !== null;
     case "gate":

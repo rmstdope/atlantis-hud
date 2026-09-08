@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Battle, BattleUnit } from "@atlantis/core-client";
 import { aBattle, aBattleUnit } from "@atlantis/core-client";
-import { allegianceOf, assassinationView, roundLabel, rosterCounts, summarise } from "./battles";
+import {
+  allegianceOf,
+  assassinationView,
+  battleHexes,
+  roundLabel,
+  rosterCounts,
+  summarise
+} from "./battles";
 
 const hexLabel = (regionId: string) => `hex ${regionId}`;
 
@@ -138,5 +145,60 @@ describe("an assassination battle", () => {
     const summary = summarise(assassination, hexLabel);
 
     expect(summary.hex).toBe("hex 1:43,79");
+  });
+});
+
+describe("which hexes last turn's battles were fought in", () => {
+  const viewer = "42";
+  const own = () => unit({ id: "9", faction: { name: "Mine", id: viewer } });
+  const foreign = () => unit({ id: "8", faction: { name: "Theirs", id: "7" } });
+
+  it("places a battle with a coordinate at its region id", () => {
+    const hexes = battleHexes([battle({ defenders: [own()] })], viewer);
+
+    expect([...hexes.keys()]).toEqual(["1:25,55"]);
+  });
+
+  it("places nothing for a battle whose headline named no coordinate", () => {
+    expect(battleHexes([battle({ coordinate: null, defenders: [own()] })], viewer).size).toBe(0);
+  });
+
+  it("reads a battle the viewer's own faction was in as own", () => {
+    const hexes = battleHexes([battle({ attackers: [foreign()], defenders: [own()] })], viewer);
+
+    expect(hexes.get("1:25,55")).toBe("own");
+  });
+
+  it("reads a battle between strangers as other", () => {
+    const hexes = battleHexes([battle({ attackers: [foreign()], defenders: [foreign()] })], viewer);
+
+    expect(hexes.get("1:25,55")).toBe("other");
+  });
+
+  it("claims no battle as own when there is no viewer faction", () => {
+    const hexes = battleHexes([battle({ defenders: [own()] })], null);
+
+    expect(hexes.get("1:25,55")).toBe("other");
+  });
+
+  it("reads an assassination of the viewer's unit as own, despite its empty attacker roster", () => {
+    const hexes = battleHexes(
+      [battle({ assassination: true, attackers: [], defenders: [own()] })],
+      viewer
+    );
+
+    expect(hexes.get("1:25,55")).toBe("own");
+  });
+
+  it("lets own outrank other when two battles share a hex, in either order", () => {
+    const mine = battle({ defenders: [own()] });
+    const theirs = battle({ defenders: [foreign()] });
+
+    for (const order of [[mine, theirs], [theirs, mine]]) {
+      const hexes = battleHexes(order, viewer);
+
+      expect(hexes.size).toBe(1);
+      expect(hexes.get("1:25,55")).toBe("own");
+    }
   });
 });

@@ -238,9 +238,9 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
   });
 
   it("offers a badge for every mark a theme can draw, and none for one it cannot", () => {
-    // `battle` is a reserved field that is always false, and a control that does nothing is worse
-    // than no control. `gate` left that company in ah-lcyn: the parser reads a Gateway now, so the
-    // mark can be drawn and switched off. `regions` is the one badge here a theme never draws -
+    // Every mark a theme can draw now has a control: `gate` gained one in ah-lcyn when the parser
+    // learned to read a Gateway, and `battles` in ah-sdw5 when the report's battle blocks reached
+    // the map. `regions` is the one badge here a theme never draws -
     // MapCanvas reads it directly, the way it already reads every other badge, to decorate the
     // map with province outlines rather than a per-hex mark.
     expect(BADGES.map(({ name }) => name)).toEqual([
@@ -249,6 +249,7 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
       "foreignUnits",
       "monsters",
       "guard",
+      "battles",
       "ships",
       "buildings",
       "shafts",
@@ -593,14 +594,49 @@ describe("guard", () => {
   });
 });
 
-describe("marks whose data the reports do not yet give", () => {
-  it("says plainly that there was no battle and no gate, rather than leaving a theme guessing", () => {
-    // Reserved fields: the layouts keep a slot for each, and these turn true when the parser
-    // learns to read them.
+describe("the gate a hex has no data for", () => {
+  it("says plainly that there was no gate, rather than leaving a theme guessing", () => {
     const view = viewOf(hex({ knowledge: "current" }));
 
-    expect(view.battle).toBe(false);
     expect(view.gate).toBe(false);
+  });
+});
+
+describe("the battle fought in a hex last turn", () => {
+  it("marks no hex when no battle data reached the call at all", () => {
+    expect(viewOf(hex({ knowledge: "current", regionId: "1:7,53" })).battle).toBeNull();
+  });
+
+  it("carries the tone the battle map gives this hex", () => {
+    for (const involvement of ["own", "other"] as const) {
+      const view = viewOf(hex({ knowledge: "current", regionId: "1:7,53" }), {
+        battles: new Map([["1:7,53", involvement]])
+      });
+
+      expect(view.battle).toBe(involvement);
+    }
+  });
+
+  it("leaves a hex unmarked when the battle was fought in another one", () => {
+    const view = viewOf(hex({ knowledge: "current", regionId: "1:7,53" }), {
+      battles: new Map([["1:8,54", "own" as const]])
+    });
+
+    expect(view.battle).toBeNull();
+  });
+
+  it("takes the battle away with its badge, and nothing else with it", () => {
+    const view = viewOf(
+      hex({
+        knowledge: "current",
+        regionId: "1:7,53",
+        region: region({ structures: [structure("Shaft, contains an inner location")] })
+      }),
+      { battles: new Map([["1:7,53", "own" as const]]), badges: { battles: false } }
+    );
+
+    expect(view.battle).toBeNull();
+    expect(view.shafts).toBe(1);
   });
 });
 

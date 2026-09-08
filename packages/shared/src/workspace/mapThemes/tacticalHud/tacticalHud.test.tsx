@@ -30,6 +30,13 @@ function viewWith(changes: Partial<HexView>): HexView {
   return { ...base, ...changes };
 }
 
+/** The battle group alone, so a class assertion cannot pass on some other mark's class. */
+function battleGroup(svg: string, involvement: string): string {
+  const start = svg.indexOf(`data-battle="${involvement}"`);
+  expect(start).toBeGreaterThan(-1);
+  return svg.slice(svg.lastIndexOf("<g", start), svg.indexOf("</g>", start));
+}
+
 function marks(views: HexView[]): string {
   return renderToStaticMarkup(
     <svg>
@@ -72,7 +79,7 @@ describe("the readout's own conventions", () => {
 
   it("fills every station on a hex that has everything, and none on an empty one", () => {
     const everything = marks([
-      viewWith({ battle: true, gate: true, ships: 1, shafts: 1, lairs: 1, buildings: 7 })
+      viewWith({ battle: "own", gate: true, ships: 1, shafts: 1, lairs: 1, buildings: 7 })
     ]);
     for (const station of ["ship", "battle", "gate", "shaft", "monster", "lair", "buildings"]) {
       expect(everything).toContain(`data-station="${station}"`);
@@ -371,5 +378,16 @@ describe("unsurveyed ground, drawn light and rimmed", () => {
     expect(draw(tacticalHud.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
       "url(#biome-texture-jungle)"
     );
+  });
+});
+
+describe("the battle fought in a hex last turn", () => {
+  it("lights a battle the viewer fought in and mutes one they only watched", () => {
+    const own = battleGroup(marks([viewWith({ battle: "own" })]), "own");
+    const other = battleGroup(marks([viewWith({ battle: "other" })]), "other");
+
+    expect(own).toContain("hud-battle");
+    expect(own).not.toContain("hud-battle-other");
+    expect(other).toContain("hud-battle-other");
   });
 });

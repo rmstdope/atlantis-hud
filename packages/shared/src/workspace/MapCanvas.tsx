@@ -59,6 +59,7 @@ import {
 } from "./mapHexView";
 import { radii } from "./mapThemes/geometry";
 import { buildHexViews, type BadgeName } from "./mapThemes/hexView";
+import type { BattleInvolvement } from "./battles";
 import type { MapTheme } from "./mapThemes/mapTheme";
 import {
   BADGE,
@@ -152,6 +153,12 @@ type MapCanvasProps = {
   model: HexMapModel;
   /** Every manual hex note of the open game; the layer filters to map-visible ones on this level. */
   notes?: HexNoteRecord[];
+  /**
+   * Where last turn's battles were fought, from `battleHexes`. A hex the map has no data for
+   * carries no mark: the map draws ground it holds, and the Battles dialog is where a fight on
+   * unsurveyed ground is read.
+   */
+  battles?: ReadonlyMap<string, BattleInvolvement>;
   /**
    * How to draw a hex. Everything theme-specific lives behind this: the map itself knows about
    * geometry, interaction and the route overlay, and nothing about parchment or bevels.
@@ -272,6 +279,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     gameId,
     model,
     notes = [],
+    battles,
     theme,
     level,
     selectedRegionId,
@@ -344,8 +352,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
    * the rest.
    */
   const viewOptions = useMemo(
-    () => ({ showStaleness, showTextures, badges, fogDamping: theme.fogDamping }),
-    [showStaleness, showTextures, badges, theme.fogDamping]
+    () => ({ showStaleness, showTextures, badges, battles, fogDamping: theme.fogDamping }),
+    [showStaleness, showTextures, badges, battles, theme.fogDamping]
   );
   const allViews = useMemo(() => buildHexViews(onLevel, viewOptions), [onLevel, viewOptions]);
   // The knowledge buckets are cut from that one pass rather than built again from `hexLayers`:

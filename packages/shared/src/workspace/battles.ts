@@ -114,3 +114,39 @@ export function rosterCounts(
     own: units.filter((unit) => allegianceOf(unit, viewerFactionId) === "own").length
   };
 }
+
+/** How a battle mark reads: a fight the viewer's own faction was in, or one it only had sight of. */
+export type BattleInvolvement = "own" | "other";
+
+/**
+ * Which hexes last turn's battles were fought in, and whether the viewer was in each.
+ *
+ * A battle whose headline was not recognised carries no coordinate and cannot be placed on a map,
+ * so it is dropped here exactly as `summarise` drops it - the Battles dialog still lists it. Two
+ * battles in one hex collapse to one entry, and `own` outranks `other` when they disagree: the hex
+ * your own army bled in is the urgent one, and a muted mark over it would say the opposite.
+ *
+ * A null `viewerFactionId` makes every battle `other`, which is honest: without knowing who the
+ * reader is, no fight can be called theirs.
+ */
+export function battleHexes(
+  battles: Battle[],
+  viewerFactionId: string | null
+): Map<string, BattleInvolvement> {
+  const hexes = new Map<string, BattleInvolvement>();
+  for (const battle of battles) {
+    if (battle.coordinate === null) {
+      continue;
+    }
+    const regionId = regionIdOf(battle.coordinate);
+    const involvement: BattleInvolvement = [...battle.attackers, ...battle.defenders].some(
+      (unit) => allegianceOf(unit, viewerFactionId) === "own"
+    )
+      ? "own"
+      : "other";
+    if (involvement === "own" || !hexes.has(regionId)) {
+      hexes.set(regionId, involvement);
+    }
+  }
+  return hexes;
+}

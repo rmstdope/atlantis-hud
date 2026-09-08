@@ -37,6 +37,7 @@
 
   /* Blood for what fights, and the gate's cold violet. */
   --ct-blood: #7d2b23;
+  --ct-blood-faded: #8a7657;
   --ct-gate: #4a3a55;
 
   /* The unit groups, as heraldry: own, other factions, monsters. */
@@ -75,6 +76,7 @@
   --ct-road-dash: #e0cba4;
 
   --ct-blood: #93362c;
+  --ct-blood-faded: #9a8767;
   --ct-gate: #5f4c72;
 
   --ct-own: #2f8c5c;
@@ -189,6 +191,9 @@
 .ct-battle,
 .ct-monsters {
   stroke: var(--ct-blood);
+}
+.ct-battle-other {
+  stroke: var(--ct-blood-faded);
 }
 .ct-gate {
   stroke: var(--ct-gate);

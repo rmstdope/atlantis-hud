@@ -30,6 +30,13 @@ function viewWith(changes: Partial<HexView>): HexView {
   return { ...base, ...changes };
 }
 
+/** The battle group alone, so a class assertion cannot pass on some other mark's class. */
+function battleGroup(svg: string, involvement: string): string {
+  const start = svg.indexOf(`data-battle="${involvement}"`);
+  expect(start).toBeGreaterThan(-1);
+  return svg.slice(svg.lastIndexOf("<g", start), svg.indexOf("</g>", start));
+}
+
 function marks(views: HexView[]): string {
   return renderToStaticMarkup(
     <svg>
@@ -144,12 +151,20 @@ describe("the rest of the scene", () => {
     }
   });
 
-  it("keeps a ground ready for the battle and the gate the reports cannot describe yet", () => {
-    const svg = marks([viewWith({ battle: true, gate: true })]);
+  it("gives the battle its own ground, beside the gate no report describes yet", () => {
+    const svg = marks([viewWith({ battle: "own", gate: true })]);
 
     expect(svg).toContain('data-scene="battle"');
     expect(svg).toContain('data-scene="gate"');
     expect(marks(buildHexViews(CONGESTED_HEXES, ALL_ON))).not.toContain('data-scene="battle"');
+  });
+
+  it("sharpens the blades of a battle the viewer fought in and dulls one they watched", () => {
+    const own = battleGroup(marks([viewWith({ battle: "own" })]), "own");
+    const other = battleGroup(marks([viewWith({ battle: "other" })]), "other");
+
+    expect(own).toContain('class="mw-blades"');
+    expect(other).toContain('class="mw-blades-other"');
   });
 
   it("leaves an empty hex an empty landscape", () => {
