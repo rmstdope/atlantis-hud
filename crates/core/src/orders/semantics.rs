@@ -1379,7 +1379,9 @@ fn orders_a_pillage(ordered: &Ordered<'_>) -> bool {
         .any(|placed| matches!(placed.intent, Intent::Pillage))
 }
 
-type ClaimAllowances = Option<BTreeMap<String, i64>>;
+/// Report-wide, so keyed on [`UnitKey`]: two hexes may each hold a `new-1` that claims
+/// (`rules/form`), and each is granted its own allowance.
+type ClaimAllowances = Option<BTreeMap<UnitKey, i64>>;
 
 fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllowances {
     let mut remaining = unclaimed?;
@@ -1394,17 +1396,17 @@ fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllow
                     remaining = remaining.saturating_sub(priced.earns).max(0);
                 }
             }
-            allowances.insert(unit.unit.unit_id.clone(), grant);
+            allowances.insert(unit_key(&hex.region.region_id, &unit.unit.unit_id), grant);
         }
     }
     Some(allowances)
 }
 
-fn claim_purse_for(allowances: &ClaimAllowances, unit_id: &str) -> FactionPurse {
+fn claim_purse_for(allowances: &ClaimAllowances, unit: &UnitKey) -> FactionPurse {
     FactionPurse {
         unclaimed: allowances
             .as_ref()
-            .map(|map| map.get(unit_id).copied().unwrap_or(0)),
+            .map(|map| map.get(unit).copied().unwrap_or(0)),
     }
 }
 
@@ -1612,7 +1614,10 @@ fn forecast_hex(
             facts,
             region,
             shares[index],
-            claim_purse_for(claim_allowances, &ordered.unit.unit_id),
+            claim_purse_for(
+                claim_allowances,
+                &unit_key(&hex.region.region_id, &ordered.unit.unit_id),
+            ),
             purse_for_orders.lends_to[index],
             Lookups {
                 sale: &sale,
@@ -4221,7 +4226,11 @@ fn ledger_for_with_production<'a>(
         .map(|ordered| {
             (
                 ordered.unit.unit_id.clone(),
-                claim_purse_for(claim_allowances, &ordered.unit.unit_id).unclaimed,
+                claim_purse_for(
+                    claim_allowances,
+                    &unit_key(&hex.region.region_id, &ordered.unit.unit_id),
+                )
+                .unclaimed,
             )
         })
         .collect();
@@ -22006,6 +22015,38 @@ BUILD
         );
     }
 
+    /// The unclaimed fund grants an allowance to a *unit*, not to a unit number. `rules/form`
+    /// scopes a `FORM` alias to its region, so two hexes may each hold a `new-1` that writes
+    /// `CLAIM`; both are entitled to what they were granted.
+    #[test]
+    fn two_hexes_each_form_a_new_1_and_each_claims_its_own_allowance() {
+        let orders = "unit 5\nFORM 1\nCLAIM 20\nEND\nunit 6\nFORM 1\nCLAIM 20\nEND\n";
+        let parsed = report(vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,54", 8, 54, vec![unit("6")]),
+        ]);
+        let ordered = OrderedUnits::read(orders);
+        let formed = formed_units(&parsed, orders);
+        let hexes: Vec<Hex<'_>> = parsed
+            .regions
+            .iter()
+            .map(|region| Hex::read(region, &ordered, &formed))
+            .collect();
+
+        let allowances = claim_allowances_for(&hexes, Some(100)).expect("a stated fund");
+
+        assert_eq!(
+            allowances
+                .iter()
+                .filter(|(key, _)| key.unit_id == "new-1")
+                .count(),
+            2,
+            "one allowance per unit, not per number: {allowances:?}"
+        );
+        assert_eq!(allowances.get(&unit_key("1:7,53", "new-1")), Some(&20));
+        assert_eq!(allowances.get(&unit_key("1:8,54", "new-1")), Some(&20));
+    }
+
     /// `rules/form` scopes a `FORM` alias to its region, so each hex holds its own `new-1` and
     /// `new-2`. A nested block's parent must be its *own* hex's `new-1`.
     #[test]
@@ -22430,7 +22471,10 @@ BUILD
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let allowances: ClaimAllowances = Some(
-            [("1234".to_string(), 500i64), ("901".to_string(), 0i64)]
+            [
+                (unit_key("1:7,53", "1234"), 500i64),
+                (unit_key("1:7,53", "901"), 0i64),
+            ]
                 .into_iter()
                 .collect(),
         );
