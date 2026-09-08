@@ -1708,10 +1708,7 @@ mod tests {
         let north = a_region("1:7,53");
         let south = a_region("1:8,54");
         let regions = regions_with_two(("1922", &north), ("1923", &south));
-        let formed = read_formed(
-            "unit 1922\nFORM 1\nEND\nunit 1923\nFORM 1\nEND\n",
-            &regions,
-        );
+        let formed = read_formed("unit 1922\nFORM 1\nEND\nunit 1923\nFORM 1\nEND\n", &regions);
 
         assert_eq!(formed.len(), 2, "one FORM in each hex: {formed:?}");
         assert_eq!(formed[0].region_id, "1:7,53");

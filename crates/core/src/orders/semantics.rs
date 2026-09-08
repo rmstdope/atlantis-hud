@@ -22475,8 +22475,8 @@ BUILD
                 (unit_key("1:7,53", "1234"), 500i64),
                 (unit_key("1:7,53", "901"), 0i64),
             ]
-                .into_iter()
-                .collect(),
+            .into_iter()
+            .collect(),
         );
         let production = production_shares_for(std::slice::from_ref(&hex), Some(&rules));
 
