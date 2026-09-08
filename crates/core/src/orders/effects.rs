@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::ReportCache;
 use crate::movement::rules::Ruleset;
-use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
+use crate::orders::items::item_named;
 use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::orders::transfers::{in_report_order, PendingTransfer};
 use crate::report::composition;
@@ -2961,96 +2961,22 @@ impl Working {
         amount: &super::forms::Amount,
         reach: super::targets::GiveReach,
     ) -> Vec<(String, String, i64)> {
-        use super::forms::{Amount, Selector};
-
-        let moving: Vec<(String, String, i64)> = match what {
-            Selector::Item(item) => {
-                let Some(held) = find_item(&self.ruleset, held_items, item) else {
-                    return Vec::new();
-                };
-                let (name, tag, held_amount) = {
-                    let held = &held_items[held];
-                    if is_unfinished_ship(held, Some(&self.ruleset)) {
-                        return Vec::new();
-                    }
-                    (held.name.clone(), held.tag.clone(), held.amount)
-                };
-                let requested = match amount {
-                    Amount::All { except } => held_amount.saturating_sub(*except),
-                    Amount::Exact(count) => *count,
-                };
-                let moved = requested.clamp(0, held_amount);
-                if moved == 0 {
-                    Vec::new()
-                } else {
-                    vec![(name, tag, moved)]
-                }
-            }
-            Selector::UnfinishedShip(text) => {
-                let Some(tag) =
-                    unfinished_ship_named(Some(&self.ruleset), text, || held_items.iter())
-                else {
-                    return Vec::new();
-                };
-                let Some(held) = held_items
-                    .iter()
-                    .find(|item| item.tag.eq_ignore_ascii_case(&tag))
-                else {
-                    return Vec::new();
-                };
-                let requested = match amount {
-                    Amount::All { except } => held.amount.saturating_sub(*except),
-                    Amount::Exact(count) => *count,
-                };
-                let moved = requested.clamp(0, held.amount);
-                if moved > 0 {
-                    vec![(held.name.clone(), held.tag.clone(), moved)]
-                } else {
-                    Vec::new()
-                }
-            }
-            // `rules/give` gives `EXCEPT` and a stated amount to the named-item forms alone; the
-            // class form is `GIVE [unit] ALL [item class]` and nothing else. A class arriving
-            // with either is a shape the rules do not define, so it is left exactly as today.
-            Selector::Class(_) if *amount != (Amount::All { except: 0 }) => Vec::new(),
-            Selector::Class(name)
-                if name.eq_ignore_ascii_case("MAN") || name.eq_ignore_ascii_case("MEN") =>
-            {
-                held_items
-                    .iter()
-                    .filter(|item| {
-                        !is_unfinished_ship(item, Some(&self.ruleset))
-                            && self.ruleset.is_man(&item.tag)
-                    })
-                    .filter(|item| !is_unfinished_ship(item, Some(&self.ruleset)))
-                    .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
-                    .collect()
-            }
-            Selector::Class(name)
-                if name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS") =>
-            {
-                held_items
-                    .iter()
-                    .filter(|item| !is_unfinished_ship(item, Some(&self.ruleset)))
-                    .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
-                    .collect()
-            }
-            Selector::Class(name) => match self.ruleset.class_members(name) {
-                Some(tags) => held_items
-                    .iter()
-                    .filter(|item| {
-                        !is_unfinished_ship(item, Some(&self.ruleset))
-                            && tags.iter().any(|tag| tag == &item.tag)
-                    })
-                    .map(|item| (item.name.clone(), item.tag.clone(), item.amount))
-                    .collect(),
-                None => Vec::new(),
-            },
-            Selector::WholeUnit => Vec::new(),
+        // The preview has no way to say "cannot be established", so a selector this walk cannot
+        // resolve simply moves nothing - which is what each of the early returns this replaced
+        // did (`ah-1zca.5`).
+        let super::transfers::Selection::Tags(selected) =
+            super::transfers::selected(&self.ruleset, what, amount, || held_items.iter())
+        else {
+            return Vec::new();
         };
 
-        moving
+        selected
             .into_iter()
+            .map(|item| {
+                let moved = super::transfers::quantity_moved(amount, item.held);
+                (item.name, item.tag, moved)
+            })
+            .filter(|(_, _, moved)| *moved > 0)
             .filter(|(_, tag, _)| {
                 // Only what definitely moves. A tag the rules refuse and a tag whose permission the
                 // report cannot establish both stay with the giver - the second is admitted through
