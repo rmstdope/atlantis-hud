@@ -495,7 +495,10 @@ describe("silverIsRed", () => {
   });
 });
 
-/** `ah-9o0c.2`: a row that spans hexes is identified by its hex and its unit number. */
+/**
+ * `ah-9o0c.2`: a row that spans hexes is identified by its hex and its unit number. `ah-jw85`:
+ * `new-1` is unique to a hex, not to a turn, so the key has to carry both.
+ */
 describe("unitRowKey", () => {
   it("is the same for the same hex and unit", () => {
     expect(unitRowKey("1:7,53", "new-1")).toBe(unitRowKey("1:7,53", "new-1"));
@@ -542,21 +545,6 @@ describe("unitRowKey", () => {
   it("a row key is still a string at runtime", () => {
     expectTypeOf<UnitRowKey>().toExtend<string>();
     expect(typeof unitRowKey("1:7,53", "new-1")).toBe("string");
-  });
-});
-
-/** `ah-jw85`: `new-1` is unique to a hex, not to a turn, so the key has to carry both. */
-describe("unitRowKey", () => {
-  it("is the same for the same hex and unit", () => {
-    expect(unitRowKey("1:7,53", "new-1")).toBe(unitRowKey("1:7,53", "new-1"));
-  });
-
-  it("tells two hexes' unit apart even though the alias is the same", () => {
-    expect(unitRowKey("1:7,53", "new-1")).not.toBe(unitRowKey("1:8,53", "new-1"));
-  });
-
-  it("tells two units in the same hex apart", () => {
-    expect(unitRowKey("1:7,53", "new-1")).not.toBe(unitRowKey("1:7,53", "new-2"));
   });
 });
 
