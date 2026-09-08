@@ -684,52 +684,9 @@ fn read_backup_collections(
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
-    let mut notes = connection.prepare(
-        "SELECT id, region_id, text, on_map, turn, created_at, updated_at
-           FROM hex_notes
-          WHERE game_id = ?1",
-    )?;
-    let hex_notes = notes
-        .query_map(params![game_id], |row| {
-            Ok(GameBackupHexNote {
-                id: row.get(0)?,
-                region_id: row.get(1)?,
-                text: row.get(2)?,
-                on_map: row.get::<_, i64>(3)? != 0,
-                turn: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+    let hex_notes = read_game_scoped::<GameBackupHexNote>(connection, game_id)?;
 
-    let mut army_rows = connection.prepare(
-        "SELECT id, name, members_json, created_at, updated_at
-           FROM armies
-          WHERE game_id = ?1",
-    )?;
-    let armies = army_rows
-        .query_map(params![game_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .map(|(id, name, members_json, created_at, updated_at)| {
-            Ok(GameBackupArmy {
-                id,
-                name,
-                members: serde_json::from_str(&members_json)?,
-                created_at,
-                updated_at,
-            })
-        })
-        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+    let armies = read_game_scoped::<GameBackupArmy>(connection, game_id)?;
 
     let allied_mages = read_game_scoped::<AlliedMage>(connection, game_id)?;
 
@@ -1781,6 +1738,48 @@ pub fn load_order_draft(
         )
         .optional()
         .map_err(PersistenceError::from)
+}
+
+impl GameScopedRows for GameBackupHexNote {
+    const TABLE: &'static str = "hex_notes";
+    const SELECT_COLUMNS: &'static [&'static str] = &[
+        "id",
+        "region_id",
+        "text",
+        "on_map",
+        "turn",
+        "created_at",
+        "updated_at",
+    ];
+
+    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
+        Ok(GameBackupHexNote {
+            id: row.get(0)?,
+            region_id: row.get(1)?,
+            text: row.get(2)?,
+            on_map: row.get::<_, i64>(3)? != 0,
+            turn: row.get(4)?,
+            created_at: row.get(5)?,
+            updated_at: row.get(6)?,
+        })
+    }
+}
+
+impl GameScopedRows for GameBackupArmy {
+    const TABLE: &'static str = "armies";
+    const SELECT_COLUMNS: &'static [&'static str] =
+        &["id", "name", "members_json", "created_at", "updated_at"];
+
+    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
+        let members_json = row.get::<_, String>(2)?;
+        Ok(GameBackupArmy {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            members: serde_json::from_str(&members_json)?,
+            created_at: row.get(3)?,
+            updated_at: row.get(4)?,
+        })
+    }
 }
 
 /// A per-game collection keyed on a surrogate `id TEXT PRIMARY KEY`, written one row at a time.
