@@ -824,6 +824,24 @@ export function AppShell({
   const [exportRect, setExportRect] = useState<MapRect | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  /**
+   * Opens the export dialog on a clean slate.
+   *
+   * The failure of a previous attempt belongs to that attempt: a message left standing in a
+   * freshly opened dialog reads as something already wrong with the export in front of the player.
+   *
+   * Declared here, beside the state it sets rather than beside the dialog it opens, because the
+   * command palette's entries name it and a dependency array is read during render.
+   */
+  const openExport = useCallback((rect?: MapRect) => {
+    if (rect) {
+      setExportRect(rect);
+    }
+    setExportError(null);
+    setExportOpen(true);
+  }, []);
+
   // The F8 walk's stop and its pending cross-unit landing.
   //
   // Refs are what the walk *steps* from - pressing F8 twice must not wait a render between the
@@ -990,12 +1008,12 @@ export function AppShell({
    * declared default, and a ruleset that declares none yields the empty string, which is how the
    * core hears "the game never said" and keeps computing neighbours exactly as it always did.
    */
+  const openRulesetId = game?.manifest.metadata.rulesetId;
+  const recordedMapShape = game?.manifest.metadata.map;
   const mapShape = useMemo(
     () =>
-      game === null
-        ? null
-        : mapShapeOfGame(game.manifest.metadata.rulesetId, game.manifest.metadata.map).map,
-    [game?.manifest.metadata.rulesetId, game?.manifest.metadata.map]
+      openRulesetId === undefined ? null : mapShapeOfGame(openRulesetId, recordedMapShape).map,
+    [openRulesetId, recordedMapShape]
   );
 
   /**
@@ -1602,7 +1620,9 @@ export function AppShell({
     theme,
     orderCommands,
     game,
-    selectedRegionId
+    selectedRegionId,
+    magicTree,
+    openExport
   ]);
 
   /**
@@ -3141,7 +3161,10 @@ export function AppShell({
   const problemsByHex = useMemo(() => findingsByHex(validated.diagnostics), [validated]);
   // Derived from the loaded report and nothing else: that is what makes it follow a turn switch,
   // come back after a reload, and have nothing to dismiss permanently.
-  const unreadable: readonly UnreadableLine[] = parsed?.unreadableLines ?? [];
+  const unreadable = useMemo<readonly UnreadableLine[]>(
+    () => parsed?.unreadableLines ?? [],
+    [parsed]
+  );
 
   /**
    * The four sources the header's one chip folds together (ah-30hg.2).
@@ -4013,26 +4036,12 @@ export function AppShell({
     setSendPhase(null);
   }, []);
 
-  /**
-   * Opens the export dialog on a clean slate.
-   *
-   * The failure of a previous attempt belongs to that attempt: a message left standing in a
-   * freshly opened dialog reads as something already wrong with the export in front of the player.
-   */
   // A rectangle belongs to the map it was dragged on. Switching game, loading another turn or
   // changing level leaves it describing somewhere else, so it goes and the dialog falls back to
   // the bounds of what is known here.
   useEffect(() => {
     setExportRect(null);
   }, [game?.manifest.metadata.gameId, level, rawReport]);
-
-  const openExport = useCallback((rect?: MapRect) => {
-    if (rect) {
-      setExportRect(rect);
-    }
-    setExportError(null);
-    setExportOpen(true);
-  }, []);
 
   /**
    * Writes the chosen rectangle out as a report-shaped file for an ally to read.
