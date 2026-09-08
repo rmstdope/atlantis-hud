@@ -56,6 +56,12 @@ pub struct FieldChange {
     /// The order this change is attributed to, rendered as the game spells it - `ENTER 12`,
     /// `LEAVE`, `MOVE OUT`, `MOVE N NE`. Absent when no single order accounts for the change,
     /// which is every field but `structureId` today.
+    //
+    // `skip_serializing_if` is load-bearing and not tidying: the TypeScript this type generates
+    // says `cause?: string`, a key that may be absent and is never `null`, and only the skip makes
+    // that true of the wire - `ts(optional)` alone would leave the type saying one thing and the
+    // serializer writing another. `an_unattributed_change_writes_no_cause_key` holds it. Kept out
+    // of the doc comment on purpose: it is about this boundary, not about the field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub cause: Option<String>,
@@ -3338,6 +3344,36 @@ fn add_item(items: &mut Vec<crate::report::model::ItemAmount>, name: &str, tag: 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unattributed_change_writes_no_cause_key() {
+        let change = super::FieldChange {
+            field: "name".to_string(),
+            original: "Scouts".to_string(),
+            cause: None,
+        };
+
+        let wire = serde_json::to_value(&change).expect("a FieldChange serializes");
+
+        assert!(
+            wire.get("cause").is_none(),
+            "an unattributed change must leave the key out rather than write null, because the \
+             generated `cause?: string` says the key may be absent and is never null: {wire}"
+        );
+    }
+
+    #[test]
+    fn an_attributed_change_writes_its_cause() {
+        let change = super::FieldChange {
+            field: "structureId".to_string(),
+            original: "".to_string(),
+            cause: Some("ENTER 12".to_string()),
+        };
+
+        let wire = serde_json::to_value(&change).expect("a FieldChange serializes");
+
+        assert_eq!(wire.get("cause").and_then(|c| c.as_str()), Some("ENTER 12"));
+    }
+
     use super::*;
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
