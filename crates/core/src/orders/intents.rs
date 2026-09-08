@@ -303,6 +303,12 @@ pub struct FormedBlock {
     /// The unit whose block holds the `FORM`. Where the formed unit's orders are typed, and what
     /// a click on it selects.
     pub formed_by: String,
+    /// The hex whose numbering this block's alias belongs to.
+    ///
+    /// `rules/form` scopes an alias to its region, so `new-1` names a different unit in each hex
+    /// that wrote `FORM 1`. Anything resolving a nested block's `formed_by` needs this as well as
+    /// the id.
+    pub region_id: String,
     /// The `unit` line of the block that forms it, for a finding that must sit on a line.
     pub block_line: usize,
     /// This month's orders written inside its own block. An inner `FORM`'s orders belong to the
@@ -431,7 +437,7 @@ impl FormReader<'_> {
             return;
         };
 
-        let key = (region_id, alias.to_string());
+        let key = (region_id.clone(), alias.to_string());
         if self.by_alias.contains_key(&key) {
             // The alias is taken, so the server would refuse this FORM; its block is swallowed
             // rather than applied to the unit the alias already names.
@@ -444,6 +450,7 @@ impl FormReader<'_> {
         self.results.push(FormedBlock {
             alias: alias.to_string(),
             formed_by,
+            region_id,
             block_line: line_number,
             intents: Vec::new(),
             unread: Vec::new(),
@@ -1683,6 +1690,32 @@ mod tests {
         let mut regions = BTreeMap::new();
         regions.insert(unit_id, region);
         regions
+    }
+
+    /// Two units in two hexes, in the shape `read_formed` wants them.
+    fn regions_with_two<'a>(
+        first: (&'a str, &'a ReportRegion),
+        second: (&'a str, &'a ReportRegion),
+    ) -> BTreeMap<&'a str, &'a ReportRegion> {
+        let mut regions = BTreeMap::new();
+        regions.insert(first.0, first.1);
+        regions.insert(second.0, second.1);
+        regions
+    }
+
+    #[test]
+    fn a_formed_block_names_the_hex_its_form_was_written_in() {
+        let north = a_region("1:7,53");
+        let south = a_region("1:8,54");
+        let regions = regions_with_two(("1922", &north), ("1923", &south));
+        let formed = read_formed(
+            "unit 1922\nFORM 1\nEND\nunit 1923\nFORM 1\nEND\n",
+            &regions,
+        );
+
+        assert_eq!(formed.len(), 2, "one FORM in each hex: {formed:?}");
+        assert_eq!(formed[0].region_id, "1:7,53");
+        assert_eq!(formed[1].region_id, "1:8,54");
     }
 
     #[test]
