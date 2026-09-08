@@ -148,9 +148,9 @@ const ROAD_STYLE: RoadStyle = {
 /** What each emblem is drawn as, inside the medallion. */
 function EmblemGlyph({ feature, battle }: { feature: Feature; battle: BattleMark }) {
   if (feature === "battle") {
-    // The medallion is only ever a battle when there was one, so `null` cannot reach here - but the
-    // type permits it, and drawing nothing is a better way to fail than claiming a tone or falling
-    // through to the last glyph in this chain.
+    // `emblemFor` picks "battle" only through `has()`, which is `view.battle !== null`, so this is
+    // dead - but the type permits it, and drawing nothing is a better way to fail than painting a
+    // fight the viewer was in as one they merely watched.
     if (battle === null) {
       return null;
     }
