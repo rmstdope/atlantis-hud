@@ -34,19 +34,29 @@ function own(...mages: PlannerMage[]): PlannerGroup[] {
   ];
 }
 
-/** One preview row for a unit standing in (or bound for) a hex. */
+/**
+ * One preview row for a unit standing in (or bound for) a hex.
+ *
+ * `otherHex` is the far end of a move: the destination of a `departing` row, the origin of an
+ * `arriving` one. The core sets exactly one of the two on every row it emits and never both
+ * (`crates/core/src/orders/effects.rs`, the arrival at 846 and the departure at 881), and the pair
+ * is what `previewPairs` matches on (`ah-sdjy`).
+ */
 function row(
   regionId: string,
   unitId: string,
   structureId: string | null,
-  status: UnitPreviewStatus
+  status: UnitPreviewStatus,
+  otherHex: string | null = null
 ) {
   return {
     regionId,
     units: [
       {
         unit: { unitId, structureId } as unknown as ReportUnit,
-        status
+        status,
+        departingTo: status === "departing" ? otherHex : null,
+        arrivingFrom: status === "arriving" ? otherHex : null
       }
     ]
   };
@@ -105,8 +115,8 @@ describe("standingAfterOrders", () => {
     const after = standingAfterOrders({
       groups: own(mage("2431", "1:7", "4")),
       preview: preview(
-        row("1:7", "2431", "4", "departing"),
-        row("1:8", "2431", null, "arriving")
+        row("1:7", "2431", "4", "departing", "1:8"),
+        row("1:8", "2431", null, "arriving", "1:7")
       ),
       report: report("1:7", "1:8"),
       names
@@ -140,10 +150,10 @@ describe("standingAfterOrders", () => {
     const after = standingAfterOrders({
       groups: own(mage("2431", "1:7", "4")),
       preview: preview(
-        row("1:7", "2431", "4", "departing"),
+        row("1:7", "2431", "4", "departing", "9:9"),
         // A structure the preview knows about in a hex the report never showed: its seats cannot
         // be looked up, so the standing says nothing rather than something unverifiable.
-        row("9:9", "2431", "7", "arriving")
+        row("9:9", "2431", "7", "arriving", "1:7")
       ),
       report: report("1:7"),
       names
@@ -175,6 +185,57 @@ describe("standingAfterOrders", () => {
       names
     });
     expect(after.size).toBe(0);
+  });
+
+  it("reads a mage's standing from the pair on the hex the report gave him", () => {
+    // Two rows for one mage, and the pair is keyed on the hex the report gave him rather than on
+    // his number alone (`ah-sdjy`): STUDY runs after movement (`rules/sequenceofevents`), so the
+    // row that counts is where the month ends for him.
+    const after = standingAfterOrders({
+      groups: own(mage("2431", "1:7", null)),
+      preview: preview(
+        row("1:7", "2431", null, "departing", "1:8"),
+        row("1:8", "2431", null, "arriving", "1:7")
+      ),
+      report: report("1:7", "1:8"),
+      names
+    });
+    expect(after.get("21/2431")?.regionId).toBe("1:8");
+  });
+
+  it("keeps the report's snapshot for a mage the preview shows only arriving", () => {
+    // No `departing` row to pair the arrival with, which the core never emits
+    // (`crates/core/src/orders/effects.rs` pushes the two together). Nothing is claimed about a
+    // half-response: the report's own snapshot stands, as it does for any mage with no row.
+    const after = standingAfterOrders({
+      groups: own(mage("2431", "1:7", null)),
+      preview: preview(row("1:8", "2431", null, "arriving", "1:7")),
+      report: report("1:7", "1:8"),
+      names
+    });
+    expect(after.has("21/2431")).toBe(false);
+  });
+
+  it("ignores another hex's row that shares his unit number", () => {
+    // A formed unit's alias is reused hex by hex (`ah-4hux`), so a row for `2431` in a hex that is
+    // not his says nothing about him: the pair is keyed on the hex as well as the number. His own
+    // row is a departure with no arrival, so the month leaves him where the preview cannot say.
+    const after = standingAfterOrders({
+      groups: own(mage("2431", "1:7", null)),
+      preview: preview(
+        row("1:7", "2431", null, "departing", "1:8"),
+        row("1:9", "2431", "4", "present")
+      ),
+      report: report("1:7", "1:9"),
+      names
+    });
+    expect(after.get("21/2431")).toEqual({
+      regionId: "1:7",
+      structureId: null,
+      offMap: true,
+      leftBuilding: null,
+      leftBy: null
+    });
   });
 
   it("says nothing about an ally's mage", () => {

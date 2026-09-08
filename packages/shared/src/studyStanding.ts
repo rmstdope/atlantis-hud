@@ -14,13 +14,11 @@
  * arrives in rather than the one the report found him in.
  */
 
-import type {
-  OrdersPreviewResponse,
-  ParsedReport,
-  UnitPreviewStatus
-} from "@atlantis/core-client";
+import type { OrdersPreviewResponse, ParsedReport } from "@atlantis/core-client";
 import type { PlannerGroup } from "./studyPlanner";
 import { shelterKey } from "./studyShelter";
+import { previewPairs, standingRowFor } from "./unitPreviewRows";
+import { unitRowKey } from "./unitTable";
 
 /** Where one mage stands once this month's LEAVE, ENTER and MOVE orders have run. */
 export type StandingAfterOrders = {
@@ -80,35 +78,26 @@ export function standingAfterOrders(input: {
 
   // The preview lists only what the orders change, so a mage with no row keeps the report's answer.
   // One unit can have two rows: a `departing` one in the hex it leaves and an `arriving` one in the
-  // hex it reaches, the first of which carries the *origin* standing.
-  const rows = new Map<
-    string,
-    { regionId: string; structureId: string | null; status: UnitPreviewStatus }[]
-  >();
-  for (const region of preview.regions) {
-    for (const entry of region.units) {
-      const list = rows.get(entry.unit.unitId) ?? [];
-      list.push({
-        regionId: region.regionId,
-        structureId: entry.unit.structureId,
-        status: entry.status
-      });
-      rows.set(entry.unit.unitId, list);
-    }
-  }
+  // hex it reaches. Which of the two stands for him is `unitPreviewRows` decision, made once for
+  // every reader of a preview (`ah-sdjy`); STUDY runs after movement, so the one meant here is
+  // where the month `ends` for him.
+  // An `arriving` row with no departure to pair it with, and a departure whose arrival is missing,
+  // are both half a response: the core pushes the two rows together, so neither reaches a real
+  // preview. Neither is followed - the first keeps the report's snapshot, the second reads as
+  // off-map - and both are pinned below rather than left to be discovered.
+  const pairs = previewPairs(preview);
 
   for (const group of input.groups) {
     if (group.source !== "own") {
       continue;
     }
     for (const mage of group.mages) {
-      const mine = rows.get(mage.unitId);
-      if (mine === undefined || mine.length === 0) {
+      const pair = pairs.get(unitRowKey(mage.regionId, mage.unitId));
+      if (pair === undefined) {
+        // The orders touch nothing of his: the report's own snapshot stands.
         continue;
       }
-      const arriving = mine.find((entry) => entry.status === "arriving");
-      const present = mine.find((entry) => entry.status === "present");
-      const ends = arriving ?? present ?? null;
+      const ends = standingRowFor(pair, "ends");
 
       if (ends === null) {
         // Only a `departing` row: he walks somewhere the report cannot show, so nothing can be said
@@ -139,10 +128,10 @@ export function standingAfterOrders(input: {
         continue;
       }
       const from = mage.structureId;
-      const leaves = from !== null && ends.structureId === null;
+      const leaves = from !== null && ends.row.unit.structureId === null;
       out.set(mage.key, {
         regionId: ends.regionId,
-        structureId: ends.structureId,
+        structureId: ends.row.unit.structureId,
         offMap: false,
         leftBuilding: leaves
           ? `${input.names.get(shelterKey(mage.regionId, from)) ?? "building"} [${from}]`
