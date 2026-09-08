@@ -1062,3 +1062,39 @@ fn a_taxed_bounded_buy_is_funded_by_the_uncontended_tax() {
     );
     assert_eq!(row.wanted_for_orders, Some(160));
 }
+
+/// The lever is the tax. The column credited a taxing unit its **settled** share while
+/// `semantics::credit_tax` credits the uncontended one - a difference `hopeful_tax` compensated
+/// for in the exact-`BUY` cap and **never** in the deferred `BUY ALL` pass, which read the walk's
+/// own running total alone. So two units taxing a region that cannot pay both, one of them writing
+/// `BUY ALL`, sized one line from two numbers (`ah-6m7b.2`).
+///
+/// `rules/economy_taxingpillaging` gives each taxing man $50, so each unit asks $500 of a $300
+/// region. The column settled 900's proportional half, $150, which buys 7 grain at $20; the ledger
+/// credits the full $300, which buys 15. Neither is capped by the market, which holds 20.
+#[test]
+fn a_contended_taxers_buy_all_is_sized_as_the_ledger_sizes_it() {
+    let text = market_report(
+        "plain (1,1) in Nowhere, 1000 peasants (orcs), $300.",
+        "20 grain [GRAI] at $20.",
+        &[
+            "* Buyers (900), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: combat [COMB] 1 (30).",
+            "* Taxers (901), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: combat [COMB] 1 (30).",
+        ],
+    );
+    let (column_bought, items_bought, _) = both_surfaces(
+        &text,
+        "unit 900\nTAX\nBUY ALL grain\nunit 901\nTAX\n",
+        "900",
+        "GRAI",
+    );
+
+    assert_eq!(items_bought, 15, "the ledger's optimistic tax pays for fifteen");
+    assert_eq!(
+        column_bought, 15,
+        "and the column now says what the ledger settled"
+    );
+    assert_eq!(column_bought, items_bought, "the two surfaces agree");
+}

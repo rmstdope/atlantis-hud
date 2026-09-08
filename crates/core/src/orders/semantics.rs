@@ -48,8 +48,7 @@ use crate::orders::silver::{
     MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare,
     PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages,
     SaleAnswer, SharedMarket, SilverChangeCause, SilverDoubt, TransferShape, Transmuting,
-    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
-};
+    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce, SettledBuyAll,};
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
     give_endpoint, give_outcome, mage_give_refused, party_label, party_unit_id, GiveEndpoint,
@@ -1457,6 +1456,14 @@ fn forecast_hex(
             .get(unit_id)
             .map_or(&[][..], Vec::as_slice)
     };
+    // What the ITEMS ledger's own `settle_buy_all` decided about each of this unit's `BUY ALL`
+    // lines, so the column reports that answer rather than pricing the line again (`ah-6m7b.2`).
+    let settled_buy_all_of = |unit_id: &str| {
+        ledger
+            .settled_buy_all
+            .get(unit_id)
+            .map_or(&[][..], Vec::as_slice)
+    };
     let clamped: Vec<Vec<ItemAmount>> = (0..hex.units.len())
         .map(|index| clamped_holdings(before_manufacturing.items_of(index)))
         .collect();
@@ -1600,6 +1607,7 @@ fn forecast_hex(
                 index,
                 &clamped[index],
                 shared_materials_of(&ordered.unit.unit_id),
+                settled_buy_all_of(&ordered.unit.unit_id),
             )),
         };
         claims.push(food_claim(&facts, ruleset));
@@ -3855,6 +3863,7 @@ impl PhaseHoldings {
             production: self.production.of(index),
             maintenance: self.maintenance.of(index),
             silver: Some(self.silver[index]),
+            buy_all: &[],
         }
     }
 
@@ -3866,6 +3875,7 @@ impl PhaseHoldings {
         index: usize,
         before_manufacturing: &'a [ItemAmount],
         shared_materials: &'a [(usize, Vec<ItemAmount>)],
+        buy_all: &'a [SettledBuyAll],
     ) -> PhaseFacts<'a> {
         PhaseFacts {
             study: self.study.of(index),
@@ -3874,6 +3884,7 @@ impl PhaseHoldings {
                 .of_with(index, before_manufacturing, shared_materials),
             maintenance: self.maintenance.of(index),
             silver: Some(self.silver[index]),
+            buy_all,
         }
     }
 }
@@ -4023,8 +4034,15 @@ struct Ledger<'a> {
     /// unit's intents in `ledger_for`, so settling in document order would price the purchase
     /// against a balance that has not been credited its tax. `forecast_unit` defers it for the
     /// same reason, and the two must defer to the same figure or the SILVER and ITEMS cells go
-    /// back to contradicting each other.
+    /// back to contradicting each other - which since `ah-6m7b.2` they do by construction:
+    /// `settle_buy_all` records its answer in `settled_buy_all` below and the column reports that
+    /// rather than deriving one of its own.
     pub(crate) buy_all: BTreeMap<String, Vec<DeferredBuy>>,
+    /// What each unit's `BUY ALL` lines actually settled to, in document order - handed to the
+    /// SILVER column through [`PhaseFacts::buy_all`] so it reports the ledger's answer instead of
+    /// pricing the line a second time (`ah-6m7b.2`). Written by `settle_buy_all`; empty for a unit
+    /// that wrote none and for a doubted one, which `settle_buy_all` skips.
+    pub(crate) settled_buy_all: BTreeMap<String, Vec<SettledBuyAll>>,
     /// How many of one tag a unit's own `SELL` lines have already moved this month, and how many of
     /// those lines moved any. A block may name the same goods twice, and the second line can only
     /// draw on what the first left of the unit's settled share of the market line (`ah-vw8e`). Keyed
@@ -4299,6 +4317,7 @@ fn ledger_for_with_production<'a>(
         refused_recruits: Vec::new(),
         built: BTreeMap::new(),
         buy_all: BTreeMap::new(),
+        settled_buy_all: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
         bought: BTreeMap::new(),
@@ -6263,6 +6282,18 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &
             deferred.market_has,
             already,
         );
+        ledger
+            .settled_buy_all
+            .entry(who.clone())
+            .or_default()
+            .push(SettledBuyAll {
+                line: deferred.placed.line as i64,
+                tag: deferred.tag.clone(),
+                price: deferred.price,
+                spends: priced.spends,
+                silver_available,
+                plan,
+            });
         charge(
             ledger,
             StatePhase::Market,
