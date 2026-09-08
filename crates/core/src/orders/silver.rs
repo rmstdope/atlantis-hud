@@ -1683,6 +1683,11 @@ pub fn forecast_unit(
     // clamp differently.
     let mut manufacturing_items = facts.production().before_manufacturing.to_vec();
 
+    // What this unit's earlier manufacturing `PRODUCE` lines have already spent, for the same
+    // reason - the silver twin of `manufacturing_items` above, which already keeps the materials
+    // running (`ah-l80z`).
+    let mut manufacturing_spent = 0i64;
+
     // `rules/sequenceofevents` fixes the order the turn runs the block in, and the order the
     // player wrote it in does not change it (`ah-gdd3.1`).
     for placed in phases::in_phase_order(intents) {
@@ -1911,7 +1916,18 @@ pub fn forecast_unit(
                     recipe,
                     work,
                     &priced_against,
-                    available_silver(held, income, expense.saturating_add(market_demand)),
+                    match facts.phase_silver() {
+                        // The ledger's own figure, which is what `semantics::produce` priced this
+                        // very order against, through this very function - so the two surfaces
+                        // cannot answer one `PRODUCE` differently (`ah-6m7b.1`).
+                        Some(silver) => silver
+                            .as_manufacturing_opens()
+                            .saturating_sub(manufacturing_spent)
+                            .max(0),
+                        None => {
+                            available_silver(held, income, expense.saturating_add(market_demand))
+                        }
+                    },
                     *requested,
                     region,
                 );
@@ -1919,6 +1935,7 @@ pub fn forecast_unit(
                     Some((plan, recipe)) => {
                         expense = expense.saturating_add(priced.spends);
                         month_long_expense = month_long_expense.saturating_add(priced.spends);
+                        manufacturing_spent = manufacturing_spent.saturating_add(priced.spends);
                         // `phase_of` answers `Manufacturing` for every `PRODUCE`, and only a
                         // manufacturing recipe has a silver input at all.
                         record(
