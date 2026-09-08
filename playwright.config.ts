@@ -24,13 +24,35 @@ const SERVERS = {
     command: `pnpm --filter @atlantis/web exec vite build && pnpm --filter @atlantis/web exec vite preview --host 127.0.0.1 --port ${web} --strictPort`,
     env: { ATLANTIS_PWA_DISABLE: "1" },
     url: `http://127.0.0.1:${web}`,
-    reuseExistingServer: !process.env.CI,
+    /**
+     * Never reuse a server this run did not start.
+     *
+     * The `command` above *builds* and then previews, so a reused server is a stale bundle by
+     * construction — and a stale bundle passes and proves nothing, or fails and reads exactly like
+     * a broken branch. `!process.env.CI` said this indirectly and cost the fleet twice over: three
+     * sightings of a suite answering from another checkout's server, and a machine-wide gate lock
+     * (`scripts/withGateLock.ts`, which skips itself under `CI`) that every agent silently switched
+     * off by exporting `CI=1` to get this behaviour. Off is now the answer everywhere; Playwright
+     * fails loudly when the port is occupied, which is what `--strictPort` already asks for.
+     */
+    reuseExistingServer: false,
     timeout: 120_000
   },
   "desktop-shell": {
     command: `pnpm --filter @atlantis/desktop exec vite build && pnpm --filter @atlantis/desktop exec vite preview --host 127.0.0.1 --port ${desktop} --strictPort`,
     url: `http://127.0.0.1:${desktop}`,
-    reuseExistingServer: !process.env.CI,
+    /**
+     * Never reuse a server this run did not start.
+     *
+     * The `command` above *builds* and then previews, so a reused server is a stale bundle by
+     * construction — and a stale bundle passes and proves nothing, or fails and reads exactly like
+     * a broken branch. `!process.env.CI` said this indirectly and cost the fleet twice over: three
+     * sightings of a suite answering from another checkout's server, and a machine-wide gate lock
+     * (`scripts/withGateLock.ts`, which skips itself under `CI`) that every agent silently switched
+     * off by exporting `CI=1` to get this behaviour. Off is now the answer everywhere; Playwright
+     * fails loudly when the port is occupied, which is what `--strictPort` already asks for.
+     */
+    reuseExistingServer: false,
     timeout: 120_000
   }
 };
