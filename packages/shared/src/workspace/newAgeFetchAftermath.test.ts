@@ -93,6 +93,20 @@ describe("newAgeFetchAftermath", () => {
     ).toBeNull();
   });
 
+  it("lets a failed listing win over the run's own summary", () => {
+    // The one row where two conditions hold at once: a run that stored turns and could not list
+    // them says so, and the summary is not written on top of it.
+    const outcome = done(
+      { stored: [78, 79], failed: new Map(), refusedMidRun: false },
+      "the listing failed."
+    );
+    expect(newAgeFetchAftermath(input(outcome)).status).toEqual(
+      warningStatus("the listing failed.")
+    );
+    // And the picker is still re-listed: the turns landed whatever the listing did.
+    expect(newAgeFetchAftermath(input(outcome)).relistTurns).toBe(true);
+  });
+
   it("says nothing for a plain this-turn fetch or an abandoned run", () => {
     expect(newAgeFetchAftermath(input(done(null))).status).toBeNull();
     expect(newAgeFetchAftermath(input({ kind: "abandoned" })).status).toBeNull();
