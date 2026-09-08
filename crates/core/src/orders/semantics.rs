@@ -27,6 +27,7 @@ use super::intents::{
     read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
 };
 use super::phases::{self, StatePhase};
+use super::transfers;
 use super::standing::{self, standing_after, Boarding};
 use crate::movement::graph::Direction;
 use crate::movement::mode::{
@@ -2411,70 +2412,13 @@ fn moves(
     amount: &Amount,
     ruleset: &Ruleset,
 ) -> Moves {
-    match what {
-        // `rules/give`: it "gives the entire unit to the specified unit's faction" - a change of
-        // ownership, and nobody's holdings move.
-        Selector::WholeUnit => Moves::Tags(Vec::new()),
-        // The catalogue *and* the holder's own list, through the one resolver every surface uses:
-        // the catalogue cannot strip the report's `wood elves` down to its own `wood elf`, and a
-        // transfer it could not name fell back to the report's own headcount (`ah-vcp8.1`).
-        Selector::Item(text) => match item_named(Some(ruleset), text, || held.values()) {
-            Some(tag) => held
-                .get(&tag)
-                .filter(|item| !is_unfinished_ship(item, Some(ruleset)))
-                .map_or(Moves::Unknowable, |_| Moves::Tags(vec![tag])),
-            None => Moves::Unknowable,
-        },
-        Selector::UnfinishedShip(text) => {
-            unfinished_ship_named(Some(ruleset), text, || held.values())
-                .map_or(Moves::Unknowable, |tag| Moves::Tags(vec![tag]))
+    // This walk *can* say "cannot be established", and does: the unit's holdings stop being
+    // something any later check may reason from (`items_unknowable`).
+    match transfers::selected(ruleset, what, amount, || held.values()) {
+        transfers::Selection::Tags(selected) => {
+            Moves::Tags(selected.into_iter().map(|item| item.tag).collect())
         }
-        Selector::Class(name) => {
-            // `rules/give` gives `EXCEPT` and a stated quantity to the named-item forms alone; the
-            // class form is `GIVE [unit] ALL [item class]` and nothing else.
-            if !matches!(amount, Amount::All { except: 0 }) {
-                return Moves::Unknowable;
-            }
-            let upper = name.to_ascii_uppercase();
-            if upper == "MAN" || upper == "MEN" {
-                Moves::Tags(
-                    held.keys()
-                        .filter(|tag| ruleset.is_man(tag))
-                        .filter(|tag| {
-                            held.get(*tag)
-                                .is_none_or(|item| !is_unfinished_ship(item, Some(ruleset)))
-                        })
-                        .cloned()
-                        .collect(),
-                )
-            } else if upper == "ITEM" || upper == "ITEMS" {
-                // `rules/give`: "the combination of all of the previous categories" - silver
-                // included.
-                Moves::Tags(
-                    held.keys()
-                        .filter(|tag| {
-                            held.get(*tag)
-                                .is_none_or(|item| !is_unfinished_ship(item, Some(ruleset)))
-                        })
-                        .cloned()
-                        .collect(),
-                )
-            } else {
-                match ruleset.class_members(&upper) {
-                    Some(tags) => Moves::Tags(
-                        held.keys()
-                            .filter(|tag| {
-                                held.get(*tag)
-                                    .is_none_or(|item| !is_unfinished_ship(item, Some(ruleset)))
-                                    && tags.iter().any(|member| member == *tag)
-                            })
-                            .cloned()
-                            .collect(),
-                    ),
-                    None => Moves::Unknowable,
-                }
-            }
-        }
+        transfers::Selection::Unresolved => Moves::Unknowable,
     }
 }
 
@@ -2864,7 +2808,7 @@ fn apply_transfers(
                 Amount::All { except } => held.saturating_sub(*except),
                 Amount::Exact(count) => *count,
             };
-            let moved = requested.clamp(0, held);
+            let moved = transfers::quantity_moved(&transfer.amount, held);
             // Read above the `moved == 0` return so `source_state`'s borrow ends here: the block
             // below takes a second `working.entry`, which will not compile while it lives.
             let name = source_state
@@ -5852,19 +5796,13 @@ fn class_tags(
     let Selector::Class(name) = what else {
         return None;
     };
-    if *amount != (Amount::All { except: 0 }) {
+    if !transfers::class_amount_is_defined(amount) {
         return None;
     }
     // `MAN`/`MEN` cannot be resolved without a catalogue, and expanding `ITEM`/`ITEMS` alone
     // would make the two classes behave differently for no reason a reader could infer.
     let ruleset = ruleset?;
-    let is_man_class = name.eq_ignore_ascii_case("MAN") || name.eq_ignore_ascii_case("MEN");
-    let is_item_class = name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS");
-    let members = if is_man_class || is_item_class {
-        None
-    } else {
-        Some(ruleset.class_members(name)?)
-    };
+    let members = transfers::class_members(ruleset, name)?;
 
     Some(
         ledger
@@ -5872,15 +5810,11 @@ fn class_tags(
             .balances
             .keys()
             .filter(|(unit_id, _)| unit_id == holder)
-            .filter(|(_, tag)| {
-                if is_man_class {
-                    ruleset.is_man(tag)
-                } else if is_item_class {
-                    true
-                } else {
-                    members.is_some_and(|tags| tags.iter().any(|member| member == tag))
-                }
-            })
+            // No unfinished-ship exclusion here, where the other two surfaces have one: this walk
+            // expands off balance keys, which carry no printed name, and `is_unfinished_ship`
+            // reads the name. An unfinished hull's tag is therefore named by `ALL ITEMS` here and
+            // not there - today's behaviour, preserved deliberately (`ah-1zca.5`).
+            .filter(|(_, tag)| members.names(ruleset, tag))
             .filter(|(_, tag)| discarding || ruleset.can_be_given(tag))
             .map(|(_, tag)| tag.clone())
             .collect(),
