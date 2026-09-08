@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createMemoryWebStore,
+  gameCollections,
   type StoredAlliedMage,
   type StoredArmy,
   type StoredHexNote,
@@ -355,5 +356,28 @@ describe("dropping a game's data", () => {
     await expect(store.getHexNotes(OTHER, "faction-73")).resolves.toEqual([
       note({ databasePath: OTHER })
     ]);
+  });
+});
+
+describe("the per-game collections", () => {
+  /**
+   * The dotted key path is the one a mistake in would be silent: written as `unitId`, every allied
+   * mage keys on `undefined` and a second mage overwrites the first.
+   */
+  it("declares every game store, and keys an allied mage by his faction and the unit inside him", () => {
+    expect(gameCollections.map((collection) => collection.name)).toEqual([
+      "importedTurns",
+      "orderDrafts",
+      "regionSightings",
+      "mergedReports",
+      "hexNotes",
+      "armies",
+      "alliedMages",
+      "studyPlans"
+    ]);
+
+    expect(gameCollections.find((collection) => collection.name === "alliedMages")?.keyPath).toEqual(
+      ["factionId", "unit.unitId"]
+    );
   });
 });

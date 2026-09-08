@@ -40,6 +40,39 @@ const ARMY_STORE = "armies";
 const ALLIED_MAGE_STORE = "alliedMages";
 const STUDY_PLAN_STORE = "studyPlans";
 
+/**
+ * Every per-game collection: the object store that holds it, and the key path identifying one row
+ * within one game.
+ *
+ * Both halves of this file read it - `openGameDatabase` creates the stores from it, and
+ * `createMemoryWebStore` builds its tables from it - so a collection's key is stated once rather
+ * than once per storage backend. Adding a row here means bumping `GAME_DATABASE_VERSION`: an
+ * existing game's database has no store for it until an upgrade runs.
+ */
+export const gameCollections = [
+  { name: IMPORTED_TURN_STORE, keyPath: ["factionId", "turnNumber"] },
+  { name: ORDER_DRAFT_STORE, keyPath: ["factionId", "turnNumber"] },
+  { name: REGION_SIGHTING_STORE, keyPath: ["factionId", "regionId"] },
+  { name: MERGED_REPORT_STORE, keyPath: ["factionId", "turnNumber", "mergedFactionId"] },
+  { name: HEX_NOTE_STORE, keyPath: ["id"] },
+  { name: ARMY_STORE, keyPath: ["id"] },
+  { name: ALLIED_MAGE_STORE, keyPath: ["factionId", "unit.unitId"] },
+  { name: STUDY_PLAN_STORE, keyPath: ["factionId", "unitId"] }
+] as const satisfies readonly { name: string; keyPath: readonly string[] }[];
+
+/**
+ * Reads one key-path segment off a stored row. The segment may be dotted (`unit.unitId`), which is
+ * how IndexedDB writes a key that lives inside a nested object, and the memory store honours the
+ * same spelling so that one declaration serves both.
+ */
+function keyPathValue(row: unknown, path: string): unknown {
+  let value: unknown = row;
+  for (const segment of path.split(".")) {
+    value = (value as Record<string, unknown> | undefined)?.[segment];
+  }
+  return value;
+}
+
 /** Opaque payload of one stored turn import. Mirrors `ImportedTurnSnapshot` in the Rust core. */
 export type StoredTurnSnapshot = {
   rawReport: string;
@@ -272,14 +305,9 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
         }
       };
 
-      create(IMPORTED_TURN_STORE, ["factionId", "turnNumber"]);
-      create(ORDER_DRAFT_STORE, ["factionId", "turnNumber"]);
-      create(REGION_SIGHTING_STORE, ["factionId", "regionId"]);
-      create(MERGED_REPORT_STORE, ["factionId", "turnNumber", "mergedFactionId"]);
-      create(HEX_NOTE_STORE, ["id"]);
-      create(ARMY_STORE, ["id"]);
-      create(ALLIED_MAGE_STORE, ["factionId", "unit.unitId"]);
-      create(STUDY_PLAN_STORE, ["factionId", "unitId"]);
+      for (const collection of gameCollections) {
+        create(collection.name, [...collection.keyPath]);
+      }
     };
 
     // An upgrade waits for every other connection to the database to close, and a second tab
