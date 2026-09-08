@@ -27,8 +27,8 @@ use super::intents::{
     read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
 };
 use super::phases::{self, StatePhase};
-use super::transfers;
 use super::standing::{self, standing_after, Boarding};
+use super::transfers;
 use crate::movement::graph::Direction;
 use crate::movement::mode::{
     best_allowance, capacities_from_items, cargo_capacity, fleet_label, hulls_named_in, is_vessel,

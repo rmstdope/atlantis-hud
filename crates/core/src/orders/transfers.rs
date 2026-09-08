@@ -293,9 +293,21 @@ mod tests {
 
     fn holdings() -> Vec<ItemAmount> {
         vec![
-            ItemAmount { amount: 20, name: "iron".to_string(), tag: "IRON".to_string() },
-            ItemAmount { amount: 8, name: "orcs".to_string(), tag: "ORC".to_string() },
-            ItemAmount { amount: 3, name: "swords".to_string(), tag: "SWOR".to_string() },
+            ItemAmount {
+                amount: 20,
+                name: "iron".to_string(),
+                tag: "IRON".to_string(),
+            },
+            ItemAmount {
+                amount: 8,
+                name: "orcs".to_string(),
+                tag: "ORC".to_string(),
+            },
+            ItemAmount {
+                amount: 3,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+            },
             ItemAmount {
                 amount: 1,
                 name: "unfinished Longship".to_string(),
@@ -316,9 +328,7 @@ mod tests {
         let r = ruleset();
         let held = holdings();
         let all = Amount::All { except: 0 };
-        let pick = |what: &Selector, amount: &Amount| {
-            selected(&r, what, amount, || held.iter())
-        };
+        let pick = |what: &Selector, amount: &Amount| selected(&r, what, amount, || held.iter());
 
         let iron = pick(&Selector::Item("iron".to_string()), &all);
         assert_eq!(
@@ -349,7 +359,10 @@ mod tests {
             }])
         );
 
-        assert_eq!(tags_of(&pick(&Selector::Class("MEN".to_string()), &all)), ["ORC"]);
+        assert_eq!(
+            tags_of(&pick(&Selector::Class("MEN".to_string()), &all)),
+            ["ORC"]
+        );
         // In the holder's own order, and the unfinished hull excluded.
         assert_eq!(
             tags_of(&pick(&Selector::Class("ITEMS".to_string()), &all)),
@@ -364,12 +377,18 @@ mod tests {
             Selection::Unresolved
         );
         assert_eq!(
-            pick(&Selector::Class("ITEMS".to_string()), &Amount::All { except: 2 }),
+            pick(
+                &Selector::Class("ITEMS".to_string()),
+                &Amount::All { except: 2 }
+            ),
             Selection::Unresolved
         );
 
         // A change of ownership: nobody's holdings move, and that is knowable.
-        assert_eq!(pick(&Selector::WholeUnit, &all), Selection::Tags(Vec::new()));
+        assert_eq!(
+            pick(&Selector::WholeUnit, &all),
+            Selection::Tags(Vec::new())
+        );
     }
 
     #[test]
