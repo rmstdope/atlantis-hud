@@ -95,4 +95,68 @@ describe("createNoteAutosave", () => {
     autosave.flush();
     expect(write).not.toHaveBeenCalled();
   });
+  it("owes nothing before anything is typed", () => {
+    const autosave = createNoteAutosave(vi.fn(), "note");
+
+    expect(autosave.owes()).toBe(false);
+  });
+
+  it("owes a write while the player is still typing", () => {
+    const autosave = createNoteAutosave(vi.fn(), "note");
+
+    autosave.typed("changed");
+
+    expect(autosave.owes()).toBe(true);
+  });
+
+  it("owes a write for a note the player cleared", () => {
+    const autosave = createNoteAutosave(vi.fn(), "note");
+
+    autosave.typed("");
+
+    expect(autosave.owes()).toBe(true);
+  });
+
+  it("owes nothing once the write has gone", () => {
+    const autosave = createNoteAutosave(vi.fn(), "note");
+
+    autosave.typed("changed");
+    vi.advanceTimersByTime(400);
+
+    expect(autosave.owes()).toBe(false);
+  });
+
+  it("does not write a note it has adopted", () => {
+    const write = vi.fn();
+    const autosave = createNoteAutosave(write, "note");
+
+    autosave.adopted("later");
+    autosave.typed("later");
+    vi.advanceTimersByTime(400);
+
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("writes the note it held before it adopted a later one", () => {
+    const write = vi.fn();
+    const autosave = createNoteAutosave(write, "note");
+
+    autosave.adopted("later");
+    autosave.typed("note");
+    vi.advanceTimersByTime(400);
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledWith("note");
+  });
+
+  it("adopts a note trimmed", () => {
+    const write = vi.fn();
+    const autosave = createNoteAutosave(write, "note");
+
+    autosave.adopted("  later  ");
+    autosave.typed("later");
+    vi.advanceTimersByTime(400);
+
+    expect(write).not.toHaveBeenCalled();
+  });
 });
