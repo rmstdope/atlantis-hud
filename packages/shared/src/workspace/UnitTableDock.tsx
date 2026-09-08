@@ -2076,7 +2076,10 @@ const EXPLAINED_COLUMNS: readonly DrawnColumnId[] = [
   ...(Object.keys(EXTRA_COLUMN_SHARES) as ExtraColumn[])
 ].filter(columnHasOwnPopup);
 
-/** How a changed cell says it shows the coming month rather than the report. */
+/**
+ * How a cell says it shows the coming month rather than the report: a change this month's orders
+ * already made, or — for Skills — a study forecast that lands next turn (`ah-qig3`).
+ */
 const PREDICTED = "italic text-brass";
 
 function UnitRow({
@@ -2204,6 +2207,13 @@ function UnitRow({
   const menChange = changeFor(unit, "men");
   const itemsChange = changeFor(unit, "items");
   const skillsChange = changeFor(unit, "skills");
+  /**
+   * The Skills cell is marked for a study forecast as well as for a change the month already made
+   * (`ah-qig3`, decision **M1**). A `STUDY` emits no `skills` field change — it lands in next
+   * turn's report, not this month's figures — so without this the one previewed thing a player can
+   * only find by hovering gives the row no reason to hover it.
+   */
+  const skillsMarked = Boolean(skillsChange) || unit.study != null;
   const structureChange = changeFor(unit, "structureId");
   const movementChange = changeFor(unit, "movement");
   const flagsChange = changeFor(unit, "flags");
@@ -2485,8 +2495,8 @@ function UnitRow({
     // for one of ours it does mean, since our own report prints `Skills: none.` (Q3).
     skills: (
       <Td
-        className={`truncate${skillsChange ? ` ${PREDICTED}` : ""}`}
-        predicted={Boolean(skillsChange)}
+        className={`truncate${skillsMarked ? ` ${PREDICTED}` : ""}`}
+        predicted={skillsMarked}
       >
         {skills === "" && !unit.own ? (
           <span className="italic text-ink-dim">not disclosed</span>

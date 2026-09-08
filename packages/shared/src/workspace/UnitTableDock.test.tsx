@@ -7,6 +7,7 @@ import type {
   RegionPreview,
   ReportRegion,
   ReportUnit,
+  StudyForecast,
   UnitMovement,
   UnitSilver
 } from "@atlantis/core-client";
@@ -1053,7 +1054,24 @@ describe("the items column", () => {
   });
 });
 
-describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
+describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
+  const STUDYING_COMBAT: StudyForecast = {
+    tag: "COMB",
+    name: "combat",
+    levelBefore: 0,
+    pointsBefore: 0,
+    monthsNumerator: 1,
+    monthsDenominator: 1,
+    teachers: [],
+    halvedOutsideABuilding: false,
+    pointsAfter: 30,
+    levelAfter: 1,
+    ceilingLevel: 5,
+    limitingRaces: [],
+    heldBackByCeiling: false,
+    doubts: []
+  };
+
   const previewOf = (
     unitOverrides: Partial<ReportUnit>,
     previewOverrides: Partial<RegionPreview["units"][number]>
@@ -1111,6 +1129,73 @@ describe("the skills column when a GIVE of men merges it (ah-z73s.1)", () => {
     // The chain says what the report had, line by line, so the own branch no longer hangs the
     // report's whole `was: …` quote off the first line (`ah-rgkk.2.3`).
     expect(markup).toContain("lumberjack LUMB 1 (30), up to 2 (80).");
+  });
+
+  it("marks the Skills cell for a study, though nothing changed this month", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }] })]
+        })
+      }),
+      previewOf(
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }] },
+        {
+          changes: [],
+          reportedSkills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }],
+          study: STUDYING_COMBAT
+        }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("italic text-brass");
+    expect(markup).toContain("LUMB 2 (90)");
+  });
+
+  it("marks a doubted study exactly as a settled one", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }] })]
+        })
+      }),
+      previewOf(
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }] },
+        {
+          changes: [],
+          reportedSkills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }],
+          study: {
+            ...STUDYING_COMBAT,
+            doubts: [{ reason: "feeShort", fee: 100, shortBy: 40, teacher: "" }]
+          }
+        }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("italic text-brass");
+  });
+
+  it("marks the cell when the month moved the figures and the unit is also studying", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] })]
+        })
+      }),
+      previewOf(
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] },
+        {
+          changes: [{ field: "skills", original: "LUMB 1 (30)" }],
+          reportedSkills: [{ name: "lumberjack", tag: "LUMB", level: 1, points: 30 }],
+          study: STUDYING_COMBAT
+        }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+    expect(markup).toContain("italic text-brass");
   });
 
   it("leaves the cell unmarked when a GIVE moved men but skills did not change", () => {
