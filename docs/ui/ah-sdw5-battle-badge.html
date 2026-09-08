@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Last turn's battles on the map (bead ah-sdw5)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 80px; }
+  header, main { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.88em; color:var(--brass); }
+  h2.sec { margin-top:38px; font-size:19px; color:var(--brass); border-bottom:1px solid var(--edge); padding-bottom:6px; }
+  h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; font-weight:normal; }
+  p.lede { color:var(--ink-soft); font-size:13.5px; margin-top:12px; max-width:98ch; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:13px 16px; border-radius:6px; margin-top:14px; color:var(--ink-soft); font-size:13.5px; }
+  .banner b { color:var(--ink); } .banner.good { border-left-color:var(--ok); } .banner.bad { border-left-color:var(--danger); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:15px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:15.5px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:5px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .notes li.neu::before { content:"\00b7  "; color:var(--ink-dim); }
+  table { border-collapse:collapse; margin-top:14px; font-size:13px; width:100%; }
+  th,td { border:1px solid var(--edge); padding:6px 10px; text-align:left; }
+  th { background:var(--raised); color:var(--brass); font-weight:normal; }
+  td.miss { color:var(--danger); }
+  .hexrow { display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; }
+  .hexcell { background:var(--raised); border:1px solid var(--edge); border-radius:8px; padding:10px 8px 8px; text-align:center; width:132px; }
+  .hexcell .name { font-size:11px; color:var(--ink-dim); margin-top:4px; letter-spacing:.4px; }
+  .map { position:relative; height:230px; border:1px solid var(--edge); border-radius:6px; overflow:hidden; background:#131a23; }
+  .cap { font-size:11.5px; color:var(--ink-dim); margin-top:6px; }
+  .pop { border:1px solid var(--edge); background:var(--raised); border-radius:6px; padding:7px; font:12px/1.5 'Helvetica Neue',Arial,sans-serif; width:180px; box-shadow:0 6px 18px rgba(0,0,0,.6); }
+  .pop .row { display:flex; align-items:center; gap:7px; padding:2px 4px; color:var(--ink-soft); }
+  .pop .row.on { color:var(--ink); } .pop .row.new { background:rgba(217,164,65,.13); border-radius:3px; }
+  .pop .box { width:11px; height:11px; border:1px solid var(--ink-dim); border-radius:2px; display:inline-block; }
+  .pop .box.tick { background:var(--select); border-color:var(--select); }
+  .pop .allnone { border-top:1px solid var(--edge); margin-top:5px; padding-top:5px; display:flex; gap:8px; color:var(--select); font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Last turn's battles on the map &mdash; <span>four decisions</span> (bead ah-sdw5)</h1>
+  <p>Your words: <em>&ldquo;last turns battles should be displayed as a badge on the map. It shall be possible to turn this on and off as other badges. Each theme should have the appropriate icon for this.&rdquo;</em></p>
+  <p><b>Please open this page before answering</b> &mdash; every mark below is drawn from the real code, at real proportions, and none of it survives being described.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;0&nbsp; The good news: the five icons already exist <small>nothing to design</small></h2>
+  <p class="lede">The map view model has carried a <code>battle: boolean</code> field since the themes were written, marked <em>reserved</em> &mdash; and <b>all five themes already draw it</b>, each in its own idiom, each with a station and a colour already chosen. Nothing here is drawn by me; these are the real paths out of the theme files.</p>
+
+  <div class="hexrow">
+    <div class="hexcell">
+      <svg width="112" height="96" viewBox="-56 -48 112 96">
+        <polygon points="-36,-20.8 0,-41.6 36,-20.8 36,20.8 0,41.6 -36,20.8" fill="#1b2530" stroke="#26303d"/>
+        <g transform="translate(0,-19)" stroke="#d9a441" fill="none">
+          <path d="M0,-8 L8,6 H-8 Z" stroke-width="1.4"/>
+          <path d="M-2.8,-1.5 L2.8,3.5 M2.8,-1.5 L-2.8,3.5" stroke-width="1.4" stroke-linecap="round"/>
+        </g>
+      </svg>
+      <div class="name">Tactical HUD<br>top-centre station</div>
+    </div>
+    <div class="hexcell">
+      <svg width="112" height="96" viewBox="-56 -48 112 96">
+        <polygon points="-36,-20.8 0,-41.6 36,-20.8 36,20.8 0,41.6 -36,20.8" fill="#20293a" stroke="#26303d"/>
+        <g transform="translate(-14,-12)">
+          <circle r="9" fill="#c05252"/>
+          <g stroke="#f0e6d8" stroke-width="1.5" stroke-linecap="round" fill="none">
+            <line x1="-3.2" y1="-3.2" x2="3.2" y2="3.2"/><line x1="3.2" y1="-3.2" x2="-3.2" y2="3.2"/>
+          </g>
+        </g>
+      </svg>
+      <div class="name">Beveled Tile<br>chip</div>
+    </div>
+    <div class="hexcell">
+      <svg width="112" height="96" viewBox="-56 -48 112 96">
+        <polygon points="-36,-20.8 0,-41.6 36,-20.8 36,20.8 0,41.6 -36,20.8" fill="#efe3c2" stroke="#c9b58b"/>
+        <g transform="translate(15,-15)" stroke="#7d2b23" fill="none" stroke-linecap="round">
+          <line x1="-6" y1="-6" x2="6" y2="6" stroke-width="2.2"/><line x1="6" y1="-6" x2="-6" y2="6" stroke-width="2.2"/>
+          <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.4"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.4"/>
+        </g>
+      </svg>
+      <div class="name">Cartographer's Table<br>crossed sabres, NE</div>
+    </div>
+    <div class="hexcell">
+      <svg width="112" height="96" viewBox="-56 -48 112 96">
+        <polygon points="-36,-20.8 0,-41.6 36,-20.8 36,20.8 0,41.6 -36,20.8" fill="#3d4b35" stroke="#26303d"/>
+        <g transform="translate(15,-15)">
+          <circle r="8.5" fill="#00000055"/>
+          <g stroke="#e8d9a8" stroke-width="2" stroke-linecap="round">
+            <line x1="-5.5" y1="-5.5" x2="5.5" y2="5.5"/><line x1="5.5" y1="-5.5" x2="-5.5" y2="5.5"/>
+          </g>
+        </g>
+      </svg>
+      <div class="name">Miniature World<br>smoke and blades</div>
+    </div>
+    <div class="hexcell">
+      <svg width="112" height="96" viewBox="-56 -48 112 96">
+        <polygon points="-36,-20.8 0,-41.6 36,-20.8 36,20.8 0,41.6 -36,20.8" fill="#1b2530" stroke="#26303d"/>
+        <g transform="translate(0,-4)" stroke="#d9a441" fill="none">
+          <circle r="12" stroke-width="1.4"/>
+          <g stroke-width="2" stroke-linecap="round"><line x1="-5" y1="-5" x2="5" y2="5"/><line x1="5" y1="-5" x2="-5" y2="5"/></g>
+        </g>
+        <rect x="-2.6" y="14" width="5.2" height="5.2" transform="rotate(45,0,16.6)" fill="#d9a441"/>
+      </svg>
+      <div class="name">Emblem &amp; Dots<br>medallion &mdash; battle outranks everything</div>
+    </div>
+  </div>
+
+  <div class="banner good">So this bead does <b>not</b> ask you to choose icons. The work is: read the battles the report already parses, light the reserved field, and add <b>one entry to the Badges popover</b>. The four questions below are all about <b>meaning</b>, not looks.</div>
+
+  <div class="banner"><b>One thing I have decided rather than asked, say if it is wrong:</b> the badge shows the battles of <b>the turn you are looking at</b> &mdash; the report currently on screen. Scroll back to an older turn and you see that turn's battles. It never mixes turns.</div>
+
+  <h2 class="sec">&sect;1&nbsp; A battle in a hex you have never surveyed <small>the question triage sent to you</small></h2>
+  <p class="lede">A battle headline names its own hex: <code>Einar (2713) attacks City Guard (6742) in desert (0,48) in Dernvin!</code> &mdash; terrain, coordinates and province, all three. But the map is built from <b>region sections</b>, and a hex with no region section is not in the map at all, so there is nothing to hang a badge on.</p>
+
+  <div class="banner"><b>Measured, not guessed.</b> Every battle in every committed fixture report &mdash; 20 battle hexes across 11 reports:</div>
+  <table>
+    <tr><th>Battle hexes in the fixtures</th><th>Count</th><th>What the map can do</th></tr>
+    <tr><td>Hex has a region section in the same report</td><td>17</td><td>Badge draws today, no work</td></tr>
+    <tr><td>Hex has one in an <em>earlier</em> loaded report (stale/named)</td><td>2</td><td>Badge draws, on an aged hex</td></tr>
+    <tr><td class="miss">Hex appears <b>nowhere</b> but the battle headline itself</td><td class="miss">1</td><td class="miss">No hex exists to badge</td></tr>
+  </table>
+  <p class="cap">The one is <code>(18,6)</code> in <code>neworigins-3.0.0-g3-f42-t82.rep</code>: mentioned exactly once in every report that faction ever received, in the headline of the battle. So this is roughly <b>one battle in twenty</b> &mdash; real, but rare.</p>
+
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> Suppress it</h3>
+      <div class="map" style="height:150px;background:repeating-linear-gradient(60deg,#16202a 0 14px,#141d26 14px 28px)">
+        <svg width="100%" height="150" viewBox="0 0 340 150">
+          <polygon points="60,45 84,31 108,45 108,73 84,87 60,73" fill="#1b2530" stroke="#2c3948"/>
+          <g transform="translate(84,40)" stroke="#d9a441" fill="none"><path d="M0,-6 L6,4.5 H-6 Z" stroke-width="1.2"/></g>
+          <polygon points="132,45 156,31 180,45 180,73 156,87 132,73" fill="#1b2530" stroke="#2c3948"/>
+          <text x="250" y="62" fill="#5c6b7d" font-size="11" font-family="Helvetica">nothing here &mdash;</text>
+          <text x="250" y="76" fill="#5c6b7d" font-size="11" font-family="Helvetica">the hex does not exist</text>
+        </svg>
+      </div>
+      <ul class="notes">
+        <li>Nothing to build. The map only ever shows ground you hold data for, which is what it promises today.</li>
+        <li class="neu">The battle is still in the <b>Open battles</b> list, with its hex named &mdash; it is not lost, just not on the map.</li>
+        <li class="con">One battle in twenty is on the map for everyone else and silently absent for you.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> Draw the hex, from the headline</h3>
+      <div class="map" style="height:150px;background:repeating-linear-gradient(60deg,#16202a 0 14px,#141d26 14px 28px)">
+        <svg width="100%" height="150" viewBox="0 0 340 150">
+          <polygon points="60,45 84,31 108,45 108,73 84,87 60,73" fill="#1b2530" stroke="#2c3948"/>
+          <g transform="translate(84,40)" stroke="#d9a441" fill="none"><path d="M0,-6 L6,4.5 H-6 Z" stroke-width="1.2"/></g>
+          <polygon points="132,45 156,31 180,45 180,73 156,87 132,73" fill="#2a2622" stroke="#d9a441" stroke-dasharray="3 3" opacity="0.95"/>
+          <g transform="translate(156,40)" stroke="#d9a441" fill="none"><path d="M0,-6 L6,4.5 H-6 Z" stroke-width="1.2"/></g>
+          <text x="156" y="103" fill="#8a97a8" font-size="9" font-family="Helvetica" text-anchor="middle">desert (18,6)</text>
+          <text x="250" y="62" fill="#a3b0c0" font-size="11" font-family="Helvetica">terrain and name come</text>
+          <text x="250" y="76" fill="#a3b0c0" font-size="11" font-family="Helvetica">from the headline itself</text>
+        </svg>
+      </div>
+      <ul class="notes">
+        <li>The headline carries terrain, coordinate <em>and</em> province, so the hex can be drawn honestly as <b>unsurveyed ground</b> &mdash; the dashed rim every theme already uses for a hex named by a neighbour.</li>
+        <li>Nothing is invented: it says exactly what the report said.</li>
+        <li class="con">A new way for a hex to enter the map, which no other feature has. Touches the map model, not just the badge.</li>
+        <li class="con">The hex stays on the map after you switch the badge off &mdash; or it flickers in and out with the toggle, which is worse.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>C</em> Suppress, but say so</h3>
+      <div class="map" style="height:150px;background:repeating-linear-gradient(60deg,#16202a 0 14px,#141d26 14px 28px)">
+        <svg width="100%" height="150" viewBox="0 0 340 150">
+          <polygon points="60,45 84,31 108,45 108,73 84,87 60,73" fill="#1b2530" stroke="#2c3948"/>
+          <g transform="translate(84,40)" stroke="#d9a441" fill="none"><path d="M0,-6 L6,4.5 H-6 Z" stroke-width="1.2"/></g>
+          <polygon points="132,45 156,31 180,45 180,73 156,87 132,73" fill="#1b2530" stroke="#2c3948"/>
+          <rect x="196" y="16" width="132" height="24" rx="5" fill="#1c232e" stroke="#3a4757"/>
+          <text x="206" y="32" fill="#d9a441" font-size="11" font-family="Helvetica">1 battle off the map</text>
+        </svg>
+      </div>
+      <ul class="notes">
+        <li>Same as A, plus a small count somewhere on the map chrome that opens the battles list.</li>
+        <li class="con">A new piece of map furniture for a one-in-twenty case, and a second thing to design and place.</li>
+        <li class="con">Widens the bead well past &ldquo;a badge&rdquo;.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;2&nbsp; One mark, or does it say whether you were in it?</h2>
+  <p class="lede">The report tells you who fought. The application already computes this: <code>allegianceOf()</code> in <code>workspace/battles.ts</code> answers <code>own</code> / <code>other</code> / <code>unknown</code> for every combatant. <b>What it does not know is who won</b> &mdash; the parsed battle has casualties but no outcome, so a won/lost distinction would be a guess, and I am not offering it.</p>
+  <div class="cards">
+    <div class="card">
+      <h3><em>P</em> One mark: &ldquo;a battle happened here&rdquo;</h3>
+      <div class="hexrow" style="margin-top:0">
+        <div class="hexcell" style="width:auto;flex:1">
+          <svg width="220" height="90" viewBox="-110 -45 220 90">
+            <polygon points="-90,-20 -66,-34 -42,-20 -42,8 -66,22 -90,8" fill="#1b2530" stroke="#2c3948"/>
+            <g transform="translate(-66,-24)" stroke="#d9a441" fill="none"><path d="M0,-7 L7,5 H-7 Z" stroke-width="1.3"/><path d="M-2.4,-1.2 L2.4,3 M2.4,-1.2 L-2.4,3" stroke-width="1.3" stroke-linecap="round"/></g>
+            <polygon points="-18,-20 6,-34 30,-20 30,8 6,22 -18,8" fill="#1b2530" stroke="#2c3948"/>
+            <g transform="translate(6,-24)" stroke="#d9a441" fill="none"><path d="M0,-7 L7,5 H-7 Z" stroke-width="1.3"/><path d="M-2.4,-1.2 L2.4,3 M2.4,-1.2 L-2.4,3" stroke-width="1.3" stroke-linecap="round"/></g>
+            <text x="60" y="-6" fill="#8a97a8" font-size="11" font-family="Helvetica">your battle</text>
+            <text x="60" y="8" fill="#8a97a8" font-size="11" font-family="Helvetica">&amp; someone else's</text>
+            <text x="60" y="22" fill="#8a97a8" font-size="11" font-family="Helvetica">look identical</text>
+          </svg>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Exactly what you asked for, and exactly what all five themes already draw.</li>
+        <li>Nothing new to design, nothing new to explain.</li>
+        <li class="con">Scanning the map, you cannot tell the hex where your army died from one where two strangers fought.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>Q</em> Two tones: yours, and everyone else's</h3>
+      <div class="hexrow" style="margin-top:0">
+        <div class="hexcell" style="width:auto;flex:1">
+          <svg width="220" height="90" viewBox="-110 -45 220 90">
+            <polygon points="-90,-20 -66,-34 -42,-20 -42,8 -66,22 -90,8" fill="#1b2530" stroke="#2c3948"/>
+            <g transform="translate(-66,-24)" stroke="#d97070" fill="#d9707022"><path d="M0,-7 L7,5 H-7 Z" stroke-width="1.6"/><path d="M-2.4,-1.2 L2.4,3 M2.4,-1.2 L-2.4,3" stroke-width="1.4" stroke-linecap="round" fill="none"/></g>
+            <text x="-66" y="34" fill="#d97070" font-size="10" font-family="Helvetica" text-anchor="middle">you fought</text>
+            <polygon points="-18,-20 6,-34 30,-20 30,8 6,22 -18,8" fill="#1b2530" stroke="#2c3948"/>
+            <g transform="translate(6,-24)" stroke="#7e8a99" fill="none" opacity="0.85"><path d="M0,-7 L7,5 H-7 Z" stroke-width="1.2"/><path d="M-2.4,-1.2 L2.4,3 M2.4,-1.2 L-2.4,3" stroke-width="1.2" stroke-linecap="round"/></g>
+            <text x="6" y="34" fill="#8a97a8" font-size="10" font-family="Helvetica" text-anchor="middle">you watched</text>
+          </svg>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>The one distinction that changes what you do this turn: your own losses are the urgent thing on the map.</li>
+        <li class="con">A second tone in every one of the five themes, each needing a light and a dark value &mdash; five stylesheets, not one.</li>
+        <li class="con">Emblem &amp; Dots states one fact per hex on its medallion; two battle tones is a second decision inside its priority rule.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3&nbsp; Two battles in one hex</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>M</em> A mark, not a number</h3>
+      <div class="hexrow" style="margin-top:0"><div class="hexcell" style="width:auto;flex:1">
+        <svg width="200" height="88" viewBox="-100 -44 200 88">
+          <polygon points="-40,-20 -16,-34 8,-20 8,8 -16,22 -40,8" fill="#1b2530" stroke="#2c3948"/>
+          <g transform="translate(-16,-24)" stroke="#d9a441" fill="none"><path d="M0,-7 L7,5 H-7 Z" stroke-width="1.3"/><path d="M-2.4,-1.2 L2.4,3 M2.4,-1.2 L-2.4,3" stroke-width="1.3" stroke-linecap="round"/></g>
+          <text x="24" y="0" fill="#8a97a8" font-size="11" font-family="Helvetica">3 battles here,</text>
+          <text x="24" y="14" fill="#8a97a8" font-size="11" font-family="Helvetica">one mark</text>
+        </svg></div></div>
+      <ul class="notes">
+        <li>The field is already a boolean and all five themes already draw it that way. Zero extra work.</li>
+        <li>The hex is a place to look, not a tally &mdash; the count is in the battles list.</li>
+        <li class="con">A hex where three fights happened reads the same as one where a scout was ambushed.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>N</em> A tally, like ships and buildings</h3>
+      <div class="hexrow" style="margin-top:0"><div class="hexcell" style="width:auto;flex:1">
+        <svg width="200" height="88" viewBox="-100 -44 200 88">
+          <polygon points="-40,-20 -16,-34 8,-20 8,8 -16,22 -40,8" fill="#1b2530" stroke="#2c3948"/>
+          <g transform="translate(-16,-24)" stroke="#d9a441" fill="none"><path d="M0,-7 L7,5 H-7 Z" stroke-width="1.3"/><path d="M-2.4,-1.2 L2.4,3 M2.4,-1.2 L-2.4,3" stroke-width="1.3" stroke-linecap="round"/></g>
+          <text x="-2" y="-20" fill="#d9a441" font-size="10" font-family="Helvetica">3</text>
+          <text x="24" y="0" fill="#8a97a8" font-size="11" font-family="Helvetica">3 battles here,</text>
+          <text x="24" y="14" fill="#8a97a8" font-size="11" font-family="Helvetica">counted</text>
+        </svg></div></div>
+      <ul class="notes">
+        <li>Consistent with ships, buildings, shafts and lairs, which all carry counts.</li>
+        <li class="con"><code>battle</code> stops being a boolean, so <b>all five themes change</b> &mdash; and each has its own way of printing a number, or none.</li>
+        <li class="con">Emblem &amp; Dots and Miniature World do not print numbers on their marks at all.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;4&nbsp; On or off the first time you see it</h2>
+  <p class="lede">The popover, with the new entry in place. It sits after <b>Guard</b> &mdash; battles are something that <em>happened</em> in a hex, so they close the &ldquo;who was here&rdquo; group rather than joining the structures below it.</p>
+  <div class="cards">
+    <div class="card">
+      <h3><em>1</em> On by default</h3>
+      <div class="pop">
+        <div class="row on"><span class="box tick"></span>Settlements</div>
+        <div class="row on"><span class="box tick"></span>Own units</div>
+        <div class="row on"><span class="box tick"></span>Foreign units</div>
+        <div class="row"><span class="box"></span>Monsters</div>
+        <div class="row on"><span class="box tick"></span>Guard</div>
+        <div class="row on new"><span class="box tick"></span>Battles</div>
+        <div class="row on"><span class="box tick"></span>Ships</div>
+        <div class="row on"><span class="box tick"></span>Buildings</div>
+        <div class="row on"><span class="box tick"></span>Shafts</div>
+        <div class="row on"><span class="box tick"></span>Lairs</div>
+        <div class="row on"><span class="box tick"></span>Gates</div>
+        <div class="row on"><span class="box tick"></span>Roads</div>
+        <div class="row on"><span class="box tick"></span>Regions</div>
+        <div class="row on"><span class="box tick"></span>Notes</div>
+        <div class="allnone"><span>All</span><span>None</span></div>
+      </div>
+      <ul class="notes">
+        <li>You asked for battles on the map; they are there the moment you update.</li>
+        <li>A battle is the one event that changes what you do this turn.</li>
+        <li class="con">The map changes under every existing player without them asking.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>2</em> Off until switched on</h3>
+      <div class="pop">
+        <div class="row on"><span class="box tick"></span>Settlements</div>
+        <div class="row on"><span class="box tick"></span>Own units</div>
+        <div class="row on"><span class="box tick"></span>Foreign units</div>
+        <div class="row"><span class="box"></span>Monsters</div>
+        <div class="row on"><span class="box tick"></span>Guard</div>
+        <div class="row new"><span class="box"></span>Battles</div>
+        <div class="row on"><span class="box tick"></span>Ships</div>
+        <div class="row on"><span class="box tick"></span>Buildings</div>
+        <div class="row on"><span class="box tick"></span>Shafts</div>
+        <div class="row on"><span class="box tick"></span>Lairs</div>
+        <div class="row on"><span class="box tick"></span>Gates</div>
+        <div class="row on"><span class="box tick"></span>Roads</div>
+        <div class="row on"><span class="box tick"></span>Regions</div>
+        <div class="row on"><span class="box tick"></span>Notes</div>
+        <div class="allnone"><span>All</span><span>None</span></div>
+      </div>
+      <ul class="notes">
+        <li>Nobody's map changes without them choosing it.</li>
+        <li class="con">You asked for this feature and would have to go and switch it on.</li>
+        <li class="con">Nobody who did not read the release notes ever finds it.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="banner"><b>The costs here are lopsided, and I got this backwards at first.</b> The store already reconciles a returning player's saved badges against <code>allBadges(true)</code>, so a key that did not exist when they last saved <b>defaults to on, by itself</b>. Option&nbsp;1 is therefore <em>free</em>; option&nbsp;2 needs an explicit exception written into the defaults in two places, and a returning player still gets it on unless that exception is written carefully. That does not decide it &mdash; &ldquo;nobody's map changes without asking&rdquo; may still be worth the exception &mdash; but you should know which way the grain runs.</div>
+
+  <h2 class="sec">&sect;5&nbsp; The quiet states, for completeness</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>&mdash;</em> A turn with no battles</h3>
+      <div class="pop"><div class="row on"><span class="box tick"></span>Battles</div></div>
+      <ul class="notes"><li class="neu">The popover entry is always there, ticked or not. No hex carries a mark. Nothing says &ldquo;no battles&rdquo; &mdash; the map does not announce absences today and would not start with this one.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>&mdash;</em> Badge switched off</h3>
+      <ul class="notes"><li class="neu">Every battle mark disappears from every theme at once, like every other badge &mdash; and reappears with <b>All</b>. The battles list is untouched: it is a different surface with its own way in.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>&mdash;</em> A battle hex on another level</h3>
+      <ul class="notes"><li class="neu">The map draws one level at a time. A battle in the underworld marks the underworld hex, and is invisible while you are looking at the surface &mdash; exactly like every other mark.</li></ul>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>
