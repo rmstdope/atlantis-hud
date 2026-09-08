@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { loadReport } from "./gameSetup";
 
 /**
@@ -312,12 +312,46 @@ test("a note written in All mages shows as a pencil and in the mage pane", async
   await expect(pane.getByTestId("study-schedule-note")).toHaveCount(0);
 });
 
+/**
+ * Stop the clock, so a debounce cannot write on its own.
+ *
+ * `pauseAt` refuses a time that is already past, and the clock goes on running while the
+ * instruction is in flight - so the target is taken a little ahead of the clock's own `now`, and
+ * retried with more room if the round trip outran even that. The small fast-forward this costs
+ * fires only timers already due within it; callers freeze before anything is owed to the note, so
+ * nothing it could fire can write one.
+ */
+const freezeClock = async (page: Page): Promise<void> => {
+  for (let margin = 100; ; margin *= 4) {
+    try {
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + margin);
+      return;
+    } catch (error) {
+      if (margin >= 2000) throw error;
+    }
+  }
+};
+
 test("a note is kept without pressing anything", async ({ page }) => {
+  // The debounce must not write on its own, or every assertion below passes without the unmount
+  // flush having done anything. This used to be a 400ms budget for two CDP round-trips, and a
+  // loaded runner lost it often enough to turn an unrelated PR's smoke job red
+  // (docs/retrospectives/ah-lcs1.md), so the clock is held instead of raced.
+  //
+  // Playwright installs its clock as an init script, so this must come before the first
+  // navigation - loadReport navigates - and `install` on its own stops time, so `resume` is what
+  // lets the application load under a clock that flows.
+  await page.clock.install();
+  await page.clock.resume();
   await loadReport(page);
 
   await page.keyboard.press("F4");
   await expect(page.getByTestId("study-planner-plan-line")).toBeVisible();
   const note = page.getByTestId("study-planner-note").locator("textarea");
+
+  // Frozen from here: nothing below can reach the note's autosave debounce.
+  await freezeClock(page);
+
   await note.fill("heading for Gate Lore");
 
   // Nothing is pressed: switching mage unmounts the note, which writes what is owed.
@@ -327,14 +361,15 @@ test("a note is kept without pressing anything", async ({ page }) => {
   await expect(note).toHaveValue("heading for Gate Lore");
 
   // Closing the window is the other way out, and it must write too - so this types again, with
-  // something owed, before Escape. The margin is load-bearing: the fill and the Escape must land
-  // inside STUDY_NOTE_AUTOSAVE_MS (400ms), or the debounce writes on its own and this stops
-  // proving the unmount flush. Two CDP round-trips is generous room, but do not add work between
-  // these two lines. Escape is the window's and not the note's: it closes the dialog
+  // something owed, before Escape. Escape is the window's and not the note's: it closes the dialog
   // from inside the textarea.
   await note.fill("heading for Gate Lore, then Portals");
   await note.press("Escape");
   await expect(page.getByTestId("study-planner-dialog")).toBeHidden();
+
+  // Time flows again for the reopen: what this test holds still is the debounce, not the dialog's
+  // own effects.
+  await page.clock.resume();
 
   await page.keyboard.press("F4");
   await page.getByTestId(`study-planner-mage-95/${MAGE}`).click();
