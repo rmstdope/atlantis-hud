@@ -58,8 +58,8 @@ type HexView = {
   units: { own: number; foreign: number; monster: number };
   guard: "own" | "foreign" | null;
   ships: number; buildings: number; shafts: number; lairs: number;
-  battle: boolean;                  // reserved, see below
-  gate: boolean;                    // reserved, see below
+  battle: "own" | "other" | null;   // BattleMark - see below
+  gate: boolean;
 };
 ```
 
@@ -111,9 +111,14 @@ board — defensible about the *scenery* a modeller adds having been there, whic
 but not about the ground: a neighbour naming the hex says what terrain is there. Paint it, then say
 "nobody has been here" over the top.
 
-Two fields are **reserved**: `battle` and `gate` are always `false`, because no parser reads them
-yet. Every theme's layout keeps a slot for each anyway, so that when the data arrives the mark
-appears without a layout change. `tier` is `null` for a hex known only from a neighbour's exits,
+**`battle` says two things at once, and a theme must draw both.** It is `"own"` when the viewer's
+faction was in the fight, `"other"` when the report only gave them sight of it, and `null` when there
+was no battle here or the Battles badge is off - so the condition a theme gates on does not change,
+only the colour it picks. Each theme keeps its committed battle tone for `"own"` and has a muted
+token of its own for `"other"`, and stamps `data-battle` on the group so a test can scope to it
+before asserting a class. Both fields were reserved and always false until their data arrived:
+`gate` in ah-lcyn, when the parser read a Gateway, and `battle` in ah-sdw5, when the report's battle
+blocks were placed on their hexes. `tier` is `null` for a hex known only from a neighbour's exits,
 which gives the town's name but not its size — draw the unknown case rather than guessing a tier.
 
 `units.foreign` is the whole foreign tally and `units.monster` says how many of those belong to the
