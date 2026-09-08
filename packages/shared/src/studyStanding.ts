@@ -14,7 +14,11 @@
  * arrives in rather than the one the report found him in.
  */
 
-import type { OrdersPreviewResponse, ParsedReport } from "@atlantis/core-client";
+import type {
+  OrdersPreviewResponse,
+  ParsedReport,
+  UnitPreviewStatus
+} from "@atlantis/core-client";
 import type { PlannerGroup } from "./studyPlanner";
 import { shelterKey } from "./studyShelter";
 
@@ -77,7 +81,10 @@ export function standingAfterOrders(input: {
   // The preview lists only what the orders change, so a mage with no row keeps the report's answer.
   // One unit can have two rows: a `departing` one in the hex it leaves and an `arriving` one in the
   // hex it reaches, the first of which carries the *origin* standing.
-  const rows = new Map<string, { regionId: string; structureId: string | null; status: string }[]>();
+  const rows = new Map<
+    string,
+    { regionId: string; structureId: string | null; status: UnitPreviewStatus }[]
+  >();
   for (const region of preview.regions) {
     for (const entry of region.units) {
       const list = rows.get(entry.unit.unitId) ?? [];
@@ -116,14 +123,27 @@ export function standingAfterOrders(input: {
         continue;
       }
 
-      const offMap = !known.has(ends.regionId);
-      const leaves = mage.structureId !== null && ends.structureId === null && !offMap;
+      if (!known.has(ends.regionId)) {
+        // He ends the month in a hex the report does not show. `structureId` is dropped rather than
+        // carried: whatever the preview says stands there, nothing can be said about its seats, so
+        // an `offMap` standing means the same thing however he got there.
+        out.set(mage.key, {
+          regionId: ends.regionId,
+          structureId: null,
+          offMap: true,
+          leftBuilding: null,
+          leftBy: null
+        });
+        continue;
+      }
+      const from = mage.structureId;
+      const leaves = from !== null && ends.structureId === null;
       out.set(mage.key, {
         regionId: ends.regionId,
         structureId: ends.structureId,
-        offMap,
+        offMap: false,
         leftBuilding: leaves
-          ? `${input.names.get(shelterKey(mage.regionId, mage.structureId as string)) ?? "building"} [${mage.structureId}]`
+          ? `${input.names.get(shelterKey(mage.regionId, from)) ?? "building"} [${from}]`
           : null,
         leftBy: leaves ? (ends.regionId === mage.regionId ? "leave" : "move") : null
       });

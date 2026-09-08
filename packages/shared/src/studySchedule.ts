@@ -202,11 +202,18 @@ export type ProjectedMage = {
   unitId: string;
   name: string;
   /**
-   * The hex he studies in, once this month's orders have run - `StandingAfterOrders.regionId`, or
-   * the report's own hex for a mage those orders do not move.
+   * Where the **report** found him, unchanged by this month's orders. What teaching co-location is
+   * judged on, and what a refusal names; whether TEACH follows a MOVE is a separate question from
+   * this bead's, and is deliberately left alone (ah-zpq3).
    */
   regionId: string;
-  /** The building he studies in then, or null in the open. Same source as `regionId`. */
+  /**
+   * The hex he **studies** in, once this month's orders have run - `StandingAfterOrders.regionId`,
+   * or the report's own hex for a mage those orders do not move. Read for his shelter and nothing
+   * else.
+   */
+  studyRegionId: string;
+  /** The building he studies in then, or null in the open. Same source as `studyRegionId`. */
   structureId: string | null;
   /** `StandingAfterOrders.offMap`: nothing can be said about his shelter, so nothing is. */
   offMap: boolean;
@@ -507,7 +514,7 @@ export function projectAll(input: {
         unsheltered.add(mage.key);
         continue;
       }
-      const key = shelterKey(mage.regionId, mage.structureId);
+      const key = shelterKey(mage.studyRegionId, mage.structureId);
       const seats = input.seats.get(key);
       if (seats === undefined || seats === null) {
         shelterUnknown.add(mage.key);
@@ -708,7 +715,8 @@ export function scheduleRows(input: {
         key: mage.key,
         unitId: mage.unitId,
         name: mage.name,
-        regionId: stood?.regionId ?? mage.regionId,
+        regionId: mage.regionId,
+        studyRegionId: stood?.regionId ?? mage.regionId,
         structureId: stood === undefined ? mage.structureId : stood.structureId,
         offMap: stood?.offMap ?? false,
         leftBuilding: stood?.leftBuilding ?? null,

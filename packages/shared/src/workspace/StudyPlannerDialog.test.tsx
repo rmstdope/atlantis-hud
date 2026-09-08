@@ -290,4 +290,3 @@ describe("the Orders tab", () => {
     expect(dialog([])).not.toContain('data-testid="study-planner-save-all"');
   });
 });
-

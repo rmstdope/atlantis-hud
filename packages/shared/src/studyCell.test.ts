@@ -112,6 +112,7 @@ function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
         unitId: "2431",
         name: "Ereb",
         regionId: "1:7",
+        studyRegionId: "1:7",
         structureId: "1",
         offMap: false,
         leftBuilding: null,

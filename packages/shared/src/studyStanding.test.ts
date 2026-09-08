@@ -136,6 +136,27 @@ describe("standingAfterOrders", () => {
     });
   });
 
+  it("says nothing about a mage who arrives in a hex the report does not show", () => {
+    const after = standingAfterOrders({
+      groups: own(mage("2431", "1:7", "4")),
+      preview: preview(
+        row("1:7", "2431", "4", "departing"),
+        // A structure the preview knows about in a hex the report never showed: its seats cannot
+        // be looked up, so the standing says nothing rather than something unverifiable.
+        row("9:9", "2431", "7", "arriving")
+      ),
+      report: report("1:7"),
+      names
+    });
+    expect(after.get("21/2431")).toEqual({
+      regionId: "9:9",
+      structureId: null,
+      offMap: true,
+      leftBuilding: null,
+      leftBy: null
+    });
+  });
+
   it("leaves a mage his orders do not touch out of the map", () => {
     const after = standingAfterOrders({
       groups: own(mage("2431", "1:7", "4")),

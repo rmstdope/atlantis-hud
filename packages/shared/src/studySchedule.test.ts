@@ -46,6 +46,7 @@ function project(start: SkillPoints, goals: readonly StudyGoal[], turns: readonl
         unitId: "2431",
         name: "Ereb",
         regionId: "1:7",
+        studyRegionId: "1:7",
         structureId: "1",
         offMap: false,
         leftBuilding: null,
@@ -278,6 +279,53 @@ describe("scheduleRows", () => {
     expect(rows[0].cells).toHaveLength(SCHEDULE_TURNS);
   });
 
+  // ah-zpq3: the report found him in the open, his ENTER seats him, and the schedule reads the
+  // second rather than the first. This is the bug, so it goes through `scheduleRows` and `after`.
+  it("does not halve a mage whose orders put him in a seated building", () => {
+    const call = (after: Parameters<typeof scheduleRows>[0]["after"]) =>
+      scheduleRows({
+        // Standing in the open, which is what the report says and what used to halve him.
+        groups: groupOf().map((group) => ({
+          ...group,
+          mages: group.mages.map((mage) => ({ ...mage, structureId: null }))
+        })) as ReturnType<typeof groupOf>,
+        plans: [
+          {
+            factionId: "21",
+            unitId: "2431",
+            goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+            comment: "",
+            updatedAt: "2026-01-01T00:00:00.000Z"
+          }
+        ],
+        tree,
+        turns,
+        seats: new Map([["1:7,53/4", 1]]),
+        after
+      });
+
+    const reported = call(new Map());
+    expect(reported[0].cells[0]).toMatchObject({ unsheltered: true, worth: 0.5 });
+
+    const entered = call(
+      new Map([
+        [
+          "21/2431",
+          {
+            regionId: "1:7,53",
+            structureId: "4",
+            offMap: false,
+            leftBuilding: null,
+            leftBy: null
+          }
+        ]
+      ])
+    );
+    for (const cell of entered[0].cells) {
+      expect(cell).toMatchObject({ unsheltered: false, shelterUnknown: false, worth: 1 });
+    }
+  });
+
   it("gives a mage with no plan an idle row and no pencil", () => {
     const rows = scheduleRows({ groups: groupOf(), plans: [], tree, turns, seats: new Map() ,
       after: new Map()});
@@ -423,6 +471,7 @@ describe("projectAll across the whole fleet", () => {
       unitId: string;
       name: string;
       regionId?: string;
+      studyRegionId?: string;
       structureId?: string | null;
       offMap?: boolean;
       leftBuilding?: string | null;
@@ -440,7 +489,9 @@ describe("projectAll across the whole fleet", () => {
         offMap: false,
         leftBuilding: null,
         leftBy: null,
-        ...mage
+        ...mage,
+        // Where he studies follows where he stands unless a case says otherwise.
+        studyRegionId: mage.studyRegionId ?? mage.regionId ?? "1:7"
       })),
       tree,
       turns,
@@ -730,28 +781,6 @@ describe("projectAll across the whole fleet", () => {
     expect(cell?.kind === "study" && cell.unsheltered).toBe(false);
     expect(cell?.kind === "study" && cell.shelterUnknown).toBe(true);
     expect(cell?.kind === "study" && cell.worth).toBe(1);
-  });
-
-  // ah-zpq3: `ProjectedMage.structureId` is where he stands once this month's orders have run, so
-  // a mage the report found in the open but whose ENTER seats him is not halved.
-  it("does not halve a mage whose orders put him in a seated building", () => {
-    const out = fleet(
-      [
-        {
-          key: "a",
-          unitId: "1",
-          name: "Kesh",
-          structureId: "4",
-          start: at({ FORC: [2, 90] }),
-          goals: studies("FORC")
-        }
-      ],
-      new Map([["1:7/4", 1]])
-    );
-
-    for (const cell of out.get("a")?.cells ?? []) {
-      expect(cell).toMatchObject({ unsheltered: false, shelterUnknown: false, worth: 1 });
-    }
   });
 
   // Nothing is halved on ignorance, and the strip says nothing either (navigator, 2026-09-08).
