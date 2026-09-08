@@ -5,6 +5,9 @@ import { regionIdOf } from "../hexMapModel";
 import { diffOrders, diffTurns } from "../turnDiff";
 import {
   changesTabs,
+  comparedOrdersFor,
+  comparedOrdersLoading,
+  comparedOrdersReady,
   nextChangesTab,
   orderRows,
   ordersEmptyText,
@@ -190,5 +193,32 @@ describe("orderRows", () => {
     expect(rows).toEqual([
       { unitId: "1", name: "Scouts", glyph: "±", detail: "@work → @fish" }
     ]);
+  });
+});
+
+/** The compared turn's own orders draft, told apart from a stale one and from an absent one (ah-31ja.2). */
+describe("compared orders", () => {
+  it("recognises only the compared turn's own loaded draft", () => {
+    expect(comparedOrdersFor({ turnNumber: 71, text: "x" }, 71)).toBe(true);
+    expect(comparedOrdersFor({ turnNumber: 70, text: "x" }, 71)).toBe(false);
+    expect(comparedOrdersFor(null, 71)).toBe(false);
+  });
+
+  it("is ready only when the compared turn's draft has text", () => {
+    expect(comparedOrdersReady({ turnNumber: 71, text: "x" }, 71)).toBe(true);
+    expect(comparedOrdersReady({ turnNumber: 71, text: "" }, 71)).toBe(true);
+    expect(comparedOrdersReady({ turnNumber: 71, text: null }, 71)).toBe(false);
+    expect(comparedOrdersReady({ turnNumber: 70, text: "x" }, 71)).toBe(false);
+    expect(comparedOrdersReady(null, 71)).toBe(false);
+  });
+
+  it("says the orders are still loading only while the dialog is open on a turn whose draft has not arrived", () => {
+    const loading = (input: Parameters<typeof comparedOrdersLoading>[0]) => comparedOrdersLoading(input);
+    expect(loading({ dialogOpen: true, comparedTurn: 71, loaded: { turnNumber: 70, text: "x" } })).toBe(true);
+    expect(loading({ dialogOpen: true, comparedTurn: 71, loaded: null })).toBe(true);
+    expect(loading({ dialogOpen: false, comparedTurn: 71, loaded: null })).toBe(false);
+    expect(loading({ dialogOpen: true, comparedTurn: null, loaded: null })).toBe(false);
+    expect(loading({ dialogOpen: true, comparedTurn: 71, loaded: { turnNumber: 71, text: "x" } })).toBe(false);
+    expect(loading({ dialogOpen: true, comparedTurn: 71, loaded: { turnNumber: 71, text: null } })).toBe(false);
   });
 });

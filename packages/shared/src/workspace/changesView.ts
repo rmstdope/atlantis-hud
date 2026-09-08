@@ -105,6 +105,46 @@ export function ordersEmptyText(orders: OrdersDiff | null, comparedTurn: number)
     : "No orders changed between these turns.";
 }
 
+/** The compared turn's orders draft as the shell holds it: `text` null when neither a stored draft nor a template was found. */
+export type ComparedOrders = { turnNumber: number; text: string | null };
+
+/**
+ * Whether the loaded draft is the compared turn's own.
+ *
+ * The shell loads this lazily and asynchronously, so between a comparison moving to a new turn and
+ * that turn's draft arriving, the loaded value still holds the *previous* turn's text.
+ */
+export function comparedOrdersFor(loaded: ComparedOrders | null, comparedTurn: number): boolean {
+  return loaded !== null && loaded.turnNumber === comparedTurn;
+}
+
+/** The compared turn's own draft, and it has text: the orders diff has both sides. */
+export function comparedOrdersReady(
+  loaded: ComparedOrders | null,
+  comparedTurn: number
+): loaded is ComparedOrders & { text: string } {
+  return comparedOrdersFor(loaded, comparedTurn) && loaded !== null && loaded.text !== null;
+}
+
+/**
+ * Whether the orders tab should say "loading" rather than "nothing known".
+ *
+ * A null `OrdersDiff` means two different things - "nothing to compare" and "the compared draft has
+ * not arrived yet" - and `ordersEmptyText` alone cannot tell them apart. This does, so the dialog
+ * says "loading" rather than the more confident, and here wrong, "not known".
+ */
+export function comparedOrdersLoading(input: {
+  /** The Changes dialog is open. Nothing is loaded while it is shut. */
+  dialogOpen: boolean;
+  /** The turn being compared against, or null when nothing is being compared. */
+  comparedTurn: number | null;
+  loaded: ComparedOrders | null;
+}): boolean {
+  return (
+    input.dialogOpen && input.comparedTurn !== null && !comparedOrdersFor(input.loaded, input.comparedTurn)
+  );
+}
+
 function fieldChangesDetail(changes: { field: string; before: string; after: string }[]): string {
   return changes.map((change) => `${change.field}: ${change.before} → ${change.after}`).join(", ");
 }

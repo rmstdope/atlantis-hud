@@ -281,6 +281,27 @@ function diffRegions(older: ParsedReport, newer: ParsedReport): RegionsDiff {
   return { onlyInNewer, onlyInOlder, changed };
 }
 
+export type Oriented<T> = { older: T; newer: T; olderTurn: number; newerTurn: number };
+
+/**
+ * Which side of a comparison is the older one, oriented lower turn number -> higher regardless of
+ * which side is the working one.
+ *
+ * `diffTurns` and `diffOrders` are symmetric in neither direction - getting this backwards inverts
+ * every row of the Changes dialog - and the working turn may be either side of the pair, so the
+ * answer is the turn numbers and nothing else. A tie counts the working side as older, preserving
+ * the shell's own `<=`; it cannot arise, because `toggleComparison` never compares a turn against
+ * itself.
+ */
+export function orientByTurn<T>(
+  working: { turn: number; value: T },
+  compared: { turn: number; value: T }
+): Oriented<T> {
+  return working.turn <= compared.turn
+    ? { older: working.value, newer: compared.value, olderTurn: working.turn, newerTurn: compared.turn }
+    : { older: compared.value, newer: working.value, olderTurn: compared.turn, newerTurn: working.turn };
+}
+
 /** What changed between two turns' reports. Both must come from the same parse path - see above. */
 export function diffTurns(older: ParsedReport, newer: ParsedReport): TurnDiff {
   return { units: diffUnits(older, newer), regions: diffRegions(older, newer) };

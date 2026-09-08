@@ -1,4 +1,4 @@
-import type { CoreClient, ImportedTurnSummary, ParsedReport } from "@atlantis/core-client";
+import type { CoreClient, ImportedTurnSummary, OpenedGame, ParsedReport } from "@atlantis/core-client";
 import { toggleComparison, type ComparisonTurn } from "./turnCompare";
 
 export type ComparisonClient = {
@@ -56,6 +56,42 @@ export type ComparisonContext = {
   currentTurn: number | null;
   parse: (rawReport: string) => Promise<ParsedReport>;
 };
+
+/** What the shell knows when a turn is clicked, before it knows whether that is enough. */
+export type ComparisonContextInput = {
+  /** The open game, or null when none is. */
+  game: OpenedGame | null;
+  /** The turn on screen, or null when no report is loaded. */
+  workingTurn: number | null;
+  /** The viewing faction, from the loaded report's header - `string | null` there, undefined when there is no report. */
+  factionId: string | null | undefined;
+  /** The turn already being compared against, or null when none is. */
+  currentTurn: number | null;
+  parse: (rawReport: string) => Promise<ParsedReport>;
+};
+
+/**
+ * The `ComparisonContext` a click can be answered with, or `null` when the shell has nothing to
+ * compare *from*: no report on screen, no open game, or a report whose header names no faction.
+ *
+ * `pickComparisonTurn` documents a non-null context as its precondition; this is the only place
+ * that establishes it, so the caller's one `null` branch is the whole of "this click cannot be
+ * answered". The test is falsy rather than null-ish on purpose: a header that parsed to `""` names
+ * no faction, and `loadComparisonTurn` would query the database for it.
+ */
+export function comparisonContextFor(input: ComparisonContextInput): ComparisonContext | null {
+  if (input.workingTurn === null || !input.game || !input.factionId) {
+    return null;
+  }
+  return {
+    databasePath: input.game.databasePath,
+    gameId: input.game.manifest.metadata.gameId,
+    factionId: input.factionId,
+    workingTurn: input.workingTurn,
+    currentTurn: input.currentTurn,
+    parse: input.parse
+  };
+}
 
 /**
  * What a click on `clickedTurn` in the picker does to the comparison.
