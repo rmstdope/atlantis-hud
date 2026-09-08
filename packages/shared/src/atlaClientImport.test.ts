@@ -57,11 +57,8 @@ describe("a hex the player annotated in AtlaClient", () => {
   ].join("\n");
 
   it("is still counted by the age line, though it will not merge", () => {
-    const ages = readAtlaClientAges(annotated);
-
-    // Two stamps, against the one hex `parse_report_full` will hand the merge.
-    expect(ages).not.toBeNull();
-    expect((ages as NonNullable<typeof ages>).currentHexes).toBe(1);
-    expect((ages as NonNullable<typeof ages>).olderHexes).toBe(1);
+    // Two stamps, against the one hex `parse_report_full` will hand the merge - which is the
+    // Rust half of this pin, over byte-identical text, in `crates/core/src/report/atlaclient.rs`.
+    expect(readAtlaClientAges(annotated)).toMatchObject({ currentHexes: 1, olderHexes: 1 });
   });
 });
