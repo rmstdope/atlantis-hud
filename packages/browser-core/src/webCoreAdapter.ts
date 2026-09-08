@@ -284,22 +284,24 @@ type StoredGoal = {
   targetLevel?: number;
 };
 
-function withGoals(
-  plan: StudyPlanRecord & { skill?: string | null; targetLevel?: number | null }
-): StudyPlanRecord {
-  // ah-5r9j.1: a spread minus the two legacy columns rather than a field-by-field rebuild, so a
-  // field added to StudyPlan or StudyGoal on the Rust side reaches the caller instead of being
-  // silently dropped - which is the general form of the bug ah-af7i fixed one field at a time.
-  const { skill: legacySkill, targetLevel: _legacyTargetLevel, ...carried } = plan;
+// ah-5r9j.1: a spread minus the two legacy columns rather than a field-by-field rebuild, so a
+// field added to StudyPlan or StudyGoal on the Rust side reaches the caller instead of being
+// silently dropped - which is the general form of the bug ah-af7i fixed one field at a time. The
+// two legacy columns are dropped in a parameter pattern because the lint only forgives an unused
+// `_`-prefixed binding there (`eslint.config.mjs`, `argsIgnorePattern`).
+function withGoals({
+  skill: legacySkill,
+  targetLevel: _legacyTargetLevel,
+  ...carried
+}: StudyPlanRecord & { skill?: string | null; targetLevel?: number | null }): StudyPlanRecord {
   // `turn: 0` for anything written before ah-lyg6.2.3's redesign, exactly as the desktop reader
   // answers: a queue of goals names no turn and cannot be converted without the report it was
   // projected against, so `plannedGoals` drops it and the next save rewrites the row.
   const stored: StoredGoal[] =
-    plan.goals ?? (legacySkill ? [{ kind: "study", turn: 0, skill: legacySkill }] : []);
+    carried.goals ?? (legacySkill ? [{ kind: "study", turn: 0, skill: legacySkill }] : []);
   return {
     ...carried,
-    goals: stored.map((goal) => {
-      const { targetLevel: _legacyGoalTargetLevel, ...rest } = goal;
+    goals: stored.map(({ targetLevel: _legacyGoalTargetLevel, ...rest }) => {
       // A goal written before ah-lyg6.3 carries no discriminant, and is stamped here for the same
       // reason and deletable on the same day: study plans were never in a release.
       return rest.kind === "teach"
