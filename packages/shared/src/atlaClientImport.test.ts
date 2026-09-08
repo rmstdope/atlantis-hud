@@ -39,3 +39,29 @@ describe("how old an AtlaClient map's hexes are", () => {
     expect(readAtlaClientAges(readReport("g7f95t71"))).toBeNull();
   });
 });
+
+/**
+ * The one case where the age line and the prompt's own hex count answer different numbers: a
+ * region the player annotated in AtlaClient carries their note in front of the terrain, so it is
+ * not recognised as a header and its hex is dropped - while its stamp is still a stamp. The plan
+ * decided this is the right outcome for now (do not widen `opens_a_region`), so it is pinned
+ * rather than fixed.
+ */
+describe("a hex the player annotated in AtlaClient", () => {
+  const annotated = [
+    "(my note) forest (42,26) in Sonchizel.",
+    "------------------------;16-11",
+    "plain (44,26) in Sonchizel.",
+    "------------------------;16",
+    ""
+  ].join("\n");
+
+  it("is still counted by the age line, though it will not merge", () => {
+    const ages = readAtlaClientAges(annotated);
+
+    // Two stamps, against the one hex `parse_report_full` will hand the merge.
+    expect(ages).not.toBeNull();
+    expect((ages as NonNullable<typeof ages>).currentHexes).toBe(1);
+    expect((ages as NonNullable<typeof ages>).olderHexes).toBe(1);
+  });
+});

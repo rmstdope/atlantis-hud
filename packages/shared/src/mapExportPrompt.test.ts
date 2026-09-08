@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   describeAtlaClientAges,
-  mapExportPromptParagraphs,
   describeMapExportAdded,
-  mapExportPromptCopy
+  mapExportPromptParagraphs
 } from "./mapExportPrompt";
 import type { AtlaClientAges } from "./atlaClientImport";
 import type { PendingMapExport } from "./reportLoad";
 import { aParsedReport } from "@atlantis/core-client";
+
+/**
+ * The paragraphs as words alone. A local helper rather than an exported one: a wrapper in the
+ * module with no production caller stays green while the component diverges from it.
+ */
+const mapExportPromptCopy = (p: PendingMapExport): string[] =>
+  mapExportPromptParagraphs(p).map((paragraph) => paragraph.text);
 
 function pending(overrides: Partial<PendingMapExport> = {}): PendingMapExport {
   return {

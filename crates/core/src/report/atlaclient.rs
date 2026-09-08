@@ -164,10 +164,11 @@ mod tests {
 
     /// A region the player annotated in AtlaClient is written as `(their note) forest (30,18) ...`
     /// (`ARegion::FullName`), and `opens_a_region` requires the first word to be all lowercase, so
-    /// such a header is not a header and its hex is dropped. Its stamp is still a stamp, though -
-    /// which is why the ages are keyed by region id, and why the count of stamps in the file and
-    /// the count of hexes that merge can legitimately differ. Pinned rather than fixed: widening
-    /// `opens_a_region` is out of this bead's scope.
+    /// such a header is not a header and its hex is dropped. Its stamp is dropped with it here,
+    /// which is what keying the ages by region id buys: nothing is merged under a hex that was
+    /// never read. The shell counts stamps rather than regions, so its two numbers can legitimately
+    /// differ - that is pinned on the TypeScript side, in `atlaClientImport.test.ts`, where the
+    /// arithmetic lives. Pinned rather than fixed: widening `opens_a_region` is out of scope.
     #[test]
     fn a_hex_the_player_annotated_is_dropped_while_its_stamp_is_still_a_stamp() {
         let text = "(my note) forest (42,26) in Sonchizel.\n\

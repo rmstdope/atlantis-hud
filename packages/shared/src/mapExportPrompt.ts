@@ -9,8 +9,11 @@
 import type { AtlaClientAges } from "./atlaClientImport";
 import type { PendingMapExport } from "./reportLoad";
 
+/** One paragraph of the prompt, and whether it is set dimmer than the others. */
+export type MapExportParagraph = { text: string; dim: boolean };
+
 /**
- * The paragraphs of the map-export prompt, in order.
+ * The paragraphs of the map-export prompt, in order, each saying how it is set.
  *
  * Two for one of our own exports, three for an AtlaClient map. The first says what the file is and
  * what it is worth; the middle one, an AtlaClient map only, says how old its hexes are; the last
@@ -19,22 +22,9 @@ import type { PendingMapExport } from "./reportLoad";
  *
  * An AtlaClient map earns the extra paragraph because it is unlike one of ours: a lifetime's
  * accumulation with stamps ranging over the whole game, so the spread is the thing worth knowing
- * before pressing Add rather than something to discover afterwards from the map's shading.
- */
-export function mapExportPromptCopy(pending: PendingMapExport): string[] {
-  return mapExportPromptParagraphs(pending).map((paragraph) => paragraph.text);
-}
-
-/** One paragraph of the prompt, and whether it is set dimmer than the others. */
-export type MapExportParagraph = { text: string; dim: boolean };
-
-/**
- * The same paragraphs, each saying how it is set.
- *
- * The age line is dimmer than the two either side of it: it is context for the decision rather
- * than part of it, and the navigator settled that at Q1 alongside the words themselves. The
- * component reads this; {@link mapExportPromptCopy} is the words alone, which is what the tests
- * and any other reader want.
+ * before pressing Add rather than something to discover afterwards from the map's shading. That
+ * one is dimmer than the two either side of it: it is context for the decision rather than part
+ * of it, settled with the navigator at Q1 alongside the words themselves.
  */
 export function mapExportPromptParagraphs(pending: PendingMapExport): MapExportParagraph[] {
   const { fileName, incomingFactionLabel, incomingTurn, newHexes, atlaClient, viewer } = pending;
