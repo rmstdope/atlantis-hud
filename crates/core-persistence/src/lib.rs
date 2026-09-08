@@ -2045,6 +2045,10 @@ trait UnitKeyedCollection: Sized {
 
     /// The columns the upsert writes after `game_id`, `faction_id` and `unit_id`, in the order
     /// `write_params` returns them.
+    ///
+    /// Nothing type-checks that pairing: two value columns of the same SQLite type could be
+    /// swapped between this list and `write_params` and still compile. Only the round-trip tests
+    /// catch it, and only because their fixtures give each field a distinct value.
     const VALUE_COLUMNS: &'static [&'static str];
 
     /// Decodes one row of `SELECT_COLUMNS`. Fallible beyond SQLite's own errors, because a JSON
