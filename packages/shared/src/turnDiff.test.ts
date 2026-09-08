@@ -2,7 +2,7 @@ import type { Coordinate, ParsedReport, ReportRegion, ReportUnit } from "@atlant
 import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { regionIdOf } from "./hexMapModel";
-import { diffOrders, diffTurns } from "./turnDiff";
+import { diffOrders, diffTurns, orientByTurn } from "./turnDiff";
 
 const at = (x: number, y: number, z = 1): Coordinate => ({ x, y, z });
 
@@ -309,5 +309,35 @@ describe("diffOrders", () => {
     expect(diff.onlyInOlder).toEqual(["1"]);
     expect(diff.onlyInNewer).toEqual(["2"]);
     expect(diff.changed).toEqual([]);
+  });
+});
+
+/**
+ * Which side of a comparison is the older one (ah-31ja.2) - the rule the shell used to decide
+ * twice inline, and getting it backwards inverts every row of the Changes dialog.
+ */
+describe("orientByTurn", () => {
+  it("puts the lower turn number first, whichever side is the working one", () => {
+    expect(orientByTurn({ turn: 70, value: "working" }, { turn: 71, value: "compared" })).toEqual({
+      older: "working",
+      newer: "compared",
+      olderTurn: 70,
+      newerTurn: 71
+    });
+    expect(orientByTurn({ turn: 72, value: "working" }, { turn: 71, value: "compared" })).toEqual({
+      older: "compared",
+      newer: "working",
+      olderTurn: 71,
+      newerTurn: 72
+    });
+  });
+
+  it("counts equal turn numbers as the working side being the older", () => {
+    expect(orientByTurn({ turn: 71, value: "working" }, { turn: 71, value: "compared" })).toEqual({
+      older: "working",
+      newer: "compared",
+      olderTurn: 71,
+      newerTurn: 71
+    });
   });
 });

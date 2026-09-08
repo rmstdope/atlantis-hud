@@ -1,6 +1,11 @@
-import type { ParsedReport } from "@atlantis/core-client";
+import type { OpenedGame, ParsedReport } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { listComparableTurns, loadComparisonTurn, pickComparisonTurn } from "./comparisonActions";
+import {
+  comparisonContextFor,
+  listComparableTurns,
+  loadComparisonTurn,
+  pickComparisonTurn
+} from "./comparisonActions";
 
 /**
  * Loading the turn a comparison click asked for (ah-6l2).
@@ -138,5 +143,41 @@ describe("pickComparisonTurn", () => {
     const client = { loadImportedTurn: vi.fn().mockResolvedValue(null) };
 
     await expect(pickComparisonTurn(client, baseContext, 65)).rejects.toThrow(/65/);
+  });
+});
+
+/**
+ * The guard that turns what the shell knows into the non-null `ComparisonContext`
+ * `pickComparisonTurn` documents as its precondition (ah-31ja.2).
+ */
+describe("comparisonContextFor", () => {
+  const parse = vi.fn();
+  const game = {
+    gameFilePath: "/game.atl",
+    databasePath: "/db",
+    schemaVersion: 1,
+    manifest: { metadata: { gameId: "game-1" } }
+  } as unknown as OpenedGame;
+  const valid = { game, workingTurn: 72, factionId: "17", currentTurn: 70, parse };
+
+  it("builds a context from the open game, the loaded report and the current comparison", () => {
+    expect(comparisonContextFor(valid)).toEqual({
+      databasePath: "/db",
+      gameId: "game-1",
+      factionId: "17",
+      workingTurn: 72,
+      currentTurn: 70,
+      parse
+    });
+  });
+
+  it.each([
+    ["no report on screen", { workingTurn: null }],
+    ["no open game", { game: null }],
+    ["a header naming no faction", { factionId: null }],
+    ["no header at all", { factionId: undefined }],
+    ["a header whose faction is the empty string", { factionId: "" }]
+  ])("answers null when there is nothing to compare from: %s", (_why, override) => {
+    expect(comparisonContextFor({ ...valid, ...override })).toBeNull();
   });
 });

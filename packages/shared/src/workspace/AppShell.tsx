@@ -158,7 +158,7 @@ import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
 import { comparisonChipLabel, type ComparisonTurn } from "../turnCompare";
-import { listComparableTurns, pickComparisonTurn } from "../comparisonActions";
+import { comparisonContextFor, listComparableTurns, pickComparisonTurn } from "../comparisonActions";
 import { GameGate } from "./GameGate";
 import { SettingsDialog } from "./SettingsDialog";
 import type { AppUpdateControl } from "./appUpdate";
@@ -209,15 +209,19 @@ import { battleHexes } from "./battles";
 import { ChangesDialog } from "./ChangesDialog";
 import {
   changesTabs,
+  comparedOrdersFor,
+  comparedOrdersLoading,
+  comparedOrdersReady,
   orderRows,
   ordersEmptyText,
   regionRows,
   regionsEmptyText,
   unitRows,
   unitsEmptyText,
-  type ChangesTabKey
+  type ChangesTabKey,
+  type ComparedOrders
 } from "./changesView";
-import { diffOrders, diffTurns } from "../turnDiff";
+import { diffOrders, diffTurns, orientByTurn } from "../turnDiff";
 import { type MapRect } from "./mapMarquee";
 import { loadSavedView, saveMapView } from "./mapViewportStorage";
 import { unitForHex } from "./hexUnitMemory";
@@ -873,9 +877,7 @@ export function AppShell({
   // compared turn - never eagerly, and never by pointing `parsed`/`ordersDocument` at it (see
   // `comparison`'s own doc comment). `turnNumber` guards against serving a stale load after the
   // comparison has moved on to a different turn.
-  const [comparedOrders, setComparedOrders] = useState<{ turnNumber: number; text: string | null } | null>(
-    null
-  );
+  const [comparedOrders, setComparedOrders] = useState<ComparedOrders | null>(null);
   const [turnSummaries, setTurnSummaries] = useState<ImportedTurnSummary[]>([]);
   // What a batch of reports did, waiting to be read, and how far it has got while it is running.
   // Both null for a single report: that one still answers for itself through the status line.
@@ -4214,34 +4216,24 @@ export function AppShell({
    */
   const handleSelectComparisonTurn = useCallback(
     async (clickedTurn: number) => {
-      const workingTurn = parsed?.header.turnNumber ?? null;
       const reportComparisonFailure = (message: string) => {
         setStatus(failedStatus(message));
         closePopover("turns");
       };
-      const factionId = parsed?.header.factionId;
-      if (workingTurn === null || !game || !factionId) {
+      const context = comparisonContextFor({
+        game,
+        workingTurn: parsed?.header.turnNumber ?? null,
+        factionId: parsed?.header.factionId,
+        currentTurn: comparison?.key.turnNumber ?? null,
+        parse: reportParser(client, ruleset)
+      });
+      if (context === null) {
         reportComparisonFailure(`could not load turn ${clickedTurn} for comparison`);
         return;
       }
-      const parse = (text: string) =>
-        ruleset.status === "ready"
-          ? client.parseReportClassified(text, ruleset.text)
-          : client.parseReportFull(text);
       await runReported(
         async () => {
-          const pick = await pickComparisonTurn(
-            client,
-            {
-              databasePath: game.databasePath,
-              gameId: game.manifest.metadata.gameId,
-              factionId,
-              workingTurn,
-              currentTurn: comparison?.key.turnNumber ?? null,
-              parse
-            },
-            clickedTurn
-          );
+          const pick = await pickComparisonTurn(client, context, clickedTurn);
           if (pick.changed) {
             setComparison(pick.comparison);
           }
@@ -4282,7 +4274,7 @@ export function AppShell({
     if (!changesOpen || !comparison || !game) {
       return;
     }
-    if (comparedOrders?.turnNumber === comparison.key.turnNumber) {
+    if (comparedOrdersFor(comparedOrders, comparison.key.turnNumber)) {
       return;
     }
     let cancelled = false;
@@ -4370,21 +4362,16 @@ export function AppShell({
     [alliedMages, client, closePopover, game, mageSheets]
   );
 
-  /**
-   * What changed between the working turn and the compared one, oriented lower turn number ->
-   * higher regardless of which side is the working one - `diffTurns`/`diffOrders` are symmetric
-   * in neither direction, so the orientation is this shell's call, made once, here.
-   */
+  /** What changed between the working turn and the compared one; the orientation is `orientByTurn`'s. */
   const turnDiff = useMemo(() => {
     const workingTurn = parsed?.header.turnNumber ?? null;
     if (!parsed || !comparison || workingTurn === null) {
       return null;
     }
-    const comparedTurn = comparison.key.turnNumber;
-    const [[olderTurn, older], [newerTurn, newer]]: [[number, ParsedReport], [number, ParsedReport]] =
-      workingTurn <= comparedTurn
-        ? [[workingTurn, parsed], [comparedTurn, comparison.parsed]]
-        : [[comparedTurn, comparison.parsed], [workingTurn, parsed]];
+    const { older, newer, olderTurn, newerTurn } = orientByTurn<ParsedReport>(
+      { turn: workingTurn, value: parsed },
+      { turn: comparison.key.turnNumber, value: comparison.parsed }
+    );
     return { diff: diffTurns(older, newer), older, newer, olderTurn, newerTurn };
   }, [parsed, comparison]);
 
@@ -4393,20 +4380,21 @@ export function AppShell({
     if (!turnDiff || !comparison || workingTurn === null) {
       return null;
     }
-    if (comparedOrders?.turnNumber !== comparison.key.turnNumber || comparedOrders.text === null) {
+    if (!comparedOrdersReady(comparedOrders, comparison.key.turnNumber)) {
       return null;
     }
-    const comparedTurn = comparison.key.turnNumber;
-    return workingTurn <= comparedTurn
-      ? diffOrders(ordersDocument, comparedOrders.text)
-      : diffOrders(comparedOrders.text, ordersDocument);
+    const { older, newer } = orientByTurn<string>(
+      { turn: workingTurn, value: ordersDocument },
+      { turn: comparison.key.turnNumber, value: comparedOrders.text }
+    );
+    return diffOrders(older, newer);
   }, [turnDiff, comparison, comparedOrders, parsed, ordersDocument]);
 
-  // A null `ordersDiff` means two different things - "nothing to compare" and "the compared
-  // draft has not loaded yet" - and `ordersEmptyText` alone cannot tell them apart. This does,
-  // so the dialog says "loading" rather than the more confident, and here wrong, "not known".
-  const comparedOrdersLoading =
-    changesOpen && comparison !== null && comparedOrders?.turnNumber !== comparison.key.turnNumber;
+  const ordersStillLoading = comparedOrdersLoading({
+    dialogOpen: changesOpen,
+    comparedTurn: comparison?.key.turnNumber ?? null,
+    loaded: comparedOrders
+  });
 
   const changesTabsList = useMemo(
     () => (turnDiff ? changesTabs(turnDiff.diff, ordersDiff) : []),
@@ -5300,7 +5288,7 @@ export function AppShell({
           regionsEmptyText={regionsEmptyText()}
           orderRows={changesOrderRows}
           ordersEmptyText={
-            comparedOrdersLoading
+            ordersStillLoading
               ? "Loading orders…"
               : ordersEmptyText(ordersDiff, comparison?.key.turnNumber ?? turnDiff.newerTurn)
           }
