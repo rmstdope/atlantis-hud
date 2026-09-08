@@ -51,8 +51,8 @@ use crate::orders::silver::{
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
-    give_outcome, give_reach, mage_give_refused, party_label, party_unit_id, GiveOutcome,
-    GiveReach, GiveRefusal,
+    give_endpoint, give_outcome, mage_give_refused, party_label, party_unit_id, GiveEndpoint,
+    GiveOutcome, GiveReach, GiveRefusal,
 };
 use crate::report::composition;
 use crate::report::flags::FlagChange;
@@ -1521,15 +1521,7 @@ fn forecast_hex(
         let item_tag = |text: &str| resolve_item(text, hex, ordered, ruleset);
         // Whether a `GIVE`'s target is one the order can reach at all. Resolving a party against a
         // hex is this module's business, exactly as `item_tag` is; `silver` holds no hex types.
-        let give_reach_of = |party: &Party| {
-            give_reach(
-                party,
-                &ordered.unit.unit_id,
-                |id| hex.find(id).is_some(),
-                |id| hex.region.units.iter().any(|unit| unit.unit_id == id),
-                |id| hex.shown_anywhere.contains(id),
-            )
-        };
+        let give_reach_of = |party: &Party| hex.give_endpoint(party, &ordered.unit.unit_id).reach;
         // The target a `GIVE` this month left uncertain named, for an upper-case tag - so a later
         // order pricing that tag says the month cannot be added up rather than reading the
         // report's old holding (`ah-66yi`).
@@ -2157,6 +2149,21 @@ impl<'a> Hex<'a> {
             .find(|ordered| ordered.unit.unit_id == unit_id)
     }
 
+    /// Where a transfer from `giver_id` lands in this hex, and which of our own units receives it.
+    ///
+    /// The three lookups `give_endpoint` needs over a hex, written once rather than at each caller:
+    /// `find` is our own units, `region.units` is everyone this region shows, and `shown_anywhere`
+    /// is the whole report (`ah-66yi`).
+    fn give_endpoint(&self, party: &Party, giver_id: &str) -> GiveEndpoint<String> {
+        crate::orders::targets::give_endpoint(
+            party,
+            giver_id,
+            |id| self.find(id).map(|_| id.to_string()),
+            |id| self.region.units.iter().any(|unit| unit.unit_id == id),
+            |id| self.shown_anywhere.contains(id),
+        )
+    }
+
     fn finding(&self, code: Code, message: String) -> Finding {
         Finding {
             code,
@@ -2469,46 +2476,23 @@ fn moves(
     }
 }
 
-/// Where a `GIVE` lands, resolved exactly as `effects::give` resolves it - a whole-unit party
-/// name, not a `Selector`.
-enum GiveTarget {
-    Unit(usize),
-    /// `GIVE 0 ...`: the giver still loses what it gives, but nobody receives it.
-    Discard,
-    /// A unit this region's report shows that is not ours - another faction's, or `FACTION n NEW m`.
-    /// Whether the goods reach it depends on their faction's declaration toward us, which no
-    /// report carries (`ah-66yi`).
-    Foreign,
-    /// A unit number the whole report never prints: it may not exist, and it may be a unit we
-    /// cannot see whose faction has declared us Friendly (`rules/give`, `ah-66yi`).
-    Unshown,
-    /// Named nowhere in this region, and giving to itself: the whole transfer is void, exactly as
-    /// `effects::give` returns early for these without touching the giver.
-    Nowhere,
-}
-
-fn resolve_give_target(
+/// Where a transfer from `giver_id` lands among `position_of`'s rows, resolved exactly as
+/// `effects::give` and the ledger resolve it. `apply_transfers` holds no `Hex`, so the three
+/// lookups are over its own collections rather than `Hex::give_endpoint`'s.
+fn resolve_give_endpoint(
     position_of: &BTreeMap<&str, usize>,
     shown_here: &BTreeSet<&str>,
     shown_anywhere: &BTreeSet<String>,
     giver_id: &str,
     party: &Party,
-) -> GiveTarget {
-    match give_reach(
+) -> GiveEndpoint<usize> {
+    give_endpoint(
         party,
         giver_id,
-        |id| position_of.contains_key(id),
+        |id| position_of.get(id).copied(),
         |id| shown_here.contains(id),
         |id| shown_anywhere.contains(id),
-    ) {
-        GiveReach::Discard => GiveTarget::Discard,
-        GiveReach::Foreign => GiveTarget::Foreign,
-        GiveReach::Unshown => GiveTarget::Unshown,
-        GiveReach::Nowhere => GiveTarget::Nowhere,
-        GiveReach::Ours => party_unit_id(party)
-            .and_then(|id| position_of.get(id.as_str()).copied())
-            .map_or(GiveTarget::Nowhere, GiveTarget::Unit),
-    }
+    )
 }
 
 /// One `GIVE` whose permission this report cannot establish, remembered against the tag it named.
@@ -2725,9 +2709,9 @@ fn apply_transfers(
         // `transfer.party` names the source and `transfer.position` is the receiver instead.
         let giver_id = units[transfer.position].unit.unit_id.as_str();
         let source = if transfer.is_give {
-            GiveTarget::Unit(transfer.position)
+            GiveEndpoint::ours(transfer.position)
         } else {
-            resolve_give_target(
+            resolve_give_endpoint(
                 &position_of,
                 &shown_here,
                 shown_anywhere,
@@ -2736,7 +2720,7 @@ fn apply_transfers(
             )
         };
         let receiver = if transfer.is_give {
-            resolve_give_target(
+            resolve_give_endpoint(
                 &position_of,
                 &shown_here,
                 shown_anywhere,
@@ -2744,105 +2728,112 @@ fn apply_transfers(
                 transfer.party,
             )
         } else {
-            GiveTarget::Unit(transfer.position)
+            GiveEndpoint::ours(transfer.position)
         };
 
-        let source = match source {
-            GiveTarget::Unit(source) => source,
-            // `TAKE FROM 0` names no source at all: the giver side of a GIVE is always
-            // `Unit(position)`, so only a TAKE reaches here.
-            GiveTarget::Discard => continue,
-            // A unit number this hex does not show, or one it shows and we cannot read: either way
-            // that unit's holdings are not ours to follow. Only a TAKE reaches here - the giver
-            // side of a GIVE is always `Unit(position)` - so `ah-agbm`'s bounded optimism is
-            // unchanged by this bead.
-            // `Unshown` joins `Nowhere` here on purpose: `ah-66yi` changes GIVE, and a TAKE from a
-            // source the report does not show reads exactly as it did - `rules/take` confines a
-            // TAKE to a faction-mate, so no Friendly declaration could ever widen it.
-            GiveTarget::Nowhere | GiveTarget::Unshown => {
-                let receiver_position = transfer.position;
-                let resolved = match transfer.what {
-                    Selector::Item(text) => ruleset.find_item(text),
-                    Selector::UnfinishedShip(_) => None,
-                    Selector::Class(_) => None,
-                    Selector::WholeUnit => unreachable!("filtered above"),
-                };
-                match (resolved, transfer.amount) {
-                    (Some(entry), Amount::Exact(count)) if *count > 0 => {
-                        let tag = entry.tag.to_ascii_uppercase();
-                        let is_man = ruleset.is_man(&tag);
-                        if tag.eq_ignore_ascii_case(SILVER) {
-                            // `ah-awcm`: the ledger credits a stated take from a source it cannot
-                            // see, and the column follows it rather than telling a second story.
-                            // The report gives no name for a unit it does not show, so the label
-                            // is the number alone; an alias that was never formed names nothing
-                            // at all and is left uncredited.
-                            if let Party::Unit(id) = transfer.party {
-                                let entry =
-                                    receipts_by_position.entry(receiver_position).or_default();
-                                entry.taken_unshown = entry.taken_unshown.saturating_add(*count);
-                                let label = format!("unit {id}");
-                                entry.silver_moves.push(ReceiptMove {
-                                    amount: *count,
-                                    cause: SilverChangeCause::TookUnshown,
-                                    other: label.clone(),
-                                });
-                                if !entry.taken_unshown_from.contains(&label) {
-                                    entry.taken_unshown_from.push(label);
+        let source = match source.row {
+            Some(source) => source,
+            None => match source.reach {
+                // `TAKE FROM 0` names no source at all: the giver side of a GIVE is always
+                // `GiveEndpoint::ours`, so only a TAKE reaches here.
+                GiveReach::Discard => continue,
+                // A unit number this hex does not show, or one it shows and we cannot read: either way
+                // that unit's holdings are not ours to follow. Only a TAKE reaches here - the giver
+                // side of a GIVE is always `GiveEndpoint::ours` - so `ah-agbm`'s bounded optimism is
+                // unchanged by this bead.
+                // `Unshown` joins `Nowhere` here on purpose: `ah-66yi` changes GIVE, and a TAKE from a
+                // source the report does not show reads exactly as it did - `rules/take` confines a
+                // TAKE to a faction-mate, so no Friendly declaration could ever widen it.
+                // `Ours` cannot reach here - `row_of` is what decided it - and it is folded in with
+                // `Nowhere` so this arm answers exactly as the deleted per-walk resolver's
+                // `map_or(Nowhere, ...)` did (`ah-1zca.2`).
+                GiveReach::Nowhere | GiveReach::Unshown | GiveReach::Ours => {
+                    let receiver_position = transfer.position;
+                    let resolved = match transfer.what {
+                        Selector::Item(text) => ruleset.find_item(text),
+                        Selector::UnfinishedShip(_) => None,
+                        Selector::Class(_) => None,
+                        Selector::WholeUnit => unreachable!("filtered above"),
+                    };
+                    match (resolved, transfer.amount) {
+                        (Some(entry), Amount::Exact(count)) if *count > 0 => {
+                            let tag = entry.tag.to_ascii_uppercase();
+                            let is_man = ruleset.is_man(&tag);
+                            if tag.eq_ignore_ascii_case(SILVER) {
+                                // `ah-awcm`: the ledger credits a stated take from a source it cannot
+                                // see, and the column follows it rather than telling a second story.
+                                // The report gives no name for a unit it does not show, so the label
+                                // is the number alone; an alias that was never formed names nothing
+                                // at all and is left uncredited.
+                                if let Party::Unit(id) = transfer.party {
+                                    let entry =
+                                        receipts_by_position.entry(receiver_position).or_default();
+                                    entry.taken_unshown =
+                                        entry.taken_unshown.saturating_add(*count);
+                                    let label = format!("unit {id}");
+                                    entry.silver_moves.push(ReceiptMove {
+                                        amount: *count,
+                                        cause: SilverChangeCause::TookUnshown,
+                                        other: label.clone(),
+                                    });
+                                    if !entry.taken_unshown_from.contains(&label) {
+                                        entry.taken_unshown_from.push(label);
+                                    }
                                 }
                             }
+                            // A mage takes on no men, an unshown source included (`ah-ndp9`).
+                            // Before `receiver_state` is bound, so the early `continue` leaves no
+                            // unused binding behind.
+                            if is_man
+                                && magic::is_mage(ruleset, &units[receiver_position].unit.skills)
+                            {
+                                refused_by_position.push((
+                                    receiver_position,
+                                    RefusedTransfer {
+                                        line: transfer.line,
+                                        is_give: false,
+                                        refused: vec![],
+                                        refused_to_another_faction: vec![],
+                                        into_a_mage: vec![(tag.clone(), *count)],
+                                        mage_id: None,
+                                        moving: vec![],
+                                    },
+                                ));
+                                continue;
+                            }
+                            let receiver_state = working
+                                .entry(receiver_position)
+                                .or_insert_with(|| seed_working(units, receiver_position));
+                            if is_man {
+                                // Arriving from a source this walk cannot see, so there is no skills
+                                // list to merge - the merge cannot be computed any more than it could
+                                // for a doubted source.
+                                receiver_state.doubted = true;
+                                receiver_state.men += *count;
+                            }
+                            move_holding(receiver_state, &tag, &entry.name, *count);
                         }
-                        // A mage takes on no men, an unshown source included (`ah-ndp9`).
-                        // Before `receiver_state` is bound, so the early `continue` leaves no
-                        // unused binding behind.
-                        if is_man && magic::is_mage(ruleset, &units[receiver_position].unit.skills)
-                        {
-                            refused_by_position.push((
-                                receiver_position,
-                                RefusedTransfer {
-                                    line: transfer.line,
-                                    is_give: false,
-                                    refused: vec![],
-                                    refused_to_another_faction: vec![],
-                                    into_a_mage: vec![(tag.clone(), *count)],
-                                    mage_id: None,
-                                    moving: vec![],
-                                },
-                            ));
-                            continue;
+                        _ => {
+                            working
+                                .entry(receiver_position)
+                                .or_insert_with(|| seed_working(units, receiver_position))
+                                .items_unknowable = true;
                         }
-                        let receiver_state = working
-                            .entry(receiver_position)
-                            .or_insert_with(|| seed_working(units, receiver_position));
-                        if is_man {
-                            // Arriving from a source this walk cannot see, so there is no skills
-                            // list to merge - the merge cannot be computed any more than it could
-                            // for a doubted source.
-                            receiver_state.doubted = true;
-                            receiver_state.men += *count;
-                        }
-                        move_holding(receiver_state, &tag, &entry.name, *count);
                     }
-                    _ => {
-                        working
-                            .entry(receiver_position)
-                            .or_insert_with(|| seed_working(units, receiver_position))
-                            .items_unknowable = true;
-                    }
+                    continue;
                 }
-                continue;
-            }
-            GiveTarget::Foreign => continue,
+                GiveReach::Foreign => continue,
+            },
         };
         // A GIVE that cannot be resolved is a no-op exactly as `effects::give` returns early for
         // one: the giver never even loses what it named.
-        if matches!(receiver, GiveTarget::Nowhere) {
+        if receiver.reach == GiveReach::Nowhere {
             continue;
         }
         // Unit 0 discards rather than gives, and is not "another unit" - the one shape where the
         // game hands over even the items it otherwise refuses to move (`rules/give`, epic
         // decision 9).
-        let discarding = matches!(receiver, GiveTarget::Discard);
+        let discarding = receiver.reach == GiveReach::Discard;
 
         let source_state = working
             .entry(source)
@@ -2851,7 +2842,7 @@ fn apply_transfers(
             Moves::Tags(tags) => tags,
             Moves::Unknowable => {
                 source_state.items_unknowable = true;
-                if let GiveTarget::Unit(receiver_position) = receiver {
+                if let Some(receiver_position) = receiver.row {
                     working
                         .entry(receiver_position)
                         .or_insert_with(|| seed_working(units, receiver_position))
@@ -2905,7 +2896,7 @@ fn apply_transfers(
             // policy this bead applies on every surface. Placed *after* the departure guard on
             // purpose: a mage giving men to a mage trips both and stays silent, as it does today.
             if is_man {
-                if let GiveTarget::Unit(receiver_position) = receiver {
+                if let Some(receiver_position) = receiver.row {
                     if magic::is_mage(ruleset, &units[receiver_position].unit.skills) {
                         into_a_mage.push((tag.clone(), moved));
                         if mage_id.is_none() && transfer.is_give {
@@ -2921,7 +2912,7 @@ fn apply_transfers(
             // unit could disagree with the headcount this walk actually settled - for a man tag
             // only, since only a man tag's headcount feeds a skill merge.
             if is_man && moved < requested {
-                if let GiveTarget::Unit(receiver_position) = receiver {
+                if let Some(receiver_position) = receiver.row {
                     working
                         .entry(receiver_position)
                         .or_insert_with(|| seed_working(units, receiver_position))
@@ -2937,7 +2928,7 @@ fn apply_transfers(
                     format!("{} ({})", source.name, source.unit_id)
                 };
                 if transfer.is_give {
-                    if let GiveTarget::Unit(receiver_position) = receiver {
+                    if let Some(receiver_position) = receiver.row {
                         if moved > 0 {
                             let entry = receipts_by_position.entry(receiver_position).or_default();
                             entry.silver = entry.silver.saturating_add(moved);
@@ -2982,13 +2973,7 @@ fn apply_transfers(
             // them too, recording nothing, while any other receiver does not.
             if !discarding {
                 let reach = if transfer.is_give {
-                    match receiver {
-                        GiveTarget::Unit(_) => GiveReach::Ours,
-                        GiveTarget::Discard => GiveReach::Discard,
-                        GiveTarget::Foreign => GiveReach::Foreign,
-                        GiveTarget::Unshown => GiveReach::Unshown,
-                        GiveTarget::Nowhere => GiveReach::Nowhere,
-                    }
+                    receiver.reach
                 } else {
                     GiveReach::Ours
                 };
@@ -3033,7 +3018,7 @@ fn apply_transfers(
                 moving.push((tag.clone(), moved));
             }
 
-            if let GiveTarget::Unit(receiver_position) = receiver {
+            if let Some(receiver_position) = receiver.row {
                 let receiver_men_estimated = units[receiver_position].unit.men_estimated;
                 let receiver_state = working
                     .entry(receiver_position)
@@ -5544,13 +5529,11 @@ fn apply(
         // here and calls `produce` from that pass (`rules/sequenceofevents`, `ah-l80z`).
         Intent::Produce { .. } => {}
         Intent::Give { to, what, amount } => {
-            let reach = give_reach(
-                to,
-                who,
-                |id| hex.find(id).is_some(),
-                |id| hex.region.units.iter().any(|unit| unit.unit_id == id),
-                |id| hex.shown_anywhere.contains(id),
-            );
+            let GiveEndpoint {
+                reach,
+                // The goods leave, or may leave, and no row of ours gains them either way.
+                row: receiver,
+            } = hex.give_endpoint(to, who);
             // Named nowhere in this region: the order does nothing, so the giver is not charged -
             // and nothing is doubted either, because the transfer was followed to the end and its
             // answer is zero. The ledger reads exactly as it would with the line deleted
@@ -5558,14 +5541,6 @@ fn apply(
             if reach == GiveReach::Nowhere {
                 return;
             }
-            let receiver = match reach {
-                GiveReach::Ours => party_id(to, hex),
-                // The goods leave, or may leave, and no row of ours gains them either way.
-                GiveReach::Discard
-                | GiveReach::Foreign
-                | GiveReach::Unshown
-                | GiveReach::Nowhere => None,
-            };
             // Only ever read for a tag `give_outcome` calls uncertain, and only ever a unit number
             // there - but formatted once here rather than per tag of a class.
             let target_label = party_label(to);
@@ -12182,6 +12157,25 @@ mod tests {
             state.known_balance_at(StatePhase::Build, "1", "STON"),
             Ok(12)
         );
+    }
+
+    /// `ah-1zca.2`: the hex-shaped helper answers the three lookups `give_endpoint` needs, and the
+    /// row it carries is the unit id `party_id` would have produced.
+    #[test]
+    fn the_hex_endpoint_finds_our_own_unit() {
+        let hex_region = region(vec![unit("900"), unit("901")]);
+        let ordered = OrderedUnits::read("unit 900\nGIVE 901 1 SILV\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+
+        let ours = hex.give_endpoint(&Party::Unit("901".to_string()), "900");
+        assert_eq!(ours.reach, GiveReach::Ours);
+        assert_eq!(ours.row, Some("901".to_string()));
+
+        // `Hex::read` seeds `shown_anywhere` from this region alone, so a number this region never
+        // prints is `Unshown` in a one-region test hex.
+        let unshown = hex.give_endpoint(&Party::Unit("999".to_string()), "900");
+        assert_eq!(unshown.reach, GiveReach::Unshown);
+        assert_eq!(unshown.row, None);
     }
 
     /// `ah-728m.2.3`: STUDY is priced before its own fee is taken, and maintenance is assessed
@@ -33759,7 +33753,7 @@ BUILD
         let middle = with_skill_pts(men_holder("1010", 5), "LUMB", 30);
         let receiver = unit("2200");
         // "999" is not in this region at all - a unit this hex genuinely does not show, which
-        // still doubts the taker under `resolve_give_target`'s `GiveTarget::Nowhere` even now
+        // still doubts the taker under `resolve_give_endpoint`'s `GiveReach::Nowhere` even now
         // that a TAKE of men can otherwise be judged (`ah-dxfd.1`).
         let orders = "unit 1010\nTAKE FROM 999 5 HUMN\nGIVE 2200 3 HUMN\n";
         let ordered = OrderedUnits::read(orders);
@@ -33976,7 +33970,7 @@ BUILD
         );
     }
 
-    /// Silenced by the `total() <= 0` guard rather than by doubt: `GiveTarget::Nowhere` credits
+    /// Silenced by the `total() <= 0` guard rather than by doubt: `GiveReach::Nowhere` credits
     /// `receiver_state.men` and sets `doubted`, but records no arrival.
     #[test]
     fn an_arrival_from_a_unit_the_report_does_not_show_says_nothing() {
