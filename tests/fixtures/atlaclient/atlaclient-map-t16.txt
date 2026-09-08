@@ -1,0 +1,2131 @@
+forest (42,26) in Sonchizel, 2216 peasants (wood elves), $1240.
+------------------------------------------------------;16-11
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $507).
+   Wanted: none.
+   For Sale: 88 wood elves [WELF] at $40, 17 leaders [LEAD] at $716.
+   Entertainment available: $72.
+   Products: 24 livestock [LIVE], 22 wood [WOOD], 11 furs [FUR].
+
+Exits:
+  North : swamp (42,24) in Hengdohway.
+  Northeast : swamp (43,25) in Hengdohway.
+  Southeast : forest (43,27) in Sonchizel.
+  South : forest (42,28) in Sonchizel.
+  Southwest : forest (41,27) in Sonchizel.
+  Northwest : forest (41,25) in Sonchizel.
+
+
+
+forest (41,27) in Sonchizel, 2085 peasants (wood elves), $1376.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $567).
+   Wanted: none.
+   For Sale: 83 wood elves [WELF] at $42, 16 leaders [LEAD] at $744.
+   Entertainment available: $75.
+   Products: 39 livestock [LIVE], 24 wood [WOOD], 15 furs [FUR].
+
+Exits:
+  North : forest (41,25) in Sonchizel.
+  Northeast : forest (42,26) in Sonchizel.
+  Southeast : forest (42,28) in Sonchizel.
+  South : desert (41,29) in Eacih.
+  Southwest : desert (40,28) in Eacih.
+  Northwest : desert (40,26) in Eacih.
+
+- Guards (9310), on guard, Silver Wardens (207), 14 wood elves [WELF].
+- Unit (11302), Silver Wardens (207), 6 wood elves [WELF].
+
+
+plain (38,28) in Fowlfield, contains Whiotfundest [city], 11180
+  peasants (humans), $10509.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $14 (Max: $2101).
+   Wanted: 106 grain [GRAI] at $21, 196 livestock [LIVE] at $18, 172
+    fish [FISH] at $44, 33 swords [SWOR] at $95, 29 plate armor [PARM]
+    at $429, 32 leather armor [LARM] at $81, 35 picks [PICK] at $119,
+    68 spices [SPIC] at $220, 60 gems [GEM] at $525.
+   For Sale: 85 chocolate [CHOC] at $99, 40 silk [SILK] at $106, 447
+    humans [HUMN] at $47, 89 leaders [LEAD] at $823.
+   Entertainment available: $637.
+   Products: 50 livestock [LIVE], 21 horses [HORS].
+
+Exits:
+  North : mountain (38,26) in Cypi.
+  Northeast : desert (39,27) in Eacih.
+  Southeast : plain (39,29) in Fowlfield.
+  South : plain (38,30) in Fowlfield.
+  Southwest : plain (37,29) in Fowlfield.
+  Northwest : mountain (37,27) in Cypi.
+
+- City Guard (5020), on guard, The Guardsmen (1), 120 leaders [LEAD],
+  120 swords [SWOR].
+- Gandalf (5761), 176 (176), behind, leader [LEAD].
+- Clowns (7318), 176 (176), behind, 22 hill dwarves [HDWA].
+- Scout (6242), gnoll [GNOL], camel [CAME].
+- Merchant (8372), The Ashen Order (92), avoiding, behind, gnoll
+  [GNOL].
+- Scout (9016), Silver Wardens (207), avoiding, behind, high elf [HELF].
+- scout (5817), human [HUMN], camel [CAME], 20 spices [SPIC].
+- Unit (5835), Pale Reliquary (298), avoiding, behind, leader [LEAD],
+  skeleton [SKEL].
+- Unit (9155), Old Pathfinders (137), avoiding, behind, gnoll [GNOL].
+- Garrison 166 (10454), Pale Reliquary (298), 77 humans [HUMN].
+- Scout 166A (10455), Pale Reliquary (298), avoiding, behind, human
+  [HUMN].
+- Scout 166B (10456), Pale Reliquary (298), avoiding, behind, human
+  [HUMN].
+- Working Class in Whiotfundest (10512), 176 (176), 6 humans [HUMN].
+- Unit (10637), Old Pathfinders (137), avoiding, behind, human [HUMN].
+- Mage 166B (10989), Pale Reliquary (298), avoiding, behind, leader
+  [LEAD].
+- Mage 166C (10990), Pale Reliquary (298), avoiding, behind, leader
+  [LEAD].
+- Levy 166 (10991), Pale Reliquary (298), 46 humans [HUMN].
+- scout (6520), human [HUMN].
+- scout (5816), human [HUMN], camel [CAME].
+
+
+desert (40,28) in Eacih, 1355 peasants (gnolls), $623.
+------------------------------------------------------;16-10
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $287).
+   Wanted: none.
+   For Sale: 54 gnolls [GNOL] at $39, 10 leaders [LEAD] at $688.
+   Entertainment available: $32.
+   Products: 16 grain [GRAI], 16 iron [IRON], 16 stone [STON].
+
+Exits:
+  North : desert (40,26) in Eacih.
+  Northeast : forest (41,27) in Sonchizel.
+  Southeast : desert (41,29) in Eacih.
+  South : desert (40,30) in O'u.
+  Southwest : plain (39,29) in Fowlfield.
+  Northwest : desert (39,27) in Eacih.
+
+
++ Crypt [1] : Crypt, closed to player units.
+
+
+forest (42,28) in Sonchizel, 1474 peasants (high elves), $1061.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $479).
+   Wanted: none.
+   For Sale: 58 high elves [HELF] at $43, 11 leaders [LEAD] at $761.
+   Entertainment available: $50.
+   Products: 35 grain [GRAI], 26 wood [WOOD], 16 furs [FUR].
+
+Exits:
+  North : forest (42,26) in Sonchizel.
+  Northeast : forest (43,27) in Sonchizel.
+  Southeast : desert (43,29) in Eacih.
+  South : desert (42,30) in Eacih.
+  Southwest : desert (41,29) in Eacih.
+  Northwest : forest (41,27) in Sonchizel.
+
+- scout (6149), human [HUMN].
+- scout (8324), Old Pathfinders (137), avoiding, behind, high elf
+  [HELF].
+- Guards (10256), on guard, Silver Wardens (207), 3 wood elves [WELF].
+
+
+desert (48,28) in Vaha, 1039 peasants (humans), $290.
+------------------------------------------------------;16-12
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $152).
+   Wanted: none.
+   For Sale: 41 humans [HUMN] at $36, 8 leaders [LEAD] at $638.
+   Entertainment available: $16.
+   Products: 18 grain [GRAI], 19 iron [IRON], 15 stone [STON].
+
+Exits:
+  North : jungle (48,26) in Apectan.
+  Northeast : desert (49,27) in Vaha.
+  Southeast : plain (49,29) in Gamellgate.
+  South : plain (48,30) in Ifytch.
+  Southwest : desert (47,29) in Vaha, contains Soshyn [town].
+  Northwest : ocean (47,27) in Atlantis Ocean.
+
+
+
+plain (39,29) in Fowlfield, 2547 peasants (high elves), $1069.
+-------------------------------------------------------;16-9
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $431).
+   Wanted: none.
+   For Sale: 101 high elves [HELF] at $38, 20 leaders [LEAD] at $677.
+   Entertainment available: $72.
+   Products: 50 livestock [LIVE], 22 horses [HORS].
+
+Exits:
+  North : desert (39,27) in Eacih.
+  Northeast : desert (40,28) in Eacih.
+  Southeast : desert (40,30) in O'u.
+  South : forest (39,31) in Sacelil.
+  Southwest : plain (38,30) in Fowlfield.
+  Northwest : plain (38,28) in Fowlfield, contains Whiotfundest
+    [city].
+
+
+
+desert (41,29) in Eacih, 1121 peasants (humans), $358.
+------------------------------------------------------;16-13
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $173).
+   Wanted: none.
+   For Sale: 44 humans [HUMN] at $37, 8 leaders [LEAD] at $649.
+   Entertainment available: $19.
+   Products: 19 grain [GRAI], 19 iron [IRON], 16 stone [STON], 13
+    camels [CAME].
+
+Exits:
+  North : forest (41,27) in Sonchizel.
+  Northeast : forest (42,28) in Sonchizel.
+  Southeast : desert (42,30) in Eacih.
+  South : desert (41,31) in O'u.
+  Southwest : desert (40,30) in O'u.
+  Northwest : desert (40,28) in Eacih.
+
+
+
+desert (47,29) in Vaha, contains Soshyn [town], 6112 peasants
+  (goblins), $3667.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $733).
+   Wanted: 146 grain [GRAI] at $18, 128 livestock [LIVE] at $18, 178
+    fish [FISH] at $45, 12 leather armor [LARM] at $89, 7 nets [NET]
+    at $129, 8 lassoes [LASS] at $126, spinning wheel [SPIN] at $103,
+    9 chocolate [CHOC] at $337.
+   For Sale: 3 spices [SPIC] at $79, 244 goblins [GBLN] at $31, 48
+    leaders [LEAD] at $728.
+   Entertainment available: $244.
+   Products: 14 grain [GRAI], 17 iron [IRON], 18 stone [STON].
+
+Exits:
+  North : ocean (47,27) in Atlantis Ocean.
+  Northeast : desert (48,28) in Vaha.
+  Southeast : plain (48,30) in Ifytch.
+  South : desert (47,31) in Vaha.
+  Southwest : desert (46,30) in Vaha.
+  Northwest : ocean (46,28) in Atlantis Ocean.
+
+- City Guard (5023), on guard, The Guardsmen (1), 80 leaders [LEAD], 80
+  swords [SWOR].
+- scout (6910), Old Pathfinders (137), avoiding, behind, gnoll
+  [GNOL].
+- Merchant (7568), The Ashen Order (92), avoiding, behind, human
+  [HUMN].
+- Scout (7153), Elder Fiends (203), avoiding, behind, orc [ORC].
+- Unit (6851), Starwood Kin (128), avoiding, behind, gnoll [GNOL].
+- Scout-entertainer (10027), Our Sea (149), avoiding, behind,
+  centaur [CTAU].
+- Scout (9876), Silver Wardens (207), avoiding, behind, human [HUMN].
+
+
+plain (49,29) in Gamellgate, 2478 peasants (high elves), $1585.
+------------------------------------------------------;16-13
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $640).
+   Wanted: none.
+   For Sale: 99 high elves [HELF] at $42, 19 leaders [LEAD] at $739.
+   Entertainment available: $94.
+   Products: 75 livestock [LIVE], 29 horses [HORS].
+
+Exits:
+  North : desert (49,27) in Vaha.
+  Northeast : jungle (50,28) in Jethkyng.
+  Southeast : jungle (50,30) in Jethkyng, contains Betgrenland [town].
+  South : plain (49,31) in Gamellgate.
+  Southwest : plain (48,30) in Ifytch.
+  Northwest : desert (48,28) in Vaha.
+
+
+
+desert (40,30) in O'u, 1115 peasants (gnolls), $535.
+------------------------------------------------------;16-13
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $259).
+   Wanted: none.
+   For Sale: 44 gnolls [GNOL] at $39, 8 leaders [LEAD] at $694.
+   Entertainment available: $25.
+   Products: 18 livestock [LIVE], 11 iron [IRON], 16 stone [STON], 11
+    camels [CAME].
+
+Exits:
+  North : desert (40,28) in Eacih.
+  Northeast : desert (41,29) in Eacih.
+  Southeast : desert (41,31) in O'u.
+  South : swamp (40,32) in Melfli'ei.
+  Southwest : forest (39,31) in Sacelil.
+  Northwest : plain (39,29) in Fowlfield.
+
+
+
+plain (48,30) in Ifytch, 1812 peasants (humans), $1123.
+------------------------------------------------------;16-15
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $478).
+   Wanted: none.
+   For Sale: 72 humans [HUMN] at $41, 14 leaders [LEAD] at $733.
+   Entertainment available: $59.
+   Products: 73 livestock [LIVE], 35 horses [HORS].
+
+Exits:
+  North : desert (48,28) in Vaha.
+  Northeast : plain (49,29) in Gamellgate.
+  Southeast : plain (49,31) in Gamellgate.
+  South : ocean (48,32) in Atlantis Ocean.
+  Southwest : desert (47,31) in Vaha.
+  Northwest : desert (47,29) in Vaha, contains Soshyn [town].
+
+
+
+jungle (50,30) in Jethkyng, contains Betgrenland [town], 5180 peasants
+  (lizardmen), $3315.
+------------------------------------------------------;16-14
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $663).
+   Wanted: 126 grain [GRAI] at $18, 172 livestock [LIVE] at $23, 116
+    fish [FISH] at $41, 7 hammers [HAMM] at $86, 2 swords [SWOR] at
+    $95.
+   For Sale: 207 lizardmen [LIZA] at $42, 41 leaders [LEAD] at $739.
+   Entertainment available: $217.
+   Products: 29 grain [GRAI], 17 wood [WOOD], 22 herbs [HERB].
+
+Exits:
+  North : jungle (50,28) in Jethkyng.
+  Northeast : plain (51,29) in Nishawant.
+  Southeast : plain (51,31) in Nishawant.
+  South : forest (50,32) in Filkshaw.
+  Southwest : plain (49,31) in Gamellgate.
+  Northwest : plain (49,29) in Gamellgate.
+
+
+
+forest (39,31) in Sacelil, 1923 peasants (centaurs), $1230.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $515).
+   Wanted: none.
+   For Sale: 76 centaurs [CTAU] at $73, 15 leaders [LEAD] at $739.
+   Entertainment available: $66.
+   Products: 33 grain [GRAI], 33 wood [WOOD], 10 furs [FUR].
+
+Exits:
+  North : plain (39,29) in Fowlfield.
+  Northeast : desert (40,30) in O'u.
+  Southeast : swamp (40,32) in Melfli'ei.
+  South : forest (39,33) in Sacelil.
+  Southwest : forest (38,32) in Sacelil.
+  Northwest : plain (38,30) in Fowlfield.
+
+- Guards (10804), Silver Wardens (207), wood elf [WELF].
+
++ Shaft [1] : Shaft, contains an inner location.
+
+
+desert (47,31) in Vaha, 1235 peasants (gnolls), $370.
+------------------------------------------------------;16-12
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $174).
+   Wanted: none.
+   For Sale: 49 gnolls [GNOL] at $36, 9 leaders [LEAD] at $644.
+   Entertainment available: $21.
+   Products: 15 livestock [LIVE], 16 iron [IRON], 18 stone [STON], 18
+    camels [CAME].
+
+Exits:
+  North : desert (47,29) in Vaha, contains Soshyn [town].
+  Northeast : plain (48,30) in Ifytch.
+  Southeast : ocean (48,32) in Atlantis Ocean.
+  South : desert (47,33) in Vaha.
+  Southwest : desert (46,32) in Vaha.
+  Northwest : desert (46,30) in Vaha.
+
+
+
+plain (49,31) in Gamellgate, 2445 peasants (high elves), $1467.
+------------------------------------------------------;16-14
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $593).
+   Wanted: none.
+   For Sale: 97 high elves [HELF] at $41, 19 leaders [LEAD] at $728.
+   Entertainment available: $88.
+   Products: 52 livestock [LIVE], 25 horses [HORS].
+
+Exits:
+  North : plain (49,29) in Gamellgate.
+  Northeast : jungle (50,30) in Jethkyng, contains Betgrenland [town].
+  Southeast : forest (50,32) in Filkshaw.
+  South : ocean (49,33) in Atlantis Ocean.
+  Southwest : ocean (48,32) in Atlantis Ocean.
+  Northwest : plain (48,30) in Ifytch.
+
+
+
+plain (53,31) in Padi, 2599 peasants (centaurs), $1507.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $606).
+   Wanted: none.
+   For Sale: 103 centaurs [CTAU] at $72, 20 leaders [LEAD] at $722.
+   Entertainment available: $94.
+   Products: 52 grain [GRAI], 30 horses [HORS].
+
+Exits:
+  North : plain (53,29) in Nishawant.
+  Northeast : plain (54,30) in Padi.
+  Southeast : plain (54,32) in Padi.
+  South : ocean (53,33) in Atlantis Ocean.
+  Southwest : plain (52,32) in Nishawant.
+  Northwest : plain (52,30) in Nishawant.
+
+
+
+swamp (36,32) in Geeba, 1423 peasants (lizardmen), $341.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $155).
+   Wanted: none.
+   For Sale: 56 lizardmen [LIZA] at $35, 11 leaders [LEAD] at $627.
+   Entertainment available: $22.
+   Products: 16 grain [GRAI], 19 wood [WOOD], 12 herbs [HERB].
+
+Exits:
+  North : plain (36,30) in Fowlfield.
+  Northeast : plain (37,31) in Fowlfield.
+  Southeast : plain (37,33) in Fowlfield.
+  South : swamp (36,34) in Geeba.
+  Southwest : swamp (35,33) in Geeba.
+  Northwest : swamp (35,31) in Geeba.
+
+
+
+forest (38,32) in Sacelil, 1507 peasants (wood elves), $693.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $311).
+   Wanted: none.
+   For Sale: 60 wood elves [WELF] at $39, 12 leaders [LEAD] at $688.
+   Entertainment available: $37.
+   Products: 24 livestock [LIVE], 28 wood [WOOD], 11 furs [FUR].
+
+Exits:
+  North : plain (38,30) in Fowlfield.
+  Northeast : forest (39,31) in Sacelil.
+  Southeast : forest (39,33) in Sacelil.
+  South : forest (38,34) in Sacelil.
+  Southwest : plain (37,33) in Fowlfield.
+  Northwest : plain (37,31) in Fowlfield.
+
+- Guards (11303), Silver Wardens (207), wood elf [WELF].
+
+
+desert (42,32) in O'u, 1002 peasants (gnolls), $300.
+-------------------------------------------------------;16-6
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $160).
+   Wanted: none.
+   For Sale: 40 gnolls [GNOL] at $36, 8 leaders [LEAD] at $644.
+   Entertainment available: $16.
+   Products: 13 grain [GRAI], 15 iron [IRON], 19 stone [STON], 15
+    camels [CAME].
+
+Exits:
+  North : desert (42,30) in Eacih.
+  Northeast : lake (43,31) in Eacih.
+  Southeast : mountain (43,33) in Eirjoun.
+  South : desert (42,34) in O'u.
+  Southwest : desert (41,33) in O'u.
+  Northwest : desert (41,31) in O'u.
+
+
++ Magician's Tower [1] : Magician's Tower, closed to player units.
+
+
+mountain (44,32) in Eirjoun, 1236 peasants (hill dwarves), $321.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $151).
+   Wanted: none.
+   For Sale: 49 hill dwarves [HDWA] at $36, 9 leaders [LEAD] at $632.
+   Entertainment available: $19.
+   Products: 35 grain [GRAI], 30 iron [IRON], 18 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : desert (44,30) in Eacih.
+  Northeast : mountain (45,31) in Eirjoun.
+  Southeast : mountain (45,33) in Eirjoun.
+  South : ocean (44,34) in Atlantis Ocean.
+  Southwest : mountain (43,33) in Eirjoun.
+  Northwest : lake (43,31) in Eacih.
+
+- scout (8333), Old Pathfinders (137), avoiding, behind, human
+  [HUMN].
+- Unit (8797), Silver Wardens (207), avoiding, behind, human [HUMN],
+  camel [CAME].
+
+
+desert (46,32) in Vaha, 1069 peasants (humans), $427.
+------------------------------------------------------;16-10
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $209).
+   Wanted: none.
+   For Sale: 42 humans [HUMN] at $38, 8 leaders [LEAD] at $672.
+   Entertainment available: $21.
+   Products: 12 livestock [LIVE], 11 iron [IRON], 19 stone [STON].
+
+Exits:
+  North : desert (46,30) in Vaha.
+  Northeast : desert (47,31) in Vaha.
+  Southeast : desert (47,33) in Vaha.
+  South : ocean (46,34) in Atlantis Ocean.
+  Southwest : mountain (45,33) in Eirjoun.
+  Northwest : mountain (45,31) in Eirjoun.
+
+
+
+forest (50,32) in Filkshaw, 1877 peasants (wood elves), $1351.
+------------------------------------------------------;16-14
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $567).
+   Wanted: none.
+   For Sale: 75 wood elves [WELF] at $43, 15 leaders [LEAD] at $761.
+   Entertainment available: $69.
+   Products: 26 grain [GRAI], 36 wood [WOOD], 19 furs [FUR].
+
+Exits:
+  North : jungle (50,30) in Jethkyng, contains Betgrenland [town].
+  Northeast : plain (51,31) in Nishawant.
+  Southeast : forest (51,33) in Filkshaw.
+  South : ocean (50,34) in Atlantis Ocean.
+  Southwest : ocean (49,33) in Atlantis Ocean.
+  Northwest : plain (49,31) in Gamellgate.
+
+
+
+plain (52,32) in Nishawant, 2278 peasants (high elves), $1503.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $613).
+   Wanted: none.
+   For Sale: 91 high elves [HELF] at $42, 18 leaders [LEAD] at $744.
+   Entertainment available: $85.
+   Products: 78 grain [GRAI], 29 horses [HORS].
+
+Exits:
+  North : plain (52,30) in Nishawant.
+  Northeast : plain (53,31) in Padi.
+  Southeast : ocean (53,33) in Atlantis Ocean.
+  South : ocean (52,34) in Atlantis Ocean.
+  Southwest : forest (51,33) in Filkshaw.
+  Northwest : plain (51,31) in Nishawant.
+
+- Unit (8740), on guard, Our Sea (149), behind, high elf [HELF].
+
+
+plain (54,32) in Padi, 2485 peasants (high elves), $1789.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $722).
+   Wanted: none.
+   For Sale: 99 high elves [HELF] at $43, 19 leaders [LEAD] at $761.
+   Entertainment available: $104.
+   Products: 61 grain [GRAI], 34 horses [HORS].
+
+Exits:
+  North : plain (54,30) in Padi.
+  Northeast : forest (55,31) in Esmmin.
+  Southeast : ocean (55,33) in Atlantis Ocean.
+  South : plain (54,34) in Padi.
+  Southwest : ocean (53,33) in Atlantis Ocean.
+  Northwest : plain (53,31) in Padi.
+
+- Scout (7158), Elder Fiends (203), avoiding, behind, orc [ORC].
+- Unit (6572), Silver Wardens (207), avoiding, behind, human [HUMN],
+  horse [HORS].
+
+
+swamp (35,33) in Geeba, 1162 peasants (gnolls), $627.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $300).
+   Wanted: none.
+   For Sale: 46 gnolls [GNOL] at $40, 9 leaders [LEAD] at $711.
+   Entertainment available: $29.
+   Products: 14 livestock [LIVE], 18 wood [WOOD], 12 herbs [HERB].
+
+Exits:
+  North : swamp (35,31) in Geeba.
+  Northeast : swamp (36,32) in Geeba.
+  Southeast : swamp (36,34) in Geeba.
+  South : desert (35,35) in Besburn.
+  Southwest : jungle (34,34) in Lyce.
+  Northwest : swamp (34,32) in Geeba.
+
+- Scout (10260), Silver Wardens (207), avoiding, centaur [CTAU].
+
++ Lair [1] : Lair, closed to player units.
+  - Swamp Creatures (5914), bog thing [BOGT].
+
+
+plain (37,33) in Fowlfield, 1864 peasants (humans), $1006.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $423).
+   Wanted: none.
+   For Sale: 74 humans [HUMN] at $40, 14 leaders [LEAD] at $711.
+   Entertainment available: $55.
+   Products: 63 grain [GRAI], 24 horses [HORS].
+
+Exits:
+  North : plain (37,31) in Fowlfield.
+  Northeast : forest (38,32) in Sacelil.
+  Southeast : forest (38,34) in Sacelil.
+  South : swamp (37,35) in Cena.
+  Southwest : swamp (36,34) in Geeba.
+  Northwest : swamp (36,32) in Geeba.
+
+- Guards (11304), Silver Wardens (207), human [HUMN].
+- Explorer (9566), The Ashen Order (92), avoiding, behind, human
+  [HUMN], horse [HORS].
+
+
+forest (39,33) in Sacelil, 1769 peasants (wood elves), $1132.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $484).
+   Wanted: none.
+   For Sale: 70 wood elves [WELF] at $42, 14 leaders [LEAD] at $739.
+   Entertainment available: $58.
+   Products: 23 grain [GRAI], 27 wood [WOOD], 15 furs [FUR].
+
+Exits:
+  North : forest (39,31) in Sacelil.
+  Northeast : swamp (40,32) in Melfli'ei.
+  Southeast : swamp (40,34) in Cena.
+  South : swamp (39,35) in Cena.
+  Southwest : forest (38,34) in Sacelil.
+  Northwest : forest (38,32) in Sacelil.
+
+- Guards (8792), on guard, Silver Wardens (207), 2 wood elves [WELF].
+- Unit (11305), Silver Wardens (207), 2 wood elves [WELF].
+
+
+desert (41,33) in O'u, 1460 peasants (gnolls), $408.
+-------------------------------------------------------;16-6
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $185).
+   Wanted: none.
+   For Sale: 58 gnolls [GNOL] at $36, 11 leaders [LEAD] at $638.
+   Entertainment available: $25.
+   Products: 14 livestock [LIVE], 10 iron [IRON], 15 stone [STON].
+
+Exits:
+  North : desert (41,31) in O'u.
+  Northeast : desert (42,32) in O'u.
+  Southeast : desert (42,34) in O'u.
+  South : desert (41,35) in O'u, contains Egost [village].
+  Southwest : swamp (40,34) in Cena.
+  Northwest : swamp (40,32) in Melfli'ei.
+
+
+
+mountain (43,33) in Eirjoun, 1124 peasants (orcs), $292.
+------------------------------------------------------;16-15
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $141).
+   Wanted: none.
+   For Sale: 44 orcs [ORC] at $36, 8 leaders [LEAD] at $632.
+   Entertainment available: $17.
+   Products: 24 grain [GRAI], 22 iron [IRON], 19 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : lake (43,31) in Eacih.
+  Northeast : mountain (44,32) in Eirjoun.
+  Southeast : ocean (44,34) in Atlantis Ocean.
+  South : desert (43,35) in O'u.
+  Southwest : desert (42,34) in O'u.
+  Northwest : desert (42,32) in O'u.
+
+
+
+mountain (45,33) in Eirjoun, 934 peasants (humans), $373.
+------------------------------------------------------;16-10
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $204).
+   Wanted: none.
+   For Sale: 37 humans [HUMN] at $38, 7 leaders [LEAD] at $672.
+   Entertainment available: $18.
+   Products: 25 grain [GRAI], 25 iron [IRON], 11 stone [STON].
+
+Exits:
+  North : mountain (45,31) in Eirjoun.
+  Northeast : desert (46,32) in Vaha.
+  Southeast : ocean (46,34) in Atlantis Ocean.
+  South : ocean (45,35) in Atlantis Ocean.
+  Southwest : ocean (44,34) in Atlantis Ocean.
+  Northwest : mountain (44,32) in Eirjoun.
+
+
+
+desert (47,33) in Vaha, 1243 peasants (humans), $596.
+------------------------------------------------------;16-11
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $280).
+   Wanted: none.
+   For Sale: 49 humans [HUMN] at $39, 9 leaders [LEAD] at $694.
+   Entertainment available: $29.
+   Products: 16 livestock [LIVE], 13 iron [IRON], 15 stone [STON], 16
+    camels [CAME].
+
+Exits:
+  North : desert (47,31) in Vaha.
+  Northeast : ocean (48,32) in Atlantis Ocean.
+  Southeast : ocean (48,34) in Atlantis Ocean.
+  South : ocean (47,35) in Atlantis Ocean.
+  Southwest : ocean (46,34) in Atlantis Ocean.
+  Northwest : desert (46,32) in Vaha.
+
+
++ Ruin [1] : Ruin, closed to player units.
+
+
+forest (51,33) in Filkshaw, 1559 peasants (wood elves), $717.
+------------------------------------------------------;16-15
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $313).
+   Wanted: none.
+   For Sale: 62 wood elves [WELF] at $39, 12 leaders [LEAD] at $688.
+   Entertainment available: $38.
+   Products: 34 grain [GRAI], 35 wood [WOOD], 15 furs [FUR].
+
+Exits:
+  North : plain (51,31) in Nishawant.
+  Northeast : plain (52,32) in Nishawant.
+  Southeast : ocean (52,34) in Atlantis Ocean.
+  South : ocean (51,35) in Atlantis Ocean.
+  Southwest : ocean (50,34) in Atlantis Ocean.
+  Northwest : forest (50,32) in Filkshaw.
+
+
+
+forest (38,34) in Sacelil, 1893 peasants (wood elves), $1022.
+------------------------------------------------------;16-14
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $428).
+   Wanted: none.
+   For Sale: 75 wood elves [WELF] at $40, 15 leaders [LEAD] at $711.
+   Entertainment available: $56.
+   Products: 25 livestock [LIVE], 27 wood [WOOD], 15 furs [FUR].
+
+Exits:
+  North : forest (38,32) in Sacelil.
+  Northeast : forest (39,33) in Sacelil.
+  Southeast : swamp (39,35) in Cena.
+  South : swamp (38,36) in Cena.
+  Southwest : swamp (37,35) in Cena.
+  Northwest : plain (37,33) in Fowlfield.
+
+
+
+swamp (40,34) in Cena, 1312 peasants (lizardmen), $734.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $341).
+   Wanted: none.
+   For Sale: 52 lizardmen [LIZA] at $40, 10 leaders [LEAD] at $716.
+   Entertainment available: $35.
+   Products: 12 livestock [LIVE], 16 wood [WOOD], 15 herbs [HERB].
+
+Exits:
+  North : swamp (40,32) in Melfli'ei.
+  Northeast : desert (41,33) in O'u.
+  Southeast : desert (41,35) in O'u, contains Egost [village].
+  South : plain (40,36) in La'eldstan.
+  Southwest : swamp (39,35) in Cena.
+  Northwest : forest (39,33) in Sacelil.
+
+
++ Shaft [1] : Shaft, contains an inner location.
+  - Scout (9878), on guard, Silver Wardens (207), gnome [GNOM].
+
+
+desert (42,34) in O'u, 1031 peasants (goblins), $597.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $315).
+   Wanted: none.
+   For Sale: 41 goblins [GBLN] at $30, 8 leaders [LEAD] at $722.
+   Entertainment available: $26.
+   Products: 11 grain [GRAI], 12 iron [IRON], 11 stone [STON], 15
+    camels [CAME].
+
+Exits:
+  North : desert (42,32) in O'u.
+  Northeast : mountain (43,33) in Eirjoun.
+  Southeast : desert (43,35) in O'u.
+  South : desert (42,36) in O'u.
+  Southwest : desert (41,35) in O'u, contains Egost [village].
+  Northwest : desert (41,33) in O'u.
+
+- Scout (10806), Silver Wardens (207), avoiding, behind, gnome [GNOM].
+
+
+swamp (37,35) in Cena, 1245 peasants (orcs), $448.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $210).
+   Wanted: none.
+   For Sale: 49 orcs [ORC] at $37, 9 leaders [LEAD] at $660.
+   Entertainment available: $24.
+   Products: 14 livestock [LIVE], 10 wood [WOOD], 16 herbs [HERB].
+
+Exits:
+  North : plain (37,33) in Fowlfield.
+  Northeast : forest (38,34) in Sacelil.
+  Southeast : swamp (38,36) in Cena.
+  South : desert (37,37) in Besburn.
+  Southwest : swamp (36,36) in Cena.
+  Northwest : swamp (36,34) in Geeba.
+
+- Unit (6573), Silver Wardens (207), avoiding, behind, human [HUMN],
+  horse [HORS].
+
+
+swamp (39,35) in Cena, 1376 peasants (gnolls), $550.
+------------------------------------------------------;16-14
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $252).
+   Wanted: none.
+   For Sale: 55 gnolls [GNOL] at $38, 11 leaders [LEAD] at $672.
+   Entertainment available: $29.
+   Products: 11 livestock [LIVE], 14 wood [WOOD], 10 herbs [HERB].
+
+Exits:
+  North : forest (39,33) in Sacelil.
+  Northeast : swamp (40,34) in Cena.
+  Southeast : plain (40,36) in La'eldstan.
+  South : plain (39,37) in La'eldstan.
+  Southwest : swamp (38,36) in Cena.
+  Northwest : forest (38,34) in Sacelil.
+
+
+
+desert (41,35) in O'u, contains Egost [village], 3400 peasants
+  (humans), $1156.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $231).
+   Wanted: 182 grain [GRAI] at $24, 176 livestock [LIVE] at $27, 151
+    fish [FISH] at $47.
+   For Sale: 136 humans [HUMN] at $37, 27 leaders [LEAD] at $655.
+   Entertainment available: $91.
+   Products: 10 livestock [LIVE], 15 iron [IRON], 15 stone [STON], 19
+    camels [CAME].
+
+Exits:
+  North : desert (41,33) in O'u.
+  Northeast : desert (42,34) in O'u.
+  Southeast : desert (42,36) in O'u.
+  South : jungle (41,37) in Sithil.
+  Southwest : plain (40,36) in La'eldstan.
+  Northwest : swamp (40,34) in Cena.
+
+- City Guard (5032), on guard, The Guardsmen (1), 40 leaders [LEAD], 40
+  swords [SWOR].
+- Scout (6769), Quietists (99), avoiding, behind, orc [ORC], camel
+  [CAME].
+- Ambasador (9683), Deepdelve Mining (155), gnoll [GNOL], horse
+  [HORS].
+- Unit (10257), Silver Wardens (207), avoiding, behind, 10 humans [HUMN],
+  8 livestock [LIVE].
+- Unit (10258), Silver Wardens (207), avoiding, behind, 5 humans [HUMN],
+  10 camels [CAME].
+- Unit (10259), Silver Wardens (207), avoiding, behind, human [HUMN].
+- Unit (9159), Old Pathfinders (137), avoiding, behind, hill dwarf
+  [HDWA].
+- Egost Guards (6536), Nightshade (61), gnoll [GNOL].
+- Unit (7473), Nightshade (61), 2 humans [HUMN].
+- Unit (7478), Nightshade (61), human [HUMN].
+- Unit (11306), Silver Wardens (207), avoiding, behind, 5 humans [HUMN].
+- Unit (11307), Silver Wardens (207), avoiding, behind, 8 humans [HUMN].
+
+
+desert (43,35) in O'u, 1325 peasants (gnolls), $450.
+------------------------------------------------------;16-15
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $208).
+   Wanted: none.
+   For Sale: 53 gnolls [GNOL] at $37, 10 leaders [LEAD] at $655.
+   Entertainment available: $25.
+   Products: 13 grain [GRAI], 17 iron [IRON], 12 stone [STON], 18
+    camels [CAME].
+
+Exits:
+  North : mountain (43,33) in Eirjoun.
+  Northeast : ocean (44,34) in Atlantis Ocean.
+  Southeast : ocean (44,36) in Atlantis Ocean.
+  South : mountain (43,37) in Wopiepa.
+  Southwest : desert (42,36) in O'u.
+  Northwest : desert (42,34) in O'u.
+
+
+
+plain (40,36) in La'eldstan, 2089 peasants (centaurs), $835.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $344).
+   Wanted: none.
+   For Sale: 83 centaurs [CTAU] at $67, 16 leaders [LEAD] at $672.
+   Entertainment available: $52.
+   Products: 42 livestock [LIVE], 24 horses [HORS].
+
+Exits:
+  North : swamp (40,34) in Cena.
+  Northeast : desert (41,35) in O'u, contains Egost [village].
+  Southeast : jungle (41,37) in Sithil.
+  South : plain (40,38) in La'eldstan.
+  Southwest : plain (39,37) in La'eldstan.
+  Northwest : swamp (39,35) in Cena.
+
+- Plains Cohort (8428), on guard, Nightshade (61), 3 centaurs [CTAU].
+
++ Shaft [1] : Shaft, contains an inner location.
+  - Guards (7815), on guard, Silver Wardens (207), human [HUMN].
+
+
+desert (42,36) in O'u, 1251 peasants (humans), $425.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $199).
+   Wanted: none.
+   For Sale: 50 humans [HUMN] at $37, 10 leaders [LEAD] at $655.
+   Entertainment available: $23.
+   Products: 10 livestock [LIVE], 18 iron [IRON], 11 stone [STON], 18
+    camels [CAME].
+
+Exits:
+  North : desert (42,34) in O'u.
+  Northeast : desert (43,35) in O'u.
+  Southeast : mountain (43,37) in Wopiepa.
+  South : jungle (42,38) in Sithil.
+  Southwest : jungle (41,37) in Sithil.
+  Northwest : desert (41,35) in O'u, contains Egost [village].
+
+- Unit (8494), Silver Wardens (207), avoiding, behind, 5 humans [HUMN],
+  5 camels [CAME].
+- Unit (8495), Silver Wardens (207), avoiding, behind, 5 humans [HUMN],
+  5 livestock [LIVE].
+- Unit (9468), Silver Wardens (207), avoiding, behind, 5 humans [HUMN],
+  5 camels [CAME].
+- Guards (9469), on guard, Silver Wardens (207), 8 humans [HUMN].
+- Unit (11309), Silver Wardens (207), avoiding, behind, 5 humans [HUMN].
+- Unit (7440), Nightshade (61), 5 lizardmen [LIZA].
+
+
+plain (39,37) in La'eldstan, 2544 peasants (centaurs), $1882.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $759).
+   Wanted: none.
+   For Sale: 101 centaurs [CTAU] at $76, 20 leaders [LEAD] at $767.
+   Entertainment available: $109.
+   Products: 65 grain [GRAI], 34 horses [HORS].
+
+Exits:
+  North : swamp (39,35) in Cena.
+  Northeast : plain (40,36) in La'eldstan.
+  Southeast : plain (40,38) in La'eldstan.
+  South : plain (39,39) in La'eldstan, contains Eslebro [city].
+  Southwest : swamp (38,38) in Cena.
+  Northwest : swamp (38,36) in Cena.
+
+- Unit (7395), on guard, Deepdelve Mining (155), 37 gnolls [GNOL],
+  32 horses [HORS].
+
+
+jungle (41,37) in Sithil, 1378 peasants (wood elves), $496.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $227).
+   Wanted: none.
+   For Sale: 55 wood elves [WELF] at $37, 11 leaders [LEAD] at $660.
+   Entertainment available: $27.
+   Products: 36 grain [GRAI], 12 wood [WOOD], 20 herbs [HERB], 14 furs
+    [FUR].
+
+Exits:
+  North : desert (41,35) in O'u, contains Egost [village].
+  Northeast : desert (42,36) in O'u.
+  Southeast : jungle (42,38) in Sithil.
+  South : swamp (41,39) in Dovese.
+  Southwest : plain (40,38) in La'eldstan.
+  Northwest : plain (40,36) in La'eldstan.
+
+- Scout (7389), Deepdelve Mining (155), behind, gnoll [GNOL].
+- Jungle Guards (7118), on guard, Nightshade (61), 6 wood elves [WELF].
+- Unit (7609), Nightshade (61), 5 wood elves [WELF].
+- Guards (11310), Silver Wardens (207), gnome [GNOM].
+
+
+mountain (43,37) in Wopiepa, 1278 peasants (humans), $434.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $203).
+   Wanted: none.
+   For Sale: 51 humans [HUMN] at $37, 10 leaders [LEAD] at $655.
+   Entertainment available: $24.
+   Products: 33 grain [GRAI], 31 iron [IRON], 13 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : desert (43,35) in O'u.
+  Northeast : ocean (44,36) in Atlantis Ocean.
+  Southeast : jungle (44,38) in Tolsu.
+  South : mountain (43,39) in Wopiepa.
+  Southwest : jungle (42,38) in Sithil.
+  Northwest : desert (42,36) in O'u.
+
+- Guards (7492), on guard, Silver Wardens (207), human [HUMN].
+- Family of Ogres (5252), 2 ogres [OGRE].
+
++ Lair [1] : Lair, closed to player units.
+
+
+swamp (38,38) in Cena, 1191 peasants (gnolls), $428.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $204).
+   Wanted: none.
+   For Sale: 47 gnolls [GNOL] at $37, 9 leaders [LEAD] at $660.
+   Entertainment available: $22.
+   Products: 16 livestock [LIVE], 17 wood [WOOD], 18 herbs [HERB].
+
+Exits:
+  North : swamp (38,36) in Cena.
+  Northeast : plain (39,37) in La'eldstan.
+  Southeast : plain (39,39) in La'eldstan, contains Eslebro [city].
+  South : ocean (38,40) in Atlantis Ocean.
+  Southwest : ocean (37,39) in Atlantis Ocean.
+  Northwest : desert (37,37) in Besburn.
+
+- Scout (11308), Silver Wardens (207), avoiding, behind, centaur [CTAU].
+
++ Lair [1] : Lair, closed to player units.
+  - Swamp Creatures (5593), bog thing [BOGT].
+
+
+plain (40,38) in La'eldstan, 2232 peasants (gnolls), $937.
+-------------------------------------------------------;16-0
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $383).
+   Wanted: none.
+   For Sale: 89 gnolls [GNOL] at $38, 17 leaders [LEAD] at $677.
+   Entertainment available: $60.
+   Products: 72 grain [GRAI], 25 horses [HORS].
+
+Exits:
+  North : plain (40,36) in La'eldstan.
+  Northeast : jungle (41,37) in Sithil.
+  Southeast : swamp (41,39) in Dovese.
+  South : plain (40,40) in La'eldstan.
+  Southwest : plain (39,39) in La'eldstan, contains Eslebro [city].
+  Northwest : plain (39,37) in La'eldstan.
+
+
+
+jungle (42,38) in Sithil, 1307 peasants (gnomes), $392.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $182).
+   Wanted: none.
+   For Sale: 52 gnomes [GNOM] at $27, 10 leaders [LEAD] at $644.
+   Entertainment available: $23.
+   Products: 32 grain [GRAI], 17 wood [WOOD], 29 herbs [HERB], 11 furs
+    [FUR].
+
+Exits:
+  North : desert (42,36) in O'u.
+  Northeast : mountain (43,37) in Wopiepa.
+  Southeast : mountain (43,39) in Wopiepa.
+  South : jungle (42,40) in Sithil.
+  Southwest : swamp (41,39) in Dovese.
+  Northwest : jungle (41,37) in Sithil.
+
+- Guards (8793), on guard, Silver Wardens (207), gnome [GNOM].
+- Liza Scout (6707), Nightshade (61), lizardman [LIZA].
+- Unit (7120), on guard, Nightshade (61), gnome [GNOM].
+- Unit (7726), Nightshade (61), 2 gnomes [GNOM].
+- Scout (8111), Silver Wardens (207), avoiding, behind, human [HUMN], 20
+  camels [CAME].
+- Unit (8645), Nightshade (61), 3 lizardmen [LIZA], 2 spears [SPEA].
+- Unit (7816), Silver Wardens (207), avoiding, behind, orc [ORC], horse
+  [HORS].
+
+
+jungle (44,38) in Tolsu, 1135 peasants (orcs), $340.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $164).
+   Wanted: none.
+   For Sale: 45 orcs [ORC] at $36, 9 leaders [LEAD] at $644.
+   Entertainment available: $19.
+   Products: 28 livestock [LIVE], 14 wood [WOOD], 30 herbs [HERB], 17
+    furs [FUR].
+
+Exits:
+  North : ocean (44,36) in Atlantis Ocean.
+  Northeast : ocean (45,37) in Atlantis Ocean.
+  Southeast : ocean (45,39) in Atlantis Ocean.
+  South : mountain (44,40) in Wopiepa.
+  Southwest : mountain (43,39) in Wopiepa.
+  Northwest : mountain (43,37) in Wopiepa.
+
+- Scout (7162), Silver Wardens (207), avoiding, behind, orc [ORC].
+
+
+plain (39,39) in La'eldstan, contains Eslebro [city], 10257 peasants
+  (gnolls), $10872.
+-------------------------------------------------------;16-7
+  The weather was clear last month; it will be clear next month.
+   Wages: $15 (Max: $2174).
+   Wanted: 104 grain [GRAI] at $26, 114 livestock [LIVE] at $20, 142
+    fish [FISH] at $46, 17 pikes [PIKE] at $189, 23 swords [SWOR] at
+    $119, 24 picks [PICK] at $92, 22 spinning wheels [SPIN] at $116,
+    47 silk [SILK] at $247, 21 cotton [COTT] at $275.
+   For Sale: 55 ivory [IVOR] at $97, 34 gems [GEM] at $136, 410 gnolls
+    [GNOL] at $48, 82 leaders [LEAD] at $856.
+   Entertainment available: $646.
+   Products: 72 livestock [LIVE], 38 horses [HORS].
+
+Exits:
+  North : plain (39,37) in La'eldstan.
+  Northeast : plain (40,38) in La'eldstan.
+  Southeast : plain (40,40) in La'eldstan.
+  South : plain (39,41) in La'eldstan.
+  Southwest : ocean (38,40) in Atlantis Ocean.
+  Northwest : swamp (38,38) in Cena.
+
+
+
+swamp (41,39) in Dovese, 1436 peasants (gnolls), $631.
+-------------------------------------------------------;16-0
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $287).
+   Wanted: none.
+   For Sale: 57 gnolls [GNOL] at $39, 11 leaders [LEAD] at $683.
+   Entertainment available: $33.
+   Products: 19 livestock [LIVE], 14 wood [WOOD], 16 herbs [HERB].
+
+Exits:
+  North : jungle (41,37) in Sithil.
+  Northeast : jungle (42,38) in Sithil.
+  Southeast : jungle (42,40) in Sithil.
+  South : jungle (41,41) in Sithil, contains Penstedbi [town].
+  Southwest : plain (40,40) in La'eldstan.
+  Northwest : plain (40,38) in La'eldstan.
+
+
++ Ruin [1] : Ruin, closed to player units.
+
+
+mountain (43,39) in Wopiepa, 1240 peasants (humans), $644.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $303).
+   Wanted: none.
+   For Sale: 49 humans [HUMN] at $40, 9 leaders [LEAD] at $705.
+   Entertainment available: $31.
+   Products: 29 grain [GRAI], 36 iron [IRON], 17 stone [STON].
+
+Exits:
+  North : mountain (43,37) in Wopiepa.
+  Northeast : jungle (44,38) in Tolsu.
+  Southeast : mountain (44,40) in Wopiepa.
+  South : jungle (43,41) in Sithil.
+  Southwest : jungle (42,40) in Sithil.
+  Northwest : jungle (42,38) in Sithil.
+
+
++ Crypt [1] : Crypt, closed to player units.
+
+
+plain (40,40) in La'eldstan, 2410 peasants (high elves), $1783.
+-------------------------------------------------------;16-0
+  The weather was clear last month; it will be clear next month.
+   Wages: $13 (Max: $722).
+   Wanted: none.
+   For Sale: 96 high elves [HELF] at $43, 19 leaders [LEAD] at $767.
+   Entertainment available: $101.
+   Products: 75 livestock [LIVE], 38 horses [HORS].
+
+Exits:
+  North : plain (40,38) in La'eldstan.
+  Northeast : swamp (41,39) in Dovese.
+  Southeast : jungle (41,41) in Sithil, contains Penstedbi [town].
+  South : jungle (40,42) in Sithil.
+  Southwest : plain (39,41) in La'eldstan.
+  Northwest : plain (39,39) in La'eldstan, contains Eslebro [city].
+
+
+
+jungle (42,40) in Sithil, 1466 peasants (lizardmen), $381.
+-------------------------------------------------------;16-0
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $172).
+   Wanted: none.
+   For Sale: 58 lizardmen [LIZA] at $36, 11 leaders [LEAD] at $632.
+   Entertainment available: $24.
+   Products: 29 grain [GRAI], 13 wood [WOOD], 23 herbs [HERB], 15 furs
+    [FUR].
+
+Exits:
+  North : jungle (42,38) in Sithil.
+  Northeast : mountain (43,39) in Wopiepa.
+  Southeast : jungle (43,41) in Sithil.
+  South : mountain (42,42) in Bome.
+  Southwest : jungle (41,41) in Sithil, contains Penstedbi [town].
+  Northwest : swamp (41,39) in Dovese.
+
+
+
+mountain (44,40) in Wopiepa, 1563 peasants (orcs), $781.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $341).
+   Wanted: none.
+   For Sale: 62 orcs [ORC] at $40, 12 leaders [LEAD] at $700.
+   Entertainment available: $41.
+   Products: 21 grain [GRAI], 29 iron [IRON], 16 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : jungle (44,38) in Tolsu.
+  Northeast : ocean (45,39) in Atlantis Ocean.
+  Southeast : mountain (45,41) in Wopiepa.
+  South : mountain (44,42) in Wopiepa.
+  Southwest : jungle (43,41) in Sithil.
+  Northwest : mountain (43,39) in Wopiepa.
+
+- Guards (7161), on guard, Silver Wardens (207), 15 orcs [ORC].
+- Unit (8112), Silver Wardens (207), avoiding, behind, 5 orcs [ORC],
+  grain [GRAI].
+- Unit (8113), Silver Wardens (207), avoiding, behind, orc [ORC].
+- Unit (8496), Silver Wardens (207), avoiding, behind, 5 orcs [ORC], 4
+  grain [GRAI].
+
+
+mountain (46,40) in Wopiepa, 1181 peasants (humans), $377.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $180).
+   Wanted: none.
+   For Sale: 47 humans [HUMN] at $37, 9 leaders [LEAD] at $649.
+   Entertainment available: $21.
+   Products: 24 livestock [LIVE], 33 iron [IRON], 14 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : ocean (46,38) in Atlantis Ocean.
+  Northeast : ocean (47,39) in Atlantis Ocean.
+  Southeast : ocean (47,41) in Atlantis Ocean.
+  South : mountain (46,42) in Wopiepa, contains Trelldon [city].
+  Southwest : mountain (45,41) in Wopiepa.
+  Northwest : ocean (45,39) in Atlantis Ocean.
+
+- Scout (6565), Silver Wardens (207), avoiding, behind, human [HUMN].
+- Drone (9338), Hive Collective (244), avoiding, behind, human [HUMN].
+- Scout 134B (10361), Sand Iron Legion (271), avoiding, behind, hill
+  dwarf [HDWA].
+
+
+plain (39,41) in La'eldstan, 2188 peasants (high elves), $1181.
+-------------------------------------------------------;16-6
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $485).
+   Wanted: none.
+   For Sale: 87 high elves [HELF] at $40, 17 leaders [LEAD] at $711.
+   Entertainment available: $69.
+   Products: 57 livestock [LIVE], 24 horses [HORS].
+
+Exits:
+  North : plain (39,39) in La'eldstan, contains Eslebro [city].
+  Northeast : plain (40,40) in La'eldstan.
+  Southeast : jungle (40,42) in Sithil.
+  South : ocean (39,43) in Atlantis Ocean.
+  Southwest : ocean (38,42) in Atlantis Ocean.
+  Northwest : ocean (38,40) in Atlantis Ocean.
+
+
+
+jungle (41,41) in Sithil, contains Penstedbi [town], 4016 peasants
+  (orcs), $3534.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $14 (Max: $706).
+   Wanted: 158 grain [GRAI] at $26, 158 livestock [LIVE] at $21, 168
+    fish [FISH] at $53, plate armor [PARM] at $381.
+   For Sale: 160 orcs [ORC] at $46, 32 leaders [LEAD] at $806.
+   Entertainment available: $216.
+   Products: 32 livestock [LIVE], 19 wood [WOOD], 28 herbs [HERB].
+
+Exits:
+  North : swamp (41,39) in Dovese.
+  Northeast : jungle (42,40) in Sithil.
+  Southeast : mountain (42,42) in Bome.
+  South : jungle (41,43) in Sithil.
+  Southwest : jungle (40,42) in Sithil.
+  Northwest : plain (40,40) in La'eldstan.
+
+- Mandragora (5733), Nightshade (61), behind, leader [LEAD], 4 wolves
+  [WOLF].
+- Pen Militia (6651), on guard, Nightshade (61), 6 orcs [ORC], 2 swords
+  [SWOR], horse [HORS].
+- Town Clowns (6652), Nightshade (61), avoiding, behind, 3 orcs [ORC].
+- Pig Farmers (6653), Nightshade (61), avoiding, behind, 3 orcs [ORC].
+- Town Singers (7063), Nightshade (61), avoiding, behind, 2 orcs [ORC].
+- Scout (7817), Silver Wardens (207), avoiding, behind, gnome [GNOM].
+- Transient Workers (7107), on guard, Nightshade (61), 3 gnomes [GNOM].
+- Unit (6639), Nightshade (61), avoiding, 3 high elves [HELF].
+- Unit (6673), Nightshade (61), 2 high elves [HELF], sword [SWOR].
+- Town Jugglers (6583), Nightshade (61), avoiding, behind, 2 orcs
+  [ORC].
+- Pen Militia (6638), on guard, Nightshade (61), 10 orcs [ORC], javelin
+  [JAVE], wooden shield [WSHD].
+- Pen Cohort 1 (7349), on guard, Nightshade (61), 15 orcs [ORC],
+  javelin [JAVE], 2 horses [HORS].
+- Unit (6753), Nightshade (61), avoiding, behind, 2 orcs [ORC], 2 wood
+  [WOOD].
+- Liza Militia (7328), Nightshade (61), 9 lizardmen [LIZA], horse
+  [HORS].
+- Unit (7436), on guard, Nightshade (61), 4 gnomes [GNOM].
+- General Crerar (6654), Nightshade (61), behind, leader [LEAD].
+- Ambassador (9684), Deepdelve Mining (155), gnoll [GNOL], horse
+  [HORS].
+- Unit (6754), Nightshade (61), avoiding, 3 gnomes [GNOM].
+- Unit (7474), on guard, Nightshade (61), behind, 24 orcs [ORC].
+- High Guard (7792), on guard, Nightshade (61), 10 high elves [HELF].
+- Slythers (8001), on guard, Nightshade (61), 3 lizardmen [LIZA].
+- Thyme Co (8223), Nightshade (61), avoiding, 3 gnomes [GNOM].
+- Unit (8234), on guard, Nightshade (61), 2 gnomes [GNOM].
+- Unit (8678), Nightshade (61), 10 orcs [ORC].
+- Unit (8680), on guard, Nightshade (61), 10 orcs [ORC].
+- Unit (8708), Nightshade (61), avoiding, 7 orcs [ORC], 7 wood [WOOD].
+- Unit (8709), Nightshade (61), avoiding, 2 orcs [ORC], 2 axes [AXE], 4
+  wood [WOOD].
+- Unit (7615), on guard, Nightshade (61), 3 gnomes [GNOM].
+- Unit (7727), Nightshade (61), 5 orcs [ORC].
+- Unit (8191), Nightshade (61), leader [LEAD].
+- Unit (8256), Nightshade (61), 13 orcs [ORC].
+- Unit (8265), Nightshade (61), behind, 3 orcs [ORC].
+- Unit (8387), Nightshade (61), behind, 3 orcs [ORC].
+- Unit (8420), Nightshade (61), behind, 3 orcs [ORC].
+- Unit (8441), Nightshade (61), 6 orcs [ORC].
+- Unit (7146), Nightshade (61), 3 high elves [HELF].
+- Unit (7234), Nightshade (61), 3 high elves [HELF].
+- Unit (8775), Nightshade (61), 3 gnomes [GNOM].
+- Unit (8847), Nightshade (61), 3 orcs [ORC].
+
+
+jungle (43,41) in Sithil, 1207 peasants (wood elves), $579.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $274).
+   Wanted: none.
+   For Sale: 48 wood elves [WELF] at $39, 9 leaders [LEAD] at $694.
+   Entertainment available: $28.
+   Products: 36 livestock [LIVE], 11 wood [WOOD], 25 herbs [HERB], 18
+    furs [FUR].
+
+Exits:
+  North : mountain (43,39) in Wopiepa.
+  Northeast : mountain (44,40) in Wopiepa.
+  Southeast : mountain (44,42) in Wopiepa.
+  South : mountain (43,43) in Bome.
+  Southwest : mountain (42,42) in Bome.
+  Northwest : jungle (42,40) in Sithil.
+
+- Guards (7164), on guard, Silver Wardens (207), 3 wood elves [WELF],
+  orc [ORC].
+- Unit (6749), Nightshade (61), lizardman [LIZA].
+- Unit (8711), on guard, Nightshade (61), wood elf [WELF].
+- Unit (8489), Nightshade (61), wood elf [WELF].
+- Unit (11311), Silver Wardens (207), 2 wood elves [WELF].
+
+
+mountain (45,41) in Wopiepa, 1239 peasants (hill dwarves), $272.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $128).
+   Wanted: none.
+   For Sale: 49 hill dwarves [HDWA] at $35, 9 leaders [LEAD] at $621.
+   Entertainment available: $18.
+   Products: 22 livestock [LIVE], 26 iron [IRON], 15 stone [STON], 9
+    mithril [MITH].
+
+Exits:
+  North : ocean (45,39) in Atlantis Ocean.
+  Northeast : mountain (46,40) in Wopiepa.
+  Southeast : mountain (46,42) in Wopiepa, contains Trelldon [city].
+  South : mountain (45,43) in Wopiepa.
+  Southwest : mountain (44,42) in Wopiepa.
+  Northwest : mountain (44,40) in Wopiepa.
+
+- Guards (6566), on guard, Silver Wardens (207), 2 hill dwarves [HDWA],
+  human [HUMN].
+- Unit (8795), Silver Wardens (207), avoiding, behind, 5 hill dwarves
+  [HDWA], 20 livestock [LIVE].
+- Drone (9339), Hive Collective (244), avoiding, behind, human [HUMN].
+- Unit (11312), Silver Wardens (207), hill dwarf [HDWA].
+- Unit (11318), Silver Wardens (207), avoiding, behind, human [HUMN], 2
+  camels [CAME], 30 lassoes [LASS].
+- Unit (8796), Silver Wardens (207), avoiding, behind, 2 hill dwarves
+  [HDWA], 10 picks [PICK].
+
+
+jungle (40,42) in Sithil, 1378 peasants (gnomes), $275.
+-------------------------------------------------------;16-5
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $126).
+   Wanted: none.
+   For Sale: 55 gnomes [GNOM] at $26, 11 leaders [LEAD] at $616.
+   Entertainment available: $19.
+   Products: 26 grain [GRAI], 12 wood [WOOD], 21 herbs [HERB], 12 furs
+    [FUR].
+
+Exits:
+  North : plain (40,40) in La'eldstan.
+  Northeast : jungle (41,41) in Sithil, contains Penstedbi [town].
+  Southeast : jungle (41,43) in Sithil.
+  South : plain (40,44) in Egul.
+  Southwest : ocean (39,43) in Atlantis Ocean.
+  Northwest : plain (39,41) in La'eldstan.
+
+
+
+mountain (42,42) in Bome, 1279 peasants (hill dwarves), $613.
+-------------------------------------------------------;16-0
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $286).
+   Wanted: none.
+   For Sale: 51 hill dwarves [HDWA] at $39, 10 leaders [LEAD] at $694.
+   Entertainment available: $30.
+   Products: 22 grain [GRAI], 37 iron [IRON], 15 stone [STON].
+
+Exits:
+  North : jungle (42,40) in Sithil.
+  Northeast : jungle (43,41) in Sithil.
+  Southeast : mountain (43,43) in Bome.
+  South : mountain (42,44) in Bome.
+  Southwest : jungle (41,43) in Sithil.
+  Northwest : jungle (41,41) in Sithil, contains Penstedbi [town].
+
+
++ Lair [1] : Lair, closed to player units.
+
+
+mountain (44,42) in Wopiepa, 914 peasants (humans), $292.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $161).
+   Wanted: none.
+   For Sale: 36 humans [HUMN] at $37, 7 leaders [LEAD] at $649.
+   Entertainment available: $15.
+   Products: 37 livestock [LIVE], 39 iron [IRON], 10 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : mountain (44,40) in Wopiepa.
+  Northeast : mountain (45,41) in Wopiepa.
+  Southeast : mountain (45,43) in Wopiepa.
+  South : mountain (44,44) in Bome.
+  Southwest : mountain (43,43) in Bome.
+  Northwest : jungle (43,41) in Sithil.
+
+- Guards (6567), on guard, Silver Wardens (207), 3 humans [HUMN].
+- Drone (9501), Hive Collective (244), behind, hill dwarf [HDWA].
+- Unit (11313), Silver Wardens (207), 2 humans [HUMN].
+- Scout 134A (10360), Sand Iron Legion (271), avoiding, behind, hill
+  dwarf [HDWA].
+
+
+mountain (46,42) in Wopiepa, contains Trelldon [city], 9603 peasants
+  (humans), $12291.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $16 (Max: $2458).
+   Wanted: 134 grain [GRAI] at $20, 100 livestock [LIVE] at $23, 168
+    fish [FISH] at $54, 36 pikes [PIKE] at $163, 38 lassoes [LASS] at
+    $104, 21 longbows [LBOW] at $114, 22 spinning wheels [SPIN] at
+    $119, 69 chocolate [CHOC] at $364, 48 cotton [COTT] at $254.
+   For Sale: 38 jewelry [JEWE] at $294, 45 perfume [PERF] at $179, 384
+    humans [HUMN] at $52, 76 leaders [LEAD] at $918.
+   Entertainment available: $710.
+   Products: 36 livestock [LIVE], 39 iron [IRON], 15 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : mountain (46,40) in Wopiepa.
+  Northeast : ocean (47,41) in Atlantis Ocean.
+  Southeast : ocean (47,43) in Atlantis Ocean.
+  South : swamp (46,44) in Bremaishgioy.
+  Southwest : mountain (45,43) in Wopiepa.
+  Northwest : mountain (45,41) in Wopiepa.
+
+- Unit (6555), Silver Wardens (207), avoiding, behind, 15 humans [HUMN],
+  13 axes [AXE].
+- Unit (6558), Silver Wardens (207), avoiding, behind, human [HUMN],
+  pick [PICK], 3 stone [STON].
+- Unit (6569), Silver Wardens (207), avoiding, behind, 10 humans [HUMN],
+  10 picks [PICK], 30 iron [IRON].
+- Unit (7165), Silver Wardens (207), avoiding, behind, 10 humans [HUMN],
+  10 lassoes [LASS].
+- Unit (7166), Silver Wardens (207), avoiding, behind, 10 humans [HUMN],
+  26 swords [SWOR], 20 picks [PICK], 10 hammers [HAMM].
+- Vought Network (7690), The Lads (183), avoiding, behind, human
+  [HUMN].
+- Three of Six (8521), Hive Collective (244), behind, leader [LEAD], sword
+  [SWOR].
+- Nine of One (8522), Hive Collective (244), behind, leader [LEAD].
+- Four of Two (8523), Hive Collective (244), behind, leader [LEAD].
+- Eight of Nine (8524), Hive Collective (244), behind, leader [LEAD].
+- One of Five (8525), Hive Collective (244), behind, leader [LEAD].
+- One of Two (8526), Hive Collective (244), avoiding, behind, leader [LEAD].
+- Unit (8115), Silver Wardens (207), avoiding, behind, 2 humans [HUMN],
+  2 picks [PICK], 4 stone [STON].
+- Unit (8118), Silver Wardens (207), avoiding, behind, goblin [GBLN],
+  pick [PICK], 2 stone [STON].
+- Unit (9019), Silver Wardens (207), avoiding, behind, 5 humans [HUMN],
+  pick [PICK], 8 stone [STON].
+- Militia (9021), on guard, Silver Wardens (207), 21 goblins [GBLN], 115
+  humans [HUMN].
+- Unit (9470), Silver Wardens (207), avoiding, behind, 5 humans [HUMN],
+  5 lassoes [LASS].
+- Unit (9883), Silver Wardens (207), avoiding, behind, leader [LEAD].
+- Unit (9884), Silver Wardens (207), behind, leader [LEAD].
+- Unit (9885), Silver Wardens (207), avoiding, behind, leader [LEAD].
+- Unit (9886), Silver Wardens (207), avoiding, behind, leader [LEAD].
+- Unit (9890), Silver Wardens (207), avoiding, behind, 10 goblins
+  [GBLN].
+- Unit (11314), Silver Wardens (207), 29 humans [HUMN].
+- Unit (11315), Silver Wardens (207), avoiding, behind, 6 humans [HUMN].
+- Unit (11316), Silver Wardens (207), avoiding, behind, 5 humans [HUMN].
+- Unit (11317), Silver Wardens (207), avoiding, behind, 15 humans [HUMN].
+- Unit (8498), Silver Wardens (207), avoiding, behind, 3 humans [HUMN].
+- Unit (10812), Silver Wardens (207), avoiding, behind, human [HUMN],
+  horse [HORS], wagon [WAGO].
+- Unit (10807), Silver Wardens (207), 15 orcs [ORC], 15 camels [CAME].
+
++ Building [1] : Fort.
+  - Orcs Squad (8497), on guard, Silver Wardens (207), 49 orcs [ORC], 49
+    swords [SWOR].
+  - Six of Nine (5803), Hive Collective (244), behind, leader [LEAD], 3 swords
+    [SWOR].
+
++ Building [2] : Caravanserai, needs 2.
+  - Unit (6559), Silver Wardens (207), avoiding, behind, human [HUMN].
+  - Unit (9882), Silver Wardens (207), avoiding, behind, human [HUMN].
+
++ Building [3] : Fort.
+  - Unit (8798), Silver Wardens (207), avoiding, behind, 5 goblins
+    [GBLN].
+  - Unit (9022), Silver Wardens (207), avoiding, behind, 5 goblins
+    [GBLN].
+  - Orcs Squad (9879), Silver Wardens (207), orc [ORC], sword [SWOR].
+  - Unit (9313), Silver Wardens (207), avoiding, behind, 5 humans
+    [HUMN].
+
+
+jungle (41,43) in Sithil, 1540 peasants (orcs), $369.
+------------------------------------------------------;16-12
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $165).
+   Wanted: none.
+   For Sale: 61 orcs [ORC] at $35, 12 leaders [LEAD] at $627.
+   Entertainment available: $25.
+   Products: 33 grain [GRAI], 10 wood [WOOD], 24 herbs [HERB], 15 furs
+    [FUR].
+
+Exits:
+  North : jungle (41,41) in Sithil, contains Penstedbi [town].
+  Northeast : mountain (42,42) in Bome.
+  Southeast : mountain (42,44) in Bome.
+  South : ocean (41,45) in Atlantis Ocean.
+  Southwest : plain (40,44) in Egul.
+  Northwest : jungle (40,42) in Sithil.
+
+
+
+mountain (43,43) in Bome, 1486 peasants (hill dwarves), $386.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $174).
+   Wanted: none.
+   For Sale: 59 hill dwarves [HDWA] at $36, 11 leaders [LEAD] at $632.
+   Entertainment available: $25.
+   Products: 21 grain [GRAI], 33 iron [IRON], 18 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : jungle (43,41) in Sithil.
+  Northeast : mountain (44,42) in Wopiepa.
+  Southeast : mountain (44,44) in Bome.
+  South : mountain (43,45) in Bome.
+  Southwest : mountain (42,44) in Bome.
+  Northwest : mountain (42,42) in Bome.
+
+- Scout (7493), Silver Wardens (207), human [HUMN].
+- Rock Grubbers (7454), Nightshade (61), 3 hill dwarves [HDWA], 3 stone
+  [STON].
+- Scout (8970), The Lads (183), avoiding, behind, hill dwarf [HDWA].
+- Miner Dugan (7930), Nightshade (61), hill dwarf [HDWA], 2 iron
+  [IRON].
+- Unit (8863), Nightshade (61), hill dwarf [HDWA], stone [STON].
+- Drone (10836), Hive Collective (244), behind, human [HUMN].
+
++ Dark Tower [1] : Tower, needs 9.
+  - Mountain Taxers (7156), on guard, Nightshade (61), 8 hill dwarves
+    [HDWA].
+  - Unit (8862), Nightshade (61), 2 hill dwarves [HDWA].
+  - Unit (8894), Nightshade (61), 3 hill dwarves [HDWA].
+  - mountain Guards (7781), Nightshade (61), 4 hill dwarves [HDWA].
+
++ The Eld Market [2] : Caravanserai, needs 14.
+  - Defense Construction Co. (7112), Nightshade (61), avoiding, 2 hill
+    dwarves [HDWA].
+
+
+mountain (45,43) in Wopiepa, 1298 peasants (humans), $571.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $265).
+   Wanted: none.
+   For Sale: 51 humans [HUMN] at $39, 10 leaders [LEAD] at $683.
+   Entertainment available: $29.
+   Products: 26 grain [GRAI], 39 iron [IRON], 17 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : mountain (45,41) in Wopiepa.
+  Northeast : mountain (46,42) in Wopiepa, contains Trelldon [city].
+  Southeast : swamp (46,44) in Bremaishgioy.
+  South : mountain (45,45) in Wopiepa.
+  Southwest : mountain (44,44) in Bome.
+  Northwest : mountain (44,42) in Wopiepa.
+
+- Guards (7167), on guard, Silver Wardens (207), 11 humans [HUMN].
+- Scout (6935), The Lads (183), avoiding, behind, hill dwarf [HDWA].
+- Unit (7819), Silver Wardens (207), avoiding, behind, 5 humans [HUMN],
+  2 grain [GRAI].
+- Unit (8114), Silver Wardens (207), avoiding, behind, 5 humans [HUMN],
+  3 grain [GRAI].
+- Unit (7820), Silver Wardens (207), avoiding, behind, human [HUMN].
+- Drone (9340), Hive Collective (244), avoiding, behind, human [HUMN].
+- Unit (9887), Silver Wardens (207), avoiding, behind, 10 humans [HUMN],
+  22 grain [GRAI].
+- Unit (10263), Silver Wardens (207), avoiding, behind, 10 humans [HUMN].
+- Unit (10264), Silver Wardens (207), avoiding, behind, 5 humans [HUMN],
+  5 picks [PICK], 15 stone [STON].
+- Unit (11319), Silver Wardens (207), avoiding, behind, 5 humans [HUMN].
+- Unit (7821), Silver Wardens (207), avoiding, behind, 2 goblins [GBLN],
+  2 axes [AXE].
+- Unit (6560), Silver Wardens (207), avoiding, behind, human [HUMN], axe
+  [AXE].
+
+
+plain (40,44) in Egul, 2886 peasants (high elves), $1327.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $531).
+   Wanted: none.
+   For Sale: 115 high elves [HELF] at $39, 23 leaders [LEAD] at $688.
+   Entertainment available: $93.
+   Products: 51 livestock [LIVE], 20 horses [HORS].
+
+Exits:
+  North : jungle (40,42) in Sithil.
+  Northeast : jungle (41,43) in Sithil.
+  Southeast : ocean (41,45) in Atlantis Ocean.
+  South : ocean (40,46) in Atlantis Ocean.
+  Southwest : ocean (39,45) in Atlantis Ocean.
+  Northwest : ocean (39,43) in Atlantis Ocean.
+
+- Guards (7818), on guard, Silver Wardens (207), 18 high elves [HELF],
+  gnome [GNOM].
+- Unit (10265), Silver Wardens (207), avoiding, behind, 5 high elves
+  [HELF].
+- Unit (10266), Silver Wardens (207), avoiding, behind, high elf [HELF].
+- Unit (11320), Silver Wardens (207), 6 high elves [HELF].
+- Unit (11321), Silver Wardens (207), avoiding, behind, 5 high elves
+  [HELF].
+
+
+mountain (42,44) in Bome, 1324 peasants (humans), $767.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $355).
+   Wanted: none.
+   For Sale: 52 humans [HUMN] at $41, 10 leaders [LEAD] at $722.
+   Entertainment available: $37.
+   Products: 35 grain [GRAI], 21 iron [IRON], 12 stone [STON], 7
+    mithril [MITH].
+
+Exits:
+  North : mountain (42,42) in Bome.
+  Northeast : mountain (43,43) in Bome.
+  Southeast : mountain (43,45) in Bome.
+  South : mountain (42,46) in Bome.
+  Southwest : ocean (41,45) in Atlantis Ocean.
+  Northwest : jungle (41,43) in Sithil.
+
+- Scout (7494), Silver Wardens (207), human [HUMN].
+- lone Duck (6745), on guard, Nightshade (61), 2 hill dwarves [HDWA].
+- Scout (6938), The Lads (183), avoiding, behind, hill dwarf [HDWA].
+- Unit (8901), on guard, Nightshade (61), human [HUMN].
+- Unit (8794), Nightshade (61), 3 hill dwarves [HDWA].
+- Unit (7637), Nightshade (61), gnome [GNOM].
+
+
+mountain (44,44) in Bome, 1454 peasants (hill dwarves), $523.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $237).
+   Wanted: none.
+   For Sale: 58 hill dwarves [HDWA] at $37, 11 leaders [LEAD] at $660.
+   Entertainment available: $30.
+   Products: 20 grain [GRAI], 24 iron [IRON], 14 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : mountain (44,42) in Wopiepa.
+  Northeast : mountain (45,43) in Wopiepa.
+  Southeast : mountain (45,45) in Wopiepa.
+  South : mountain (44,46) in Bome.
+  Southwest : mountain (43,45) in Bome.
+  Northwest : mountain (43,43) in Bome.
+
+- Guards (7168), on guard, Silver Wardens (207), hill dwarf [HDWA].
+- Scout (6939), The Lads (183), avoiding, behind, hill dwarf [HDWA].
+- Drone (9502), Hive Collective (244), behind, human [HUMN].
+
+
+swamp (46,44) in Bremaishgioy, 1768 peasants (goblins), $742.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $317).
+   Wanted: none.
+   For Sale: 70 goblins [GBLN] at $29, 14 leaders [LEAD] at $677.
+   Entertainment available: $43.
+   Products: 12 livestock [LIVE], 15 wood [WOOD], 18 herbs [HERB].
+
+Exits:
+  North : mountain (46,42) in Wopiepa, contains Trelldon [city].
+  Northeast : ocean (47,43) in Atlantis Ocean.
+  Southeast : ocean (47,45) in Atlantis Ocean.
+  South : ocean (46,46) in Atlantis Ocean.
+  Southwest : mountain (45,45) in Wopiepa.
+  Northwest : mountain (45,43) in Wopiepa.
+
+- Guards (7169), on guard, Silver Wardens (207), 15 goblins [GBLN].
+- Unit (7170), Silver Wardens (207), avoiding, behind, 10 goblins
+  [GBLN], 5 axes [AXE], 15 wood [WOOD].
+- Unit (7171), Silver Wardens (207), avoiding, behind, 5 goblins [GBLN],
+  2 lassoes [LASS].
+- Scout (6936), The Lads (183), avoiding, behind, hill dwarf [HDWA].
+- Unit (7822), Silver Wardens (207), avoiding, behind, 5 goblins [GBLN],
+  5 bags [BAG].
+- Unit (7823), Silver Wardens (207), avoiding, behind, 5 goblins [GBLN],
+  5 axes [AXE], 25 pikes [PIKE], 4 spinning wheels [SPIN].
+- Unit (8117), Silver Wardens (207), avoiding, behind, 5 goblins [GBLN],
+  15 lassoes [LASS], 15 bags [BAG], 5 spinning wheels [SPIN].
+- Unit (8499), Silver Wardens (207), avoiding, behind, 5 goblins [GBLN].
+- Drone (9341), Hive Collective (244), avoiding, behind, human [HUMN].
+- Unit (9889), Silver Wardens (207), avoiding, behind, goblin [GBLN].
+- Unit (10268), Silver Wardens (207), avoiding, behind, 10 goblins
+  [GBLN].
+- Unit (10269), Silver Wardens (207), avoiding, behind, 10 goblins
+  [GBLN].
+- Unit (10815), Silver Wardens (207), avoiding, behind, 20 goblins
+  [GBLN].
+- Unit (6571), Silver Wardens (207), avoiding, behind, human [HUMN],
+  horse [HORS], 5 camels [CAME], wagon [WAGO].
+
+
+mountain (43,45) in Bome, 1496 peasants (orcs), $359.
+------------------------------------------------------;16-13
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $161).
+   Wanted: none.
+   For Sale: 59 orcs [ORC] at $35, 11 leaders [LEAD] at $627.
+   Entertainment available: $24.
+   Products: 28 livestock [LIVE], 27 iron [IRON], 14 stone [STON], 5
+    mithril [MITH].
+
+Exits:
+  North : mountain (43,43) in Bome.
+  Northeast : mountain (44,44) in Bome.
+  Southeast : mountain (44,46) in Bome.
+  South : mountain (43,47) in Bome.
+  Southwest : mountain (42,46) in Bome.
+  Northwest : mountain (42,44) in Bome.
+
+
+
+mountain (45,45) in Wopiepa, 1518 peasants (hill dwarves), $1335.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $14 (Max: $599).
+   Wanted: none.
+   For Sale: 60 hill dwarves [HDWA] at $46, 12 leaders [LEAD] at $806.
+   Entertainment available: $61.
+   Products: 32 grain [GRAI], 21 iron [IRON], 11 stone [STON].
+
+Exits:
+  North : mountain (45,43) in Wopiepa.
+  Northeast : swamp (46,44) in Bremaishgioy.
+  Southeast : ocean (46,46) in Atlantis Ocean.
+  South : mountain (45,47) in Bome.
+  Southwest : mountain (44,46) in Bome.
+  Northwest : mountain (44,44) in Bome.
+
+- Miners (6940), 10 hill dwarves [HDWA], 10 picks [PICK], 118 iron
+  [IRON].
+- Quarriers (6941), 4 hill dwarves [HDWA], 4 picks [PICK], 43 stone
+  [STON].
+- Farmers (6942), 10 hill dwarves [HDWA], bag [BAG].
+- Scout (6568), Silver Wardens (207), avoiding, behind, human [HUMN].
+- Smiths (7409), 5 hill dwarves [HDWA], 10 picks [PICK], 5 hammers
+  [HAMM].
+- Trader (7590), hill dwarf [HDWA].
+- Taxers (8679), on guard, The Lads (183), 24 hill dwarves [HDWA], pike
+  [PIKE].
+- Armorers (8682), 5 hill dwarves [HDWA], 5 hammers [HAMM].
+- Miners (9167), 2 hill dwarves [HDWA].
+- Armorers (9168), hill dwarf [HDWA].
+- Drone (9503), Hive Collective (244), behind, goblin [GBLN].
+- Farmers (10642), 5 hill dwarves [HDWA].
+- Smiths (10643), 5 hill dwarves [HDWA], 5 hammers [HAMM].
+- Carpenters (10644), 2 hill dwarves [HDWA].
+
++ Cache [1] : Caravanserai.
+  - Supervisor (8974), hill dwarf [HDWA], 21 swords [SWOR], 21 chain
+    armor [CARM], 24 grain [GRAI], 32 iron [IRON], 24 wood [WOOD], 20
+    stone [STON], 4 rootstone [ROOT].
+
++ The Way [2] : Road S.
+  - Builders (8681), 5 hill dwarves [HDWA].
+
++ Building [3] : Road N, needs 20.
+  - Builders (8977), 5 hill dwarves [HDWA].
+
+
+mountain (42,46) in Bome, 1153 peasants (orcs), $299.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $143).
+   Wanted: none.
+   For Sale: 46 orcs [ORC] at $36, 9 leaders [LEAD] at $632.
+   Entertainment available: $18.
+   Products: 25 grain [GRAI], 29 iron [IRON], 11 stone [STON].
+
+Exits:
+  North : mountain (42,44) in Bome.
+  Northeast : mountain (43,45) in Bome.
+  Southeast : mountain (43,47) in Bome.
+  South : ocean (42,48) in Atlantis Ocean.
+  Southwest : ocean (41,47) in Atlantis Ocean.
+  Northwest : ocean (41,45) in Atlantis Ocean.
+
+- Vought Network (8981), hill dwarf [HDWA].
+- Taxers (9740), on guard, The Lads (183), 5 orcs [ORC].
+- Unit (6574), Silver Wardens (207), avoiding, behind, human [HUMN].
+- Workers (10645), 5 orcs [ORC].
+
+
+mountain (44,46) in Bome, 1257 peasants (humans), $653.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $306).
+   Wanted: none.
+   For Sale: 50 humans [HUMN] at $40, 10 leaders [LEAD] at $705.
+   Entertainment available: $31.
+   Products: 22 grain [GRAI], 24 iron [IRON], 13 stone [STON], 7
+    mithril [MITH].
+
+Exits:
+  North : mountain (44,44) in Bome.
+  Northeast : mountain (45,45) in Wopiepa.
+  Southeast : mountain (45,47) in Bome.
+  South : swamp (44,48) in Prinra.
+  Southwest : mountain (43,47) in Bome.
+  Northwest : mountain (43,45) in Bome.
+
+- Taxers (7410), on guard, The Lads (183), behind, 13 humans [HUMN].
+- Farmers (7983), 15 humans [HUMN].
+- Vought Network (8684), human [HUMN].
+- Miners (8978), 8 humans [HUMN], 8 picks [PICK].
+- Quarriers (8979), 7 humans [HUMN], 6 picks [PICK].
+- Supervisor (10085), human [HUMN].
+- Drone (10838), Hive Collective (244), behind, hill dwarf [HDWA].
+- Scout (10813), Silver Wardens (207), avoiding, behind, human [HUMN].
+
+
+mountain (43,47) in Bome, 1499 peasants (hill dwarves), $809.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $364).
+   Wanted: none.
+   For Sale: 59 hill dwarves [HDWA] at $40, 11 leaders [LEAD] at $711.
+   Entertainment available: $41.
+   Products: 35 grain [GRAI], 31 iron [IRON], 13 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : mountain (43,45) in Bome.
+  Northeast : mountain (44,46) in Bome.
+  Southeast : swamp (44,48) in Prinra.
+  South : swamp (43,49) in Prinra, contains Metflarside [city].
+  Southwest : ocean (42,48) in Atlantis Ocean.
+  Northwest : mountain (42,46) in Bome.
+
+- Taxers (7692), on guard, The Lads (183), 16 hill dwarves [HDWA].
+- Farmers (8884), The Lads (183), avoiding, behind, 15 hill dwarves
+  [HDWA], 18 grain [GRAI].
+- Miners (8980), The Lads (183), avoiding, behind, 10 hill dwarves
+  [HDWA], pick [PICK].
+- Quarriers (9741), The Lads (183), avoiding, behind, 7 hill dwarves
+  [HDWA].
+- Vought Network (10086), The Lads (183), avoiding, behind, hill dwarf
+  [HDWA].
+- Supervisor (10087), The Lads (183), avoiding, behind, hill dwarf
+  [HDWA].
+- Grizzly Bears (5257), 3 grizzly bears [GRIZ].
+- Explorer-a (6213), The Ashen Order (92), avoiding, behind, high elf
+  [HELF], horse [HORS].
+- Unit (6556), Silver Wardens (207), avoiding, behind, human [HUMN],
+  horse [HORS].
+
+
+mountain (45,47) in Bome, 1191 peasants (hill dwarves), $404.
+------------------------------------------------------;16-15
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $192).
+   Wanted: none.
+   For Sale: 47 hill dwarves [HDWA] at $37, 9 leaders [LEAD] at $655.
+   Entertainment available: $22.
+   Products: 32 grain [GRAI], 39 iron [IRON], 15 stone [STON], 0
+    mithril [MITH].
+
+Exits:
+  North : mountain (45,45) in Wopiepa.
+  Northeast : ocean (46,46) in Atlantis Ocean.
+  Southeast : swamp (46,48) in Wy'osscal.
+  South : swamp (45,49) in Wy'osscal, contains Minud [city].
+  Southwest : swamp (44,48) in Prinra.
+  Northwest : mountain (44,46) in Bome.
+
+
++ Building [1] : Road N. This road is about to decay..
+
+
+swamp (44,48) in Prinra, 1607 peasants (goblins), $482.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $209).
+   Wanted: none.
+   For Sale: 64 goblins [GBLN] at $27, 12 leaders [LEAD] at $644.
+   Entertainment available: $30.
+   Products: 18 livestock [LIVE], 10 wood [WOOD], 13 herbs [HERB].
+
+Exits:
+  North : mountain (44,46) in Bome.
+  Northeast : mountain (45,47) in Bome.
+  Southeast : swamp (45,49) in Wy'osscal, contains Minud [city].
+  South : swamp (44,50) in Prinra.
+  Southwest : swamp (43,49) in Prinra, contains Metflarside [city].
+  Northwest : mountain (43,47) in Bome.
+
+- Taxers (7694), on guard, The Lads (183), 9 goblins [GBLN].
+- Vought Network (8338), The Lads (183), avoiding, behind, goblin
+  [GBLN].
+- Farmers (8339), The Lads (183), avoiding, behind, 9 goblins [GBLN].
+- Lumberjacks (9173), The Lads (183), avoiding, behind, 5 goblins
+  [GBLN], 5 axes [AXE], 15 wood [WOOD].
+- Herbalists (8983), The Lads (183), avoiding, behind, 5 goblins
+  [GBLN], 4 bags [BAG].
+- Smiths (8984), The Lads (183), avoiding, behind, 5 goblins [GBLN], 5
+  crossbows [XBOW], 5 hammers [HAMM].
+- Herbalists (10089), The Lads (183), avoiding, behind, 5 goblins
+  [GBLN], 5 bags [BAG].
+- Smiths (10647), The Lads (183), avoiding, behind, 5 goblins [GBLN].
+- Unit (11120), The Lads (183), avoiding, behind, goblin [GBLN].
+- Bolts (11121), The Lads (183), behind, 10 goblins [GBLN].
+- Bolt (11122), The Lads (183), avoiding, behind, leader [LEAD].
+- Builders (11123), The Lads (183), avoiding, behind, 10 goblins [GBLN].
+- Smith (11124), The Lads (183), avoiding, behind, leader [LEAD].
+- Supervisor (11125), The Lads (183), avoiding, behind, goblin [GBLN].
+- First Knight (5832), Silver Wardens (207), behind, leader [LEAD], 4
+  wolves [WOLF].
+- Unit (6561), Silver Wardens (207), behind, leader [LEAD], 4 wolves
+  [WOLF].
+- Unit (6562), Silver Wardens (207), behind, leader [LEAD], 4 wolves
+  [WOLF].
+- Unit (6563), Silver Wardens (207), behind, leader [LEAD], camel
+  [CAME].
+- Unit (6564), Silver Wardens (207), behind, human [HUMN], camel [CAME].
+- Billy Butcher (5787), The Lads (183), behind, leader [LEAD], 5 mithril
+  swords [MSWO], leather armor [LARM], horse [HORS].
+- The Female (6929), The Lads (183), behind, leader [LEAD], horse
+  [HORS].
+- Mother's Milk (6930), The Lads (183), behind, leader [LEAD], horse
+  [HORS].
+- The Frenchman (6931), The Lads (183), behind, leader [LEAD], horse
+  [HORS].
+- Wee Hughie (6932), The Lads (183), behind, leader [LEAD], 5 mithril
+  swords [MSWO], horse [HORS].
+- Annie (6933), The Lads (183), avoiding, behind, leader [LEAD], horse
+  [HORS].
+
+
+ocean (48,48) in Atlantis Ocean.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $0.
+   Wanted: none.
+   For Sale: none.
+   Products: 62 fish [FISH].
+
+Exits:
+  North : ocean (48,46) in Atlantis Ocean.
+  Northeast : ocean (49,47) in Atlantis Ocean.
+  Southeast : mountain (49,49) in Beelsamont.
+  South : ocean (48,50) in Atlantis Ocean.
+  Southwest : ocean (47,49) in Atlantis Ocean.
+  Northwest : ocean (47,47) in Atlantis Ocean.
+
+- Scout (11327), Silver Wardens (207), avoiding, behind, lizardman
+  [LIZA].
+
+
+swamp (43,49) in Prinra, contains Metflarside [city], 10248 peasants
+  (goblins), $9428.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $14 (Max: $1885).
+   Wanted: 138 grain [GRAI] at $20, 150 livestock [LIVE] at $27, 186
+    fish [FISH] at $54, 31 chain armor [CARM] at $99, 31 swords [SWOR]
+    at $122, 20 picks [PICK] at $96, 23 leather armor [LARM] at $75,
+    53 wine [WINE] at $319, 37 vodka [VODK] at $273.
+   For Sale: 46 ivory [IVOR] at $76, 46 silk [SILK] at $72, 409
+    goblins [GBLN] at $35, 81 leaders [LEAD] at $817.
+   Entertainment available: $573.
+   Products: 14 livestock [LIVE], 17 wood [WOOD], 16 herbs [HERB].
+
+Exits:
+  North : mountain (43,47) in Bome.
+  Northeast : swamp (44,48) in Prinra.
+  Southeast : swamp (44,50) in Prinra.
+  South : ocean (43,51) in Atlantis Ocean.
+  Southwest : ocean (42,50) in Atlantis Ocean.
+  Northwest : ocean (42,48) in Atlantis Ocean.
+
+- City Guard (5061), on guard, The Guardsmen (1), 120 leaders [LEAD],
+  120 swords [SWOR].
+- Vought Network (7413), hill dwarf [HDWA].
+- Workers (9176), 9 goblins [GBLN].
+- Trader (7587), hill dwarf [HDWA].
+- Vought Network (11127), 2 goblins [GBLN].
+- Caravan (9312), Silver Wardens (207), avoiding, behind, 2 humans
+  [HUMN], 5 horses [HORS], 5 camels [CAME], 18 wine [WINE].
+
+
+swamp (45,49) in Wy'osscal, contains Minud [city], 10646 peasants
+  (orcs), $8516.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $14 (Max: $1703).
+   Wanted: 120 grain [GRAI] at $23, 158 livestock [LIVE] at $27, 196
+    fish [FISH] at $50, 27 hammers [HAMM] at $92, 38 plate armor
+    [PARM] at $465, 28 swords [SWOR] at $123, 39 leather armor [LARM]
+    at $69, 66 vodka [VODK] at $307, 59 perfume [PERF] at $356.
+   For Sale: 86 jewelry [JEWE] at $291, 74 wine [WINE] at $114, 425
+    orcs [ORC] at $44, 85 leaders [LEAD] at $784.
+   Entertainment available: $532.
+   Products: 11 livestock [LIVE], 13 wood [WOOD], 10 herbs [HERB].
+
+Exits:
+  North : mountain (45,47) in Bome.
+  Northeast : swamp (46,48) in Wy'osscal.
+  Southeast : swamp (46,50) in Wy'osscal.
+  South : swamp (45,51) in Wy'osscal.
+  Southwest : swamp (44,50) in Prinra.
+  Northwest : swamp (44,48) in Prinra.
+
+- City Guard (5062), on guard, The Guardsmen (1), 120 leaders [LEAD],
+  120 swords [SWOR].
+- Vought Network (6937), The Lads (183), avoiding, behind, 2 hill
+  dwarves [HDWA].
+- Workers (8887), The Lads (183), avoiding, behind, 19 orcs [ORC], 17
+  axes [AXE], 20 stone [STON].
+- Vought Network (9744), The Lads (183), avoiding, behind, 2 goblins
+  [GBLN].
+- Unit (11322), Silver Wardens (207), avoiding, behind, leader [LEAD].
+- Unit (11323), Silver Wardens (207), avoiding, behind, leader [LEAD].
+- Orcs Squad (11324), Silver Wardens (207), 160 orcs [ORC], 140 swords
+  [SWOR].
+- Unit (11325), Silver Wardens (207), avoiding, behind, 10 orcs [ORC].
+- Orc (11326), Silver Wardens (207), behind, orc [ORC].
+
+
+swamp (46,50) in Wy'osscal, 1802 peasants (lizardmen), $576.
+------------------------------------------------------;16-15
+  The weather was clear last month; it will be clear next month.
+   Wages: $11 (Max: $245).
+   Wanted: none.
+   For Sale: 72 lizardmen [LIZA] at $37, 14 leaders [LEAD] at $649.
+   Entertainment available: $37.
+   Products: 10 livestock [LIVE], 16 wood [WOOD], 13 herbs [HERB].
+
+Exits:
+  North : swamp (46,48) in Wy'osscal.
+  Northeast : ocean (47,49) in Atlantis Ocean.
+  Southeast : ocean (47,51) in Atlantis Ocean.
+  South : ocean (46,52) in Atlantis Ocean.
+  Southwest : swamp (45,51) in Wy'osscal.
+  Northwest : swamp (45,49) in Wy'osscal, contains Minud [city].
+
+
+
+swamp (45,51) in Wy'osscal, 1574 peasants (lizardmen), $818.
+---------------------------------------------------------;16
+  The weather was clear last month; it will be clear next month.
+   Wages: $12 (Max: $357).
+   Wanted: none.
+   For Sale: 62 lizardmen [LIZA] at $40, 12 leaders [LEAD] at $705.
+   Entertainment available: $43.
+   Products: 11 livestock [LIVE], 19 wood [WOOD], 10 herbs [HERB].
+
+Exits:
+  North : swamp (45,49) in Wy'osscal, contains Minud [city].
+  Northeast : swamp (46,50) in Wy'osscal.
+  Southeast : ocean (46,52) in Atlantis Ocean.
+  South : ocean (45,53) in Atlantis Ocean.
+  Southwest : ocean (44,52) in Atlantis Ocean.
+  Northwest : swamp (44,50) in Prinra.
+
+- Vought Network (7412), The Lads (183), avoiding, behind, hill dwarf
+  [HDWA].
+- Herbalists (8692), lizardman [LIZA], bag [BAG].
+- Trader (7586), hill dwarf [HDWA], camel [CAME].
+- Unit (10652), The Lads (183), avoiding, behind, lizardman [LIZA].
+- Scout (8500), Silver Wardens (207), avoiding, behind, hill dwarf
+  [HDWA].
+
+

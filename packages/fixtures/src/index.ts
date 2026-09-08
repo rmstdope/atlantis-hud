@@ -81,6 +81,29 @@ export function readMageSheet(key: MageSheetKey): string {
   return readFileSync(mageSheetPath(key), "utf8");
 }
 
+/**
+ * The committed AtlaClient map exports by key, mapping to their file name under
+ * tests/fixtures/atlaclient/.
+ *
+ * A map written by AtlaClient, another Atlantis client: the game's own region syntax with a turn
+ * stamp on each region's underline, and no report header at all. See the README beside the files.
+ */
+export const ATLACLIENT_MAPS = {
+  t16: "atlaclient-map-t16.txt"
+} as const;
+
+export type AtlaClientMapKey = keyof typeof ATLACLIENT_MAPS;
+
+/** Absolute path of an AtlaClient map on disk - for `setInputFiles` and the like. */
+export function atlaClientMapPath(key: AtlaClientMapKey): string {
+  return join(__dirname, "..", "..", "..", "tests", "fixtures", "atlaclient", ATLACLIENT_MAPS[key]);
+}
+
+/** An AtlaClient map's text. */
+export function readAtlaClientMap(key: AtlaClientMapKey): string {
+  return readFileSync(atlaClientMapPath(key), "utf8");
+}
+
 /** The shipped ruleset, config/public/ruleset.json. */
 export const RULESET_PATH = join(__dirname, "..", "..", "..", "config", "public", "ruleset.json");
 
