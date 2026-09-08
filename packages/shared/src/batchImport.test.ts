@@ -323,7 +323,7 @@ describe("walkBatch and a map export", () => {
 
     expect(core.commitReportImport).not.toHaveBeenCalled();
     expect(walk.landed).toEqual([
-      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 71, hexesAdded: 8 }
+      { kind: "mapExport", index: 0, fileName: "map.txt", turnNumber: 71, hexesAdded: 8, source: "ours" }
     ]);
     // Nothing about the turn on screen moves, whoever wrote the file.
     expect(walk.finish).toBeNull();

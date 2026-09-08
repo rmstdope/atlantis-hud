@@ -70,9 +70,10 @@ function lineFor(step: BatchStep): string {
   }
   // The turn a map export names is not what it did: its hexes carry their own ages, so what is
   // worth saying is how many of them the map did not already have.
+  const what = step.source === "atlaClient" ? "AtlaClient map" : "map export";
   return step.hexesAdded === null || step.hexesAdded === 0
-    ? `${step.fileName} — map export, nothing new to your map`
-    : `${step.fileName} — map export, ${count(step.hexesAdded, "hex", "hexes")} added`;
+    ? `${step.fileName} — ${what}, nothing new to your map`
+    : `${step.fileName} — ${what}, ${count(step.hexesAdded, "hex", "hexes")} added`;
 }
 
 /**

@@ -2072,7 +2072,12 @@ export function AppShell({
         setMergedReports(outcome.merged);
         // `levelClause` already answers "" on the surface, so the status names a level only when
         // what landed is somewhere the player is not looking.
-        const levelPhrase = levelClause(model.levels, pending.level).replace(/^, /, "");
+        // `null` when the file's hexes are not all on one level, which an AtlaClient map need not
+        // be: naming the first region's level would name one most of them were not on.
+        const levelPhrase =
+          pending.level === null
+            ? ""
+            : levelClause(model.levels, pending.level).replace(/^, /, "");
         setStatus(
           outcome.warning !== null
             ? warningStatus(outcome.warning)

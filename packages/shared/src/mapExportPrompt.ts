@@ -6,29 +6,76 @@
  * render a component into (ah-nass).
  */
 
+import type { AtlaClientAges } from "./atlaClientImport";
 import type { PendingMapExport } from "./reportLoad";
 
 /**
  * The paragraphs of the map-export prompt, in order.
  *
- * Two, always. The first says what the file is and what it is worth; the second says what pressing
- * the button will and will not do. Answering "how much of this do I already have" *before* the
- * player commits is what makes Cancel a real choice.
+ * Two for one of our own exports, three for an AtlaClient map. The first says what the file is and
+ * what it is worth; the middle one, an AtlaClient map only, says how old its hexes are; the last
+ * says what pressing the button will and will not do. Answering "how much of this do I already
+ * have" *before* the player commits is what makes Cancel a real choice.
+ *
+ * An AtlaClient map earns the extra paragraph because it is unlike one of ours: a lifetime's
+ * accumulation with stamps ranging over the whole game, so the spread is the thing worth knowing
+ * before pressing Add rather than something to discover afterwards from the map's shading.
  */
 export function mapExportPromptCopy(pending: PendingMapExport): string[] {
-  const { fileName, incomingFactionLabel, incomingTurn, newHexes, viewer } = pending;
+  const { fileName, incomingFactionLabel, incomingTurn, newHexes, atlaClient, viewer } = pending;
 
   const from = pending.ownFaction
     ? `your own faction, ${incomingFactionLabel}`
     : incomingFactionLabel;
 
+  const opening =
+    atlaClient === null
+      ? `${fileName} is a map export from ${from}, written on turn ${incomingTurn}. ${holds(pending)}`
+      : `${fileName} is a map exported from AtlaClient on turn ${incomingTurn}. ${holds(pending)}`;
+
   return [
-    `${fileName} is a map export from ${from}, written on turn ${incomingTurn}. ${holds(pending)}`,
+    opening,
+    ...(atlaClient === null ? [] : [describeAtlaClientAges(atlaClient)]),
     newHexes > 0
       ? "Add to map takes every hex your own map does not already know more recently. " +
         `You stay on ${viewer.factionLabel}, turn ${viewer.turnNumber}, and nothing you have is replaced.`
       : "There is nothing in it to add. Adding it anyway changes nothing."
   ];
+}
+
+/**
+ * How old an AtlaClient map's hexes are: one sentence of up to three clauses, joined with `; `.
+ *
+ * A clause is left out when its count is zero, so a file whose hexes are all as new as the file
+ * itself says so in one short clause rather than in three with two zeros in them.
+ */
+export function describeAtlaClientAges(ages: AtlaClientAges): string {
+  const { fileTurn, currentHexes, olderHexes, oldestTurn, undatedHexes } = ages;
+
+  if (olderHexes === 0 && undatedHexes === 0) {
+    return currentHexes === 1
+      ? `Its 1 hex is as new as turn ${fileTurn}.`
+      : `All ${currentHexes} hexes are as new as turn ${fileTurn}.`;
+  }
+
+  const clauses: string[] = [];
+  if (currentHexes === 1) {
+    clauses.push(`1 hex is as new as turn ${fileTurn}`);
+  } else if (currentHexes > 0) {
+    clauses.push(`${currentHexes} hexes are as new as turn ${fileTurn}`);
+  }
+  if (olderHexes === 1) {
+    clauses.push(`1 is older, from turn ${oldestTurn}`);
+  } else if (olderHexes > 0) {
+    clauses.push(`${olderHexes} are older, back to turn ${oldestTurn}`);
+  }
+  if (undatedHexes === 1) {
+    clauses.push("1 does not say when it was seen and is added as turn 0");
+  } else if (undatedHexes > 0) {
+    clauses.push(`${undatedHexes} do not say when they were seen and are added as turn 0`);
+  }
+
+  return `${clauses.join("; ")}.`;
 }
 
 /** What the file holds, and how much of it the player does not already have. */

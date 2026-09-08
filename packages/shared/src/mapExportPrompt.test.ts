@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { describeMapExportAdded, mapExportPromptCopy } from "./mapExportPrompt";
+import {
+  describeAtlaClientAges,
+  describeMapExportAdded,
+  mapExportPromptCopy
+} from "./mapExportPrompt";
+import type { AtlaClientAges } from "./atlaClientImport";
 import type { PendingMapExport } from "./reportLoad";
 import { aParsedReport } from "@atlantis/core-client";
 
@@ -14,6 +19,7 @@ function pending(overrides: Partial<PendingMapExport> = {}): PendingMapExport {
     totalHexes: 12,
     newHexes: 3,
     level: 1,
+    atlaClient: null,
     viewer: { factionId: "95", factionLabel: "Borg TNG (95)", turnNumber: 71 },
     ...overrides
   };
@@ -102,5 +108,86 @@ describe("describeMapExportAdded", () => {
     expect(describeMapExportAdded(0, "in the underworld")).toBe(
       "nothing added — your map already had all of it"
     );
+  });
+});
+
+function ages(overrides: Partial<AtlaClientAges> = {}): AtlaClientAges {
+  return {
+    fileTurn: 16,
+    currentHexes: 49,
+    olderHexes: 29,
+    oldestTurn: 5,
+    undatedHexes: 5,
+    ...overrides
+  };
+}
+
+describe("the AtlaClient age line", () => {
+  it("names each of the three clauses when all three apply", () => {
+    expect(describeAtlaClientAges(ages())).toBe(
+      "49 hexes are as new as turn 16; 29 are older, back to turn 5; " +
+        "5 do not say when they were seen and are added as turn 0."
+    );
+  });
+
+  it("says so in one clause when nothing is older and nothing undated", () => {
+    expect(
+      describeAtlaClientAges(ages({ currentHexes: 83, olderHexes: 0, oldestTurn: null, undatedHexes: 0 }))
+    ).toBe("All 83 hexes are as new as turn 16.");
+  });
+
+  it("says so for a single current hex", () => {
+    expect(
+      describeAtlaClientAges(ages({ currentHexes: 1, olderHexes: 0, oldestTurn: null, undatedHexes: 0 }))
+    ).toBe("Its 1 hex is as new as turn 16.");
+  });
+
+  it("counts one of each in the singular", () => {
+    expect(
+      describeAtlaClientAges(ages({ currentHexes: 1, olderHexes: 1, oldestTurn: 9, undatedHexes: 1 }))
+    ).toBe(
+      "1 hex is as new as turn 16; 1 is older, from turn 9; " +
+        "1 does not say when it was seen and is added as turn 0."
+    );
+  });
+
+  it("leaves out the current clause when nothing is as new as the file", () => {
+    expect(
+      describeAtlaClientAges(ages({ currentHexes: 0, olderHexes: 4, oldestTurn: 2, undatedHexes: 0 }))
+    ).toBe("4 are older, back to turn 2.");
+  });
+
+  it("leaves out the older clause when nothing is older", () => {
+    expect(
+      describeAtlaClientAges(ages({ currentHexes: 7, olderHexes: 0, oldestTurn: null, undatedHexes: 2 }))
+    ).toBe("7 hexes are as new as turn 16; 2 do not say when they were seen and are added as turn 0.");
+  });
+});
+
+describe("mapExportPromptCopy, given a map exported by AtlaClient", () => {
+  const fromAtlaClient = pending({
+    fileName: "atlaclient-map.16",
+    incomingFactionLabel: "AtlaClient",
+    incomingTurn: 16,
+    totalHexes: 83,
+    newHexes: 61,
+    atlaClient: ages()
+  });
+
+  it("names AtlaClient rather than a faction, and says how old the hexes are", () => {
+    expect(mapExportPromptCopy(fromAtlaClient)).toEqual([
+      "atlaclient-map.16 is a map exported from AtlaClient on turn 16. " +
+        "It holds 83 hexes, 61 of them new to your map.",
+      "49 hexes are as new as turn 16; 29 are older, back to turn 5; " +
+        "5 do not say when they were seen and are added as turn 0.",
+      "Add to map takes every hex your own map does not already know more recently. " +
+        "You stay on Borg TNG (95), turn 71, and nothing you have is replaced."
+    ]);
+  });
+
+  it("still says there is nothing to add when there is not", () => {
+    const copy = mapExportPromptCopy(pending({ ...fromAtlaClient, newHexes: 0 }));
+    expect(copy).toHaveLength(3);
+    expect(copy[2]).toBe("There is nothing in it to add. Adding it anyway changes nothing.");
   });
 });

@@ -20,10 +20,12 @@ import {
   mageSheetIsOlder
 } from "./mageSheetImport";
 import {
+  ATLACLIENT_MAP_HAS_NO_HEXES,
   MAP_EXPORT_NEEDS_A_MAP,
   judgeMapExportUsable,
   type ReportImportSource
 } from "./mapExportImport";
+import { readAtlaClientAges } from "./atlaClientImport";
 import type { ReportUsability } from "./reportLoadDecision";
 
 /** As much of a report as planning a batch needs, plus the name the summary will use for it. */
@@ -79,6 +81,11 @@ export type BatchStep =
        * by `walkBatch` from the merge's own `newRegionCount`.
        */
       hexesAdded: number | null;
+      /**
+       * Which kind of map it was. Only the per-file summary line reads it: the headline counts
+       * every map export together, because an AtlaClient map is one.
+       */
+      source: "ours" | "atlaClient";
     }
   /**
    * An ally's mage sheet: its mages are stored, and nothing about the turn on screen moves. Never
@@ -224,7 +231,12 @@ export function planReportBatch(
   // Map exports whose own four questions are answered. Held back rather than turned into steps
   // here, because the last of those questions - is there any turn at all to add hexes to - is
   // answered by `ceiling` below, which is not known until every report has been looked at.
-  const mapExports: { index: number; candidate: BatchCandidate; turnNumber: number }[] = [];
+  const mapExports: {
+    index: number;
+    candidate: BatchCandidate;
+    turnNumber: number;
+    source: "ours" | "atlaClient";
+  }[] = [];
   // Mage sheets that named a faction and a turn and are not the viewer's own. Held back for the
   // same reason map exports are: whether one is superseded depends on every other sheet in the
   // batch, which is not known until they have all been looked at.
@@ -284,7 +296,32 @@ export function planReportBatch(
         skipped.push({ index, fileName: candidate.fileName, reason: usability.reason });
         continue;
       }
-      mapExports.push({ index, candidate, turnNumber: usability.value.turnNumber });
+      mapExports.push({
+        index,
+        candidate,
+        turnNumber: usability.value.turnNumber,
+        source: "ours"
+      });
+      continue;
+    }
+    // A map exported by AtlaClient is a map export in every way the batch cares about. It names no
+    // faction and no turn header, so `judgeMapExportUsable`'s first two refusals cannot apply and
+    // would name the wrong thing to go looking for; the stamps answer the turn instead.
+    if (candidate.source !== null && candidate.source.kind === "atlaClientMap") {
+      if (viewer.factionId === null) {
+        skipped.push({ index, fileName: candidate.fileName, reason: MAP_EXPORT_NEEDS_A_MAP });
+        continue;
+      }
+      const ages = readAtlaClientAges(candidate.source.text);
+      if (ages === null || candidate.source.report.regions.length === 0) {
+        skipped.push({
+          index,
+          fileName: candidate.fileName,
+          reason: ATLACLIENT_MAP_HAS_NO_HEXES
+        });
+        continue;
+      }
+      mapExports.push({ index, candidate, turnNumber: ages.fileTurn, source: "atlaClient" });
       continue;
     }
     // Whether a report can be imported at all is one rule, shared with the single-file path -
@@ -373,7 +410,8 @@ export function planReportBatch(
       index: entry.index,
       fileName: entry.candidate.fileName,
       turnNumber: entry.turnNumber,
-      hexesAdded: null
+      hexesAdded: null,
+      source: entry.source
     });
   }
 
