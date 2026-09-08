@@ -19,11 +19,10 @@ import { studyOrders } from "../studyOrders";
 import { studyWritePlan } from "../studyOrdersWrite";
 import { shelterKey, type ShelterSeats } from "../studyShelter";
 import { planFor, plannedGoals } from "../studyPlans";
-import { STUDY_NOTE_MAX_CHARS, noteCountText, normalizeStudyNote } from "../studyNote";
-import { isMacPlatform } from "../shortcuts";
+import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
+import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
 import { StudySchedule } from "./StudySchedule";
 import { StudyPlannerOrders } from "./StudyPlannerOrders";
-import { keyToAction as noteKeyToAction } from "./regionNotesState";
 import { reduce as reduceCell, type CellMode } from "./studyCellState";
 
 /**
@@ -703,13 +702,18 @@ export function StudyPlannerDetail({
 }
 
 /**
- * The per-mage note, built like `RegionNotes`' editor and committed the same way - a `Save`
- * button, `⌘↩`, `Esc` to abandon. That is the only habit this application has for stored free
- * text, and a planner that saved as you type would be the first.
+ * The per-mage note. It saves as it is typed (ah-xbu3): no Save button, no shortcut, and nothing
+ * on screen about storage unless a write fails. Everything else in this window already commits
+ * itself - the Schedule writes a chosen month straight through - and this was the one field that
+ * could be lost by doing what the rest of the screen taught.
  *
- * Keyed on the mage in its parent, so switching mages starts a fresh draft rather than carrying
- * one across - `renderToStaticMarkup` runs no effects, so a `useEffect` reset would be untestable
- * here anyway.
+ * `hexNotes`' editor keeps its `Save` and `Cancel` on purpose (navigator, 2026-09-07): a hex note
+ * is added to and removed from a list, so its editor is a form that opens and closes, while this
+ * is one field always on screen.
+ *
+ * Keyed on the mage in its parent, so switching mages unmounts this and remounts it - which is
+ * what makes the unmount flush the last write, and why the autosave is held in a ref rather than
+ * in module scope.
  */
 function StudyPlannerNote({
   comment,
@@ -721,8 +725,21 @@ function StudyPlannerNote({
   onSave: (comment: string) => void;
 }) {
   const [draft, setDraft] = useState(comment);
-  const mac = isMacPlatform();
-  const save = () => onSave(normalizeStudyNote(draft));
+  // `onSave` is a fresh closure on every render, so the autosave reaches it through a ref that is
+  // reassigned each time - the same pattern `dismissLayer.ts` uses. A closure captured once at
+  // construction would write through a stale one.
+  const latestSave = useRef(onSave);
+  latestSave.current = onSave;
+  const autosave = useRef<NoteAutosave | null>(null);
+  autosave.current ??= createNoteAutosave((next) => latestSave.current(next), comment);
+
+  // The editor going away is the last chance to write: switching mage remounts this component and
+  // closing the window unmounts it. `saveStudyPlan` lives in `AppShell`, which is not unmounting,
+  // so the write started here completes.
+  useEffect(() => {
+    const writer = autosave.current;
+    return () => writer?.flush();
+  }, []);
 
   return (
     <div data-testid="study-planner-note" className="mt-3">
@@ -733,20 +750,9 @@ function StudyPlannerNote({
         value={draft}
         placeholder="Where his studies are heading."
         className="w-full rounded border border-edge bg-surface p-1.5 text-pane"
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          const action = noteKeyToAction({
-            key: event.key,
-            metaKey: event.metaKey,
-            ctrlKey: event.ctrlKey
-          });
-          if (action === "save") {
-            event.preventDefault();
-            save();
-          } else if (action === "cancel") {
-            event.stopPropagation();
-            setDraft(comment);
-          }
+        onChange={(event) => {
+          setDraft(event.target.value);
+          autosave.current?.typed(event.target.value);
         }}
       />
       <div className="mt-1 flex items-center gap-2">
@@ -756,22 +762,7 @@ function StudyPlannerNote({
         >
           {noteCountText(draft)}
         </span>
-        <span className="flex-1" />
-        <button
-          type="button"
-          data-testid="study-planner-note-save"
-          onClick={save}
-          // Bordered, like every other action in this workspace that commits something: it was
-          // bare text beside a bare counter, which is what a label looks like rather than a
-          // control (navigator, 2026-09-07).
-          className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
-        >
-          Save
-        </button>
       </div>
-      <p className="m-0 text-pane-sm text-ink-dim">
-        {mac ? "⌘↩ saves · Esc cancels" : "Ctrl+↩ saves · Esc cancels"}
-      </p>
       {saveError === null ? null : (
         <p data-testid="study-planner-note-error" className="m-0 text-warn">
           {saveError}

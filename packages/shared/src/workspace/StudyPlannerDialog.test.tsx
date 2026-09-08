@@ -198,6 +198,35 @@ describe("StudyPlannerDetail", () => {
 });
 
 /**
+ * The note saves as it is typed (ah-xbu3), so there is nothing left to press. The autosave itself
+ * is pinned in `studyNoteAutosave.test.ts` - `renderToStaticMarkup` runs no effects and fires no
+ * timers, so this pins only what the note offers, and the smoke suite proves the wiring.
+ */
+describe("the mage note", () => {
+  const detail = renderToStaticMarkup(
+    <StudyPlannerDetail
+      mage={mageBy("881")}
+      turn={72}
+      label={label}
+      tree={tree}
+      plan={{ factionId: "95", unitId: "881", goals: [], comment: "heading for Gate Lore", updatedAt: "" }}
+      saveError={null}
+      onSaveNote={() => {}}
+    />
+  );
+
+  it("has no Save button and no shortcut footer", () => {
+    expect(detail).not.toContain("study-planner-note-save");
+    expect(detail).not.toContain("Esc cancels");
+  });
+
+  it("still carries the box and its counter", () => {
+    expect(detail).toContain("study-planner-note");
+    expect(detail).toContain("study-planner-note-count");
+  });
+});
+
+/**
  * K1: the warnings strip belongs to the Schedule view alone. The All mages view is not given a
  * strip it never had, and neither of its two components renders one.
  */
