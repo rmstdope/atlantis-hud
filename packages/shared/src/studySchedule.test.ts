@@ -172,7 +172,7 @@ describe("planLine", () => {
   it("names next turn's teaching by name", () => {
     expect(
       planLine(
-        [{ kind: "teach", turn: 24, students: ["2517", "2688"] }],
+        [{ kind: "teach", turn: 24, students: ["2517", "2688"], live: false }],
         24,
         tree,
         new Map([
@@ -184,7 +184,7 @@ describe("planLine", () => {
   });
 
   it("says who is taught by id when no name is known", () => {
-    expect(planLine([{ kind: "teach", turn: 24, students: ["2517"] }], 24, tree)).toBe(
+    expect(planLine([{ kind: "teach", turn: 24, students: ["2517"], live: false }], 24, tree)).toBe(
       "Next turn: teaches 2517"
     );
   });
@@ -196,7 +196,7 @@ describe("planLine", () => {
   });
 
   it("says a teach month with no students teaches nobody", () => {
-    expect(planLine([{ kind: "teach", turn: 24, students: [] }], 24, tree)).toBe(
+    expect(planLine([{ kind: "teach", turn: 24, students: [], live: false }], 24, tree)).toBe(
       "Next turn: teaches nobody"
     );
   });
@@ -500,7 +500,7 @@ describe("projectAll across the whole fleet", () => {
   }
 
   const teaches = (students: string[]): StudyGoal[] =>
-    FLEET_TURNS.map((turn) => ({ kind: "teach", turn, students }));
+    FLEET_TURNS.map((turn) => ({ kind: "teach", turn, students, live: false }));
   const studies = (skill: string): StudyGoal[] =>
     FLEET_TURNS.map((turn) => ({ kind: "study", turn, skill }));
 

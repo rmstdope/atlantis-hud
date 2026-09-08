@@ -65,6 +65,11 @@ export type { GameMetadata } from "./generated/GameMetadata";
 export type { ReportSourceRef } from "./generated/ReportSourceRef";
 export type { GameManifest } from "./generated/GameManifest";
 export type { ManifestEdit } from "./generated/ManifestEdit";
+export type { AlliedMageRecord } from "./generated/AlliedMageRecord";
+export type { AlliedMageKey } from "./generated/AlliedMageKey";
+export type { StudyGoal } from "./generated/StudyGoal";
+export type { StudyPlanRecord } from "./generated/StudyPlanRecord";
+export type { StudyPlanKey } from "./generated/StudyPlanKey";
 
 export {
   aBattle,
@@ -89,6 +94,10 @@ import type { GameManifest } from "./generated/GameManifest";
 import type { EngineInfo } from "./generated/EngineInfo";
 import type { ParsedReport } from "./generated/ParsedReport";
 import type { RosterSkills } from "./generated/RosterSkills";
+import type { AlliedMageRecord } from "./generated/AlliedMageRecord";
+import type { AlliedMageKey } from "./generated/AlliedMageKey";
+import type { StudyPlanRecord } from "./generated/StudyPlanRecord";
+import type { StudyPlanKey } from "./generated/StudyPlanKey";
 
 export type OpenedGame = {
   gameFilePath: string;
@@ -815,94 +824,6 @@ export type ArmyRecord = {
   members: ArmyMemberRecord[];
   createdAt: string;
   updatedAt: string;
-};
-
-/**
- * One mage an ally shared, as the sheet that carried him described him.
- *
- * The unit is kept whole because the study planner reads an allied mage through `standingOf`,
- * which takes a `ReportUnit` - a narrower row would need a conversion back and a second
- * definition of what a mage is. There is no `gameId`: every call that reads or writes these rows
- * is scoped to one game and takes it as a parameter.
- */
-export type AlliedMageRecord = {
-  /** The sending faction, from the sheet's own header - never from a unit line. */
-  factionId: string;
-  /** The sender's name from that header; null when the header carried an id and no name. */
-  factionName: string | null;
-  /** The parsed unit. `unit.unitId` is the row's key half; there is no second copy of it. */
-  unit: ReportUnit;
-  /** The turn of the sheet this row came from. Staleness is this against the faction's newest. */
-  sheetTurn: number;
-  /** When the sheet was taken in, ISO 8601, from the caller's clock. */
-  receivedAt: string;
-};
-
-/** One stored mage's identity: which ally, and which unit of his. */
-export type AlliedMageKey = {
-  factionId: string;
-  unitId: string;
-};
-
-/**
- * One planned month. A plan is one of these per planned turn - at most one for any turn, and turns
- * with none are simply unplanned.
- *
- * `rules/study` allows `STUDY <skill>` and `STUDY <skill> <level>`, the second meaning "continue
- * from turn to turn until he reaches that level", which would override the turns the player planned
- * by hand - so a planned month is always the bare form. `rules/teach` names the units taught, and a
- * teacher studies nothing that month, so a teach goal is always exactly one turn.
- */
-export type StudyGoal =
-  | {
-      kind: "study";
-      /** The game turn this month is planned for, as the report numbers turns. */
-      turn: number;
-      /** The skill tag, upper-cased (`"FORC"`). */
-      skill: string;
-    }
-  | {
-      kind: "teach";
-      /** The game turn this month is planned for, as the report numbers turns. */
-      turn: number;
-      /**
-       * The unit numbers taught, as the report writes them, in the order the player ticked them.
-       * **Empty whenever `live` is true**: a live cell stores no list, because the list is not a
-       * fact about the plan - it is recomputed from it.
-       */
-      students: string[];
-      /**
-       * True while the cell means "teach whoever is eligible this turn". The projection chooses the
-       * pupils on every render and `students` is empty. Set to false the moment the player ticks or
-       * unticks anyone, from which point `students` is the whole answer. Absent reads as false:
-       * every goal stored before ah-af7i is a fixed list.
-       */
-      live?: boolean;
-    };
-
-/**
- * One mage's study plan: one goal per planned turn, and what the player wants to remember.
- *
- * There is no `gameId`: every call that reads or writes these rows is scoped to one game and
- * takes it as a parameter, as `AlliedMageRecord` is.
- */
-export type StudyPlanRecord = {
-  /** Whose mage this is - the player's own faction, or an ally's. */
-  factionId: string;
-  /** The unit number, as the report writes it. */
-  unitId: string;
-  /** One entry per planned turn, ascending by `turn`. Empty when nothing is planned. */
-  goals: StudyGoal[];
-  /** The player's free text. Never null: an absent note is the empty string. */
-  comment: string;
-  /** When the row was last written, ISO 8601, from the caller's clock. */
-  updatedAt: string;
-};
-
-/** One stored plan's identity: whose mage, and which unit of his. */
-export type StudyPlanKey = {
-  factionId: string;
-  unitId: string;
 };
 
 export type ImportedTurnRecord = {

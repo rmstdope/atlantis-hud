@@ -457,7 +457,7 @@ describe("a teaching month in the grid", () => {
         factionId: "12",
         unitId: "2431",
         goals: [
-          { kind: "teach", turn: turns[0], students: ["2432"] },
+          { kind: "teach", turn: turns[0], students: ["2432"], live: false },
           ...turns.slice(1).map((turn) => ({ kind: "study" as const, turn, skill: "FORC" }))
         ],
         comment: "",
