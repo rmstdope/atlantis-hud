@@ -18,6 +18,7 @@ export * from "./armiesStore";
 export * from "./alliedMages";
 export * from "./alliedMagesStore";
 export * from "./studyPlans";
+export * from "./skillReading";
 export * from "./studySchedule";
 export * from "./studyCell";
 export * from "./studyOrders";
