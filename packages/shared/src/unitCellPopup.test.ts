@@ -3,6 +3,7 @@ import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import type { PreviewedUnit } from "./unitPreview";
 import { NO_ORDERS_TEMPLATE, type ReportedLongOrder } from "./ordersDocument";
+import { unitNamesByRow, unitRowKey } from "./unitTable";
 import {
   columnHasPopup,
   popupAsText,
@@ -17,6 +18,9 @@ const unit = (overrides: Partial<PreviewedUnit> = {}): PreviewedUnit => ({
   ...(aReportUnit({ unitId: "1487", name: "Braves" }) as ReportUnit),
   ...overrides
 });
+
+/** The hex `unit()` and `own()` stand in, so a row key for a giver beside them reads right. */
+const HERE = aReportUnit().regionId;
 
 const reported = (order: string | null): ReportedLongOrder => ({ kind: "known", order });
 
@@ -1810,9 +1814,39 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
           }
         ]
       }),
-      facts({ unitNames: new Map([["1502", "Scouts"]]) })
+      facts({ unitNames: new Map([[unitRowKey(HERE, "1502"), "Scouts"]]) })
     );
     expect(popup.notes).toContain("2 men joined from Scouts (1502), bringing observation 3.");
+  });
+
+  it("the skills popup names the giver in this row's own hex", () => {
+    const popup = skillsPopup(
+      own({
+        regionId: "1:8,54",
+        reportedSkills: [skill("combat", "COMB", 2, 90)],
+        skills: [skill("combat", "COMB", 1, 53)],
+        skillMerges: [
+          {
+            cause: "given",
+            from: "new-1",
+            men: 2,
+            menBefore: 4,
+            menArriving: [],
+            countInferred: false,
+            arrivingSkills: [],
+            skills: []
+          }
+        ]
+      }),
+      facts({
+        unitNames: unitNamesByRow([
+          { regionId: "1:7,53", unitId: "new-1", name: "North Scouts" },
+          { regionId: "1:8,54", unitId: "new-1", name: "South Scouts" }
+        ])
+      })
+    );
+
+    expect(popup.notes).toContain("2 men joined from South Scouts (new-1).");
   });
 
   it("the skills popup names a giver the table is not drawing", () => {
@@ -1870,7 +1904,7 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         skills: [skill("combat", "COMB", 1, 53)],
         menOfUnknownSkill: [{ amount: 3, tag: "HUMN", from: "1502" }]
       }),
-      facts({ unitNames: new Map([["1502", "Scouts"]]) })
+      facts({ unitNames: new Map([[unitRowKey(HERE, "1502"), "Scouts"]]) })
     );
     expect(popup.notes).toContain(
       "3 men came from Scouts (1502), whose skills the report does not show, so these figures do not count them."

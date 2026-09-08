@@ -28,8 +28,10 @@ import {
   COLUMN_LABELS,
   silverIsRed,
   silverShown,
+  unitRowKey,
   type ExtraColumn,
-  type UnitColumn
+  type UnitColumn,
+  type UnitRowKey
 } from "./unitTable";
 
 /**
@@ -166,11 +168,14 @@ export type PopupFacts = {
    */
   dissolving: boolean;
   /**
-   * Every unit the table is drawing, by unit number, for naming a giver or a taker
-   * (`ah-rgkk.2.3`). A `GIVE` and a `TAKE FROM` are both within one hex, so the source is almost
-   * always a row the table already holds; one it does not is named `unit 1502`.
+   * Every row the table is drawing, by `unitRowKey` - the hex *and* the number - for naming a
+   * giver or a taker (`ah-rgkk.2.3`). By hex as well, because a `FORM` alias is unique to a hex
+   * and not to the turn: two hexes each drawing a `new-1` would otherwise have one named after
+   * the other's row (`ah-wyxx.2`). A `GIVE` and a `TAKE FROM` are both within one hex, so the
+   * source is almost always a row the table already holds in the receiver's own hex; one it does
+   * not is named `unit 1502`.
    */
-  unitNames: ReadonlyMap<string, string>;
+  unitNames: ReadonlyMap<UnitRowKey, string>;
 };
 
 /** Columns that say nothing when the pointer rests on them (decision **E2**). */
@@ -766,7 +771,7 @@ function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   }
   for (const taken of unknown) {
     notes.push(
-      `${count(taken.amount, "man", "men")} taken from ${unitReference(taken.from, facts)}, which your report does not show.`
+      `${count(taken.amount, "man", "men")} taken from ${unitReference(taken.from, unit.regionId, facts)}, which your report does not show.`
     );
   }
   if (why) {
@@ -1190,14 +1195,14 @@ function monthsInWords(numerator: number, denominator: number): string {
   return `${Number(quotient.toFixed(2))} months`;
 }
 
-/** `Scouts (1502)` for a row the table holds, and `unit 1502` for one it does not. */
-function unitReference(from: string, facts: PopupFacts): string {
-  const name = facts.unitNames.get(from);
+/** `Scouts (1502)` for a row the table holds in this hex, and `unit 1502` for one it does not. */
+function unitReference(from: string, regionId: string, facts: PopupFacts): string {
+  const name = facts.unitNames.get(unitRowKey(regionId, from));
   return name ? `${name} (${from})` : `unit ${from}`;
 }
 
 /** Why one merge of arriving men moved - or did not move - this unit's figures. */
-function mergeSentence(merge: SkillMerge, facts: PopupFacts): string {
+function mergeSentence(merge: SkillMerge, regionId: string, facts: PopupFacts): string {
   if (merge.cause === "recruited") {
     const who =
       merge.menArriving.length > 0
@@ -1210,7 +1215,7 @@ function mergeSentence(merge: SkillMerge, facts: PopupFacts): string {
       ? `, bringing ${andList(merge.arrivingSkills.map((skill) => `${skill.name} ${skill.level}`))}`
       : "";
   const verb = merge.cause === "given" ? "joined from" : "taken from";
-  return `${count(merge.men, "man", "men")} ${verb} ${unitReference(merge.from, facts)}${brought}.`;
+  return `${count(merge.men, "man", "men")} ${verb} ${unitReference(merge.from, regionId, facts)}${brought}.`;
 }
 
 /** The one note the study writes, every clause of it in order. */
@@ -1315,11 +1320,11 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 
   const notes: string[] = [];
   for (const merge of unit.skillMerges ?? []) {
-    notes.push(mergeSentence(merge, facts));
+    notes.push(mergeSentence(merge, unit.regionId, facts));
   }
   for (const taken of unit.menOfUnknownSkill ?? []) {
     notes.push(
-      `${count(taken.amount, "man", "men")} came from ${unitReference(taken.from, facts)}, whose skills the report does not show, so these figures do not count them.`
+      `${count(taken.amount, "man", "men")} came from ${unitReference(taken.from, unit.regionId, facts)}, whose skills the report does not show, so these figures do not count them.`
     );
   }
   for (const skill of reported) {

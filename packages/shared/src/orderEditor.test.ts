@@ -15,7 +15,7 @@ import {
   summarizeOrderValidation,
   unitsWarnedAboutSilver
 } from "./orderEditor";
-import { silverKey } from "./unitTable";
+import { unitRowKey } from "./unitTable";
 
 describe("orderEditor policy", () => {
   // The vocabulary is the core's, fetched through the client, so that the two cannot drift. The
@@ -492,12 +492,12 @@ describe("the units the silver column marks", () => {
       unitId: "12127",
       message: "your units owe $1437 of upkeep they cannot pay and the faction has $100 unclaimed"
     };
-    expect(unitsWarnedAboutSilver([short])).toEqual(new Set([silverKey("1:7,53", "12127")]));
+    expect(unitsWarnedAboutSilver([short])).toEqual(new Set([unitRowKey("1:7,53", "12127")]));
   });
 
   it("still marks a unit the shortfall check names", () => {
     expect(unitsWarnedAboutSilver([unitFinding("7226", 3)])).toEqual(
-      new Set([silverKey("1:7,53", "7226")])
+      new Set([unitRowKey("1:7,53", "7226")])
     );
   });
 
@@ -511,7 +511,7 @@ describe("the units the silver column marks", () => {
   it("marks every code the core calls silver trouble", () => {
     for (const code of SILVER_TROUBLE_CODES) {
       expect(unitsWarnedAboutSilver([{ ...hexFinding(code), unitId: "101" }])).toEqual(
-        new Set([silverKey("1:7,53", "101")])
+        new Set([unitRowKey("1:7,53", "101")])
       );
     }
   });

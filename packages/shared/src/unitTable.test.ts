@@ -1,6 +1,6 @@
 import type { ReportUnit, StructureInfo, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { structuresByRegionOf } from "./structureLabel";
 import {
   DEFAULT_SORT,
@@ -19,12 +19,12 @@ import {
   dragColumnShare,
   dropBoundaryX,
   orderOf,
-  silverKey,
   silverIsRed,
   silverShown,
   shareOf,
   REORDERABLE_COLUMNS,
   sharesFor,
+  unitNamesByRow,
   unitRowKey,
   unitRowSelector,
   EXTRA_COLUMN_SHARES,
@@ -37,7 +37,8 @@ import {
   sortAfterHiding,
   nextSort,
   type SortState,
-  type UnitColumn
+  type UnitColumn,
+  type UnitRowKey
 } from "./unitTable";
 
 /**
@@ -375,7 +376,7 @@ describe("sorts by the long order, ignoring case and a leading @", () => {
     unit("4", true)
   ];
   // Keyed by row, as the dock builds it: a unit number alone is not unique across hexes.
-  const longOrders = new Map<string, string | null>(
+  const longOrders = new Map<UnitRowKey, string | null>(
     (
       [
         ["1", "work"],
@@ -416,7 +417,7 @@ describe("a sort value belongs to a row, not to a unit number", () => {
   const rows = [here, there];
 
   it("gives each new-1 its own long order rather than whichever was written last", () => {
-    const longOrders = new Map<string, string | null>([
+    const longOrders = new Map<UnitRowKey, string | null>([
       [unitRowKey("1:7,53", "new-1"), "work"],
       [unitRowKey("1:8,54", "new-1"), "@tax"]
     ]);
@@ -429,7 +430,7 @@ describe("a sort value belongs to a row, not to a unit number", () => {
   });
 
   it("gives each new-1 its own silver figure", () => {
-    const silver = new Map<string, number | null>([
+    const silver = new Map<UnitRowKey, number | null>([
       [unitRowKey("1:7,53", "new-1"), 100],
       [unitRowKey("1:8,54", "new-1"), -50]
     ]);
@@ -507,20 +508,55 @@ describe("unitRowKey", () => {
   it("tells two units in the same hex apart", () => {
     expect(unitRowKey("1:7,53", "new-1")).not.toBe(unitRowKey("1:7,53", "new-2"));
   });
+
+  it("a bare unit number is not a row key", () => {
+    const byRow = new Map<UnitRowKey, number>([[unitRowKey("1:7,53", "new-1"), 5]]);
+
+    expect(byRow.get(unitRowKey("1:7,53", "new-1"))).toBe(5);
+    // @ts-expect-error a bare unit number names no hex, so it cannot be a row key.
+    expect(byRow.get("new-1")).toBeUndefined();
+  });
+
+  it("sortUnits will not take a silver map keyed on a bare unit number", () => {
+    const bareKeyed = new Map([["new-1", 5]]);
+    sortUnits(
+      [aReportUnit()],
+      { ...DEFAULT_SORT, column: "silver" },
+      new Map(),
+      new Map(),
+      // @ts-expect-error the silver column's map is keyed by hex and number, never by number alone.
+      bareKeyed
+    );
+  });
+
+  it("two hexes drawing a new-1 each keep their own names", () => {
+    const names = unitNamesByRow([
+      { regionId: "1:7,53", unitId: "new-1", name: "North Scouts" },
+      { regionId: "1:8,54", unitId: "new-1", name: "South Scouts" }
+    ]);
+
+    expect(names.get(unitRowKey("1:7,53", "new-1"))).toBe("North Scouts");
+    expect(names.get(unitRowKey("1:8,54", "new-1"))).toBe("South Scouts");
+  });
+
+  it("a row key is still a string at runtime", () => {
+    expectTypeOf<UnitRowKey>().toExtend<string>();
+    expect(typeof unitRowKey("1:7,53", "new-1")).toBe("string");
+  });
 });
 
 /** `ah-jw85`: `new-1` is unique to a hex, not to a turn, so the key has to carry both. */
-describe("silverKey", () => {
+describe("unitRowKey", () => {
   it("is the same for the same hex and unit", () => {
-    expect(silverKey("1:7,53", "new-1")).toBe(silverKey("1:7,53", "new-1"));
+    expect(unitRowKey("1:7,53", "new-1")).toBe(unitRowKey("1:7,53", "new-1"));
   });
 
   it("tells two hexes' unit apart even though the alias is the same", () => {
-    expect(silverKey("1:7,53", "new-1")).not.toBe(silverKey("1:8,53", "new-1"));
+    expect(unitRowKey("1:7,53", "new-1")).not.toBe(unitRowKey("1:8,53", "new-1"));
   });
 
   it("tells two units in the same hex apart", () => {
-    expect(silverKey("1:7,53", "new-1")).not.toBe(silverKey("1:7,53", "new-2"));
+    expect(unitRowKey("1:7,53", "new-1")).not.toBe(unitRowKey("1:7,53", "new-2"));
   });
 });
 
@@ -848,7 +884,7 @@ describe("the Silver column (ah-1wcw.1)", () => {
       { ...aReportUnit({ unitId: "3", own: true }) }
     ];
     // Keyed by row, as the dock builds it (`unitRowKey`): two hexes can each hold a `new-1`.
-    const silver = new Map<string, number | null>(
+    const silver = new Map<UnitRowKey, number | null>(
       (
         [
           ["1", 50],
