@@ -12,9 +12,9 @@
 
 use std::collections::BTreeMap;
 
+use super::opens_a_region;
 use super::region::parse_region_header;
 use super::unwrap::unwrap_lines;
-use super::opens_a_region;
 
 /// The `merged_faction_id` a map imported from AtlaClient is filed under.
 ///
@@ -127,7 +127,10 @@ mod tests {
         assert_eq!(ages.len(), 83, "the fixture has 83 stamped hexes");
 
         let current = ages.values().filter(|&&turn| turn == 16).count();
-        let older = ages.values().filter(|&&turn| (5..16).contains(&turn)).count();
+        let older = ages
+            .values()
+            .filter(|&&turn| (5..16).contains(&turn))
+            .count();
         let undated = ages.values().filter(|&&turn| turn == 0).count();
         assert_eq!((current, older, undated), (49, 29, 5));
 

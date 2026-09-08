@@ -16,8 +16,7 @@ use atlantis_hud_core::report::merge::{
 use atlantis_hud_core::report::sighting::RegionSighting;
 use atlantis_hud_core::{
     diff_imported_turn, engine_info, plan_merge, reject_import, reserved_merge_identity,
-    ImportedTurnSnapshot, MergePlan,
-    OrderCheckOptions, ReportParseResult, ReportParseResultWire,
+    ImportedTurnSnapshot, MergePlan, OrderCheckOptions, ReportParseResult, ReportParseResultWire,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -334,8 +333,7 @@ pub fn prepare_report_merge_state(
         MergePlan::AlliedReport => {
             merge_report_into_sightings(&existing, &report, viewer_turn_number)
         }
-        MergePlan::MapExport { file_turn, ages }
-        | MergePlan::AtlaClientMap { file_turn, ages } => {
+        MergePlan::MapExport { file_turn, ages } | MergePlan::AtlaClientMap { file_turn, ages } => {
             merge_map_export_into_sightings(&existing, &report, file_turn, &ages)
         }
     };

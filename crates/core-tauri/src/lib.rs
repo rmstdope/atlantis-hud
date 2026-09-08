@@ -17,9 +17,9 @@ use atlantis_hud_core::report::merge::{
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
     completions_at_caret, engine_info, order_argument_completions, order_commands,
-    order_vocabulary, parse_report, plan_merge, reject_import, CaretCompletions, EngineInfo,
-    reserved_merge_identity, MergePlan, OrderCheckOptions, OrderCompletion, OrderValidationResult, ReportParseResult,
-    ReportParseResultWire,
+    order_vocabulary, parse_report, plan_merge, reject_import, reserved_merge_identity,
+    CaretCompletions, EngineInfo, MergePlan, OrderCheckOptions, OrderCompletion,
+    OrderValidationResult, ReportParseResult, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_army, delete_game, delete_hex_note, export_game, import_game,
