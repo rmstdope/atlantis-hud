@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-xbu3 — the mage note saves as it is typed</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --brass:#c8a05a; --warn:#d9a441; --good:#4fb783;
+          --danger:#e0705f; --sel:#4a9fd8; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 30px 0 6px; border-top: 1px solid var(--edge); padding-top: 16px; }
+  p.lead { color: var(--soft); max-width: 92ch; }
+  p.note { color: var(--dim); max-width: 92ch; }
+  .row { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; margin: 14px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 6px; max-width: 44ch; }
+  .cap b { color: var(--ink); font-weight: 600; }
+  .pane { width: 360px; background: var(--panel); border: 1px solid var(--edge); border-radius: 5px;
+          padding: 10px 12px 12px; }
+  .lbl { color: var(--soft); font-size: 12.5px; margin: 0 0 4px; }
+  .ta { width: 100%; box-sizing: border-box; min-height: 60px; background: #131922;
+        border: 1px solid var(--edge); border-radius: 4px; padding: 6px; color: var(--ink);
+        font: 13px/1.5 system-ui, sans-serif; white-space: pre-wrap; }
+  .ta.ph { color: #63707f; }
+  .ta.focus { border-color: var(--sel); }
+  .under { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: 11.5px; }
+  .count { color: var(--dim); }
+  .count.warn { color: var(--warn); }
+  .grow { flex: 1; }
+  .btn { border: 1px solid var(--edge); border-radius: 4px; padding: 1px 8px; color: var(--soft);
+         background: none; font: 12px system-ui, sans-serif; }
+  .foot { margin: 3px 0 0; font-size: 11px; color: var(--dim); }
+  .err { margin: 3px 0 0; font-size: 11.5px; color: var(--warn); }
+  .gone { opacity: .4; }
+  code { font-family: ui-monospace, Menlo, monospace; background: var(--raised); padding: 0 4px;
+         border-radius: 3px; }
+  table.cmp { border-collapse: collapse; margin: 10px 0; font-size: 13px; max-width: 100ch; }
+  table.cmp th, table.cmp td { border: 1px solid var(--edge); padding: 5px 10px; text-align: left;
+                               vertical-align: top; }
+  table.cmp th { color: var(--dim); font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>ah-xbu3 &mdash; the mage note saves as it is typed</h1>
+<p class="lead">Chosen by the navigator, 2026&#8209;09&#8209;08. The <b>Save</b> button goes and the
+note is written as it is typed, <b>silently</b> &mdash; the schedule beside it already commits a
+chosen month without announcing it, and the note becomes the same. Nothing on screen mentions saving
+unless a write actually fails.</p>
+
+<h2 class="sec">Before</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>Today.</b> Text is on screen and not stored until <b>Save</b> or
+    <code>&#8984;&#8617;</code>. Switch mage without pressing either and it is gone. The footer
+    promises an <code>Esc</code> that does not work: the dialog's own capture&#8209;phase
+    <code>Escape</code> handler stops the event before the textarea ever sees it.</p>
+    <div class="pane gone">
+      <p class="lbl">Note</p>
+      <div class="ta">Pushing him to Force 3 before the winter, then Fire.</div>
+      <div class="under">
+        <span class="count">57 / 500</span><span class="grow"></span>
+        <button class="btn">Save</button>
+      </div>
+      <p class="foot">&#8984;&#8617; saves &middot; Esc cancels</p>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">After</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>Typing.</b> No button, no footer line, no status. The counter is the only thing
+    under the box, and it still turns amber past 400.</p>
+    <div class="pane">
+      <p class="lbl">Note</p>
+      <div class="ta focus">Pushing him to Force 3 before the winter, then Fire.</div>
+      <div class="under"><span class="count">57 / 500</span></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>Empty.</b> The placeholder is unchanged.</p>
+    <div class="pane">
+      <p class="lbl">Note</p>
+      <div class="ta ph">Where his studies are heading.</div>
+      <div class="under"><span class="count">0 / 500</span></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>Near the limit.</b></p>
+    <div class="pane">
+      <p class="lbl">Note</p>
+      <div class="ta">&hellip; and after that the Gate school, assuming Bandar keeps the tower and
+      nobody else in the hex wants the teaching month.</div>
+      <div class="under"><span class="count warn">431 / 500</span></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>The write failed.</b> The only time this screen says anything about storage.
+    The line stands until a later write succeeds.</p>
+    <div class="pane">
+      <p class="lbl">Note</p>
+      <div class="ta">Pushing him to Force 3 before the winter, then Fire.</div>
+      <div class="under"><span class="count">57 / 500</span></div>
+      <p class="err">Could not save this note. It is still here &mdash; keep typing and it will try again.</p>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">Keys</h2>
+<table class="cmp">
+  <tr><th style="width:14ch">Key</th><th>Before</th><th>After</th></tr>
+  <tr><td><code>&#8984;&#8617;</code> / <code>Ctrl+&#8617;</code></td>
+      <td>Commits the draft.</td>
+      <td>Nothing. There is no draft to commit.</td></tr>
+  <tr><td><code>Esc</code></td>
+      <td>Documented as abandoning the draft; in fact the dialog closed, because its
+          <code>Escape</code> listener runs in the capture phase and stops the event.</td>
+      <td>Closes the study window, from the note as from anywhere else in it. One rule, and the
+          rule the rest of the application already has.</td></tr>
+</table>
+
+<h2 class="sec">The hex notes stay as they are</h2>
+<p class="lead">The mage note was written as the twin of the hex note editor, which keeps its
+<b>Save</b> and <b>Cancel</b>. Navigator's decision, 2026&#8209;09&#8209;08: they are not the same
+shape. A hex note is added to and removed from a list, so its editor is a form that opens and closes
+and a <b>Cancel</b> means something there; the mage note is one field that is always on screen and
+belongs to one mage. The pair is split on purpose.</p>
+</body>
+</html>
