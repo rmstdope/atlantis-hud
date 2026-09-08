@@ -731,63 +731,9 @@ fn read_backup_collections(
         })
         .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
-    let mut allied_mage_rows = connection.prepare(
-        "SELECT faction_id, faction_name, unit_json, sheet_turn, received_at
-           FROM allied_mages
-          WHERE game_id = ?1",
-    )?;
-    let allied_mages = allied_mage_rows
-        .query_map(params![game_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, u32>(3)?,
-                row.get::<_, String>(4)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .map(
-            |(faction_id, faction_name, unit_json, sheet_turn, received_at)| {
-                Ok(AlliedMage {
-                    faction_id,
-                    faction_name,
-                    unit: serde_json::from_str(&unit_json)?,
-                    sheet_turn,
-                    received_at,
-                })
-            },
-        )
-        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+    let allied_mages = read_unit_keyed::<AlliedMage>(connection, game_id)?;
 
-    let mut study_plan_rows = connection.prepare(
-        "SELECT faction_id, unit_id, goals_json, comment, updated_at
-           FROM study_plans
-          WHERE game_id = ?1",
-    )?;
-    let study_plans = study_plan_rows
-        .query_map(params![game_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .map(|(faction_id, unit_id, goals_json, comment, updated_at)| {
-            Ok(StudyPlan {
-                faction_id,
-                unit_id,
-                goals: serde_json::from_str(&goals_json)?,
-                comment,
-                updated_at,
-            })
-        })
-        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+    let study_plans = read_unit_keyed::<StudyPlan>(connection, game_id)?;
 
     Ok(EncodedGameBackupCollections {
         imported_turns,
@@ -2052,6 +1998,255 @@ pub fn delete_army(
     Ok(rows_affected > 0)
 }
 
+/// The `(faction_id, unit_id)` half of a stored row's identity.
+///
+/// `AlliedMageKey` and `StudyPlanKey` are the same two fields under two names, and the core owns
+/// both, so this reads them rather than replacing them.
+trait UnitKey {
+    fn faction_id(&self) -> &str;
+    fn unit_id(&self) -> &str;
+}
+
+impl UnitKey for AlliedMageKey {
+    fn faction_id(&self) -> &str {
+        &self.faction_id
+    }
+
+    fn unit_id(&self) -> &str {
+        &self.unit_id
+    }
+}
+
+impl UnitKey for StudyPlanKey {
+    fn faction_id(&self) -> &str {
+        &self.faction_id
+    }
+
+    fn unit_id(&self) -> &str {
+        &self.unit_id
+    }
+}
+
+/// A per-game collection whose rows are keyed on `(game_id, faction_id, unit_id)`.
+///
+/// An implementation supplies the table, its columns and the codec for one row; the reading and
+/// writing are `read_unit_keyed`, `list_unit_keyed` and `save_unit_keyed` below.
+trait UnitKeyedCollection: Sized {
+    /// What a caller names in `save_unit_keyed`'s `removed` list.
+    type Key: UnitKey;
+
+    /// The SQLite table these rows live in. A `const`, never a value reaching this crate from a
+    /// caller: it is interpolated into SQL rather than bound.
+    const TABLE: &'static str;
+
+    /// The SELECT list, in the order `read_row` indexes it. Not derivable from the value columns:
+    /// `allied_mages` never selects `unit_id`, which lives inside `unit_json`.
+    const SELECT_COLUMNS: &'static [&'static str];
+
+    /// The columns the upsert writes after `game_id`, `faction_id` and `unit_id`, in the order
+    /// `write_params` returns them.
+    ///
+    /// Nothing type-checks that pairing: two value columns of the same SQLite type could be
+    /// swapped between this list and `write_params` and still compile. Only the round-trip tests
+    /// catch it, and only because their fixtures give each field a distinct value.
+    const VALUE_COLUMNS: &'static [&'static str];
+
+    /// Decodes one row of `SELECT_COLUMNS`. Fallible beyond SQLite's own errors, because a JSON
+    /// column that will not parse is reported rather than rounded down to an empty row.
+    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError>;
+
+    /// This row's `(faction_id, unit_id)`.
+    fn key(&self) -> (&str, &str);
+
+    /// The bindings for `VALUE_COLUMNS`, in that order. Owned, because the JSON columns are built
+    /// here and building them can fail.
+    fn write_params(&self) -> Result<Vec<Box<dyn rusqlite::ToSql>>, PersistenceError>;
+}
+
+/// `SELECT <SELECT_COLUMNS> FROM <TABLE> WHERE game_id = ?1`.
+fn unit_keyed_select_sql<C: UnitKeyedCollection>() -> String {
+    format!(
+        "SELECT {} FROM {} WHERE game_id = ?1",
+        C::SELECT_COLUMNS.join(", "),
+        C::TABLE
+    )
+}
+
+/// The upsert: every value column written, and never a key column in the update set.
+fn unit_keyed_upsert_sql<C: UnitKeyedCollection>() -> String {
+    let placeholders = (1..=3 + C::VALUE_COLUMNS.len())
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let assignments = C::VALUE_COLUMNS
+        .iter()
+        .map(|column| format!("{column} = excluded.{column}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "INSERT INTO {} (game_id, faction_id, unit_id, {}) VALUES ({}) \
+         ON CONFLICT(game_id, faction_id, unit_id) DO UPDATE SET {}",
+        C::TABLE,
+        C::VALUE_COLUMNS.join(", "),
+        placeholders,
+        assignments
+    )
+}
+
+/// `DELETE FROM <TABLE> WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3`.
+fn unit_keyed_delete_sql<C: UnitKeyedCollection>() -> String {
+    format!(
+        "DELETE FROM {} WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3",
+        C::TABLE
+    )
+}
+
+/// Every row of `C` for one game, on a connection the caller already holds and has migrated.
+///
+/// `Statement::query` rather than `query_map`: a `query_map` closure may only fail with
+/// `rusqlite::Error`, which is what forces a second decoding pass on the callers this replaced.
+fn read_unit_keyed<C: UnitKeyedCollection>(
+    connection: &Connection,
+    game_id: &str,
+) -> Result<Vec<C>, PersistenceError> {
+    let mut statement = connection.prepare(&unit_keyed_select_sql::<C>())?;
+    let mut rows = statement.query(params![game_id])?;
+    let mut decoded = Vec::new();
+    while let Some(row) = rows.next()? {
+        decoded.push(C::read_row(row)?);
+    }
+    Ok(decoded)
+}
+
+/// Every row of `C` for one game, in whatever order SQLite produced them - the client orders these.
+fn list_unit_keyed<C: UnitKeyedCollection>(
+    database_path: &Path,
+    game_id: &str,
+) -> Result<Vec<C>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    read_unit_keyed::<C>(&connection, game_id)
+}
+
+/// One decision's worth of change in a single transaction: `removed` first, then `rows`.
+///
+/// `removed` before `rows`, so a unit named in both ends up present; a caller naming one in both
+/// is a caller bug, and this says which way it resolves.
+fn save_unit_keyed<C: UnitKeyedCollection>(
+    database_path: &Path,
+    game_id: &str,
+    rows: &[C],
+    removed: &[C::Key],
+) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let transaction = connection.transaction()?;
+    {
+        let mut delete = transaction.prepare(&unit_keyed_delete_sql::<C>())?;
+        for key in removed {
+            delete.execute(params![game_id, key.faction_id(), key.unit_id()])?;
+        }
+        let mut upsert = transaction.prepare(&unit_keyed_upsert_sql::<C>())?;
+        for row in rows {
+            let (faction_id, unit_id) = row.key();
+            let values = row.write_params()?;
+            let mut bound: Vec<&dyn rusqlite::ToSql> = vec![&game_id, &faction_id, &unit_id];
+            bound.extend(values.iter().map(|value| value.as_ref()));
+            upsert.execute(bound.as_slice())?;
+        }
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+impl UnitKeyedCollection for AlliedMage {
+    type Key = AlliedMageKey;
+
+    const TABLE: &'static str = "allied_mages";
+    const SELECT_COLUMNS: &'static [&'static str] = &[
+        "faction_id",
+        "faction_name",
+        "unit_json",
+        "sheet_turn",
+        "received_at",
+    ];
+    const VALUE_COLUMNS: &'static [&'static str] =
+        &["faction_name", "unit_json", "sheet_turn", "received_at"];
+
+    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
+        let unit_json = row.get::<_, String>(2)?;
+        Ok(AlliedMage {
+            faction_id: row.get(0)?,
+            faction_name: row.get(1)?,
+            unit: serde_json::from_str(&unit_json)?,
+            sheet_turn: row.get(3)?,
+            received_at: row.get(4)?,
+        })
+    }
+
+    fn key(&self) -> (&str, &str) {
+        (&self.faction_id, &self.unit.unit_id)
+    }
+
+    fn write_params(&self) -> Result<Vec<Box<dyn rusqlite::ToSql>>, PersistenceError> {
+        Ok(vec![
+            Box::new(self.faction_name.clone()),
+            Box::new(serde_json::to_string(&self.unit)?),
+            Box::new(self.sheet_turn),
+            Box::new(self.received_at.clone()),
+        ])
+    }
+}
+
+impl UnitKeyedCollection for StudyPlan {
+    type Key = StudyPlanKey;
+
+    const TABLE: &'static str = "study_plans";
+    const SELECT_COLUMNS: &'static [&'static str] = &[
+        "faction_id",
+        "unit_id",
+        "goals_json",
+        "comment",
+        "updated_at",
+    ];
+    const VALUE_COLUMNS: &'static [&'static str] = &["goals_json", "comment", "updated_at"];
+
+    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
+        let goals_json = row.get::<_, String>(2)?;
+        Ok(StudyPlan {
+            faction_id: row.get(0)?,
+            unit_id: row.get(1)?,
+            goals: serde_json::from_str(&goals_json)?,
+            comment: row.get(3)?,
+            updated_at: row.get(4)?,
+        })
+    }
+
+    fn key(&self) -> (&str, &str) {
+        (&self.faction_id, &self.unit_id)
+    }
+
+    fn write_params(&self) -> Result<Vec<Box<dyn rusqlite::ToSql>>, PersistenceError> {
+        Ok(vec![
+            Box::new(serde_json::to_string(&self.goals)?),
+            Box::new(self.comment.clone()),
+            Box::new(self.updated_at.clone()),
+        ])
+    }
+}
+
 /// Every allied mage stored for one game, in whatever order SQLite produced them.
 ///
 /// Ordering is the client's (`sortAlliedMages`), exactly as it is for Armies.
@@ -2065,41 +2260,7 @@ pub fn list_allied_mages(
     database_path: &Path,
     game_id: &str,
 ) -> Result<Vec<AlliedMage>, PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    let mut statement = connection.prepare(
-        "SELECT faction_id, faction_name, unit_json, sheet_turn, received_at
-           FROM allied_mages
-          WHERE game_id = ?1",
-    )?;
-    let rows = statement.query_map(params![game_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, Option<String>>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, u32>(3)?,
-            row.get::<_, String>(4)?,
-        ))
-    })?;
-
-    let mut mages = Vec::new();
-    for row in rows {
-        let (faction_id, faction_name, unit_json, sheet_turn, received_at) = row?;
-        mages.push(AlliedMage {
-            faction_id,
-            faction_name,
-            unit: serde_json::from_str(&unit_json)?,
-            sheet_turn,
-            received_at,
-        });
-    }
-    Ok(mages)
+    list_unit_keyed::<AlliedMage>(database_path, game_id)
 }
 
 /// Writes one sheet's worth of change in a single transaction: `removed` first, then `mages`.
@@ -2118,50 +2279,7 @@ pub fn save_allied_mages(
     mages: &[AlliedMage],
     removed: &[AlliedMageKey],
 ) -> Result<(), PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    let transaction = connection.transaction()?;
-    for key in removed {
-        transaction.execute(
-            "DELETE FROM allied_mages WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3",
-            params![game_id, key.faction_id.as_str(), key.unit_id.as_str()],
-        )?;
-    }
-    for mage in mages {
-        transaction.execute(
-            "INSERT INTO allied_mages (
-                game_id,
-                faction_id,
-                unit_id,
-                faction_name,
-                unit_json,
-                sheet_turn,
-                received_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(game_id, faction_id, unit_id) DO UPDATE SET
-                faction_name = excluded.faction_name,
-                unit_json = excluded.unit_json,
-                sheet_turn = excluded.sheet_turn,
-                received_at = excluded.received_at",
-            params![
-                game_id,
-                mage.faction_id.as_str(),
-                mage.unit.unit_id.as_str(),
-                mage.faction_name.as_deref(),
-                serde_json::to_string(&mage.unit)?.as_str(),
-                mage.sheet_turn,
-                mage.received_at.as_str(),
-            ],
-        )?;
-    }
-    transaction.commit()?;
-    Ok(())
+    save_unit_keyed(database_path, game_id, mages, removed)
 }
 
 /// Every study plan of one game. Ordering is the client's (`sortStudyPlans`), not this store's.
@@ -2173,45 +2291,7 @@ pub fn list_study_plans(
     database_path: &Path,
     game_id: &str,
 ) -> Result<Vec<StudyPlan>, PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    let mut statement = connection.prepare(
-        "SELECT faction_id, unit_id, goals_json, comment, updated_at
-           FROM study_plans
-          WHERE game_id = ?1",
-    )?;
-    let rows = statement.query_map(params![game_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-        ))
-    })?;
-
-    // The goal queue is one JSON column, as `armies.members_json` is and for the reason
-    // `save_army` gives. A row whose JSON will not parse is reported rather than rounded down to
-    // an empty queue, exactly as `list_armies` does with its members.
-    let mut plans = Vec::new();
-    for row in rows {
-        let (faction_id, unit_id, goals_json, comment, updated_at) = row?;
-        plans.push(StudyPlan {
-            faction_id,
-            unit_id,
-            goals: serde_json::from_str(&goals_json)?,
-            comment,
-            updated_at,
-        });
-    }
-
-    Ok(plans)
+    list_unit_keyed::<StudyPlan>(database_path, game_id)
 }
 
 /// Writes one decision's worth of change in a single transaction: `removed` first, then `plans`.
@@ -2229,47 +2309,7 @@ pub fn save_study_plans(
     plans: &[StudyPlan],
     removed: &[StudyPlanKey],
 ) -> Result<(), PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    let transaction = connection.transaction()?;
-    for key in removed {
-        transaction.execute(
-            "DELETE FROM study_plans WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3",
-            params![game_id, key.faction_id.as_str(), key.unit_id.as_str()],
-        )?;
-    }
-    for plan in plans {
-        transaction.execute(
-            "INSERT INTO study_plans (
-                game_id,
-                faction_id,
-                unit_id,
-                goals_json,
-                comment,
-                updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(game_id, faction_id, unit_id) DO UPDATE SET
-                goals_json = excluded.goals_json,
-                comment = excluded.comment,
-                updated_at = excluded.updated_at",
-            params![
-                game_id,
-                plan.faction_id.as_str(),
-                plan.unit_id.as_str(),
-                serde_json::to_string(&plan.goals)?.as_str(),
-                plan.comment.as_str(),
-                plan.updated_at.as_str(),
-            ],
-        )?;
-    }
-    transaction.commit()?;
-    Ok(())
+    save_unit_keyed(database_path, game_id, plans, removed)
 }
 
 #[cfg(test)]
@@ -2282,6 +2322,64 @@ mod tests {
     const GAME_ID: &str = "faction-12";
     const CREATED_AT: &str = "2026-08-01T09:00:00Z";
     const IMPORTED_AT: &str = "2026-08-01T10:00:00Z";
+
+    #[test]
+    fn unit_keyed_upsert_sql_for_allied_mages_names_the_key_and_every_value_column() {
+        let sql = unit_keyed_upsert_sql::<AlliedMage>();
+        assert!(
+            sql.contains(
+                "INSERT INTO allied_mages (game_id, faction_id, unit_id, faction_name, unit_json, sheet_turn, received_at)"
+            ),
+            "{sql}"
+        );
+        assert!(
+            sql.contains("ON CONFLICT(game_id, faction_id, unit_id) DO UPDATE SET"),
+            "{sql}"
+        );
+        assert!(
+            sql.contains("faction_name = excluded.faction_name"),
+            "{sql}"
+        );
+        assert!(!sql.contains("game_id = excluded.game_id"), "{sql}");
+    }
+
+    #[test]
+    fn unit_keyed_upsert_sql_for_study_plans_names_the_key_and_every_value_column() {
+        let sql = unit_keyed_upsert_sql::<StudyPlan>();
+        assert!(
+            sql.contains(
+                "INSERT INTO study_plans (game_id, faction_id, unit_id, goals_json, comment, updated_at)"
+            ),
+            "{sql}"
+        );
+        assert!(sql.contains("goals_json = excluded.goals_json"), "{sql}");
+        assert!(!sql.contains("unit_id = excluded.unit_id"), "{sql}");
+    }
+
+    /// Pins what `list_study_plans` promised in prose and nothing tested: a goal queue whose JSON
+    /// will not parse is reported, never rounded down to an empty queue.
+    #[test]
+    fn malformed_stored_goal_payload_is_an_error_rather_than_a_missing_plan() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let connection = Connection::open(&created.database_path).expect("open database");
+        connection
+            .execute(
+                "INSERT INTO study_plans
+                     (game_id, faction_id, unit_id, goals_json, comment, updated_at)
+                 VALUES (?1, '21', '9001', '{', 'a note', ?2)",
+                params![GAME_ID, CREATED_AT],
+            )
+            .expect("insert should succeed");
+
+        let listed = list_study_plans(&created.database_path, GAME_ID);
+
+        assert!(
+            matches!(listed, Err(PersistenceError::Serialization(_))),
+            "an unreadable goal queue is reported, not skipped"
+        );
+    }
 
     fn fixture_manifest() -> GameManifest {
         manifest_named(GAME_ID, "Faction 12 - Spring 12")
