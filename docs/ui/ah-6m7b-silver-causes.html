@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Where the silver causes live (ah-6m7b)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 6px; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:6px; }
+  .il { font-size:12px; color:var(--ink-soft); padding:3px 0; border-bottom:1px solid var(--edge-soft); }
+  .il:last-child { border-bottom:0; }
+  .il b { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .il .s { display:block; color:var(--ink-dim); font-size:11.5px; font-style:italic; margin-top:2px; }
+  .new { color:var(--ok); }
+  .il.newline { background:rgba(79,183,131,.07); border-left:2px solid var(--ok); padding-left:7px; }
+  .il.badline { background:rgba(217,112,112,.08); border-left:2px solid var(--danger); padding-left:7px; }
+  .bad { color:var(--danger); }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; } .cap b { color:var(--ink); }
+  .tipnote { color:var(--ink-dim); font-size:11px; margin-top:8px; line-height:1.5; font-style:italic; }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-6m7b</span> — where the silver causes live</h1>
+  <p>You chose <strong>balance walk plus the change list</strong>: <code>UnitSilver.changes</code>
+  should stop being a second derivation and come from the ledger's own movements. There is a catch
+  worth one minute of your time before I plan it.</p>
+  <p>The ledger's movement list has <strong>17</strong> causes
+  (<code>ItemChangeCause</code>, <code>orders/effects.rs:443</code>). The SILVER column's list has
+  <strong>seven the ledger has never heard of</strong>: <code>Taxed</code>, <code>Pillaged</code>,
+  <code>Claimed</code>, <code>Worked</code>, <code>Entertained</code>, <code>Studied</code>,
+  <code>CastEarned</code>. The ledger applies all seven to its balances &mdash; it just never
+  records them as <em>movements</em>.</p>
+  <p>And the ITEMS popup draws a line for <strong>every</strong> tag the unit holds, silver
+  included, with no filter (<code>packages/shared/src/unitCellPopup.ts:288</code>). So teaching the
+  ledger those seven causes puts <b>new sentences in a second surface</b> &mdash; which is the exact
+  failure <code>docs/retrospectives/ah-728m.2.2.md</code> records.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>Today</em> what the ITEMS popup says about silver</h2>
+  <p>One unit, one month: <code>TAX</code>, <code>@WORK</code>, <code>STUDY COMB</code>,
+  <code>BUY 2 grain</code>, <code>GIVE 901 100 SILV</code>. It taxes 250, works 190, studies for
+  100, buys 24 of grain and gives 100 away.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Items</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>grain</b> &nbsp;10 &rarr; 12
+        <span class="s">grain: bought 2 at 12 silver each.</span></div>
+      <div class="il"><b>silver</b> &nbsp;1000 &rarr; 1216
+        <span class="s">silver: bought 2 at 12 silver each, gave 100 to Ferry (901).</span></div>
+    </div>
+  </div>
+  <p class="cap"><b>The silver line is already there, and it is already half a story.</b> It names
+  the market and the gift because those are movements; it says nothing about the 250 taxed, the 190
+  worked or the 100 studied, yet the balance it shows moved by all of them. A player reading
+  <code>1000 &rarr; 1216</code> against <code>bought 24, gave 100</code> cannot make the arithmetic
+  come out.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option A</em> One list &mdash; the ITEMS popup gains the seven sentences</h2>
+  <p>The seven causes join <code>ItemChangeCause</code>, the ledger records them, and both surfaces
+  read one list. <code>itemCauseClause</code> gets seven new arms, so the silver line becomes whole.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Items</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>grain</b> &nbsp;10 &rarr; 12
+        <span class="s">grain: bought 2 at 12 silver each.</span></div>
+      <div class="il newline"><b>silver</b> &nbsp;1000 &rarr; 1216 <span class="new">&nbsp;changed</span>
+        <span class="s">silver: gave 100 to Ferry (901), taxed 250, bought 2 at 12 silver each,
+        studied for 100, worked 190.</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Scouts (900) &mdash; unchanged</div>
+      <div class="il"><b>held</b> 1000 &nbsp;&nbsp; <b>income</b> 440 &nbsp;&nbsp; <b>expense</b> 224
+        <span class="s">at month end 1216</span></div>
+      <div class="il"><span class="s">Taxed 250. Worked 190. Bought 2 grain for 24. Studied for 100.
+        Gave 100 to Ferry (901).</span></div>
+    </div>
+  </div>
+  <p class="cap"><b>The silver line now adds up</b>, and the duplication is gone for good: one list,
+  one vocabulary, and the next silver rule is written once. The cost is that the ITEMS popup says
+  more than it does today about a tag some players only ever read in the SILVER column &mdash; and
+  the clauses are in the turn's order, so the gift comes first and the wage last, which reads oddly
+  beside a running total nobody sees.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option B</em> One list, but the ITEMS popup keeps its silver line as it is</h2>
+  <p>Same ledger change &mdash; the seven causes are recorded, so both surfaces read one list &mdash;
+  but <code>itemLines</code> keeps drawing only the causes it draws today, and the seven are shown
+  by the SILVER column alone.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Items</div>
+      <div class="hd">Scouts (900)</div>
+      <div class="il"><b>grain</b> &nbsp;10 &rarr; 12
+        <span class="s">grain: bought 2 at 12 silver each.</span></div>
+      <div class="il"><b>silver</b> &nbsp;1000 &rarr; 1216
+        <span class="s">silver: bought 2 at 12 silver each, gave 100 to Ferry (901).</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Scouts (900) &mdash; unchanged</div>
+      <div class="il"><b>held</b> 1000 &nbsp;&nbsp; <b>income</b> 440 &nbsp;&nbsp; <b>expense</b> 224
+        <span class="s">at month end 1216</span></div>
+      <div class="il"><span class="s">Taxed 250. Worked 190. Bought 2 grain for 24. Studied for 100.
+        Gave 100 to Ferry (901).</span></div>
+    </div>
+  </div>
+  <p class="cap"><b>Nothing a player reads changes at all</b>, and the refactoring still lands: one
+  derivation, one vocabulary, one place the next rule is written. The cost is a filter that has to
+  be justified in code and kept true &mdash; a list of seven causes the ITEMS popup deliberately
+  drops, which is a small new thing to keep in step.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option C</em> Leave the change list alone</h2>
+  <p>Unify the balance walk only. <code>UnitSilver.changes</code> stays silver.rs's own derivation
+  with its own seven causes, and neither popup changes.</p>
+  <p class="cap">This is the answer you moved away from a moment ago, and it is here only so the
+  three sit side by side. It leaves the smaller half of the duplication in place: the balances stop
+  drifting, the two change lists can still.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>The states</em> that are not the happy path</h2>
+  <table class="q">
+    <tr><th>State</th><th>A</th><th>B</th></tr>
+    <tr><td class="k">no silver movement at all</td>
+        <td>no silver line, as today</td><td>no silver line, as today</td></tr>
+    <tr><td class="k">a doubted unit (estimated men)</td>
+        <td>ledger records nothing, so no clauses &mdash; same as today</td><td>same as today</td></tr>
+    <tr><td class="k">a cause the front end does not know</td>
+        <td class="bad">falls through to <code>gained N</code> / <code>lost N</code> until wording ships</td>
+        <td>never reaches the front end</td></tr>
+    <tr><td class="k">many clauses (a unit buying at four prices)</td>
+        <td>one wrapping sentence, uncapped &mdash; the cost accepted at <b>S2</b>, now longer</td>
+        <td>unchanged</td></tr>
+    <tr><td class="k">an older core, a newer front end</td>
+        <td>silver line short of its seven clauses</td><td>identical</td></tr>
+  </table>
+  <blockquote>Whichever you pick, the SILVER column itself is untouched in both: same rows, same
+  wording, same numbers except where it disagrees with the ledger today &mdash; and those you
+  already asked to have named in each PR.</blockquote>
+</section>
+</main>
+</body>
+</html>
