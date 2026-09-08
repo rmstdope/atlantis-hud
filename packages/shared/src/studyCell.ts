@@ -13,8 +13,8 @@
 
 import type { StudyGoal } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
-import { skillWords } from "./skillReading";
 import { standingsFrom } from "./magicStanding";
+import { skillWords } from "./skillReading";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import { TEACHING_SLOTS, doublingTeacher } from "./studyTeaching";

@@ -155,9 +155,9 @@ export function magePane(input: {
  * What he knows as he stands, with no month applied.
  *
  * Deliberately not an arrow with the same reading at both ends: `4(325) → 4(325)` for a turn
- * nothing happened in promises a change and then denies it. `skillWords` (skillReading.ts) is
- * what a turn's own lines
- * fall back to for a skill the month did not move, so a standing reads the same either way.
+ * nothing happened in promises a change and then denies it. `skillWords` (skillReading.ts) is what
+ * a turn's own lines fall back to for a skill the month did not move, so a standing reads the same
+ * either way.
  */
 function knownNow(
   standing: ReadonlyMap<string, { level: number; points: number }>,
