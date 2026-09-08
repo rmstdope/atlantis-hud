@@ -10753,8 +10753,11 @@ fn sailing_levels_after_orders(
 /// TAKE are phase 4, before anything moves in phase 9, so the hex the report prints a unit in is
 /// the hex the transfer will look for it in.
 ///
-/// The test is against every unit the report shows in this region, not against `hex.find`, which
-/// sees only our own: giving to another faction's unit standing here is legal and ordinary.
+/// Where the target stands is not decided here: it comes from `Hex::give_endpoint`, so this check
+/// and every other transfer surface read one set of reach rules (`orders/targets.rs`). What is
+/// decided here is only what to *say*. The rules bind `shown_here` to every unit the report shows
+/// in this region, not to `hex.find`, which sees only our own: giving to another faction's unit
+/// standing here is legal and ordinary.
 ///
 /// A unit the report shows somewhere else has that region named, because a courier that has moved
 /// and a mistyped number are different mistakes with different fixes. A `NEW` alias no `FORM` in
@@ -10778,65 +10781,63 @@ fn check_transfer_targets(
                 Intent::Take { from, .. } => (from, "taken from"),
                 _ => continue,
             };
-            match party {
-                Party::Unit(id) => {
-                    if hex.region.units.iter().any(|unit| &unit.unit_id == id) {
-                        continue;
-                    }
-                    // A GIVE to a number the whole report never prints is not a mistake we can
-                    // establish: `rules/give` lets a faction that has declared us Friendly receive
-                    // from a unit that cannot see it at all, so this may be a perfectly good order
-                    // aimed at a unit we simply cannot see (`ah-66yi`). A TAKE is unchanged -
-                    // `rules/take` confines it to a faction-mate, whom we would be shown.
-                    if matches!(placed.intent, Intent::Give { .. })
-                        && !located.contains_key(id.as_str())
-                    {
-                        continue;
-                    }
+            // A unit transferring to itself is standing right here, so `GIVE_TARGET_NOT_HERE`
+            // would state something false. `give_endpoint` answers `Nowhere` for a self-transfer
+            // because the server refuses the order and no ledger may charge for it
+            // (`targets.rs`), which is a different fact from the one this check states - so it is
+            // settled before reach is consulted rather than through it.
+            if party_unit_id(party).as_deref() == Some(ordered.unit.unit_id.as_str()) {
+                continue;
+            }
+            match (
+                hex.give_endpoint(party, &ordered.unit.unit_id).reach,
+                &placed.intent,
+            ) {
+                // In this hex, ours or anyone's, or a deliberate discard: nothing to say.
+                (GiveReach::Ours | GiveReach::Foreign | GiveReach::Discard, _) => continue,
+                // A GIVE to a number the whole report never prints is not a mistake we can
+                // establish: `rules/give` lets a faction that has declared us Friendly receive
+                // from a unit that cannot see it at all, so this may be a perfectly good order
+                // aimed at a unit we simply cannot see (`ah-66yi`). A TAKE is unchanged -
+                // `rules/take` confines it to a faction-mate, whom we would be shown.
+                (GiveReach::Unshown, Intent::Give { .. }) => continue,
+                (GiveReach::Unshown | GiveReach::Nowhere, _) => {}
+            }
 
-                    // The label is only ever formatted here, on the rare path that actually emits a
-                    // finding - `located` itself carries just a region reference per unit, so the
-                    // common case (nothing wrong) never allocates a label string per unit in the
-                    // report.
-                    let message = match located.get(id.as_str()) {
-                        Some(region) => format!(
-                            "unit {id} is not in this hex to be {verb} - your report shows it in {}",
-                            region.label()
-                        ),
-                        None => format!(
-                            "unit {id} is not in this hex to be {verb}, and appears nowhere else \
-                             in your report"
-                        ),
-                    };
-                    findings.push(ordered.finding(
-                        hex,
-                        codes::GIVE_TARGET_NOT_HERE,
-                        message,
-                        Some(placed),
-                    ));
-                }
+            // The label is only ever formatted here, on the rare path that actually emits a
+            // finding - `located` itself carries just a region reference per unit, so the common
+            // case (nothing wrong) never allocates a label string per unit in the report.
+            //
+            // `located` is consulted only to *name the region*, which is the one thing the reach
+            // rules cannot supply, and the two agree by construction: a non-self `Party::Unit`
+            // reaches `Nowhere` only via `shown_anywhere`, which is `located`'s own key set - the
+            // two walks visit the same units - and reaches `Unshown` only when it is absent.
+            let message = match party {
+                Party::Unit(id) => match located.get(id.as_str()) {
+                    Some(region) => format!(
+                        "unit {id} is not in this hex to be {verb} - your report shows it in {}",
+                        region.label()
+                    ),
+                    None => format!(
+                        "unit {id} is not in this hex to be {verb}, and appears nowhere else \
+                         in your report"
+                    ),
+                },
                 // A `NEW` alias names a unit this month's own orders create, so the report could
-                // never show it - what settles it is whether a `FORM` in this hex creates one.
-                // `Hex::read` files a formed unit under `new-{alias}`, so `find` answers directly.
-                // Nothing else on the screen would say so: the order simply vanishes, where a
-                // mistyped number at least gets the message above (`ah-vcp8.2`).
+                // never show it - what settles it is whether a `FORM` in this hex creates one,
+                // which is the reach rules' own `Party::New` arm. Nothing else on the screen would
+                // say so: the order simply vanishes, where a mistyped number at least gets the
+                // message above (`ah-vcp8.2`).
                 Party::New(alias) => {
-                    if hex.find(&format!("new-{alias}")).is_some() {
-                        continue;
-                    }
-                    findings.push(ordered.finding(
-                        hex,
-                        codes::GIVE_TARGET_NOT_HERE,
-                        format!(
-                            "no FORM in this hex creates NEW {alias}, so this order does nothing"
-                        ),
-                        Some(placed),
-                    ));
+                    format!("no FORM in this hex creates NEW {alias}, so this order does nothing")
                 }
                 // `FACTION n NEW m` names another faction's new unit, which the game really does
-                // create here, and unit zero is a deliberate discard. Neither is a mistake.
-                Party::Foreign { .. } | Party::Discard => {}
-            }
+                // create here, and unit zero is a deliberate discard. The reach rules answer
+                // `Foreign` for one and `Discard` for the other, both of which the match above
+                // passed over, so neither can arrive here.
+                Party::Foreign { .. } | Party::Discard => continue,
+            };
+            findings.push(ordered.finding(hex, codes::GIVE_TARGET_NOT_HERE, message, Some(placed)));
         }
     }
 }
@@ -10851,19 +10852,15 @@ fn check_take_from_another_faction(
     }
     for ordered in &hex.units {
         for placed in &ordered.intents {
-            let Intent::Take {
-                from: Party::Unit(id),
-                ..
-            } = &placed.intent
-            else {
+            let Intent::Take { from, .. } = &placed.intent else {
                 continue;
             };
-            if hex
-                .region
-                .units
-                .iter()
-                .any(|unit| unit.unit_id == *id && !unit.own)
-            {
+            // The id is needed for the message; the reach rules answer `Foreign` only for a
+            // `Party::Unit`, so every other party is settled by the comparison below.
+            let Party::Unit(id) = from else {
+                continue;
+            };
+            if hex.give_endpoint(from, &ordered.unit.unit_id).reach == GiveReach::Foreign {
                 findings.push(ordered.finding(
                     hex,
                     codes::TAKE_FROM_ANOTHER_FACTION,
@@ -29568,6 +29565,79 @@ BUILD
             )),
             Vec::<&str>::new()
         );
+    }
+
+    /// `give_reach` answers `Nowhere` for a unit transferring to itself, because the server
+    /// refuses the order - but this check states that the target is *not in this hex*, and it
+    /// plainly is. So the self-transfer is settled before reach is consulted, and this is the
+    /// test that fails if it ever is not.
+    #[test]
+    fn a_gift_from_a_unit_to_itself_is_silent() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![with_item(
+                    unfed(unit("8443")),
+                    30,
+                    "grain",
+                    "GRAI"
+                )])],
+                "unit 8443\nGIVE 8443 30 GRAI\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// The same for a `TAKE`, whose verb takes the other branch of the pair above.
+    #[test]
+    fn a_take_from_a_unit_by_itself_is_silent() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![with_item(
+                    unfed(unit("8443")),
+                    30,
+                    "grain",
+                    "GRAI"
+                )])],
+                "unit 8443\nTAKE FROM 8443 30 GRAI\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// And for the alias form: a unit `FORM`ed this month that gives to its own alias is filed
+    /// under `new-1` and is its own giver, so `give_reach` answers `Nowhere` here too.
+    ///
+    /// Asserted as the *absence of this code* rather than as total silence: the formed unit holds
+    /// nothing, so an unrelated shortfall finding here would be about the fixture and not about
+    /// the rule under test.
+    #[test]
+    fn a_gift_from_a_formed_unit_to_its_own_alias_is_silent() {
+        assert!(!codes(&check(
+            vec![region(vec![with_item(
+                unfed(unit("8443")),
+                30,
+                "grain",
+                "GRAI"
+            )])],
+            "unit 8443\nFORM 1\nGIVE NEW 1 30 GRAI\nEND\n",
+        ))
+        .contains(&"give-target-not-here"));
+    }
+
+    /// `GiveReach::Ours` and `GiveReach::Foreign` differ by exactly `unit.own`, which is the
+    /// distinction this finding is about. Asserted as the absence of this one code rather than as
+    /// total silence, so a maintenance finding about the fixture cannot fail a test about the
+    /// faction rule.
+    #[test]
+    fn a_take_from_our_own_unit_in_the_hex_names_no_faction_rule() {
+        assert!(!codes(&check(
+            vec![region(vec![
+                unit("4426"),
+                with_item(unit("900"), 50, "silver", "SILV")
+            ])],
+            "unit 4426\nTAKE FROM 900 50 SILV\n",
+        ))
+        .contains(&"take-from-another-faction"));
     }
 
     /// This is the test that fails if the implementation reaches for `hex.find`, which sees only
