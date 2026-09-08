@@ -824,6 +824,24 @@ export function AppShell({
   const [exportRect, setExportRect] = useState<MapRect | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  /**
+   * Opens the export dialog on a clean slate.
+   *
+   * The failure of a previous attempt belongs to that attempt: a message left standing in a
+   * freshly opened dialog reads as something already wrong with the export in front of the player.
+   *
+   * Declared here, beside the state it sets rather than beside the dialog it opens, because the
+   * command palette's entries name it and a dependency array is read during render.
+   */
+  const openExport = useCallback((rect?: MapRect) => {
+    if (rect) {
+      setExportRect(rect);
+    }
+    setExportError(null);
+    setExportOpen(true);
+  }, []);
+
   // The F8 walk's stop and its pending cross-unit landing.
   //
   // Refs are what the walk *steps* from - pressing F8 twice must not wait a render between the
@@ -990,12 +1008,12 @@ export function AppShell({
    * declared default, and a ruleset that declares none yields the empty string, which is how the
    * core hears "the game never said" and keeps computing neighbours exactly as it always did.
    */
+  const openRulesetId = game?.manifest.metadata.rulesetId;
+  const recordedMapShape = game?.manifest.metadata.map;
   const mapShape = useMemo(
     () =>
-      game === null
-        ? null
-        : mapShapeOfGame(game.manifest.metadata.rulesetId, game.manifest.metadata.map).map,
-    [game?.manifest.metadata.rulesetId, game?.manifest.metadata.map]
+      openRulesetId === undefined ? null : mapShapeOfGame(openRulesetId, recordedMapShape).map,
+    [openRulesetId, recordedMapShape]
   );
 
   /**
@@ -1421,7 +1439,7 @@ export function AppShell({
           break;
       }
     },
-    [orderedOwnUnitIds, unit, goToUnit, walkProblems, gameData]
+    [orderedOwnUnitIds, unit, goToUnit, walkProblems, gameData, magicTree]
   );
 
   // The global keyboard layer: one bubble-phase listener, so every widget's own keys - the
@@ -1602,7 +1620,9 @@ export function AppShell({
     theme,
     orderCommands,
     game,
-    selectedRegionId
+    selectedRegionId,
+    magicTree,
+    openExport
   ]);
 
   /**
@@ -1652,7 +1672,7 @@ export function AppShell({
         }
       }
     },
-    [clearPlan, selectRegion, closePopover]
+    [clearPlan, selectRegion, closePopover, writeOrdersDocument]
   );
 
   /**
@@ -1930,14 +1950,28 @@ export function AppShell({
         (message) => setStatus(failedStatus(message)),
         { busy: setBusy, prefix: `could not read ${fileName}` }
       ),
-    // `ruleset` belongs here: without it the callback closes over the value at first render, which
-    // is null, and every report is parsed unclassified however long the ruleset took to arrive.
+    // The ruleset is not a dependency and must not be: `parseReport` waits for it and reads it
+    // through refs (`parserWaitingForRuleset`), so the callback never closes over a null ruleset
+    // and never has to be rebuilt when one arrives. `client` goes the same way - `parseReport` is
+    // memoised on it, so listing it here would be listing it twice.
+    // `game` is the one entry here that changes a *decision* rather than a closure: `game !== null`
+    // is `hasGame` in the routing call above, so without it a report could be routed against
+    // whether a game was open at the render this callback was last built on.
     // What is on screen is read through `viewerRef` rather than closed over, for the reason that
     // ref states. `model` stays a dependency and is read from the closure: it is used only to
     // count how much of a *map export* is new, and a map export arrives one file at a time from a
     // drop or the import button - never inside a multi-turn run, which is the only thing that
     // loads several reports before a render.
-    [client, ruleset, model, heldMagesFor, applyReport, storeReportOnly, takeInMageSheet]
+    [
+      model,
+      heldMagesFor,
+      applyReport,
+      storeReportOnly,
+      takeInMageSheet,
+      flush,
+      game,
+      parseReport
+    ]
   );
 
   /**
@@ -2265,7 +2299,9 @@ export function AppShell({
 
       await runBatch(batch, choice.factionId);
     },
-    [client, ruleset, parsed, loadReport, flush, runBatch, chooseOrdersImport]
+    // Neither `client` nor `ruleset` is read here: both are reached through `parseReport`, which
+    // is memoised on the client and waits for the ruleset through refs.
+    [parsed, loadReport, flush, runBatch, chooseOrdersImport, parseReport]
   );
 
   // The ruleset is a served file rather than something compiled in, so a movement value can be
@@ -2321,6 +2357,9 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
+  // Keyed on the ruleset id rather than on `game` on purpose (ah-lkw, see above): a rename would
+  // refetch and flash 'loading' for a change the ruleset file has nothing to do with.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openGameId, game?.manifest.metadata.rulesetId, gameEpoch]);
 
   useEffect(() => {
@@ -2425,6 +2464,9 @@ export function AppShell({
     } else {
       useHexNotesStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (see above): a rename hands the shell a fresh
+  // `game` under the same id, and the notes it would reload are the same notes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /**
@@ -2437,6 +2479,9 @@ export function AppShell({
     } else {
       useArmiesStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (ah-1mpx.1, see above): a rename hands the shell
+  // a fresh `game` under the same id, and the armies it would reload are the same armies.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /**
@@ -2449,6 +2494,9 @@ export function AppShell({
     } else {
       useAlliedMagesStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (ah-lyg6.1.2.2, see above): a rename hands the
+  // shell a fresh `game` under the same id, and the allied mages reloaded are the same mages.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /** And the study plans themselves, keyed the same way and for the same reason. */
@@ -2458,6 +2506,9 @@ export function AppShell({
     } else {
       useStudyPlansStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (see above): a rename hands the shell a fresh
+  // `game` under the same id, and the study plans it would reload are the same plans.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /**
@@ -2470,6 +2521,10 @@ export function AppShell({
     } else {
       useBattleSkillsStore.getState().clear();
     }
+  // Keyed on openGameId and gameEpoch on purpose (ah-1mpx.6.2, see above): a rename hands the
+  // shell a fresh `game` under the same id, and re-running the whole battle-skills scan for it
+  // would cost the same answer.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch]);
 
   /**
@@ -2483,6 +2538,10 @@ export function AppShell({
     } else {
       useResourceMemoryStore.getState().clear();
     }
+  // Keyed on openGameId, gameEpoch and gameData on purpose (ah-tgtp, see above): a rename hands
+  // the shell a fresh `game` under the same id, and re-running the whole resource-memory scan for
+  // it would cost the same answer.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch, gameData]);
 
   /**
@@ -2661,6 +2720,10 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
+  // `game` and `writeOrdersDocument` are omitted on purpose (ah-lkw, see above): keyed on the id,
+  // a rename would redo an entire turn restore, with the busy focus-blur around it, for a change
+  // of name.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, ruleset, rulesetText, selectRegion, selectUnit, gameEpoch]);
 
   /**
@@ -2705,7 +2768,7 @@ export function AppShell({
       // otherwise open on whichever level the game before it was left on.
       openGameInStore(workspaceGameOf(opened), loadSavedView(opened.manifest.metadata.gameId));
     },
-    [clearPlan, openGameInStore]
+    [clearPlan, openGameInStore, writeOrdersDocument]
   );
 
   /**
@@ -2732,7 +2795,7 @@ export function AppShell({
         setGames(outcome.games);
         closePopover("games");
       }),
-    [client, enterGame, flush, runGameAction]
+    [client, closePopover, enterGame, flush, runGameAction]
   );
 
   /**
@@ -2823,7 +2886,7 @@ export function AppShell({
         setGames(outcome.games);
         closePopover("games");
       }),
-    [client, enterGame, flush, runGameAction]
+    [client, closePopover, enterGame, flush, runGameAction]
   );
 
 
@@ -2903,7 +2966,7 @@ export function AppShell({
         // `runGameAction` resolves `undefined` only when the work threw; the `?? null` below is the
         // type-level tail of that, not a lost message.
       }).then((failure) => failure ?? null),
-    [client, closeGameInStore, enterGame, game, runGameAction, writer]
+    [client, closeGameInStore, closePopover, enterGame, game, runGameAction, writer]
   );
 
   /**
@@ -2937,7 +3000,7 @@ export function AppShell({
         closePopover("games");
         return null;
       }).then((failure) => failure ?? null),
-    [client, enterGame, game, runGameAction, writer]
+    [client, closePopover, enterGame, game, runGameAction, writer]
   );
 
   const exportGameBackup = useCallback(
@@ -2954,7 +3017,7 @@ export function AppShell({
         }
         closePopover("games");
       }),
-    [client, flush, games, runGameAction, saveTextFile]
+    [client, closePopover, flush, games, runGameAction, saveTextFile]
   );
 
   const importGameBackup = useCallback(
@@ -2981,11 +3044,15 @@ export function AppShell({
         closePopover("games");
         setSettingsOpen(false);
       }, `could not import ${file.name}`),
-    [client, enterGame, flush, game, runGameAction, writer]
+    [client, closePopover, enterGame, flush, game, runGameAction, writer]
   );
 
   // A destination and a unit are all the planner needs; the answer carries either a route or the
   // reason there is none.
+  //
+  // `mapJson` is a dependency because the answer is computed against the map: correcting the game's
+  // size in Settings while a route is drawn must re-ask, not leave a route planned across the old
+  // wrap. It is a string, so this costs nothing on an ordinary render.
   useEffect(() => {
     const destination = planner.destinationId;
     if (!destination || !unit?.own || ruleset.status !== "ready" || !rawReport) {
@@ -3015,7 +3082,7 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client, planner.destinationId, unit, ruleset, rawReport, rememberedJson]);
+  }, [client, planner.destinationId, unit, ruleset, rawReport, rememberedJson, mapJson]);
 
   // A trace answers a question about one unit, so it must not outlive the selection that asked
   // it: without this, unit A's path stays on the map for the debounce-plus-round-trip it takes
@@ -3068,7 +3135,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, unit, ordersDocument, ruleset, rawReport, rememberedJson, layers.movement]);
+  }, [client, unit, ordersDocument, ruleset, rawReport, rememberedJson, mapJson, layers.movement]);
 
   // Validation follows the document, debounced so it does not run on every keystroke. Kept whole
   // rather than counted here: the orders panel shows one unit, and which of these belong to it is a
@@ -3128,7 +3195,10 @@ export function AppShell({
   const problemsByHex = useMemo(() => findingsByHex(validated.diagnostics), [validated]);
   // Derived from the loaded report and nothing else: that is what makes it follow a turn switch,
   // come back after a reload, and have nothing to dismiss permanently.
-  const unreadable: readonly UnreadableLine[] = parsed?.unreadableLines ?? [];
+  const unreadable = useMemo<readonly UnreadableLine[]>(
+    () => parsed?.unreadableLines ?? [],
+    [parsed]
+  );
 
   /**
    * The four sources the header's one chip folds together (ah-30hg.2).
@@ -3355,7 +3425,8 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client, ruleset, rawReport, rememberedJson]);
+    // `mapJson` for the reason the route planner gives.
+  }, [client, ruleset, rawReport, rememberedJson, mapJson]);
 
   // The whole document previewed at once, unlike the per-unit trace, because GIVE crosses units
   // and MOVE crosses hexes: only the full text says what a hex looks like next month. Same
@@ -3383,7 +3454,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument, ruleset, rawReport, rememberedJson]);
+  }, [client, ordersDocument, ruleset, rawReport, rememberedJson, mapJson]);
 
   /** The selected unit as the orders leave it, for the unit panel. */
   const unitPreview = useMemo(() => {
@@ -3707,7 +3778,10 @@ export function AppShell({
       newAgeTransport === undefined || newAgeWorld === null
         ? null
         : newAgeClient(newAgeTransport, newAgeWorld.worldId),
-    [newAgeTransport, newAgeWorld?.worldId]
+    // The whole world rather than its id: `newAgeWorldFor` returns an entry of the module-level
+    // `NEW_AGE_WORLDS` table (`newAgeWorlds.ts`), so a given id always yields the same object. A
+    // version of it that *built* its answer would rebuild this client every render.
+    [newAgeTransport, newAgeWorld]
   );
   // A plain number, because that is all the server's form accepts: `#atlantis foo` names no faction
   // it could file the turn under, so the control stays off rather than failing at the last step.
@@ -4000,26 +4074,12 @@ export function AppShell({
     setSendPhase(null);
   }, []);
 
-  /**
-   * Opens the export dialog on a clean slate.
-   *
-   * The failure of a previous attempt belongs to that attempt: a message left standing in a
-   * freshly opened dialog reads as something already wrong with the export in front of the player.
-   */
   // A rectangle belongs to the map it was dragged on. Switching game, loading another turn or
   // changing level leaves it describing somewhere else, so it goes and the dialog falls back to
   // the bounds of what is known here.
   useEffect(() => {
     setExportRect(null);
   }, [game?.manifest.metadata.gameId, level, rawReport]);
-
-  const openExport = useCallback((rect?: MapRect) => {
-    if (rect) {
-      setExportRect(rect);
-    }
-    setExportError(null);
-    setExportOpen(true);
-  }, []);
 
   /**
    * Writes the chosen rectangle out as a report-shaped file for an ally to read.
