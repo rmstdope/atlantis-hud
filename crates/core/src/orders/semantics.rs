@@ -314,11 +314,40 @@ fn where_the_report_shows_each_unit(report: &ParsedReport) -> BTreeMap<&str, &Re
 /// `new-{alias}`, and `rules/form` scopes an alias to its region - so two hexes may each write
 /// `FORM 1` and both units are called `new-1`. Every map that spans hexes keys on this pair
 /// (`ah-9o0c.1`).
-pub(crate) type UnitKey = (String, String);
+/// A struct rather than a tuple alias, and that is the whole point: a report-wide map declared as
+/// `BTreeMap<String, _>` cannot be filled by [`unit_key`], so the next one is a compile error
+/// rather than something a reviewer has to notice. Fields in this order, so `Ord` sorts by hex and
+/// then by number exactly as the tuple did and no map's iteration order moves.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct UnitKey {
+    pub region_id: String,
+    pub unit_id: String,
+}
+
+// Four families of map deliberately stay keyed on a bare unit number, and are not the defect this
+// type guards against:
+//
+// - Every id-keyed field of `Ledger` and `PhaseState` (`:3773-3925`). A `Ledger` is built one per
+//   hex (`ledger_for`), and `parse_region_block` refuses a repeated unit number within a region,
+//   so a per-hex map is sound on a bare number. `ah-bm0d` settled this.
+// - The report-wide *sets of numbers* - `unit_ids_in`, `foreign_unit_ids`, `Hex::shown_anywhere`,
+//   and `effects::Working`'s `known_units`, `foreign_units` and `quartermasters`. These answer "is
+//   this number one the report prints anywhere?", which is what a `GIVE 1234` target asks, so a
+//   bare number is the input and the right key.
+// - `OrderedUnits::by_unit`, keyed by the number an orders *document* writes on its `unit` lines,
+//   which carries no region at all.
+// - `effects::transport_target_facts` and `effects::Working::by_id`, which index units the report
+//   physically prints - never a `new-{alias}` - and the game numbers a printed unit once.
+//
+// `pub` rather than `pub(crate)` is forced: `silver::UpkeepSettlement` is a `pub` struct with
+// `pub` fields of this type, and a `pub(crate)` type in a `pub` field is E0446.
 
 /// One unit's [`UnitKey`]: the hex it stands in, then its number.
-pub(crate) fn unit_key(region_id: &str, unit_id: &str) -> UnitKey {
-    (region_id.to_string(), unit_id.to_string())
+pub fn unit_key(region_id: &str, unit_id: &str) -> UnitKey {
+    UnitKey {
+        region_id: region_id.to_string(),
+        unit_id: unit_id.to_string(),
+    }
 }
 
 /// Every unit the report prints, by unit number - the unit itself rather than its region.
@@ -378,16 +407,23 @@ fn food_uncertain_after_gifts(ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) 
 fn formed_units(report: &ParsedReport, source: &str) -> Vec<Formed> {
     let unit_regions = where_the_report_shows_each_unit(report);
     let unit_by_id = units_by_id(report);
-    let mut minted: BTreeMap<String, ReportUnit> = BTreeMap::new();
+    // Report-wide, so keyed on [`UnitKey`]: `rules/form` scopes an alias to its region, so two
+    // hexes may each mint a `new-1`. The correctness of the lookup below does not rest on that
+    // alone - a nested block's parent is the block pushed immediately before it, so document order
+    // already puts the right unit in reach - but a map spanning hexes keyed on a bare number is
+    // one edit away from being wrong, which is what this bead is about.
+    let mut minted: BTreeMap<UnitKey, ReportUnit> = BTreeMap::new();
     read_formed(source, &unit_regions)
         .into_iter()
         .filter_map(|block| {
+            // The first lookup stays on a bare number: it resolves a unit the report physically
+            // prints, whose number the game assigns once.
             let parent = unit_by_id
                 .get(block.formed_by.as_str())
                 .copied()
-                .or_else(|| minted.get(block.formed_by.as_str()))?;
+                .or_else(|| minted.get(&unit_key(&block.region_id, &block.formed_by)))?;
             let unit = effects::formed_unit(parent, &block.alias, &parent.flags);
-            minted.insert(unit.unit_id.clone(), unit.clone());
+            minted.insert(unit_key(&unit.region_id, &unit.unit_id), unit.clone());
             Some(Formed { unit, block })
         })
         .collect()
@@ -1343,7 +1379,9 @@ fn orders_a_pillage(ordered: &Ordered<'_>) -> bool {
         .any(|placed| matches!(placed.intent, Intent::Pillage))
 }
 
-type ClaimAllowances = Option<BTreeMap<String, i64>>;
+/// Report-wide, so keyed on [`UnitKey`]: two hexes may each hold a `new-1` that claims
+/// (`rules/form`), and each is granted its own allowance.
+type ClaimAllowances = Option<BTreeMap<UnitKey, i64>>;
 
 fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllowances {
     let mut remaining = unclaimed?;
@@ -1358,17 +1396,17 @@ fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllow
                     remaining = remaining.saturating_sub(priced.earns).max(0);
                 }
             }
-            allowances.insert(unit.unit.unit_id.clone(), grant);
+            allowances.insert(unit_key(&hex.region.region_id, &unit.unit.unit_id), grant);
         }
     }
     Some(allowances)
 }
 
-fn claim_purse_for(allowances: &ClaimAllowances, unit_id: &str) -> FactionPurse {
+fn claim_purse_for(allowances: &ClaimAllowances, unit: &UnitKey) -> FactionPurse {
     FactionPurse {
         unclaimed: allowances
             .as_ref()
-            .map(|map| map.get(unit_id).copied().unwrap_or(0)),
+            .map(|map| map.get(unit).copied().unwrap_or(0)),
     }
 }
 
@@ -1576,7 +1614,10 @@ fn forecast_hex(
             facts,
             region,
             shares[index],
-            claim_purse_for(claim_allowances, &ordered.unit.unit_id),
+            claim_purse_for(
+                claim_allowances,
+                &unit_key(&hex.region.region_id, &ordered.unit.unit_id),
+            ),
             purse_for_orders.lends_to[index],
             Lookups {
                 sale: &sale,
@@ -4185,7 +4226,11 @@ fn ledger_for_with_production<'a>(
         .map(|ordered| {
             (
                 ordered.unit.unit_id.clone(),
-                claim_purse_for(claim_allowances, &ordered.unit.unit_id).unclaimed,
+                claim_purse_for(
+                    claim_allowances,
+                    &unit_key(&hex.region.region_id, &ordered.unit.unit_id),
+                )
+                .unclaimed,
             )
         })
         .collect();
@@ -11939,6 +11984,17 @@ mod tests {
     use crate::orders::silver::plan_cast;
     use crate::report::model::{level_for_points, Exit, Skill};
 
+    #[test]
+    fn a_unit_key_names_its_hex_and_its_number() {
+        let key = unit_key("1:7,53", "new-1");
+        assert_eq!(key.region_id, "1:7,53");
+        assert_eq!(key.unit_id, "new-1");
+        assert!(
+            unit_key("1:7,53", "new-1") < unit_key("1:8,54", "new-1"),
+            "ordering is by hex and then by number, as the tuple's was"
+        );
+    }
+
     /// The item effects of the unit with this number, whatever hex it stands in. [`item_effects`]
     /// keys on [`UnitKey`] because two hexes may each hold a `new-1` (`rules/form`); a test whose
     /// fixture holds one such unit only can still ask by number.
@@ -11946,7 +12002,7 @@ mod tests {
         effects: &'a BTreeMap<UnitKey, UnitItemEffects>,
         unit_id: &str,
     ) -> Option<&'a UnitItemEffects> {
-        let mut matching = effects.iter().filter(|((_, id), _)| id == unit_id);
+        let mut matching = effects.iter().filter(|(key, _)| key.unit_id == unit_id);
         let first = matching.next();
         assert!(
             matching.next().is_none(),
@@ -13472,7 +13528,7 @@ mod tests {
         );
         gather_receipts(std::slice::from_ref(&hex))
             .into_iter()
-            .map(|((_, unit_id), receipts)| (unit_id, receipts))
+            .map(|(key, receipts)| (key.unit_id, receipts))
             .collect()
     }
 
@@ -21959,6 +22015,68 @@ BUILD
         );
     }
 
+    /// The unclaimed fund grants an allowance to a *unit*, not to a unit number. `rules/form`
+    /// scopes a `FORM` alias to its region, so two hexes may each hold a `new-1` that writes
+    /// `CLAIM`; both are entitled to what they were granted.
+    #[test]
+    fn two_hexes_each_form_a_new_1_and_each_claims_its_own_allowance() {
+        let orders = "unit 5\nFORM 1\nCLAIM 20\nEND\nunit 6\nFORM 1\nCLAIM 20\nEND\n";
+        let parsed = report(vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,54", 8, 54, vec![unit("6")]),
+        ]);
+        let ordered = OrderedUnits::read(orders);
+        let formed = formed_units(&parsed, orders);
+        let hexes: Vec<Hex<'_>> = parsed
+            .regions
+            .iter()
+            .map(|region| Hex::read(region, &ordered, &formed))
+            .collect();
+
+        let allowances = claim_allowances_for(&hexes, Some(100)).expect("a stated fund");
+
+        assert_eq!(
+            allowances
+                .iter()
+                .filter(|(key, _)| key.unit_id == "new-1")
+                .count(),
+            2,
+            "one allowance per unit, not per number: {allowances:?}"
+        );
+        assert_eq!(allowances.get(&unit_key("1:7,53", "new-1")), Some(&20));
+        assert_eq!(allowances.get(&unit_key("1:8,54", "new-1")), Some(&20));
+    }
+
+    /// `rules/form` scopes a `FORM` alias to its region, so each hex holds its own `new-1` and
+    /// `new-2`. A nested block's parent must be its *own* hex's `new-1`.
+    #[test]
+    fn a_nested_form_takes_its_parent_from_its_own_hex() {
+        let orders = "unit 5\nFORM 1\nFORM 2\nEND\nEND\nunit 6\nFORM 1\nFORM 2\nEND\nEND\n";
+        let parsed = report(vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,54", 8, 54, vec![unit("6")]),
+        ]);
+        let formed = formed_units(&parsed, orders);
+
+        let minted: Vec<_> = formed
+            .iter()
+            .map(|one| (one.unit.unit_id.as_str(), one.unit.region_id.as_str()))
+            .collect();
+        let nested: Vec<_> = formed
+            .iter()
+            .filter(|one| one.unit.unit_id == "new-2")
+            .collect();
+        assert_eq!(nested.len(), 2, "one nested unit per hex: {minted:?}");
+        assert_eq!(
+            nested
+                .iter()
+                .map(|one| one.unit.region_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["1:7,53", "1:8,54"],
+            "a nested FORM's parent is its own hex's new-1, not the other hex's: {minted:?}"
+        );
+    }
+
     /// `rules/form`: a formed unit inherits its parent's flags, `sharing` among them - so its
     /// overdraft is the hex's to answer, exactly as its parent's would be.
     ///
@@ -22353,9 +22471,12 @@ BUILD
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let allowances: ClaimAllowances = Some(
-            [("1234".to_string(), 500i64), ("901".to_string(), 0i64)]
-                .into_iter()
-                .collect(),
+            [
+                (unit_key("1:7,53", "1234"), 500i64),
+                (unit_key("1:7,53", "901"), 0i64),
+            ]
+            .into_iter()
+            .collect(),
         );
         let production = production_shares_for(std::slice::from_ref(&hex), Some(&rules));
 
