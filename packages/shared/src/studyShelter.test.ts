@@ -131,6 +131,30 @@ describe("mageShelters", () => {
     expect(shelters.get("21/2431")).toEqual({ name: "Castle", seats: 1 });
   });
 
+  // A building the report shows but the catalogue cannot count is not a shelter anybody can talk
+  // about: `plannerNotices` reads an absent entry as the open, which is what it should say.
+  it("says nothing about a building whose seats are not known", () => {
+    const shelters = mageShelters({
+      groups,
+      seats,
+      names,
+      after: new Map([
+        [
+          "21/2431",
+          {
+            regionId: "1:7",
+            structureId: "9",
+            offMap: false,
+            leftBuilding: null,
+            leftBy: null
+          }
+        ]
+      ])
+    });
+
+    expect(shelters.size).toBe(0);
+  });
+
   it("says nothing about a mage who ends the month off the map", () => {
     const shelters = mageShelters({
       groups,

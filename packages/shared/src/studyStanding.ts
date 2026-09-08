@@ -112,7 +112,9 @@ export function standingAfterOrders(input: {
 
       if (ends === null) {
         // Only a `departing` row: he walks somewhere the report cannot show, so nothing can be said
-        // about what stands there.
+        // about what stands there. `regionId` is the hex he left, because the destination is not
+        // one the preview names - no consumer reads it while `offMap` is true, and it is the only
+        // hex there is to give.
         out.set(mage.key, {
           regionId: mage.regionId,
           structureId: null,
