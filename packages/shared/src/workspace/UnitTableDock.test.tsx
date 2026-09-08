@@ -15,9 +15,8 @@ import type { HexNode } from "../hexMapModel";
 import {
   DEFAULT_COLUMN_SHARES,
   allColumnsShown,
-  silverKey,
-  UNIT_COLUMNS,
   unitRowKey,
+  UNIT_COLUMNS,
   type UnitColumn
 } from "../unitTable";
 import { renderWithStoreState, restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
@@ -687,8 +686,8 @@ describe("the Silver column", () => {
         hex={hex({ region: region({ units: [only] }), ownUnitCount: 1 })}
         getSilver={() => silver}
         // Warned unit ids, keyed exactly as `unitsWarnedAboutSilver` keys them - by this fixture's
-        // one hex and the id (`silverKey`, `ah-jw85`).
-        silverWarnings={new Set(warned.map((unitId) => silverKey("1:6,52", unitId)))}
+        // one hex and the id (`unitRowKey`, `ah-jw85`).
+        silverWarnings={new Set(warned.map((unitId) => unitRowKey("1:6,52", unitId)))}
         onSelectUnit={() => {}}
       />
     );
@@ -783,8 +782,8 @@ describe("the Silver column", () => {
   it("two_hexes_forming_the_same_alias_get_their_own_figures", () => {
     const formedIn = (regionId: string, atMonthEnd: number) => {
       const forming = aReportUnit({ unitId: "new-1", name: "Unit (new 1)", regionId, own: true });
-      const bySilverKey = new Map([
-        [silverKey(regionId, "new-1"), aUnitSilver({ unitId: "new-1", regionId, atMonthEnd })]
+      const byRowKey = new Map([
+        [unitRowKey(regionId, "new-1"), aUnitSilver({ unitId: "new-1", regionId, atMonthEnd })]
       ]);
       return renderToStaticMarkup(
         <UnitTableDock
@@ -793,7 +792,7 @@ describe("the Silver column", () => {
             region: region({ regionId, units: [forming] }),
             ownUnitCount: 1
           })}
-          getSilver={(unitId, hexId) => bySilverKey.get(silverKey(hexId, unitId)) ?? null}
+          getSilver={(unitId, hexId) => byRowKey.get(unitRowKey(hexId, unitId)) ?? null}
         />
       );
     };
@@ -823,7 +822,7 @@ describe("the Silver column", () => {
       <UnitTableDock
         hex={hex({ region: region({ units: [forming] }), ownUnitCount: 1 })}
         getSilver={() => silver}
-        silverWarnings={new Set([silverKey("1:6,52", "new-1")])}
+        silverWarnings={new Set([unitRowKey("1:6,52", "new-1")])}
         onSelectUnit={() => {}}
       />
     );
@@ -2113,7 +2112,7 @@ describe("a row the game dissolves", () => {
     const row = rowMarkup(
       drawDissolving({
         getSilver: () => aUnitSilver({ regionId: "1:6,52", atMonthEnd: -140 }),
-        silverWarnings: new Set([silverKey("1:6,52", "new-1")]),
+        silverWarnings: new Set([unitRowKey("1:6,52", "new-1")]),
         onSelectUnit: () => {}
       })
     );

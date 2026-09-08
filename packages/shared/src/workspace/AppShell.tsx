@@ -44,7 +44,7 @@ import {
 import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { rulesetById } from "../rulesets";
-import { silverKey } from "../unitTable";
+import { unitRowKey } from "../unitTable";
 import { unitAtCursor, unitCursor } from "./unitCursor";
 import type { MapShape } from "@atlantis/core-client";
 import { mapShapeJson, mapShapeOfGame } from "../mapShape";
@@ -3152,18 +3152,18 @@ export function AppShell({
   /**
    * Each own unit's silver forecast, by hex and unit (`ah-1wcw.1`).
    *
-   * By hex as well as by id (`silverKey`, `ah-jw85`): a unit a `FORM 1` creates this month is
+   * By hex as well as by id (`unitRowKey`, `ah-jw85`): a unit a `FORM 1` creates this month is
    * unique to its hex, not to the turn, so two hexes each holding a `new-1` need two entries a
    * plain unit-id map would merge into one. Through a `Map` rather than a scan of the list,
    * because the units table asks this once per visible row and again for whichever row the
    * pointer rests on.
    */
   const silverByUnit = useMemo(
-    () => new Map(validated.silver.map((entry) => [silverKey(entry.regionId, entry.unitId), entry])),
+    () => new Map(validated.silver.map((entry) => [unitRowKey(entry.regionId, entry.unitId), entry])),
     [validated.silver]
   );
   const getSilver = useCallback(
-    (unitId: string, regionId: string) => silverByUnit.get(silverKey(regionId, unitId)) ?? null,
+    (unitId: string, regionId: string) => silverByUnit.get(unitRowKey(regionId, unitId)) ?? null,
     [silverByUnit]
   );
 

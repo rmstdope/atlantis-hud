@@ -1,95 +1,105 @@
 import { describe, expect, it } from "vitest";
 import { aReportUnit } from "@atlantis/core-client";
 import { NO_PICK, afterGesture, narrowedTo, onPress, pickedIn, type UnitPick } from "./unitPick";
-import { unitRowKey } from "../unitTable";
+import { unitRowKey, type UnitRowKey } from "../unitTable";
 
-const ROWS = ["1", "2", "3", "4", "5"];
+/** A row key for a test that cares only that keys are distinct. */
+const k = (id: string): UnitRowKey => unitRowKey("1:6,52", id);
+/** The bare number back out of a row key, so the assertions below stay readable. */
+const bare = (key: UnitRowKey): string => key.split("\0")[1];
+
+const ROWS = ["1", "2", "3", "4", "5"].map(k);
 
 const pick = (ids: string[], anchor: string | null): UnitPick => ({
-  ids: new Set(ids),
-  anchor
+  ids: new Set(ids.map(k)),
+  anchor: anchor === null ? null : k(anchor)
 });
 
-const idsOf = (one: UnitPick) => [...one.ids].sort();
+const idsOf = (one: UnitPick) => [...one.ids].map(bare).sort();
 
 describe("afterGesture", () => {
+  it("a gesture will not name a row by its unit number alone", () => {
+    // @ts-expect-error a row is named by its hex and its number, never by its number alone.
+    afterGesture(NO_PICK, { kind: "plain", rowKey: "new-1" }, []);
+  });
+
   it("a plain gesture picks that row alone and anchors on it", () => {
-    const next = afterGesture(pick(["1", "2"], "1"), { kind: "plain", rowKey: "4" }, ROWS);
+    const next = afterGesture(pick(["1", "2"], "1"), { kind: "plain", rowKey: k("4") }, ROWS);
 
     expect(idsOf(next)).toEqual(["4"]);
-    expect(next.anchor).toBe("4");
+    expect(next.anchor).toBe(k("4"));
   });
 
   it("extend takes the run between the anchor and the target, in the order the table draws them", () => {
-    const next = afterGesture(pick(["2"], "2"), { kind: "extend", rowKey: "4" }, ROWS);
+    const next = afterGesture(pick(["2"], "2"), { kind: "extend", rowKey: k("4") }, ROWS);
 
     expect(idsOf(next)).toEqual(["2", "3", "4"]);
     // The anchor does not move, so a second Shift+click re-extends from where it started.
-    expect(next.anchor).toBe("2");
+    expect(next.anchor).toBe(k("2"));
   });
 
   it("extend runs backwards from the anchor just as far", () => {
-    const next = afterGesture(pick(["4"], "4"), { kind: "extend", rowKey: "2" }, ROWS);
+    const next = afterGesture(pick(["4"], "4"), { kind: "extend", rowKey: k("2") }, ROWS);
 
     expect(idsOf(next)).toEqual(["2", "3", "4"]);
-    expect(next.anchor).toBe("4");
+    expect(next.anchor).toBe(k("4"));
   });
 
   it("extend replaces the pick rather than adding to it", () => {
-    const next = afterGesture(pick(["1", "5"], "5"), { kind: "extend", rowKey: "4" }, ROWS);
+    const next = afterGesture(pick(["1", "5"], "5"), { kind: "extend", rowKey: k("4") }, ROWS);
 
     expect(idsOf(next)).toEqual(["4", "5"]);
   });
 
   it("extend without an anchor behaves as a plain pick", () => {
-    const next = afterGesture(NO_PICK, { kind: "extend", rowKey: "3" }, ROWS);
+    const next = afterGesture(NO_PICK, { kind: "extend", rowKey: k("3") }, ROWS);
 
     expect(idsOf(next)).toEqual(["3"]);
-    expect(next.anchor).toBe("3");
+    expect(next.anchor).toBe(k("3"));
   });
 
   it("extend from an anchor the table no longer draws behaves as a plain pick", () => {
-    const next = afterGesture(pick(["9"], "9"), { kind: "extend", rowKey: "3" }, ROWS);
+    const next = afterGesture(pick(["9"], "9"), { kind: "extend", rowKey: k("3") }, ROWS);
 
     expect(idsOf(next)).toEqual(["3"]);
-    expect(next.anchor).toBe("3");
+    expect(next.anchor).toBe(k("3"));
   });
 
   it("toggle adds a row that was not picked", () => {
-    const next = afterGesture(pick(["1"], "1"), { kind: "toggle", rowKey: "3" }, ROWS);
+    const next = afterGesture(pick(["1"], "1"), { kind: "toggle", rowKey: k("3") }, ROWS);
 
     expect(idsOf(next)).toEqual(["1", "3"]);
-    expect(next.anchor).toBe("3");
+    expect(next.anchor).toBe(k("3"));
   });
 
   it("toggle removes a picked row and still anchors on it", () => {
-    const next = afterGesture(pick(["1", "3"], "1"), { kind: "toggle", rowKey: "3" }, ROWS);
+    const next = afterGesture(pick(["1", "3"], "1"), { kind: "toggle", rowKey: k("3") }, ROWS);
 
     expect(idsOf(next)).toEqual(["1"]);
     // Anchored even though the row left the pick, so a Shift+click straight afterwards extends
     // from where the pointer last was.
-    expect(next.anchor).toBe("3");
+    expect(next.anchor).toBe(k("3"));
   });
 
   it("toggle that empties the pick still anchors on the row toggled", () => {
-    const next = afterGesture(pick(["3"], "3"), { kind: "toggle", rowKey: "3" }, ROWS);
+    const next = afterGesture(pick(["3"], "3"), { kind: "toggle", rowKey: k("3") }, ROWS);
 
     expect(idsOf(next)).toEqual([]);
-    expect(next.anchor).toBe("3");
+    expect(next.anchor).toBe(k("3"));
   });
 
   it("all picks every row it is given and keeps an anchor it still holds", () => {
     const next = afterGesture(pick(["2"], "2"), { kind: "all" }, ROWS);
 
     expect(idsOf(next)).toEqual(["1", "2", "3", "4", "5"]);
-    expect(next.anchor).toBe("2");
+    expect(next.anchor).toBe(k("2"));
   });
 
   it("all takes the first row as its anchor when the old one is gone", () => {
     const next = afterGesture(pick(["9"], "9"), { kind: "all" }, ROWS);
 
     expect(idsOf(next)).toEqual(["1", "2", "3", "4", "5"]);
-    expect(next.anchor).toBe("1");
+    expect(next.anchor).toBe(k("1"));
   });
 
   it("all over nothing picks nothing and anchors on nothing", () => {
@@ -105,7 +115,7 @@ describe("narrowedTo", () => {
     const next = narrowedTo(pick(["1", "3", "9"], "1"), ROWS);
 
     expect(idsOf(next)).toEqual(["1", "3"]);
-    expect(next.anchor).toBe("1");
+    expect(next.anchor).toBe(k("1"));
   });
 
   it("clears the anchor when the anchor row went too", () => {
@@ -132,7 +142,10 @@ describe("pickedIn", () => {
 
     expect(
       pickedIn(
-        pick([unitRowKey("1:7,53", "1"), unitRowKey("1:7,53", "2")], unitRowKey("1:7,53", "1")),
+        {
+          ids: new Set([unitRowKey("1:7,53", "1"), unitRowKey("1:7,53", "2")]),
+          anchor: unitRowKey("1:7,53", "1")
+        },
         rows
       ).map((unit) => unit.unitId)
     ).toEqual(["1", "2"]);
@@ -155,7 +168,7 @@ describe("onPress", () => {
   const NEITHER = { shift: false, mod: false };
 
   it("a shift press extends at once and arms no drag", () => {
-    const outcome = onPress(pick(["2"], "2"), "4", { shift: true, mod: false }, ROWS);
+    const outcome = onPress(pick(["2"], "2"), k("4"), { shift: true, mod: false }, ROWS);
 
     expect(idsOf(outcome.now!)).toEqual(["2", "3", "4"]);
     expect(outcome.onRelease).toBeNull();
@@ -163,7 +176,7 @@ describe("onPress", () => {
   });
 
   it("a mod press toggles at once and arms no drag", () => {
-    const outcome = onPress(pick(["1"], "1"), "3", { shift: false, mod: true }, ROWS);
+    const outcome = onPress(pick(["1"], "1"), k("3"), { shift: false, mod: true }, ROWS);
 
     expect(idsOf(outcome.now!)).toEqual(["1", "3"]);
     expect(outcome.onRelease).toBeNull();
@@ -171,17 +184,17 @@ describe("onPress", () => {
   });
 
   it("a plain press on a row already in a pick of two or more decides nothing until it is released", () => {
-    const outcome = onPress(pick(["1", "2", "3"], "1"), "2", NEITHER, ROWS);
+    const outcome = onPress(pick(["1", "2", "3"], "1"), k("2"), NEITHER, ROWS);
 
     // Nothing now: collapsing on pointerdown would make the pick impossible to drag.
     expect(outcome.now).toBeNull();
     expect(idsOf(outcome.onRelease!)).toEqual(["2"]);
-    expect(outcome.onRelease!.anchor).toBe("2");
+    expect(outcome.onRelease!.anchor).toBe(k("2"));
     expect(outcome.draggable).toBe(true);
   });
 
   it("a plain press on a row outside the pick picks it alone at once", () => {
-    const outcome = onPress(pick(["1", "2"], "1"), "4", NEITHER, ROWS);
+    const outcome = onPress(pick(["1", "2"], "1"), k("4"), NEITHER, ROWS);
 
     expect(idsOf(outcome.now!)).toEqual(["4"]);
     expect(outcome.onRelease).toBeNull();
@@ -189,7 +202,7 @@ describe("onPress", () => {
   });
 
   it("a plain press on the only picked row settles at once", () => {
-    const outcome = onPress(pick(["2"], "2"), "2", NEITHER, ROWS);
+    const outcome = onPress(pick(["2"], "2"), k("2"), NEITHER, ROWS);
 
     expect(idsOf(outcome.now!)).toEqual(["2"]);
     expect(outcome.onRelease).toBeNull();

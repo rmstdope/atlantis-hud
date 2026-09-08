@@ -11,7 +11,7 @@
  */
 
 import type { ReportUnit } from "@atlantis/core-client";
-import { unitRowKey } from "../unitTable";
+import { unitRowKey, type UnitRowKey } from "../unitTable";
 
 /**
  * Which rows are picked, and where a Shift range extends from.
@@ -25,24 +25,24 @@ import { unitRowKey } from "../unitTable";
  * unit - so the reason is the hex alone, which was always the load-bearing half.
  */
 export type UnitPick = {
-  readonly ids: ReadonlySet<string>;
+  readonly ids: ReadonlySet<UnitRowKey>;
   /** The row a Shift range extends from, or null when there is none to extend from. */
-  readonly anchor: string | null;
+  readonly anchor: UnitRowKey | null;
 };
 
 export const NO_PICK: UnitPick = { ids: new Set(), anchor: null };
 
 export type PickGesture =
   /** Click, Escape, and a press that resolved without a drag: this row alone. */
-  | { kind: "plain"; rowKey: string }
+  | { kind: "plain"; rowKey: UnitRowKey }
   /** Ctrl/Cmd+click: add or remove one row. */
-  | { kind: "toggle"; rowKey: string }
+  | { kind: "toggle"; rowKey: UnitRowKey }
   /** Shift+click and Shift+Arrow: replace the pick with the run from the anchor to here. */
-  | { kind: "extend"; rowKey: string }
+  | { kind: "extend"; rowKey: UnitRowKey }
   /** Ctrl/Cmd+A: every row the filter is currently showing. */
   | { kind: "all" };
 
-const alone = (rowKey: string): UnitPick => ({ ids: new Set([rowKey]), anchor: rowKey });
+const alone = (rowKey: UnitRowKey): UnitPick => ({ ids: new Set([rowKey]), anchor: rowKey });
 
 /**
  * The pick after one gesture, over `rows` - the row keys the table is drawing right now, in
@@ -59,7 +59,7 @@ const alone = (rowKey: string): UnitPick => ({ ids: new Set([rowKey]), anchor: r
 export function afterGesture(
   pick: UnitPick,
   gesture: PickGesture,
-  rows: readonly string[]
+  rows: readonly UnitRowKey[]
 ): UnitPick {
   if (gesture.kind === "all") {
     const anchor = pick.anchor !== null && rows.includes(pick.anchor) ? pick.anchor : (rows[0] ?? null);
@@ -94,7 +94,7 @@ export function afterGesture(
  * Returns the **identical object** when nothing was dropped, so the effect that calls it does not
  * churn state on every render - the same contract `withoutMember` keeps (`armies.ts`).
  */
-export function narrowedTo(pick: UnitPick, rows: readonly string[]): UnitPick {
+export function narrowedTo(pick: UnitPick, rows: readonly UnitRowKey[]): UnitPick {
   const drawn = new Set(rows);
   const kept = [...pick.ids].filter((rowKey) => drawn.has(rowKey));
   const anchorHeld = pick.anchor !== null && drawn.has(pick.anchor);
@@ -136,9 +136,9 @@ export type PressOutcome = {
  */
 export function onPress(
   pick: UnitPick,
-  rowKey: string,
+  rowKey: UnitRowKey,
   modifiers: { readonly shift: boolean; readonly mod: boolean },
-  rows: readonly string[]
+  rows: readonly UnitRowKey[]
 ): PressOutcome {
   if (modifiers.shift) {
     return {

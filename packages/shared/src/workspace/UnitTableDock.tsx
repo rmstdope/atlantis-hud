@@ -63,7 +63,7 @@ import {
   COLUMN_LABELS,
   columnWidthStyle,
   orderOf,
-  silverKey,
+  unitNamesByRow,
   unitRowKey,
   unitRowSelector,
   silverIsRed,
@@ -72,6 +72,7 @@ import {
   type ExtraColumn,
   type SortColumn,
   type SortState,
+  type UnitRowKey,
   type DrawnColumnId,
   type UnitColumn
 } from "../unitTable";
@@ -180,8 +181,8 @@ const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
  * in `ah-1wcw.6`). A hovered popup no longer dies of that churn (`ah-3oy3`), but the wasted
  * re-renders are reason enough to keep these shared.
  */
-const NO_LONG_ORDERS: ReadonlyMap<string, string | null> = new Map();
-const NO_SILVER: ReadonlyMap<string, number | null> = new Map();
+const NO_LONG_ORDERS: ReadonlyMap<UnitRowKey, string | null> = new Map();
+const NO_SILVER: ReadonlyMap<UnitRowKey, number | null> = new Map();
 /** For the same reason: an empty row list nobody rebuilds. */
 const NO_UNITS: ReportUnit[] = [];
 
@@ -207,7 +208,7 @@ type UnitTableDockProps = {
   /** Each own unit's silver forecast, or null where there is none. `ah-1wcw.1`. */
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
-  silverWarnings?: ReadonlySet<string>;
+  silverWarnings?: ReadonlySet<UnitRowKey>;
   /** Selects a unit and opens its orders. Absent means the cell is not clickable. */
   onSelectUnit?: (unitId: string, regionId?: string) => void;
   /**
@@ -488,7 +489,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   /** Every row's name by unit number, for a popup naming the unit men came from (`ah-rgkk.2.3`). */
   const unitNames = useMemo(
     // `units`, not the filtered rows: a giver the current filter hides is still named.
-    () => new Map(units.map((row) => [row.unitId, row.name])),
+    () => unitNamesByRow(units),
     [units]
   );
   // Only asked for when the table sorts on it: every other arrangement would read the document
@@ -516,7 +517,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     return new Map(
       units
         .filter((entry) => entry.own)
-        // The row's own hex, not the selected one: `silverKey` keys the forecast by region, so a
+        // The row's own hex, not the selected one: `unitRowKey` keys the forecast by region, so a
         // source spanning hexes must look each row up where it actually stands.
         // A dissolving row prints no month end, so it sorts as having none: a column that
         // printed a dash and sorted on a figure is the defect the dash exists to avoid
@@ -693,7 +694,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * every mouse move, for a figure only one timeout ever reads.
    */
   const [hovered, setHovered] = useState<{
-    key: string;
+    key: UnitRowKey;
     column: DrawnColumnId;
     at: Point;
   } | null>(null);
@@ -1536,7 +1537,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   onSelect={selectUnit}
                   onPress={pressRow}
                   onContextMenu={contextRow}
-                  // The row's own hex, not the selected one: `silverKey` keys the forecast by
+                  // The row's own hex, not the selected one: `unitRowKey` keys the forecast by
                   // region, so a source spanning hexes must look each row up where it stands.
                   regionId={unit.regionId}
                   seen={seenLabel(sourced.seen.get(unit.unitId), currentTurn)}
@@ -2002,12 +2003,12 @@ function HoveredPopup({
   getLongOrder?: (unitId: string, regionId: string) => string | null;
   /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
   getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
-  silverWarnings?: ReadonlySet<string>;
+  silverWarnings?: ReadonlySet<UnitRowKey>;
   countUpkeep: boolean;
   derivedSkills: DerivedSkills;
   structures: StructuresByRegion;
   /** Every row's name by unit number, for a Skills popup naming a giver (`ah-rgkk.2.3`). */
-  unitNames: ReadonlyMap<string, string>;
+  unitNames: ReadonlyMap<UnitRowKey, string>;
 }) {
   if (!hovered) {
     return null;
@@ -2019,7 +2020,7 @@ function HoveredPopup({
   // has no working to explain, and without this the popup and the cell's own hidden sentence
   // would be drawn from different arguments to `summariseUnit`.
   const warned =
-    silver !== null && (silverWarnings?.has(silverKey(unit.regionId, unit.unitId)) ?? false);
+    silver !== null && (silverWarnings?.has(unitRowKey(unit.regionId, unit.unitId)) ?? false);
   const dissolving = dissolves(unit);
   const spec = popupForCell(column, unit, {
     structureLabel: unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures),
@@ -2169,7 +2170,7 @@ function UnitRow({
   /** This unit's silver forecast, where it is one of ours. `ah-1wcw.1`. */
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
-  silverWarnings?: ReadonlySet<string>;
+  silverWarnings?: ReadonlySet<UnitRowKey>;
   /** Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`). */
   countUpkeep: boolean;
   /** Selects a unit and opens its orders. */
@@ -2192,7 +2193,7 @@ function UnitRow({
   /** Combat skills recovered from battle rosters, for a foreign unit's Skills cell (`ah-1mpx.6.3`). */
   derivedSkills: DerivedSkills;
   /** Every row's name by unit number, for a Skills popup naming a giver (`ah-rgkk.2.3`). */
-  unitNames: ReadonlyMap<string, string>;
+  unitNames: ReadonlyMap<UnitRowKey, string>;
 }) {
   const skills = unitSkillsCell(unit, derivedSkills);
   const items = formatItems(unit.items, unit.created);
@@ -2225,7 +2226,7 @@ function UnitRow({
   // the shortfall finding is anchored to the hex and names no unit, and blaming one of several
   // would be as wrong there as it is in the Problems panel - so there is deliberately no fallback
   // to the hex.
-  const warned = silver !== null && (silverWarnings?.has(silverKey(regionId, unit.unitId)) ?? false);
+  const warned = silver !== null && (silverWarnings?.has(unitRowKey(regionId, unit.unitId)) ?? false);
   // The setting decides whether maintenance comes off the figure (`ah-1wcw.4`); the core computes
   // both answers, so switching it costs no round trip through the checks.
   const shownSilver = silverShown(silver, countUpkeep);

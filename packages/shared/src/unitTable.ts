@@ -201,8 +201,8 @@ function valueOf(
   unit: ReportUnit,
   column: SortColumn,
   structures: StructuresByRegion,
-  longOrders: ReadonlyMap<string, string | null>,
-  silver: ReadonlyMap<string, number | null>,
+  longOrders: ReadonlyMap<UnitRowKey, string | null>,
+  silver: ReadonlyMap<UnitRowKey, number | null>,
   seen: ReadonlyMap<string, number>
 ): number | string | null {
   switch (column) {
@@ -291,10 +291,16 @@ export function sortUnits(
   sort: SortState,
   structures: StructuresByRegion = new Map(),
   /** Each own unit's month-long order, for the column that sorts on it. */
-  longOrders: ReadonlyMap<string, string | null> = new Map(),
+  longOrders: ReadonlyMap<UnitRowKey, string | null> = new Map(),
   /** Each own unit's forecast silver at month end, for the column that sorts on it. `ah-1wcw.1`. */
-  silver: ReadonlyMap<string, number | null> = new Map(),
-  /** Each Army member's `seenTurn`, for the column that sorts on it. `ah-1mpx.2`. */
+  silver: ReadonlyMap<UnitRowKey, number | null> = new Map(),
+  /**
+   * Each Army member's `seenTurn`, for the column that sorts on it. `ah-1mpx.2`.
+   *
+   * A bare unit number, not a `UnitRowKey`, on purpose: an Army member outlives the turn and its
+   * remembered hex is where it was *last seen*, so a member that has moved would never match a key
+   * built from this turn's hex.
+   */
   seen: ReadonlyMap<string, number> = new Map()
 ): ReportUnit[] {
   const direction = sort.direction === "asc" ? 1 : -1;
@@ -372,19 +378,58 @@ export function silverIsRed(shown: number | null, silver: UnitSilver | null): bo
   return (silver?.shortForOrders ?? 0) > 0;
 }
 
+declare const unitRowKeyBrand: unique symbol;
+
+/**
+ * A row's identity in a list that spans hexes: the hex it stands in, then its number.
+ *
+ * A `string` at runtime and a type of its own to the compiler, and that is the whole point. A unit
+ * *number* is not unique report-wide - the core mints a unit a `FORM` created this month as
+ * `new-{alias}`, and `rules/form` scopes an alias to its region, so two hexes may each write
+ * `FORM 1` and both units are called `new-1`. While a row key was a bare `string`, a map that meant
+ * "one row" and a bare unit number were the same type, so the next index keyed on the number alone
+ * was something a reviewer had to notice (`ah-9o0c.2`, `ah-bubf`, `ah-yjhf`, `ah-jw85` - four beads,
+ * one each). Now it is a compile error.
+ *
+ * `unitRowKey` is the only constructor. Nothing else may cast to this type.
+ *
+ * NOT every unit id in this package is one of these. An Army's membership is keyed on the bare unit
+ * number on purpose - a member outlives the turn and its remembered hex is where it was *last seen*
+ * - so `unitsByIdIn` (`armies.ts`), `armyRows`' `unitsById` and `seen`, and `sortUnits`' `seen`
+ * argument all stay on a plain `string`. So does `structureLabel.ts`, which keys structures by hex
+ * in a nested map of its own.
+ */
+export type UnitRowKey = string & { readonly [unitRowKeyBrand]: "UnitRowKey" };
+
 /**
  * A unit's identity across a list that spans hexes: the hex it stands in, then its number.
  *
- * A unit *number* is not unique report-wide. The core mints a unit a `FORM` created this month as
- * `new-{alias}`, and `rules/form` scopes an alias to its region - so two hexes may each write
- * `FORM 1` and both units are called `new-1`. Anything that keys a row, a React child, a pick or
- * a lookup while spanning hexes keys on this pair (`ah-jw85`, `ah-9o0c.2`).
+ * Anything that keys a row, a React child, a pick or a lookup while spanning hexes keys on this
+ * pair (`ah-jw85`, `ah-9o0c.2`).
  *
  * The separator is a NUL, which no region id or unit id can contain, so no pair of inputs can
  * produce the same key as a different pair.
  */
-export function unitRowKey(regionId: string, unitId: string): string {
-  return `${regionId}\0${unitId}`;
+export function unitRowKey(regionId: string, unitId: string): UnitRowKey {
+  return `${regionId}\0${unitId}` as UnitRowKey;
+}
+
+/** The parts of a row `unitNamesByRow` reads. `ReportUnit` and `PreviewedUnit` both satisfy it. */
+export type NamedRow = { regionId: string; unitId: string; name: string };
+
+/**
+ * Every row's name, by row rather than by unit number, for naming the other party to a transfer.
+ *
+ * By hex as well as by number: a `GIVE` or a `TAKE FROM` names a unit by its number alone, and two
+ * hexes drawing a `new-1` each would otherwise have one of them named after the other's row
+ * (`ah-yjhf` is the same defect in the Structure column).
+ *
+ * A later row with the same key replaces an earlier one, exactly as the map it replaces did: within
+ * one hex the report numbers a unit once, so two rows sharing a key cannot arise from a report the
+ * parser accepted.
+ */
+export function unitNamesByRow(rows: readonly NamedRow[]): ReadonlyMap<UnitRowKey, string> {
+  return new Map(rows.map((row) => [unitRowKey(row.regionId, row.unitId), row.name]));
 }
 
 /**
@@ -398,15 +443,6 @@ export function unitRowKey(regionId: string, unitId: string): string {
 export function unitRowSelector(regionId: string, unitId: string): string {
   const quote = (value: string): string => value.replace(/[\\"]/g, "\\$&");
   return `[data-testid="unit-row-${quote(unitId)}"][data-region-id="${quote(regionId)}"]`;
-}
-
-/**
- * A silver forecast is found by hex and unit, because `new-1` is unique to a hex, not to a turn:
- * two hexes can each hold a unit a `FORM 1` created this month (`ah-jw85`), and a lookup keyed on
- * the unit id alone would hand one hex's figure to the other's row.
- */
-export function silverKey(regionId: string, unitId: string): string {
-  return unitRowKey(regionId, unitId);
 }
 
 export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
