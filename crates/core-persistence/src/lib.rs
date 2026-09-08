@@ -2260,6 +2260,43 @@ impl UnitKeyedCollection for AlliedMage {
     }
 }
 
+impl UnitKeyedCollection for StudyPlan {
+    type Key = StudyPlanKey;
+
+    const TABLE: &'static str = "study_plans";
+    const SELECT_COLUMNS: &'static [&'static str] = &[
+        "faction_id",
+        "unit_id",
+        "goals_json",
+        "comment",
+        "updated_at",
+    ];
+    const VALUE_COLUMNS: &'static [&'static str] = &["goals_json", "comment", "updated_at"];
+
+    fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
+        let goals_json = row.get::<_, String>(2)?;
+        Ok(StudyPlan {
+            faction_id: row.get(0)?,
+            unit_id: row.get(1)?,
+            goals: serde_json::from_str(&goals_json)?,
+            comment: row.get(3)?,
+            updated_at: row.get(4)?,
+        })
+    }
+
+    fn key(&self) -> (&str, &str) {
+        (&self.faction_id, &self.unit_id)
+    }
+
+    fn write_params(&self) -> Result<Vec<Box<dyn rusqlite::ToSql>>, PersistenceError> {
+        Ok(vec![
+            Box::new(serde_json::to_string(&self.goals)?),
+            Box::new(self.comment.clone()),
+            Box::new(self.updated_at.clone()),
+        ])
+    }
+}
+
 /// Every allied mage stored for one game, in whatever order SQLite produced them.
 ///
 /// Ordering is the client's (`sortAlliedMages`), exactly as it is for Armies.
@@ -2304,45 +2341,7 @@ pub fn list_study_plans(
     database_path: &Path,
     game_id: &str,
 ) -> Result<Vec<StudyPlan>, PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    let mut statement = connection.prepare(
-        "SELECT faction_id, unit_id, goals_json, comment, updated_at
-           FROM study_plans
-          WHERE game_id = ?1",
-    )?;
-    let rows = statement.query_map(params![game_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-        ))
-    })?;
-
-    // The goal queue is one JSON column, as `armies.members_json` is and for the reason
-    // `save_army` gives. A row whose JSON will not parse is reported rather than rounded down to
-    // an empty queue, exactly as `list_armies` does with its members.
-    let mut plans = Vec::new();
-    for row in rows {
-        let (faction_id, unit_id, goals_json, comment, updated_at) = row?;
-        plans.push(StudyPlan {
-            faction_id,
-            unit_id,
-            goals: serde_json::from_str(&goals_json)?,
-            comment,
-            updated_at,
-        });
-    }
-
-    Ok(plans)
+    list_unit_keyed::<StudyPlan>(database_path, game_id)
 }
 
 /// Writes one decision's worth of change in a single transaction: `removed` first, then `plans`.
@@ -2360,47 +2359,7 @@ pub fn save_study_plans(
     plans: &[StudyPlan],
     removed: &[StudyPlanKey],
 ) -> Result<(), PersistenceError> {
-    if !database_path.exists() {
-        return Err(PersistenceError::DatabaseFileMissing(
-            database_path.to_string_lossy().to_string(),
-        ));
-    }
-
-    let mut connection = open_database(database_path)?;
-    apply_migrations(&mut connection)?;
-    let transaction = connection.transaction()?;
-    for key in removed {
-        transaction.execute(
-            "DELETE FROM study_plans WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3",
-            params![game_id, key.faction_id.as_str(), key.unit_id.as_str()],
-        )?;
-    }
-    for plan in plans {
-        transaction.execute(
-            "INSERT INTO study_plans (
-                game_id,
-                faction_id,
-                unit_id,
-                goals_json,
-                comment,
-                updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(game_id, faction_id, unit_id) DO UPDATE SET
-                goals_json = excluded.goals_json,
-                comment = excluded.comment,
-                updated_at = excluded.updated_at",
-            params![
-                game_id,
-                plan.faction_id.as_str(),
-                plan.unit_id.as_str(),
-                serde_json::to_string(&plan.goals)?.as_str(),
-                plan.comment.as_str(),
-                plan.updated_at.as_str(),
-            ],
-        )?;
-    }
-    transaction.commit()?;
-    Ok(())
+    save_unit_keyed(database_path, game_id, plans, removed)
 }
 
 #[cfg(test)]
@@ -2432,6 +2391,44 @@ mod tests {
             "{sql}"
         );
         assert!(!sql.contains("game_id = excluded.game_id"), "{sql}");
+    }
+
+    #[test]
+    fn unit_keyed_upsert_sql_for_study_plans_names_the_key_and_every_value_column() {
+        let sql = unit_keyed_upsert_sql::<StudyPlan>();
+        assert!(
+            sql.contains(
+                "INSERT INTO study_plans (game_id, faction_id, unit_id, goals_json, comment, updated_at)"
+            ),
+            "{sql}"
+        );
+        assert!(sql.contains("goals_json = excluded.goals_json"), "{sql}");
+        assert!(!sql.contains("unit_id = excluded.unit_id"), "{sql}");
+    }
+
+    /// Pins what `list_study_plans` promised in prose and nothing tested: a goal queue whose JSON
+    /// will not parse is reported, never rounded down to an empty queue.
+    #[test]
+    fn malformed_stored_goal_payload_is_an_error_rather_than_a_missing_plan() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let connection = Connection::open(&created.database_path).expect("open database");
+        connection
+            .execute(
+                "INSERT INTO study_plans
+                     (game_id, faction_id, unit_id, goals_json, comment, updated_at)
+                 VALUES (?1, '21', '9001', '{', 'a note', ?2)",
+                params![GAME_ID, CREATED_AT],
+            )
+            .expect("insert should succeed");
+
+        let listed = list_study_plans(&created.database_path, GAME_ID);
+
+        assert!(
+            matches!(listed, Err(PersistenceError::Serialization(_))),
+            "an unreadable goal queue is reported, not skipped"
+        );
     }
 
     fn fixture_manifest() -> GameManifest {
