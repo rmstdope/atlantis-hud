@@ -68,6 +68,19 @@ mod tests {
     }
 
     #[test]
+    fn the_actor_outranks_the_line_when_the_two_disagree() {
+        // Neither key alone orders these three: sorting on the line alone would put `(1, 2)`
+        // first, and sorting on the actor alone would leave `(1, 9)` ahead of `(1, 2)`.
+        let mut transfers = vec![owned(1, 9), owned(0, 4), owned(1, 2)];
+        in_report_order(&mut transfers);
+        let keys: Vec<(usize, usize)> = transfers
+            .iter()
+            .map(|transfer| (transfer.actor, transfer.line))
+            .collect();
+        assert_eq!(keys, vec![(0, 4), (1, 2), (1, 9)]);
+    }
+
+    #[test]
     fn one_actors_lines_settle_in_the_order_written() {
         let mut transfers = vec![owned(3, 7), owned(3, 2), owned(3, 5)];
         in_report_order(&mut transfers);

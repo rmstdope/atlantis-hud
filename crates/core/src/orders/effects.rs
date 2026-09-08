@@ -1526,9 +1526,9 @@ struct Working {
     /// not be mistaken for the bounded optimism a take from a unit the report never shows gets.
     foreign_units: std::collections::BTreeSet<String>,
     /// Every `GIVE` and `TAKE` this document writes, applied only once the whole document has
-    /// been read. `rules/sequenceofevents` settles both in one Give phase and processes units
-    /// "in the order they appear on the report", which is not the order their blocks were
-    /// written in (`ah-3mwm`).
+    /// been read: `rules/sequenceofevents` settles both in one Give phase, in an order that is
+    /// not the order their blocks were written in (`ah-3mwm`). The rule itself, and the sort that
+    /// obeys it, are [`in_report_order`]'s.
     transfers: Vec<PendingTransfer<'static>>,
     /// Every unit id the report shows holding the quartermaster skill, resolved through the
     /// catalogue rather than by tag spelling - `QUAM` is quartermaster and `QUAR` is quarrying
