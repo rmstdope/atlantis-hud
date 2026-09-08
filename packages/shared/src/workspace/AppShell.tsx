@@ -193,6 +193,10 @@ import {
   type NewAgeFetchPhase,
   type NewAgeFetchScope
 } from "./newAgeFetchView";
+import {
+  newAgeFetchAftermath,
+  newAgeListingStillCurrent
+} from "./newAgeFetchAftermath";
 import { runNewAgeFetch } from "./newAgeFetchRun";
 import { fetchedTurnName, runSummary } from "./newAgeHistoryView";
 import { performNewAgeSend } from "./newAgeSend";
@@ -3865,68 +3869,35 @@ export function AppShell({
       } else {
         fetchAbort.current = null;
       }
+      // Read AFTER the clear above, so a plain cancel is not mistaken for a later run taking over.
+      const superseded = fetchAbort.current !== null && fetchAbort.current !== controller;
 
-      if (stillOurs) {
-        if (outcome.kind === "refused") {
-          // The dialog stays up, asking again with the password cleared.
-          setFetchPhase({ kind: "ready", message: outcome.message, retype: outcome.retype });
-          return;
-        }
+      const aftermath = newAgeFetchAftermath({
+        outcome,
+        stillOurs,
+        reachedTurns,
+        superseded,
+        sameGame: openGameIdRef.current === runGameId,
+        workingTurn: currentWorkingTurn()
+      });
+
+      if (aftermath.dialog.kind === "close") {
         setFetchPhase(null);
-        if (outcome.kind === "reportFailed") {
-          setStatus(failedStatus(`${FETCH_FAILURE_PREFIX}: ${outcome.reason}`));
-        } else if (outcome.kind === "done") {
-          if (outcome.listFailed !== null) {
-            setStatus(warningStatus(outcome.listFailed));
-          } else if (outcome.history !== null) {
-            setStatus(
-              outcome.history.refusedMidRun
-                ? failedStatus(FETCH_REFUSED_MID_RUN)
-                : runSummary(
-                    outcome.history.stored.length,
-                    outcome.history.failed.size,
-                    currentWorkingTurn()
-                  )
-            );
-          }
-          // For a plain `thisTurn` fetch nothing is added: `loadReport` has already written its
-          // own line for the turn that just landed.
-        }
-        // `abandoned` says nothing at all: the player closed the dialog, and a line about a run
-        // they stopped is noise.
+      } else if (aftermath.dialog.kind === "reopen") {
+        setFetchPhase(aftermath.dialog.phase);
+      }
+      if (aftermath.status !== null) {
+        setStatus(aftermath.status);
       }
 
-      // Once, at the end, and outside the guard above: a run that stored earlier turns put them in
-      // the game whether it finished or was cancelled, and a turn the picker cannot see is a turn
-      // the player cannot compare against.
-      //
-      // Three things have to be true, and each of them has a way of going wrong that the old blanket
-      // early return used to cover:
-      //
-      // - The run reached a per-turn fetch. `abandoned` is returned from three points before that,
-      //   and none of them can have stored anything worth a core round trip.
-      // - The game has not changed under it. `dismissFetch` is what a game or ruleset switch calls
-      //   too, so without this a run torn down by a switch would list the game the player just left
-      //   and write that list into the shell now showing another one.
-      // - No later run has taken over. A second Fetch pressed after a cancel sets its own
-      //   controller; the first run's list would then land on top of the second's and briefly hide
-      //   turns the second one stored. A cleared controller is the plain cancel, and is fine.
-      const superseded = fetchAbort.current !== null && fetchAbort.current !== controller;
-      const storedSomething =
-        reachedTurns &&
-        (outcome.kind === "abandoned" || (outcome.kind === "done" && outcome.history !== null));
       // From `viewerRef`, not from the render's `parsed`: this run is what put a report on screen,
       // and the closure still holds whatever was there when Fetch was pressed - `null`, on the
       // first fetch of a fresh game. Reading that would skip the refresh and leave every turn the
       // run stored out of the picker.
       const factionId = viewerRef.current?.header.factionId ?? null;
-      if (
-        storedSomething &&
-        !superseded &&
-        openGameIdRef.current === runGameId &&
-        runGame &&
-        factionId !== null
-      ) {
+      // `runGame` and `factionId` are not decisions: they are the narrowing `listComparableTurns`
+      // needs before it can be called at all, so they stay here rather than in the input.
+      if (aftermath.relistTurns && runGame && factionId !== null) {
         const summaries = await runReported(
           () =>
             listComparableTurns(
@@ -3944,17 +3915,11 @@ export function AppShell({
           },
           { prefix: "could not list the turns to compare" }
         );
-        // Asked again on the far side of the await, and for the same reasons: the listing is a
-        // core round trip, and a second Fetch or a game switch during it would make this list the
-        // older answer. Last write wins only if the last writer is the one that checked last.
-        //
-        // One window is left, knowingly: a second run that both starts and finishes inside this
-        // await clears the controller back to null, and this older list would then write over its
-        // newer one. Closing it wants a run counter rather than a controller identity, and the
-        // window is a whole fetch inside one listing round trip.
-        const stillCurrent =
-          openGameIdRef.current === runGameId &&
-          (fetchAbort.current === null || fetchAbort.current === controller);
+        const stillCurrent = newAgeListingStillCurrent({
+          sameGame: openGameIdRef.current === runGameId,
+          controllerIsOursOrCleared:
+            fetchAbort.current === null || fetchAbort.current === controller
+        });
         if (summaries !== undefined && stillCurrent) {
           setTurnSummaries(summaries);
         }
