@@ -338,6 +338,53 @@ export async function walkBatch(
   };
 }
 
+/**
+ * What the shell must still do once {@link walkBatch} has returned - the three-way read-back that
+ * used to live inline in `AppShell`'s `runBatch`.
+ *
+ * `factionId` is non-null in both acting arms, which is what removes the `viewerFactionId as string`
+ * cast the shell carried: a landed import step is proof the walk had a faction to act under
+ * ({@link walkBatch}'s note on why), and this makes that proof a discriminant instead of a comment.
+ */
+export type BatchFinish =
+  /**
+   * Read the map back and apply this turn: the batch's newest own turn, applied the way a single
+   * report is so that the orders, the selection and the map all land identically. Read back rather
+   * than committed again - the walk has already written this turn and the allies of it, and a
+   * second commit would rewrite the turn's sightings from this report alone, dropping every ally
+   * contribution to a hex the viewer also stood in.
+   */
+  | {
+      kind: "apply-turn";
+      factionId: string;
+      step: BatchStep & { kind: "import" };
+      source: Extract<ReportImportSource, { kind: "report" }>;
+    }
+  /**
+   * Nothing of the viewer's own landed, so the turn on screen has not changed - only the map under
+   * it, which the merges have grown. Read the map back and keep the turn.
+   */
+  | { kind: "grow-map"; factionId: string }
+  /** No faction to act under: every file is already accounted for in the summary. */
+  | { kind: "nothing" };
+
+/** Which of the three the walk left. Pure; reads nothing but the walk and the faction. */
+export function batchFinish(walk: BatchWalk, viewerFactionId: string | null): BatchFinish {
+  // Falsy, as the shell's own `else if (viewerFactionId)` was: the empty string is not a faction id.
+  if (!viewerFactionId) {
+    return { kind: "nothing" };
+  }
+  if (walk.finish) {
+    return {
+      kind: "apply-turn",
+      factionId: viewerFactionId,
+      step: walk.finish.step,
+      source: walk.finish.source
+    };
+  }
+  return { kind: "grow-map", factionId: viewerFactionId };
+}
+
 /** The summary dialog's contents. */
 export function batchSummary(walk: BatchWalk, viewerReport: ParsedReport | null): ImportSummary {
   return {

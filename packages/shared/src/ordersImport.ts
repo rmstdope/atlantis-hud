@@ -139,6 +139,36 @@ export function routeOrdersImport(
   };
 }
 
+/** What a selection dropped on the Import target is: one file to load, or a batch to walk. */
+export type FileImportRoute<T> =
+  | { kind: "single"; file: T }
+  | { kind: "batch"; files: readonly T[] };
+
+/**
+ * Which import a chosen selection is.
+ *
+ * One file is still one file: it keeps the question that guards a change of faction, the
+ * orders-file sniff and the store-only rule that keeps an older turn off the screen. Two or more is
+ * a different act and gets none of those questions - twenty modals is not a workflow.
+ *
+ * Generic over the file, and never naming `File`: `packages/shared` describes a chosen file
+ * structurally (see `ChosenFile` in `./batchImport`), and importing `batchImport` from here would
+ * point the dependency the wrong way round.
+ *
+ * An empty selection is a batch of nothing, which is what the shell does with it today - the batch
+ * path accounts for every file in its summary, and a summary of nothing is a truthful answer to a
+ * drop that carried nothing.
+ */
+export function routeFileImport<T>(files: readonly T[]): FileImportRoute<T> {
+  const only = files[0];
+  // `only !== undefined` is today's `&& only`: a length-1 selection whose element is absent falls to
+  // the batch path. Written explicitly because `T` is unconstrained and a bare truthiness test
+  // narrows a generic poorly.
+  return files.length === 1 && only !== undefined
+    ? { kind: "single", file: only }
+    : { kind: "batch", files };
+}
+
 export type OrdersImportDescription = {
   /** Every unit the file has a block for, in the order the file lists them. */
   fileUnitIds: string[];
