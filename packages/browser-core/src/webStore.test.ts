@@ -11,9 +11,15 @@
 import { describe, expect, it } from "vitest";
 import {
   createMemoryWebStore,
+  gameCollections,
+  type StoredAlliedMage,
+  type StoredArmy,
   type StoredHexNote,
   type StoredMergedReport,
-  type StoredRegionSighting
+  type StoredOrderDraft,
+  type StoredRegionSighting,
+  type StoredStudyPlan,
+  type StoredTurn
 } from "./webStore";
 
 const DB = "idb://game-95";
@@ -204,5 +210,174 @@ describe("storing manual hex notes", () => {
     await store.deleteGame("faction-95");
 
     await expect(store.getHexNotes(DB, "faction-95")).resolves.toEqual([]);
+  });
+});
+
+/** One row of every per-game collection, so a drop can be asked to forget all of them. */
+function aTurn(): StoredTurn {
+  return {
+    databasePath: DB,
+    gameId: "faction-95",
+    factionId: "95",
+    turnNumber: 71,
+    rawReport: "TURN: 71",
+    parsedPayloadJson: "{}",
+    warningsPayloadJson: "[]"
+  };
+}
+
+function aDraft(): StoredOrderDraft {
+  return {
+    databasePath: DB,
+    gameId: "faction-95",
+    factionId: "95",
+    turnNumber: 71,
+    orderText: "#atlantis 95",
+    updatedAt: "2026-08-10T18:30:00Z"
+  };
+}
+
+function aSighting(): StoredRegionSighting {
+  return {
+    databasePath: DB,
+    gameId: "faction-95",
+    factionId: "95",
+    regionId: "1:7,53",
+    lastSeenTurn: 71,
+    payloadJson: "{}"
+  };
+}
+
+function anArmy(): StoredArmy {
+  return {
+    databasePath: DB,
+    id: "army-1",
+    gameId: "faction-95",
+    name: "Escort",
+    members: [
+      {
+        unitId: "1",
+        name: "Scouts",
+        factionId: "95",
+        factionName: "Borg TNG",
+        own: true,
+        regionId: "1:7,53",
+        flags: [],
+        items: [],
+        skills: [],
+        combatSpell: null,
+        men: 1,
+        seenTurn: 71,
+        seenAt: "2026-08-01T09:00:00Z"
+      }
+    ],
+    createdAt: "2026-08-01T09:00:00Z",
+    updatedAt: "2026-08-01T09:00:00Z"
+  };
+}
+
+function aMage(): StoredAlliedMage {
+  return {
+    databasePath: DB,
+    factionId: "21",
+    factionName: "Borg",
+    unit: {
+      unitId: "9001",
+      name: "Sweep Mage",
+      regionId: "1:7,53",
+      factionId: "21",
+      factionName: "Borg",
+      own: false,
+      onGuard: false,
+      flags: [],
+      items: [{ amount: 1, name: "leader", tag: "LEAD" }],
+      skills: [{ name: "force", tag: "FORC", level: 3, points: 180 }],
+      combatSpell: { name: "fire", tag: "FIRE" },
+      men: 1,
+      menEstimated: true,
+      menByRace: [],
+      weight: null,
+      capacity: null,
+      movement: null,
+      structureId: null
+    },
+    sheetTurn: 23,
+    receivedAt: "2026-08-01T09:00:00Z"
+  };
+}
+
+function aStudyPlan(): StoredStudyPlan {
+  return {
+    databasePath: DB,
+    factionId: "21",
+    unitId: "9001",
+    goals: [{ kind: "study", turn: 24, skill: "FORC" }],
+    comment: "heading for Gate Lore",
+    updatedAt: "2026-08-07T12:00:00Z"
+  };
+}
+
+describe("dropping a game's data", () => {
+  const OTHER = "idb://game-73";
+
+  /**
+   * Pinned because the drop names every collection by hand today: a list like that is complete
+   * now and one collection short the moment another is added.
+   */
+  it("forgets every collection the game had", async () => {
+    const store = createMemoryWebStore();
+
+    await store.putImportedTurn(aTurn());
+    await store.putOrderDraft(aDraft());
+    await store.putRegionSightings([aSighting()]);
+    await store.putMergedReport(merge());
+    await store.putHexNote(note());
+    await store.putArmy(anArmy());
+    await store.putAlliedMages(DB, [aMage()], []);
+    await store.putStudyPlans(DB, [aStudyPlan()], []);
+
+    await store.putMergedReport(merge({ databasePath: OTHER }));
+    await store.putHexNote(note({ databasePath: OTHER }));
+
+    await store.dropGameData(DB);
+
+    await expect(store.getImportedTurns(DB, "faction-95")).resolves.toEqual([]);
+    await expect(store.getOrderDrafts(DB, "faction-95")).resolves.toEqual([]);
+    await expect(store.getAllRegionSightings(DB, "faction-95")).resolves.toEqual([]);
+    await expect(store.getAllMergedReports(DB, "faction-95")).resolves.toEqual([]);
+    await expect(store.getHexNotes(DB, "faction-95")).resolves.toEqual([]);
+    await expect(store.getArmies(DB, "faction-95")).resolves.toEqual([]);
+    await expect(store.getAlliedMages(DB, "faction-95")).resolves.toEqual([]);
+    await expect(store.getStudyPlans(DB, "faction-95")).resolves.toEqual([]);
+
+    await expect(store.getAllMergedReports(OTHER, "faction-73")).resolves.toEqual([
+      merge({ databasePath: OTHER })
+    ]);
+    await expect(store.getHexNotes(OTHER, "faction-73")).resolves.toEqual([
+      note({ databasePath: OTHER })
+    ]);
+  });
+});
+
+describe("the per-game collections", () => {
+  /**
+   * The dotted key path is the one a mistake in would be silent: written as `unitId`, every allied
+   * mage keys on `undefined` and a second mage overwrites the first.
+   */
+  it("declares every game store, and keys an allied mage by his faction and the unit inside him", () => {
+    expect(gameCollections.map((collection) => collection.name)).toEqual([
+      "importedTurns",
+      "orderDrafts",
+      "regionSightings",
+      "mergedReports",
+      "hexNotes",
+      "armies",
+      "alliedMages",
+      "studyPlans"
+    ]);
+
+    expect(gameCollections.find((collection) => collection.name === "alliedMages")?.keyPath).toEqual(
+      ["factionId", "unit.unitId"]
+    );
   });
 });
