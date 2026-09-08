@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-6m7b.2 — a BUY ALL beside a STUDY</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+         margin: 0; padding: 28px 32px 60px; max-width: 1080px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { opacity: .7; margin: 0 0 24px; font-size: 13px; }
+  .facts { background: rgba(127,127,127,.09); border-radius: 8px; padding: 14px 18px; margin: 0 0 28px; }
+  .facts code { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .cols { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; }
+  .opt { border: 1px solid rgba(127,127,127,.35); border-radius: 10px; padding: 16px 18px 20px; }
+  .opt h2 { font-size: 15px; margin: 0 0 2px; }
+  .tag { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; opacity: .6; }
+  .hover { border: 1px solid rgba(127,127,127,.35); border-radius: 6px; padding: 10px 12px;
+           margin: 12px 0 0; font-size: 13px; background: rgba(127,127,127,.06); }
+  .hover .lbl { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; opacity: .55; display: block; margin-bottom: 5px; }
+  .warn { color: #b4331f; }
+  .note { font-size: 12.5px; opacity: .8; margin: 14px 0 0; }
+  .cost { font-size: 12.5px; margin: 12px 0 0; padding-top: 10px; border-top: 1px dashed rgba(127,127,127,.35); }
+  b.n { font-variant-numeric: tabular-nums; }
+</style>
+
+<h1>ah-6m7b.2 — what a <code>BUY ALL</code> may spend when a <code>STUDY</code> follows it</h1>
+<p class="sub">Measured on the current tree, 2026-09-08. The two surfaces disagree today and nothing tests it.</p>
+
+<div class="facts">
+  <b>The case.</b> One orc, 105 silver. Market sells 20 grain at $20. Orders:
+  <code>BUY ALL grain</code> then <code>STUDY combat</code> ($10 for one man).<br>
+  <b>Today:</b> the SILVER column says <b class="n">5</b> grain (105 ÷ 20). The ITEMS ledger says
+  <b class="n">4</b> grain (it takes the $10 study fee off first, 95 ÷ 20).<br>
+  <b><code>rules/sequenceofevents</code>:</b> “Market orders. … BUY orders are processed.” comes
+  <em>before</em> “Month long orders. … STUDY orders are processed.”
+</div>
+
+<div class="cols">
+
+  <div class="opt">
+    <span class="tag">Option A</span>
+    <h2>The ledger conforms to the rules</h2>
+    <p class="note">Both surfaces say <b class="n">5</b>. The study is then unpaid, and the
+      <code>not-enough-silver</code> warning says so — which is what the turn would really do.</p>
+    <div class="hover"><span class="lbl">SILVER hover</span>
+      This unit has silver for 5 grain, not the 20 this market offers.</div>
+    <div class="hover"><span class="lbl">ITEMS hover</span>
+      grain: bought 5 at 20 silver each</div>
+    <div class="hover"><span class="lbl">warning</span>
+      <span class="warn">this unit is 5 silver short this month</span></div>
+    <p class="cost"><b>Cost:</b> reverses part of <code>ah-gdd3.1</code>’s fix — the ledger must size a
+      <code>BUY ALL</code> from the market-phase balance, not the end-of-month one. Every unit with a
+      <code>BUY ALL</code> beside a month-long order gets a different ITEMS figure. Biggest change, and
+      the one that matches the game.</p>
+  </div>
+
+  <div class="opt">
+    <span class="tag">Option B</span>
+    <h2>The column conforms to the ledger, and a bug bead is filed</h2>
+    <p class="note">Both surfaces say <b class="n">4</b> now — the epic’s “ledger wins” applied as
+      written — and the wrong number is filed as its own P4 bug for you to rank.</p>
+    <div class="hover"><span class="lbl">SILVER hover</span>
+      This unit has silver for 4 grain, not the 20 this market offers.</div>
+    <div class="hover"><span class="lbl">ITEMS hover</span>
+      grain: bought 4 at 20 silver each</div>
+    <div class="hover"><span class="lbl">warning</span>
+      <em>silent — the study looks paid for</em></div>
+    <p class="cost"><b>Cost:</b> <code>ah-6m7b.2</code> stays small and the family keeps its shape, but
+      the shipped figure is knowingly wrong until the new bead is ranked and built. It also inverts a
+      unit test that deliberately pins today’s 5
+      (<code>a_study_does_not_shrink_what_a_buy_all_can_afford</code>).</p>
+  </div>
+
+  <div class="opt">
+    <span class="tag">Option C</span>
+    <h2>The column conforms, and that is the answer</h2>
+    <p class="note">Both say <b class="n">4</b>, and we treat the conservative reading as intended:
+      never promise goods the month cannot pay for twice over.</p>
+    <div class="hover"><span class="lbl">SILVER hover</span>
+      This unit has silver for 4 grain, not the 20 this market offers.</div>
+    <div class="hover"><span class="lbl">ITEMS hover</span>
+      grain: bought 4 at 20 silver each</div>
+    <div class="hover"><span class="lbl">warning</span>
+      <em>silent</em></div>
+    <p class="cost"><b>Cost:</b> cheapest, and no follow-up work. But the HUD then predicts a turn the
+      server will not produce, and the player loses the shortfall warning that would have told them the
+      study fails.</p>
+  </div>
+
+</div>
