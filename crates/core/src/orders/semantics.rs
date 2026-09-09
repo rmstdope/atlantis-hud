@@ -135,6 +135,9 @@ pub mod codes {
     pub const SAIL_BETWEEN_LAND_HEXES: Code = Code("sail-between-land-hexes");
     pub const GIVE_TARGET_NOT_HERE: Code = Code("give-target-not-here");
     pub const TAKE_FROM_ANOTHER_FACTION: Code = Code("take-from-another-faction");
+    /// A `GIVE` or `TAKE` naming the unit that wrote it. The game refuses it, so the line moves
+    /// nothing (`ah-qwz7`).
+    pub const TRANSFER_TO_ITSELF: Code = Code("transfer-to-itself");
     pub const NOT_TRADED_HERE: Code = Code("not-traded-here");
     pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
@@ -181,7 +184,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 48] = [
+    pub const ALL: [Code; 49] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -230,6 +233,7 @@ pub mod codes {
         WITHDRAW_NOT_A_BASIC_ITEM,
         SAIL_BETWEEN_LAND_HEXES,
         CAST_CANNOT_MAKE_THIS,
+        TRANSFER_TO_ITSELF,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -688,6 +692,7 @@ pub fn review_turn(
         check_two_month_long_orders(hex, &options, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
         check_take_from_another_faction(hex, &options, &mut findings);
+        check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
         check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
@@ -2724,12 +2729,12 @@ fn debit_source(
     line: i64,
 ) {
     // A unit written to take from itself would show `took +100` and `was taken -100` on one row for
-    // a transfer that moves nothing - but it never arrives here. `rules/give`: the server refuses a
-    // unit giving to itself, and `targets::give_endpoint` answers `GiveReach::Nowhere` for
-    // `id == giver_id`, so the source has no row and the transfer loop `continue`s well above the
-    // silver block (`a_take_from_a_unit_by_itself_is_silent`). Asserted rather than guarded at
-    // runtime: an unreachable runtime branch cannot be tested, and a future widening of that
-    // endpoint should fail a test rather than quietly book a circle.
+    // a transfer that moves nothing - but it never arrives here. `rules/take`: "a unit may only
+    // TAKE from another unit in the same faction", and `rules/give` gives "to another unit", so
+    // `apply_transfers` `continue`s on a line naming the unit that wrote it before either leg is
+    // settled (`ah-qwz7`) - neither the source's row nor the taker's is written. Asserted rather
+    // than guarded at runtime: an unreachable runtime branch cannot be tested, and a future
+    // weakening of that guard should fail a test rather than quietly book a circle.
     debug_assert_ne!(
         source, taker,
         "a self-transfer is filtered before the settlement reaches here"
@@ -2844,6 +2849,18 @@ fn apply_transfers(
         // the GIVE order, except that the direction of transfer is reversed" - so for a TAKE,
         // `transfer.party` names the source and `transfer.actor` is the receiver instead.
         let giver_id = units[transfer.actor].unit.unit_id.as_str();
+        // `rules/take`: "a unit may only TAKE from another unit in the same faction", and
+        // `rules/give` gives "to another unit" - so a line naming the unit that wrote it moves
+        // nothing at all. Settled here rather than through `GiveReach::Nowhere`, which the
+        // endpoint answers for a self-transfer *and* for three unrelated shapes (a number the
+        // report shows in another region, a `NEW` alias no `FORM` created, an id we cannot read).
+        // The arm below credits those as a take from a source the report does not show
+        // (`ah-awcm`), which for a unit's own number is a phantom credit, phantom goods, phantom
+        // men and a false mage refusal (`ah-qwz7`). `check_transfer_to_itself` is what tells the
+        // player.
+        if party_unit_id(&transfer.party).as_deref() == Some(giver_id) {
+            continue;
+        }
         let source = if transfer.is_give {
             GiveEndpoint::ours(transfer.actor)
         } else {
@@ -5957,6 +5974,15 @@ fn apply(
             }
         }
         Intent::Take { from, what, amount } => {
+            // The taker and the source are one unit, so nothing is drawn and nothing arrives.
+            // Guarded here as well as in `apply_transfers`: this arm resolves its source through
+            // `party_in_hex`, which is a plain `unit_id ==` scan with no self test, so without
+            // this the walk charges and credits the same unit and leaves two rows in
+            // `Ledger::silver_moves` plus a `charged_at` mark for a draw that never happened
+            // (`ah-qwz7`).
+            if party_unit_id(from).as_deref() == Some(who.as_str()) {
+                return;
+            }
             if matches!(from, Party::Unit(id) if foreign_unit_ids.contains(id)) {
                 return;
             }
@@ -11660,6 +11686,8 @@ fn check_transfer_targets(
             // because the server refuses the order and no ledger may charge for it
             // (`targets.rs`), which is a different fact from the one this check states - so it is
             // settled before reach is consulted rather than through it.
+            // `check_transfer_to_itself` is what does name it, in its own words and under its own
+            // toggle (`ah-qwz7`), so the line carries exactly one finding rather than two.
             if party_unit_id(party).as_deref() == Some(ordered.unit.unit_id.as_str()) {
                 continue;
             }
@@ -11743,6 +11771,42 @@ fn check_take_from_another_faction(
                     Some(placed),
                 ));
             }
+        }
+    }
+}
+
+/// A `GIVE` or `TAKE` naming the unit that wrote it.
+///
+/// `rules/take`: "a unit may only TAKE from another unit in the same faction"; `rules/give` gives
+/// "to another unit". The game refuses the order, so the line moves nothing - and nothing else on
+/// the screen says so, because `check_transfer_targets` suppresses `give-target-not-here` for
+/// exactly this shape: that message states the target is not in this hex, and it plainly is.
+///
+/// `party_unit_id` rather than reach: `give_endpoint` answers `Nowhere` for a self-transfer and
+/// for three unrelated shapes, so reading it here would warn about all four.
+fn check_transfer_to_itself(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::TRANSFER_TO_ITSELF) {
+        return;
+    }
+    for ordered in &hex.units {
+        for placed in &ordered.intents {
+            let (party, order) = match &placed.intent {
+                Intent::Give { to, .. } => (to, "GIVE"),
+                Intent::Take { from, .. } => (from, "TAKE"),
+                _ => continue,
+            };
+            if party_unit_id(party).as_deref() != Some(ordered.unit.unit_id.as_str()) {
+                continue;
+            }
+            findings.push(ordered.finding(
+                hex,
+                codes::TRANSFER_TO_ITSELF,
+                format!(
+                    "{} is this unit itself, so this {order} moves nothing",
+                    party_label(party)
+                ),
+                Some(placed),
+            ));
         }
     }
 }
@@ -15015,10 +15079,10 @@ mod tests {
     /// `debit_source` asserts that rather than guarding it, and this is what makes the assertion
     /// worth something.
     ///
-    /// It pins the outgoing side and no more. The taker's own side of a self-take is *not* silent:
-    /// the `Nowhere` arm's `ah-awcm` block credits it a phantom `TookUnshown` +100 from
-    /// `unit <its own id>`, for an order that moves nothing. That predates this bead and is filed
-    /// as `ah-qwz7`; asserting silence here would state something false.
+    /// It pins the outgoing side; `a_unit_taking_from_itself_is_credited_nothing` pins the
+    /// incoming one. Both are silent since `ah-qwz7` put the guard in `apply_transfers` itself -
+    /// before that, the `Nowhere` arm's `ah-awcm` block credited the taker a phantom
+    /// `TookUnshown` +100 from `unit <its own id>` for an order that moves nothing.
     #[test]
     fn a_unit_taking_from_itself_is_not_debited() {
         let region = region(vec![with_silver(unit("2391"), 500)]);
@@ -15035,6 +15099,29 @@ mod tests {
                 .iter()
                 .any(|m| m.cause == SilverChangeCause::WasTaken),
             "the source and the taker are one unit, so nothing left it"
+        );
+    }
+
+    /// `ah-qwz7`: the taker's own side of a self-take is silent too. `rules/take`: "a unit may
+    /// only TAKE from another unit in the same faction", so the line moves nothing at all - and
+    /// before this bead the `GiveReach::Nowhere` arm's `ah-awcm` block credited a phantom
+    /// `TookUnshown` from the unit's own number, which the SILVER column read as real income.
+    #[test]
+    fn a_unit_taking_from_itself_is_credited_nothing() {
+        let region = region(vec![with_silver(unit("2391"), 500)]);
+        let source = "unit 2391\nTAKE FROM 2391 100 SILV\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let itself = receipts.get("2391").cloned().unwrap_or_default();
+        assert_eq!(itself.taken_unshown, 0);
+        assert!(itself.taken_unshown_from.is_empty());
+        assert_eq!(itself.taken, 0);
+        assert!(itself.taken_from.is_empty());
+        assert!(
+            itself.silver_moves.is_empty(),
+            "an order that moves nothing books no movement: {:?}",
+            itself.silver_moves
         );
     }
 
@@ -22753,6 +22840,25 @@ BUILD
                     moves(ledger, "2")
                 );
                 assert_eq!(moves(ledger, "2")[0].amount, 100);
+            });
+        }
+
+        /// `ah-qwz7`: a `TAKE` naming the unit that wrote it moves nothing, so the ledger books
+        /// nothing. Before the guard this arm resolved its source through `party_in_hex`, which
+        /// has no self test, and left `WasTaken -100` and `Took +100` on one unit for an event
+        /// that never happened.
+        #[test]
+        fn a_self_take_records_no_silver_movement() {
+            let hex_region = market(vec![with_silver(unit("2"), 1_000)]);
+            with_ledger(hex_region, "unit 2\nTAKE FROM 2 100 SILV\n", |ledger| {
+                assert!(moves(ledger, "2").is_empty(), "{:?}", moves(ledger, "2"));
+                // And no draw was attributed either: `charged_at` is what a shortfall message
+                // points at, so a mark left here would blame a line that spends nothing.
+                assert!(
+                    ledger.charged_at.keys().all(|(unit_id, _)| unit_id != "2"),
+                    "{:?}",
+                    ledger.charged_at.keys().collect::<Vec<_>>()
+                );
             });
         }
 
@@ -32853,40 +32959,48 @@ BUILD
     }
 
     /// `give_reach` answers `Nowhere` for a unit transferring to itself, because the server
-    /// refuses the order - but this check states that the target is *not in this hex*, and it
-    /// plainly is. So the self-transfer is settled before reach is consulted, and this is the
-    /// test that fails if it ever is not.
+    /// refuses the order - but `check_transfer_targets` states that the target is *not in this
+    /// hex*, and it plainly is. So that check still stays quiet here, and `ah-qwz7`'s own
+    /// `transfer-to-itself` is what names the mistake instead: exactly one finding, not two.
     #[test]
-    fn a_gift_from_a_unit_to_itself_is_silent() {
+    fn a_gift_from_a_unit_to_itself_names_the_unit_itself() {
+        let finding = only(check(
+            vec![region(vec![with_item(
+                unfed(unit("8443")),
+                30,
+                "grain",
+                "GRAI",
+            )])],
+            "unit 8443\nGIVE 8443 30 GRAI\n",
+        ));
+
+        assert_eq!(finding.code, Code("transfer-to-itself"));
         assert_eq!(
-            codes(&check(
-                vec![region(vec![with_item(
-                    unfed(unit("8443")),
-                    30,
-                    "grain",
-                    "GRAI"
-                )])],
-                "unit 8443\nGIVE 8443 30 GRAI\n",
-            )),
-            Vec::<&str>::new()
+            finding.message,
+            "unit 8443 is this unit itself, so this GIVE moves nothing"
         );
+        assert_eq!(finding.line, Some(2), "the line the number was typed on");
     }
 
     /// The same for a `TAKE`, whose verb takes the other branch of the pair above.
     #[test]
-    fn a_take_from_a_unit_by_itself_is_silent() {
+    fn a_take_from_a_unit_by_itself_names_the_unit_itself() {
+        let finding = only(check(
+            vec![region(vec![with_item(
+                unfed(unit("8443")),
+                30,
+                "grain",
+                "GRAI",
+            )])],
+            "unit 8443\nTAKE FROM 8443 30 GRAI\n",
+        ));
+
+        assert_eq!(finding.code, Code("transfer-to-itself"));
         assert_eq!(
-            codes(&check(
-                vec![region(vec![with_item(
-                    unfed(unit("8443")),
-                    30,
-                    "grain",
-                    "GRAI"
-                )])],
-                "unit 8443\nTAKE FROM 8443 30 GRAI\n",
-            )),
-            Vec::<&str>::new()
+            finding.message,
+            "unit 8443 is this unit itself, so this TAKE moves nothing"
         );
+        assert_eq!(finding.line, Some(2), "the line the number was typed on");
     }
 
     /// And for the alias form: a unit `FORM`ed this month that gives to its own alias is filed
@@ -32907,6 +33021,86 @@ BUILD
             "unit 8443\nFORM 1\nGIVE NEW 1 30 GRAI\nEND\n",
         ))
         .contains(&"give-target-not-here"));
+    }
+
+    /// `ah-qwz7`: the alias form is named as the player wrote it - `NEW 1`, not the internal
+    /// `new-1` id - and `give-target-not-here` stays absent, so the line still carries exactly
+    /// one finding about this mistake.
+    #[test]
+    fn a_transfer_to_a_formed_units_own_alias_names_the_alias() {
+        let findings = check(
+            vec![region(vec![with_item(
+                unfed(unit("8443")),
+                30,
+                "grain",
+                "GRAI",
+            )])],
+            "unit 8443\nFORM 1\nGIVE NEW 1 30 GRAI\nEND\n",
+        );
+
+        let itself = findings
+            .iter()
+            .find(|f| f.code == Code("transfer-to-itself"))
+            .unwrap_or_else(|| panic!("{findings:?}"));
+        assert_eq!(
+            itself.message,
+            "NEW 1 is this unit itself, so this GIVE moves nothing"
+        );
+        assert!(!codes(&findings).contains(&"give-target-not-here"));
+    }
+
+    /// `ah-qwz7`: an ordinary transfer between two units is not this finding.
+    #[test]
+    fn a_transfer_to_another_unit_is_not_this_finding() {
+        assert!(!codes(&check(
+            vec![region(vec![
+                unit("8443"),
+                with_item(unit("8444"), 30, "grain", "GRAI")
+            ])],
+            "unit 8443\nTAKE FROM 8444 30 GRAI\n",
+        ))
+        .contains(&"transfer-to-itself"));
+    }
+
+    /// `ah-qwz7`: a source the report does not show is a different mistake, and keeps its own
+    /// wording. The guard reads the party, not the reach, so the two do not collide.
+    #[test]
+    fn a_take_from_an_unshown_source_is_not_this_finding() {
+        let findings = check(
+            vec![region(vec![unit("8443")])],
+            "unit 8443\nTAKE FROM 999 30 GRAI\n",
+        );
+        let codes_seen = codes(&findings);
+
+        assert!(
+            codes_seen.contains(&"give-target-not-here"),
+            "{codes_seen:?}"
+        );
+        assert!(
+            !codes_seen.contains(&"transfer-to-itself"),
+            "{codes_seen:?}"
+        );
+    }
+
+    /// `ah-qwz7`: and so is a source in another faction.
+    #[test]
+    fn a_take_from_another_faction_is_not_this_finding() {
+        let mut foreign = unit("900");
+        foreign.own = false;
+        let findings = check(
+            vec![region(vec![unit("4426"), foreign])],
+            "unit 4426\nTAKE FROM 900 50 SILV\n",
+        );
+        let codes_seen = codes(&findings);
+
+        assert!(
+            codes_seen.contains(&"take-from-another-faction"),
+            "{codes_seen:?}"
+        );
+        assert!(
+            !codes_seen.contains(&"transfer-to-itself"),
+            "{codes_seen:?}"
+        );
     }
 
     /// `GiveReach::Ours` and `GiveReach::Foreign` differ by exactly `unit.own`, which is the
@@ -34044,6 +34238,13 @@ BUILD
                 code: codes::TAKE_FROM_ANOTHER_FACTION,
                 regions: vec![region(vec![unit("5"), foreign_guard("7")])],
                 orders: "unit 5\nTAKE FROM 7 1 HUMN\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::TRANSFER_TO_ITSELF,
+                regions: vec![region(vec![with_item(unit("5"), 30, "grain", "GRAI")])],
+                orders: "unit 5\nTAKE FROM 5 30 GRAI\n",
                 allowance: None,
                 unclaimed: None,
             },
@@ -36974,6 +37175,88 @@ BUILD
         // Chiefly that this does not panic: there is no receiver to credit.
         let hex = hex_after_gifts(&region, &ordered);
         assert_eq!(hex.find("1010").unwrap().skill_level("LUMB"), Some(1));
+    }
+
+    /// `ah-qwz7`: switching the advisory off hides the sentence and changes nothing else - the
+    /// forecast still credits the self-take nothing, because the guard is in the settlement and
+    /// not in the check.
+    #[test]
+    fn a_self_transfer_says_nothing_when_the_advisory_is_off() {
+        let region = region(vec![with_silver(unit("2391"), 500)]);
+        let source = "unit 2391\nTAKE FROM 2391 100 SILV\n";
+
+        let findings = check_turn(
+            &report(vec![region.clone()]),
+            source,
+            Some(&ruleset()),
+            disabling_all(&[codes::TRANSFER_TO_ITSELF]),
+        );
+        assert!(
+            !codes(&findings).contains(&"transfer-to-itself"),
+            "{findings:?}"
+        );
+
+        let receipts = receipts_in(&region, source);
+        let itself = receipts.get("2391").cloned().unwrap_or_default();
+        assert_eq!(itself.taken_unshown, 0);
+        assert!(itself.silver_moves.is_empty(), "{:?}", itself.silver_moves);
+    }
+
+    /// `ah-qwz7`: goods a unit is written to take from itself never move, so the projection
+    /// carries what the report showed. Before the guard the `Nowhere` arm ran `move_holding` into
+    /// the taker, doubling the goods it already held.
+    #[test]
+    fn a_unit_taking_goods_from_itself_keeps_its_holdings_unchanged() {
+        let taker = with_item(unit("2391"), 30, "grain", "GRAI");
+        let orders = "unit 2391\nTAKE FROM 2391 5 GRAI\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![taker]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let unit = hex.find("2391").expect("the unit is in this hex");
+        assert!(
+            matches!(unit.holdings_after_gifts, HoldingsAfterGifts::Unchanged),
+            "nothing moved: {:?}",
+            unit.holdings_after_gifts
+        );
+    }
+
+    /// `ah-qwz7`: men a unit is written to take from itself do not arrive, and the unit is not
+    /// doubted for an order that does nothing.
+    #[test]
+    fn a_unit_taking_men_from_itself_gains_no_men() {
+        let taker = men_holder("2391", 5);
+        let orders = "unit 2391\nTAKE FROM 2391 2 LEAD\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![taker]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let unit = hex.find("2391").expect("the unit is in this hex");
+        assert_eq!(unit.men_after_orders, 5, "nobody arrived");
+        assert!(
+            matches!(unit.holdings_after_gifts, HoldingsAfterGifts::Unchanged),
+            "and nothing moved: {:?}",
+            unit.holdings_after_gifts
+        );
+    }
+
+    /// `ah-qwz7`: a mage written to take men from itself is not warned that men were sent into a
+    /// mage. Nobody was sent anywhere.
+    #[test]
+    fn a_mage_taking_men_from_itself_is_not_refused() {
+        let mage = with_skill_pts(with_leaders(unit("2391"), 2), "FORC", 30);
+        let orders = "unit 2391\nTAKE FROM 2391 2 LEAD\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![mage]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let unit = hex.find("2391").expect("the mage is in this hex");
+        assert!(
+            unit.refused_transfers.is_empty(),
+            "no transfer happened, so none was refused: {:?}",
+            unit.refused_transfers
+        );
+        assert_eq!(unit.men_after_orders, 2, "the mage keeps its two leaders");
     }
 
     /// `rules/magic`: "mages may not GIVE men at all". The semantic projection must retain them

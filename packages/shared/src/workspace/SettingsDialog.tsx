@@ -550,6 +550,12 @@ export const WARNING_GROUPS: readonly {
           "A TAKE naming a visible unit from another faction, which the game will refuse."
       },
       {
+        code: "transfer-to-itself",
+        title: "Transfers a unit writes to itself",
+        description:
+          "A GIVE or TAKE naming the unit that wrote it, which the game will refuse."
+      },
+      {
         code: "arrivals-lower-a-skill",
         title: "Arrivals that lower a skill",
         description:
