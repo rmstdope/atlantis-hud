@@ -29,7 +29,7 @@ use atlantis_hud_core_persistence::{
     open_game, preview_imported_turn, reset_game, save_allied_mages, save_study_plans,
     set_active_faction, set_game_map, set_game_name, set_game_ruleset, upsert_army,
     upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
-    upsert_region_sightings, AlliedMage, AlliedMageKey, Army, ArmyMember, HexNote, ImportedTurnKey,
+    upsert_region_sightings, AlliedMage, AlliedMageKey, Army, HexNote, ImportedTurnKey,
     ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
     OrderDraftRecord, PersistenceError, StudyPlan, StudyPlanKey,
 };
@@ -95,88 +95,6 @@ pub struct OrderDraftRecordDto {
     pub key: OrderDraftKeyDto,
     pub order_text: String,
     pub updated_at: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HexNoteDto {
-    pub id: String,
-    pub game_id: String,
-    pub region_id: String,
-    pub text: String,
-    pub on_map: bool,
-    pub turn: u32,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-impl From<HexNote> for HexNoteDto {
-    fn from(value: HexNote) -> Self {
-        Self {
-            id: value.id,
-            game_id: value.game_id,
-            region_id: value.region_id,
-            text: value.text,
-            on_map: value.on_map,
-            turn: value.turn,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-        }
-    }
-}
-
-impl From<HexNoteDto> for HexNote {
-    fn from(value: HexNoteDto) -> Self {
-        Self {
-            id: value.id,
-            game_id: value.game_id,
-            region_id: value.region_id,
-            text: value.text,
-            on_map: value.on_map,
-            turn: value.turn,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-        }
-    }
-}
-
-/// One Army over the wire. Members cross as they are - `ArmyMember` is already `camelCase` serde,
-/// so no per-field DTO is needed for them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArmyDto {
-    pub id: String,
-    pub game_id: String,
-    pub name: String,
-    pub members: Vec<ArmyMember>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-impl From<Army> for ArmyDto {
-    fn from(value: Army) -> Self {
-        Self {
-            id: value.id,
-            game_id: value.game_id,
-            name: value.name,
-            members: value.members,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-        }
-    }
-}
-
-impl From<ArmyDto> for Army {
-    fn from(value: ArmyDto) -> Self {
-        Self {
-            id: value.id,
-            game_id: value.game_id,
-            name: value.name,
-            members: value.members,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-        }
-    }
 }
 
 impl From<OpenedGame> for OpenedGameDto {
@@ -620,10 +538,8 @@ pub mod commands {
     pub fn command_list_hex_notes(
         database_path: &str,
         game_id: &str,
-    ) -> Result<Vec<HexNoteDto>, String> {
-        list_hex_notes(Path::new(database_path), game_id)
-            .map(|notes| notes.into_iter().map(Into::into).collect())
-            .map_err(|error| error.to_string())
+    ) -> Result<Vec<HexNote>, String> {
+        list_hex_notes(Path::new(database_path), game_id).map_err(|error| error.to_string())
     }
 
     /// Saves one hex note for the Tauri command surface.
@@ -635,13 +551,9 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "save_hex_note")
     )]
-    pub fn command_save_hex_note(
-        database_path: &str,
-        note: HexNoteDto,
-    ) -> Result<HexNoteDto, String> {
-        let note: HexNote = note.into();
+    pub fn command_save_hex_note(database_path: &str, note: HexNote) -> Result<HexNote, String> {
         upsert_hex_note(Path::new(database_path), &note).map_err(|error| error.to_string())?;
-        Ok(note.into())
+        Ok(note)
     }
 
     /// Deletes one hex note for the Tauri command surface.
@@ -671,10 +583,8 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "list_armies")
     )]
-    pub fn command_list_armies(database_path: &str, game_id: &str) -> Result<Vec<ArmyDto>, String> {
-        list_armies(Path::new(database_path), game_id)
-            .map(|armies| armies.into_iter().map(Into::into).collect())
-            .map_err(|error| error.to_string())
+    pub fn command_list_armies(database_path: &str, game_id: &str) -> Result<Vec<Army>, String> {
+        list_armies(Path::new(database_path), game_id).map_err(|error| error.to_string())
     }
 
     /// Saves one Army for the Tauri command surface.
@@ -686,10 +596,9 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "save_army")
     )]
-    pub fn command_save_army(database_path: &str, army: ArmyDto) -> Result<ArmyDto, String> {
-        let army: Army = army.into();
+    pub fn command_save_army(database_path: &str, army: Army) -> Result<Army, String> {
         upsert_army(Path::new(database_path), &army).map_err(|error| error.to_string())?;
-        Ok(army.into())
+        Ok(army)
     }
 
     /// Deletes one Army for the Tauri command surface.
@@ -2327,7 +2236,7 @@ mod merge_tests {
 mod tests {
     use super::test_support::{a_manifest, IMPORTED_AT, OPENED_AT};
     use super::*;
-    use atlantis_hud_core::backup::StudyGoal;
+    use atlantis_hud_core::backup::{ArmyMember, StudyGoal};
     use atlantis_hud_core::report::model::ReportUnit;
     use tempfile::tempdir;
 
@@ -2509,7 +2418,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let note = HexNoteDto {
+        let note = HexNote {
             id: "note-1".to_string(),
             game_id: "faction-12".to_string(),
             region_id: "1:7,53".to_string(),
@@ -2547,7 +2456,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let army = ArmyDto {
+        let army = Army {
             id: "army-1".to_string(),
             game_id: "faction-12".to_string(),
             name: "Northern escort".to_string(),

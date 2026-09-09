@@ -13,7 +13,7 @@ use atlantis_hud_core::backup::{
 };
 /// The stored row and its key. The core owns both because the backup carries them too.
 pub use atlantis_hud_core::backup::{
-    AlliedMage, AlliedMageKey, StudyGoal, StudyPlan, StudyPlanKey,
+    AlliedMage, AlliedMageKey, Army, HexNote, StudyGoal, StudyPlan, StudyPlanKey,
 };
 use atlantis_hud_core::movement::graph::MapGeometry;
 // The row and the order it is listed in are the core's, so both platforms answer alike
@@ -187,30 +187,6 @@ pub struct OrderDraftKey {
 pub struct OrderDraftRecord {
     pub key: OrderDraftKey,
     pub order_text: String,
-    pub updated_at: String,
-}
-
-/// One player-written note on a hex, keyed by id.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HexNote {
-    pub id: String,
-    pub game_id: String,
-    pub region_id: String,
-    pub text: String,
-    pub on_map: bool,
-    pub turn: u32,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-/// A named group of units, scoped to the game and outliving any one turn.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Army {
-    pub id: String,
-    pub game_id: String,
-    pub name: String,
-    pub members: Vec<ArmyMember>,
-    pub created_at: String,
     pub updated_at: String,
 }
 

@@ -1,9 +1,4 @@
 import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
-// Both are re-exported below; `ArmyMemberRecord` also names them, which a re-export alone does not
-// bring into this file's scope.
-import type { ItemAmount } from "./generated/ItemAmount";
-import type { SkillInfo } from "./generated/SkillInfo";
-import type { CombatSpell } from "./generated/CombatSpell";
 
 // The report model and the parse family are generated from the Rust core by ts-rs
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
@@ -70,6 +65,9 @@ export type { AlliedMageKey } from "./generated/AlliedMageKey";
 export type { StudyGoal } from "./generated/StudyGoal";
 export type { StudyPlanRecord } from "./generated/StudyPlanRecord";
 export type { StudyPlanKey } from "./generated/StudyPlanKey";
+export type { HexNoteRecord } from "./generated/HexNoteRecord";
+export type { ArmyMemberRecord } from "./generated/ArmyMemberRecord";
+export type { ArmyRecord } from "./generated/ArmyRecord";
 export type { UnitPreviewStatus } from "./generated/UnitPreviewStatus";
 export type { FieldChange } from "./generated/FieldChange";
 export type { UnitPreview } from "./generated/UnitPreview";
@@ -121,6 +119,8 @@ import type { AlliedMageRecord } from "./generated/AlliedMageRecord";
 import type { AlliedMageKey } from "./generated/AlliedMageKey";
 import type { StudyPlanRecord } from "./generated/StudyPlanRecord";
 import type { StudyPlanKey } from "./generated/StudyPlanKey";
+import type { HexNoteRecord } from "./generated/HexNoteRecord";
+import type { ArmyRecord } from "./generated/ArmyRecord";
 import type { OrdersPreviewResponse } from "./generated/OrdersPreviewResponse";
 
 export type OpenedGame = {
@@ -458,57 +458,6 @@ export type OrderDraftKey = {
 export type OrderDraftRecord = {
   key: OrderDraftKey;
   orderText: string;
-  updatedAt: string;
-};
-
-/** One player-written note on a hex. Keyed by id; `regionId` is `hexMapModel`'s `"z:x,y"`. */
-export type HexNoteRecord = {
-  id: string;
-  gameId: string;
-  regionId: string;
-  text: string;
-  onMap: boolean;
-  turn: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-/**
- * One unit as an Army remembers it: the last report that showed it, whichever turn that was.
- *
- * A member the current report does not mention is kept and still exported - it may be another
- * faction's unit that is simply not visible this turn - so a membership is a snapshot rather than a
- * unit number, and carries everything an export needs.
- */
-export type ArmyMemberRecord = {
-  /** The report's unit number. The key: stable across turns, and never withheld. */
-  unitId: string;
-  name: string;
-  /** Null when the unit was concealing its faction when last seen (`ReportUnit.factionId`). */
-  factionId: string | null;
-  factionName: string | null;
-  own: boolean;
-  /** Where it was when last seen; `hexMapModel`'s `"z:x,y"`. */
-  regionId: string;
-  flags: string[];
-  items: ItemAmount[];
-  skills: SkillInfo[];
-  /** The spell it was set to cast when last seen; null for a unit that has none. */
-  combatSpell: CombatSpell | null;
-  men: number;
-  /** The turn of the report this snapshot came from. */
-  seenTurn: number;
-  /** When the snapshot was taken, ISO 8601, from the caller's clock. */
-  seenAt: string;
-};
-
-/** A named group of units, scoped to the game and outliving any one turn. */
-export type ArmyRecord = {
-  id: string;
-  gameId: string;
-  name: string;
-  members: ArmyMemberRecord[];
-  createdAt: string;
   updatedAt: string;
 };
 
