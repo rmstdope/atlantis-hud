@@ -1337,6 +1337,26 @@ describe("the column popups", () => {
     });
   });
 
+  it("the silver popup says where a sharing unit's loan went", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 90,
+            atMonthEnd: 0,
+            changes: [{ amount: -90, cause: "lent", line: null, other: null }]
+          })
+        })
+      )
+    );
+    expect(popup.lines.find((line) => line.label === "lent")).toMatchObject({
+      value: "-90",
+      why: "to a faction-mate's orders in this hex"
+    });
+  });
+
   it("the silver popup prices a purchase from the item ledger", () => {
     const popup = columnPopup(
       popupForCell(

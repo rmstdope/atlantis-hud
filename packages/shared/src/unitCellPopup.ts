@@ -1583,7 +1583,8 @@ const SILVER_CAUSE_LABELS: Record<string, string> = {
   "cast-spent": "paid to cast",
   "production-spent": "spent producing",
   "gave-away": "gave away",
-  discarded: "given to nobody"
+  discarded: "given to nobody",
+  lent: "lent"
 };
 
 /**
@@ -1688,6 +1689,8 @@ function silverCauseWhy(
     if (to.length > 0) {
       parts.push(`to ${andList(to)}`);
     }
+  } else if (group.cause === "lent") {
+    parts.push("to a faction-mate's orders in this hex");
   }
 
   if (group.cause === "bought" || group.cause === "sold") {
