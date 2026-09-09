@@ -52,6 +52,20 @@ describe("explaining why there is no route", () => {
       "The crew cannot sail this fleet: it needs 4 levels of sailing, and the units aboard have 1."
     );
   });
+
+  it("names the sailing rule, not the map, when a coastal hop is refused", () => {
+    const sentence = describeProblem({
+      kind: "sailNeedsOcean",
+      from: { x: 2, y: 2, z: 1 },
+      fromTerrain: "forest",
+      to: { x: 3, y: 3, z: 1 },
+      toTerrain: "forest"
+    });
+
+    expect(sentence).toBe(
+      "A fleet may only sail where one end of the step is ocean, so it cannot go from forest (2,2) straight to forest (3,3)."
+    );
+  });
 });
 
 /**

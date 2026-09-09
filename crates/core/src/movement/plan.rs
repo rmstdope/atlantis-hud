@@ -236,7 +236,11 @@ pub(crate) fn route_for_mode(
         return Err(RouteProblem::OceanNeedsShip { coordinate: origin });
     }
 
-    let steps = match cheapest_path(map, ruleset, mode, origin, destination, SailRule::Enforced) {
+    let travel = Traversal {
+        mode,
+        sail_rule: SailRule::Enforced,
+    };
+    let steps = match cheapest_path(map, ruleset, travel, origin, destination) {
         Ok(steps) => steps,
         Err(RouteProblem::NoKnownRoute) => {
             // "No known route" is a poor answer when the only thing in the way is water. Ask again
@@ -343,6 +347,17 @@ enum SailRule {
     Lifted,
 }
 
+/// How the search is to travel: the unit's movement mode, and whether the sailing rule's step test
+/// is being enforced while it does.
+///
+/// The two travel together because every place that asks about one asks about the other, and
+/// because [`step_into`] has as many arguments as it may already.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Traversal {
+    mode: MovementMode,
+    sail_rule: SailRule,
+}
+
 /// Whether the sailing rule refuses this step outright, whatever the two hexes are like on their
 /// own.
 ///
@@ -407,10 +422,12 @@ fn blocked_by_water(
     let swimming = cheapest_path(
         map,
         ruleset,
-        MovementMode::Fly,
+        Traversal {
+            mode: MovementMode::Fly,
+            sail_rule: SailRule::Enforced,
+        },
         origin,
         destination,
-        SailRule::Enforced,
     )
     .ok()?;
     let founders = swimming.iter().find(|step| {
@@ -444,7 +461,17 @@ fn blocked_by_sailing_rule(
         return None;
     }
 
-    let relaxed = cheapest_path(map, ruleset, mode, origin, destination, SailRule::Lifted).ok()?;
+    let relaxed = cheapest_path(
+        map,
+        ruleset,
+        Traversal {
+            mode,
+            sail_rule: SailRule::Lifted,
+        },
+        origin,
+        destination,
+    )
+    .ok()?;
 
     // Walk it and name the first step the rule refuses. The origin's terrain comes from the map;
     // every later step carries the terrain it landed in.
@@ -560,10 +587,9 @@ type Standing = (String, String);
 fn cheapest_path(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    mode: MovementMode,
+    travel: Traversal,
     origin: Coordinate,
     destination: Coordinate,
-    sail_rule: SailRule,
 ) -> Result<Vec<RouteStep>, RouteProblem> {
     // Guessing is for reaching a hex the map cannot describe. Where it can, the described ground is
     // the whole answer, and a detour through country nobody has seen is not an improvement on it.
@@ -605,7 +631,13 @@ fn cheapest_path(
                 continue;
             }
             let Some(step) = step_into(
-                map, ruleset, mode, here, &standing.1, direction, neighbour, sail_rule,
+                map,
+                ruleset,
+                travel,
+                here,
+                &standing.1,
+                direction,
+                neighbour,
             ) else {
                 continue;
             };
@@ -681,13 +713,13 @@ struct Step {
 fn step_into(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    mode: MovementMode,
+    travel: Traversal,
     from: Coordinate,
     carried: &str,
     direction: Direction,
     into: Coordinate,
-    sail_rule: SailRule,
 ) -> Option<Step> {
+    let Traversal { mode, sail_rule } = travel;
     if let Some(hex) = map.hex(into) {
         let (cost, road) = step_cost(map, ruleset, mode, from, direction, into)?;
         if sail_rule == SailRule::Enforced
