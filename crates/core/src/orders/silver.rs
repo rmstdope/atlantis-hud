@@ -549,7 +549,11 @@ pub struct BuyAllShown {
 }
 
 /// Why a unit's silver moved this month. One variant per term [`forecast_unit`] prices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// `Ord` is here so `semantics::silver_records_agree` can sort its two projections into one order
+// before comparing them; the order itself is declaration order and means nothing (`ah-6m7b.5.3`).
+// A plain comment, not a doc one: this type's doc is exported to `SilverChangeCause.ts`, and a
+// note about a Rust-side check has no business in the binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "kebab-case")]
 pub enum SilverChangeCause {
@@ -1179,7 +1183,19 @@ impl PhaseSilver {
     /// `price_purchase` answers for the ledger's negative figure too.
     #[must_use]
     pub fn as_the_market_opens(&self) -> i64 {
-        self.after[phases::StatePhase::Cast as usize].max(0)
+        self.before_the_market_opens().max(0)
+    }
+
+    /// The same balance, **unclamped**, for a caller that has a Market-phase term of its own to add
+    /// before the clamp.
+    ///
+    /// The ledger funds a `BUY` from `known_balance_at(StatePhase::Market)`, which is unclamped,
+    /// and `semantics::buy` clamps only after adding what an earlier line was overcharged. A caller
+    /// that clamps first and adds afterwards would let a sale rescue an overdrawn unit on one
+    /// surface and not the other, and the two must cut one `BUY` to one quantity (`ah-6m7b.5.3`).
+    #[must_use]
+    pub fn before_the_market_opens(&self) -> i64 {
+        self.after[phases::StatePhase::Cast as usize]
     }
 
     /// What a manufacturing `PRODUCE` may spend, clamped at zero: the market, WITHDRAW, movement
@@ -2570,7 +2586,21 @@ pub fn forecast_unit(
         // - late`. Unclamped, as `running` was - clamping before the month-long spends are added
         // back is different arithmetic - and the `funds` line below clamps what it feeds.
         let opening = match facts.phase_silver() {
-            Some(silver) => silver.as_the_market_opens(),
+            // The pre-market balance is the balance *before* any Market-phase movement, and this
+            // unit's own `Sold` credit is one (`rules/sequenceofevents` settles "SELL orders are
+            // processed." before "BUY orders are processed."), so a sale funds the same month's
+            // purchase and must be added back (`ah-6m7b.5.3`). `Sold` is the only
+            // `StatePhase::Market` cause the walk records before this block, so nothing is
+            // double-counted; this unit's own earlier buys stay with `market_spent`.
+            //
+            // Unclamped, then clamped once at the end - the order `semantics::buy` uses on the
+            // ledger's own unclamped `known_balance_at(StatePhase::Market)`. Clamping first would
+            // let a sale rescue a unit already overdrawn as the market opens on this surface and
+            // not on the ledger's, and the two must cut one `BUY` to one quantity.
+            Some(silver) => silver
+                .before_the_market_opens()
+                .saturating_add(moved_by(&moves, SilverChangeCause::Sold))
+                .max(0),
             None => recorded_so_far(held, &moves)
                 .saturating_sub(late)
                 .saturating_sub(moved_by(&moves, SilverChangeCause::Studied))
