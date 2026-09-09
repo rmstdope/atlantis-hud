@@ -73,7 +73,11 @@ const EXPECTED: &[(&str, usize)] = &[
 /// six of the turn's casts consume swords and plate armour, which no gift here touches. Uncertainty
 /// is tracked per item, so an unresolved gift of one tag leaves a month priced from others exactly
 /// where it was.
-const EXPECTED_SPENDING: i64 = 800;
+///
+/// `ah-jzs9` took $10 off it. Unit 13402 is a lone leader at combat 5, which `data/LEAD` and
+/// combat's own maximum both stop at, so its month cannot raise the level and is no longer billed -
+/// the same unit the turn's one `study-at-maximum` finding is about, whose count below is unchanged.
+const EXPECTED_SPENDING: i64 = 790;
 
 /// The expectation table as a map, so an assertion can be read as a table.
 fn expected_counts() -> BTreeMap<&'static str, usize> {

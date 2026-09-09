@@ -5283,8 +5283,12 @@ fn unit_facts<'a>(
         // since `apply_recruits` runs before a hex is priced. That post-recruit picture is read
         // only by the SILVER column's PRODUCE arm (`ah-40c9`); `skills` above is deliberately the
         // pre-market one.
-        production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
-        production_skills_unknown: ordered.skills().is_none(),
+        skills_after_arrivals: ordered.skills().unwrap_or(&ordered.unit.skills),
+        skills_after_arrivals_unknown: ordered.skills().is_none(),
+        men_by_race_after_arrivals: ordered
+            .men_by_race_after_orders()
+            .unwrap_or(ordered.early_men_by_race()),
+        men_by_race_after_arrivals_unknown: ordered.men_by_race_after_orders().is_none(),
         intents: &ordered.intents,
         receipts,
         formed: ordered.formed.as_ref(),
@@ -6966,7 +6970,7 @@ fn produce(
     //
     // Use `Ordered::skills()`, the post-recruit picture: `settle_recruits_before_production` has
     // already run `apply_recruits` on this hex by the time either ledger prices a `PRODUCE`, so
-    // this and the SILVER column's `production_skills` read the same settled skill level
+    // this and the SILVER column's `skills_after_arrivals` read the same settled skill level
     // (`ah-40c9`).
     let found = tag
         .as_deref()
@@ -7489,6 +7493,28 @@ fn study(
     ruleset: Option<&Ruleset>,
 ) {
     let who = &actor.unit.unit_id;
+
+    // The identical call the SILVER column's own STUDY arm makes, on the identical two views, so
+    // the ledger and the column cannot charge one unit two ways (`silver_records_agree`).
+    //
+    // An estimated headcount is left to the doubt below rather than answered here: the column
+    // short-circuits such a unit with `SilverDoubt::EstimatedMen` before any arm runs
+    // (`silver::forecast_unit`), so a ledger that fell silent instead would describe it
+    // differently from the column - and `ledger.doubted` is read well past the fee.
+    if let Some(ruleset) = ruleset.filter(|_| !actor.unit.men_estimated) {
+        if let Some(entry) = ruleset.find_skill(skill) {
+            if study::at_the_ceiling(
+                ruleset,
+                actor.skills(),
+                actor.men_by_race_after_orders(),
+                entry,
+            )
+            .is_some()
+            {
+                return;
+            }
+        }
+    }
 
     // A headcount that is a guess cannot price a study, and neither can a catalogue that does not
     // price the skill - annihilation being the one the page refuses to price at all.
@@ -11136,7 +11162,7 @@ fn one_study_forecast(
     index: usize,
     ordered: &Ordered<'_>,
 ) -> Option<super::effects::StudyForecast> {
-    use super::effects::{LimitingRace, StudyDoubt, StudyDoubtReason, StudyForecast, StudyTeacher};
+    use super::effects::{StudyDoubt, StudyDoubtReason, StudyForecast, StudyTeacher};
 
     let (_, studying) = ordered.studies_placed()?;
     let skill = ruleset.find_skill(studying)?;
@@ -11153,16 +11179,7 @@ fn one_study_forecast(
     // warning cannot disagree about one unit.
     let ceiling = study::study_ceiling(ruleset, &men[index].men_by_race, skill);
     let ceiling_level = ceiling.level();
-    let limiting_races = match &ceiling {
-        study::StudyCeiling::Global { .. } => Vec::new(),
-        study::StudyCeiling::Race { limiting_races, .. } => limiting_races
-            .iter()
-            .map(|entry| LimitingRace {
-                tag: entry.tag.to_ascii_uppercase(),
-                name: entry.name.clone(),
-            })
-            .collect(),
-    };
+    let limiting_races = study::limiting_races(&ceiling);
 
     let mut doubts = Vec::new();
     if ordered.unit.men_estimated {
@@ -40293,6 +40310,161 @@ BUILD
         assert_eq!(study.points_after, 480);
         assert_eq!(study.level_after, 5);
         assert!(study.cannot_raise_the_level, "{study:?}");
+    }
+
+    /// `ah-jzs9`: a study that cannot raise the level is not performed and not billed, so neither
+    /// the ledger nor the SILVER column charges for it.
+    mod a_study_at_the_ceiling {
+        use super::*;
+
+        fn reviewed(units: Vec<ReportUnit>, orders: &str, options: CheckOptions) -> TurnReview {
+            review_turn(
+                &report(vec![region(units)]),
+                orders,
+                Some(&ruleset()),
+                options,
+            )
+        }
+
+        fn silver_for(review: &TurnReview, id: &str) -> UnitSilver {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("no forecast for {id}: {:?}", review.silver))
+        }
+
+        /// 60 gnolls at combat 5 - `data/GNOL` takes combat to 5 - holding `silver`.
+        fn capped_gnolls(silver: i64) -> ReportUnit {
+            with_men_grain(
+                with_skill_points(
+                    with_silver(with_race(unit("8573"), 60, "gnoll", "GNOL"), silver),
+                    "COMB",
+                    5,
+                    450,
+                ),
+                60,
+            )
+        }
+
+        #[test]
+        fn a_study_at_the_ceiling_costs_nothing_on_either_surface() {
+            let review = reviewed(
+                vec![capped_gnolls(900)],
+                "unit 8573\nSTUDY COMB\n",
+                CheckOptions::default(),
+            );
+            let silver = silver_for(&review, "8573");
+
+            assert_eq!(silver.expense, Some(0));
+            assert_eq!(silver.at_month_end, Some(900));
+            assert!(
+                !silver
+                    .changes
+                    .iter()
+                    .any(|change| change.cause == SilverChangeCause::Studied),
+                "{:?}",
+                silver.changes
+            );
+            // `silver_records_agree` is a debug assertion inside `review_turn`: reaching this
+            // line at all is the ledger and the column having charged this unit one way.
+        }
+
+        #[test]
+        fn a_capped_study_leaves_no_not_enough_silver_finding() {
+            // $600 of fee was the only thing this unit could not pay for.
+            let review = reviewed(
+                vec![capped_gnolls(100)],
+                "unit 8573\nSTUDY COMB\n",
+                CheckOptions::default(),
+            );
+
+            assert!(
+                !review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+                "{:?}",
+                review
+                    .findings
+                    .iter()
+                    .map(|finding| finding.code.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        #[test]
+        fn a_capped_study_of_an_unpriced_skill_is_not_doubted() {
+            let mut student = capped_gnolls(900);
+            student.skills = vec![Skill {
+                name: "annihilation".to_string(),
+                tag: "ANNI".to_string(),
+                level: 2,
+                points: 0,
+            }];
+            let review = reviewed(
+                vec![student],
+                "unit 8573\nSTUDY ANNI\n",
+                CheckOptions::default(),
+            );
+            let silver = silver_for(&review, "8573");
+
+            assert!(silver.no_study_fee.is_some(), "{silver:?}");
+            assert_eq!(silver.doubt, None, "with no fee there is nothing to doubt");
+        }
+
+        /// An estimated headcount is the column's `SilverDoubt::EstimatedMen` and nothing else: the
+        /// ledger must not fall silent about such a unit ahead of that doubt, since `ledger.doubted`
+        /// is read well past the fee - `MarketPurse::read` and the `ledger_doubted` projection both
+        /// take it.
+        ///
+        /// Asserted on the ledger's own doubted set rather than on the column, which short-circuits
+        /// an estimated unit before any arm runs and so would pass either way.
+        #[test]
+        fn a_capped_study_by_a_unit_of_estimated_men_still_doubts_the_ledger() {
+            let mut student = capped_gnolls(900);
+            student.men_estimated = true;
+            let hex = region(vec![student]);
+            let orders = "unit 8573\nSTUDY COMB\n";
+
+            let ordered = OrderedUnits::read(orders);
+            let read = Hex::read(&hex, &ordered, &[]);
+            let rules = ruleset();
+            let ledger = ledger_for(&read, Some(&rules));
+
+            assert!(
+                ledger.doubted.contains("8573"),
+                "an estimated headcount cannot price a study, capped or not: {:?}",
+                ledger.doubted
+            );
+        }
+
+        /// The other half of the same gate: a capped unit whose headcount is *known* is not doubted,
+        /// because there is no fee left to be unsure about.
+        #[test]
+        fn a_capped_study_by_a_unit_of_known_men_doubts_nothing() {
+            let hex = region(vec![capped_gnolls(900)]);
+            let ordered = OrderedUnits::read("unit 8573\nSTUDY COMB\n");
+            let read = Hex::read(&hex, &ordered, &[]);
+            let rules = ruleset();
+            let ledger = ledger_for(&read, Some(&rules));
+
+            assert!(!ledger.doubted.contains("8573"), "{:?}", ledger.doubted);
+        }
+
+        #[test]
+        fn a_capped_study_costs_nothing_with_the_warning_switched_off() {
+            let mut options = CheckOptions::default();
+            options
+                .disabled
+                .insert(codes::STUDY_AT_MAXIMUM.as_str().to_string());
+            let review = reviewed(vec![capped_gnolls(900)], "unit 8573\nSTUDY COMB\n", options);
+            let silver = silver_for(&review, "8573");
+
+            assert_eq!(silver.at_month_end, Some(900));
+            assert!(silver.no_study_fee.is_some(), "{silver:?}");
+        }
     }
 
     #[test]

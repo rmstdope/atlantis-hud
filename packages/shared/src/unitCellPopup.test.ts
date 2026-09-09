@@ -1217,6 +1217,59 @@ describe("the column popups", () => {
     ]);
   });
 
+  // `ah-jzs9`: a study that cannot raise the level is not charged for, and the popup says why.
+  it("the silver popup says a capped study costs nothing", () => {
+    const capped = (limitingRaces: { tag: string; name: string }[]) =>
+      columnPopup(
+        popupForCell(
+          "silver",
+          unit({ own: true }),
+          facts({
+            silver: aUnitSilver({
+              held: 900,
+              atMonthEnd: 900,
+              changes: [],
+              noStudyFee: { skillName: "combat", ceilingLevel: 5, limitingRaces }
+            })
+          })
+        )
+      );
+
+    const byRace = capped([{ tag: "GNOL", name: "gnoll" }]);
+    expect(byRace.lines.map((line) => line.label)).not.toContain("studied");
+    expect(byRace.notes).toContain(
+      "No study fee: no gnoll may take combat past level 5, so this month costs nothing."
+    );
+
+    const bySkill = capped([]);
+    expect(bySkill.notes).toContain(
+      "No study fee: combat stops at level 5 for this unit, so this month costs nothing."
+    );
+  });
+
+  it("the capped-study note is the last thing said under the silver lines", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 900,
+            atMonthEnd: 1060,
+            upkeep: 40,
+            changes: [{ amount: 200, cause: "taxed", line: 2, other: null }],
+            noStudyFee: { skillName: "combat", ceilingLevel: 5, limitingRaces: [] }
+          })
+        })
+      )
+    );
+
+    expect(popup.notes.length).toBeGreaterThan(0);
+    expect(popup.notes[popup.notes.length - 1]).toBe(
+      "No study fee: combat stops at level 5 for this unit, so this month costs nothing."
+    );
+  });
+
   // `ah-rgkk.4.3`, decision **V2**: the pair, then one line per cause, in the turn's own order.
   // The scene is the chosen mockup's - Collectors, holding 340, ending on 320.
   it("the silver popup draws the month's total as a pair and one line per cause", () => {

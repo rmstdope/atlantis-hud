@@ -1,6 +1,7 @@
 import type {
   ItemChange,
   ItemChangeParty,
+  NoStudyFee,
   SilverChange,
   SkillInfo,
   SkillMerge,
@@ -1782,6 +1783,15 @@ function silverMarkWarning(
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
+/** Why a capped unit's month costs nothing, in the words the designer agreed (`ah-jzs9`). */
+function noStudyFeeSentence(reason: NoStudyFee): string {
+  return sentence(
+    reason.limitingRaces.length > 0
+      ? `No study fee: no ${andList(reason.limitingRaces.map((race) => race.name))} may take ${reason.skillName} past level ${reason.ceilingLevel}, so this month costs nothing`
+      : `No study fee: ${reason.skillName} stops at level ${reason.ceilingLevel} for this unit, so this month costs nothing`
+  );
+}
+
 /**
  * What moved this unit's silver this month: the cell's own figure against the report's, then one
  * line per cause in the turn's own order (`ah-rgkk.4.3`, decision **V2**).
@@ -1832,6 +1842,10 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   if (silver.doubt !== null) {
     // Above the doubt's own sentence, which says *why* it could not be added up.
     notes.unshift("This month cannot be added up, so what moved this unit's silver is not listed.");
+  }
+
+  if (silver.noStudyFee !== null) {
+    notes.push(noStudyFeeSentence(silver.noStudyFee));
   }
 
   return { lines, notes, warning: silverMarkWarning(silver, shown, facts.silverWarned) };

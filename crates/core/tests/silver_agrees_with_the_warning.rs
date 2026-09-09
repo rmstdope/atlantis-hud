@@ -295,6 +295,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         late_income: Some(late_income),
         expense: Some(0),
         wanted_for_orders: Some(0),
+        no_study_fee: None,
         at_month_end: Some(0),
         short_for_orders: Some(0),
         short_on: None,

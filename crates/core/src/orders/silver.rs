@@ -18,10 +18,12 @@ use serde::{Deserialize, Serialize};
 use crate::movement::rules::{
     CastCost, CastOutput, ItemEntry, ItemKind, Production, Ruleset, SkillEntry,
 };
+use crate::orders::effects::LimitingRace;
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::phases;
 use crate::orders::semantics::{counted_with_singular, withdrawal_cost, FormedSubject, Plurals};
+use crate::orders::study;
 use crate::orders::targets::{party_label, GiveReach};
 use crate::report::model::{ItemAmount, Skill};
 
@@ -233,6 +235,20 @@ const CONSUMING_FLAGS: [&str; 2] = [
 /// accepts both.
 pub(crate) const TAXING_FLAGS: &[&str] = crate::report::flags::Setting::Taxing.spellings();
 
+/// Why this unit's `STUDY` costs nothing: it is already at its ceiling in the skill it names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct NoStudyFee {
+    /// The catalogue's name for the skill, as a sentence would say it - `combat`.
+    pub skill_name: String,
+    /// The highest level this unit may take it to.
+    pub ceiling_level: u32,
+    /// The races that impose that ceiling, in `men_by_race` order. Empty where the skill's own
+    /// maximum is what stops the unit and no race took anything away.
+    pub limiting_races: Vec<LimitingRace>,
+}
+
 /// What one unit's month is expected to do to its silver.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
@@ -288,6 +304,10 @@ pub struct UnitSilver {
     /// it. `None` when it cannot be priced - an estimated headcount, or a report that never said
     /// what the unit is made of.
     pub upkeep: Option<i64>,
+    /// Set where this month's `STUDY` was not charged for, with what to say about it. `None` for
+    /// every other unit, including one whose ceiling could not be settled - which is charged
+    /// exactly as it was.
+    pub no_study_fee: Option<NoStudyFee>,
     /// Why a term could not be priced, for the hover to explain. `None` when nothing was doubted.
     pub doubt: Option<SilverDoubt>,
     /// What the doubt is *about*, where its sentence names something - the goods of an
@@ -1113,14 +1133,21 @@ pub struct UnitFacts<'a> {
     /// this unit's maintenance exactly as it was; every other term asks
     /// [`Lookups::uncertain_after_gifts`] about the tag it actually reads (`ah-66yi`).
     pub food_uncertain: bool,
-    /// The unit's skills once this month's recruits have merged on top of its gifts - the picture
-    /// `rules/buy` says a `BUY` dilutes, read only by the PRODUCE arm below. Every other arm
-    /// keeps reading `skills`, the pre-market view, because `rules/sequenceofevents` prices STUDY,
+    /// The unit's skills once this month's gifts and recruits have merged in.
+    ///
+    /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, and by the STUDY arm's
+    /// ceiling test, which asks how far this unit may go next month. Every other arm keeps
+    /// reading `skills`, the pre-market view, because `rules/sequenceofevents` prices STUDY,
     /// ENTERTAIN and maintenance against a phase that has not seen the market yet (`ah-40c9`).
-    pub production_skills: &'a [Skill],
-    /// Set when arrivals - gifts or recruits - cannot be merged into the unit's skills, so the
-    /// PRODUCE arm must go silent rather than price a run against a guess.
-    pub production_skills_unknown: bool,
+    pub skills_after_arrivals: &'a [Skill],
+    /// Set when arrivals - gifts or recruits - cannot be merged into the unit's skills, so both
+    /// arms above go silent rather than judge a unit against a guess.
+    pub skills_after_arrivals_unknown: bool,
+    /// The same picture's race breakdown - what `rules/skills_limitations` reads to find the
+    /// least common denominator. Empty and `unknown` together where a recruit arrived by a route
+    /// this application does not model.
+    pub men_by_race_after_arrivals: &'a [ItemAmount],
+    pub men_by_race_after_arrivals_unknown: bool,
     /// The same unit once the market, the withdrawals and this month's production have run.
     ///
     /// `rules/sequenceofevents` settles STUDY, PRODUCE, ENTERTAIN, WORK and maintenance after the
@@ -1758,6 +1785,7 @@ pub fn forecast_unit(
             late_income: None,
             expense: None,
             wanted_for_orders: None,
+            no_study_fee: None,
             at_month_end: None,
             short_for_orders: None,
             short_on: None,
@@ -1833,6 +1861,8 @@ pub fn forecast_unit(
         .takes_a_whole_class
         .then_some(SilverDoubt::TakesAWholeClass);
     let mut expense_doubt = None;
+    let mut no_study_fee: Option<NoStudyFee> = None;
+    let mut charged_a_study = false;
     let mut doubt_subject = None;
     let mut given_to_nobody = 0i64;
     let mut withdrawing = false;
@@ -2117,7 +2147,7 @@ pub fn forecast_unit(
             // `plan_production` the ledger uses - one function, two callers, which is what keeps
             // this column and the `not-enough-silver` warning from drifting apart (`ah-ycuj`).
             Intent::Produce { requested, item } => {
-                if facts.production_skills_unknown {
+                if facts.skills_after_arrivals_unknown {
                     expense_doubt = expense_doubt.or(Some(SilverDoubt::UnknownSkillsAfterArrivals));
                     doubt_subject = doubt_subject.or(Some(item.to_lowercase()));
                     continue;
@@ -2142,7 +2172,7 @@ pub fn forecast_unit(
                 // workforces (`ah-vtwn`). The tag is carried alongside because `workforce_for`
                 // needs it to find the tools, and `(lookups.item_tag)` allocates.
                 let found = (lookups.item_tag)(item).and_then(|tag| {
-                    producing_skill(ruleset, &tag, Some(facts.production_skills))
+                    producing_skill(ruleset, &tag, Some(facts.skills_after_arrivals))
                         .map(|(skill, recipe)| (tag, skill, recipe))
                 });
                 let work = found
@@ -2153,7 +2183,7 @@ pub fn forecast_unit(
                             skill,
                             tag,
                             facts.production().men,
-                            facts.production_skills,
+                            facts.skills_after_arrivals,
                             &manufacturing_items,
                         )
                     });
@@ -2267,24 +2297,54 @@ pub fn forecast_unit(
                 }
             }
             Intent::Study { skill } => {
-                // STUDY is priced after the market opens too, so the fee is per man this month
-                // actually has, not only per man the report printed (`ah-dxfd.2`).
-                let cost = ruleset
-                    .and_then(|ruleset| ruleset.find_skill(skill))
-                    .and_then(|skill| skill.cost);
-                let priced = price_study(cost, facts.study().men);
-                record(
-                    &mut moves,
-                    phases::StatePhase::Study,
-                    -priced.spends,
-                    SilverChangeCause::Studied,
-                    Some(placed.line as i64),
-                    None,
-                );
-                if priced.spends > 0 {
-                    spent_on = spent_on.or(Some(SilverSpender::Study));
+                let entry = ruleset.and_then(|ruleset| ruleset.find_skill(skill));
+                let capped = ruleset.zip(entry).and_then(|(ruleset, entry)| {
+                    study::at_the_ceiling(
+                        ruleset,
+                        (!facts.skills_after_arrivals_unknown)
+                            .then_some(facts.skills_after_arrivals),
+                        (!facts.men_by_race_after_arrivals_unknown)
+                            .then_some(facts.men_by_race_after_arrivals),
+                        entry,
+                    )
+                    .map(|ceiling| NoStudyFee {
+                        skill_name: entry.name.clone(),
+                        ceiling_level: ceiling.level(),
+                        limiting_races: study::limiting_races(&ceiling),
+                    })
+                });
+                if capped.is_some() {
+                    // The month cannot raise the level, so it is not performed and not billed
+                    // (`study::at_the_ceiling`). No `Studied` change, no spender, and no
+                    // `UnpricedSkill` doubt: with no fee there is nothing left to be unsure about.
+                    //
+                    // The first capped study wins, and the note is dropped again below if any
+                    // other `STUDY` on this unit *is* charged: the interface leans on the note
+                    // never appearing on a unit that still paid, and a second `STUDY` line - odd
+                    // as it is - must not break that.
+                    no_study_fee = no_study_fee.or(capped);
+                } else {
+                    // STUDY is priced after the market opens too, so the fee is per man this month
+                    // actually has, not only per man the report printed (`ah-dxfd.2`).
+                    let cost = entry.and_then(|skill| skill.cost);
+                    let priced = price_study(cost, facts.study().men);
+                    record(
+                        &mut moves,
+                        phases::StatePhase::Study,
+                        -priced.spends,
+                        SilverChangeCause::Studied,
+                        Some(placed.line as i64),
+                        None,
+                    );
+                    if priced.spends > 0 {
+                        // Money actually leaving, and the only thing that may take the note away:
+                        // a study the catalogue cannot price spends nothing, so a unit carrying one
+                        // beside a capped study has still paid for no month.
+                        spent_on = spent_on.or(Some(SilverSpender::Study));
+                        charged_a_study = true;
+                    }
+                    expense_doubt = expense_doubt.or(priced.doubt);
                 }
-                expense_doubt = expense_doubt.or(priced.doubt);
             }
             Intent::Cast { spell, arguments } => {
                 // Resolved once: this runs per keystroke, and `find_skill` walks the catalogue.
@@ -2802,6 +2862,12 @@ pub fn forecast_unit(
     };
     let short_for_orders = short_before_sharing.map(|short| short.saturating_sub(shared));
 
+    // The note says *this unit's month costs nothing*, so a unit that paid for a study anywhere
+    // must not carry it, whatever else it also ordered.
+    if charged_a_study {
+        no_study_fee = None;
+    }
+
     // Stable, so entries sharing a phase keep the document order they were pushed in.
     moves.sort_by_key(|(phase, _)| *phase);
 
@@ -2813,6 +2879,7 @@ pub fn forecast_unit(
         late_income,
         expense,
         wanted_for_orders,
+        no_study_fee,
         at_month_end,
         short_for_orders,
         short_on: spent_on.filter(|_| short_for_orders.is_some_and(|short| short > 0)),
@@ -6971,8 +7038,10 @@ mod tests {
             after_gifts_unknown: false,
             food_uncertain: false,
             skills_unknown: false,
-            production_skills: &[],
-            production_skills_unknown: false,
+            skills_after_arrivals: &[],
+            skills_after_arrivals_unknown: false,
+            men_by_race_after_arrivals: &[],
+            men_by_race_after_arrivals_unknown: false,
             phases: None,
         }
     }
@@ -7135,7 +7204,7 @@ mod tests {
             item: "SWOR".to_string(),
         })];
         let mut facts = facts(8, &intents, &receipts);
-        facts.production_skills_unknown = true;
+        facts.skills_after_arrivals_unknown = true;
 
         let unit = forecast_unit(
             facts,
@@ -7251,7 +7320,7 @@ mod tests {
                 men_reported: 8,
                 items: &items,
                 skills: &smith,
-                production_skills: &smith,
+                skills_after_arrivals: &smith,
                 phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 3,
                     men_by_race: &[],
@@ -7310,7 +7379,7 @@ mod tests {
             held: 100_000,
             items: &items,
             skills: &smith,
-            production_skills: &smith,
+            skills_after_arrivals: &smith,
             phases: Some(PhaseFacts {
                 study: picture(3),
                 production: picture(5),
@@ -7413,7 +7482,7 @@ mod tests {
             UnitFacts {
                 items: &items,
                 skills: &carpenters,
-                production_skills: &carpenters,
+                skills_after_arrivals: &carpenters,
                 phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 4,
                     men_by_race: &[],
@@ -7460,7 +7529,7 @@ mod tests {
                 held: 3000,
                 items: &items,
                 skills: &carpenters,
-                production_skills: &carpenters,
+                skills_after_arrivals: &carpenters,
                 phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 4,
                     men_by_race: &[],
@@ -7493,7 +7562,7 @@ mod tests {
                 held: 3000,
                 items: &items,
                 skills: &carpenters,
-                production_skills: &carpenters,
+                skills_after_arrivals: &carpenters,
                 phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 4,
                     men_by_race: &[],
@@ -7536,7 +7605,7 @@ mod tests {
                 held: 3000,
                 items: &items,
                 skills: &carpenters,
-                production_skills: &carpenters,
+                skills_after_arrivals: &carpenters,
                 phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 4,
                     men_by_race: &[],
@@ -7577,7 +7646,7 @@ mod tests {
                 men_reported: 3,
                 items: &items,
                 skills: &smith,
-                production_skills: &smith,
+                skills_after_arrivals: &smith,
                 phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 8,
                     men_by_race: &[],
@@ -10220,8 +10289,10 @@ mod tests {
             after_gifts_unknown: false,
             food_uncertain: false,
             skills_unknown: false,
-            production_skills: &[],
-            production_skills_unknown: false,
+            skills_after_arrivals: &[],
+            skills_after_arrivals_unknown: false,
+            men_by_race_after_arrivals: &[],
+            men_by_race_after_arrivals_unknown: false,
             phases: None,
         }
     }
@@ -10561,6 +10632,171 @@ mod tests {
     }
 
     #[test]
+    fn a_capped_study_says_why_it_costs_nothing() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let intents = [at_line(
+            9,
+            Intent::Study {
+                skill: "combat".to_string(),
+            },
+        )];
+        // `data/GNOL`: a gnoll takes combat to 5, which is combat's own maximum too.
+        let gnolls = [ItemAmount {
+            amount: 60,
+            name: "gnoll".to_string(),
+            tag: "GNOL".to_string(),
+        }];
+        let at_the_top = [skill("COMB", 5)];
+        let below = [skill("COMB", 4)];
+
+        let capped = forecast_unit(
+            UnitFacts {
+                held: 900,
+                skills_after_arrivals: &at_the_top,
+                men_by_race_after_arrivals: &gnolls,
+                ..facts(60, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+        let reason = capped
+            .no_study_fee
+            .as_ref()
+            .expect("a unit at its ceiling is not charged, and says so");
+        assert_eq!(reason.skill_name, "combat");
+        assert_eq!(reason.ceiling_level, 5);
+        assert_eq!(
+            reason.limiting_races,
+            Vec::new(),
+            "combat's own maximum is what stops a gnoll, so no race is blamed"
+        );
+        assert_eq!(causes(&capped), [] as [SilverChangeCause; 0]);
+
+        let studying = forecast_unit(
+            UnitFacts {
+                held: 900,
+                skills_after_arrivals: &below,
+                men_by_race_after_arrivals: &gnolls,
+                ..facts(60, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+        assert_eq!(studying.no_study_fee, None);
+        assert_eq!(causes(&studying), [SilverChangeCause::Studied]);
+    }
+
+    /// The note says the unit's month costs nothing, so a unit that paid for *any* study must not
+    /// carry it - however odd a second `STUDY` line is.
+    #[test]
+    fn a_unit_that_paid_for_any_study_carries_no_note() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let gnolls = [ItemAmount {
+            amount: 60,
+            name: "gnoll".to_string(),
+            tag: "GNOL".to_string(),
+        }];
+        // At combat's ceiling, and below observation's: one study is free, the other is not.
+        let skills = [skill("COMB", 5), skill("OBSE", 1)];
+        let intents = [
+            at_line(
+                9,
+                Intent::Study {
+                    skill: "combat".to_string(),
+                },
+            ),
+            at_line(
+                10,
+                Intent::Study {
+                    skill: "observation".to_string(),
+                },
+            ),
+        ];
+
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 900,
+                skills_after_arrivals: &skills,
+                men_by_race_after_arrivals: &gnolls,
+                ..facts(60, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+
+        assert_eq!(causes(&unit), [SilverChangeCause::Studied]);
+        assert_eq!(
+            unit.no_study_fee, None,
+            "the observation month was paid for, so this unit's month did not cost nothing"
+        );
+    }
+
+    /// A study the catalogue cannot price spends nothing, so it does not take the note away either.
+    #[test]
+    fn an_unpriced_study_beside_a_capped_one_keeps_the_note() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let gnolls = [ItemAmount {
+            amount: 60,
+            name: "gnoll".to_string(),
+            tag: "GNOL".to_string(),
+        }];
+        let skills = [skill("COMB", 5)];
+        let intents = [
+            at_line(
+                9,
+                Intent::Study {
+                    skill: "combat".to_string(),
+                },
+            ),
+            at_line(
+                10,
+                Intent::Study {
+                    skill: "annihilation".to_string(),
+                },
+            ),
+        ];
+
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 900,
+                skills_after_arrivals: &skills,
+                men_by_race_after_arrivals: &gnolls,
+                ..facts(60, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+
+        assert!(
+            unit.no_study_fee.is_some(),
+            "nothing was ever charged, so the note stands: {unit:?}"
+        );
+    }
+
+    #[test]
     fn changes_names_a_production_cost() {
         let items = catapult_materials_and_silver(3000);
         let carpenters = [skill("CARP", 4)];
@@ -10577,7 +10813,7 @@ mod tests {
                 held: 3000,
                 items: &items,
                 skills: &carpenters,
-                production_skills: &carpenters,
+                skills_after_arrivals: &carpenters,
                 phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 4,
                     men_by_race: &[],
@@ -11335,8 +11571,10 @@ mod combat_ready_tests {
             after_gifts_unknown: false,
             food_uncertain: false,
             skills_unknown: false,
-            production_skills: skills,
-            production_skills_unknown: false,
+            skills_after_arrivals: skills,
+            skills_after_arrivals_unknown: false,
+            men_by_race_after_arrivals: &[],
+            men_by_race_after_arrivals_unknown: false,
             phases: None,
         }
     }
