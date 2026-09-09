@@ -606,7 +606,8 @@ function aMage(factionId: string, unitId: string): AlliedMageRecord {
       weight: null,
       capacity: null,
       movement: null,
-      structureId: null
+      structureId: null,
+      read: "complete"
     },
     sheetTurn: 23,
     receivedAt: "2026-08-07T12:00:00Z"

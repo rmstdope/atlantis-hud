@@ -112,7 +112,7 @@ export function turnReportFooter(tab: TurnReportTab): string | null {
     case "problems":
       return "These never block an export. They are what the report says will go wrong, not what the server will refuse.";
     case "unreadable":
-      return "None of this reached the map.";
+      return "None of this reached the map, except where a note says otherwise.";
     case "engine":
     case "events":
       return null;

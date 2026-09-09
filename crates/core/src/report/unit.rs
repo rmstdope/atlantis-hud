@@ -10,7 +10,7 @@
 //!
 //! Foreign units are usually terser, and may conceal their faction entirely.
 
-use super::model::{ItemAmount, ReportUnit, Skill};
+use super::model::{ItemAmount, ReportUnit, Skill, UnitRead};
 use super::scan::{
     next_top_level_field, parse_combat_spell, parse_item_amount, parse_skill, split_leading_id,
     split_top_level,
@@ -80,6 +80,14 @@ pub(crate) fn matching_flag(field: &str) -> Option<&'static str> {
     crate::report::flags::known(normalised)
 }
 
+/// Whether a unit's logical line lost its tail to a re-wrap.
+///
+/// Every one of the 5613 region unit logical lines in `tests/fixtures/reports` ends with `.`; the
+/// wrapper always breaks at a space, so a line that lost its tail ends at a comma or mid-word.
+fn line_was_cut_short(body: &str) -> bool {
+    !body.trim_end().ends_with('.')
+}
+
 /// Parses one unit line.
 ///
 /// `own` comes from the line's marker rather than from anything in the text, which is what makes
@@ -100,6 +108,7 @@ pub fn parse_unit(
     let (head, sections) = split_sections(without_marker);
     let (name, unit_id, mut rest) = split_leading_id(&head)?;
 
+    let mut bad_field = false;
     let mut unit = ReportUnit {
         unit_id,
         name,
@@ -119,6 +128,7 @@ pub fn parse_unit(
         capacity: None,
         movement: None,
         structure_id: structure_id.map(str::to_string),
+        read: UnitRead::Complete,
     };
 
     // Fields are walked one at a time rather than split up front, because a faction name may
@@ -153,6 +163,8 @@ pub fn parse_unit(
 
         if let Some(item) = parse_item_amount(field) {
             unit.items.push(item);
+        } else if field.contains('[') && field.contains(']') {
+            bad_field = true;
         }
         rest = after;
     }
@@ -169,6 +181,16 @@ pub fn parse_unit(
             _ => {}
         }
     }
+
+    unit.read = if line_was_cut_short(body) || bad_field {
+        if unit.items.is_empty() {
+            UnitRead::Nothing
+        } else {
+            UnitRead::Partial
+        }
+    } else {
+        UnitRead::Complete
+    };
 
     unit.men = count_men(&unit.items);
     unit.movement = crate::movement::mode::unit_movement(&unit);
@@ -207,6 +229,35 @@ fn count_men(items: &[ItemAmount]) -> i64 {
 mod tests {
     use super::*;
     use crate::report::model::CombatSpell;
+
+    #[test]
+    fn a_unit_line_that_lost_its_tail_is_not_read_completely() {
+        let read = |body: &str| {
+            parse_unit(body, true, "1:7,53", None)
+                .expect("unit should parse")
+                .read
+        };
+
+        assert_eq!(
+            read("* Drones (9498), Borg (21), revealing faction, 100 gnolls"),
+            UnitRead::Nothing
+        );
+        assert_eq!(
+            read("* Drones (9498), Borg (21), revealing faction, 100 gnolls [GNOL],"),
+            UnitRead::Partial
+        );
+        assert_eq!(
+            read(
+                "* Drones (9498), Borg (21), revealing faction, 100 gnolls [GNOL], \
+                 170 swords [SWOR]."
+            ),
+            UnitRead::Complete
+        );
+        assert_eq!(
+            read("* Drones (9498), Borg (21), 100 gnolls [GNOL], [SWOR]."),
+            UnitRead::Partial
+        );
+    }
 
     #[test]
     fn keeps_the_no_cross_flag() {

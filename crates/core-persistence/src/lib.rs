@@ -3622,6 +3622,7 @@ mod tests {
                 capacity: None,
                 movement: None,
                 structure_id: None,
+                ..ReportUnit::default()
             },
             sheet_turn,
             received_at: "2026-08-01T09:00:00Z".to_string(),

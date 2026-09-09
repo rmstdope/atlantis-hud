@@ -17,8 +17,8 @@
 //! ```
 
 use super::model::{
-    Exit, ItemAmount, MarketItem, ReportRegion, Structure, UnreadableKind, UnreadableLine,
-    VesselEntry,
+    Exit, ItemAmount, MarketItem, ReportRegion, Structure, UnitRead, UnreadableKind,
+    UnreadableLine, VesselEntry,
 };
 use super::scan::{
     is_none_list, parse_coordinate, parse_item_amount, parse_market_item, parse_money,
@@ -346,6 +346,18 @@ pub(crate) fn unread(line: &LogicalLine, kind: UnreadableKind) -> UnreadableLine
         line_end: line.line_end,
         text: line.text.clone(),
         lost: None,
+        unit_read: None,
+    }
+}
+
+/// A unit whose line was cut short: it reaches the map, and it is listed anyway.
+///
+/// Unlike every other row on this list, the record this one names *did* reach the map — which is
+/// why the panel's footer sentence now ends "except where a note says otherwise".
+fn unread_unit_on_map(line: &LogicalLine, read: UnitRead) -> UnreadableLine {
+    UnreadableLine {
+        unit_read: Some(read),
+        ..unread(line, UnreadableKind::Unit)
     }
 }
 
@@ -407,7 +419,12 @@ pub fn parse_region_block(
                     Some(unit) if !seen_units.insert(unit.unit_id.clone()) => {
                         unreadable.push(unread(line, UnreadableKind::Unit));
                     }
-                    Some(unit) => region.units.push(unit),
+                    Some(unit) => {
+                        if unit.read != UnitRead::Complete {
+                            unreadable.push(unread_unit_on_map(line, unit.read));
+                        }
+                        region.units.push(unit);
+                    }
                     None => unreadable.push(unread(line, UnreadableKind::Unit)),
                 }
                 in_exits = false;
@@ -434,6 +451,31 @@ pub fn parse_region_block(
 mod tests {
     use super::*;
     use crate::report::unwrap::unwrap_lines;
+
+    #[test]
+    fn a_unit_whose_line_was_cut_short_is_on_the_map_and_on_the_list() {
+        let source = concat!(
+            "mountain (7,53) in Inhead.\n",
+            "* Drones (9498), Borg (21), revealing faction, 100 gnolls\n",
+            "  [GNOL], 170 swords [SWOR]. Weight: 1170. Capacity: 0/0/1500/0.\n",
+        );
+
+        let lines = unwrap_lines(source);
+        let mut unreadable = Vec::new();
+        let region = parse_region_block(&lines[0], &lines[1..], &mut unreadable)
+            .expect("region should parse");
+
+        assert_eq!(region.units.len(), 1);
+        assert_eq!(region.units[0].read, UnitRead::Nothing);
+        assert_eq!(unreadable.len(), 1);
+        assert_eq!(unreadable[0].kind, UnreadableKind::Unit);
+        assert_eq!(unreadable[0].unit_read, Some(UnitRead::Nothing));
+        assert_eq!(unreadable[0].lost, None);
+        assert_eq!(
+            unreadable[0].text,
+            "* Drones (9498), Borg (21), revealing faction, 100 gnolls"
+        );
+    }
 
     #[test]
     fn records_a_unit_line_it_could_not_read() {

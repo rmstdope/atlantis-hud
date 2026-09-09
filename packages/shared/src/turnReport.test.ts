@@ -117,7 +117,9 @@ describe("the sentence under the body", () => {
   });
 
   it("keeps the unread lines' own footer", () => {
-    expect(turnReportFooter("unreadable")).toBe("None of this reached the map.");
+    expect(turnReportFooter("unreadable")).toBe(
+      "None of this reached the map, except where a note says otherwise."
+    );
   });
 
   it("has none for what the engine reported", () => {

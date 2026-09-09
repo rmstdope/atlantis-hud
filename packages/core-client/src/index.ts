@@ -42,6 +42,7 @@ export type { RosterSkills } from "./generated/RosterSkills";
 export type { Casualty } from "./generated/Casualty";
 export type { BattleRound } from "./generated/BattleRound";
 export type { Battle } from "./generated/Battle";
+export type { UnitRead } from "./generated/UnitRead";
 export type { UnreadableKind } from "./generated/UnreadableKind";
 export type { LostBlock } from "./generated/LostBlock";
 export type { UnreadableLine } from "./generated/UnreadableLine";

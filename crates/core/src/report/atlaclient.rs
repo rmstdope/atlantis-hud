@@ -189,13 +189,27 @@ mod tests {
     }
 
     #[test]
-    fn the_fixture_parses_with_nothing_unreadable() {
+    fn the_fixture_parses_with_nothing_unreadable_but_its_own_narrow_wrap() {
         let parsed = parse_report_full(fixture());
         assert_eq!(parsed.regions.len(), 83);
-        assert!(
-            parsed.unreadable_lines.is_empty(),
-            "unreadable: {:?}",
-            parsed.unreadable_lines
+
+        // This map export is wrapped narrower than a turn report is, so four of its unit lines
+        // lost their tail to the re-wrap before this application ever saw the file (`ah-l09a`).
+        // Those four are marked rather than read silently; nothing else on the list is a record
+        // the parser could not read at all.
+        let unmarked: Vec<_> = parsed
+            .unreadable_lines
+            .iter()
+            .filter(|line| line.unit_read.is_none())
+            .collect();
+        assert!(unmarked.is_empty(), "unreadable: {unmarked:?}");
+        assert_eq!(
+            parsed
+                .unreadable_lines
+                .iter()
+                .filter(|line| line.unit_read.is_some())
+                .count(),
+            4
         );
 
         let hex = parsed

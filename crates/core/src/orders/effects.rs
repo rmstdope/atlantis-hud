@@ -1223,6 +1223,8 @@ pub(crate) fn formed_unit(
         movement: None,
         // The game creates the new unit in the same object as the unit forming it.
         structure_id: parent.structure_id.clone(),
+        // A unit the orders form is written by this application, not read from a report.
+        read: crate::report::model::UnitRead::Complete,
     }
 }
 

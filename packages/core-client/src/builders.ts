@@ -54,6 +54,7 @@ export function aReportUnit(overrides: Partial<ReportUnit> = {}): ReportUnit {
     capacity: null,
     movement: null,
     structureId: null,
+    read: "complete",
     ...overrides
   };
 }

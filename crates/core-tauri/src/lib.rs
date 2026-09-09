@@ -2528,6 +2528,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
                 capacity: None,
                 movement: None,
                 structure_id: None,
+                ..ReportUnit::default()
             },
             sheet_turn: 23,
             received_at: "2026-08-07T12:00:00Z".to_string(),
