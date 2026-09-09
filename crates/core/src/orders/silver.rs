@@ -2613,9 +2613,12 @@ pub fn forecast_unit(
             //
             // Subtracted **before** this arm's single clamp, which is *not* where
             // `semantics::buy` puts it: that side subtracts after its own clamp, so that a purse
-            // `rules/share` lends cannot refill the hole (`ah-ud89.2`'s rule). The placements
-            // differ because this arm has the month's own `Sold` credit to add first and clamps
-            // once at the end (`ah-6m7b.5.3`), and moving the clamp here would drop it.
+            // `rules/share` lends cannot refill the hole (`ah-ud89.2`'s rule). The one placement
+            // this arm cannot use is above the `Sold` credit, for the reason the paragraph above
+            // gives - clamping there would let a sale rescue a unit already overdrawn as the
+            // market opens on this surface and not on the ledger's. Below the credit the clamp
+            // could sit either side of the subtraction; it is left where it already was, and the
+            // two placements are indistinguishable anyway for the reason that follows.
             //
             // The two placements can only disagree where a unit's Market-phase balance is
             // *below* its overstatement, and no report reaches that state: the overstatement is
