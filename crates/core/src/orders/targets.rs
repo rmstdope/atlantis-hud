@@ -260,7 +260,10 @@ pub fn give_outcome(reach: GiveReach, tag: &str, ruleset: Option<&Ruleset>) -> G
             // Men are the exception and stay unresolved: `rules/give` refuses them "to units in
             // other factions", and a number the report never prints settles neither whether the
             // target exists nor whose it is - so saying they are refused would explain a mistyped
-            // number with a faction rule that may have nothing to do with it.
+            // number with a faction rule that may have nothing to do with it. With no catalogue
+            // there is no way to know a tag names men, so this arm cannot fire and the gift is
+            // assumed to land like any other - the same optimism the `Ours` arm above already
+            // shows a ruleset-less caller.
             Some(ruleset) if ruleset.is_man(tag) => GiveOutcome::Uncertain,
             // Everything else is assumed to land. `rules/give` lets a unit we cannot see receive a
             // gift once its faction has declared us Friendly, and no report carries that
@@ -532,14 +535,21 @@ mod tests {
             give_outcome(GiveReach::Unshown, "SILV", None),
             GiveOutcome::Moves
         );
-        // Men stay unresolved, and a visible foreign target is untouched by this bead.
+        // Men stay unresolved.
         assert_eq!(
             give_outcome(GiveReach::Unshown, "ORC", Some(&ruleset)),
             GiveOutcome::Uncertain
         );
+        // But only with a catalogue to recognise them by: a ruleset-less caller cannot know a tag
+        // names men, so it gets the same optimism `Ours` already gives it rather than a men
+        // exception this table has no way to apply.
         assert_eq!(
-            give_outcome(GiveReach::Foreign, "STON", Some(&ruleset)),
-            GiveOutcome::Uncertain
+            give_outcome(GiveReach::Unshown, "ORC", None),
+            GiveOutcome::Moves
+        );
+        assert_eq!(
+            give_outcome(GiveReach::Ours, "ORC", None),
+            GiveOutcome::Moves
         );
     }
 
@@ -550,10 +560,13 @@ mod tests {
     #[test]
     fn ordinary_foreign_goods_are_uncertain() {
         let ruleset = ruleset();
-        assert_eq!(
-            give_outcome(GiveReach::Foreign, "STON", Some(&ruleset)),
-            GiveOutcome::Uncertain
-        );
+        for tag in ["STON", "IRON", "WOOD", "HORS"] {
+            assert_eq!(
+                give_outcome(GiveReach::Foreign, tag, Some(&ruleset)),
+                GiveOutcome::Uncertain,
+                "{tag} to a visible foreign unit needs a declaration no report carries"
+            );
+        }
     }
 
     /// `rules/give`: "men may not be given to units in other factions", and the catalogue's own

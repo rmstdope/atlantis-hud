@@ -421,6 +421,10 @@ fn the_three_surfaces_agree_on_a_hand_built_gift() {
         // faction's declaration toward us, so this is what exercises `Exempt::LedgerUncertain`
         // now that no committed fixture does (`ah-jo6b.1`).
         "unit 900\nGIVE 7001 15 IRON\n",
+        // A class the committed catalogue cannot expand - `MAGIC` parses as a class but has no
+        // `itemClasses` entry - so the ledger cannot say what moves and doubts the unit outright.
+        // This is what exercises `Exempt::LedgerDoubted`, since the same bead.
+        "unit 900\nGIVE 901 ALL MAGIC\n",
     ] {
         for case in compare_one("hand-built", &text, orders, &ruleset) {
             assert_the_surfaces_agree(&case, &ruleset);
@@ -465,15 +469,14 @@ fn the_three_surfaces_agree_on_every_transfer_in_the_corpus() {
 /// Re-measured 2026-09-09 (`ah-jo6b.1`): `LedgerDoubted` is now **0**. All nine came from
 /// `SilverDoubt::GiveTargetUncertain` on gifts to a unit number the report never prints, and that
 /// doubt no longer exists - the projection assumes such a gift lands. Its floor is therefore
-/// dropped rather than lowered, on the same reasoning the `ManTag` note below gives: a floor over
-/// zero would fail today and one at zero would assert nothing. The exemption itself stays, because
-/// `Ledger::doubted` still has other sources.
+/// dropped rather than lowered: a floor over zero would fail today and one at zero would assert
+/// nothing. `LedgerUncertain` went to **0** with it and for the same reason - the five it counted
+/// were unshown-target gifts too, not the visible-foreign ones expected.
 ///
-/// `LedgerUncertain` went to **0** with it, and for the same reason: the five it counted were
-/// unshown-target gifts too, not the visible-foreign ones expected. Its floor is dropped on the
-/// same reasoning, and the arm is instead exercised by
-/// `the_three_surfaces_agree_on_a_hand_built_gift`'s foreign case - exactly the arrangement
-/// `ManTag` already has.
+/// Both exemptions are still reachable in production, so both are given the arrangement `ManTag`
+/// already had rather than being left uncovered: `the_three_surfaces_agree_on_a_hand_built_gift`
+/// gained a visible-foreign case and an unexpandable-class case, and each has a guard test of its
+/// own below proving it reaches the arm it is there for.
 #[test]
 fn the_corpus_actually_exercises_the_agreement() {
     let ruleset = ruleset();
@@ -486,16 +489,14 @@ fn the_corpus_actually_exercises_the_agreement() {
         .filter(|case| walk_exemption(case) == Some(Exempt::WalkUnknowable))
         .count();
 
-    let mut doubted = 0;
-    let mut uncertain = 0;
     let mut overdrawn = 0;
     let mut compared_pairs = 0;
     for case in &cases {
         let walk_exempt = walk_exemption(case).is_some();
         for tag in tags_mentioned(case) {
             match ledger_exemption(case, &tag, &ruleset) {
-                Some(Exempt::LedgerDoubted) => doubted += 1,
-                Some(Exempt::LedgerUncertain) => uncertain += 1,
+                // No floor for either, and each has a guard test of its own - see the note above.
+                Some(Exempt::LedgerDoubted) | Some(Exempt::LedgerUncertain) => {}
                 Some(Exempt::LedgerOverdrawn) => overdrawn += 1,
                 // `ManTag` has no floor: the corpus moves no men at all, and the case below is
                 // where that arm is exercised instead.
@@ -527,9 +528,6 @@ fn the_corpus_actually_exercises_the_agreement() {
     );
     assert!(overdrawn > 0, "LedgerOverdrawn exemptions: {overdrawn}");
 
-    // `doubted` and `uncertain` are counted but not floored - see the note above this test.
-    let _ = (doubted, uncertain);
-
     // No floor for `Exempt::ManTag`, and none for a formed unit either: the corpus's committed
     // templates move no man tag and carry no `FORM`, so both measured zero on 2026-09-08. A floor
     // over zero would fail today and one *at* zero would assert nothing, so neither is written -
@@ -539,6 +537,32 @@ fn the_corpus_actually_exercises_the_agreement() {
         cases.iter().filter(|case| case.formed).count(),
         0,
         "a fixture now carries a FORM: give the formed-unit case a floor of its own"
+    );
+}
+
+/// The hand-built `GIVE 901 ALL MAGIC` is the `LedgerDoubted` arm's only exercise now that no
+/// committed fixture reaches it (`ah-jo6b.1`), so it must really reach it. `transfer` doubts a unit
+/// whose line "moves an amount that depends on classifying everything the unit holds, which is not
+/// modelled".
+#[test]
+fn the_hand_built_class_gift_reaches_the_ledger_doubted_exemption() {
+    let ruleset = ruleset();
+    let text = report_text();
+    let cases = compare_one(
+        "hand-built",
+        &text,
+        "unit 900\nGIVE 901 ALL MAGIC\n",
+        &ruleset,
+    );
+
+    let smith = cases
+        .iter()
+        .find(|case| case.unit_id == "900")
+        .expect("the smith is compared");
+    assert_eq!(
+        ledger_exemption(smith, "IRON", &ruleset),
+        Some(Exempt::LedgerDoubted),
+        "a class the ledger cannot expand leaves none of this unit's balances a statement"
     );
 }
 
