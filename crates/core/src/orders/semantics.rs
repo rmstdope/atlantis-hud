@@ -22671,6 +22671,13 @@ BUILD
             let hex_region = market(vec![with_silver(unit("2"), 1_000)]);
             with_ledger(hex_region, "unit 2\nTAKE FROM 2 100 SILV\n", |ledger| {
                 assert!(moves(ledger, "2").is_empty(), "{:?}", moves(ledger, "2"));
+                // And no draw was attributed either: `charged_at` is what a shortfall message
+                // points at, so a mark left here would blame a line that spends nothing.
+                assert!(
+                    ledger.charged_at.keys().all(|(unit_id, _)| unit_id != "2"),
+                    "{:?}",
+                    ledger.charged_at.keys().collect::<Vec<_>>()
+                );
             });
         }
 
