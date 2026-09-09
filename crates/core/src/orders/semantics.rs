@@ -4071,8 +4071,14 @@ struct Ledger<'a> {
     /// a unit that wrote none, and carrying no entry for a line this walk could not follow.
     pub(crate) settled_gifts: BTreeMap<String, Vec<SettledGift>>,
     /// Every movement of every unit's silver this month, in the order the walk settled them,
-    /// keyed by unit id. Read by `forecast_hex`'s agreement check and by tests, and by nothing
-    /// that a player's figures pass through (`ah-6m7b.5.2`).
+    /// keyed by unit id.
+    ///
+    /// Read by `mod silver_record` in this file's tests and by nothing else yet: `ah-6m7b.5.2`
+    /// built the check that would have read it in production - the SILVER column's change list
+    /// held to this record term for term - measured that the two lists disagree in five distinct
+    /// classes, and filed that as `ah-6m7b.5.3`, which is this field's intended consumer. What
+    /// keeps it exhaustive meanwhile is the `debug_assert` in `charge` and `credit`, not a reader.
+    /// Nothing a player's figures pass through reads it (`ah-6m7b.5.2`).
     pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
     /// How many of one tag a unit's own `SELL` lines have already moved this month, and how many of
     /// those lines moved any. A block may name the same goods twice, and the second line can only
@@ -6177,6 +6183,14 @@ fn transfer(
             // names a target gives it away - even a target this walk cannot credit, such as a unit
             // the report shows in no region. `to.is_none()` is not that test and would call such a
             // gift a discard (`ah-6m7b.5.2`).
+            //
+            // A `TAKE`'s source unit is recorded as a `GaveAway` for want of anything truer:
+            // `SilverChangeCause` names what happens to the unit whose *column* the row appears
+            // in, and no variant of it says "another unit took this from me" - `Took` and
+            // `TookUnshown` are both the taker's side. Naming the taker's cause here would be
+            // wronger than this, and inventing a variant is `silver.rs`'s to decide, which this
+            // bead does not touch. `ah-6m7b.5.3` is where the two lists are compared and is where
+            // it matters.
             let cause = if reach == GiveReach::Discard {
                 SilverChangeCause::Discarded
             } else {
@@ -6215,17 +6229,22 @@ fn transfer(
     }
     if let Some(to) = to {
         if tag.eq_ignore_ascii_case(SILVER) {
-            // Always `WasGiven`, even for a `TAKE`: the column takes every inbound row from
-            // `Receipts`, whose reach rules are a different question from this walk's - it counts
-            // a `TAKE` from a unit the report does not show, and skips a gift from another hex -
-            // so the two lists answer different questions here and this one is the ledger's own
-            // (`ah-6m7b.5.2`).
+            // What the receiving unit did to get it: a `GIVE` was given to, a `TAKE` took. The
+            // column sources its own inbound rows from `Receipts`, whose reach rules are a
+            // different question from this walk's - it counts a `TAKE` from a unit the report does
+            // not show, and skips a gift from another hex - but that is a reason for the two lists
+            // to be compared carefully, not a reason for this one to name a cause it knows to be
+            // wrong (`ah-6m7b.5.2`).
             move_silver(
                 ledger,
                 StatePhase::Give,
                 &to,
                 quantity,
-                SilverChangeCause::WasGiven,
+                if is_give {
+                    SilverChangeCause::WasGiven
+                } else {
+                    SilverChangeCause::Took
+                },
                 Some(placed),
             );
         } else {
@@ -16038,6 +16057,11 @@ mod tests {
             0,
             "the gift hands over the 100 the unit held, and the pillage has not arrived yet"
         );
+        assert_eq!(
+            ledger.state.balance_at(StatePhase::Give, "2", SILVER),
+            100,
+            "and the receiver is handed the 100, not the pillage money as well"
+        );
         assert!(
             ledger.state.balance_at(StatePhase::Tax, "1", SILVER) > 0,
             "the pillage arrives in the Tax phase, where `rules/sequenceofevents` puts it: {}",
@@ -21650,6 +21674,125 @@ BUILD
                         vec![(StatePhase::Give, SilverChangeCause::WasGiven, Some(2))]
                     );
                     assert_eq!(moves(ledger, "2")[0].amount, 100);
+                },
+            );
+        }
+
+        #[test]
+        fn a_sale_is_recorded_as_what_the_market_paid() {
+            let mut hex_region = market(vec![with_item(
+                with_silver(unit("1"), 1_000),
+                10,
+                "horse",
+                "HORS",
+            )]);
+            hex_region.wanted.push(MarketItem {
+                amount: 20,
+                name: "horse".to_string(),
+                tag: "HORS".to_string(),
+                price: 30,
+            });
+            with_ledger(hex_region, "unit 1\nSELL 2 horses\n", |ledger| {
+                assert_eq!(
+                    shape(moves(ledger, "1")),
+                    vec![(StatePhase::Market, SilverChangeCause::Sold, Some(2))],
+                    "{:?}",
+                    moves(ledger, "1")
+                );
+                assert_eq!(moves(ledger, "1")[0].amount, 60, "two horses at thirty");
+            });
+        }
+
+        #[test]
+        fn a_production_that_costs_silver_is_recorded_as_it_spends_it() {
+            // A catapult is `skills/CARP/produces` at level 4 and costs silver, which is what
+            // makes it the recipe this test wants.
+            // The recipe is WOOD 250, IRWD 30, FUR 80 and SILV 3000, at four man-months.
+            let stocked = with_item(
+                with_item(
+                    with_item(
+                        with_skill(with_men(with_silver(unit("1"), 100_000), 4), "CARP", 4),
+                        1_000,
+                        "wood",
+                        "WOOD",
+                    ),
+                    1_000,
+                    "ironwood",
+                    "IRWD",
+                ),
+                1_000,
+                "fur",
+                "FUR",
+            );
+            let hex_region = market(vec![stocked]);
+            with_ledger(hex_region, "unit 1\nPRODUCE catapult\n", |ledger| {
+                let spent: Vec<_> = moves(ledger, "1")
+                    .iter()
+                    .filter(|one| one.cause == SilverChangeCause::ProductionSpent)
+                    .map(|one| (one.phase, one.line, one.amount))
+                    .collect();
+                assert_eq!(
+                    spent.len(),
+                    1,
+                    "the run's silver is one term: {:?}",
+                    moves(ledger, "1")
+                );
+                assert_eq!(spent[0].0, StatePhase::Manufacturing);
+                assert_eq!(spent[0].1, Some(2));
+                assert!(spent[0].2 < 0, "and it is money out: {}", spent[0].2);
+            });
+        }
+
+        /// An earning spell credits and a costed one charges, and the two are separate terms.
+        #[test]
+        fn a_cast_is_recorded_as_what_it_raises_and_what_it_consumes() {
+            let hex_region = ReportRegion {
+                entertainment: Some(5_000),
+                ..market(vec![with_skill(with_silver(unit("1"), 1_000), "PHEN", 2)])
+            };
+            with_ledger(
+                hex_region,
+                "unit 1\nCAST Phantasmal_Entertainment\n",
+                |ledger| {
+                    let earned: Vec<_> = moves(ledger, "1")
+                        .iter()
+                        .filter(|one| one.cause == SilverChangeCause::CastEarned)
+                        .map(|one| (one.phase, one.line, one.amount))
+                        .collect();
+                    assert_eq!(
+                        earned.len(),
+                        1,
+                        "the spell's takings are one term: {:?}",
+                        moves(ledger, "1")
+                    );
+                    assert_eq!(earned[0].0, StatePhase::Cast);
+                    assert_eq!(earned[0].1, Some(2));
+                    assert!(earned[0].2 > 0, "and it is money in");
+                },
+            );
+        }
+
+        /// A `TAKE` is written in the taker's block and moves the source unit's silver, so the
+        /// ledger records both legs - and names them for what each unit did, which for the taker
+        /// is `Took` rather than `WasGiven`.
+        #[test]
+        fn a_take_of_silver_is_recorded_on_both_units() {
+            let hex_region = market(vec![
+                with_silver(unit("1"), 1_000),
+                with_silver(unit("2"), 1_000),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 1\n\nunit 2\nTAKE FROM 1 100 SILV\n",
+                |ledger| {
+                    assert_eq!(
+                        shape(moves(ledger, "2")),
+                        vec![(StatePhase::Give, SilverChangeCause::Took, Some(4))],
+                        "{:?}",
+                        moves(ledger, "2")
+                    );
+                    assert_eq!(moves(ledger, "2")[0].amount, 100);
+                    assert_eq!(moves(ledger, "1")[0].amount, -100, "and it left unit 1");
                 },
             );
         }
