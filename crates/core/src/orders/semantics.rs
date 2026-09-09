@@ -5922,6 +5922,15 @@ fn apply(
             }
         }
         Intent::Take { from, what, amount } => {
+            // The taker and the source are one unit, so nothing is drawn and nothing arrives.
+            // Guarded here as well as in `apply_transfers`: this arm resolves its source through
+            // `party_in_hex`, which is a plain `unit_id ==` scan with no self test, so without
+            // this the walk charges and credits the same unit and leaves two rows in
+            // `Ledger::silver_moves` plus a `charged_at` mark for a draw that never happened
+            // (`ah-qwz7`).
+            if party_unit_id(from).as_deref() == Some(who.as_str()) {
+                return;
+            }
             if matches!(from, Party::Unit(id) if foreign_unit_ids.contains(id)) {
                 return;
             }
@@ -22607,6 +22616,22 @@ BUILD
                     moves(ledger, "2")
                 );
                 assert_eq!(moves(ledger, "2")[0].amount, 100);
+            });
+        }
+
+        /// `ah-qwz7`: a `TAKE` naming the unit that wrote it moves nothing, so the ledger books
+        /// nothing. Before the guard this arm resolved its source through `party_in_hex`, which
+        /// has no self test, and left `WasTaken -100` and `Took +100` on one unit for an event
+        /// that never happened.
+        #[test]
+        fn a_self_take_records_no_silver_movement() {
+            let hex_region = market(vec![with_silver(unit("2"), 1_000)]);
+            with_ledger(hex_region, "unit 2\nTAKE FROM 2 100 SILV\n", |ledger| {
+                assert!(
+                    moves(ledger, "2").is_empty(),
+                    "{:?}",
+                    moves(ledger, "2")
+                );
             });
         }
 
