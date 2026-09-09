@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ud89 round 4 &mdash; the numbered BUY, and a warning that goes quiet</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 72px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; margin:40px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); } code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:12px; max-width:94ch; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:8px; border-bottom:1px solid var(--edge-soft); padding-bottom:6px; }
+  .rows { display:grid; grid-template-columns:1fr auto; gap:2px 14px; font-size:12px; color:var(--ink-soft); }
+  .rows span:nth-child(even) { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); text-align:right; }
+  .note { display:block; margin-top:9px; padding-top:8px; border-top:1px solid var(--edge-soft); font-size:12px; color:var(--ink-soft); }
+  .note.new { color:var(--ok); }
+  .red { color:var(--danger); } .good { color:var(--ok); }
+  .problems { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; margin-top:14px; font-size:12.5px; }
+  .problems b { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; display:block; margin-bottom:7px; }
+  .problems div { color:var(--ink-soft); padding:3px 0; }
+  .problems .code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--danger); font-size:11.5px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.n { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  ul.pc { margin:10px 0 0 0; padding:0; list-style:none; max-width:94ch; }
+  ul.pc li { font-size:13.5px; color:var(--ink-soft); padding:4px 0 4px 20px; position:relative; }
+  ul.pc li:before { position:absolute; left:0; top:4px; }
+  ul.pc li.pro:before { content:"+"; color:var(--ok); }
+  ul.pc li.con:before { content:"\2212"; color:var(--danger); }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; max-width:94ch; } .cap b { color:var(--ink); }
+</style></head>
+<body>
+<header>
+  <h1><span>ah-ud89</span> round 4 &mdash; the numbered <code>BUY</code>, and a warning that goes quiet</h1>
+  <p>You have already decided the rule (round 1, option <strong>B</strong>): a contended taxer's
+  silver caps read its <strong>settled share</strong>, and round 2 answer <strong>R2</strong> applied
+  that to <code>CAST</code>, <code>BUY ALL</code> and manufacturing <code>PRODUCE</code>. Neither
+  question below re-opens that. Both are consequences of it that I found while reading the code, and
+  both change a number you can see.</p>
+  <blockquote><strong>Fixture throughout.</strong> One hex, region tax base <code>$200</code>, two of
+  your ten-orc units both taxing, so each settles on <code>$100</code> of the <code>$200</code> pool
+  while the ledger's hopeful reading still says <code>$200</code>. Unit 900 is one of the two, holds
+  nothing to start with, and buys in that hex.</blockquote>
+  <blockquote><strong>Settled, 2026-09-09.</strong> Question 1: <strong>P2</strong> &mdash; a numbered
+  <code>BUY</code> reads the settled share too, filed as <code>ah-ud89.4</code>. Question 2:
+  <strong>W1</strong> &mdash; accept the lost warning; the ledger keeps one balance, the hopeful one,
+  and the Silver column is where the shortfall is said. Both answers are written up in
+  <code>ah-ud89.2</code>&rsquo;s design, under <em>User-facing decisions</em>.</blockquote>
+</header>
+
+<main>
+
+<section>
+  <h2 class="rule"><em>Question 1</em> a numbered <code>BUY</code>, beside a <code>BUY ALL</code></h2>
+  <p>In round 2 I told you a numbered <code>BUY</code> was <em>&ldquo;never quantity-capped by
+  silver&rdquo;</em>, and on that basis it was left out of the family. <strong>That was wrong.</strong>
+  <code>price_purchase</code> caps a numbered line by what the unit can afford, exactly as
+  <code>price_buy_all</code> does &mdash; <code>rules/buy</code>: <em>&ldquo;If the unit can't afford
+  as many as [quantity], it will attempt to buy as many as it can.&rdquo;</em> So the scope decision
+  rests on a fact that is not true, and I am putting it back to you.</p>
+  <p>Unit 900 writes both lines. Grain is <code>$10</code>, the market has 50.</p>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>BUY 12 grain</th><th>BUY ALL grain</th><th>Out</th><th>At month end</th></tr>
+    <tr><td>Today</td><td class="n">12 (120)</td><td class="n">8 (80)</td><td class="n">200</td><td class="n">&minus;100</td></tr>
+    <tr><td><b>P1</b> &mdash; leave the numbered line hopeful</td><td class="n">12 (120)</td><td class="n red">0 (0)</td><td class="n">120</td><td class="n">&minus;20</td></tr>
+    <tr><td><b>P2</b> &mdash; settle it too</td><td class="n good">10 (100)</td><td class="n good">0 (0)</td><td class="n good">100</td><td class="n good">0</td></tr>
+  </table>
+  <ul class="pc">
+    <li class="con"><b>P1</b> leaves one unit buying twelve grain it cannot pay for on the line above,
+    and none on the line below &mdash; two answers to one purse, inside one unit, on adjacent lines.</li>
+    <li class="pro"><b>P1</b> is the scope you already agreed, and is one bead less.</li>
+    <li class="pro"><b>P2</b> makes the whole market read one purse, and the month end comes out at
+    zero rather than at a number the player cannot act on.</li>
+    <li class="con"><b>P2</b> is a fourth child of this family, and touches the one market path that
+    every fixture in <code>buy_all_across_both_surfaces.rs</code> and its neighbours goes through.</li>
+  </ul>
+  <p class="cap"><b>Either way <code>ah-ud89.2</code> is unaffected</b> and I am planning it now: a
+  yes to P2 files a fourth child, a no records the correction and closes the question for good.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 2</em> a warning that stops firing because the purchase got smaller</h2>
+  <p>The Problems panel's <code>not-enough-silver</code> reads the <strong>hopeful</strong> ledger
+  balance, and you decided in round 3 that a spend follows its count &mdash; buy fewer, pay less. Put
+  together, a smaller settled purchase leaves more in the hopeful purse, and a warning that fires
+  today can stop firing. Same fixture, unit 900 also writing <code>STUDY combat</code> at
+  <code>$100</code>:</p>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>BUY ALL grain</th><th>STUDY</th><th>Silver hover, at month end</th><th>Problems panel</th></tr>
+    <tr><td>Today</td><td class="n">20 (200)</td><td class="n">100</td><td class="n red">&minus;200</td><td class="n red">not-enough-silver</td></tr>
+    <tr><td><b>W1</b> &mdash; accept it</td><td class="n">10 (100)</td><td class="n">100</td><td class="n red">&minus;100</td><td class="n red">&mdash; nothing &mdash;</td></tr>
+    <tr><td><b>W2</b> &mdash; keep the warning</td><td class="n">10 (100)</td><td class="n">100</td><td class="n red">&minus;100</td><td class="n red">not-enough-silver</td></tr>
+  </table>
+  <ul class="pc">
+    <li class="pro"><b>W1</b> is what falls out of the rule you chose, and costs nothing: the ledger
+    keeps one balance, the hopeful one, exactly as the family promised.</li>
+    <li class="con"><b>W1</b> loses a warning about a unit the Silver hover is at that same moment
+    showing <span class="red">&minus;100</span> for &mdash; the two surfaces disagreeing again, in the
+    other direction.</li>
+    <li class="pro"><b>W2</b> keeps every warning that fires today firing, so nothing you rely on
+    goes quiet.</li>
+    <li class="con"><b>W2</b> means the ledger carries a second balance for the findings to read,
+    which is real machinery and would make this bead about twice the size.</li>
+  </ul>
+  <p class="cap">I would not raise this at all if the warning went quiet on a unit that was actually
+  fine. It goes quiet on one that is <b>&minus;100</b> at month end.</p>
+</section>
+
+</main>
+</body>
+</html>
