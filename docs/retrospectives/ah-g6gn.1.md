@@ -36,3 +36,33 @@ cites is read before it is built on: the plan itself is a source that can move u
 behaviour the amendment reversed. Same root: an amended plan and a reader holding an older reading
 of it. That one was the planner leaving a stale section behind; this one was the implementer holding
 a stale copy.
+
+## A column-based read of `gh pr checks` reported pending matrix jobs as green
+
+**What happened.** I waited on CI with
+`gh pr checks 1113 | awk '{print $2}' | sort | uniq -c`, which is the status column for an ordinary
+job. Four of this repository's jobs are matrix jobs whose names contain spaces and commas —
+`smoke (web, 1, 2)` and its three siblings — so `$2` picked up `(web,` rather than the status. The
+loop saw `2 (desktop-shell, 2 (web, 7 pass` and no `pending`, called it green, and I went on to
+merge. `gh pr merge` refused with "the base branch policy prohibits the merge", and the raw
+`gh pr checks 1113 | grep smoke` showed all four matrix jobs still `pending`. Nothing was merged on
+a bad read, but only because the branch policy caught it.
+
+**Why.** `gh pr checks` is tab-separated, and the fields are name, status, elapsed, url. `awk`'s
+default splitting is on whitespace, so any job name containing a space shifts every later field.
+
+**Cost.** One refused merge and about three minutes, plus the risk — a repository whose policy did
+not require the checks would have merged on four unfinished jobs.
+
+**Prevent by.** `implement-bead`'s *Waiting, without ending your run* gives
+`until <the condition>` without saying how to read a check's status; it should name the
+tab-safe form, `gh pr checks <n> --json name,state -q '.[].state'`, or `awk -F'\t' '{print $2}'`.
+A whitespace-split `$2` is wrong on any repository with a matrix job.
+
+**Seen before.** `ah-1zca.1` — the same trap, the same four `smoke` jobs, and the same false
+all-green, recorded as "Parsing `gh pr checks` by column reported a false all-green while four jobs
+were still running". That retrospective also records a second way to get it wrong: a running job's
+`conclusion` in `statusCheckRollup` is the **empty string**, not `null`, so `.conclusion // .status`
+keeps the empty string. I hit both in this pass without having read it. **That makes this the second
+recorded sighting and the strongest evidence the fleet has that the wait loop in `implement-bead`
+needs the tab-safe command written into it rather than left to each implementer.**
