@@ -455,9 +455,11 @@ pub fn is_vessel(structure: &Structure, ruleset: Option<&Ruleset>) -> bool {
 /// not fly".
 ///
 /// The test is the phrase `is a flying` in the item's own description - the catalogue's own
-/// sentence, `"This is a flying 'ship' with a capacity of ..."`, rather than the bare word, which
-/// would also match a hull whose description merely mentioned flying units or flying mounts (both
-/// phrases the committed catalogues use elsewhere). Across all three committed
+/// sentence, `"This is a flying 'ship' with a capacity of ..."`, rather than the bare word. No
+/// committed hull's description contains `flying` at all today, so nothing turns on the difference
+/// now; the phrase is the narrower reading of a catalogue that is refetched from the network, where
+/// a future hull described as carrying flying units would otherwise silence this warning for an
+/// ordinary ship. Across all three committed
 /// catalogues that separates exactly Airship, Balloon and Cloudship ("This is a flying 'ship' with
 /// a capacity of ...") from Cog, Corsair, Galleon, Galley, Longship and Raft ("This is a ship with
 /// a capacity of ..."), and no ordinary ship's description contains the word anywhere. Prose rather
@@ -1125,6 +1127,18 @@ mod tests {
         }
 
         assert_eq!(fleet_flies(&fleet("Balloon"), None), None);
+
+        // The phrase, not the bare word: a hull that merely mentions flying does not fly. Nothing
+        // in the committed catalogues reads this way, which is why the case is fabricated - it
+        // pins what the phrase is for rather than what any world states today.
+        let mut widened = ruleset();
+        let longship = widened
+            .items
+            .values_mut()
+            .find(|item| item.name.eq_ignore_ascii_case("longship"))
+            .expect("the catalogue carries a longship");
+        longship.description = Some("This is a ship that can carry flying units.".to_string());
+        assert_eq!(fleet_flies(&fleet("Longship"), Some(&widened)), Some(false));
     }
 
     /// A hull neither the report nor the ruleset can price is `None`, never a guess.
