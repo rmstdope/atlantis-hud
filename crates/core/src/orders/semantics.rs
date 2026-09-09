@@ -8503,6 +8503,15 @@ struct MarketTax {
     overstated: i64,
     /// The whole of this unit's hopeful tax: `price_tax(men, tax_base, pillaged,
     /// PoolShare::Uncontended).earns`, the figure `credit_tax` put into its market-open balance.
+    ///
+    /// **Only meaningful where `unknowable` below is `true`, and read nowhere else.** Where the
+    /// region states no tax base at all, `price_tax` answers `earns: 0` with
+    /// [`SilverDoubt::UnknownTaxBase`] while `credit_tax` credits the full ask
+    /// (`tax_base.unwrap_or(i64::MAX)`), so the two disagree - and cannot be reached together:
+    /// `pool_shares_for` contends a pool only where the base is `Some` and the hex unpillaged
+    /// (`pool.filter(|_| wanting.len() > 1)`), so `unknowable` is never `true` in the case where
+    /// they differ. Read this field outside that guard and the disagreement becomes real
+    /// (`ah-3c2t.1`).
     hopeful: i64,
     /// `true` when this unit's share of the region's tax pool is [`PoolShare::Unknowable`] -
     /// somebody contending for the pool has an estimated headcount, so no unit's share is a number.

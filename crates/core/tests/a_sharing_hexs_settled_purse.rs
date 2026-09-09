@@ -56,6 +56,13 @@ fn unit_9498_buys_against_a_settled_purse() {
     let template = extract_orders_template(atlantis_hud_fixtures::G5_F21_T39.text)
         .map(|template| template.text)
         .expect("the fixture carries an orders template");
+    // Exactly one, not at least one: `replace` replaces every match, so a fixture edit that gave
+    // 9498 a second header would quietly buy the line twice rather than fail.
+    assert_eq!(
+        template.matches("unit 9498\n").count(),
+        1,
+        "the fixture's template names unit 9498 exactly once"
+    );
     let orders = template.replace("unit 9498\n", "unit 9498\nbuy all gnol\n");
     assert_ne!(orders, template, "the BUY ALL reached unit 9498's orders");
 
