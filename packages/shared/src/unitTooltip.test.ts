@@ -1291,8 +1291,8 @@ describe("the silver section", () => {
     expect(note("estimated-men")).toBe(
       "This unit's headcount is an estimate, so its month cannot be priced."
     );
-    expect(note("takes-all-from-another")).toBe(
-      "Taking all of another unit's silver cannot be counted until that unit's own month is settled."
+    expect(note("takes-a-whole-class")).toBe(
+      "Taking a whole class of another unit's items cannot be followed, so this unit's month has no total."
     );
   });
 
@@ -1624,8 +1624,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
     "includes-take-unshown":
       "Includes 100 taken from unit 999, which your report does not show here.",
     "includes-gift": "Includes 25 given by Quartermaster (18500) in this hex.",
-    "doubt-takes-all-from-another":
-      "Taking all of another unit's silver cannot be counted until that unit's own month is settled.",
+    "doubt-takes-a-whole-class":
+      "Taking a whole class of another unit's items cannot be followed, so this unit's month has no total.",
     "given-to-nobody": "Includes 10 given away to nobody.",
     withdrawing: "This unit's withdrawal is paid from the faction's unclaimed silver.",
     "nothing-moves-silver": "Nothing this unit is ordered to do moves silver."
@@ -1819,7 +1819,7 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "unpriced-skill",
     "unknown-goods",
     "estimated-men",
-    "takes-all-from-another",
+    "takes-a-whole-class",
     "contested-region-pool",
     "market-does-not-sell",
     "gives-a-whole-class",

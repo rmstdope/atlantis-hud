@@ -694,10 +694,12 @@ pub fn transfer_shape(what: &Selector, amount: &Amount) -> TransferShape {
 pub enum SilverDoubt {
     /// `TAX` where the report stated no tax base for the region.
     UnknownTaxBase,
-    /// `TAKE ... ALL SILV` from another unit: what that unit will have left to give depends on its
-    /// own month, which this per-unit pass has not run. Not the same as a source the report never
-    /// shows - that is not counted at all and raises no doubt (`ah-awcm`).
-    TakesAllFromAnother,
+    /// `TAKE FROM <unit> ALL <class>`: the ledger cannot follow a class selector, so it does not
+    /// carry the take in its own balance and this column declines it too rather than opening the
+    /// market on a figure the two surfaces disagree about (`ah-sgn6`). A named
+    /// `TAKE ... ALL SILV` is not this case and is counted like any other take. Not the same as a
+    /// source the report never shows - that is not counted at all and raises no doubt (`ah-awcm`).
+    TakesAWholeClass,
     /// A headcount that is itself a guess, so nothing per-man can be multiplied out.
     EstimatedMen,
     /// `STUDY` of a skill the ruleset prices nowhere, or no ruleset at all.
@@ -1010,11 +1012,12 @@ pub struct Receipts {
     /// **not** deduplicated: two gifts from one unit are two entries, because the ledger records
     /// what moved rather than who moved it. A movement out is negative.
     pub silver_moves: Vec<ReceiptMove>,
-    /// Whether a `TAKE ... ALL SILV` could not be priced, which silences the unit's whole figure.
+    /// Whether a `TAKE FROM <unit> ALL <class>` could not be followed, which silences the unit's
+    /// whole figure (`ah-sgn6`).
     ///
     /// A bool rather than the source's name, because the sentence the interface shows names the
     /// rule rather than the unit (`ah-awcm`).
-    pub take_all_unpriceable: bool,
+    pub takes_a_whole_class: bool,
 }
 
 /// Everything about one unit that the arithmetic needs, so the call site reads as a description of
@@ -1751,11 +1754,13 @@ pub fn forecast_unit(
     // the shortfall warning are measured against this (`ah-omn7`).
     let mut market_demand = 0i64;
     let mut claim_remaining = purse.unclaimed;
-    // A `TAKE ... ALL SILV` is in this unit's own block, but what it will yield depends on the
-    // source unit's month, which this per-unit pass has not run (`ah-awcm`).
+    // A `TAKE FROM <unit> ALL <class>` is in this unit's own block, but the ledger's own
+    // `transfer` returns early for a class selector, so its balance never carries the take and
+    // this column will not open its market pass on a figure the two surfaces disagree about
+    // (`ah-sgn6`). A named `TAKE ... ALL SILV` is counted like any other take.
     let mut income_doubt = receipts
-        .take_all_unpriceable
-        .then_some(SilverDoubt::TakesAllFromAnother);
+        .takes_a_whole_class
+        .then_some(SilverDoubt::TakesAWholeClass);
     let mut expense_doubt = None;
     let mut doubt_subject = None;
     let mut given_to_nobody = 0i64;
@@ -8644,7 +8649,7 @@ mod tests {
             amount: Amount::All { except: 0 },
         })];
         let receipts = Receipts {
-            take_all_unpriceable: true,
+            takes_a_whole_class: true,
             ..Receipts::default()
         };
         // The ledger did settle this gift; the column's own doubt is what refuses to book it.
@@ -8675,7 +8680,7 @@ mod tests {
             SharedMarket::Adds(0),
             Some(&ruleset()),
         );
-        assert_eq!(unit.doubt, Some(SilverDoubt::TakesAllFromAnother));
+        assert_eq!(unit.doubt, Some(SilverDoubt::TakesAWholeClass));
         assert_eq!(
             unit.given_to_nobody, 0,
             "the purse the gift empties is not a number"
@@ -9214,12 +9219,12 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
-    /// `ah-awcm`: what the source will have left to give depends on its own month, so the taker's
-    /// whole figure goes unsaid.
+    /// `ah-sgn6`: the ledger cannot follow a class selector, so a `TAKE FROM <unit> ALL <class>`
+    /// leaves the taker's whole figure unsaid. A named `TAKE ... ALL SILV` is not this case.
     #[test]
-    fn a_take_of_all_silver_doubts_the_unit() {
+    fn a_take_of_a_whole_class_doubts_the_unit() {
         let receipts = Receipts {
-            take_all_unpriceable: true,
+            takes_a_whole_class: true,
             ..Receipts::default()
         };
         let unit = forecast_unit(
@@ -9232,7 +9237,7 @@ mod tests {
             SharedMarket::Adds(0),
             None,
         );
-        assert_eq!(unit.doubt, Some(SilverDoubt::TakesAllFromAnother));
+        assert_eq!(unit.doubt, Some(SilverDoubt::TakesAWholeClass));
         assert_eq!(unit.income, None);
         assert_eq!(unit.at_month_end, None);
     }
@@ -10698,7 +10703,7 @@ mod tests {
     #[test]
     fn changes_is_empty_when_a_term_could_not_be_priced() {
         let receipts = Receipts {
-            take_all_unpriceable: true,
+            takes_a_whole_class: true,
             ..Receipts::default()
         };
         let unit = forecast_unit(
