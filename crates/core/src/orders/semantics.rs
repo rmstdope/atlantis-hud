@@ -1852,6 +1852,10 @@ fn forecast_hex(
 /// the whole pass has to be absent from a release build rather than merely assert-free. What it buys is that every fixture in this crate's own
 /// suite and every one of the 26 real turns in `crates/core/tests/` compares the two lists.
 ///
+/// The four transfer causes are compared here since `ah-1x2h.3`: both records read one settlement,
+/// the column through `Receipts` and the ledger through the recording pass in
+/// `ledger_for_with_production`, so a gift or a take is one event with one row on each side.
+///
 /// The dropped causes and the skipped units below are the whole of what this check does *not*
 /// cover, and each names why. Widening that set is how this check dies quietly, so a new entry
 /// needs a bead id beside it.
@@ -1902,18 +1906,10 @@ fn compared_silver_rows(
                 SilverChangeCause::Worked
                     | SilverChangeCause::Entertained
                     | SilverChangeCause::Lent
-                    // The four transfer causes. The column records them from the settlement walk,
-                    // against report holdings and with no line; the ledger from the giving or
-                    // taking unit's `PlacedIntent`, against its own running balance, with that
-                    // line. Two vantage points on one event (`ah-1x2h`).
-                    | SilverChangeCause::WasGiven
-                    | SilverChangeCause::Took
-                    | SilverChangeCause::TookUnshown
-                    | SilverChangeCause::WasTaken
             )
         })
-        // No cause is compared without its amount any more (`ah-1x2h.2`). The `Option` slot stays
-        // because the projection is `ah-1x2h.3`'s to finish.
+        // No cause is compared without its amount any more (`ah-1x2h.2`), and no transfer cause is
+        // dropped (`ah-1x2h.3`). The `Option` slot is kept as the shape a future skip would use.
         .map(|(cause, line, amount)| (cause, line, Some(amount)))
         .collect();
     compared.sort();
@@ -14721,14 +14717,22 @@ mod tests {
 
         let taker = receipts.get("2391").expect("the receiver has receipts");
         assert_eq!(
-            taker.silver_moves.iter().map(|m| m.line).collect::<Vec<_>>(),
+            taker
+                .silver_moves
+                .iter()
+                .map(|m| m.line)
+                .collect::<Vec<_>>(),
             vec![2, 4, 5],
             "the giver's GIVE line, then the taker's own two TAKE lines"
         );
 
         let source = receipts.get("2390").expect("the source has receipts");
         assert_eq!(
-            source.silver_moves.iter().map(|m| m.line).collect::<Vec<_>>(),
+            source
+                .silver_moves
+                .iter()
+                .map(|m| m.line)
+                .collect::<Vec<_>>(),
             vec![4],
             "the taker's line, not any line of the source's own"
         );
@@ -22178,6 +22182,25 @@ BUILD
                 vec![],
                 "the ledger books none of these, so the column's rows cannot be held to it"
             );
+        }
+
+        /// `ah-1x2h.3`: the four transfer causes are compared like any other, because both sides
+        /// now read one settlement - the ledger records them from `Ordered::transfer_receipts`,
+        /// which is the same walk the SILVER column's receipts come from.
+        #[test]
+        fn a_settled_transfer_is_compared_on_both_sides() {
+            for cause in [
+                SilverChangeCause::WasGiven,
+                SilverChangeCause::Took,
+                SilverChangeCause::TookUnshown,
+                SilverChangeCause::WasTaken,
+            ] {
+                assert_eq!(
+                    compared_silver_rows([(cause, Some(2), 100)].into_iter()),
+                    vec![(cause, Some(2), Some(100))],
+                    "{cause:?} is kept, with its line and its amount"
+                );
+            }
         }
 
         /// No cause that reaches the comparison is nulled any more. `ah-1x2h.1` made the ledger
