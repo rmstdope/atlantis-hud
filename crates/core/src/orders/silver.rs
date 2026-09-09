@@ -492,6 +492,31 @@ pub struct SettledBuyAll {
     pub plan: BuyAllPlan,
 }
 
+/// One `GIVE ... ALL SILV` as [`super::semantics`]'s ledger settled it.
+///
+/// The seam that carries a settled gift into this module, exactly as [`SettledBuyAll`] carries a
+/// settled market line. `semantics` fills it and everything here only reads it, so one order
+/// cannot be settled two ways (`ah-6m7b.3`).
+///
+/// One entry per document line, in the order the block wrote them. A line that the ledger's walk
+/// could not follow has no entry at all, and the column then books nothing for it - which is what
+/// it already did for such a line, since both surfaces refuse the same ones.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettledGift {
+    /// The document line the order was written on.
+    pub line: i64,
+    /// The `EXCEPT` reserve the order named, `0` for the plain form. Carried for the hover's use
+    /// and for a reader checking the arithmetic; the column does no sum with it.
+    pub except: i64,
+    /// What actually left the unit, clamped at zero by the ledger.
+    pub spent: i64,
+    /// `GIVE 0 ...`: the goods are destroyed rather than handed over (`rules/give`).
+    pub to_nobody: bool,
+    /// The target's label, as `targets::party_label` writes it - the same string the column's own
+    /// arms build, so the two cannot name one target two ways.
+    pub other: String,
+}
+
 /// One `BUY ALL` on one unit, as the ITEMS and SILVER hovers say it.
 ///
 /// A `Vec` on [`UnitSilver`] rather than a set of flat fields: a unit may write several `BUY ALL`

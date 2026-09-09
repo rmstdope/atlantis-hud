@@ -48,7 +48,8 @@ use crate::orders::silver::{
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
     MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare,
     PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages,
-    SaleAnswer, SettledBuyAll, SharedMarket, SilverChangeCause, SilverDoubt, TransferShape,
+    SaleAnswer, SettledBuyAll, SettledGift, SharedMarket, SilverChangeCause, SilverDoubt,
+    TransferShape,
     Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
@@ -3985,6 +3986,12 @@ struct Ledger<'a> {
     /// pricing the line a second time (`ah-6m7b.2`). Written by `settle_buy_all`; empty for a unit
     /// that wrote none and for a doubted one, which `settle_buy_all` skips.
     pub(crate) settled_buy_all: BTreeMap<String, Vec<SettledBuyAll>>,
+
+    /// What each unit's `GIVE ... ALL SILV` lines actually handed over, in document order - given
+    /// to the SILVER column through [`PhaseFacts::gifts`] so it books the ledger's answer instead
+    /// of settling the Give phase a second time (`ah-6m7b.3`). Written by [`transfer`]; empty for
+    /// a unit that wrote none, and carrying no entry for a line this walk could not follow.
+    pub(crate) settled_gifts: BTreeMap<String, Vec<SettledGift>>,
     /// How many of one tag a unit's own `SELL` lines have already moved this month, and how many of
     /// those lines moved any. A block may name the same goods twice, and the second line can only
     /// draw on what the first left of the unit's settled share of the market line (`ah-vw8e`). Keyed
@@ -4260,6 +4267,7 @@ fn ledger_for_with_production<'a>(
         built: BTreeMap::new(),
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
+        settled_gifts: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
         bought: BTreeMap::new(),
@@ -5996,6 +6004,25 @@ fn transfer(
 
     if !from.is_empty() {
         charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
+        // What the column has to be told, because it cannot work it out: an `ALL` resolves against
+        // a balance only this walk holds. Recorded after the charge, so what is stored is what was
+        // actually taken. A `TAKE` is not recorded - the column never deferred one, and its taker
+        // side is `Receipts`' business (`ah-awcm`).
+        if is_give && tag.eq_ignore_ascii_case(SILVER) {
+            if let TransferShape::All { except } = shape {
+                ledger
+                    .settled_gifts
+                    .entry(from.clone())
+                    .or_default()
+                    .push(SettledGift {
+                        line: placed.line as i64,
+                        except,
+                        spent: quantity,
+                        to_nobody: reach == GiveReach::Discard,
+                        other: target_label.unwrap_or("the target").to_string(),
+                    });
+            }
+        }
     }
     if let Some(to) = to {
         credit(ledger, StatePhase::Give, &to, &tag, quantity);
@@ -14116,6 +14143,39 @@ mod tests {
             .map(|movement| -movement.delta)
             .sum();
         assert_eq!(moved, 3);
+    }
+
+    /// `ah-6m7b.3`. The ledger records what each `GIVE ... ALL SILV` actually handed over, so the
+    /// SILVER column can book that figure instead of settling the Give phase a second time.
+    #[test]
+    fn settled_gifts_records_what_each_all_silv_handed_over() {
+        let hex = ReportRegion {
+            ..region(vec![
+                with_item(unit("900"), 100, "silver", "SILV"),
+                unit("901"),
+            ])
+        };
+        let orders = "unit 900\nGIVE 901 ALL SILV\n";
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules));
+        let gifts = ledger
+            .settled_gifts
+            .get("900")
+            .map_or(&[][..], Vec::as_slice);
+        assert_eq!(gifts.len(), 1, "one entry per `ALL SILV` line: {gifts:?}");
+        assert_eq!(gifts[0].spent, 100);
+        assert_eq!(gifts[0].except, 0);
+        assert!(!gifts[0].to_nobody);
+        assert_eq!(gifts[0].other, "unit 901");
     }
 
     /// `ah-vw8e`, increment 5. A unit's own doubled `SELL ALL` claims what it holds once, not
