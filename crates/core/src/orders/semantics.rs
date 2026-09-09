@@ -8037,8 +8037,9 @@ fn buy_silver(ledger: &mut Ledger<'_>, who: &str, wanted: i64, spent: i64, place
 }
 
 /// Records a silver movement without applying it. Split from [`apply_silver`] for the two callers
-/// whose recorded figure and applied figure differ - `buy_silver` above, and `credit_tax`, whose
-/// line comes from the unit's intents rather than from a `PlacedIntent` it holds.
+/// whose recorded figure and applied figure differ - `buy_silver` above, and `credit_tax`, which
+/// records a contended taxer's settled share while applying its hopeful one (`ah-1x2h.1`) and
+/// whose line comes from the unit's intents rather than from a `PlacedIntent` it holds.
 fn record_silver(
     ledger: &mut Ledger<'_>,
     phase: StatePhase,
