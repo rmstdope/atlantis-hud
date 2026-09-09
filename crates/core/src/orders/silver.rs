@@ -588,6 +588,13 @@ pub enum SilverChangeCause {
     /// The mirror of the `shared-silver-pays-orders` note the *borrower* already gets: money
     /// leaving with nothing to explain it is exactly what the change list exists to prevent.
     Lent,
+    /// Silver another unit's `TAKE FROM` pulled out of this one. The mirror of [`Self::Took`],
+    /// booked on the source rather than on the taker.
+    ///
+    /// The order is in the *taker's* block, so this arrives through [`Receipts`] exactly as
+    /// [`Self::WasGiven`] does, and carries no line of this unit's own. The ITEMS ledger already
+    /// books this end as `ItemChangeCause::WasTakenFrom`; this is silver catching up (`ah-42li`).
+    WasTaken,
 }
 
 /// One movement of a unit's silver this month, and what caused it.
@@ -950,17 +957,19 @@ pub enum SaleAnswer {
     Unknown,
 }
 
-/// One settled transfer of silver into a unit, for the ledger the SILVER column publishes.
+/// One settled transfer of silver into or out of a unit, for the ledger the SILVER column
+/// publishes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReceiptMove {
+    /// Signed: positive for silver arriving, negative for silver another unit's `TAKE` pulled out.
     pub amount: i64,
-    /// `WasGiven`, `Took` or `TookUnshown`.
+    /// `WasGiven`, `Took`, `TookUnshown` or `WasTaken`.
     pub cause: SilverChangeCause,
     /// The other unit's label, the same string the matching `givers`/`*_from` entry carries.
     pub other: String,
 }
 
-/// Silver this unit is given by others this month.
+/// Every silver movement another unit's block settles against this one this month, in or out.
 ///
 /// Gathered once per turn by [`super::semantics::review_turn`] rather than per unit: the giving
 /// orders live all over the document, and re-scanning it per unit would be quadratic in the size
@@ -988,9 +997,18 @@ pub struct Receipts {
     /// Those sources, as `unit <id>` - the report gives no name for a unit it does not show. In
     /// settlement order.
     pub taken_unshown_from: Vec<String>,
-    /// Each settled transfer of silver into this unit, in settlement order and **not**
-    /// deduplicated: two gifts from one unit are two entries, because the ledger records what
-    /// moved rather than who moved it.
+    /// Silver another unit's `TAKE FROM` pulled **out** of this one, as a positive magnitude -
+    /// the same convention `taken` uses for the other end. Already summed.
+    ///
+    /// The one outgoing figure on this struct. It is here rather than on the source's own walk
+    /// because the order is in the taker's block and only this settlement knows what actually
+    /// moved once report order had chosen between competing transfers (`ah-42li`).
+    pub taken_away: i64,
+    /// The units that took it, as `<name> (<id>)`, deduplicated, in settlement order.
+    pub taken_by: Vec<String>,
+    /// Each settled transfer of silver into **or out of** this unit, in settlement order and
+    /// **not** deduplicated: two gifts from one unit are two entries, because the ledger records
+    /// what moved rather than who moved it. A movement out is negative.
     pub silver_moves: Vec<ReceiptMove>,
     /// Whether a `TAKE ... ALL SILV` could not be priced, which silences the unit's whole figure.
     ///

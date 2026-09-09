@@ -1848,6 +1848,7 @@ fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<UnitKey, Receipts> {
             entry.silver = entry.silver.saturating_add(receipts.silver);
             entry.taken = entry.taken.saturating_add(receipts.taken);
             entry.taken_unshown = entry.taken_unshown.saturating_add(receipts.taken_unshown);
+            entry.taken_away = entry.taken_away.saturating_add(receipts.taken_away);
             entry.take_all_unpriceable |= receipts.take_all_unpriceable;
             // Movements, not a set: two gifts from one unit are two entries.
             entry
@@ -1857,6 +1858,7 @@ fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<UnitKey, Receipts> {
                 (&mut entry.givers, &receipts.givers),
                 (&mut entry.taken_from, &receipts.taken_from),
                 (&mut entry.taken_unshown_from, &receipts.taken_unshown_from),
+                (&mut entry.taken_by, &receipts.taken_by),
             ] {
                 for label in from {
                     if !into.contains(label) {
@@ -2585,6 +2587,30 @@ fn holding_items(unit: &ReportUnit, state: &Working) -> Vec<ItemAmount> {
     items
 }
 
+/// Books silver another unit's `TAKE FROM` pulled out of `source`, on the source's own row.
+///
+/// The mirror of the taker's three lines in [`apply_transfers`], and the one outgoing figure
+/// `Receipts` carries: the order lives in the taker's block, so only this settlement can put it on
+/// the source (`ah-42li`). The magnitude is positive and the movement negative, the same
+/// convention `taken` / `Took` uses at the other end.
+fn debit_source(
+    receipts_by_position: &mut BTreeMap<usize, Receipts>,
+    source: usize,
+    taker_label: String,
+    moved: i64,
+) {
+    let entry = receipts_by_position.entry(source).or_default();
+    entry.taken_away = entry.taken_away.saturating_add(moved);
+    entry.silver_moves.push(ReceiptMove {
+        amount: -moved,
+        cause: SilverChangeCause::WasTaken,
+        other: taker_label.clone(),
+    });
+    if !entry.taken_by.contains(&taker_label) {
+        entry.taken_by.push(taker_label);
+    }
+}
+
 /// Merges this month's `GIVE` and `TAKE` orders into the units of one hex.
 ///
 /// Walks the hex's orders in the game's own order - `rules/sequenceofevents` processes units
@@ -2903,6 +2929,12 @@ fn apply_transfers(
                     let source = units[source].unit;
                     format!("{} ({})", source.name, source.unit_id)
                 };
+                // Built in a scoped closure for the same reason `source_label` is: the immutable
+                // borrow of `units` must end before `receipts_by_position` is touched.
+                let taker_label = || {
+                    let taker = units[transfer.actor].unit;
+                    format!("{} ({})", taker.name, taker.unit_id)
+                };
                 if transfer.is_give {
                     if let Some(receiver_position) = receiver.row {
                         if moved > 0 {
@@ -2919,6 +2951,12 @@ fn apply_transfers(
                         }
                     }
                 } else if matches!(&*transfer.amount, Amount::All { .. }) {
+                    // `ah-42li`: whatever the taker's own figure does, the source's row must say
+                    // where its silver went. A unit written to take from itself moves silver in a
+                    // circle and books nothing.
+                    if moved > 0 && source != transfer.actor {
+                        debit_source(&mut receipts_by_position, source, taker_label(), moved);
+                    }
                     // `ah-awcm`: what the source will have left to give depends on its own month,
                     // which this pass has not run - so an `ALL` take silences the figure rather
                     // than promising the report's own holding.
@@ -2927,6 +2965,9 @@ fn apply_transfers(
                         .or_default()
                         .take_all_unpriceable = true;
                 } else if moved > 0 {
+                    if source != transfer.actor {
+                        debit_source(&mut receipts_by_position, source, taker_label(), moved);
+                    }
                     let entry = receipts_by_position.entry(transfer.actor).or_default();
                     entry.taken = entry.taken.saturating_add(moved);
                     entry.silver_moves.push(ReceiptMove {
@@ -14139,6 +14180,38 @@ mod tests {
         assert_eq!(taker.taken, 100);
         assert_eq!(taker.taken_from, vec!["Unit 2390 (2390)".to_string()]);
         assert!(!taker.take_all_unpriceable);
+    }
+
+    /// `ah-42li`: the other end of `a_take_from_a_unit_in_this_hex_is_counted`. The order is in the
+    /// taker's block, so only this settlement can put it on the source's row.
+    #[test]
+    fn a_take_of_a_stated_quantity_debits_its_source() {
+        let region = region(vec![with_silver(unit("2390"), 500), unit("2391")]);
+        let source = "unit 2391\nTAKE FROM 2390 100 SILV\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let taken_from = receipts.get("2390").expect("the source has receipts");
+        assert_eq!(taken_from.taken_away, 100);
+        assert_eq!(taken_from.taken_by, vec!["Unit 2391 (2391)".to_string()]);
+        assert_eq!(
+            taken_from.silver_moves,
+            vec![ReceiptMove {
+                amount: -100,
+                cause: SilverChangeCause::WasTaken,
+                other: "Unit 2391 (2391)".to_string(),
+            }]
+        );
+        // The invariant `each_settled_silver_transfer_is_recorded_as_a_movement` states for the
+        // receiving end, stated for the outgoing one.
+        assert_eq!(
+            taken_from
+                .silver_moves
+                .iter()
+                .map(|m| m.amount)
+                .sum::<i64>(),
+            -taken_from.taken_away
+        );
     }
 
     /// `ah-awcm`: the ledger credits a stated take from a unit it cannot see, and so does the

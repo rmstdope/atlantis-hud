@@ -10,7 +10,7 @@
 //! for ever: it is what stops a future arm adding to a total and forgetting the record.
 
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
-use atlantis_hud_core::orders::silver::{SilverChangeCause, UnitSilver};
+use atlantis_hud_core::orders::silver::{SilverChange, SilverChangeCause, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
@@ -175,5 +175,51 @@ fn a_doubted_income_still_charges_what_the_purchase_asked() {
     assert!(
         unit.changes.is_empty(),
         "a doubted unit shows no change list at all (`ah-rgkk.4.4`) - this bead does not open that gate"
+    );
+}
+
+/// `ah-42li`: the *other* unit in `doubted_market_report`. Buyers (900) takes all of Purse (902)'s
+/// silver; `rules/sequenceofevents` settles Give orders before tax and before the market, so what
+/// leaves Purse is the 60 the report shows it holding, and Purse ends the month with nothing.
+///
+/// Buyers' own figure stays doubted - that is `ah-sgn6`'s question and this bead does not touch it.
+#[test]
+fn the_unit_a_take_empties_says_where_its_silver_went() {
+    let text = doubted_market_report();
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset());
+
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let orders = format!("{template}\nunit 900\nTAKE FROM 902 ALL SILV\nBUY 2 grain\n");
+
+    let review = review_turn(&parsed, &orders, Some(&ruleset()), CheckOptions::default());
+    let unit = review
+        .silver
+        .iter()
+        .find(|silver| silver.unit_id == "902")
+        .expect("unit 902 is on the SILVER surface");
+
+    assert_eq!(unit.expense, Some(60), "all 60 leaves at the Give phase");
+    let taken: Vec<_> = unit
+        .changes
+        .iter()
+        .filter(|change| change.cause == SilverChangeCause::WasTaken)
+        .collect();
+    assert_eq!(
+        taken,
+        vec![&SilverChange {
+            amount: -60,
+            cause: SilverChangeCause::WasTaken,
+            line: None,
+            other: Some("Buyers (900)".to_string()),
+        }],
+        "one line, naming the taker; the order is in another unit's block, so no line of its own"
+    );
+    assert_eq!(
+        unit.at_month_end,
+        Some(unit.held + unit.income.unwrap_or(0) - 60),
+        "the 60 it held is gone; what it earns of its own is untouched"
     );
 }

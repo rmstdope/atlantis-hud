@@ -1357,6 +1357,26 @@ describe("the column popups", () => {
     });
   });
 
+  it("the silver popup says who took a unit's silver", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 60,
+            atMonthEnd: 0,
+            changes: [{ amount: -60, cause: "was-taken", line: null, other: "Buyers (900)" }]
+          })
+        })
+      )
+    );
+    expect(popup.lines.find((line) => line.label === "was taken")).toMatchObject({
+      value: "-60",
+      why: "by Buyers (900)"
+    });
+  });
+
   it("the silver popup prices a purchase from the item ledger", () => {
     const popup = columnPopup(
       popupForCell(
