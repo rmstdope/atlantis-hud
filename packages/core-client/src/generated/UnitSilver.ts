@@ -162,6 +162,26 @@ sharedSilverForOrders: number,
  */
 marketPurseHeldOnly: boolean, 
 /**
+ * True when `income` less `late_income` - the silver that arrives in time to pay for this
+ * unit's orders - is an **upper bound** rather than a forecast, because a unit in this hex
+ * whose report line was cut short may be an uncounted claimant on the region's tax base
+ * (`ah-0n2k.1`).
+ *
+ * `false` wherever those terms are exact, `false` wherever `income` is `None` - a term that is
+ * not a number needs no bound, and [`SilverDoubt::ContestedRegionPool`] already speaks for the
+ * hex that could not be settled at all - and `false` for a unit that draws on no pool here.
+ */
+incomeInTimeAtMost: boolean, 
+/**
+ * The same, for `late_income`: the wage and entertainment terms, which arrive in the turn's
+ * last phase (`ah-0n2k.1`).
+ *
+ * Two booleans and not one, because the hover prints those two halves as separate rows
+ * (`In, in time` and `In, too late`) and one boolean would put ` at most` beside an exact
+ * figure on whichever row the bound did not land in.
+ */
+lateIncomeAtMost: boolean, 
+/**
  * What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
  * this unit's own overdraft, where the hex's purse settled it (`ah-3c2t.2`).
  *

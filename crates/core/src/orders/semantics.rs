@@ -780,7 +780,23 @@ fn pool_shares_for(
         .map(|facts| pool_wants(facts, region, ruleset))
         .collect();
 
-    let mut shares = vec![PoolShares::default(); hex.units.len()];
+    // Own units only - `Hex::read` filters on `unit.own` - which is why a foreign unit that could
+    // not be read changes nothing: it was never part of the sharing-out.
+    //
+    // `ordered.unit.read` and **not** `Ordered::unread`, which is a different fact about the
+    // unit's *orders*. The same field `money_read_of` reads.
+    let unread_claimant = hex
+        .units
+        .iter()
+        .any(|ordered| ordered.unit.read != UnitRead::Complete);
+
+    let mut shares = vec![
+        PoolShares {
+            unread_claimant,
+            ..PoolShares::default()
+        };
+        hex.units.len()
+    ];
     let mut overruns: Vec<PoolOverrun> = Vec::new();
     // `max_wages: None` means the region states *no ceiling*, not that it has no money, so it is
     // never contended - dividing a pool of zero would pay every worker nothing. `entertainment:
@@ -14313,6 +14329,22 @@ mod tests {
             with_skill(unit, "COMB", 1)
         }
 
+        /// A hex-mate whose report line was cut short before its items: no men, no items, and
+        /// `UnitRead::Nothing`, which is what `parse_unit` produces for a line that lost its tail.
+        /// It asks the hex for nothing, which is exactly why its neighbour's share is a bound
+        /// (`ah-0n2k.1`).
+        fn unread(id: &str) -> ReportUnit {
+            let mut unit = with_men(unit(id), 0);
+            unit.items = vec![];
+            unit.read = UnitRead::Nothing;
+            assert_eq!(unit.men, 0, "an unread hex-mate must ask the hex for nothing");
+            assert!(
+                !unit.men_estimated,
+                "and must not reach the estimated-headcount guard"
+            );
+            unit
+        }
+
         fn silver_of(review: &TurnReview, id: &str) -> UnitSilver {
             review
                 .silver
@@ -14343,6 +14375,25 @@ mod tests {
             let ordered = OrderedUnits::read(orders);
             let hex = Hex::read(&hex_region, &ordered, &[]);
             pool_shares_for(&hex, region_wages(&hex, None), None, None).overruns
+        }
+
+
+        /// `ah-0n2k.1`. The tax base is drawn in the turn's earlier phase, so an unread hex-mate
+        /// bounds the silver that arrives *in time* and not the wage and entertainment half.
+        #[test]
+        fn a_taxer_beside_an_unread_unit_bounds_the_silver_that_arrives_in_time() {
+            let review = tax_review(
+                Some(2500),
+                vec![taxer("2390", 10), unread("4501")],
+                "unit 2390\nTAX\n",
+            );
+
+            let forecast = silver_of(&review, "2390");
+            assert!(forecast.income_in_time_at_most);
+            assert!(!forecast.late_income_at_most);
+            assert_eq!(forecast.doubt, None);
+            // The figure itself is untouched: 10 men at $50 each, and the base covers it.
+            assert_eq!(forecast.income, Some(500));
         }
 
         /// `ah-t2pn.4`. The settlement says what it divided, so the sentence a player reads comes
@@ -14676,6 +14727,22 @@ mod tests {
             with_skill(worker(id, men), "ENTE", level)
         }
 
+        /// A hex-mate whose report line was cut short before its items: no men, no items, and
+        /// `UnitRead::Nothing`, which is what `parse_unit` produces for a line that lost its tail.
+        /// It asks the hex for nothing, which is exactly why its neighbour's share is a bound
+        /// (`ah-0n2k.1`).
+        fn unread(id: &str) -> ReportUnit {
+            let mut unit = with_men(unit(id), 0);
+            unit.items = vec![];
+            unit.read = UnitRead::Nothing;
+            assert_eq!(unit.men, 0, "an unread hex-mate must ask the hex for nothing");
+            assert!(
+                !unit.men_estimated,
+                "and must not reach the estimated-headcount guard"
+            );
+            unit
+        }
+
         fn silver_of(review: &TurnReview, id: &str) -> UnitSilver {
             review
                 .silver
@@ -14896,6 +14963,86 @@ mod tests {
                  fee {fee}, wages {late}, message {:?}",
                 short.message
             );
+        }
+
+
+        /// `ah-0n2k.1`. A hex-mate whose line was cut short asks the hex for nothing, so it drops
+        /// out of every `wanting` and no share counted a claim for it. The neighbour keeps its
+        /// figure, relabelled as the most it can be.
+        #[test]
+        fn an_entertainer_beside_an_unread_unit_reads_its_share_as_a_ceiling() {
+            let review = wage_review(
+                "$14.2",
+                Some(579),
+                Some(179),
+                vec![entertainer("4329", 1, 2), unread("4501")],
+                "unit 4329\nENTERTAIN\n",
+            );
+
+            let forecast = silver_of(&review, "4329");
+            // 1 man at entertainment level 2 is 1 * 2 * 30, and the hex's $179 covers it.
+            assert_eq!(forecast.late_income, Some(60));
+            assert_eq!(forecast.doubt, None);
+            assert!(forecast.late_income_at_most);
+            assert!(!forecast.income_in_time_at_most);
+            assert_eq!(forecast.at_month_end, Some(forecast.held + 60));
+        }
+
+        /// The control: the same hex read in full bounds nothing anywhere.
+        #[test]
+        fn a_hex_read_in_full_bounds_nothing() {
+            let review = wage_review(
+                "$14.2",
+                Some(579),
+                Some(179),
+                vec![entertainer("4329", 1, 2), entertainer("4501", 1, 2)],
+                "unit 4329\nENTERTAIN\nunit 4501\nENTERTAIN\n",
+            );
+
+            for id in ["4329", "4501"] {
+                let forecast = silver_of(&review, id);
+                assert!(!forecast.late_income_at_most, "unit {id}");
+                assert!(!forecast.income_in_time_at_most, "unit {id}");
+                // Asks of 60 and 60 against a demand of 179: both are met in full.
+                assert_eq!(forecast.late_income, Some(60), "unit {id}");
+            }
+        }
+
+        /// The mockup's *Both kinds of trouble at once* row: a pool that could not be settled at
+        /// all keeps its `not known`, and no ceiling is put beside it.
+        #[test]
+        fn an_estimated_headcount_still_wins_over_a_ceiling() {
+            let mut guessed = entertainer("2391", 60, 2);
+            guessed.men_estimated = true;
+            let review = wage_review(
+                "$12.0",
+                Some(1200),
+                Some(200),
+                vec![entertainer("2390", 5, 2), guessed, unread("4501")],
+                "unit 2390\nENTERTAIN\nunit 2391\nENTERTAIN\n",
+            );
+
+            let exact = silver_of(&review, "2390");
+            assert_eq!(exact.doubt, Some(SilverDoubt::ContestedRegionPool));
+            assert_eq!(exact.late_income, None);
+            assert!(!exact.late_income_at_most);
+            assert!(!exact.income_in_time_at_most);
+        }
+
+        /// A unit that neither works, entertains nor taxes here has no share to bound.
+        #[test]
+        fn a_unit_that_earns_nothing_here_is_not_bounded() {
+            let review = wage_review(
+                "$14.2",
+                Some(579),
+                Some(179),
+                vec![entertainer("4329", 1, 2), unread("4501")],
+                "unit 4329\nSTUDY COMB\n",
+            );
+
+            let forecast = silver_of(&review, "4329");
+            assert!(!forecast.late_income_at_most);
+            assert!(!forecast.income_in_time_at_most);
         }
 
         #[test]
