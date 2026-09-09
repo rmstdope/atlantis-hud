@@ -5252,15 +5252,6 @@ fn hex_facts<'a>(
         .collect()
 }
 
-/// One own unit as maintenance sees it - the row [`hex_facts`] builds for each of them, lifted out
-/// so a caller holding one `Ordered` and no index can read the same facts.
-///
-/// **This is the one place a unit's facts are built**, so the ITEMS ledger and the SILVER column
-/// cannot read a unit differently (`ah-jo6b.5`). Several callers hold one `Ordered` and no index -
-/// among them `apply`, which prices one unit's `PILLAGE` and needs that unit's own combat ready men
-/// (`ah-q6bt`), since building the whole hex's rows per intent would walk the hex quadratically on
-/// a path that runs on every keystroke. `forecast_hex` is one of them too, and is the only caller
-/// with a real `Receipts` and a late picture to pass; the rest pass an empty one and no phases.
 /// How much of this unit's line reached the money (`ah-l09a.4`).
 ///
 /// The **report's** items and not the projection's: a `GIVE` this month may put silver into a unit
@@ -5280,6 +5271,15 @@ fn money_read_of(unit: &ReportUnit) -> MoneyRead {
     }
 }
 
+/// One own unit as maintenance sees it - the row [`hex_facts`] builds for each of them, lifted out
+/// so a caller holding one `Ordered` and no index can read the same facts.
+///
+/// **This is the one place a unit's facts are built**, so the ITEMS ledger and the SILVER column
+/// cannot read a unit differently (`ah-jo6b.5`). Several callers hold one `Ordered` and no index -
+/// among them `apply`, which prices one unit's `PILLAGE` and needs that unit's own combat ready men
+/// (`ah-q6bt`), since building the whole hex's rows per intent would walk the hex quadratically on
+/// a path that runs on every keystroke. `forecast_hex` is one of them too, and is the only caller
+/// with a real `Receipts` and a late picture to pass; the rest pass an empty one and no phases.
 fn unit_facts<'a>(
     hex: &'a Hex<'_>,
     ordered: &'a Ordered<'_>,

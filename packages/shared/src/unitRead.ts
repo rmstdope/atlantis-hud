@@ -108,9 +108,13 @@ export function monthLostToAnUnreadLine(silver: UnitSilver | null | undefined): 
  *
  * The agreed record writes the two sentences out in full and they differ only here, so the clause
  * is shared and the rest of each sentence is written once.
+ *
+ * `complete` is unreachable by construction - the core raises these doubts only for a unit whose
+ * line was cut short - and it falls to the whole-line clause rather than to "Part of", which would
+ * be false of a unit that was read.
  */
 export function unreadLineClause(unit: ReportUnit): string {
-  return unit.read === "nothing"
-    ? "This unit's line in the turn report"
-    : "Part of this unit's line in the turn report";
+  return unit.read === "partial"
+    ? "Part of this unit's line in the turn report"
+    : "This unit's line in the turn report";
 }

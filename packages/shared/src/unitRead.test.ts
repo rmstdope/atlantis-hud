@@ -140,3 +140,15 @@ describe("the money a broken line cost", () => {
     );
   });
 });
+
+/**
+ * `complete` never reaches the clause - the core raises neither doubt for a unit it read whole -
+ * but a wrong default here would be a sentence saying something false about a unit that was read.
+ */
+describe("unreadLineClause's unreachable case", () => {
+  it("does not claim part of a completely read unit was lost", () => {
+    expect(unreadLineClause(aReportUnit({ read: "complete" }))).toBe(
+      "This unit's line in the turn report"
+    );
+  });
+});

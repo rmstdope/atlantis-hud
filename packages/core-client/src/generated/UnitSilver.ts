@@ -12,7 +12,12 @@ import type { SilverSpender } from "./SilverSpender";
  */
 export type UnitSilver = { unitId: string, regionId: string, 
 /**
- * Silver the unit holds now, from its `SILV` item. Always known.
+ * Silver the unit holds now, from its `SILV` item.
+ *
+ * A figure, never `None` - but not always a *measurement*: where `doubt` is
+ * [`SilverDoubt::SilverNeverRead`] this is `0` because the report's line was cut short before
+ * the unit's `SILV`, not because the unit is penniless, and a reader must say so rather than
+ * print it (`ah-l09a.4`). Every other case is what the report stated.
  */
 held: number, 
 /**

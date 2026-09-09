@@ -256,7 +256,12 @@ pub struct NoStudyFee {
 pub struct UnitSilver {
     pub unit_id: String,
     pub region_id: String,
-    /// Silver the unit holds now, from its `SILV` item. Always known.
+    /// Silver the unit holds now, from its `SILV` item.
+    ///
+    /// A figure, never `None` - but not always a *measurement*: where `doubt` is
+    /// [`SilverDoubt::SilverNeverRead`] this is `0` because the report's line was cut short before
+    /// the unit's `SILV`, not because the unit is penniless, and a reader must say so rather than
+    /// print it (`ah-l09a.4`). Every other case is what the report stated.
     pub held: i64,
     /// What this month's orders are expected to earn. `None` when a term could not be priced.
     pub income: Option<i64>,
@@ -1120,7 +1125,9 @@ pub enum MoneyRead {
 pub struct UnitFacts<'a> {
     pub unit_id: &'a str,
     pub region_id: &'a str,
-    /// Silver the unit holds now. 0 for a unit carrying no `SILV` item.
+    /// Silver the unit holds now. 0 for a unit carrying no `SILV` item - and also `0`, for the
+    /// same lack of an item, where `money_read` is [`MoneyRead::MoneyLost`] and the report never
+    /// reached the unit's silver at all (`ah-l09a.4`).
     pub held: i64,
     /// The unit's headcount as the turn's early phases see it - the report's own figure, with
     /// this month's `GIVE`/`TAKE` orders applied where `super::semantics` could follow them
