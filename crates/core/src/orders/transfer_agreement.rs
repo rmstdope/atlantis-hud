@@ -423,7 +423,8 @@ fn the_three_surfaces_agree_on_a_hand_built_gift() {
         "unit 900\nGIVE 7001 15 IRON\n",
         // A class the committed catalogue cannot expand - `MAGIC` parses as a class but has no
         // `itemClasses` entry - so the ledger cannot say what moves and doubts the unit outright.
-        // This is what exercises `Exempt::LedgerDoubted`, since the same bead.
+        // This is what exercises `Exempt::LedgerDoubted`, now that no committed fixture does
+        // (`ah-jo6b.1`).
         "unit 900\nGIVE 901 ALL MAGIC\n",
     ] {
         for case in compare_one("hand-built", &text, orders, &ruleset) {
