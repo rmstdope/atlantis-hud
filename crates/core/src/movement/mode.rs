@@ -446,6 +446,42 @@ pub fn is_vessel(structure: &Structure, ruleset: Option<&Ruleset>) -> bool {
     sailing_requirement(structure, ruleset).is_some()
 }
 
+/// Whether any hull in this fleet is one the catalogue calls a flying ship.
+///
+/// `Some(true)` when at least one is - a fleet with a balloon in it is not bound by the water, so
+/// the sailing rule's "one end must be ocean" does not hold for it. `Some(false)` only when every
+/// hull was found and none of them flies. **`None` is "cannot say"** - no ruleset, a kind naming no
+/// hull, or a hull the catalogue does not carry - and callers must read it as such, never as "does
+/// not fly".
+///
+/// The test is the phrase `is a flying` in the item's own description - the catalogue's own
+/// sentence, `"This is a flying 'ship' with a capacity of ..."`, rather than the bare word. No
+/// committed hull that does not fly mentions `flying` at all today, so nothing turns on the
+/// difference now; the phrase is the narrower reading of a catalogue refetched from the network,
+/// where a future hull described as carrying flying units would otherwise silence this warning for
+/// an ordinary ship. Across all three committed catalogues the test separates exactly Airship,
+/// Balloon and Cloudship ("This is a flying 'ship' with a capacity of ...") from Cog, Corsair,
+/// Galleon, Galley, Longship and Raft ("This is a ship with a capacity of ..."). Prose rather than
+/// a scraped field because the rules page never mentions flying ships at all, so there is nothing
+/// for the ruleset scraper to have modelled.
+#[must_use]
+pub fn fleet_flies(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<bool> {
+    let ruleset = ruleset?;
+    let hulls = hulls_named_in(&fleet.kind)?;
+    let mut flies = false;
+    for (name, _) in &hulls {
+        let item = ruleset.find_item(name)?;
+        if item.kind != ItemKind::Ship {
+            return None;
+        }
+        flies |= item
+            .description
+            .as_deref()
+            .is_some_and(|text| text.to_ascii_lowercase().contains("is a flying"));
+    }
+    Some(flies)
+}
+
 /// How much weight a fleet can carry. Stated `Load: H/N` first; else the ruleset's `cargoCapacity`
 /// per hull, times the count; `None` when neither can say - an unknown hull, no ruleset - which
 /// callers treat as "cannot be priced" rather than a guess.
@@ -1034,6 +1070,74 @@ mod tests {
         };
 
         assert_eq!(cargo_capacity(&fleet, Some(&ruleset())), Some(5400));
+    }
+
+    /// The predicate's whole accepting set over the catalogue the application ships with.
+    ///
+    /// Enumerated rather than sampled: `fleet_flies` decides whether a warning is shown at all, and
+    /// the three flying hulls are the entire exception.
+    #[test]
+    fn fleet_flies_separates_the_catalogue_s_flying_ships() {
+        let rules = ruleset();
+        let fleet = |kind: &str| Structure {
+            structure_id: "1".to_string(),
+            name: "Ship".to_string(),
+            kind: kind.to_string(),
+            description: None,
+            needs: None,
+            ..Default::default()
+        };
+
+        for kind in [
+            "Balloon",
+            "Airship",
+            "Cloudship",
+            "Fleet, 1 Balloon, 2 Longships",
+        ] {
+            assert_eq!(
+                fleet_flies(&fleet(kind), Some(&rules)),
+                Some(true),
+                "{kind} should read as flying"
+            );
+        }
+
+        for kind in [
+            "Longship",
+            "Raft",
+            "Cog",
+            "Galleon",
+            "Galley",
+            "Corsair",
+            "Fleet, 2 Longships, 1 Cog",
+        ] {
+            assert_eq!(
+                fleet_flies(&fleet(kind), Some(&rules)),
+                Some(false),
+                "{kind} should read as not flying"
+            );
+        }
+
+        for kind in ["Fort", "Fleet, 1 Skyferry"] {
+            assert_eq!(
+                fleet_flies(&fleet(kind), Some(&rules)),
+                None,
+                "{kind} is not a hull the catalogue can answer for"
+            );
+        }
+
+        assert_eq!(fleet_flies(&fleet("Balloon"), None), None);
+
+        // The phrase, not the bare word: a hull that merely mentions flying does not fly. Nothing
+        // in the committed catalogues reads this way, which is why the case is fabricated - it
+        // pins what the phrase is for rather than what any world states today.
+        let mut widened = ruleset();
+        let longship = widened
+            .items
+            .values_mut()
+            .find(|item| item.name.eq_ignore_ascii_case("longship"))
+            .expect("the catalogue carries a longship");
+        longship.description = Some("This is a ship that can carry flying units.".to_string());
+        assert_eq!(fleet_flies(&fleet("Longship"), Some(&widened)), Some(false));
     }
 
     /// A hull neither the report nor the ruleset can price is `None`, never a guess.

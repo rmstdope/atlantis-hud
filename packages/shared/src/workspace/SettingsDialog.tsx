@@ -678,6 +678,12 @@ export const WARNING_GROUPS: readonly {
         code: "fleet-undercrewed",
         title: "Undercrewed fleets",
         description: "A fleet ordered to sail without enough sailing skill aboard."
+      },
+      {
+        code: "sail-between-land-hexes",
+        title: "Sailing from land to land",
+        description:
+          "A SAIL step from a land region into another land region, which the game never allows."
       }
     ]
   }
