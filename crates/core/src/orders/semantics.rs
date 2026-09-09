@@ -9358,6 +9358,9 @@ fn check_build_skill(
 /// would be a second and louder claim about something nobody knows. **Not silent where a
 /// pillager's men cannot be counted**, which is what it did before `ah-q6bt` and is the defect
 /// that bead was filed for: such a unit is told so instead (decision U1).
+///
+/// The hedged arm names the cause it actually found rather than always blaming a transfer
+/// (`ah-ohil`); see [`uncounted_cause`].
 fn check_pillage_men(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
@@ -9411,12 +9414,65 @@ fn check_pillage_men(
             }
             // No `because` tail: there is no `Readiness` to build one from, which is precisely the
             // state being reported.
-            None => format!(
-                "may not be able to pillage here: needs {needed} combat ready men, and a transfer this month means this unit's cannot be counted"
-            ),
+            None => {
+                let cause = uncounted_cause(ordered.unit, facts, ruleset);
+                format!(
+                    "may not be able to pillage here: needs {needed} combat ready men, and {cause}"
+                )
+            }
         };
         findings.push(ordered.finding(hex, codes::PILLAGE_WITHOUT_MEN, message, Some(placed)));
     }
+}
+
+/// Why this pillaging unit's men cannot be counted, as the tail of the hedged warning.
+///
+/// Asks the same four questions [`super::silver::readiness`] asks, in the same order, so the
+/// sentence names the cause that actually stopped the count rather than blaming a transfer that
+/// never happened (`ah-ohil`).
+///
+/// Returns the clause only, mirroring `because_clause`, which is the other tail of this warning.
+fn uncounted_cause(unit: &ReportUnit, facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> String {
+    /// Written by two arms - the estimate with no tag to name, and the missing catalogue - which
+    /// must agree, so they read it from one place (`ah-ohil`).
+    const NO_CATALOGUE: &str =
+        "this unit's cannot be counted until the report is read against an item catalogue";
+
+    if facts.men_estimated {
+        // The report's own item line, deliberately not `facts.items`: `men_estimated` is a
+        // statement about what the report printed, so a tag that arrived by gift did not set it.
+        // The membership test is exactly `classify_unit`'s, or this would name a different set of
+        // tags than the one that stopped the count.
+        let unlisted: BTreeSet<&str> = ruleset
+            .map(|ruleset| {
+                unit.items
+                    .iter()
+                    .filter(|item| !ruleset.items.contains_key(&item.tag))
+                    .map(|item| item.tag.as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut tags = unlisted.into_iter();
+        if let Some(first) = tags.next() {
+            let rest: Vec<&str> = tags.collect();
+            return if rest.is_empty() {
+                format!(
+                    "an item the catalogue does not list ([{first}]) means this unit's cannot be counted"
+                )
+            } else {
+                let all = format!("{first}], [{}", rest.join("], ["));
+                format!(
+                    "items the catalogue does not list ([{all}]) mean this unit's cannot be counted"
+                )
+            };
+        }
+        // An estimate with nothing to name: the report was never read against a catalogue at all.
+        return NO_CATALOGUE.to_string();
+    }
+    if facts.skills_unknown || facts.after_gifts_unknown {
+        return "a transfer this month means this unit's cannot be counted".to_string();
+    }
+    NO_CATALOGUE.to_string()
 }
 
 /// The `SAIL` that will carry this unit out of the hex, if one will.
@@ -34362,6 +34418,68 @@ BUILD
             .find(|row| row.unit_id == "2200")
             .expect("the pillager is priced");
         assert_eq!(pillager.doubt, Some(SilverDoubt::UnknownCombatReady));
+    }
+
+    /// Two tags no catalogue lists are both named, sorted, and the verb agrees (`ah-ohil`).
+    #[test]
+    fn two_unlisted_items_are_both_named() {
+        let mut raider = with_item(
+            with_item(men_holder("2200", 20), 3, "widgets", "WDGT"),
+            2,
+            "frobs",
+            "FROB",
+        );
+        raider.men_estimated = true;
+        let hex_region = ReportRegion {
+            tax_base: Some(1000),
+            ..region(vec![raider])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 2200\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "may not be able to pillage here: needs 10 combat ready men, and items the catalogue does not list ([FROB], [WDGT]) mean this unit's cannot be counted"
+        );
+    }
+
+    /// An estimated headcount with no unlisted tag to name asks for a catalogue instead of
+    /// blaming a transfer (`ah-ohil`).
+    #[test]
+    fn an_estimate_with_no_unlisted_tag_asks_for_a_catalogue() {
+        let mut raider = men_holder("2200", 20);
+        raider.men_estimated = true;
+        let hex_region = ReportRegion {
+            tax_base: Some(1000),
+            ..region(vec![raider])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 2200\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let told: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PILLAGE_WITHOUT_MEN)
+            .collect();
+        assert_eq!(told.len(), 1, "{:?}", codes(&review.findings));
+        assert_eq!(
+            told[0].message,
+            "may not be able to pillage here: needs 10 combat ready men, and this unit's cannot be counted until the report is read against an item catalogue"
+        );
     }
 
     // --- the late picture: the market, withdrawals and production (ah-dxfd.2) ---------------
