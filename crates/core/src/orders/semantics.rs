@@ -6647,6 +6647,11 @@ fn buy(
                 // where a unit's Market-phase balance is below its overstatement, and no report
                 // reaches that state - see the argument at the column's `opening`.
                 .saturating_sub(standing.overstated_tax())
+                // The rest of this unit's hopeful tax, when it shares in a hex whose pool could
+                // not be settled at all: the purse lends silver in hand, so the buyer spends
+                // silver in hand (`ah-3c2t.1`). `0` in every other hex, and kept beside
+                // `overstated_tax` because it is the same kind of term.
+                .saturating_sub(ledger.market_purse.also_withholds_from(standing.actor_index))
                 .saturating_add(shared),
         ),
         _ => MarketFunds::Unmeasured,
@@ -6754,6 +6759,8 @@ fn settle_buy_all(
         // nothing rather than lifting the cap: a `BUY ALL` has always been silver-capped, and
         // turning that off on doubt would let one buy goods it can afford none of (`ah-szye`).
         let shared = ledger.market_purse.adds_for(index).unwrap_or(0);
+        // Bound before the chain below, which borrows `ledger` mutably (`ah-3c2t.1`).
+        let withheld = ledger.market_purse.also_withholds_from(index);
         // What `rules/sequenceofevents` leaves the market to spend: TAX, PILLAGE, GIVE/TAKE and
         // CAST have run; STUDY, manufacturing PRODUCE and the wages have not. **Not**
         // `balance_of`, which reads at `StatePhase::Maintenance` and would let a later STUDY
@@ -6773,6 +6780,10 @@ fn settle_buy_all(
             // reach it whatever its tax settles at. No `max(0)` is added, so a shared purse cannot
             // refill the hole the settlement just made; `price_buy_all` clamps where it matters.
             .saturating_sub(tax_overstated)
+            // The rest of this unit's hopeful tax, when it shares in a hex whose pool could not be
+            // settled at all: the purse lends silver in hand, so the buyer spends silver in hand
+            // (`ah-3c2t.1`). `0` in every other hex.
+            .saturating_sub(withheld)
             .saturating_add(overcharged)
             .saturating_add(shared);
         let (priced, plan) = price_buy_all(
@@ -20840,6 +20851,33 @@ BUILD
                         .find(|m| m.unit_id == "1" && m.tag == "HORS")
                         .map(|m| m.delta),
                     Some(52),
+                );
+            });
+        }
+
+        /// Where no sharer's share of the tax pool is a number, the purse lends silver actually in
+        /// hand - and the buyer spends silver actually in hand too (`ah-3c2t.1`).
+        ///
+        /// `pool_shares_for` answers [`PoolShare::Unknowable`] for every taxer in a contended hex
+        /// as soon as one of them has an estimated headcount, which is what this scene sets.
+        #[test]
+        fn an_unknowable_tax_pool_lends_only_silver_in_hand() {
+            let mut hex = settled_purse_hex();
+            hex.units[1].men_estimated = true;
+
+            // Read through the ledger rather than through `review.silver`: an unknowable pool
+            // doubts the buyer's income, and a doubted row shows no `BUY ALL` figures at all. The
+            // quantity the sizing produces is still the thing under test, and `ah-3c2t.3` is what
+            // gives this case a surface of its own.
+            with_ledger(hex, SETTLED_PURSE_ORDERS, |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "1" && m.tag == "HORS")
+                        .map(|m| m.delta),
+                    Some(12),
+                    "the $600 held buys 12 horses at $50, and neither taxer's hopeful income counts"
                 );
             });
         }
