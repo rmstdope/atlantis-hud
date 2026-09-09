@@ -14290,11 +14290,36 @@ mod tests {
         );
     }
 
-    /// `ah-42li`: a unit written to take from itself is filtered long before the silver
-    /// settlement - `rules/give` refuses a unit giving to itself, and `targets::give_endpoint`
-    /// answers `GiveReach::Nowhere` for it - so neither end of its row moves. Pinned here because
-    /// `debit_source` asserts it rather than guarding it, and this is what makes that assertion
+    /// `ah-42li`: the `ALL` branch's own zero case. `rules/give` gives the third form as
+    /// `ALL [item] EXCEPT [quantity]`, and `rules/take` is that order reversed - so an `EXCEPT`
+    /// that names everything the source holds reaches the silver block with `moved` at 0. The
+    /// guard is what stops a zero `WasTaken` movement, which `SilverChange`'s doc forbids.
+    #[test]
+    fn a_take_of_all_but_everything_books_nothing() {
+        let region = region(vec![with_silver(unit("2390"), 100), unit("2391")]);
+        let source = "unit 2391\nTAKE FROM 2390 ALL SILV EXCEPT 100\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let taken_from = receipts.get("2390").cloned().unwrap_or_default();
+        assert_eq!(taken_from.taken_away, 0);
+        assert!(taken_from.taken_by.is_empty());
+        assert!(
+            taken_from.silver_moves.is_empty(),
+            "nothing moved, so there is no movement to record"
+        );
+    }
+
+    /// `ah-42li`: a unit written to take from itself never reaches the settlement's silver block -
+    /// `rules/give` refuses a unit giving to itself, and `targets::give_endpoint` answers
+    /// `GiveReach::Nowhere` for it - so **no `WasTaken` movement is booked**. Pinned here because
+    /// `debit_source` asserts that rather than guarding it, and this is what makes the assertion
     /// worth something.
+    ///
+    /// It pins the outgoing side and no more. The taker's own side of a self-take is *not* silent:
+    /// the `Nowhere` arm's `ah-awcm` block credits it a phantom `TookUnshown` +100 from
+    /// `unit <its own id>`, for an order that moves nothing. That predates this bead and is filed
+    /// as `ah-qwz7`; asserting silence here would state something false.
     #[test]
     fn a_unit_taking_from_itself_is_not_debited() {
         let region = region(vec![with_silver(unit("2391"), 500)]);
