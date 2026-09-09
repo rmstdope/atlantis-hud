@@ -22,8 +22,8 @@ use crate::orders::effects::LimitingRace;
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::phases;
-use crate::orders::study;
 use crate::orders::semantics::{counted_with_singular, withdrawal_cost, FormedSubject, Plurals};
+use crate::orders::study;
 use crate::orders::targets::{party_label, GiveReach};
 use crate::report::model::{ItemAmount, Skill};
 
@@ -305,11 +305,11 @@ pub struct UnitSilver {
     /// what the unit is made of.
     pub upkeep: Option<i64>,
     /// Why a term could not be priced, for the hover to explain. `None` when nothing was doubted.
-/// Set where this month's `STUDY` was not charged for, with what to say about it. `None` for
+    /// Set where this month's `STUDY` was not charged for, with what to say about it. `None` for
     /// every other unit, including one whose ceiling could not be settled - which is charged
     /// exactly as it was.
     pub no_study_fee: Option<NoStudyFee>,
-        pub doubt: Option<SilverDoubt>,
+    pub doubt: Option<SilverDoubt>,
     /// What the doubt is *about*, where its sentence names something - the goods of an
     /// unidentifiable `SELL`, as the order itself wrote them. `None` for every other doubt.
     pub doubt_subject: Option<String>,
@@ -2283,7 +2283,8 @@ pub fn forecast_unit(
                 let capped = ruleset.zip(entry).and_then(|(ruleset, entry)| {
                     study::at_the_ceiling(
                         ruleset,
-                        (!facts.skills_after_arrivals_unknown).then_some(facts.skills_after_arrivals),
+                        (!facts.skills_after_arrivals_unknown)
+                            .then_some(facts.skills_after_arrivals),
                         (!facts.men_by_race_after_arrivals_unknown)
                             .then_some(facts.men_by_race_after_arrivals),
                         entry,

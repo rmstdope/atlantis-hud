@@ -357,7 +357,10 @@ mod tests {
         let races = limiting_races(&by_race);
         assert_eq!(races.len(), 1);
         assert_eq!(races[0].tag, "HUMN");
-        assert!(!races[0].name.is_empty(), "the sentence needs a name to say");
+        assert!(
+            !races[0].name.is_empty(),
+            "the sentence needs a name to say"
+        );
     }
 
     #[test]

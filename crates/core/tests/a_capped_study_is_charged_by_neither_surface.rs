@@ -91,7 +91,11 @@ fn the_two_surfaces_read_the_same_post_recruit_unit() {
         "`data/GNOL` allows combat to 5 and that is combat's own maximum, so no race is blamed"
     );
     assert_eq!(steady.expense, Some(0), "nothing is spent at all");
-    assert_eq!(steady.at_month_end, Some(900), "and nothing leaves the purse");
+    assert_eq!(
+        steady.at_month_end,
+        Some(900),
+        "and nothing leaves the purse"
+    );
     assert_eq!(steady.doubt, None, "nothing here is uncertain");
 }
 
