@@ -1351,8 +1351,7 @@ describe("the column popups", () => {
         })
       )
     );
-    expect(popup.lines[1]).toMatchObject({
-      label: "lent",
+    expect(popup.lines.find((line) => line.label === "lent")).toMatchObject({
       value: "-90",
       why: "to a faction-mate's orders in this hex"
     });

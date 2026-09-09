@@ -1511,12 +1511,21 @@ fn totals_of(moves: &[(phases::StatePhase, SilverChange)]) -> (i64, i64) {
 /// has settled by the time that order does (`ah-6m7b.4`).
 #[must_use]
 fn spendable_so_far(held: i64, moves: &[(phases::StatePhase, SilverChange)]) -> i64 {
-    moves
-        .iter()
-        .fold(held, |total, (_, change)| {
-            total.saturating_add(change.amount)
-        })
-        .max(0)
+    recorded_so_far(held, moves).max(0)
+}
+
+/// The same sum, **unclamped**: what the unit holds once everything recorded so far is applied,
+/// which a caller with further terms of its own to apply must have before any clamp.
+///
+/// Clamping first and adjusting afterwards is not the same arithmetic: at `held + income - expense`
+/// of -100, a 50 study spend added back gives -50 unclamped and 50 clamped-first, and the second is
+/// wrong. The deleted `running` total never clamped, and the market's own `funds` line clamps what
+/// this feeds (`ah-6m7b.4`).
+#[must_use]
+fn recorded_so_far(held: i64, moves: &[(phases::StatePhase, SilverChange)]) -> i64 {
+    moves.iter().fold(held, |total, (_, change)| {
+        total.saturating_add(change.amount)
+    })
 }
 
 /// The signed sum of everything one cause has moved so far.
@@ -2497,15 +2506,16 @@ pub fn forecast_unit(
         // `BUY` can afford (`ah-a5ci`). Both terms are recorded negative, so subtracting them adds
         // their magnitude back.
         //
-        // This is what the deleted `running` total summed to, once its `cast_expense` terms are
-        // cancelled against each other: `held + income - expense + month_long_expense - late`.
+        // This is exactly what the deleted `running` total summed to, once its `cast_expense`
+        // terms are cancelled against each other: `held + income - expense + month_long_expense
+        // - late`. Unclamped, as `running` was - clamping before the month-long spends are added
+        // back is different arithmetic - and the `funds` line below clamps what it feeds.
         let opening = match facts.phase_silver() {
             Some(silver) => silver.as_the_market_opens(),
-            None => spendable_so_far(held, &moves)
+            None => recorded_so_far(held, &moves)
                 .saturating_sub(late)
                 .saturating_sub(moved_by(&moves, SilverChangeCause::Studied))
-                .saturating_sub(moved_by(&moves, SilverChangeCause::ProductionSpent))
-                .max(0),
+                .saturating_sub(moved_by(&moves, SilverChangeCause::ProductionSpent)),
         };
         // This unit's own earlier market lines, drawn off as `semantics::buy` draws them out of
         // the `StatePhase::Market` slot line by line.
