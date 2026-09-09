@@ -16,6 +16,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LegResult, summarizeLegs } from "./summarizeLegs";
+import { handoffPathFromEnv, writeSuiteResults } from "./suiteHandoff";
 
 export type SuiteResult = LegResult;
 
@@ -59,6 +60,10 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   const results = SUITES.map(runSuite);
+  // The gate asks for a machine-readable verdict by naming a path; run by hand nobody asks, no file
+  // is written, and this runner prints and exits exactly as it always has.
+  const handoffPath = handoffPathFromEnv(process.env);
+  if (handoffPath !== undefined) writeSuiteResults(handoffPath, results);
   const { exitCode, text } = summarize(results);
   process.stdout.write(`${text}\n`);
   process.exit(exitCode);

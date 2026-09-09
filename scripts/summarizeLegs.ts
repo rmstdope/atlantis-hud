@@ -9,7 +9,11 @@
  * Pure, so the cases are plain.
  */
 
-export type LegResult = { name: string; passed: boolean };
+/**
+ * `detail` is a leg's own inner verdict, quoted rather than judged - `runGate.ts` uses it to name
+ * which test suite failed without becoming a second reporter over the suites.
+ */
+export type LegResult = { name: string; passed: boolean; detail?: string };
 
 /**
  * The line every leg appears in, and the verdict under it when any of them failed.
@@ -23,7 +27,12 @@ export function summarizeLegs(
   results: readonly LegResult[]
 ): { exitCode: number; text: string } {
   const line = `${label}: ${results
-    .map((result) => `${result.name} ${result.passed ? "PASS" : "FAIL"}`)
+    .map(
+      (result) =>
+        `${result.name} ${result.passed ? "PASS" : "FAIL"}${
+          result.detail === undefined ? "" : ` (${result.detail})`
+        }`
+    )
     .join("  ")}`;
   const failed = results.filter((result) => !result.passed);
 

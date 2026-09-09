@@ -16,11 +16,18 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LegResult, summarizeLegs } from "./summarizeLegs";
+import { SUITE_RESULTS_ENV, readSuiteDetail } from "./suiteHandoff";
 
-type Leg = { name: string; command: string; args: string[] };
+/**
+ * `handoff` opts a leg into naming its own inner verdict: the gate hands it a path and quotes
+ * whatever it finds there. Only `test` has an inner runner to quote.
+ */
+export type Leg = { name: string; command: string; args: string[]; handoff?: boolean };
 
 /**
  * `test` stays one leg on purpose: `runSuites.ts` already reports inside it, and flattening its
@@ -29,7 +36,7 @@ type Leg = { name: string; command: string; args: string[] };
 const LEGS: readonly Leg[] = [
   { name: "lint", command: "pnpm", args: ["run", "lint"] },
   { name: "typecheck", command: "pnpm", args: ["run", "typecheck"] },
-  { name: "test", command: "pnpm", args: ["run", "test"] },
+  { name: "test", command: "pnpm", args: ["run", "test"], handoff: true },
   { name: "generated", command: "pnpm", args: ["run", "check:generated"] },
   { name: "fmt", command: "cargo", args: ["fmt", "--check"] },
   {
@@ -44,9 +51,24 @@ export function summarizeGate(results: readonly LegResult[]): { exitCode: number
   return summarizeLegs("gate", "legs", results);
 }
 
-/** Runs one leg with its output going straight to the terminal, and says whether it passed. */
-function runLeg(leg: Leg): LegResult {
-  const run = spawnSync(leg.command, leg.args, { stdio: "inherit" });
+/**
+ * Runs one leg with its output going straight to the terminal, and says whether it passed.
+ *
+ * A `handoff` leg is spawned knowing where to leave its own verdict, and gets that verdict quoted
+ * back in its detail **only when it failed** - a green gate stays as terse as it always was, and
+ * the extra words appear exactly where the reading time was being spent (ah-oac2).
+ *
+ * Spreading `process.env` is load-bearing: spawnSync's `env` replaces the environment rather than
+ * extending it, so the bare object would run `pnpm` with no PATH.
+ */
+export function runLeg(leg: Leg, handoffPath: string): LegResult {
+  const run = spawnSync(leg.command, leg.args, {
+    stdio: "inherit",
+    env:
+      leg.handoff === true
+        ? { ...process.env, [SUITE_RESULTS_ENV]: handoffPath }
+        : process.env
+  });
 
   // spawnSync does not throw on its own failure - a command that could not even start (ENOENT on
   // its PATH) or one killed by a signal both leave `status` null, which reads identically to a leg
@@ -57,7 +79,12 @@ function runLeg(leg: Leg): LegResult {
     process.stderr.write(`runGate: ${leg.name} was killed by signal ${run.signal}\n`);
   }
 
-  return { name: leg.name, passed: run.status === 0 };
+  const passed = run.status === 0;
+  return {
+    name: leg.name,
+    passed,
+    detail: leg.handoff === true && !passed ? readSuiteDetail(handoffPath) : undefined
+  };
 }
 
 /**
@@ -98,7 +125,12 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   reportDisk();
-  const results = LEGS.map(runLeg);
+  // Per-run and outside the repository: several worktrees on this machine run the gate at once, and
+  // a shared path would have one gate reporting another's verdict. No try/finally - process.exit
+  // does not run finally blocks, so the cleanup that matters would be the one that never fired.
+  const handoffDir = mkdtempSync(join(tmpdir(), "atlantis-gate-"));
+  const results = LEGS.map((leg) => runLeg(leg, join(handoffDir, "suites.json")));
+  rmSync(handoffDir, { recursive: true, force: true });
   const { exitCode, text } = summarizeGate(results);
   process.stdout.write(`${text}\n`);
   process.exit(exitCode);
