@@ -911,3 +911,93 @@ fn a_sea_route_can_end_on_a_coastal_land_hex_but_not_an_inland_one() {
     let inland = plan(&report, "900", at(3, 3)).expect_err("plain (3,3) has no water neighbour");
     assert!(matches!(inland, RouteProblem::OceanNeedsShip { .. }));
 }
+
+// ------------------------------------------------------- the sailing rule's step test
+
+/// Fixture A of `ah-g6gn.1`: `forest (2,2)` and `forest (3,3)` are neighbours and both coastal,
+/// and `ocean (2,4)` touches both, so a legal way round by sea exists. Built rather than taken
+/// from a committed report for the same reason as
+/// `a_sea_route_can_end_on_a_coastal_land_hex_but_not_an_inland_one`: `is_coastal` reads a hex's
+/// own stated exits, so every hex on the way must be described in full.
+fn coastal_pair_with_a_way_round() -> ParsedReport {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : forest (2,2) in Coast.\n\n");
+    text.push_str("forest (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : forest (3,3) in Coast.\n  \
+         South : ocean (2,4) in Sea.\n\n",
+    );
+    text.push_str(&longship());
+    text.push_str("ocean (2,4) in Sea.\n\n");
+    text.push_str(
+        "Exits:\n  North : forest (2,2) in Coast.\n  Northeast : forest (3,3) in Coast.\n\n",
+    );
+    text.push_str("forest (3,3) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : forest (2,2) in Coast.\n  Southwest : ocean (2,4) in Sea.\n",
+    );
+    parse_report_full(&text)
+}
+
+/// Fixture B: fixture A with the sea between the two hexes no longer touching `(3,3)`, which is
+/// kept coastal by a sea nothing else reaches. There is no legal way round at all.
+fn coastal_pair_with_no_way_round() -> ParsedReport {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : forest (2,2) in Coast.\n\n");
+    text.push_str("forest (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : forest (3,3) in Coast.\n  \
+         South : ocean (2,4) in Sea.\n\n",
+    );
+    text.push_str(&longship());
+    text.push_str("ocean (2,4) in Sea.\n\n");
+    text.push_str("Exits:\n  North : forest (2,2) in Coast.\n\n");
+    text.push_str("forest (3,3) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : forest (2,2) in Coast.\n  Southeast : ocean (4,4) in Sea.\n\n",
+    );
+    text.push_str("ocean (4,4) in Sea.\n\n");
+    text.push_str("Exits:\n  Northwest : forest (3,3) in Coast.\n");
+    parse_report_full(&text)
+}
+
+/// A Longship crewed by two Sailors of SAIL 2 - exactly the four levels the hull needs.
+fn longship() -> String {
+    let mut text =
+        String::from("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    text.push_str(
+        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n\n",
+    );
+    text
+}
+
+/// The direct step is coastal-to-coastal, which the sailing rule allows in none of its three
+/// forms, so the planner offers the two-step route by sea instead - at whatever it costs.
+#[test]
+fn a_fleet_goes_round_by_sea_rather_than_hopping_between_two_coastal_hexes() {
+    let report = coastal_pair_with_a_way_round();
+    let route = plan(&report, "900", at(3, 3)).expect("the sea route is legal");
+
+    assert_eq!(route.mode, MovementMode::Sail);
+    assert_eq!(route.steps.len(), 2, "out to sea and back in again");
+    assert_eq!(route.steps[0].to, at(2, 4));
+    assert_eq!(route.steps[1].to, at(3, 3));
+    assert_eq!(route.order, "SAIL S NE");
+}
+
+/// The new rule is gated on `MovementMode::Sail`; a walker between the same two land hexes is
+/// untouched.
+#[test]
+fn a_walker_between_two_land_hexes_is_unaffected() {
+    let report = turn_71();
+    let route = plan(&report, "18642", at(7, 51)).expect("a legal step");
+    assert_eq!(route.mode, MovementMode::Walk);
+    assert_eq!(route.steps.len(), 1);
+}

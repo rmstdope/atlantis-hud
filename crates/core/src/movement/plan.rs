@@ -221,7 +221,7 @@ pub(crate) fn route_for_mode(
         return Err(RouteProblem::OceanNeedsShip { coordinate: origin });
     }
 
-    let steps = match cheapest_path(map, ruleset, mode, origin, destination) {
+    let steps = match cheapest_path(map, ruleset, mode, origin, destination, SailRule::Enforced) {
         Ok(steps) => steps,
         Err(RouteProblem::NoKnownRoute) => {
             // "No known route" is a poor answer when the only thing in the way is water. Ask again
@@ -315,6 +315,18 @@ pub(crate) fn blocks(
     ruleset.is_water(terrain) && ruleset.water_needs_a_ship() && !flies(mode)
 }
 
+/// Whether the sailing rule's "one end of every step must be ocean" is being enforced.
+///
+/// `Enforced` is the game's rule and what every route a player is offered is planned under.
+/// `Lifted` exists only for [`blocked_by_sailing_rule`]'s probe: a route that appears only when
+/// the rule is lifted is a route that rule is what stopped, and the first land-to-land step on it
+/// is the one worth naming. The same trick [`blocked_by_water`] plays with `MovementMode::Fly`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SailRule {
+    Enforced,
+    Lifted,
+}
+
 /// Whether the sailing rule refuses this step outright, whatever the two hexes are like on their
 /// own.
 ///
@@ -376,7 +388,15 @@ fn blocked_by_water(
         return None;
     }
 
-    let swimming = cheapest_path(map, ruleset, MovementMode::Fly, origin, destination).ok()?;
+    let swimming = cheapest_path(
+        map,
+        ruleset,
+        MovementMode::Fly,
+        origin,
+        destination,
+        SailRule::Enforced,
+    )
+    .ok()?;
     let founders = swimming.iter().find(|step| {
         map.hex(step.to)
             .is_some_and(|hex| ruleset.is_water(&hex.terrain))
@@ -485,6 +505,7 @@ fn cheapest_path(
     mode: MovementMode,
     origin: Coordinate,
     destination: Coordinate,
+    sail_rule: SailRule,
 ) -> Result<Vec<RouteStep>, RouteProblem> {
     // Guessing is for reaching a hex the map cannot describe. Where it can, the described ground is
     // the whole answer, and a detour through country nobody has seen is not an improvement on it.
@@ -525,8 +546,9 @@ fn cheapest_path(
             if !area.holds(neighbour) || (!may_guess && map.hex(neighbour).is_none()) {
                 continue;
             }
-            let Some(step) = step_into(map, ruleset, mode, here, &standing.1, direction, neighbour)
-            else {
+            let Some(step) = step_into(
+                map, ruleset, mode, here, &standing.1, direction, neighbour, sail_rule,
+            ) else {
                 continue;
             };
             let total: Price = (price.0 + usize::from(step.estimated), price.1 + step.cost);
@@ -606,9 +628,15 @@ fn step_into(
     carried: &str,
     direction: Direction,
     into: Coordinate,
+    sail_rule: SailRule,
 ) -> Option<Step> {
     if let Some(hex) = map.hex(into) {
         let (cost, road) = step_cost(map, ruleset, mode, from, direction, into)?;
+        if sail_rule == SailRule::Enforced
+            && refused_by_sailing_step(ruleset, mode, carried, &hex.terrain)
+        {
+            return None;
+        }
         return Some(Step {
             cost,
             road,
@@ -621,7 +649,10 @@ fn step_into(
     // to sea, and the sea is exactly what a walker may not cross. For a fleet the same guard asks
     // the opposite question: fog beyond the described map cannot be confirmed coastal, so a land
     // guess blocks it rather than assuming a way in.
-    if blocks(ruleset, map, mode, into, carried) {
+    if blocks(ruleset, map, mode, into, carried)
+        || (sail_rule == SailRule::Enforced
+            && refused_by_sailing_step(ruleset, mode, carried, carried))
+    {
         return None;
     }
     Some(Step {
