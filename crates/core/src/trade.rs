@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::ReportCache;
 use crate::known_map::{resolve_known_map, KnownMapHex};
 use crate::movement::graph::{MapKnowledge, RememberedRegion};
-use crate::movement::plan::route_for_mode;
+use crate::movement::plan::{route_for_mode, Hull, Journey};
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::{Coordinate, MarketItem};
 use crate::report::ParsedReport;
@@ -252,9 +252,16 @@ fn months_for(
     to: Coordinate,
 ) -> Option<u32> {
     let points_per_month = ruleset.movement_points(mode);
-    route_for_mode(map, ruleset, mode, points_per_month, from, to)
-        .ok()
-        .map(|(_steps, months)| months.len() as u32)
+    route_for_mode(
+        map,
+        ruleset,
+        Journey::enforced(mode, Hull::Bound),
+        points_per_month,
+        from,
+        to,
+    )
+    .ok()
+    .map(|(_steps, months)| months.len() as u32)
 }
 
 /// The same as [`trade_routes`], reading the ruleset, the report and the remembered regions from

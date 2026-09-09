@@ -13,11 +13,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::MapKnowledge;
-use crate::movement::mode::{fleet_of, fleet_sailing, mobility, Mobility};
+use crate::movement::mode::{fleet_flies, fleet_of, fleet_sailing, mobility, Mobility};
 use crate::movement::orders::MoveStep;
 use crate::movement::plan::{
-    base_terrain_cost, blocks, refused_by_sailing_step, split_into_months, step_cost, MonthLeg,
-    RouteStep,
+    base_terrain_cost, blocks, refused_by_sailing_step, split_into_months, step_cost, Hull,
+    Journey, MonthLeg, RouteStep,
 };
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::ReportUnit;
@@ -60,8 +60,14 @@ pub fn trace_move(
     // The trace draws intent, not legality, so a fleet's crew shortfall never stops it here - only
     // whether the fleet's numbers can be priced at all decides whether Sail is drawn. Exactly the
     // planner's own inference otherwise: aboard a priceable fleet, the mode is Sail.
-    let sailing = fleet_of(unit, origin, ordered)
-        .and_then(|fleet| fleet_sailing(ruleset, origin, fleet, ordered));
+    let fleet = fleet_of(unit, origin, ordered);
+    let sailing = fleet.and_then(|fleet| fleet_sailing(ruleset, origin, fleet, ordered));
+    // The hull cannot change during a journey, so it is read once here and carried down to the
+    // terrain test. `Hull::from_flies` is the only place `fleet_flies`'s three-way answer is
+    // collapsed.
+    let hull = fleet.map_or(Hull::Bound, |fleet| {
+        Hull::from_flies(fleet_flies(fleet, Some(ruleset)))
+    });
     let mode_and_points = match sailing {
         Some((_, _, speed)) => Some((MovementMode::Sail, speed)),
         None => match mobility(unit) {
@@ -70,6 +76,7 @@ pub fn trace_move(
         },
     };
     let mode = mode_and_points.map(|(mode, _)| mode);
+    let journey = mode.map(|mode| Journey::enforced(mode, hull));
 
     let mut position = from;
     let mut terrain = origin.terrain.clone();
@@ -98,17 +105,21 @@ pub fn trace_move(
         // empty months say the timing is unknowable. `step_cost` refuses both undescribed hexes
         // and terrain the unit may not cross; either way the trace costs the terrain at face
         // value instead, because the order is drawn as written, not as permitted.
-        let (cost, road) = mode.map_or((0, false), |mode| {
-            step_cost(map, ruleset, mode, position, *direction, next)
-                .unwrap_or_else(|| (base_terrain_cost(ruleset, mode, &next_terrain), false))
+        let (cost, road) = journey.map_or((0, false), |journey| {
+            step_cost(map, ruleset, journey, position, *direction, next).unwrap_or_else(|| {
+                (
+                    base_terrain_cost(ruleset, journey.mode, &next_terrain),
+                    false,
+                )
+            })
         });
 
         // The first step the game would refuse marks everything after it as doubt. Judged by the
         // planner's own rule, so the two never disagree about what the sea stops.
         if blocked_from.is_none()
-            && mode.is_some_and(|mode| {
-                blocks(ruleset, map, mode, next, &next_terrain)
-                    || refused_by_sailing_step(ruleset, mode, &terrain, &next_terrain)
+            && journey.is_some_and(|journey| {
+                blocks(ruleset, map, journey, next, &next_terrain)
+                    || refused_by_sailing_step(ruleset, journey, &terrain, &next_terrain)
             })
         {
             blocked_from = Some(route.len());

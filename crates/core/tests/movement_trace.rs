@@ -94,6 +94,76 @@ fn a_written_sail_order_traces_over_water() {
     );
 }
 
+/// The same synthetic report as `movement_plan.rs`'s flying-fleet tests, differing only in the
+/// hull and the crew it states. Every hex is described in full, so `is_coastal` has each hex's own
+/// exits to read.
+fn report_with(hull: &str, sailors: &str) -> String {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
+    text.push_str(&format!(
+        "+ Ship [329] : {hull}; Load: 0/100; Sailors: {sailors}; MaxSpeed: 4.\n"
+    ));
+    text.push_str(
+        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    text.push_str(
+        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n\n",
+    );
+    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : plain (3,3) in Inland.\n\n",
+    );
+    text.push_str("plain (3,3) in Inland, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Northwest : plain (2,2) in Coast.\n");
+    text
+}
+
+/// Traces `SAIL SE SE` for the sailor aboard the hull named.
+fn trace_flight(hull: &str, sailors: &str) -> atlantis_hud_core::movement::trace::TracedPath {
+    let response = trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        &report_with(hull, sailors),
+        "[]",
+        "900",
+        &document("900", "SAIL SE SE"),
+    )
+    .expect("the ruleset loads");
+    response.path.expect("a traced path")
+}
+
+/// `data/BALL`: "This is a flying 'ship' ...". Land refuses it nothing, so the written order is
+/// drawn solid all the way to the inland plain - the same answer Problems gives about it.
+#[test]
+fn a_balloons_written_sail_over_land_is_left_undotted() {
+    let path = trace_flight("Balloon", "3/3");
+
+    assert_eq!(path.steps.len(), 2);
+    assert_eq!(path.steps[1].to, at(3, 3));
+    assert_eq!(
+        path.mode,
+        Some(atlantis_hud_core::movement::rules::MovementMode::Sail)
+    );
+    assert_eq!(path.blocked_from, None, "land never blocks a flying hull");
+}
+
+/// The guard beside it: a hull bound by the water is still dotted from the step into the inland
+/// plain, exactly as before this bead.
+#[test]
+fn a_longships_written_sail_over_land_is_still_dotted() {
+    let path = trace_flight("Longship", "4/4");
+
+    assert_eq!(path.steps.len(), 2);
+    assert_eq!(
+        path.blocked_from,
+        Some(1),
+        "the step into the inland plain is the one the game refuses"
+    );
+}
+
 #[test]
 fn a_unit_with_no_movement_order_has_no_path_to_draw() {
     let answer = trace("18642", "work\nproduce IRON\n");
