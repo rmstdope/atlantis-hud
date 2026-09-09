@@ -6578,6 +6578,11 @@ fn buy(
         // this line may spend it (`ah-omn7`).
         (Some(shared), Ok(silver)) => MarketFunds::Silver(
             silver
+                // The settled purse: what this unit will actually hold once its faction-mates'
+                // claim on the region's tax pool is settled against it (`ah-ud89`). The ledger's
+                // own balance stays hopeful - `credit_tax` still passes `PoolShare::Uncontended` -
+                // so every `not-enough-silver` finding reads exactly the balance it reads today.
+                .saturating_sub(standing.overstated_tax())
                 .saturating_add(overcharged)
                 .max(0)
                 .saturating_add(shared),
@@ -16698,17 +16703,19 @@ mod tests {
             CheckOptions::default(),
         );
 
-        // The column, which shows the settled figure, has unit 1 short.
+        // The column, which shows the settled figure, has unit 1 short: it asks for $400 and can
+        // have $350 - $100 held and a settled share of $250 - so `rules/buy` cuts the line to
+        // three swords and the ask stays above what is spent. Since `ah-ud89.4` the cut is where
+        // the shortfall shows, rather than a negative month end: the count and the money columns
+        // read one figure, and `wanted_for_orders` is what the shortfall is measured against.
         let buyer = review
             .silver
             .iter()
             .find(|row| row.unit_id == "1")
             .expect("the buyer is priced");
-        assert!(
-            buyer.at_month_end.is_some_and(|end| end < 0),
-            "the settled column shows the shortfall: {:?}",
-            buyer.at_month_end
-        );
+        assert_eq!(buyer.wanted_for_orders, Some(400), "the whole ask");
+        assert_eq!(buyer.expense, Some(300), "three of the four swords");
+        assert_eq!(buyer.at_month_end, Some(50));
 
         // The warning, which stays optimistic, does not.
         assert!(

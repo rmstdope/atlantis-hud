@@ -1020,16 +1020,19 @@ fn a_buy_all_is_not_shrunk_by_the_study_that_follows_it() {
 ///
 /// This lived in `silver.rs`'s own `mod tests` as
 /// `a_taxed_bounded_buy_is_funded_by_the_uncontended_tax`, built on a `phases: None` `UnitFacts`
-/// and funded by a `hopeful_tax` compensation term. The term is gone: a ledger-backed column reads
-/// `PhaseSilver::as_the_market_opens`, into which `credit_tax` has already put the uncontended
-/// figure (`PoolShare::Uncontended`, `semantics.rs`). So the property is unchanged and is now
-/// pinned where production actually runs, across both surfaces.
+/// and funded by a `hopeful_tax` compensation term, and it pinned the rule this test now records
+/// the reversal of. It is kept, renamed and rewritten rather than deleted: it is this file's record
+/// of how the rule changed and when.
 ///
 /// `rules/economy_taxingpillaging` gives each taxing man $50, so each of these two units asks $500
-/// of a $300 region. The column settles 900's share at $150; the ledger credits it the full $300.
-/// Four swords at $40 cost $160 - more than the settled share and less than the uncontended one.
+/// of a $300 region and *"the tax income is split evenly among all taxers"* - so 900 settles at
+/// $150. Four swords at $40 cost $160, which the settled share cannot pay for; `rules/buy` cuts the
+/// line to **three**, at $120. Since `ah-ud89.4` the count and the money columns read one figure,
+/// the settled share, on both surfaces; `wanted_for_orders` keeps the whole ask, so nothing the
+/// shortfall warning is measured against moves. `ah-omn7` Q2's hopeful reading stands wherever the
+/// application cannot see the contention.
 #[test]
-fn a_taxed_bounded_buy_is_funded_by_the_uncontended_tax() {
+fn a_taxed_bounded_buy_is_sized_by_the_settled_share() {
     let text = market_report(
         "plain (1,1) in Nowhere, 1000 peasants (orcs), $300.",
         "100 swords [SWOR] at $40.",
@@ -1061,10 +1064,14 @@ fn a_taxed_bounded_buy_is_funded_by_the_uncontended_tax() {
     );
     assert_eq!(
         row.expense,
-        Some(160),
-        "but all four swords are bought: the uncontended reading pays for them"
+        Some(120),
+        "and pays for three of the four swords, not all four"
     );
-    assert_eq!(row.wanted_for_orders, Some(160));
+    assert_eq!(
+        row.wanted_for_orders,
+        Some(160),
+        "the whole ask is still charged, so the shortfall is still said"
+    );
 }
 
 /// The lever is the tax. The column credited a taxing unit its **settled** share while

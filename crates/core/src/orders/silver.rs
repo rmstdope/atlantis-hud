@@ -2566,9 +2566,10 @@ pub fn forecast_unit(
         // Market phase: every exact `BUY` gathered above is priced here, and each `BUY ALL` then
         // spends what those leave.
         //
-        // `rules/buy` caps a line at what the unit can afford. The tax term is the *uncontended*
-        // one - the ledger's reading, not the column's settled `shares.tax` - so both surfaces
-        // settle one quantity; the money columns keep the settled figure (`ah-omn7`).
+        // `rules/buy` caps a line at what the unit can afford, and since `ah-ud89.4` both surfaces
+        // size that cap from the **settled** share of a contended tax pool - so the quantity and
+        // the money columns read one figure. `ah-omn7`'s hopeful reading survives everywhere the
+        // application cannot see the contention (`ah-ud89`).
         // What the market opens on. The ledger's own figure wherever there is a ledger, so the two
         // surfaces cannot answer one `BUY` differently (`ah-6m7b.2`); the running total this walk
         // has always kept where there is none, which is every caller with `phases: None`.
@@ -2598,10 +2599,21 @@ pub fn forecast_unit(
             // ledger's own unclamped `known_balance_at(StatePhase::Market)`. Clamping first would
             // let a sale rescue a unit already overdrawn as the market opens on this surface and
             // not on the ledger's, and the two must cut one `BUY` to one quantity.
+            //
+            // Less what this unit's hopeful tax overstates its settled share of a contended
+            // region pool by - so a numbered `BUY` is sized by what the unit will actually
+            // collect, exactly as the income row above it already is (`ah-ud89.4`). Subtracted
+            // before the single clamp, as `semantics::buy` subtracts it before its own.
             Some(silver) => silver
                 .before_the_market_opens()
                 .saturating_add(moved_by(&moves, SilverChangeCause::Sold))
+                .saturating_sub(tax_overstated)
                 .max(0),
+            // NOT settled here, and this is the one way to get `ah-ud89.4` wrong: this arm sums
+            // this walk's own `moves`, whose tax term is already the *settled* one
+            // (`price_tax(..., shares.tax)` above, where `semantics::credit_tax` passes
+            // `PoolShare::Uncontended` instead). Subtracting the overstatement here would settle
+            // the same contention twice. Do not add it for symmetry.
             None => recorded_so_far(held, &moves)
                 .saturating_sub(late)
                 .saturating_sub(moved_by(&moves, SilverChangeCause::Studied))
