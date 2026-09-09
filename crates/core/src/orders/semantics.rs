@@ -10285,9 +10285,11 @@ fn one_study_forecast(
         level_after: reached.min(ceiling_level).max(level_before),
         ceiling_level,
         limiting_races,
-        // `rules/skills_limitations` states a level maximum and says nothing about points, so at
-        // the ceiling the figure rises and the level holds.
-        held_back_by_ceiling: reached > ceiling_level,
+        // The same test `check_studying` makes above (`level >= ceiling.level()`), so the forecast
+        // and the `study-at-maximum` finding cannot disagree about one unit. `reached >
+        // ceiling_level` was strictly narrower: it needed the month's points to cross into a level
+        // above the ceiling, which for a unit sitting *at* its ceiling can take years (`ah-dpvh`).
+        cannot_raise_the_level: level_before >= ceiling_level,
         doubts,
     })
 }
@@ -36371,7 +36373,7 @@ BUILD
         assert!(!study.halved_outside_a_building, "{study:?}");
         assert_eq!(study.points_after, 83);
         assert_eq!(study.level_after, 1);
-        assert!(!study.held_back_by_ceiling, "{study:?}");
+        assert!(!study.cannot_raise_the_level, "{study:?}");
         assert!(study.doubts.is_empty(), "{study:?}");
         // `data/HUMN` specializes in combat at 4, against combat's own maximum of 5.
         assert_eq!(study.ceiling_level, 4);
@@ -36430,7 +36432,32 @@ BUILD
         assert!(!study.limiting_races[0].name.is_empty(), "{study:?}");
         assert_eq!(study.points_after, 200);
         assert_eq!(study.level_after, 2);
-        assert!(study.held_back_by_ceiling, "{study:?}");
+        assert!(study.cannot_raise_the_level, "{study:?}");
+    }
+
+    /// `ah-dpvh`: a leader at combat 5 is at `data/LEAD`'s own maximum, and the month's points do
+    /// not cross into level 6 for years - so the old `reached > ceiling_level` never fired and the
+    /// forecast read as an ordinary advance.
+    #[test]
+    fn a_study_by_a_unit_already_at_its_ceiling_cannot_raise_the_level() {
+        let student = with_skill_points(
+            with_silver(with_race(unit("900"), 1, "leader", "LEAD"), 1000),
+            "COMB",
+            5,
+            450,
+        );
+        let study = study_of(
+            vec![region(vec![student])],
+            "unit 900\nSTUDY Combat\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
+
+        assert_eq!(study.ceiling_level, 5);
+        assert_eq!(study.level_before, 5);
+        assert_eq!(study.points_after, 480);
+        assert_eq!(study.level_after, 5);
+        assert!(study.cannot_raise_the_level, "{study:?}");
     }
 
     #[test]
@@ -36819,7 +36846,7 @@ BUILD
         assert_eq!(study.level_before, 3);
         assert_eq!(study.points_after, 210);
         assert_eq!(study.level_after, 3);
-        assert!(study.held_back_by_ceiling, "{study:?}");
+        assert!(study.cannot_raise_the_level, "{study:?}");
     }
 
     /// The catalogue prices `annihilation` nowhere, so the fee cannot be said at all - and the

@@ -1714,7 +1714,7 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
     levelAfter: 2,
     ceilingLevel: 5,
     limitingRaces: [],
-    heldBackByCeiling: false,
+    cannotRaiseTheLevel: false,
     doubts: [],
     ...overrides
   });
@@ -1960,18 +1960,96 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
   it("the skills popup says what the race ceiling holds back", () => {
     const popup = skillsPopup(
       own({
-        reportedSkills: [skill("combat", "COMB", 1, 53)],
-        skills: [skill("combat", "COMB", 1, 53)],
+        reportedSkills: [skill("combat", "COMB", 2, 95)],
+        skills: [skill("combat", "COMB", 2, 95)],
         study: forecast({
-          heldBackByCeiling: true,
+          cannotRaiseTheLevel: true,
           ceilingLevel: 2,
+          levelBefore: 2,
           limitingRaces: [{ tag: "HDWA", name: "hill dwarf" }]
         })
       })
     );
-    expect(popup.notes.join(" ")).toContain(
-      "Studying combat: worth one month. No hill dwarf may take combat past level 2, so the points rise and the level holds."
+    expect(popup.warning).toBe(
+      "No hill dwarf may take combat past level 2, and this unit is already there, so studying it this month changes nothing."
     );
+  });
+
+  // `ah-dpvh`: a study that cannot raise the level has no next turn to draw, no "worth one month"
+  // note, and one amber sentence saying why.
+  const cappedLeader = (overrides: Partial<StudyForecast> = {}) =>
+    own({
+      reportedSkills: [skill("combat", "COMB", 5, 450)],
+      skills: [skill("combat", "COMB", 5, 450)],
+      study: forecast({
+        cannotRaiseTheLevel: true,
+        ceilingLevel: 5,
+        levelBefore: 5,
+        pointsBefore: 450,
+        levelAfter: 5,
+        pointsAfter: 480,
+        ...overrides
+      })
+    });
+
+  it("the skills popup draws no next-turn figure for a study that cannot raise the level", () => {
+    const popup = skillsPopup(cappedLeader());
+    expect(popup.lines[0]!.steps).toBeUndefined();
+    expect(popup.notes.join(" ")).not.toContain("worth one month");
+  });
+
+  it("the skills popup says why a study at the skill's own maximum changes nothing", () => {
+    const popup = skillsPopup(cappedLeader());
+    expect(popup.warning).toBe(
+      "Combat stops at level 5 and this unit is already there, so studying it this month changes nothing."
+    );
+  });
+
+  it("the skills popup names the level a unit past its ceiling actually stands at", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 3, 180)],
+        skills: [skill("combat", "COMB", 3, 180)],
+        study: forecast({
+          cannotRaiseTheLevel: true,
+          ceilingLevel: 2,
+          levelBefore: 3,
+          limitingRaces: [{ tag: "HDWA", name: "hill dwarf" }]
+        })
+      })
+    );
+    expect(popup.warning).toBe(
+      "No hill dwarf may take combat past level 2, and this unit is already at level 3, so studying it this month changes nothing."
+    );
+  });
+
+  it("the skills popup keeps the ceiling sentence before a doubt", () => {
+    const popup = skillsPopup(
+      cappedLeader({ doubts: [{ reason: "feeShort", fee: 100, shortBy: 40, teacher: "" }] })
+    );
+    expect(popup.warning).toMatch(/^Combat stops at level 5/);
+    expect(popup.warning).toContain("is 40 short");
+  });
+
+  it("the skills popup still draws the pair a GIVE of men made", () => {
+    const popup = skillsPopup(
+      own({
+        reportedSkills: [skill("combat", "COMB", 5, 450)],
+        skills: [skill("combat", "COMB", 5, 400)],
+        study: forecast({
+          cannotRaiseTheLevel: true,
+          ceilingLevel: 5,
+          levelBefore: 5,
+          pointsBefore: 450,
+          levelAfter: 5,
+          pointsAfter: 480
+        })
+      })
+    );
+    expect(popup.lines[0]!.steps).toEqual([
+      { value: "5 (450)", mark: "reported" },
+      { value: "5 (400)", mark: "down" }
+    ]);
   });
 
   it("the skills popup says a magic month spent outside a building is half a month", () => {
@@ -2114,25 +2192,6 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         warning: null
       })
     ).toBe("combat COMB 1 (53), 2 (98) next turn if it happens.");
-  });
-
-  it("a skill at its own maximum names the skill, not a race", () => {
-    const popup = skillsPopup(
-      own({
-        reportedSkills: [skill("combat", "COMB", 5, 450)],
-        skills: [skill("combat", "COMB", 5, 450)],
-        study: forecast({
-          levelAfter: 5,
-          pointsAfter: 500,
-          heldBackByCeiling: true,
-          ceilingLevel: 5,
-          limitingRaces: []
-        })
-      })
-    );
-    expect(popup.notes.join(" ")).toContain(
-      "Combat stops at level 5, so the points rise and the level holds."
-    );
   });
 
   it("an own unit with nothing to draw still says it has no skills", () => {

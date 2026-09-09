@@ -1840,7 +1840,7 @@ describe("the study forecast", () => {
     levelAfter: 2,
     ceilingLevel: 4,
     limitingRaces: [{ tag: "HUMN", name: "human" }],
-    heldBackByCeiling: false,
+    cannotRaiseTheLevel: false,
     doubts: []
   };
 
