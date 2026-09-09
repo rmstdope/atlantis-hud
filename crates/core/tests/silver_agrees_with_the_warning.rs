@@ -1075,9 +1075,11 @@ fn a_taxed_bounded_buy_is_funded_by_the_uncontended_tax() {
 ///
 /// `rules/economy_taxingpillaging` gives each taxing man $50, so each unit asks $500 of a $300
 /// region. The column settled 900's proportional half, $150, which buys 7 grain at $20; the ledger
-/// credits the full $300, which buys 15. Neither is capped by the market, which holds 20.
+/// credited the full $300, which bought 15. Since `ah-ud89.2` the cap reads the settled share too,
+/// so both surfaces say **7** - the reading this test's own commentary already called the settled
+/// one. Neither is capped by the market, which holds 20.
 #[test]
-fn a_contended_taxers_buy_all_is_sized_as_the_ledger_sizes_it() {
+fn a_contended_taxers_buy_all_is_sized_by_its_share() {
     let text = market_report(
         "plain (1,1) in Nowhere, 1000 peasants (orcs), $300.",
         "20 grain [GRAI] at $20.",
@@ -1096,12 +1098,12 @@ fn a_contended_taxers_buy_all_is_sized_as_the_ledger_sizes_it() {
     );
 
     assert_eq!(
-        items_bought, 15,
-        "the ledger's optimistic tax pays for fifteen"
+        items_bought, 7,
+        "the settled half of a $300 pool pays for seven at $20"
     );
     assert_eq!(
-        column_bought, 15,
-        "and the column now says what the ledger settled"
+        column_bought, 7,
+        "and the column says the same settled figure"
     );
     assert_eq!(column_bought, items_bought, "the two surfaces agree");
 }

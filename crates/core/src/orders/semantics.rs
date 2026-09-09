@@ -4535,7 +4535,16 @@ fn ledger_for_with_production<'a>(
     // the `StatePhase::Market` balance, which `rules/sequenceofevents` says is what the market may
     // spend - a later STUDY does not shrink a purchase the turn has already made (`ah-6m7b.2`).
     for (index, ordered) in hex.units.iter().enumerate() {
-        settle_buy_all(&mut ledger, hex, index, ordered);
+        settle_buy_all(
+            &mut ledger,
+            hex,
+            index,
+            ordered,
+            // `.get(..).unwrap_or(0)` rather than indexing: a length mismatch reads as *nobody is
+            // contended*, matching `HexStanding::overstated_tax`, never as a panic on a keystroke
+            // path (`ah-ud89.2`).
+            tax_overstated.get(index).copied().unwrap_or(0),
+        );
     }
 
     discard_unfinished_ships_after_movement(&mut ledger, hex, ruleset);
@@ -6509,7 +6518,16 @@ fn buy(
 /// is what `rules/sequenceofevents` leaves the market to spend - *"BUY orders are processed"* runs
 /// before *"STUDY orders are processed"*, so a later study cannot shrink a purchase the turn has
 /// already made (`ah-6m7b.2`).
-fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &Ordered<'_>) {
+fn settle_buy_all(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    index: usize,
+    actor: &Ordered<'_>,
+    // What this unit's hopeful tax overstates its settled share of the region's tax pool by
+    // (`ah-ud89.1`'s `tax_overstated_by`). `0` for a unit nobody contends with, which is every
+    // unit in every hex with a tax pool big enough to go round (`ah-ud89.2`).
+    tax_overstated: i64,
+) {
     let who = &actor.unit.unit_id;
     let Some(lines) = ledger.buy_all.remove(who) else {
         return;
@@ -6552,6 +6570,15 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &
         let silver_available = ledger
             .state
             .balance_at(StatePhase::Market, who, SILVER)
+            // The settled purse: what this unit will actually hold once its faction-mates' claim
+            // on the region's tax pool is settled against it (`ah-ud89.2`). The ledger's own
+            // balance stays hopeful - `credit_tax` still passes `PoolShare::Uncontended` - so
+            // every `not-enough-silver` finding reads exactly the balance it reads today. The
+            // order of the three terms matters: the overstatement comes off this unit's own
+            // balance because that is money it will not collect, while `overcharged` and `shared`
+            // reach it whatever its tax settles at. No `max(0)` is added, so a shared purse cannot
+            // refill the hole the settlement just made; `price_buy_all` clamps where it matters.
+            .saturating_sub(tax_overstated)
             .saturating_add(overcharged)
             .saturating_add(shared);
         let (priced, plan) = price_buy_all(

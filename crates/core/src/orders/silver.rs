@@ -485,8 +485,9 @@ pub struct SettledBuyAll {
     pub price: i64,
     /// What the line actually cost - `Priced::spends` as `price_buy_all` returned it.
     pub spends: i64,
-    /// What the unit could spend when the line was reached: its market-phase balance, plus what an
-    /// over-charged bounded line left it, plus what `rules/share` lends it.
+    /// What the unit could spend when the line was reached: its market-phase balance, less what a
+    /// contended tax pool's settlement takes off this unit's collection (`ah-ud89.2`), plus what
+    /// an over-charged bounded line left it, plus what `rules/share` lends it.
     pub silver_available: i64,
     /// What `price_buy_all` decided: the count, the caps, and which one bit.
     pub plan: BuyAllPlan,
