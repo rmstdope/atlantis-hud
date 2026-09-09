@@ -6817,14 +6817,26 @@ fn sell(
     standing: HexStanding<'_>,
 ) {
     let who = &actor.unit.unit_id;
-    let Some(demand) = market(&hex.region.wanted, item, hex, actor, ruleset) else {
-        ledger.doubted.insert(who.clone());
-        ledger
-            .uncounted
-            .entry(who.clone())
-            .or_default()
-            .push(placed.line);
-        return;
+    let demand = match market_answer(&hex.region.wanted, item, hex, actor, ruleset) {
+        MarketAnswer::Offered(line) => line,
+        // The market does not want these goods, so the order sells none and earns nothing. That
+        // is this line followed to its end, not a sum the ledger could not follow, so neither
+        // `doubted` nor `uncounted` is touched - exactly what the SILVER column's
+        // `SaleAnswer::NotWanted` arm already does, and the shipped `not-traded-here` finding is
+        // what tells the player why (`rules/sell`, `ah-jo6b.3`). It returns before the `DeadSale`
+        // push below, which `check_emptied_sales` relies on.
+        MarketAnswer::NotTraded(_) => return,
+        // Nothing could say what item this is, so what the market would take, what it earns and
+        // whether the stock ran out are all unanswerable.
+        MarketAnswer::Unknown => {
+            ledger.doubted.insert(who.clone());
+            ledger
+                .uncounted
+                .entry(who.clone())
+                .or_default()
+                .push(placed.line);
+            return;
+        }
     };
 
     let tag = demand.tag.to_ascii_uppercase();
@@ -7770,8 +7782,8 @@ struct MarketPurse {
     /// The `doubted` half of that is narrower than it looks, and deliberately so: the snapshot is
     /// taken as the market opens, so it sees only the doubts raised in the phases before it - the
     /// first five of [`phases::ORDER`]: `Instant`, `Claim`, `Give`, `Tax`, `Cast`. A sharer
-    /// doubted later, by its own `SELL` of goods this market does
-    /// not price or by a `PRODUCE` in a phase after the market, is still counted here. That is
+    /// doubted later, by its own `SELL` of goods nothing could identify
+    /// or by a `PRODUCE` in a phase after the market, is still counted here. That is
     /// right rather than merely convenient: those doubts are about what the unit will hold at the
     /// *end* of the month, and what this purse lends is what it holds when the market opens, which
     /// is a figure the ledger still knows. The `known_balance_at` half is what catches a
@@ -19775,6 +19787,29 @@ BUILD
                 assert_eq!(balance_of(ledger, "902", "SWOR"), 5);
                 assert!(!ledger.doubted.contains("901"));
                 assert!(!ledger.uncounted.contains_key("901"));
+            });
+        }
+
+        /// `rules/sell` sells only what the region wants, so a sale of goods its `Wanted` list does
+        /// not carry sells none and earns nothing - a followed order whose answer is zero, not a
+        /// month that cannot be added up. The SILVER column has always read it that way
+        /// (`silver.rs`, `SilverDoubt::UnknownGoods`); this is the ledger catching up
+        /// (`ah-jo6b.3`).
+        #[test]
+        fn a_sale_the_market_does_not_want_is_counted_as_nothing() {
+            let mut hex_region = region(vec![with_silver(
+                with_item(unit("901"), 10, "furs", "FUR"),
+                100,
+            )]);
+            hex_region.wanted.push(line(100, 10, "grain", "GRAI"));
+            with_ledger(hex_region, "unit 901\nSELL 10 fur\n", |ledger| {
+                assert!(
+                    !ledger.doubted.contains("901"),
+                    "the market's no is an answer, not an unanswerable question"
+                );
+                assert!(!ledger.uncounted.contains_key("901"));
+                assert_eq!(balance_of(ledger, "901", "FUR"), 10);
+                assert_eq!(balance_of(ledger, "901", "SILV"), 100);
             });
         }
 
