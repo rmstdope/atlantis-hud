@@ -22,7 +22,7 @@ use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::phases;
 use crate::orders::semantics::{counted_with_singular, FormedSubject, Plurals};
-use crate::orders::targets::{give_outcome, party_label, GiveOutcome, GiveReach};
+use crate::orders::targets::{party_label, GiveReach};
 use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
@@ -713,10 +713,6 @@ pub enum SilverDoubt {
     UnknownCombatReady,
     /// This month's arrivals cannot be merged into the unit's skills, so PRODUCE is uncountable.
     UnknownSkillsAfterArrivals,
-    /// `GIVE` of silver to a target the report cannot settle: `rules/give` lets a unit we cannot
-    /// see receive it once its faction has declared us Friendly, and no report carries that
-    /// declaration - so whether the silver leaves cannot be said (`ah-66yi`).
-    GiveTargetUncertain,
     /// A later order prices goods an earlier `GIVE` may or may not have taken away, so what this
     /// unit earns or spends afterwards cannot be said (`ah-66yi`).
     GiveConsequencesUncertain,
@@ -912,9 +908,9 @@ pub struct Lookups<'a> {
     ///
     /// [`GiveReach::Nowhere`] is a unit number the report shows elsewhere, a `NEW` alias no `FORM`
     /// here creates, and a unit giving to itself: the server refuses all three, so the order costs
-    /// this unit nothing (`ah-vcp8.2`). The arm applies [`give_outcome`] to the actual silver tag
-    /// for the rest, so a visible foreign gift of silver is still an expense and one aimed at a
-    /// unit the report never prints is a doubt (`rules/give`, `ah-66yi`).
+    /// this unit nothing (`ah-vcp8.2`). Every other reach settles: `rules/give` exempts silver from
+    /// the factional rule, so a visible foreign gift of it is an expense, and a gift to a unit the
+    /// report never prints is assumed to land and is an expense too (`ah-jo6b.1`).
     pub give_reach: &'a dyn Fn(&Party) -> GiveReach,
     /// The target a `GIVE` this month left uncertain named, for an upper-case item tag, or `None`
     /// where this unit's holding of that tag survives its gifts intact (`ah-66yi`).
@@ -2247,12 +2243,10 @@ pub fn forecast_unit(
                 if reach == GiveReach::Nowhere {
                     continue;
                 }
-                // `rules/give` exempts silver from the factional rule outright, so a target we can
-                // see takes it definitely. A number the report never prints is the other case: it
-                // may be a unit we cannot see whose faction has declared us Friendly, and no report
-                // says which (`ah-66yi`).
-                let silver_uncertain =
-                    give_outcome(reach, SILVER_TAG, None) == GiveOutcome::Uncertain;
+                // Every silver gift this arm can still see is settled: `rules/give` exempts silver
+                // from the factional rule outright, so a visible foreign target takes it, and a
+                // number the report never prints is assumed to receive it (`ah-jo6b.1`) - the
+                // doubt that used to sit here is now the `give-target-not-here` warning instead.
                 if let Selector::Class(name) = what {
                     if *amount == (Amount::All { except: 0 }) {
                         match (lookups.class_carries_silver)(name) {
@@ -2263,12 +2257,6 @@ pub fn forecast_unit(
                             // does - and booked from the ledger's own settlement for the same
                             // reason, since `class_tags` expands the class into one transfer per
                             // tag, silver among them, on this same line (`ah-6m7b.3`).
-                            Some(true) if silver_uncertain => {
-                                expense_doubt =
-                                    expense_doubt.or(Some(SilverDoubt::GiveTargetUncertain));
-                                doubt_subject = doubt_subject.or(Some(party_label(to)));
-                                continue;
-                            }
                             Some(true) => {
                                 // The ledger has already handed this over: `class_tags` expands the
                                 // class into one transfer per tag, silver among them, on this same
@@ -2310,11 +2298,6 @@ pub fn forecast_unit(
                 };
                 if !(lookups.item_tag)(text).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG))
                 {
-                    continue;
-                }
-                if silver_uncertain {
-                    expense_doubt = expense_doubt.or(Some(SilverDoubt::GiveTargetUncertain));
-                    doubt_subject = doubt_subject.or(Some(party_label(to)));
                     continue;
                 }
                 let to_nobody = matches!(to, Party::Discard);
@@ -2572,7 +2555,6 @@ pub fn forecast_unit(
                     | Some(SilverDoubt::MarketDoesNotSell)
                     | Some(SilverDoubt::UnpricedProduction)
                     | Some(SilverDoubt::GivesAWholeClass)
-                    | Some(SilverDoubt::GiveTargetUncertain)
             )
         }),
         received: receipts.silver,

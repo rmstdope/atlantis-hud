@@ -10850,12 +10850,11 @@ fn check_transfer_targets(
             ) {
                 // In this hex, ours or anyone's, or a deliberate discard: nothing to say.
                 (GiveReach::Ours | GiveReach::Foreign | GiveReach::Discard, _) => continue,
-                // A GIVE to a number the whole report never prints is not a mistake we can
-                // establish: `rules/give` lets a faction that has declared us Friendly receive
-                // from a unit that cannot see it at all, so this may be a perfectly good order
-                // aimed at a unit we simply cannot see (`ah-66yi`). A TAKE is unchanged -
-                // `rules/take` confines it to a faction-mate, whom we would be shown.
-                (GiveReach::Unshown, Intent::Give { .. }) => continue,
+                // A GIVE to a number the whole report never prints now warns like the rest. The
+                // projection assumes the gift lands and shows the consequences (`ah-jo6b`), so the
+                // one thing left to tell the player is that nothing in the report matches the
+                // number - which may be a typo, or a unit we simply cannot see whose faction has
+                // declared us Friendly (`rules/give`).
                 (GiveReach::Unshown | GiveReach::Nowhere, _) => {}
             }
 
@@ -29427,18 +29426,19 @@ BUILD
         );
     }
 
-    /// `rules/give`: a unit may give "to a unit which it is able to see, unless the faction of the
-    /// target unit has declared you Friendly or better". A number the whole report never prints may
-    /// be exactly such a unit, so there is no mistake to report - the Units table admits the order
-    /// through the item hover instead (`ah-66yi`, which reversed this test's answer).
+    /// `ah-jo6b`: the projection assumes the gift lands, so what is left to tell the player is that
+    /// nothing in the report matches the number. This reverses `ah-66yi`, which reversed the
+    /// original answer.
     #[test]
-    fn a_gift_to_a_unit_in_no_region_says_nothing() {
+    fn a_gift_to_a_unit_in_no_region_says_so() {
+        let finding = only(check(
+            vec![region(vec![with_silver(unit("13303"), 1000)])],
+            "unit 13303\nGIVE 16585 500 SILV\n",
+        ));
+
         assert_eq!(
-            check(
-                vec![region(vec![with_silver(unit("13303"), 1000)])],
-                "unit 13303\nGIVE 16585 500 SILV\n",
-            ),
-            vec![]
+            finding.message,
+            "unit 16585 is not in this hex to be given to, and appears nowhere else in your report"
         );
     }
 
@@ -29606,18 +29606,19 @@ BUILD
             assert_eq!(silver.expense, Some(100));
         }
 
-        /// The other case: a number the report never prints. Whether there is a target at all is
-        /// unresolved, so even silver cannot be said to leave - and the note names the unit.
+        /// The other case: a number the report never prints. The projection assumes the gift lands
+        /// (`ah-jo6b`), so the silver is spent like any other gift and nothing is blanked - what
+        /// the report cannot establish is said by `give-target-not-here` instead.
         #[test]
-        fn silver_to_an_unshown_target_names_the_unit_it_cannot_settle() {
+        fn silver_to_an_unshown_target_is_spent() {
             let review = reviewed(
                 vec![region(vec![with_silver(unit("2390"), 500)])],
                 "unit 2390\nGIVE 9999 100 SILV\n",
             );
 
             let silver = silver_for(&review, "2390");
-            assert_eq!(silver.doubt, Some(SilverDoubt::GiveTargetUncertain));
-            assert_eq!(silver.doubt_subject.as_deref(), Some("unit 9999"));
+            assert_eq!(silver.doubt, None, "{silver:?}");
+            assert_eq!(silver.expense, Some(100));
         }
 
         /// A later *exact* transfer of the same tag draws on a balance this ledger has marked
@@ -30030,9 +30031,9 @@ BUILD
     }
 
     #[test]
-    /// One finding, not two: the TAKE from a number the report never prints is still a mistake, and
-    /// the GIVE to one is not (`ah-66yi`). The GIVE to a unit shown *elsewhere* is, which is what
-    /// the second unit here holds onto.
+    /// One finding, not two, on the unit that has both. The GIVE here is to `4427`, which the
+    /// report shows in *another* region, so it is `GiveReach::Nowhere` and warns for that reason -
+    /// not for the unshown-number reason, which now warns too (`ah-jo6b`).
     fn both_a_give_and_a_take_on_one_unit_are_two_findings() {
         let elsewhere = ReportRegion {
             region_id: "1:9,53".to_string(),
@@ -30799,8 +30800,9 @@ BUILD
             Case {
                 code: codes::GIVE_TARGET_NOT_HERE,
                 regions: vec![region(vec![with_silver(unit("5"), 1000)])],
-                // A `NEW` alias no `FORM` here creates: still a definite no-op, where a plain
-                // unit number the report never prints is not (`ah-66yi`).
+                // A `NEW` alias no `FORM` here creates: a definite no-op. A plain unit number the
+                // report never prints reaches the same code by a different route now, the gift
+                // being assumed to land and the warning naming what cannot be matched (`ah-jo6b`).
                 orders: "unit 5\nGIVE NEW 7 500 SILV\n",
                 allowance: None,
                 unclaimed: None,
