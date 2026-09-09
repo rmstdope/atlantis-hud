@@ -1554,9 +1554,11 @@ const SILVER_NOTES_RESTATED: Record<string, (groups: readonly CauseGroup[]) => b
   "taxes-by-flag": (groups) => hasOrderlessGroup(groups, "taxed"),
   "works-by-default": (groups) => hasOrderlessGroup(groups, "worked"),
   // The `was lent` line carries the figure the sentence does not (`ah-3c2t.2`, option **S3**).
-  // Keyed on the drawn line and not on the note's own condition, as every entry here is: a
-  // doubted month draws no cause lines at all while `borrowedForOrders` is still populated, and
-  // dropping the note there would take the sentence away and put nothing in its place.
+  // Keyed on the drawn line and not on the note's own condition, as every entry here is: a month
+  // that populates `borrowedForOrders` without drawing the line - a consumer that fills the field
+  // and not the list - would otherwise lose the sentence and put nothing in its place. Note the
+  // doubted month is *not* that case here: `sharing_purse` gives a doubted unit `borrows == 0`,
+  // so its `borrowedForOrders` is `0` too and the note does not fire either way.
   "shared-silver-pays-orders": (groups) => groups.some((group) => group.cause === "was-lent")
 };
 
