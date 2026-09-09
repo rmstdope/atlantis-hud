@@ -5731,25 +5731,27 @@ fn apply(
                 return;
             }
             if let Some(tag) = resolve_item(item, hex, actor, ruleset) {
-                ledger.movements.push(ItemMovement {
-                    unit_id: who.clone(),
-                    tag: tag.clone(),
-                    name: item_name(&tag, hex, ruleset),
-                    delta: *count,
-                    cause: ItemChangeCause::Withdrawn,
-                    phase: StatePhase::Withdraw,
-                    line: Some(placed.line as i64),
-                    unit_price: None,
-                    other: None,
-                    created: None,
-                });
-                // Only what the catalogue prices a withdrawal of actually arrives.
-                // `rules/withdraw` acquires *basic items* with unclaimed funds, and a
-                // `withdraw_cost` is how the catalogue says an item is one; crediting anything
-                // else would silence a shortfall warning that is telling the player the truth,
-                // and `check_claims` skips the same order, so nothing else would speak up. With
-                // no ruleset there is no catalogue to ask, and the same answer follows.
+                // Only what the catalogue prices a withdrawal of actually arrives, and it arrives
+                // in both places or in neither: the balance the warnings read, and the movement
+                // the ITEMS column draws. `rules/withdraw` acquires *basic items* with unclaimed
+                // funds, and a `withdraw_cost` is how the catalogue says an item is one;
+                // crediting anything else would silence a shortfall warning that is telling the
+                // player the truth, and `check_claims` skips the same order, so nothing else
+                // would speak up. With no ruleset there is no catalogue to ask, and the same
+                // answer follows.
                 if withdrawal_cost(item, ruleset).is_some() {
+                    ledger.movements.push(ItemMovement {
+                        unit_id: who.clone(),
+                        tag: tag.clone(),
+                        name: item_name(&tag, hex, ruleset),
+                        delta: *count,
+                        cause: ItemChangeCause::Withdrawn,
+                        phase: StatePhase::Withdraw,
+                        line: Some(placed.line as i64),
+                        unit_price: None,
+                        other: None,
+                        created: None,
+                    });
                     ledger.state.apply(StatePhase::Withdraw, who, &tag, *count);
                 }
             }
@@ -19753,6 +19755,18 @@ BUILD
                     assert!(ledger.movements.is_empty());
                 },
             );
+        }
+
+        /// `rules/withdraw` acquires *basic items* with unclaimed funds, and the catalogue says
+        /// which those are by carrying a `withdraw_cost` at all - silver carries none. The
+        /// balance already knew that; the movement did not, so the ITEMS column showed goods no
+        /// other surface believed in.
+        #[test]
+        fn a_withdrawal_of_something_unwithdrawable_moves_nothing() {
+            let hex_region = region(vec![unit("2390")]);
+            with_ledger(hex_region, "unit 2390\nWITHDRAW 500 SILV\n", |ledger| {
+                assert!(ledger.movements.is_empty(), "{:?}", ledger.movements);
+            });
         }
 
         #[test]
