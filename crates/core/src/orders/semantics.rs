@@ -1916,13 +1916,9 @@ fn compared_silver_rows(
         })
         .map(|(cause, line, amount)| {
             let amount = match cause {
-                // `credit_tax` prices with `tax_base.unwrap_or(i64::MAX)` and
-                // `PoolShare::Uncontended` while the column passes the real `region.tax_base` and
-                // `shares.tax`, so a contended pool yields two numbers (`ah-1x2h`).
-                SilverChangeCause::Taxed
                 // The ledger prices with `actor.unit.men`, the column with the late headcount
                 // after gifts and recruits (`ah-1x2h`).
-                | SilverChangeCause::Studied => None,
+                SilverChangeCause::Studied => None,
                 _ => Some(amount),
             };
             (cause, line, amount)
@@ -4626,7 +4622,15 @@ fn ledger_for_with_production<'a>(
         for (index, ordered) in hex.units.iter().enumerate() {
             if phase == StatePhase::Tax {
                 let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
-                credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
+                credit_tax(
+                    &mut ledger,
+                    hex,
+                    ordered,
+                    &facts,
+                    ruleset,
+                    pillaged,
+                    tax_overstated.get(index).copied().unwrap_or(0),
+                );
             }
             for placed in &ordered.intents {
                 // BUILD and manufacturing PRODUCE are each deferred to a pass of their own
@@ -5776,6 +5780,11 @@ fn credit_tax(
     facts: &UnitFacts<'_>,
     ruleset: Option<&Ruleset>,
     pillaged: bool,
+    // What this unit's hopeful tax overstates its settled share of the region's tax pool by
+    // (`ah-ud89.1`'s `tax_overstated_by`). `0` for a unit nobody contends with. Subtracted from
+    // the *record* alone: the balance stays hopeful, which is what `ah-ud89` decided
+    // (`ah-1x2h.1`).
+    tax_overstated: i64,
 ) {
     if !taxes(&actor.flags, &actor.intents) {
         return;
@@ -5818,7 +5827,7 @@ fn credit_tax(
         ledger,
         StatePhase::Tax,
         &actor.unit.unit_id,
-        priced.earns,
+        priced.earns.saturating_sub(tax_overstated),
         SilverChangeCause::Taxed,
         line,
     );
@@ -8028,8 +8037,9 @@ fn buy_silver(ledger: &mut Ledger<'_>, who: &str, wanted: i64, spent: i64, place
 }
 
 /// Records a silver movement without applying it. Split from [`apply_silver`] for the two callers
-/// whose recorded figure and applied figure differ - `buy_silver` above, and `credit_tax`, whose
-/// line comes from the unit's intents rather than from a `PlacedIntent` it holds.
+/// whose recorded figure and applied figure differ - `buy_silver` above, and `credit_tax`, which
+/// records a contended taxer's settled share while applying its hopeful one (`ah-1x2h.1`) and
+/// whose line comes from the unit's intents rather than from a `PlacedIntent` it holds.
 fn record_silver(
     ledger: &mut Ledger<'_>,
     phase: StatePhase,
@@ -22019,15 +22029,12 @@ BUILD
             );
         }
 
-        /// `Taxed` and `Studied` are priced differently by the two walks by construction, so they
-        /// are compared on cause and line and not on amount (`ah-6m7b.5.3`).
+        /// `Studied` is priced differently by the two walks by construction, so it is compared on
+        /// cause and line and not on amount (`ah-6m7b.5.3`); `ah-1x2h.2` is the bead that will
+        /// remove the last of that. `Taxed` is no longer excluded: `ah-1x2h.1` made the ledger
+        /// record the settled share, so the two walks agree on the amount.
         #[test]
-        fn a_taxed_row_is_compared_without_its_amount() {
-            assert_eq!(
-                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 416)].into_iter()),
-                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 500)].into_iter()),
-                "a contended pool yields two numbers for one event"
-            );
+        fn a_studied_row_is_compared_without_its_amount() {
             assert_eq!(
                 compared_silver_rows([(SilverChangeCause::Studied, Some(4), -150)].into_iter()),
                 compared_silver_rows([(SilverChangeCause::Studied, Some(4), -50)].into_iter()),
@@ -22037,6 +22044,11 @@ BUILD
                 compared_silver_rows([(SilverChangeCause::Bought, Some(3), -280)].into_iter()),
                 compared_silver_rows([(SilverChangeCause::Bought, Some(3), -60)].into_iter()),
                 "every other cause is still compared on its amount"
+            );
+            assert_ne!(
+                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 416)].into_iter()),
+                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 500)].into_iter()),
+                "the ledger now records the settled share, so the two walks agree on the amount"
             );
         }
 
@@ -22173,6 +22185,40 @@ BUILD
                 .iter()
                 .map(|one| (one.phase, one.cause, one.line))
                 .collect()
+        }
+
+        /// `rules/economy_taxingpillaging`: "Each taxing character can collect $50, though if the
+        /// number of taxers would tax more than the available tax income, the tax income is split
+        /// evenly among all taxers." So the settled share is what the game will do, and it is what
+        /// the ledger *records* - while its *balance* stays hopeful, which is what `ah-ud89`
+        /// decided and what this test pins alongside (`ah-1x2h.1`).
+        #[test]
+        fn a_contended_taxer_is_recorded_at_its_settled_share() {
+            // Two ten-man taxers each want $500, and the region has $500 to give: contended.
+            let hex_region = ReportRegion {
+                tax_base: Some(500),
+                ..region(vec![
+                    with_men(with_skill(with_silver(unit("1"), 100), "COMB", 1), 10),
+                    with_men(with_skill(with_silver(unit("2"), 100), "COMB", 1), 10),
+                ])
+            };
+            with_ledger(hex_region, "unit 1\nTAX\nunit 2\nTAX\n", |ledger| {
+                let taxed: Vec<_> = moves(ledger, "1")
+                    .iter()
+                    .filter(|one| one.cause == SilverChangeCause::Taxed)
+                    .collect();
+                assert_eq!(taxed.len(), 1, "one tax row: {:?}", moves(ledger, "1"));
+                assert_eq!(
+                    taxed[0].amount, 250,
+                    "the settled half of a $500 pool two ten-man taxers each ask $500 of"
+                );
+                assert_eq!(taxed[0].line, Some(2), "the unit's own TAX line, unchanged");
+                assert_eq!(
+                    ledger.state.balance_at(StatePhase::Tax, "1", SILVER),
+                    100 + 500,
+                    "the balance stays hopeful - `ah-ud89` decided that, and this bead keeps it"
+                );
+            });
         }
 
         #[test]
