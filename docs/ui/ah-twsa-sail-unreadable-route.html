@@ -1,0 +1,188 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-twsa — SAIL with a route nothing can read</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1400px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; color:var(--brass-bright); }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  h2.sec + p { color:var(--ink-soft); font-size:13.5px; max-width:100ch; margin-top:8px; }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .cards.two { grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .cap { font:italic 11.5px Georgia,serif; color:var(--ink-dim); }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212 "; color:var(--danger); } .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .editor { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 0; }
+  .ln { display:flex; } .ln .no { width:34px; text-align:right; color:var(--ink-dim); padding-right:10px; } .ln .tx { white-space:pre; color:var(--ink); }
+  .ln.warn .tx { text-decoration: underline wavy var(--warn); text-underline-offset:3px; } .ln.warn .no { color:var(--warn); }
+  .ln.err .tx { text-decoration: underline wavy var(--danger); text-underline-offset:3px; } .ln.err .no { color:var(--danger); }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); } .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .body { padding:7px 9px 9px; display:grid; gap:5px; } .prob { display:flex; gap:6px; } .prob .uid { color:var(--ink-dim); min-width:44px; } .prob .sev { color:var(--warn); } .prob .sev.e { color:var(--danger); } .prob .msg { color:var(--ink); } .body .none { color:var(--ink-dim); font-style:italic; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 9px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--danger); } td.d { color:var(--ink-dim); }
+  td .mono, th .mono { font-size:11.5px; }
+  footer { max-width:1400px; margin:38px auto 0; color:var(--ink-dim); font-size:12.5px; }
+</style>
+
+<header>
+  <h1>ah-twsa — <span>a SAIL whose route nothing can read</span></h1>
+  <p>The player types <code>SAIL NRTH</code>. <b>Nothing is said.</b> No red mark, no warning, no problem line — the order
+  looks accepted. Underneath, every reader in the application throws the line away: the unit is given no route, is not
+  counted as one of the fleet's sailors, and, having no readable order at all, is quietly credited the region's wage as
+  if it had been set to <code>WORK</code>.</p>
+  <p>Why only this one: <code>SAIL</code> has two legal forms — <code>SAIL N NW</code> sails the fleet, and a bare
+  <code>SAIL</code> means "I help crew it" (<span class="mono">rules/sail</span>). When the first word after
+  <code>SAIL</code> is not a direction, the empty form wins with nothing consumed and the checker declares the line
+  fine. <code>MOVE NRTH</code> and <code>SAIL N NRTH</code> are both flagged today; only <code>SAIL NRTH</code> —
+  junk in the <em>first</em> position — slips through.</p>
+</header>
+
+<main>
+  <h2 class="sec">What happens today <small>the same three lines, side by side</small></h2>
+  <div class="cards">
+    <section class="card">
+      <h3><em>TODAY</em> <code>MOVE NRTH</code></h3>
+      <p class="concept">Flagged. The route form is the only form MOVE has, so the bad word is named.</p>
+      <div class="stage">
+        <div class="editor">
+          <div class="ln"><span class="no">40</span><span class="tx">unit 1471</span></div>
+          <div class="ln err"><span class="no">41</span><span class="tx">  MOVE NRTH</span></div>
+        </div>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="prob"><span class="uid">1471</span><span class="sev e">&#9679;</span><span class="msg">expected a direction, IN, OUT or a structure number, found &ldquo;NRTH&rdquo;</span></div>
+        </div></div>
+      </div>
+    </section>
+    <section class="card">
+      <h3><em>TODAY</em> <code>SAIL N NRTH</code></h3>
+      <p class="concept">Flagged. One good direction is enough to prove the player meant a route.</p>
+      <div class="stage">
+        <div class="editor">
+          <div class="ln"><span class="no">40</span><span class="tx">unit 1471</span></div>
+          <div class="ln err"><span class="no">41</span><span class="tx">  SAIL N NRTH</span></div>
+        </div>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="prob"><span class="uid">1471</span><span class="sev e">&#9679;</span><span class="msg">expected a direction, IN, OUT or a structure number, found &ldquo;NRTH&rdquo;</span></div>
+        </div></div>
+      </div>
+    </section>
+    <section class="card">
+      <h3><em>TODAY</em> <code>SAIL NRTH</code> &mdash; the bug</h3>
+      <p class="concept">Silent. Nothing is drawn, nothing is listed, and the fleet does not move.</p>
+      <div class="stage">
+        <div class="editor">
+          <div class="ln"><span class="no">40</span><span class="tx">unit 1471</span></div>
+          <div class="ln"><span class="no">41</span><span class="tx">  SAIL NRTH</span></div>
+        </div>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="none">Nothing to report.</div>
+        </div></div>
+        <p class="cap">The player sends the turn believing the fleet sails. It does not.</p>
+      </div>
+    </section>
+  </div>
+
+  <h2 class="sec">The choice <small>what should <code>SAIL NRTH</code> be?</small></h2>
+  <p>All three options change only what the player is <em>told</em>. In every one of them the fleet still does not move
+  and the route is still not followed — that part is already true today, and no option here invents a route the player
+  did not write.</p>
+  <div class="cards">
+
+    <section class="card rec">
+      <h3><em>OPTION A</em> An error, like MOVE <span style="color:var(--ok);font-size:11px;letter-spacing:1.4px">CHOSEN</span></h3>
+      <p class="concept">The same red mark <code>MOVE NRTH</code> and <code>SAIL N NRTH</code> already get, from the same check. A bare <code>SAIL</code> stays legal — it just has to be bare.</p>
+      <div class="stage">
+        <div class="editor">
+          <div class="ln"><span class="no">40</span><span class="tx">unit 1471</span></div>
+          <div class="ln err"><span class="no">41</span><span class="tx">  SAIL NRTH</span></div>
+        </div>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="prob"><span class="uid">1471</span><span class="sev e">&#9679;</span><span class="msg">expected a direction, IN, OUT or a structure number or nothing at all, found &ldquo;NRTH&rdquo;</span></div>
+        </div></div>
+        <p class="cap">Errors already block nothing — they are the red marks the orders panel shows, and the turn can still be exported.</p>
+      </div>
+      <ul class="notes">
+        <li>Three lines that mean the same mistake now read the same way.</li>
+        <li>The message is the checker's own, with <em>or nothing at all</em> added by the machinery that already merges expectations — so it names the other legal form, which is what a player who typed <code>SAIL NRTH</code> most needs to know.</li>
+        <li class="n">Reaches every order line, not just fleets — the check is in the grammar.</li>
+        <li class="con">A player who typed a trailing note after a bare <code>SAIL</code> without a <code>;</code> now gets a red mark where they got none.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h3><em>OPTION B</em> A warning of its own</h3>
+      <p class="concept">The line stays syntactically legal — <code>SAIL</code> alone <em>is</em> a real order — so this is an amber advisory with its own toggle in Settings, beside the other Sailing checks.</p>
+      <div class="stage">
+        <div class="editor">
+          <div class="ln"><span class="no">40</span><span class="tx">unit 1471</span></div>
+          <div class="ln warn"><span class="no">41</span><span class="tx">  SAIL NRTH</span></div>
+        </div>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="prob"><span class="uid">1471</span><span class="sev">&#9888;</span><span class="msg">&ldquo;NRTH&rdquo; is not a direction, so this reads as a bare SAIL &mdash; the unit helps crew the fleet and steers it nowhere</span></div>
+        </div></div>
+        <p class="cap">Amber, switchable off, and it says what the line will actually do.</p>
+      </div>
+      <ul class="notes">
+        <li>Says what the line <em>becomes</em>, not only what is wrong with it.</li>
+        <li>Switchable off by a player who writes notes after their orders.</li>
+        <li class="con">Amber where the two identical mistakes beside it are red.</li>
+        <li class="con">A new advisory code, a new Settings row, and a check that has to find fleets.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h3><em>OPTION C</em> Read it as a bare SAIL</h3>
+      <p class="concept">Take the checker at its word: the junk is trailing text, the line <em>is</em> a bare <code>SAIL</code>, and the unit is counted as one of the fleet's sailors. Still nothing said.</p>
+      <div class="stage">
+        <div class="editor">
+          <div class="ln"><span class="no">40</span><span class="tx">unit 1471</span></div>
+          <div class="ln"><span class="no">41</span><span class="tx">  SAIL NRTH</span></div>
+        </div>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="none">Nothing to report.</div>
+        </div></div>
+        <p class="cap">The unit joins the crew count and is no longer credited a month's wage &mdash; and is never told its direction was lost.</p>
+      </div>
+      <ul class="notes">
+        <li>The three readers finally agree with the checker.</li>
+        <li>Fixes the silent wage credit for this one line.</li>
+        <li class="con">The player is still never told the fleet is not going north.</li>
+        <li class="con">Invents an order &mdash; &ldquo;help crew&rdquo; &mdash; that the player did not write.</li>
+      </ul>
+    </section>
+  </div>
+
+  <h2 class="sec">Every line this touches <small>what each option does to each</small></h2>
+  <table>
+    <tr><th>The line</th><th>Today</th><th>Option A</th><th>Option B</th><th>Option C</th></tr>
+    <tr><td><span class="mono">SAIL</span></td><td class="d">fine &mdash; helps crew</td><td class="y">unchanged</td><td class="y">unchanged</td><td class="y">unchanged</td></tr>
+    <tr><td><span class="mono">SAIL ; heading home</span></td><td class="d">fine &mdash; the comment is stripped before any of this</td><td class="y">unchanged</td><td class="y">unchanged</td><td class="y">unchanged</td></tr>
+    <tr><td><span class="mono">SAIL N NW</span></td><td class="d">sails north then north-west</td><td class="y">unchanged</td><td class="y">unchanged</td><td class="y">unchanged</td></tr>
+    <tr><td><span class="mono">SAIL N NRTH</span></td><td class="d">red error</td><td class="y">unchanged</td><td class="y">unchanged</td><td class="y">unchanged</td></tr>
+    <tr><td><span class="mono">SAIL NRTH</span></td><td class="n">silent</td><td>red error</td><td>amber warning</td><td>silently a bare SAIL</td></tr>
+    <tr><td><span class="mono">SAIL heading home</span> <span style="color:var(--ink-dim)">(a note with no <span class="mono">;</span>)</span></td><td class="d">silent</td><td>red error</td><td>amber warning</td><td>silently a bare SAIL</td></tr>
+    <tr><td><span class="mono">SPOILS NUN</span> <span style="color:var(--ink-dim)">(the same shape, another order)</span></td><td class="d">silently a bare SPOILS</td><td class="d">unchanged &mdash; SAIL only</td><td class="d">unchanged</td><td class="d">unchanged</td></tr>
+  </table>
+
+  <h2 class="sec">Not in this bead</h2>
+  <ul class="notes" style="margin-top:10px">
+    <li class="n">A unit whose only order cannot be read is still credited the region's wage. That is a decision already
+      taken deliberately and recorded in the code; options A and B leave it exactly as it is, and it is worth its own
+      bead if you want it revisited.</li>
+    <li class="n">Whether <code>SAIL N NRTH</code> should still count its unit among the fleet's sailors. It does not
+      today, and none of these options changes that.</li>
+    <li class="n">Every other order with a legal empty form &mdash; <code>SPOILS</code>, <code>REVEAL</code> &mdash; keeps
+      today's behaviour. Those two forms do not mean opposite things the way <code>SAIL</code>'s do.</li>
+  </ul>
+</main>
+
+<footer>ah-twsa &middot; the navigator chose <b>Option A</b> · mockup for the planning discussion &middot; every behaviour shown as &ldquo;today&rdquo; was run against the code, not recalled.</footer>
