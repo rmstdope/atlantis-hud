@@ -217,4 +217,27 @@ fn a_smaller_settled_purchase_moves_no_shortfall_warning() {
         Some(0),
         "the settled column: a $100 share spent on $100 of grain"
     );
+
+    // The plan's own fixture C, pinned so the reason it was replaced cannot quietly stop being
+    // true: adding `STUDY combat` leaves the unit taxing nothing at all, so it buys nothing, and
+    // the `not-enough-silver` the plan expected to go quiet is the study fee's and fires either
+    // way. Neither figure moves with this bead's subtraction - there is no contended share left to
+    // settle.
+    let (studying, studying_held, studying_findings) = both_surfaces(
+        &text,
+        "unit 900\nTAX\nBUY ALL grain\nSTUDY combat\nunit 901\nTAX\n",
+        "900",
+        "GRAI",
+    );
+    assert_eq!(studying.income, Some(0), "a studying unit taxes nothing");
+    assert_eq!(studying.buy_all[0].bought, 0);
+    assert_eq!(studying.buy_all[0].silver_available, 0);
+    assert_eq!(studying_held, 0);
+    assert!(
+        studying_findings
+            .iter()
+            .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER
+                && finding.unit_id.as_deref() == Some("900")),
+        "the study fee it cannot pay is still warned about"
+    );
 }
