@@ -874,6 +874,56 @@ mod tests {
     }
 
     #[test]
+    fn a_transmuting_cast_naming_a_word_the_catalogue_does_not_know_is_warned_about() {
+        let result = validate_orders("CAST Transmutation 2 mithrl", Some(RULESET));
+
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(result.diagnostics[0].code, "unknown-item");
+        assert_eq!(
+            result.diagnostics[0].severity,
+            OrderDiagnosticSeverity::Warning
+        );
+        assert!(!result.is_blocking(), "a warning must not block export");
+        assert_eq!(
+            (
+                result.diagnostics[0].column_start,
+                result.diagnostics[0].column_end
+            ),
+            (Some(21), Some(27))
+        );
+    }
+
+    #[test]
+    fn a_transmuting_cast_naming_a_real_material_is_quiet() {
+        let result = validate_orders(
+            "CAST Transmutation 2 mithril\nCAST Transmutation mithril\n",
+            Some(RULESET),
+        );
+        assert_eq!(result.diagnostics, vec![], "{:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn a_spell_that_transmutes_nothing_never_has_its_arguments_read_as_items() {
+        let result = validate_orders("CAST Wolf_Lore mithrl", Some(RULESET));
+        assert_eq!(result.diagnostics, vec![], "{:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn a_cast_material_is_only_checked_when_there_is_a_catalogue() {
+        let result = validate_orders("CAST Transmutation 2 mithrl", None);
+        assert_eq!(result.diagnostics, vec![], "{:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn a_cast_whose_tail_is_not_a_material_shape_warns_nothing() {
+        let result = validate_orders(
+            "CAST Transmutation 2 winged horses\nCAST Transmutation\n",
+            Some(RULESET),
+        );
+        assert_eq!(result.diagnostics, vec![], "{:?}", result.diagnostics);
+    }
+
+    #[test]
     fn a_ruleset_that_cannot_be_used_is_treated_as_no_ruleset() {
         let result = validate_orders("GIVE 45 10 swordz", Some("{\"not\": \"a ruleset\"}"));
         assert_eq!(result.diagnostics, vec![], "{:?}", result.diagnostics);

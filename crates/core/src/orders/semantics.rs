@@ -172,6 +172,7 @@ pub mod codes {
     pub const WITHDRAW_IN_NEXUS: Code = Code("withdraw-in-nexus");
     pub const TAX_WITHOUT_COMBAT_READY_MEN: Code = Code("tax-without-combat-ready-men");
     pub const WITHDRAW_NOT_A_BASIC_ITEM: Code = Code("withdraw-not-a-basic-item");
+    pub const CAST_CANNOT_MAKE_THIS: Code = Code("cast-cannot-make-this");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -180,7 +181,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 47] = [
+    pub const ALL: [Code; 48] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -228,6 +229,7 @@ pub mod codes {
         MEN_SENT_INTO_A_MAGE,
         WITHDRAW_NOT_A_BASIC_ITEM,
         SAIL_BETWEEN_LAND_HEXES,
+        CAST_CANNOT_MAKE_THIS,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -691,6 +693,7 @@ pub fn review_turn(
         check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
+        check_cast_material(hex, ruleset, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
         check_sail_route(hex, &by_coordinate, ruleset, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
@@ -12752,6 +12755,76 @@ fn check_withdraw_not_a_basic_item(
                 hex,
                 codes::WITHDRAW_NOT_A_BASIC_ITEM,
                 format!("only basic items can be withdrawn, and {name} is not one"),
+                Some(placed),
+            ));
+        }
+    }
+}
+
+/// A transmuting `CAST` naming a material the spell does not make - or naming none this reader can
+/// read.
+///
+/// Gated on a non-empty `cast.transmute` exactly as `semantics::cast` and `silver::forecast_unit`
+/// are, so all three surfaces agree about which casts are transmutations. `cost.creates` is the
+/// membership test rather than the keys of `cost.transmute`, because `creates` is what `plan_cast`
+/// looks in - so this fires precisely when the cast would make nothing. A word the catalogue does
+/// not know is left to the order pane's `unknown-item` warning: one line carries one complaint.
+fn check_cast_material(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::CAST_CANNOT_MAKE_THIS) {
+        return;
+    }
+    let Some(ruleset) = ruleset else {
+        return;
+    };
+    for ordered in &hex.units {
+        for placed in &ordered.intents {
+            let Intent::Cast { spell, arguments } = &placed.intent else {
+                continue;
+            };
+            let Some(skill) = ruleset.find_skill(spell) else {
+                continue;
+            };
+            let Some(cost) = skill
+                .cast
+                .as_ref()
+                .filter(|cost| !cost.transmute.is_empty())
+            else {
+                continue;
+            };
+            // A ruleset scraped before creations were captured cannot tell a wrong material from a
+            // right one, so it says nothing at all.
+            if cost.creates.is_empty() {
+                continue;
+            }
+            let name = skill.name.to_lowercase();
+            let message = match transmute_argument(arguments) {
+                None => format!(
+                    "{name} needs a material to make: CAST Transmutation [number] <material>"
+                ),
+                Some((_, material)) => {
+                    let Some(entry) = ruleset.find_item(material) else {
+                        continue;
+                    };
+                    if cost
+                        .creates
+                        .iter()
+                        .any(|output| output.tag.eq_ignore_ascii_case(&entry.tag))
+                    {
+                        continue;
+                    }
+                    // The catalogue is not uniformly lower case, and the sentence is not shouting.
+                    format!("{name} cannot make {}", entry.name.to_lowercase())
+                }
+            };
+            findings.push(ordered.finding(
+                hex,
+                codes::CAST_CANNOT_MAKE_THIS,
+                message,
                 Some(placed),
             ));
         }
@@ -27818,6 +27891,77 @@ BUILD
     /// rootstone (`ceil(200 x 1 / 100)`), so an unnumbered cast now draws on up to two stone rather
     /// than the least-of-one the shipped reading gave every cast.
     #[test]
+    fn a_transmutation_naming_a_material_it_cannot_make_says_so() {
+        let regions = vec![region(vec![with_skill(unit("5"), "TRNS", 1)])];
+        let finding = only(check(regions, "unit 5\nCAST Transmutation 2 wood\n"));
+        assert_eq!(finding.code.as_str(), "cast-cannot-make-this");
+        assert_eq!(finding.message, "transmutation cannot make wood");
+    }
+
+    #[test]
+    fn a_transmutation_naming_a_material_it_can_make_is_quiet() {
+        let regions = vec![region(vec![with_item(
+            with_skill(unit("5"), "TRNS", 1),
+            10,
+            "iron",
+            "IRON",
+        )])];
+        assert!(
+            !check(regions, "unit 5\nCAST Transmutation 2 mithril\n")
+                .iter()
+                .any(|finding| finding.code.as_str() == "cast-cannot-make-this"),
+            "a material the spell makes is not complained about"
+        );
+    }
+
+    #[test]
+    fn a_cast_material_the_catalogue_does_not_know_is_left_to_the_order_pane() {
+        let regions = vec![region(vec![with_skill(unit("5"), "TRNS", 1)])];
+        assert!(
+            !check(regions, "unit 5\nCAST Transmutation 2 mithrl\n")
+                .iter()
+                .any(|finding| finding.code.as_str() == "cast-cannot-make-this"),
+            "one line carries one complaint"
+        );
+    }
+
+    #[test]
+    fn a_spell_that_transmutes_nothing_is_never_asked_about_a_material() {
+        let regions = vec![region(vec![with_skill(unit("5"), "WOLF", 1)])];
+        assert!(
+            !check(regions, "unit 5\nCAST Wolf_Lore\n")
+                .iter()
+                .any(|finding| finding.code.as_str() == "cast-cannot-make-this"),
+            "only a transmuting spell names a material"
+        );
+    }
+
+    #[test]
+    fn a_transmutation_with_no_material_says_what_it_needs() {
+        let regions = vec![region(vec![with_skill(unit("5"), "TRNS", 1)])];
+        let finding = only(check(regions, "unit 5\nCAST Transmutation\n"));
+        assert_eq!(finding.code.as_str(), "cast-cannot-make-this");
+        assert_eq!(
+            finding.message,
+            "transmutation needs a material to make: CAST Transmutation [number] <material>"
+        );
+    }
+
+    #[test]
+    fn a_transmutation_whose_material_has_an_unquoted_space_says_what_it_needs() {
+        let regions = vec![region(vec![with_skill(unit("5"), "TRNS", 1)])];
+        let finding = only(check(
+            regions,
+            "unit 5\nCAST Transmutation 2 winged horses\n",
+        ));
+        assert_eq!(finding.code.as_str(), "cast-cannot-make-this");
+        assert_eq!(
+            finding.message,
+            "transmutation needs a material to make: CAST Transmutation [number] <material>"
+        );
+    }
+
+    #[test]
     fn a_transmuter_names_its_output_and_is_charged_the_source() {
         // Holding no stone at all, an unnumbered cast still wants its full capacity of two - so
         // the floor of one still applies, and the shortfall is against that floor.
@@ -33344,6 +33488,13 @@ BUILD
                 code: codes::WITHDRAW_NOT_A_BASIC_ITEM,
                 regions: vec![region(vec![unit("5")])],
                 orders: "unit 5\nWITHDRAW 5 SILV\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::CAST_CANNOT_MAKE_THIS,
+                regions: vec![region(vec![with_skill(unit("5"), "TRNS", 1)])],
+                orders: "unit 5\nCAST Transmutation 2 wood\n",
                 allowance: None,
                 unclaimed: None,
             },

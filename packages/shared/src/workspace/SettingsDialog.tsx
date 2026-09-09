@@ -583,6 +583,12 @@ export const WARNING_GROUPS: readonly {
         description: "WITHDRAW orders naming an item the game will not hand over, such as silver."
       },
       {
+        code: "cast-cannot-make-this",
+        title: "Casts that name a material the spell cannot make",
+        description:
+          "A transmuting CAST whose material is a real item the spell does not create, or no material at all. A word the catalogue does not know is flagged in the order pane instead."
+      },
+      {
         code: "unit-overloaded",
         title: "Overloaded units",
         description: "A unit ordered to move carrying more than it can move with."
