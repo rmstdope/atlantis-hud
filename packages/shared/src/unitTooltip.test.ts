@@ -1212,7 +1212,33 @@ describe("the silver section", () => {
         atMonthEnd: 0,
         shortForOrders: 0,
         upkeep: 0,
-        sharedSilverForOrders: 50
+        sharedSilverForOrders: 50,
+        borrowedForOrders: 50
+      }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.note).toBe(
+      "A faction-mate's silver in this hex pays for this unit's orders."
+    );
+  });
+
+  it("a_sharing_borrower_is_told_a_neighbour_paid", () => {
+    // `sharedSilverForOrders` is `0` for a sharer by decision, so the sentence has to read the
+    // borrowing to reach the agreed record's own scene (`ah-3c2t.2`).
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({
+        held: 1600,
+        income: 0,
+        lateIncome: 0,
+        expense: 1600,
+        atMonthEnd: 0,
+        shortForOrders: 0,
+        upkeep: 0,
+        sharedSilverForOrders: 0,
+        borrowedForOrders: 1600
       }),
       false,
       true
@@ -1650,7 +1676,12 @@ describe("the hover says every sentence that holds (ah-x36v)", () => {
   it("a unit whose neighbour pays both ways is told both", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ upkeep: 50, sharedSilverCovered: 20, sharedSilverForOrders: 50 }),
+      forecast({
+        upkeep: 50,
+        sharedSilverCovered: 20,
+        sharedSilverForOrders: 50,
+        borrowedForOrders: 50
+      }),
       false,
       true
     );
@@ -1858,6 +1889,7 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
       forcedFactionFood: 3,
       sharedSilverCovered: 20,
       sharedSilverForOrders: 50,
+      borrowedForOrders: 50,
       unclaimedCovered: 10,
       unclaimedContended: true,
       foodContended: true,

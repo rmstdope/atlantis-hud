@@ -1746,6 +1746,28 @@ fn forecast_hex(
         }
     }
 
+    // The borrower's mirror of the `Lent` rows above, and deliberately not part of that loop: the
+    // draw is not drained out of anything here. The lender's row is an expense and moves `expense`
+    // and `at_month_end` with it; this one moves no total at all, because the column counts each
+    // unit on its own (`ah-1wcw.1`) and the borrower keeps the red figure the purchase left it
+    // (`ah-3c2t.2`). Appended after the `Lent` pass so it is the last line in the list, which is
+    // where the agreed mockup draws it - under `bought`.
+    for (index, forecast) in into[start..].iter_mut().enumerate() {
+        let borrowed = purse_for_orders.borrows[index];
+        forecast.borrowed_for_orders = borrowed;
+        // The same guard the `Lent` pass makes, and for the same reason: a doubted unit's list is
+        // emptied on the way out (`ah-rgkk.4.4`), so a row pushed onto it would be the only entry
+        // under a figure that is not a number.
+        if borrowed > 0 && forecast.doubt.is_none() {
+            forecast.changes.push(SilverChange {
+                amount: borrowed,
+                cause: SilverChangeCause::WasLent,
+                line: None,
+                other: None,
+            });
+        }
+    }
+
     // One claim was pushed per unit, in the same loop that pushed its forecast, so the two are
     // index-aligned - the ordering this settlement needs, and it does not depend on unit ids being
     // distinct. They are: one unit number is one row in a region block, because
@@ -1921,6 +1943,9 @@ fn compared_silver_rows(
                 SilverChangeCause::Worked
                     | SilverChangeCause::Entertained
                     | SilverChangeCause::Lent
+                    // Booked by the hex pass onto the column alone, exactly as `Lent` is - the
+                    // ledger has no borrowing to record, because no silver moves (`ah-3c2t.2`).
+                    | SilverChangeCause::WasLent
             )
         })
         // No cause is compared without its amount any more (`ah-1x2h.2`), and no transfer cause is
@@ -8585,6 +8610,15 @@ struct SharingPurse {
     /// What each sharer has to lend, before anything is drawn. `0` for every non-sharer, and `0`
     /// for every unit in a hex that lends nothing at all.
     lendable: Vec<i64>,
+    /// What each unit's orders drew out of its faction-mates' pockets: its own overdraft, where
+    /// the purse settled the whole hex. Index-aligned with `hex.units`, `0` for a unit that is not
+    /// overdrawn and `0` for every unit in a hex the purse could not cover (`ah-3c2t.2`).
+    ///
+    /// Not `lends_to`, and the difference is the whole of this bead: `lends_to` is what the purse
+    /// lends a *claimant*, and a sharer is never a claimant. This answers the reader's question
+    /// instead - did somebody else's money pay for this - which a sharer's overdraft answers yes
+    /// to.
+    borrows: Vec<i64>,
 }
 
 /// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
@@ -8600,6 +8634,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     let nothing = SharingPurse {
         lends_to: vec![0; hex.units.len()],
         lendable: vec![0; hex.units.len()],
+        borrows: vec![0; hex.units.len()],
     };
 
     let sharing = Sharing::read(hex);
@@ -8608,9 +8643,6 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     }
 
     let pool = sharing.pool(ledger, SILVER);
-    if pool <= 0 {
-        return nothing;
-    }
 
     // A doubted unit is judged nowhere in this module, so it claims nothing here either: lending
     // against a sum with a hole in it would put a figure on the screen nothing stands behind.
@@ -8629,6 +8661,27 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         return nothing;
     }
 
+    // Every undoubted unit's own overdraft, sharer or not - the borrowing this hex settled. Above
+    // the `pool <= 0` return below, and that is the whole reason the return moved: a hex whose
+    // sharers' surplus exactly covers their own overdrafts nets to `pool == 0` and lends nothing
+    // to a claimant, yet a neighbour's money did pay for somebody's orders. That is the agreed
+    // record's own scene (`ah-3c2t.2`).
+    let borrows: Vec<i64> = hex
+        .units
+        .iter()
+        .map(|ordered| {
+            if ledger.doubted.contains(&ordered.unit.unit_id) {
+                0
+            } else {
+                (-relieved_balance(ledger, &ordered.unit.unit_id, SILVER)).max(0)
+            }
+        })
+        .collect();
+
+    if pool <= 0 {
+        return SharingPurse { borrows, ..nothing };
+    }
+
     let lendable = hex
         .units
         .iter()
@@ -8644,6 +8697,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     SharingPurse {
         lends_to: claims,
         lendable,
+        borrows,
     }
 }
 
@@ -20608,6 +20662,64 @@ BUILD
             );
         }
 
+        /// The borrowing unit's own row names the neighbours' money that paid for it, and the
+        /// figures the agreed record insists on keeping stay exactly as they were (`ah-3c2t.2`).
+        #[test]
+        fn a_borrowing_unit_says_whose_silver_paid() {
+            let hex = ReportRegion {
+                for_sale: vec![line(10, 100, "sword", "SWOR")],
+                ..region(vec![
+                    sharing(with_silver(unit("1"), 0)),
+                    sharing(with_silver(unit("2"), 300)),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 1\nBUY 3 sword\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+            let borrowed: Vec<_> = buyer
+                .changes
+                .iter()
+                .filter(|change| change.cause == SilverChangeCause::WasLent)
+                .collect();
+            assert_eq!(borrowed.len(), 1, "one line, not one per lender");
+            assert_eq!(borrowed[0].amount, 300);
+            assert_eq!(borrowed[0].line, None);
+            assert_eq!(borrowed[0].other, None);
+            assert_eq!(
+                buyer.changes.last().map(|change| change.cause),
+                Some(SilverChangeCause::WasLent),
+                "drawn under the purchase, where the mockup puts it"
+            );
+            assert_eq!(buyer.borrowed_for_orders, 300);
+            assert_eq!(
+                buyer.at_month_end,
+                Some(-300),
+                "the red figure the agreed record keeps"
+            );
+            assert_eq!(buyer.income, Some(0), "borrowed silver is not income");
+
+            let neighbour = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "2")
+                .expect("the neighbour is forecast");
+            assert!(
+                neighbour
+                    .changes
+                    .iter()
+                    .all(|change| change.cause != SilverChangeCause::Lent),
+                "no silver moved, so the lender is charged nothing"
+            );
+        }
+
         /// The SILVER column reads the ledger's own market-open snapshot, so the two surfaces cut
         /// one shared `BUY` to one quantity (`ah-lu0f.2`, `ah-szye`).
         #[test]
@@ -25380,6 +25492,7 @@ BUILD
 
         assert_eq!(purse.lends_to, vec![0, 0]);
         assert_eq!(purse.lendable, vec![0, 0]);
+        assert_eq!(purse.borrows, vec![0, 0]);
     }
 
     #[test]
@@ -25395,10 +25508,64 @@ BUILD
         assert_eq!(purse.lendable, vec![0, 500], "and the sharer can cover it");
     }
 
+    /// A sharer never claims from the purse (`lends_to` is `0` for one by decision), yet its
+    /// overdraft is still paid out of its faction-mates' pockets. `borrows` is what answers the
+    /// reader's question - did somebody else's money pay for this (`ah-3c2t.2`).
+    #[test]
+    fn a_sharer_that_overspends_borrows_from_the_hex() {
+        let hex_region = region(vec![
+            sharing(with_silver(unit("5"), 0)),
+            sharing(with_silver(unit("7"), 500)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
+
+        assert_eq!(purse.borrows, vec![10, 0], "the studier's whole overdraft");
+        assert_eq!(purse.lends_to, vec![0, 0], "a sharer is not a claimant");
+    }
+
+    /// The agreed record's own shape: the sharers' surplus exactly covers their own overdrafts, so
+    /// the pool nets to `0` and nothing is lent to a claimant - and a neighbour's money did still
+    /// pay for somebody's orders (`ah-3c2t.2`).
+    #[test]
+    fn a_hex_whose_sharers_exactly_cover_each_other_still_borrows() {
+        let hex_region = region(vec![
+            sharing(with_silver(unit("5"), 0)),
+            sharing(with_silver(unit("7"), 10)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
+
+        assert_eq!(purse.borrows, vec![10, 0]);
+    }
+
+    /// A doubted unit is judged nowhere in this module, so no row is pushed under a `?`.
+    #[test]
+    fn a_doubted_borrower_is_not_recorded_as_borrowing() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 500)),
+        ]);
+        let ordered = OrderedUnits::read("unit 5\nSTUDY combat\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let mut ledger = ledger_for(&hex, Some(&rules));
+
+        assert_eq!(sharing_purse(&hex, &ledger).borrows, vec![10, 0]);
+
+        ledger.doubted.insert("5".to_string());
+
+        assert_eq!(
+            sharing_purse(&hex, &ledger).borrows,
+            vec![0, 0],
+            "a doubted borrower borrows nothing"
+        );
+    }
+
     /// The all-or-nothing rule `ah-e66j` set for maintenance, and for the same reason: where the
     /// purse cannot cover every claimant, which unit is fed cannot be told.
     #[test]
-    fn a_purse_that_cannot_cover_every_claimant_lends_nothing_to_anybody() {
+    fn a_purse_that_cannot_cover_every_claimant_lends_and_borrows_nothing() {
         let hex_region = region(vec![
             with_silver(unit("5"), 0),
             with_silver(unit("9"), 0),
@@ -25408,6 +25575,11 @@ BUILD
         let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\nunit 9\nSTUDY combat\n");
 
         assert_eq!(purse.lends_to, vec![0, 0, 0]);
+        assert_eq!(
+            purse.borrows,
+            vec![0, 0, 0],
+            "the rule reaches the borrowing too"
+        );
     }
 
     #[test]
