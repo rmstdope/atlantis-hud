@@ -3083,11 +3083,14 @@ fn recruited_people(
     // the walk below. The amount does not enter into it - `BUY 5 PEASANTS` is exactly as
     // invisible as `BUY ALL PEASANTS`, and both leave the unit unjudged.
     //
-    // Only those two spellings. `rules/buy` names `PEASANT` and `PEASANTS` and no other form, no
-    // rules page defines an abbreviation of an item name, and `PEAS` is not a catalogue tag
-    // (`pnpm run atlantis data PEAS`: "nothing on the data page matches"). So `BUY ALL PEAS`
-    // recruits nobody in the game either, and forecasting it as a unit that recruited nobody is
-    // the right answer rather than an escaped case.
+    // Only those two spellings. `rules/buy` names `PEASANT` and `PEASANTS` and no other form, and
+    // the abbreviations an order may use instead are the tags the report prints
+    // (`rules/orders_abbreviations`: "All common items and skills have abbreviations that can be
+    // used when giving orders ... Any time you see the item on your report, it will be followed
+    // by the abbreviation") - `PEAS` is not one of them (`pnpm run atlantis data PEAS`: "nothing
+    // on the data page matches"). So `BUY ALL PEAS` recruits nobody in the game either, and
+    // forecasting it as a unit that recruited nobody is the right answer rather than an escaped
+    // case.
     //
     // Every other spelling names a race or a good, and both reach `Ledger::bought`: an exact
     // amount through `buy`, an `Amount::All` through `settle_buy_all` since `ah-jown`. So the old
