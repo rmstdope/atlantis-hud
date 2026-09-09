@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A unit read without its contents (ah-l09a) — chosen: stays on the map, refuses a figure, totals become floors</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:44px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  h3.opt { font-size:15px; margin:26px 0 2px; color:var(--brass-bright); }
+  header p, section > p, .why, main > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .app { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; line-height:1.45; }
+  .win { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .apphdr { display:flex; align-items:center; gap:12px; padding:0 10px; min-height:30px; flex-wrap:wrap;
+            background:var(--panel); border-bottom:1px solid var(--edge); white-space:nowrap; }
+  .apphdr .soft { color:var(--ink-soft); }
+  .apphdr .val { color:var(--ink); }
+  .apphdr .push { margin-left:auto; display:flex; gap:12px; align-items:center; }
+  .chip { border:1px solid var(--edge); background:var(--raised); border-radius:3px; padding:0 7px; color:var(--ink-soft); font-size:11px; display:inline-block; }
+  .chip .caret { color:var(--ink-dim); margin-left:4px; }
+  .chip.warnc { border-color:var(--warn); color:var(--warn); }
+  .drop { background:var(--panel); border-bottom:1px solid var(--edge); padding:9px 10px 11px; }
+  .tabs { display:flex; gap:12px; align-items:center; border-bottom:1px solid var(--edge-soft); padding-bottom:5px; margin-bottom:9px; }
+  .tab { font:10.5px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:.8px; text-transform:uppercase; color:var(--ink-dim); }
+  .tab.on { color:var(--brass-bright); border-bottom:2px solid var(--brass); padding-bottom:3px; margin-bottom:-7px; }
+  .tabs .cp { margin-left:auto; }
+  .tabs .x { color:var(--ink-dim); }
+  .drop h4 { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; font-weight:normal; margin-bottom:7px; }
+  .lines { display:grid; gap:6px; }
+  .lineitem { display:grid; grid-template-columns:74px 62px 1fr; gap:9px; align-items:start; }
+  .lineitem.stacked { grid-template-columns:1fr; gap:3px; }
+  .lineitem.stacked .meta { display:flex; gap:9px; align-items:baseline; }
+  .lineno { color:var(--ink-dim); font:11px/1.5 'SF Mono',Menlo,Consolas,monospace; text-align:right; padding-top:1px; }
+  .stacked .lineno { text-align:left; }
+  .kind { font:10px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:.9px; text-transform:uppercase; color:var(--ink-dim); padding-top:1px; }
+  .linetext { font:11px/1.5 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); background:var(--ground); border:1px solid var(--edge-soft); border-left:2px solid var(--warn); border-radius:3px; padding:2px 6px; white-space:pre-wrap; word-break:break-word; }
+  .costnote { display:block; color:var(--warn); font:10.5px/1.5 'Helvetica Neue',Arial,sans-serif; letter-spacing:.3px; margin-top:3px; }
+  .drop .foot { color:var(--ink-dim); font-size:11px; margin-top:9px; font-style:italic; }
+  .btn { border:1px solid var(--edge); background:var(--raised); border-radius:3px; padding:2px 9px; color:var(--ink-soft); font-size:11px; display:inline-block; font-style:normal; }
+  .unitpane { background:var(--panel); padding:8px 10px; }
+  .unitpane h5 { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; font-weight:normal; margin-bottom:6px; }
+  .urow { border-top:1px solid var(--edge-soft); padding:5px 4px; display:grid; grid-template-columns:1fr auto; gap:10px; align-items:baseline; }
+  .urow:first-of-type { border-top:none; }
+  .uname { color:var(--ink); }
+  .uname .fid { color:var(--ink-dim); }
+  .umeta { color:var(--ink-soft); font-size:11px; text-align:right; }
+  .umeta .miss { color:var(--warn); }
+  .uwarn { display:block; color:var(--warn); font-size:10.5px; margin-top:3px; text-align:left; }
+  .tot { background:var(--raised); padding:5px 10px; color:var(--ink-soft); font-size:11px; border-top:1px solid var(--edge); }
+  .tot .miss { color:var(--warn); }
+  .mapbg { height:40px; background: repeating-linear-gradient(60deg, #141b23 0 9px, #151d25 9px 18px), var(--ground); }
+  ul.pts { color:var(--ink-soft); font-size:13.5px; margin:8px 0 0 20px; max-width:94ch; }
+  ul.pts li { margin-bottom:4px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--ink-soft); white-space:nowrap; width:1%; }
+  table.q td.v { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  .narrow { max-width:400px; }
+  pre.clip { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:9px; white-space:pre; }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:20px 0 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-l09a</span> &mdash; a unit read without its contents</h1>
+  <p><strong>Decided 2026-09-09, over three rounds.</strong> Atlantis HUD reads a turn report line by line. If a unit's line
+  is laid out even slightly differently from what the game engine normally produces &mdash; a report trimmed by hand, one from
+  another client, one wrapped at a different width &mdash; it can read the unit's name perfectly and quietly lose everything the
+  unit was carrying. The unit appears on the map with no men and no equipment and nothing anywhere says so, which makes every
+  number built on it confidently wrong: what it can carry, what it can study, what it pays in taxes, what it is worth in a
+  fight.</p>
+  <pre class="clip">* Drones (9498), Borg (21), revealing faction, 100 gnolls [GNOL], 170 swords [SWOR].
+
+  read as &rarr;  Drones (9498) &mdash; 0 men, nothing carried.        &lt;-- everything lost, silently
+  or as   &rarr;  Drones (9498) &mdash; 100 gnolls.                    &lt;-- the swords alone lost, silently</pre>
+  <p><strong>The decisions:</strong> the unit <em>stays on the map</em> and says its contents could not be read rather than
+  showing zero; <em>any</em> shortfall counts, not only a total loss; it is counted in the existing
+  <code>&#9888; N to check</code> chip and listed on the panel's <strong>Not read</strong> tab, whose closing sentence widens;
+  the unit refuses to show a figure it does not have, while keeping anything that genuinely was read; every total containing
+  such a unit becomes a floor; and Atlantis HUD stops advising about that unit altogether, saying why once.</p>
+</header>
+
+<main>
+
+<h2 class="rule"><em>Chosen</em> the panel, the unit list, and the total</h2>
+<p>Two units run through this page. <strong>Drones (9498)</strong> lost everything its line named. <strong>Pack Train
+(1902)</strong>'s line named 2 horses and 7500 silver; only the horses were read.</p>
+<div class="app"><div class="win">
+  <div class="apphdr">
+    <span class="soft">Game <span class="chip">Borg <span class="caret">&#9662;</span></span></span>
+    <span class="soft">Turn <span class="chip val">39<span class="caret">&#9662;</span></span></span>
+    <span class="chip warnc">&#9888; 2 to check<span class="caret">&#9662;</span></span>
+    <span class="push"><span class="chip">Import</span></span>
+  </div>
+  <div class="drop">
+    <div class="tabs"><span class="tab">Problems</span><span class="tab">Events</span><span class="tab">Engine</span><span class="tab on">Not read 2</span><span class="btn cp">Copy all</span><span class="x">&#10005;</span></div>
+    <h4>Lines that could not be read</h4>
+    <div class="lines">
+      <div class="lineitem"><span class="lineno">1841</span><span class="kind">Unit</span><span class="linetext"><span>* Drones (9498), Borg (21), revealing faction, 100 gnolls [GNOL], 170 swords [SWOR].</span><span class="costnote">The unit is on the map, but nothing it holds could be read.</span></span></div>
+      <div class="lineitem"><span class="lineno">2210</span><span class="kind">Unit</span><span class="linetext"><span>* Pack Train (1902), Borg (21), 2 horses [HORS], 7500 silver [SILV].</span><span class="costnote">The unit is on the map, but part of what it holds could not be read.</span></span></div>
+    </div>
+    <p class="foot">None of this reached the map, except where a note says otherwise.</p>
+  </div>
+  <div class="unitpane">
+    <h5>Units &mdash; plain (36,44)</h5>
+    <div class="urow"><span class="uname">Drones <span class="fid">(3364)</span></span><span class="umeta">5 orcs &middot; 563 silver</span></div>
+    <div class="urow"><span class="uname">Drones <span class="fid">(9498)</span></span><span class="umeta miss">could not be read</span></div>
+    <div class="urow"><span class="uname">Pack Train <span class="fid">(1902)</span></span><span class="umeta">2 horses <span class="miss">&middot; and more that could not be read</span></span></div>
+  </div>
+  <div class="tot">3 units &middot; <span class="miss">5 men or more &mdash; 2 units could not be read</span></div>
+  <div class="mapbg"></div>
+</div></div>
+
+<h2 class="rule"><em>Chosen</em> the unit's own pane</h2>
+<div class="lab">Nothing read &mdash; every figure refuses, and the advice stops</div>
+<div class="app"><div class="win">
+  <div class="unitpane">
+    <h5>Drones (9498)</h5>
+    <div class="urow"><span class="uname">Faction</span><span class="umeta">Borg (21)</span></div>
+    <div class="urow"><span class="uname">Men</span><span class="umeta miss">not known</span></div>
+    <div class="urow"><span class="uname">Carrying</span><span class="umeta miss">not known</span></div>
+    <div class="urow"><span class="uname">Weight</span><span class="umeta miss">not known</span></div>
+    <div class="urow"><span class="uname">Advice</span><span class="umeta"><span class="uwarn">No advice for this unit: what it holds could not be read from the turn report.</span></span></div>
+    <div class="urow"><span class="uname"></span><span class="umeta"><span class="uwarn">This unit's line in the turn report was not in a shape Atlantis HUD could read, so nothing it holds is known.</span></span></div>
+  </div>
+</div></div>
+
+<div class="lab">Part read &mdash; what was read is kept, weight becomes a floor, men stays unknown because the missing part could be people</div>
+
+<div class="app"><div class="win">
+  <div class="unitpane">
+    <h5>Pack Train (1902)</h5>
+    <div class="urow"><span class="uname">Faction</span><span class="umeta">Borg (21)</span></div>
+    <div class="urow"><span class="uname">Men</span><span class="umeta miss">not known</span></div>
+    <div class="urow"><span class="uname">Carrying</span><span class="umeta">2 horses <span class="miss">&middot; and more, not known</span></span></div>
+    <div class="urow"><span class="uname">Weight</span><span class="umeta">100 <span class="miss">or more</span></span></div>
+    <div class="urow"><span class="uname">Advice</span><span class="umeta"><span class="uwarn">No advice for this unit: part of what it holds could not be read from the turn report.</span></span></div>
+  </div>
+</div></div>
+
+
+<h2 class="rule"><em>The states</em> what it looks like when it is not one tidy unit</h2>
+
+<div class="lab">A healthy report — the common case, which must cost nothing</div>
+<div class="app"><div class="win">
+  <div class="apphdr">
+    <span class="soft">Game <span class="chip">Borg <span class="caret">&#9662;</span></span></span>
+    <span class="soft">Turn <span class="chip val">39<span class="caret">&#9662;</span></span></span>
+    <span class="chip">Turn report<span class="caret">&#9662;</span></span>
+    <span class="push"><span class="chip">Import</span></span>
+  </div>
+  <div class="unitpane">
+    <h5>Units &mdash; plain (36,44)</h5>
+    <div class="urow"><span class="uname">Drones <span class="fid">(3364)</span></span><span class="umeta">5 orcs &middot; 563 silver</span></div>
+    <div class="urow"><span class="uname">Drones <span class="fid">(9498)</span></span><span class="umeta">100 gnolls &middot; 170 swords</span></div>
+  </div>
+  <div class="tot">2 units &middot; 105 men</div>
+</div></div>
+
+<div class="lab">Exactly one — the singular</div>
+<div class="app"><div class="win">
+  <div class="apphdr">
+    <span class="soft">Turn <span class="chip val">39<span class="caret">&#9662;</span></span></span>
+    <span class="chip warnc">&#9888; 1 to check<span class="caret">&#9662;</span></span>
+    <span class="push"><span class="chip">Import</span></span>
+  </div>
+  <div class="drop">
+    <div class="tabs"><span class="tab">Problems</span><span class="tab">Events</span><span class="tab">Engine</span><span class="tab on">Not read 1</span><span class="btn cp">Copy all</span><span class="x">&#10005;</span></div>
+    <h4>Lines that could not be read</h4>
+    <div class="lines">
+      <div class="lineitem"><span class="lineno">1841</span><span class="kind">Unit</span><span class="linetext"><span>* Drones (9498), Borg (21), revealing faction, 100 gnolls [GNOL], 170 swords [SWOR].</span><span class="costnote">The unit is on the map, but nothing it holds could be read.</span></span></div>
+    </div>
+    <p class="foot">None of this reached the map, except where a note says otherwise.</p>
+  </div>
+  <div class="tot">3 units &middot; <span class="miss">6 men or more &mdash; 1 unit could not be read</span></div>
+</div></div>
+
+<div class="lab">A badly wrapped report — every unit in the hex, and the total that survives it</div>
+<div class="app"><div class="win">
+  <div class="apphdr">
+    <span class="soft">Turn <span class="chip val">39<span class="caret">&#9662;</span></span></span>
+    <span class="chip warnc">&#9888; 47 to check<span class="caret">&#9662;</span></span>
+    <span class="push"><span class="chip">Import</span></span>
+  </div>
+  <div class="unitpane">
+    <h5>Units &mdash; plain (36,44)</h5>
+    <div class="urow"><span class="uname">Drones <span class="fid">(3364)</span></span><span class="umeta miss">could not be read</span></div>
+    <div class="urow"><span class="uname">Drones <span class="fid">(9498)</span></span><span class="umeta miss">could not be read</span></div>
+    <div class="urow"><span class="uname">Scouts <span class="fid">(4102)</span></span><span class="umeta miss">could not be read</span></div>
+  </div>
+  <div class="tot">3 units &middot; <span class="miss">0 men or more &mdash; 3 units could not be read</span></div>
+</div></div>
+<p>Nothing is capped and nothing is truncated; the panel scrolls as it does today.</p>
+
+<div class="lab">A narrow window — the unit row and the panel row both stack</div>
+<div class="app narrow"><div class="win">
+  <div class="apphdr">
+    <span class="soft">Turn <span class="chip val">39<span class="caret">&#9662;</span></span></span>
+    <span class="chip warnc">&#9888; 1 to check<span class="caret">&#9662;</span></span>
+  </div>
+  <div class="drop">
+    <div class="tabs"><span class="tab on">Not read 1</span><span class="btn cp">Copy all</span><span class="x">&#10005;</span></div>
+    <h4>Lines that could not be read</h4>
+    <div class="lines">
+      <div class="lineitem stacked"><span class="meta"><span class="lineno">1841</span><span class="kind">Unit</span></span><span class="linetext"><span>* Drones (9498), Borg (21), revealing faction, 100 gnolls [GNOL], 170 swords [SWOR].</span><span class="costnote">The unit is on the map, but nothing it holds could be read.</span></span></div>
+    </div>
+    <p class="foot">None of this reached the map, except where a note says otherwise.</p>
+  </div>
+  <div class="unitpane">
+    <h5>Units</h5>
+    <div class="urow" style="grid-template-columns:1fr"><span class="uname">Drones <span class="fid">(9498)</span></span><span class="umeta miss" style="text-align:left">could not be read</span></div>
+  </div>
+</div></div>
+
+
+<h2 class="rule"><em>Strings</em> every word, exactly as it will ship</h2>
+<p>Nothing here is a paraphrase. If a word is wrong, this is the place to say so.</p>
+<table class="q">
+  <tr><th>Where</th><th>Text</th></tr>
+  <tr><td class="k">Panel row note — nothing read</td><td class="v">The unit is on the map, but nothing it holds could be read.</td></tr>
+  <tr><td class="k">Panel row note — part read</td><td class="v">The unit is on the map, but part of what it holds could not be read.</td></tr>
+  <tr><td class="k">Panel footer (replaces today's)</td><td class="v">None of this reached the map, except where a note says otherwise.</td></tr>
+  <tr><td class="k">Unit list cell — nothing read</td><td class="v">could not be read</td></tr>
+  <tr><td class="k">Unit list cell — part read</td><td class="v">{what was read} · and more that could not be read</td></tr>
+  <tr><td class="k">Unit pane figure, unknown</td><td class="v">not known</td></tr>
+  <tr><td class="k">Unit pane figure, a floor</td><td class="v">{n} or more</td></tr>
+  <tr><td class="k">Unit pane carrying, part read</td><td class="v">{what was read} · and more, not known</td></tr>
+  <tr><td class="k">Unit pane explanation — nothing read</td><td class="v">This unit's line in the turn report was not in a shape Atlantis HUD could read, so nothing it holds is known.</td></tr>
+  <tr><td class="k">Unit pane explanation — part read</td><td class="v">Part of this unit's line in the turn report was not in a shape Atlantis HUD could read, so what it holds is not fully known.</td></tr>
+  <tr><td class="k">Advice withheld — nothing read</td><td class="v">No advice for this unit: what it holds could not be read from the turn report.</td></tr>
+  <tr><td class="k">Advice withheld — part read</td><td class="v">No advice for this unit: part of what it holds could not be read from the turn report.</td></tr>
+  <tr><td class="k">Total, one unit affected</td><td class="v">{n} men or more — 1 unit could not be read</td></tr>
+  <tr><td class="k">Total, several affected</td><td class="v">{n} men or more — {u} units could not be read</td></tr>
+  <tr><td class="k">Copy all, note appended to the row</td><td class="v">(the unit is on the map, but nothing it holds could be read)</td></tr>
+</table>
+
+<div class="lab">Copy all — what lands on the clipboard, unchanged in shape from today</div>
+<pre class="clip">2 lines of turn 39, Borg (21), could not be read:
+
+  Unit     1841   : * Drones (9498), Borg (21), revealing faction, 100 gnolls [GNOL], 170 swords [SWOR].
+                     (the unit is on the map, but nothing it holds could be read)
+  Unit     2210   : * Pack Train (1902), Borg (21), 2 horses [HORS], 7500 silver [SILV].
+                     (the unit is on the map, but part of what it holds could not be read)</pre>
+
+
+<h2 class="rule"><em>Keyboard, focus and persistence</em> unchanged</h2>
+<ul class="pts">
+  <li>The chip, the tabs and the panel behave exactly as they do today. No new shortcut, no new focus rule.</li>
+  <li>A marked unit is selected, opened and moved through like any other unit. Nothing about it is disabled.</li>
+  <li>Nothing is dismissible and nothing is remembered: it is rebuilt from the loaded report, follows a turn switch, and comes back on reload. Load a correctly wrapped report of the same turn and every mark disappears.</li>
+</ul>
+
+
+<h2 class="rule"><em>Rejected</em> and why, so nobody re-opens them</h2>
+<table class="q">
+  <tr><th>Considered</th><th>Rejected because</th></tr>
+  <tr><td class="k">Drop the unit entirely and list its line like any other unreadable line</td><td>A unit you own simply is not there, which you only notice if you already know it should be. Its region, its structure and its orders lose their reference to it too.</td></tr>
+  <tr><td class="k">Reuse the existing &ldquo;about N&rdquo; / <code>~</code> estimated-people marker</td><td>&ldquo;about 0&rdquo; is a strange thing to read, it says nothing at all about lost equipment, and you would only find out by opening that unit.</td></tr>
+  <tr><td class="k">Report only a unit that lost <em>everything</em></td><td>The dangerous case is the partial one: 100 gnolls and no swords looks like a perfectly ordinary scout company. That is exactly the failure that was reported.</td></tr>
+  <tr><td class="k">Split the panel into &ldquo;Lost entirely&rdquo; and &ldquo;Read in part&rdquo; groups</td><td>Rows would stop being in plain file order, which was the one rule that needs no explaining when you go and check the report against the panel.</td></tr>
+  <tr><td class="k">Drop the panel footer and repeat the consequence on every row</td><td>A long list then repeats &ldquo;None of this reached the map.&rdquo; on nearly every row.</td></tr>
+  <tr><td class="k">Show a figure marked as a floor on the unit itself &mdash; &ldquo;0 &mdash; at least&rdquo;</td><td>Easy to skim past, and indistinguishable at a glance from a unit that really does hold nothing. A blank cannot be mistaken for zero.</td></tr>
+  <tr><td class="k">Let totals silently add up what they have</td><td>That is the reported failure one level up: a confident total that is quietly wrong.</td></tr>
+  <tr><td class="k">Let totals refuse a figure entirely</td><td>One badly read unit would blank a number you were relying on for the other twenty.</td></tr>
+  <tr><td class="k">Keep advising, marked unreliable</td><td>Warnings that are certainly meaningless &mdash; &ldquo;no men&rdquo; on a unit whose men were simply not read &mdash; would appear every turn and have to be dismissed by hand.</td></tr>
+  <tr><td class="k">Withhold only the advice that depends on the unit's contents</td><td>Which advice depends on contents is a judgement made warning by warning, and nothing on screen would tell you which rule you were looking at.</td></tr>
+  <tr><td class="k">Hide the part-read unit's known items too</td><td>The two horses were genuinely read, and the &ldquo;Not read&rdquo; panel would become the only place to see them.</td></tr>
+</table>
+
+</main>
+</body>
+</html>

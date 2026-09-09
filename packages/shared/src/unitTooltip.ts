@@ -952,11 +952,14 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // whatever that setting says - the same reasoning `withdrawing` and `works-by-default` use.
   {
     id: "shared-silver-pays-orders",
-    when: ({ silver }) => silver.sharedSilverForOrders > 0,
+    // `borrowedForOrders` and not `sharedSilverForOrders`: that field is `0` for a sharer by
+    // decision, and a sharer that overspends is exactly the borrower the agreed record draws
+    // (`ah-3c2t.2`). A superset, so no hover that shows the sentence today loses it.
+    when: ({ silver }) => silver.borrowedForOrders > 0,
     say: () => "A faction-mate's silver in this hex pays for this unit's orders.",
     example: () => ({
       unit: aReportUnit(),
-      silver: aUnitSilver({ sharedSilverForOrders: 50, upkeep: 0 }),
+      silver: aUnitSilver({ sharedSilverForOrders: 50, borrowedForOrders: 50, upkeep: 0 }),
       warned: false,
       countUpkeep: true
     })

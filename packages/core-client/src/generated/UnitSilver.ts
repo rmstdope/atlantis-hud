@@ -139,6 +139,21 @@ sharedSilverCovered: number,
  */
 sharedSilverForOrders: number, 
 /**
+ * What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
+ * this unit's own overdraft, where the hex's purse settled it (`ah-3c2t.2`).
+ *
+ * A superset of [`Self::shared_silver_for_orders`] and never smaller: that field is `0` for a
+ * sharer by decision, because a sharer's overdraft is inside the purse's own sum rather than
+ * a claim against it, and this one is not - the agreed record's borrower shares. Equal to it
+ * for every non-sharer, and `0` wherever the purse could not cover every claimant, where
+ * every figure stays pessimistic exactly as `shared_silver_for_orders` does.
+ *
+ * Read by the change list and by the hover's `shared-silver-pays-orders` note. It feeds
+ * **no** total: `short_for_orders` still counts `shared_silver_for_orders` alone, so the cell
+ * stays red exactly where it is red today (`ah-moq3`).
+ */
+borrowedForOrders: number, 
+/**
  * Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
  * `0` when the unit is not set to consume, holds no food, or owes nothing.
  *
