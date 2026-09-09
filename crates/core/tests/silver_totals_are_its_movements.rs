@@ -111,3 +111,69 @@ fn a_sharing_unit_says_where_its_loan_went() {
     assert_eq!(lent[0].line, None, "the SHARE flag lent it, not an order");
     assert_eq!(lent[0].other, None, "the hex's purse is not a unit");
 }
+
+/// One hex with a market, and two own units: a buyer whose `TAKE ... ALL SILV` cannot be priced,
+/// and the unit it takes from.
+///
+/// Built in the style of `crates/core/tests/silver_for_a_production.rs`'s `report` helper. The men
+/// must be the *first* item on each own unit's line: `count_men` reads the headcount off
+/// `items.first()`.
+fn doubted_market_report() -> String {
+    [
+        "Foo (1) Report",
+        "",
+        "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+        "------------------------------------------------------------",
+        "  Wages: $13.5 (Max: $633).",
+        "  Wanted: none.",
+        "  For Sale: 20 grain [GRAI] at $20.",
+        "  Entertainment available: $85.",
+        "  Products: none.",
+        "",
+        "* Buyers (900), Foo (1), 2 leaders [LEAD], 500 silver [SILV]. Weight: 20. \
+         Capacity: 0/0/0/0. Skills: none.",
+        "* Purse (902), Foo (1), 2 leaders [LEAD], 60 silver [SILV]. Weight: 20. \
+         Capacity: 0/0/0/0. Skills: none.",
+        "",
+    ]
+    .join("\n")
+}
+
+/// A doubted *income* silences the column's income and empties its change list - and its expense
+/// is still a number, because `expense_doubt` stays `None`.
+///
+/// A characterisation test, and stated as such: nothing displayed changes across `ah-6m7b.4`. It
+/// passes before the refactor and after it, and is expected to fail *during* it if a doubted
+/// unit's market demand is left off the internal record - which is exactly what it is for.
+#[test]
+fn a_doubted_income_still_charges_what_the_purchase_asked() {
+    let text = doubted_market_report();
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset());
+
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let orders = format!("{template}\nunit 900\nTAKE FROM 902 ALL SILV\nBUY 2 grain\n");
+
+    let review = review_turn(&parsed, &orders, Some(&ruleset()), CheckOptions::default());
+    let unit = review
+        .silver
+        .iter()
+        .find(|silver| silver.unit_id == "900")
+        .expect("unit 900 is on the SILVER surface");
+
+    assert_eq!(
+        unit.income, None,
+        "the take cannot be priced, so income is silenced"
+    );
+    assert_eq!(
+        unit.expense,
+        Some(40),
+        "and the two grain are still 40 silver out"
+    );
+    assert!(
+        unit.changes.is_empty(),
+        "a doubted unit shows no change list at all (`ah-rgkk.4.4`) - this bead does not open that gate"
+    );
+}

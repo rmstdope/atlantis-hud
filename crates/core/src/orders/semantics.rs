@@ -49,8 +49,8 @@ use crate::orders::silver::{
     MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare,
     PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages,
     SaleAnswer, SettledBuyAll, SettledGift, SharedMarket, SilverChange, SilverChangeCause,
-    SilverDoubt,
-    TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
