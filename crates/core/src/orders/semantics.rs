@@ -7495,7 +7495,12 @@ fn study(
 
     // The identical call the SILVER column's own STUDY arm makes, on the identical two views, so
     // the ledger and the column cannot charge one unit two ways (`silver_records_agree`).
-    if let Some(ruleset) = ruleset {
+    //
+    // An estimated headcount is left to the doubt below rather than answered here: the column
+    // short-circuits such a unit with `SilverDoubt::EstimatedMen` before any arm runs
+    // (`silver::forecast_unit`), so a ledger that fell silent instead would describe it
+    // differently from the column - and `ledger.doubted` is read well past the fee.
+    if let Some(ruleset) = ruleset.filter(|_| !actor.unit.men_estimated) {
         if let Some(entry) = ruleset.find_skill(skill) {
             if study::at_the_ceiling(
                 ruleset,
@@ -40090,6 +40095,27 @@ BUILD
 
             assert!(silver.no_study_fee.is_some(), "{silver:?}");
             assert_eq!(silver.doubt, None, "with no fee there is nothing to doubt");
+        }
+
+        /// An estimated headcount is the column's `SilverDoubt::EstimatedMen` and nothing else: the
+        /// ledger must not fall silent about such a unit ahead of that doubt, since `ledger.doubted`
+        /// is read well past the fee.
+        #[test]
+        fn a_capped_study_by_a_unit_of_estimated_men_is_doubted_as_it_always_was() {
+            let mut student = capped_gnolls(900);
+            student.men_estimated = true;
+            let review = reviewed(
+                vec![student],
+                "unit 8573\nSTUDY COMB\n",
+                CheckOptions::default(),
+            );
+            let silver = silver_for(&review, "8573");
+
+            assert_eq!(silver.doubt, Some(SilverDoubt::EstimatedMen));
+            assert_eq!(
+                silver.no_study_fee, None,
+                "an estimated unit is not told its month is free: {silver:?}"
+            );
         }
 
         #[test]

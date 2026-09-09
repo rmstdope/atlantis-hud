@@ -304,11 +304,11 @@ pub struct UnitSilver {
     /// it. `None` when it cannot be priced - an estimated headcount, or a report that never said
     /// what the unit is made of.
     pub upkeep: Option<i64>,
-    /// Why a term could not be priced, for the hover to explain. `None` when nothing was doubted.
     /// Set where this month's `STUDY` was not charged for, with what to say about it. `None` for
     /// every other unit, including one whose ceiling could not be settled - which is charged
     /// exactly as it was.
     pub no_study_fee: Option<NoStudyFee>,
+    /// Why a term could not be priced, for the hover to explain. `None` when nothing was doubted.
     pub doubt: Option<SilverDoubt>,
     /// What the doubt is *about*, where its sentence names something - the goods of an
     /// unidentifiable `SELL`, as the order itself wrote them. `None` for every other doubt.
@@ -1845,6 +1845,7 @@ pub fn forecast_unit(
         .then_some(SilverDoubt::TakesAWholeClass);
     let mut expense_doubt = None;
     let mut no_study_fee: Option<NoStudyFee> = None;
+    let mut charged_a_study = false;
     let mut doubt_subject = None;
     let mut given_to_nobody = 0i64;
     let mut withdrawing = false;
@@ -2299,8 +2300,14 @@ pub fn forecast_unit(
                     // The month cannot raise the level, so it is not performed and not billed
                     // (`study::at_the_ceiling`). No `Studied` change, no spender, and no
                     // `UnpricedSkill` doubt: with no fee there is nothing left to be unsure about.
-                    no_study_fee = capped;
+                    //
+                    // The first capped study wins, and the note is dropped again below if any
+                    // other `STUDY` on this unit *is* charged: the interface leans on the note
+                    // never appearing on a unit that still paid, and a second `STUDY` line - odd
+                    // as it is - must not break that.
+                    no_study_fee = no_study_fee.or(capped);
                 } else {
+                    charged_a_study = true;
                     // STUDY is priced after the market opens too, so the fee is per man this month
                     // actually has, not only per man the report printed (`ah-dxfd.2`).
                     let cost = entry.and_then(|skill| skill.cost);
@@ -2829,6 +2836,12 @@ pub fn forecast_unit(
     let short_for_orders = short_before_sharing.map(|short| short.saturating_sub(shared));
 
     // Stable, so entries sharing a phase keep the document order they were pushed in.
+    // The note says *this unit's month costs nothing*, so a unit that paid for a study anywhere
+    // must not carry it, whatever else it also ordered.
+    if charged_a_study {
+        no_study_fee = None;
+    }
+
     moves.sort_by_key(|(phase, _)| *phase);
 
     UnitSilver {

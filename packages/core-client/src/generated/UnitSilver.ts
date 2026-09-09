@@ -78,12 +78,15 @@ shortOn: SilverSpender | null,
  */
 upkeep: number | null, 
 /**
- * Why a term could not be priced, for the hover to explain. `None` when nothing was doubted.
  * Set where this month's `STUDY` was not charged for, with what to say about it. `None` for
  * every other unit, including one whose ceiling could not be settled - which is charged
  * exactly as it was.
  */
-noStudyFee: NoStudyFee | null, doubt: SilverDoubt | null, 
+noStudyFee: NoStudyFee | null, 
+/**
+ * Why a term could not be priced, for the hover to explain. `None` when nothing was doubted.
+ */
+doubt: SilverDoubt | null, 
 /**
  * What the doubt is *about*, where its sentence names something - the goods of an
  * unidentifiable `SELL`, as the order itself wrote them. `None` for every other doubt.

@@ -1783,14 +1783,6 @@ function silverMarkWarning(
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
-/**
- * What moved this unit's silver this month: the cell's own figure against the report's, then one
- * line per cause in the turn's own order (`ah-rgkk.4.3`, decision **V2**).
- *
- * This parts company with the whole-unit tooltip, which keeps `summariseSilver`'s four sums and
- * every note: one composer cannot serve both, the tooltip being a summary where the sums are the
- * right density and this being about one cell, which must name causes.
- */
 /** Why a capped unit's month costs nothing, in the words the designer agreed (`ah-jzs9`). */
 function noStudyFeeSentence(reason: NoStudyFee): string {
   return sentence(
@@ -1800,6 +1792,14 @@ function noStudyFeeSentence(reason: NoStudyFee): string {
   );
 }
 
+/**
+ * What moved this unit's silver this month: the cell's own figure against the report's, then one
+ * line per cause in the turn's own order (`ah-rgkk.4.3`, decision **V2**).
+ *
+ * This parts company with the whole-unit tooltip, which keeps `summariseSilver`'s four sums and
+ * every note: one composer cannot serve both, the tooltip being a summary where the sums are the
+ * right density and this being about one cell, which must name causes.
+ */
 function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   if (facts.dissolving) {
     return {
