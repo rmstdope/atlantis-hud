@@ -454,7 +454,10 @@ pub fn is_vessel(structure: &Structure, ruleset: Option<&Ruleset>) -> bool {
 /// hull, or a hull the catalogue does not carry - and callers must read it as such, never as "does
 /// not fly".
 ///
-/// The test is the word `flying` in the item's own description. Across all three committed
+/// The test is the phrase `is a flying` in the item's own description - the catalogue's own
+/// sentence, `"This is a flying 'ship' with a capacity of ..."`, rather than the bare word, which
+/// would also match a hull whose description merely mentioned flying units or flying mounts (both
+/// phrases the committed catalogues use elsewhere). Across all three committed
 /// catalogues that separates exactly Airship, Balloon and Cloudship ("This is a flying 'ship' with
 /// a capacity of ...") from Cog, Corsair, Galleon, Galley, Longship and Raft ("This is a ship with
 /// a capacity of ..."), and no ordinary ship's description contains the word anywhere. Prose rather
@@ -473,7 +476,7 @@ pub fn fleet_flies(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<bool>
         flies |= item
             .description
             .as_deref()
-            .is_some_and(|text| text.to_ascii_lowercase().contains("flying"));
+            .is_some_and(|text| text.to_ascii_lowercase().contains("is a flying"));
     }
     Some(flies)
 }
