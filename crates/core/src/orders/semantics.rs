@@ -5709,7 +5709,12 @@ fn apply(
             if priced.doubt.is_some() {
                 ledger.doubted.insert(who.clone());
             } else {
-                credit(ledger, StatePhase::Give, who, SILVER, priced.earns);
+                // The Tax phase, not the Give phase: `rules/sequenceofevents` processes PILLAGE in
+                // the *Tax orders* batch, which follows the *Give orders* batch, and
+                // `phases::phase_of(&Intent::Pillage)` has always answered `StatePhase::Tax`. The
+                // visible consequence is that a `GIVE ... ALL SILV` beside a `PILLAGE` stops
+                // handing over pillage money the unit has not earned yet (`ah-6m7b.5.2`).
+                credit(ledger, StatePhase::Tax, who, SILVER, priced.earns);
             }
         }
         Intent::Buy { amount, item } => {
@@ -15773,6 +15778,35 @@ mod tests {
     /// "PILLAGE comes before TAX, so a unit performing TAX will collect no money in that region
     /// that month." The ledger read `hex.region.tax_base` alone and never looked at the hex's own
     /// orders, so it credited a taxer beside a pillager in full.
+    /// `rules/sequenceofevents` puts PILLAGE in the *Tax orders* batch, which comes after the
+    /// *Give orders* batch - so a `GIVE ... ALL SILV` beside a `PILLAGE` hands over what the unit
+    /// held, and not the pillage money it has not earned yet (`ah-6m7b.5.2`).
+    #[test]
+    fn pillage_is_credited_after_the_give_phase() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![
+                armed_to_pillage(with_silver(unit("1"), 100), 2500),
+                with_silver(unit("2"), 0),
+            ])
+        };
+        let ordered = OrderedUnits::read("unit 1\nPILLAGE\nGIVE 2 ALL SILV\n\nunit 2\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+
+        assert_eq!(
+            ledger.state.balance_at(StatePhase::Give, "1", SILVER),
+            0,
+            "the gift hands over the 100 the unit held, and the pillage has not arrived yet"
+        );
+        assert!(
+            ledger.state.balance_at(StatePhase::Tax, "1", SILVER) > 0,
+            "the pillage arrives in the Tax phase, where `rules/sequenceofevents` puts it: {}",
+            ledger.state.balance_at(StatePhase::Tax, "1", SILVER)
+        );
+    }
+
     #[test]
     fn the_ledger_credits_a_taxer_nothing_in_a_pillaged_hex() {
         let hex_region = ReportRegion {
