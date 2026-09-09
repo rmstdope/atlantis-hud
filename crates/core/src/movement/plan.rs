@@ -315,6 +315,28 @@ pub(crate) fn blocks(
     ruleset.is_water(terrain) && ruleset.water_needs_a_ship() && !flies(mode)
 }
 
+/// Whether the sailing rule refuses this step outright, whatever the two hexes are like on their
+/// own.
+///
+/// `rules/movement_sailing`: "A fleet can move from an ocean region to another ocean region, or
+/// from a coastal region to an ocean region, or from an ocean region to a coastal region." All
+/// three have ocean at one end, so a step with land at both ends is none of them - even where both
+/// hexes are coastal and [`blocks`] is therefore content with each of them separately.
+///
+/// Gated on the ruleset's own `land_needs_coast`, the flag that says this world models the sailing
+/// restriction at all. A ruleset that does not is not to be overruled by a belief hardcoded here.
+pub(crate) fn refused_by_sailing_step(
+    ruleset: &Ruleset,
+    mode: MovementMode,
+    from_terrain: &str,
+    into_terrain: &str,
+) -> bool {
+    mode == MovementMode::Sail
+        && ruleset.sailing_land_needs_coast()
+        && !ruleset.is_water(from_terrain)
+        && !ruleset.is_water(into_terrain)
+}
+
 /// Whether a hex has at least one neighbour the map itself describes as water.
 fn is_coastal(ruleset: &Ruleset, map: &MapKnowledge, coordinate: Coordinate) -> bool {
     map.neighbours(coordinate).any(|(_, neighbour)| {

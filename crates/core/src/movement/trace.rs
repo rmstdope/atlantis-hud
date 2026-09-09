@@ -16,7 +16,8 @@ use crate::movement::graph::MapKnowledge;
 use crate::movement::mode::{fleet_of, fleet_sailing, mobility, Mobility};
 use crate::movement::orders::MoveStep;
 use crate::movement::plan::{
-    base_terrain_cost, blocks, split_into_months, step_cost, MonthLeg, RouteStep,
+    base_terrain_cost, blocks, refused_by_sailing_step, split_into_months, step_cost, MonthLeg,
+    RouteStep,
 };
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::ReportUnit;
@@ -105,7 +106,10 @@ pub fn trace_move(
         // The first step the game would refuse marks everything after it as doubt. Judged by the
         // planner's own rule, so the two never disagree about what the sea stops.
         if blocked_from.is_none()
-            && mode.is_some_and(|mode| blocks(ruleset, map, mode, next, &next_terrain))
+            && mode.is_some_and(|mode| {
+                blocks(ruleset, map, mode, next, &next_terrain)
+                    || refused_by_sailing_step(ruleset, mode, &terrain, &next_terrain)
+            })
         {
             blocked_from = Some(route.len());
         }
