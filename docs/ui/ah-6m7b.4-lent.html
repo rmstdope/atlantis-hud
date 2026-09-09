@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A sharer's 90 silver (ah-6m7b.4)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:6px; border-bottom:1px solid var(--edge-soft); padding-bottom:5px;}
+  .il { font-size:12px; color:var(--ink-soft); padding:3px 0; border-bottom:1px solid var(--edge-soft); display:flex; justify-content:space-between; gap:12px;}
+  .il:last-child { border-bottom:0; }
+  .il .k { color:var(--ink); }
+  .il .v { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink); white-space:nowrap;}
+  .il .s { display:block; color:var(--ink-dim); font-size:11px; font-style:italic; margin-top:2px; font-family:Georgia,serif;}
+  .il.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .il.badline { background:rgba(217,112,112,.09); border-left:2px solid var(--danger); padding-left:7px; }
+  .note { font-size:11.5px; color:var(--ink-soft); font-style:italic; padding-top:7px; margin-top:5px; border-top:1px solid var(--edge-soft); font-family:Georgia,serif;}
+  .note.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; } .cap b { color:var(--ink); }
+  .bad { color:var(--danger); } .good { color:var(--ok); }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-6m7b.4</span> &mdash; a sharer's 90 silver, and where it goes</h1>
+  <p>This bead makes the SILVER column's totals <strong>the sum of its own movement list</strong>,
+  so the two can never disagree again. Running that check over the 26 committed turns found
+  <strong>one unit where they already disagree</strong>, and fixing it needs one decision from you.</p>
+  <p><strong>Farmers (3493)</strong> in <code>g3-f42-t40</code> is set to <code>sharing</code>. It
+  sells 114 livestock for 2394, and the hex's shared purse draws <strong>90</strong> out of it to pay
+  a faction-mate's orders (<code>semantics.rs:1685</code>). The column charges that 90 to
+  <em>Out</em>&hellip; and records nothing in the movement list. So the hover shows money leaving and
+  says nothing at all about where it went.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>Today</em> the 90 is invisible</h2>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Farmers (3493)</div>
+      <div class="il"><span class="k">silver</span><span class="v">330 &rarr; 2634</span></div>
+      <div class="il"><span class="k">sold<span class="s">114 livestock at 21 each</span></span><span class="v good">+2394</span></div>
+      <div class="il badline"><span class="k"><span style="color:var(--danger)">&mdash; nothing &mdash;</span><span class="s">the list stops here, but Out says 90</span></span><span class="v bad">?</span></div>
+      <div class="il"><span class="k">Out</span><span class="v bad">90</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v">2634</span></div>
+    </div>
+  </div>
+  <pre class="calc">2394 in, 0 out on the list  &ne;  income 2394, expense 90  &larr; the disagreement this bead exists to make impossible</pre>
+  <p class="cap"><b>The borrower is already told.</b> A unit whose orders a faction-mate paid for gets
+  the sentence <em>&ldquo;A faction-mate's silver in this hex pays for this unit's orders.&rdquo;</em>
+  (<code>unitTooltip.ts:954</code>). The <b>lender</b> gets nothing.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option A</em> a line in the movement list</h2>
+  <p>A new cause, <code>lent</code>, recorded where the loan is settled. The movement list explains
+  the whole of <em>Out</em>, and the invariant this bead installs holds over every unit in every
+  committed turn with no exception.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Farmers (3493)</div>
+      <div class="il"><span class="k">silver</span><span class="v">330 &rarr; 2634</span></div>
+      <div class="il"><span class="k">sold<span class="s">114 livestock at 21 each</span></span><span class="v good">+2394</span></div>
+      <div class="il newline"><span class="k">lent<span class="s">to a faction-mate's orders in this hex</span></span><span class="v">&minus;90</span></div>
+      <div class="il"><span class="k">Out</span><span class="v">90</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v">2634</span></div>
+    </div>
+  </div>
+  <p class="cap"><b>Costs.</b> A new <code>SilverChangeCause</code> variant, so the generated
+  TypeScript type is regenerated and one label line is added &mdash; this bead stops being confined to
+  one Rust file. <b>Buys.</b> The sharer's hover stops lying by omission, and the corpus test is
+  unconditional, which is the strongest form of the guarantee.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option B</em> a sentence, like the borrower's</h2>
+  <p>No new cause and no new line. The lender gets the mirror of the sentence the borrower already
+  gets, from the same note machinery. The movement list still does not account for the 90, so this
+  bead's corpus test has to <b>skip lending units by name</b>, and a separate bead is filed for the
+  gap.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Farmers (3493)</div>
+      <div class="il"><span class="k">silver</span><span class="v">330 &rarr; 2634</span></div>
+      <div class="il"><span class="k">sold<span class="s">114 livestock at 21 each</span></span><span class="v good">+2394</span></div>
+      <div class="il"><span class="k">Out</span><span class="v">90</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v">2634</span></div>
+      <div class="note newline">This unit's silver pays for a faction-mate's orders in this hex.</div>
+    </div>
+  </div>
+  <p class="cap"><b>Costs.</b> A new field on the serialised type anyway (the popup has no figure for
+  what a unit <em>lends</em>), plus the note; and the invariant carries a permanent carve-out, which
+  is exactly the hole a future arm slips through. <b>Buys.</b> No new word in the movement list.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option C</em> leave it, file it</h2>
+  <p>Nothing is shown differently. The corpus test skips lending units, a P4 bead is filed for the
+  unexplained 90, and this bead stays exactly as scoped &mdash; one Rust file, no serialised type
+  change.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Farmers (3493)</div>
+      <div class="il"><span class="k">silver</span><span class="v">330 &rarr; 2634</span></div>
+      <div class="il"><span class="k">sold<span class="s">114 livestock at 21 each</span></span><span class="v good">+2394</span></div>
+      <div class="il badline"><span class="k"><span style="color:var(--danger)">&mdash; still nothing &mdash;</span></span><span class="v bad">?</span></div>
+      <div class="il"><span class="k">Out</span><span class="v bad">90</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v">2634</span></div>
+    </div>
+  </div>
+  <p class="cap"><b>Costs.</b> The defect stays on show, and the guarantee this bead installs has a
+  named hole in it from the day it ships. <b>Buys.</b> The smallest bead, and the decision is
+  deferred rather than taken now.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Side by side</em></h2>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>A &mdash; a <code>lent</code> line</th><th>B &mdash; a sentence</th><th>C &mdash; leave it</th></tr>
+    <tr><td class="k">sharer's hover</td><td>says where the 90 went</td><td>says why, not where</td><td class="bad">says nothing</td></tr>
+    <tr><td class="k">corpus invariant</td><td class="good">unconditional</td><td class="bad">skips lenders</td><td class="bad">skips lenders</td></tr>
+    <tr><td class="k">serialised type</td><td>new cause variant</td><td>new number field</td><td class="good">unchanged</td></tr>
+    <tr><td class="k">TypeScript touched</td><td>one label line</td><td>a note rule + example</td><td class="good">none</td></tr>
+    <tr><td class="k">follow-up bead</td><td class="good">none</td><td>none</td><td>one, at P4</td></tr>
+  </table>
+</section>
+</main>
+</body>
+</html>
