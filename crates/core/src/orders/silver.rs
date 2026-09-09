@@ -487,7 +487,9 @@ pub struct SettledBuyAll {
     pub spends: i64,
     /// What the unit could spend when the line was reached: its market-phase balance, less what a
     /// contended tax pool's settlement takes off this unit's collection (`ah-ud89.2`), plus what
-    /// an over-charged bounded line left it, plus what `rules/share` lends it.
+    /// an over-charged bounded line left it, plus what `rules/share` lends it - each sharer's own
+    /// tax settled against it first, and silver in hand alone where no share of the pool is a
+    /// number (`ah-3c2t.1`).
     pub silver_available: i64,
     /// What `price_buy_all` decided: the count, the caps, and which one bit.
     pub plan: BuyAllPlan,
@@ -542,7 +544,8 @@ pub struct BuyAllShown {
     /// unchanged (`ah-lauy`).
     pub already_bought: i64,
     /// What the unit can have when this line is reached - its own silver, plus what the hex's
-    /// `SHARE` flags lend the market (`ah-szye`) - for the "cannot afford one" sentence.
+    /// `SHARE` flags lend the market, each sharer's own tax settled against it first
+    /// (`ah-szye`, `ah-3c2t.1`) - for the "cannot afford one" sentence.
     pub silver_available: i64,
     /// The line's unit price, for the same sentence.
     pub price: i64,

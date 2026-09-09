@@ -20855,6 +20855,25 @@ BUILD
             });
         }
 
+        /// The bounded `BUY` arm reads the same settled purse as `BUY ALL`, or one unit's two
+        /// `BUY` forms would read one purse two ways (`ah-3c2t.1`).
+        #[test]
+        fn a_bounded_buy_is_sized_by_a_purse_with_the_tax_settlement_applied() {
+            let orders = "unit 1\nTAX\nBUY 100 horse\nunit 2\nTAX\n";
+
+            with_ledger(settled_purse_hex(), orders, |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "1" && m.tag == "HORS")
+                        .map(|m| m.delta),
+                    Some(52),
+                    "$2,600 of settled purse buys 52 of the 100 asked for"
+                );
+            });
+        }
+
         /// Where no sharer's share of the tax pool is a number, the purse lends silver actually in
         /// hand - and the buyer spends silver actually in hand too (`ah-3c2t.1`).
         ///
@@ -25659,6 +25678,44 @@ BUILD
                 sharing(with_skill(with_silver(with_men(unit("2"), 10), 0), "COMB", 1)),
             ])
         }
+    }
+
+    /// The purse records that it fell back to silver in hand, which `ah-3c2t.3` renders as the
+    /// sentence telling the player the quantity is a floor (`ah-3c2t.1`).
+    #[test]
+    fn a_purse_that_lent_only_held_silver_says_so() {
+        let orders = "unit 1\nTAX\nunit 2\nTAX\n";
+
+        assert!(
+            !market_purse_of(&contended_sharing_hex(), orders).fell_back(),
+            "a settleable pool lends the settlement, not silver in hand"
+        );
+
+        let mut unknowable = contended_sharing_hex();
+        unknowable.units[1].men_estimated = true;
+
+        assert!(
+            market_purse_of(&unknowable, orders).fell_back(),
+            "no sharer's share is a number, so the purse lent silver in hand alone"
+        );
+    }
+
+    /// Most hexes see nothing at all: where the pool goes round, a sharer lends exactly what it
+    /// lent before this bead (`ah-3c2t.1`).
+    #[test]
+    fn an_uncontended_sharing_hex_lends_exactly_what_it_lent_before() {
+        let hex_region = ReportRegion {
+            tax_base: Some(10_000),
+            ..contended_sharing_hex()
+        };
+
+        let purse = market_purse_of(&hex_region, "unit 1\nTAX\nunit 2\nTAX\n");
+
+        assert_eq!(
+            purse.adds_for(0),
+            Some(500),
+            "nobody oversubscribes $10,000, so the whole hopeful tax is lent"
+        );
     }
 
     /// The purse lends what the settlement says a sharer will collect, not what it hoped for
