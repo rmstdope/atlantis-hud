@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The unit that takes it all (ah-sgn6)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  h3.sub { font-size:13px; color:var(--brass); letter-spacing:1.2px; text-transform:uppercase; margin:22px 0 2px; font-weight:normal; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:6px; border-bottom:1px solid var(--edge-soft); padding-bottom:5px;}
+  .il { font-size:12px; color:var(--ink-soft); padding:3px 0; border-bottom:1px solid var(--edge-soft); display:flex; justify-content:space-between; gap:12px;}
+  .il:last-child { border-bottom:0; }
+  .il .k { color:var(--ink); }
+  .il .v { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink); white-space:nowrap;}
+  .il .s { display:block; color:var(--ink-dim); font-size:11px; font-style:italic; margin-top:2px; font-family:Georgia,serif;}
+  .il.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .il.hidden-line { background:rgba(217,112,112,.09); border-left:2px solid var(--danger); padding-left:7px; }
+  .il.uncertain { background:rgba(217,164,65,.10); border-left:2px solid var(--warn); padding-left:7px; }
+  .note { font-size:11.5px; color:var(--ink-soft); font-style:italic; padding-top:7px; margin-top:5px; border-top:1px solid var(--edge-soft); font-family:Georgia,serif;}
+  .note.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .note.warnline { background:rgba(217,164,65,.10); border-left:2px solid var(--warn); padding-left:7px; }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; max-width:94ch; } .cap b { color:var(--ink); }
+  .bad { color:var(--danger); } .good { color:var(--ok); } .dim { color:var(--ink-dim); } .amb { color:var(--warn); }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+  .grid-cell { display:inline-block; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; border:1px solid var(--edge); background:var(--panel); padding:2px 10px; border-radius:3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-sgn6</span> &mdash; the unit that <em>takes it all</em></h1>
+  <p>One hex, two of our units. <strong>Buyers (900)</strong> holds <strong>500</strong> and writes
+  three orders: <code>TAX</code>, <code>TAKE FROM 902 ALL SILV</code>, <code>BUY 2 grain</code>.
+  <strong>Purse (902)</strong> holds <strong>60</strong> and writes nothing.
+  The tax is worth <strong>150</strong>; the grain costs <strong>40</strong>.</p>
+  <p>Purse's own row was fixed by <code>ah-42li</code>: it now draws
+  <em>&ldquo;was taken &minus;60 by Buyers (900)&rdquo;</em> and ends the month at 0.
+  <strong>Buyers' row is the one left.</strong> The one term that cannot be priced silences
+  <em>everything</em>: the tax, the purchase and the month end all disappear behind a single
+  <code>?</code>.</p>
+  <p><code>rules/sequenceofevents</code> processes <strong>GIVE and TAKE together, before TAX,
+  before the market</strong> &mdash; so what Buyers takes is exactly Purse's 60, settled before
+  either unit earns anything. That fact is what makes Option&nbsp;A below possible at all.</p>
+</header>
+
+<main>
+<section>
+  <p class="cap" style="border-left:3px solid var(--ok);padding-left:12px;font-size:14px;">
+  <b>Chosen: Option A</b> &mdash; count it. The line reads <code>took +60</code>, <em>from Purse (902)</em>,
+  identical to a stated <code>TAKE FROM 902 60 SILV</code>. The class form
+  (<code>TAKE FROM 902 ALL NORMAL</code>) keeps its doubt, because the ledger returns early for a
+  class selector and the two surfaces would disagree about a <code>BUY ALL</code>.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Today</em> one unpriceable term hides the whole month</h2>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver &mdash; the popup</div>
+      <div class="hd">Buyers (900) &mdash; today</div>
+      <div class="il"><span class="k">silver</span><span class="v bad">?</span></div>
+      <div class="il hidden-line"><span class="k"><span class="bad">&mdash; nothing listed &mdash;</span><span class="s">taxed +150 and bought &minus;40 are both known, and both hidden</span></span><span class="v bad">&nbsp;</span></div>
+      <div class="note">This month cannot be added up, so what moved this unit's silver is not listed.</div>
+      <div class="note">Taking all of another unit's silver cannot be counted until that unit's own month is settled.</div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver &mdash; the table cell</div>
+      <div class="hd">The hex, as the table draws it</div>
+      <div class="il"><span class="k">Buyers (900)</span><span class="v"><span class="grid-cell bad">?</span></span></div>
+      <div class="il"><span class="k">Purse (902)</span><span class="v"><span class="grid-cell good">0</span></span></div>
+      <div class="note">Purse is right since <code>ah-42li</code>. Buyers is a <code>?</code> because of one
+      order out of three &mdash; and a <code>?</code> is what a unit with no report at all shows, so the
+      reader cannot tell &ldquo;we know almost all of this&rdquo; from &ldquo;we know nothing&rdquo;.</div>
+    </div>
+  </div>
+  <pre class="calc">income  = None      (SilverDoubt::TakesAllFromAnother)
+expense = Some(40)  &larr; the purchase is still charged
+changes = []        &larr; emptied for any doubted unit (ah-rgkk.4.4)
+at month end = None</pre>
+</section>
+
+<section>
+  <h2 class="rule" id="chosen"><em>Option A &mdash; chosen</em> count it &mdash; the settlement already knows the number</h2>
+  <p>The Give-phase settlement computes what moved and <strong>already books it on Purse</strong>
+  (<code>debit_source</code>, <code>semantics.rs:2972</code>) &mdash; then throws the same figure away
+  at the taker's end and raises the doubt instead. Both ends of one order, one settled quantity, two
+  different answers. Option A credits the taker with the number it just debited the source:
+  <code>SilverDoubt::TakesAllFromAnother</code> stops being raised, and disappears.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Buyers (900) &mdash; Option A</div>
+      <div class="il"><span class="k">silver</span><span class="v">500 &rarr; <span class="good">670</span></span></div>
+      <div class="il newline"><span class="k">took<span class="s">from Purse (902)</span></span><span class="v good">+60</span></div>
+      <div class="il newline"><span class="k">taxed</span><span class="v good">+150</span></div>
+      <div class="il newline"><span class="k">bought<span class="s">2 grain</span></span><span class="v">&minus;40</span></div>
+      <div class="il"><span class="k">In</span><span class="v good">210</span></div>
+      <div class="il"><span class="k">Out</span><span class="v">40</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v good">670</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Purse (902) &mdash; unchanged, for comparison</div>
+      <div class="il"><span class="k">silver</span><span class="v">60 &rarr; 0</span></div>
+      <div class="il"><span class="k">was taken<span class="s">by Buyers (900)</span></span><span class="v">&minus;60</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v">0</span></div>
+      <div class="note">The two rows now describe one event with one number: &minus;60 here, +60 there.</div>
+    </div>
+  </div>
+  <pre class="calc">Give phase settles FIRST  &rarr;  Purse has exactly its report holding, 60, when the take lands
+                          &rarr;  Purse's tax, had it taxed, arrives afterwards and is NOT taken
+                                (rules/sequenceofevents: GIVE and TAKE, then TAX, then the market)</pre>
+  <p class="cap"><b>Costs.</b> The <code>ah-awcm</code> reasoning &mdash; <em>&ldquo;what the source will
+  have left depends on its own month&rdquo;</em> &mdash; is retired; if it were true, Purse's own row
+  would be wrong too. One doubt variant and its sentence are deleted, and any unit whose <em>only</em>
+  problem was this take starts showing a number where it showed <code>?</code>.
+  <b>Buys.</b> The reader gets the real figure, the change list, the month end and the
+  not-enough-silver warning back &mdash; on what is, given the phase order, an exact number.
+  <b>Risk.</b> If the settled quantity is ever wrong we now show a confident wrong number instead of
+  an honest <code>?</code>. It is the same number Purse's row already shows.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option B</em> show what is known, and mark the take alone as uncertain</h2>
+  <p>Keep the doubt. Stop emptying the list: draw every priced term, and draw the take as a line
+  whose value is <code>?</code>. The total stays <code>?</code> &mdash; but the reader can see
+  <em>which single line</em> made it one, and everything else the month does.
+  This narrows <code>ah-rgkk.4.4</code>, whose reason for emptying the list was that a partial ledger
+  under a <code>?</code> invites the reader to add it up; here the unpriced term is on the page, so
+  there is nothing missing to add up.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Buyers (900) &mdash; Option B</div>
+      <div class="il"><span class="k">silver</span><span class="v bad">?</span></div>
+      <div class="il uncertain"><span class="k">took<span class="s">from Purse (902) &mdash; not yet counted</span></span><span class="v amb">?</span></div>
+      <div class="il newline"><span class="k">taxed</span><span class="v good">+150</span></div>
+      <div class="il newline"><span class="k">bought<span class="s">2 grain</span></span><span class="v">&minus;40</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v bad">?</span></div>
+      <div class="note warnline">One line below cannot be priced, so this month has no total.</div>
+      <div class="note">Taking all of another unit's silver cannot be counted until that unit's own month is settled.</div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">The table cell &mdash; unchanged</div>
+      <div class="il"><span class="k">Buyers (900)</span><span class="v"><span class="grid-cell bad">?</span></span></div>
+      <div class="note">Option B changes only the popup. The cell, the warnings and every check that
+      reads the figure behave exactly as they do today.</div>
+    </div>
+  </div>
+  <p class="cap"><b>Costs.</b> A doubted unit's change list must survive to the interface, so the
+  <code>changes = []</code> gate has to learn an exception, and the popup has to draw a line with no
+  number in it &mdash; a shape it has never drawn. Only <code>takes-all-from-another</code> earns the
+  exception; the other twelve doubts keep today's behaviour, so two kinds of doubted unit look
+  different from each other. <b>Buys.</b> Nothing is ever claimed that is not settled. The reader
+  learns what the month does and exactly what is missing from it.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option C</em> say it in words, change no lines</h2>
+  <p>The smallest change that answers the complaint. The list stays empty and the total stays
+  <code>?</code>; one extra sentence names the source and says that the rest of the month is known
+  but not shown.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Buyers (900) &mdash; Option C</div>
+      <div class="il"><span class="k">silver</span><span class="v bad">?</span></div>
+      <div class="note warnline">Everything but the take is priced: this unit also taxes and buys this month.</div>
+      <div class="note">This month cannot be added up, so what moved this unit's silver is not listed.</div>
+      <div class="note">Taking all of Purse (902)'s silver cannot be counted until that unit's own month is settled.</div>
+    </div>
+  </div>
+  <p class="cap"><b>Costs.</b> Three sentences where one stood, and the reader is told a list exists
+  without being shown it. <b>Buys.</b> Nothing in the core moves; the doubt, the gate and every check
+  stay exactly as they are. Naming the source unit in the sentence is worth having whichever option
+  you pick.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>The states</em> where the three options actually differ</h2>
+  <p>The happy path above is the case nobody argues about. These are the ones that decide it.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="hd">Purse holds <strong>nothing</strong></div>
+      <div class="il"><span class="k">Option A</span><span class="v good">610</span></div>
+      <div class="il"><span class="k">Option B</span><span class="v bad">?</span></div>
+      <div class="il"><span class="k">Option C</span><span class="v bad">?</span></div>
+      <div class="note">Nothing moves, so A records no <code>took</code> line at all and the month is
+      simply priced. B and C still show <code>?</code> for a take of zero silver &mdash; a wart they
+      cannot avoid, since the doubt is raised before the quantity is looked at.</div>
+    </div>
+    <div class="tip">
+      <div class="hd"><code>ALL SILV EXCEPT 20</code></div>
+      <div class="il"><span class="k">Option A</span><span class="v good">650</span><span></span></div>
+      <div class="il"><span class="k">Option B</span><span class="v bad">?</span></div>
+      <div class="il"><span class="k">Option C</span><span class="v bad">?</span></div>
+      <div class="note">40 moves, 20 stays. Same shape (<code>Amount::All</code>), same doubt today.
+      Whichever option wins covers this form too.</div>
+    </div>
+    <div class="tip">
+      <div class="hd">The source is a unit the report never shows</div>
+      <div class="il"><span class="k">All three</span><span class="v">unchanged</span></div>
+      <div class="note"><code>TAKE FROM 999 ALL SILV</code> against a unit outside the report is
+      counted as nothing and raises no doubt at all (<code>ah-awcm</code>). None of these options
+      touches it.</div>
+    </div>
+    <div class="tip">
+      <div class="hd">Two <code>ALL</code> takes, one empty source</div>
+      <div class="il"><span class="k">Option A</span><span class="v good">two lines, second is 0 &rarr; not drawn</span></div>
+      <div class="il"><span class="k">Option B</span><span class="v amb">two <code>?</code> lines</span></div>
+      <div class="note">Report order decides: the first taker empties the source, the second finds
+      nothing. A already has this settled &mdash; it is the figure Purse's row was debited by.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>In one table</em></h2>
+  <table class="q">
+    <tr><th></th><th>A &mdash; count it</th><th>B &mdash; partial list</th><th>C &mdash; one sentence</th></tr>
+    <tr><td class="k">the cell</td><td class="good">a number</td><td class="bad">?</td><td class="bad">?</td></tr>
+    <tr><td class="k">the change list</td><td class="good">every line, priced</td><td class="amb">every line, one is <code>?</code></td><td class="bad">still empty</td></tr>
+    <tr><td class="k">month end / warnings</td><td class="good">back</td><td class="bad">silent</td><td class="bad">silent</td></tr>
+    <tr><td class="k">agrees with Purse's row</td><td class="good">yes, same number</td><td>no</td><td>no</td></tr>
+    <tr><td class="k">narrows ah-rgkk.4.4</td><td>no</td><td class="amb">yes</td><td>no</td></tr>
+    <tr><td class="k">where the work is</td><td>core: credit the taker, delete the doubt</td><td>core gate + popup can draw an unpriced line</td><td>one note in <code>unitTooltip.ts</code></td></tr>
+    <tr><td class="k">if it is ever wrong</td><td class="bad">a confident wrong figure</td><td class="good">an honest <code>?</code></td><td class="good">an honest <code>?</code></td></tr>
+  </table>
+</section>
+
+</main>
+</body>
+</html>
