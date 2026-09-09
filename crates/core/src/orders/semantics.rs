@@ -3083,6 +3083,12 @@ fn recruited_people(
     // the walk below. The amount does not enter into it - `BUY 5 PEASANTS` is exactly as
     // invisible as `BUY ALL PEASANTS`, and both leave the unit unjudged.
     //
+    // Only those two spellings. `rules/buy` names `PEASANT` and `PEASANTS` and no other form, no
+    // rules page defines an abbreviation of an item name, and `PEAS` is not a catalogue tag
+    // (`pnpm run atlantis data PEAS`: "nothing on the data page matches"). So `BUY ALL PEAS`
+    // recruits nobody in the game either, and forecasting it as a unit that recruited nobody is
+    // the right answer rather than an escaped case.
+    //
     // Every other spelling names a race or a good, and both reach `Ledger::bought`: an exact
     // amount through `buy`, an `Amount::All` through `settle_buy_all` since `ah-jown`. So the old
     // guard on the *amount* is gone (`ah-4b6n`); it silenced every `BUY ALL` of goods along with
@@ -3090,6 +3096,8 @@ fn recruited_people(
     let buys_unnamed_recruits = ordered.intents().any(|intent| match intent {
         Intent::Buy { item, .. } => {
             let written = item.replace('_', " ");
+            // Bound rather than returned directly: `item_spellings` borrows `written`, and the
+            // iterator holding that borrow outlives the tail expression of this arm (E0597).
             let names_peasants = item_spellings(&written)
                 .into_iter()
                 .flatten()
