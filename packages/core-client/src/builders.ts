@@ -228,6 +228,7 @@ export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
     lateIncome: 0,
     expense: 0,
     wantedForOrders: 0,
+    noStudyFee: null,
     atMonthEnd: 0,
     shortForOrders: 0,
     shortOn: null,
