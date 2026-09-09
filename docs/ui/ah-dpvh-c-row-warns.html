@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1200px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  table.units { width:100%; border-collapse:collapse; font:12px/1.5 'Helvetica Neue',Arial,sans-serif;
+                font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-weight:600; color:var(--brass); font-size:10.5px; letter-spacing:.1em;
+                   text-transform:uppercase; border-bottom:1px solid var(--edge); padding:3px 8px; }
+  table.units td { border-bottom:1px solid var(--edge-soft); padding:2px 8px; vertical-align:top; }
+  table.units.narrow { width:600px; }
+  table.units.narrow td.sk, table.units.narrow th.sk { max-width:170px; overflow:hidden;
+     text-overflow:ellipsis; white-space:nowrap; }
+  .own { color:var(--ok); } .pred { font-style:italic; color:var(--brass); }
+  .dim { color:var(--ink-dim); } .sel { color:var(--select); }
+  .warnmark { color:var(--warn); }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:5px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); margin-top:12px;
+         vertical-align:top; margin-right:14px; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .note { color:var(--ink-dim); margin-top:6px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .flat { color:var(--ink-soft); } .down { color:var(--danger); } .up { color:var(--ok); }
+  .fut { color:var(--select); } .futwarn { color:var(--warn); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin:16px 0 6px; max-width:110ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .poprow { display:flex; flex-wrap:wrap; gap:14px; }
+</style>
+<title>ah-dpvh &mdash; the row warns too</title>
+<header>
+  <h1>ah-dpvh <span>&mdash; C: the row warns too</span></h1>
+  <p>Everything variant B does, and one thing more: the Skills cell of a unit whose study cannot raise its level carries
+  the same <b style="color:var(--warn)">&#9888;</b> the Silver cell already uses for a figure that needs a second look.
+  The wasted month is then visible while scanning, without hovering anything. This page is <b>variant C of three</b> &mdash;
+  open all three before choosing.</p>
+<p class="scene"><b>The scene.</b> Five own units in one hex, all writing a month-long <code>STUDY</code>.
+<b>Six&nbsp;of&nbsp;Two&nbsp;(13402)</b> is a leader at <code>COMB 5 (450)</code> whose report template writes
+<code>@study comb</code> &mdash; and <code>data/LEAD</code> says a leader stops at level&nbsp;5. <b>This is the bead's unit:
+the month buys nothing.</b> <b>Braves&nbsp;(1487)</b> studies combat from level&nbsp;2 and will reach&nbsp;3 &mdash; an
+ordinary forecast, and nothing here may change it. <b>Ore&nbsp;Gang&nbsp;(1774)</b> are hill dwarves, capped at
+combat&nbsp;2 and already there. <b>Hunters&nbsp;(1901)</b> is a leader at <code>MAGI 5</code> studying magic,
+capped <i>and</i> short of the fee &mdash; two warnings at once. <b>Watch&nbsp;(1620)</b> studies nothing.</p>
+</header>
+<main>
+<h3 class="sec">C &mdash; a warning mark on the cell, and the amber forecast from B</h3>
+<p>Three of the five rows carry the mark: the leader at its ceiling, the hill dwarves at theirs, and the mage who is
+both capped and short of the fee. Braves, who will actually advance, does not.</p>
+<div class="card"><p class="hexlab">wide column</p>
+    <table class="units">
+      <tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th class="sk">Skills</th><th>Items</th></tr>
+      <tr><td class="own">*</td><td class="sel">13402</td><td>Six of Two</td><td>1</td><td class="sk"><span class="warnmark">&#9888;</span> <span class="pred">COMB 5, OBSE 5, STEA 5</span></td><td>1 horse</td></tr>
+      <tr><td class="own">*</td><td class="sel">1487</td><td>Braves</td><td>12</td><td class="sk"><span class="pred">COMB 2, LUMB 2</span></td><td>12 leather armour</td></tr>
+      <tr><td class="own">*</td><td class="sel">1774</td><td>Ore Gang</td><td>9</td><td class="sk"><span class="warnmark">&#9888;</span> <span class="pred">COMB 2, MINI 5</span></td><td>9 pick</td></tr>
+      <tr><td class="own">*</td><td class="sel">1901</td><td>Hunters</td><td>1</td><td class="sk"><span class="warnmark">&#9888;</span> <span class="pred">MAGI 5, PATT 2</span></td><td>1 bow</td></tr>
+      <tr><td class="own">*</td><td class="sel">1620</td><td>Watch</td><td>6</td><td class="sk">COMB 1</td><td>6 sword</td></tr>
+    </table>
+<ul class="notes">
+  <li>The only variant a player finds without hovering &mdash; and a wasted month is exactly the kind of thing you want to see while scanning a hex, not after resting on it.</li>
+  <li>The mark is not new: <code>SeverityMark</code> already draws this <b style="color:var(--warn)">&#9888;</b> on a warned Silver figure, with an <code>sr-only</code> word beside it.</li>
+  <li>It reads as an invitation to hover, which is where the explanation is.</li>
+  <li class="con">The Skills column pays a character and a half of width, and it is the column most likely to be squeezed &mdash; see below.</li>
+  <li class="con">Three of five rows marked in this hex. A faction of maxed leaders would carry the mark on most of its rows, and a warning that is everywhere stops being read.</li>
+</ul></div>
+<div class="card"><p class="hexlab">narrow column &mdash; the skills column squeezed</p>
+    <table class="units narrow">
+      <tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th class="sk">Skills</th><th>Items</th></tr>
+      <tr><td class="own">*</td><td class="sel">13402</td><td>Six of Two</td><td>1</td><td class="sk"><span class="warnmark">&#9888;</span> <span class="pred">COMB 5, OBSE 5, STEA 5</span></td><td>1 horse</td></tr>
+      <tr><td class="own">*</td><td class="sel">1487</td><td>Braves</td><td>12</td><td class="sk"><span class="pred">COMB 2, LUMB 2</span></td><td>12 leather armour</td></tr>
+      <tr><td class="own">*</td><td class="sel">1774</td><td>Ore Gang</td><td>9</td><td class="sk"><span class="warnmark">&#9888;</span> <span class="pred">COMB 2, MINI 5</span></td><td>9 pick</td></tr>
+      <tr><td class="own">*</td><td class="sel">1901</td><td>Hunters</td><td>1</td><td class="sk"><span class="warnmark">&#9888;</span> <span class="pred">MAGI 5, PATT 2</span></td><td>1 bow</td></tr>
+      <tr><td class="own">*</td><td class="sel">1620</td><td>Watch</td><td>6</td><td class="sk">COMB 1</td><td>6 sword</td></tr>
+    </table>
+<ul class="notes">
+  <li class="n">The mark survives the squeeze because it sits before the text; what is truncated is the last skill tag, as it already is today.</li>
+</ul></div>
+<h3 class="sec">The popups</h3>
+<p>Identical to variant B: the amber projected figure, its footnote, and the amber sentence.</p>
+<div class="card"><div class="poprow">
+  <div class="pop">
+    <div class="head">Six of Two (13402) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span>5 (450)<span class="arrow">&rarr;</span><span class="futwarn">5 (480)</span></span></div>
+    <div class="line"><span>observation OBSE</span><span>5 (450)</span></div>
+    <div class="line"><span>stealth STEA</span><span>5 (450)</span></div>
+    <div class="note">Studying combat: worth one month. The amber figure is next turn's report: the points rise and the level holds.</div>
+    <div class="note">Nothing this month changes these.</div>
+    <div class="warn">Combat stops at level 5 and this unit is already there, so this month raises the points and cannot raise the level.</div>
+  </div>
+  <div class="pop">
+    <div class="head">Watch (1620) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span>1 (30)</span></div>
+    <div class="note">Nothing this month changes these.</div>
+  </div>
+</div></div>
+</main>
+<footer>ah-dpvh, variant C of three. The other two are <code>ah-dpvh-a-popup-only.html</code> and
+<code>ah-dpvh-b-amber-forecast.html</code>.</footer>
