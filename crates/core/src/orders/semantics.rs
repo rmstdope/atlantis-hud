@@ -14089,7 +14089,7 @@ mod tests {
             .collect()
     }
 
-    /// `ah-rgkk.4.4`: the three producers of [`Receipts::silver_moves`], through the settlement
+    /// `ah-rgkk.4.4`: the four producers of [`Receipts::silver_moves`], through the settlement
     /// that actually writes them rather than a hand-built `Receipts`. Each entry must carry the
     /// quantity that moved and the same label the `givers`/`taken_from` entry beside it carries -
     /// the invariant `ReceiptMove::other` documents, and the reason both are written in one `if`.
@@ -14138,6 +14138,30 @@ mod tests {
         assert_eq!(
             taker.silver_moves.iter().map(|m| m.amount).sum::<i64>(),
             taker.silver + taker.taken + taker.taken_unshown
+        );
+
+        // `ah-42li`: the fourth producer, on the other end of the same fixture. This file is the
+        // guard against an arm adding to a total and forgetting the record, so the outgoing arm is
+        // held to it too rather than left to the source's own test.
+        let source = receipts.get("2390").expect("the source has receipts");
+        assert_eq!(
+            source.silver_moves,
+            vec![ReceiptMove {
+                amount: -100,
+                cause: SilverChangeCause::WasTaken,
+                other: "Unit 2391 (2391)".to_string(),
+            }]
+        );
+        for move_out in &source.silver_moves {
+            assert!(
+                source.taken_by.contains(&move_out.other),
+                "{} is not among the labels",
+                move_out.other
+            );
+        }
+        assert_eq!(
+            source.silver_moves.iter().map(|m| m.amount).sum::<i64>(),
+            -source.taken_away
         );
     }
 
@@ -14211,6 +14235,46 @@ mod tests {
                 .map(|m| m.amount)
                 .sum::<i64>(),
             -taken_from.taken_away
+        );
+    }
+
+    /// `ah-42li`: a take from a source holding nothing moves nothing, and `SilverChange`'s doc
+    /// promises a movement is never zero. The `moved == 0` `continue` sits *below* the silver
+    /// block, so the booking guards itself.
+    #[test]
+    fn a_take_from_a_source_holding_no_silver_books_nothing() {
+        let region = region(vec![unit("2390"), unit("2391")]);
+        let source = "unit 2391\nTAKE FROM 2390 ALL SILV\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let taken_from = receipts.get("2390").cloned().unwrap_or_default();
+        assert_eq!(taken_from.taken_away, 0);
+        assert!(taken_from.taken_by.is_empty());
+        assert!(
+            taken_from.silver_moves.is_empty(),
+            "no silver moved, so there is no movement to record"
+        );
+    }
+
+    /// `ah-42li`: a unit written to take from itself moves its own silver in a circle. Booking it
+    /// would show `took +100` and `was taken -100` on one row for a transfer that moves nothing.
+    #[test]
+    fn a_unit_taking_from_itself_is_not_debited() {
+        let region = region(vec![with_silver(unit("2391"), 500)]);
+        let source = "unit 2391\nTAKE FROM 2391 100 SILV\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let itself = receipts.get("2391").cloned().unwrap_or_default();
+        assert_eq!(itself.taken_away, 0);
+        assert!(itself.taken_by.is_empty());
+        assert!(
+            !itself
+                .silver_moves
+                .iter()
+                .any(|m| m.cause == SilverChangeCause::WasTaken),
+            "the source and the taker are one unit, so nothing left it"
         );
     }
 

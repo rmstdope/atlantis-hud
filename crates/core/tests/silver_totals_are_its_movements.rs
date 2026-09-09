@@ -217,9 +217,15 @@ fn the_unit_a_take_empties_says_where_its_silver_went() {
         }],
         "one line, naming the taker; the order is in another unit's block, so no line of its own"
     );
+    assert_eq!(unit.held, 60, "the report shows Purse holding 60");
+    assert_eq!(
+        unit.income,
+        Some(27),
+        "Purse writes no orders, so it works by default: 2 leaders at the hex's $13.5 wage"
+    );
     assert_eq!(
         unit.at_month_end,
-        Some(unit.held + unit.income.unwrap_or(0) - 60),
+        Some(27),
         "the 60 it held is gone; what it earns of its own is untouched"
     );
 }
