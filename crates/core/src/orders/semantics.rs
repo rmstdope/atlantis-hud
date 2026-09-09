@@ -11632,9 +11632,7 @@ fn check_sail_route(
                 continue; // a bare SAIL names no direction
             }
             // The vessel this unit would be sailing, if any: the one it could captain, else the
-            // one it is standing in. A fleet that may be flying is not bound by the water, and
-            // neither is one whose hulls cannot be read - see `fleet_flies`, and `Some(false)` is
-            // the only answer that lets the warning through.
+            // one it is standing in. What that hull means for the water is decided below.
             let vessel = hex
                 .region
                 .structures
