@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The unit that is taken from (ah-42li)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:6px; border-bottom:1px solid var(--edge-soft); padding-bottom:5px;}
+  .il { font-size:12px; color:var(--ink-soft); padding:3px 0; border-bottom:1px solid var(--edge-soft); display:flex; justify-content:space-between; gap:12px;}
+  .il:last-child { border-bottom:0; }
+  .il .k { color:var(--ink); }
+  .il .v { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink); white-space:nowrap;}
+  .il .s { display:block; color:var(--ink-dim); font-size:11px; font-style:italic; margin-top:2px; font-family:Georgia,serif;}
+  .il.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .il.badline { background:rgba(217,112,112,.09); border-left:2px solid var(--danger); padding-left:7px; }
+  .note { font-size:11.5px; color:var(--ink-soft); font-style:italic; padding-top:7px; margin-top:5px; border-top:1px solid var(--edge-soft); font-family:Georgia,serif;}
+  .note.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; } .cap b { color:var(--ink); }
+  .bad { color:var(--danger); } .good { color:var(--ok); } .dim { color:var(--ink-dim); }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-42li</span> &mdash; the unit that is <em>taken from</em></h1>
+  <p>One hex, two of our units. <strong>Buyers (900)</strong> writes
+  <code>TAKE FROM 902 ALL SILV</code> and then <code>BUY 2 grain</code>.
+  <strong>Purse (902)</strong> holds <strong>60 silver</strong> and writes no orders at all.</p>
+  <p>Buyers' own row is handled &mdash; it is doubted, and that is a separate bead. <strong>Purse's row
+  is simply wrong.</strong> It shows 60 silver at month end. Purse will have nothing. The 60 is not
+  a guess we could not make: the Give-phase settlement already computes it and already takes it out
+  of Purse's item holdings (<code>semantics.rs:3043</code>) &mdash; the SILVER column just never hears
+  about it.</p>
+  <p><code>rules/sequenceofevents</code> settles <em>Give orders</em> third, before tax, before the
+  market, before wages &mdash; so what leaves Purse is exactly what the report shows it holding.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>Today</em> Purse keeps money it will not have</h2>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Purse (902) &mdash; no orders</div>
+      <div class="il"><span class="k">silver</span><span class="v">60 &rarr; <span class="bad">60</span></span></div>
+      <div class="il badline"><span class="k"><span style="color:var(--danger)">&mdash; nothing &mdash;</span><span class="s">Buyers (900) takes all of it, and this row says nothing</span></span><span class="v bad">?</span></div>
+      <div class="il"><span class="k">In</span><span class="v">0</span></div>
+      <div class="il"><span class="k">Out</span><span class="v bad">0</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v bad">60</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Buyers (900) &mdash; the taker <span class="dim">(not this bead)</span></div>
+      <div class="il"><span class="k">silver</span><span class="v">500 &rarr; ?</span></div>
+      <div class="il"><span class="k">In</span><span class="v">?</span></div>
+      <div class="il"><span class="k">Out</span><span class="v">40</span></div>
+      <div class="note">Taking all of another unit's silver cannot be counted until that unit's own month is settled.</div>
+    </div>
+  </div>
+  <p class="cap"><b>The same hole swallows an exact take.</b> <code>TAKE FROM 902 40 SILV</code>
+  leaves Purse's row untouched too &mdash; the settlement records the movement on the
+  <em>taker</em> only. Whichever option you choose, it is meant to cover both forms.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option A</em> a line in the movement list, exactly as the ITEMS ledger already does</h2>
+  <p>A new cause, <code>was-taken</code>, recorded on the source where the Give phase settles it.
+  The ITEMS surface has booked this end for a long time &mdash;
+  <code>ItemChangeCause::WasTakenFrom</code>, drawn as <em>&ldquo;60 taken by Buyers (900)&rdquo;</em>
+  (<code>unitCellPopup.ts:456</code>). Silver would stop being the one ledger that looks away.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Purse (902) &mdash; no orders</div>
+      <div class="il"><span class="k">silver</span><span class="v">60 &rarr; <span class="good">0</span></span></div>
+      <div class="il newline"><span class="k">was taken<span class="s">by Buyers (900)</span></span><span class="v">&minus;60</span></div>
+      <div class="il"><span class="k">In</span><span class="v">0</span></div>
+      <div class="il"><span class="k">Out</span><span class="v">60</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v good">0</span></div>
+    </div>
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Purse (902) &mdash; <em>if it also taxed</em></div>
+      <div class="il"><span class="k">silver</span><span class="v">60 &rarr; 50</span></div>
+      <div class="il newline"><span class="k">was taken<span class="s">by Buyers (900)</span></span><span class="v">&minus;60</span></div>
+      <div class="il"><span class="k">taxed</span><span class="v good">+50</span></div>
+      <div class="il"><span class="k">In</span><span class="v">50</span></div>
+      <div class="il"><span class="k">Out</span><span class="v">60</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v">50</span></div>
+    </div>
+  </div>
+  <pre class="calc">Give phase is settled BEFORE tax  &rarr;  the take gets 60, the tax lands after it  (rules/sequenceofevents)</pre>
+  <p class="cap"><b>Costs.</b> A new <code>SilverChangeCause</code> variant (regenerated TypeScript,
+  one label line, one clause). A negative entry in <code>Receipts</code>, which has only ever carried
+  money coming <em>in</em>. <b>Buys.</b> The figure becomes right, the hover says who took it, and the
+  two ledgers finally tell one story about the same order.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option B</em> doubt Purse's row, the way Buyers' row is doubted</h2>
+  <p>Symmetric with the taker: neither end claims a number. Purse's figure becomes <code>?</code>
+  and a sentence explains it. <strong>The whole row goes with it</strong> &mdash; a doubted unit shows
+  no change list at all (<code>ah-rgkk.4.4</code>), so Purse's own tax, sale or wage vanishes too.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Purse (902) &mdash; <em>if it also taxed</em></div>
+      <div class="il"><span class="k">silver</span><span class="v">60 &rarr; ?</span></div>
+      <div class="il badline"><span class="k"><span class="dim">&mdash; no lines &mdash;</span><span class="s">the tax it earned is hidden with the take</span></span><span class="v bad">&nbsp;</span></div>
+      <div class="il"><span class="k">In</span><span class="v">?</span></div>
+      <div class="il"><span class="k">Out</span><span class="v">?</span></div>
+      <div class="note newline">Another unit takes all this unit's silver, so what it will hold cannot be said.</div>
+    </div>
+  </div>
+  <p class="cap"><b>Costs.</b> A unit that wrote no orders at all now shows nothing but a question
+  mark, and a unit that <em>did</em> earn loses that record &mdash; the same complaint
+  <code>ah-sgn6</code> was filed about, arriving on a second row. And it is not true here: we know
+  the 60. <b>Buys.</b> Both ends of one transfer read alike.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option C</em> keep the numbers, add a warning</h2>
+  <p>No new cause, no figure change. Purse's hover gains a sentence and nothing else.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver</div>
+      <div class="hd">Purse (902) &mdash; no orders</div>
+      <div class="il"><span class="k">silver</span><span class="v">60 &rarr; <span class="bad">60</span></span></div>
+      <div class="il"><span class="k">In</span><span class="v">0</span></div>
+      <div class="il"><span class="k">Out</span><span class="v">0</span></div>
+      <div class="il"><span class="k">At month end</span><span class="v bad">60</span></div>
+      <div class="note newline">Buyers (900) takes all this unit's silver this month.</div>
+    </div>
+  </div>
+  <p class="cap"><b>Costs.</b> The column still shows 60 at month end, which is the whole complaint
+  &mdash; and the SILVER column's totals are now, by construction, the sum of its movement list
+  (<code>ah-6m7b.4</code>), so a warning with no movement behind it is the shape that invariant was
+  installed to stop. <b>Buys.</b> The smallest change of the three.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>The one thing that could make A wrong</em></h2>
+  <p>Under A the two ends of one transfer <strong>disagree</strong>: Purse says a flat
+  <code>&minus;60</code>, Buyers still says <code>?</code>. That is defensible &mdash; the source's
+  Give-phase holding is a fact, whereas the taker may also be taking from units this report does not
+  show &mdash; but it is two rows describing one order in two different voices, and it is worth
+  seeing before choosing.</p>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>Purse (902), the source</th><th>Buyers (900), the taker</th></tr>
+    <tr><td class="k">today</td><td class="bad">60 at month end (wrong)</td><td>? &mdash; doubted</td></tr>
+    <tr><td class="k">option A</td><td class="good">&minus;60, &ldquo;was taken by Buyers (900)&rdquo;</td><td>? &mdash; doubted, unchanged (<code>ah-sgn6</code> holds it)</td></tr>
+    <tr><td class="k">option B</td><td>? &mdash; doubted</td><td>? &mdash; doubted, unchanged</td></tr>
+  </table>
+</section>
+</main>
+</body>
+</html>
