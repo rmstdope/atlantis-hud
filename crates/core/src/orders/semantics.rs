@@ -4643,6 +4643,12 @@ fn ledger_for_with_production<'a>(
             // `hex_with_transfers` - which is what `review_turn` builds every hex with. A `Hex`
             // built by `Hex::read` alone has empty receipts and its ledger holds no transfer
             // record at all.
+            //
+            // Ordering: this pass runs before the unit's own `intents` loop, so within the Give
+            // phase a unit's rows read settlement-first - every receipt, then its own `GaveAway`
+            // and `Discarded` - rather than interleaved with the walk. Nothing depends on that:
+            // `compared_silver_rows` sorts before comparing, and no surface reads
+            // `Ledger::silver_moves` at all.
             if phase == StatePhase::Give {
                 for moved in &ordered.transfer_receipts.silver_moves {
                     record_silver(
