@@ -9,6 +9,7 @@ import type {
   UnitSilver
 } from "@atlantis/core-client";
 import { count } from "./plural";
+import { isSilver, withoutSilver } from "./silverTag";
 import { sameLongOrder, type ReportedLongOrder } from "./ordersDocument";
 import { battleSkillGroups, battleSkillSource } from "./battleSkillPresentation";
 import type { DerivedSkill } from "./battleSkills";
@@ -298,9 +299,11 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
   for (const item of unit.created ?? []) {
     shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
   }
+  // Silver is answered for by the SILVER column and its popup alone (`ah-6m7b.5.1`), so it is
+  // neither a line of its own nor a `gone` line for what the report listed and the month spent.
   const tags: string[] = [];
   for (const tag of [...held.keys(), ...(reported?.keys() ?? [])]) {
-    if (!tags.includes(tag)) {
+    if (!isSilver(tag) && !tags.includes(tag)) {
       tags.push(tag);
     }
   }
@@ -849,7 +852,7 @@ function movementPair(change: ReturnType<typeof changeFor>, now: string): Partia
  * line drawn directly above it, and here nothing does, so it starts a sentence.
  */
 function movementCauses(unit: PreviewedUnit): string[] {
-  const changes = unit.itemChanges ?? [];
+  const changes = withoutSilver(unit.itemChanges ?? []);
   const tags: string[] = [];
   for (const change of changes) {
     if (!tags.includes(change.tag)) {

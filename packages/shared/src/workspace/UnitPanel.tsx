@@ -1,6 +1,7 @@
 import type { FieldChange, ReportUnit, UnitPreview } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { originalTooltip } from "../unitPreview";
+import { withoutSilver } from "../silverTag";
 import { describeMen } from "../unitComposition";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { skillEntryId, type GameDataIndex } from "../gameData";
@@ -89,7 +90,9 @@ export function UnitPanelBody({
     return <Absent>No unit selected.</Absent>;
   }
 
-  const items = [...unit.items].sort((left, right) => right.amount - left.amount);
+  const items = withoutSilver(unit.items).sort(
+    (left, right) => right.amount - left.amount
+  );
   const mage = magicTree === null ? null : highestMagicSkill(unit.skills, magicTree);
   const movement = preview ? preview.unit.movement : unit.movement;
 

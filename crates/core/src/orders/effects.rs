@@ -24,6 +24,20 @@ use crate::report::composition;
 use crate::report::flags::FlagChange;
 use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStatus};
 
+/// Atlantis' currency tag. `data/items`: `silver [SILV], weight 0`.
+const SILVER_TAG: &str = "SILV";
+
+/// Everything but silver, in the order given. Silver is answered for by the SILVER column alone
+/// (`ah-6m7b.5.1`), so the ITEMS cell's projection marker is blind to it.
+fn without_silver(
+    items: &[crate::report::model::ItemAmount],
+) -> Vec<&crate::report::model::ItemAmount> {
+    items
+        .iter()
+        .filter(|item| !item.tag.eq_ignore_ascii_case(SILVER_TAG))
+        .collect()
+}
+
 /// Where a previewed unit stands relative to the hex its row sits in.
 ///
 /// Only that: whether this month's `FORM` creates the unit, and whether `rules/form` dissolves it,
@@ -1399,11 +1413,15 @@ impl WorkingUnit {
             self.unit.flags != original.flags,
             original.flags.join(", "),
         );
+        // Silver is answered for by the SILVER column alone (`ah-6m7b.5.1`), so a month that only
+        // moved money neither marks the ITEMS cell as a projection nor leaves a silver token in
+        // the string its popup pairs each line against.
+        let held_now = without_silver(&self.unit.items);
+        let held_then = without_silver(&original.items);
         change(
             "items",
-            self.unit.items != original.items,
-            original
-                .items
+            held_now != held_then,
+            held_then
                 .iter()
                 .map(|item| format!("{} {}", item.amount, item.tag))
                 .collect::<Vec<_>>()
@@ -1882,6 +1900,8 @@ impl Working {
                     name: Some(self.units[index].unit.name.clone()),
                 };
                 // `moved`, not `gift.amount`: the clamp above is what actually changed hands.
+                // The flag keeps the row where the revert was silver alone (`ah-6m7b.5.1`).
+                self.units[recipient].items_moved = true;
                 self.units[recipient].item_changes.push(ItemChange {
                     tag: gift.tag.clone(),
                     name: gift.name.clone(),
@@ -2497,6 +2517,10 @@ impl Working {
             // Below all three `continue`s above: a change recorded higher would be a movement that
             // did not happen. `moved` is what `take_item` subtracts and `tags_moved` has already
             // clamped to the stock, so the change and the item list cannot disagree.
+            // The row survives on this flag rather than on an `items` `FieldChange`: a month whose
+            // only movement was silver records no such change any more (`ah-6m7b.5.1`), and a unit
+            // that gave money away must keep its row for the SILVER column to answer in.
+            self.units[source].items_moved = true;
             self.units[source].item_changes.push(ItemChange {
                 tag: tag.clone(),
                 name: name.clone(),
@@ -2511,6 +2535,7 @@ impl Working {
             });
             if let Some(receiver) = receiver {
                 add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
+                self.units[receiver].items_moved = true;
                 self.units[receiver].item_changes.push(ItemChange {
                     tag: tag.clone(),
                     name: name.clone(),
@@ -7106,6 +7131,66 @@ mod tests {
             assert!(
                 response.regions.is_empty(),
                 "a refused TAKE must not create an item preview: {response:?}"
+            );
+        }
+
+        /// `ah-6m7b.5.1`: silver is answered for by the SILVER column alone, so a month that
+        /// only moved money leaves the ITEMS cell unmarked.
+        fn report_with_a_smith_holding_silver() -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON], 500 silver [SILV]. Weight: 180. Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).",
+                "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n")
+        }
+
+        #[test]
+        fn a_gift_of_silver_records_no_items_change() {
+            let response = preview_over(
+                &report_with_a_smith_holding_silver(),
+                "unit 900\nGIVE 901 100 SILV\n",
+            );
+            let giver = response.regions[0]
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == "900")
+                .expect("the giver is previewed");
+            assert!(
+                !giver.changes.iter().any(|change| change.field == "items"),
+                "a month that only moved silver must leave the ITEMS cell unmarked: {:?}",
+                giver.changes
+            );
+        }
+
+        #[test]
+        fn an_items_change_never_lists_silver_in_its_original() {
+            let response = preview_over(
+                &report_with_a_smith_holding_silver(),
+                "unit 900\nGIVE 901 100 SILV\nPRODUCE sword\n",
+            );
+            let smith = response.regions[0]
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == "900")
+                .expect("the smith is previewed");
+            let items: Vec<_> = smith
+                .changes
+                .iter()
+                .filter(|change| change.field == "items")
+                .collect();
+            assert_eq!(items.len(), 1, "one items change: {:?}", smith.changes);
+            assert!(
+                !items[0].original.contains("SILV"),
+                "the items change's original must not name silver: {}",
+                items[0].original
             );
         }
 

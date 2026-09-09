@@ -48,14 +48,29 @@ describe("summariseUnit", () => {
       unit({
         items: [
           { amount: 2, name: "swords", tag: "SWOR" },
-          { amount: 1200, name: "silver", tag: "SILV" }
+          { amount: 1200, name: "grain", tag: "GRAI" }
         ]
       })
     );
 
-    expect(summary.items.map((item) => item.label)).toEqual(["silver SILV", "swords SWOR"]);
+    expect(summary.items.map((item) => item.label)).toEqual(["grain GRAI", "swords SWOR"]);
     // The digits, not the grouping: see the locale test below.
     expect(summary.items.map((item) => item.value.replace(/\D/g, ""))).toEqual(["1200", "2"]);
+  });
+
+  it("leaves silver out of the card's item list", () => {
+    const summary = summariseUnit(
+      unit({
+        items: [
+          { amount: 2, name: "lead", tag: "LEAD" },
+          { amount: 1000, name: "silver", tag: "SILV" },
+          { amount: 12, name: "grain", tag: "GRAI" }
+        ]
+      })
+    );
+
+    expect(summary.items.some((item) => item.label.includes("SILV"))).toBe(false);
+    expect(summary.items.map((item) => item.label)).toEqual(["grain GRAI", "lead LEAD"]);
   });
 
   /**
@@ -64,12 +79,12 @@ describe("summariseUnit", () => {
    * matters is that the digits survive and a separator was added, whatever that separator is.
    */
   it("groups thousands in whatever way the reader's locale does", () => {
-    const [silver] = summariseUnit(
-      unit({ items: [{ amount: 1200, name: "silver", tag: "SILV" }] })
+    const [grain] = summariseUnit(
+      unit({ items: [{ amount: 1200, name: "grain", tag: "GRAI" }] })
     ).items;
 
-    expect(silver.value.replace(/\D/g, "")).toBe("1200");
-    expect(silver.value).not.toBe("1200");
+    expect(grain.value.replace(/\D/g, "")).toBe("1200");
+    expect(grain.value).not.toBe("1200");
   });
 
   it("does not reorder the unit's own skills or items lists", () => {
