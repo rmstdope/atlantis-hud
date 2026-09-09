@@ -43,14 +43,14 @@ use crate::orders::silver::{
     forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
     price_buy_all, price_cast, price_claim, price_pillage, price_production, price_purchase,
     price_sale_line, price_study, price_tax, producing_skill, quantity_bought, readiness,
-    readiness_reason, settle_unclaimed, split_pool, taxes, taxing_men, transfer_shape,
-    transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
-    FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
-    MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare,
-    PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages,
-    SaleAnswer, SettledBuyAll, SettledGift, SharedMarket, SilverChange, SilverChangeCause,
-    SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
-    Workforce,
+    readiness_reason, settle_unclaimed, split_pool, tax_overstated_by, taxes, taxing_men,
+    transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster,
+    ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
+    LateFoodRelief, Lookups, MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers,
+    PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts,
+    RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket, SilverChange,
+    SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
+    UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -4347,6 +4347,29 @@ fn ledger_for_with_production<'a>(
     // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
     let region = region_wages(hex, ruleset);
     let nothing = Receipts::default();
+    // What each of this hex's units' hopeful tax overstates its settled share by, once per hex and
+    // index-aligned with `hex.units` exactly as `market_shares_for` is. The ledger keeps reading
+    // the hopeful balance everywhere else - only the silver *caps* read the settled purse
+    // (`ah-ud89`).
+    //
+    // `pool_shares_for` is passed `None` for `phases` because this path has no completed
+    // `PhaseHoldings` to give it. Safe for the tax term alone: `pool_wants`' tax arm is
+    // `taxing_men(facts, ruleset) * TAX_PER_MAN`, the pre-market picture no `PhaseHoldings` moves;
+    // `phases` reaches the wages and entertainment terms only. Pinned by
+    // `the_tax_share_is_the_same_with_and_without_phases`.
+    let pools = pool_shares_for(hex, region, None, ruleset).shares;
+    let tax_overstated: Vec<i64> = hex_facts(hex, &nothing, None, ruleset)
+        .iter()
+        .zip(&pools)
+        .map(|(facts, shares)| {
+            tax_overstated_by(
+                taxing_men(facts, ruleset),
+                region.tax_base,
+                region.pillaged,
+                shares.tax,
+            )
+        })
+        .collect();
     // `rules/sequenceofevents` decides which order runs first, and the document does not. Within
     // one phase, "units that appear higher on the report get precedence", and within one unit the
     // lines keep the order they were written in - which is what `ah-3mwm` pinned about competing
@@ -4395,6 +4418,7 @@ fn ledger_for_with_production<'a>(
                     HexStanding {
                         market: &market_shares,
                         production,
+                        tax_overstated: &tax_overstated,
                         actor_index: index,
                     },
                     foreign_unit_ids,
@@ -4473,6 +4497,7 @@ fn ledger_for_with_production<'a>(
                             HexStanding {
                                 market: &market_shares,
                                 production,
+                                tax_overstated: &tax_overstated,
                                 actor_index: index,
                             },
                         );
@@ -5737,7 +5762,7 @@ fn apply(
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
         Intent::Cast { spell, arguments } => {
             cast(
-                ledger, hex, actor, placed, spell, arguments, ruleset, region,
+                ledger, hex, actor, placed, spell, arguments, ruleset, region, standing,
             );
         }
         // The fund pays, not the unit (`ah-tdsi`). Nothing is charged here, and an unpriceable
@@ -6407,6 +6432,10 @@ struct HexStanding<'a> {
     /// The whole report's production settlement, read by origin coordinate and `actor_index`: a
     /// passenger's pool is in the hex its vessel arrives in, not in this one (`ah-k43x`).
     production: &'a ProductionShares,
+    /// What each unit's hopeful tax overstates its settled share of this hex's tax pool by,
+    /// index-aligned with `hex.units` exactly as `market` is. Read through
+    /// [`Self::overstated_tax`] (`ah-ud89`).
+    tax_overstated: &'a [i64],
     /// Which of `hex.units` the order being priced belongs to.
     actor_index: usize,
 }
@@ -6423,6 +6452,15 @@ impl HexStanding<'_> {
         self.market
             .get(&(tag.to_ascii_uppercase(), side))
             .and_then(|shares| shares.get(self.actor_index).copied())
+    }
+
+    /// This unit's own overstatement, or `0` where the slice cannot answer - the same
+    /// fall-back-to-uncontended reading [`tax_overstated_by`] gives (`ah-ud89`).
+    fn overstated_tax(&self) -> i64 {
+        self.tax_overstated
+            .get(self.actor_index)
+            .copied()
+            .unwrap_or(0)
     }
 }
 
@@ -7009,6 +7047,7 @@ fn cast(
     arguments: &[String],
     ruleset: Option<&Ruleset>,
     region: RegionWages,
+    standing: HexStanding<'_>,
 ) {
     let who = &actor.unit.unit_id;
     let resolved = ruleset.and_then(|ruleset| ruleset.find_skill(spell));
@@ -7050,15 +7089,20 @@ fn cast(
     // the market after it. The dispatch runs those phases for every unit in the hex before this
     // one, so the balance at `Cast` is the whole answer and the gathered receipts - which
     // `transfer` has already applied at `StatePhase::Give` - are no longer read here (`ah-gdd3.1`).
+    let hopeful = ledger
+        .state
+        .balance_at(StatePhase::Cast, who, SILVER)
+        .max(0);
     let caster = Caster {
         skills: actor
             .skills_before_the_market()
             .unwrap_or(&actor.unit.skills),
         held: &actor.unit.items,
-        silver_available: ledger
-            .state
-            .balance_at(StatePhase::Cast, who, SILVER)
-            .max(0),
+        // The settled purse: what this unit will actually hold once its faction-mates' claim on
+        // the region's tax pool is settled against it (`ah-ud89`). `silver_hopeful` below keeps
+        // the reading every `not-enough-silver` finding uses, so no warning moves.
+        silver_available: hopeful.saturating_sub(standing.overstated_tax()).max(0),
+        silver_hopeful: hopeful,
         transmuting,
     };
 
@@ -15702,6 +15746,41 @@ mod tests {
         }
     }
 
+    /// The family's load-bearing assumption (`ah-ud89`): `ledger_for_with_production` has no
+    /// completed `PhaseHoldings` and so passes `None` where `forecast_hex` passes `Some(&phases)`,
+    /// and the two surfaces must still settle one hex the same way. Safe only because
+    /// `pool_wants`' tax term reads `UnitFacts`' pre-market picture - `phases` reaches the wages
+    /// and entertainment terms alone. If this ever fails, the whole family's invariant is gone.
+    #[test]
+    fn the_tax_share_is_the_same_with_and_without_phases() {
+        let hex_region = ReportRegion {
+            tax_base: Some(60),
+            ..region(vec![
+                with_silver(unit("900"), 0),
+                with_silver(unit("901"), 0),
+            ])
+        };
+        let ordered = OrderedUnits::read("unit 900\nTAX\nunit 901\nTAX\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let region = region_wages(&hex, None);
+        let ledger = ledger_for(&hex, None);
+        let phases = ledger.state.phase_holdings(&hex, None);
+
+        let hopeful = pool_shares_for(&hex, region, None, None).shares;
+        let settled = pool_shares_for(&hex, region, Some(&phases), None).shares;
+
+        assert_eq!(hopeful.len(), settled.len());
+        assert!(
+            hopeful
+                .iter()
+                .any(|share| share.tax != PoolShare::Uncontended),
+            "the fixture must actually contend, or this pins nothing"
+        );
+        for (index, (without, with)) in hopeful.iter().zip(&settled).enumerate() {
+            assert_eq!(without.tax, with.tax, "unit {index}: the tax share");
+        }
+    }
+
     #[test]
     fn a_flagged_unit_is_not_told_it_does_nothing() {
         let hex_region = region(vec![with_silver(taxing_by_flag(unit("1")), 100)]);
@@ -16472,6 +16551,7 @@ mod tests {
                 skills: &[],
                 held: &[],
                 silver_available: i64::MAX,
+                silver_hopeful: i64::MAX,
                 transmuting: None,
             },
             5,
