@@ -1916,13 +1916,9 @@ fn compared_silver_rows(
         })
         .map(|(cause, line, amount)| {
             let amount = match cause {
-                // `credit_tax` prices with `tax_base.unwrap_or(i64::MAX)` and
-                // `PoolShare::Uncontended` while the column passes the real `region.tax_base` and
-                // `shares.tax`, so a contended pool yields two numbers (`ah-1x2h`).
-                SilverChangeCause::Taxed
                 // The ledger prices with `actor.unit.men`, the column with the late headcount
                 // after gifts and recruits (`ah-1x2h`).
-                | SilverChangeCause::Studied => None,
+                SilverChangeCause::Studied => None,
                 _ => Some(amount),
             };
             (cause, line, amount)
@@ -22032,15 +22028,12 @@ BUILD
             );
         }
 
-        /// `Taxed` and `Studied` are priced differently by the two walks by construction, so they
-        /// are compared on cause and line and not on amount (`ah-6m7b.5.3`).
+        /// `Studied` is priced differently by the two walks by construction, so it is compared on
+        /// cause and line and not on amount (`ah-6m7b.5.3`); `ah-1x2h.2` is the bead that will
+        /// remove the last of that. `Taxed` is no longer excluded: `ah-1x2h.1` made the ledger
+        /// record the settled share, so the two walks agree on the amount.
         #[test]
-        fn a_taxed_row_is_compared_without_its_amount() {
-            assert_eq!(
-                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 416)].into_iter()),
-                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 500)].into_iter()),
-                "a contended pool yields two numbers for one event"
-            );
+        fn a_studied_row_is_compared_without_its_amount() {
             assert_eq!(
                 compared_silver_rows([(SilverChangeCause::Studied, Some(4), -150)].into_iter()),
                 compared_silver_rows([(SilverChangeCause::Studied, Some(4), -50)].into_iter()),
@@ -22050,6 +22043,11 @@ BUILD
                 compared_silver_rows([(SilverChangeCause::Bought, Some(3), -280)].into_iter()),
                 compared_silver_rows([(SilverChangeCause::Bought, Some(3), -60)].into_iter()),
                 "every other cause is still compared on its amount"
+            );
+            assert_ne!(
+                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 416)].into_iter()),
+                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 500)].into_iter()),
+                "the ledger now records the settled share, so the two walks agree on the amount"
             );
         }
 
