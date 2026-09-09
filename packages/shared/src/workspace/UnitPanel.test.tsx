@@ -401,3 +401,48 @@ describe("a unit whose line the report did not fully carry", () => {
     expect(markup).not.toContain("not known");
   });
 });
+
+describe("a part-read unit whose own figures did reach the model", () => {
+  it("keeps a Weight the report carried rather than replacing it with a smaller floor", () => {
+    // `bad_field` marks a unit `partial` on a line that was fully present but held one malformed
+    // item (`crates/core/src/report/unit.rs`), so `Weight:` itself was read. The game's own figure
+    // beats a floor derived from items every time.
+    const markup = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({
+          read: "partial",
+          items: [{ amount: 2, name: "horse", tag: "HORS" }],
+          weight: 40,
+          capacity: null,
+          movement: null
+        })}
+        hex={HEX}
+        gameData={{ ...indexWith(["mount:HORS"]), detailOf: () => ({ kind: "item", weight: 50 }) as never }}
+      />
+    );
+
+    expect(markup).toContain("40");
+    expect(markup).not.toContain("100 or more");
+  });
+
+  it("says only that more is missing when no item row survived", () => {
+    // `withoutSilver` is what the Items section iterates, so a part-read unit that read only
+    // silver has no rows. "not known" above "and more, not known" is two answers to one question.
+    const markup = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({
+          read: "partial",
+          items: [{ amount: 30, name: "silver", tag: "SILV" }],
+          movement: null
+        })}
+        hex={HEX}
+      />
+    );
+
+    // Not a count over the whole pane - Men, Weight, Capacity and the rest all say `not known`
+    // here quite rightly. What must not appear is the Items section answering twice: an `Absent`
+    // `not known` with the trailing line directly beneath it.
+    expect(markup).toContain("and more, not known");
+    expect(markup).not.toMatch(/italic[^"]*">not known<\/p><p class="m-0 text-warn">and more/);
+  });
+});

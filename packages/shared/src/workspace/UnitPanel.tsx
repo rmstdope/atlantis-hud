@@ -95,8 +95,9 @@ export function UnitPanelBody({
   // The unread banner's sentence, or null for a unit the report carried whole. After the guard
   // above, never beside `stale`: that reads a different object.
   const unread = unreadBannerText(unit);
-  // Null for a read unit too - nothing reads it there. A unit whose `Weight:` line *was* read keeps
-  // the game's own figure below; a floor would be a worse answer than a fact.
+  // Null for a read unit too - nothing reads it there. The floor is the *last* answer for weight: a
+  // unit whose `Weight:` line was read keeps the game's own figure, whichever arm draws it, because
+  // a floor derived from items would be a smaller and so a wrong number.
   const floor = unread === null ? null : weightFloor(unit, gameData);
 
   const items = withoutSilver(unit.items).sort(
@@ -147,7 +148,10 @@ export function UnitPanelBody({
             <>
               <Field
                 label="Weight"
-                value={floor === null ? NOT_KNOWN : `${floor.toLocaleString()} or more`}
+                value={
+                  unit.weight ??
+                  (floor === null ? NOT_KNOWN : `${floor.toLocaleString()} or more`)
+                }
               />
               <Field label="Capacity" value={unit.capacity ?? NOT_KNOWN} />
             </>
@@ -262,7 +266,11 @@ export function UnitPanelBody({
 
       <Section title="Items" count={items.length || undefined}>
         {items.length === 0 ? (
-          <Absent>{unread === null ? "none" : NOT_KNOWN}</Absent>
+          // "not known" above "and more, not known" is two answers to one question. With no rows,
+          // the trailing line below is the whole answer for a part-read unit.
+          unit.read === "partial" ? null : (
+            <Absent>{unread === null ? "none" : NOT_KNOWN}</Absent>
+          )
         ) : (
           <>
             {items.slice(0, PREVIEW).map((item) => (

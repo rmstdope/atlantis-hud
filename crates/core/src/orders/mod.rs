@@ -160,10 +160,11 @@ mod tests {
             seen.dedup();
             seen
         };
+        assert!(
+            ids.len() >= 2,
+            "the fixture must draw advice against at least two units, or the test proves nothing"
+        );
         let (unread_id, read_id) = (ids[0].clone(), ids[1].clone());
-        // An unknown command inside the unread unit's own block: it is the player's typo, and the
-        // negative control that this filter drops report-derived advice and nothing else. Neither
-        // unit is given an order that spends the month, so both draw `unit-does-nothing`.
         // A malformed order inside the unread unit's own block. `AVOID` takes 0 or 1, so `AVOID 7`
         // is the player's typo - and it neither spends the month nor stops the checker having
         // something to say about the unit, which is what makes it the negative control here.
