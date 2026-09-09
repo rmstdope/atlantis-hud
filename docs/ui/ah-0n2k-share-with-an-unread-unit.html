@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-0n2k — a unit's share of a hex it shares with an unread unit — chosen</title>
+<style>
+:root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+  --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+  --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 72px; }
+header, section { max-width:1200px; margin-left:auto; margin-right:auto; }
+h1 { font-size:25px; } h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+header p + p { margin-top:8px; }
+h2 { font-size:16px; margin:40px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+h2 em { color:var(--brass); font-style:normal; font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+h2 + p { color:var(--ink-soft); font-size:13.5px; margin-top:8px; max-width:96ch; }
+h3 { font-size:13.5px; margin:18px 0 6px; color:var(--brass-bright); font-weight:normal; }
+strong { color:var(--ink); }
+code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:.9em; color:var(--brass-bright); }
+pre.rep { background:#0c1016; border:1px solid var(--edge-soft); border-radius:5px; padding:10px 12px;
+  font:11.5px/1.65 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; white-space:pre; }
+pre.rep b { color:var(--brass-bright); font-weight:normal; }
+pre.rep i { color:var(--danger); font-style:normal; }
+.lab { color:var(--ink-dim); font:10.5px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.9px;
+  text-transform:uppercase; margin:18px 0 6px; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:22px; align-items:start; margin-top:14px; }
+@media (max-width:900px){ .two { grid-template-columns:1fr; } }
+.pane { background:var(--panel); border:1px solid var(--edge); border-radius:5px;
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12px; max-width:410px; }
+.pane .hd { background:var(--raised); border-bottom:1px solid var(--edge); padding:5px 10px;
+  color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; }
+.rows { padding:8px 10px; display:grid; gap:3px; }
+.r { display:flex; justify-content:space-between; gap:16px; color:var(--ink-soft); font-size:12px; }
+.r .v { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; font-variant-numeric:tabular-nums; }
+.r .v.cap { color:var(--warn); font-family:system-ui,sans-serif; }
+.r .v.unk { color:var(--warn); font-family:system-ui,sans-serif; }
+.r .v.dim { color:var(--ink-dim); }
+.r.total { border-top:1px solid var(--edge); margin-top:5px; padding-top:5px; }
+.note { color:var(--warn); font-size:11px; line-height:1.5; padding:0 10px 9px; }
+.note.dim { color:var(--ink-dim); font-style:italic; }
+table.tbl { border-collapse:collapse; width:100%; font:11px/1.5 'Helvetica Neue',Arial,sans-serif; background:var(--panel); }
+table.tbl th { color:var(--brass); font-size:9.5px; letter-spacing:1.1px; text-transform:uppercase;
+  font-weight:normal; text-align:left; padding:5px 8px; border-bottom:1px solid var(--edge); }
+table.tbl td { padding:5px 8px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); white-space:nowrap; }
+table.tbl td.num { font-family:'SF Mono',Menlo,Consolas,monospace; text-align:right; }
+table.tbl td.nm { color:var(--ink); }
+table.tbl .dim { color:var(--ink-dim); } table.tbl .miss { color:var(--warn); }
+table.g { border-collapse:collapse; font-size:12.5px; margin-top:12px; width:100%; font-family:'Helvetica Neue',Arial,sans-serif; }
+table.g th, table.g td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+table.g th { color:var(--brass); font-size:10px; letter-spacing:1px; text-transform:uppercase; font-weight:normal; }
+table.g td { color:var(--ink-soft); }
+table.g td.k { color:var(--ink); white-space:nowrap; width:1%; }
+table.g td.s { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; white-space:normal; }
+table.g.rej td.s { color:var(--ink-dim); }
+blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; max-width:92ch; }
+footer { max-width:1200px; margin:44px auto 0; color:var(--ink-dim); font-size:12px;
+  border-top:1px solid var(--edge); padding-top:14px; }
+</style>
+</head>
+<body>
+
+<header>
+<h1>ah-0n2k &mdash; <span>a unit's share of a hex it shares with an unread unit</span></h1>
+<p>Chosen 2026-09-10, over two rounds. Atlantis HUD already knows what to do with a unit whose line the turn
+report cut short: it keeps the unit on the map, refuses to show figures it does not have, and stops advising
+about it (ah&#8209;l09a). What it does <strong>not</strong> do is notice that such a unit is still standing in
+a hex, still able to compete for that hex's wages, its entertainment demand, its tax base and its market. So
+every <em>other</em> unit of yours in the same hex is quietly told it will earn more than it will &mdash; and
+those units were read perfectly, so nothing on their rows suggests anything is uncertain. That is the same
+false confidence ah&#8209;l09a exists to remove, moved one hex outward onto units that look fine.</p>
+<p><strong>The decisions:</strong> a neighbour's earnings become a <em>ceiling</em> rather than going silent,
+because an unread unit can only ever take share <em>away</em>; the phrase is
+&ldquo;<strong>60 at most</strong>&rdquo;, mirroring the application's existing
+&ldquo;<strong>5 or more</strong>&rdquo;; it covers all four of a hex's shared things; nothing louder than the
+unit itself is said; where a neighbour's headcount is <em>also</em> only an estimate the existing
+&ldquo;not known&rdquo; still wins; and the compact unit list marks nothing extra.</p>
+</header>
+
+<section>
+<h2><em>The hex</em> plain (36,40) in Blarnfashire</h2>
+<p>Real numbers from a real turn (<code>neworigins-3.0.0-g5-f21-t39.rep</code>). The region offers a fixed
+amount of entertainment demand and every unit entertaining there shares it, so what one unit earns depends on
+what the others ask for.</p>
+<pre class="rep">plain (36,40) in Blarnfashire, 3450 peasants (high elves), $2898.
+------------------------------------------------------------
+  Wages: $14.2 (Max: $579).
+  <b>Entertainment available: $179.</b>
+  ...
+
+* <b>Minstrel (4329)</b>, Borg (21), high elf [HELF], 542 silver [SILV].
+  Skills: entertainment [ENTE] 2 (90).
+* <b>Buskers (4501)</b>, Borg (21), avoiding, behind, revealing faction, 3 high
+<i>  &lt;-- the line stops here. No men, no goods, no skills reached the map.</i></pre>
+
+<blockquote>Minstrel (4329) has one entertainer at level 2, so it asks the hex for <strong>$60</strong>. The
+hex has $179, so Atlantis HUD shows it earning $60 &mdash; and it would, <em>if Minstrel were the only one
+asking.</em> Buskers (4501) may well hold three more entertainers of its own. If it does, the two units ask
+for $240 between them, the hex pays out $179, and Minstrel's real share is <strong>$44</strong>.</blockquote>
+
+<table class="g">
+<tr><th>Unit</th><th>Asks the hex for</th><th>Shown before</th><th>Shown now</th></tr>
+<tr><td class="k">Minstrel (4329) &mdash; read fine</td><td>$60</td><td style="color:var(--danger)">$60</td><td style="color:var(--ok)">60 at most</td></tr>
+<tr><td class="k">Buskers (4501) &mdash; line cut short</td><td>not known</td><td>not known</td><td>not known &mdash; unchanged</td></tr>
+</table>
+
+<h2><em>Chosen</em> the unit's own pane</h2>
+<p>Minstrel keeps the figure it had, relabelled as the most it can be. The unread unit can only take away from
+that share, never add to it, so today's figure was already the honest upper bound &mdash; only the label was
+wrong. Every figure downstream of the bounded one is bounded too.</p>
+
+<div class="two">
+  <div>
+    <div class="lab">Minstrel (4329) &mdash; silver, with an unread neighbour</div>
+    <div class="pane">
+      <div class="hd">This month</div>
+      <div class="rows">
+        <div class="r"><span>Held now</span><span class="v">542</span></div>
+        <div class="r"><span>In, in time</span><span class="v cap">60 at most</span></div>
+        <div class="r"><span>Out</span><span class="v">0</span></div>
+        <div class="r"><span>Upkeep</span><span class="v">&minus;20</span></div>
+        <div class="r total"><span>At month end</span><span class="v cap">582 at most</span></div>
+      </div>
+      <div class="note">Another of your units here draws on the same pool and its line could not be read from
+      the turn report, so this unit may be paid less than this.</div>
+    </div>
+  </div>
+  <div>
+    <div class="lab">The same unit in a healthy hex &mdash; unchanged, and must cost nothing</div>
+    <div class="pane">
+      <div class="hd">This month</div>
+      <div class="rows">
+        <div class="r"><span>Held now</span><span class="v">542</span></div>
+        <div class="r"><span>In, in time</span><span class="v">60</span></div>
+        <div class="r"><span>Out</span><span class="v">0</span></div>
+        <div class="r"><span>Upkeep</span><span class="v">&minus;20</span></div>
+        <div class="r total"><span>At month end</span><span class="v">582</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2><em>Chosen</em> the units table and the list under the map</h2>
+<p>The Silver column carries the same phrase in a narrow cell. The compact list gets <strong>no extra
+mark</strong>: it is about what a unit <em>is</em>, not what it will earn, and in a hex of eight units one
+wrapped line would otherwise turn the whole list amber.</p>
+
+<div class="two">
+  <div>
+    <div class="lab">Units table &mdash; the Silver column</div>
+    <table class="tbl">
+      <tr><th>Unit</th><th>Men</th><th>Skills</th><th style="text-align:right">Silver</th></tr>
+      <tr><td class="nm">Minstrel (4329)</td><td>1 high elf</td><td>entertainment 2</td><td class="num miss">582 at most</td></tr>
+      <tr><td class="nm">Buskers (4501)</td><td class="miss">not known</td><td class="miss">not known</td><td class="num miss">not known</td></tr>
+    </table>
+    <p style="color:var(--ink-dim);font-size:11.5px;margin-top:8px">The cell's own hover repeats the sentence,
+    under the line the application already shows when a month cannot be fully added up.</p>
+  </div>
+  <div>
+    <div class="lab">The list under the map &mdash; nothing new on the neighbour</div>
+    <div class="pane">
+      <div class="hd">Units &mdash; plain (36,40)</div>
+      <div class="rows" style="gap:0">
+        <div class="r" style="padding:4px 0"><span>Minstrel <span style="color:var(--ink-dim)">(4329)</span></span><span class="v dim">1 man &middot; 542 silver</span></div>
+        <div class="r" style="padding:4px 0"><span>Buskers <span style="color:var(--ink-dim)">(4501)</span></span><span class="v cap">could not be read</span></div>
+      </div>
+      <div class="note dim">2 units &middot; 1 man or more &mdash; 1 unit could not be read</div>
+    </div>
+  </div>
+</div>
+
+<h2><em>Chosen</em> a hex with both kinds of trouble</h2>
+<p>Two neighbours, two reasons to doubt: <strong>Buskers (4501)</strong> could not be read, and
+<strong>Troupe (5120)</strong> was read but its headcount is only an estimate. Atlantis HUD already ships an
+answer for the estimated one, and it is the opposite answer &mdash; no figure at all.
+<strong>That stricter answer wins.</strong> A hex that showed nothing yesterday shows nothing today, and this
+piece of work changes nothing that already ships.</p>
+<div class="pane">
+  <div class="hd">Minstrel (4329) &mdash; this month</div>
+  <div class="rows">
+    <div class="r"><span>Held now</span><span class="v">542</span></div>
+    <div class="r"><span>In, in time</span><span class="v unk">not known</span></div>
+    <div class="r total"><span>At month end</span><span class="v unk">not known</span></div>
+  </div>
+  <div class="note">Another of your units here draws on the same pool and its headcount is an estimate, so
+  this unit's share cannot be worked out.</div>
+</div>
+
+<h2><em>The states</em> what it looks like when it is not one tidy hex</h2>
+<table class="g">
+<tr><th>When</th><th>What happens</th></tr>
+<tr><td class="k">The hex is fine</td><td>Nothing changes at all &mdash; no ceiling, no sentence, no mark. This is the common case and must cost nothing.</td></tr>
+<tr><td class="k">The unread unit itself</td><td>Unchanged. It still shows &ldquo;not known&rdquo; for everything and still gives no advice.</td></tr>
+<tr><td class="k">The unread unit could not possibly want the pool</td><td>There is no such case. A cut&#8209;short line loses the very flags and skills that would say whether the unit works, taxes, entertains or trades, so it has to be treated as a possible claimant on every one of the hex's shared things.</td></tr>
+<tr><td class="k">A <em>foreign</em> unit could not be read</td><td>Nothing happens. Foreign units were never part of the sharing&#8209;out &mdash; Atlantis HUD only ever divides a hex between your own units.</td></tr>
+<tr><td class="k">Nothing in the hex looked contested</td><td>The ceiling appears anyway. This is the change: a hex that looked uncontested may not be, and the unread unit is why.</td></tr>
+<tr><td class="k">Your unit is not earning here</td><td>Nothing. A unit that neither works, entertains, taxes nor trades has no share to bound.</td></tr>
+<tr><td class="k">The hex's totals</td><td>Follow the units. A total containing a bounded figure is itself bounded, and reads &ldquo;<em>N at most</em>&rdquo;.</td></tr>
+<tr><td class="k">Both kinds of trouble at once</td><td>&ldquo;Not known&rdquo; wins, with the existing estimated&#8209;headcount sentence. See above.</td></tr>
+<tr><td class="k">The overrun warning</td><td>Atlantis HUD warns when your units ask a hex for more than it has. It cannot know that now, so it stays quiet &mdash; the ceiling is what says something is uncertain.</td></tr>
+<tr><td class="k">Several unread units in one hex</td><td>One ceiling and one sentence, exactly as for one &mdash; the sentence stays singular in shape rather than counting them.</td></tr>
+</table>
+
+<h2><em>The words, exactly</em></h2>
+<table class="g">
+<tr><th>Where</th><th>Exactly</th></tr>
+<tr><td class="k">A bounded figure, anywhere</td><td class="s">60 at most</td></tr>
+<tr><td class="k">At month end, bounded</td><td class="s">582 at most</td></tr>
+<tr><td class="k">The sentence under it</td><td class="s">Another of your units here draws on the same pool and its line could not be read from the turn report, so this unit may be paid less than this.</td></tr>
+<tr><td class="k">Both kinds of trouble</td><td class="s">not known<br>Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out.<br><span style="color:var(--ink-dim);font-family:Georgia,serif">&mdash; both already ship; unchanged.</span></td></tr>
+</table>
+
+<h2><em>Considered and rejected</em></h2>
+<table class="g rej">
+<tr><th>Instead</th><th>Why not</th></tr>
+<tr><td class="k">The figure goes away &mdash; &ldquo;not known&rdquo;</td><td>Consistent with the estimated&#8209;headcount case and never shows a number that could be wrong. Rejected: a player who was going to earn between $45 and $60 would be told nothing at all, which is less than they knew before, and one badly wrapped line would silence the month for every other unit in the hex.</td></tr>
+<tr><td class="s">up to 60</td><td>The plainest English, but it puts the qualifier first so a column of figures no longer lines up on the digits, and &ldquo;up to&rdquo; reads as advertising &mdash; a promise rather than a limit.</td></tr>
+<tr><td class="s">60 or less</td><td>The closest mirror of &ldquo;or more&rdquo;, one word swapped. Rejected: it sounds like a shrug rather than a bound.</td></tr>
+<tr><td class="k">Wages and entertainment only</td><td>Narrower blast radius, and the two the trouble was first noticed in. Rejected: the same false confidence would survive untouched on a unit taxing or trading beside an unread one.</td></tr>
+<tr><td class="k">A ceiling for an estimated headcount too</td><td>One rule, honestly applied &mdash; any neighbour that cannot be counted only ever takes away, so a ceiling is true in that case as well, and more useful. Rejected as wider than this piece of work: it would silently change what the application already shows, making a figure appear where none did before.</td></tr>
+<tr><td class="k">A line on the region panel</td><td>Would explain it once for the whole hex rather than once per unit. Rejected: the unread line is already counted in the <strong>&#9888; N to check</strong> chip and listed on the panel's <strong>Not read</strong> tab with its own sentence, and a third telling is noise.</td></tr>
+<tr><td class="k">An entry in Problems</td><td>Visible without hovering. Rejected for the same reason, and because Problems is for things the player can act on &mdash; a badly wrapped report is not one of them.</td></tr>
+<tr><td class="k">Marking the neighbour in the compact unit list</td><td>Visible at a glance. Rejected: in a hex of eight units one wrapped line marks all eight, and it duplicates what the unit's own figure already says.</td></tr>
+<tr><td class="k">A shorter sentence dropping &ldquo;from the turn report&rdquo;</td><td>Rejected: every other unread sentence in the application names the turn report as where the trouble was, and dropping it here would leave the player with nowhere to look.</td></tr>
+</table>
+</section>
+
+<footer>ah-0n2k &middot; agreed with the navigator over two rounds, 2026-09-10. Sits on top of ah-l09a
+(a unit read without its contents) and ah-t2pn (your own units share a region's pools).</footer>
+</body>
+</html>
