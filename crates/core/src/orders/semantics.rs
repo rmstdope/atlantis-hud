@@ -6172,9 +6172,12 @@ fn transfer(
 
     if !from.is_empty() {
         if tag.eq_ignore_ascii_case(SILVER) {
-            // The same test the column makes: an order that names nobody discards what it hands
-            // over, and one that names a target gives it away (`ah-6m7b.5.2`).
-            let cause = if to.is_none() {
+            // The same test the column makes, and the same one `settled_gifts` records as
+            // `to_nobody`: an order that names *nobody* discards what it hands over, and one that
+            // names a target gives it away - even a target this walk cannot credit, such as a unit
+            // the report shows in no region. `to.is_none()` is not that test and would call such a
+            // gift a discard (`ah-6m7b.5.2`).
+            let cause = if reach == GiveReach::Discard {
                 SilverChangeCause::Discarded
             } else {
                 SilverChangeCause::GaveAway
@@ -6213,8 +6216,10 @@ fn transfer(
     if let Some(to) = to {
         if tag.eq_ignore_ascii_case(SILVER) {
             // Always `WasGiven`, even for a `TAKE`: the column takes every inbound row from
-            // `Receipts`, whose reach rules are a different question from this walk's, which is
-            // why `assert_silver_agrees` does not compare inbound rows at all (`ah-6m7b.5.2`).
+            // `Receipts`, whose reach rules are a different question from this walk's - it counts
+            // a `TAKE` from a unit the report does not show, and skips a gift from another hex -
+            // so the two lists answer different questions here and this one is the ledger's own
+            // (`ah-6m7b.5.2`).
             move_silver(
                 ledger,
                 StatePhase::Give,
