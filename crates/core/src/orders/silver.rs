@@ -21,7 +21,7 @@ use crate::movement::rules::{
 use crate::orders::forms::{Amount, Party, Selector};
 use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::phases;
-use crate::orders::semantics::{counted_with_singular, FormedSubject, Plurals};
+use crate::orders::semantics::{counted_with_singular, withdrawal_cost, FormedSubject, Plurals};
 use crate::orders::targets::{party_label, GiveReach};
 use crate::report::model::{ItemAmount, Skill};
 
@@ -1295,6 +1295,12 @@ pub struct RegionWages {
     /// belongs here for the same reason that field does: it is exactly what the `PILLAGE` arm
     /// needs, and nothing else in this module has a view of the hex (`ah-1ad6.2`).
     pub pillagers: Option<Pillagers>,
+    /// Whether this hex refuses every withdrawal - `rules/withdraw`: "Withdraw CANNOT be used in
+    /// the Nexus". Like `pillaged` and `pillagers` above, this is not a figure the region prints;
+    /// it is exactly what the `WITHDRAW` arm needs, and nothing else in this module has a view of
+    /// the hex. `semantics::withdrawal_refused` is the one reading of it, and
+    /// `semantics::region_wages` is the only caller that fills this in (`ah-gi3m`).
+    pub withdrawals_refused: bool,
 }
 
 /// What the faction holds that any of its units may draw on.
@@ -2351,7 +2357,19 @@ pub fn forecast_unit(
             // unit ordered to withdraw.
             // A count of zero takes nothing from the fund, so it explains no `Out` and earns no
             // note - the plan's `{ .. }` would have set the flag for `WITHDRAW 0 grain` too.
-            Intent::Withdraw { count, .. } => withdrawing = withdrawing || *count > 0,
+            // And only a withdrawal the game will actually honour. `rules/withdraw` refuses one in
+            // the Nexus outright, and refuses any item that is not a basic item - and `semantics`'s
+            // ledger arm already credits neither, so a note saying the fund paid would explain a
+            // zero that has no withdrawal behind it. The item test is `semantics::withdrawal_cost`
+            // itself rather than a second reading of the catalogue, so this flag and the credit at
+            // `semantics.rs`'s withdrawal arm cannot disagree. With no ruleset there is no
+            // catalogue to ask, nothing is credited, and the same answer follows (`ah-gi3m`).
+            Intent::Withdraw { count, item } => {
+                withdrawing = withdrawing
+                    || (*count > 0
+                        && !region.withdrawals_refused
+                        && withdrawal_cost(item, ruleset).is_some());
+            }
             _ => {}
         }
     }
@@ -9527,7 +9545,10 @@ mod tests {
         assert_eq!(unit.doubt, None);
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, Some(500));
-        assert!(unit.withdrawing);
+        assert!(
+            !unit.withdrawing,
+            "and an item the catalogue prices no withdrawal of earns no note (ah-gi3m)"
+        );
     }
 
     /// The same with no ruleset at all - the case a report cached before `ah-1wcw.6` presents.
@@ -9541,7 +9562,10 @@ mod tests {
         assert_eq!(unit.doubt, None);
         assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.at_month_end, Some(500));
-        assert!(unit.withdrawing);
+        assert!(
+            !unit.withdrawing,
+            "with no catalogue nothing is credited, so nothing is explained (ah-gi3m)"
+        );
     }
 
     /// A withdrawal of nothing takes nothing from the fund, so there is no zero for the hover to
@@ -9561,6 +9585,77 @@ mod tests {
             Some(&ruleset),
         );
         assert!(!unit.withdrawing);
+    }
+
+    /// `rules/withdraw`: "Withdraw CANNOT be used in the Nexus". The ledger returns before
+    /// crediting anything, so the note would explain a zero with no withdrawal behind it
+    /// (`ah-gi3m`).
+    #[test]
+    fn a_withdrawal_the_nexus_refuses_earns_no_note() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Withdraw {
+            count: 5,
+            item: "STON".to_string(),
+        })];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages {
+                withdrawals_refused: true,
+                ..RegionWages::default()
+            },
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert!(
+            !unit.withdrawing,
+            "the Nexus refuses it, so nothing is paid"
+        );
+    }
+
+    /// `rules/withdraw`: only basic items can be withdrawn, and the catalogue says which those are
+    /// by carrying a `withdrawCost` - mithril carries none. The ledger credits nothing for it
+    /// (`ah-x6do`), so there is no zero for the hover to explain (`ah-gi3m`).
+    #[test]
+    fn a_withdrawal_of_something_that_is_not_a_basic_item_earns_no_note() {
+        let ruleset = ruleset();
+        let intents = vec![placed(Intent::Withdraw {
+            count: 5,
+            item: "MITH".to_string(),
+        })];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert!(!unit.withdrawing);
+    }
+
+    /// A unit that writes one honoured withdrawal and one the game refuses still earns the note:
+    /// the fund really does pay for the first (`ah-gi3m`, case 4 of the mockup).
+    #[test]
+    fn one_refused_withdrawal_does_not_silence_an_honoured_one() {
+        let ruleset = ruleset();
+        let intents = vec![
+            placed(Intent::Withdraw {
+                count: 5,
+                item: "MITH".to_string(),
+            }),
+            placed(Intent::Withdraw {
+                count: 100,
+                item: "GRAI".to_string(),
+            }),
+        ];
+        let unit = spending(
+            500,
+            &intents,
+            RegionWages::default(),
+            &no_purchases,
+            Some(&ruleset),
+        );
+        assert!(unit.withdrawing);
     }
 
     /// Guards a `withdrawing` set by anything other than a real `WITHDRAW` order.
