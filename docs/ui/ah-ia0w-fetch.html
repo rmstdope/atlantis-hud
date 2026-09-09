@@ -1,0 +1,267 @@
+<title>ah-ia0w — Fetching a New Origins report</title>
+<style>
+:root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+  --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main { max-width:1320px; margin:0 auto; }
+h1 { font-size:26px; } h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+header p + p { margin-top:8px; }
+h3.sec { margin:42px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+.card h2 { font-size:15.5px; margin-bottom:5px; }
+.card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+.concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+.cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+.cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+.ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; margin-bottom:10px; }
+.ui h4 { font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; font-family:inherit; }
+.ui .meta { color:var(--ink-soft); margin-bottom:9px; }
+.ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+.ui .field { margin-bottom:9px; }
+.ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+  color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+.ui input::placeholder { color:var(--ink-dim); }
+.ui .hint { color:var(--ink-dim); margin:2px 0 9px; }
+.ui .danger { color:var(--danger); margin:2px 0 9px; }
+.ui .body { color:var(--ink-soft); margin:8px 0 4px; }
+.ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+.ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink-soft);
+  border-radius:4px; padding:4px 10px; font:inherit; }
+.ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+.banner { background:var(--raised); border:1px solid var(--brass); border-radius:6px; padding:11px 13px;
+  font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink-soft); }
+.banner b { color:var(--ink); }
+.banner .foot { display:flex; gap:8px; margin-top:10px; }
+.btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink-soft);
+  border-radius:4px; padding:4px 10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+.btn.primary { border-color:var(--brass); color:var(--brass); }
+.hdr { display:flex; align-items:center; gap:8px; justify-content:flex-end;
+  font-family:system-ui,sans-serif; font-size:12.5px;
+  background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px; }
+.hdr .chip { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:3px 9px; }
+.hdr .chip.brass { border-color:var(--brass); color:var(--brass); }
+.status { font-family:system-ui,sans-serif; font-size:12px; background:var(--panel); border:1px solid var(--edge);
+  border-radius:5px; padding:6px 10px; color:var(--ink-soft); margin-top:6px; }
+.status.ok { color:var(--ok); } .status.bad { color:var(--danger); }
+.caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; max-width:100ch; }
+.tag { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+  font-family:system-ui,sans-serif; display:block; margin:14px 0 5px; }
+table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:6px; font-family:system-ui,sans-serif; }
+th, td { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+th { color:var(--brass); font-weight:normal; letter-spacing:.6px; }
+td { color:var(--ink-soft); } td b { color:var(--ink); font-weight:600; }
+.rej { color:var(--ink-soft); font-size:13.5px; max-width:100ch; }
+.rej li { margin:7px 0 7px 18px; }
+.rej li b { color:var(--ink); }
+</style>
+
+<header>
+  <h1>Fetching this turn's <span>New Origins</span> report</h1>
+  <p>Today a New Origins report reaches Atlantis HUD only by way of a browser: open the game's site,
+  press the download button for your faction, type a password, save the file, come back and drop it
+  on the window. Every turn.</p>
+  <p>The New Age worlds already do this by themselves — one <b>Fetch</b> button, a faction number, a
+  password, and the report lands. This page is the agreed shape of the same thing for New Origins.
+  Chosen 2026-09-09 across four rounds; every string here is quoted as it will ship, not paraphrased.</p>
+  <p style="color:var(--ink-dim)"><b>Scope is fetching this turn only.</b> Sending orders back, and
+  pulling earlier turns into the game's history, are separate pieces of work.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · Where it lives</h3>
+<p>The header is untouched. The same <b>Fetch</b> button, in the same place, doing the New Origins
+thing when the open game is a New Origins one.</p>
+<div class="hdr"><span class="chip">Export &#9662;</span><span class="chip brass">Fetch</span><span class="chip">Send</span></div>
+<p class="caption">On the web version the button is not there at all — the same rule the New Age worlds already follow.</p>
+
+<h3 class="sec">2 · The dialog</h3>
+<p>Two fields and two buttons. No choice of what to fetch, because there is only one thing to fetch.
+The password takes focus when it opens.</p>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>ready</em> a report is loaded</h2>
+    <p class="concept">The line under the heading names your faction, the turn on screen and the address. The faction number is filled in from the report on screen and stays editable.</p>
+    <div class="ui">
+      <h4>Fetch from New Origins</h4>
+      <div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div>
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <div class="hint">Used for this fetch only. Nothing is written to this machine.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Fetch</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>empty</em> nothing loaded yet</h2>
+    <p class="concept">The line drops everything it does not know and keeps only the address. Nothing to fill the faction number from, so it is blank. <b>Fetch</b> stays off until both fields are filled.</p>
+    <div class="ui">
+      <h4>Fetch from New Origins</h4>
+      <div class="meta">atlantis-pbem.com</div>
+      <div class="field"><label>Faction number</label><input type="text" placeholder="Required"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <div class="hint">Used for this fetch only. Nothing is written to this machine.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Fetch</span></div>
+    </div>
+    <p class="caption">This is the first run on a new game, and the only way to reach New Origins at all before a report exists.</p>
+  </div>
+  <div class="card">
+    <h2><em>refused</em> it said no</h2>
+    <p class="concept">The password is cleared and takes focus back; the faction number is left as typed, so a second try is one word away.</p>
+    <div class="ui">
+      <h4>Fetch from New Origins</h4>
+      <div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div>
+      <div class="field"><label>Faction number</label><input type="text" value="27"></div>
+      <div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div>
+      <div class="danger">New Origins did not accept that faction number and password.</div>
+      <div class="foot"><span class="btn">Cancel</span><span class="btn primary">Fetch</span></div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">3 · While it works</h3>
+<p>The fields go away, the dialog does not. <b>Cancel</b> is in the same place throughout, and Escape
+does what pressing it does.</p>
+<div class="cards2">
+  <div class="card">
+    <div class="ui">
+      <h4>Fetch from New Origins</h4>
+      <div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div>
+      <div class="body" style="margin:10px 0">Signing in to New Origins&hellip;</div>
+      <div class="foot"><span class="btn">Cancel</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ui">
+      <h4>Fetch from New Origins</h4>
+      <div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div>
+      <div class="body" style="margin:10px 0">Fetching this turn's report from New Origins&hellip;</div>
+      <div class="foot"><span class="btn">Cancel</span></div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">4 · What happens to the report that arrives</h3>
+<p>Four different things, decided by what came back. Only the first two ask, and each asks in a
+different place.</p>
+
+<div class="cards2" style="margin-bottom:18px">
+  <div class="card">
+    <h2><em>a newer turn</em> the dialog asks</h2>
+    <p class="concept">The dialog you are already watching stops being a form and becomes the question. It knows both turn numbers by now, so the buttons name them.</p>
+    <div class="ui">
+      <h4>Fetch from New Origins</h4>
+      <div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div>
+      <div class="body">Turn 84 has arrived. Opening it replaces turn 83 on screen, and anything you have changed since it was loaded.</div>
+      <div class="foot"><span class="btn">Keep turn 83</span><span class="btn primary">Open turn 84</span></div>
+    </div>
+    <span class="tag">Open turn 84</span>
+    <div class="status ok">turn 84 loaded — 4 regions, 11 units.</div>
+    <span class="tag">Keep turn 83 — nothing fetched is thrown away</span>
+    <div class="status">turn 84 stored for history; still showing turn 83.</div>
+  </div>
+
+  <div class="card">
+    <h2><em>the turn you already have</em> the dialog asks differently</h2>
+    <p class="concept">Naming the same number in both buttons would be a puzzle rather than a choice, so this one says plainly that there is no news and offers a reload instead.</p>
+    <div class="ui">
+      <h4>Fetch from New Origins</h4>
+      <div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div>
+      <div class="body">New Origins still has turn 83 — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since.</div>
+      <div class="foot"><span class="btn">Keep what I have</span><span class="btn primary">Load it again</span></div>
+    </div>
+    <span class="tag">Load it again</span>
+    <div class="status ok">turn 83 loaded — 4 regions, 11 units.</div>
+    <span class="tag">Keep what I have — there is nowhere to file a turn you are looking at</span>
+    <div class="status">still showing turn 83.</div>
+  </div>
+</div>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>an older turn</em> no question at all</h2>
+    <p class="concept">Nothing on screen changes, so there is nothing to regret. It is filed with the earlier turns and the status line says so. This is exactly what a dropped file already does.</p>
+    <div class="ui"><div class="meta" style="margin:0">Nothing appears. The dialog closes.</div></div>
+    <div class="status">turn 80 stored for history; still showing turn 83.</div>
+  </div>
+  <div class="card">
+    <h2><em>somebody else's faction</em> the strip under the header</h2>
+    <p class="concept">Unchanged, and not part of this work: a report that is not yours goes to the strip that already handles one, wherever it came from. Its name for a fetched report reads naturally in that sentence.</p>
+    <div class="banner">
+      <b>this turn's report from New Origins</b> is Borg's report for turn 83 — the same turn as your
+      own report for Merchant Guild. Merge adds everywhere Borg went to your map and leaves you playing
+      Merchant Guild. Switch faction opens the report itself: the map, the units and the orders all
+      become Borg's.
+      <div class="foot"><span class="btn primary">Merge</span><span class="btn">Switch faction</span><span class="btn">Cancel</span></div>
+    </div>
+  </div>
+</div>
+
+<h3 class="sec">5 · When it goes wrong</h3>
+<p>Three failures. A refusal and an unreachable site keep the dialog open for a second try; an
+unreadable reply says what still works instead.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>refused</em></h2>
+    <div class="ui"><div class="danger" style="margin:0">New Origins did not accept that faction number and password.</div></div>
+    <p class="caption">Password cleared and refocused; faction number kept. If it refuses <i>after</i> signing in, the sentence is <b>New Origins stopped accepting that faction number and password.</b></p>
+  </div>
+  <div class="card">
+    <h2><em>unreachable</em></h2>
+    <div class="ui"><div class="danger" style="margin:0">Could not reach atlantis-pbem.com.</div></div>
+    <p class="caption">Both fields keep what you typed, so pressing <b>Fetch</b> again is the whole of the retry.</p>
+  </div>
+  <div class="card">
+    <h2><em>unreadable</em></h2>
+    <div class="ui"><div class="danger" style="margin:0">atlantis-pbem.com answered with something Atlantis HUD could not read. The site may have changed &mdash; downloading the report in a browser and dropping it here still works.</div></div>
+    <p class="caption">The one failure New Age does not have. Never a dead end: it names the way round.</p>
+  </div>
+</div>
+<span class="tag">Nothing there for you yet — on the status line, dialog closed</span>
+<div class="status bad">could not fetch this turn's report: New Origins has no report for you yet</div>
+
+<h3 class="sec">6 · Every string on the page</h3>
+<p>Quoted as they will ship. Nothing here is a paraphrase.</p>
+<table>
+  <tr><th>Where</th><th>What it says</th></tr>
+  <tr><td>Header button</td><td><b>Fetch</b></td></tr>
+  <tr><td>Dialog heading</td><td><b>Fetch from New Origins</b></td></tr>
+  <tr><td>Line under it</td><td><b>Merchant Guild (27) · turn 83 · atlantis-pbem.com</b> — each part dropped when unknown, down to the address alone</td></tr>
+  <tr><td>Fields</td><td><b>Faction number</b> · <b>Faction password</b>, both placeheld <b>Required</b></td></tr>
+  <tr><td>Note under the fields</td><td><b>Used for this fetch only. Nothing is written to this machine.</b></td></tr>
+  <tr><td>Buttons</td><td><b>Cancel</b> · <b>Fetch</b> — Cancel alone while working</td></tr>
+  <tr><td>Field complaints</td><td><b>A faction number is digits only.</b> · <b>A faction number cannot be empty.</b> · <b>A faction password cannot be empty.</b></td></tr>
+  <tr><td>Signing in</td><td><b>Signing in to New Origins…</b></td></tr>
+  <tr><td>Fetching</td><td><b>Fetching this turn's report from New Origins…</b></td></tr>
+  <tr><td>A newer turn asks</td><td><b>Turn 84 has arrived. Opening it replaces turn 83 on screen, and anything you have changed since it was loaded.</b> — <b>Keep turn 83</b> · <b>Open turn 84</b></td></tr>
+  <tr><td>The same turn asks</td><td><b>New Origins still has turn 83 — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since.</b> — <b>Keep what I have</b> · <b>Load it again</b></td></tr>
+  <tr><td>Opened</td><td><b>turn 84 loaded — 4 regions, 11 units.</b></td></tr>
+  <tr><td>Kept, and filed</td><td><b>turn 84 stored for history; still showing turn 83.</b></td></tr>
+  <tr><td>Kept, same turn</td><td><b>still showing turn 83.</b></td></tr>
+  <tr><td>An older turn</td><td><b>turn 80 stored for history; still showing turn 83.</b></td></tr>
+  <tr><td>Refused</td><td><b>New Origins did not accept that faction number and password.</b></td></tr>
+  <tr><td>Refused mid-run</td><td><b>New Origins stopped accepting that faction number and password.</b></td></tr>
+  <tr><td>Unreachable</td><td><b>Could not reach atlantis-pbem.com.</b></td></tr>
+  <tr><td>Unreadable</td><td><b>atlantis-pbem.com answered with something Atlantis HUD could not read. The site may have changed — downloading the report in a browser and dropping it here still works.</b></td></tr>
+  <tr><td>Nothing there yet</td><td><b>could not fetch this turn's report: New Origins has no report for you yet</b></td></tr>
+</table>
+
+<h3 class="sec">7 · Considered and rejected</h3>
+<ul class="rej">
+  <li><b>Keeping the two what-to-fetch choices.</b> New Age offers this turn, or this turn and every earlier turn not yet loaded. Earlier turns are not being built here, and a choice of one — or a second line permanently greyed out — offers something and refuses it every single turn. The choices appear when there is a second one to make.</li>
+  <li><b>A second Fetch button beside the existing one.</b> New Origins is another kind of place the same button learns, not a second path in the header. One place, one habit.</li>
+  <li><b>Naming the game in the heading alone</b>, without the faction line — rejected in favour of the line that confirms you are about to fetch for the right faction, since a mistyped number is the mistake this control invites.</li>
+  <li><b>Letting a fetch replace the screen silently</b>, exactly as a dropped file does. Rejected: a dropped file is a file you chose by hand, and a fetch is a number you typed. The confirmation is the only place this diverges from the shared front door, and it is deliberate.</li>
+  <li><b>Warning before the fetch instead of after it</b> — a line in the form saying what pressing Fetch will do. Rejected: it warns about a replacement that may never happen, since the report might be an older turn or somebody else's.</li>
+  <li><b>Asking from the strip under the header</b> rather than in the dialog. Rejected: nothing is on screen while you decide, which makes it easy to walk away leaving it half done.</li>
+  <li><b>Asking about an older turn too.</b> Rejected: nothing on screen changes, so it is a question whose answer is always yes.</li>
+  <li><b>Throwing away a report you declined to open.</b> Rejected: it is already fetched and read, and fetching it again costs the password and the wait a second time.</li>
+  <li><b>One message for every failure that is not a refusal.</b> Rejected: a site that is down and a site that has changed want opposite things done about them, and only one of them is worth waiting out.</li>
+  <li><b>Calling the far end "the game" or "atlantis-pbem.com" in the refusal.</b> Rejected: "game" also means the thing open in the HUD, and an address is the wrong subject for a password being refused.</li>
+</ul>
+
+</main>
