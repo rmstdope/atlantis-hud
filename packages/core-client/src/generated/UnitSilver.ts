@@ -139,6 +139,17 @@ sharedSilverCovered: number,
  */
 sharedSilverForOrders: number, 
 /**
+ * `true` when this hex's `SHARE` purse could not be settled and fell back to the silver its
+ * sharers actually hold, so every `BUY ALL` count on this unit is a floor rather than a
+ * forecast (`ah-3c2t.3`). `false` for a unit in a hex that shares nothing, and `false`
+ * wherever the tax settlement produced a number.
+ *
+ * Carried once per unit rather than once per [`BuyAllShown`] because the fallback is a
+ * property of the hex: every line on the unit is a floor or none of them is, and a per-line
+ * flag would need adding to some forty test literals that have nothing to do with it.
+ */
+marketPurseHeldOnly: boolean, 
+/**
  * What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
  * this unit's own overdraft, where the hex's purse settled it (`ah-3c2t.2`).
  *
@@ -328,8 +339,13 @@ castSummons: boolean,
 formed: FormedSubject | null, 
 /**
  * This unit's `BUY ALL` orders, settled, in document order. Empty for the overwhelming
- * majority of units, and empty for a unit whose sums are doubted - the market block and the
- * gift arms are skipped for a doubted unit.
+ * majority of units.
+ *
+ * Empty for a doubted unit too, with one exception: a unit whose only doubt is a contended
+ * tax pool it could not settle, in a hex whose `SHARE` purse fell back to silver in hand.
+ * There the count was decided from money nobody disputes, so it is reported as a floor
+ * rather than withheld (`ah-3c2t.3`). [`UnitSilver::changes`] has no such exception and
+ * stays empty for every doubted unit.
  */
 buyAll: Array<BuyAllShown>, 
 /**

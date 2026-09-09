@@ -414,6 +414,13 @@ export function buyAllSentences(silver: UnitSilver | null | undefined): string[]
     if (b.cappedBy === "shared") {
       return `This unit gets ${b.bought} of the ${b.marketNamed} this market has, because your units in this region are competing for it.`;
     }
+    // The purse could not be settled, so the count came from silver nobody disputes and is a
+    // floor. Only where the silver cap bit: `market` and `already-bought` counts do not move with
+    // the purse at all, and a `shared` count moves the *wrong* way, because `rules/buy` splits a
+    // contended line in proportion to what each buyer attempted (`ah-3c2t.3`).
+    if (silver?.marketPurseHeldOnly && b.cappedBy === "silver" && b.bought > 0) {
+      return `This unit buys at least ${b.boughtNamed}: what your other units here will earn cannot be worked out, so only the silver they hold is counted.`;
+    }
     if (b.cappedBy === "market") {
       return `This market has ${b.boughtNamed}, not the ${b.affordable} this unit's silver would buy.`;
     }
