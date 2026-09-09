@@ -20779,6 +20779,71 @@ BUILD
             });
         }
 
+        /// The reference scene of `ah-3c2t.1`: a region stating $2,000 of tax base with two
+        /// 60-man units taxing it, so each settles at $1,000 of the $3,000 it hoped for. A third
+        /// unit shares $600 it simply holds.
+        fn settled_purse_hex() -> ReportRegion {
+            ReportRegion {
+                for_sale: vec![line(100, 50, "horse", "HORS")],
+                tax_base: Some(2000),
+                ..region(vec![
+                    sharing(with_skill(
+                        with_silver(with_men(unit("1"), 60), 0),
+                        "COMB",
+                        1,
+                    )),
+                    sharing(with_skill(
+                        with_silver(with_men(unit("2"), 60), 0),
+                        "COMB",
+                        1,
+                    )),
+                    sharing(with_silver(with_men(unit("3"), 60), 600)),
+                ])
+            }
+        }
+
+        const SETTLED_PURSE_ORDERS: &str = "unit 1\nTAX\nBUY ALL horse\nunit 2\nTAX\n";
+
+        /// The purse a `BUY ALL` is sized against is the settled one: each taxer lends the $1,000
+        /// the settlement leaves it, not the $3,000 it hoped for (`ah-3c2t.1`).
+        #[test]
+        fn a_buy_all_is_sized_by_a_purse_with_the_tax_settlement_applied() {
+            let hex = settled_purse_hex();
+            let review = review_turn(
+                &report(vec![hex.clone()]),
+                SETTLED_PURSE_ORDERS,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let shown = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast")
+                .buy_all
+                .first()
+                .cloned()
+                .expect("the BUY ALL line is shown");
+
+            assert_eq!(
+                shown.silver_available, 2600,
+                "its own settled $1,000, the other taxer's settled $1,000 and the $600 held"
+            );
+            assert_eq!(shown.bought, 52, "$2,600 buys 52 horses at $50");
+            assert_eq!(shown.capped_by, BuyAllCap::Silver);
+
+            with_ledger(hex, SETTLED_PURSE_ORDERS, |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "1" && m.tag == "HORS")
+                        .map(|m| m.delta),
+                    Some(52),
+                );
+            });
+        }
+
         /// Accept-on-doubt means "your own silver" for a `BUY ALL`, not "unlimited": it has always
         /// been silver-capped, so lifting the cap would let one buy goods it can afford none of
         /// (`ah-szye`).
