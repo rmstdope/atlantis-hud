@@ -2212,8 +2212,12 @@ function UnitRow({
    * (`ah-qig3`, decision **M1**). A `STUDY` emits no `skills` field change — it lands in next
    * turn's report, not this month's figures — so without this the one previewed thing a player can
    * only find by hovering gives the row no reason to hover it.
+   *
+   * A forecast that cannot raise the level marks nothing (`ah-dpvh`): the mark means "this figure
+   * will be different next turn", and for such a unit it will not be.
    */
-  const skillsMarked = Boolean(skillsChange) || unit.study != null;
+  const skillsMarked =
+    Boolean(skillsChange) || (unit.study != null && !unit.study.cannotRaiseTheLevel);
   const structureChange = changeFor(unit, "structureId");
   const movementChange = changeFor(unit, "movement");
   const flagsChange = changeFor(unit, "flags");

@@ -1153,6 +1153,58 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     expect(markup).toContain("LUMB 2 (90)");
   });
 
+  // `ah-dpvh`: a study that cannot raise the level will change nothing next turn, so the brass mark
+  // - which means "this figure will be different next turn" - has nothing to promise.
+  const CAPPED_STUDY: StudyForecast = {
+    ...STUDYING_COMBAT,
+    cannotRaiseTheLevel: true,
+    ceilingLevel: 5,
+    levelBefore: 5,
+    levelAfter: 5,
+    pointsAfter: 480
+  };
+
+  it("leaves the Skills cell unmarked for a study that cannot raise the level", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ unitId: "1", skills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }] })]
+        })
+      }),
+      previewOf(
+        { unitId: "1", skills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }] },
+        {
+          changes: [],
+          reportedSkills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }],
+          study: CAPPED_STUDY
+        }
+      )
+    );
+
+    expect(markup).not.toContain('data-predicted="true"');
+    expect(markup).toContain("COMB 5 (450)");
+  });
+
+  it("marks the Skills cell when the month moved the figures, even if the study cannot raise the level", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ unitId: "1", skills: [{ name: "combat", tag: "COMB", level: 5, points: 400 }] })]
+        })
+      }),
+      previewOf(
+        { unitId: "1", skills: [{ name: "combat", tag: "COMB", level: 5, points: 400 }] },
+        {
+          changes: [{ field: "skills", original: "COMB 5 (450)" }],
+          reportedSkills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }],
+          study: CAPPED_STUDY
+        }
+      )
+    );
+
+    expect(markup).toContain('data-predicted="true"');
+  });
+
   it("marks a doubted study exactly as a settled one", () => {
     const markup = draw(
       hex({
