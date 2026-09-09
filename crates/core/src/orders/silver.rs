@@ -1215,7 +1215,14 @@ impl PhaseSilver {
         self.as_the_cast_opens().saturating_sub(overstated).max(0)
     }
 
-    /// [`Self::as_the_market_opens`], less the same figure. Unused until `ah-ud89.2`.
+    /// [`Self::as_the_market_opens`], less the same figure.
+    ///
+    /// **No caller, and none is coming** (`ah-ud89.4`). It was written for the SILVER column's
+    /// market `opening`, but `ah-6m7b.5.3` has since made that a `before_the_market_opens()` plus
+    /// the month's own `Sold` credit, clamped once at the end - so calling this here would clamp
+    /// before the sale is added back and drop it, silently regressing *"a sale funds the same
+    /// month's purchase"*. The column subtracts the overstatement inline instead. `ah-ud89` is
+    /// complete, so do not "restore" this as that call site.
     #[must_use]
     pub fn as_the_market_opens_on_share(&self, overstated: i64) -> i64 {
         self.as_the_market_opens().saturating_sub(overstated).max(0)
@@ -2566,9 +2573,10 @@ pub fn forecast_unit(
         // Market phase: every exact `BUY` gathered above is priced here, and each `BUY ALL` then
         // spends what those leave.
         //
-        // `rules/buy` caps a line at what the unit can afford. The tax term is the *uncontended*
-        // one - the ledger's reading, not the column's settled `shares.tax` - so both surfaces
-        // settle one quantity; the money columns keep the settled figure (`ah-omn7`).
+        // `rules/buy` caps a line at what the unit can afford, and since `ah-ud89.4` both surfaces
+        // size that cap from the **settled** share of a contended tax pool - so the quantity and
+        // the money columns read one figure. `ah-omn7`'s hopeful reading survives everywhere the
+        // application cannot see the contention (`ah-ud89`).
         // What the market opens on. The ledger's own figure wherever there is a ledger, so the two
         // surfaces cannot answer one `BUY` differently (`ah-6m7b.2`); the running total this walk
         // has always kept where there is none, which is every caller with `phases: None`.
@@ -2598,10 +2606,37 @@ pub fn forecast_unit(
             // ledger's own unclamped `known_balance_at(StatePhase::Market)`. Clamping first would
             // let a sale rescue a unit already overdrawn as the market opens on this surface and
             // not on the ledger's, and the two must cut one `BUY` to one quantity.
+            //
+            // Less what this unit's hopeful tax overstates its settled share of a contended
+            // region pool by - so a numbered `BUY` is sized by what the unit will actually
+            // collect, exactly as the income row above it already is (`ah-ud89.4`).
+            //
+            // Subtracted **before** this arm's single clamp, which is *not* where
+            // `semantics::buy` puts it: that side subtracts after its own clamp, so that a purse
+            // `rules/share` lends cannot refill the hole (`ah-ud89.2`'s rule). The one placement
+            // this arm cannot use is above the `Sold` credit, for the reason the paragraph above
+            // gives - clamping there would let a sale rescue a unit already overdrawn as the
+            // market opens on this surface and not on the ledger's. Below the credit the clamp
+            // could sit either side of the subtraction; it is left where it already was, and the
+            // two placements are indistinguishable anyway for the reason that follows.
+            //
+            // The two placements can only disagree where a unit's Market-phase balance is
+            // *below* its overstatement, and no report reaches that state: the overstatement is
+            // `hopeful - settled` and `hopeful` is itself credited into the balance, so
+            // `balance - overstatement >= held >= 0`. The one way to spend between the tax phase
+            // and the market is a `CAST`, which `ah-ud89.1` caps by the settled share too, and
+            // `rules/sequenceofevents` settles GIVE *before* TAX, so a unit cannot give its tax
+            // away either (`tests/give_all_silver_precedes_the_tax.rs`).
             Some(silver) => silver
                 .before_the_market_opens()
                 .saturating_add(moved_by(&moves, SilverChangeCause::Sold))
+                .saturating_sub(tax_overstated)
                 .max(0),
+            // NOT settled here, and this is the one way to get `ah-ud89.4` wrong: this arm sums
+            // this walk's own `moves`, whose tax term is already the *settled* one
+            // (`price_tax(..., shares.tax)` above, where `semantics::credit_tax` passes
+            // `PoolShare::Uncontended` instead). Subtracting the overstatement here would settle
+            // the same contention twice. Do not add it for symmetry.
             None => recorded_so_far(held, &moves)
                 .saturating_sub(late)
                 .saturating_sub(moved_by(&moves, SilverChangeCause::Studied))
