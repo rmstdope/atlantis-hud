@@ -11026,16 +11026,7 @@ fn one_study_forecast(
     // warning cannot disagree about one unit.
     let ceiling = study::study_ceiling(ruleset, &men[index].men_by_race, skill);
     let ceiling_level = ceiling.level();
-    let limiting_races = match &ceiling {
-        study::StudyCeiling::Global { .. } => Vec::new(),
-        study::StudyCeiling::Race { limiting_races, .. } => limiting_races
-            .iter()
-            .map(|entry| LimitingRace {
-                tag: entry.tag.to_ascii_uppercase(),
-                name: entry.name.clone(),
-            })
-            .collect(),
-    };
+    let limiting_races = study::limiting_races(&ceiling);
 
     let mut doubts = Vec::new();
     if ordered.unit.men_estimated {

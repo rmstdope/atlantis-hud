@@ -16,7 +16,8 @@
 //! accept-on-doubt policy forbids.
 
 use crate::movement::rules::{ItemEntry, Ruleset, SkillEntry};
-use crate::report::model::ItemAmount;
+use crate::orders::effects::LimitingRace;
+use crate::report::model::{ItemAmount, Skill};
 
 /// How far a unit may study a skill, and what says so.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,10 +91,54 @@ pub(crate) fn study_ceiling<'a>(
     }
 }
 
+/// Whether this unit may take `skill` no further, and what stops it - the ceiling test the
+/// `study-at-maximum` finding makes, asked by the two surfaces that charge the fee.
+///
+/// `None` is *charge as today*, and it covers three different cases on purpose: the unit is below
+/// its ceiling; its skills cannot be said this month; its composition cannot be said this month.
+/// The house rule is silent when unsure, and the fee stands where the ceiling cannot be proved.
+///
+/// **The rules do not settle whether the server bills a study at the ceiling.**
+/// `rules/skills_studying` prices a study; `rules/skills_limitations` and the race entries
+/// (`data/GNOL`) stop it. Nothing states what happens when both apply, so this application assumes
+/// the study is neither performed nor billed. If that is wrong, a capped unit's month-end figure
+/// is high by its fee, and this comment is the assumption to revisit.
+pub(crate) fn at_the_ceiling<'a>(
+    ruleset: &'a Ruleset,
+    skills: Option<&[Skill]>,
+    races: Option<&[ItemAmount]>,
+    skill: &SkillEntry,
+) -> Option<StudyCeiling<'a>> {
+    let skills = skills?;
+    let races = races?;
+    // No entry means the unit has never studied it, so it is not at any maximum.
+    let level = skills
+        .iter()
+        .find(|entry| entry.tag.eq_ignore_ascii_case(&skill.tag))
+        .map(|entry| entry.level)?;
+    let ceiling = study_ceiling(ruleset, races, skill);
+    (level >= ceiling.level()).then_some(ceiling)
+}
+
+/// A ceiling's races as the wire carries them, `men_by_race` order kept.
+pub(crate) fn limiting_races(ceiling: &StudyCeiling<'_>) -> Vec<LimitingRace> {
+    match ceiling {
+        StudyCeiling::Global { .. } => Vec::new(),
+        StudyCeiling::Race { limiting_races, .. } => limiting_races
+            .iter()
+            .map(|entry| LimitingRace {
+                tag: entry.tag.to_ascii_uppercase(),
+                name: entry.name.clone(),
+            })
+            .collect(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::movement::rules::RaceSkillLimits;
+    use crate::report::model::Skill;
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
@@ -264,6 +309,100 @@ mod tests {
             study_ceiling(&ruleset, &[race("HUMN", 5), race("WELF", 2)], &combat),
             StudyCeiling::Global { level: 5 },
             "a ruleset cached before ah-9hp7.1 states no race limits at all"
+        );
+    }
+
+    fn skill_entry(name: &str, tag: &str, level: u32) -> Skill {
+        Skill {
+            name: name.to_string(),
+            tag: tag.to_string(),
+            level,
+            points: 0,
+        }
+    }
+
+    #[test]
+    fn a_unit_at_its_race_ceiling_owes_no_study_fee() {
+        let ruleset = ruleset();
+        let combat = skill(&ruleset, "COMB");
+
+        let ceiling = at_the_ceiling(
+            &ruleset,
+            Some(&[skill_entry("combat", "COMB", 5)]),
+            Some(&[race("GNOL", 60)]),
+            &combat,
+        )
+        .expect("a gnoll stops at combat 5, so the month can teach nothing");
+
+        assert_eq!(ceiling.level(), 5);
+        assert_eq!(
+            limiting_races(&ceiling),
+            Vec::new(),
+            "`data/GNOL` allows combat to 5 and combat's own maximum is 5, so the skill's cap is \
+             what stops the unit and no race is blamed - the same reading the shipped \
+             `study-at-maximum` sentence gives this unit"
+        );
+
+        // A ceiling a race really does impose names that race.
+        let observation = skill(&ruleset, "OBSE");
+        let by_race = at_the_ceiling(
+            &ruleset,
+            Some(&[skill_entry("observation", "OBSE", 2)]),
+            Some(&[race("HUMN", 5)]),
+            &observation,
+        )
+        .expect("`data/HUMN` stops observation at 2, below the skill's own maximum");
+
+        assert_eq!(by_race.level(), 2);
+        let races = limiting_races(&by_race);
+        assert_eq!(races.len(), 1);
+        assert_eq!(races[0].tag, "HUMN");
+        assert!(!races[0].name.is_empty(), "the sentence needs a name to say");
+    }
+
+    #[test]
+    fn a_unit_below_its_ceiling_owes_the_fee() {
+        let ruleset = ruleset();
+        let combat = skill(&ruleset, "COMB");
+
+        assert_eq!(
+            at_the_ceiling(
+                &ruleset,
+                Some(&[skill_entry("combat", "COMB", 4)]),
+                Some(&[race("GNOL", 60)]),
+                &combat,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_skill_the_unit_has_never_studied_owes_the_fee() {
+        let ruleset = ruleset();
+        let combat = skill(&ruleset, "COMB");
+
+        assert_eq!(
+            at_the_ceiling(&ruleset, Some(&[]), Some(&[race("GNOL", 60)]), &combat),
+            None,
+            "no entry is a unit that has never studied it, not a unit at its maximum"
+        );
+    }
+
+    #[test]
+    fn unsayable_skills_or_races_owe_the_fee() {
+        let ruleset = ruleset();
+        let combat = skill(&ruleset, "COMB");
+        let held = [skill_entry("combat", "COMB", 5)];
+
+        assert_eq!(
+            at_the_ceiling(&ruleset, None, Some(&[race("GNOL", 60)]), &combat),
+            None,
+            "skills that cannot be said leave the fee standing"
+        );
+        assert_eq!(
+            at_the_ceiling(&ruleset, Some(&held), None, &combat),
+            None,
+            "a composition that cannot be said leaves the fee standing"
         );
     }
 }
