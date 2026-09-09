@@ -322,6 +322,24 @@ export function Absent({ children }: { children: ReactNode }) {
   return <p className="m-0 italic text-ink-dim">{children}</p>;
 }
 
+/**
+ * Warns that this unit's line was not fully read, and that no advice is given about it.
+ *
+ * `text-warn` rather than the stale banner's `text-brass`: this is a warning about the data itself
+ * and not a note about its age. The sentence arrives already chosen, so this holds no wording.
+ */
+export function UnreadBanner({ text }: { text: string }) {
+  return (
+    <p
+      data-testid="unit-unread-banner"
+      className="mb-2 flex gap-2 rounded border border-l-[3px] border-warn/60 bg-warn/10 px-2 py-1.5 text-warn"
+    >
+      <span aria-hidden>&#9656;</span>
+      <span>{text}</span>
+    </p>
+  );
+}
+
 /** Warns that what follows was true at some earlier turn and may since have changed. */
 export function StaleBanner({ lastSeenTurn, ageInTurns }: { lastSeenTurn: number; ageInTurns: number }) {
   return (

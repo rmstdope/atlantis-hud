@@ -47,7 +47,10 @@ pub use completion::{
 pub use grammar::order_commands;
 pub use vocabulary::order_vocabulary;
 
+use std::collections::HashSet;
+
 use crate::movement::rules::Ruleset;
+use crate::report::model::UnitRead;
 use crate::report::ParsedReport;
 use crate::{OrderDiagnostic, OrderDiagnosticSeverity, OrderValidationResult};
 
@@ -84,6 +87,31 @@ pub fn validate_turn(
         let review = semantics::review_turn(report, source, ruleset, options);
         silver = review.silver;
         diagnostics.extend(review.findings.into_iter().map(into_diagnostic));
+
+        // Advice derived from a unit whose line the parser could not read is advice derived from
+        // nothing: "no men" on a unit whose men were simply never read would appear every turn and
+        // have to be dismissed by hand. It goes altogether rather than rule by rule, because which
+        // rule read the unit's contents is a judgement nothing on screen would explain.
+        //
+        // `unit_id` is set only by the semantic checker - both syntax pushes set it to `None` on
+        // purpose (`parser.rs`) - so the player's own typo inside such a unit's block is still
+        // reported, which is right: that fault is in the orders, not in the report. A finding
+        // carrying `formed` is kept for the same reason in reverse: its `unit_id` is a `NEW n`
+        // alias for a unit this month's orders create, and the two id spaces can collide.
+        let unread: HashSet<&str> = report
+            .units()
+            .filter(|unit| unit.read != UnitRead::Complete)
+            .map(|unit| unit.unit_id.as_str())
+            .collect();
+        if !unread.is_empty() {
+            diagnostics.retain(|diagnostic| {
+                diagnostic.formed.is_some()
+                    || !diagnostic
+                        .unit_id
+                        .as_deref()
+                        .is_some_and(|id| unread.contains(id))
+            });
+        }
     }
 
     // Line order across the whole document, as the panel has always shown them. What belongs to a
@@ -109,5 +137,96 @@ fn into_diagnostic(finding: semantics::Finding) -> OrderDiagnostic {
         unit_id: finding.unit_id,
         formed: finding.formed,
         severity: OrderDiagnosticSeverity::Warning,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::report::model::UnitRead;
+
+    #[test]
+    fn advice_about_a_unit_that_was_not_read_is_withheld() {
+        let base = crate::report::parse_report_full(atlantis_hud_fixtures::G7_F95_T71.text);
+        // Two units the checker actually has something to say about, taken from a first pass over
+        // empty orders rather than assumed: which units draw advice is the fixture's business.
+        let probe = validate_turn("", None, Some(&base), semantics::CheckOptions::default());
+        let ids: Vec<String> = {
+            let mut seen: Vec<String> = probe
+                .diagnostics
+                .iter()
+                .filter_map(|diagnostic| diagnostic.unit_id.clone())
+                .collect();
+            seen.dedup();
+            seen
+        };
+        assert!(
+            ids.len() >= 2,
+            "the fixture must draw advice against at least two units, or the test proves nothing"
+        );
+        let (unread_id, read_id) = (ids[0].clone(), ids[1].clone());
+        // A malformed order inside the unread unit's own block. `AVOID` takes 0 or 1, so `AVOID 7`
+        // is the player's typo - and it neither spends the month nor stops the checker having
+        // something to say about the unit, which is what makes it the negative control here.
+        let source = format!("unit {unread_id}\nAVOID 7\n");
+
+        let before = validate_turn(
+            &source,
+            None,
+            Some(&base),
+            semantics::CheckOptions::default(),
+        );
+        let names = |result: &OrderValidationResult, id: &str| {
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.unit_id.as_deref() == Some(id))
+                .count()
+        };
+        assert!(
+            names(&before, &unread_id) > 0 && names(&before, &read_id) > 0,
+            "the orders must provoke advice against both units, or the test proves nothing"
+        );
+        let syntax_before = before
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity == OrderDiagnosticSeverity::Error)
+            .count();
+        assert!(syntax_before > 0, "`AVOID 7` must be a syntax error");
+
+        let mut report = base.clone();
+        for region in &mut report.regions {
+            for unit in &mut region.units {
+                if unit.unit_id == unread_id {
+                    unit.read = UnitRead::Nothing;
+                }
+            }
+        }
+
+        let after = validate_turn(
+            &source,
+            None,
+            Some(&report),
+            semantics::CheckOptions::default(),
+        );
+        assert_eq!(
+            names(&after, &unread_id),
+            0,
+            "nothing derived from a unit that was never read should be said about it"
+        );
+        assert_eq!(
+            names(&after, &read_id),
+            names(&before, &read_id),
+            "a unit the report carried whole is advised on exactly as before"
+        );
+        assert_eq!(
+            after
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.severity == OrderDiagnosticSeverity::Error)
+                .count(),
+            syntax_before,
+            "the player's own typo is still theirs to fix, wherever it sits"
+        );
     }
 }

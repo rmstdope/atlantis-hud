@@ -342,3 +342,123 @@ describe("the Events section", () => {
     expect(without).not.toContain('data-testid="unit-events-all"');
   });
 });
+
+describe("a unit whose line the report did not fully carry", () => {
+  const CATALOGUE = indexWith(["mount:HORS"]);
+  const WEIGHING: GameDataIndex = { ...CATALOGUE, detailOf: () => ({ kind: "item", weight: 50 }) as never };
+
+  it("banners a unit whose line was not read, and refuses its figures", () => {
+    const markup = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({
+          read: "nothing",
+          items: [],
+          flags: [],
+          skills: [],
+          men: 0,
+          weight: null,
+          capacity: null,
+          movement: null
+        })}
+        hex={HEX}
+      />
+    );
+
+    expect(markup).toContain('data-testid="unit-unread-banner"');
+    expect(markup).toContain("This unit was not read.");
+    expect(markup).toContain("Weight");
+    expect(markup).toContain("Capacity");
+    expect(markup).toContain("not known");
+    expect(markup).not.toContain("Movement not disclosed");
+    expect(markup).not.toContain(">none<");
+  });
+
+  it("keeps what a part-read unit did have, and says more is missing", () => {
+    const markup = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({
+          read: "partial",
+          items: [{ amount: 2, name: "horse", tag: "HORS" }],
+          weight: null,
+          capacity: null,
+          movement: null
+        })}
+        hex={HEX}
+        gameData={WEIGHING}
+      />
+    );
+
+    expect(markup).toContain("Part of this unit was not read.");
+    expect(markup).toContain("horse");
+    expect(markup).toContain("and more, not known");
+    expect(markup).toContain("100 or more");
+  });
+
+  it("leaves a unit that was read completely exactly as it was", () => {
+    const markup = renderToStaticMarkup(<UnitPanel unit={UNIT} hex={HEX} />);
+
+    expect(markup).not.toContain('data-testid="unit-unread-banner"');
+    expect(markup).not.toContain("not known");
+  });
+});
+
+describe("a part-read unit whose own figures did reach the model", () => {
+  it("keeps a Weight the report carried rather than replacing it with a smaller floor", () => {
+    // `bad_field` marks a unit `partial` on a line that was fully present but held one malformed
+    // item (`crates/core/src/report/unit.rs`), so `Weight:` itself was read. The game's own figure
+    // beats a floor derived from items every time.
+    const markup = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({
+          read: "partial",
+          items: [{ amount: 2, name: "horse", tag: "HORS" }],
+          weight: 40,
+          capacity: null,
+          movement: null
+        })}
+        hex={HEX}
+        gameData={{ ...indexWith(["mount:HORS"]), detailOf: () => ({ kind: "item", weight: 50 }) as never }}
+      />
+    );
+
+    expect(markup).toContain("40");
+    expect(markup).not.toContain("100 or more");
+  });
+
+  it("groups a heavy unit's weight the same way however much of the line was read", () => {
+    // Both arms of the Weight field, at a figure large enough to tell them apart: the review found
+    // the same ungrouped-figure defect in each one in turn, which is what a test is for.
+    const heavy = { weight: 4200, capacity: null, movement: null };
+    for (const read of ["complete", "partial"] as const) {
+      const markup = renderToStaticMarkup(
+        <UnitPanel unit={aReportUnit({ ...heavy, read })} hex={HEX} />
+      );
+      expect(markup, `read: ${read}`).toContain("4,200");
+      expect(markup, `read: ${read}`).not.toContain(">4200<");
+    }
+  });
+
+  it("says only that more is missing when no item row survived", () => {
+    // `withoutSilver` is what the Items section iterates, so a part-read unit that read only
+    // silver has no rows. "not known" above "and more, not known" is two answers to one question.
+    const markup = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({
+          read: "partial",
+          items: [{ amount: 30, name: "silver", tag: "SILV" }],
+          movement: null
+        })}
+        hex={HEX}
+      />
+    );
+
+    // Not a count over the whole pane - Men, Weight, Capacity and the rest all say `not known`
+    // here quite rightly. What must not appear is the Items section answering twice. Sliced
+    // between its heading and the next rather than matched on `Absent`'s class string, which a
+    // Tailwind reorder in `primitives.tsx` would let pass vacuously.
+    expect(markup).toContain("and more, not known");
+    const itemsSection = markup.slice(markup.indexOf("Items"), markup.indexOf("Events"));
+    expect(itemsSection).toContain("and more, not known");
+    expect(itemsSection.replace("and more, not known", "")).not.toContain("not known");
+  });
+});

@@ -12,6 +12,7 @@
  */
 
 import type { ReportUnit } from "@atlantis/core-client";
+import { NOT_KNOWN, unitWasFullyRead } from "./unitRead";
 
 /**
  * The full form, for a panel with room to explain itself.
@@ -20,6 +21,12 @@ import type { ReportUnit } from "@atlantis/core-client";
  * An unclassified unit reads `about 50`.
  */
 export function describeMen(unit: ReportUnit): string {
+  // Both `partial` and `nothing` refuse: the part of the line that was lost could be people, so
+  // even a figure that was read is not a headcount.
+  if (!unitWasFullyRead(unit)) {
+    return NOT_KNOWN;
+  }
+
   const total = unit.men.toLocaleString();
   if (unit.menEstimated) {
     return `about ${total}`;
