@@ -3930,6 +3930,30 @@ pub(crate) struct RefusedRecruit {
     pub(crate) line: usize,
 }
 
+/// One movement of one unit's silver, as the ledger settled it.
+///
+/// Not an [`ItemMovement`]: that list is a goods record by construction and carries no silver leg
+/// of any order (`ah-6m7b.5`), and it also drives what a unit is shown holding
+/// (`effects::apply_item_effects`). This one drives nothing at all - it is the ledger's account of
+/// its own arithmetic, kept so `forecast_hex` can check the SILVER column against it rather than
+/// hope the two agree (`ah-6m7b.5.2`).
+///
+/// `cause` is [`SilverChangeCause`] rather than a second enum: the column's list already names
+/// every reason silver moves, and two vocabularies for one concept is what this family exists to
+/// remove.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SilverMove {
+    /// The phase `rules/sequenceofevents` settles the order in.
+    pub(crate) phase: StatePhase,
+    /// Signed: positive into the unit, negative out of it. Never zero - a term that moves nothing
+    /// is not recorded, exactly as `SilverChange::amount` is documented never to be.
+    pub(crate) amount: i64,
+    pub(crate) cause: SilverChangeCause,
+    /// The 1-based document line of the order responsible, when one order is. `None` for the
+    /// taxing flag with no `TAX` order.
+    pub(crate) line: Option<i64>,
+}
+
 struct Ledger<'a> {
     /// The catalogue that turns an order's item argument into a tag, where there is one.
     ruleset: Option<&'a Ruleset>,
@@ -4049,6 +4073,16 @@ struct Ledger<'a> {
     /// of settling the Give phase a second time (`ah-6m7b.3`). Written by [`transfer`]; empty for
     /// a unit that wrote none, and carrying no entry for a line this walk could not follow.
     pub(crate) settled_gifts: BTreeMap<String, Vec<SettledGift>>,
+    /// Every movement of every unit's silver this month, in the order the walk settled them,
+    /// keyed by unit id.
+    ///
+    /// Read by `mod silver_record` in this file's tests and by nothing else yet: `ah-6m7b.5.2`
+    /// built the check that would have read it in production - the SILVER column's change list
+    /// held to this record term for term - measured that the two lists disagree in five distinct
+    /// classes, and filed that as `ah-6m7b.5.3`, which is this field's intended consumer. What
+    /// keeps it exhaustive meanwhile is the `debug_assert` in `charge` and `credit`, not a reader.
+    /// Nothing a player's figures pass through reads it (`ah-6m7b.5.2`).
+    pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
     /// How many of one tag a unit's own `SELL` lines have already moved this month, and how many of
     /// those lines moved any. A block may name the same goods twice, and the second line can only
     /// draw on what the first left of the unit's settled share of the market line (`ah-vw8e`). Keyed
@@ -4325,6 +4359,7 @@ fn ledger_for_with_production<'a>(
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
+        silver_moves: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
         bought: BTreeMap::new(),
@@ -5026,6 +5061,10 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         // and a unit whose wages cover its fee is still a unit with a fee.
         let charged = (owed - late_income(facts, region, *shares, ledger.ruleset)).max(0);
         if charged > 0 {
+            // A direct apply, and deliberately not a `move_silver`: upkeep is not one of the
+            // column's `SilverChangeCause`s either - `UnitSilver::upkeep` is its own field, kept
+            // out of `changes` - so recording it here would put a term in the ledger's account
+            // that the column's list can never carry (`ah-6m7b.5.2`).
             ledger.state.apply(
                 StatePhase::Maintenance,
                 &ordered.unit.unit_id,
@@ -5541,12 +5580,30 @@ fn credit_tax(
         priced.doubt.is_none(),
         "the ledger's optimism leaves nothing for `price_tax` to doubt"
     );
-    credit(
+    // The line the column finds for the same credit: the unit's own `TAX` order, or `None` where
+    // the taxing flag is doing it with no order at all (`silver::forecast_unit`). `record_silver`
+    // and `apply_silver` directly rather than `move_silver`, because that line comes from the
+    // intents rather than from a `PlacedIntent` this function holds - and a tax credit is
+    // positive, so it needs no `charged_at` attribution either (`ah-6m7b.5.2`).
+    let line = actor
+        .intents
+        .iter()
+        .find(|placed| matches!(placed.intent, Intent::Tax))
+        .map(|placed| placed.line as i64);
+    record_silver(
         ledger,
         StatePhase::Tax,
         &actor.unit.unit_id,
-        SILVER,
         priced.earns,
+        SilverChangeCause::Taxed,
+        line,
+    );
+    apply_silver(
+        ledger,
+        StatePhase::Tax,
+        &actor.unit.unit_id,
+        priced.earns,
+        None,
     );
 }
 
@@ -5689,7 +5746,14 @@ fn apply(
             let priced = price_claim(*amount, *claim_remaining);
             // `rules/sequenceofevents` processes CLAIM in the first batch of instant orders, ahead
             // of "Give orders. GIVE and TAKE orders are processed" (`ah-gdd3.1`).
-            credit(ledger, StatePhase::Claim, who, SILVER, priced.earns);
+            move_silver(
+                ledger,
+                StatePhase::Claim,
+                who,
+                priced.earns,
+                SilverChangeCause::Claimed,
+                Some(placed),
+            );
             if let Some(remaining) = claim_remaining {
                 *remaining = remaining.saturating_sub(priced.earns).max(0);
             }
@@ -5712,7 +5776,19 @@ fn apply(
             if priced.doubt.is_some() {
                 ledger.doubted.insert(who.clone());
             } else {
-                credit(ledger, StatePhase::Give, who, SILVER, priced.earns);
+                // The Tax phase, not the Give phase: `rules/sequenceofevents` processes PILLAGE in
+                // the *Tax orders* batch, which follows the *Give orders* batch, and
+                // `phases::phase_of(&Intent::Pillage)` has always answered `StatePhase::Tax`. The
+                // visible consequence is that a `GIVE ... ALL SILV` beside a `PILLAGE` stops
+                // handing over pillage money the unit has not earned yet (`ah-6m7b.5.2`).
+                move_silver(
+                    ledger,
+                    StatePhase::Tax,
+                    who,
+                    priced.earns,
+                    SilverChangeCause::Pillaged,
+                    Some(placed),
+                );
             }
         }
         Intent::Buy { amount, item } => {
@@ -5786,6 +5862,10 @@ fn apply(
                         other: None,
                         created: None,
                     });
+                    // Silver never reaches here: this arm runs only where
+                    // `withdrawal_cost(item, ruleset).is_some()`, which silver has no entry for.
+                    // The phantom movement a `WITHDRAW n SILV` pushes regardless is `ah-x6do`'s
+                    // (`ah-6m7b.5.2`).
                     ledger.state.apply(StatePhase::Withdraw, who, &tag, *count);
                 }
             }
@@ -6100,7 +6180,36 @@ fn transfer(
     };
 
     if !from.is_empty() {
-        charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
+        if tag.eq_ignore_ascii_case(SILVER) {
+            // The same test the column makes, and the same one `settled_gifts` records as
+            // `to_nobody`: an order that names *nobody* discards what it hands over, and one that
+            // names a target gives it away - even a target this walk cannot credit, such as a unit
+            // the report shows in no region. `to.is_none()` is not that test and would call such a
+            // gift a discard (`ah-6m7b.5.2`).
+            //
+            // A `TAKE`'s source unit is recorded as a `GaveAway` for want of anything truer:
+            // `SilverChangeCause` names what happens to the unit whose *column* the row appears
+            // in, and no variant of it says "another unit took this from me" - `Took` and
+            // `TookUnshown` are both the taker's side. Naming the taker's cause here would be
+            // wronger than this, and inventing a variant is `silver.rs`'s to decide, which this
+            // bead does not touch. `ah-6m7b.5.3` is where the two lists are compared and is where
+            // it matters.
+            let cause = if reach == GiveReach::Discard {
+                SilverChangeCause::Discarded
+            } else {
+                SilverChangeCause::GaveAway
+            };
+            move_silver(
+                ledger,
+                StatePhase::Give,
+                &from,
+                -quantity,
+                cause,
+                Some(placed),
+            );
+        } else {
+            charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
+        }
         // What the column has to be told, because it cannot work it out: an `ALL` resolves against
         // a balance only this walk holds. Recorded after the charge, so what is stored is what was
         // actually taken. A `TAKE` is not recorded - the column never deferred one, and its taker
@@ -6122,7 +6231,33 @@ fn transfer(
         }
     }
     if let Some(to) = to {
-        credit(ledger, StatePhase::Give, &to, &tag, quantity);
+        if tag.eq_ignore_ascii_case(SILVER) {
+            // What the receiving unit did to get it: a `GIVE` was given to, a `TAKE` took. The
+            // column sources its own inbound rows from `Receipts`, whose reach rules are a
+            // different question from this walk's - it counts a `TAKE` from a unit the report does
+            // not show, and skips a gift from another hex - but that is a reason for the two lists
+            // to be compared carefully, not a reason for this one to name a cause it knows to be
+            // wrong (`ah-6m7b.5.2`).
+            move_silver(
+                ledger,
+                StatePhase::Give,
+                &to,
+                quantity,
+                if is_give {
+                    SilverChangeCause::WasGiven
+                } else if from.is_empty() {
+                    // A `TAKE` whose source the report does not show: `apply`'s `Intent::Take` arm
+                    // reaches here with `source.unwrap_or_default()`, so an empty `from` is
+                    // precisely that case, and the column names it `TookUnshown` (`ah-awcm`).
+                    SilverChangeCause::TookUnshown
+                } else {
+                    SilverChangeCause::Took
+                },
+                Some(placed),
+            );
+        } else {
+            credit(ledger, StatePhase::Give, &to, &tag, quantity);
+        }
     }
 }
 
@@ -6232,7 +6367,7 @@ fn buy(
 
     // The charge is the whole ask, exactly as it was before `ah-omn7`: it is what pushes the
     // balance below zero, and `not-enough-silver` fires on nothing else.
-    charge(ledger, StatePhase::Market, who, SILVER, line.wanted, placed);
+    buy_silver(ledger, who, line.wanted, line.spends, placed);
     credit(ledger, StatePhase::Market, who, &tag, bought);
     *ledger.bought.entry((who.clone(), tag.clone())).or_default() += bought;
     *ledger
@@ -6351,13 +6486,13 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &
                 silver_available,
                 plan,
             });
-        charge(
+        move_silver(
             ledger,
             StatePhase::Market,
             who,
-            SILVER,
-            priced.spends,
-            &deferred.placed,
+            -priced.spends,
+            SilverChangeCause::Bought,
+            Some(&deferred.placed),
         );
         credit(ledger, StatePhase::Market, who, &deferred.tag, plan.bought);
         *ledger
@@ -6572,7 +6707,14 @@ fn produce(
         return;
     };
 
-    charge(ledger, phase, who, SILVER, priced.spends, placed);
+    move_silver(
+        ledger,
+        phase,
+        who,
+        -priced.spends,
+        SilverChangeCause::ProductionSpent,
+        Some(placed),
+    );
     // The running deduction is `PhaseState`'s since `ah-728m.2.2`: every charge below writes into
     // it at this phase and every later one, so a second `PRODUCE` line - or the next unit in
     // report order, or the BUILD pass - reads what this one consumed without a list being threaded
@@ -6936,7 +7078,14 @@ fn sell(
     );
 
     charge(ledger, StatePhase::Market, who, &tag, line.quantity, placed);
-    credit(ledger, StatePhase::Market, who, SILVER, line.earns);
+    move_silver(
+        ledger,
+        StatePhase::Market,
+        who,
+        line.earns,
+        SilverChangeCause::Sold,
+        Some(placed),
+    );
 
     let entry = ledger.sold.entry((who.clone(), tag.clone())).or_default();
     entry.quantity = entry.quantity.saturating_add(line.quantity);
@@ -6988,13 +7137,13 @@ fn study(
         ledger.doubted.insert(who.clone());
         return;
     }
-    charge(
+    move_silver(
         ledger,
         StatePhase::Study,
         who,
-        SILVER,
-        priced.spends,
-        placed,
+        -priced.spends,
+        SilverChangeCause::Studied,
+        Some(placed),
     );
 }
 
@@ -7069,8 +7218,22 @@ fn cast(
     // `not-enough-silver` warning cannot disagree about a mage's month (`ah-lu0f.3`). Silver is
     // charged from `spends` alone; `plan.materials` never contains `SILV` (`ah-ofpb.4`).
     let (priced, plan) = price_cast(resolved, &caster, region);
-    credit(ledger, StatePhase::Cast, who, SILVER, priced.earns);
-    charge(ledger, StatePhase::Cast, who, SILVER, priced.spends, placed);
+    move_silver(
+        ledger,
+        StatePhase::Cast,
+        who,
+        priced.earns,
+        SilverChangeCause::CastEarned,
+        Some(placed),
+    );
+    move_silver(
+        ledger,
+        StatePhase::Cast,
+        who,
+        -priced.spends,
+        SilverChangeCause::CastSpent,
+        Some(placed),
+    );
 
     let Some(plan) = plan else {
         // A spell the ruleset has no entry for could be a typo or a spell the scraper missed;
@@ -7556,7 +7719,107 @@ fn apply_relief(hexes: &mut [(Hex<'_>, Ledger<'_>)], settlement: &UpkeepSettleme
     }
 }
 
+/// Move a unit's silver, and record that it moved, in one act.
+///
+/// The whole point is that these are one call and not two. `SilverChange`'s doc has claimed since
+/// it was written that every term the column's totals are built from appears in its list exactly
+/// once; the ledger had no such list at all, and pairing a `charge` with a separate `record` is
+/// precisely the invariant-nothing-enforces that `ah-6m7b.4` removed on the other side. Every
+/// silver `charge`/`credit` in this module goes through here (`ah-6m7b.5.2`).
+///
+/// `amount` is signed - positive into the unit, negative out of it. A zero moves nothing and is
+/// not recorded, so a caller need not test for it.
+fn move_silver(
+    ledger: &mut Ledger<'_>,
+    phase: StatePhase,
+    who: &str,
+    amount: i64,
+    cause: SilverChangeCause,
+    placed: Option<&PlacedIntent>,
+) {
+    record_silver(
+        ledger,
+        phase,
+        who,
+        amount,
+        cause,
+        placed.map(|placed| placed.line as i64),
+    );
+    apply_silver(ledger, phase, who, amount, placed);
+}
+
+/// The market's exception: a `BUY` charges the **whole ask** against the balance - it is what
+/// pushes it below zero, and `not-enough-silver` fires on nothing else (`ah-omn7`) - while the
+/// month's record says what the line actually **spent**. The two figures differ only for a line
+/// the market or the purse cut short.
+///
+/// Split out rather than given `move_silver` a second amount, so that every other caller reads as
+/// one number and this one order's two figures are impossible to confuse.
+fn buy_silver(ledger: &mut Ledger<'_>, who: &str, wanted: i64, spent: i64, placed: &PlacedIntent) {
+    record_silver(
+        ledger,
+        StatePhase::Market,
+        who,
+        -spent,
+        SilverChangeCause::Bought,
+        Some(placed.line as i64),
+    );
+    apply_silver(ledger, StatePhase::Market, who, -wanted, Some(placed));
+}
+
+/// Records a silver movement without applying it. Split from [`apply_silver`] for the two callers
+/// whose recorded figure and applied figure differ - `buy_silver` above, and `credit_tax`, whose
+/// line comes from the unit's intents rather than from a `PlacedIntent` it holds.
+fn record_silver(
+    ledger: &mut Ledger<'_>,
+    phase: StatePhase,
+    who: &str,
+    amount: i64,
+    cause: SilverChangeCause,
+    line: Option<i64>,
+) {
+    if amount == 0 {
+        return;
+    }
+    ledger
+        .silver_moves
+        .entry(who.to_string())
+        .or_default()
+        .push(SilverMove {
+            phase,
+            amount,
+            cause,
+            line,
+        });
+}
+
+/// Applies a signed silver movement to the running balance, and does the `charged_at` bookkeeping
+/// [`charge`] does for every other tag.
+fn apply_silver(
+    ledger: &mut Ledger<'_>,
+    phase: StatePhase,
+    who: &str,
+    amount: i64,
+    placed: Option<&PlacedIntent>,
+) {
+    ledger.state.apply(phase, who, SILVER, amount);
+    if amount < 0 {
+        if let Some(placed) = placed {
+            // The first order to draw on it, which is where a player looking for the mistake
+            // starts.
+            ledger
+                .charged_at
+                .entry((who.to_string(), SILVER.to_ascii_uppercase()))
+                .or_insert_with(|| placed.clone());
+        }
+    }
+}
+
 fn credit(ledger: &mut Ledger<'_>, phase: StatePhase, unit_id: &str, tag: &str, amount: i64) {
+    debug_assert!(
+        !tag.eq_ignore_ascii_case(SILVER),
+        "silver moves through `move_silver`, so the ledger records it (`ah-6m7b.5.2`)"
+    );
     ledger.state.apply(phase, unit_id, tag, amount);
 }
 
@@ -7568,6 +7831,10 @@ fn charge(
     amount: i64,
     placed: &PlacedIntent,
 ) {
+    debug_assert!(
+        !tag.eq_ignore_ascii_case(SILVER),
+        "silver moves through `move_silver`, so the ledger records it (`ah-6m7b.5.2`)"
+    );
     let key = (unit_id.to_string(), tag.to_ascii_uppercase());
     ledger.state.apply(phase, unit_id, tag, -amount);
     if amount > 0 {
@@ -15780,6 +16047,40 @@ mod tests {
     /// "PILLAGE comes before TAX, so a unit performing TAX will collect no money in that region
     /// that month." The ledger read `hex.region.tax_base` alone and never looked at the hex's own
     /// orders, so it credited a taxer beside a pillager in full.
+    /// `rules/sequenceofevents` puts PILLAGE in the *Tax orders* batch, which comes after the
+    /// *Give orders* batch - so a `GIVE ... ALL SILV` beside a `PILLAGE` hands over what the unit
+    /// held, and not the pillage money it has not earned yet (`ah-6m7b.5.2`).
+    #[test]
+    fn pillage_is_credited_after_the_give_phase() {
+        let hex_region = ReportRegion {
+            tax_base: Some(2500),
+            ..region(vec![
+                armed_to_pillage(with_silver(unit("1"), 100), 2500),
+                with_silver(unit("2"), 0),
+            ])
+        };
+        let ordered = OrderedUnits::read("unit 1\nPILLAGE\nGIVE 2 ALL SILV\n\nunit 2\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+
+        assert_eq!(
+            ledger.state.balance_at(StatePhase::Give, "1", SILVER),
+            0,
+            "the gift hands over the 100 the unit held, and the pillage has not arrived yet"
+        );
+        assert_eq!(
+            ledger.state.balance_at(StatePhase::Give, "2", SILVER),
+            100,
+            "and the receiver is handed the 100, not the pillage money as well"
+        );
+        assert!(
+            ledger.state.balance_at(StatePhase::Tax, "1", SILVER) > 0,
+            "the pillage arrives in the Tax phase, where `rules/sequenceofevents` puts it: {}",
+            ledger.state.balance_at(StatePhase::Tax, "1", SILVER)
+        );
+    }
+
     #[test]
     fn the_ledger_credits_a_taxer_nothing_in_a_pillaged_hex() {
         let hex_region = ReportRegion {
@@ -21218,6 +21519,328 @@ BUILD
                 assert!(!ledger.movements.iter().any(|m| m.unit_id == "901"));
                 assert!(!ledger.built.contains_key("901"));
                 assert!(!ledger.uncounted.contains_key("901"));
+            });
+        }
+    }
+
+    /// The ledger's own record of the silver it moves (`ah-6m7b.5.2`).
+    mod silver_record {
+        use super::*;
+
+        /// `Ledger<'a>` borrows the ruleset it is built from, so a test that wants one hands it a
+        /// closure rather than receiving the ledger by value.
+        fn with_ledger<R>(
+            hex_region: ReportRegion,
+            orders: &str,
+            read: impl FnOnce(&Ledger<'_>) -> R,
+        ) -> R {
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = ruleset();
+            let ledger = ledger_for(&hex, Some(&rules));
+            read(&ledger)
+        }
+
+        fn market(units: Vec<ReportUnit>) -> ReportRegion {
+            ReportRegion {
+                tax_base: Some(2500),
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 10,
+                }],
+                ..region(units)
+            }
+        }
+
+        fn moves<'a>(ledger: &'a Ledger<'_>, who: &str) -> &'a [SilverMove] {
+            ledger
+                .silver_moves
+                .get(who)
+                .map(|moves| moves.as_slice())
+                .unwrap_or(&[])
+        }
+
+        fn shape(moves: &[SilverMove]) -> Vec<(StatePhase, SilverChangeCause, Option<i64>)> {
+            moves
+                .iter()
+                .map(|one| (one.phase, one.cause, one.line))
+                .collect()
+        }
+
+        #[test]
+        fn the_ledger_records_every_silver_move_it_makes() {
+            // A weapon, because only an armed man collects tax (`rules/taxingpillaging`).
+            let hex_region = market(vec![with_item(
+                with_silver(unit("1"), 10_000),
+                1,
+                "sword",
+                "SWOR",
+            )]);
+            with_ledger(
+                hex_region,
+                "unit 1\nTAX\nCLAIM 50\nSTUDY combat\nBUY 1 grain\n",
+                |ledger| {
+                    assert_eq!(
+                        shape(moves(ledger, "1")),
+                        vec![
+                            (StatePhase::Claim, SilverChangeCause::Claimed, Some(3)),
+                            (StatePhase::Tax, SilverChangeCause::Taxed, Some(2)),
+                            (StatePhase::Market, SilverChangeCause::Bought, Some(5)),
+                            (StatePhase::Study, SilverChangeCause::Studied, Some(4)),
+                        ],
+                        "every silver the walk moved, recorded as it moved it: {:?}",
+                        moves(ledger, "1")
+                    );
+                    let claimed = moves(ledger, "1")[0].amount;
+                    assert_eq!(claimed, 50, "the claim is what was claimed");
+                    assert!(moves(ledger, "1")[1].amount > 0, "the tax earns something");
+                    assert_eq!(moves(ledger, "1")[2].amount, -10, "one grain at ten silver");
+                    assert!(
+                        moves(ledger, "1")[3].amount < 0,
+                        "the study costs something"
+                    );
+                },
+            );
+        }
+
+        /// The one place the balance and the record deliberately differ: a `BUY` charges the whole
+        /// ask against the balance - it is what pushes it below zero, and `not-enough-silver` fires
+        /// on nothing else (`ah-omn7`) - while the record says what the line actually spent.
+        #[test]
+        fn a_buy_charges_the_ask_and_records_the_spend() {
+            let hex_region = market(vec![with_silver(unit("1"), 30)]);
+            with_ledger(hex_region, "unit 1\nBUY 10 grain\n", |ledger| {
+                assert_eq!(
+                    ledger.state.balance_at(StatePhase::Market, "1", SILVER),
+                    30 - 100,
+                    "the balance falls by the whole ask, which is what the warning reads"
+                );
+                assert_eq!(
+                    moves(ledger, "1")
+                        .iter()
+                        .filter(|one| one.cause == SilverChangeCause::Bought)
+                        .map(|one| one.amount)
+                        .collect::<Vec<_>>(),
+                    vec![-30],
+                    "the record says what the three it could afford cost: {:?}",
+                    moves(ledger, "1")
+                );
+            });
+        }
+
+        /// Upkeep is not one of the column's `SilverChangeCause`s either - `UnitSilver::upkeep` is
+        /// its own field - so the ledger does not record it as a movement.
+        #[test]
+        fn upkeep_is_not_a_recorded_silver_move() {
+            // No food, so the whole fee falls on the purse.
+            let mut fed = with_silver(unit("1"), 1_000);
+            fed.items
+                .retain(|item| !item.tag.eq_ignore_ascii_case("GRAI"));
+            let hex_region = market(vec![fed]);
+            with_ledger(hex_region, "unit 1\n", |ledger| {
+                assert!(
+                    ledger
+                        .state
+                        .balance_at(StatePhase::Maintenance, "1", SILVER)
+                        < 1_000,
+                    "the fee is drawn"
+                );
+                assert_eq!(
+                    moves(ledger, "1"),
+                    &[] as &[SilverMove],
+                    "and it is not a recorded movement"
+                );
+            });
+        }
+
+        /// `WITHDRAW n SILV` applies nothing to any phase balance - silver has no withdrawal cost -
+        /// so there is nothing to record. Guards `ah-x6do`'s phantom against being read as a real
+        /// movement.
+        #[test]
+        fn a_withdraw_of_silver_records_no_silver_move() {
+            let hex_region = market(vec![with_silver(unit("1"), 1_000)]);
+            with_ledger(hex_region, "unit 1\nWITHDRAW 100 SILV\n", |ledger| {
+                assert_eq!(moves(ledger, "1"), &[] as &[SilverMove]);
+            });
+        }
+
+        #[test]
+        fn a_gift_of_silver_is_recorded_out_of_one_unit_and_into_the_other() {
+            let hex_region = market(vec![
+                with_silver(unit("1"), 1_000),
+                with_silver(unit("2"), 1_000),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 1\nGIVE 2 100 SILV\n\nunit 2\n",
+                |ledger| {
+                    assert_eq!(
+                        shape(moves(ledger, "1")),
+                        vec![(StatePhase::Give, SilverChangeCause::GaveAway, Some(2))]
+                    );
+                    assert_eq!(moves(ledger, "1")[0].amount, -100);
+                    assert_eq!(
+                        shape(moves(ledger, "2")),
+                        vec![(StatePhase::Give, SilverChangeCause::WasGiven, Some(2))]
+                    );
+                    assert_eq!(moves(ledger, "2")[0].amount, 100);
+                },
+            );
+        }
+
+        /// The source the report does not show is the *other* take cause, exactly as the column
+        /// names it (`ah-awcm`). Only the taker's leg is recorded: there is no source unit here
+        /// for the walk to charge.
+        #[test]
+        fn a_take_from_a_unit_the_report_does_not_show_is_recorded_as_such() {
+            let hex_region = market(vec![with_silver(unit("2"), 1_000)]);
+            with_ledger(hex_region, "unit 2\nTAKE FROM 999 100 SILV\n", |ledger| {
+                assert_eq!(
+                    shape(moves(ledger, "2")),
+                    vec![(StatePhase::Give, SilverChangeCause::TookUnshown, Some(2))],
+                    "{:?}",
+                    moves(ledger, "2")
+                );
+                assert_eq!(moves(ledger, "2")[0].amount, 100);
+            });
+        }
+
+        #[test]
+        fn a_sale_is_recorded_as_what_the_market_paid() {
+            let mut hex_region = market(vec![with_item(
+                with_silver(unit("1"), 1_000),
+                10,
+                "horse",
+                "HORS",
+            )]);
+            hex_region.wanted.push(MarketItem {
+                amount: 20,
+                name: "horse".to_string(),
+                tag: "HORS".to_string(),
+                price: 30,
+            });
+            with_ledger(hex_region, "unit 1\nSELL 2 horses\n", |ledger| {
+                assert_eq!(
+                    shape(moves(ledger, "1")),
+                    vec![(StatePhase::Market, SilverChangeCause::Sold, Some(2))],
+                    "{:?}",
+                    moves(ledger, "1")
+                );
+                assert_eq!(moves(ledger, "1")[0].amount, 60, "two horses at thirty");
+            });
+        }
+
+        #[test]
+        fn a_production_that_costs_silver_is_recorded_as_it_spends_it() {
+            // A catapult is `skills/CARP/produces` at level 4 and costs silver, which is what
+            // makes it the recipe this test wants.
+            // The recipe is WOOD 250, IRWD 30, FUR 80 and SILV 3000, at four man-months.
+            let stocked = with_item(
+                with_item(
+                    with_item(
+                        with_skill(with_men(with_silver(unit("1"), 100_000), 4), "CARP", 4),
+                        1_000,
+                        "wood",
+                        "WOOD",
+                    ),
+                    1_000,
+                    "ironwood",
+                    "IRWD",
+                ),
+                1_000,
+                "fur",
+                "FUR",
+            );
+            let hex_region = market(vec![stocked]);
+            with_ledger(hex_region, "unit 1\nPRODUCE catapult\n", |ledger| {
+                let spent: Vec<_> = moves(ledger, "1")
+                    .iter()
+                    .filter(|one| one.cause == SilverChangeCause::ProductionSpent)
+                    .map(|one| (one.phase, one.line, one.amount))
+                    .collect();
+                assert_eq!(
+                    spent.len(),
+                    1,
+                    "the run's silver is one term: {:?}",
+                    moves(ledger, "1")
+                );
+                assert_eq!(spent[0].0, StatePhase::Manufacturing);
+                assert_eq!(spent[0].1, Some(2));
+                assert!(spent[0].2 < 0, "and it is money out: {}", spent[0].2);
+            });
+        }
+
+        /// An earning spell credits, and `CastEarned` is its own term. `CastSpent` is the same
+        /// `move_silver` call two lines below the one this exercises, and is uncovered: the
+        /// committed ruleset's earning spell costs nothing, so a costed spell would be a second
+        /// fixture rather than a second assertion here.
+        #[test]
+        fn a_cast_is_recorded_as_what_it_raises() {
+            let hex_region = ReportRegion {
+                entertainment: Some(5_000),
+                ..market(vec![with_skill(with_silver(unit("1"), 1_000), "PHEN", 2)])
+            };
+            with_ledger(
+                hex_region,
+                "unit 1\nCAST Phantasmal_Entertainment\n",
+                |ledger| {
+                    let earned: Vec<_> = moves(ledger, "1")
+                        .iter()
+                        .filter(|one| one.cause == SilverChangeCause::CastEarned)
+                        .map(|one| (one.phase, one.line, one.amount))
+                        .collect();
+                    assert_eq!(
+                        earned.len(),
+                        1,
+                        "the spell's takings are one term: {:?}",
+                        moves(ledger, "1")
+                    );
+                    assert_eq!(earned[0].0, StatePhase::Cast);
+                    assert_eq!(earned[0].1, Some(2));
+                    assert!(earned[0].2 > 0, "and it is money in");
+                },
+            );
+        }
+
+        /// A `TAKE` is written in the taker's block and moves the source unit's silver, so the
+        /// ledger records both legs - and names them for what each unit did, which for the taker
+        /// is `Took` rather than `WasGiven`.
+        ///
+        /// Its sibling below is the other half of that: the two take causes are different variants
+        /// and the report is what tells them apart.
+        #[test]
+        fn a_take_of_silver_is_recorded_on_both_units() {
+            let hex_region = market(vec![
+                with_silver(unit("1"), 1_000),
+                with_silver(unit("2"), 1_000),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 1\n\nunit 2\nTAKE FROM 1 100 SILV\n",
+                |ledger| {
+                    assert_eq!(
+                        shape(moves(ledger, "2")),
+                        vec![(StatePhase::Give, SilverChangeCause::Took, Some(4))],
+                        "{:?}",
+                        moves(ledger, "2")
+                    );
+                    assert_eq!(moves(ledger, "2")[0].amount, 100);
+                    assert_eq!(moves(ledger, "1")[0].amount, -100, "and it left unit 1");
+                },
+            );
+        }
+
+        #[test]
+        fn a_gift_to_nobody_is_recorded_as_discarded() {
+            let hex_region = market(vec![with_silver(unit("1"), 1_000)]);
+            with_ledger(hex_region, "unit 1\nGIVE 0 100 SILV\n", |ledger| {
+                assert_eq!(
+                    shape(moves(ledger, "1")),
+                    vec![(StatePhase::Give, SilverChangeCause::Discarded, Some(2))]
+                );
+                assert_eq!(moves(ledger, "1")[0].amount, -100);
             });
         }
     }
