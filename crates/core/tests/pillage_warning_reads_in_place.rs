@@ -150,6 +150,29 @@ fn a_countable_pillager_is_still_told_it_cannot() {
     );
 }
 
+/// An item tag no catalogue lists leaves the headcount a guess, and the warning must say so
+/// rather than blaming a transfer that never happened (`ah-ohil`).
+#[test]
+fn an_unlisted_item_is_named_rather_than_a_transfer() {
+    let text = atlantis_hud_fixtures::G3_F42_T42
+        .text
+        .replace("swords [SWOR]. Weight: 548.", "swords [SWOX]. Weight: 548.");
+    assert_ne!(
+        text,
+        atlantis_hud_fixtures::G3_F42_T42.text,
+        "the fixture still writes Fighters (12222)'s swords this way"
+    );
+
+    let told = pillage_warnings_in(&text, "\nunit 12222\nPILLAGE\n", &["12222"]);
+
+    assert_eq!(
+        told,
+        vec![
+            "may not be able to pillage here: needs 227 combat ready men, and an item the catalogue does not list ([SWOX]) means this unit's cannot be counted"
+        ],
+    );
+}
+
 /// The pillage warnings of mountain (36,4) in `G3_F42_T42`, in the order they are raised, with
 /// `extra` appended to the report's own orders template.
 fn pillage_warnings(extra: &str) -> Vec<String> {
@@ -158,8 +181,12 @@ fn pillage_warnings(extra: &str) -> Vec<String> {
 
 /// [`pillage_warnings`], naming the units whose standing month orders the fixture replaces.
 fn pillage_warnings_for(extra: &str, units: &[&str]) -> Vec<String> {
+    pillage_warnings_in(atlantis_hud_fixtures::G3_F42_T42.text, extra, units)
+}
+
+/// [`pillage_warnings_for`], against a report text of the caller's choosing (`ah-ohil`).
+fn pillage_warnings_in(text: &str, extra: &str, units: &[&str]) -> Vec<String> {
     let ruleset = ruleset();
-    let text = atlantis_hud_fixtures::G3_F42_T42.text;
     let mut parsed = parse_report_full(text);
     classify_units(&mut parsed, &ruleset);
     let template = extract_orders_template(text)
