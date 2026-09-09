@@ -500,7 +500,9 @@ pub struct SettledBuyAll {
     pub spends: i64,
     /// What the unit could spend when the line was reached: its market-phase balance, less what a
     /// contended tax pool's settlement takes off this unit's collection (`ah-ud89.2`), plus what
-    /// an over-charged bounded line left it, plus what `rules/share` lends it.
+    /// an over-charged bounded line left it, plus what `rules/share` lends it - each sharer's own
+    /// tax settled against it first, and silver in hand alone where no share of the pool is a
+    /// number (`ah-3c2t.1`).
     pub silver_available: i64,
     /// What `price_buy_all` decided: the count, the caps, and which one bit.
     pub plan: BuyAllPlan,
@@ -555,7 +557,8 @@ pub struct BuyAllShown {
     /// unchanged (`ah-lauy`).
     pub already_bought: i64,
     /// What the unit can have when this line is reached - its own silver, plus what the hex's
-    /// `SHARE` flags lend the market (`ah-szye`) - for the "cannot afford one" sentence.
+    /// `SHARE` flags lend the market, each sharer's own tax settled against it first
+    /// (`ah-szye`, `ah-3c2t.1`) - for the "cannot afford one" sentence.
     pub silver_available: i64,
     /// The line's unit price, for the same sentence.
     pub price: i64,
@@ -1292,6 +1295,12 @@ pub struct PhaseFacts<'a> {
     /// for a caller with no ledger to read them from, which is every test that builds its own
     /// `PhaseFacts`.
     pub gifts: &'a [SettledGift],
+    /// What the market withholds from this unit's OWN market-open balance **beyond** the
+    /// `tax_overstated_by` figure this walk already subtracts: the rest of its hopeful tax, in a
+    /// hex whose tax pool could not be settled at all and whose purse therefore lent silver in
+    /// hand alone (`ah-3c2t.1`'s `MarketPurse::also_withholds_from`). `0` everywhere else and for
+    /// every caller with no ledger, so it may be subtracted unconditionally.
+    pub market_withholds: i64,
     /// The same unit's silver at every phase, or `None` for a caller that has no ledger to read
     /// one from - which is every test that builds its own `PhaseFacts`. The two caps in
     /// [`forecast_unit`] then fall back to this walk's own running total, which is what they
@@ -1311,6 +1320,7 @@ impl<'a> PhaseFacts<'a> {
             silver: None,
             buy_all: &[],
             gifts: &[],
+            market_withholds: 0,
         }
     }
 }
@@ -1355,6 +1365,13 @@ impl<'a> UnitFacts<'a> {
     #[must_use]
     pub fn settled_gifts(&self) -> &'a [SettledGift] {
         self.phases.map_or(&[][..], |phases| phases.gifts)
+    }
+
+    /// What the market withholds from this unit's own balance beyond `tax_overstated_by`. `0`
+    /// where there is no ledger (`ah-3c2t.1`).
+    #[must_use]
+    pub fn market_withholds(&self) -> i64 {
+        self.phases.map_or(0, |phases| phases.market_withholds)
     }
 
     /// The early picture, for a caller that has no ledger to read a late one from.
@@ -2661,6 +2678,13 @@ pub fn forecast_unit(
                 .before_the_market_opens()
                 .saturating_add(moved_by(&moves, SilverChangeCause::Sold))
                 .saturating_sub(tax_overstated)
+                // And the rest of this unit's hopeful tax where the hex's pool could not be
+                // settled at all: the ledger's purse lent silver in hand, so this surface spends
+                // silver in hand too (`ah-3c2t.1`). `0` in every other hex, so the paragraphs
+                // above hold unchanged - and their proof that the two clamp placements cannot
+                // disagree covers this term for the same reason, `hopeful` being itself credited
+                // into the balance.
+                .saturating_sub(facts.market_withholds())
                 .max(0),
             // NOT settled here, and this is the one way to get `ah-ud89.4` wrong: this arm sums
             // this walk's own `moves`, whose tax term is already the *settled* one
@@ -7296,6 +7320,7 @@ mod tests {
                 silver: None,
                 buy_all: &[],
                 gifts: &[],
+                market_withholds: 0,
             }),
             ..facts(9, &intents, &receipts)
         };
@@ -9498,6 +9523,74 @@ mod tests {
         assert_eq!(unit.at_month_end, Some(1));
         assert_eq!(unit.short_for_orders, Some(35));
         assert_eq!(unit.short_on, Some(SilverSpender::Buy));
+    }
+
+    /// A bounded `BUY` in a hex whose tax pool could not be settled at all: the ledger's purse
+    /// lent silver in hand, so this surface must spend silver in hand too (`ah-3c2t.1`).
+    ///
+    /// Tested here rather than through `review_turn`, and deliberately: a unit with a non-zero
+    /// `market_withholds` is always income-doubted (`PoolShare::Unknowable` prices as
+    /// `SilverDoubt::ContestedRegionPool`), and `forecast_unit` then takes the arm where `opening`
+    /// is never evaluated at all. The disagreement is latent until `ah-3c2t.3` lifts that gate, so
+    /// an end-to-end test would pass whether or not the term is wired up.
+    ///
+    /// Asserted in both directions, which is what proves the term is actually read.
+    #[test]
+    fn a_bounded_buy_is_sized_by_what_the_market_withholds() {
+        // 30 grain at 12 asks 360; the market-open balance is 400, so nothing is cut without the
+        // withholding, and `400 - 300 = 100` buys 8 (96) with it.
+        let intents = vec![placed(Intent::Buy {
+            amount: Amount::Exact(30),
+            item: "grain".to_string(),
+        })];
+        let receipts = Receipts::default();
+        let mut after = [0i64; phases::StatePhase::COUNT];
+        after[phases::StatePhase::Cast as usize] = 400;
+
+        let expense_with = |market_withholds: i64| {
+            let phases = PhaseFacts {
+                silver: Some(PhaseSilver::from_balances(after)),
+                market_withholds,
+                ..PhaseFacts::uniform(LateFacts {
+                    men: 1,
+                    men_by_race: &[],
+                    items: &[],
+                    before_manufacturing: &[],
+                    shared_materials: &[],
+                })
+            };
+            forecast_unit(
+                with_gifts(
+                    UnitFacts {
+                        held: 400,
+                        ..facts(1, &intents, &receipts)
+                    },
+                    &phases,
+                ),
+                RegionWages::default(),
+                PoolShares::default(),
+                FactionPurse::default(),
+                0,
+                Lookups {
+                    purchase: &sells(12, 40),
+                    ..no_market()
+                },
+                SharedMarket::Adds(0),
+                None,
+            )
+            .expense
+        };
+
+        assert_eq!(
+            expense_with(0),
+            Some(360),
+            "with nothing withheld the whole line is affordable"
+        );
+        assert_eq!(
+            expense_with(300),
+            Some(96),
+            "the market withholds 300, so only 100 is left and 8 grain is what it buys"
+        );
     }
 
     /// A market selling men to a buyer the game refuses to let recruit.

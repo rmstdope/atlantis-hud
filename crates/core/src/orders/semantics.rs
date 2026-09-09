@@ -1672,6 +1672,7 @@ fn forecast_hex(
                 shared_materials_of(&ordered.unit.unit_id),
                 settled_buy_all_of(&ordered.unit.unit_id),
                 settled_gifts_of(&ordered.unit.unit_id),
+                market_purse.also_withholds_from(index),
             )),
             ruleset,
         );
@@ -4095,6 +4096,7 @@ impl PhaseHoldings {
             silver: Some(self.silver[index]),
             buy_all: &[],
             gifts: &[],
+            market_withholds: 0,
         }
     }
 
@@ -4108,6 +4110,7 @@ impl PhaseHoldings {
         shared_materials: &'a [(usize, Vec<ItemAmount>)],
         buy_all: &'a [SettledBuyAll],
         gifts: &'a [SettledGift],
+        market_withholds: i64,
     ) -> PhaseFacts<'a> {
         PhaseFacts {
             study: self.study.of(index),
@@ -4118,6 +4121,7 @@ impl PhaseHoldings {
             silver: Some(self.silver[index]),
             buy_all,
             gifts,
+            market_withholds,
         }
     }
 }
@@ -4618,29 +4622,10 @@ fn ledger_for_with_production<'a>(
     // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
     let region = region_wages(hex, ruleset);
     let nothing = Receipts::default();
-    // What each of this hex's units' hopeful tax overstates its settled share by, once per hex and
-    // index-aligned with `hex.units` exactly as `market_shares_for` is. The ledger keeps reading
-    // the hopeful balance everywhere else - only the silver *caps* read the settled purse
-    // (`ah-ud89`).
-    //
-    // `pool_shares_for` is passed `None` for `phases` because this path has no completed
-    // `PhaseHoldings` to give it. Safe for the tax term alone: `pool_wants`' tax arm is
-    // `taxing_men(facts, ruleset) * TAX_PER_MAN`, the pre-market picture no `PhaseHoldings` moves;
-    // `phases` reaches the wages and entertainment terms only. Pinned by
-    // `the_tax_share_is_the_same_with_and_without_phases`.
-    let pools = pool_shares_for(hex, region, None, ruleset).shares;
-    let tax_overstated: Vec<i64> = hex_facts(hex, &nothing, None, ruleset)
-        .iter()
-        .zip(&pools)
-        .map(|(facts, shares)| {
-            tax_overstated_by(
-                taxing_men(facts, ruleset),
-                region.tax_base,
-                region.pillaged,
-                shares.tax,
-            )
-        })
-        .collect();
+    let market_tax = market_tax_for(hex, region, ruleset);
+    // Kept as its own vector because `credit_tax`, `settle_buy_all` and `HexStanding` all take a
+    // bare `i64` and none of them has anything to do with the purse (`ah-ud89.2`).
+    let tax_overstated: Vec<i64> = market_tax.iter().map(|tax| tax.overstated).collect();
     // `rules/sequenceofevents` decides which order runs first, and the document does not. Within
     // one phase, "units that appear higher on the report get precedence", and within one unit the
     // lines keep the order they were written in - which is what `ah-3mwm` pinned about competing
@@ -4664,7 +4649,8 @@ fn ledger_for_with_production<'a>(
             // Snapshotted once, before any `BUY` is applied: the engine's sizing pass decrements
             // nothing, so one buyer spending the purse does not shrink it for the next
             // (`ah-szye`).
-            ledger.market_purse = MarketPurse::read(&ledger.state, &ledger.doubted, hex);
+            ledger.market_purse =
+                MarketPurse::read(&ledger.state, &ledger.doubted, hex, &market_tax);
         }
         for (index, ordered) in hex.units.iter().enumerate() {
             if phase == StatePhase::Tax {
@@ -6690,6 +6676,15 @@ fn buy(
                 // where a unit's Market-phase balance is below its overstatement, and no report
                 // reaches that state - see the argument at the column's `opening`.
                 .saturating_sub(standing.overstated_tax())
+                // The rest of this unit's hopeful tax, when it shares in a hex whose pool could
+                // not be settled at all: the purse lends silver in hand, so the buyer spends
+                // silver in hand (`ah-3c2t.1`). `0` in every other hex, and kept beside
+                // `overstated_tax` because it is the same kind of term.
+                .saturating_sub(
+                    ledger
+                        .market_purse
+                        .also_withholds_from(standing.actor_index),
+                )
                 .saturating_add(shared),
         ),
         _ => MarketFunds::Unmeasured,
@@ -6797,6 +6792,8 @@ fn settle_buy_all(
         // nothing rather than lifting the cap: a `BUY ALL` has always been silver-capped, and
         // turning that off on doubt would let one buy goods it can afford none of (`ah-szye`).
         let shared = ledger.market_purse.adds_for(index).unwrap_or(0);
+        // Bound before the chain below, which borrows `ledger` mutably (`ah-3c2t.1`).
+        let withheld = ledger.market_purse.also_withholds_from(index);
         // What `rules/sequenceofevents` leaves the market to spend: TAX, PILLAGE, GIVE/TAKE and
         // CAST have run; STUDY, manufacturing PRODUCE and the wages have not. **Not**
         // `balance_of`, which reads at `StatePhase::Maintenance` and would let a later STUDY
@@ -6816,6 +6813,10 @@ fn settle_buy_all(
             // reach it whatever its tax settles at. No `max(0)` is added, so a shared purse cannot
             // refill the hole the settlement just made; `price_buy_all` clamps where it matters.
             .saturating_sub(tax_overstated)
+            // The rest of this unit's hopeful tax, when it shares in a hex whose pool could not be
+            // settled at all: the purse lends silver in hand, so the buyer spends silver in hand
+            // (`ah-3c2t.1`). `0` in every other hex.
+            .saturating_sub(withheld)
             .saturating_add(overcharged)
             .saturating_add(shared);
         let (priced, plan) = price_buy_all(
@@ -8489,6 +8490,70 @@ impl<'a> Sharing<'a> {
     }
 }
 
+/// What one unit's tax means to the market purse.
+///
+/// Two figures rather than one because the purse has two rules and [`PoolShare`] decides which is
+/// in force: a settled share lends what the settlement left, while a share nothing can put a number
+/// on lends no tax at all (`ah-3c2t.1`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct MarketTax {
+    /// [`tax_overstated_by`]: what this unit's hopeful tax overstates its settled share by. `0`
+    /// for an uncontended unit, and `0` for an unknowable one - which is why `unknowable` below
+    /// has to be carried separately rather than inferred from a zero here.
+    overstated: i64,
+    /// The whole of this unit's hopeful tax: `price_tax(men, tax_base, pillaged,
+    /// PoolShare::Uncontended).earns`, the figure `credit_tax` put into its market-open balance.
+    ///
+    /// **Only meaningful where `unknowable` below is `true`, and read nowhere else.** Where the
+    /// region states no tax base at all, `price_tax` answers `earns: 0` with
+    /// [`SilverDoubt::UnknownTaxBase`] while `credit_tax` credits the full ask
+    /// (`tax_base.unwrap_or(i64::MAX)`), so the two disagree - and cannot be reached together:
+    /// `pool_shares_for` contends a pool only where the base is `Some` and the hex unpillaged
+    /// (`pool.filter(|_| wanting.len() > 1)`), so `unknowable` is never `true` in the case where
+    /// they differ. Read this field outside that guard and the disagreement becomes real
+    /// (`ah-3c2t.1`).
+    hopeful: i64,
+    /// `true` when this unit's share of the region's tax pool is [`PoolShare::Unknowable`] -
+    /// somebody contending for the pool has an estimated headcount, so no unit's share is a number.
+    unknowable: bool,
+}
+
+/// What each of this hex's units' tax means to the market purse, index-aligned with `hex.units`.
+///
+/// One walk of `hex_facts`, which is not free and is on a keystroke path - the same reason
+/// `ah-ud89.2` refused a second `pool_shares_for` per hex.
+///
+/// The ledger keeps reading the hopeful balance everywhere else - only the silver *caps* read the
+/// settled purse (`ah-ud89`).
+///
+/// `pool_shares_for` is passed `None` for `phases` because this path has no completed
+/// `PhaseHoldings` to give it. Safe for the tax term alone: `pool_wants`' tax arm is
+/// `taxing_men(facts, ruleset) * TAX_PER_MAN`, the pre-market picture no `PhaseHoldings` moves;
+/// `phases` reaches the wages and entertainment terms only. Pinned by
+/// `the_tax_share_is_the_same_with_and_without_phases`.
+fn market_tax_for(hex: &Hex<'_>, region: RegionWages, ruleset: Option<&Ruleset>) -> Vec<MarketTax> {
+    let nothing = Receipts::default();
+    let pools = pool_shares_for(hex, region, None, ruleset).shares;
+    hex_facts(hex, &nothing, None, ruleset)
+        .iter()
+        .zip(&pools)
+        .map(|(facts, shares)| {
+            let men = taxing_men(facts, ruleset);
+            MarketTax {
+                overstated: tax_overstated_by(men, region.tax_base, region.pillaged, shares.tax),
+                hopeful: price_tax(
+                    men,
+                    region.tax_base,
+                    region.pillaged,
+                    PoolShare::Uncontended,
+                )
+                .earns,
+                unknowable: shares.tax == PoolShare::Unknowable,
+            }
+        })
+        .collect()
+}
+
 /// Every sharing unit's silver as the market opens, which is the purse `rules/share` lends a
 /// `BUY`.
 ///
@@ -8502,9 +8567,16 @@ impl<'a> Sharing<'a> {
 /// (`ah-szye`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MarketPurse {
-    /// What each sharing unit holds when the market opens, index-aligned with `hex.units` and `0`
-    /// for a non-sharer. Empty when nothing in the hex shares, which is the common case.
+    /// What each sharing unit may lend the market: its market-open balance, less the tax the
+    /// region's settlement says it will not collect. Index-aligned with `hex.units` and `0` for a
+    /// non-sharer. Empty when nothing in the hex shares, which is the common case.
     lendable: Vec<i64>,
+    /// What the market must take off each unit's OWN market-open balance **beyond** the
+    /// [`tax_overstated_by`] figure its caller already subtracts (`ah-ud89.2`). Non-zero only for a
+    /// unit that shares in a hex whose tax pool is [`PoolShare::Unknowable`], where it is the rest
+    /// of that unit's hopeful tax - so a sharer buys against silver in hand exactly as its
+    /// neighbours lend it. `0` everywhere else, so a caller may subtract it unconditionally.
+    also_withheld: Vec<i64>,
     /// `false` when any sharer's market-open balance could not be priced - a gift on the way in,
     /// or a doubted unit. No bounded `BUY` in the hex is then capped at all, which is this
     /// module's accept-on-doubt policy and the behaviour before this bead.
@@ -8519,6 +8591,11 @@ struct MarketPurse {
     /// is a figure the ledger still knows. The `known_balance_at` half is what catches a
     /// market-open balance that genuinely cannot be priced, whenever the doubt was raised.
     trusted: bool,
+    /// `true` when any sharer's tax was unknowable and the purse therefore lent silver in hand
+    /// alone. Nothing in this bead reads it; `ah-3c2t.3` renders it as the sentence that tells the
+    /// player the quantity is a floor. Kept on the purse rather than recomputed there because the
+    /// rule that chose the fallback lives here.
+    fell_back: bool,
 }
 
 impl Default for MarketPurse {
@@ -8528,7 +8605,9 @@ impl Default for MarketPurse {
     fn default() -> Self {
         Self {
             lendable: Vec::new(),
+            also_withheld: Vec::new(),
             trusted: true,
+            fell_back: false,
         }
     }
 }
@@ -8538,25 +8617,48 @@ impl MarketPurse {
     ///
     /// `StatePhase::Market`, not [`balance_of`]: that reads at maintenance, so a sharer's later
     /// `STUDY` or `BUILD` would shrink the purse the market is allowed to spend.
-    fn read(state: &PhaseState, doubted: &BTreeSet<String>, hex: &Hex<'_>) -> Self {
+    fn read(
+        state: &PhaseState,
+        doubted: &BTreeSet<String>,
+        hex: &Hex<'_>,
+        tax: &[MarketTax],
+    ) -> Self {
         let sharing = Sharing::read(hex);
         if sharing.sharers.is_empty() {
             return Self::default();
         }
 
         let mut trusted = true;
+        let mut fell_back = false;
         let mut lendable = Vec::with_capacity(hex.units.len());
-        for ordered in &hex.units {
+        let mut also_withheld = Vec::with_capacity(hex.units.len());
+        for (index, ordered) in hex.units.iter().enumerate() {
+            // `.get(...).unwrap_or_default()` rather than indexing: a length mismatch reads as
+            // *nobody is contended*, never as a panic on a keystroke path - the same
+            // fall-back-to-uncontended reading `HexStanding::overstated_tax` uses.
+            let tax = tax.get(index).copied().unwrap_or_default();
             if !ordered.shares() {
+                // A non-sharer's own tax is its own: the fallback rule governs the pool, and this
+                // unit puts nothing into it. Its balance keeps the reading `ah-ud89.2` gave it.
                 lendable.push(0);
+                also_withheld.push(0);
                 continue;
             }
+            let held_back = if tax.unknowable {
+                fell_back = true;
+                tax.hopeful
+            } else {
+                tax.overstated
+            };
+            // Never negative: `hopeful` is the whole of what `price_tax` earns and `overstated` is
+            // a difference of two `price_tax` readings clamped at zero.
+            also_withheld.push(held_back - tax.overstated);
             let id = &ordered.unit.unit_id;
             if doubted.contains(id) {
                 trusted = false;
             }
             match state.known_balance_at(StatePhase::Market, id, SILVER) {
-                Ok(silver) => lendable.push(silver.max(0)),
+                Ok(silver) => lendable.push(silver.saturating_sub(held_back).max(0)),
                 Err(_) => {
                     trusted = false;
                     lendable.push(0);
@@ -8564,7 +8666,12 @@ impl MarketPurse {
             }
         }
 
-        Self { lendable, trusted }
+        Self {
+            lendable,
+            also_withheld,
+            trusted,
+            fell_back,
+        }
     }
 
     /// What the purse adds to the unit at `index`: every **other** sharer's market-open silver.
@@ -8584,6 +8691,26 @@ impl MarketPurse {
                 .map(|(_, silver)| *silver)
                 .sum(),
         )
+    }
+
+    /// What the market must take off the unit at `index`'s own market-open balance **in addition
+    /// to** the [`tax_overstated_by`] figure the caller already subtracts. `0` outside the
+    /// fallback, so a caller may subtract it unconditionally (`ah-3c2t.1`).
+    ///
+    /// Not folded into [`Self::adds_for`]: that answers what *other* units lend, and `None` there
+    /// means "apply no cap at all". Withholding is about this unit's own money and applies whether
+    /// or not the purse is trusted, so it is a separate, total question - letting an unpriceable
+    /// gift somewhere else in the hex quietly restore a sharer's uncollectable tax would put the
+    /// original defect back on a narrower path.
+    fn also_withholds_from(&self, index: usize) -> i64 {
+        self.also_withheld.get(index).copied().unwrap_or(0)
+    }
+
+    /// `true` when this hex's purse lent silver in hand alone because no sharer's settled income
+    /// was a number. Read by `ah-3c2t.3` and by nothing in this bead.
+    #[allow(dead_code)]
+    fn fell_back(&self) -> bool {
+        self.fell_back
     }
 }
 
@@ -20797,6 +20924,117 @@ BUILD
             });
         }
 
+        /// The reference scene of `ah-3c2t.1`: a region stating $2,000 of tax base with two
+        /// 60-man units taxing it, so each settles at $1,000 of the $3,000 it hoped for. A third
+        /// unit shares $600 it simply holds.
+        fn settled_purse_hex() -> ReportRegion {
+            ReportRegion {
+                for_sale: vec![line(100, 50, "horse", "HORS")],
+                tax_base: Some(2000),
+                ..region(vec![
+                    sharing(with_skill(
+                        with_silver(with_men(unit("1"), 60), 0),
+                        "COMB",
+                        1,
+                    )),
+                    sharing(with_skill(
+                        with_silver(with_men(unit("2"), 60), 0),
+                        "COMB",
+                        1,
+                    )),
+                    sharing(with_silver(with_men(unit("3"), 60), 600)),
+                ])
+            }
+        }
+
+        const SETTLED_PURSE_ORDERS: &str = "unit 1\nTAX\nBUY ALL horse\nunit 2\nTAX\n";
+
+        /// The purse a `BUY ALL` is sized against is the settled one: each taxer lends the $1,000
+        /// the settlement leaves it, not the $3,000 it hoped for (`ah-3c2t.1`).
+        #[test]
+        fn a_buy_all_is_sized_by_a_purse_with_the_tax_settlement_applied() {
+            let hex = settled_purse_hex();
+            let review = review_turn(
+                &report(vec![hex.clone()]),
+                SETTLED_PURSE_ORDERS,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let shown = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast")
+                .buy_all
+                .first()
+                .cloned()
+                .expect("the BUY ALL line is shown");
+
+            assert_eq!(
+                shown.silver_available, 2600,
+                "its own settled $1,000, the other taxer's settled $1,000 and the $600 held"
+            );
+            assert_eq!(shown.bought, 52, "$2,600 buys 52 horses at $50");
+            assert_eq!(shown.capped_by, BuyAllCap::Silver);
+
+            with_ledger(hex, SETTLED_PURSE_ORDERS, |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "1" && m.tag == "HORS")
+                        .map(|m| m.delta),
+                    Some(52),
+                );
+            });
+        }
+
+        /// The bounded `BUY` arm reads the same settled purse as `BUY ALL`, or one unit's two
+        /// `BUY` forms would read one purse two ways (`ah-3c2t.1`).
+        #[test]
+        fn a_bounded_buy_is_sized_by_a_purse_with_the_tax_settlement_applied() {
+            let orders = "unit 1\nTAX\nBUY 100 horse\nunit 2\nTAX\n";
+
+            with_ledger(settled_purse_hex(), orders, |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "1" && m.tag == "HORS")
+                        .map(|m| m.delta),
+                    Some(52),
+                    "$2,600 of settled purse buys 52 of the 100 asked for"
+                );
+            });
+        }
+
+        /// Where no sharer's share of the tax pool is a number, the purse lends silver actually in
+        /// hand - and the buyer spends silver actually in hand too (`ah-3c2t.1`).
+        ///
+        /// `pool_shares_for` answers [`PoolShare::Unknowable`] for every taxer in a contended hex
+        /// as soon as one of them has an estimated headcount, which is what this scene sets.
+        #[test]
+        fn an_unknowable_tax_pool_lends_only_silver_in_hand() {
+            let mut hex = settled_purse_hex();
+            hex.units[1].men_estimated = true;
+
+            // Read through the ledger rather than through `review.silver`: an unknowable pool
+            // doubts the buyer's income, and a doubted row shows no `BUY ALL` figures at all. The
+            // quantity the sizing produces is still the thing under test, and `ah-3c2t.3` is what
+            // gives this case a surface of its own.
+            with_ledger(hex, SETTLED_PURSE_ORDERS, |ledger| {
+                assert_eq!(
+                    ledger
+                        .movements
+                        .iter()
+                        .find(|m| m.unit_id == "1" && m.tag == "HORS")
+                        .map(|m| m.delta),
+                    Some(12),
+                    "the $600 held buys 12 horses at $50, and neither taxer's hopeful income counts"
+                );
+            });
+        }
+
         /// Accept-on-doubt means "your own silver" for a `BUY ALL`, not "unlimited": it has always
         /// been silver-capped, so lifting the cap would let one buy goods it can afford none of
         /// (`ah-szye`).
@@ -20891,7 +21129,12 @@ BUILD
             );
 
             ledger.doubted.insert("2".to_string());
-            let purse = MarketPurse::read(&ledger.state, &ledger.doubted, &hex);
+            let purse = MarketPurse::read(
+                &ledger.state,
+                &ledger.doubted,
+                &hex,
+                &market_tax_for(&hex, region_wages(&hex, Some(&ruleset())), Some(&ruleset())),
+            );
             assert_eq!(purse.adds_for(0), None);
         }
 
@@ -25615,7 +25858,80 @@ BUILD
         let hex = Hex::read(hex_region, &ordered, &[]);
         let rules = ruleset();
         let ledger = ledger_for(&hex, Some(&rules));
-        MarketPurse::read(&ledger.state, &ledger.doubted, &hex)
+        let tax = market_tax_for(&hex, region_wages(&hex, Some(&rules)), Some(&rules));
+        MarketPurse::read(&ledger.state, &ledger.doubted, &hex, &tax)
+    }
+
+    /// A hex whose tax pool two sharers oversubscribe: each of them wants $500 and the region
+    /// states $600, so `split_pool` settles each at $300 (`ah-3c2t.1`).
+    fn contended_sharing_hex() -> ReportRegion {
+        ReportRegion {
+            tax_base: Some(600),
+            ..region(vec![
+                sharing(with_skill(
+                    with_silver(with_men(unit("1"), 10), 0),
+                    "COMB",
+                    1,
+                )),
+                sharing(with_skill(
+                    with_silver(with_men(unit("2"), 10), 0),
+                    "COMB",
+                    1,
+                )),
+            ])
+        }
+    }
+
+    /// The purse records that it fell back to silver in hand, which `ah-3c2t.3` renders as the
+    /// sentence telling the player the quantity is a floor (`ah-3c2t.1`).
+    #[test]
+    fn a_purse_that_lent_only_held_silver_says_so() {
+        let orders = "unit 1\nTAX\nunit 2\nTAX\n";
+
+        assert!(
+            !market_purse_of(&contended_sharing_hex(), orders).fell_back(),
+            "a settleable pool lends the settlement, not silver in hand"
+        );
+
+        let mut unknowable = contended_sharing_hex();
+        unknowable.units[1].men_estimated = true;
+
+        assert!(
+            market_purse_of(&unknowable, orders).fell_back(),
+            "no sharer's share is a number, so the purse lent silver in hand alone"
+        );
+    }
+
+    /// Most hexes see nothing at all: where the pool goes round, a sharer lends exactly what it
+    /// lent before this bead (`ah-3c2t.1`).
+    #[test]
+    fn an_uncontended_sharing_hex_lends_exactly_what_it_lent_before() {
+        let hex_region = ReportRegion {
+            tax_base: Some(10_000),
+            ..contended_sharing_hex()
+        };
+
+        let purse = market_purse_of(&hex_region, "unit 1\nTAX\nunit 2\nTAX\n");
+
+        assert_eq!(
+            purse.adds_for(0),
+            Some(500),
+            "nobody oversubscribes $10,000, so the whole hopeful tax is lent"
+        );
+    }
+
+    /// The purse lends what the settlement says a sharer will collect, not what it hoped for
+    /// (`ah-3c2t.1`).
+    #[test]
+    fn a_market_purse_lends_a_contended_sharers_settled_tax() {
+        let purse = market_purse_of(&contended_sharing_hex(), "unit 1\nTAX\nunit 2\nTAX\n");
+
+        assert_eq!(
+            purse.adds_for(0),
+            Some(300),
+            "the other sharer lends its settled share, not its hopeful $500"
+        );
+        assert_eq!(purse.adds_for(1), Some(300));
     }
 
     #[test]
@@ -25660,9 +25976,10 @@ BUILD
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = ruleset();
         let mut ledger = ledger_for(&hex, Some(&rules));
+        let tax = market_tax_for(&hex, region_wages(&hex, Some(&rules)), Some(&rules));
 
         assert_eq!(
-            MarketPurse::read(&ledger.state, &ledger.doubted, &hex).adds_for(0),
+            MarketPurse::read(&ledger.state, &ledger.doubted, &hex, &tax).adds_for(0),
             Some(500),
             "it lends before anything is doubted"
         );
@@ -25670,7 +25987,7 @@ BUILD
         ledger.doubted.insert("2".to_string());
 
         assert_eq!(
-            MarketPurse::read(&ledger.state, &ledger.doubted, &hex).adds_for(0),
+            MarketPurse::read(&ledger.state, &ledger.doubted, &hex, &tax).adds_for(0),
             None,
             "one doubted sharer makes the whole purse unmeasurable"
         );

@@ -27,7 +27,8 @@ marketNamed: string, bought: number, affordable: number, available: number, mark
 alreadyBought: number, 
 /**
  * What the unit can have when this line is reached - its own silver, plus what the hex's
- * `SHARE` flags lend the market (`ah-szye`) - for the "cannot afford one" sentence.
+ * `SHARE` flags lend the market, each sharer's own tax settled against it first
+ * (`ah-szye`, `ah-3c2t.1`) - for the "cannot afford one" sentence.
  */
 silverAvailable: number, 
 /**
