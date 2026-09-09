@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>ah-jzs9 — a study that teaches nothing costs nothing</title>
+<style>
+ :root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1f2732;
+ --ink:#dbe3ec;--soft:#a3b0c0;--dim:#8a97a8;--brass:#c8a25a;--brass-b:#e2c288;--select:#4a9fd8;
+ --warn:#d9a441;--danger:#d97070;--ok:#7fb069;}
+ *{box-sizing:border-box;margin:0}
+ body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif;padding:30px 26px 70px}
+ header,main{max-width:1180px;margin:0 auto}
+ h1{font-size:25px}h1 span{color:var(--brass)}
+ header p{color:var(--soft);max-width:94ch;margin-top:9px;font-size:14px}
+ header p+p{margin-top:7px}
+ h3.sec{margin:34px 0 4px;font-size:12.5px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+ h3.sec+p{color:var(--soft);font-size:13px;margin-bottom:13px;max-width:94ch}
+ code{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12.5px;color:var(--brass-b)}
+ .card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:15px;margin-bottom:16px}
+ .card h2{font-size:15.5px;margin-bottom:4px}
+ .card h2 em{color:var(--brass);font-style:normal;font-size:11px;letter-spacing:1.4px;margin-right:8px}
+ .concept{color:var(--soft);font-size:12.5px;margin-bottom:10px;max-width:94ch}
+ .stage{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;padding:11px;display:flex;justify-content:center;gap:14px;flex-wrap:wrap}
+ .tip{background:var(--raised);border:1px solid var(--edge);border-radius:6px;padding:9px 11px;width:320px;font-size:12px}
+ .tip b.name{color:var(--brass-b);font-weight:600;display:block;margin-bottom:6px;font-size:12.5px}
+ .tip .r{display:flex;justify-content:space-between;gap:16px;line-height:1.7}
+ .tip .r>span:last-child{font-variant-numeric:tabular-nums;font-family:'SF Mono',Menlo,monospace}
+ .tip .r .why{color:var(--dim);font-size:10.5px;font-family:Georgia,serif}
+ .tip .head{border-bottom:1px solid var(--edge);padding-bottom:4px;margin-bottom:4px}
+ .up{color:var(--ok)}.down{color:var(--danger)}.dimv{color:var(--dim)}
+ .tip .note{color:var(--dim);font-size:10.5px;margin-top:7px;line-height:1.45;border-top:1px solid var(--edge);padding-top:6px}
+ .tip .warnline{color:var(--warn);font-size:10.5px;margin-top:7px;line-height:1.45}
+ .gone{text-decoration:line-through;opacity:.4}
+ .split2{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+ .split3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start}
+ ul.notes{list-style:none;font-size:12.5px;color:var(--soft);display:grid;gap:4px;margin-top:10px}
+ ul.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+ ul.notes li.con::before{content:"\2212 ";color:var(--danger)}
+ ul.notes li.n::before{content:"\00b7 ";color:var(--dim)}
+ .banner{background:var(--raised);border:1px solid var(--edge);border-left:3px solid var(--ok);
+   padding:10px 13px;border-radius:4px;max-width:94ch;margin:12px 0;color:var(--soft);font-size:13px}
+ table.units{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px}
+ table.units th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);padding:3px 8px;border-bottom:1px solid var(--edge);font-family:Georgia,serif}
+ table.units td{padding:3px 8px;border-bottom:1px solid var(--edge-soft);white-space:nowrap}
+ .uid{color:var(--select)}.own{color:var(--ok)}.num{text-align:right}
+ .hl{background:rgba(217,164,65,.10)}
+</style></head><body>
+<header>
+<h1>A study that teaches nothing &mdash; <span>costs nothing</span></h1>
+<p>Unit <b>8573 &ldquo;Drones&rdquo;</b>: 60 gnolls at combat 5 (450), holding 900 silver, ordered
+<code>STUDY COMB</code>. No gnoll may take combat past level 5 (<code>data/GNOL</code>,
+<code>rules/skills_limitations</code>), so the month teaches this unit nothing. We already say that on the
+Skills hover and on the order line. Until now the Silver forecast still took $10 a head off all sixty of
+them &mdash; <b>$600</b> &mdash; and said nothing about it.</p>
+<div class="banner"><b>Chosen.</b> The fee comes off: a study that cannot raise the level is forecast as
+costing nothing, so the <code>studied</code> line simply is not there. A <b>dim note</b> under the silver
+list says why, leading with the money: <i>&ldquo;No study fee: no gnoll may take combat past level 5, so
+this month costs nothing.&rdquo;</i> The money is mentioned only there &mdash; the Skills sentence and the
+order-line warning are left exactly as they are. Rejected: keeping the charge and naming the waste; showing
+a range because the game's own behaviour is unestablished; a kept <code>studied 0</code> row; an amber line;
+and two other wordings.</div>
+<p><b>The bet being taken, stated plainly.</b> The rules say what a study costs and where a race stops; they
+never say what the server does when you order both at once. This forecast assumes the study is not performed
+and not billed. If that turns out to be wrong, one unit's month-end figure is high by its fee, and the
+sentence above is where the next reader will find the assumption.</p>
+</header>
+<main>
+
+<h3 class="sec">The silver hover &mdash; before and after</h3>
+<p>The panel is a headline figure and then one line per reason the money moved, some with a dim clause.
+Dropping the fee does not shrink a number: it removes the whole <code>studied</code> line.</p>
+<div class="split2">
+<div class="card"><h2><em>TODAY</em> a bill, unexplained</h2>
+<div class="stage"><div class="tip">
+<b class="name">Drones (8573) &mdash; silver</b>
+<div class="r head"><span>silver</span><span>900 &rarr; 300</span></div>
+<div class="r"><span>studied</span><span class="down">&minus;600</span></div>
+</div></div></div>
+<div class="card"><h2><em>AGREED</em> no fee, and a note saying why</h2>
+<div class="stage"><div class="tip">
+<b class="name">Drones (8573) &mdash; silver</b>
+<div class="r head"><span>silver</span><span>900</span></div>
+<div class="r gone"><span>studied</span><span class="down">&minus;600</span></div>
+<div class="note">No study fee: no gnoll may take combat past level 5, so this month costs nothing.</div>
+</div></div>
+<ul class="notes"><li class="n">The struck line is drawn only to show what goes; it is simply absent.</li></ul></div>
+</div>
+
+<h3 class="sec">The two forms of the sentence</h3>
+<div class="split2">
+<div class="card"><h2><em>A RACE STOPS IT</em></h2>
+<div class="stage"><div class="tip"><div class="note" style="border:0;padding:0;margin:0">
+No study fee: no gnoll may take combat past level 5, so this month costs nothing.</div></div></div>
+<ul class="notes"><li class="n">Several races in one unit are named as the shipped ceiling sentence names
+them, the least generous stopping the whole unit.</li></ul></div>
+<div class="card"><h2><em>THE SKILL&rsquo;S OWN CEILING</em></h2>
+<div class="stage"><div class="tip"><div class="note" style="border:0;padding:0;margin:0">
+No study fee: combat stops at level 5 for this unit, so this month costs nothing.</div></div></div>
+<ul class="notes"><li class="n">Used where no race is to blame &mdash; naming one would blame it for a limit
+it did not impose.</li></ul></div>
+</div>
+
+<h3 class="sec">The states</h3>
+<div class="split3">
+<div class="card"><h2><em>a</em> Doing other things too</h2>
+<div class="stage"><div class="tip">
+<b class="name">Drones (8573) &mdash; silver</b>
+<div class="r head"><span>silver</span><span>900 &rarr; 1020</span></div>
+<div class="r"><span>taxed</span><span class="up">+200</span></div>
+<div class="r"><span>upkeep</span><span class="down">&minus;80</span></div>
+<div class="note">No study fee: no gnoll may take combat past level 5, so this month costs nothing.</div>
+</div></div>
+<ul class="notes"><li class="n">The note sits last, under whatever else the list holds.</li></ul></div>
+
+<div class="card"><h2><em>b</em> Red yesterday, not today</h2>
+<div class="stage" style="display:block">
+<table class="units"><colgroup><col style="width:9%"><col style="width:29%"><col style="width:10%"><col style="width:26%"><col style="width:26%"></colgroup>
+<thead><tr><th>Id</th><th>Unit</th><th class="num">Men</th><th>Long order</th><th class="num">Silver</th></tr></thead>
+<tbody><tr class="hl"><td class="uid">8573</td><td>Drones</td><td class="num">60</td><td>@study comb</td><td class="num">900</td></tr></tbody></table></div>
+<ul class="notes"><li class="n">No red, no <span style="color:var(--warn)">&#9888;</span>, gone from the
+Problems panel: the unit is not short, because it owes nothing.</li>
+<li class="n">The hover note is the whole of the explanation for the red going away. No extra wording.</li></ul></div>
+
+<div class="card"><h2><em>c</em> The skill has no price</h2>
+<p class="concept">Where the data page prices a skill nowhere, the Skills hover normally says so. With no fee
+at all there is nothing left to be unsure about, so that doubt is not shown for this unit.</p>
+<div class="stage"><div class="tip">
+<b class="name">Drones (8573) &mdash; silver</b>
+<div class="r head"><span>silver</span><span>900</span></div>
+<div class="note">No study fee: no gnoll may take combat past level 5, so this month costs nothing.</div>
+</div></div></div>
+</div>
+
+<div class="split3">
+<div class="card"><h2><em>d</em> The study can still advance</h2>
+<div class="stage"><div class="tip">
+<b class="name">Scholar (2101) &mdash; silver</b>
+<div class="r head"><span>silver</span><span>60 &rarr; &minus;140</span></div>
+<div class="r"><span>studied</span><span class="down">&minus;200</span></div>
+</div></div>
+<ul class="notes"><li class="n">Nothing changes in any particular, including for a unit one month short of
+its ceiling.</li></ul></div>
+
+<div class="card"><h2><em>e</em> Somebody else&rsquo;s unit, or skills never shown</h2>
+<div class="stage" style="display:block">
+<table class="units"><colgroup><col style="width:10%"><col style="width:40%"><col style="width:25%"><col style="width:25%"></colgroup>
+<thead><tr><th>Id</th><th>Unit</th><th>Long order</th><th class="num">Silver</th></tr></thead>
+<tbody><tr><td class="uid">4102</td><td>Ninth Legion</td><td></td><td class="num"></td></tr></tbody></table></div>
+<ul class="notes"><li class="n">Left alone entirely &mdash; the house rule everywhere: silent when unsure.</li></ul></div>
+
+<div class="card"><h2><em>f</em> The warning switched off</h2>
+<p class="concept">Settings &rarr; Warnings &rarr; <i>Study with nothing to learn</i>, unticked.</p>
+<div class="stage"><div class="tip">
+<b class="name">Drones (8573) &mdash; silver</b>
+<div class="r head"><span>silver</span><span>900</span></div>
+<div class="note">No study fee: no gnoll may take combat past level 5, so this month costs nothing.</div>
+</div></div>
+<ul class="notes"><li class="n">Unchanged. That switch hides advice; this note explains a figure, and the fee
+is arithmetic either way.</li></ul></div>
+</div>
+
+<h3 class="sec">Untouched</h3>
+<div class="card"><ul class="notes">
+<li class="n">The Skills hover&rsquo;s amber sentence, word for word as it ships today.</li>
+<li class="n">The order-line warning in the editor, and its Settings entry.</li>
+<li class="n">Teaching: what a <code>TEACH</code> costs or earns, including a teacher whose pupils are all
+capped.</li>
+<li class="n">Every other silver cause, the column, its sorting, and the region panel.</li>
+</ul></div>
+
+</main></body></html>
