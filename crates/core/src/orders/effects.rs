@@ -337,8 +337,11 @@ pub struct StudyForecast {
     /// The races that impose `ceiling_level`, in the unit's own `men_by_race` order. Empty when the
     /// ceiling is the skill's own maximum and no race took anything away.
     pub limiting_races: Vec<LimitingRace>,
-    /// The points reach a level the ceiling refuses, so the figure rises and the level holds.
-    pub held_back_by_ceiling: bool,
+    /// This study cannot raise the level: the unit is already at `ceiling_level` or past it, so the
+    /// month buys points and nothing a player reads (`ah-dpvh`). The same test `check_studying`
+    /// makes for its `study-at-maximum` finding, so the forecast and the diagnostic agree about one
+    /// unit.
+    pub cannot_raise_the_level: bool,
     /// What the projection rests on that this report cannot settle. Empty for a projection nothing
     /// is doubted about (decision **U2**).
     pub doubts: Vec<StudyDoubt>,
@@ -9244,7 +9247,7 @@ mod tests {
             "levelAfter",
             "ceilingLevel",
             "limitingRaces",
-            "heldBackByCeiling",
+            "cannotRaiseTheLevel",
             "doubts",
         ] {
             assert!(study.contains_key(field), "{field} is missing: {study:?}");
