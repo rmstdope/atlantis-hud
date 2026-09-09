@@ -5857,10 +5857,18 @@ fn class_tags(
     if !transfers::class_amount_is_defined(amount) {
         return None;
     }
-    // `MAN`/`MEN` cannot be resolved without a catalogue, and expanding `ITEM`/`ITEMS` alone
-    // would make the two classes behave differently for no reason a reader could infer.
-    let ruleset = ruleset?;
-    let members = transfers::class_members(ruleset, name)?;
+    // `rules/give` defines `ITEM`/`ITEMS` as "the combination of all of the previous categories" -
+    // everything the holder has, silver included - so that one class needs no catalogue to expand,
+    // and `class_carries_silver` already answers it without one. Requiring a catalogue here anyway
+    // is what let the SILVER column price a whole-purse gift the ledger never charged, on a report
+    // with no ruleset loaded (`ah-jo6b`, case 3; `ah-lu0f` is the rule the two were breaking).
+    // Every other class does need one: `MAN`/`MEN` is `Ruleset::is_man`, and the rest are the data
+    // page's own lists.
+    let members = match ruleset {
+        Some(ruleset) => Some(transfers::class_members(ruleset, name)?),
+        None if name.eq_ignore_ascii_case("ITEM") || name.eq_ignore_ascii_case("ITEMS") => None,
+        None => return None,
+    };
 
     Some(
         ledger
@@ -5872,8 +5880,17 @@ fn class_tags(
             // expands off balance keys, which carry no printed name, and `is_unfinished_ship`
             // reads the name. An unfinished hull's tag is therefore named by `ALL ITEMS` here and
             // not there - today's behaviour, preserved deliberately (`ah-1zca.5`).
-            .filter(|(_, tag)| members.names(ruleset, tag))
-            .filter(|(_, tag)| discarding || ruleset.can_be_given(tag))
+            .filter(|(_, tag)| match (members.as_ref(), ruleset) {
+                (Some(members), Some(ruleset)) => members.names(ruleset, tag),
+                // `ITEM`/`ITEMS` with no catalogue: every tag the holder has.
+                _ => true,
+            })
+            // With no catalogue there is no refusal list to consult, so the order is followed as
+            // written. That is `Ruleset::can_be_given`'s own reading extended one step - it is
+            // documented as answering true for a tag the catalogue does not carry, "the permissive
+            // reading is the one that matches the page" - and it is the family's principle: assume
+            // the order works (`ah-jo6b`).
+            .filter(|(_, tag)| discarding || ruleset.is_none_or(|rules| rules.can_be_given(tag)))
             .map(|(_, tag)| tag.clone())
             .collect(),
     )
@@ -5925,7 +5942,22 @@ fn transfer(
         _ => None,
     };
     let Some(tag) = tag else {
-        ledger.doubted.insert(actor.unit.unit_id.clone());
+        // A GIVE of goods nothing can name is followed no further, but the rest of this unit's
+        // month still can be. The projection assumes the unnameable goods are not silver, and the
+        // player is told the word is unknown by `unknown-item`, so the line alone is uncounted and
+        // the unit's own sums - its `BUY ALL` settlement, its shortfalls, its share of the hex
+        // purse - are left followable (`ah-jo6b`, case 2).
+        //
+        // This arm is also reached by an unfinished hull `unfinished_ship_named` cannot resolve,
+        // and that is deliberately included: the column reads an unresolved name as not-silver
+        // either way, so the two surfaces agree there for the same reason they do for an item.
+        //
+        // A TAKE is not this case and keeps today's doubt: the column has no per-order TAKE arm at
+        // all (it reads `receipts.take_all_unpriceable` in aggregate), so the two surfaces would
+        // not agree about one and the ledger is the surface that can say so.
+        if !is_give {
+            ledger.doubted.insert(actor.unit.unit_id.clone());
+        }
         ledger
             .uncounted
             .entry(actor.unit.unit_id.clone())
@@ -19374,11 +19406,12 @@ BUILD
                     sharing(with_silver(unit("2"), 300)),
                 ])
             };
-            // Unit 2 names goods the ruleset cannot resolve, which doubts it in the `GIVE` phase
-            // - before the market opens - so the whole purse is untrusted.
+            // Unit 2 gives a whole class the data page never states the members of, which doubts
+            // it in the `GIVE` phase - before the market opens - so the whole purse is untrusted.
+            // (An unnameable *item* no longer doubts the unit: `ah-jo6b`, case 2.)
             with_ledger(
                 hex,
-                "unit 1\nBUY ALL grain\nunit 2\nGIVE 1 5 sprockets\n",
+                "unit 1\nBUY ALL grain\nunit 2\nGIVE 1 ALL MAGIC\n",
                 |ledger| {
                     assert!(ledger.doubted.contains("2"), "the sharer is doubted");
                     assert_eq!(
@@ -19408,7 +19441,7 @@ BUILD
             };
             with_ledger(
                 hex,
-                "unit 1\nBUY 40 grain\nunit 2\nGIVE 1 5 sprockets\n",
+                "unit 1\nBUY 40 grain\nunit 2\nGIVE 1 ALL MAGIC\n",
                 |ledger| {
                     assert_eq!(
                         ledger
@@ -19755,6 +19788,114 @@ BUILD
                     Some([2].as_slice())
                 );
             });
+        }
+
+        /// The same as `with_ledger`, with no catalogue at all - the state a game is in while its
+        /// ruleset is still arriving, and the one `ah-jo6b`'s case 3 lives in.
+        fn with_ledger_without_a_catalogue<R>(
+            hex_region: ReportRegion,
+            orders: &str,
+            read: impl FnOnce(&Ledger<'_>) -> R,
+        ) -> R {
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let ledger = ledger_for(&hex, None);
+            read(&ledger)
+        }
+
+        /// `ah-jo6b`, case 3. `rules/give` defines `ITEM`/`ITEMS` as "the combination of all of the
+        /// previous categories", so it needs no catalogue to expand - and the SILVER column has
+        /// always assumed the ledger expands it, priced the month accordingly, and shown a purse
+        /// that had in fact been given away.
+        #[test]
+        fn a_gift_of_everything_is_counted_without_a_catalogue() {
+            let hex_region = region(vec![
+                with_item(
+                    with_item(unit("901"), 100, "silver", "SILV"),
+                    5,
+                    "swords",
+                    "SWOR",
+                ),
+                unit("902"),
+            ]);
+            with_ledger_without_a_catalogue(
+                hex_region,
+                "unit 901\nGIVE 902 ALL ITEMS\n",
+                |ledger| {
+                    // Every coin and every sword left. The purse then goes ten short, which is this
+                    // unit's own upkeep charged against a purse it has just given away - the
+                    // consequence of assuming the order works (`ah-jo6b`), not a failure to count it.
+                    assert_eq!(balance_of(ledger, "901", "SILV"), -10);
+                    assert_eq!(balance_of(ledger, "901", "SWOR"), 0);
+                    assert_eq!(balance_of(ledger, "902", "SILV"), 90);
+                    assert!(!ledger.doubted.contains("901"));
+                    assert!(!ledger.uncounted.contains_key("901"));
+                },
+            );
+        }
+
+        /// Every class but `ITEM`/`ITEMS` still needs the catalogue: `MAN`/`MEN` is
+        /// `Ruleset::is_man` and the rest are the data page's own lists, so with none of it the
+        /// ledger says it cannot count the line rather than guessing which items the class holds.
+        #[test]
+        fn a_gift_of_a_narrower_class_still_cannot_be_counted_without_a_catalogue() {
+            let hex_region = region(vec![
+                with_item(unit("901"), 5, "swords", "SWOR"),
+                unit("902"),
+            ]);
+            with_ledger_without_a_catalogue(
+                hex_region,
+                "unit 901\nGIVE 902 ALL WEAPONS\n",
+                |ledger| {
+                    assert!(ledger.doubted.contains("901"));
+                    assert_eq!(
+                        ledger.uncounted.get("901").map(Vec::as_slice),
+                        Some([2].as_slice())
+                    );
+                },
+            );
+        }
+
+        /// `ah-jo6b`, case 2. One word the catalogue has never heard of used to take this unit's
+        /// whole month out of the ledger's reach - its `BUY ALL` settlement, its shortfalls and its
+        /// share of the hex purse with it - while the SILVER column beside it carried on untroubled.
+        #[test]
+        fn a_gift_of_goods_nothing_can_name_leaves_the_rest_of_the_month_countable() {
+            let hex_region = region(vec![
+                with_item(unit("901"), 5, "swords", "SWOR"),
+                unit("902"),
+            ]);
+            with_ledger(hex_region, "unit 901\nGIVE 902 50 SPCIES\n", |ledger| {
+                assert_eq!(
+                    ledger.uncounted.get("901").map(Vec::as_slice),
+                    Some([2].as_slice()),
+                    "the line itself still cannot be counted"
+                );
+                assert!(
+                    !ledger.doubted.contains("901"),
+                    "but the unit's own sums still can be"
+                );
+                assert_eq!(balance_of(ledger, "901", "SWOR"), 5, "nothing else moved");
+            });
+        }
+
+        /// The TAKE half of the same arm is deliberately untouched: the SILVER column has no
+        /// per-order TAKE arm to agree with (`silver.rs` reads `take_all_unpriceable` in
+        /// aggregate), so the ledger stays the surface that says the month cannot be followed
+        /// (`ah-jo6b`).
+        #[test]
+        fn a_take_of_goods_nothing_can_name_still_doubts_the_unit() {
+            let hex_region = region(vec![
+                with_item(unit("901"), 5, "swords", "SWOR"),
+                unit("902"),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 901\nTAKE FROM 902 50 SPCIES\n",
+                |ledger| {
+                    assert!(ledger.doubted.contains("901"));
+                },
+            );
         }
 
         /// `rules/give` defines `MAN`/`MEN` as the people among the previous categories, which
@@ -32159,7 +32300,7 @@ BUILD
             ..region(vec![heavy])
         };
 
-        let found = only(check(vec![region], "unit 9508\nGIVE 0 1 flumph\nSAIL N\n"));
+        let found = only(check(vec![region], "unit 9508\nGIVE 0 ALL MAGIC\nSAIL N\n"));
         assert_eq!(found.code, codes::FLEET_OVERLOADED);
     }
 

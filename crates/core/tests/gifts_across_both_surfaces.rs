@@ -65,6 +65,22 @@ fn review_of(text: &str, script: &str) -> TurnReview {
     )
 }
 
+/// The same review with no catalogue at all. `preview_holding` cannot follow - it goes through
+/// `preview_orders_for_remembered_report`, which is given a ruleset by construction - so a test
+/// using this asserts on the column and the findings, which is where case 3's defect showed.
+fn review_without_a_catalogue(text: &str, script: &str) -> TurnReview {
+    let parsed = parse_report_full(text);
+    let template = extract_orders_template(text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    review_turn(
+        &parsed,
+        &format!("{template}\n{script}"),
+        None,
+        CheckOptions::default(),
+    )
+}
+
 fn row_of(review: &TurnReview, unit_id: &str) -> UnitSilver {
     review
         .silver
@@ -419,4 +435,55 @@ fn a_doubt_raised_by_a_later_gift_no_longer_hides_this_ones_size() {
     assert_eq!(unit.doubt_subject.as_deref(), Some("MAGIC"));
     assert_eq!(unit.expense, None, "a doubted side is not a number");
     assert_eq!(unit.given_to_nobody, 300, "but the size of the gift is");
+}
+
+/// `ah-jo6b`, case 3. With no catalogue the ledger refused to expand `ALL ITEMS` at all, while
+/// `class_carries_silver` answered `Some(true)` for it without one - so the column looked for a
+/// settlement the ledger had never made, booked nothing, and printed a confident, unqualified and
+/// **wrong** figure: every coin given away, the purse shown untouched. Measured on this branch,
+/// with the two production hunks reverted, this unit read `at_month_end = Some(100)`.
+///
+/// `rules/give` defines `ITEM`/`ITEMS` as "the combination of all of the previous categories", so
+/// that one class needs no catalogue to expand.
+///
+/// The `MOVE N` matters and is not decoration: with no catalogue the men are estimated, and
+/// `silver.rs`'s short-circuit blanks the whole row when an estimated-men unit is set to work -
+/// which a unit whose only order is a GIVE is. A unit that is moving is not, so the column prices
+/// the month and can be held to the ledger's answer, which is the property this test exists for.
+#[test]
+fn giving_everything_away_empties_the_purse_even_with_no_catalogue() {
+    let text = report(QUIET, &[], &[&giver(100), &hands("901")]);
+    let review = review_without_a_catalogue(&text, "unit 900\nMOVE N\nGIVE 901 ALL ITEMS\n");
+    let row = row_of(&review, "900");
+    assert_eq!(row.at_month_end, Some(0), "every coin was given away");
+    assert_eq!(row.expense, Some(100));
+    assert_eq!(row.doubt, None, "and nothing about it is in doubt");
+}
+
+/// `ah-jo6b`, case 2. A word the catalogue has never heard of used to doubt the whole unit, and
+/// `settle_buy_all` throws a doubted unit's settlement away - so the column showed no purchase at
+/// all and a purse that had never been spent. Measured on this branch with the `!is_give` gate
+/// reverted: `expense = Some(0)`, `at_month_end = Some(100)` and an empty `buy_all`, against the
+/// $100 of grain this unit actually buys.
+#[test]
+fn a_gift_of_goods_the_catalogue_cannot_name_leaves_the_month_priced() {
+    let text = report(
+        QUIET,
+        &["For Sale: 20 grain [GRAI] at $10."],
+        &[&giver(100), &hands("901")],
+    );
+    let review = review_of(&text, "unit 900\nBUY ALL grain\nGIVE 901 50 SPCIES\n");
+    let row = row_of(&review, "900");
+    assert_eq!(row.doubt, None);
+    assert_eq!(
+        row.expense,
+        Some(100),
+        "the whole purse still buys ten grain at $10"
+    );
+    assert_eq!(row.at_month_end, Some(0));
+    assert_eq!(
+        row.buy_all.first().map(|shown| shown.bought),
+        Some(10),
+        "and the settlement the unnameable gift used to discard is shown"
+    );
 }
