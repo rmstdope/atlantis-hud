@@ -5948,6 +5948,10 @@ fn transfer(
         // the unit's own sums - its `BUY ALL` settlement, its shortfalls, its share of the hex
         // purse - are left followable (`ah-jo6b`, case 2).
         //
+        // This arm is also reached by an unfinished hull `unfinished_ship_named` cannot resolve,
+        // and that is deliberately included: the column reads an unresolved name as not-silver
+        // either way, so the two surfaces agree there for the same reason they do for an item.
+        //
         // A TAKE is not this case and keeps today's doubt: the column has no per-order TAKE arm at
         // all (it reads `receipts.take_all_unpriceable` in aggregate), so the two surfaces would
         // not agree about one and the ledger is the surface that can say so.

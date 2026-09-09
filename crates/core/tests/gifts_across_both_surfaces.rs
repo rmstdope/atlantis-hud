@@ -438,41 +438,52 @@ fn a_doubt_raised_by_a_later_gift_no_longer_hides_this_ones_size() {
 }
 
 /// `ah-jo6b`, case 3. With no catalogue the ledger refused to expand `ALL ITEMS` at all, while
-/// `class_carries_silver` answered `Some(true)` for it without one - the two surfaces disagreeing
-/// about one order, which is what `ah-lu0f` forbids. `rules/give` defines `ITEM`/`ITEMS` as "the
-/// combination of all of the previous categories", so it needs no catalogue.
+/// `class_carries_silver` answered `Some(true)` for it without one - so the column looked for a
+/// settlement the ledger had never made, booked nothing, and printed a confident, unqualified and
+/// **wrong** figure: every coin given away, the purse shown untouched. Measured on this branch,
+/// with the two production hunks reverted, this unit read `at_month_end = Some(100)`.
 ///
-/// What the column shows here is *nothing*: with no catalogue it cannot identify men, so every row
-/// carries `EstimatedMen` and no figure at all. That is measured rather than assumed, and it is
-/// what makes the column safe while the catalogue is still arriving - it is the ledger, read by the
-/// ITEMS surface, that this bead corrects (see `semantics.rs`'s
-/// `a_gift_of_everything_is_counted_without_a_catalogue`). This test holds the column to saying
-/// nothing, so a later change that gives it a figure without also giving it the ledger's gift
-/// cannot pass unnoticed.
+/// `rules/give` defines `ITEM`/`ITEMS` as "the combination of all of the previous categories", so
+/// that one class needs no catalogue to expand.
+///
+/// The `MOVE N` matters and is not decoration: with no catalogue the men are estimated, and
+/// `silver.rs`'s short-circuit blanks the whole row when an estimated-men unit is set to work -
+/// which a unit whose only order is a GIVE is. A unit that is moving is not, so the column prices
+/// the month and can be held to the ledger's answer, which is the property this test exists for.
 #[test]
-fn giving_everything_away_with_no_catalogue_leaves_the_column_saying_nothing() {
+fn giving_everything_away_empties_the_purse_even_with_no_catalogue() {
     let text = report(QUIET, &[], &[&giver(100), &hands("901")]);
-    let review = review_without_a_catalogue(&text, "unit 900\nGIVE 901 ALL ITEMS\n");
+    let review = review_without_a_catalogue(&text, "unit 900\nMOVE N\nGIVE 901 ALL ITEMS\n");
     let row = row_of(&review, "900");
-    assert_eq!(
-        row.doubt,
-        Some(SilverDoubt::EstimatedMen),
-        "no catalogue means no headcount, so the whole row is in doubt"
-    );
-    assert_eq!(row.at_month_end, None, "and it names no month-end figure");
-    assert_eq!(
-        row.expense, None,
-        "so it cannot contradict the ledger, which now charges the whole purse"
-    );
+    assert_eq!(row.at_month_end, Some(0), "every coin was given away");
+    assert_eq!(row.expense, Some(100));
+    assert_eq!(row.doubt, None, "and nothing about it is in doubt");
 }
 
-/// `ah-jo6b`, case 2. A word the catalogue has never heard of costs this unit nothing and hides
-/// nothing: the column is unchanged and the ledger no longer stops following the unit.
+/// `ah-jo6b`, case 2. A word the catalogue has never heard of used to doubt the whole unit, and
+/// `settle_buy_all` throws a doubted unit's settlement away - so the column showed no purchase at
+/// all and a purse that had never been spent. Measured on this branch with the `!is_give` gate
+/// reverted: `expense = Some(0)`, `at_month_end = Some(100)` and an empty `buy_all`, against the
+/// $100 of grain this unit actually buys.
 #[test]
 fn a_gift_of_goods_the_catalogue_cannot_name_leaves_the_month_priced() {
-    let text = report(QUIET, &[], &[&giver(100), &hands("901")]);
-    let review = review_of(&text, "unit 900\nGIVE 901 50 SPCIES\n");
+    let text = report(
+        QUIET,
+        &["For Sale: 20 grain [GRAI] at $10."],
+        &[&giver(100), &hands("901")],
+    );
+    let review = review_of(&text, "unit 900\nBUY ALL grain\nGIVE 901 50 SPCIES\n");
     let row = row_of(&review, "900");
-    assert_eq!(row.at_month_end, Some(100));
     assert_eq!(row.doubt, None);
+    assert_eq!(
+        row.expense,
+        Some(100),
+        "the whole purse still buys ten grain at $10"
+    );
+    assert_eq!(row.at_month_end, Some(0));
+    assert_eq!(
+        row.buy_all.first().map(|shown| shown.bought),
+        Some(10),
+        "and the settlement the unnameable gift used to discard is shown"
+    );
 }
