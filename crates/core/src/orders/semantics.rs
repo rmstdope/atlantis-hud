@@ -2717,12 +2717,12 @@ fn debit_source(
     moved: i64,
 ) {
     // A unit written to take from itself would show `took +100` and `was taken -100` on one row for
-    // a transfer that moves nothing - but it never arrives here. `rules/give`: the server refuses a
-    // unit giving to itself, and `targets::give_endpoint` answers `GiveReach::Nowhere` for
-    // `id == giver_id`, so the source has no row and the transfer loop `continue`s well above the
-    // silver block (`a_take_from_a_unit_by_itself_is_silent`). Asserted rather than guarded at
-    // runtime: an unreachable runtime branch cannot be tested, and a future widening of that
-    // endpoint should fail a test rather than quietly book a circle.
+    // a transfer that moves nothing - but it never arrives here. `rules/take`: "a unit may only
+    // TAKE from another unit in the same faction", and `rules/give` gives "to another unit", so
+    // `apply_transfers` `continue`s on a line naming the unit that wrote it before either leg is
+    // settled (`ah-qwz7`) - neither the source's row nor the taker's is written. Asserted rather
+    // than guarded at runtime: an unreachable runtime branch cannot be tested, and a future
+    // weakening of that guard should fail a test rather than quietly book a circle.
     debug_assert_ne!(
         source, taker,
         "a self-transfer is filtered before the settlement reaches here"
@@ -2836,6 +2836,18 @@ fn apply_transfers(
         // the GIVE order, except that the direction of transfer is reversed" - so for a TAKE,
         // `transfer.party` names the source and `transfer.actor` is the receiver instead.
         let giver_id = units[transfer.actor].unit.unit_id.as_str();
+        // `rules/take`: "a unit may only TAKE from another unit in the same faction", and
+        // `rules/give` gives "to another unit" - so a line naming the unit that wrote it moves
+        // nothing at all. Settled here rather than through `GiveReach::Nowhere`, which the
+        // endpoint answers for a self-transfer *and* for three unrelated shapes (a number the
+        // report shows in another region, a `NEW` alias no `FORM` created, an id we cannot read).
+        // The arm below credits those as a take from a source the report does not show
+        // (`ah-awcm`), which for a unit's own number is a phantom credit, phantom goods, phantom
+        // men and a false mage refusal (`ah-qwz7`). `check_transfer_to_itself` is what tells the
+        // player.
+        if party_unit_id(&transfer.party).as_deref() == Some(giver_id) {
+            continue;
+        }
         let source = if transfer.is_give {
             GiveEndpoint::ours(transfer.actor)
         } else {
@@ -14883,10 +14895,10 @@ mod tests {
     /// `debit_source` asserts that rather than guarding it, and this is what makes the assertion
     /// worth something.
     ///
-    /// It pins the outgoing side and no more. The taker's own side of a self-take is *not* silent:
-    /// the `Nowhere` arm's `ah-awcm` block credits it a phantom `TookUnshown` +100 from
-    /// `unit <its own id>`, for an order that moves nothing. That predates this bead and is filed
-    /// as `ah-qwz7`; asserting silence here would state something false.
+    /// It pins the outgoing side; `a_unit_taking_from_itself_is_credited_nothing` pins the
+    /// incoming one. Both are silent since `ah-qwz7` put the guard in `apply_transfers` itself -
+    /// before that, the `Nowhere` arm's `ah-awcm` block credited the taker a phantom
+    /// `TookUnshown` +100 from `unit <its own id>` for an order that moves nothing.
     #[test]
     fn a_unit_taking_from_itself_is_not_debited() {
         let region = region(vec![with_silver(unit("2391"), 500)]);
@@ -14903,6 +14915,29 @@ mod tests {
                 .iter()
                 .any(|m| m.cause == SilverChangeCause::WasTaken),
             "the source and the taker are one unit, so nothing left it"
+        );
+    }
+
+    /// `ah-qwz7`: the taker's own side of a self-take is silent too. `rules/take`: "a unit may
+    /// only TAKE from another unit in the same faction", so the line moves nothing at all - and
+    /// before this bead the `GiveReach::Nowhere` arm's `ah-awcm` block credited a phantom
+    /// `TookUnshown` from the unit's own number, which the SILVER column read as real income.
+    #[test]
+    fn a_unit_taking_from_itself_is_credited_nothing() {
+        let region = region(vec![with_silver(unit("2391"), 500)]);
+        let source = "unit 2391\nTAKE FROM 2391 100 SILV\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let itself = receipts.get("2391").cloned().unwrap_or_default();
+        assert_eq!(itself.taken_unshown, 0);
+        assert!(itself.taken_unshown_from.is_empty());
+        assert_eq!(itself.taken, 0);
+        assert!(itself.taken_from.is_empty());
+        assert!(
+            itself.silver_moves.is_empty(),
+            "an order that moves nothing books no movement: {:?}",
+            itself.silver_moves
         );
     }
 
@@ -36591,6 +36626,63 @@ BUILD
     /// It deliberately records no `RefusedTransfer`: this bead adds no diagnostic, so
     /// `check_refused_transfers` says nothing new about the invalid order.
     #[test]
+    /// `ah-qwz7`: goods a unit is written to take from itself never move, so the projection
+    /// carries what the report showed. Before the guard the `Nowhere` arm ran `move_holding` into
+    /// the taker, doubling the goods it already held.
+    #[test]
+    fn a_unit_taking_goods_from_itself_keeps_its_holdings_unchanged() {
+        let taker = with_item(unit("2391"), 30, "grain", "GRAI");
+        let orders = "unit 2391\nTAKE FROM 2391 5 GRAI\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![taker]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let unit = hex.find("2391").expect("the unit is in this hex");
+        assert!(
+            matches!(unit.holdings_after_gifts, HoldingsAfterGifts::Unchanged),
+            "nothing moved: {:?}",
+            unit.holdings_after_gifts
+        );
+    }
+
+    /// `ah-qwz7`: men a unit is written to take from itself do not arrive, and the unit is not
+    /// doubted for an order that does nothing.
+    #[test]
+    fn a_unit_taking_men_from_itself_gains_no_men() {
+        let taker = men_holder("2391", 5);
+        let orders = "unit 2391\nTAKE FROM 2391 2 LEAD\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![taker]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let unit = hex.find("2391").expect("the unit is in this hex");
+        assert_eq!(unit.men_after_orders, 5, "nobody arrived");
+        assert!(
+            matches!(unit.holdings_after_gifts, HoldingsAfterGifts::Unchanged),
+            "and nothing moved: {:?}",
+            unit.holdings_after_gifts
+        );
+    }
+
+    /// `ah-qwz7`: a mage written to take men from itself is not warned that men were sent into a
+    /// mage. Nobody was sent anywhere.
+    #[test]
+    fn a_mage_taking_men_from_itself_is_not_refused() {
+        let mage = with_skill_pts(with_leaders(unit("2391"), 2), "FORC", 30);
+        let orders = "unit 2391\nTAKE FROM 2391 2 LEAD\n";
+        let ordered = OrderedUnits::read(orders);
+        let region = region(vec![mage]);
+        let hex = hex_after_gifts(&region, &ordered);
+
+        let unit = hex.find("2391").expect("the mage is in this hex");
+        assert!(
+            unit.refused_transfers.is_empty(),
+            "no transfer happened, so none was refused: {:?}",
+            unit.refused_transfers
+        );
+        assert_eq!(unit.men_after_orders, 2, "the mage keeps its two leaders");
+    }
+
     fn a_mage_gift_keeps_men_and_skills_in_the_semantic_projection() {
         let giver = with_skill_pts(with_leaders(unit("1010"), 2), "FORC", 30);
         let receiver = men_holder("2200", 1);
