@@ -444,6 +444,27 @@ describe("the column popups", () => {
     });
   });
 
+  it("says nothing about silver in the movement popup", () => {
+    const popup = movementPopup({
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      items: [],
+      itemChanges: [
+        carried({
+          tag: "SILV",
+          name: "silver",
+          delta: -100,
+          cause: "given-away",
+          line: 3,
+          other: { unitId: "901", name: "Ferry" }
+        })
+      ]
+    });
+    // The month said nothing about this unit's load, so the popup falls back to the shared
+    // nothing-changed sentence rather than saying the load moved.
+    expect(popup.notes).toEqual(["Nothing this month changes this."]);
+    expect(popup.notes.filter((note) => /silver|load changed/i.test(note))).toEqual([]);
+  });
+
   it("quotes a mode word it does not know rather than ranking it", () => {
     const popup = movementPopup({
       movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
@@ -837,13 +858,13 @@ describe("the column popups", () => {
       popupForCell(
         "items",
         unit({
-          items: [{ name: "silver", tag: "SILV", amount: 40 }],
+          items: [{ name: "grain", tag: "GRAI", amount: 40 }],
           uncounted: ["@TAX"]
         }),
         facts()
       )
     );
-    expect(popup.lines).toEqual([{ label: "silver SILV", value: "40" }]);
+    expect(popup.lines).toEqual([{ label: "grain GRAI", value: "40" }]);
     expect(popup.notes).toContain("and more that cannot be counted: @TAX");
     expect(popup.warning).toBe(
       "“+ ?” in the cell: this month is only partly counted, so this list may be short."
@@ -1037,28 +1058,28 @@ describe("the column popups", () => {
       popupForCell(
         "items",
         unit({
-          items: [{ name: "silver", tag: "SILV", amount: 40 }],
-          previewChanges: [{ field: "items", original: "20 SILV" }]
+          items: [{ name: "grain", tag: "GRAI", amount: 40 }],
+          previewChanges: [{ field: "items", original: "20 GRAI" }]
         }),
         facts()
       )
     );
     expect(popup.lines).toEqual([
-      { label: "silver SILV", value: "40", change: { direction: "up", from: "20" } }
+      { label: "grain GRAI", value: "40", change: { direction: "up", from: "20" } }
     ]);
-    expect(popup.notes.filter((note) => /20 SILV/.test(note))).toEqual([]);
+    expect(popup.notes.filter((note) => /20 GRAI/.test(note))).toEqual([]);
   });
 
   it("draws what a unit that gave everything away used to hold", () => {
     const popup = columnPopup(
       popupForCell(
         "items",
-        unit({ items: [], previewChanges: [{ field: "items", original: "20 SILV" }] }),
+        unit({ items: [], previewChanges: [{ field: "items", original: "20 GRAI" }] }),
         facts()
       )
     );
     expect(popup.lines).toEqual([
-      { label: "SILV", value: "gone", change: { direction: "down", from: "20" } }
+      { label: "GRAI", value: "gone", change: { direction: "down", from: "20" } }
     ]);
     // It has lines, so the shared "Was: ..." sentence never fires and the list is not empty.
     expect(popup.notes).not.toContain("No items.");
@@ -2294,11 +2315,11 @@ describe("the items popup's pairs", () => {
         "items",
         unit({
           items: [],
-          previewChanges: [{ field: "items", original: "20 SILV" }],
+          previewChanges: [{ field: "items", original: "20 GRAI" }],
           itemChanges: [
             {
-              tag: "SILV",
-              name: "silver",
+              tag: "GRAI",
+              name: "grain",
               delta: -20,
               cause: "given-away",
               line: 3,
@@ -2312,9 +2333,62 @@ describe("the items popup's pairs", () => {
       )
     );
     expect(popup.lines).toEqual([
-      { label: "silver SILV", value: "gone", change: { direction: "down", from: "20" } }
+      { label: "grain GRAI", value: "gone", change: { direction: "down", from: "20" } }
     ]);
     expect(popup.notes).not.toContain("No items.");
+  });
+
+  it("draws no silver line in the items popup", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { name: "silver", tag: "SILV", amount: 900 },
+            { name: "grain", tag: "GRAI", amount: 12 }
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "grain GRAI", value: "12" }]);
+  });
+
+  it("draws no line for silver the report listed and the month spent", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({ items: [], previewChanges: [{ field: "items", original: "20 SILV" }] }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([]);
+    expect(popup.notes).toContain("No items.");
+  });
+
+  it("says nothing about a gift of silver in the items popup", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "grain", tag: "GRAI", amount: 12 }],
+          itemChanges: [
+            {
+              tag: "SILV",
+              name: "silver",
+              delta: -100,
+              cause: "given-away",
+              line: 3,
+              unitPrice: null,
+              other: { unitId: "901", name: "Ferry" },
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.notes.filter((note) => /silver/i.test(note))).toEqual([]);
   });
 
   it("an item the report never listed starts at none", () => {
@@ -2335,9 +2409,9 @@ describe("the items popup's pairs", () => {
 
   it("doubles a tag that is its own display name, as it always did", () => {
     const popup = columnPopup(
-      popupForCell("items", unit({ items: [{ name: "SILV", tag: "SILV", amount: 4 }] }), facts())
+      popupForCell("items", unit({ items: [{ name: "WOOD", tag: "WOOD", amount: 4 }] }), facts())
     );
-    expect(popup.lines).toEqual([{ label: "SILV SILV", value: "4" }]);
+    expect(popup.lines).toEqual([{ label: "WOOD WOOD", value: "4" }]);
   });
 
   it("draws a cast item's range exactly as the cell does", () => {

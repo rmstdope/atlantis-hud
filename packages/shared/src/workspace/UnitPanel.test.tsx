@@ -46,6 +46,25 @@ const UNIT = aReportUnit({
 const draw = (props: Partial<Parameters<typeof UnitPanel>[0]> = {}) =>
   renderToStaticMarkup(<UnitPanel unit={UNIT} hex={HEX} {...props} />);
 
+describe("the panel's item list", () => {
+  it("leaves silver out of the panel's item list", () => {
+    const markup = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({
+          items: [
+            { amount: 12, name: "grain", tag: "GRAI" },
+            { amount: 1000, name: "silver", tag: "SILV" }
+          ]
+        })}
+        hex={HEX}
+      />
+    );
+
+    expect(markup).toContain("GRAI");
+    expect(markup).not.toContain("SILV");
+  });
+});
+
 const RIDING: UnitMovement = {
   status: "ride",
   load: 60,

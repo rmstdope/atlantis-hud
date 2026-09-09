@@ -26,6 +26,7 @@ import {
   productionMenSentence
 } from "./unitTooltip";
 import { unitRowKey } from "./unitTable";
+import { withoutSilver } from "./silverTag";
 import { previewPairs, type PreviewPair } from "./unitPreviewRows";
 
 /**
@@ -340,7 +341,7 @@ export function formatItems(
   for (const item of created) {
     shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
   }
-  return items
+  return withoutSilver(items)
     .map((item) => {
       const gap = shortfall.get(item.tag) ?? 0;
       return gap > 0 ? `${item.amount - gap}-${item.amount} ${item.tag}` : `${item.amount} ${item.tag}`;
@@ -368,7 +369,7 @@ export function itemsTooltip(
   }
 
   const change = changeFor(unit, "items");
-  const takenUnshown = unit.takenUnshown ?? [];
+  const takenUnshown = withoutSilver(unit.takenUnshown ?? []);
   const produced = unit.produced ?? [];
   const built = unit.built ?? [];
   const created = unit.created ?? [];

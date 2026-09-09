@@ -883,10 +883,35 @@ describe("formatItems and itemsTooltip", () => {
   it("formats an item list the same way the report does", () => {
     expect(
       formatItems([
-        { amount: 20, name: "silver", tag: "SILV" },
+        { amount: 20, name: "grain", tag: "GRAI" },
         { amount: 6, name: "herbs", tag: "HERB" }
       ])
-    ).toBe("20 SILV, 6 HERB");
+    ).toBe("20 GRAI, 6 HERB");
+  });
+
+  it("leaves silver out of the ITEMS cell", () => {
+    expect(
+      formatItems([
+        { amount: 2, name: "lead", tag: "LEAD" },
+        { amount: 1000, name: "silver", tag: "SILV" },
+        { amount: 12, name: "grain", tag: "GRAI" }
+      ])
+    ).toBe("2 LEAD, 12 GRAI");
+  });
+
+  it("does not report silver taken from a unit the report does not show", () => {
+    expect(
+      itemsTooltip(
+        previewedUnit({ takenUnshown: [{ amount: 100, tag: "SILV", from: "903" }] })
+      )
+    ).toBeUndefined();
+    expect(
+      itemsTooltip(
+        previewedUnit({ takenUnshown: [{ amount: 3, tag: "GRAI", from: "903" }] })
+      )
+    ).toBe(
+      "Includes 3 GRAI taken from unit 903, which your report does not show here."
+    );
   });
 
   it("collapses the production caveat to one sentence", () => {

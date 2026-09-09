@@ -1,5 +1,6 @@
 import type { ProductionCap, ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
+import { withoutSilver } from "./silverTag";
 
 /**
  * What resting the pointer on a unit says, and where that is put.
@@ -83,7 +84,7 @@ export function summariseUnit(
       label: `${skill.name} ${skill.tag}`,
       value: `${skill.level} (${skill.points})`
     })),
-    items: [...unit.items]
+    items: withoutSilver(unit.items)
       .sort((left, right) => right.amount - left.amount)
       .map((item) => ({
         label: `${item.name} ${item.tag}`,
