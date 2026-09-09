@@ -340,6 +340,38 @@ mod tests {
         );
     }
 
+    /// The checker and every reader must say the same thing about one line. Nothing enforced that
+    /// before, which is how `SAIL NRTH` came to be accepted in silence while all three readers
+    /// threw it away (`ah-twsa`).
+    #[test]
+    fn the_checker_and_every_reader_agree_an_unreadable_sail_is_no_order() {
+        let unreadable = "#atlantis 95 pw\nunit 1471\n  SAIL NRTH\n#end\n";
+        let diagnostics = crate::orders::validate_orders(unreadable, None).diagnostics;
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, "bad-argument");
+        assert!(crate::orders::intents::read_intents(unreadable)[0]
+            .intents
+            .is_empty());
+        let ordered = OrderedUnits::from_document(unreadable);
+        assert_eq!(ordered.steps_for("1471"), None);
+        assert!(!ordered.issues_sail("1471"));
+
+        let bare = "#atlantis 95 pw\nunit 1471\n  SAIL\n#end\n";
+        assert_eq!(
+            crate::orders::validate_orders(bare, None).diagnostics,
+            vec![]
+        );
+        let intents = &crate::orders::intents::read_intents(bare)[0].intents;
+        assert_eq!(intents.len(), 1);
+        assert!(
+            matches!(&intents[0].intent, crate::orders::intents::Intent::Sail { steps, .. } if steps.is_empty()),
+            "{intents:?}"
+        );
+        let ordered = OrderedUnits::from_document(bare);
+        assert_eq!(ordered.steps_for("1471"), None);
+        assert!(ordered.issues_sail("1471"));
+    }
+
     #[test]
     fn bare_sail_participates_but_only_directional_sail_departs() {
         let bare = OrderedUnits::from_document("unit 10575\nSAIL\n");

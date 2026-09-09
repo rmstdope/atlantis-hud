@@ -533,6 +533,34 @@ mod tests {
         clean("GIVE 0 ALL SWOR\nFORM 1\nEND\nGIVE NEW 1 1 SWOR\n");
     }
 
+    /// SAIL's second form is the *bare* command - "I help crew this fleet" - not a fallback for a
+    /// route nobody can read, so junk in the first position is an error like `MOVE NRTH` (`ah-twsa`).
+    #[test]
+    fn a_sail_whose_only_direction_is_mistyped_is_an_error() {
+        assert_eq!(codes("SAIL NRTH"), ["bad-argument"]);
+        assert_eq!(
+            only("SAIL NRTH").message,
+            "expected a direction, IN, OUT or a structure number or nothing at all, found \"NRTH\""
+        );
+        assert_eq!(
+            only("SAIL heading home").message,
+            "expected a direction, IN, OUT or a structure number or nothing at all, found \"heading\""
+        );
+        // A bare SAIL is still a legal order, with or without a comment: the lexer strips the
+        // comment before any argument reaches the grammar.
+        clean("SAIL\n");
+        clean("SAIL ; heading home\n");
+        clean("SAIL N NW\nSAIL IN\nSAIL 0\n");
+        // One good direction first still beats the bare form, so this message does not change.
+        assert_eq!(
+            only("SAIL N NRTH").message,
+            "expected a direction, IN, OUT or a structure number, found \"NRTH\""
+        );
+        // The two other orders with an empty fallback form are deliberately untouched.
+        clean("SPOILS NUN\n");
+        clean("REVEAL junk\n");
+    }
+
     #[test]
     fn missing_and_malformed_consumed_arguments_remain_errors() {
         assert_eq!(codes("CLAIM"), ["missing-arguments"]);
@@ -542,6 +570,8 @@ mod tests {
         assert_eq!(codes("FIND shed"), ["bad-argument"]);
         // The first element of a repeated list is still required.
         assert_eq!(codes("EVICT note"), ["bad-argument"]);
+        // SAIL's bare form is the command alone, not a fallback for an unreadable route.
+        assert_eq!(codes("SAIL NRTH"), ["bad-argument"]);
         // A malformed unit target still stops STEAL, whatever trails it.
         assert_eq!(codes("STEAL shed SILV note"), ["bad-argument"]);
         // EXCEPT belongs only to the ALL form, so a malformed reserve there still surfaces even
