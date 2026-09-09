@@ -35,6 +35,7 @@ import {
   type StructuresByRegion
 } from "../structureLabel";
 import { describeMenBriefly } from "../unitComposition";
+import { NOT_KNOWN, unitWasFullyRead, unreadCount, unreadLine } from "../unitRead";
 import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { unitSkillsCell } from "../battleSkillPresentation";
 import { presentUnitMovement } from "../unitMovement";
@@ -1169,6 +1170,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   };
 
   const missing = staleLine(sourced.missing);
+  // The source's whole list, not `visible`: the line warns about the list, so a filter that hides
+  // every affected row leaves it up and unchanged.
+  const unreadWarning = unreadLine(unreadCount(units), units.length);
   const foreignEmpty =
     source.kind === "foreign"
       ? foreignEmptyLine({
@@ -1317,6 +1321,14 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
               >
                 {missing.button}
               </button>
+            </p>
+          ) : null}
+          {unreadWarning ? (
+            <p
+              data-testid="units-unread-line"
+              className="flex items-center border-y border-edge-soft px-2 py-1.5 text-pane text-warn"
+            >
+              {unreadWarning}
             </p>
           ) : null}
           {/* D2/D3: one home for every bulk action, on every source and not only inside an Army,
@@ -2200,6 +2212,7 @@ function UnitRow({
 }) {
   const skills = unitSkillsCell(unit, derivedSkills);
   const items = formatItems(unit.items, unit.created);
+  const unread = !unitWasFullyRead(unit);
 
   // Which cells the orders changed, so each one can say so and show what the report said.
   const nameChange = changeFor(unit, "name");
@@ -2444,10 +2457,18 @@ function UnitRow({
       if (unit.movement == null) {
         return (
           <Td>
-            <span className="sr-only">Movement not disclosed</span>
-            <span aria-hidden className="text-ink-dim">
-              —
-            </span>
+            {unread ? (
+              // The words are the whole message, so no sr-only/aria-hidden split: a second copy of
+              // the same fact is a second place for it to drift.
+              <span className="text-warn">{NOT_KNOWN}</span>
+            ) : (
+              <>
+                <span className="sr-only">Movement not disclosed</span>
+                <span aria-hidden className="text-ink-dim">
+                  —
+                </span>
+              </>
+            )}
             {explain("movement")}
           </Td>
         );
@@ -2482,13 +2503,19 @@ function UnitRow({
           className={`truncate${flagsChange ? ` ${PREDICTED}` : ""}`}
           predicted={Boolean(flagsChange)}
         >
-          <span className="sr-only">{words ?? "No flags set"}</span>
-          {letters === "" ? (
-            <span aria-hidden className="text-ink-dim">
-              —
-            </span>
+          {letters === "" && unread ? (
+            <span className="text-warn">{NOT_KNOWN}</span>
           ) : (
-            <span aria-hidden>{letters}</span>
+            <>
+              <span className="sr-only">{words ?? "No flags set"}</span>
+              {letters === "" ? (
+                <span aria-hidden className="text-ink-dim">
+                  —
+                </span>
+              ) : (
+                <span aria-hidden>{letters}</span>
+              )}
+            </>
           )}
           {explain("flags")}
         </Td>
@@ -2503,7 +2530,11 @@ function UnitRow({
         predicted={skillsMarked}
       >
         {skills === "" && !unit.own ? (
+          // A report never discloses a foreign unit's skills, so there was nothing there to lose:
+          // `not disclosed` stays true whatever the wrapping did, and says more than `not known`.
           <span className="italic text-ink-dim">not disclosed</span>
+        ) : skills === "" && unread ? (
+          <span className="text-warn">{NOT_KNOWN}</span>
         ) : (
           skills
         )}
@@ -2515,7 +2546,18 @@ function UnitRow({
         className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`}
         predicted={Boolean(itemsChange)}
       >
-        {items}
+        {/*
+          Driven off an empty cell rather than off `read`: `formatItems` strips silver, so a unit
+          that read only its silver has nothing to put in front of a bare `· and more`.
+        */}
+        {unread && items === "" ? (
+          <span className="text-warn">could not be read</span>
+        ) : (
+          items
+        )}
+        {unread && items !== "" ? (
+          <span className="text-warn"> · and more that could not be read</span>
+        ) : null}
         {/*
           A transport whose target the report cannot settle leaves the month partly uncounted just
           as an unreadable order does, so it earns the same mark. A target refusal the report can

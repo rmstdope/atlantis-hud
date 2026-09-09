@@ -46,6 +46,11 @@ export function describeMen(unit: ReportUnit): string {
  * of nobody is worth seeing, and a blank cell reads as missing data.
  */
 export function describeMenBriefly(unit: ReportUnit): string {
+  // Both `partial` and `nothing` refuse, for the reason `describeMen` gives above.
+  if (!unitWasFullyRead(unit)) {
+    return NOT_KNOWN;
+  }
+
   return `${unit.menEstimated ? "~" : ""}${unit.men.toLocaleString()}`;
 }
 

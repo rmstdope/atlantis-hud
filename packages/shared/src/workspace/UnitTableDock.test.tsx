@@ -25,7 +25,7 @@ import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
 import { structuresByRegionOf } from "../structureLabel";
 import { UnitTableDock } from "./UnitTableDock";
-import { FOREIGN_SOURCE } from "./unitSource";
+import { FOREIGN_SOURCE, OWN_SOURCE } from "./unitSource";
 
 /**
  * A hex's units pane, as markup.
@@ -2324,5 +2324,156 @@ describe("the skills cell's hidden sentence names where men came from (ah-rgkk.2
     );
 
     expect(markup).toContain("2 men joined from Scouts (1502).");
+  });
+});
+
+describe("a unit whose line was not fully read", () => {
+  const rowOf = (markup: string, unitId: string): string =>
+    new RegExp(`<tr[^>]*data-testid="unit-row-${unitId}"[\\s\\S]*?</tr>`).exec(markup)?.[0] ?? "";
+
+  const oneUnit = (overrides: Partial<ReportUnit>) =>
+    hex({
+      region: region({ units: [unit({ unitId: "1", own: true, ...overrides })] }),
+      ownUnitCount: 1
+    });
+
+  it("refuses Move, Flags and Skills for one of ours whose line was not read", () => {
+    const markup = draw(
+      oneUnit({ read: "nothing", movement: null, flags: [], skills: [], items: [] })
+    );
+    const row = rowOf(markup, "1");
+
+    expect((row.match(/not known/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // The cells' own screen-reader sentences are gone: where the message is words, a second copy
+    // is a second place for the same fact to drift. The order-diff `explain` sentence beside them
+    // is a separate surface and no part of this bead.
+    expect(row).not.toContain('<span class="sr-only">Movement not disclosed</span>');
+    expect(row).not.toContain("No flags set");
+  });
+
+  it("keeps a foreign unit's Skills cell saying not disclosed", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [
+            unit({
+              unitId: "2",
+              own: false,
+              factionId: "9",
+              factionName: "Them",
+              read: "nothing",
+              movement: null,
+              flags: [],
+              skills: [],
+              items: []
+            })
+          ]
+        }),
+        foreignUnitCount: 1
+      })
+    );
+
+    expect(rowOf(markup, "2")).toContain("not disclosed");
+  });
+
+  it("leaves a completely read row exactly as it was", () => {
+    const markup = draw(
+      oneUnit({ read: "complete", movement: null, flags: [], skills: [], items: [] })
+    );
+
+    expect(rowOf(markup, "1")).not.toContain("not known");
+  });
+
+  it("says an unread unit's items could not be read", () => {
+    expect(rowOf(draw(oneUnit({ read: "nothing", items: [] })), "1")).toContain(
+      "could not be read"
+    );
+  });
+
+  it("keeps a part-read unit's items and says more is missing", () => {
+    const row = rowOf(
+      draw(oneUnit({ read: "partial", items: [{ tag: "HORS", name: "horse", amount: 2 }] })),
+      "1"
+    );
+
+    expect(row).toContain("HORS");
+    expect(row).toContain("· and more that could not be read");
+  });
+
+  it("says could not be read when only silver was read", () => {
+    // `formatItems` strips silver, so the cell is empty and a bare "· and more" would have nothing
+    // in front of it.
+    const row = rowOf(
+      draw(oneUnit({ read: "partial", items: [{ tag: "SILV", name: "silver", amount: 563 }] })),
+      "1"
+    );
+
+    expect(row).toContain("could not be read");
+    expect(row).not.toContain("· and more that could not be read");
+  });
+});
+
+describe("the line above a units list that was not fully read", () => {
+  const threeUnits = (): HexNode =>
+    hex({
+      region: region({
+        units: [
+          unit({ unitId: "1", own: true, read: "complete" }),
+          unit({ unitId: "2", own: true, read: "partial" }),
+          unit({ unitId: "3", own: true, read: "nothing" })
+        ]
+      }),
+      ownUnitCount: 3
+    });
+
+  const SENTENCE = "⚠ 2 of these 3 units could not be read. Anything counted here is a floor.";
+
+  it("warns above a hex list holding units that were not read", () => {
+    const markup = draw(threeUnits());
+
+    expect(markup).toContain('data-testid="units-unread-line"');
+    expect(markup).toContain(SENTENCE);
+  });
+
+  it("warns above All my units and Other factions in the same words", () => {
+    const units = [
+      unit({ unitId: "1", own: true, read: "complete" }),
+      unit({ unitId: "2", own: true, read: "partial" }),
+      unit({ unitId: "3", own: true, read: "nothing" })
+    ];
+    const foreign = units.map((each, index) =>
+      unit({ ...each, unitId: `${index + 10}`, own: false, factionId: "9", factionName: "Them" })
+    );
+
+    const own = renderToStaticMarkup(
+      <UnitTableDock
+        hex={threeUnits()}
+        ownUnits={units}
+        currentTurn={71}
+        initialSource={OWN_SOURCE}
+      />
+    );
+    const others = renderToStaticMarkup(
+      <UnitTableDock
+        hex={threeUnits()}
+        foreignUnits={foreign}
+        currentTurn={71}
+        initialSource={FOREIGN_SOURCE}
+      />
+    );
+
+    expect(own).toContain(SENTENCE);
+    expect(others).toContain(SENTENCE);
+  });
+
+  it("shows no line above a list that was read", () => {
+    const markup = draw(
+      hex({
+        region: region({ units: [unit({ unitId: "1", own: true, read: "complete" })] }),
+        ownUnitCount: 1
+      })
+    );
+
+    expect(markup).not.toContain('data-testid="units-unread-line"');
   });
 });

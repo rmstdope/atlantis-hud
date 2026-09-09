@@ -68,3 +68,21 @@ export function weightFloor(unit: ReportUnit, index: GameDataIndex | null): numb
   }
   return total === 0 ? null : total;
 }
+
+/** How many of these rows lost part or all of what their unit was carrying. */
+export function unreadCount(units: readonly ReportUnit[]): number {
+  return units.filter((unit) => !unitWasFullyRead(unit)).length;
+}
+
+/**
+ * The amber line above the units table, or null when the whole list was read.
+ *
+ * `total` is the list, not what a filter left on screen: the line warns about the list, so a filter
+ * that hides every affected row leaves it up and unchanged (the agreed record says so by name).
+ */
+export function unreadLine(unread: number, total: number): string | null {
+  if (unread === 0) {
+    return null;
+  }
+  return `⚠ ${unread} of these ${total} unit${total === 1 ? "" : "s"} could not be read. Anything counted here is a floor.`;
+}
