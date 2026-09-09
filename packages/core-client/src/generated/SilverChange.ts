@@ -15,9 +15,10 @@ export type SilverChange = {
  */
 amount: number, cause: SilverChangeCause, 
 /**
- * The 1-based document line of the order responsible, when one order is. `None` for the
- * taxing flag with no `TAX` order, for a unit set to work by default, and for every receipt,
- * whose order is in another unit's block.
+ * The 1-based document line of the order responsible, when one order is - whichever unit's
+ * block that order lives in, so a receipt carries the *issuing* unit's line rather than
+ * nothing (`ah-1x2h.3`). `None` for the taxing flag with no `TAX` order, and for a unit set
+ * to work by default.
  */
 line: number | null, 
 /**

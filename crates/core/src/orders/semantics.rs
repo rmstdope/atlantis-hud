@@ -1862,6 +1862,10 @@ fn forecast_hex(
 /// the whole pass has to be absent from a release build rather than merely assert-free. What it buys is that every fixture in this crate's own
 /// suite and every one of the 26 real turns in `crates/core/tests/` compares the two lists.
 ///
+/// The four transfer causes are compared here since `ah-1x2h.3`: both records read one settlement,
+/// the column through `Receipts` and the ledger through the recording pass in
+/// `ledger_for_with_production`, so a gift or a take is one event with one row on each side.
+///
 /// The dropped causes and the skipped units below are the whole of what this check does *not*
 /// cover, and each names why. Widening that set is how this check dies quietly, so a new entry
 /// needs a bead id beside it.
@@ -1912,18 +1916,10 @@ fn compared_silver_rows(
                 SilverChangeCause::Worked
                     | SilverChangeCause::Entertained
                     | SilverChangeCause::Lent
-                    // The four transfer causes. The column records them from the settlement walk,
-                    // against report holdings and with no line; the ledger from the giving or
-                    // taking unit's `PlacedIntent`, against its own running balance, with that
-                    // line. Two vantage points on one event (`ah-1x2h`).
-                    | SilverChangeCause::WasGiven
-                    | SilverChangeCause::Took
-                    | SilverChangeCause::TookUnshown
-                    | SilverChangeCause::WasTaken
             )
         })
-        // No cause is compared without its amount any more (`ah-1x2h.2`). The `Option` slot stays
-        // because the projection is `ah-1x2h.3`'s to finish.
+        // No cause is compared without its amount any more (`ah-1x2h.2`), and no transfer cause is
+        // dropped (`ah-1x2h.3`). The `Option` slot is kept as the shape a future skip would use.
         .map(|(cause, line, amount)| (cause, line, Some(amount)))
         .collect();
     compared.sort();
@@ -2725,6 +2721,7 @@ fn debit_source(
     taker: usize,
     taker_label: String,
     moved: i64,
+    line: i64,
 ) {
     // A unit written to take from itself would show `took +100` and `was taken -100` on one row for
     // a transfer that moves nothing - but it never arrives here. `rules/give`: the server refuses a
@@ -2743,6 +2740,7 @@ fn debit_source(
         amount: -moved,
         cause: SilverChangeCause::WasTaken,
         other: taker_label.clone(),
+        line,
     });
     if !entry.taken_by.contains(&taker_label) {
         entry.taken_by.push(taker_label);
@@ -2913,6 +2911,7 @@ fn apply_transfers(
                                         amount: *count,
                                         cause: SilverChangeCause::TookUnshown,
                                         other: label.clone(),
+                                        line: transfer.line as i64,
                                     });
                                     if !entry.taken_unshown_from.contains(&label) {
                                         entry.taken_unshown_from.push(label);
@@ -3082,6 +3081,7 @@ fn apply_transfers(
                                 amount: moved,
                                 cause: SilverChangeCause::WasGiven,
                                 other: source_label.clone(),
+                                line: transfer.line as i64,
                             });
                             if !entry.givers.contains(&source_label) {
                                 entry.givers.push(source_label);
@@ -3100,6 +3100,7 @@ fn apply_transfers(
                             transfer.actor,
                             taker_label(),
                             moved,
+                            transfer.line as i64,
                         );
                     }
                     // `ah-sgn6`: the ledger's own `transfer` returns early for a class selector,
@@ -3117,6 +3118,7 @@ fn apply_transfers(
                         transfer.actor,
                         taker_label(),
                         moved,
+                        transfer.line as i64,
                     );
                     let entry = receipts_by_position.entry(transfer.actor).or_default();
                     entry.taken = entry.taken.saturating_add(moved);
@@ -3124,6 +3126,7 @@ fn apply_transfers(
                         amount: moved,
                         cause: SilverChangeCause::Took,
                         other: source_label.clone(),
+                        line: transfer.line as i64,
                     });
                     if !entry.taken_from.contains(&source_label) {
                         entry.taken_from.push(source_label);
@@ -4633,6 +4636,40 @@ fn ledger_for_with_production<'a>(
                     pillaged,
                     tax_overstated.get(index).copied().unwrap_or(0),
                 );
+            }
+            // `ah-1x2h.3`: the four transfer causes are recorded from the hex's own transfer
+            // settlement, the same one the SILVER column reads, rather than derived a second time
+            // from this walk - so one transfer is one record on both surfaces. The *balances* are
+            // still this walk's, and stay optimistic (`ah-ud89`, `ah-jo6b`).
+            //
+            // The reasoning this replaces (`ah-6m7b.5.2`): the walk used to name the receiving
+            // unit's cause from its own vantage point - `WasGiven`, `Took` or `TookUnshown` by
+            // whether the order was a GIVE and whether the report showed the source - while
+            // knowing its reach rules differed from `Receipts`'. There is nothing left to name:
+            // the settlement says which cause, with which label, on which line.
+            //
+            // A ledger's transfer records are only as complete as the settlement that ran before
+            // it. `Ordered::transfer_receipts` is written by `apply_transfers` alone, through
+            // `hex_with_transfers` - which is what `review_turn` builds every hex with. A `Hex`
+            // built by `Hex::read` alone has empty receipts and its ledger holds no transfer
+            // record at all.
+            //
+            // Ordering: this pass runs before the unit's own `intents` loop, so within the Give
+            // phase a unit's rows read settlement-first - every receipt, then its own `GaveAway`
+            // and `Discarded` - rather than interleaved with the walk. Nothing depends on that:
+            // `compared_silver_rows` sorts before comparing, and no surface reads
+            // `Ledger::silver_moves` at all.
+            if phase == StatePhase::Give {
+                for moved in &ordered.transfer_receipts.silver_moves {
+                    record_silver(
+                        &mut ledger,
+                        StatePhase::Give,
+                        &ordered.unit.unit_id,
+                        moved.amount,
+                        moved.cause,
+                        Some(moved.line),
+                    );
+                }
             }
             for placed in &ordered.intents {
                 // BUILD and manufacturing PRODUCE are each deferred to a pass of their own
@@ -6426,21 +6463,33 @@ fn transfer(
             // and which the column now books on the same event. The ledger said `GaveAway` here
             // for want of anything truer until that variant existed (`ah-6m7b.5.3`); it changes
             // no figure and no surface, `Ledger::silver_moves` driving neither.
-            let cause = if reach == GiveReach::Discard {
-                SilverChangeCause::Discarded
+            //
+            // `ah-1x2h.3`: the `WasTaken` leg is applied but no longer *recorded* here. The
+            // transfer causes are recorded once, from `Ordered::transfer_receipts`, by the pass in
+            // `ledger_for_with_production` - so the ledger and the column cannot tell two stories
+            // about one transfer. `GaveAway` and `Discarded` stay: they are the acting unit's own
+            // orders, they already agree with the column, and the settlement books neither.
+            if reach == GiveReach::Discard {
+                move_silver(
+                    ledger,
+                    StatePhase::Give,
+                    &from,
+                    -quantity,
+                    SilverChangeCause::Discarded,
+                    Some(placed),
+                );
             } else if is_give {
-                SilverChangeCause::GaveAway
+                move_silver(
+                    ledger,
+                    StatePhase::Give,
+                    &from,
+                    -quantity,
+                    SilverChangeCause::GaveAway,
+                    Some(placed),
+                );
             } else {
-                SilverChangeCause::WasTaken
-            };
-            move_silver(
-                ledger,
-                StatePhase::Give,
-                &from,
-                -quantity,
-                cause,
-                Some(placed),
-            );
+                apply_silver(ledger, StatePhase::Give, &from, -quantity, Some(placed));
+            }
         } else {
             charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
         }
@@ -6466,29 +6515,10 @@ fn transfer(
     }
     if let Some(to) = to {
         if tag.eq_ignore_ascii_case(SILVER) {
-            // What the receiving unit did to get it: a `GIVE` was given to, a `TAKE` took. The
-            // column sources its own inbound rows from `Receipts`, whose reach rules are a
-            // different question from this walk's - it counts a `TAKE` from a unit the report does
-            // not show, and skips a gift from another hex - but that is a reason for the two lists
-            // to be compared carefully, not a reason for this one to name a cause it knows to be
-            // wrong (`ah-6m7b.5.2`).
-            move_silver(
-                ledger,
-                StatePhase::Give,
-                &to,
-                quantity,
-                if is_give {
-                    SilverChangeCause::WasGiven
-                } else if from.is_empty() {
-                    // A `TAKE` whose source the report does not show: `apply`'s `Intent::Take` arm
-                    // reaches here with `source.unwrap_or_default()`, so an empty `from` is
-                    // precisely that case, and the column names it `TookUnshown` (`ah-awcm`).
-                    SilverChangeCause::TookUnshown
-                } else {
-                    SilverChangeCause::Took
-                },
-                Some(placed),
-            );
+            // Applied, not recorded: the incoming leg's record comes from the settlement, through
+            // the pass in `ledger_for_with_production` (`ah-1x2h.3`). The balance is still this
+            // walk's own optimistic one (`ah-ud89`).
+            apply_silver(ledger, StatePhase::Give, &to, quantity, Some(placed));
         } else {
             credit(ledger, StatePhase::Give, &to, &tag, quantity);
         }
@@ -14736,6 +14766,43 @@ mod tests {
             .collect()
     }
 
+    /// `ah-1x2h.3`: a settled transfer carries the document line of the order that caused it -
+    /// the *issuing* unit's line, which for a gift received or silver taken away is a line in
+    /// another unit's block. `rules/sequenceofevents` settles GIVE and TAKE in the Give phase, so
+    /// all four causes here come from that one walk and there is one line per movement.
+    #[test]
+    fn a_settled_transfer_records_the_line_of_the_order_behind_it() {
+        let region = region(vec![
+            with_silver(unit("2390"), 500),
+            with_silver(unit("2391"), 500),
+        ]);
+        let source = "unit 2390\nGIVE 2391 200 SILV\nunit 2391\nTAKE FROM 2390 100 SILV\nTAKE FROM 999 25 SILV\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let taker = receipts.get("2391").expect("the receiver has receipts");
+        assert_eq!(
+            taker
+                .silver_moves
+                .iter()
+                .map(|m| m.line)
+                .collect::<Vec<_>>(),
+            vec![2, 4, 5],
+            "the giver's GIVE line, then the taker's own two TAKE lines"
+        );
+
+        let source = receipts.get("2390").expect("the source has receipts");
+        assert_eq!(
+            source
+                .silver_moves
+                .iter()
+                .map(|m| m.line)
+                .collect::<Vec<_>>(),
+            vec![4],
+            "the taker's line, not any line of the source's own"
+        );
+    }
+
     /// `ah-rgkk.4.4`: the four producers of [`Receipts::silver_moves`], through the settlement
     /// that actually writes them rather than a hand-built `Receipts`. Each entry must carry the
     /// quantity that moved and the same label the `givers`/`taken_from` entry beside it carries -
@@ -14758,16 +14825,19 @@ mod tests {
                     amount: 200,
                     cause: SilverChangeCause::WasGiven,
                     other: "Unit 2390 (2390)".to_string(),
+                    line: 2,
                 },
                 ReceiptMove {
                     amount: 100,
                     cause: SilverChangeCause::Took,
                     other: "Unit 2390 (2390)".to_string(),
+                    line: 4,
                 },
                 ReceiptMove {
                     amount: 25,
                     cause: SilverChangeCause::TookUnshown,
                     other: "unit 999".to_string(),
+                    line: 5,
                 },
             ]
         );
@@ -14797,6 +14867,7 @@ mod tests {
                 amount: -100,
                 cause: SilverChangeCause::WasTaken,
                 other: "Unit 2391 (2391)".to_string(),
+                line: 4,
             }]
         );
         for move_out in &source.silver_moves {
@@ -14871,6 +14942,7 @@ mod tests {
                 amount: -100,
                 cause: SilverChangeCause::WasTaken,
                 other: "Unit 2391 (2391)".to_string(),
+                line: 2,
             }]
         );
         // The invariant `each_settled_silver_transfer_is_recorded_as_a_movement` states for the
@@ -14911,6 +14983,7 @@ mod tests {
                 amount: -100,
                 cause: SilverChangeCause::WasTaken,
                 other: "Unit 2391 (2391)".to_string(),
+                line: 2,
             }],
             "one movement, not a second zero one for the taker that came too late"
         );
@@ -15023,6 +15096,7 @@ mod tests {
                 amount: 500,
                 cause: SilverChangeCause::Took,
                 other: "Unit 2390 (2390)".to_string(),
+                line: 2,
             }]
         );
         assert!(!taker.takes_a_whole_class);
@@ -22175,6 +22249,25 @@ BUILD
             );
         }
 
+        /// `ah-1x2h.3`: the four transfer causes are compared like any other, because both sides
+        /// now read one settlement - the ledger records them from `Ordered::transfer_receipts`,
+        /// which is the same walk the SILVER column's receipts come from.
+        #[test]
+        fn a_settled_transfer_is_compared_on_both_sides() {
+            for cause in [
+                SilverChangeCause::WasGiven,
+                SilverChangeCause::Took,
+                SilverChangeCause::TookUnshown,
+                SilverChangeCause::WasTaken,
+            ] {
+                assert_eq!(
+                    compared_silver_rows([(cause, Some(2), 100)].into_iter()),
+                    vec![(cause, Some(2), Some(100))],
+                    "{cause:?} is kept, with its line and its amount"
+                );
+            }
+        }
+
         /// No cause that reaches the comparison is nulled any more. `ah-1x2h.1` made the ledger
         /// record the settled tax share, and `ah-1x2h.2` made both walks count the same heads when
         /// STUDY runs, so `Studied` is compared on its amount like everything else.
@@ -22593,13 +22686,42 @@ BUILD
             });
         }
 
+        /// `ah-1x2h.3`: the ledger records the four transfer causes from the same settlement the
+        /// SILVER column reads, so a gift the giver cannot cover is recorded by neither side -
+        /// while the ledger's *balance* stays optimistic, which is `ah-ud89`'s decision and what
+        /// the second half of this test pins. `rules/sequenceofevents` settles GIVE in the Give
+        /// phase, against what the report shows the giver holding.
+        #[test]
+        fn a_gift_the_giver_could_not_cover_is_recorded_by_neither_side() {
+            let hex_region = market(vec![unit("1"), with_silver(unit("2"), 1_000)]);
+            with_settled_ledger(
+                hex_region,
+                "unit 1\nGIVE 2 100 SILV\n\nunit 2\n",
+                |ledger| {
+                    assert_eq!(
+                        moves(ledger, "2"),
+                        &[] as &[SilverMove],
+                        "the settlement moved nothing, so neither side records a movement"
+                    );
+                    assert_eq!(
+                        ledger
+                            .state
+                            .known_balance_at(StatePhase::Give, "2", SILVER)
+                            .expect("the receiver's balance is known"),
+                        1_100,
+                        "the balance still carries the ledger's optimistic credit"
+                    );
+                },
+            );
+        }
+
         #[test]
         fn a_gift_of_silver_is_recorded_out_of_one_unit_and_into_the_other() {
             let hex_region = market(vec![
                 with_silver(unit("1"), 1_000),
                 with_silver(unit("2"), 1_000),
             ]);
-            with_ledger(
+            with_settled_ledger(
                 hex_region,
                 "unit 1\nGIVE 2 100 SILV\n\nunit 2\n",
                 |ledger| {
@@ -22623,7 +22745,7 @@ BUILD
         #[test]
         fn a_take_from_a_unit_the_report_does_not_show_is_recorded_as_such() {
             let hex_region = market(vec![with_silver(unit("2"), 1_000)]);
-            with_ledger(hex_region, "unit 2\nTAKE FROM 999 100 SILV\n", |ledger| {
+            with_settled_ledger(hex_region, "unit 2\nTAKE FROM 999 100 SILV\n", |ledger| {
                 assert_eq!(
                     shape(moves(ledger, "2")),
                     vec![(StatePhase::Give, SilverChangeCause::TookUnshown, Some(2))],
@@ -22743,7 +22865,7 @@ BUILD
                 with_silver(unit("1"), 1_000),
                 with_silver(unit("2"), 1_000),
             ]);
-            with_ledger(
+            with_settled_ledger(
                 hex_region,
                 "unit 1\n\nunit 2\nTAKE FROM 1 100 SILV\n",
                 |ledger| {

@@ -212,10 +212,11 @@ fn the_unit_a_take_empties_says_where_its_silver_went() {
         vec![&SilverChange {
             amount: -60,
             cause: SilverChangeCause::WasTaken,
-            line: None,
+            // `ah-1x2h.3`: the taker's own line, recorded rather than dropped.
+            line: Some(3),
             other: Some("Buyers (900)".to_string()),
         }],
-        "one line, naming the taker; the order is in another unit's block, so no line of its own"
+        "one line, naming the taker, and carrying the taker's line - the order is in another unit's block (`ah-1x2h.3`)"
     );
     assert_eq!(unit.held, 60, "the report shows Purse holding 60");
     assert_eq!(
@@ -262,10 +263,11 @@ fn a_take_of_all_the_silver_is_counted_like_any_other_take() {
         vec![&SilverChange {
             amount: 60,
             cause: SilverChangeCause::Took,
-            line: None,
+            // `ah-1x2h.3`: the TAKE line, in this unit's own block.
+            line: Some(3),
             other: Some("Purse (902)".to_string()),
         }],
-        "one line, naming the source; every receipt is recorded with no line of its own"
+        "one line, naming the source, and carrying the TAKE order's own line (`ah-1x2h.3`)"
     );
     assert_eq!(
         unit.expense,
