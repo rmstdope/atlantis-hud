@@ -15,6 +15,7 @@ function entry(over: Partial<UnreadableLine> = {}): UnreadableLine {
     lineEnd: 412,
     text: "* Smiley :( (100), Wanderers (29), 10 humans [HUMN].",
     lost: null,
+    unitRead: null,
     ...over,
   };
 }
@@ -77,6 +78,26 @@ describe("unreadableFactionLabel", () => {
   it("is null when either part is missing", () => {
     expect(unreadableFactionLabel(header({ factionName: "Borg" }))).toBeNull();
     expect(unreadableFactionLabel(header({ factionId: "73" }))).toBeNull();
+  });
+});
+
+describe("unreadableCostNote for a unit that reached the map anyway", () => {
+  it("says a unit that lost everything is still on the map", () => {
+    expect(unreadableCostNote(entry({ unitRead: "nothing" }))).toBe(
+      "The unit is on the map, but nothing it holds could be read."
+    );
+  });
+
+  it("says a unit that lost part of itself is still on the map", () => {
+    expect(unreadableCostNote(entry({ unitRead: "partial" }))).toBe(
+      "The unit is on the map, but part of what it holds could not be read."
+    );
+  });
+
+  it("renders the parenthesised lowercase form in the clipboard block", () => {
+    expect(unreadableClipboardText([entry({ unitRead: "nothing" })], 71, null)).toContain(
+      "(the unit is on the map, but nothing it holds could be read)"
+    );
   });
 });
 

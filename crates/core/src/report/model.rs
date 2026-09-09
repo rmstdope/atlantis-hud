@@ -238,6 +238,9 @@ pub struct ReportUnit {
     pub movement: Option<UnitMovement>,
     /// Set when the unit sits inside a structure.
     pub structure_id: Option<String>,
+    /// How much of this unit's line the parser read. See [`UnitRead`].
+    #[serde(default)]
+    pub read: UnitRead,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -301,6 +304,7 @@ impl Default for ReportUnit {
             capacity: None,
             movement: None,
             structure_id: None,
+            read: UnitRead::Complete,
         }
     }
 }
@@ -351,6 +355,25 @@ pub fn region_label(terrain: &str, x: i32, y: i32, province: &str) -> String {
     format!("{terrain} ({x},{y}) in {province}")
 }
 
+/// How much of a unit's line the parser actually read.
+///
+/// A report is a fixed-width wrapped document, and a fragment carries no marker saying it is one
+/// (`unwrap.rs`). A report wrapped at a narrower column than the game's own leaves a unit's line cut
+/// short, and everything after the break — items, `Weight`, `Capacity`, `Skills` — never reaches the
+/// model. This says so, so nothing downstream mistakes an unread figure for a measured zero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub enum UnitRead {
+    /// The whole line was read. Every unit in every committed fixture.
+    #[default]
+    Complete,
+    /// Some of what the unit holds was read, and some was not.
+    Partial,
+    /// Nothing the unit holds was read. The unit itself — name, number, faction — still was.
+    Nothing,
+}
+
 /// What kind of record the parser failed to read. Fixed set; the shell renders one word per case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
@@ -386,11 +409,42 @@ pub struct UnreadableLine {
     /// The joined logical line, exactly as the parser saw it.
     pub text: String,
     pub lost: Option<LostBlock>,
+    /// For a `Unit` row whose unit still reached the map, how much of it was read.
+    ///
+    /// `None` for every other row, and never `Some(UnitRead::Complete)` — a completely read unit is
+    /// not on this list at all.
+    #[serde(default)]
+    pub unit_read: Option<UnitRead>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_unit_is_read_completely_unless_something_says_otherwise() {
+        assert_eq!(ReportUnit::default().read, UnitRead::Complete);
+
+        let stored = r#"{
+            "unitId": "1",
+            "name": "Scout",
+            "regionId": "r",
+            "factionId": null,
+            "factionName": null,
+            "own": true,
+            "onGuard": false,
+            "flags": [],
+            "items": [],
+            "skills": [],
+            "men": 0,
+            "weight": null,
+            "capacity": null,
+            "structureId": null
+        }"#;
+        let unit: ReportUnit = serde_json::from_str(stored).expect("payload without read parses");
+
+        assert_eq!(unit.read, UnitRead::Complete);
+    }
 
     #[test]
     fn a_default_unit_is_estimated_until_classified() {

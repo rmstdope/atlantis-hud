@@ -32,8 +32,15 @@ export function unreadableLineRange(entry: UnreadableLine): string {
     : `${entry.lineStart}–${entry.lineEnd}`;
 }
 
-/** The red note under a lost hex, or null for every other kind. */
+/**
+ * The red note under a lost hex, or under a unit whose line was cut short, or null when the row
+ * cost nothing beyond itself.
+ */
 export function unreadableCostNote(entry: UnreadableLine): string | null {
+  if (entry.unitRead === "nothing")
+    return "The unit is on the map, but nothing it holds could be read.";
+  if (entry.unitRead === "partial")
+    return "The unit is on the map, but part of what it holds could not be read.";
   if (!entry.lost) return null;
   const { furtherLines, units } = entry.lost;
   return (

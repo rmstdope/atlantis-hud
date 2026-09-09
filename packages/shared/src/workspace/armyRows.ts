@@ -94,7 +94,10 @@ function rebuilt(member: ArmyMemberRecord): ReportUnit {
     weight: null,
     capacity: null,
     movement: null,
-    structureId: null
+    structureId: null,
+    // A snapshot records what was read, never how much of a line was read: a remembered member
+    // came from a row the parser had already accepted.
+    read: "complete"
   };
 }
 

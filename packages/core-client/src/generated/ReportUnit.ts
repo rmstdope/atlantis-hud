@@ -3,6 +3,7 @@ import type { CombatSpell } from "./CombatSpell";
 import type { ItemAmount } from "./ItemAmount";
 import type { SkillInfo } from "./SkillInfo";
 import type { UnitMovement } from "./UnitMovement";
+import type { UnitRead } from "./UnitRead";
 
 /**
  * A unit as the report describes it.
@@ -51,4 +52,8 @@ menByRace: Array<ItemAmount>, weight: number | null, capacity: string | null, mo
 /**
  * Set when the unit sits inside a structure.
  */
-structureId: string | null, };
+structureId: string | null, 
+/**
+ * How much of this unit's line the parser read. See [`UnitRead`].
+ */
+read: UnitRead, };

@@ -147,6 +147,7 @@ fn lost_region(header: &LogicalLine, block: &[LogicalLine]) -> UnreadableLine {
                 .filter(|line| matches!(line.marker(), Some('*' | '-')))
                 .count(),
         }),
+        unit_read: None,
     }
 }
 

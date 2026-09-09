@@ -1413,6 +1413,7 @@ mod tests {
                 capacity: None,
                 movement: None,
                 structure_id: None,
+                ..ReportUnit::default()
             },
             sheet_turn: 23,
             received_at: "2026-01-05T00:00:00Z".to_string(),

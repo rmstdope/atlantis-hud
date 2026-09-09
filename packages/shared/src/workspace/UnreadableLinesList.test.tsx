@@ -11,7 +11,7 @@ import { UnreadableCopyButton } from "./UnreadableLinesList";
  * decision - ah-nass), so the two-second "Copied" flash is proved in the smoke suite instead.
  */
 const entries: UnreadableLine[] = [
-  { kind: "unit", lineStart: 412, lineEnd: 412, text: "* Smiley (100)", lost: null }
+  { kind: "unit", lineStart: 412, lineEnd: 412, text: "* Smiley (100)", lost: null, unitRead: null }
 ];
 
 describe("UnreadableCopyButton", () => {

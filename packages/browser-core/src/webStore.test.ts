@@ -299,7 +299,8 @@ function aMage(): StoredAlliedMage {
       weight: null,
       capacity: null,
       movement: null,
-      structureId: null
+      structureId: null,
+      read: "complete"
     },
     sheetTurn: 23,
     receivedAt: "2026-08-01T09:00:00Z"
