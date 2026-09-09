@@ -48,7 +48,8 @@ export const ADVISORY_CHECK_CODES = [
   "tax-without-combat-ready-men",
   "magic-study-needs-a-lone-leader",
   "men-sent-into-a-mage",
-  "withdraw-not-a-basic-item"
+  "withdraw-not-a-basic-item",
+  "sail-between-land-hexes"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
