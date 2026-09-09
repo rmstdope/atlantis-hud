@@ -1215,7 +1215,14 @@ impl PhaseSilver {
         self.as_the_cast_opens().saturating_sub(overstated).max(0)
     }
 
-    /// [`Self::as_the_market_opens`], less the same figure. Unused until `ah-ud89.2`.
+    /// [`Self::as_the_market_opens`], less the same figure.
+    ///
+    /// **No caller, and none is coming** (`ah-ud89.4`). It was written for the SILVER column's
+    /// market `opening`, but `ah-6m7b.5.3` has since made that a `before_the_market_opens()` plus
+    /// the month's own `Sold` credit, clamped once at the end - so calling this here would clamp
+    /// before the sale is added back and drop it, silently regressing *"a sale funds the same
+    /// month's purchase"*. The column subtracts the overstatement inline instead. `ah-ud89` is
+    /// complete, so do not "restore" this as that call site.
     #[must_use]
     pub fn as_the_market_opens_on_share(&self, overstated: i64) -> i64 {
         self.as_the_market_opens().saturating_sub(overstated).max(0)

@@ -118,13 +118,9 @@ fn a_numbered_buy_is_sized_by_the_settled_share() {
     );
     assert_eq!(held, 10, "and the ITEMS surface says the same ten");
 
-    // The control: with nobody contending, the pool is this unit's alone and nothing moves.
-    let alone = report(
-        "plain (1,1) in Nowhere, 1000 peasants (orcs), $200.",
-        "50 grain [GRAI] at $10.",
-        &[BUYER, TAXER],
-    );
-    let (row, held) = both_surfaces(&alone, "unit 900\nTAX\nBUY 12 grain\n", "900", "GRAI");
+    // The control: the same report and the same buyer, with 901's `TAX` dropped from the script -
+    // so nobody contends, the pool is 900's alone, and this bead moves nothing.
+    let (row, held) = both_surfaces(&text, "unit 900\nTAX\nBUY 12 grain\n", "900", "GRAI");
 
     assert_eq!(
         row.income,

@@ -6578,13 +6578,20 @@ fn buy(
         // this line may spend it (`ah-omn7`).
         (Some(shared), Ok(silver)) => MarketFunds::Silver(
             silver
-                // The settled purse: what this unit will actually hold once its faction-mates'
-                // claim on the region's tax pool is settled against it (`ah-ud89`). The ledger's
-                // own balance stays hopeful - `credit_tax` still passes `PoolShare::Uncontended` -
-                // so every `not-enough-silver` finding reads exactly the balance it reads today.
-                .saturating_sub(standing.overstated_tax())
                 .saturating_add(overcharged)
                 .max(0)
+                // The settled purse: what this unit will actually hold once its faction-mates'
+                // claim on the region's tax pool is settled against it (`ah-ud89.4`). The ledger's
+                // own balance stays hopeful - `credit_tax` still passes `PoolShare::Uncontended` -
+                // so every `not-enough-silver` finding reads exactly the balance it reads today.
+                //
+                // Subtracted **after** the pre-existing clamp and **before** `shared`, which is
+                // `settle_buy_all`'s shape too (`ah-ud89.2`): a purse `rules/share` lends from
+                // *other* units cannot refill the hole this unit's own settlement just made, or
+                // one unit's two `BUY` forms would read one purse two ways. The clamp itself does
+                // not move, so a unit nobody contends with - overstatement `0` - is funded to the
+                // silver it is funded to today.
+                .saturating_sub(standing.overstated_tax())
                 .saturating_add(shared),
         ),
         _ => MarketFunds::Unmeasured,
