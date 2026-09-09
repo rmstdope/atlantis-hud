@@ -55,6 +55,14 @@ pub enum Arg {
     Name,
     /// Everything left on the line, whatever it is, including nothing at all.
     Tail,
+    /// Nothing at all: this form matches only where no argument is left.
+    ///
+    /// The counterpart to [`Arg::Tail`], and the way an order says that one of its forms
+    /// is the *bare* command rather than a fallback that swallows whatever follows. `SAIL`
+    /// is the only order that needs it: its two forms mean opposite things - sail the
+    /// fleet, or help crew it - so a route nobody can read must not quietly become the
+    /// other one.
+    Nothing,
     /// One or more of the argument this points at; every remaining token must match, or the whole
     /// form does. Used for the movement forms, where a bad route step is a mistake worth naming
     /// rather than a place to stop reading.
@@ -402,9 +410,11 @@ pub const GRAMMAR: &[Order] = &[
         forms: &[&[Arg::Number, Arg::Item]],
     },
     Order {
-        // "SAIL" with no direction is a form of its own, and the turn 71 template uses it.
+        // "SAIL" with no direction is a form of its own, and the turn 71 template uses it -
+        // but it is the *bare* command, not a fallback for a route nobody can read, so it is
+        // spelt `Arg::Nothing` rather than an empty form (`ah-twsa`).
         name: "SAIL",
-        forms: &[&[Arg::Rest(&Arg::MoveStep)], &[]],
+        forms: &[&[Arg::Rest(&Arg::MoveStep)], &[Arg::Nothing]],
     },
     Order {
         name: "SELL",
@@ -699,6 +709,7 @@ pub(super) fn keyword_entries(argument: &Arg) -> Vec<Keyword> {
         | Arg::Skill
         | Arg::Name
         | Arg::Tail
+        | Arg::Nothing
         | Arg::Rest(_)
         | Arg::Repeat(_) => Vec::new(),
     }
@@ -861,6 +872,19 @@ fn match_arg(
         return Ok(arguments.len());
     }
 
+    // The opposite: content only where nothing is left.
+    if matches!(argument, Arg::Nothing) {
+        return if at == arguments.len() {
+            Ok(at)
+        } else {
+            Err(Mismatch {
+                at,
+                expected: describe(argument),
+                missing: false,
+            })
+        };
+    }
+
     if let Arg::Rest(inner) = argument {
         let mut next = match_arg(inner, arguments, at, ruleset, unknown)?;
         while next < arguments.len() {
@@ -925,7 +949,7 @@ fn match_arg(
         // A skill or a name is whatever single token the player wrote; nothing here can tell a real
         // one from a typo, and guessing would reject spells this parser has never heard of.
         Arg::Skill | Arg::Name => 1,
-        Arg::Tail | Arg::Rest(_) | Arg::Repeat(_) => unreachable!("handled above"),
+        Arg::Tail | Arg::Nothing | Arg::Rest(_) | Arg::Repeat(_) => unreachable!("handled above"),
     };
 
     if consumed == 0 {
@@ -978,6 +1002,7 @@ fn describe(argument: &Arg) -> String {
         Arg::MoveStep => "a direction, IN, OUT or a structure number".to_string(),
         Arg::Name => "a name".to_string(),
         Arg::Tail => "anything".to_string(),
+        Arg::Nothing => "nothing at all".to_string(),
         Arg::Rest(inner) | Arg::Repeat(inner) => describe(inner),
     }
 }
@@ -1089,6 +1114,23 @@ mod tests {
         let mut tokens = lex_line(line).tokens;
         let command = tokens.remove(0);
         (command, tokens)
+    }
+
+    /// `Arg::Nothing` is `Arg::Tail`'s opposite: it matches only where nothing is left, so a form
+    /// spelt with it is the *bare* command rather than a fallback that swallows anything (`ah-twsa`).
+    #[test]
+    fn nothing_matches_only_an_empty_argument_list() {
+        let order = Order {
+            name: "PROBE",
+            forms: &[&[Arg::Nothing]],
+        };
+
+        let (_, args) = arguments("PROBE");
+        let matched = match_order(&order, &args, None).expect("a bare PROBE matches");
+        assert_eq!(matched.consumed, 0);
+
+        let (_, args) = arguments("PROBE x");
+        assert!(match_order(&order, &args, None).is_err());
     }
 
     // --- consumed prefixes and the best-success-versus-furthest-failure rule (ah-86vk) --------
