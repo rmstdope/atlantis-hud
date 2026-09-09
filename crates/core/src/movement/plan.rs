@@ -236,11 +236,7 @@ pub(crate) fn route_for_mode(
         return Err(RouteProblem::OceanNeedsShip { coordinate: origin });
     }
 
-    let travel = Traversal {
-        mode,
-        sail_rule: SailRule::Enforced,
-    };
-    let steps = match cheapest_path(map, ruleset, travel, origin, destination) {
+    let steps = match cheapest_path(map, ruleset, Journey::enforced(mode), origin, destination) {
         Ok(steps) => steps,
         Err(RouteProblem::NoKnownRoute) => {
             // "No known route" is a poor answer when the only thing in the way is water. Ask again
@@ -342,20 +338,30 @@ pub(crate) fn blocks(
 /// the rule is lifted is a route that rule is what stopped, and the first land-to-land step on it
 /// is the one worth naming. The same trick [`blocked_by_water`] plays with `MovementMode::Fly`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SailRule {
+pub(crate) enum SailRule {
     Enforced,
     Lifted,
 }
 
-/// How the search is to travel: the unit's movement mode, and whether the sailing rule's step test
-/// is being enforced while it does.
+/// How a journey is being made, as far as the search needs to know: the mode, and whether the
+/// sailing rule is being enforced for it.
 ///
-/// The two travel together because every place that asks about one asks about the other, and
-/// because [`step_into`] has as many arguments as it may already.
+/// One value rather than two parameters because [`step_into`] already carries seven arguments and
+/// the gate denies `clippy::too_many_arguments`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Traversal {
-    mode: MovementMode,
-    sail_rule: SailRule,
+pub(crate) struct Journey {
+    pub(crate) mode: MovementMode,
+    pub(crate) sail_rule: SailRule,
+}
+
+impl Journey {
+    /// This mode, under the game's own sailing rule - every journey but the probe.
+    pub(crate) fn enforced(mode: MovementMode) -> Self {
+        Self {
+            mode,
+            sail_rule: SailRule::Enforced,
+        }
+    }
 }
 
 /// Whether the sailing rule refuses this step outright, whatever the two hexes are like on their
@@ -422,10 +428,7 @@ fn blocked_by_water(
     let swimming = cheapest_path(
         map,
         ruleset,
-        Traversal {
-            mode: MovementMode::Fly,
-            sail_rule: SailRule::Enforced,
-        },
+        Journey::enforced(MovementMode::Fly),
         origin,
         destination,
     )
@@ -464,7 +467,7 @@ fn blocked_by_sailing_rule(
     let relaxed = cheapest_path(
         map,
         ruleset,
-        Traversal {
+        Journey {
             mode,
             sail_rule: SailRule::Lifted,
         },
@@ -587,7 +590,7 @@ type Standing = (String, String);
 fn cheapest_path(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    travel: Traversal,
+    journey: Journey,
     origin: Coordinate,
     destination: Coordinate,
 ) -> Result<Vec<RouteStep>, RouteProblem> {
@@ -633,7 +636,7 @@ fn cheapest_path(
             let Some(step) = step_into(
                 map,
                 ruleset,
-                travel,
+                journey,
                 here,
                 &standing.1,
                 direction,
@@ -713,13 +716,13 @@ struct Step {
 fn step_into(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    travel: Traversal,
+    journey: Journey,
     from: Coordinate,
     carried: &str,
     direction: Direction,
     into: Coordinate,
 ) -> Option<Step> {
-    let Traversal { mode, sail_rule } = travel;
+    let Journey { mode, sail_rule } = journey;
     if let Some(hex) = map.hex(into) {
         let (cost, road) = step_cost(map, ruleset, mode, from, direction, into)?;
         if sail_rule == SailRule::Enforced
