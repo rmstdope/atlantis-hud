@@ -817,7 +817,50 @@ pub(super) fn match_order(
         }
     }
 
-    best.ok_or_else(|| merge(furthest))
+    let mut matched = best.ok_or_else(|| merge(furthest))?;
+    if order.name == "CAST" {
+        if let Some(ruleset) = ruleset {
+            matched
+                .unknown_items
+                .extend(cast_unknown_material(arguments, ruleset));
+        }
+    }
+    Ok(matched)
+}
+
+/// The material a transmuting `CAST` names, when the catalogue has never heard of the word.
+///
+/// `CAST` is `[Skill, Tail]`, so nothing in `match_arg` can tell a spell argument from an item -
+/// the check is made here instead, where the spell itself is known, and only for a spell whose
+/// ruleset entry actually transmutes something. Every other `CAST` argument is a direction, a
+/// region, a unit number or a level, and must never be read as an item.
+fn cast_unknown_material(arguments: &[Token], ruleset: &Ruleset) -> Option<UnknownItem> {
+    let spell = arguments.first()?;
+    let skill = ruleset.find_skill(&spell.text)?;
+    skill
+        .cast
+        .as_ref()
+        .filter(|cost| !cost.transmute.is_empty())?;
+
+    // The one shape reader, shared with the preview, so the pane and the preview cannot disagree
+    // about which token is the material.
+    let tail: Vec<String> = arguments[1..]
+        .iter()
+        .map(|token| token.text.clone())
+        .collect();
+    let (_, material) = super::silver::transmute_argument(&tail)?;
+
+    // The tail it accepted is one or two tokens, and the material is the last of them.
+    let token = arguments.last()?;
+    debug_assert_eq!(token.text, material);
+    if ruleset.find_item(material).is_some() {
+        return None;
+    }
+    Some(UnknownItem {
+        text: token.text.clone(),
+        column_start: token.column_start,
+        column_end: token.column_end,
+    })
 }
 
 /// Folds the equally-close mismatches into one complaint naming every way forward.
