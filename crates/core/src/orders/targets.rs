@@ -49,6 +49,25 @@ pub fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>)
     ruleset.is_man(tag) && super::magic::is_mage(ruleset, skills)
 }
 
+/// Whether the game refuses this `BUY` of `tag` because the buyer is a mage.
+///
+/// `rules/magic`: "once a unit becomes a mage (by studying one of the Foundations), the unit
+/// number is fixed." The navigator's New Origins ruling (`ah-ndp9`) reads that as refusing a
+/// mage's recruiting outright, so the order buys nobody and spends nothing.
+///
+/// Deliberately a second function rather than a rename of [`mage_give_refused`]: the two refusals
+/// have different sources - the rules page states the GIVE half itself, the BUY half is a ruling -
+/// so they may legitimately diverge, and one call site each is cheaper than one function with two
+/// stories. Without a ruleset nothing can be said and the answer is `false`, the same "cannot say
+/// is not a refusal" reading its sibling takes.
+#[must_use]
+pub fn mage_recruit_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>) -> bool {
+    let Some(ruleset) = ruleset else {
+        return false;
+    };
+    ruleset.is_man(tag) && super::magic::is_mage(ruleset, skills)
+}
+
 /// What a `GIVE`'s target is, as far as the whole report can tell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GiveReach {
@@ -333,6 +352,29 @@ mod tests {
         );
         assert!(
             !mage_give_refused(&mage, "LEAD", None),
+            "without a ruleset nothing can be said"
+        );
+    }
+
+    /// The `BUY` refusal answers exactly as the `GIVE` one does: men, mages, and nothing at all
+    /// without a catalogue.
+    #[test]
+    fn mage_recruit_refusal_matches_the_give_refusal() {
+        let ruleset = ruleset();
+        assert!(
+            mage_recruit_refused(&[skill("force", "FORC")], "ORC", Some(&ruleset)),
+            "a mage may not recruit men"
+        );
+        assert!(
+            !mage_recruit_refused(&[skill("combat", "COMB")], "ORC", Some(&ruleset)),
+            "a mundane unit may recruit men"
+        );
+        assert!(
+            !mage_recruit_refused(&[skill("force", "FORC")], "SWOR", Some(&ruleset)),
+            "a mage may still buy equipment"
+        );
+        assert!(
+            !mage_recruit_refused(&[skill("force", "FORC")], "ORC", None),
             "without a ruleset nothing can be said"
         );
     }

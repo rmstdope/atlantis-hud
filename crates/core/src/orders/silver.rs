@@ -840,8 +840,9 @@ pub fn pool_wants(
 
 /// What this hex's market says about goods a unit is ordered to buy.
 ///
-/// The mirror of [`SaleAnswer`], and shorter: a market that does not sell the goods cannot price
-/// the purchase at all, so there is only one kind of no.
+/// The mirror of [`SaleAnswer`]. There are two kinds of no, and only the first is about the
+/// market: goods it does not sell cannot be priced at all, and goods it sells to a buyer the game
+/// refuses cost nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PurchaseAnswer {
     /// The market sells the goods: what each costs, and how many it has.
@@ -849,6 +850,10 @@ pub enum PurchaseAnswer {
     /// This market has no `For Sale` line for the goods, named as well as anything could name
     /// them - the catalogue's name where there is one, the order's own text otherwise.
     NotSold { name: String },
+    /// The market sells the goods and the buyer may not have them: the game refuses this unit's
+    /// recruiting, so the order buys nobody and costs nothing (`ah-ndp9`, `ah-jo6b.4`). Resolved
+    /// where the tag is, so the column and the ledger cannot answer one order two ways.
+    RecruitsRefused,
 }
 
 /// Which side of the market an order is on, for [`Lookups::market_share`]. Buying and selling the
@@ -2229,6 +2234,12 @@ pub fn forecast_unit(
                     // second one (`ah-6m7b.2`).
                     Amount::All { .. } => {}
                 },
+                // The game refuses the recruiting, so no silver leaves and there is nothing to
+                // doubt: the ledger returns before charging (`semantics::buy`), and the
+                // `MEN_SENT_INTO_A_MAGE` finding already says why. Before the `Amount` split, so a
+                // `BUY ALL` is refused too - `buy` refuses it before the deferral, so
+                // `settle_buy_all` never sees it and `facts.settled_buy_all()` carries nothing.
+                PurchaseAnswer::RecruitsRefused => {}
                 PurchaseAnswer::NotSold { name } => {
                     if expense_doubt.is_none() {
                         expense_doubt = Some(SilverDoubt::MarketDoesNotSell);
@@ -9055,6 +9066,37 @@ mod tests {
         assert_eq!(unit.at_month_end, Some(1));
         assert_eq!(unit.short_for_orders, Some(35));
         assert_eq!(unit.short_on, Some(SilverSpender::Buy));
+    }
+
+    /// A market selling men to a buyer the game refuses to let recruit.
+    fn refuses_recruits(_item: &str) -> PurchaseAnswer {
+        PurchaseAnswer::RecruitsRefused
+    }
+
+    /// The game refuses a mage's recruiting (`ah-ndp9`), so the column charges nothing and doubts
+    /// nothing - the refusal is certain, and the ledger's own finding already says why.
+    #[test]
+    fn a_refused_recruitment_is_not_priced() {
+        let intents = vec![placed(Intent::Buy {
+            amount: Amount::Exact(5),
+            item: "orcs".to_string(),
+        })];
+        let unit = spending(
+            1000,
+            &intents,
+            RegionWages::default(),
+            &refuses_recruits,
+            None,
+        );
+        assert_eq!(unit.expense, Some(0));
+        assert_eq!(unit.at_month_end, Some(1000));
+        assert_eq!(unit.wanted_for_orders, Some(0));
+        assert_eq!(unit.doubt, None);
+        assert_eq!(unit.short_on, None);
+        assert!(!unit
+            .changes
+            .iter()
+            .any(|change| change.cause == SilverChangeCause::Bought));
     }
 
     #[test]

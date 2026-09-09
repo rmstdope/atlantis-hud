@@ -53,8 +53,8 @@ use crate::orders::silver::{
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
-    give_endpoint, give_outcome, mage_give_refused, party_label, party_unit_id, GiveEndpoint,
-    GiveOutcome, GiveReach, GiveRefusal,
+    give_endpoint, give_outcome, mage_give_refused, mage_recruit_refused, party_label,
+    party_unit_id, GiveEndpoint, GiveOutcome, GiveReach, GiveRefusal,
 };
 use crate::orders::transfers::{in_report_order, PendingTransfer};
 use crate::report::composition;
@@ -1526,6 +1526,17 @@ fn forecast_hex(
         // named as well as anything can name them, for the sentence the hover shows.
         let purchase =
             |item: &str| match market_answer(&hex.region.for_sale, item, hex, ordered, ruleset) {
+                // The buyer's own skills, as the report prints them - `actor.unit.skills` is what
+                // the ledger's `buy` reads, and the two surfaces must read the same list.
+                MarketAnswer::Offered(line)
+                    if mage_recruit_refused(
+                        &ordered.unit.skills,
+                        &line.tag.to_ascii_uppercase(),
+                        ruleset,
+                    ) =>
+                {
+                    PurchaseAnswer::RecruitsRefused
+                }
                 MarketAnswer::Offered(line) => PurchaseAnswer::ForSale {
                     price: line.price,
                     market_has: line.amount,
@@ -6090,14 +6101,12 @@ fn buy(
     // mage's recruiting too (`ah-ndp9`). Refused before anything is charged, credited or recorded:
     // the server refuses the order, so no silver leaves. Before the `BUY ALL` deferral as well, so
     // no `BUY ALL` slips past into `settle_buy_all`.
-    if let Some(ruleset) = ruleset {
-        if ruleset.is_man(&tag) && magic::is_mage(ruleset, &actor.unit.skills) {
-            ledger.refused_recruits.push(RefusedRecruit {
-                unit_id: who.clone(),
-                line: placed.line,
-            });
-            return;
-        }
+    if mage_recruit_refused(&actor.unit.skills, &tag, ruleset) {
+        ledger.refused_recruits.push(RefusedRecruit {
+            unit_id: who.clone(),
+            line: placed.line,
+        });
+        return;
     }
 
     let Amount::Exact(count) = amount else {
