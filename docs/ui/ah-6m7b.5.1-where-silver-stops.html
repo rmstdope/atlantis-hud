@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Where silver stops (ah-6m7b.5.1)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:22px; margin-top:16px; align-items:start; }
+  .col > h3 { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); margin-bottom:8px; }
+  .col.pick > h3 { color:var(--ok); }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); margin-bottom:14px; }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:6px; }
+  .il { font-size:12px; color:var(--ink-soft); padding:3px 0; border-bottom:1px solid var(--edge-soft); }
+  .il:last-child { border-bottom:0; }
+  .il b { color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; }
+  .il .s { display:block; color:var(--ink-dim); font-size:11.5px; font-style:italic; margin-top:2px; }
+  .il.newline { background:rgba(79,183,131,.07); border-left:2px solid var(--ok); padding-left:7px; }
+  .il.badline { background:rgba(217,112,112,.08); border-left:2px solid var(--danger); padding-left:7px; }
+  .bad { color:var(--danger); } .new { color:var(--ok); }
+  .gone { color:var(--ink-dim); text-decoration:line-through; }
+  .cell { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12.5px; background:var(--panel); border:1px solid var(--edge); border-radius:4px; padding:7px 10px; color:var(--ink); }
+  .cell.pred { border-color:var(--select); box-shadow:inset 2px 0 0 var(--select); }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:10px; } .cap b { color:var(--ink); }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:10px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-6m7b.5.1</span> — where does silver stop?</h1>
+  <p>You decided on 2026-09-09 (<strong>C1</strong>): silver leaves the <strong>ITEMS column</strong>,
+  cell and popup alike. Planning that found the ITEMS column is not the only preview surface that
+  reads silver out of the item list. Two more do, and the second child of this family
+  (<code>ah-6m7b.5.2</code>) will write silver into that list for <em>every</em> own unit — a tax, a
+  wage, a study fee, a cast fee — where today only a GIVE, a TAKE and a TRANSPORT do.</p>
+  <blockquote><strong style="color:#4fb783">Chosen 2026-09-09: option W</strong> — silver stops being an item of the
+  preview at every surface. Only the SILVER column and its popup answer for money.</blockquote>
+  <blockquote>So a decision that stops at the ITEMS column does not stay quiet. It makes the next
+  child loud somewhere else.</blockquote>
+  <p>The month below is one unit: <code>TAX</code>, <code>@WORK</code>, <code>STUDY COMB</code>,
+  <code>BUY 2 grain</code>, <code>GIVE 901 100 SILV</code>. It holds 2 lead, 12 grain and 1000
+  silver, and weighs nothing extra for the silver — <code>data/items</code>: <em>silver [SILV],
+  weight 0</em>.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>Surface 1</em> the ITEMS cell and its popup — settled by C1, shown for reference</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Today</h3>
+      <div class="cell pred">2 LEAD, 900 SILV, 12 GRAI</div>
+      <div class="tip" style="margin-top:10px">
+        <div class="sect">Items</div>
+        <div class="il"><b>silver SILV</b> <span style="float:right">900</span><span class="s">silver: gave 100 to Ferry (901).</span></div>
+        <div class="il"><b>grain GRAI</b> <span style="float:right">12</span></div>
+        <div class="il"><b>lead LEAD</b> <span style="float:right">2</span></div>
+      </div>
+      <p class="cap">The figure moved by the gift and by nothing else — not by the 250 taxed, the
+      190 worked or the study fee.</p>
+    </div>
+    <div class="col pick">
+      <h3>After this bead (C1, already agreed)</h3>
+      <div class="cell">2 LEAD, 12 GRAI</div>
+      <div class="tip" style="margin-top:10px">
+        <div class="sect">Items</div>
+        <div class="il"><b>grain GRAI</b> <span style="float:right">12</span></div>
+        <div class="il"><b>lead LEAD</b> <span style="float:right">2</span></div>
+      </div>
+      <p class="cap">No silver line, no silver sentence, and the cell is <b>no longer marked as
+      changed</b> when the only thing the month moved was silver.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Surface 2</em> the Movement popup — <b>the open question</b></h2>
+  <p>The Movement popup explains what the unit carries and how fast it goes, and ends with one
+  sentence per item the month moved. It draws that list from the same record the ITEMS popup does,
+  so it names silver too.</p>
+  <div class="cols">
+    <div class="col">
+      <h3>Option N — narrow: the Movement popup keeps silver</h3>
+      <div class="tip">
+        <div class="sect">Movement</div>
+        <div class="il"><b>move</b> <span style="float:right">walking</span></div>
+        <div class="il"><b>weight</b> <span style="float:right">210</span></div>
+        <div class="il"><b>walk</b> <span style="float:right">300</span></div>
+        <div class="il badline"><span class="s" style="font-style:normal">Its load changed this month, but not the mode it travels in.</span></div>
+        <div class="il badline"><span class="s" style="font-style:normal"><span class="bad">Silver: gave 100 to Ferry (901).</span></span></div>
+        <div class="il"><span class="s" style="font-style:normal">Grain: bought 2 at 12 silver each.</span></div>
+      </div>
+      <p class="cap">Today's behaviour, kept. Note the first sentence is already untrue for a
+      silver-only month: silver weighs 0, so the load did not change.</p>
+      <div class="tip" style="border-color:var(--danger)">
+        <div class="sect" style="color:var(--danger)">Option N, once ah-6m7b.5.2 lands</div>
+        <div class="il badline"><span class="s" style="font-style:normal"><span class="bad">Silver: taxed 250, worked 190, gave 100 to Ferry (901), spent 24 on study.</span></span></div>
+        <div class="il"><span class="s" style="font-style:normal">Grain: bought 2 at 12 silver each.</span></div>
+      </div>
+      <p class="cap">On <b>nearly every own unit</b>, because the next child records the tax and the
+      wage as movements. Nothing about how the unit travels has changed.</p>
+    </div>
+    <div class="col pick">
+      <h3>Option W — wide: silver stops here too</h3>
+      <div class="tip">
+        <div class="sect">Movement</div>
+        <div class="il"><b>move</b> <span style="float:right">walking</span></div>
+        <div class="il"><b>weight</b> <span style="float:right">210</span></div>
+        <div class="il"><b>walk</b> <span style="float:right">300</span></div>
+        <div class="il"><span class="s" style="font-style:normal">Grain: bought 2 at 12 silver each.</span></div>
+      </div>
+      <p class="cap">The silver sentence goes, and with it the false <em>"Its load changed"</em> line
+      on a month whose only movement was money.</p>
+      <div class="tip" style="border-color:var(--ok)">
+        <div class="sect" style="color:var(--ok)">Option W, once ah-6m7b.5.2 lands</div>
+        <div class="il"><span class="s" style="font-style:normal">Grain: bought 2 at 12 silver each.</span></div>
+      </div>
+      <p class="cap">Unchanged. The next child is invisible here, which is what the family promised.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Surface 3</em> the unit hover card — <b>the same question, second half</b></h2>
+  <p>Hovering a unit's name gives a card with a Silver section and, below it, everything the unit
+  holds. Silver appears in both.</p>
+  <div class="cols">
+    <div class="col">
+      <h3>Option N — narrow: the card keeps its silver row</h3>
+      <div class="tip">
+        <div class="hd">Ferrymaster (902)</div>
+        <div class="sect">Silver</div>
+        <div class="il"><b>held</b> <span style="float:right">1,000</span></div>
+        <div class="il"><b>in</b> <span style="float:right">+440</span></div>
+        <div class="il"><b>out</b> <span style="float:right">&minus;124</span></div>
+        <div class="il"><b>left</b> <span style="float:right">1,316</span></div>
+        <div class="sect" style="margin-top:8px">Items</div>
+        <div class="il badline"><b>silver SILV</b> <span style="float:right"><span class="bad">900</span></span></div>
+        <div class="il"><b>grain GRAI</b> <span style="float:right">12</span></div>
+        <div class="il"><b>lead LEAD</b> <span style="float:right">2</span></div>
+      </div>
+      <p class="cap">Two silver figures on one card, 900 and 1,316, governed by different rules.
+      After the next child the 900 becomes 1,316 &mdash; <b>on nearly every own unit</b>, which is a
+      figure moving under you for a change that was meant to be invisible.</p>
+    </div>
+    <div class="col pick">
+      <h3>Option W — wide: one silver figure per card</h3>
+      <div class="tip">
+        <div class="hd">Ferrymaster (902)</div>
+        <div class="sect">Silver</div>
+        <div class="il"><b>held</b> <span style="float:right">1,000</span></div>
+        <div class="il"><b>in</b> <span style="float:right">+440</span></div>
+        <div class="il"><b>out</b> <span style="float:right">&minus;124</span></div>
+        <div class="il"><b>left</b> <span style="float:right">1,316</span></div>
+        <div class="sect" style="margin-top:8px">Items</div>
+        <div class="il"><b>grain GRAI</b> <span style="float:right">12</span></div>
+        <div class="il"><b>lead LEAD</b> <span style="float:right">2</span></div>
+      </div>
+      <p class="cap">The Silver section answers for money; the Items section answers for goods. The
+      card can no longer contradict itself, and the next child cannot move anything on it.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>What each costs</em></h2>
+  <table class="q">
+    <tr><th>&nbsp;</th><th>Option N — narrow</th><th>Option W — wide</th></tr>
+    <tr><td class="k">What changes</td><td>The ITEMS column only, exactly as C1 says.</td><td>Every preview surface stops treating silver as an item; only the SILVER column and its popup answer for money.</td></tr>
+    <tr><td class="k">Where it is done</td><td>Two filters in the ITEMS readers, TypeScript only.</td><td>One seam in the core: the preview stops carrying silver as an item at all.</td></tr>
+    <tr><td class="k">Losses</td><td>None today.</td><td>You can no longer read a unit's silver holding off its hover card's item list — the Silver section's <code>held</code> row says it instead.</td></tr>
+    <tr><td class="k">After ah-6m7b.5.2</td><td>Silver sentences appear in the Movement popup, and the card's item silver moves, on nearly every own unit.</td><td>Nothing moves. The next child is invisible, as planned.</td></tr>
+    <tr><td class="k">If you dislike it later</td><td>Widening later is another bead, after the noise has shipped.</td><td>Narrowing back is a filter removed.</td></tr>
+  </table>
+</section>
+</main>
+</body>
+</html>
