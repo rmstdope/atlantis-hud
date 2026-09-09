@@ -466,6 +466,32 @@ pub struct UnitSilver {
     pub changes: Vec<SilverChange>,
 }
 
+/// One `BUY ALL` as [`super::semantics`]'s ledger settled it.
+///
+/// The seam that carries a settled market line into this module, exactly as
+/// [`LateFacts::shared_materials`] carries the settled production materials. `semantics` fills it
+/// and everything here only reads it, so one order cannot be priced two ways (`ah-6m7b.2`).
+///
+/// Not [`BuyAllShown`], which is the serialised payload: this carries what the ledger *decided*
+/// (including the silver figure it decided it from), and `forecast_unit` turns it into the shown
+/// row by naming the counts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettledBuyAll {
+    /// The document line the order was written on.
+    pub line: i64,
+    /// The canonical tag of the goods.
+    pub tag: String,
+    /// The market's price per item.
+    pub price: i64,
+    /// What the line actually cost - `Priced::spends` as `price_buy_all` returned it.
+    pub spends: i64,
+    /// What the unit could spend when the line was reached: its market-phase balance, plus what an
+    /// over-charged bounded line left it, plus what `rules/share` lends it.
+    pub silver_available: i64,
+    /// What `price_buy_all` decided: the count, the caps, and which one bit.
+    pub plan: BuyAllPlan,
+}
+
 /// One `BUY ALL` on one unit, as the ITEMS and SILVER hovers say it.
 ///
 /// A `Vec` on [`UnitSilver`] rather than a set of flat fields: a unit may write several `BUY ALL`
@@ -1085,6 +1111,22 @@ impl PhaseSilver {
         self.after[phases::StatePhase::Tax as usize].max(0)
     }
 
+    /// What a market line may spend, clamped at zero.
+    ///
+    /// `rules/sequenceofevents` settles the instant orders, *Give orders*, *Tax orders* and
+    /// *"Spells are CAST"* before *"Market orders"*, so this is the balance the Cast phase leaves.
+    /// The slot named `Market` is **not** it: once the ledger is complete that slot already
+    /// carries every one of this unit's own market charges, and `semantics::buy` reads it only
+    /// because it reads it line by line as it charges. The caller draws its own earlier lines off
+    /// instead.
+    ///
+    /// A unit already overdrawn as the market opens reads `0` here and buys nothing, which is what
+    /// `price_purchase` answers for the ledger's negative figure too.
+    #[must_use]
+    pub fn as_the_market_opens(&self) -> i64 {
+        self.after[phases::StatePhase::Cast as usize].max(0)
+    }
+
     /// What a manufacturing `PRODUCE` may spend, clamped at zero: the market, WITHDRAW, movement
     /// and STUDY have all run and no PRODUCE has been charged. The silver twin of the picture
     /// [`PhaseFacts::production`] already carries in items, and the same slot
@@ -1109,6 +1151,14 @@ pub struct PhaseFacts<'a> {
     pub production: LateFacts<'a>,
     /// What maintenance, WORK and ENTERTAIN see.
     pub maintenance: LateFacts<'a>,
+    /// This unit's `BUY ALL` lines as the ledger settled them, in document order. Empty for a
+    /// caller with no ledger to read them from, and for a unit `settle_buy_all` skipped.
+    ///
+    /// Its skip is `ledger.doubted`, which is **not** the column's own `income_doubt` /
+    /// `expense_doubt` guard: a unit doubted only by the ledger's gift tracking shows no `BUY ALL`
+    /// sentence here, and the line is reported to the player through `ledger.uncounted` instead
+    /// (`ah-6m7b.2`).
+    pub buy_all: &'a [SettledBuyAll],
     /// The same unit's silver at every phase, or `None` for a caller that has no ledger to read
     /// one from - which is every test that builds its own `PhaseFacts`. The two caps in
     /// [`forecast_unit`] then fall back to this walk's own running total, which is what they
@@ -1126,6 +1176,7 @@ impl<'a> PhaseFacts<'a> {
             production: facts,
             maintenance: facts,
             silver: None,
+            buy_all: &[],
         }
     }
 }
@@ -1157,6 +1208,12 @@ impl<'a> UnitFacts<'a> {
     #[must_use]
     pub fn phase_silver(&self) -> Option<PhaseSilver> {
         self.phases.and_then(|phases| phases.silver)
+    }
+
+    /// The `BUY ALL` lines the ledger settled for this unit. Empty where there is no ledger.
+    #[must_use]
+    pub fn settled_buy_all(&self) -> &'a [SettledBuyAll] {
+        self.phases.map_or(&[][..], |phases| phases.buy_all)
     }
 
     /// The early picture, for a caller that has no ledger to read a late one from.
@@ -1641,25 +1698,12 @@ pub fn forecast_unit(
     //
     // Placing it before the loop makes a tax doubt win over a later order's, whichever line the
     // player typed first. Deliberate, and tested.
-    // How much more a contended tax would earn if it arrived in full. The bounded `BUY` cap reads
-    // the *hopeful* purse, as the ledger does, while the money columns keep the settled figure
-    // (`ah-omn7`, Q2). `0` for a unit that does not tax, and for one nobody contends with.
-    let mut hopeful_tax = 0i64;
     if taxes(unit_flags, intents) {
         let men = taxing_men(&facts, ruleset);
         // The settlement is what the column shows: this unit's actual take once its faction-mates
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].
         let priced = price_tax(men, region.tax_base, region.pillaged, shares.tax);
-        hopeful_tax = price_tax(
-            men,
-            region.tax_base,
-            region.pillaged,
-            PoolShare::Uncontended,
-        )
-        .earns
-        .saturating_sub(priced.earns)
-        .max(0);
         income = income.saturating_add(priced.earns);
         income_doubt = income_doubt.or(priced.doubt);
         // `None` is the taxing flag doing it, which `taxes_by_flag` already reports.
@@ -2106,7 +2150,10 @@ pub fn forecast_unit(
                 cast = cast.or(plan);
             }
             Intent::Buy { amount, item } => match (lookups.purchase)(item) {
-                PurchaseAnswer::ForSale { price, market_has } => match amount {
+                PurchaseAnswer::ForSale {
+                    price,
+                    market_has: _,
+                } => match amount {
                     Amount::Exact(count) => {
                         let tag = (lookups.item_tag)(item);
                         let already = tag
@@ -2146,20 +2193,11 @@ pub fn forecast_unit(
                             *bought.entry(tag).or_default() += asked;
                         }
                     }
-                    // What a unit can afford depends on everything else this month does, so this
-                    // waits for the running total below.
-                    // The share is captured here, where the `Lookups` are, rather than in the
-                    // deferred pass - which runs after the settlement and knows nothing of it.
-                    // A `BUY ALL` whose item resolves to no tag cannot reach here: the `purchase`
-                    // closure would have answered `NotSold` and the arm above doubts before the
-                    // amount is read.
-                    Amount::All { .. } => deferred.push(Deferred::BuyAll {
-                        line: placed.line as i64,
-                        price,
-                        share: (lookups.market_share)(item, MarketSide::Buying),
-                        market_has,
-                        tag: (lookups.item_tag)(item).unwrap_or_default(),
-                    }),
+                    // Nothing to price here: `semantics::settle_buy_all` sizes a `BUY ALL` from
+                    // the ledger's own market-phase silver, and the market block below reports
+                    // that answer through [`UnitFacts::settled_buy_all`] rather than deriving a
+                    // second one (`ah-6m7b.2`).
+                    Amount::All { .. } => {}
                 },
                 PurchaseAnswer::NotSold { name } => {
                     if expense_doubt.is_none() {
@@ -2361,18 +2399,24 @@ pub fn forecast_unit(
         // the turn leaves it (`ah-m7su`) - so `expense` here carries the exact gifts *and* the
         // deferred ones, and what is left is what the market opens on. A study and a manufacture
         // are charged in the turn's last block and neither makes the gift smaller (`ah-a5ci`).
-        let mut running = held.saturating_add(give_phase_income).saturating_sub(
-            expense
-                .saturating_sub(cast_expense)
-                .saturating_sub(month_long_expense),
-        );
+        //
         // Everything the Give phase could not spend is in the purse by the time the market opens:
         // TAX and PILLAGE settle in the tax phase, both before "SELL orders are processed". A cast
         // settles in *Instant Magic*, after the tax phase and still before the market, and has
         // already been paid for, so its cost comes off here and not above. `late` stays out -
         // wages earned this month cannot pay for anything this month's orders buy (`ah-uwa3`) -
         // and so does `month_long_expense`, which the market never reaches (`ah-a5ci`).
-        running = running
+        //
+        // Read once, by `opening` below, and never drawn down: since `ah-6m7b.2` the loops keep
+        // their own accumulator and this is the `phases: None` fallback alone. `ah-6m7b.4` deletes
+        // it outright when `income` and `expense` become projections.
+        let running = held
+            .saturating_add(give_phase_income)
+            .saturating_sub(
+                expense
+                    .saturating_sub(cast_expense)
+                    .saturating_sub(month_long_expense),
+            )
             .saturating_add(income)
             .saturating_sub(give_phase_income)
             .saturating_sub(late)
@@ -2385,15 +2429,18 @@ pub fn forecast_unit(
         // one - the ledger's reading, not the column's settled `shares.tax` - so both surfaces
         // settle one quantity; the money columns keep the settled figure (`ah-omn7`).
         market_expense = 0;
-        // `rules/share` funds a `BUY` from a faction-mate's purse, undecremented by any other
-        // buyer in the hex - the ledger's `MarketPurse` snapshot, read here so both surfaces
-        // settle one quantity (`ah-szye`).
-        let shared_adds = match shared_market {
-            SharedMarket::Adds(adds) => adds,
-            SharedMarket::Unmeasured => 0,
+        // What the market opens on. The ledger's own figure wherever there is a ledger, so the two
+        // surfaces cannot answer one `BUY` differently (`ah-6m7b.2`); the running total this walk
+        // has always kept where there is none, which is every caller with `phases: None`.
+        let opening = match facts.phase_silver() {
+            Some(silver) => silver.as_the_market_opens(),
+            None => running,
         };
-        let mut funds = running.saturating_add(hopeful_tax);
+        // This unit's own earlier market lines, drawn off as `semantics::buy` draws them out of
+        // the `StatePhase::Market` slot line by line.
+        let mut market_spent = 0i64;
         for buy in &exact_buys {
+            let funds = opening.saturating_sub(market_spent).max(0);
             let line = price_purchase(
                 buy.count,
                 buy.price,
@@ -2412,58 +2459,37 @@ pub fn forecast_unit(
                 None,
             );
             market_expense = market_expense.saturating_add(line.spends);
-            funds = funds.saturating_sub(line.spends);
-            running = running.saturating_sub(line.spends);
+            market_spent = market_spent.saturating_add(line.spends);
         }
 
-        for spend in &deferred {
-            let Deferred::BuyAll {
-                line,
-                price,
-                share,
-                market_has,
-                tag,
-            } = spend
-            else {
-                continue;
-            };
-            let already = bought.get(tag).copied().unwrap_or(0);
-            // Unlike the exact arm, the running total comes off the fallback too:
-            // `market_has` is a real quantity of goods, so a unit that has already bought
-            // the line cannot buy it again whether a share was settled or not.
-            let available = share.unwrap_or(*market_has);
-            // `rules/share` funds a `BUY ALL` as it funds a bounded one, and an untrusted purse
-            // adds nothing rather than lifting the cap: a `BUY ALL` has always been silver-capped
-            // (`ah-szye`).
-            let buy_all_silver = running.saturating_add(shared_adds);
-            let (priced, plan) =
-                price_buy_all(buy_all_silver, *price, available, *market_has, already);
+        // Every `BUY ALL` as the ledger settled it. Nothing is priced here: `settle_buy_all` has
+        // already run `price_buy_all` over the ledger's own market-phase silver, and this arm only
+        // names the counts (`ah-6m7b.2`).
+        for settled in facts.settled_buy_all() {
             buy_all.push(BuyAllShown {
-                bought_named: (lookups.counted_or_none)(plan.bought, tag),
-                market_named: (lookups.counted_or_none)(plan.market_has, tag),
-                bought: plan.bought,
-                affordable: plan.affordable,
-                available: plan.available,
-                market_has: plan.market_has,
-                already_bought: plan.already_bought,
-                silver_available: buy_all_silver,
-                price: *price,
-                capped_by: plan.capped_by,
+                bought_named: (lookups.counted_or_none)(settled.plan.bought, &settled.tag),
+                market_named: (lookups.counted_or_none)(settled.plan.market_has, &settled.tag),
+                bought: settled.plan.bought,
+                affordable: settled.plan.affordable,
+                available: settled.plan.available,
+                market_has: settled.plan.market_has,
+                already_bought: settled.plan.already_bought,
+                silver_available: settled.silver_available,
+                price: settled.price,
+                capped_by: settled.plan.capped_by,
             });
-            *bought.entry(tag.clone()).or_default() += plan.bought;
-            if priced.spends > 0 {
+            if settled.spends > 0 {
                 spent_on = spent_on.or(Some(SilverSpender::Buy));
             }
             record(
                 &mut moves,
                 phases::StatePhase::Market,
-                -priced.spends,
+                -settled.spends,
                 SilverChangeCause::Bought,
-                Some(*line),
+                Some(settled.line),
                 None,
             );
-            expense = expense.saturating_add(priced.spends);
-            running = running.saturating_sub(priced.spends);
+            expense = expense.saturating_add(settled.spends);
         }
     }
 
@@ -2584,21 +2610,6 @@ pub fn forecast_unit(
 /// orders* before *Market orders*, so a `GIVE ... ALL SILV` settles before any `BUY` (`ah-npab`).
 #[derive(Debug, Clone)]
 enum Deferred {
-    /// `BUY ALL`: as many as the unit can afford, and no more than its settled share of the line.
-    BuyAll {
-        /// The document line, for the ledger.
-        line: i64,
-        price: i64,
-        /// This unit's settled share of the line. `None` where nothing was settled, and the
-        /// deferred pass then falls back to the whole line, exactly as this arm did inline before
-        /// (`ah-t2pn.3`).
-        share: Option<i64>,
-        /// The whole line.
-        market_has: i64,
-        /// The canonical tag, or empty for one nothing could identify - unreachable in practice,
-        /// see the call site.
-        tag: String,
-    },
     /// `GIVE ... ALL SILV`, less any `EXCEPT` reserve.
     GiveAllSilver {
         except: i64,
@@ -2616,9 +2627,6 @@ enum Deferred {
 /// `purse` is what the unit holds when GIVE runs. Returns the total given away and the part of it
 /// that went to nobody; the caller adds the first to `expense` and the second to `given_to_nobody`,
 /// which is how this stays a pure function of the block (`ah-m7su`).
-///
-/// A `Deferred::BuyAll` cannot be in the slice yet - the market runs after the Give phase - but is
-/// skipped rather than matched on, so the function stays correct if it ever is.
 fn settle_give_all_silver(deferred: &[Deferred], purse: i64) -> (i64, i64, Vec<GaveAllSilver>) {
     let mut running = purse;
     let mut given = 0i64;
@@ -2630,10 +2638,7 @@ fn settle_give_all_silver(deferred: &[Deferred], purse: i64) -> (i64, i64, Vec<G
             to_nobody: discarded,
             line,
             other,
-        } = spend
-        else {
-            continue;
-        };
+        } = spend;
         let spent = running.saturating_sub(*except).max(0);
         if *discarded {
             to_nobody = to_nobody.saturating_add(spent);
@@ -6909,8 +6914,9 @@ mod tests {
                 production: picture(5),
                 maintenance: picture(7),
                 // No ledger behind this literal, so the caps keep the running total they always
-                // read (`ah-6m7b.1`).
+                // read (`ah-6m7b.1`) and no `BUY ALL` is settled for it (`ah-6m7b.2`).
                 silver: None,
+                buy_all: &[],
             }),
             ..facts(9, &intents, &receipts)
         };
@@ -7793,42 +7799,6 @@ mod tests {
         assert_eq!(unit.at_month_end, None);
     }
 
-    /// Pillaging resolves before the market, so its silver funds this month's orders - which is
-    /// what `BUY ALL` reads (`ah-1wcw.3`, `ah-uwa3`). This is the test that fails if the credit is
-    /// ever routed through `late_income`.
-    #[test]
-    fn a_pillaging_unit_can_afford_what_it_pillaged_for() {
-        let intents = vec![
-            placed(Intent::Pillage),
-            placed(Intent::Buy {
-                amount: Amount::All { except: 0 },
-                item: "grain".to_string(),
-            }),
-        ];
-        let receipts = Receipts::default();
-        let skills = [combat_one()];
-        let ruleset = ruleset();
-        let unit = forecast_unit(
-            UnitFacts {
-                skills: &skills,
-                ..facts(pillage_threshold(2500), &intents, &receipts)
-            },
-            pillageable(2500),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            Lookups {
-                purchase: &sells(12, 40),
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            Some(&ruleset),
-        );
-        assert_eq!(unit.income, Some(5000));
-        assert_eq!(unit.expense, Some(480));
-        assert_eq!(unit.at_month_end, Some(4520));
-    }
-
     /// The reported defect (`ah-1ad6.2`): *The Lost One (683)*, one leader in a hex whose tax base
     /// is 8,963, was credited the full 17,926. The pillagers need 90 combat ready men between them.
     #[test]
@@ -8409,45 +8379,6 @@ mod tests {
         }
     }
 
-    /// The market opens after "Spells are CAST", so a cast's cost *does* come off what a `BUY ALL`
-    /// can afford - the half of the phase order that must not move (`ah-a5ci`).
-    #[test]
-    fn a_cast_still_shrinks_what_a_buy_all_can_afford() {
-        let ruleset = ruleset();
-        let casters = [skill("CRPA", 1)];
-        let intents = [
-            placed(Intent::Cast {
-                spell: "Create_Amulet_Of_Protection".to_string(),
-                arguments: Vec::new(),
-            }),
-            placed(Intent::Buy {
-                amount: Amount::All { except: 0 },
-                item: "grain".to_string(),
-            }),
-        ];
-        let receipts = Receipts::default();
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 400,
-                skills: &casters,
-                ..facts(1, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            Lookups {
-                purchase: &sells(20, 20),
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            Some(&ruleset),
-        );
-        assert_eq!(unit.buy_all[0].bought, 10);
-        assert_eq!(unit.expense, Some(400));
-        assert_eq!(unit.at_month_end, Some(0));
-    }
-
     /// `rules/sequenceofevents` runs *Give orders* second and "STUDY orders are processed" in the
     /// last block of the turn, so a `GIVE ... ALL SILV` hands over the whole purse and the study is
     /// then unpaid for - which is what the shortfall says (`ah-a5ci`).
@@ -8487,32 +8418,6 @@ mod tests {
             assert_eq!(unit.short_on, Some(SilverSpender::Study));
             assert_eq!(unit.doubt, None);
         }
-    }
-
-    /// The market opens before "STUDY orders are processed", so a study's fee does not shrink what
-    /// a `BUY ALL` can afford (`ah-a5ci`).
-    #[test]
-    fn a_study_does_not_shrink_what_a_buy_all_can_afford() {
-        let ruleset = ruleset();
-        let intents = [
-            placed(Intent::Study {
-                skill: "combat".to_string(),
-            }),
-            placed(Intent::Buy {
-                amount: Amount::All { except: 0 },
-                item: "grain".to_string(),
-            }),
-        ];
-        let unit = spending(
-            100,
-            &intents,
-            RegionWages::default(),
-            &sells(20, 20),
-            Some(&ruleset),
-        );
-        assert_eq!(unit.buy_all[0].bought, 5);
-        assert_eq!(unit.expense, Some(110));
-        assert_eq!(unit.at_month_end, Some(-10));
     }
 
     /// The same for a bounded `BUY`: its affordability cap is measured before the study is charged
@@ -9498,45 +9403,6 @@ mod tests {
         assert_eq!(unit.short_on, Some(SilverSpender::Buy));
     }
 
-    /// The quantity is capped against the *hopeful* purse - a contended tax assumed to arrive in
-    /// full - while the money columns keep the settled figure (`ah-omn7`, Q2).
-    #[test]
-    fn a_taxed_bounded_buy_is_funded_by_the_uncontended_tax() {
-        let intents = vec![
-            placed(Intent::Tax),
-            placed(Intent::Buy {
-                amount: Amount::Exact(4),
-                item: "sword".to_string(),
-            }),
-        ];
-        let receipts = Receipts::default();
-        let purchase = sells(100, 40);
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 100,
-                ..facts(10, &intents, &receipts)
-            },
-            taxable(Some(500)),
-            PoolShares {
-                tax: PoolShare::Share(250),
-                ..PoolShares::default()
-            },
-            FactionPurse::default(),
-            0,
-            Lookups {
-                purchase: &purchase,
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            None,
-        );
-        // the column settles the tax at its share
-        assert_eq!(unit.income, Some(250));
-        // but all four swords are bought: the uncontended reading pays for them
-        assert_eq!(unit.expense, Some(400));
-        assert_eq!(unit.wanted_for_orders, Some(400));
-    }
-
     #[test]
     fn buying_what_the_market_does_not_sell_is_doubted() {
         let intents = vec![placed(Intent::Buy {
@@ -9547,81 +9413,6 @@ mod tests {
         assert_eq!(unit.expense, None);
         assert_eq!(unit.doubt, Some(SilverDoubt::MarketDoesNotSell));
         assert_eq!(unit.doubt_subject.as_deref(), Some("horses"));
-    }
-
-    #[test]
-    fn buying_all_spends_what_the_unit_can_afford() {
-        let intents = vec![placed(Intent::Buy {
-            amount: Amount::All { except: 0 },
-            item: "grain".to_string(),
-        })];
-        let unit = spending(500, &intents, RegionWages::default(), &sells(12, 40), None);
-        assert_eq!(unit.expense, Some(480));
-        assert_eq!(unit.at_month_end, Some(20));
-    }
-
-    #[test]
-    fn buying_all_takes_no_more_than_the_market_has() {
-        let intents = vec![placed(Intent::Buy {
-            amount: Amount::All { except: 0 },
-            item: "grain".to_string(),
-        })];
-        let unit = spending(500, &intents, RegionWages::default(), &sells(12, 4), None);
-        assert_eq!(unit.expense, Some(48));
-    }
-
-    #[test]
-    fn buying_all_is_afforded_out_of_what_this_month_earns() {
-        let intents = vec![
-            placed(Intent::Buy {
-                amount: Amount::All { except: 0 },
-                item: "grain".to_string(),
-            }),
-            placed(Intent::Tax),
-        ];
-        let region = RegionWages {
-            tax_base: Some(1000),
-            ..RegionWages::default()
-        };
-        // 50 taxed on top of 10 held buys five at 12, where the 10 alone would buy none.
-        let unit = spending(10, &intents, region, &sells(12, 40), None);
-        assert_eq!(unit.income, Some(50));
-        assert_eq!(unit.expense, Some(60));
-        assert_eq!(unit.at_month_end, Some(0));
-    }
-
-    /// `ah-lauy`, increment 2. A second `BUY ALL` of the same goods buys nothing: the fallback
-    /// (`no_market`'s `market_share` answers `None` for everything) subtracts the running total
-    /// from the line itself, not only from a settled share.
-    #[test]
-    fn a_second_buy_all_of_the_same_goods_buys_nothing() {
-        let intents = vec![
-            placed(Intent::Buy {
-                amount: Amount::All { except: 0 },
-                item: "grain".to_string(),
-            }),
-            placed(Intent::Buy {
-                amount: Amount::All { except: 0 },
-                item: "grain".to_string(),
-            }),
-        ];
-        // 100 buys five at 12 up to the market's 5, leaving 40; the second finds the line already
-        // spent by the first and buys nothing more.
-        let unit = spending(100, &intents, RegionWages::default(), &sells(12, 5), None);
-        assert_eq!(unit.expense, Some(60));
-        assert_eq!(unit.at_month_end, Some(40));
-    }
-
-    /// `ah-lauy`, increment 2. The settled-share path: a `market_share` stub answers a share
-    /// smaller than the line, and the second `BUY ALL` finds that share already spent.
-    #[test]
-    fn a_second_buy_all_cannot_take_its_share_twice() {
-        let buy_all = placed(Intent::Buy {
-            amount: Amount::All { except: 0 },
-            item: "grain".to_string(),
-        });
-        let unit = spending_with_share(10_000, &[buy_all.clone(), buy_all], &sells(12, 20), 3);
-        assert_eq!(unit.expense, Some(36));
     }
 
     /// [`spending`], for a unit whose share of the line the hex has settled - the shape
@@ -9769,20 +9560,6 @@ mod tests {
     }
 
     #[test]
-    fn a_buy_all_says_what_it_bought_and_what_stopped_it() {
-        let intents = vec![placed(Intent::Buy {
-            amount: Amount::All { except: 0 },
-            item: "grain".to_string(),
-        })];
-        let unit = spending(356, &intents, RegionWages::default(), &sells(18, 30), None);
-        assert_eq!(unit.expense, Some(342));
-        assert_eq!(unit.buy_all.len(), 1);
-        let bought = &unit.buy_all[0];
-        assert_eq!(bought.bought, 19);
-        assert_eq!(bought.capped_by, BuyAllCap::Silver);
-    }
-
-    #[test]
     fn a_unit_that_gives_silver_away_is_charged_for_it() {
         let intents = vec![placed(Intent::Give {
             to: Party::Unit("1235".to_string()),
@@ -9819,31 +9596,6 @@ mod tests {
             assert_eq!(unit.short_for_orders, Some(0));
             assert_eq!(unit.given_to_nobody, 0);
             assert_eq!(unit.doubt, None);
-        }
-    }
-
-    /// The Give phase empties the purse before a `BUY ALL` prices anything, whatever line each
-    /// is written on (`ah-npab`).
-    #[test]
-    fn buying_all_after_giving_all_silver_away_buys_nothing_in_either_text_order() {
-        let give = placed(Intent::Give {
-            to: Party::Unit("1235".to_string()),
-            what: Selector::Item("SILV".to_string()),
-            amount: Amount::All { except: 0 },
-        });
-        let buy = placed(Intent::Buy {
-            amount: Amount::All { except: 0 },
-            item: "grain".to_string(),
-        });
-        for intents in [
-            vec![give.clone(), buy.clone()],
-            vec![buy.clone(), give.clone()],
-        ] {
-            let unit = spending(100, &intents, RegionWages::default(), &sells(20, 10), None);
-            assert_eq!(unit.expense, Some(100));
-            assert_eq!(unit.at_month_end, Some(0));
-            assert_eq!(unit.buy_all.len(), 1);
-            assert_eq!(unit.buy_all[0].bought, 0);
         }
     }
 

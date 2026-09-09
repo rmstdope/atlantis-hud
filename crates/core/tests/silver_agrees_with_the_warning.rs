@@ -907,3 +907,201 @@ fn a_hedged_pillager_is_doubted_by_the_column_too() {
     );
     assert_eq!(transporter.income, None);
 }
+
+// --- BUY ALL beside a month-long spend, on both surfaces ------------------------------------
+//
+// `docs/retrospectives/ah-gdd3.1.md` records that no test in this repository pairs a `BUY ALL`
+// with a month-long spend, which is how the two surfaces came to answer one order differently
+// without anything going red. These cases close that gap (`ah-6m7b.2`).
+
+/// One hex, one market, and whatever own units the caller names.
+fn market_report(region: &str, for_sale: &str, units: &[&str]) -> String {
+    let mut lines = vec![
+        "Foo (1) Report".to_string(),
+        String::new(),
+        region.to_string(),
+        format!("  For Sale: {for_sale}"),
+        String::new(),
+        "Exits:".to_string(),
+        "  Southeast : plain (2,2) in Nowhere.".to_string(),
+        String::new(),
+    ];
+    lines.extend(units.iter().map(|unit| (*unit).to_string()));
+    lines.push(String::new());
+    lines.join("\n")
+}
+
+/// Both surfaces' answers about one unit, for a hand-built report and a document.
+fn both_surfaces(text: &str, script: &str, unit_id: &str, tag: &str) -> (i64, i64, bool) {
+    let ruleset = ruleset();
+    let mut parsed = parse_report_full(text);
+    classify_units(&mut parsed, &ruleset);
+    let template = extract_orders_template(text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let orders = format!("{template}\n{script}");
+
+    let review = review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default());
+    let row = review
+        .silver
+        .iter()
+        .find(|row| row.unit_id == unit_id)
+        .expect("the column has a row for the unit");
+    let column_bought = row
+        .buy_all
+        .first()
+        .expect("the column priced the BUY ALL")
+        .bought;
+    let warned = review.findings.iter().any(|finding| {
+        finding.unit_id.as_deref() == Some(unit_id) && finding.code.as_str() == "not-enough-silver"
+    });
+
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        text,
+        "[]",
+        &orders,
+    )
+    .expect("the committed ruleset loads");
+    let items_bought: i64 = preview
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.unit.unit_id == unit_id)
+        .expect("the preview has the unit")
+        .unit
+        .items
+        .iter()
+        .filter(|item| item.tag == tag)
+        .map(|item| item.amount)
+        .sum();
+
+    (column_bought, items_bought, warned)
+}
+
+/// `rules/sequenceofevents` lists *"Market orders. ... BUY orders are processed."* **before**
+/// *"Month long orders. ... STUDY orders are processed."*, so a `BUY ALL` spends the silver the
+/// study has not yet taken. `data/COMB` prices a month of combat study at 10 silver per man, so
+/// one orc with 105 silver buys five grain at $20 and is then 5 short for the study - which is
+/// exactly what the `not-enough-silver` warning exists to say.
+///
+/// The ledger used to size the line from `StatePhase::Maintenance`, where the study fee had
+/// already propagated, and bought four (`ah-6m7b.2`).
+#[test]
+fn a_buy_all_is_not_shrunk_by_the_study_that_follows_it() {
+    let text = market_report(
+        "plain (1,1) in Nowhere, 1000 peasants (orcs), $500.",
+        "20 grain [GRAI] at $20.",
+        &["* Students (900), Foo (1), orc [ORC], 105 silver [SILV]. Weight: 10. Capacity: 0/0/15/0."],
+    );
+    let (column_bought, items_bought, warned) = both_surfaces(
+        &text,
+        "unit 900\nBUY ALL grain\nSTUDY combat\n",
+        "900",
+        "GRAI",
+    );
+
+    assert_eq!(
+        column_bought, 5,
+        "105 silver buys five grain at 20, before any study fee"
+    );
+    assert_eq!(items_bought, 5, "and the ITEMS ledger says the same");
+    assert_eq!(column_bought, items_bought, "the two surfaces agree");
+    assert!(
+        warned,
+        "the study is 5 short, and the shortfall warning says so"
+    );
+}
+
+/// `ah-omn7` Q2, re-expressed against a real ledger (`ah-6m7b.2`): a bounded `BUY`'s quantity is
+/// capped against the *hopeful* purse - a contended tax assumed to arrive in full - while the
+/// money columns keep the settled figure.
+///
+/// This lived in `silver.rs`'s own `mod tests` as
+/// `a_taxed_bounded_buy_is_funded_by_the_uncontended_tax`, built on a `phases: None` `UnitFacts`
+/// and funded by a `hopeful_tax` compensation term. The term is gone: a ledger-backed column reads
+/// `PhaseSilver::as_the_market_opens`, into which `credit_tax` has already put the uncontended
+/// figure (`PoolShare::Uncontended`, `semantics.rs`). So the property is unchanged and is now
+/// pinned where production actually runs, across both surfaces.
+///
+/// `rules/economy_taxingpillaging` gives each taxing man $50, so each of these two units asks $500
+/// of a $300 region. The column settles 900's share at $150; the ledger credits it the full $300.
+/// Four swords at $40 cost $160 - more than the settled share and less than the uncontended one.
+#[test]
+fn a_taxed_bounded_buy_is_funded_by_the_uncontended_tax() {
+    let text = market_report(
+        "plain (1,1) in Nowhere, 1000 peasants (orcs), $300.",
+        "100 swords [SWOR] at $40.",
+        &[
+            "* Buyers (900), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: combat [COMB] 1 (30).",
+            "* Taxers (901), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: combat [COMB] 1 (30).",
+        ],
+    );
+    let ruleset = ruleset();
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset);
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let orders = format!("{template}\nunit 900\nTAX\nBUY 4 sword\nunit 901\nTAX\n");
+    let review = review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default());
+    let row = review
+        .silver
+        .iter()
+        .find(|row| row.unit_id == "900")
+        .expect("the column has a row for the buyer");
+
+    assert_eq!(
+        row.income,
+        Some(150),
+        "the column settles the contended tax at this unit's share"
+    );
+    assert_eq!(
+        row.expense,
+        Some(160),
+        "but all four swords are bought: the uncontended reading pays for them"
+    );
+    assert_eq!(row.wanted_for_orders, Some(160));
+}
+
+/// The lever is the tax. The column credited a taxing unit its **settled** share while
+/// `semantics::credit_tax` credits the uncontended one - a difference `hopeful_tax` compensated
+/// for in the exact-`BUY` cap and **never** in the deferred `BUY ALL` pass, which read the walk's
+/// own running total alone. So two units taxing a region that cannot pay both, one of them writing
+/// `BUY ALL`, sized one line from two numbers (`ah-6m7b.2`).
+///
+/// `rules/economy_taxingpillaging` gives each taxing man $50, so each unit asks $500 of a $300
+/// region. The column settled 900's proportional half, $150, which buys 7 grain at $20; the ledger
+/// credits the full $300, which buys 15. Neither is capped by the market, which holds 20.
+#[test]
+fn a_contended_taxers_buy_all_is_sized_as_the_ledger_sizes_it() {
+    let text = market_report(
+        "plain (1,1) in Nowhere, 1000 peasants (orcs), $300.",
+        "20 grain [GRAI] at $20.",
+        &[
+            "* Buyers (900), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: combat [COMB] 1 (30).",
+            "* Taxers (901), Foo (1), 10 orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. \
+             Skills: combat [COMB] 1 (30).",
+        ],
+    );
+    let (column_bought, items_bought, _) = both_surfaces(
+        &text,
+        "unit 900\nTAX\nBUY ALL grain\nunit 901\nTAX\n",
+        "900",
+        "GRAI",
+    );
+
+    assert_eq!(
+        items_bought, 15,
+        "the ledger's optimistic tax pays for fifteen"
+    );
+    assert_eq!(
+        column_bought, 15,
+        "and the column now says what the ledger settled"
+    );
+    assert_eq!(column_bought, items_bought, "the two surfaces agree");
+}

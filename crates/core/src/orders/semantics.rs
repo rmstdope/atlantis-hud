@@ -48,8 +48,8 @@ use crate::orders::silver::{
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
     MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare,
     PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages,
-    SaleAnswer, SharedMarket, SilverChangeCause, SilverDoubt, TransferShape, Transmuting,
-    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    SaleAnswer, SettledBuyAll, SharedMarket, SilverChangeCause, SilverDoubt, TransferShape,
+    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1458,6 +1458,14 @@ fn forecast_hex(
             .get(unit_id)
             .map_or(&[][..], Vec::as_slice)
     };
+    // What the ITEMS ledger's own `settle_buy_all` decided about each of this unit's `BUY ALL`
+    // lines, so the column reports that answer rather than pricing the line again (`ah-6m7b.2`).
+    let settled_buy_all_of = |unit_id: &str| {
+        ledger
+            .settled_buy_all
+            .get(unit_id)
+            .map_or(&[][..], Vec::as_slice)
+    };
     let clamped: Vec<Vec<ItemAmount>> = (0..hex.units.len())
         .map(|index| clamped_holdings(before_manufacturing.items_of(index)))
         .collect();
@@ -1601,6 +1609,7 @@ fn forecast_hex(
                 index,
                 &clamped[index],
                 shared_materials_of(&ordered.unit.unit_id),
+                settled_buy_all_of(&ordered.unit.unit_id),
             )),
         };
         claims.push(food_claim(&facts, ruleset));
@@ -3796,6 +3805,7 @@ impl PhaseHoldings {
             production: self.production.of(index),
             maintenance: self.maintenance.of(index),
             silver: Some(self.silver[index]),
+            buy_all: &[],
         }
     }
 
@@ -3807,6 +3817,7 @@ impl PhaseHoldings {
         index: usize,
         before_manufacturing: &'a [ItemAmount],
         shared_materials: &'a [(usize, Vec<ItemAmount>)],
+        buy_all: &'a [SettledBuyAll],
     ) -> PhaseFacts<'a> {
         PhaseFacts {
             study: self.study.of(index),
@@ -3815,6 +3826,7 @@ impl PhaseHoldings {
                 .of_with(index, before_manufacturing, shared_materials),
             maintenance: self.maintenance.of(index),
             silver: Some(self.silver[index]),
+            buy_all,
         }
     }
 }
@@ -3964,8 +3976,15 @@ struct Ledger<'a> {
     /// unit's intents in `ledger_for`, so settling in document order would price the purchase
     /// against a balance that has not been credited its tax. `forecast_unit` defers it for the
     /// same reason, and the two must defer to the same figure or the SILVER and ITEMS cells go
-    /// back to contradicting each other.
+    /// back to contradicting each other - which since `ah-6m7b.2` they do by construction:
+    /// `settle_buy_all` records its answer in `settled_buy_all` below and the column reports that
+    /// rather than deriving one of its own.
     pub(crate) buy_all: BTreeMap<String, Vec<DeferredBuy>>,
+    /// What each unit's `BUY ALL` lines actually settled to, in document order - handed to the
+    /// SILVER column through [`PhaseFacts::buy_all`] so it reports the ledger's answer instead of
+    /// pricing the line a second time (`ah-6m7b.2`). Written by `settle_buy_all`; empty for a unit
+    /// that wrote none and for a doubted one, which `settle_buy_all` skips.
+    pub(crate) settled_buy_all: BTreeMap<String, Vec<SettledBuyAll>>,
     /// How many of one tag a unit's own `SELL` lines have already moved this month, and how many of
     /// those lines moved any. A block may name the same goods twice, and the second line can only
     /// draw on what the first left of the unit's settled share of the market line (`ah-vw8e`). Keyed
@@ -4240,6 +4259,7 @@ fn ledger_for_with_production<'a>(
         refused_recruits: Vec::new(),
         built: BTreeMap::new(),
         buy_all: BTreeMap::new(),
+        settled_buy_all: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
         bought: BTreeMap::new(),
@@ -4324,11 +4344,10 @@ fn ledger_for_with_production<'a>(
         }
     }
 
-    // After the whole walk, not inside the market phase. `settle_buy_all` reads the balance at
-    // `StatePhase::Maintenance`, which carries only the deltas already *applied* - so settling it
-    // at `Market` would spend silver the unit's own STUDY or manufacturing PRODUCE has not yet
-    // charged for. `forecast_unit` settles its deferred `BUY ALL` after its whole walk for the same reason
-    // (`crates/core/src/orders/silver.rs`, `Deferred::BuyAll`), and the two must agree.
+    // After the whole walk, not inside the market phase: the call site is what makes a `BUY ALL`'s
+    // item movements sort behind the rest of the block's (`ah-gdd3.1`). What it is *sized* from is
+    // the `StatePhase::Market` balance, which `rules/sequenceofevents` says is what the market may
+    // spend - a later STUDY does not shrink a purchase the turn has already made (`ah-6m7b.2`).
     for (index, ordered) in hex.units.iter().enumerate() {
         settle_buy_all(&mut ledger, hex, index, ordered);
     }
@@ -6141,11 +6160,11 @@ fn buy(
 /// applied.
 ///
 /// Called from `ledger_for` once every phase of `phases::ORDER` has run for every unit in the hex,
-/// which is the moment the unit's silver balance matches `forecast_unit`'s `running` - report
-/// holding, plus every credit, less every eager charge, and **not** the late income, which
-/// `charge_upkeep` nets off the fee rather than crediting (`ah-uwa3`). Settling it earlier - inside
-/// the market phase, say - would spend silver a later phase has not yet charged for: STUDY and
-/// manufacturing PRODUCE both charge `SILV` after it (`ah-gdd3.1`).
+/// so that a `BUY ALL`'s movements sort behind the block's (`ah-gdd3.1`). The **figure** it is
+/// sized from is not the balance at that moment: it is the balance at `StatePhase::Market`, which
+/// is what `rules/sequenceofevents` leaves the market to spend - *"BUY orders are processed"* runs
+/// before *"STUDY orders are processed"*, so a later study cannot shrink a purchase the turn has
+/// already made (`ah-6m7b.2`).
 fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &Ordered<'_>) {
     let who = &actor.unit.unit_id;
     let Some(lines) = ledger.buy_all.remove(who) else {
@@ -6153,8 +6172,11 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &
     };
 
     for deferred in lines {
-        // A doubted unit is left uncounted: `forecast_unit` skips its whole deferred pass when
-        // either side is doubted, so there is no figure on the column to agree with.
+        // A doubted unit is left uncounted, and the line reaches the player through `uncounted`
+        // rather than through the column. `ledger.doubted` is **not** the column's own
+        // `income_doubt` / `expense_doubt`: this one is the gift tracking `forecast_unit` never
+        // sees, so a unit doubted only here shows no `BUY ALL` sentence at all rather than one
+        // both surfaces suppressed together (`ah-6m7b.2`).
         if ledger.doubted.contains(who) {
             ledger
                 .uncounted
@@ -6176,15 +6198,37 @@ fn settle_buy_all(ledger: &mut Ledger<'_>, hex: &Hex<'_>, index: usize, actor: &
         // nothing rather than lifting the cap: a `BUY ALL` has always been silver-capped, and
         // turning that off on doubt would let one buy goods it can afford none of (`ah-szye`).
         let shared = ledger.market_purse.adds_for(index).unwrap_or(0);
+        // What `rules/sequenceofevents` leaves the market to spend: TAX, PILLAGE, GIVE/TAKE and
+        // CAST have run; STUDY, manufacturing PRODUCE and the wages have not. **Not**
+        // `balance_of`, which reads at `StatePhase::Maintenance` and would let a later STUDY
+        // shrink a purchase the turn had already made - the same reason `buy` above reads this
+        // phase (`ah-6m7b.2`). The call site stays where it is, after the whole walk: only the
+        // figure moves, so this unit's own earlier market lines are already drawn out of the slot
+        // and the ledger's movement order is unchanged.
+        let silver_available = ledger
+            .state
+            .balance_at(StatePhase::Market, who, SILVER)
+            .saturating_add(overcharged)
+            .saturating_add(shared);
         let (priced, plan) = price_buy_all(
-            balance_of(ledger, who, SILVER)
-                .saturating_add(overcharged)
-                .saturating_add(shared),
+            silver_available,
             deferred.price,
             available,
             deferred.market_has,
             already,
         );
+        ledger
+            .settled_buy_all
+            .entry(who.clone())
+            .or_default()
+            .push(SettledBuyAll {
+                line: deferred.placed.line as i64,
+                tag: deferred.tag.clone(),
+                price: deferred.price,
+                spends: priced.spends,
+                silver_available,
+                plan,
+            });
         charge(
             ledger,
             StatePhase::Market,
@@ -12105,6 +12149,34 @@ mod tests {
         assert_eq!(state.phase_silver("901").as_manufacturing_opens(), 0);
     }
 
+    /// `ah-6m7b.2`: the slot the market opens on is the one the Cast phase leaves, and the
+    /// market's own charge is invisible to it - which is the whole reason it is not the slot named
+    /// `Market`.
+    #[test]
+    fn the_market_opens_on_the_balance_the_cast_phase_leaves() {
+        let mut state = PhaseState {
+            balances: [(
+                ("900".to_owned(), SILVER.to_owned()),
+                [100; StatePhase::COUNT],
+            )]
+            .into_iter()
+            .collect(),
+            uncertain: BTreeMap::new(),
+        };
+        state.apply(StatePhase::Tax, "900", "SILV", 300);
+        assert_eq!(state.phase_silver("900").as_the_market_opens(), 400);
+
+        state.apply(StatePhase::Cast, "900", "SILV", -150);
+        assert_eq!(state.phase_silver("900").as_the_market_opens(), 250);
+        assert_eq!(state.phase_silver("900").as_manufacturing_opens(), 250);
+
+        state.apply(StatePhase::Market, "900", "SILV", -200);
+        assert_eq!(state.phase_silver("900").as_the_market_opens(), 250);
+
+        state.apply(StatePhase::Give, "901", "SILV", -50);
+        assert_eq!(state.phase_silver("901").as_the_market_opens(), 0);
+    }
+
     #[test]
     fn phase_state_keeps_an_uncertain_gift_unknown_at_every_later_phase() {
         let mut state = PhaseState {
@@ -16908,16 +16980,16 @@ mod tests {
         );
     }
 
-    /// `ah-gdd3.1`: `BUY ALL` is settled from what every *other* order leaves, so a month-long
-    /// spend written under it still holds its money back.
+    /// `ah-6m7b.2`: a `BUY ALL` is sized from the silver the **market** phase leaves, so a
+    /// month-long spend written under it does *not* hold its money back.
     ///
-    /// The phase-major dispatch moved the market ahead of `Study`, and `settle_buy_all` reads the
-    /// balance at `StatePhase::Maintenance` - which only carries deltas already applied. Settling
-    /// the `BUY ALL` inside the market phase would therefore spend silver the study still wants,
-    /// and would disagree with `forecast_unit`, which settles its deferred `BUY ALL` after the
-    /// whole walk. Both surfaces are read here, because agreeing is the point.
+    /// `rules/sequenceofevents` lists *"BUY orders are processed"* before *"STUDY orders are
+    /// processed"*, so the buy takes what it can and the study is then short - which is what the
+    /// `not-enough-silver` warning exists to say. This test pinned the opposite until `ah-6m7b.2`:
+    /// `settle_buy_all` read `StatePhase::Maintenance`, into which `PhaseState::apply` had already
+    /// propagated the study fee, and bought nine where the game buys ten.
     #[test]
-    fn a_buy_all_leaves_a_month_long_spend_its_money() {
+    fn a_buy_all_is_sized_before_the_month_long_spend_below_it() {
         let hex = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 100,
@@ -16938,16 +17010,19 @@ mod tests {
             .copied()
             .expect("the buy-all bought grain at all");
 
-        // Exactly, not merely fewer than ten: `< 10` would pass just as well if the order were
-        // doubted away entirely, which is not what this pins. The study takes $10 of the $100, so
-        // nine grain at $10 is every coin the month leaves.
-        assert_eq!(grain, 9, "the buy-all takes what the study leaves");
+        // Exactly, not merely "some": the market runs first, so all $100 goes on grain.
+        assert_eq!(grain, 10, "the buy-all takes the whole hundred");
+        assert_eq!(
+            ledger.state.balance_at(StatePhase::Market, "2390", "SILV"),
+            0,
+            "the market spends every coin it was left"
+        );
         assert_eq!(
             ledger
                 .state
                 .balance_at(StatePhase::Maintenance, "2390", "SILV"),
-            0,
-            "and between them they spend the whole hundred"
+            -10,
+            "and the study is then $10 short, which is what the warning says"
         );
     }
 
