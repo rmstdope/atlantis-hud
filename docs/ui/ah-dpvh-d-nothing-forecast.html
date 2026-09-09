@@ -1,0 +1,148 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1200px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  table.units { width:100%; border-collapse:collapse; font:12px/1.5 'Helvetica Neue',Arial,sans-serif;
+                font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-weight:600; color:var(--brass); font-size:10.5px; letter-spacing:.1em;
+                   text-transform:uppercase; border-bottom:1px solid var(--edge); padding:3px 8px; }
+  table.units td { border-bottom:1px solid var(--edge-soft); padding:2px 8px; vertical-align:top; }
+  table.units.narrow { width:600px; }
+  table.units.narrow td.sk, table.units.narrow th.sk { max-width:170px; overflow:hidden;
+     text-overflow:ellipsis; white-space:nowrap; }
+  .own { color:var(--ok); } .pred { font-style:italic; color:var(--brass); }
+  .dim { color:var(--ink-dim); } .sel { color:var(--select); }
+  .warnmark { color:var(--warn); }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:5px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); margin-top:12px;
+         vertical-align:top; margin-right:14px; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .note { color:var(--ink-dim); margin-top:6px; }
+  .pop .warn { color:var(--warn); margin-top:6px; }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .flat { color:var(--ink-soft); } .down { color:var(--danger); } .up { color:var(--ok); }
+  .fut { color:var(--select); } .futwarn { color:var(--warn); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin:16px 0 6px; max-width:110ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+  .poprow { display:flex; flex-wrap:wrap; gap:14px; }
+</style>
+<title>ah-dpvh &mdash; nothing is forecast, because nothing changes</title>
+<header>
+  <h1>ah-dpvh <span>&mdash; D: nothing is forecast, because nothing changes (chosen)</span></h1>
+  <p>The navigator's shape. A <code>STUDY</code> that cannot raise the level changes <b>no skill a player reads</b>, so
+  the row says nothing and the popup draws no next-turn figure at all: the chain stops at <b>5&nbsp;(450)</b>, and one
+  amber sentence says why there is nothing after it. The brass mark <code>ah-qig3</code> added is for a forecast worth
+  hovering; this is not one.</p>
+<p class="scene"><b>The scene.</b> Five own units in one hex, all writing a month-long <code>STUDY</code>.
+<b>Six&nbsp;of&nbsp;Two&nbsp;(13402)</b> is a leader at <code>COMB 5 (450)</code> whose report template writes
+<code>@study comb</code> &mdash; and <code>data/LEAD</code> says a leader stops at level&nbsp;5. <b>This is the bead's unit:
+the month buys nothing.</b> <b>Braves&nbsp;(1487)</b> studies combat from level&nbsp;2 and will reach&nbsp;3 &mdash; an
+ordinary forecast, and nothing here may change it. <b>Ore&nbsp;Gang&nbsp;(1774)</b> are hill dwarves, capped at
+combat&nbsp;2 and already there. <b>Hunters&nbsp;(1901)</b> is a leader at <code>MAGI 5</code> studying magic,
+capped <i>and</i> short of the fee &mdash; two warnings at once. <b>Watch&nbsp;(1620)</b> studies nothing.</p>
+</header>
+<main>
+<h3 class="sec">D &mdash; the row stays plain, and the chain has no second figure</h3>
+<p>Only <b>Braves</b> is marked, because Braves is the only unit here whose skills will actually differ next turn. Six of
+Two, Ore Gang and Hunters are drawn exactly as a unit doing nothing is drawn &mdash; which is what they are, as far as
+their skills go.</p>
+<div class="card"><p class="hexlab">wide column</p>
+    <table class="units">
+      <tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th class="sk">Skills</th><th>Items</th></tr>
+      <tr><td class="own">*</td><td class="sel">13402</td><td>Six of Two</td><td>1</td><td class="sk">COMB 5, OBSE 5, STEA 5</td><td>1 horse</td></tr>
+      <tr><td class="own">*</td><td class="sel">1487</td><td>Braves</td><td>12</td><td class="sk"><span class="pred">COMB 2, LUMB 2</span></td><td>12 leather armour</td></tr>
+      <tr><td class="own">*</td><td class="sel">1774</td><td>Ore Gang</td><td>9</td><td class="sk">COMB 2, MINI 5</td><td>9 pick</td></tr>
+      <tr><td class="own">*</td><td class="sel">1901</td><td>Hunters</td><td>1</td><td class="sk">MAGI 5, PATT 2</td><td>1 bow</td></tr>
+      <tr><td class="own">*</td><td class="sel">1620</td><td>Watch</td><td>6</td><td class="sk">COMB 1</td><td>6 sword</td></tr>
+    </table>
+<ul class="notes">
+  <li>The brass mark keeps one honest meaning: <i>this figure will be different next turn</i>. Nothing else in the table has ever meant anything else.</li>
+  <li>No new ink and no new mark anywhere &mdash; strictly less drawing than today, not more.</li>
+  <li>The chain cannot contradict the sentence, because there is no second figure to contradict it with.</li>
+  <li class="con">Invisible while scanning, like A and B: a wasted month looks exactly like a quiet unit until you rest on it.</li>
+  <li class="con">The points <i>do</i> rise &mdash; 450 to 480 &mdash; and the popup no longer shows that anywhere but in words. A player tracking points towards a future race change would have to work it out.</li>
+  <li class="n">Hunters is capped <b>and</b> 40 silver short of the fee. The ceiling sentence leads and the fee doubt follows it, as agreed.</li>
+</ul></div>
+<h3 class="sec">The popups</h3>
+<p>The studying units on the left; the one unaffected forecast on the right, unchanged from today.</p>
+<div class="card"><div class="poprow">
+  <div class="pop">
+    <div class="head">Six of Two (13402) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span>5 (450)</span></div>
+    <div class="line"><span>observation OBSE</span><span>5 (450)</span></div>
+    <div class="line"><span>stealth STEA</span><span>5 (450)</span></div>
+    <div class="note">Nothing this month changes these.</div>
+    <div class="warn">Combat stops at level 5 and this unit is already there, so studying it this month changes nothing.</div>
+  </div>
+  <div class="pop">
+    <div class="head">Ore Gang (1774) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span>2 (95)</span></div>
+    <div class="line"><span>mining MINI</span><span>5 (450)</span></div>
+    <div class="note">Nothing this month changes these.</div>
+    <div class="warn">No hill dwarf may take combat past level 2, and this unit is already there, so studying it this month changes nothing.</div>
+  </div>
+  <div class="pop">
+    <div class="head">Hunters (1901) &mdash; skills</div>
+    <div class="line"><span>force MAGI</span><span>5 (450)</span></div>
+    <div class="line"><span>pattern PATT</span><span>2 (90)</span></div>
+    <div class="note">Nothing this month changes these.</div>
+    <div class="warn">Force stops at level 5 and this unit is already there, so studying it this month changes nothing. Studying force costs 100 silver and this unit is 40 short, so the study may not happen at all.</div>
+  </div>
+  <div class="pop">
+    <div class="head">Braves (1487) &mdash; skills</div>
+    <div class="line"><span>combat COMB</span><span>2 (90)<span class="arrow">&rarr;</span><span class="fut">3 (120)</span></span></div>
+    <div class="line"><span>lumberjack LUMB</span><span>2 (90)</span></div>
+    <div class="note">Studying combat: worth one month. The blue figure is next turn's report; everything before it is this month.</div>
+    <div class="note">Nothing this month changes these.</div>
+  </div>
+</div></div>
+<h3 class="sec">Two wordings for the amber sentence</h3>
+<p>The difference is whether the points are mentioned at all. Both say the level cannot move.</p>
+<div class="card"><div class="poprow">
+  <div class="pop">
+    <div class="head">D1 &mdash; silent about the points (chosen)</div>
+    <div class="line"><span>combat COMB</span><span>5 (450)</span></div>
+    <div class="warn">Combat stops at level 5 and this unit is already there, so studying it this month changes nothing.</div>
+    <div class="note" style="font-style:italic">Shorter, and matches the figure above it exactly: nothing changes, nothing is drawn.</div>
+  </div>
+  <div class="pop">
+    <div class="head">D2 &mdash; names the points, and says they buy nothing</div>
+    <div class="line"><span>combat COMB</span><span>5 (450)</span></div>
+    <div class="warn">Combat stops at level 5 and this unit is already there, so this month raises the points to 480 and the level holds.</div>
+    <div class="note" style="font-style:italic">Keeps the fact the chain no longer draws, for a player tracking points across a coming race change.</div>
+  </div>
+</div></div>
+<h3 class="sec">Narrow column</h3><p>Nothing was added to the cell, so the squeeze is exactly today's.</p>
+<div class="card"><p class="hexlab">the skills column squeezed</p>
+    <table class="units narrow">
+      <tr><th>&nbsp;</th><th>Id</th><th>Unit</th><th>Men</th><th class="sk">Skills</th><th>Items</th></tr>
+      <tr><td class="own">*</td><td class="sel">13402</td><td>Six of Two</td><td>1</td><td class="sk">COMB 5, OBSE 5, STEA 5</td><td>1 horse</td></tr>
+      <tr><td class="own">*</td><td class="sel">1487</td><td>Braves</td><td>12</td><td class="sk"><span class="pred">COMB 2, LUMB 2</span></td><td>12 leather armour</td></tr>
+      <tr><td class="own">*</td><td class="sel">1774</td><td>Ore Gang</td><td>9</td><td class="sk">COMB 2, MINI 5</td><td>9 pick</td></tr>
+      <tr><td class="own">*</td><td class="sel">1901</td><td>Hunters</td><td>1</td><td class="sk">MAGI 5, PATT 2</td><td>1 bow</td></tr>
+      <tr><td class="own">*</td><td class="sel">1620</td><td>Watch</td><td>6</td><td class="sk">COMB 1</td><td>6 sword</td></tr>
+    </table></div>
+</main>
+<footer>ah-dpvh, variant D &mdash; <b>chosen by the navigator</b>, with wording D1. The three it was chosen over are <code>ah-dpvh-a-popup-only.html</code>,
+<code>ah-dpvh-b-amber-forecast.html</code> and <code>ah-dpvh-c-row-warns.html</code>.</footer>
