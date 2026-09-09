@@ -240,4 +240,8 @@ fn a_smaller_settled_purchase_moves_no_shortfall_warning() {
                 && finding.unit_id.as_deref() == Some("900")),
         "the study fee it cannot pay is still warned about"
     );
+    // The two figures the plan's criterion 4 actually spoke about, so the pin covers the whole of
+    // what it expected and was wrong about: they are the study fee's, not the purchase's.
+    assert_eq!(studying.at_month_end, Some(-100));
+    assert_eq!(studying.short_for_orders, Some(100));
 }
