@@ -2596,9 +2596,21 @@ fn holding_items(unit: &ReportUnit, state: &Working) -> Vec<ItemAmount> {
 fn debit_source(
     receipts_by_position: &mut BTreeMap<usize, Receipts>,
     source: usize,
+    taker: usize,
     taker_label: String,
     moved: i64,
 ) {
+    // A unit written to take from itself would show `took +100` and `was taken -100` on one row for
+    // a transfer that moves nothing - but it never arrives here. `rules/give`: the server refuses a
+    // unit giving to itself, and `targets::give_endpoint` answers `GiveReach::Nowhere` for
+    // `id == giver_id`, so the source has no row and the transfer loop `continue`s well above the
+    // silver block (`a_take_from_a_unit_by_itself_is_silent`). Asserted rather than guarded at
+    // runtime: an unreachable runtime branch cannot be tested, and a future widening of that
+    // endpoint should fail a test rather than quietly book a circle.
+    debug_assert_ne!(
+        source, taker,
+        "a self-transfer is filtered before the settlement reaches here"
+    );
     let entry = receipts_by_position.entry(source).or_default();
     entry.taken_away = entry.taken_away.saturating_add(moved);
     entry.silver_moves.push(ReceiptMove {
@@ -2952,10 +2964,15 @@ fn apply_transfers(
                     }
                 } else if matches!(&*transfer.amount, Amount::All { .. }) {
                     // `ah-42li`: whatever the taker's own figure does, the source's row must say
-                    // where its silver went. A unit written to take from itself moves silver in a
-                    // circle and books nothing.
-                    if moved > 0 && source != transfer.actor {
-                        debit_source(&mut receipts_by_position, source, taker_label(), moved);
+                    // where its silver went.
+                    if moved > 0 {
+                        debit_source(
+                            &mut receipts_by_position,
+                            source,
+                            transfer.actor,
+                            taker_label(),
+                            moved,
+                        );
                     }
                     // `ah-awcm`: what the source will have left to give depends on its own month,
                     // which this pass has not run - so an `ALL` take silences the figure rather
@@ -2965,9 +2982,13 @@ fn apply_transfers(
                         .or_default()
                         .take_all_unpriceable = true;
                 } else if moved > 0 {
-                    if source != transfer.actor {
-                        debit_source(&mut receipts_by_position, source, taker_label(), moved);
-                    }
+                    debit_source(
+                        &mut receipts_by_position,
+                        source,
+                        transfer.actor,
+                        taker_label(),
+                        moved,
+                    );
                     let entry = receipts_by_position.entry(transfer.actor).or_default();
                     entry.taken = entry.taken.saturating_add(moved);
                     entry.silver_moves.push(ReceiptMove {
@@ -14238,27 +14259,42 @@ mod tests {
         );
     }
 
-    /// `ah-42li`: a take from a source holding nothing moves nothing, and `SilverChange`'s doc
-    /// promises a movement is never zero. The `moved == 0` `continue` sits *below* the silver
-    /// block, so the booking guards itself.
+    /// `ah-42li`: the second of two takers finds the source already emptied. `moved` is 0 with the
+    /// silver tag genuinely walked, and `SilverChange`'s doc promises a movement is never zero -
+    /// the `moved == 0` `continue` sits *below* the silver block, so the booking guards itself.
     #[test]
-    fn a_take_from_a_source_holding_no_silver_books_nothing() {
-        let region = region(vec![unit("2390"), unit("2391")]);
-        let source = "unit 2391\nTAKE FROM 2390 ALL SILV\n";
+    fn a_take_that_moves_nothing_books_nothing() {
+        let region = region(vec![
+            with_silver(unit("2390"), 100),
+            unit("2391"),
+            unit("2392"),
+        ]);
+        let source = "unit 2391\nTAKE FROM 2390 100 SILV\nunit 2392\nTAKE FROM 2390 100 SILV\n";
 
         let receipts = receipts_in(&region, source);
 
-        let taken_from = receipts.get("2390").cloned().unwrap_or_default();
-        assert_eq!(taken_from.taken_away, 0);
-        assert!(taken_from.taken_by.is_empty());
-        assert!(
-            taken_from.silver_moves.is_empty(),
-            "no silver moved, so there is no movement to record"
+        let taken_from = receipts.get("2390").expect("the source has receipts");
+        assert_eq!(
+            taken_from.taken_away, 100,
+            "the first taker got all of it, and the second got nothing"
+        );
+        assert_eq!(taken_from.taken_by, vec!["Unit 2391 (2391)".to_string()]);
+        assert_eq!(
+            taken_from.silver_moves,
+            vec![ReceiptMove {
+                amount: -100,
+                cause: SilverChangeCause::WasTaken,
+                other: "Unit 2391 (2391)".to_string(),
+            }],
+            "one movement, not a second zero one for the taker that came too late"
         );
     }
 
-    /// `ah-42li`: a unit written to take from itself moves its own silver in a circle. Booking it
-    /// would show `took +100` and `was taken -100` on one row for a transfer that moves nothing.
+    /// `ah-42li`: a unit written to take from itself is filtered long before the silver
+    /// settlement - `rules/give` refuses a unit giving to itself, and `targets::give_endpoint`
+    /// answers `GiveReach::Nowhere` for it - so neither end of its row moves. Pinned here because
+    /// `debit_source` asserts it rather than guarding it, and this is what makes that assertion
+    /// worth something.
     #[test]
     fn a_unit_taking_from_itself_is_not_debited() {
         let region = region(vec![with_silver(unit("2391"), 500)]);
