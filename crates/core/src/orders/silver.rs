@@ -1733,8 +1733,10 @@ pub fn forecast_unit(
     // the shortfall warning are measured against this (`ah-omn7`).
     let mut market_demand = 0i64;
     let mut claim_remaining = purse.unclaimed;
-    // A `TAKE ... ALL SILV` is in this unit's own block, but what it will yield depends on the
-    // source unit's month, which this per-unit pass has not run (`ah-awcm`).
+    // A `TAKE FROM <unit> ALL <class>` is in this unit's own block, but the ledger's own
+    // `transfer` returns early for a class selector, so its balance never carries the take and
+    // this column will not open its market pass on a figure the two surfaces disagree about
+    // (`ah-sgn6`). A named `TAKE ... ALL SILV` is counted like any other take.
     let mut income_doubt = receipts
         .takes_a_whole_class
         .then_some(SilverDoubt::TakesAWholeClass);
@@ -9015,10 +9017,10 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
-    /// `ah-awcm`: what the source will have left to give depends on its own month, so the taker's
-    /// whole figure goes unsaid.
+    /// `ah-sgn6`: the ledger cannot follow a class selector, so a `TAKE FROM <unit> ALL <class>`
+    /// leaves the taker's whole figure unsaid. A named `TAKE ... ALL SILV` is not this case.
     #[test]
-    fn a_take_of_all_silver_doubts_the_unit() {
+    fn a_take_of_a_whole_class_doubts_the_unit() {
         let receipts = Receipts {
             takes_a_whole_class: true,
             ..Receipts::default()
