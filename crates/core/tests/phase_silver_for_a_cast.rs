@@ -227,10 +227,14 @@ fn the_items_column_and_its_warning_agree_with_it() {
 /// `ah-6m7b.1`: a contended tax pool is where the two surfaces disagreed. The SILVER column
 /// settles the pool and credits each taxer its proportional share; the ledger stays optimistic and
 /// credits the full ask capped at the region's base only (`credit_tax`, `PoolShare::Uncontended`,
-/// pinned by `the_ledger_stays_optimistic_about_a_contended_tax_pool`). So the ITEMS column has
-/// always made the amulet the settled share could not pay for, and the SILVER column said it could
-/// not. It now reads the ledger's own figure, which is the one `semantics::cast` prices this very
-/// spell against.
+/// pinned by `the_ledger_stays_optimistic_about_a_contended_tax_pool`).
+///
+/// `ah-6m7b.1` made both surfaces read the ledger's hopeful figure, so both made an amulet the
+/// settled share could not pay for. `ah-ud89.1` moves the *cap* - and only the cap - onto the
+/// settled share, so the mage now makes none on both surfaces: $300 split between two ten-orc
+/// taxers is $150 each, and the amulet is $200 (`data/CRPA`). The ledger's own balance is
+/// untouched, so no finding moved. `crates/core/tests/a_contended_taxers_cast.rs` walks the whole
+/// table; this case keeps the two surfaces held to each other here.
 fn contended_report() -> String {
     [
         "Foo (1) Report",
@@ -258,7 +262,7 @@ fn contended_orders() -> String {
 }
 
 #[test]
-fn a_contended_tax_funds_the_cast_the_items_column_already_makes() {
+fn a_contended_tax_caps_the_cast_on_both_surfaces() {
     let text = contended_report();
     let mut parsed = parse_report_full(&text);
     classify_units(&mut parsed, &ruleset());
@@ -282,23 +286,27 @@ fn a_contended_tax_funds_the_cast_the_items_column_already_makes() {
         &contended_orders(),
     )
     .expect("the ruleset loads");
+    // A mage the preview has nothing to say about does not appear in it at all, which is itself
+    // the ITEMS column no longer carrying an amulet the game would refuse.
     let amulets: i64 = preview
         .regions
         .iter()
         .flat_map(|region| region.units.iter())
-        .find(|unit| unit.unit.unit_id == "900")
-        .expect("the preview has the mage")
-        .created
-        .iter()
+        .filter(|unit| unit.unit.unit_id == "900")
+        .flat_map(|unit| unit.created.iter())
         .filter(|created| created.tag == "AMPR")
         .map(|created| created.most)
         .sum();
 
     assert_eq!(
-        silver.cast_made, 1,
-        "the mage casts the amulet the ledger's silver pays for"
+        silver.cast_made, 0,
+        "the mage's $150 share does not pay for a $200 amulet"
     );
-    assert_eq!(silver.cast_capped_by, None, "and nothing capped it");
-    assert_eq!(amulets, 1, "the ITEMS column has always said one");
+    assert_eq!(
+        silver.cast_capped_by,
+        Some(ProductionCap::Silver),
+        "and silver is what capped it"
+    );
+    assert_eq!(amulets, 0, "the ITEMS column no longer makes one either");
     assert_eq!(silver.cast_made, amulets, "and the two surfaces agree");
 }

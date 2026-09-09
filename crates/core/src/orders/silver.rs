@@ -1187,6 +1187,27 @@ impl PhaseSilver {
     pub fn as_manufacturing_opens(&self) -> i64 {
         self.after[phases::StatePhase::Study as usize].max(0)
     }
+
+    /// [`Self::as_the_cast_opens`] less what a contended tax pool's settlement takes off this
+    /// unit's collection (`ah-ud89`). Pass `0` for a unit nobody contends with.
+    #[must_use]
+    pub fn as_the_cast_opens_on_share(&self, overstated: i64) -> i64 {
+        self.as_the_cast_opens().saturating_sub(overstated).max(0)
+    }
+
+    /// [`Self::as_the_market_opens`], less the same figure. Unused until `ah-ud89.2`.
+    #[must_use]
+    pub fn as_the_market_opens_on_share(&self, overstated: i64) -> i64 {
+        self.as_the_market_opens().saturating_sub(overstated).max(0)
+    }
+
+    /// [`Self::as_manufacturing_opens`], less the same figure. Unused until `ah-ud89.3`.
+    #[must_use]
+    pub fn as_manufacturing_opens_on_share(&self, overstated: i64) -> i64 {
+        self.as_manufacturing_opens()
+            .saturating_sub(overstated)
+            .max(0)
+    }
 }
 
 /// One unit as each of the phases after the market sees it.
@@ -1855,8 +1876,17 @@ pub fn forecast_unit(
     //
     // Placing it before the loop makes a tax doubt win over a later order's, whichever line the
     // player typed first. Deliberate, and tested.
+    // What this unit's hopeful tax overstates its settled share of a contended region pool by
+    // (`ah-ud89`), computed once per unit exactly as the tax term below is - `price_tax` and
+    // everything derived from it is a unit-level term, never a per-line one.
+    //
+    // Computed unconditionally, and correct so: `pool_shares_for` leaves `shares.tax` as
+    // `PoolShare::Uncontended` for any unit that does not draw on the pool, so a non-taxer's
+    // overstatement is `0`.
+    let men = taxing_men(&facts, ruleset);
+    let tax_overstated = tax_overstated_by(men, region.tax_base, region.pillaged, shares.tax);
+
     if taxes(unit_flags, intents) {
-        let men = taxing_men(&facts, ruleset);
         // The settlement is what the column shows: this unit's actual take once its faction-mates
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].
@@ -2226,19 +2256,25 @@ pub fn forecast_unit(
                     continue;
                 }
 
+                let hopeful = match facts.phase_silver() {
+                    // As at the manufacturing cap: `semantics::cast` prices this same spell
+                    // from this same figure, through this same `price_cast` (`ah-6m7b.1`).
+                    Some(silver) => silver
+                        .as_the_cast_opens()
+                        .saturating_add(moved_by(&moves, SilverChangeCause::CastEarned))
+                        .saturating_add(moved_by(&moves, SilverChangeCause::CastSpent))
+                        .max(0),
+                    None => spendable_so_far(held, &moves),
+                };
                 let caster = Caster {
                     skills: facts.skills,
                     held: facts.items,
-                    silver_available: match facts.phase_silver() {
-                        // As at the manufacturing cap: `semantics::cast` prices this same spell
-                        // from this same figure, through this same `price_cast` (`ah-6m7b.1`).
-                        Some(silver) => silver
-                            .as_the_cast_opens()
-                            .saturating_add(moved_by(&moves, SilverChangeCause::CastEarned))
-                            .saturating_add(moved_by(&moves, SilverChangeCause::CastSpent))
-                            .max(0),
-                        None => spendable_so_far(held, &moves),
-                    },
+                    // The settled purse (`ah-ud89`). `PhaseSilver::as_the_cast_opens_on_share` is
+                    // deliberately not used here: this site sums the accessor with `CastEarned`
+                    // and `CastSpent` before clamping, and subtracting after that sum is the same
+                    // arithmetic with the two adjustments left where they are.
+                    silver_available: hopeful.saturating_sub(tax_overstated).max(0),
+                    silver_hopeful: hopeful,
                     transmuting,
                 };
                 let (priced, plan) = price_cast(resolved, &caster, region);
@@ -3863,6 +3899,30 @@ pub fn taxing_men(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> i64 {
     }
 }
 
+/// What this unit's hopeful tax overstates its settled share of a contended region pool by.
+///
+/// `0` for every unit nobody contends with, for a share the settlement could not put a number on
+/// ([`PoolShare::Unknowable`]), and for a pillaged hex - so a caller may subtract it
+/// unconditionally (`ah-ud89`).
+///
+/// Defined as the difference between the two readings [`price_tax`] already gives, rather than as
+/// fresh arithmetic, so it cannot drift from the pricing both surfaces use.
+#[must_use]
+pub fn tax_overstated_by(men: i64, tax_base: Option<i64>, pillaged: bool, share: PoolShare) -> i64 {
+    match share {
+        // Nothing was taken off the hopeful reading, so nothing was overstated.
+        PoolShare::Uncontended => 0,
+        // There is no settled number to read, and the income doubt already tells the player the
+        // figure is uncertain, so the cap stays hopeful (`ah-ud89`).
+        PoolShare::Unknowable => 0,
+        PoolShare::Share(_) => {
+            let hopeful = price_tax(men, tax_base, pillaged, PoolShare::Uncontended).earns;
+            let settled = price_tax(men, tax_base, pillaged, share).earns;
+            hopeful.saturating_sub(settled).max(0)
+        }
+    }
+}
+
 /// What a unit's taxing earns this month: `men * TAX_PER_MAN`, capped.
 ///
 /// **A unit-level term, not a per-line one** - the taxing flag makes a unit tax with no `TAX` order
@@ -4940,6 +5000,14 @@ pub struct Caster<'a> {
     /// entertaining and anything the unit produces, so none of those are counted and neither is
     /// `late_income` (`ah-gdd3.1`).
     pub silver_available: i64,
+    /// The same purse before this unit's faction-mates' claim on a contended tax pool was taken
+    /// off it. Every `not-enough-silver` finding reads this figure, so a cast this purse could pay
+    /// for is never charged [`plan_cast`]'s "at least one" floor: that floor exists to keep a
+    /// warning alive, and here there is no warning to keep (`ah-ud89`).
+    ///
+    /// Equal to `silver_available` for every caller with no contention to account for, which is
+    /// every test and every uncontended unit.
+    pub silver_hopeful: i64,
     /// `CAST Transmutation [number] <material>`, resolved by the caller because only it can turn
     /// the order's text into a tag. `None` for every other spell.
     pub transmuting: Option<Transmuting<'a>>,
@@ -5147,7 +5215,27 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
     // still charged for one, so the shipped warnings still fire). The control-cap clamp above must
     // not move this: all four capped skills have `costs: []`, so `charged` times anything is
     // nothing (`ah-ofpb.5`, Known traps).
-    let charged = if wanted == 0 { 0 } else { made.max(1) };
+    // What this mage would have made had its faction-mates not claimed part of the region's tax
+    // pool. Read only by the `charged` rule below (`ah-ud89`).
+    let by_silver_hopeful = if silver_each > 0 {
+        caster.silver_hopeful.max(0) / silver_each
+    } else {
+        i64::MAX
+    };
+    let made_hopeful = match room {
+        Some(room) => room.min(wanted.min(by_silver_hopeful).min(by_materials)),
+        None => wanted.min(by_silver_hopeful).min(by_materials),
+    };
+
+    let charged = if wanted == 0 {
+        0
+    } else if made == 0 && made_hopeful > 0 {
+        // The mage could have paid; only its faction-mates' claim on the tax pool stopped it. No
+        // warning is owed, so no charge is either (`ah-ud89`).
+        0
+    } else {
+        made.max(1)
+    };
 
     CastPlan {
         made,
@@ -5962,6 +6050,7 @@ mod cast_tests {
             skills: &[],
             held: &[],
             silver_available: i64::MAX,
+            silver_hopeful: i64::MAX,
             transmuting: None,
         }
     }
@@ -6006,6 +6095,7 @@ mod cast_tests {
                 skills: &[],
                 held: &[],
                 silver_available: 400,
+                silver_hopeful: 400,
                 transmuting: None,
             },
             3,
@@ -6022,6 +6112,7 @@ mod cast_tests {
                 skills: &[],
                 held: &holding(&[("SWOR", 4)]),
                 silver_available: 0,
+                silver_hopeful: 0,
                 transmuting: None,
             },
             3,
@@ -6043,6 +6134,7 @@ mod cast_tests {
                 skills: &[],
                 held: &[],
                 silver_available: 100,
+                silver_hopeful: 100,
                 transmuting: None,
             },
             3,
@@ -6058,6 +6150,7 @@ mod cast_tests {
                 skills: &[],
                 held: &holding(&[("FLOA", 10_000), ("IRWD", 10_000)]),
                 silver_available: 0,
+                silver_hopeful: 0,
                 transmuting: None,
             },
             2,
@@ -6073,6 +6166,7 @@ mod cast_tests {
                 skills: &[],
                 held: &holding(&[("FLOA", 80), ("IRWD", 40)]),
                 silver_available: 0,
+                silver_hopeful: 0,
                 transmuting: None,
             },
             5,
@@ -6131,6 +6225,69 @@ mod cast_tests {
     /// `data/WOLF`: "control a total number of his skill level squared times 4 wolves" - a level 3
     /// mage may control `4 * 3^2 = 36`. Holding 30 already, only 6 more fit, clamping the summon
     /// that the level alone would bring (12) down to what there is room for.
+    /// A level 1 CRPA mage's amulet is 200 silver (`data/CRPA`). A settled purse of 100 makes
+    /// none of it - but the hopeful purse of 200 would have made one, so no warning is owed and
+    /// no charge is either (`ah-ud89`, round 3).
+    #[test]
+    fn plan_cast_charges_nothing_when_only_the_tax_split_stopped_it() {
+        let capped = plan_cast(
+            &cast_cost("CRPA"),
+            &Caster {
+                skills: &[],
+                held: &[],
+                silver_available: 100,
+                silver_hopeful: 200,
+                transmuting: None,
+            },
+            1,
+        );
+        assert_eq!(capped.made, 0);
+        assert_eq!(capped.charged, 0);
+        assert_eq!(capped.silver, 0);
+        assert_eq!(capped.capped_by, Some(ProductionCap::Silver));
+    }
+
+    /// `ah-ofpb.4`'s floor survives: a mage that could not have paid under either reading is still
+    /// charged for one, so its shipped warning still fires.
+    #[test]
+    fn plan_cast_still_charges_a_mage_that_could_never_pay() {
+        let broke = plan_cast(
+            &cast_cost("CRPA"),
+            &Caster {
+                skills: &[],
+                held: &[],
+                silver_available: 100,
+                silver_hopeful: 100,
+                transmuting: None,
+            },
+            1,
+        );
+        assert_eq!(broke.made, 0);
+        assert_eq!(broke.charged, 1);
+        assert_eq!(broke.silver, 200);
+    }
+
+    /// A summon with no room left is capped by control, not by the tax split: the hopeful
+    /// recomputation is clamped by `room` too, so `made_hopeful` is `0` and the floor still
+    /// applies (`ah-ud89`, Known traps).
+    #[test]
+    fn plan_cast_does_not_blame_the_tax_split_for_a_control_cap() {
+        let full = plan_cast(
+            &cast_cost("WOLF"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("WOLF", 36)]),
+                silver_available: 0,
+                silver_hopeful: 100_000,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!(full.made, 0);
+        assert_eq!(full.charged, 1);
+        assert_eq!(full.capped_by, Some(ProductionCap::Room));
+    }
+
     #[test]
     fn plan_cast_is_clamped_by_what_the_mage_may_control() {
         let clamped = plan_cast(
@@ -6139,6 +6296,7 @@ mod cast_tests {
                 skills: &[],
                 held: &holding(&[("WOLF", 30)]),
                 silver_available: 0,
+                silver_hopeful: 0,
                 transmuting: None,
             },
             3,
@@ -6159,6 +6317,7 @@ mod cast_tests {
                 skills: &[],
                 held: &holding(&[("WOLF", 36)]),
                 silver_available: 0,
+                silver_hopeful: 0,
                 transmuting: None,
             },
             3,
@@ -6172,6 +6331,7 @@ mod cast_tests {
                 skills: &[],
                 held: &holding(&[("BALR", 1)]),
                 silver_available: 0,
+                silver_hopeful: 0,
                 transmuting: None,
             },
             3,
@@ -6191,6 +6351,7 @@ mod cast_tests {
                 skills: &[],
                 held: &holding(&[("WOLF", 30)]),
                 silver_available: 0,
+                silver_hopeful: 0,
                 transmuting: None,
             },
             3,
@@ -6358,6 +6519,45 @@ mod tests {
                 doubt: Some(SilverDoubt::ContestedRegionPool),
                 ..Priced::default()
             }
+        );
+    }
+
+    #[test]
+    fn phase_silver_reads_a_settled_purse_at_each_cap() {
+        let mut after = [0i64; phases::StatePhase::COUNT];
+        after[phases::StatePhase::Tax as usize] = 300;
+        after[phases::StatePhase::Cast as usize] = 200;
+        after[phases::StatePhase::Study as usize] = 100;
+        let silver = PhaseSilver::from_balances(after);
+
+        assert_eq!(silver.as_the_cast_opens_on_share(0), 300);
+        assert_eq!(silver.as_the_cast_opens_on_share(120), 180);
+        assert_eq!(silver.as_the_market_opens_on_share(50), 150);
+        assert_eq!(silver.as_manufacturing_opens_on_share(40), 60);
+        // clamped at zero for an overstatement larger than the balance
+        assert_eq!(silver.as_the_cast_opens_on_share(1000), 0);
+        assert_eq!(silver.as_the_market_opens_on_share(1000), 0);
+        assert_eq!(silver.as_manufacturing_opens_on_share(1000), 0);
+    }
+
+    #[test]
+    fn tax_overstated_by_is_the_gap_between_the_two_readings() {
+        // Nobody contends: the hopeful reading is the settled one.
+        assert_eq!(
+            tax_overstated_by(10, Some(8963), false, PoolShare::Uncontended),
+            0
+        );
+        // No settled number to read, so the cap stays hopeful (`ah-ud89`).
+        assert_eq!(
+            tax_overstated_by(10, Some(8963), false, PoolShare::Unknowable),
+            0
+        );
+        // A pillaged hex collects nothing under either reading (`ah-cxxa`).
+        assert_eq!(tax_overstated_by(10, None, true, PoolShare::Share(120)), 0);
+        // 10 * TAX_PER_MAN hopeful, 120 settled.
+        assert_eq!(
+            tax_overstated_by(10, Some(8963), false, PoolShare::Share(120)),
+            10 * 50 - 120
         );
     }
 
@@ -7347,6 +7547,7 @@ mod tests {
             skills: &skills,
             held: &[],
             silver_available: 0,
+            silver_hopeful: 0,
             transmuting: None,
         };
 
@@ -7425,6 +7626,7 @@ mod tests {
             skills: &skills,
             held: &[],
             silver_available: 600,
+            silver_hopeful: 600,
             transmuting: None,
         };
 
