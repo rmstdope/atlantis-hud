@@ -578,6 +578,11 @@ export const WARNING_GROUPS: readonly {
         description: "WITHDRAW orders in the Nexus, where the order cannot be used."
       },
       {
+        code: "withdraw-not-a-basic-item",
+        title: "Withdrawing something that is not a basic item",
+        description: "WITHDRAW orders naming an item the game will not hand over, such as silver."
+      },
+      {
         code: "unit-overloaded",
         title: "Overloaded units",
         description: "A unit ordered to move carrying more than it can move with."

@@ -162,6 +162,7 @@ pub mod codes {
     pub const TWO_MONTH_LONG_ORDERS: Code = Code("two-month-long-orders");
     pub const WITHDRAW_IN_NEXUS: Code = Code("withdraw-in-nexus");
     pub const TAX_WITHOUT_COMBAT_READY_MEN: Code = Code("tax-without-combat-ready-men");
+    pub const WITHDRAW_NOT_A_BASIC_ITEM: Code = Code("withdraw-not-a-basic-item");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -170,7 +171,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 45] = [
+    pub const ALL: [Code; 46] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -216,6 +217,7 @@ pub mod codes {
         TAX_WITHOUT_COMBAT_READY_MEN,
         MAGIC_STUDY_NEEDS_A_LONE_LEADER,
         MEN_SENT_INTO_A_MAGE,
+        WITHDRAW_NOT_A_BASIC_ITEM,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -676,6 +678,7 @@ pub fn review_turn(
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
         check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
+        check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
 
@@ -5731,25 +5734,27 @@ fn apply(
                 return;
             }
             if let Some(tag) = resolve_item(item, hex, actor, ruleset) {
-                ledger.movements.push(ItemMovement {
-                    unit_id: who.clone(),
-                    tag: tag.clone(),
-                    name: item_name(&tag, hex, ruleset),
-                    delta: *count,
-                    cause: ItemChangeCause::Withdrawn,
-                    phase: StatePhase::Withdraw,
-                    line: Some(placed.line as i64),
-                    unit_price: None,
-                    other: None,
-                    created: None,
-                });
-                // Only what the catalogue prices a withdrawal of actually arrives.
-                // `rules/withdraw` acquires *basic items* with unclaimed funds, and a
-                // `withdraw_cost` is how the catalogue says an item is one; crediting anything
-                // else would silence a shortfall warning that is telling the player the truth,
-                // and `check_claims` skips the same order, so nothing else would speak up. With
-                // no ruleset there is no catalogue to ask, and the same answer follows.
+                // Only what the catalogue prices a withdrawal of actually arrives, and it arrives
+                // in both places or in neither: the balance the warnings read, and the movement
+                // the ITEMS column draws. `rules/withdraw` acquires *basic items* with unclaimed
+                // funds, and a `withdraw_cost` is how the catalogue says an item is one;
+                // crediting anything else would silence a shortfall warning that is telling the
+                // player the truth, and `check_claims` skips the same order, so nothing else
+                // would speak up. With no ruleset there is no catalogue to ask, and the same
+                // answer follows.
                 if withdrawal_cost(item, ruleset).is_some() {
+                    ledger.movements.push(ItemMovement {
+                        unit_id: who.clone(),
+                        tag: tag.clone(),
+                        name: item_name(&tag, hex, ruleset),
+                        delta: *count,
+                        cause: ItemChangeCause::Withdrawn,
+                        phase: StatePhase::Withdraw,
+                        line: Some(placed.line as i64),
+                        unit_price: None,
+                        other: None,
+                        created: None,
+                    });
                     ledger.state.apply(StatePhase::Withdraw, who, &tag, *count);
                 }
             }
@@ -11907,6 +11912,67 @@ fn check_withdraw_in_nexus(hex: &Hex<'_>, options: &CheckOptions, findings: &mut
                     Some(placed),
                 ));
             }
+        }
+    }
+}
+
+/// The catalogue's entry for this item, where the catalogue knows it and prices no withdrawal of
+/// it - and `None` otherwise.
+///
+/// `rules/withdraw` acquires *basic items* with unclaimed funds, and a `withdraw_cost` is how the
+/// catalogue says an item is one - the reading `ah-728m.3` settled and `withdrawal_cost` already
+/// applies. `None` with no ruleset, and `None` for a word the catalogue has never heard of: in
+/// both cases nothing is known about whether it is basic, so a warning would be a guess. The
+/// unknown name is its own gap, across every order that takes an item, and has a bead of its own
+/// (`ah-4kw2`).
+///
+/// The entry itself is returned rather than a bare `bool` so the caller names the item from the
+/// same lookup that decided to warn about it, instead of asking the catalogue a second question
+/// whose answer it would then have to have a fallback for.
+fn non_basic_withdrawal_entry<'a>(
+    item: &str,
+    ruleset: Option<&'a Ruleset>,
+) -> Option<&'a ItemEntry> {
+    ruleset
+        .and_then(|ruleset| ruleset.find_item(item))
+        .filter(|entry| entry.withdraw_cost.is_none())
+}
+
+/// `rules/withdraw`: "if you try withdraw any other than a basic item, an error will be given".
+fn check_withdraw_not_a_basic_item(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    // The Nexus refuses every withdrawal before the item is even looked at, so where
+    // `check_withdraw_in_nexus` is going to say so, this stays quiet: two findings on one line
+    // would blame the item for a refusal that is about the hex. Where that row is switched off it
+    // says nothing, and then the item's own refusal is all the player has - the silver leaves the
+    // ITEMS column either way, and one Settings row silently switching off another is what the
+    // navigator rejected round one's option C to avoid.
+    if (withdrawal_refused(hex.region) && options.emits(codes::WITHDRAW_IN_NEXUS))
+        || !options.emits(codes::WITHDRAW_NOT_A_BASIC_ITEM)
+    {
+        return;
+    }
+    for ordered in &hex.units {
+        for placed in &ordered.intents {
+            let Intent::Withdraw { item, .. } = &placed.intent else {
+                continue;
+            };
+            let Some(entry) = non_basic_withdrawal_entry(item, ruleset) else {
+                continue;
+            };
+            // The catalogue is not uniformly lower case - `LONG` is `Longship` - and the sentence
+            // is not shouting (`semantics.rs` does the same for its other item names).
+            let name = entry.name.to_lowercase();
+            findings.push(ordered.finding(
+                hex,
+                codes::WITHDRAW_NOT_A_BASIC_ITEM,
+                format!("only basic items can be withdrawn, and {name} is not one"),
+                Some(placed),
+            ));
         }
     }
 }
@@ -19755,6 +19821,18 @@ BUILD
             );
         }
 
+        /// `rules/withdraw` acquires *basic items* with unclaimed funds, and the catalogue says
+        /// which those are by carrying a `withdraw_cost` at all - silver carries none. The
+        /// balance already knew that; the movement did not, so the ITEMS column showed goods no
+        /// other surface believed in.
+        #[test]
+        fn a_withdrawal_of_something_unwithdrawable_moves_nothing() {
+            let hex_region = region(vec![unit("2390")]);
+            with_ledger(hex_region, "unit 2390\nWITHDRAW 500 SILV\n", |ledger| {
+                assert!(ledger.movements.is_empty(), "{:?}", ledger.movements);
+            });
+        }
+
         #[test]
         fn a_withdrawal_moves_goods_into_the_unit() {
             let hex_region = region(vec![unit("2390")]);
@@ -24190,7 +24268,7 @@ BUILD
                 starving_hex(),
                 "unit 5\nWITHDRAW 1 longship\n"
             )),
-            ["not-enough-silver"],
+            ["withdraw-not-a-basic-item", "not-enough-silver"],
             "the fund cannot be sized, so it cannot be spent"
         );
 
@@ -25237,8 +25315,9 @@ BUILD
             .into_iter()
             .map(|finding| finding.code)
             .collect::<Vec<_>>(),
-            vec![codes::NOT_ENOUGH_SILVER],
-            "the gift is still $100 more than this unit holds"
+            vec![codes::WITHDRAW_NOT_A_BASIC_ITEM, codes::NOT_ENOUGH_SILVER],
+            "the gift is still $100 more than this unit holds, and `ah-x6do` says the longship \
+             cannot be withdrawn at all"
         );
     }
 
@@ -25427,11 +25506,13 @@ BUILD
     fn an_unwithdrawable_item_credits_the_unit_nothing() {
         let regions = vec![region(vec![unit("2391"), unit("2392")])];
 
-        let finding = only(check(
-            regions,
-            "unit 2391\nWITHDRAW 5 MITH\nGIVE 2392 5 MITH\n",
-        ));
-        assert_eq!(finding.code.as_str(), "not-enough-items");
+        // The withdrawal is also refused outright, which `ah-x6do` now says so in its own right;
+        // what this test pins is the shortfall, so it looks only at that.
+        let findings = check(regions, "unit 2391\nWITHDRAW 5 MITH\nGIVE 2392 5 MITH\n");
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "not-enough-items")
+            .expect("the shortfall must still fire");
         assert_eq!(
             finding.message,
             "short 5 mithril: this unit can have 0 and its orders spend 5"
@@ -25445,14 +25526,102 @@ BUILD
     fn a_silver_withdrawal_credits_the_unit_nothing() {
         let regions = vec![region(vec![unit("2391"), unit("2392")])];
 
-        let finding = only(check(
+        // As above (`ah-x6do`): the refusal has a warning of its own now, and this test is about
+        // the shortfall.
+        let findings = check(
             regions,
             "unit 2391\nWITHDRAW 500 SILV\nGIVE 2392 500 SILV\n",
-        ));
-        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        );
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "not-enough-silver")
+            .expect("the shortfall must still fire");
         assert_eq!(
             finding.message,
             "short $500: this unit can have $0 and its orders spend $500"
+        );
+    }
+
+    /// `rules/withdraw`: "if you try withdraw any other than a basic item, an error will be given".
+    #[test]
+    fn a_silver_withdrawal_is_warned_about() {
+        let regions = vec![region(vec![unit("2391")])];
+
+        let findings = check(regions, "unit 2391\nWITHDRAW 500 SILV\n");
+        let messages: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::WITHDRAW_NOT_A_BASIC_ITEM)
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            vec!["only basic items can be withdrawn, and silver is not one"]
+        );
+    }
+
+    /// The catalogue spells `LONG` as `Longship`, with a capital, and the sentence is not shouting.
+    #[test]
+    fn a_refused_withdrawal_names_the_item_in_lower_case() {
+        let regions = vec![region(vec![unit("2391")])];
+
+        let findings = check(regions, "unit 2391\nWITHDRAW 1 longship\n");
+        let messages: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::WITHDRAW_NOT_A_BASIC_ITEM)
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            vec!["only basic items can be withdrawn, and longship is not one"]
+        );
+    }
+
+    /// `GRAI` carries a `withdrawCost`, so it is a basic item and nothing is refused.
+    #[test]
+    fn a_withdrawal_of_a_basic_item_is_not_warned_about() {
+        let regions = vec![region(vec![unit("2391")])];
+
+        assert!(!check(regions, "unit 2391\nWITHDRAW 10 grain\n")
+            .iter()
+            .any(|finding| finding.code == codes::WITHDRAW_NOT_A_BASIC_ITEM));
+    }
+
+    /// The Nexus refuses every withdrawal before the item is looked at, and `withdraw-in-nexus`
+    /// already says so - blaming the item would be blaming it for a refusal about the hex.
+    #[test]
+    fn a_silver_withdrawal_in_the_nexus_is_blamed_on_the_nexus() {
+        let regions = vec![ReportRegion {
+            terrain: "nexus".to_string(),
+            ..region(vec![unit("2391")])
+        }];
+
+        assert_eq!(
+            codes(&check(regions, "unit 2391\nWITHDRAW 500 SILV\n")),
+            vec!["withdraw-in-nexus"]
+        );
+    }
+
+    /// The Nexus refusal only speaks for the item's when the player has left it switched on.
+    /// Otherwise the silver vanishes from the ITEMS column with nothing anywhere to say why - and
+    /// making one Settings row silently switch off another is what the navigator rejected round
+    /// one's option C to avoid.
+    #[test]
+    fn a_nexus_withdrawal_is_still_refused_when_the_nexus_warning_is_off() {
+        let regions = vec![ReportRegion {
+            terrain: "nexus".to_string(),
+            ..region(vec![unit("2391")])
+        }];
+
+        let findings = check_turn(
+            &report(regions),
+            "unit 2391\nWITHDRAW 500 SILV\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::WITHDRAW_IN_NEXUS]),
+        );
+        assert_eq!(
+            codes(&findings),
+            vec!["withdraw-not-a-basic-item"],
+            "with the Nexus row off, the item's own refusal must still speak"
         );
     }
 
@@ -30920,6 +31089,13 @@ BUILD
                 allowance: None,
                 unclaimed: None,
             },
+            Case {
+                code: codes::WITHDRAW_NOT_A_BASIC_ITEM,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nWITHDRAW 5 SILV\n",
+                allowance: None,
+                unclaimed: None,
+            },
         ];
 
         assert_eq!(
@@ -31590,11 +31766,12 @@ BUILD
             ..region(vec![aboard("11125", "329", 200, 4)])
         };
 
-        let finding = only(check(
-            vec![region],
-            "unit 11125\nWITHDRAW 20 LONG\nSAIL N\n",
-        ));
-        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+        // `ah-x6do` also refuses the withdrawal itself; this test is about the weights.
+        let findings = check(vec![region], "unit 11125\nWITHDRAW 20 LONG\nSAIL N\n");
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "fleet-overloaded")
+            .expect("the overload must still fire");
         assert_eq!(
             finding.message,
             "Longship [329] is overloaded: 200 aboard on a capacity of 150, so it will not sail"
