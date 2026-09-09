@@ -1672,6 +1672,7 @@ fn forecast_hex(
                 shared_materials_of(&ordered.unit.unit_id),
                 settled_buy_all_of(&ordered.unit.unit_id),
                 settled_gifts_of(&ordered.unit.unit_id),
+                market_purse.also_withholds_from(index),
             )),
             ruleset,
         );
@@ -4095,6 +4096,7 @@ impl PhaseHoldings {
             silver: Some(self.silver[index]),
             buy_all: &[],
             gifts: &[],
+            market_withholds: 0,
         }
     }
 
@@ -4108,6 +4110,7 @@ impl PhaseHoldings {
         shared_materials: &'a [(usize, Vec<ItemAmount>)],
         buy_all: &'a [SettledBuyAll],
         gifts: &'a [SettledGift],
+        market_withholds: i64,
     ) -> PhaseFacts<'a> {
         PhaseFacts {
             study: self.study.of(index),
@@ -4118,6 +4121,7 @@ impl PhaseHoldings {
             silver: Some(self.silver[index]),
             buy_all,
             gifts,
+            market_withholds,
         }
     }
 }
