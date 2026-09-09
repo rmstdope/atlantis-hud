@@ -1350,6 +1350,7 @@ fn region_wages(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> RegionWages {
         entertainment: hex.region.entertainment,
         pillaged: own_unit_pillages(hex),
         pillagers: Some(pillagers_in(hex, ruleset)),
+        withdrawals_refused: withdrawal_refused(hex.region),
     }
 }
 
@@ -12161,7 +12162,7 @@ fn check_withdraw_not_a_basic_item(
 }
 
 /// What the ruleset says one of `item` costs to withdraw, or `None` where it says nothing.
-fn withdrawal_cost(item: &str, ruleset: Option<&Ruleset>) -> Option<i64> {
+pub(crate) fn withdrawal_cost(item: &str, ruleset: Option<&Ruleset>) -> Option<i64> {
     ruleset?.find_item(item)?.withdraw_cost
 }
 
@@ -26211,6 +26212,46 @@ BUILD
         assert!(!check(regions, "unit 2391\nWITHDRAW 10 grain\n")
             .iter()
             .any(|finding| finding.code == codes::WITHDRAW_NOT_A_BASIC_ITEM));
+    }
+
+    /// The hex's refusal has to reach the silver forecast, not only the advisory - `region_wages`
+    /// is the one place that fills it in, and a unit test of `forecast_unit` cannot see it
+    /// (`ah-gi3m`).
+    #[test]
+    fn a_nexus_withdrawal_tells_the_hover_nothing_about_the_fund() {
+        let regions = vec![ReportRegion {
+            terrain: "nexus".to_string(),
+            ..region(vec![unit("2391")])
+        }];
+        let review = review_turn(
+            &report(regions),
+            "unit 2391\nWITHDRAW 5 STON\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let forecast = review
+            .silver
+            .iter()
+            .find(|entry| entry.unit_id == "2391")
+            .expect("the unit is forecast");
+        assert!(!forecast.withdrawing);
+    }
+
+    /// The same withdrawal outside the Nexus is honoured, and the hover still says who paid.
+    #[test]
+    fn a_withdrawal_outside_the_nexus_still_tells_the_hover_the_fund_paid() {
+        let review = review_turn(
+            &report(vec![region(vec![unit("2391")])]),
+            "unit 2391\nWITHDRAW 5 STON\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let forecast = review
+            .silver
+            .iter()
+            .find(|entry| entry.unit_id == "2391")
+            .expect("the unit is forecast");
+        assert!(forecast.withdrawing);
     }
 
     /// The Nexus refuses every withdrawal before the item is looked at, and `withdraw-in-nexus`
