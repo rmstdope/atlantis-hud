@@ -1852,7 +1852,7 @@ fn gather_receipts(hexes: &[Hex<'_>]) -> BTreeMap<UnitKey, Receipts> {
             entry.taken = entry.taken.saturating_add(receipts.taken);
             entry.taken_unshown = entry.taken_unshown.saturating_add(receipts.taken_unshown);
             entry.taken_away = entry.taken_away.saturating_add(receipts.taken_away);
-            entry.take_all_unpriceable |= receipts.take_all_unpriceable;
+            entry.takes_a_whole_class |= receipts.takes_a_whole_class;
             // Movements, not a set: two gifts from one unit are two entries.
             entry
                 .silver_moves
@@ -2965,7 +2965,9 @@ fn apply_transfers(
                             }
                         }
                     }
-                } else if matches!(&*transfer.amount, Amount::All { .. }) {
+                } else if matches!(&*transfer.amount, Amount::All { .. })
+                    && matches!(&*transfer.what, Selector::Class(_) | Selector::WholeUnit)
+                {
                     // `ah-42li`: whatever the taker's own figure does, the source's row must say
                     // where its silver went.
                     if moved > 0 {
@@ -2977,13 +2979,14 @@ fn apply_transfers(
                             moved,
                         );
                     }
-                    // `ah-awcm`: what the source will have left to give depends on its own month,
-                    // which this pass has not run - so an `ALL` take silences the figure rather
-                    // than promising the report's own holding.
+                    // `ah-sgn6`: the ledger's own `transfer` returns early for a class selector,
+                    // so its balance never carries this take. The column declines it too rather
+                    // than opening its market pass on a figure the two surfaces disagree about. A
+                    // named `TAKE ... ALL SILV` is not this case and falls through to be counted.
                     receipts_by_position
                         .entry(transfer.actor)
                         .or_default()
-                        .take_all_unpriceable = true;
+                        .takes_a_whole_class = true;
                 } else if moved > 0 {
                     debit_source(
                         &mut receipts_by_position,
@@ -6126,7 +6129,7 @@ fn transfer(
         // either way, so the two surfaces agree there for the same reason they do for an item.
         //
         // A TAKE is not this case and keeps today's doubt: the column has no per-order TAKE arm at
-        // all (it reads `receipts.take_all_unpriceable` in aggregate), so the two surfaces would
+        // all (it reads `receipts.takes_a_whole_class` in aggregate), so the two surfaces would
         // not agree about one and the ledger is the surface that can say so.
         if !is_give {
             ledger.doubted.insert(actor.unit.unit_id.clone());
@@ -14498,7 +14501,7 @@ mod tests {
         let taker = receipts.get("2391").expect("the taker has receipts");
         assert_eq!(taker.taken, 100);
         assert_eq!(taker.taken_from, vec!["Unit 2390 (2390)".to_string()]);
-        assert!(!taker.take_all_unpriceable);
+        assert!(!taker.takes_a_whole_class);
     }
 
     /// `ah-42li`: the other end of `a_take_from_a_unit_in_this_hex_is_counted`. The order is in the
@@ -14632,7 +14635,7 @@ mod tests {
             "the source is not one the report shows here"
         );
         assert!(taker.taken_from.is_empty());
-        assert!(!taker.take_all_unpriceable);
+        assert!(!taker.takes_a_whole_class);
     }
 
     /// `ah-awcm`: `TAKE FROM <a unit not shown here> ALL SILV` takes an amount only that unit
@@ -14650,17 +14653,30 @@ mod tests {
         assert_eq!(taker.taken, 0);
     }
 
-    /// `ah-awcm`: what another unit will have left to give depends on its own month.
+    /// `ah-sgn6`: `rules/sequenceofevents` settles Give orders (GIVE and TAKE together) before the
+    /// tax phase and before the market, so what the source parts with is exactly the silver the
+    /// report shows it holding - the same figure `debit_source` already books on the source
+    /// (`ah-42li`) and the same one `semantics::transfer` already credits in the ledger. The column
+    /// stops being the one surface that refuses it.
     #[test]
-    fn a_take_of_all_silver_cannot_be_priced() {
+    fn a_take_of_all_the_silver_credits_the_taker_what_the_settlement_moved() {
         let region = region(vec![with_silver(unit("2390"), 500), unit("2391")]);
         let source = "unit 2391\nTAKE FROM 2390 ALL SILV\n";
 
         let receipts = receipts_in(&region, source);
 
         let taker = receipts.get("2391").expect("the taker has receipts");
-        assert!(taker.take_all_unpriceable);
-        assert_eq!(taker.taken, 0);
+        assert_eq!(taker.taken, 500);
+        assert_eq!(taker.taken_from, vec!["Unit 2390 (2390)".to_string()]);
+        assert_eq!(
+            taker.silver_moves,
+            vec![ReceiptMove {
+                amount: 500,
+                cause: SilverChangeCause::Took,
+                other: "Unit 2390 (2390)".to_string(),
+            }]
+        );
+        assert!(!taker.takes_a_whole_class);
     }
 
     /// `ah-awcm`: the column models silver, so a take of goods is no more its business than a gift
@@ -14674,7 +14690,7 @@ mod tests {
 
         let taker = receipts.get("2391").cloned().unwrap_or_default();
         assert_eq!(taker.taken, 0);
-        assert!(!taker.take_all_unpriceable);
+        assert!(!taker.takes_a_whole_class);
     }
 
     #[test]
@@ -14723,18 +14739,20 @@ mod tests {
         assert_eq!(recipient.received, 500);
     }
 
-    /// The mirror on the taking side: `TAKE FROM ... ALL NORMAL` reaches `take_all_unpriceable`
-    /// exactly as a named `TAKE ... ALL SILV` already does - what the source has left depends on
-    /// its own month, which this pass has not run.
+    /// `ah-sgn6`: the class form stays unpriceable, and for its own reason - the ledger's
+    /// `transfer` returns early for a `Selector::Class`, so its balance never carries the take and
+    /// the column will not open a market pass on a figure the two surfaces disagree about. A named
+    /// `TAKE ... ALL SILV` is counted, by
+    /// `a_take_of_all_the_silver_credits_the_taker_what_the_settlement_moved`.
     #[test]
-    fn a_take_of_all_normal_is_unpriceable_like_a_named_take_of_all_silver() {
+    fn a_take_of_all_normal_is_still_unpriceable() {
         let region = region(vec![with_silver(unit("2390"), 500), unit("2391")]);
         let source = "unit 2391\nTAKE FROM 2390 ALL NORMAL\n";
 
         let receipts = receipts_in(&region, source);
 
         let taker = receipts.get("2391").expect("the taker has receipts");
-        assert!(taker.take_all_unpriceable);
+        assert!(taker.takes_a_whole_class);
         assert_eq!(taker.taken, 0);
     }
 
@@ -20588,7 +20606,7 @@ BUILD
         }
 
         /// The TAKE half of the same arm is deliberately untouched: the SILVER column has no
-        /// per-order TAKE arm to agree with (`silver.rs` reads `take_all_unpriceable` in
+        /// per-order TAKE arm to agree with (`silver.rs` reads `takes_a_whole_class` in
         /// aggregate), so the ledger stays the surface that says the month cannot be followed
         /// (`ah-jo6b`).
         #[test]
@@ -34932,7 +34950,7 @@ BUILD
 
         let taker = receipts.get("2391").cloned().unwrap_or_default();
         assert!(
-            !taker.take_all_unpriceable,
+            !taker.takes_a_whole_class,
             "nothing the source holds is silver, so no figure is in doubt"
         );
         assert_eq!(taker.taken, 0);

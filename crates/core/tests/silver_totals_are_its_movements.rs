@@ -146,7 +146,7 @@ fn doubted_market_report() -> String {
 /// passes before the refactor and after it, and is expected to fail *during* it if a doubted
 /// unit's market demand is left off the internal record - which is exactly what it is for.
 #[test]
-fn a_doubted_income_still_charges_what_the_purchase_asked() {
+fn a_doubted_income_still_charges_what_the_purchase_asked_for_a_class_take() {
     let text = doubted_market_report();
     let mut parsed = parse_report_full(&text);
     classify_units(&mut parsed, &ruleset());
@@ -154,7 +154,7 @@ fn a_doubted_income_still_charges_what_the_purchase_asked() {
     let template = extract_orders_template(&text)
         .map(|template| template.text)
         .unwrap_or_default();
-    let orders = format!("{template}\nunit 900\nTAKE FROM 902 ALL SILV\nBUY 2 grain\n");
+    let orders = format!("{template}\nunit 900\nTAKE FROM 902 ALL NORMAL\nBUY 2 grain\n");
 
     let review = review_turn(&parsed, &orders, Some(&ruleset()), CheckOptions::default());
     let unit = review
@@ -227,5 +227,93 @@ fn the_unit_a_take_empties_says_where_its_silver_went() {
         unit.at_month_end,
         Some(27),
         "the 60 it held is gone; what it earns of its own is untouched"
+    );
+}
+
+/// `ah-sgn6`: the taker's own row, the other half of `ah-42li`'s fixture. Buyers takes all 60 of
+/// Purse's silver in the Give phase, which `rules/sequenceofevents` settles before tax and before
+/// the market - so the take is a number, and the tax, the purchase and the month end come back
+/// with it.
+#[test]
+fn a_take_of_all_the_silver_is_counted_like_any_other_take() {
+    let text = doubted_market_report();
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset());
+
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let orders = format!("{template}\nunit 900\nTAKE FROM 902 ALL SILV\nBUY 2 grain\n");
+
+    let review = review_turn(&parsed, &orders, Some(&ruleset()), CheckOptions::default());
+    let unit = review
+        .silver
+        .iter()
+        .find(|silver| silver.unit_id == "900")
+        .expect("unit 900 is on the SILVER surface");
+
+    let took: Vec<_> = unit
+        .changes
+        .iter()
+        .filter(|change| change.cause == SilverChangeCause::Took)
+        .collect();
+    assert_eq!(
+        took,
+        vec![&SilverChange {
+            amount: 60,
+            cause: SilverChangeCause::Took,
+            line: None,
+            other: Some("Purse (902)".to_string()),
+        }],
+        "one line, naming the source; every receipt is recorded with no line of its own"
+    );
+    assert_eq!(
+        unit.expense,
+        Some(40),
+        "the two grain are still 40 silver out"
+    );
+    assert_eq!(
+        unit.income,
+        Some(87),
+        "the 60 taken, plus 2 leaders working by default at the hex's $13.5 wage"
+    );
+    assert_eq!(
+        unit.at_month_end,
+        Some(547),
+        "held 500, plus the 87 earned, less the 40 spent"
+    );
+}
+
+/// `ah-sgn6`: the column and the ledger have to settle the take at one figure. The column's market
+/// pass reads the ledger's own balance, and this is the first case where a live `ALL SILV` take
+/// reaches it: `apply_transfers` resolves `ALL` against its own working holdings and
+/// `semantics::transfer` against `known_balance_at(StatePhase::Give, ..)`, and nothing else
+/// compares them.
+#[test]
+fn a_buy_all_after_taking_all_the_silver_spends_what_the_take_brought() {
+    let text = doubted_market_report().replace(
+        "2 leaders [LEAD], 500 silver [SILV]",
+        "2 leaders [LEAD], 10 silver [SILV]",
+    );
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset());
+
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let orders = format!("{template}\nunit 900\nTAKE FROM 902 ALL SILV\nBUY ALL grain\n");
+
+    let review = review_turn(&parsed, &orders, Some(&ruleset()), CheckOptions::default());
+    let unit = review
+        .silver
+        .iter()
+        .find(|silver| silver.unit_id == "900")
+        .expect("unit 900 is on the SILVER surface");
+
+    assert_eq!(
+        unit.expense,
+        Some(60),
+        "10 held plus 60 taken buys 3 grain at $20; wages arrive too late to pay for orders \
+         (`ah-uwa3`)"
     );
 }

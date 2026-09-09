@@ -622,13 +622,13 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     })
   },
   {
-    id: "doubt-takes-all-from-another",
-    when: ({ silver }) => silver.doubt === "takes-all-from-another",
+    id: "doubt-takes-a-whole-class",
+    when: ({ silver }) => silver.doubt === "takes-a-whole-class",
     say: () =>
-      "Taking all of another unit's silver cannot be counted until that unit's own month is settled.",
+      "Taking a whole class of another unit's items cannot be followed, so this unit's month has no total.",
     example: () => ({
       unit: aReportUnit(),
-      silver: aUnitSilver({ doubt: "takes-all-from-another" }),
+      silver: aUnitSilver({ doubt: "takes-a-whole-class" }),
       warned: false,
       countUpkeep: true
     })
