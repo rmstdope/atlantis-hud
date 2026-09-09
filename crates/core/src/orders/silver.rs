@@ -1597,9 +1597,9 @@ pub fn forecast_unit(
     // `income` alone and so is correctly unavailable to a gift, which is the safe direction.
     let mut give_phase_income = received;
     let mut expense = 0i64;
-    // Market-phase spending, held apart from `expense` until the market block below has run. `rules/sequenceofevents` puts *Give orders* before *Market orders*, so a
-    // `GIVE ... ALL SILV` gives away silver an exact `BUY` on any line will later spend
-    // (`ah-npab`).
+    // Market-phase spending, held apart from `expense` until the market block below has run.
+    // `rules/sequenceofevents` puts *Give orders* before *Market orders*, so a `GIVE ... ALL SILV`
+    // gives away silver an exact `BUY` on any line will later spend (`ah-npab`).
     // Set from `market_demand` once the intent loop has gathered every line, and then again by
     // the market-phase pricing pass, which is where affordability can be answered (`ah-omn7`).
     // What the turn charges *after* the market closes: "TEACH orders are processed. STUDY orders
@@ -1647,8 +1647,8 @@ pub fn forecast_unit(
     // The first order in the block that actually moves silver out, which is what the hover names.
     // Recorded where `expense` grows rather than read off the intents: a `GIVE` of items and a
     // costless `CAST` are orders, but they spend nothing, and naming one of those would point the
-    // reader at an order the game will not refuse. A deferred `GIVE ALL SILV` or `BUY ALL` is
-    // considered only if no direct spender was found, since it spends what the others leave.
+    // reader at an order the game will not refuse. A `GIVE ALL SILV` or a `BUY ALL` is considered
+    // only if no direct spender was found, since it spends what the others leave.
     let mut spent_on: Option<SilverSpender> = None;
     // What a `PRODUCE` order will make, for the four fields the hover reads. Filled by the arm
     // below; a unit with no such order leaves it at nothing.
@@ -2260,8 +2260,9 @@ pub fn forecast_unit(
                             // money moves, and there is nothing left to doubt.
                             Some(false) => continue,
                             // Every one of the unit's coins leaves, exactly as `GIVE ... ALL SILV`
-                            // does - and deferred for the same reason, so it spends against the
-                            // running total rather than the report's opening figure.
+                            // does - and booked from the ledger's own settlement for the same
+                            // reason, since `class_tags` expands the class into one transfer per
+                            // tag, silver among them, on this same line (`ah-6m7b.3`).
                             Some(true) if silver_uncertain => {
                                 expense_doubt =
                                     expense_doubt.or(Some(SilverDoubt::GiveTargetUncertain));
@@ -2414,9 +2415,9 @@ pub fn forecast_unit(
         // What a deferred order can spend is what reaches the unit *in time* - `ah-1wcw.3` settled
         // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
         // for anything this month's orders buy (`ah-uwa3`).
-        // The Give phase is already settled - it now happens inside the intent walk, the moment
-        // the turn leaves it (`ah-m7su`) - so `expense` here carries the exact gifts *and* the
-        // deferred ones, and what is left is what the market opens on. A study and a manufacture
+        // The Give phase is already settled - `semantics::transfer` settled it and each arm of the
+        // walk booked what it decided (`ah-6m7b.3`) - so `expense` here carries the exact gifts
+        // *and* the `ALL` ones, and what is left is what the market opens on. A study and a manufacture
         // are charged in the turn's last block and neither makes the gift smaller (`ah-a5ci`).
         //
         // Everything the Give phase could not spend is in the purse by the time the market opens:
@@ -4016,8 +4017,9 @@ pub struct BuyAllPlan {
 
 /// What a `BUY ALL` takes and what it costs.
 ///
-/// The unbounded counterpart of [`price_purchase`], and called by **both** surfaces -
-/// `semantics::settle_buy_all` and its own callers - because two surfaces reading
+/// The unbounded counterpart of [`price_purchase`], and the one place a `BUY ALL` is priced:
+/// `semantics::settle_buy_all` calls it, and the SILVER column reports what that decided through
+/// [`UnitFacts::settled_buy_all`] rather than calling it again - because two surfaces reading
 /// one order must not price it two ways (`ah-lu0f.2`).
 ///
 /// `silver_available` is what the unit holds when this line is reached, which is *not* its report
