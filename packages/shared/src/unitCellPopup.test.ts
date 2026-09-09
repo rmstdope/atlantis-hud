@@ -1398,6 +1398,48 @@ describe("the column popups", () => {
     });
   });
 
+  it("the silver popup names the neighbours' money that paid", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            atMonthEnd: -1600,
+            borrowedForOrders: 1600,
+            changes: [{ amount: 1600, cause: "was-lent", line: null, other: null }]
+          })
+        })
+      )
+    );
+    expect(popup.lines.find((line) => line.label === "was lent")).toMatchObject({
+      value: "+1600",
+      why: "by your units in this hex"
+    });
+    expect(popup.notes).not.toContain(
+      "A faction-mate's silver in this hex pays for this unit's orders."
+    );
+  });
+
+  it("the sentence stays where no `was lent` line is drawn", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            borrowedForOrders: 1600,
+            sharedSilverForOrders: 1600,
+            changes: []
+          })
+        })
+      )
+    );
+    expect(popup.notes).toContain(
+      "A faction-mate's silver in this hex pays for this unit's orders."
+    );
+  });
+
   it("the silver popup merges two takers into one line", () => {
     const popup = columnPopup(
       popupForCell(

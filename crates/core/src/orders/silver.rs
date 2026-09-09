@@ -328,6 +328,19 @@ pub struct UnitSilver {
     /// purse, and `semantics::sharing_purse` settles it - the same computation the
     /// `not-enough-silver` warning is judged against, so the two surfaces cannot disagree.
     pub shared_silver_for_orders: i64,
+    /// What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
+    /// this unit's own overdraft, where the hex's purse settled it (`ah-3c2t.2`).
+    ///
+    /// A superset of [`Self::shared_silver_for_orders`] and never smaller: that field is `0` for a
+    /// sharer by decision, because a sharer's overdraft is inside the purse's own sum rather than
+    /// a claim against it, and this one is not - the agreed record's borrower shares. Equal to it
+    /// for every non-sharer, and `0` wherever the purse could not cover every claimant, where
+    /// every figure stays pessimistic exactly as `shared_silver_for_orders` does.
+    ///
+    /// Read by the change list and by the hover's `shared-silver-pays-orders` note. It feeds
+    /// **no** total: `short_for_orders` still counts `shared_silver_for_orders` alone, so the cell
+    /// stays red exactly where it is red today (`ah-moq3`).
+    pub borrowed_for_orders: i64,
     /// Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
     /// `0` when the unit is not set to consume, holds no food, or owes nothing.
     ///
@@ -601,6 +614,16 @@ pub enum SilverChangeCause {
     /// own (`ah-1x2h.3`). The ITEMS ledger already
     /// books this end as `ItemChangeCause::WasTakenFrom`; this is silver catching up (`ah-42li`).
     WasTaken,
+    /// Silver the hex's `SHARE` purse paid this unit's orders with, from its faction-mates'
+    /// pockets. The mirror of [`Self::Lent`], booked on the borrower rather than on the lender
+    /// (`ah-3c2t.2`).
+    ///
+    /// **Outside both totals, and the only cause that is.** The money never enters this unit's
+    /// `income`: the column counts each unit on its own (`ah-1wcw.1`), so the borrower keeps the
+    /// red month-end figure the purchase left it with and this line says who covered it. That is
+    /// why `crates/core/tests/silver_totals_are_its_movements.rs` excludes it from the sum, and
+    /// the exclusion is the whole of the cost the navigator accepted for it.
+    WasLent,
 }
 
 /// One movement of a unit's silver this month, and what caused it.
@@ -1733,6 +1756,7 @@ pub fn forecast_unit(
             faction_food_covered: 0,
             shared_silver_covered: 0,
             shared_silver_for_orders: 0,
+            borrowed_for_orders: 0,
             own_food_covered: 0,
             forced_own_food: 0,
             forced_own_food_tag: None,
@@ -2788,6 +2812,7 @@ pub fn forecast_unit(
         faction_food_covered: 0,
         shared_silver_covered: 0,
         shared_silver_for_orders: shared,
+        borrowed_for_orders: 0,
         own_food_covered,
         forced_own_food: 0,
         forced_own_food_tag: None,

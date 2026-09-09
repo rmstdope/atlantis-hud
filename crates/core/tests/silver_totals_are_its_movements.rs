@@ -66,6 +66,10 @@ fn every_unit_in_the_corpus_totals_what_its_changes_say() {
         let income_moved: i64 = unit
             .changes
             .iter()
+            // The one arm that is in neither total, by decision: the column counts each unit on
+            // its own, so borrowed silver is not this unit's income - it keeps the red month-end
+            // figure the purchase left it with and the line says who covered it (`ah-3c2t.2`).
+            .filter(|change| change.cause != SilverChangeCause::WasLent)
             .filter(|change| change.amount > 0)
             .map(|change| change.amount)
             .sum();
@@ -318,4 +322,26 @@ fn a_buy_all_after_taking_all_the_silver_spends_what_the_take_brought() {
         "10 held plus 60 taken buys 3 grain at $20; wages arrive too late to pay for orders \
          (`ah-uwa3`)"
     );
+}
+
+/// `borrows` needs a negative relieved balance and `lendable` a positive one, so the two are
+/// mutually exclusive by construction. This is what keeps them so (`ah-3c2t.2`).
+#[test]
+fn a_borrowing_unit_never_also_lends() {
+    for (fixture, unit) in the_corpus() {
+        let lends = unit
+            .changes
+            .iter()
+            .any(|change| change.cause == SilverChangeCause::Lent);
+        let borrows = unit
+            .changes
+            .iter()
+            .any(|change| change.cause == SilverChangeCause::WasLent);
+
+        assert!(
+            !(lends && borrows),
+            "{fixture} {}: a unit cannot both lend to the hex's purse and borrow from it",
+            unit.unit_id
+        );
+    }
 }

@@ -1552,7 +1552,12 @@ const SILVER_NOTES_RESTATED: Record<string, (groups: readonly CauseGroup[]) => b
   "given-to-nobody": (groups) => groups.some((group) => group.cause === "discarded"),
   // Only where the clause fired, which is the same test `silverCauseWhy` makes.
   "taxes-by-flag": (groups) => hasOrderlessGroup(groups, "taxed"),
-  "works-by-default": (groups) => hasOrderlessGroup(groups, "worked")
+  "works-by-default": (groups) => hasOrderlessGroup(groups, "worked"),
+  // The `was lent` line carries the figure the sentence does not (`ah-3c2t.2`, option **S3**).
+  // Keyed on the drawn line and not on the note's own condition, as every entry here is: a
+  // doubted month draws no cause lines at all while `borrowedForOrders` is still populated, and
+  // dropping the note there would take the sentence away and put nothing in its place.
+  "shared-silver-pays-orders": (groups) => groups.some((group) => group.cause === "was-lent")
 };
 
 /** Whether one cause was drawn with no order of this unit's behind any of it. */
@@ -1588,7 +1593,8 @@ const SILVER_CAUSE_LABELS: Record<string, string> = {
   "gave-away": "gave away",
   discarded: "given to nobody",
   lent: "lent",
-  "was-taken": "was taken"
+  "was-taken": "was taken",
+  "was-lent": "was lent"
 };
 
 /**
@@ -1695,6 +1701,8 @@ function silverCauseWhy(
     }
   } else if (group.cause === "lent") {
     parts.push("to a faction-mate's orders in this hex");
+  } else if (group.cause === "was-lent") {
+    parts.push("by your units in this hex");
   } else if (group.cause === "was-taken") {
     const by = others(group.entries);
     if (by.length > 0) {
