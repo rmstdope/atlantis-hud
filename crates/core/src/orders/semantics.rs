@@ -1865,7 +1865,7 @@ fn silver_records_agree(forecast: &UnitSilver, moves: &[SilverMove]) {
 ///
 /// Sorted, because the ledger's list is in settlement order and the column's in walk order;
 /// ordering within each list is already pinned separately by `mod silver_record`.
-#[cfg(any(debug_assertions, test))]
+#[cfg(debug_assertions)]
 fn compared_silver_rows(
     rows: impl Iterator<Item = (SilverChangeCause, Option<i64>, i64)>,
 ) -> Vec<(SilverChangeCause, Option<i64>, Option<i64>)> {
@@ -21824,6 +21824,11 @@ BUILD
     }
 
     /// The ledger's own record of the silver it moves (`ah-6m7b.5.2`).
+    /// Gated with the check itself: `silver_records_agree` is `#[cfg(debug_assertions)]`, and
+    /// `a_doubted_unit_is_not_compared` asserts a `debug_assert_eq!` actually fires, which it
+    /// cannot in a release profile. Without this, `cargo test --release` does not compile
+    /// (`ah-6m7b.5.3`).
+    #[cfg(debug_assertions)]
     mod silver_records_agree {
         use super::*;
 
@@ -21940,6 +21945,13 @@ BUILD
         #[test]
         fn a_formed_unit_is_not_compared() {
             let mut forecast = a_forecast_with_changes();
+
+            // The same negative control the doubted case carries: without it this test would keep
+            // passing if the helper ever stopped producing a mismatch to skip over.
+            assert!(
+                std::panic::catch_unwind(|| silver_records_agree(&forecast, &[])).is_err(),
+                "the mismatch must fire without the skip, or this test proves nothing"
+            );
 
             forecast.formed = Some(FormedSubject {
                 alias: "NEW 1".to_string(),
