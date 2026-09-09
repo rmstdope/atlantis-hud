@@ -6651,7 +6651,11 @@ fn buy(
                 // not be settled at all: the purse lends silver in hand, so the buyer spends
                 // silver in hand (`ah-3c2t.1`). `0` in every other hex, and kept beside
                 // `overstated_tax` because it is the same kind of term.
-                .saturating_sub(ledger.market_purse.also_withholds_from(standing.actor_index))
+                .saturating_sub(
+                    ledger
+                        .market_purse
+                        .also_withholds_from(standing.actor_index),
+                )
                 .saturating_add(shared),
         ),
         _ => MarketFunds::Unmeasured,
@@ -8499,8 +8503,13 @@ fn market_tax_for(hex: &Hex<'_>, region: RegionWages, ruleset: Option<&Ruleset>)
             let men = taxing_men(facts, ruleset);
             MarketTax {
                 overstated: tax_overstated_by(men, region.tax_base, region.pillaged, shares.tax),
-                hopeful: price_tax(men, region.tax_base, region.pillaged, PoolShare::Uncontended)
-                    .earns,
+                hopeful: price_tax(
+                    men,
+                    region.tax_base,
+                    region.pillaged,
+                    PoolShare::Uncontended,
+                )
+                .earns,
                 unknowable: shares.tax == PoolShare::Unknowable,
             }
         })
@@ -25674,8 +25683,16 @@ BUILD
         ReportRegion {
             tax_base: Some(600),
             ..region(vec![
-                sharing(with_skill(with_silver(with_men(unit("1"), 10), 0), "COMB", 1)),
-                sharing(with_skill(with_silver(with_men(unit("2"), 10), 0), "COMB", 1)),
+                sharing(with_skill(
+                    with_silver(with_men(unit("1"), 10), 0),
+                    "COMB",
+                    1,
+                )),
+                sharing(with_skill(
+                    with_silver(with_men(unit("2"), 10), 0),
+                    "COMB",
+                    1,
+                )),
             ])
         }
     }
