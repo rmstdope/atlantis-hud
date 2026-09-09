@@ -44,6 +44,7 @@ fn report_text() -> String {
         "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. \
          Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).",
         "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+        "- Stranger (7001), Bar (2), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
         "",
     ]
     .join("\n")
@@ -413,7 +414,19 @@ fn the_three_surfaces_agree_on_a_hand_built_gift() {
     let ruleset = ruleset();
     let text = report_text();
 
-    for orders in ["unit 900\nGIVE 901 15 IRON\n", "unit 900\nGIVE 901 4 ORC\n"] {
+    for orders in [
+        "unit 900\nGIVE 901 15 IRON\n",
+        "unit 900\nGIVE 901 4 ORC\n",
+        // A visible foreign target: `rules/give` cannot settle ordinary goods without that
+        // faction's declaration toward us, so this is what exercises `Exempt::LedgerUncertain`
+        // now that no committed fixture does (`ah-jo6b.1`).
+        "unit 900\nGIVE 7001 15 IRON\n",
+        // A class the committed catalogue cannot expand - `MAGIC` parses as a class but has no
+        // `itemClasses` entry - so the ledger cannot say what moves and doubts the unit outright.
+        // This is what exercises `Exempt::LedgerDoubted`, now that no committed fixture does
+        // (`ah-jo6b.1`).
+        "unit 900\nGIVE 901 ALL MAGIC\n",
+    ] {
         for case in compare_one("hand-built", &text, orders, &ruleset) {
             assert_the_surfaces_agree(&case, &ruleset);
         }
@@ -453,6 +466,18 @@ fn the_three_surfaces_agree_on_every_transfer_in_the_corpus() {
 /// transfer, 39 `WalkUnknowable`, 9 `LedgerDoubted`, 5 `LedgerUncertain`, 18 `LedgerOverdrawn`,
 /// and 337 (unit, tag) pairs compared against all three surfaces at once - every surface unexempt,
 /// the walk included.
+///
+/// Re-measured 2026-09-09 (`ah-jo6b.1`): `LedgerDoubted` is now **0**. All nine came from
+/// `SilverDoubt::GiveTargetUncertain` on gifts to a unit number the report never prints, and that
+/// doubt no longer exists - the projection assumes such a gift lands. Its floor is therefore
+/// dropped rather than lowered: a floor over zero would fail today and one at zero would assert
+/// nothing. `LedgerUncertain` went to **0** with it and for the same reason - the five it counted
+/// were unshown-target gifts too, not the visible-foreign ones expected.
+///
+/// Both exemptions are still reachable in production, so both are given the arrangement `ManTag`
+/// already had rather than being left uncovered: `the_three_surfaces_agree_on_a_hand_built_gift`
+/// gained a visible-foreign case and an unexpandable-class case, and each has a guard test of its
+/// own below proving it reaches the arm it is there for.
 #[test]
 fn the_corpus_actually_exercises_the_agreement() {
     let ruleset = ruleset();
@@ -465,16 +490,14 @@ fn the_corpus_actually_exercises_the_agreement() {
         .filter(|case| walk_exemption(case) == Some(Exempt::WalkUnknowable))
         .count();
 
-    let mut doubted = 0;
-    let mut uncertain = 0;
     let mut overdrawn = 0;
     let mut compared_pairs = 0;
     for case in &cases {
         let walk_exempt = walk_exemption(case).is_some();
         for tag in tags_mentioned(case) {
             match ledger_exemption(case, &tag, &ruleset) {
-                Some(Exempt::LedgerDoubted) => doubted += 1,
-                Some(Exempt::LedgerUncertain) => uncertain += 1,
+                // No floor for either, and each has a guard test of its own - see the note above.
+                Some(Exempt::LedgerDoubted) | Some(Exempt::LedgerUncertain) => {}
                 Some(Exempt::LedgerOverdrawn) => overdrawn += 1,
                 // `ManTag` has no floor: the corpus moves no men at all, and the case below is
                 // where that arm is exercised instead.
@@ -504,8 +527,6 @@ fn the_corpus_actually_exercises_the_agreement() {
         walk_unknowable > 0,
         "WalkUnknowable exemptions: {walk_unknowable}"
     );
-    assert!(doubted > 0, "LedgerDoubted exemptions: {doubted}");
-    assert!(uncertain > 0, "LedgerUncertain exemptions: {uncertain}");
     assert!(overdrawn > 0, "LedgerOverdrawn exemptions: {overdrawn}");
 
     // No floor for `Exempt::ManTag`, and none for a formed unit either: the corpus's committed
@@ -517,6 +538,57 @@ fn the_corpus_actually_exercises_the_agreement() {
         cases.iter().filter(|case| case.formed).count(),
         0,
         "a fixture now carries a FORM: give the formed-unit case a floor of its own"
+    );
+}
+
+/// The hand-built `GIVE 901 ALL MAGIC` is the `LedgerDoubted` arm's only exercise now that no
+/// committed fixture reaches it (`ah-jo6b.1`), so it must really reach it. `transfer` doubts a unit
+/// whose line "moves an amount that depends on classifying everything the unit holds, which is not
+/// modelled".
+#[test]
+fn the_hand_built_class_gift_reaches_the_ledger_doubted_exemption() {
+    let ruleset = ruleset();
+    let text = report_text();
+    let cases = compare_one(
+        "hand-built",
+        &text,
+        "unit 900\nGIVE 901 ALL MAGIC\n",
+        &ruleset,
+    );
+
+    let smith = cases
+        .iter()
+        .find(|case| case.unit_id == "900")
+        .expect("the smith is compared");
+    assert_eq!(
+        ledger_exemption(smith, "IRON", &ruleset),
+        Some(Exempt::LedgerDoubted),
+        "a class the ledger cannot expand leaves none of this unit's balances a statement"
+    );
+}
+
+/// The hand-built `GIVE 7001 15 IRON` is the `LedgerUncertain` arm's only exercise now that no
+/// committed fixture reaches it (`ah-jo6b.1`), so it must really reach it. `rules/give`: ordinary
+/// goods need the target faction's declaration toward us, which no report carries.
+#[test]
+fn the_hand_built_foreign_gift_reaches_the_ledger_uncertain_exemption() {
+    let ruleset = ruleset();
+    let text = report_text();
+    let cases = compare_one(
+        "hand-built",
+        &text,
+        "unit 900\nGIVE 7001 15 IRON\n",
+        &ruleset,
+    );
+
+    let smith = cases
+        .iter()
+        .find(|case| case.unit_id == "900")
+        .expect("the smith is compared");
+    assert_eq!(
+        ledger_exemption(smith, "IRON", &ruleset),
+        Some(Exempt::LedgerUncertain),
+        "a visible foreign target leaves the ledger's IRON balance at the report's figure"
     );
 }
 

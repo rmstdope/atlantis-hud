@@ -673,18 +673,6 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     })
   },
   {
-    id: "give-target-uncertain",
-    when: ({ silver }) => silver.doubt === "give-target-uncertain",
-    say: ({ silver }) =>
-      `Your report does not show whether ${silver.doubtSubject ?? "the target"} can receive this GIVE, so what this unit spends cannot be said.`,
-    example: () => ({
-      unit: aReportUnit(),
-      silver: aUnitSilver({ doubt: "give-target-uncertain", doubtSubject: "unit 9999" }),
-      warned: false,
-      countUpkeep: true
-    })
-  },
-  {
     id: "give-consequences-uncertain",
     when: ({ silver }) => silver.doubt === "give-consequences-uncertain",
     say: () =>

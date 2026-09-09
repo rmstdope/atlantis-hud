@@ -1448,19 +1448,6 @@ describe("the silver section", () => {
     ).toBe(
       "This unit is giving away all its MAGIC items, and this application cannot tell which items those are."
     );
-    // `rules/give` lets a unit we cannot see receive a gift once its faction has declared us
-    // Friendly, and no report carries that declaration - so a gift of silver to a number the report
-    // never prints is neither spent nor kept (`ah-66yi`).
-    expect(
-      note({
-        expense: null,
-        atMonthEnd: null,
-        doubt: "give-target-uncertain",
-        doubtSubject: "unit 9999"
-      })
-    ).toBe(
-      "Your report does not show whether unit 9999 can receive this GIVE, so what this unit spends cannot be said."
-    );
     expect(
       note({ expense: null, atMonthEnd: null, doubt: "give-consequences-uncertain" })
     ).toBe(
@@ -1589,8 +1576,6 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "This region is not selling horses, so what the purchase costs cannot be said.",
     "doubt-gives-a-whole-class":
       "This unit is giving away all its MAGIC items, and this application cannot tell which items those are.",
-    "give-target-uncertain":
-      "Your report does not show whether unit 9999 can receive this GIVE, so what this unit spends cannot be said.",
     "give-consequences-uncertain":
       "Because this GIVE cannot be predicted, what this unit earns or spends afterwards cannot be said.",
     "doubt-unknown-combat-ready":
@@ -1826,7 +1811,6 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "contested-faction-food",
     "unknown-combat-ready",
     "unknown-skills-after-arrivals",
-    "give-target-uncertain",
     "give-consequences-uncertain"
   ];
 

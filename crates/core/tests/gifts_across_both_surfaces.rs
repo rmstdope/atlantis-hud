@@ -400,17 +400,23 @@ fn an_unpriceable_later_order_no_longer_hides_the_size_of_the_gift() {
 /// gift either, because the gift is booked at its own arm and the doubt is raised after it.
 ///
 /// Before `ah-6m7b.3` the column settled every `ALL` gift at the phase boundary, so a doubt raised
-/// anywhere in the Give phase - here a `GIVE` to a unit number the report never prints, which
-/// `rules/give` leaves uncertain - was already set by the time it settled and hid the gift. It is
+/// anywhere in the Give phase was already set by the time it settled and hid the gift. It is
 /// the same reading as the test above (`ah-m7su`: the gift is a number even where `Out` is not),
 /// now applied to the whole of the Give phase rather than to the phases after it.
+///
+/// The later order used to be a `GIVE` to a unit number the report never prints; that no longer
+/// doubts, because the projection assumes such a gift lands (`ah-jo6b.1`). The doubt here is now a
+/// gift of a whole item class the committed catalogue cannot expand - `MAGIC` parses as a class
+/// but has no `itemClasses` entry - which leaves `ah-6m7b.3`'s property tested on a doubt that
+/// still exists.
 #[test]
 fn a_doubt_raised_by_a_later_gift_no_longer_hides_this_ones_size() {
     let text = report(QUIET, &[], &[&giver(300)]);
-    let script = "unit 900\nGIVE 0 ALL SILV\nGIVE 9999 10 SILV\n";
+    let script = "unit 900\nGIVE 0 ALL SILV\nGIVE 9999 ALL MAGIC\n";
     let unit = row_of(&review_of(&text, script), "900");
 
-    assert_eq!(unit.doubt, Some(SilverDoubt::GiveTargetUncertain));
+    assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
+    assert_eq!(unit.doubt_subject.as_deref(), Some("MAGIC"));
     assert_eq!(unit.expense, None, "a doubted side is not a number");
     assert_eq!(unit.given_to_nobody, 300, "but the size of the gift is");
 }

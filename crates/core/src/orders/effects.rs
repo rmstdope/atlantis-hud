@@ -6200,8 +6200,9 @@ mod tests {
 
     /// A unit number the *whole report* never prints. `rules/give` lets a unit we cannot see
     /// receive a gift once its faction has declared us Friendly, so this may be a perfectly good
-    /// order - the count stands and the order is admitted rather than silently doing nothing
-    /// (`ah-66yi`).
+    /// order - the projection assumes it lands, the stone leaves the giver, and nothing is admitted
+    /// as uncounted (`ah-jo6b`). What the report cannot establish is said by
+    /// `give-target-not-here` instead.
     #[test]
     fn an_unshown_number_is_not_a_definite_missing_target() {
         let response = two_hex_preview("unit 6857\nGIVE 9999 10 STON\n");
@@ -6214,9 +6215,9 @@ mod tests {
                 .iter()
                 .find(|item| item.tag == "STON")
                 .map(|item| item.amount),
-            Some(15)
+            Some(5)
         );
-        assert_eq!(giver.uncounted, vec!["GIVE 9999 10 STON".to_string()]);
+        assert!(giver.uncounted.is_empty(), "{:?}", giver.uncounted);
     }
 
     /// The control that keeps the case above narrow: `5530` is a unit our own report shows, in the
@@ -6278,7 +6279,7 @@ mod tests {
     #[test]
     fn give_beyond_the_hex_or_the_stock_changes_nothing_wrong() {
         // Unit 555 is nowhere in the report at all, so `rules/give` may or may not let the sword
-        // through - the count stands and the order is admitted rather than vanishing (`ah-66yi`).
+        // through - the projection assumes it does, and the sword leaves (`ah-jo6b`).
         let missing = preview_orders_for_remembered_report(
             &mut ReportCache::new(),
             RULESET,
@@ -6295,9 +6296,9 @@ mod tests {
                 .iter()
                 .find(|item| item.tag == "SWOR")
                 .map(|item| item.amount),
-            Some(3)
+            Some(2)
         );
-        assert_eq!(giver.uncounted, vec!["GIVE 555 1 SWOR".to_string()]);
+        assert!(giver.uncounted.is_empty(), "{:?}", giver.uncounted);
 
         // Giving more than the unit holds empties the stock rather than going negative.
         let drained = preview("unit 900\nGIVE 901 99 SWOR\n");
@@ -8636,15 +8637,23 @@ mod tests {
             );
         }
 
-        /// `give_outcome` answers `Uncertain` for a unit the report never prints, so nothing moves
-        /// and the ` + ?` mark speaks for it (`ah-66yi`). A change here would state a movement the
-        /// report cannot support.
+        /// `give_outcome` answers `Moves` for a unit the report never prints: the projection
+        /// assumes the gift lands and shows the consequences (`ah-jo6b`), so the swords leave as an
+        /// ordinary item change and the doubt is carried by `give-target-not-here` instead.
         #[test]
-        fn a_gift_to_an_unshown_unit_records_no_item_change() {
+        fn a_gift_to_an_unshown_unit_records_the_item_change() {
             let response = preview_over(&report_with_three(), "unit 900\nGIVE 7777 4 SWOR\n");
 
             let giver = row_of(&response, "900");
-            assert!(giver.item_changes.is_empty(), "{:?}", giver.item_changes);
+            assert_eq!(
+                giver
+                    .item_changes
+                    .iter()
+                    .map(|change| (change.tag.as_str(), change.delta))
+                    .collect::<Vec<_>>(),
+                vec![("SWOR", -4)]
+            );
+            assert!(giver.uncounted.is_empty(), "{:?}", giver.uncounted);
         }
 
         /// `rules/take`: a TAKE is a GIVE with the direction reversed, so the same movement is
