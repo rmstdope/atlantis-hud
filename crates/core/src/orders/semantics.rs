@@ -11916,18 +11916,26 @@ fn check_withdraw_in_nexus(hex: &Hex<'_>, options: &CheckOptions, findings: &mut
     }
 }
 
-/// Whether the catalogue knows this item and prices no withdrawal of it.
+/// The catalogue's entry for this item, where the catalogue knows it and prices no withdrawal of
+/// it - and `None` otherwise.
 ///
 /// `rules/withdraw` acquires *basic items* with unclaimed funds, and a `withdraw_cost` is how the
 /// catalogue says an item is one - the reading `ah-728m.3` settled and `withdrawal_cost` already
-/// applies. False with no ruleset, and false for a word the catalogue has never heard of: in both
-/// cases nothing is known about whether it is basic, so a warning would be a guess. The unknown
-/// name is its own gap, across every order that takes an item, and has a bead of its own
+/// applies. `None` with no ruleset, and `None` for a word the catalogue has never heard of: in
+/// both cases nothing is known about whether it is basic, so a warning would be a guess. The
+/// unknown name is its own gap, across every order that takes an item, and has a bead of its own
 /// (`ah-4kw2`).
-fn withdrawal_names_a_non_basic_item(item: &str, ruleset: Option<&Ruleset>) -> bool {
+///
+/// The entry itself is returned rather than a bare `bool` so the caller names the item from the
+/// same lookup that decided to warn about it, instead of asking the catalogue a second question
+/// whose answer it would then have to have a fallback for.
+fn non_basic_withdrawal_entry<'a>(
+    item: &str,
+    ruleset: Option<&'a Ruleset>,
+) -> Option<&'a ItemEntry> {
     ruleset
         .and_then(|ruleset| ruleset.find_item(item))
-        .is_some_and(|entry| entry.withdraw_cost.is_none())
+        .filter(|entry| entry.withdraw_cost.is_none())
 }
 
 /// `rules/withdraw`: "if you try withdraw any other than a basic item, an error will be given".
@@ -11937,10 +11945,15 @@ fn check_withdraw_not_a_basic_item(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    // The Nexus refuses every withdrawal before the item is even looked at, and
-    // `check_withdraw_in_nexus` already says so - two findings on one line would blame the item
-    // for a refusal that is about the hex.
-    if withdrawal_refused(hex.region) || !options.emits(codes::WITHDRAW_NOT_A_BASIC_ITEM) {
+    // The Nexus refuses every withdrawal before the item is even looked at, so where
+    // `check_withdraw_in_nexus` is going to say so, this stays quiet: two findings on one line
+    // would blame the item for a refusal that is about the hex. Where that row is switched off it
+    // says nothing, and then the item's own refusal is all the player has - the silver leaves the
+    // ITEMS column either way, and one Settings row silently switching off another is what the
+    // navigator rejected round one's option C to avoid.
+    if (withdrawal_refused(hex.region) && options.emits(codes::WITHDRAW_IN_NEXUS))
+        || !options.emits(codes::WITHDRAW_NOT_A_BASIC_ITEM)
+    {
         return;
     }
     for ordered in &hex.units {
@@ -11948,12 +11961,12 @@ fn check_withdraw_not_a_basic_item(
             let Intent::Withdraw { item, .. } = &placed.intent else {
                 continue;
             };
-            if !withdrawal_names_a_non_basic_item(item, ruleset) {
+            let Some(entry) = non_basic_withdrawal_entry(item, ruleset) else {
                 continue;
-            }
-            let name = ruleset
-                .and_then(|ruleset| ruleset.find_item(item))
-                .map_or_else(|| item.to_lowercase(), |entry| entry.name.to_lowercase());
+            };
+            // The catalogue is not uniformly lower case - `LONG` is `Longship` - and the sentence
+            // is not shouting (`semantics.rs` does the same for its other item names).
+            let name = entry.name.to_lowercase();
             findings.push(ordered.finding(
                 hex,
                 codes::WITHDRAW_NOT_A_BASIC_ITEM,
@@ -25585,6 +25598,30 @@ BUILD
         assert_eq!(
             codes(&check(regions, "unit 2391\nWITHDRAW 500 SILV\n")),
             vec!["withdraw-in-nexus"]
+        );
+    }
+
+    /// The Nexus refusal only speaks for the item's when the player has left it switched on.
+    /// Otherwise the silver vanishes from the ITEMS column with nothing anywhere to say why - and
+    /// making one Settings row silently switch off another is what the navigator rejected round
+    /// one's option C to avoid.
+    #[test]
+    fn a_nexus_withdrawal_is_still_refused_when_the_nexus_warning_is_off() {
+        let regions = vec![ReportRegion {
+            terrain: "nexus".to_string(),
+            ..region(vec![unit("2391")])
+        }];
+
+        let findings = check_turn(
+            &report(regions),
+            "unit 2391\nWITHDRAW 500 SILV\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::WITHDRAW_IN_NEXUS]),
+        );
+        assert_eq!(
+            codes(&findings),
+            vec!["withdraw-not-a-basic-item"],
+            "with the Nexus row off, the item's own refusal must still speak"
         );
     }
 
