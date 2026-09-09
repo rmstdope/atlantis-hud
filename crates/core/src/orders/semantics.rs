@@ -1809,6 +1809,7 @@ fn forecast_hex(
     // Last in the body, and it must be: the lending pass above pushed the `Lent` rows and the
     // three settlements after it still mutate `upkeep`, so anywhere earlier compares a half-built
     // `UnitSilver` (`ah-6m7b.5.3`).
+    #[cfg(debug_assertions)]
     for forecast in into[start..].iter() {
         let nothing: Vec<SilverMove> = Vec::new();
         let moves = ledger
@@ -1821,13 +1822,15 @@ fn forecast_hex(
 
 /// The two silver records this hex just produced, held to each other (`ah-6m7b.5.3`).
 ///
-/// Debug builds only: it is a `debug_assert_eq!`, so the shipped application pays nothing, and
-/// `forecast_hex` runs on every keystroke. What it buys is that every fixture in this crate's own
+/// Debug builds only, and `#[cfg(debug_assertions)]` rather than `debug_assert_eq!` alone: the
+/// projections each allocate a `Vec` and sort it, and `forecast_hex` runs on every keystroke, so
+/// the whole pass has to be absent from a release build rather than merely assert-free. What it buys is that every fixture in this crate's own
 /// suite and every one of the 26 real turns in `crates/core/tests/` compares the two lists.
 ///
 /// The dropped causes and the skipped units below are the whole of what this check does *not*
 /// cover, and each names why. Widening that set is how this check dies quietly, so a new entry
 /// needs a bead id beside it.
+#[cfg(debug_assertions)]
 fn silver_records_agree(forecast: &UnitSilver, moves: &[SilverMove]) {
     // A doubted unit's `changes` is emptied on the way out (`ah-6m7b.4`), and its doubted market
     // arm records `-buy.wanted` rather than what was spent. There is nothing to compare.
@@ -1862,6 +1865,7 @@ fn silver_records_agree(forecast: &UnitSilver, moves: &[SilverMove]) {
 ///
 /// Sorted, because the ledger's list is in settlement order and the column's in walk order;
 /// ordering within each list is already pinned separately by `mod silver_record`.
+#[cfg(any(debug_assertions, test))]
 fn compared_silver_rows(
     rows: impl Iterator<Item = (SilverChangeCause, Option<i64>, i64)>,
 ) -> Vec<(SilverChangeCause, Option<i64>, Option<i64>)> {
@@ -1869,11 +1873,14 @@ fn compared_silver_rows(
         .filter(|(cause, _, _)| {
             !matches!(
                 cause,
-                // The ledger records neither: `Intent::Work | Intent::Entertain => {}`, because
-                // wages are paid in the last phase and fund nothing this month.
+                // These three are outside `ah-1x2h`, which owns the cases where the two walks
+                // price one event two ways: here only one walk books the event at all, by
+                // decision, so there is nothing to reconcile. The ledger records no wage -
+                // `Intent::Work | Intent::Entertain => {}`, because wages are paid in the last
+                // phase and fund nothing this month - and `Lent` is booked by the hex pass onto
+                // the column alone.
                 SilverChangeCause::Worked
                     | SilverChangeCause::Entertained
-                    // Booked by the hex pass onto the column alone, never by the ledger.
                     | SilverChangeCause::Lent
                     // The four transfer causes. The column records them from the settlement walk,
                     // against report holdings and with no line; the ledger from the giving or
@@ -21880,6 +21887,66 @@ BUILD
                 "settlement order and walk order are not the same order"
             );
         }
+
+        /// A real forecast to mutate, so these tests need no `Default` on a public type: one unit
+        /// that sells and then buys, whose change list is therefore non-empty.
+        fn a_forecast_with_changes() -> UnitSilver {
+            let mut hex = region(vec![with_item(
+                with_silver(unit("5"), 0),
+                10,
+                "grain",
+                "GRAI",
+            )]);
+            hex.wanted.push(MarketItem {
+                amount: 20,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 30,
+            });
+            hex.for_sale.push(MarketItem {
+                amount: 10,
+                name: "horse".to_string(),
+                tag: "HORS".to_string(),
+                price: 70,
+            });
+            let forecast =
+                forecast_with_ruleset(vec![hex], "unit 5\nSELL 10 grain\nBUY 4 horses\n");
+            assert!(
+                !forecast.changes.is_empty(),
+                "the mutation needs something to compare"
+            );
+            forecast
+        }
+
+        /// A doubted unit is skipped whole: its `changes` is emptied on the way out and its
+        /// doubted market arm records what was *wanted*, not what was spent, so a disagreement
+        /// there is not evidence of anything (`ah-6m7b.5.3`).
+        #[test]
+        fn a_doubted_unit_is_not_compared() {
+            let mut forecast = a_forecast_with_changes();
+
+            // Nothing on the ledger's side at all, which for an undoubted unit fires.
+            assert!(
+                std::panic::catch_unwind(|| silver_records_agree(&forecast, &[])).is_err(),
+                "the mismatch must fire without the skip, or this test proves nothing"
+            );
+
+            forecast.doubt = Some(SilverDoubt::GiveConsequencesUncertain);
+            silver_records_agree(&forecast, &[]);
+        }
+
+        /// A unit this month's `FORM` creates is skipped whole: the column forecasts it, the
+        /// ledger's walk holds no record under its synthetic id (`ah-1x2h`).
+        #[test]
+        fn a_formed_unit_is_not_compared() {
+            let mut forecast = a_forecast_with_changes();
+
+            forecast.formed = Some(FormedSubject {
+                alias: "NEW 1".to_string(),
+                formed_by: "5".to_string(),
+            });
+            silver_records_agree(&forecast, &[]);
+        }
     }
 
     mod silver_record {
@@ -25313,6 +25380,52 @@ BUILD
         assert!(
             rows.contains(&(SilverChangeCause::Bought, Some(3), -280)),
             "the purchase the sale funded is recorded: {rows:?}"
+        );
+    }
+
+    /// The sale is added to the *unclamped* pre-market balance, because that is what the ledger
+    /// funds a `BUY` from: `known_balance_at(Market)` is unclamped and `semantics::buy` clamps
+    /// only after adding to it. Clamping first would let a sale rescue an overdrawn unit on the
+    /// column and not on the ledger, and the two surfaces must cut one `BUY` to one quantity
+    /// (`ah-6m7b.5.3`).
+    #[test]
+    fn a_sale_does_not_rescue_a_unit_that_is_already_overdrawn() {
+        let mut hex = region(vec![with_item(
+            with_silver(unit("5"), 100),
+            10,
+            "grain",
+            "GRAI",
+        )]);
+        hex.wanted.push(MarketItem {
+            amount: 20,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 30,
+        });
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 250,
+        });
+
+        // 100 held, 300 given away: overdrawn by 200 as the market opens. The 300 the sale earns
+        // leaves 100, which buys no horse at 250.
+        let silver = forecast_with_ruleset(
+            vec![hex],
+            "unit 5\nGIVE 0 300 SILV\nSELL 10 grain\nBUY 1 horse\n",
+        );
+
+        let rows: Vec<_> = silver
+            .changes
+            .iter()
+            .map(|change| (change.cause, change.line, change.amount))
+            .collect();
+        assert!(
+            !rows
+                .iter()
+                .any(|(cause, _, _)| *cause == SilverChangeCause::Bought),
+            "the sale pays off the overdraft and leaves too little to buy: {rows:?}"
         );
     }
 
