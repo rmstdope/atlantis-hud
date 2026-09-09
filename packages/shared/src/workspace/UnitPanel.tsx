@@ -149,7 +149,7 @@ export function UnitPanelBody({
               <Field
                 label="Weight"
                 value={
-                  unit.weight ??
+                  unit.weight?.toLocaleString() ??
                   (floor === null ? NOT_KNOWN : `${floor.toLocaleString()} or more`)
                 }
               />

@@ -440,9 +440,12 @@ describe("a part-read unit whose own figures did reach the model", () => {
     );
 
     // Not a count over the whole pane - Men, Weight, Capacity and the rest all say `not known`
-    // here quite rightly. What must not appear is the Items section answering twice: an `Absent`
-    // `not known` with the trailing line directly beneath it.
+    // here quite rightly. What must not appear is the Items section answering twice. Sliced
+    // between its heading and the next rather than matched on `Absent`'s class string, which a
+    // Tailwind reorder in `primitives.tsx` would let pass vacuously.
     expect(markup).toContain("and more, not known");
-    expect(markup).not.toMatch(/italic[^"]*">not known<\/p><p class="m-0 text-warn">and more/);
+    const itemsSection = markup.slice(markup.indexOf("Items"), markup.indexOf("Events"));
+    expect(itemsSection).toContain("and more, not known");
+    expect(itemsSection.replace("and more, not known", "")).not.toContain("not known");
   });
 });
