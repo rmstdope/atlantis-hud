@@ -457,14 +457,13 @@ pub fn is_vessel(structure: &Structure, ruleset: Option<&Ruleset>) -> bool {
 /// The test is the phrase `is a flying` in the item's own description - the catalogue's own
 /// sentence, `"This is a flying 'ship' with a capacity of ..."`, rather than the bare word. No
 /// committed hull that does not fly mentions `flying` at all today, so nothing turns on the
-/// difference now; the phrase is the narrower reading of a catalogue that is refetched from the network, where
-/// a future hull described as carrying flying units would otherwise silence this warning for an
-/// ordinary ship. Across all three committed
-/// catalogues that separates exactly Airship, Balloon and Cloudship ("This is a flying 'ship' with
-/// a capacity of ...") from Cog, Corsair, Galleon, Galley, Longship and Raft ("This is a ship with
-/// a capacity of ..."), and no ordinary ship's description contains the word anywhere. Prose rather
-/// than a scraped field because the rules page never mentions flying ships at all, so there is
-/// nothing for the ruleset scraper to have modelled.
+/// difference now; the phrase is the narrower reading of a catalogue refetched from the network,
+/// where a future hull described as carrying flying units would otherwise silence this warning for
+/// an ordinary ship. Across all three committed catalogues the test separates exactly Airship,
+/// Balloon and Cloudship ("This is a flying 'ship' with a capacity of ...") from Cog, Corsair,
+/// Galleon, Galley, Longship and Raft ("This is a ship with a capacity of ..."). Prose rather than
+/// a scraped field because the rules page never mentions flying ships at all, so there is nothing
+/// for the ruleset scraper to have modelled.
 #[must_use]
 pub fn fleet_flies(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<bool> {
     let ruleset = ruleset?;
