@@ -2384,6 +2384,10 @@ impl Working {
                         return;
                     }
                     add_item(&mut self.units[taker].unit.items, &name, &tag, *count);
+                    // This branch credits the item directly rather than through `move_between`, so
+                    // it sets the flag itself: with the `items` change silver-blind, a TAKE of
+                    // silver alone has nothing else to keep the row (`ah-6m7b.5.1`).
+                    self.units[taker].items_moved = true;
                     // Below the mage refusal and the catalogue and quantity guards, so nothing
                     // refused is recorded. `taken_unshown` stays exactly as it is - `ah-64wm`'s
                     // and `ah-agbm`'s sentences read it - and the change is written alongside.
@@ -7122,6 +7126,61 @@ mod tests {
                     tag: "GRAI".to_string(),
                     from: "999".to_string(),
                 }]
+            );
+        }
+
+        /// `ah-6m7b.5.1`, finding 1: `take`'s unshown-source branch bypasses `move_between`, so
+        /// the row survives on `items_moved` alone once the `items` change is silver-blind.
+        #[test]
+        fn a_take_of_silver_from_an_unshown_unit_keeps_its_row() {
+            let response = preview_over(&report_with_market(), "unit 901\nTAKE FROM 999 5 SILV\n");
+            let unit = only_unit(&response);
+
+            assert!(
+                !unit.changes.iter().any(|change| change.field == "items"),
+                "silver alone marks no ITEMS projection: {:?}",
+                unit.changes
+            );
+            assert_eq!(
+                unit.taken_unshown,
+                vec![TakenUnshown {
+                    amount: 5,
+                    tag: "SILV".to_string(),
+                    from: "999".to_string(),
+                }]
+            );
+        }
+
+        /// `ah-6m7b.5.1`, finding 2: the receiving row of a silver gift has no `items` change
+        /// either, so it too survives on `items_moved`.
+        #[test]
+        fn the_receiver_of_a_gift_of_silver_keeps_its_row() {
+            let response = preview_over(
+                &report_with_a_smith_holding_silver(),
+                "unit 900\nGIVE 901 100 SILV\n",
+            );
+            let receiver = response.regions[0]
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == "901")
+                .expect("the receiver keeps its row");
+            assert!(
+                !receiver
+                    .changes
+                    .iter()
+                    .any(|change| change.field == "items"),
+                "silver alone marks no ITEMS projection: {:?}",
+                receiver.changes
+            );
+            assert_eq!(
+                receiver
+                    .unit
+                    .items
+                    .iter()
+                    .find(|item| item.tag == "SILV")
+                    .map_or(0, |item| item.amount),
+                100,
+                "the gift reached it"
             );
         }
 
