@@ -3221,7 +3221,9 @@ test("the header chip opens the lines that could not be read", async ({ page }) 
   await expect(panel).toContainText(UNREADABLE_UNIT);
   await expect(panel).toContainText("Unit");
   // The footer belongs to the report panel now, which carries the open tab's own sentence.
-  await expect(page.getByTestId("turn-report")).toContainText("None of this reached the map.");
+  await expect(page.getByTestId("turn-report")).toContainText(
+    "None of this reached the map, except where a note says otherwise."
+  );
 
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("turn-report")).toHaveCount(0);

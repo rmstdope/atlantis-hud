@@ -80,8 +80,6 @@ pub(crate) fn matching_flag(field: &str) -> Option<&'static str> {
     crate::report::flags::known(normalised)
 }
 
-/// Parses one unit line.
-///
 /// Whether a unit's logical line lost its tail to a re-wrap.
 ///
 /// Every one of the 5613 region unit logical lines in `tests/fixtures/reports` ends with `.`; the
@@ -90,6 +88,8 @@ fn line_was_cut_short(body: &str) -> bool {
     !body.trim_end().ends_with('.')
 }
 
+/// Parses one unit line.
+///
 /// `own` comes from the line's marker rather than from anything in the text, which is what makes
 /// the read-only rule for foreign units exact. `region_id` and `structure_id` are supplied by the
 /// caller, which knows the block the line sat in.
