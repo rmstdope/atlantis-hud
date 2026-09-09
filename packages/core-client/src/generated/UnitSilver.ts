@@ -313,8 +313,8 @@ castSummons: boolean,
 formed: FormedSubject | null, 
 /**
  * This unit's `BUY ALL` orders, settled, in document order. Empty for the overwhelming
- * majority of units, and empty for a unit whose sums are doubted - the deferred pass does
- * not run at all then, exactly as it does not today.
+ * majority of units, and empty for a unit whose sums are doubted - the market block and the
+ * gift arms are skipped for a doubted unit.
  */
 buyAll: Array<BuyAllShown>, 
 /**
