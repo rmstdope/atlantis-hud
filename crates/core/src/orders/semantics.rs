@@ -1805,6 +1805,102 @@ fn forecast_hex(
         forecast.unclaimed_covered = covered;
         forecast.upkeep = Some((owed - covered).max(0));
     }
+
+    // Last in the body, and it must be: the lending pass above pushed the `Lent` rows and the
+    // three settlements after it still mutate `upkeep`, so anywhere earlier compares a half-built
+    // `UnitSilver` (`ah-6m7b.5.3`).
+    for forecast in into[start..].iter() {
+        let nothing: Vec<SilverMove> = Vec::new();
+        let moves = ledger
+            .silver_moves
+            .get(&forecast.unit_id)
+            .unwrap_or(&nothing);
+        silver_records_agree(forecast, moves);
+    }
+}
+
+/// The two silver records this hex just produced, held to each other (`ah-6m7b.5.3`).
+///
+/// Debug builds only: it is a `debug_assert_eq!`, so the shipped application pays nothing, and
+/// `forecast_hex` runs on every keystroke. What it buys is that every fixture in this crate's own
+/// suite and every one of the 26 real turns in `crates/core/tests/` compares the two lists.
+///
+/// The dropped causes and the skipped units below are the whole of what this check does *not*
+/// cover, and each names why. Widening that set is how this check dies quietly, so a new entry
+/// needs a bead id beside it.
+fn silver_records_agree(forecast: &UnitSilver, moves: &[SilverMove]) {
+    // A doubted unit's `changes` is emptied on the way out (`ah-6m7b.4`), and its doubted market
+    // arm records `-buy.wanted` rather than what was spent. There is nothing to compare.
+    if forecast.doubt.is_some() {
+        return;
+    }
+    // A unit this month's `FORM` creates: the column forecasts it, the ledger's walk holds no
+    // record under its synthetic id (`ah-1x2h`).
+    if forecast.formed.is_some() {
+        return;
+    }
+    let column = compared_silver_rows(
+        forecast
+            .changes
+            .iter()
+            .map(|change| (change.cause, change.line, change.amount)),
+    );
+    let ledger = compared_silver_rows(
+        moves
+            .iter()
+            .map(|moved| (moved.cause, moved.line, moved.amount)),
+    );
+    debug_assert_eq!(
+        column, ledger,
+        "unit {}: the SILVER column and the ledger disagree (left is the column, right the ledger)",
+        forecast.unit_id
+    );
+}
+
+/// One side's rows, reduced to what the other side can be held to. `None` in the third slot is an
+/// amount this check deliberately does not compare.
+///
+/// Sorted, because the ledger's list is in settlement order and the column's in walk order;
+/// ordering within each list is already pinned separately by `mod silver_record`.
+fn compared_silver_rows(
+    rows: impl Iterator<Item = (SilverChangeCause, Option<i64>, i64)>,
+) -> Vec<(SilverChangeCause, Option<i64>, Option<i64>)> {
+    let mut compared: Vec<_> = rows
+        .filter(|(cause, _, _)| {
+            !matches!(
+                cause,
+                // The ledger records neither: `Intent::Work | Intent::Entertain => {}`, because
+                // wages are paid in the last phase and fund nothing this month.
+                SilverChangeCause::Worked
+                    | SilverChangeCause::Entertained
+                    // Booked by the hex pass onto the column alone, never by the ledger.
+                    | SilverChangeCause::Lent
+                    // The four transfer causes. The column records them from the settlement walk,
+                    // against report holdings and with no line; the ledger from the giving or
+                    // taking unit's `PlacedIntent`, against its own running balance, with that
+                    // line. Two vantage points on one event (`ah-1x2h`).
+                    | SilverChangeCause::WasGiven
+                    | SilverChangeCause::Took
+                    | SilverChangeCause::TookUnshown
+                    | SilverChangeCause::WasTaken
+            )
+        })
+        .map(|(cause, line, amount)| {
+            let amount = match cause {
+                // `credit_tax` prices with `tax_base.unwrap_or(i64::MAX)` and
+                // `PoolShare::Uncontended` while the column passes the real `region.tax_base` and
+                // `shares.tax`, so a contended pool yields two numbers (`ah-1x2h`).
+                SilverChangeCause::Taxed
+                // The ledger prices with `actor.unit.men`, the column with the late headcount
+                // after gifts and recruits (`ah-1x2h`).
+                | SilverChangeCause::Studied => None,
+                _ => Some(amount),
+            };
+            (cause, line, amount)
+        })
+        .collect();
+    compared.sort();
+    compared
 }
 
 /// Whether `GIVE ... ALL <class>` carries the holder's silver out with it.
@@ -6249,17 +6345,16 @@ fn transfer(
             // the report shows in no region. `to.is_none()` is not that test and would call such a
             // gift a discard (`ah-6m7b.5.2`).
             //
-            // A `TAKE`'s source unit is recorded as a `GaveAway` for want of anything truer:
-            // `SilverChangeCause` names what happens to the unit whose *column* the row appears
-            // in, and no variant of it says "another unit took this from me" - `Took` and
-            // `TookUnshown` are both the taker's side. Naming the taker's cause here would be
-            // wronger than this, and inventing a variant is `silver.rs`'s to decide, which this
-            // bead does not touch. `ah-6m7b.5.3` is where the two lists are compared and is where
-            // it matters.
+            // A `TAKE`'s source unit is `WasTaken`, the variant `ah-42li` added for exactly this
+            // and which the column now books on the same event. The ledger said `GaveAway` here
+            // for want of anything truer until that variant existed (`ah-6m7b.5.3`); it changes
+            // no figure and no surface, `Ledger::silver_moves` driving neither.
             let cause = if reach == GiveReach::Discard {
                 SilverChangeCause::Discarded
-            } else {
+            } else if is_give {
                 SilverChangeCause::GaveAway
+            } else {
+                SilverChangeCause::WasTaken
             };
             move_silver(
                 ledger,
@@ -21722,6 +21817,71 @@ BUILD
     }
 
     /// The ledger's own record of the silver it moves (`ah-6m7b.5.2`).
+    mod silver_records_agree {
+        use super::*;
+
+        /// A cause only one of the two records ever books leaves the comparison entirely
+        /// (`ah-6m7b.5.3`).
+        #[test]
+        fn a_cause_only_one_side_records_is_dropped() {
+            assert_eq!(
+                compared_silver_rows(
+                    [
+                        (SilverChangeCause::Worked, None, 190),
+                        (SilverChangeCause::Lent, None, -50),
+                        (SilverChangeCause::Entertained, None, 20),
+                    ]
+                    .into_iter()
+                ),
+                vec![],
+                "the ledger books none of these, so the column's rows cannot be held to it"
+            );
+        }
+
+        /// `Taxed` and `Studied` are priced differently by the two walks by construction, so they
+        /// are compared on cause and line and not on amount (`ah-6m7b.5.3`).
+        #[test]
+        fn a_taxed_row_is_compared_without_its_amount() {
+            assert_eq!(
+                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 416)].into_iter()),
+                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 500)].into_iter()),
+                "a contended pool yields two numbers for one event"
+            );
+            assert_eq!(
+                compared_silver_rows([(SilverChangeCause::Studied, Some(4), -150)].into_iter()),
+                compared_silver_rows([(SilverChangeCause::Studied, Some(4), -50)].into_iter()),
+                "the two walks count heads at different moments"
+            );
+            assert_ne!(
+                compared_silver_rows([(SilverChangeCause::Bought, Some(3), -280)].into_iter()),
+                compared_silver_rows([(SilverChangeCause::Bought, Some(3), -60)].into_iter()),
+                "every other cause is still compared on its amount"
+            );
+        }
+
+        /// The two lists are built in different orders by construction, so the projection sorts.
+        #[test]
+        fn the_projection_is_sorted() {
+            assert_eq!(
+                compared_silver_rows(
+                    [
+                        (SilverChangeCause::Sold, Some(2), 300),
+                        (SilverChangeCause::Bought, Some(3), -280),
+                    ]
+                    .into_iter()
+                ),
+                compared_silver_rows(
+                    [
+                        (SilverChangeCause::Bought, Some(3), -280),
+                        (SilverChangeCause::Sold, Some(2), 300),
+                    ]
+                    .into_iter()
+                ),
+                "settlement order and walk order are not the same order"
+            );
+        }
+    }
+
     mod silver_record {
         use super::*;
 

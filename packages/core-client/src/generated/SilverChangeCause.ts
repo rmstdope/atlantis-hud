@@ -2,5 +2,8 @@
 
 /**
  * Why a unit's silver moved this month. One variant per term [`forecast_unit`] prices.
+ *
+ * Ordered so `semantics::silver_records_agree` can sort its two projections into one order before
+ * comparing them; the order itself is declaration order and means nothing (`ah-6m7b.5.3`).
  */
 export type SilverChangeCause = "taxed" | "pillaged" | "claimed" | "sold" | "cast-earned" | "worked" | "entertained" | "was-given" | "took" | "took-unshown" | "bought" | "studied" | "cast-spent" | "production-spent" | "gave-away" | "discarded" | "lent" | "was-taken";

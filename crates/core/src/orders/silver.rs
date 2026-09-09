@@ -549,7 +549,10 @@ pub struct BuyAllShown {
 }
 
 /// Why a unit's silver moved this month. One variant per term [`forecast_unit`] prices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Ordered so `semantics::silver_records_agree` can sort its two projections into one order before
+/// comparing them; the order itself is declaration order and means nothing (`ah-6m7b.5.3`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "kebab-case")]
 pub enum SilverChangeCause {
