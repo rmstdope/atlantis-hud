@@ -1,0 +1,183 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-g6gn — a fleet's route between two coastal land hexes</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; --sea:#1d3a4d; --land:#2a3524; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1400px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; color:var(--brass-bright); }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  h2.sec + p { color:var(--ink-soft); font-size:13.5px; max-width:100ch; margin-top:8px; }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .cap { font:italic 11.5px Georgia,serif; color:var(--ink-dim); }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; padding:0; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212 "; color:var(--danger); } .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); } .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .body { padding:9px; display:grid; gap:6px; } .body .none { color:var(--ink-dim); font-style:italic; }
+  .body .refuse { color:var(--danger); } .body .route { color:var(--ink); } .body .order { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 9px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--danger); } td.d { color:var(--ink-dim); }
+  footer { margin-top:38px; color:var(--ink-dim); font-size:12.5px; }
+  .q { border-left:3px solid var(--brass); padding-left:14px; margin-top:14px; }
+  .q h4 { font-size:15px; color:var(--brass-bright); }
+  svg text { font-family:'Helvetica Neue',Arial,sans-serif; font-size:9px; fill:var(--ink-soft); }
+  svg text.big { font-size:11px; fill:var(--ink); }
+</style>
+
+<header>
+  <h1>ah-g6gn — <span>a fleet's route between two coastal land hexes</span></h1>
+  <p><span class="mono">rules/movement_sailing</span>, verbatim: &ldquo;A fleet can move from an ocean region to another
+  ocean region, or from a coastal region to an ocean region, or from an ocean region to a coastal region.&rdquo;
+  <b>At least one end of every step must be ocean.</b> Coastal to coastal is not one of the three, and the game refuses it.</p>
+  <p>The map's own rule (<span class="mono">movement::plan::blocks</span>) asks only about the hex being <em>entered</em>:
+  water never stops a fleet, and land stops it unless that hex is coastal. So a hop from one coastal land hex straight into
+  the next is drawn as a solid line and offered as a route &mdash; the application proposing a move the game will not make.
+  <b>ah-sefq</b> already warns about the written order; this bead is the other half, and afterwards the two surfaces agree.</p>
+</header>
+
+<main>
+
+  <h2 class="sec">The case <small>a fleet docked in a coastal forest, one hex from another coastal forest</small></h2>
+  <div class="cards">
+    <section class="card">
+      <h3><em>TODAY</em> the hop is drawn and priced</h3>
+      <p class="concept">Click the neighbouring forest and the planner offers <code>SAIL SE</code>, one point, one month.
+      Write it by hand and the map draws it solid, which means &ldquo;this happens&rdquo;. It does not.</p>
+      <div class="stage">
+        <svg viewBox="0 0 230 205" width="100%" height="205" role="img" aria-label="Four hexes: two coastal forests and two ocean hexes, with a solid line drawn straight between the two forests.">
+          <polygon points="30,60 45,34 75,34 90,60 75,86 45,86" fill="#1d3a4d" stroke="#26303d"/>
+          <polygon points="75,86 90,60 120,60 135,86 120,112 90,112" fill="#2a3524" stroke="#d9a441" stroke-width="1.5"/>
+          <polygon points="120,112 135,86 165,86 180,112 165,138 135,138" fill="#2a3524" stroke="#26303d"/>
+          <polygon points="75,138 90,112 120,112 135,138 120,164 90,164" fill="#1d3a4d" stroke="#26303d"/>
+          <text x="60" y="58" text-anchor="middle">ocean</text><text x="60" y="70" text-anchor="middle">(1,1)</text>
+          <text x="105" y="84" text-anchor="middle" class="big">forest</text><text x="105" y="96" text-anchor="middle">(2,2)</text>
+          <text x="150" y="110" text-anchor="middle" class="big">forest</text><text x="150" y="122" text-anchor="middle">(3,3)</text>
+          <text x="105" y="136" text-anchor="middle">ocean</text><text x="105" y="148" text-anchor="middle">(2,4)</text>
+          <circle cx="105" cy="66" r="4" fill="#eebe63"/><text x="105" y="60" text-anchor="middle" class="big">&#9973;</text>
+          <line x1="105" y1="86" x2="150" y2="112" stroke="#eebe63" stroke-width="3"/>
+          <circle cx="150" cy="112" r="4" fill="#eebe63"/>
+          <text x="196" y="180">solid = this happens</text>
+        </svg>
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="body">
+          <div class="route">1 step &middot; 1 movement point &middot; 1 month</div>
+          <div class="order">SAIL SE</div>
+        </div></div>
+        <p class="cap">Both forests are coastal, so the &ldquo;land must be coastal&rdquo; test passes and nothing else is asked.</p>
+      </div>
+    </section>
+    <section class="card rec">
+      <h3><em>PROPOSED</em> the hop is refused, and the fleet is routed round</h3>
+      <p class="concept">The rule becomes a test on the <em>step</em>: one end must be ocean. The written order is dotted
+      from the offending step onward, exactly as a walker's order into the sea already is; the planner offers the way round.</p>
+      <div class="stage">
+        <svg viewBox="0 0 230 205" width="100%" height="205" role="img" aria-label="The same four hexes: the direct line between the two forests is now dotted, and a solid two-step route runs from the first forest south into the ocean and north-east into the second forest.">
+          <polygon points="30,60 45,34 75,34 90,60 75,86 45,86" fill="#1d3a4d" stroke="#26303d"/>
+          <polygon points="75,86 90,60 120,60 135,86 120,112 90,112" fill="#2a3524" stroke="#d9a441" stroke-width="1.5"/>
+          <polygon points="120,112 135,86 165,86 180,112 165,138 135,138" fill="#2a3524" stroke="#26303d"/>
+          <polygon points="75,138 90,112 120,112 135,138 120,164 90,164" fill="#1d3a4d" stroke="#26303d"/>
+          <text x="60" y="58" text-anchor="middle">ocean</text><text x="60" y="70" text-anchor="middle">(1,1)</text>
+          <text x="105" y="84" text-anchor="middle" class="big">forest</text><text x="105" y="96" text-anchor="middle">(2,2)</text>
+          <text x="150" y="110" text-anchor="middle" class="big">forest</text><text x="150" y="122" text-anchor="middle">(3,3)</text>
+          <text x="105" y="136" text-anchor="middle">ocean</text><text x="105" y="148" text-anchor="middle">(2,4)</text>
+          <circle cx="105" cy="66" r="4" fill="#eebe63"/><text x="105" y="60" text-anchor="middle" class="big">&#9973;</text>
+          <line x1="105" y1="86" x2="150" y2="112" stroke="#8a97a8" stroke-width="3" stroke-dasharray="4 4"/>
+          <polyline points="105,86 105,138 150,112" fill="none" stroke="#4fb783" stroke-width="3"/>
+          <circle cx="150" cy="112" r="4" fill="#4fb783"/>
+          <text x="196" y="172" fill="#8a97a8">dotted = refused</text>
+          <text x="196" y="186" fill="#4fb783">green = the way round</text>
+        </svg>
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="body">
+          <div class="route">2 steps &middot; 2 movement points &middot; 1 month</div>
+          <div class="order">SAIL S NE</div>
+        </div></div>
+        <p class="cap">Nothing new on screen: the dotting and the route line are the drawings the map already has. What changes is which steps get which.</p>
+      </div>
+    </section>
+  </div>
+
+  <h2 class="sec">Question 1 <small>when there is no way round at all, what does the planner say?</small></h2>
+  <p>Take the ocean at (2,4) away and the two forests are still neighbours, still both coastal &mdash; and now unreachable
+  from one another by sea. Today the planner answers with a route. After this bead it must refuse, and the refusal is a
+  sentence the player reads.</p>
+  <div class="cards">
+    <section class="card">
+      <h3><em>A</em> the refusal it already has</h3>
+      <p class="concept">Reuse <span class="mono">noKnownRoute</span> &mdash; the search simply found nothing, and that is
+      what it says. No new refusal kind, no new code path, nothing to translate later.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="body">
+          <div class="refuse">Nothing the faction has seen joins those two hexes up.</div>
+        </div></div>
+        <p class="cap">Word for word what the planner says today when a route runs out.</p>
+      </div>
+      <ul class="notes">
+        <li>No new machinery: this falls out of the change on its own.</li>
+        <li class="con">Reads wrong here. The player is looking at two hexes side by side, both of which the faction has seen.</li>
+      </ul>
+    </section>
+    <section class="card rec">
+      <h3><em>B</em> a refusal that names the rule</h3>
+      <p class="concept">When the only thing in the way is the sailing rule, say so and name the step &mdash; the same trick
+      the planner already plays for a walker stopped by the sea, which re-runs the search with the water rule lifted so it
+      can say <i>which</i> hex it would founder at.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="body">
+          <div class="refuse">A fleet may only sail where one end of the step is ocean, so it cannot go from forest&nbsp;(2,2) straight to forest&nbsp;(3,3).</div>
+        </div></div>
+        <p class="cap">Names the rule first, then the two hexes &mdash; the shape ah-sefq's warning settled on.</p>
+      </div>
+      <ul class="notes">
+        <li>Tells the player the thing they cannot see: it is the rule, not the map, that stops them.</li>
+        <li>Same sentence shape as the Problems warning for the written order, so the two surfaces read alike.</li>
+        <li class="con">A new refusal kind: one more variant in the core, in the generated TypeScript and in the planner panel.</li>
+      </ul>
+    </section>
+  </div>
+
+  <h2 class="sec">Question 2 <small>balloons</small></h2>
+  <p>You said while we planned ah-sefq: <i>&ldquo;if the ship or the entire fleet consists of flying ships, like balloons,
+  this restriction do not apply.&rdquo;</i> The Problems warning obeys that. <b>The map never has.</b> Today a balloon is
+  already refused any inland hex, because the map's rule knows only a movement mode and not which hulls are underneath it &mdash;
+  so the two surfaces already differ for a balloon, before this bead touches anything.</p>
+  <table>
+    <tr><th>order</th><th>the step</th><th>Problems, after ah-sefq</th><th>the map, today</th><th>the map, under A</th></tr>
+    <tr><td class="mono">SAIL</td><td class="d">coastal &rarr; coastal</td><td class="y">silent</td><td class="y">drawn solid</td><td class="n">dotted</td></tr>
+    <tr><td class="mono">SAIL</td><td class="d">coastal &rarr; inland</td><td class="y">silent</td><td class="n">already dotted</td><td class="n">dotted, as today</td></tr>
+  </table>
+  <div class="cards">
+    <section class="card rec">
+      <h3><em>A</em> leave the map's balloon blindness alone</h3>
+      <p class="concept">This bead fixes the coastal-to-coastal hop for ordinary fleets and nothing else. A balloon keeps
+      being drawn as if it were a longship &mdash; already true today for every inland hex, and this makes it true for one
+      more case. Filed separately if you want it.</p>
+      <ul class="notes">
+        <li>Keeps a P1 bug fix to the size it was ranked at.</li>
+        <li class="con">A balloon's route stays wrong on the map, and now in one more place than before.</li>
+      </ul>
+    </section>
+    <section class="card">
+      <h3><em>B</em> teach the map about flying hulls in this bead</h3>
+      <p class="concept">Carry the fleet down into the route search so that a flying fleet is exempt from the water rules
+      altogether &mdash; the map would then agree with Problems for a balloon, inland hexes included.</p>
+      <ul class="notes">
+        <li>Both surfaces would tell a balloon owner the same thing everywhere.</li>
+        <li class="con">The route search is handed a movement mode and never a fleet; giving it one reaches through the tracer, the planner and the search itself. A much bigger change than the hop this bead is about.</li>
+      </ul>
+    </section>
+  </div>
+
+</main>
+
+<footer>
+  Out of scope throughout: the &ldquo;ships may not sail through single hex land masses&rdquo; rule, the bare <code>SAIL</code>
+  aiding form, and <code>MOVE</code> &mdash; all three untouched, as in ah-sefq.
+</footer>
