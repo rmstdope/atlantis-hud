@@ -963,6 +963,29 @@ fn coastal_pair_with_no_way_round() -> ParsedReport {
     parse_report_full(&text)
 }
 
+/// Fixture A with a plain walking unit standing ashore in `forest (2,2)` alongside the fleet.
+fn coastal_pair_with_a_way_round_and_a_walker() -> ParsedReport {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : forest (2,2) in Coast.\n\n");
+    text.push_str("forest (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : forest (3,3) in Coast.\n  \
+         South : ocean (2,4) in Sea.\n\n",
+    );
+    text.push_str("* Walker (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\n");
+    text.push_str(&longship());
+    text.push_str("ocean (2,4) in Sea.\n\n");
+    text.push_str(
+        "Exits:\n  North : forest (2,2) in Coast.\n  Northeast : forest (3,3) in Coast.\n\n",
+    );
+    text.push_str("forest (3,3) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : forest (2,2) in Coast.\n  Southwest : ocean (2,4) in Sea.\n",
+    );
+    parse_report_full(&text)
+}
+
 /// A Longship crewed by two Sailors of SAIL 2 - exactly the four levels the hull needs.
 fn longship() -> String {
     let mut text =
@@ -996,10 +1019,15 @@ fn a_fleet_goes_round_by_sea_rather_than_hopping_between_two_coastal_hexes() {
 /// untouched.
 #[test]
 fn a_walker_between_two_land_hexes_is_unaffected() {
-    let report = turn_71();
-    let route = plan(&report, "18642", at(7, 51)).expect("a legal step");
+    // Fixture A with a walker ashore in the same `forest (2,2)` the fleet is refused from, so this
+    // is a direct A/B against the very step
+    // `a_fleet_goes_round_by_sea_rather_than_hopping_between_two_coastal_hexes` sends round.
+    let report = coastal_pair_with_a_way_round_and_a_walker();
+    let route = plan(&report, "902", at(3, 3)).expect("a walker may cross land");
+
     assert_eq!(route.mode, MovementMode::Walk);
-    assert_eq!(route.steps.len(), 1);
+    assert_eq!(route.steps.len(), 1, "straight across, not round by sea");
+    assert_eq!(route.steps[0].to, at(3, 3));
 }
 
 /// With no way round by sea the refusal names the rule, not the map: "Nothing the faction has seen
