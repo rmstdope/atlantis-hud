@@ -2529,7 +2529,16 @@ pub fn forecast_unit(
         // - late`. Unclamped, as `running` was - clamping before the month-long spends are added
         // back is different arithmetic - and the `funds` line below clamps what it feeds.
         let opening = match facts.phase_silver() {
-            Some(silver) => silver.as_the_market_opens(),
+            // `as_the_market_opens()` is the balance *before* any Market-phase movement, and this
+            // unit's own `Sold` credit is one (`rules/sequenceofevents` settles "SELL orders are
+            // processed." before "BUY orders are processed."), so a sale funds the same month's
+            // purchase and must be added back - the mirror of the cast arm above (`ah-6m7b.5.3`).
+            // `Sold` is the only `StatePhase::Market` cause the walk records before this block, so
+            // nothing is double-counted; this unit's own earlier buys stay with `market_spent`.
+            Some(silver) => silver
+                .as_the_market_opens()
+                .saturating_add(moved_by(&moves, SilverChangeCause::Sold))
+                .max(0),
             None => recorded_so_far(held, &moves)
                 .saturating_sub(late)
                 .saturating_sub(moved_by(&moves, SilverChangeCause::Studied))

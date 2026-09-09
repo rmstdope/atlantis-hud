@@ -25112,6 +25112,50 @@ BUILD
         );
     }
 
+    #[test]
+    fn a_sale_funds_the_same_months_purchase() {
+        let mut hex = region(vec![with_item(
+            with_silver(unit("5"), 0),
+            10,
+            "grain",
+            "GRAI",
+        )]);
+        hex.wanted.push(MarketItem {
+            amount: 20,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 30,
+        });
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 70,
+        });
+
+        let silver = forecast_with_ruleset(vec![hex], "unit 5\nSELL 10 grain\nBUY 4 horses\n");
+
+        assert_eq!(
+            silver.at_month_end,
+            Some(20),
+            "300 earned less 280 spent: `rules/sequenceofevents` settles SELL before BUY"
+        );
+        assert_eq!(silver.expense, Some(280), "the purchase is an expense");
+        let rows: Vec<_> = silver
+            .changes
+            .iter()
+            .map(|change| (change.cause, change.line, change.amount))
+            .collect();
+        assert!(
+            rows.contains(&(SilverChangeCause::Sold, Some(2), 300)),
+            "the sale is recorded: {rows:?}"
+        );
+        assert!(
+            rows.contains(&(SilverChangeCause::Bought, Some(3), -280)),
+            "the purchase the sale funded is recorded: {rows:?}"
+        );
+    }
+
     // --- what a production costs (`ah-19l2.2`) ------------------------------------------------
 
     /// The forecast for one unit, with the committed ruleset behind it.
