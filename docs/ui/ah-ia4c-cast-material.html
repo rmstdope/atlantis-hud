@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ia4c CAST material</title>
+<style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #101417; color: #ddd6c8; }
+    main { max-width: 960px; margin: 30px auto; padding: 0 16px; }
+    h1 { margin-bottom: 4px; color: #d5b56a; font-size: 22px; }
+    h2 { color: #d5b56a; font-size: 15px; margin: 22px 0 8px; text-transform: uppercase; letter-spacing: .06em; }
+    .intro { margin-top: 0; color: #aaa397; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { border: 1px solid #554b39; border-radius: 6px; background: #171c20; overflow: hidden; }
+    .head { padding: 7px 10px; border-bottom: 1px solid #554b39; color: #d5b56a; background: #211e18; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .body { padding: 10px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #eee4d1; font-size: 13px; }
+    .squiggle { text-decoration: underline wavy #e2b94c 1.5px; text-underline-offset: 3px; }
+    .finding { display: flex; gap: 7px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #332f28; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .warn { color: #e2b94c; }
+    .who { color: #d5b56a; }
+    .quiet { color: #9f998d; font-size: 13px; line-height: 1.45; }
+    .setting { display: flex; align-items: start; gap: 10px; }
+    .toggle { position: relative; width: 36px; height: 20px; border-radius: 20px; background: #b38b31; flex: none; }
+    .toggle::after { content: ""; position: absolute; top: 3px; right: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff7e7; }
+    .title { font-weight: 650; }
+    .desc { color: #aaa397; font-size: 13px; line-height: 1.4; }
+    .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 3px; background: #2b3138; color: #9f998d; margin-left: 6px; }
+    @media (max-width: 700px) { main { margin: 16px auto; padding: 0 10px; } .grid { grid-template-columns: 1fr; } h1 { font-size: 18px; } }
+</style>
+</head>
+<body>
+<main>
+<h1>A CAST naming a material transmutation cannot make — chosen design</h1>
+<p class="intro">Each surface says the thing it is for: the order pane flags a word the catalogue has never heard of, exactly as it does for GIVE; the advisory list explains a word that is a real item this spell cannot make.</p>
+<h2>The four cases</h2><div class="grid">
+<section class="card"><div class="head">A typo: mithrl</div><div class="body"><code>unit 7<br>CAST Transmutation 2 <span class="squiggle">mithrl</span></code><div class="finding"><span class="warn">⚠</span><span>no item &quot;mithrl&quot; in the catalogue<span class="tag">order pane</span></span></div><p class="quiet">The advisory stays quiet here: one line, one complaint.</p></div></section>
+<section class="card"><div class="head">A real item the spell cannot make: wood</div><div class="body"><code>unit 8<br>CAST Transmutation 2 wood</code><div class="finding"><span class="warn">⚠</span><span class="who">8</span><span>transmutation cannot make wood<span class="tag">advisory</span></span></div></div></section>
+<section class="card"><div class="head">Correct: mithril</div><div class="body"><code>unit 9<br>CAST Transmutation 2 mithril</code><p class="quiet">Nothing said. 4 iron leave, 2 mithril arrive.</p></div></section>
+<section class="card"><div class="head">No material at all</div><div class="body"><code>unit 10<br>CAST Transmutation</code><div class="finding"><span class="warn">⚠</span><span class="who">10</span><span>transmutation needs a material to make<span class="tag">advisory</span></span></div></div></section>
+</div><h2>Elsewhere</h2><section class="card"><div class="head">CAST Wolf_Lore — a spell that transmutes nothing</div><div class="body"><code>unit 12<br>CAST Wolf_Lore</code><p class="quiet">Nothing said, in every option. Only a spell whose ruleset entry actually transmutes is checked at all — every other CAST argument is a direction, a region, a unit number or a level, and must never be read as an item.</p></div></section><section class="card" style="margin-top:12px"><div class="head">Settings › Orders</div><div class="body setting"><span class="toggle" aria-hidden="true"></span><div><div class="title">Casts that name a material the spell cannot make</div><div class="desc">A transmuting CAST whose material is a real item the spell does not create, or no material at all. A word the catalogue does not know is flagged in the order pane instead.</div></div></div></section>
+</main>
+</body>
+</html>
