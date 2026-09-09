@@ -4626,7 +4626,15 @@ fn ledger_for_with_production<'a>(
         for (index, ordered) in hex.units.iter().enumerate() {
             if phase == StatePhase::Tax {
                 let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
-                credit_tax(&mut ledger, hex, ordered, &facts, ruleset, pillaged);
+                credit_tax(
+                    &mut ledger,
+                    hex,
+                    ordered,
+                    &facts,
+                    ruleset,
+                    pillaged,
+                    tax_overstated.get(index).copied().unwrap_or(0),
+                );
             }
             for placed in &ordered.intents {
                 // BUILD and manufacturing PRODUCE are each deferred to a pass of their own
@@ -5776,6 +5784,11 @@ fn credit_tax(
     facts: &UnitFacts<'_>,
     ruleset: Option<&Ruleset>,
     pillaged: bool,
+    // What this unit's hopeful tax overstates its settled share of the region's tax pool by
+    // (`ah-ud89.1`'s `tax_overstated_by`). `0` for a unit nobody contends with. Subtracted from
+    // the *record* alone: the balance stays hopeful, which is what `ah-ud89` decided
+    // (`ah-1x2h.1`).
+    tax_overstated: i64,
 ) {
     if !taxes(&actor.flags, &actor.intents) {
         return;
@@ -5818,7 +5831,7 @@ fn credit_tax(
         ledger,
         StatePhase::Tax,
         &actor.unit.unit_id,
-        priced.earns,
+        priced.earns.saturating_sub(tax_overstated),
         SilverChangeCause::Taxed,
         line,
     );
@@ -22173,6 +22186,40 @@ BUILD
                 .iter()
                 .map(|one| (one.phase, one.cause, one.line))
                 .collect()
+        }
+
+        /// `rules/economy_taxingpillaging`: "Each taxing character can collect $50, though if the
+        /// number of taxers would tax more than the available tax income, the tax income is split
+        /// evenly among all taxers." So the settled share is what the game will do, and it is what
+        /// the ledger *records* - while its *balance* stays hopeful, which is what `ah-ud89`
+        /// decided and what this test pins alongside (`ah-1x2h.1`).
+        #[test]
+        fn a_contended_taxer_is_recorded_at_its_settled_share() {
+            // Two ten-man taxers each want $500, and the region has $500 to give: contended.
+            let hex_region = ReportRegion {
+                tax_base: Some(500),
+                ..region(vec![
+                    with_men(with_skill(with_silver(unit("1"), 100), "COMB", 1), 10),
+                    with_men(with_skill(with_silver(unit("2"), 100), "COMB", 1), 10),
+                ])
+            };
+            with_ledger(hex_region, "unit 1\nTAX\nunit 2\nTAX\n", |ledger| {
+                let taxed: Vec<_> = moves(ledger, "1")
+                    .iter()
+                    .filter(|one| one.cause == SilverChangeCause::Taxed)
+                    .collect();
+                assert_eq!(taxed.len(), 1, "one tax row: {:?}", moves(ledger, "1"));
+                assert_eq!(
+                    taxed[0].amount, 250,
+                    "the settled half of a $500 pool two ten-man taxers each ask $500 of"
+                );
+                assert_eq!(taxed[0].line, Some(2), "the unit's own TAX line, unchanged");
+                assert_eq!(
+                    ledger.state.balance_at(StatePhase::Tax, "1", SILVER),
+                    100 + 500,
+                    "the balance stays hopeful - `ah-ud89` decided that, and this bead keeps it"
+                );
+            });
         }
 
         #[test]
