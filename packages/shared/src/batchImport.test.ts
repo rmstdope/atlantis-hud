@@ -1,7 +1,7 @@
 import type { CoreClient, OpenedGame, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
 import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { batchFinish, batchSummary, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
+import { batchFinish, batchSummary, batchTouchedMageSheets, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
 import type { BatchCandidate } from "./reportBatch";
 import { REPORT_HAS_NOTHING_IN_IT, judgeReportUsable } from "./reportLoadDecision";
 import { MAP_EXPORT_MARKER, classifyReportImport, type ReportImportSource } from "./mapExportImport";
@@ -496,6 +496,46 @@ describe("walkBatch, given a mage sheet", () => {
 
     expect(core.listAlliedMages).toHaveBeenCalledTimes(1);
     expect(core.saveAlliedMages).toHaveBeenCalledTimes(2);
+  });
+
+  it("says the batch touched mage sheets, so the cache can be told", async () => {
+    const core = client({
+      listAlliedMages: vi.fn().mockResolvedValue([]),
+      saveAlliedMages: vi.fn().mockResolvedValue(undefined)
+    });
+    const batch = {
+      candidates: [sheet("a.txt", "21", 23, ["1204"]), sheet("b.txt", "42", 19, ["9"])]
+    };
+
+    const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(batchTouchedMageSheets(walk)).toBe(true);
+  });
+
+  it("says a batch with no sheet in it touched none", async () => {
+    const core = client();
+    const batch = {
+      candidates: [
+        candidateFor("own.rep", classifyReportImport(report({ factionId: "95", turnNumber: 71 }), "own"))
+      ]
+    };
+
+    const walk = await walkBatch(core, OPEN_GAME, batch, "95", null, RULESET, NOW, () => {});
+
+    expect(batchTouchedMageSheets(walk)).toBe(false);
+  });
+
+  it("says so even when the sheet's step failed", async () => {
+    const core = client({
+      listAlliedMages: vi.fn().mockResolvedValue([held("21", "1204", 25)]),
+      saveAlliedMages: vi.fn().mockResolvedValue(undefined)
+    });
+    const batch = { candidates: [sheet("old.txt", "21", 23, ["1204"])] };
+
+    const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(walk.landed).toEqual([]);
+    expect(batchTouchedMageSheets(walk)).toBe(true);
   });
 
   it("does not read the store at all when the batch carries no sheet", async () => {
