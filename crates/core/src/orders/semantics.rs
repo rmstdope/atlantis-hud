@@ -49,8 +49,7 @@ use crate::orders::silver::{
     MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare,
     PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages,
     SaleAnswer, SettledBuyAll, SettledGift, SharedMarket, SilverChangeCause, SilverDoubt,
-    TransferShape,
-    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1467,6 +1466,14 @@ fn forecast_hex(
             .get(unit_id)
             .map_or(&[][..], Vec::as_slice)
     };
+    // What the ITEMS ledger's own Give phase handed over on each of this unit's `GIVE ... ALL SILV`
+    // lines, so the column books that figure rather than settling the phase again (`ah-6m7b.3`).
+    let settled_gifts_of = |unit_id: &str| {
+        ledger
+            .settled_gifts
+            .get(unit_id)
+            .map_or(&[][..], Vec::as_slice)
+    };
     let clamped: Vec<Vec<ItemAmount>> = (0..hex.units.len())
         .map(|index| clamped_holdings(before_manufacturing.items_of(index)))
         .collect();
@@ -1611,6 +1618,7 @@ fn forecast_hex(
                 &clamped[index],
                 shared_materials_of(&ordered.unit.unit_id),
                 settled_buy_all_of(&ordered.unit.unit_id),
+                settled_gifts_of(&ordered.unit.unit_id),
             )),
         };
         claims.push(food_claim(&facts, ruleset));
@@ -3807,6 +3815,7 @@ impl PhaseHoldings {
             maintenance: self.maintenance.of(index),
             silver: Some(self.silver[index]),
             buy_all: &[],
+            gifts: &[],
         }
     }
 
@@ -3819,6 +3828,7 @@ impl PhaseHoldings {
         before_manufacturing: &'a [ItemAmount],
         shared_materials: &'a [(usize, Vec<ItemAmount>)],
         buy_all: &'a [SettledBuyAll],
+        gifts: &'a [SettledGift],
     ) -> PhaseFacts<'a> {
         PhaseFacts {
             study: self.study.of(index),
@@ -3828,6 +3838,7 @@ impl PhaseHoldings {
             maintenance: self.maintenance.of(index),
             silver: Some(self.silver[index]),
             buy_all,
+            gifts,
         }
     }
 }
