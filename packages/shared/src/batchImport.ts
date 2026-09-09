@@ -385,7 +385,6 @@ export function batchFinish(walk: BatchWalk, viewerFactionId: string | null): Ba
   return { kind: "grow-map", factionId: viewerFactionId };
 }
 
-/** The summary dialog's contents. */
 /**
  * Whether the batch had a mage sheet in it, and so whether the allied-mages cache is now behind
  * storage.
@@ -398,6 +397,7 @@ export function batchTouchedMageSheets(walk: BatchWalk): boolean {
   return walk.plan.steps.some((step) => step.kind === "mageSheet");
 }
 
+/** The summary dialog's contents. */
 export function batchSummary(walk: BatchWalk, viewerReport: ParsedReport | null): ImportSummary {
   return {
     steps: walk.landed,
