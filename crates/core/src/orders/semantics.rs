@@ -898,13 +898,15 @@ fn market_shares_for(
                 Intent::Buy { item, .. } => (item, MarketSide::Buying),
                 _ => continue,
             };
-            let Some(tag) = resolve_item(text, hex, ordered, ruleset) else {
-                continue;
-            };
-            let tag = tag.to_ascii_uppercase();
             let lines = match side {
                 MarketSide::Selling => &hex.region.wanted,
                 MarketSide::Buying => &hex.region.for_sale,
+            };
+            // Through the one resolver the order-following surfaces use, market lines and all: an
+            // item only the line can name is bought and sold by `buy` and `sell`, so it must be
+            // counted here too or its neighbours are handed shares that are too large (`ah-oymb`).
+            let Some(tag) = market_item_tag(lines, text, hex, ordered, ruleset) else {
+                continue;
             };
             // A tag this market has no line for has no pool, so there is nothing to divide - and
             // the goods are unsellable or unpriceable, which the arms already answer for. The
@@ -1607,7 +1609,15 @@ fn forecast_hex(
         // settled - untraded goods, goods nothing could identify - and the arm then falls back to
         // what the market line itself says.
         let market_share = |text: &str, side: MarketSide| {
-            resolve_item(text, hex, ordered, ruleset).and_then(|tag| {
+            // The same resolver the settlement used, market lines and all: bare `resolve_item`
+            // here would look up no share for exactly the goods only the line can name, and the
+            // column would price the whole ask while the ledger priced the settled share
+            // (`ah-oymb`).
+            let lines = match side {
+                MarketSide::Selling => &hex.region.wanted,
+                MarketSide::Buying => &hex.region.for_sale,
+            };
+            market_item_tag(lines, text, hex, ordered, ruleset).and_then(|tag| {
                 market_shares
                     .get(&(tag.to_ascii_uppercase(), side))
                     .map(|shares| shares[index])
@@ -7607,6 +7617,38 @@ enum MarketAnswer<'a> {
     Unknown,
 }
 
+/// The canonical, upper-cased tag an order's item argument names **at this market**.
+///
+/// [`resolve_item`] first - the catalogue, then the inventories in the hex - and then the market
+/// lines themselves, because a market line is itself a naming of the item and can settle a name no
+/// catalogue does. That fallback is why this exists as a function rather than as a block inside
+/// [`market_answer`]: the settlement ([`market_shares_for`]), the order-following surfaces and the
+/// finding that reports an overrun ([`check_region_pools`]) must all resolve an item identically,
+/// or a trade one of them can follow takes no share of the line another divides, and the warning
+/// the third raises anchors to no order line (`ah-oymb`).
+///
+/// `lines` is the side's own list - `hex.region.for_sale` for a `BUY`, `hex.region.wanted` for a
+/// `SELL` - so the fallback can never settle a name off the wrong list.
+///
+/// The market-line arm matches through [`names_the_same_item`], which searches item-major. That is
+/// a documented weakness for a list holding both `pearl` and `pearls`; a market prints one line per
+/// item per side, so no such pair can arise here, and matching any other way would resolve an order
+/// differently from [`market_answer`] - which is the divergence this function exists to close.
+fn market_item_tag(
+    lines: &[MarketItem],
+    text: &str,
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+) -> Option<String> {
+    resolve_item(text, hex, actor, ruleset).or_else(|| {
+        lines
+            .iter()
+            .find(|line| names_the_same_item(text, &line.tag, &line.name))
+            .map(|line| line.tag.to_ascii_uppercase())
+    })
+}
+
 /// The market line for an item, matched the same way an order's item argument is, and saying
 /// which kind of no it is when there is no line.
 fn market_answer<'a>(
@@ -7616,13 +7658,7 @@ fn market_answer<'a>(
     actor: &Ordered<'_>,
     ruleset: Option<&Ruleset>,
 ) -> MarketAnswer<'a> {
-    let Some(tag) = resolve_item(text, hex, actor, ruleset).or_else(|| {
-        // A market line is itself a naming of the item, so it can settle a name no catalogue does.
-        lines
-            .iter()
-            .find(|line| names_the_same_item(text, &line.tag, &line.name))
-            .map(|line| line.tag.to_ascii_uppercase())
-    }) else {
+    let Some(tag) = market_item_tag(lines, text, hex, actor, ruleset) else {
         return MarketAnswer::Unknown;
     };
 
@@ -7679,9 +7715,9 @@ fn resolve_item(
 /// This answers about one entry, so a caller that walks a list asking it entry by entry searches
 /// item-major - the opposite nesting to the catalogue searches, which try each spelling across
 /// everything before the next. A list holding both `pearl` and `pearls` can resolve `pearls` to
-/// the wrong one that way. No such pair exists in the committed catalogue, and its two remaining
-/// callers search a market line and a no-ruleset silver check rather than a unit's inventory, so
-/// it has never mattered; it is written down because the difference is invisible until it is not.
+/// the wrong one that way. No such pair exists in the committed catalogue, and its one remaining
+/// caller ([`market_item_tag`]) searches a market line rather than a unit's inventory, so it has
+/// never mattered; it is written down because the difference is invisible until it is not.
 /// A caller that needs the rule honoured wants [`item_named`] instead.
 fn names_the_same_item(text: &str, tag: &str, name: &str) -> bool {
     let written = text.replace('_', " ");
@@ -9159,16 +9195,32 @@ pub(crate) fn counted_with_singular(
     format!("{count} {name}")
 }
 
-/// How to write an item in a message: the catalogue's name where there is one, the tag otherwise.
+/// How to write an item in a message: the catalogue's name where there is one, then the name a
+/// unit in the hex prints for it, then the name this hex's own market lines print for it, then the
+/// tag.
+///
+/// The market lines are consulted because a market can trade goods no catalogue names and nobody
+/// in the hex is holding - which is precisely the case the settlement now counts (`ah-oymb`), so
+/// its warning would otherwise read `20 glas` where the line printed `glassware`. Matched on the
+/// tag alone, so this can never disagree with the resolution that produced the tag.
 fn item_name(tag: &str, hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> String {
     if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(tag)) {
         return item.name.clone();
     }
-    hex.units
+    if let Some(item) = hex
+        .units
         .iter()
         .flat_map(|ordered| ordered.unit.items.iter())
         .find(|item: &&ItemAmount| item.tag.eq_ignore_ascii_case(tag))
-        .map_or_else(|| tag.to_string(), |item| item.name.clone())
+    {
+        return item.name.clone();
+    }
+    hex.region
+        .for_sale
+        .iter()
+        .chain(hex.region.wanted.iter())
+        .find(|line| line.tag.eq_ignore_ascii_case(tag))
+        .map_or_else(|| tag.to_string(), |line| line.name.clone())
 }
 
 // --- who is left guarding ----------------------------------------------------------------------
@@ -12956,7 +13008,14 @@ fn check_region_pools(
                 ContendedPool::Market { tag, side } => match (&placed.intent, side) {
                     (Intent::Sell { item, .. }, MarketSide::Selling)
                     | (Intent::Buy { item, .. }, MarketSide::Buying) => {
-                        resolve_item(item, hex, ordered, ruleset)
+                        // The same resolver the settlement used to raise this overrun. Bare
+                        // `resolve_item` here would fail to anchor exactly the findings this
+                        // bead makes possible (`ah-oymb`).
+                        let lines = match side {
+                            MarketSide::Selling => &hex.region.wanted,
+                            MarketSide::Buying => &hex.region.for_sale,
+                        };
+                        market_item_tag(lines, item, hex, ordered, ruleset)
                             .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag))
                     }
                     _ => false,
@@ -31036,6 +31095,216 @@ BUILD
         assert!(
             settled[0] > 0,
             "a sale this HUD cannot follow still contends: {settled:?}"
+        );
+    }
+
+    /// `ah-oymb`. The settlement resolved an order's item through the catalogue and the hex's
+    /// inventories alone, while `buy` also let the market line name it - so a purchase of goods
+    /// only the line can name was followed and never counted, and the faction-mate beside it was
+    /// handed the whole line.
+    #[test]
+    fn a_purchase_only_the_market_line_can_name_takes_its_share() {
+        assert!(
+            ruleset().find_item("glassware").is_none(),
+            "the fixture depends on the catalogue not naming these goods"
+        );
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "glassware".to_string(),
+                tag: "GLAS".to_string(),
+                price: 40,
+            }],
+            ..region(vec![
+                with_silver(unit("2390"), 1000),
+                with_silver(unit("2391"), 1000),
+            ])
+        };
+        let orders = "unit 2390\nBUY 10 glassware\nunit 2391\nBUY 10 glassware\n";
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+
+        let mut overruns = Vec::new();
+        let shares = market_shares_for(&hex_with_transfers, Some(&rules), &mut overruns);
+        let settled = shares
+            .get(&("GLAS".to_string(), MarketSide::Buying))
+            .unwrap_or_else(|| panic!("no GLAS buying line: {shares:?}"));
+
+        assert_eq!(settled[0], 5, "each buyer takes half the line");
+        assert_eq!(settled[1], 5, "each buyer takes half the line");
+        assert_eq!(overruns.len(), 1, "one oversubscribed line: {overruns:?}");
+        let overrun = &overruns[0];
+        assert!(
+            matches!(
+                &overrun.pool,
+                ContendedPool::Market { tag, side }
+                    if tag == "GLAS" && *side == MarketSide::Buying
+            ),
+            "the GLAS buying line is the contended pool: {:?}",
+            overrun.pool
+        );
+        assert_eq!(overrun.wanted, 20);
+        assert_eq!(overrun.available, 10);
+        assert_eq!(overrun.claimants, vec![0, 1]);
+    }
+
+    /// `ah-oymb`. The other side of the same resolver. A holding printed under one name and a
+    /// `Wanted` line printed under another are the same goods to the server, and `sell` follows
+    /// the order - so the settlement must count it too.
+    #[test]
+    fn a_sale_only_the_market_line_can_name_takes_its_share() {
+        assert!(
+            ruleset().find_item("glassware").is_none(),
+            "the fixture depends on the catalogue not naming these goods"
+        );
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 10,
+                name: "glassware".to_string(),
+                tag: "GLAS".to_string(),
+                price: 40,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "glass", "GLAS"),
+                with_item(unit("2391"), 10, "glass", "GLAS"),
+            ])
+        };
+        let orders = "unit 2390\nSELL 10 glassware\nunit 2391\nSELL 10 glassware\n";
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+
+        let mut overruns = Vec::new();
+        let shares = market_shares_for(&hex_with_transfers, Some(&rules), &mut overruns);
+        let settled = shares
+            .get(&("GLAS".to_string(), MarketSide::Selling))
+            .unwrap_or_else(|| panic!("no GLAS selling line: {shares:?}"));
+
+        assert_eq!(settled[0], 5, "each seller sells half the line");
+        assert_eq!(settled[1], 5, "each seller sells half the line");
+        assert_eq!(overruns.len(), 1, "one oversubscribed line: {overruns:?}");
+        let overrun = &overruns[0];
+        assert!(
+            matches!(
+                &overrun.pool,
+                ContendedPool::Market { tag, side }
+                    if tag == "GLAS" && *side == MarketSide::Selling
+            ),
+            "the GLAS selling line is the contended pool: {:?}",
+            overrun.pool
+        );
+        assert_eq!(overrun.wanted, 20);
+        assert_eq!(overrun.available, 10);
+    }
+
+    /// `ah-oymb`. An oversubscribed line raised no warning at all, because neither buyer was in
+    /// the divide - so two units each planned to buy the whole line and the player was told
+    /// nothing. And once it is raised, it must reach the order line it is about: the anchor
+    /// resolved the item the same narrow way the settlement did.
+    #[test]
+    fn an_oversubscribed_line_only_the_market_can_name_warns_on_the_order() {
+        assert!(
+            ruleset().find_item("glassware").is_none(),
+            "the fixture depends on the catalogue not naming these goods"
+        );
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "glassware".to_string(),
+                tag: "GLAS".to_string(),
+                price: 40,
+            }],
+            ..region(vec![
+                with_silver(unit("2390"), 1000),
+                with_silver(unit("2391"), 1000),
+            ])
+        };
+        let findings = check(
+            vec![region],
+            "unit 2390\nBUY 10 glassware\nunit 2391\nBUY 10 glassware\n",
+        );
+
+        let oversubscribed = findings
+            .iter()
+            .filter(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            oversubscribed.len(),
+            2,
+            "one finding per buyer: {:?}",
+            codes(&findings)
+        );
+        assert!(
+            oversubscribed.iter().all(|finding| finding.line.is_some()),
+            "each finding is anchored to its buyer's own BUY: {:?}",
+            oversubscribed
+                .iter()
+                .map(|finding| finding.line)
+                .collect::<Vec<_>>()
+        );
+        assert_ne!(
+            oversubscribed[0].line, oversubscribed[1].line,
+            "each buyer is anchored to its own line"
+        );
+        assert_eq!(
+            oversubscribed[0].message,
+            "your units here buy 20 glassware between them and this market has 10"
+        );
+    }
+
+    /// `ah-oymb`. A market can trade goods no catalogue names and nobody in the hex holds, so the
+    /// warning about them was reduced to writing the bare tag. The line itself prints a word; use
+    /// it.
+    #[test]
+    fn a_warning_about_goods_only_the_market_names_uses_the_market_line_name() {
+        assert!(
+            ruleset().find_item("glassware").is_none(),
+            "the fixture depends on the catalogue not naming these goods"
+        );
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "glassware".to_string(),
+                tag: "GLAS".to_string(),
+                price: 40,
+            }],
+            ..region(vec![
+                with_silver(unit("2390"), 1000),
+                with_silver(unit("2391"), 1000),
+            ])
+        };
+        let findings = check(
+            vec![region],
+            "unit 2390\nBUY 10 glassware\nunit 2391\nBUY 10 glassware\n",
+        );
+
+        let messages = findings
+            .iter()
+            .filter(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED)
+            .map(|finding| finding.message.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            messages,
+            vec![
+                "your units here buy 20 glassware between them and this market has 10",
+                "your units here buy 20 glassware between them and this market has 10",
+            ],
+            "the market line's own word, not the bare tag"
         );
     }
 
