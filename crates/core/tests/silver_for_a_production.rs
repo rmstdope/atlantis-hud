@@ -289,3 +289,215 @@ fn the_items_column_agrees_that_no_catapult_is_made() {
         assert_eq!(items_column_produced(3000, script), 0, "{script:?}");
     }
 }
+
+// --- a market opens before the manufacture (`ah-6m7b.6`) ---------------------------------------
+
+/// `rules/sequenceofevents` runs *"BUY orders are processed"* eleven entries before *"Manufacturing
+/// PRODUCE orders ... are processed"*, so a purchase is one of the few things that can shrink the
+/// purse a catapult is built from - and this file had no market case at all, no `For Sale:` line
+/// anywhere in it.
+///
+/// Both surfaces price a `PRODUCE` through one function, `silver::price_production` ->
+/// `silver::plan_production`, and both hand it a purse read out of the ledger's own `PhaseState`:
+/// the ITEMS side through `balance_at(phase, who, SILVER)`, the SILVER side through
+/// `PhaseSilver::as_manufacturing_opens`, which is `after[StatePhase::Study]` filled in from that
+/// same array. Nothing between Study and Manufacturing moves silver, so the two purses are equal by
+/// construction - and nothing in the suite said so until this module.
+///
+/// The report is the file's own carpenter hex with a `For Sale:` line added; the outer `report` is
+/// deliberately left alone, so a market does not appear in the hex of every other case in the file.
+mod a_market_before_the_manufacture {
+    use super::*;
+
+    /// The file's own carpenter hex with a `For Sale:` line added, and nothing else changed. The
+    /// `Unclaimed silver:` line stays even though no case here claims, so the one difference from
+    /// the outer builder does not become two.
+    fn report_with_market(silver: i64, for_sale: &str) -> String {
+        [
+            "Foo (1) Report".to_string(),
+            String::new(),
+            "Unclaimed silver: 3000.".to_string(),
+            String::new(),
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.".to_string(),
+            format!("  For Sale: {for_sale}"),
+            String::new(),
+            "Exits:".to_string(),
+            "  Southeast : plain (2,2) in Nowhere.".to_string(),
+            String::new(),
+            format!(
+                "* Carpenters (900), Foo (1), behind, 4 leaders [LEAD], {silver} silver [SILV], 250 wood [WOOD], \
+                 30 ironwood [IRWD], 80 furs [FUR]. Weight: 2900. Capacity: 0/0/0/0. \
+                 Skills: carpenter [CARP] 4 (300)."
+            ),
+            "* Hands (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.".to_string(),
+            String::new(),
+        ]
+        .join("\n")
+    }
+
+    /// Both surfaces' answers for unit 900, from one report and one script.
+    #[derive(Debug)]
+    struct Columns {
+        /// `CATP` the ITEMS ledger creates.
+        items_catapults: i64,
+        /// `GRAI` the ITEMS ledger moves into the unit.
+        items_grain: i64,
+        silver_produced: i64,
+        capped_by: Option<ProductionCap>,
+        wanted: i64,
+        expense: Option<i64>,
+        at_month_end: Option<i64>,
+        /// Every finding code raised for unit 900, in the order `review_turn` returns them.
+        codes: Vec<String>,
+    }
+
+    fn columns(silver: i64, for_sale: &str, script: &str) -> Columns {
+        let text = report_with_market(silver, for_sale);
+        let template = extract_orders_template(&text)
+            .map(|template| template.text)
+            .unwrap_or_default();
+        let orders = format!("{template}\nunit 900\n{script}\n");
+
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            atlantis_hud_fixtures::RULESET_JSON,
+            &text,
+            "[]",
+            &orders,
+        )
+        .expect("the ruleset loads");
+        let unit = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("unit 900 is on the ITEMS surface");
+        let items_catapults = unit
+            .produced
+            .iter()
+            .filter(|produced| produced.tag == "CATP")
+            .map(|produced| produced.amount)
+            .sum();
+        let items_grain = unit
+            .item_changes
+            .iter()
+            .filter(|change| change.tag == "GRAI")
+            .map(|change| change.delta)
+            .sum();
+
+        let mut parsed = parse_report_full(&text);
+        classify_units(&mut parsed, &ruleset());
+        let review = review_turn(&parsed, &orders, Some(&ruleset()), CheckOptions::default());
+        let silver_row = review
+            .silver
+            .iter()
+            .find(|silver| silver.unit_id == "900")
+            .expect("unit 900 is on the SILVER surface");
+        let codes = review
+            .findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("900"))
+            .map(|finding| finding.code.as_str().to_string())
+            .collect();
+
+        Columns {
+            items_catapults,
+            items_grain,
+            silver_produced: silver_row.produced,
+            capped_by: silver_row.production_capped_by,
+            wanted: silver_row.production_wanted,
+            expense: silver_row.expense,
+            at_month_end: silver_row.at_month_end,
+            codes,
+        }
+    }
+
+    /// The market has 20 of the 40 asked for, so 400 silver leaves whatever the unit held: 3000
+    /// remains of 3400, exactly the recipe's silver, and 3400 remains of 3800. Both columns make
+    /// the catapult either way. `region-pool-oversubscribed` is the
+    /// market line being asked for more than it sells; asserting the whole vector is what keeps a
+    /// spurious `not-enough-silver` from creeping in beside a correct number.
+    #[test]
+    fn a_market_cut_buy_leaves_both_columns_making_the_catapult() {
+        for (silver, at_month_end) in [(3400, 0), (3800, 400)] {
+            let got = columns(
+                silver,
+                "20 grain [GRAI] at $20.",
+                "BUY 40 grain\nPRODUCE catapult",
+            );
+
+            assert_eq!(got.items_catapults, 1, "ITEMS catapults, holding {silver}");
+            assert_eq!(got.items_grain, 20, "ITEMS grain, holding {silver}");
+            assert_eq!(got.silver_produced, 1, "SILVER produced, holding {silver}");
+            assert_eq!(got.capped_by, Some(ProductionCap::Silver), "{silver}");
+            assert_eq!(got.wanted, 4, "wanted, holding {silver}");
+            assert_eq!(got.expense, Some(3400), "expense, holding {silver}");
+            assert_eq!(got.at_month_end, Some(at_month_end), "{silver}");
+            assert_eq!(got.codes, ["region-pool-oversubscribed"], "{silver}");
+        }
+    }
+
+    /// The whole ask is bought, for 800, and the catapult is short - on both columns, with no
+    /// finding raised. This is where the report's own figures would have gone had the market
+    /// carried what the order asked for.
+    #[test]
+    fn a_full_price_buy_unfunds_the_catapult_on_both_columns() {
+        let got = columns(
+            3400,
+            "40 grain [GRAI] at $20.",
+            "BUY 40 grain\nPRODUCE catapult",
+        );
+
+        assert_eq!(got.items_catapults, 0, "the ITEMS ledger makes nothing");
+        assert_eq!(got.items_grain, 40, "and buys the whole ask");
+        assert_eq!(got.silver_produced, 0, "the SILVER column says the same");
+        assert_eq!(got.capped_by, Some(ProductionCap::Silver));
+        assert_eq!(got.wanted, 4);
+        assert_eq!(got.expense, Some(800));
+        assert_eq!(got.at_month_end, Some(2600));
+        assert!(got.codes.is_empty(), "raised {:?}", got.codes);
+    }
+
+    /// `plan_production` divides, so a purse equal to the price funds a run: 3800 - 800 is exactly
+    /// the recipe's 3000 `SILV`. 3400 in the test above and 3800 here are the two sides of that
+    /// division, one apart in outcome and 400 apart in silver.
+    #[test]
+    fn the_boundary_where_the_purse_is_exactly_the_recipes_silver() {
+        for (silver, at_month_end) in [(3800, 0), (6000, 2200)] {
+            let got = columns(
+                silver,
+                "40 grain [GRAI] at $20.",
+                "BUY 40 grain\nPRODUCE catapult",
+            );
+
+            assert_eq!(got.items_catapults, 1, "ITEMS catapults, holding {silver}");
+            assert_eq!(got.items_grain, 40, "ITEMS grain, holding {silver}");
+            assert_eq!(got.silver_produced, 1, "SILVER produced, holding {silver}");
+            assert_eq!(got.capped_by, Some(ProductionCap::Silver), "{silver}");
+            assert_eq!(got.wanted, 4, "wanted, holding {silver}");
+            assert_eq!(got.expense, Some(3800), "expense, holding {silver}");
+            assert_eq!(got.at_month_end, Some(at_month_end), "{silver}");
+            assert!(got.codes.is_empty(), "holding {silver}: {:?}", got.codes);
+        }
+    }
+
+    /// The turn's phase order decides this, not the order the lines were typed in - the same
+    /// property `GIVES_EVERYTHING` asserts for a gift.
+    #[test]
+    fn the_document_order_of_the_buy_and_the_produce_changes_nothing() {
+        let got = columns(
+            3400,
+            "20 grain [GRAI] at $20.",
+            "PRODUCE catapult\nBUY 40 grain",
+        );
+
+        assert_eq!(got.items_catapults, 1);
+        assert_eq!(got.items_grain, 20);
+        assert_eq!(got.silver_produced, 1);
+        assert_eq!(got.capped_by, Some(ProductionCap::Silver));
+        assert_eq!(got.wanted, 4);
+        assert_eq!(got.expense, Some(3400));
+        assert_eq!(got.at_month_end, Some(0));
+        assert_eq!(got.codes, ["region-pool-oversubscribed"]);
+    }
+}
