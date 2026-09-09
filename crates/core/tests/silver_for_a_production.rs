@@ -412,8 +412,9 @@ mod a_market_before_the_manufacture {
         }
     }
 
-    /// The market has 20 of the 40 asked for, so 400 silver leaves and 3000 remains - exactly the
-    /// recipe's silver, and both columns make the catapult. `region-pool-oversubscribed` is the
+    /// The market has 20 of the 40 asked for, so 400 silver leaves whatever the unit held: 3000
+    /// remains of 3400, exactly the recipe's silver, and 3400 remains of 3800. Both columns make
+    /// the catapult either way. `region-pool-oversubscribed` is the
     /// market line being asked for more than it sells; asserting the whole vector is what keeps a
     /// spurious `not-enough-silver` from creeping in beside a correct number.
     #[test]
