@@ -3,6 +3,7 @@ import type { HexNode } from "../hexMapModel";
 import { originalTooltip } from "../unitPreview";
 import { withoutSilver } from "../silverTag";
 import { describeMen } from "../unitComposition";
+import { NOT_KNOWN, unreadBannerText, weightFloor } from "../unitRead";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { skillEntryId, type GameDataIndex } from "../gameData";
 import { highestMagicSkill, type MagicTree } from "../magicTree";
@@ -18,7 +19,8 @@ import {
   GameDataLink,
   Row,
   Section,
-  StaleBanner
+  StaleBanner,
+  UnreadBanner
 } from "./primitives";
 
 const PREVIEW = 8;
@@ -90,6 +92,13 @@ export function UnitPanelBody({
     return <Absent>No unit selected.</Absent>;
   }
 
+  // The unread banner's sentence, or null for a unit the report carried whole. After the guard
+  // above, never beside `stale`: that reads a different object.
+  const unread = unreadBannerText(unit);
+  // Null for a read unit too - nothing reads it there. A unit whose `Weight:` line *was* read keeps
+  // the game's own figure below; a floor would be a worse answer than a fact.
+  const floor = unread === null ? null : weightFloor(unit, gameData);
+
   const items = withoutSilver(unit.items).sort(
     (left, right) => right.amount - left.amount
   );
@@ -103,6 +112,8 @@ export function UnitPanelBody({
 
   return (
     <>
+      {/* Above the stale banner: "these are not figures at all" outranks "these figures are old". */}
+      {unread === null ? null : <UnreadBanner text={unread} />}
       {stale && hex.lastSeenTurn !== null ? (
         <StaleBanner lastSeenTurn={hex.lastSeenTurn} ageInTurns={hex.ageInTurns ?? 0} />
       ) : null}
@@ -125,10 +136,22 @@ export function UnitPanelBody({
         */}
         <Field label="Men" value={describeMen(unit)} />
         {movement == null ? (
-          <>
-            {unit.weight === null ? null : <Field label="Weight" value={unit.weight} />}
-            {unit.capacity === null ? null : <Field label="Capacity" value={unit.capacity} />}
-          </>
+          unread === null ? (
+            <>
+              {unit.weight === null ? null : <Field label="Weight" value={unit.weight} />}
+              {unit.capacity === null ? null : <Field label="Capacity" value={unit.capacity} />}
+            </>
+          ) : (
+            // A row that is not there reads as "nothing to say about weight", which is the same
+            // silence this work exists to break. A floor beats it where one can be computed.
+            <>
+              <Field
+                label="Weight"
+                value={floor === null ? NOT_KNOWN : `${floor.toLocaleString()} or more`}
+              />
+              <Field label="Capacity" value={unit.capacity ?? NOT_KNOWN} />
+            </>
+          )
         ) : (
           <Field label="Weight" value={movement.load.toLocaleString()} />
         )}
@@ -137,7 +160,12 @@ export function UnitPanelBody({
 
       {movement == null ? (
         <Section title="Movement">
-          <p className="m-0 text-ink-dim">Movement not disclosed</p>
+          {unread === null ? (
+            <p className="m-0 text-ink-dim">Movement not disclosed</p>
+          ) : (
+            // "Not disclosed" would claim the report chose to withhold it. It was never read.
+            <Absent>{NOT_KNOWN}</Absent>
+          )}
         </Section>
       ) : (
         <MovementSection
@@ -156,7 +184,7 @@ export function UnitPanelBody({
             {predictedFlags.length === 0 ? "none" : predictedFlags.join(" · ")}
           </p>
         ) : unit.flags.length === 0 ? (
-          <Absent>none</Absent>
+          <Absent>{unread === null ? "none" : NOT_KNOWN}</Absent>
         ) : (
           <p className="m-0 text-ink-soft">{unit.flags.join(" · ")}</p>
         )}
@@ -189,7 +217,7 @@ export function UnitPanelBody({
       {unit.own || unit.skills.length > 0 ? (
         <Section title="Skills" count={unit.skills.length || undefined}>
           {unit.skills.length === 0 ? (
-            <Absent>none</Absent>
+            <Absent>{unread === null ? "none" : NOT_KNOWN}</Absent>
           ) : (
             unit.skills.map((skill) => (
               <Row
@@ -234,7 +262,7 @@ export function UnitPanelBody({
 
       <Section title="Items" count={items.length || undefined}>
         {items.length === 0 ? (
-          <Absent>none</Absent>
+          <Absent>{unread === null ? "none" : NOT_KNOWN}</Absent>
         ) : (
           <>
             {items.slice(0, PREVIEW).map((item) => (
@@ -254,6 +282,11 @@ export function UnitPanelBody({
             ) : null}
           </>
         )}
+        {/*
+          Driven off `read`, never off the rendered row count: `withoutSilver` is what this section
+          iterates, so a part-read unit that read only silver has no rows and still needs the line.
+        */}
+        {unit.read === "partial" ? <p className="m-0 text-warn">and more, not known</p> : null}
       </Section>
 
       <Section title="Events" count={events.length || undefined}>

@@ -342,3 +342,62 @@ describe("the Events section", () => {
     expect(without).not.toContain('data-testid="unit-events-all"');
   });
 });
+
+describe("a unit whose line the report did not fully carry", () => {
+  const CATALOGUE = indexWith(["mount:HORS"]);
+  const WEIGHING: GameDataIndex = { ...CATALOGUE, detailOf: () => ({ kind: "item", weight: 50 }) as never };
+
+  it("banners a unit whose line was not read, and refuses its figures", () => {
+    const markup = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({
+          read: "nothing",
+          items: [],
+          flags: [],
+          skills: [],
+          men: 0,
+          weight: null,
+          capacity: null,
+          movement: null
+        })}
+        hex={HEX}
+      />
+    );
+
+    expect(markup).toContain('data-testid="unit-unread-banner"');
+    expect(markup).toContain("This unit was not read.");
+    expect(markup).toContain("Weight");
+    expect(markup).toContain("Capacity");
+    expect(markup).toContain("not known");
+    expect(markup).not.toContain("Movement not disclosed");
+    expect(markup).not.toContain(">none<");
+  });
+
+  it("keeps what a part-read unit did have, and says more is missing", () => {
+    const markup = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({
+          read: "partial",
+          items: [{ amount: 2, name: "horse", tag: "HORS" }],
+          weight: null,
+          capacity: null,
+          movement: null
+        })}
+        hex={HEX}
+        gameData={WEIGHING}
+      />
+    );
+
+    expect(markup).toContain("Part of this unit was not read.");
+    expect(markup).toContain("horse");
+    expect(markup).toContain("and more, not known");
+    expect(markup).toContain("100 or more");
+  });
+
+  it("leaves a unit that was read completely exactly as it was", () => {
+    const markup = renderToStaticMarkup(<UnitPanel unit={UNIT} hex={HEX} />);
+
+    expect(markup).not.toContain('data-testid="unit-unread-banner"');
+    expect(markup).not.toContain("not known");
+  });
+});

@@ -70,3 +70,23 @@ describe("whyEstimated", () => {
     expect(whyEstimated(unit({ menEstimated: false }))).toBeUndefined();
   });
 });
+
+describe("a unit whose line was not fully read", () => {
+  it("refuses a headcount for a unit whose line was not fully read", () => {
+    expect(describeMen(aReportUnit({ men: 0, read: "nothing" }))).toBe("not known");
+    // A figure that *was* read is still refused: the part that was lost could be people.
+    expect(
+      describeMen(
+        aReportUnit({
+          men: 100,
+          menByRace: [{ tag: "ORC", name: "orcs", amount: 100 }],
+          read: "partial"
+        })
+      )
+    ).toBe("not known");
+  });
+
+  it("still counts a unit that was read completely", () => {
+    expect(describeMen(aReportUnit({ men: 99, read: "complete" }))).toBe("99");
+  });
+});
