@@ -8,6 +8,11 @@
 //! `phases` - the only two fields the two constructions differed in. So these are characterisation
 //! tests: green before the change that makes `forecast_hex` call `unit_facts`, and green after.
 //!
+//! They still bite, which a green-before-and-after test has to be shown to do rather than assumed:
+//! blank the `skills` these facts carry on the column's path and the first test fails on `income`,
+//! `Some(0)` against `Some(2000)` - the column reads ten orcs as nought combat ready and takes a
+//! nought share, while the ledger still credits the whole take. That is the drift this pair guards.
+//!
 //! `rules/economy_taxingpillaging`: pillaging *"requires the faction to have enough combat ready
 //! men in the region to tax half of the available money in the region"*, *"Each taxing character
 //! can collect $50"*, and *"The amount of money collected is equal to twice the available tax

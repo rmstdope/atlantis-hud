@@ -4884,11 +4884,11 @@ fn hex_facts<'a>(
 /// so a caller holding one `Ordered` and no index can read the same facts.
 ///
 /// **This is the one place a unit's facts are built**, so the ITEMS ledger and the SILVER column
-/// cannot read a unit differently (`ah-jo6b.5`). Two callers hold one `Ordered` and no index:
-/// `apply`, which prices one unit's `PILLAGE` and needs that unit's own combat ready men
-/// (`ah-q6bt`) - building the whole hex's rows per intent would walk the hex quadratically on a
-/// path that runs on every keystroke - and `forecast_hex`, which prices each unit's month in turn
-/// and is the only caller with a real `Receipts` and a late picture to pass.
+/// cannot read a unit differently (`ah-jo6b.5`). Several callers hold one `Ordered` and no index -
+/// among them `apply`, which prices one unit's `PILLAGE` and needs that unit's own combat ready men
+/// (`ah-q6bt`), since building the whole hex's rows per intent would walk the hex quadratically on
+/// a path that runs on every keystroke. `forecast_hex` is one of them too, and is the only caller
+/// with a real `Receipts` and a late picture to pass; the rest pass an empty one and no phases.
 fn unit_facts<'a>(
     hex: &'a Hex<'_>,
     ordered: &'a Ordered<'_>,
