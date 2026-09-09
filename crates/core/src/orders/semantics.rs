@@ -1862,11 +1862,6 @@ fn silver_records_agree(forecast: &UnitSilver, moves: &[SilverMove]) {
     if forecast.doubt.is_some() {
         return;
     }
-    // A unit this month's `FORM` creates: the column forecasts it, the ledger's walk holds no
-    // record under its synthetic id (`ah-1x2h`).
-    if forecast.formed.is_some() {
-        return;
-    }
     let column = compared_silver_rows(
         forecast
             .changes
@@ -1917,15 +1912,9 @@ fn compared_silver_rows(
                     | SilverChangeCause::WasTaken
             )
         })
-        .map(|(cause, line, amount)| {
-            let amount = match cause {
-                // The ledger prices with `actor.unit.men`, the column with the late headcount
-                // after gifts and recruits (`ah-1x2h`).
-                SilverChangeCause::Studied => None,
-                _ => Some(amount),
-            };
-            (cause, line, amount)
-        })
+        // No cause is compared without its amount any more (`ah-1x2h.2`). The `Option` slot stays
+        // because the projection is `ah-1x2h.3`'s to finish.
+        .map(|(cause, line, amount)| (cause, line, Some(amount)))
         .collect();
     compared.sort();
     compared
@@ -7416,7 +7405,12 @@ fn study(
         .and_then(|ruleset| ruleset.find_skill(skill))
         .and_then(|skill| skill.cost);
 
-    let priced = price_study(cost, actor.unit.men);
+    // `rules/sequenceofevents` settles GIVE/TAKE, TAX and the market before STUDY, and
+    // `rules/skills_studying` charges per person - so the fee counts the men the unit holds by the
+    // time STUDY runs, not the headcount the report printed (`ah-1x2h.2`). `men_after_orders` is
+    // the settled post-recruit figure: `apply_transfers` writes it for every unit its walk touches
+    // and `apply_recruits` adds this month's recruits, a `BUY ALL`'s included.
+    let priced = price_study(cost, actor.men_after_orders);
     if priced.doubt.is_some() {
         ledger.doubted.insert(who.clone());
         return;
@@ -22122,16 +22116,15 @@ BUILD
             );
         }
 
-        /// `Studied` is priced differently by the two walks by construction, so it is compared on
-        /// cause and line and not on amount (`ah-6m7b.5.3`); `ah-1x2h.2` is the bead that will
-        /// remove the last of that. `Taxed` is no longer excluded: `ah-1x2h.1` made the ledger
-        /// record the settled share, so the two walks agree on the amount.
+        /// No cause that reaches the comparison is nulled any more. `ah-1x2h.1` made the ledger
+        /// record the settled tax share, and `ah-1x2h.2` made both walks count the same heads when
+        /// STUDY runs, so `Studied` is compared on its amount like everything else.
         #[test]
-        fn a_studied_row_is_compared_without_its_amount() {
-            assert_eq!(
+        fn every_compared_cause_is_compared_on_its_amount() {
+            assert_ne!(
                 compared_silver_rows([(SilverChangeCause::Studied, Some(4), -150)].into_iter()),
                 compared_silver_rows([(SilverChangeCause::Studied, Some(4), -50)].into_iter()),
-                "the two walks count heads at different moments"
+                "both walks now count the same heads, so the fee is compared like any other amount"
             );
             assert_ne!(
                 compared_silver_rows([(SilverChangeCause::Bought, Some(3), -280)].into_iter()),
@@ -22214,10 +22207,12 @@ BUILD
             silver_records_agree(&forecast, &[]);
         }
 
-        /// A unit this month's `FORM` creates is skipped whole: the column forecasts it, the
-        /// ledger's walk holds no record under its synthetic id (`ah-1x2h`).
+        /// A unit this month's `FORM` creates is an ordinary unit to this check: it stands in
+        /// `hex.units` like any other (`semantics.rs` `Hex::read`), and now that its study fee
+        /// counts the men it was given rather than the zero `effects::formed_unit` mints, there is
+        /// nothing left to skip it for (`ah-1x2h.2`).
         #[test]
-        fn a_formed_unit_is_not_compared() {
+        fn a_formed_unit_is_compared() {
             let mut forecast = a_forecast_with_changes();
 
             // The same negative control the doubted case carries: without it this test would keep
@@ -22231,7 +22226,10 @@ BUILD
                 alias: "NEW 1".to_string(),
                 formed_by: "5".to_string(),
             });
-            silver_records_agree(&forecast, &[]);
+            assert!(
+                std::panic::catch_unwind(|| silver_records_agree(&forecast, &[])).is_err(),
+                "a formed unit is an ordinary unit to this check (`ah-1x2h.2`)"
+            );
         }
     }
 
@@ -22250,6 +22248,131 @@ BUILD
             let rules = ruleset();
             let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
+        }
+
+        /// `with_ledger`, through the transfer settlement and with this document's `FORM` blocks
+        /// minted - `Hex::read` alone leaves `Ordered::men_after_orders` at the report's figure and
+        /// holds no formed unit at all, which is the very thing these tests are about
+        /// (`ah-1x2h.2`).
+        fn with_settled_ledger<R>(
+            hex_region: ReportRegion,
+            orders: &str,
+            read: impl FnOnce(&Ledger<'_>) -> R,
+        ) -> R {
+            let parsed = report(vec![hex_region]);
+            let ordered = OrderedUnits::read(orders);
+            let formed = formed_units(&parsed, orders);
+            let rules = ruleset();
+            let hex = hex_with_transfers(
+                &parsed.regions[0],
+                &ordered,
+                &formed,
+                Some(&rules),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+            );
+            let ledger = ledger_for(&hex, Some(&rules));
+            read(&ledger)
+        }
+
+        /// `rules/sequenceofevents` settles GIVE before STUDY, and `rules/skills_studying` charges
+        /// "$10 per person per month" - so the fee counts the men the unit holds once the gift has
+        /// moved, on the receiver and on the giver alike (`ah-1x2h.2`).
+        #[test]
+        fn a_gift_of_men_before_study_is_charged_for() {
+            let hex_region = region(vec![
+                with_men(with_silver(unit("1"), 10_000), 10),
+                with_men(with_silver(unit("2"), 10_000), 2),
+            ]);
+            with_settled_ledger(
+                hex_region,
+                "unit 1\nGIVE 2 4 HUMN\nSTUDY combat\nunit 2\nSTUDY combat\n",
+                |ledger| {
+                    let fee = |who: &str| {
+                        moves(ledger, who)
+                            .iter()
+                            .filter(|one| one.cause == SilverChangeCause::Studied)
+                            .map(|one| one.amount)
+                            .collect::<Vec<_>>()
+                    };
+                    assert_eq!(
+                        fee("1"),
+                        vec![-60],
+                        "the giver keeps 6 of its 10 men: {:?}",
+                        moves(ledger, "1")
+                    );
+                    assert_eq!(
+                        fee("2"),
+                        vec![-60],
+                        "the receiver holds its own 2 plus the 4 it was given: {:?}",
+                        moves(ledger, "2")
+                    );
+                },
+            );
+        }
+
+        /// A unit this month's `FORM` creates holds nobody until it is given men (`rules/form`),
+        /// and the men it is given are in it when STUDY runs (`rules/sequenceofevents`) - so it
+        /// pays a fee, where it used to book no row at all (`ah-1x2h.2`).
+        #[test]
+        fn a_formed_unit_pays_a_study_fee_for_the_men_it_was_given() {
+            let hex_region = region(vec![with_silver(
+                with_race(unit("5"), 2, "leaders", "LEAD"),
+                10_000,
+            )]);
+            with_settled_ledger(
+                hex_region,
+                "unit 5\nFORM 1\nSTUDY combat\nEND\nGIVE NEW 1 1 LEAD\n",
+                |ledger| {
+                    let studied: Vec<_> = moves(ledger, "new-1")
+                        .iter()
+                        .filter(|one| one.cause == SilverChangeCause::Studied)
+                        .map(|one| one.amount)
+                        .collect();
+                    assert_eq!(
+                        studied,
+                        vec![-10],
+                        "one leader, at $10 a head: {:?}",
+                        moves(ledger, "new-1")
+                    );
+                },
+            );
+        }
+
+        /// The case that decides *which* headcount `study` reads, and the one the two cheap
+        /// helpers above cannot reach: a unit that **recruits** this month and then studies.
+        /// `UnitFacts::men` would carry the gift and miss the recruit, so only a recruiting unit
+        /// tells `men_after_orders` apart from it. It goes through `forecast_with_ruleset`, hence
+        /// `review_turn`, because `ledger_for` settles no recruits - and `review_turn` runs
+        /// `silver_records_agree` in debug, so the ledger's own fee is held to the column's here
+        /// (`ah-1x2h.2`).
+        #[test]
+        fn a_recruit_before_study_is_charged_for() {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 2,
+                    name: "men".to_string(),
+                    tag: "HUMN".to_string(),
+                    price: 38,
+                }],
+                ..region(vec![with_men(with_silver(unit("5"), 10_000), 3)])
+            };
+
+            let silver =
+                forecast_with_ruleset(vec![hex_region], "unit 5\nBUY 2 HUMN\nSTUDY combat\n");
+
+            let studied: Vec<_> = silver
+                .changes
+                .iter()
+                .filter(|change| change.cause == SilverChangeCause::Studied)
+                .map(|change| change.amount)
+                .collect();
+            assert_eq!(
+                studied,
+                vec![-50],
+                "3 men plus the 2 recruited, at $10 a head: {:?}",
+                silver.changes
+            );
         }
 
         fn market(units: Vec<ReportUnit>) -> ReportRegion {
