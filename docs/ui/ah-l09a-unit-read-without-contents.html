@@ -71,6 +71,27 @@
   .narrow { max-width:400px; }
   pre.clip { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:9px; white-space:pre; }
   .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin:20px 0 6px; }
+  table.tbl { border-collapse:collapse; width:100%; font:11px/1.5 'Helvetica Neue',Arial,sans-serif; background:var(--panel); }
+  table.tbl th { color:var(--brass); font-size:9.5px; letter-spacing:1.1px; text-transform:uppercase; font-weight:normal; text-align:left; padding:5px 7px; border-bottom:1px solid var(--edge); }
+  table.tbl td { padding:4px 7px; border-bottom:1px solid var(--edge-soft); color:var(--ink-soft); white-space:nowrap; }
+  table.tbl td.num { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  table.tbl td.nm { color:var(--ink); }
+  table.tbl .dim { color:var(--ink-dim); }
+  table.tbl .miss { color:var(--warn); }
+  .panelhdr { background:var(--panel); border-bottom:1px solid var(--edge); padding:5px 9px; display:flex; gap:8px; align-items:baseline; }
+  .panelhdr .t { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; }
+  .panelhdr .h { color:var(--ink-dim); font-size:11px; }
+  .strip { background:var(--panel); padding:4px 9px; font-size:11px; color:var(--warn); border-bottom:1px solid var(--edge-soft); }
+  .banner { background:var(--panel); border-left:2px solid var(--warn); padding:6px 9px; font-size:11px; color:var(--warn); line-height:1.5; }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:4px; padding:8px 10px; max-width:340px; font-size:11px; }
+  .pop h6 { color:var(--brass-bright); font-size:11px; font-weight:500; margin-bottom:6px; }
+  .pop .r { display:flex; justify-content:space-between; gap:14px; padding:1px 0; color:var(--ink-soft); }
+  .pop .amt { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  .pop .unk { color:var(--warn); }
+  .pop .note { color:var(--ink-dim); font-size:10.5px; margin-top:7px; line-height:1.5; }
+  .sect { color:var(--brass); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin:8px 0 4px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  h3.opt2 { font-size:15px; margin:22px 0 2px; color:var(--brass-bright); }
 </style>
 </head>
 <body>
@@ -278,6 +299,164 @@
   <tr><td class="k">Keep advising, marked unreliable</td><td>Warnings that are certainly meaningless &mdash; &ldquo;no men&rdquo; on a unit whose men were simply not read &mdash; would appear every turn and have to be dismissed by hand.</td></tr>
   <tr><td class="k">Withhold only the advice that depends on the unit's contents</td><td>Which advice depends on contents is a judgement made warning by warning, and nothing on screen would tell you which rule you were looking at.</td></tr>
   <tr><td class="k">Hide the part-read unit's known items too</td><td>The two horses were genuinely read, and the &ldquo;Not read&rdquo; panel would become the only place to see them.</td></tr>
+</table>
+
+
+
+<h2 class="rule"><em>Round 4&ndash;6</em> the money, the total, and the withheld advice</h2>
+<p><strong>Decided 2026-09-09.</strong> The break takes a <em>tail</em>, so a garbled unit loses more than its items: silver,
+skills, weight, capacity, movement and flags all go with it. Atlantis HUD reads a missing silver figure as a confident
+<strong>0</strong>, which is the very failure this piece of work exists to stop, one level down and in the money. These four
+screens settle where all of that lands.</p>
+
+<h3 class="opt2">The money &mdash; the Silver column and the ledger behind it</h3>
+<p>The Silver column shows a unit's <em>month-end</em> figure. Two cases, and they are genuinely different.</p>
+<div class="lab">Silver never reached &mdash; the words <code>not known</code>, in amber</div>
+<div class="app"><div class="two">
+<div class="win"><table class="tbl">
+  <tr><th>Unit</th><th>Men</th><th>Move</th><th>Flags</th><th>Items</th><th>Silver</th></tr>
+  <tr><td class="nm">Drones (3364)</td><td class="num">5</td><td>W</td><td class="dim">&mdash;</td><td>5 orcs</td><td class="num">563</td></tr>
+  <tr><td class="nm">Recruits (7781)</td><td class="num">3</td><td>W</td><td class="dim">&mdash;</td><td>3 men</td><td class="num dim">&mdash;</td></tr>
+  <tr><td class="nm">Pack Train (1902)</td><td class="num miss">not known</td><td class="miss">not known</td><td class="miss">not known</td><td>2 horses <span class="miss">&middot; and more that could not be read</span></td><td class="miss">not known</td></tr>
+  <tr><td class="nm">Drones (9498)</td><td class="num miss">not known</td><td class="miss">not known</td><td class="miss">not known</td><td class="miss">could not be read</td><td class="miss">not known</td></tr>
+</table></div>
+<div class="pop">
+  <h6>Pack Train (1902) &mdash; silver</h6>
+  <div class="r"><span>silver</span><span class="amt unk">not known</span></div>
+  <div class="r"><span>at month end</span><span class="amt unk">not known</span></div>
+  <p class="note">Part of this unit's line in the turn report could not be read, so how much silver it holds is not known. It is
+  not zero &mdash; it was never read.</p>
+</div>
+</div></div>
+<p class="why">Row 2 is why the mark is words and not a dash: <code>&mdash;</code> in this column already means &ldquo;this unit
+dissolves, so it has no month end&rdquo;, and dim <code>&mdash;</code> in Move, Flags and Long order already means &ldquo;there
+is none&rdquo;. The table already writes words where a figure normally goes &mdash; a concealed owner reads
+<code>not shown</code> in the Faction column.</p>
+
+<div class="lab">Silver <em>was</em> read and something after it was lost &mdash; the money stands, the month does not</div>
+<pre class="clip">* Pack Train (1902), Borg (21), 2 horses [HORS], 7500 silver [SILV], 4 swor
+                                              ^ read           ^ lost here</pre>
+<div class="app"><div class="two">
+<div class="win"><table class="tbl">
+  <tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+  <tr><td class="nm">Pack Train (1902)</td><td class="num miss">not known</td><td>2 horses, 7500 silver <span class="miss">&middot; and more that could not be read</span></td><td class="num dim">?</td></tr>
+</table></div>
+<div class="pop">
+  <h6>Pack Train (1902)</h6>
+  <div class="sect">Silver</div>
+  <div class="r"><span>Held now</span><span class="amt">7500</span></div>
+  <div class="r"><span>In, in time</span><span class="amt unk">not known</span></div>
+  <div class="r"><span>In, too late</span><span class="amt unk">not known</span></div>
+  <div class="r"><span>Out</span><span class="amt unk">not known</span></div>
+  <div class="r"><span>At month end</span><span class="amt unk">not known</span></div>
+  <p class="note">Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up.</p>
+</div>
+</div></div>
+<p class="why">The money is genuinely known, so it is shown. The month is not, because upkeep depends on a headcount that was
+never read &mdash; and the dim <code>?</code> already means exactly &ldquo;this month could not be priced&rdquo;. The hover card
+keeps its <strong>SILVER</strong> block in both cases: an absent block is indistinguishable from a foreign unit that simply has
+no forecast.</p>
+
+<h3 class="opt2">The total &mdash; a warning line above the table</h3>
+<p>The units list is a virtualised <em>table</em> with no footer, whose only summary is a dim hint on its title bar, and no men
+total is computed anywhere in Atlantis HUD. So the floor is a line above the table, where that list already puts its warnings,
+counted against whichever list you are looking at. The title-bar hint is unchanged.</p>
+<div class="app"><div class="win">
+  <div class="panelhdr"><span class="t">Units in hex</span><span class="h">&mdash; plain (36,44), 3 units</span></div>
+  <div class="strip">&#9888; 2 of these 3 units could not be read. Anything counted here is a floor.</div>
+  <table class="tbl">
+    <tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+    <tr><td class="nm">Drones (3364)</td><td class="num">5</td><td>5 orcs</td><td class="num">563</td></tr>
+    <tr><td class="nm">Drones (9498)</td><td class="num miss">not known</td><td class="miss">could not be read</td><td class="miss">not known</td></tr>
+    <tr><td class="nm">Pack Train (1902)</td><td class="num miss">not known</td><td>2 horses <span class="miss">&middot; and more that could not be read</span></td><td class="miss">not known</td></tr>
+  </table>
+</div></div>
+<div class="app" style="margin-top:12px"><div class="win">
+  <div class="panelhdr"><span class="t">Units</span><span class="h">&mdash; all my units, 42 units</span></div>
+  <div class="strip">&#9888; 6 of these 42 units could not be read. Anything counted here is a floor.</div>
+  <table class="tbl">
+    <tr><th>Unit</th><th>Men</th><th>Items</th><th>Silver</th></tr>
+    <tr><td class="nm">Drones (3364)</td><td class="num">5</td><td>5 orcs</td><td class="num">563</td></tr>
+  </table>
+</div></div>
+<p class="why">The same sentence on every source of that list &mdash; a hex, All my units, Other factions, an army. One unit
+affected reads <em>1 of these 3 units</em>. A filter that hides every affected row leaves the line up: it warns about the list,
+not about the rows on screen. A collapsed panel shows nothing new; the <code>&#9888;</code> chip in the header is already the
+application-wide signal.</p>
+
+<h3 class="opt2">The withheld advice &mdash; a banner on the unit's own pane</h3>
+<p>There is no per-unit advice area in Atlantis HUD: advice is per hex, in the <strong>Problems</strong> tab. The unit's pane
+does have a banner slot, which a stale unit already uses &mdash; so both facts go there in one sentence, and nothing is added to
+the Problems list. An unread unit is not a fault in your orders, and a badly wrapped report would fill that list.</p>
+<div class="app"><div class="win">
+  <div class="panelhdr"><span class="t">Unit</span><span class="h">&mdash; Pack Train (1902)</span></div>
+  <div class="banner">&#9656; <strong>Part of this unit was not read.</strong> Its line in the turn report was not in a shape
+  Atlantis HUD could read, so what it holds is not fully known and no advice is given for it.</div>
+  <div class="unitpane">
+    <div class="urow"><span class="uname">Hex</span><span class="umeta">plain (36,44)</span></div>
+    <div class="urow"><span class="uname">Men</span><span class="umeta miss">not known</span></div>
+    <div class="urow"><span class="uname">Weight</span><span class="umeta">100 <span class="miss">or more</span></span></div>
+    <div class="urow"><span class="uname">Capacity</span><span class="umeta miss">not known</span></div>
+    <div class="sect">Items <span style="color:var(--ink-dim)">1</span></div>
+    <div class="urow"><span class="uname">horse HORS</span><span class="umeta">2</span></div>
+    <div class="urow"><span class="uname"></span><span class="umeta miss">and more, not known</span></div>
+  </div>
+</div></div>
+<div class="app" style="margin-top:12px"><div class="win">
+  <div class="panelhdr"><span class="t">Unit</span><span class="h">&mdash; Drones (9498)</span></div>
+  <div class="banner">&#9656; <strong>This unit was not read.</strong> Its line in the turn report was not in a shape Atlantis
+  HUD could read, so nothing it holds is known and no advice is given for it.</div>
+  <div class="unitpane">
+    <div class="urow"><span class="uname">Hex</span><span class="umeta">plain (36,44)</span></div>
+    <div class="urow"><span class="uname">Men</span><span class="umeta miss">not known</span></div>
+    <div class="urow"><span class="uname">Weight</span><span class="umeta miss">not known</span></div>
+    <div class="urow"><span class="uname">Capacity</span><span class="umeta miss">not known</span></div>
+    <div class="sect">Items</div>
+    <div class="urow"><span class="uname"></span><span class="umeta miss">not known</span></div>
+  </div>
+</div></div>
+<p class="why"><strong>Rows that vanish today stay and refuse.</strong> The pane drops a row entirely when it has no value
+&mdash; a unit with no known Weight has no Weight row. For an affected unit, Weight and Capacity are <em>kept</em>, reading
+<code>not known</code>. A row that is not there reads as &ldquo;nothing to say about weight&rdquo;, which is the same silence
+this whole piece of work exists to break.</p>
+
+<h3 class="opt2">One word, everywhere</h3>
+<p><code>not known</code> is the single phrase for a figure that is missing, in every place it appears: the unit's pane, the
+units table, the hover card and the silver ledger. <code>not read</code> was considered and dropped &mdash; two words for one
+fact in the same pane, and in a Silver column it could be misread as &ldquo;you have not read it&rdquo;. The banner carries the
+reason once, so the figures do not have to.</p>
+
+<h2 class="rule"><em>Strings</em> added in rounds 4&ndash;6</h2>
+<table class="q">
+  <tr><th>Where</th><th>Text</th></tr>
+  <tr><td class="k">Any figure that is unknown, anywhere</td><td class="v">not known</td></tr>
+  <tr><td class="k">Unit pane items section, nothing read</td><td class="v">not known</td></tr>
+  <tr><td class="k">Silver cell &mdash; silver never reached</td><td class="v">not known</td></tr>
+  <tr><td class="k">Silver cell &mdash; silver read, month unpriceable</td><td class="v">? (the existing dim mark, unchanged)</td></tr>
+  <tr><td class="k">Silver note &mdash; nothing read</td><td class="v">This unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero — it was never read.</td></tr>
+  <tr><td class="k">Silver note &mdash; part read, silver not reached</td><td class="v">Part of this unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero — it was never read.</td></tr>
+  <tr><td class="k">Silver note &mdash; part read, silver reached</td><td class="v">Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up.</td></tr>
+  <tr><td class="k">Unit pane banner &mdash; nothing read</td><td class="v">This unit was not read. Its line in the turn report was not in a shape Atlantis HUD could read, so nothing it holds is known and no advice is given for it.</td></tr>
+  <tr><td class="k">Unit pane banner &mdash; part read</td><td class="v">Part of this unit was not read. Its line in the turn report was not in a shape Atlantis HUD could read, so what it holds is not fully known and no advice is given for it.</td></tr>
+  <tr><td class="k">Line above the units table</td><td class="v">⚠ {u} of these {N} units could not be read. Anything counted here is a floor.</td></tr>
+</table>
+<p>The earlier &ldquo;Unit pane figure, unknown&rdquo; and &ldquo;Advice withheld&rdquo; strings are superseded by these: the
+figure phrase is now <code>not known</code> everywhere, and the two advice sentences are folded into the banner.</p>
+
+<h2 class="rule"><em>Rejected in rounds 4&ndash;6</em></h2>
+<table class="q">
+  <tr><th>Considered</th><th>Rejected because</th></tr>
+  <tr><td class="k">The lost silver as the existing dim <code>?</code> in every case</td><td><code>?</code> today means &ldquo;I know what it holds, I could not price the month&rdquo;. Money that was never read at all is a different and worse thing, and the two would be indistinguishable.</td></tr>
+  <tr><td class="k">The lost silver as an amber dash</td><td>The dash already means &ldquo;there is none&rdquo; in Move, Flags and Long order, and in the Silver column itself &ldquo;this unit dissolves, so it has no month end&rdquo;. Four dashes on one row, three meanings, colour alone separating them.</td></tr>
+  <tr><td class="k">The lost silver as an amber <code>&#9888;</code></td><td><code>&#9888;</code> in that same column already means &ldquo;a check warns about this unit's money, select it to read the warning&rdquo;.</td></tr>
+  <tr><td class="k">The lost silver as a floor, &ldquo;0 or more&rdquo;</td><td>True of every unit alive, so it says nothing.</td></tr>
+  <tr><td class="k">Refuse the Silver cell even when the silver itself was read</td><td>The money is genuinely known and a player can act on it; refusing it throws away a real figure to keep one rule tidy. The dim <code>?</code> already says precisely what is wrong.</td></tr>
+  <tr><td class="k">Drop the hover card's SILVER block for such a unit</td><td>An absent block is indistinguishable from a foreign unit that simply has no forecast, and it is the one place the read part of the money can still be seen.</td></tr>
+  <tr><td class="k"><code>not read</code> for the money, <code>not known</code> for everything else</td><td>Two words for one fact in the same pane. The banner already carries the reason once, and &ldquo;not read&rdquo; in a Silver column could be misread as &ldquo;you have not read it&rdquo;.</td></tr>
+  <tr><td class="k">The floor total in the panel's title-bar hint</td><td>It would introduce a men total that exists <em>only</em> when something is broken &mdash; the application computes none today &mdash; and the hint grows long on a wide list.</td></tr>
+  <tr><td class="k">The floor total in a footer row under the table</td><td>The table has no footer and the list is virtualised: a new surface for a case that is meant to be rare.</td></tr>
+  <tr><td class="k">&ldquo;No advice for this unit&rdquo; in the Problems list</td><td>It puts a row in &ldquo;problems&rdquo; for something that is not wrong with your orders, and a badly wrapped report fills the list with them.</td></tr>
+  <tr><td class="k">Let the unit pane keep dropping rows with no value</td><td>A row that is not there reads as &ldquo;nothing to say about weight&rdquo;, and a reader comparing two units cannot see one is missing a row.</td></tr>
 </table>
 
 </main>
