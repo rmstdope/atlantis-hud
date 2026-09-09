@@ -71,6 +71,21 @@ pub enum RouteProblem {
     /// sail it - "there must be enough sailors aboard ... to sail the fleet, or it will not go
     /// anywhere."
     CrewCannotSail { required: i64, available: i64 },
+    /// A fleet asked to step from one land hex straight into another, which the sailing rule
+    /// allows in none of its three forms: "A fleet can move from an ocean region to another ocean
+    /// region, or from a coastal region to an ocean region, or from an ocean region to a coastal
+    /// region."
+    ///
+    /// Both hexes may be perfectly good coastal hexes, which is exactly why this is not
+    /// [`RouteProblem::OceanNeedsShip`]: nothing is wrong with either end, only with the step
+    /// between them.
+    #[serde(rename_all = "camelCase")]
+    SailNeedsOcean {
+        from: Coordinate,
+        from_terrain: String,
+        to: Coordinate,
+        to_terrain: String,
+    },
 }
 
 /// One hex entered.
@@ -228,6 +243,7 @@ pub(crate) fn route_for_mode(
             // as though the unit could swim: if that finds a path, the sea is the reason, and
             // naming the hex it founders at is what makes the refusal actionable.
             return Err(blocked_by_water(map, ruleset, mode, origin, destination)
+                .or_else(|| blocked_by_sailing_rule(map, ruleset, mode, origin, destination))
                 .unwrap_or(RouteProblem::NoKnownRoute));
         }
         Err(other) => return Err(other),
@@ -405,6 +421,48 @@ fn blocked_by_water(
     Some(RouteProblem::OceanNeedsShip {
         coordinate: founders.to,
     })
+}
+
+/// Whether the sailing rule is the only thing standing between the fleet and its destination.
+///
+/// Re-runs the search with that rule lifted. A route that appears only under the relaxation means
+/// the rule is the obstacle, so the refusal can name the step the fleet would be refused at rather
+/// than shrugging - and "nothing joins those two hexes up" reads plainly wrong to a player looking
+/// at two hexes side by side that the faction has both seen.
+///
+/// Returns `None` for anything but a fleet, and for a fleet whose journey the relaxation does not
+/// rescue: then something else is in the way and [`RouteProblem::NoKnownRoute`] is the honest
+/// answer.
+fn blocked_by_sailing_rule(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    mode: MovementMode,
+    origin: Coordinate,
+    destination: Coordinate,
+) -> Option<RouteProblem> {
+    if mode != MovementMode::Sail {
+        return None;
+    }
+
+    let relaxed = cheapest_path(map, ruleset, mode, origin, destination, SailRule::Lifted).ok()?;
+
+    // Walk it and name the first step the rule refuses. The origin's terrain comes from the map;
+    // every later step carries the terrain it landed in.
+    let mut from = origin;
+    let mut from_terrain = map.hex(origin)?.terrain.clone();
+    for step in &relaxed {
+        if refused_by_sailing_step(ruleset, mode, &from_terrain, &step.terrain) {
+            return Some(RouteProblem::SailNeedsOcean {
+                from,
+                from_terrain,
+                to: step.to,
+                to_terrain: step.terrain.clone(),
+            });
+        }
+        from = step.to;
+        from_terrain = step.terrain.clone();
+    }
+    None
 }
 
 /// What entering `into` costs from `from`, or `None` when the unit may not go there at all.

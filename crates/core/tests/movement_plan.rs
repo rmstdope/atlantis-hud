@@ -1001,3 +1001,41 @@ fn a_walker_between_two_land_hexes_is_unaffected() {
     assert_eq!(route.mode, MovementMode::Walk);
     assert_eq!(route.steps.len(), 1);
 }
+
+/// With no way round by sea the refusal names the rule, not the map: "Nothing the faction has seen
+/// joins those two hexes up" reads plainly wrong to a player looking at two adjacent hexes the
+/// faction has both seen.
+#[test]
+fn a_hop_with_no_way_round_by_sea_names_the_sailing_rule() {
+    let report = coastal_pair_with_no_way_round();
+    let problem = plan(&report, "900", at(3, 3)).expect_err("the sailing rule refuses the step");
+
+    assert_eq!(
+        problem,
+        RouteProblem::SailNeedsOcean {
+            from: at(2, 2),
+            from_terrain: "forest".to_string(),
+            to: at(3, 3),
+            to_terrain: "forest".to_string(),
+        }
+    );
+}
+
+/// `RouteProblem`'s TypeScript union is hand-written rather than generated, so this is the only
+/// thing standing between the Rust enum's field names and what the planner panel reads.
+#[test]
+fn the_sailing_refusal_serialises_the_names_the_typescript_expects() {
+    let value = serde_json::to_value(RouteProblem::SailNeedsOcean {
+        from: at(2, 2),
+        from_terrain: "forest".to_string(),
+        to: at(3, 3),
+        to_terrain: "forest".to_string(),
+    })
+    .expect("the refusal serialises");
+    let object = value.as_object().expect("a JSON object");
+
+    assert_eq!(object["kind"], "sailNeedsOcean");
+    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["from", "fromTerrain", "kind", "to", "toTerrain"]);
+}
