@@ -21594,6 +21594,30 @@ BUILD
         assert!(sailed(findings));
     }
 
+    /// A mountain hex whose only exit is another mountain, and a unit in it with no fleet: `SAIL N`
+    /// is a land-to-land step, and nothing in the hex says whether a hull would be flying.
+    fn ashore_with_no_fleet() -> Vec<ReportRegion> {
+        vec![ReportRegion {
+            exits: vec![Exit {
+                direction: "North".to_string(),
+                terrain: "mountain".to_string(),
+                coordinate: Coordinate { x: 7, y: 51, z: 1 },
+                province: "Inhead".to_string(),
+                settlement: None,
+            }],
+            ..region(vec![unit("11125")])
+        }]
+    }
+
+    /// Geography is judged whether or not the report shows a hull. `check_sail_route` is deliberately
+    /// independent of who is aboard, so an absent fleet is not a reason to stop judging the step.
+    #[test]
+    fn a_sail_with_no_fleet_in_the_hex_is_still_warned_about() {
+        assert!(check(ashore_with_no_fleet(), "unit 11125\nSAIL N\n")
+            .iter()
+            .any(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES));
+    }
+
     /// A fleet that may be flying is not bound by the water, so the warning stays silent for it.
     #[test]
     fn a_flying_fleet_may_sail_over_land() {
