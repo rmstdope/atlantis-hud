@@ -19802,16 +19802,20 @@ BUILD
                 ),
                 unit("902"),
             ]);
-            with_ledger_without_a_catalogue(hex_region, "unit 901\nGIVE 902 ALL ITEMS\n", |ledger| {
-                // Every coin and every sword left. The purse then goes ten short, which is this
-                // unit's own upkeep charged against a purse it has just given away - the
-                // consequence of assuming the order works (`ah-jo6b`), not a failure to count it.
-                assert_eq!(balance_of(ledger, "901", "SILV"), -10);
-                assert_eq!(balance_of(ledger, "901", "SWOR"), 0);
-                assert_eq!(balance_of(ledger, "902", "SILV"), 90);
-                assert!(!ledger.doubted.contains("901"));
-                assert!(!ledger.uncounted.contains_key("901"));
-            });
+            with_ledger_without_a_catalogue(
+                hex_region,
+                "unit 901\nGIVE 902 ALL ITEMS\n",
+                |ledger| {
+                    // Every coin and every sword left. The purse then goes ten short, which is this
+                    // unit's own upkeep charged against a purse it has just given away - the
+                    // consequence of assuming the order works (`ah-jo6b`), not a failure to count it.
+                    assert_eq!(balance_of(ledger, "901", "SILV"), -10);
+                    assert_eq!(balance_of(ledger, "901", "SWOR"), 0);
+                    assert_eq!(balance_of(ledger, "902", "SILV"), 90);
+                    assert!(!ledger.doubted.contains("901"));
+                    assert!(!ledger.uncounted.contains_key("901"));
+                },
+            );
         }
 
         /// Every class but `ITEM`/`ITEMS` still needs the catalogue: `MAN`/`MEN` is
@@ -19869,9 +19873,13 @@ BUILD
                 with_item(unit("901"), 5, "swords", "SWOR"),
                 unit("902"),
             ]);
-            with_ledger(hex_region, "unit 901\nTAKE FROM 902 50 SPCIES\n", |ledger| {
-                assert!(ledger.doubted.contains("901"));
-            });
+            with_ledger(
+                hex_region,
+                "unit 901\nTAKE FROM 902 50 SPCIES\n",
+                |ledger| {
+                    assert!(ledger.doubted.contains("901"));
+                },
+            );
         }
 
         /// `rules/give` defines `MAN`/`MEN` as the people among the previous categories, which
