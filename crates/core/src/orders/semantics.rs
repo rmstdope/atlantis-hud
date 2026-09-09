@@ -865,6 +865,12 @@ fn pool_shares_for(
 ///
 /// [`PoolShare::Unknowable`] has no counterpart here. A market claim is counted in goods and does
 /// not multiply out by headcount, so a guessed headcount tells us nothing about it.
+///
+/// A claim is dropped only where the **game** refuses the order, never where this HUD merely cannot
+/// follow it - a `SELL` against a holding an uncertain `GIVE` left unknowable still contends,
+/// because the server still runs it. Today that is one refusal: `rules/magic` fixes a mage's unit
+/// number and the New Origins ruling refuses its recruiting, so a mage's `BUY` of men is not one of
+/// the buyers `rules/buy` splits the line among (`ah-yn2x`).
 fn market_shares_for(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
@@ -908,6 +914,22 @@ fn market_shares_for(
             else {
                 continue;
             };
+
+            // `rules/magic` fixes a mage's unit number, and the navigator's New Origins ruling
+            // refuses a mage's recruiting outright (`ah-ndp9`), so the server never runs this BUY.
+            // `rules/buy` splits a line among "the buyers", and an order the game refuses is not
+            // one of them: counted here it takes men away from a faction-mate's recruiting, and
+            // can raise a `region-pool-oversubscribed` finding for goods nobody was ever going to
+            // buy (`ah-yn2x`).
+            //
+            // `ordered.unit.skills` - the report's own list - because that is exactly what `buy`
+            // and the SILVER column's `purchase` closure both read. Asking `skills_before_the_market`
+            // here instead would re-open the divergence this guard closes.
+            if matches!(side, MarketSide::Buying)
+                && mage_recruit_refused(&ordered.unit.skills, &tag, ruleset)
+            {
+                continue;
+            }
 
             let want = match (&placed.intent, side) {
                 // A unit cannot sell what it does not hold, so asking for more is not a larger
@@ -30327,6 +30349,127 @@ BUILD
             !codes(&findings).contains(&"not-enough-silver"),
             "no silver is spent: {:?}",
             codes(&findings)
+        );
+    }
+
+    /// `ah-yn2x`. The settlement runs before any order is followed, so a refused recruitment was
+    /// still being given a share of the `For Sale` line - and the faction-mate beside it recruited
+    /// half of what the server will give it.
+    #[test]
+    fn a_mages_refused_recruitment_takes_no_share_of_the_line() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![
+                with_silver(mage(1), 1000),
+                with_silver(unit("2391"), 1000),
+            ])
+        };
+        let orders = "unit 5\nBUY 10 HUMN\nunit 2391\nBUY 10 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+
+        let mut overruns = Vec::new();
+        let shares = market_shares_for(&hex_with_transfers, Some(&rules), &mut overruns);
+        let settled = shares
+            .get(&("HUMN".to_string(), MarketSide::Buying))
+            .unwrap_or_else(|| panic!("no HUMN buying line: {shares:?}"));
+
+        assert_eq!(settled[0], 0, "the mage's refused BUY claims nothing");
+        assert_eq!(
+            settled[1], 10,
+            "the faction-mate takes the whole line, as the server will give it"
+        );
+        assert!(
+            overruns.is_empty(),
+            "with the mage dropped the line is not oversubscribed: {overruns:?}"
+        );
+    }
+
+    /// `ah-yn2x`. A mage's oversized order raised a `region-pool-oversubscribed` finding for goods
+    /// it was never going to buy - a warning that cost the player attention over a contest that
+    /// does not exist.
+    #[test]
+    fn a_mages_oversized_recruitment_raises_no_oversubscription() {
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![with_silver(mage(1), 1000)])
+        };
+        let findings = check(vec![region], "unit 5\nBUY 200 HUMN\n");
+
+        assert!(
+            !codes(&findings).contains(&"region-pool-oversubscribed"),
+            "a refused recruitment contends for nothing: {:?}",
+            codes(&findings)
+        );
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|finding| finding.code == codes::MEN_SENT_INTO_A_MAGE)
+                .map(|finding| finding.message.as_str())
+                .collect::<Vec<_>>(),
+            vec!["this unit is a mage and cannot recruit, so this order buys nobody"],
+            "the refusal the player is actually told about is untouched"
+        );
+    }
+
+    /// `ah-yn2x`. The other early return that reaches a settled claim, pinned deliberately. A
+    /// `SELL` whose holding an earlier uncertain `GIVE` left unknowable is a claim this HUD cannot
+    /// follow - but the server runs the order and the unit does contend, so it keeps its share. A
+    /// claim is wrong only when the game refuses the order, never when we merely cannot follow it.
+    #[test]
+    fn a_sale_this_hud_cannot_follow_keeps_its_share_of_the_line() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 6,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "fur", "FUR"),
+                with_item(unit("2391"), 10, "fur", "FUR"),
+                an_ally("7001"),
+            ])
+        };
+        let orders = "unit 2390\nGIVE 7001 ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n";
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+
+        let mut overruns = Vec::new();
+        let shares = market_shares_for(&hex_with_transfers, Some(&rules), &mut overruns);
+        let settled = shares
+            .get(&("FUR".to_string(), MarketSide::Selling))
+            .unwrap_or_else(|| panic!("no FUR selling line: {shares:?}"));
+
+        assert!(
+            settled[0] > 0,
+            "a sale this HUD cannot follow still contends: {settled:?}"
         );
     }
 
