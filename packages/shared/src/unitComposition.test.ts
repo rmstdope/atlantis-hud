@@ -62,6 +62,16 @@ describe("describeMenBriefly", () => {
     // A unit of nobody is worth seeing; a blank cell reads as missing data instead.
     expect(describeMenBriefly(unit({ men: 0 }))).toBe("0");
   });
+
+  it("refuses a headcount for a unit whose line was not fully read", () => {
+    expect(describeMenBriefly(unit({ men: 0, read: "nothing" }))).toBe("not known");
+    // The figure was read, and is still refused: the part of the line that was lost could be
+    // people.
+    expect(describeMenBriefly(unit({ men: 100, menEstimated: false, read: "partial" }))).toBe(
+      "not known"
+    );
+    expect(describeMenBriefly(unit({ men: 0, read: "complete" }))).toBe("0");
+  });
 });
 
 describe("whyEstimated", () => {

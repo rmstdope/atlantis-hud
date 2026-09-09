@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { aReportUnit } from "@atlantis/core-client";
-import { NOT_KNOWN, unitWasFullyRead, unreadBannerText, weightFloor } from "./unitRead";
+import {
+  NOT_KNOWN,
+  unitWasFullyRead,
+  unreadBannerText,
+  unreadCount,
+  unreadLine,
+  weightFloor
+} from "./unitRead";
 import type { GameDataEntry, GameDataIndex } from "./gameData";
 
 /** `byId` decides an item tag's category; `detailOf` is what carries the weight. */
@@ -69,5 +76,36 @@ describe("weightFloor", () => {
       ]
     });
     expect(weightFloor(unit, index)).toBe(100);
+  });
+});
+
+describe("the line above a list of units", () => {
+  it("counts the rows whose unit was not fully read", () => {
+    expect(
+      unreadCount([
+        aReportUnit({ read: "complete" }),
+        aReportUnit({ read: "partial" }),
+        aReportUnit({ read: "nothing" })
+      ])
+    ).toBe(2);
+    expect(unreadCount([aReportUnit({ read: "complete" })])).toBe(0);
+    expect(unreadCount([])).toBe(0);
+  });
+
+  it("warns above a list holding a unit that was not read", () => {
+    expect(unreadLine(2, 3)).toBe(
+      "\u26a0 2 of these 3 units could not be read. Anything counted here is a floor."
+    );
+    expect(unreadLine(1, 3)).toBe(
+      "\u26a0 1 of these 3 units could not be read. Anything counted here is a floor."
+    );
+    // A one-unit list would otherwise read "1 of these 1 units", which is not English.
+    expect(unreadLine(1, 1)).toBe(
+      "\u26a0 1 of these 1 unit could not be read. Anything counted here is a floor."
+    );
+  });
+
+  it("says nothing above a list that was read", () => {
+    expect(unreadLine(0, 3)).toBeNull();
   });
 });
