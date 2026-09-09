@@ -35,7 +35,9 @@ use std::collections::{BTreeMap, BinaryHeap};
 use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::{Direction, KnownHex, MapKnowledge};
-use crate::movement::mode::{fleet_of, fleet_sailing, mobility_with_ruleset, Mobility};
+use crate::movement::mode::{
+    fleet_flies, fleet_of, fleet_sailing, mobility_with_ruleset, Mobility,
+};
 use crate::movement::orders::{render_move, render_sail, MoveStep};
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::{Coordinate, ReportUnit};
@@ -155,10 +157,10 @@ pub fn plan_route(
     // question would happily answer Walk for someone standing at sea. An unknown hull (no ruleset
     // entry and no server-stated numbers) falls back to the land question as if the unit were not
     // aboard at all, rather than guessing a ship's speed.
-    let (mode, points_per_month) = match sail_mode(ruleset, unit, origin_hex)? {
+    let (mode, points_per_month, hull) = match sail_mode(ruleset, unit, origin_hex)? {
         Some(resolved) => resolved,
         None => match mobility_with_ruleset(unit, ruleset) {
-            Mobility::Moves(mode) => (mode, ruleset.movement_points(mode)),
+            Mobility::Moves(mode) => (mode, ruleset.movement_points(mode), Hull::Bound),
             Mobility::Overloaded => return Err(RouteProblem::Overloaded),
             Mobility::Unstated => return Err(RouteProblem::MobilityUnstated),
         },
@@ -168,8 +170,14 @@ pub fn plan_route(
         return Err(RouteProblem::AlreadyThere);
     }
 
-    let (steps, months) =
-        route_for_mode(map, ruleset, mode, points_per_month, origin, destination)?;
+    let (steps, months) = route_for_mode(
+        map,
+        ruleset,
+        Journey::enforced(mode, hull),
+        points_per_month,
+        origin,
+        destination,
+    )?;
     let total_cost = steps.iter().map(|step| step.cost).sum();
 
     let moves: Vec<MoveStep> = steps
@@ -213,7 +221,7 @@ pub fn plan_route(
 pub(crate) fn route_for_mode(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    mode: MovementMode,
+    journey: Journey,
     points_per_month: u32,
     origin: Coordinate,
     destination: Coordinate,
@@ -223,7 +231,7 @@ pub(crate) fn route_for_mode(
     // neither: nothing says it is water, so the route goes and the estimate says what it is worth.
     if map
         .hex(destination)
-        .is_some_and(|target| blocks(ruleset, map, mode, destination, &target.terrain))
+        .is_some_and(|target| blocks(ruleset, map, journey, destination, &target.terrain))
     {
         return Err(RouteProblem::OceanNeedsShip {
             coordinate: destination,
@@ -231,20 +239,22 @@ pub(crate) fn route_for_mode(
     }
     if map
         .hex(origin)
-        .is_some_and(|here| blocks(ruleset, map, mode, origin, &here.terrain))
+        .is_some_and(|here| blocks(ruleset, map, journey, origin, &here.terrain))
     {
         return Err(RouteProblem::OceanNeedsShip { coordinate: origin });
     }
 
-    let steps = match cheapest_path(map, ruleset, Journey::enforced(mode), origin, destination) {
+    let steps = match cheapest_path(map, ruleset, journey, origin, destination) {
         Ok(steps) => steps,
         Err(RouteProblem::NoKnownRoute) => {
             // "No known route" is a poor answer when the only thing in the way is water. Ask again
             // as though the unit could swim: if that finds a path, the sea is the reason, and
             // naming the hex it founders at is what makes the refusal actionable.
-            return Err(blocked_by_water(map, ruleset, mode, origin, destination)
-                .or_else(|| blocked_by_sailing_rule(map, ruleset, mode, origin, destination))
-                .unwrap_or(RouteProblem::NoKnownRoute));
+            return Err(
+                blocked_by_water(map, ruleset, journey.mode, origin, destination)
+                    .or_else(|| blocked_by_sailing_rule(map, ruleset, journey, origin, destination))
+                    .unwrap_or(RouteProblem::NoKnownRoute),
+            );
         }
         Err(other) => return Err(other),
     };
@@ -253,7 +263,7 @@ pub(crate) fn route_for_mode(
     // A flying unit that ends a turn over water drowns, so a month may not run out mid-sea. The
     // months are cut greedily on purpose: that is how the engine executes a single MOVE order, so
     // planning a stop the engine would not make would be planning a drowning.
-    if flies(mode) && ruleset.flight_must_end_on_land() {
+    if flies(journey.mode) && ruleset.flight_must_end_on_land() {
         for leg in &months {
             let over_water = map
                 .hex(leg.ends_at)
@@ -283,7 +293,7 @@ fn sail_mode(
     ruleset: &Ruleset,
     unit: &ReportUnit,
     origin_hex: &KnownHex,
-) -> Result<Option<(MovementMode, u32)>, RouteProblem> {
+) -> Result<Option<(MovementMode, u32, Hull)>, RouteProblem> {
     // The planner answers from the report on purpose, and passes no orders view below to say so.
     // It is
     // asked "where could this unit get to", which is a question about the turn as it stands rather
@@ -303,7 +313,11 @@ fn sail_mode(
             available,
         });
     }
-    Ok(Some((MovementMode::Sail, speed)))
+    Ok(Some((
+        MovementMode::Sail,
+        speed,
+        Hull::from_flies(fleet_flies(fleet, Some(ruleset))),
+    )))
 }
 
 /// Whether this terrain stops this unit.
@@ -318,17 +332,22 @@ fn sail_mode(
 pub(crate) fn blocks(
     ruleset: &Ruleset,
     map: &MapKnowledge,
-    mode: MovementMode,
+    journey: Journey,
     coordinate: Coordinate,
     terrain: &str,
 ) -> bool {
-    if mode == MovementMode::Sail {
+    if journey.mode == MovementMode::Sail {
         if ruleset.is_water(terrain) {
+            return false;
+        }
+        // A flying hull is not bound by the water, so land refuses it nothing - neither an inland
+        // hex nor a coastal one. `data/BALL`: "This is a flying 'ship' ...".
+        if journey.hull == Hull::Unbound {
             return false;
         }
         return ruleset.sailing_land_needs_coast() && !is_coastal(ruleset, map, coordinate);
     }
-    ruleset.is_water(terrain) && ruleset.water_needs_a_ship() && !flies(mode)
+    ruleset.is_water(terrain) && ruleset.water_needs_a_ship() && !flies(journey.mode)
 }
 
 /// Whether the sailing rule's "one end of every step must be ocean" is being enforced.
@@ -343,22 +362,58 @@ pub(crate) enum SailRule {
     Lifted,
 }
 
-/// How a journey is being made, as far as the search needs to know: the mode, and whether the
-/// sailing rule is being enforced for it.
+/// Whether the fleet under a journey is bound by the water.
+///
+/// A fleet is ordinarily bound: `rules/movement_sailing` gives it only the three ocean-touching
+/// steps, and [`blocks`] refuses it any land hex that is not coastal. A flying hull is bound by
+/// none of that - `data/BALL`, "This is a flying 'ship' with a capacity of 100 and a speed of 4
+/// hexes per month" - so land refuses it nothing.
+///
+/// Meaningless for every mode but [`MovementMode::Sail`], where it is [`Hull::Bound`] and inert.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Hull {
+    /// Bound by the water: the sailing rule applies in full.
+    Bound,
+    /// Not bound by the water: land refuses it nothing.
+    Unbound,
+}
+
+impl Hull {
+    /// Reads [`crate::movement::mode::fleet_flies`], which is the one reading of the question.
+    ///
+    /// `Some(false)` - every hull found in the catalogue and none of them flying - is the **only**
+    /// answer that binds a fleet to the water. `Some(true)` frees it, and so does `None`, which
+    /// means "cannot say": no ruleset, a kind naming no hull, or a hull the catalogue does not
+    /// carry. That is deliberately the same reading the `sail-between-land-hexes` warning takes of
+    /// the same function, and it is what makes the map and Problems agree about every fleet rather
+    /// than about most of them. The navigator chose it on 2026-09-09.
+    pub(crate) fn from_flies(flies: Option<bool>) -> Self {
+        if flies == Some(false) {
+            Self::Bound
+        } else {
+            Self::Unbound
+        }
+    }
+}
+
+/// How a journey is being made, as far as the search needs to know: the mode, the hull under it,
+/// and whether the sailing rule is being enforced for it.
 ///
 /// One value rather than two parameters because [`step_into`] already carries seven arguments and
 /// the gate denies `clippy::too_many_arguments`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Journey {
     pub(crate) mode: MovementMode,
+    pub(crate) hull: Hull,
     pub(crate) sail_rule: SailRule,
 }
 
 impl Journey {
-    /// This mode, under the game's own sailing rule - every journey but the probe.
-    pub(crate) fn enforced(mode: MovementMode) -> Self {
+    /// This mode and hull, under the game's own sailing rule - every journey but the probe.
+    pub(crate) fn enforced(mode: MovementMode, hull: Hull) -> Self {
         Self {
             mode,
+            hull,
             sail_rule: SailRule::Enforced,
         }
     }
@@ -376,11 +431,12 @@ impl Journey {
 /// restriction at all. A ruleset that does not is not to be overruled by a belief hardcoded here.
 pub(crate) fn refused_by_sailing_step(
     ruleset: &Ruleset,
-    mode: MovementMode,
+    journey: Journey,
     from_terrain: &str,
     into_terrain: &str,
 ) -> bool {
-    mode == MovementMode::Sail
+    journey.mode == MovementMode::Sail
+        && journey.hull == Hull::Bound
         && ruleset.sailing_land_needs_coast()
         && !ruleset.is_water(from_terrain)
         && !ruleset.is_water(into_terrain)
@@ -428,7 +484,7 @@ fn blocked_by_water(
     let swimming = cheapest_path(
         map,
         ruleset,
-        Journey::enforced(MovementMode::Fly),
+        Journey::enforced(MovementMode::Fly, Hull::Bound),
         origin,
         destination,
     )
@@ -456,11 +512,11 @@ fn blocked_by_water(
 fn blocked_by_sailing_rule(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    mode: MovementMode,
+    journey: Journey,
     origin: Coordinate,
     destination: Coordinate,
 ) -> Option<RouteProblem> {
-    if mode != MovementMode::Sail {
+    if journey.mode != MovementMode::Sail {
         return None;
     }
 
@@ -468,8 +524,8 @@ fn blocked_by_sailing_rule(
         map,
         ruleset,
         Journey {
-            mode,
             sail_rule: SailRule::Lifted,
+            ..journey
         },
         origin,
         destination,
@@ -481,7 +537,7 @@ fn blocked_by_sailing_rule(
     let mut from = origin;
     let mut from_terrain = map.hex(origin)?.terrain.clone();
     for step in &relaxed {
-        if refused_by_sailing_step(ruleset, mode, &from_terrain, &step.terrain) {
+        if refused_by_sailing_step(ruleset, journey, &from_terrain, &step.terrain) {
             return Some(RouteProblem::SailNeedsOcean {
                 from,
                 from_terrain,
@@ -501,7 +557,7 @@ fn blocked_by_sailing_rule(
 pub(crate) fn step_cost(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    mode: MovementMode,
+    journey: Journey,
     from: Coordinate,
     direction: Direction,
     into: Coordinate,
@@ -509,17 +565,17 @@ pub(crate) fn step_cost(
     // An undescribed hex has no terrain, so a step into it would cost whatever we invented.
     let hex = map.hex(into)?;
 
-    if blocks(ruleset, map, mode, into, &hex.terrain) {
+    if blocks(ruleset, map, journey, into, &hex.terrain) {
         return None;
     }
 
     // A fleet's flat cost is the sailing rule itself, not the terrain premium, and no road ever
     // applies to it - roads help feet and hooves, not hulls.
-    if mode == MovementMode::Sail {
+    if journey.mode == MovementMode::Sail {
         return Some((ruleset.sailing_flat_cost(), false));
     }
 
-    let base = ruleset.terrain_cost(&hex.terrain, mode);
+    let base = ruleset.terrain_cost(&hex.terrain, journey.mode);
     let road = map.road_connects_to(from, direction, into);
     Some((if road { ruleset.road_cost(base) } else { base }, road))
 }
@@ -722,11 +778,15 @@ fn step_into(
     direction: Direction,
     into: Coordinate,
 ) -> Option<Step> {
-    let Journey { mode, sail_rule } = journey;
+    let Journey {
+        mode,
+        hull: _,
+        sail_rule,
+    } = journey;
     if let Some(hex) = map.hex(into) {
-        let (cost, road) = step_cost(map, ruleset, mode, from, direction, into)?;
+        let (cost, road) = step_cost(map, ruleset, journey, from, direction, into)?;
         if sail_rule == SailRule::Enforced
-            && refused_by_sailing_step(ruleset, mode, carried, &hex.terrain)
+            && refused_by_sailing_step(ruleset, journey, carried, &hex.terrain)
         {
             return None;
         }
@@ -742,9 +802,9 @@ fn step_into(
     // to sea, and the sea is exactly what a walker may not cross. For a fleet the same guard asks
     // the opposite question: fog beyond the described map cannot be confirmed coastal, so a land
     // guess blocks it rather than assuming a way in.
-    if blocks(ruleset, map, mode, into, carried)
+    if blocks(ruleset, map, journey, into, carried)
         || (sail_rule == SailRule::Enforced
-            && refused_by_sailing_step(ruleset, mode, carried, carried))
+            && refused_by_sailing_step(ruleset, journey, carried, carried))
     {
         return None;
     }
@@ -862,7 +922,7 @@ mod tests {
             step_cost(
                 &map,
                 &ruleset,
-                MovementMode::Walk,
+                Journey::enforced(MovementMode::Walk, Hull::Bound),
                 here,
                 Direction::Southeast,
                 described
@@ -874,7 +934,7 @@ mod tests {
             step_cost(
                 &map,
                 &ruleset,
-                MovementMode::Walk,
+                Journey::enforced(MovementMode::Walk, Hull::Bound),
                 here,
                 Direction::Southeast,
                 undescribed
