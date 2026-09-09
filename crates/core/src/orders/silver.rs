@@ -2802,14 +2802,23 @@ pub fn forecast_unit(
         // withheld, so the row is a number the player can act on instead of a `?` (`ah-3c2t.3`,
         // option D2 in `docs/ui/ah-3c2t-shared-purse.html`).
         //
-        // Narrowed to `ContestedRegionPool`: it is the one doubt the fallback answers. A unit
-        // doubted for an unpriceable sale or an untraceable gift has no certain balance to have
-        // bought from, and its `BUY ALL` stays unreported exactly as today.
+        // Narrowed to a unit whose *only* doubt is `ContestedRegionPool`: it is the one doubt the
+        // fallback answers. A unit doubted for an unpriceable sale or an untraceable gift has no
+        // certain balance to have bought from, and its `BUY ALL` stays unreported exactly as
+        // today.
+        //
+        // `expense_doubt` is tested as well as `income_doubt`, because `doubt` below is
+        // `income_doubt.or(expense_doubt)` and a unit can carry both: an unpriceable bounded `BUY`
+        // beside a contended pool would otherwise reach this arm with the income half looking
+        // clean. The ledger's own `doubted` set empties `settled_buy_all` for such a unit today,
+        // so the two agree - but that is a coupling in another module, and this arm must not
+        // depend on it.
         //
         // `spent_on` is deliberately not set here, unlike the certain arm above: `short_on` is
         // only read where `short_for_orders` is `Some`, and `short_before_sharing` below is
         // `None` wherever `income` is, so it can never be read on this path.
         if income_doubt == Some(SilverDoubt::ContestedRegionPool)
+            && expense_doubt.is_none()
             && matches!(shared_market, SharedMarket::HeldOnly(_))
         {
             for settled in facts.settled_buy_all() {

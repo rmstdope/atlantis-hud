@@ -21109,9 +21109,13 @@ BUILD
             );
         }
 
-        /// The fallback answers one doubt and only that one. A unit doubted for something else, in
-        /// a hex whose pool settled perfectly well, keeps today's row of `?` and reports no
-        /// `BUY ALL` at all - the guard on the new arm's two conditions (`ah-3c2t.3`).
+        /// The fallback answers one doubt and only that one. Each of the new arm's two conditions
+        /// guarded on its own: first a hex whose pool settled perfectly well, so only the purse
+        /// condition can be refusing; then a hex whose purse did fall back, on a unit doubted for
+        /// something else, so only the doubt condition can be (`ah-3c2t.3`).
+        ///
+        /// The case where both conditions hold and the unit is doubted anyway is
+        /// [`a_unit_doubted_on_both_sides_reports_no_buy_all_even_when_the_purse_fell_back`].
         #[test]
         fn a_doubted_unit_in_a_settleable_hex_still_reports_no_buy_all() {
             let review = review_turn(
@@ -21164,6 +21168,48 @@ BUILD
             assert!(
                 buyer.buy_all.is_empty(),
                 "the fallback answers a contended pool and no other doubt"
+            );
+        }
+
+        /// Both of the new arm's conditions hold and the unit is still doubted on its *expense*
+        /// side - a bounded `BUY` this market cannot price, beside the contended pool. The count
+        /// is not a floor then, because what the unit will spend is not a number either, so
+        /// nothing is reported (`ah-3c2t.3`).
+        ///
+        /// The composed case: `income_doubt` really is `ContestedRegionPool` and the purse really
+        /// did fall back, so neither of the two conditions in `a_doubted_unit_in_a_settleable_hex`
+        /// is doing the guarding here. The ledger's own `doubted` set empties `settled_buy_all`
+        /// for this unit today as well, which is a coupling in another module: this test is what
+        /// fails if either that or `forecast_unit`'s own `expense_doubt` guard is narrowed.
+        #[test]
+        fn a_unit_doubted_on_both_sides_reports_no_buy_all_even_when_the_purse_fell_back() {
+            let mut unknowable = settled_purse_hex();
+            unknowable.units[1].men_estimated = true;
+            let review = review_turn(
+                &report(vec![unknowable]),
+                "unit 1\nTAX\nBUY 1 widget\nBUY ALL horse\nunit 2\nTAX\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+
+            assert!(buyer.market_purse_held_only, "the purse did fall back");
+            assert_eq!(
+                buyer.doubt,
+                Some(SilverDoubt::ContestedRegionPool),
+                "the income half reads exactly as the reported case does"
+            );
+            assert_eq!(
+                buyer.expense, None,
+                "and the expense half is doubted too, which is what this test composes"
+            );
+            assert!(
+                buyer.buy_all.is_empty(),
+                "what this unit will spend is not a number, so its count is not a floor"
             );
         }
 
