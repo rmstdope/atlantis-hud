@@ -1611,39 +1611,25 @@ fn forecast_hex(
             }
         };
 
-        let facts = UnitFacts {
-            unit_id: &ordered.unit.unit_id,
-            region_id: &hex.region.region_id,
-            held: ordered.holding(SILVER),
-            men: ordered.early_men(),
-            men_reported: ordered.unit.men,
-            men_estimated: ordered.unit.men_estimated,
-            men_by_race: ordered.early_men_by_race(),
-            items: ordered.early_items(),
-            flags: &ordered.flags,
-            skills: ordered
-                .skills_before_the_market()
-                .unwrap_or(&ordered.unit.skills),
-            intents: &ordered.intents,
-            receipts: receipts
+        // Through `unit_facts` rather than a literal of its own, so this column and the ITEMS
+        // ledger's own `PILLAGE` arm build a unit's facts in exactly one place (`ah-jo6b.5`). The
+        // two things this caller has that the ledger-less ones do not - a real `Receipts` and the
+        // late, phase-aware picture - are the two arguments below.
+        let facts = unit_facts(
+            hex,
+            ordered,
+            receipts
                 .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
                 .unwrap_or(&nothing),
-            formed: ordered.formed.as_ref(),
-            after_gifts_unknown: ordered.holdings_unknown(),
-            food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
-            skills_unknown: ordered.skills_before_the_market().is_none(),
-            // `ordered.skills()` already carries this month's recruits merged on top of its
-            // gifts, since `apply_recruits` runs before this hex is priced (`ah-40c9`).
-            production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
-            production_skills_unknown: ordered.skills().is_none(),
-            phases: Some(phases.of_with(
+            Some(phases.of_with(
                 index,
                 &clamped[index],
                 shared_materials_of(&ordered.unit.unit_id),
                 settled_buy_all_of(&ordered.unit.unit_id),
                 settled_gifts_of(&ordered.unit.unit_id),
             )),
-        };
+            ruleset,
+        );
         claims.push(food_claim(&facts, ruleset));
 
         into.push(forecast_unit(
@@ -4895,7 +4881,7 @@ fn same_men(a: &[ItemAmount], b: &[ItemAmount], ruleset: &Ruleset) -> bool {
 /// (see *Known traps*).
 fn hex_facts<'a>(
     hex: &'a Hex<'_>,
-    nothing: &'a Receipts,
+    receipts: &'a Receipts,
     phases: Option<&'a PhaseHoldings>,
     ruleset: Option<&Ruleset>,
 ) -> Vec<UnitFacts<'a>> {
@@ -4906,7 +4892,7 @@ fn hex_facts<'a>(
             unit_facts(
                 hex,
                 ordered,
-                nothing,
+                receipts,
                 phases.map(|phases| phases.of(index)),
                 ruleset,
             )
@@ -4915,14 +4901,18 @@ fn hex_facts<'a>(
 }
 
 /// One own unit as maintenance sees it - the row [`hex_facts`] builds for each of them, lifted out
-/// so a caller holding one `Ordered` and no index can read the same facts. `apply` is that caller:
-/// it prices one unit's `PILLAGE` and needs that unit's own combat ready men (`ah-q6bt`), and
-/// building the whole hex's rows per intent would walk the hex quadratically on a path that runs
-/// on every keystroke.
+/// so a caller holding one `Ordered` and no index can read the same facts.
+///
+/// **This is the one place a unit's facts are built**, so the ITEMS ledger and the SILVER column
+/// cannot read a unit differently (`ah-jo6b.5`). Several callers hold one `Ordered` and no index -
+/// among them `apply`, which prices one unit's `PILLAGE` and needs that unit's own combat ready men
+/// (`ah-q6bt`), since building the whole hex's rows per intent would walk the hex quadratically on
+/// a path that runs on every keystroke. `forecast_hex` is one of them too, and is the only caller
+/// with a real `Receipts` and a late picture to pass; the rest pass an empty one and no phases.
 fn unit_facts<'a>(
     hex: &'a Hex<'_>,
     ordered: &'a Ordered<'_>,
-    nothing: &'a Receipts,
+    receipts: &'a Receipts,
     phases: Option<PhaseFacts<'a>>,
     ruleset: Option<&Ruleset>,
 ) -> UnitFacts<'a> {
@@ -4940,12 +4930,14 @@ fn unit_facts<'a>(
             .skills_before_the_market()
             .unwrap_or(&ordered.unit.skills),
         skills_unknown: ordered.skills_before_the_market().is_none(),
-        // See `forecast_hex`'s literal: `ordered.skills()` is the post-recruit picture, read only
-        // by the SILVER column's PRODUCE arm (`ah-40c9`).
+        // `ordered.skills()` already carries this month's recruits merged on top of its gifts,
+        // since `apply_recruits` runs before a hex is priced. That post-recruit picture is read
+        // only by the SILVER column's PRODUCE arm (`ah-40c9`); `skills` above is deliberately the
+        // pre-market one.
         production_skills: ordered.skills().unwrap_or(&ordered.unit.skills),
         production_skills_unknown: ordered.skills().is_none(),
         intents: &ordered.intents,
-        receipts: nothing,
+        receipts,
         formed: ordered.formed.as_ref(),
         after_gifts_unknown: ordered.holdings_unknown(),
         food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
