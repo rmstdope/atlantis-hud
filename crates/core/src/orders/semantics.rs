@@ -48,7 +48,8 @@ use crate::orders::silver::{
     FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups,
     MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare,
     PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages,
-    SaleAnswer, SettledBuyAll, SettledGift, SharedMarket, SilverChangeCause, SilverDoubt,
+    SaleAnswer, SettledBuyAll, SettledGift, SharedMarket, SilverChange, SilverChangeCause,
+    SilverDoubt,
     TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
@@ -1685,6 +1686,20 @@ fn forecast_hex(
             owing -= lent;
             forecast.expense = forecast.expense.map(|spent| spent.saturating_add(lent));
             forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(lent));
+            // The draw is settled here, between units, so it is the one movement `forecast_unit`
+            // cannot record - and until `ah-6m7b.4` it was the one movement nothing recorded at
+            // all: the money left `expense` and the change list said nothing about where it went.
+            // Appended rather than sorted into phase order: `SilverChange` carries no phase, and
+            // the popup groups by cause in first-entry order, so this reads as the last thing the
+            // month did to the unit's purse - which it is.
+            if forecast.doubt.is_none() {
+                forecast.changes.push(SilverChange {
+                    amount: -lent,
+                    cause: SilverChangeCause::Lent,
+                    line: None,
+                    other: None,
+                });
+            }
         }
     }
 

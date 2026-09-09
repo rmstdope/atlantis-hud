@@ -580,6 +580,14 @@ pub enum SilverChangeCause {
     GaveAway,
     /// `GIVE 0 ... SILV`, which destroys it (`rules/give`).
     Discarded,
+    /// Silver this unit's `SHARE` flag lent to the hex's purse, to pay for a faction-mate's
+    /// orders. Booked by `super::semantics`'s hex pass rather than by this unit's own walk - the
+    /// draw is settled between units, and is the only movement not recorded inside
+    /// `forecast_unit` (`ah-6m7b.4`).
+    ///
+    /// The mirror of the `shared-silver-pays-orders` note the *borrower* already gets: money
+    /// leaving with nothing to explain it is exactly what the change list exists to prevent.
+    Lent,
 }
 
 /// One movement of a unit's silver this month, and what caused it.
