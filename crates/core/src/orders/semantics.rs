@@ -40099,23 +40099,41 @@ BUILD
 
         /// An estimated headcount is the column's `SilverDoubt::EstimatedMen` and nothing else: the
         /// ledger must not fall silent about such a unit ahead of that doubt, since `ledger.doubted`
-        /// is read well past the fee.
+        /// is read well past the fee - `MarketPurse::read` and the `ledger_doubted` projection both
+        /// take it.
+        ///
+        /// Asserted on the ledger's own doubted set rather than on the column, which short-circuits
+        /// an estimated unit before any arm runs and so would pass either way.
         #[test]
-        fn a_capped_study_by_a_unit_of_estimated_men_is_doubted_as_it_always_was() {
+        fn a_capped_study_by_a_unit_of_estimated_men_still_doubts_the_ledger() {
             let mut student = capped_gnolls(900);
             student.men_estimated = true;
-            let review = reviewed(
-                vec![student],
-                "unit 8573\nSTUDY COMB\n",
-                CheckOptions::default(),
-            );
-            let silver = silver_for(&review, "8573");
+            let hex = region(vec![student]);
+            let orders = "unit 8573\nSTUDY COMB\n";
 
-            assert_eq!(silver.doubt, Some(SilverDoubt::EstimatedMen));
-            assert_eq!(
-                silver.no_study_fee, None,
-                "an estimated unit is not told its month is free: {silver:?}"
+            let ordered = OrderedUnits::read(orders);
+            let read = Hex::read(&hex, &ordered, &[]);
+            let rules = ruleset();
+            let ledger = ledger_for(&read, Some(&rules));
+
+            assert!(
+                ledger.doubted.contains("8573"),
+                "an estimated headcount cannot price a study, capped or not: {:?}",
+                ledger.doubted
             );
+        }
+
+        /// The other half of the same gate: a capped unit whose headcount is *known* is not doubted,
+        /// because there is no fee left to be unsure about.
+        #[test]
+        fn a_capped_study_by_a_unit_of_known_men_doubts_nothing() {
+            let hex = region(vec![capped_gnolls(900)]);
+            let ordered = OrderedUnits::read("unit 8573\nSTUDY COMB\n");
+            let read = Hex::read(&hex, &ordered, &[]);
+            let rules = ruleset();
+            let ledger = ledger_for(&read, Some(&rules));
+
+            assert!(!ledger.doubted.contains("8573"), "{:?}", ledger.doubted);
         }
 
         #[test]

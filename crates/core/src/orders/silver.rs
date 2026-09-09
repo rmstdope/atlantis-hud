@@ -2307,7 +2307,6 @@ pub fn forecast_unit(
                     // as it is - must not break that.
                     no_study_fee = no_study_fee.or(capped);
                 } else {
-                    charged_a_study = true;
                     // STUDY is priced after the market opens too, so the fee is per man this month
                     // actually has, not only per man the report printed (`ah-dxfd.2`).
                     let cost = entry.and_then(|skill| skill.cost);
@@ -2321,7 +2320,11 @@ pub fn forecast_unit(
                         None,
                     );
                     if priced.spends > 0 {
+                        // Money actually leaving, and the only thing that may take the note away:
+                        // a study the catalogue cannot price spends nothing, so a unit carrying one
+                        // beside a capped study has still paid for no month.
                         spent_on = spent_on.or(Some(SilverSpender::Study));
+                        charged_a_study = true;
                     }
                     expense_doubt = expense_doubt.or(priced.doubt);
                 }
@@ -2835,13 +2838,13 @@ pub fn forecast_unit(
     };
     let short_for_orders = short_before_sharing.map(|short| short.saturating_sub(shared));
 
-    // Stable, so entries sharing a phase keep the document order they were pushed in.
     // The note says *this unit's month costs nothing*, so a unit that paid for a study anywhere
     // must not carry it, whatever else it also ordered.
     if charged_a_study {
         no_study_fee = None;
     }
 
+    // Stable, so entries sharing a phase keep the document order they were pushed in.
     moves.sort_by_key(|(phase, _)| *phase);
 
     UnitSilver {
@@ -10599,6 +10602,105 @@ mod tests {
         );
         assert_eq!(studying.no_study_fee, None);
         assert_eq!(causes(&studying), [SilverChangeCause::Studied]);
+    }
+
+    /// The note says the unit's month costs nothing, so a unit that paid for *any* study must not
+    /// carry it - however odd a second `STUDY` line is.
+    #[test]
+    fn a_unit_that_paid_for_any_study_carries_no_note() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let gnolls = [ItemAmount {
+            amount: 60,
+            name: "gnoll".to_string(),
+            tag: "GNOL".to_string(),
+        }];
+        // At combat's ceiling, and below observation's: one study is free, the other is not.
+        let skills = [skill("COMB", 5), skill("OBSE", 1)];
+        let intents = [
+            at_line(
+                9,
+                Intent::Study {
+                    skill: "combat".to_string(),
+                },
+            ),
+            at_line(
+                10,
+                Intent::Study {
+                    skill: "observation".to_string(),
+                },
+            ),
+        ];
+
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 900,
+                skills_after_arrivals: &skills,
+                men_by_race_after_arrivals: &gnolls,
+                ..facts(60, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+
+        assert_eq!(causes(&unit), [SilverChangeCause::Studied]);
+        assert_eq!(
+            unit.no_study_fee, None,
+            "the observation month was paid for, so this unit's month did not cost nothing"
+        );
+    }
+
+    /// A study the catalogue cannot price spends nothing, so it does not take the note away either.
+    #[test]
+    fn an_unpriced_study_beside_a_capped_one_keeps_the_note() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let gnolls = [ItemAmount {
+            amount: 60,
+            name: "gnoll".to_string(),
+            tag: "GNOL".to_string(),
+        }];
+        let skills = [skill("COMB", 5)];
+        let intents = [
+            at_line(
+                9,
+                Intent::Study {
+                    skill: "combat".to_string(),
+                },
+            ),
+            at_line(
+                10,
+                Intent::Study {
+                    skill: "annihilation".to_string(),
+                },
+            ),
+        ];
+
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 900,
+                skills_after_arrivals: &skills,
+                men_by_race_after_arrivals: &gnolls,
+                ..facts(60, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(&ruleset),
+        );
+
+        assert!(
+            unit.no_study_fee.is_some(),
+            "nothing was ever charged, so the note stands: {unit:?}"
+        );
     }
 
     #[test]
