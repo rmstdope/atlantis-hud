@@ -1865,15 +1865,10 @@ pub fn forecast_unit(
     // Computed unconditionally, and correct so: `pool_shares_for` leaves `shares.tax` as
     // `PoolShare::Uncontended` for any unit that does not draw on the pool, so a non-taxer's
     // overstatement is `0`.
-    let tax_overstated = tax_overstated_by(
-        taxing_men(&facts, ruleset),
-        region.tax_base,
-        region.pillaged,
-        shares.tax,
-    );
+    let men = taxing_men(&facts, ruleset);
+    let tax_overstated = tax_overstated_by(men, region.tax_base, region.pillaged, shares.tax);
 
     if taxes(unit_flags, intents) {
-        let men = taxing_men(&facts, ruleset);
         // The settlement is what the column shows: this unit's actual take once its faction-mates
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].

@@ -195,6 +195,83 @@ fn a_contended_taxers_cast_is_capped_by_its_share_of_the_pool() {
     }
 }
 
+/// The positive anchor under the rows above: `amulets == 0` is also what a fixture that stopped
+/// parsing, a renamed unit or a broken preview would produce, and a contended mage that creates
+/// nothing is *absent* from the preview rather than present with a zero - so the preview cannot be
+/// asserted non-empty on those rows. This gives the mage silver of its own, so the same two-taxer
+/// fixture, the same orders and the same preview call *do* reach it and *do* make the amulet.
+#[test]
+fn the_same_contended_fixture_does_reach_the_preview_when_the_mage_can_pay() {
+    let text = report(300, false).replace(
+        "* Mages (900), Foo (1), 10 orcs [ORC].",
+        "* Mages (900), Foo (1), 10 orcs [ORC], 200 silver [SILV].",
+    );
+    assert!(
+        text.contains("200 silver [SILV]"),
+        "the fixture was rewritten"
+    );
+
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let orders =
+        format!("{template}\nunit 900\nTAX\nCAST Create_Amulet_Of_Protection\nunit 901\nTAX\n");
+
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &text,
+        "[]",
+        &orders,
+    )
+    .expect("the ruleset loads");
+    let amulets: i64 = preview
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .filter(|unit| unit.unit.unit_id == "900")
+        .flat_map(|unit| unit.created.iter())
+        .filter(|created| created.tag == "AMPR")
+        .map(|created| created.most)
+        .sum();
+
+    assert_eq!(
+        amulets, 1,
+        "$150 of settled tax plus $200 held pays for one amulet"
+    );
+}
+
+fn findings_for(pool: i64) -> Vec<String> {
+    let text = report(pool, false);
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset());
+    review_turn(
+        &parsed,
+        &orders_for(pool, false),
+        Some(&ruleset()),
+        CheckOptions::default(),
+    )
+    .findings
+    .iter()
+    .filter(|finding| finding.unit_id.is_none() || finding.unit_id.as_deref() == Some("900"))
+    .map(|finding| finding.code.as_str().to_string())
+    .collect()
+}
+
+/// A mage that could not have paid even out of the region's whole pool keeps its charge **and its
+/// warning** - `ah-ofpb.4`'s floor, which the parent `ah-ud89`'s *Agreed with the navigator* says
+/// in as many words must not move. At pool $100 the hopeful purse is $100 and the amulet is $200,
+/// so nothing about this row is the tax split's doing.
+#[test]
+fn a_mage_that_could_never_pay_is_still_warned() {
+    assert!(
+        findings_for(100)
+            .iter()
+            .any(|code| code == "not-enough-silver"),
+        "the pool-$100 mage keeps the warning it has always had"
+    );
+}
+
 /// No finding appears or disappears: the ledger keeps the hopeful balance everywhere else, so the
 /// hex still reports its oversubscribed pool and the mage is still not warned about its silver.
 #[test]

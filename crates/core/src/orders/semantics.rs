@@ -15755,19 +15755,29 @@ mod tests {
     fn the_tax_share_is_the_same_with_and_without_phases() {
         let hex_region = ReportRegion {
             tax_base: Some(60),
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
             ..region(vec![
-                with_silver(unit("900"), 0),
-                with_silver(unit("901"), 0),
+                with_skill(with_silver(with_men(unit("900"), 10), 1000), "COMB", 1),
+                with_skill(with_silver(with_men(unit("901"), 10), 0), "COMB", 1),
             ])
         };
-        let ordered = OrderedUnits::read("unit 900\nTAX\nunit 901\nTAX\n");
+        // Unit 900 recruits in the market, so the maintenance picture's headcount is **not** the
+        // pre-market one. Without that the two calls below are a no-op whatever the code reads,
+        // and the test cannot fail against the defect it exists to catch.
+        let ordered = OrderedUnits::read("unit 900\nTAX\nBUY 1 HUMN\nunit 901\nTAX\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
-        let region = region_wages(&hex, None);
-        let ledger = ledger_for(&hex, None);
-        let phases = ledger.state.phase_holdings(&hex, None);
+        let rules = ruleset();
+        let region = region_wages(&hex, Some(&rules));
+        let ledger = ledger_for(&hex, Some(&rules));
+        let phases = ledger.state.phase_holdings(&hex, Some(&rules));
 
-        let hopeful = pool_shares_for(&hex, region, None, None).shares;
-        let settled = pool_shares_for(&hex, region, Some(&phases), None).shares;
+        let hopeful = pool_shares_for(&hex, region, None, Some(&rules)).shares;
+        let settled = pool_shares_for(&hex, region, Some(&phases), Some(&rules)).shares;
 
         assert_eq!(hopeful.len(), settled.len());
         assert!(
@@ -15775,6 +15785,18 @@ mod tests {
                 .iter()
                 .any(|share| share.tax != PoolShare::Uncontended),
             "the fixture must actually contend, or this pins nothing"
+        );
+        // ... and the two pictures must genuinely differ in the headcount the tax term would read
+        // if `phases` ever reached it, or the assertion below is vacuous.
+        let nothing = Receipts::default();
+        let early = hex_facts(&hex, &nothing, None, Some(&rules));
+        let late = hex_facts(&hex, &nothing, Some(&phases), Some(&rules));
+        assert!(
+            early
+                .iter()
+                .zip(&late)
+                .any(|(early, late)| early.maintenance().men != late.maintenance().men),
+            "the fixture must move men between the phases, or this pins nothing"
         );
         for (index, (without, with)) in hopeful.iter().zip(&settled).enumerate() {
             assert_eq!(without.tax, with.tax, "unit {index}: the tax share");
