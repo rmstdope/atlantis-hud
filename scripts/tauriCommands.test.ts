@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   commandParameters,
   commandRenames,
+  declaredCommands,
+  locallyDefinedCommands,
   lockstep,
   registeredCommands,
   splitTopLevel,
@@ -87,6 +89,63 @@ describe("commandRenames", () => {
     `;
 
     expect(commandRenames(coreTauriLibRs)).toEqual(new Map());
+  });
+});
+
+describe("locallyDefinedCommands", () => {
+  it("names the wrappers main.rs defines itself, in declaration order", () => {
+    const mainRs = `
+      #[tauri::command(rename_all = "snake_case")]
+      fn open_game(app: tauri::AppHandle, game_id: String) -> Result<OpenedGameDto, String> {
+
+      #[tauri::command(rename_all = "snake_case")]
+      pub fn list_games(app: tauri::AppHandle) -> Result<Vec<GameDto>, String> {
+    `;
+
+    expect(locallyDefinedCommands(mainRs)).toEqual(["open_game", "list_games"]);
+  });
+
+  it("names nothing when main.rs only registers commands by path", () => {
+    const mainRs = `
+      .invoke_handler(tauri::generate_handler![
+          atlantis_hud_core_tauri::command_parse_report
+      ])
+    `;
+
+    expect(locallyDefinedCommands(mainRs)).toEqual([]);
+  });
+});
+
+describe("declaredCommands", () => {
+  it("unions core-tauri's renamed commands with main.rs's own wrappers", () => {
+    const mainRs = `
+      #[tauri::command(rename_all = "snake_case")]
+      fn open_game(app: tauri::AppHandle, game_id: String) -> Result<OpenedGameDto, String> {
+    `;
+    const coreTauriLibRs = `
+      #[cfg_attr(feature = "tauri", tauri::command(rename_all = "snake_case", rename = "parse_report"))]
+      pub fn command_parse_report(raw_report: &str) -> ReportParseResultWire {
+    `;
+
+    expect([...declaredCommands(mainRs, coreTauriLibRs)].sort()).toEqual([
+      "open_game",
+      "parse_report"
+    ]);
+  });
+
+  it("does not declare a core-tauri command that forgot its rename attribute, though it is still registered", () => {
+    const mainRs = `
+      .invoke_handler(tauri::generate_handler![
+          atlantis_hud_core_tauri::command_parse_report
+      ])
+    `;
+    const coreTauriLibRs = `
+      #[cfg_attr(feature = "tauri", tauri::command(rename_all = "snake_case"))]
+      pub fn command_parse_report(raw_report: &str) -> ReportParseResultWire {
+    `;
+
+    expect(registeredCommands(mainRs)).toEqual(["parse_report"]);
+    expect(declaredCommands(mainRs, coreTauriLibRs)).toEqual([]);
   });
 });
 
@@ -299,13 +358,17 @@ describe("the live Tauri command lockstep", () => {
     expect(Object.keys(table).sort()).toEqual([...registered].sort());
 
     // Every rename says what the function name says, and every renamed command is registered.
-    // A 37th command that forgets the attribute, or one that forgets to be registered, is what
-    // the pinned count catches — update it in the same commit that adds a path-registered command.
     for (const [fn, wire] of renames) {
       expect(wire, `${fn} renames to`).toBe(fn.slice("command_".length));
       expect(registered, `${fn} is registered`).toContain(wire);
     }
-    expect(renames.size).toBe(37);
+
+    // What the two Rust sources declare is exactly what main.rs registers - core-tauri's renamed
+    // commands plus main.rs's own wrappers, with nothing over on either side. This replaced a
+    // hand-maintained count that had to be bumped by every commit adding a command. A core-tauri
+    // command that forgets its `rename =` attribute is still registered by path but drops out of
+    // `commandRenames`, so it shows up here as registered-but-undeclared, by name.
+    expect([...declaredCommands(mainRs, coreTauriLibRs)].sort()).toEqual([...registered].sort());
 
     // Keys: every row's keys are the Rust parameter names, in order.
     for (const [command, keys] of Object.entries(table)) {

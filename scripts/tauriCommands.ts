@@ -62,6 +62,34 @@ export function commandRenames(coreTauriLibRs: string): Map<string, string> {
 }
 
 /**
+ * A command wrapper defined in `main.rs` itself: `#[tauri::command(rename_all = "snake_case")]`
+ * immediately above its `fn`, capturing the function name and its parameter list.
+ *
+ * Shared by `locallyDefinedCommands` and `commandParameters` so the two can never disagree about
+ * what counts as a locally defined command. Safe to share despite the `g` flag: `matchAll` matches
+ * against a copy and leaves this object's `lastIndex` at 0.
+ */
+const MAIN_RS_COMMAND =
+  /#\[tauri::command\(rename_all = "snake_case"\)\]\s*(?:pub\s+)?fn\s+([a-z_]+)\s*\(([^)]*)\)/gu;
+
+/**
+ * The frontend names of the commands `main.rs` defines itself - the shell's own wrappers, as
+ * opposed to the ones it registers by path out of core-tauri. In declaration order.
+ */
+export function locallyDefinedCommands(mainRs: string): string[] {
+  return [...mainRs.matchAll(MAIN_RS_COMMAND)].map((match) => match[1]);
+}
+
+/**
+ * Every command the two Rust sources declare: core-tauri's renamed wire names, plus main.rs's own
+ * wrappers. This is what `generate_handler!` is supposed to register, and comparing the two is what
+ * replaced a hand-maintained count of renamed commands (ah-bmb3.5).
+ */
+export function declaredCommands(mainRs: string, coreTauriLibRs: string): string[] {
+  return [...commandRenames(coreTauriLibRs).values(), ...locallyDefinedCommands(mainRs)];
+}
+
+/**
  * Splits `text` on commas at nesting depth zero of `<>`, `()`, `[]` and `{}`; trims each piece;
  * drops empties. A parameter list read out of Rust or TypeScript source can itself contain commas
  * inside a generic (`HashMap<K, V>`) or an object type (`Record<string, unknown>`), and a plain
@@ -142,9 +170,7 @@ export function commandParameters(
 ): Record<string, CommandParameter[]> {
   const parameters: Record<string, CommandParameter[]> = {};
 
-  for (const match of mainRs.matchAll(
-    /#\[tauri::command\(rename_all = "snake_case"\)\]\s*(?:pub\s+)?fn\s+([a-z_]+)\s*\(([^)]*)\)/gu
-  )) {
+  for (const match of mainRs.matchAll(MAIN_RS_COMMAND)) {
     const [, name, params] = match;
     parameters[name] = splitTopLevel(params)
       .map(readParameter)
