@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-qwz7 - a self-transfer does nothing, and says so</title>
+<style>
+:root{--page:#10151c;--panel:#171e28;--edge:#2a3442;--ink:#d7dee8;--dim:#8a94a3;--brass:#d9a441;--good:#70b58a;--bad:#c9705f}
+*{box-sizing:border-box}body{margin:0;padding:28px;background:var(--page);color:var(--ink);font:14px/1.5 system-ui,sans-serif}
+main{max-width:1080px;margin:auto}h1{font-size:22px;margin:0}h2{margin:26px 0 10px;color:var(--brass);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
+p{color:var(--dim);max-width:88ch}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card,.setting{padding:14px;border:1px solid var(--edge);border-radius:7px;background:var(--panel)}h3{font-size:13px;margin:0 0 8px}
+.order,.result{font:12px/1.55 ui-monospace,Menlo,monospace;background:#0c1117;border:1px solid var(--edge);padding:8px;border-radius:4px}
+.warning{margin-top:8px;padding:8px 10px;border-left:3px solid var(--brass);background:#1d222b;font-size:12px}.warning b{display:block;color:var(--dim);font:10px ui-monospace,Menlo,monospace}
+.none{border-left-color:var(--edge);color:var(--dim)}.setting{max-width:430px}.setting strong{display:block}.setting span{display:block;color:var(--dim);font-size:12px}.toggle{float:right;color:var(--good)}
+.narrow{max-width:320px}.cost{color:var(--ink)}
+.was{border-left:3px solid var(--bad)}del{color:var(--bad)}ins{color:var(--good);text-decoration:none}
+</style>
+</head>
+<body><main>
+<h1>A self-transfer does nothing, and says so</h1>
+<p class="cost">Cost: one more checkbox in Settings &gt; Warnings &gt; Orders, one new warning code, and one more sentence to keep true. In exchange the mistyped unit number is named on the line where it was typed, which is the only place a player can fix it.</p>
+
+<h2>Unit 2391 holds 500 silver and writes TAKE FROM 2391 100 SILV</h2>
+<div class="grid">
+  <section class="card"><h3>Today (wrong)</h3>
+    <div class="order">unit 2391<br>TAKE FROM 2391 100 SILV</div>
+    <div class="result">SILVER<br>&nbsp;&nbsp;500 at the start<br>&nbsp;<del>+100 took from unit 2391</del><br>&nbsp;<del>600 at month end</del></div>
+    <div class="warning was"><b>the defect</b>A row for silver that never arrives, and a month-end figure 100 too high.</div>
+  </section>
+  <section class="card"><h3>After this bead</h3>
+    <div class="order">unit 2391<br>TAKE FROM 2391 100 SILV</div>
+    <div class="result">SILVER<br>&nbsp;&nbsp;500 at the start<br>&nbsp;<ins>500 at month end</ins></div>
+    <div class="warning"><b>transfer-to-itself</b>unit 2391 is this unit itself, so this TAKE moves nothing</div>
+  </section>
+</div>
+
+<h2>Every shape the warning covers</h2>
+<div class="grid">
+  <section class="card"><h3>A self-TAKE of goods</h3>
+    <div class="order">TAKE FROM 2391 5 SWOR</div>
+    <div class="result">Items after: unchanged</div>
+    <div class="warning"><b>transfer-to-itself</b>unit 2391 is this unit itself, so this TAKE moves nothing</div>
+  </section>
+  <section class="card"><h3>A self-GIVE</h3>
+    <div class="order">GIVE 2391 100 SILV</div>
+    <div class="result">Silver after: unchanged</div>
+    <div class="warning"><b>transfer-to-itself</b>unit 2391 is this unit itself, so this GIVE moves nothing</div>
+  </section>
+  <section class="card"><h3>A NEW alias this unit is</h3>
+    <div class="order">unit NEW 1<br>TAKE FROM NEW 1 100 SILV</div>
+    <div class="result">Silver after: unchanged</div>
+    <div class="warning"><b>transfer-to-itself</b>NEW 1 is this unit itself, so this TAKE moves nothing</div>
+  </section>
+  <section class="card"><h3>Not this warning: another unit</h3>
+    <div class="order">TAKE FROM 2390 100 SILV</div>
+    <div class="result">Silver after: +100</div>
+    <div class="warning none"><b>no finding</b>An ordinary transfer between two units.</div>
+  </section>
+  <section class="card"><h3>Not this warning: a number not here</h3>
+    <div class="order">TAKE FROM 999 100 SILV</div>
+    <div class="result">Silver after: +100, from an unshown source</div>
+    <div class="warning none"><b>give-target-not-here</b>The existing warning still answers this one, and only it.</div>
+  </section>
+  <section class="card"><h3>Not this warning: another faction</h3>
+    <div class="order">TAKE FROM 900 100 SILV</div>
+    <div class="result">Silver after: unchanged</div>
+    <div class="warning none"><b>take-from-another-faction</b>The existing warning still answers this one, and only it.</div>
+  </section>
+</div>
+
+<h2>Warnings setting</h2>
+<div class="setting"><span class="toggle">ON</span><strong>Transfers a unit writes to itself</strong><span>A GIVE or TAKE naming the unit that wrote it, which the game will refuse.</span></div>
+<p>It sits in Settings &gt; Warnings &gt; Orders, immediately after <em>Taking from another faction</em>, and starts on like the other order advisories. Turning it off hides only the sentence; the forecast still moves nothing, because a toggle never changes what the game is projected to do.</p>
+
+<h2>Narrow editor</h2>
+<section class="card narrow"><div class="order">TAKE FROM 2391 10 GRAI</div><div class="warning"><b>transfer-to-itself</b>unit 2391 is this unit itself, so this TAKE moves nothing</div></section>
+<p>The sentence wraps inside the existing warning block, exactly as the other order warnings do. No new dialog, focus move, keyboard command, cancel path, loading state or error state.</p>
+</main></body>
+</html>
