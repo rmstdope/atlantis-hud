@@ -29,6 +29,25 @@ describe("the warnings tab's coverage of the core's codes", () => {
     expect([...listed].sort()).toEqual([...ADVISORY_CHECK_CODES].sort());
     expect(listed.length).toBe(new Set(listed).size);
   });
+
+  /**
+   * `ah-qwz7`. The words and the position are the navigator's decision, so they are pinned rather
+   * than left to the next edit of this list: the entry sits in Orders, immediately after the
+   * finding it is nearest in kind.
+   */
+  it("offers the self-transfer advisory next to the faction rule", () => {
+    const orders = WARNING_GROUPS.find((group) => group.heading === "Orders");
+    if (!orders) {
+      throw new Error("the Orders group is missing");
+    }
+    const at = orders.entries.findIndex((entry) => entry.code === "transfer-to-itself");
+    expect(orders.entries[at - 1]?.title).toBe("Taking from another faction");
+    expect(orders.entries[at]).toEqual({
+      code: "transfer-to-itself",
+      title: "Transfers a unit writes to itself",
+      description: "A GIVE or TAKE naming the unit that wrote it, which the game will refuse."
+    });
+  });
 });
 
 /**

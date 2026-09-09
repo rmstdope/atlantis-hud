@@ -50,7 +50,8 @@ export const ADVISORY_CHECK_CODES = [
   "men-sent-into-a-mage",
   "withdraw-not-a-basic-item",
   "sail-between-land-hexes",
-  "cast-cannot-make-this"
+  "cast-cannot-make-this",
+  "transfer-to-itself"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
