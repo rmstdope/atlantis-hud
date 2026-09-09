@@ -21178,9 +21178,19 @@ BUILD
         ///
         /// The composed case: `income_doubt` really is `ContestedRegionPool` and the purse really
         /// did fall back, so neither of the two conditions in `a_doubted_unit_in_a_settleable_hex`
-        /// is doing the guarding here. The ledger's own `doubted` set empties `settled_buy_all`
-        /// for this unit today as well, which is a coupling in another module: this test is what
-        /// fails if either that or `forecast_unit`'s own `expense_doubt` guard is narrowed.
+        /// is doing the guarding here.
+        ///
+        /// **What this test does and does not pin.** It pins the behaviour - the row is withheld -
+        /// and nothing narrower. It does *not* fail if `forecast_unit`'s `expense_doubt` guard is
+        /// removed, because the ledger's own `doubted` set empties `settled_buy_all` for this unit
+        /// as well, and that alone keeps `buy_all` empty. Every order shape reached for was tried:
+        /// an unpriceable bounded `BUY`, an unpriceable `SELL`, `STUDY`, `PRODUCE`, `CAST` and two
+        /// `GIVE` forms. Each either doubts the unit in the ledger too, or doubts a *sharer* and
+        /// so makes the whole purse untrusted (`SharedMarket::Unmeasured`, not `HeldOnly`), which
+        /// takes the case out of this arm by the other condition. So no scene makes the column's
+        /// guard the only thing refusing, and this doc claims no more than that. The guard stays
+        /// as the arm's own statement of what it covers, rather than a dependence on a coupling
+        /// in another module.
         #[test]
         fn a_unit_doubted_on_both_sides_reports_no_buy_all_even_when_the_purse_fell_back() {
             let mut unknowable = settled_purse_hex();
