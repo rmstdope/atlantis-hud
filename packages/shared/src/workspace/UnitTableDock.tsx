@@ -2449,7 +2449,13 @@ function UnitRow({
     // orders changed explains itself with the report's figure instead.
     men: (
       <Td className={menChange ? PREDICTED : ""}>
-        {describeMenBriefly(unit)}
+        {/* Amber like every other refusing cell: the mockup's `.miss` is `var(--warn)`, and a row
+            reading three amber refusals and one grey one says the grey figure is a fact. */}
+        {unread ? (
+          <span className="text-warn">{describeMenBriefly(unit)}</span>
+        ) : (
+          describeMenBriefly(unit)
+        )}
         {explain("men")}
       </Td>
     ),

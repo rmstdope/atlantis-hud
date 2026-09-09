@@ -2343,7 +2343,11 @@ describe("a unit whose line was not fully read", () => {
     );
     const row = rowOf(markup, "1");
 
-    expect((row.match(/not known/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // Each refusing cell named. A bare count would not do: the `explain` sentence beside the Men
+    // cell repeats the phrase, so a count is satisfiable by the wrong cells.
+    for (const column of ["men", "movement", "flags", "skills"]) {
+      expect(row).toContain(`data-column="${column}"><span class="text-warn">not known</span>`);
+    }
     // The cells' own screen-reader sentences are gone: where the message is words, a second copy
     // is a second place for the same fact to drift. The order-diff `explain` sentence beside them
     // is a separate surface and no part of this bead.
