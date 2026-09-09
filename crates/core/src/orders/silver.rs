@@ -549,9 +549,10 @@ pub struct BuyAllShown {
 }
 
 /// Why a unit's silver moved this month. One variant per term [`forecast_unit`] prices.
-///
-/// Ordered so `semantics::silver_records_agree` can sort its two projections into one order before
-/// comparing them; the order itself is declaration order and means nothing (`ah-6m7b.5.3`).
+// `Ord` is here so `semantics::silver_records_agree` can sort its two projections into one order
+// before comparing them; the order itself is declaration order and means nothing (`ah-6m7b.5.3`).
+// A plain comment, not a doc one: this type's doc is exported to `SilverChangeCause.ts`, and a
+// note about a Rust-side check has no business in the binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "kebab-case")]
