@@ -9432,6 +9432,11 @@ fn check_pillage_men(
 ///
 /// Returns the clause only, mirroring `because_clause`, which is the other tail of this warning.
 fn uncounted_cause(unit: &ReportUnit, facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> String {
+    /// Written by two arms - the estimate with no tag to name, and the missing catalogue - which
+    /// must agree, so they read it from one place (`ah-ohil`).
+    const NO_CATALOGUE: &str =
+        "this unit's cannot be counted until the report is read against an item catalogue";
+
     if facts.men_estimated {
         // The report's own item line, deliberately not `facts.items`: `men_estimated` is a
         // statement about what the report printed, so a tag that arrived by gift did not set it.
@@ -9461,13 +9466,12 @@ fn uncounted_cause(unit: &ReportUnit, facts: &UnitFacts<'_>, ruleset: Option<&Ru
             };
         }
         // An estimate with nothing to name: the report was never read against a catalogue at all.
-        return "this unit's cannot be counted until the report is read against an item catalogue"
-            .to_string();
+        return NO_CATALOGUE.to_string();
     }
     if facts.skills_unknown || facts.after_gifts_unknown {
         return "a transfer this month means this unit's cannot be counted".to_string();
     }
-    "this unit's cannot be counted until the report is read against an item catalogue".to_string()
+    NO_CATALOGUE.to_string()
 }
 
 /// The `SAIL` that will carry this unit out of the hex, if one will.
