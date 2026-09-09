@@ -6242,6 +6242,11 @@ fn transfer(
                 quantity,
                 if is_give {
                     SilverChangeCause::WasGiven
+                } else if from.is_empty() {
+                    // A `TAKE` whose source the report does not show: `apply`'s `Intent::Take` arm
+                    // reaches here with `source.unwrap_or_default()`, so an empty `from` is
+                    // precisely that case, and the column names it `TookUnshown` (`ah-awcm`).
+                    SilverChangeCause::TookUnshown
                 } else {
                     SilverChangeCause::Took
                 },
@@ -21678,6 +21683,23 @@ BUILD
             );
         }
 
+        /// The source the report does not show is the *other* take cause, exactly as the column
+        /// names it (`ah-awcm`). Only the taker's leg is recorded: there is no source unit here
+        /// for the walk to charge.
+        #[test]
+        fn a_take_from_a_unit_the_report_does_not_show_is_recorded_as_such() {
+            let hex_region = market(vec![with_silver(unit("2"), 1_000)]);
+            with_ledger(hex_region, "unit 2\nTAKE FROM 999 100 SILV\n", |ledger| {
+                assert_eq!(
+                    shape(moves(ledger, "2")),
+                    vec![(StatePhase::Give, SilverChangeCause::TookUnshown, Some(2))],
+                    "{:?}",
+                    moves(ledger, "2")
+                );
+                assert_eq!(moves(ledger, "2")[0].amount, 100);
+            });
+        }
+
         #[test]
         fn a_sale_is_recorded_as_what_the_market_paid() {
             let mut hex_region = market(vec![with_item(
@@ -21743,9 +21765,12 @@ BUILD
             });
         }
 
-        /// An earning spell credits and a costed one charges, and the two are separate terms.
+        /// An earning spell credits, and `CastEarned` is its own term. `CastSpent` is the same
+        /// `move_silver` call two lines below the one this exercises, and is uncovered: the
+        /// committed ruleset's earning spell costs nothing, so a costed spell would be a second
+        /// fixture rather than a second assertion here.
         #[test]
-        fn a_cast_is_recorded_as_what_it_raises_and_what_it_consumes() {
+        fn a_cast_is_recorded_as_what_it_raises() {
             let hex_region = ReportRegion {
                 entertainment: Some(5_000),
                 ..market(vec![with_skill(with_silver(unit("1"), 1_000), "PHEN", 2)])
@@ -21775,6 +21800,9 @@ BUILD
         /// A `TAKE` is written in the taker's block and moves the source unit's silver, so the
         /// ledger records both legs - and names them for what each unit did, which for the taker
         /// is `Took` rather than `WasGiven`.
+        ///
+        /// Its sibling below is the other half of that: the two take causes are different variants
+        /// and the report is what tells them apart.
         #[test]
         fn a_take_of_silver_is_recorded_on_both_units() {
             let hex_region = market(vec![
