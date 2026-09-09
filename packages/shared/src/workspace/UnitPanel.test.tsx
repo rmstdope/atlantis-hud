@@ -425,6 +425,19 @@ describe("a part-read unit whose own figures did reach the model", () => {
     expect(markup).not.toContain("100 or more");
   });
 
+  it("groups a heavy unit's weight the same way however much of the line was read", () => {
+    // Both arms of the Weight field, at a figure large enough to tell them apart: the review found
+    // the same ungrouped-figure defect in each one in turn, which is what a test is for.
+    const heavy = { weight: 4200, capacity: null, movement: null };
+    for (const read of ["complete", "partial"] as const) {
+      const markup = renderToStaticMarkup(
+        <UnitPanel unit={aReportUnit({ ...heavy, read })} hex={HEX} />
+      );
+      expect(markup, `read: ${read}`).toContain("4,200");
+      expect(markup, `read: ${read}`).not.toContain(">4200<");
+    }
+  });
+
   it("says only that more is missing when no item row survived", () => {
     // `withoutSilver` is what the Items section iterates, so a part-read unit that read only
     // silver has no rows. "not known" above "and more, not known" is two answers to one question.
