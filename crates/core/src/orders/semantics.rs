@@ -22266,6 +22266,42 @@ BUILD
             );
         }
 
+        /// The case that decides *which* headcount `study` reads, and the one the two cheap
+        /// helpers above cannot reach: a unit that **recruits** this month and then studies.
+        /// `UnitFacts::men` would carry the gift and miss the recruit, so only a recruiting unit
+        /// tells `men_after_orders` apart from it. It goes through `forecast_with_ruleset`, hence
+        /// `review_turn`, because `ledger_for` settles no recruits - and `review_turn` runs
+        /// `silver_records_agree` in debug, so the ledger's own fee is held to the column's here
+        /// (`ah-1x2h.2`).
+        #[test]
+        fn a_recruit_before_study_is_charged_for() {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 2,
+                    name: "men".to_string(),
+                    tag: "HUMN".to_string(),
+                    price: 38,
+                }],
+                ..region(vec![with_men(with_silver(unit("5"), 10_000), 3)])
+            };
+
+            let silver =
+                forecast_with_ruleset(vec![hex_region], "unit 5\nBUY 2 HUMN\nSTUDY combat\n");
+
+            let studied: Vec<_> = silver
+                .changes
+                .iter()
+                .filter(|change| change.cause == SilverChangeCause::Studied)
+                .map(|change| change.amount)
+                .collect();
+            assert_eq!(
+                studied,
+                vec![-50],
+                "3 men plus the 2 recruited, at $10 a head: {:?}",
+                silver.changes
+            );
+        }
+
         fn market(units: Vec<ReportUnit>) -> ReportRegion {
             ReportRegion {
                 tax_base: Some(2500),
