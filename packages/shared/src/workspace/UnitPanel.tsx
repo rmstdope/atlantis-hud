@@ -139,7 +139,9 @@ export function UnitPanelBody({
         {movement == null ? (
           unread === null ? (
             <>
-              {unit.weight === null ? null : <Field label="Weight" value={unit.weight} />}
+              {unit.weight === null ? null : (
+                <Field label="Weight" value={unit.weight.toLocaleString()} />
+              )}
               {unit.capacity === null ? null : <Field label="Capacity" value={unit.capacity} />}
             </>
           ) : (
