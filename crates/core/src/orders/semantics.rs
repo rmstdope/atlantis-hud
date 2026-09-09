@@ -35,7 +35,10 @@ use crate::movement::mode::{
     hulls_named_in, is_vessel, sailing_requirement, Capacities,
 };
 use crate::movement::orders::MoveStep;
-use crate::movement::rules::{item_spellings, ItemEntry, ItemKind, Ruleset, SkillEntry};
+use crate::movement::plan::{refused_by_sailing_step, Hull, Journey};
+use crate::movement::rules::{
+    item_spellings, ItemEntry, ItemKind, MovementMode, Ruleset, SkillEntry,
+};
 use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::magic;
 use crate::orders::silver::{
@@ -9592,6 +9595,7 @@ fn first_land_to_land_step<'a>(
     steps: &[MoveStep],
     regions: &HashMap<Coordinate, &'a ReportRegion>,
     ruleset: &Ruleset,
+    journey: Journey,
 ) -> Option<(Direction, String, String)> {
     let mut here: Option<&ReportRegion> = Some(from);
     let mut here_label = hex_label(&from.terrain, from.coordinate);
@@ -9607,7 +9611,7 @@ fn first_land_to_land_step<'a>(
             .iter()
             .find(|exit| Direction::parse(&exit.direction) == Some(*direction))?;
         let there_label = hex_label(&exit.terrain, exit.coordinate);
-        if !ruleset.is_water(&here_terrain) && !ruleset.is_water(&exit.terrain) {
+        if refused_by_sailing_step(ruleset, journey, &here_terrain, &exit.terrain) {
             return Some((*direction, here_label, there_label));
         }
         here = regions.get(&exit.coordinate).copied();
@@ -11628,9 +11632,7 @@ fn check_sail_route(
                 continue; // a bare SAIL names no direction
             }
             // The vessel this unit would be sailing, if any: the one it could captain, else the
-            // one it is standing in. A fleet that may be flying is not bound by the water, and
-            // neither is one whose hulls cannot be read - see `fleet_flies`, and `Some(false)` is
-            // the only answer that lets the warning through.
+            // one it is standing in. What that hull means for the water is decided below.
             let vessel = hex
                 .region
                 .structures
@@ -11640,14 +11642,19 @@ fn check_sail_route(
                     could_captain(ordered, &structure.structure_id)
                         || is_aboard(ordered, &structure.structure_id)
                 });
-            if let Some(vessel) = vessel {
-                if fleet_flies(vessel, Some(ruleset)) != Some(false) {
-                    continue;
-                }
-            }
+            // A fleet that may be flying is not bound by the water, and neither is one whose
+            // hulls cannot be read: `Hull::from_flies` is the one reading of that, shared with the
+            // map. A SAIL with no fleet in the hex at all is a different case and stays `Bound` -
+            // geography is judged whether or not the report shows the hull, which is what this
+            // check warned about before it shared the map's reading.
+            let hull = match vessel {
+                Some(vessel) => Hull::from_flies(fleet_flies(vessel, Some(ruleset))),
+                None => Hull::Bound,
+            };
+            let journey = Journey::enforced(MovementMode::Sail, hull);
 
             if let Some((direction, from, to)) =
-                first_land_to_land_step(hex.region, steps, by_coordinate, ruleset)
+                first_land_to_land_step(hex.region, steps, by_coordinate, ruleset, journey)
             {
                 findings.push(ordered.finding(
                     hex,
@@ -21594,6 +21601,57 @@ BUILD
         assert!(sailed(findings));
     }
 
+    /// A mountain hex whose only exit is another mountain, and a unit in it with no fleet: `SAIL N`
+    /// is a land-to-land step, and nothing in the hex says whether a hull would be flying.
+    fn ashore_with_no_fleet() -> Vec<ReportRegion> {
+        vec![ReportRegion {
+            exits: vec![Exit {
+                direction: "North".to_string(),
+                terrain: "mountain".to_string(),
+                coordinate: Coordinate { x: 7, y: 51, z: 1 },
+                province: "Inhead".to_string(),
+                settlement: None,
+            }],
+            ..region(vec![unit("11125")])
+        }]
+    }
+
+    /// Geography is judged whether or not the report shows a hull. `check_sail_route` is deliberately
+    /// independent of who is aboard, so an absent fleet is not a reason to stop judging the step.
+    #[test]
+    fn a_sail_with_no_fleet_in_the_hex_is_still_warned_about() {
+        assert!(check(ashore_with_no_fleet(), "unit 11125\nSAIL N\n")
+            .iter()
+            .any(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES));
+    }
+
+    /// A ruleset that does not model the sailing restriction is not to be overruled by a belief
+    /// hardcoded in the panel: the map already reads `land_needs_coast`, and the panel now reads it
+    /// through the same function.
+    #[test]
+    fn a_ruleset_that_lifts_the_sailing_rule_silences_the_land_to_land_warning() {
+        let mut lifted = ruleset();
+        lifted.movement.sailing.land_needs_coast = false;
+        let says = |findings: Vec<Finding>| {
+            findings
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES)
+        };
+
+        assert!(
+            !says(check_against(
+                &lifted,
+                ashore_with_no_fleet(),
+                "unit 11125\nSAIL N\n"
+            )),
+            "a ruleset that lifts the rule has no land-to-land step to warn about"
+        );
+        assert!(
+            says(check(ashore_with_no_fleet(), "unit 11125\nSAIL N\n")),
+            "and the committed ruleset, which sets the flag, still warns"
+        );
+    }
+
     /// A fleet that may be flying is not bound by the water, so the warning stays silent for it.
     #[test]
     fn a_flying_fleet_may_sail_over_land() {
@@ -21660,7 +21718,8 @@ BUILD
                 &land_north(),
                 &[MoveStep::Go(Direction::North)],
                 &HashMap::new(),
-                &rules
+                &rules,
+                Journey::enforced(MovementMode::Sail, Hull::Bound)
             ),
             Some((
                 Direction::North,
@@ -21679,7 +21738,8 @@ BUILD
                 &from_ocean,
                 &[MoveStep::Go(Direction::North)],
                 &HashMap::new(),
-                &rules
+                &rules,
+                Journey::enforced(MovementMode::Sail, Hull::Bound)
             ),
             None
         );
@@ -21694,7 +21754,8 @@ BUILD
                 &into_ocean,
                 &[MoveStep::Go(Direction::North)],
                 &HashMap::new(),
-                &rules
+                &rules,
+                Journey::enforced(MovementMode::Sail, Hull::Bound)
             ),
             None
         );
@@ -21717,7 +21778,8 @@ BUILD
                     MoveStep::Go(Direction::North)
                 ],
                 &regions,
-                &rules
+                &rules,
+                Journey::enforced(MovementMode::Sail, Hull::Bound)
             ),
             None
         );
@@ -21739,7 +21801,8 @@ BUILD
                     MoveStep::Go(Direction::North)
                 ],
                 &land_regions,
-                &rules
+                &rules,
+                Journey::enforced(MovementMode::Sail, Hull::Bound)
             ),
             Some((
                 Direction::North,
@@ -21757,7 +21820,8 @@ BUILD
                     MoveStep::Go(Direction::North)
                 ],
                 &HashMap::new(),
-                &rules
+                &rules,
+                Journey::enforced(MovementMode::Sail, Hull::Bound)
             ),
             None
         );
@@ -21768,16 +21832,29 @@ BUILD
                 &land_north(),
                 &[MoveStep::Go(Direction::South)],
                 &HashMap::new(),
-                &rules
+                &rules,
+                Journey::enforced(MovementMode::Sail, Hull::Bound)
             ),
             None
         );
         assert_eq!(
-            first_land_to_land_step(&land_north(), &[], &HashMap::new(), &rules),
+            first_land_to_land_step(
+                &land_north(),
+                &[],
+                &HashMap::new(),
+                &rules,
+                Journey::enforced(MovementMode::Sail, Hull::Bound)
+            ),
             None
         );
         assert_eq!(
-            first_land_to_land_step(&land_north(), &[MoveStep::In], &HashMap::new(), &rules),
+            first_land_to_land_step(
+                &land_north(),
+                &[MoveStep::In],
+                &HashMap::new(),
+                &rules,
+                Journey::enforced(MovementMode::Sail, Hull::Bound)
+            ),
             None
         );
     }
