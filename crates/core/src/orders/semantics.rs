@@ -22670,11 +22670,7 @@ BUILD
         fn a_self_take_records_no_silver_movement() {
             let hex_region = market(vec![with_silver(unit("2"), 1_000)]);
             with_ledger(hex_region, "unit 2\nTAKE FROM 2 100 SILV\n", |ledger| {
-                assert!(
-                    moves(ledger, "2").is_empty(),
-                    "{:?}",
-                    moves(ledger, "2")
-                );
+                assert!(moves(ledger, "2").is_empty(), "{:?}", moves(ledger, "2"));
             });
         }
 
@@ -32575,7 +32571,7 @@ BUILD
                 unfed(unit("8443")),
                 30,
                 "grain",
-                "GRAI"
+                "GRAI",
             )])],
             "unit 8443\nGIVE 8443 30 GRAI\n",
         ));
@@ -32596,7 +32592,7 @@ BUILD
                 unfed(unit("8443")),
                 30,
                 "grain",
-                "GRAI"
+                "GRAI",
             )])],
             "unit 8443\nTAKE FROM 8443 30 GRAI\n",
         ));
@@ -32639,7 +32635,7 @@ BUILD
                 unfed(unit("8443")),
                 30,
                 "grain",
-                "GRAI"
+                "GRAI",
             )])],
             "unit 8443\nFORM 1\nGIVE NEW 1 30 GRAI\nEND\n",
         );
@@ -32678,8 +32674,14 @@ BUILD
         );
         let codes_seen = codes(&findings);
 
-        assert!(codes_seen.contains(&"give-target-not-here"), "{codes_seen:?}");
-        assert!(!codes_seen.contains(&"transfer-to-itself"), "{codes_seen:?}");
+        assert!(
+            codes_seen.contains(&"give-target-not-here"),
+            "{codes_seen:?}"
+        );
+        assert!(
+            !codes_seen.contains(&"transfer-to-itself"),
+            "{codes_seen:?}"
+        );
     }
 
     /// `ah-qwz7`: and so is a source in another faction.
@@ -32697,7 +32699,10 @@ BUILD
             codes_seen.contains(&"take-from-another-faction"),
             "{codes_seen:?}"
         );
-        assert!(!codes_seen.contains(&"transfer-to-itself"), "{codes_seen:?}");
+        assert!(
+            !codes_seen.contains(&"transfer-to-itself"),
+            "{codes_seen:?}"
+        );
     }
 
     /// `GiveReach::Ours` and `GiveReach::Foreign` differ by exactly `unit.own`, which is the
@@ -36774,12 +36779,6 @@ BUILD
         assert_eq!(hex.find("1010").unwrap().skill_level("LUMB"), Some(1));
     }
 
-    /// `rules/magic`: "mages may not GIVE men at all". The semantic projection must retain them
-    /// too, or the units table, maintenance, production and the warnings disagree about one order.
-    ///
-    /// It deliberately records no `RefusedTransfer`: this bead adds no diagnostic, so
-    /// `check_refused_transfers` says nothing new about the invalid order.
-    #[test]
     /// `ah-qwz7`: switching the advisory off hides the sentence and changes nothing else - the
     /// forecast still credits the self-take nothing, because the guard is in the settlement and
     /// not in the check.
@@ -36862,6 +36861,12 @@ BUILD
         assert_eq!(unit.men_after_orders, 2, "the mage keeps its two leaders");
     }
 
+    /// `rules/magic`: "mages may not GIVE men at all". The semantic projection must retain them
+    /// too, or the units table, maintenance, production and the warnings disagree about one order.
+    ///
+    /// It deliberately records no `RefusedTransfer`: this bead adds no diagnostic, so
+    /// `check_refused_transfers` says nothing new about the invalid order.
+    #[test]
     fn a_mage_gift_keeps_men_and_skills_in_the_semantic_projection() {
         let giver = with_skill_pts(with_leaders(unit("1010"), 2), "FORC", 30);
         let receiver = men_holder("2200", 1);
