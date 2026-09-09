@@ -49,12 +49,11 @@ use crate::orders::silver::{
     readiness_reason, settle_unclaimed, split_pool, tax_overstated_by, taxes, taxing_men,
     transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster,
     ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
-    LateFoodRelief, Lookups, MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers,
-    PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts,
-    RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket, SilverChange,
-    MoneyRead, SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver,
-    UpkeepClaim,
-    UpkeepSettlement, Workforce,
+    LateFoodRelief, Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver,
+    Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove,
+    Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket,
+    SilverChange, SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts,
+    UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{

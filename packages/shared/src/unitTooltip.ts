@@ -1,6 +1,12 @@
 import type { ProductionCap, ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { withoutSilver } from "./silverTag";
+import {
+  monthLostToAnUnreadLine,
+  NOT_KNOWN,
+  silverWasNeverRead,
+  unreadLineClause
+} from "./unitRead";
 
 /**
  * What resting the pointer on a unit says, and where that is put.
@@ -159,9 +165,15 @@ function nameOfHeldItem(unit: ReportUnit, tag: string): string {
   return held?.name ?? tag.toLowerCase();
 }
 
-/** A figure the forecast is sure of, or `?` for a term that could not be priced. */
-function figure(amount: number | null): string {
-  return amount === null ? "?" : String(amount);
+/**
+ * A figure the forecast is sure of, or the mark an unknown term reads.
+ *
+ * `?` everywhere but a broken line: it means "I know what this unit holds, I could not price the
+ * month", which is a different and lesser thing than a figure the report never reached at all
+ * (`ah-l09a.4`).
+ */
+function figure(amount: number | null, unknown = "?"): string {
+  return amount === null ? unknown : String(amount);
 }
 
 /**
@@ -180,13 +192,19 @@ function summariseSilver(
   countUpkeep: boolean
 ): SilverSummary {
   const end = countUpkeep ? shownEnd(silver) : silver.atMonthEnd;
+  // A term this unit's own broken line lost reads the agreed words; every other doubt keeps the
+  // `?` it has always shown, which means "I could not price it", a different sentence.
+  const unknown = monthLostToAnUnreadLine(silver) ? NOT_KNOWN : "?";
   const rows: TooltipEntry[] = [
-    { label: "Held now", value: String(silver.held) },
-    { label: "In, in time", value: figure(inTime(silver)) },
-    { label: "In, too late", value: figure(silver.lateIncome) },
-    { label: "Out", value: figure(silver.expense) },
-    ...(countUpkeep ? [{ label: "Upkeep", value: figure(silver.upkeep) }] : []),
-    { label: "At month end", value: figure(end) }
+    {
+      label: "Held now",
+      value: silverWasNeverRead(silver) ? NOT_KNOWN : String(silver.held)
+    },
+    { label: "In, in time", value: figure(inTime(silver), unknown) },
+    { label: "In, too late", value: figure(silver.lateIncome, unknown) },
+    { label: "Out", value: figure(silver.expense, unknown) },
+    ...(countUpkeep ? [{ label: "Upkeep", value: figure(silver.upkeep, unknown) }] : []),
+    { label: "At month end", value: figure(end, unknown) }
   ];
 
   return { rows, note: silverNote(unit, silver, warned, countUpkeep) };
@@ -613,6 +631,31 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({ doubt: "unknown-goods", doubtSubject: "widgets" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
+    id: "doubt-silver-never-read",
+    when: ({ silver }) => silver.doubt === "silver-never-read",
+    say: ({ unit }) =>
+      `${unreadLineClause(unit)} could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read.`,
+    example: () => ({
+      unit: aReportUnit({ read: "nothing" }),
+      silver: aUnitSilver({ doubt: "silver-never-read" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
+    id: "doubt-unit-line-cut-short",
+    when: ({ silver }) => silver.doubt === "unit-line-cut-short",
+    // Always "Part of": silver that was read means part of the line was.
+    say: () =>
+      "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up.",
+    example: () => ({
+      unit: aReportUnit({ read: "partial", items: [{ tag: "SILV", name: "silver", amount: 7500 }] }),
+      silver: aUnitSilver({ doubt: "unit-line-cut-short", held: 7500 }),
       warned: false,
       countUpkeep: true
     })

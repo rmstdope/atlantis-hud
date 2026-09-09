@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { aReportUnit } from "@atlantis/core-client";
+import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import {
+  monthLostToAnUnreadLine,
   NOT_KNOWN,
+  silverWasNeverRead,
   unitWasFullyRead,
   unreadBannerText,
   unreadCount,
   unreadLine,
+  unreadLineClause,
   weightFloor
 } from "./unitRead";
 import type { GameDataEntry, GameDataIndex } from "./gameData";
@@ -107,5 +110,33 @@ describe("the line above a list of units", () => {
 
   it("says nothing above a list that was read", () => {
     expect(unreadLine(0, 3)).toBeNull();
+  });
+});
+
+describe("the money a broken line cost", () => {
+  it("knows when the silver itself was never reached", () => {
+    expect(silverWasNeverRead(aUnitSilver({ doubt: "silver-never-read" }))).toBe(true);
+    expect(silverWasNeverRead(aUnitSilver({ doubt: "unit-line-cut-short" }))).toBe(false);
+    expect(silverWasNeverRead(aUnitSilver({ doubt: "estimated-men" }))).toBe(false);
+    expect(silverWasNeverRead(aUnitSilver())).toBe(false);
+    expect(silverWasNeverRead(null)).toBe(false);
+    expect(silverWasNeverRead(undefined)).toBe(false);
+  });
+
+  it("knows when the month cannot be added up, either way round", () => {
+    expect(monthLostToAnUnreadLine(aUnitSilver({ doubt: "silver-never-read" }))).toBe(true);
+    expect(monthLostToAnUnreadLine(aUnitSilver({ doubt: "unit-line-cut-short" }))).toBe(true);
+    expect(monthLostToAnUnreadLine(aUnitSilver({ doubt: "estimated-men" }))).toBe(false);
+    expect(monthLostToAnUnreadLine(aUnitSilver())).toBe(false);
+    expect(monthLostToAnUnreadLine(null)).toBe(false);
+  });
+
+  it("opens the sentence with the whole line or a part of it", () => {
+    expect(unreadLineClause(aReportUnit({ read: "nothing" }))).toBe(
+      "This unit's line in the turn report"
+    );
+    expect(unreadLineClause(aReportUnit({ read: "partial" }))).toBe(
+      "Part of this unit's line in the turn report"
+    );
   });
 });
