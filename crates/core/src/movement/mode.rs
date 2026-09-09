@@ -456,8 +456,8 @@ pub fn is_vessel(structure: &Structure, ruleset: Option<&Ruleset>) -> bool {
 ///
 /// The test is the phrase `is a flying` in the item's own description - the catalogue's own
 /// sentence, `"This is a flying 'ship' with a capacity of ..."`, rather than the bare word. No
-/// committed hull's description contains `flying` at all today, so nothing turns on the difference
-/// now; the phrase is the narrower reading of a catalogue that is refetched from the network, where
+/// committed hull that does not fly mentions `flying` at all today, so nothing turns on the
+/// difference now; the phrase is the narrower reading of a catalogue that is refetched from the network, where
 /// a future hull described as carrying flying units would otherwise silence this warning for an
 /// ordinary ship. Across all three committed
 /// catalogues that separates exactly Airship, Balloon and Cloudship ("This is a flying 'ship' with
