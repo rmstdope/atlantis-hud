@@ -1151,7 +1151,10 @@ function chainFor(
             : "flat";
     steps.push({ value: after, mark });
   }
-  if (study) {
+  // A study that cannot raise the level has no next turn to draw: the level is the figure a player
+  // reads, and a blue step saying `5 (480)` reads as progress that will never come (`ah-dpvh`,
+  // decision **D**). What happens instead is the amber sentence `ceilingSentence` writes.
+  if (study && !study.cannotRaiseTheLevel) {
     steps.push({
       value: `${study.levelAfter} (${study.pointsAfter})`,
       mark: "projected",
@@ -1232,25 +1235,34 @@ function studySentence(study: StudyForecast, projectionDrawn: boolean): string {
       "Studying a magic skill past level 2 outside a building that houses mages, so half the month is lost."
     );
   }
-  if (study.heldBackByCeiling) {
-    // An empty `limitingRaces` is `StudyCeiling::Global` (`crates/core/src/orders/study.rs`): the
-    // skill's own maximum, or races the catalogue cannot judge. Naming a race there would blame
-    // one for a limit it did not impose, which is the distinction the core's own warning draws.
-    //
-    // The catalogue's names are singular by `ah-rgkk.2.2`'s own decision, and `hill dwarf` does
-    // not pluralise by appending `s` - so the race construction is one that needs no plural.
-    clauses.push(
-      study.limitingRaces.length > 0
-        ? `No ${andList(study.limitingRaces.map((race) => race.name))} may take ${study.name} past level ${study.ceilingLevel}, so the points rise and the level holds.`
-        : sentence(
-            `${study.name} stops at level ${study.ceilingLevel}, so the points rise and the level holds`
-          )
-    );
-  }
   if (projectionDrawn) {
     clauses.push("The blue figure is next turn's report; everything before it is this month.");
   }
   return clauses.join(" ");
+}
+
+/**
+ * Why a `STUDY` this unit has written buys nothing (`ah-dpvh`, wording **D1**).
+ *
+ * The two forms and the `already there` / `already at level N` standing are the ones the core's own
+ * `study-at-maximum` finding uses (`ceiling_message`, `crates/core/src/orders/semantics.rs`), so the
+ * editor's warning and the popup's say the same thing about one unit in nearly the same words. An
+ * empty `limitingRaces` is the skill's own maximum rather than a race limit, exactly as it was for
+ * the clause this replaces: naming a race there would blame one for a limit it did not impose.
+ *
+ * The catalogue's race names are singular (`ah-rgkk.2.2`) and `hill dwarf` does not pluralise by
+ * appending `s`, so the race form is built to need no plural.
+ */
+function ceilingSentence(study: StudyForecast): string {
+  const standing =
+    study.levelBefore === study.ceilingLevel
+      ? "already there"
+      : `already at level ${study.levelBefore}`;
+  return sentence(
+    study.limitingRaces.length > 0
+      ? `No ${andList(study.limitingRaces.map((race) => race.name))} may take ${study.name} past level ${study.ceilingLevel}, and this unit is ${standing}, so studying it this month changes nothing`
+      : `${study.name} stops at level ${study.ceilingLevel} and this unit is ${standing}, so studying it this month changes nothing`
+  );
 }
 
 /** One amber sentence per doubt the projection rests on (decision **U2**). */
@@ -1332,7 +1344,9 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       notes.push(sentence(`${skill.name} drops below one point per man, so the unit loses it`));
     }
   }
-  if (study) {
+  // A study that changes nothing gets no "worth one month" note: the month is not worth anything,
+  // and the amber sentence below is the whole of what there is to say (`ah-dpvh`, decision **D**).
+  if (study && !study.cannotRaiseTheLevel) {
     notes.push(studySentence(study, projectionDrawn));
   }
   if (lines.length === 0) {
@@ -1344,6 +1358,9 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     warnings.push(
       "This unit's headcount is a guess, so what recruiting does to these cannot be worked out."
     );
+  }
+  if (study?.cannotRaiseTheLevel) {
+    warnings.push(ceilingSentence(study));
   }
   for (const doubt of study?.doubts ?? []) {
     // The same cause said twice, and the sentence above is the more specific of the two.

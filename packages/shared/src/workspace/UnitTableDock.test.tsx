@@ -1068,7 +1068,7 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     levelAfter: 1,
     ceilingLevel: 5,
     limitingRaces: [],
-    heldBackByCeiling: false,
+    cannotRaiseTheLevel: false,
     doubts: []
   };
 
