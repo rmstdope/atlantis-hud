@@ -35,7 +35,13 @@ import {
   type StructuresByRegion
 } from "../structureLabel";
 import { describeMenBriefly } from "../unitComposition";
-import { NOT_KNOWN, unitWasFullyRead, unreadCount, unreadLine } from "../unitRead";
+import {
+  NOT_KNOWN,
+  silverWasNeverRead,
+  unitWasFullyRead,
+  unreadCount,
+  unreadLine
+} from "../unitRead";
 import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { unitSkillsCell } from "../battleSkillPresentation";
 import { presentUnitMovement } from "../unitMovement";
@@ -77,7 +83,6 @@ import {
   type DrawnColumnId,
   type UnitColumn
 } from "../unitTable";
-import { NOT_KNOWN, silverWasNeverRead } from "../unitRead";
 import { isCursorRow, unitCursor } from "./unitCursor";
 import {
   changeFor,
