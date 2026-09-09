@@ -176,6 +176,8 @@ export function describeProblem(problem: RouteProblem): string {
       return `A single MOVE order would leave the unit over water at (${problem.coordinate.x},${problem.coordinate.y}) when the month ran out, and a unit that ends a turn over water drowns.`;
     case "crewCannotSail":
       return `The crew cannot sail this fleet: it needs ${problem.required} levels of sailing, and the units aboard have ${problem.available}.`;
+    case "sailNeedsOcean":
+      return `A fleet may only sail where one end of the step is ocean, so it cannot go from ${problem.fromTerrain} (${problem.from.x},${problem.from.y}) straight to ${problem.toTerrain} (${problem.to.x},${problem.to.y}).`;
   }
 }
 

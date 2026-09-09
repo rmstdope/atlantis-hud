@@ -71,6 +71,21 @@ pub enum RouteProblem {
     /// sail it - "there must be enough sailors aboard ... to sail the fleet, or it will not go
     /// anywhere."
     CrewCannotSail { required: i64, available: i64 },
+    /// A fleet asked to step from one land hex straight into another, which the sailing rule
+    /// allows in none of its three forms: "A fleet can move from an ocean region to another ocean
+    /// region, or from a coastal region to an ocean region, or from an ocean region to a coastal
+    /// region."
+    ///
+    /// Both hexes may be perfectly good coastal hexes, which is exactly why this is not
+    /// [`RouteProblem::OceanNeedsShip`]: nothing is wrong with either end, only with the step
+    /// between them.
+    #[serde(rename_all = "camelCase")]
+    SailNeedsOcean {
+        from: Coordinate,
+        from_terrain: String,
+        to: Coordinate,
+        to_terrain: String,
+    },
 }
 
 /// One hex entered.
@@ -221,13 +236,14 @@ pub(crate) fn route_for_mode(
         return Err(RouteProblem::OceanNeedsShip { coordinate: origin });
     }
 
-    let steps = match cheapest_path(map, ruleset, mode, origin, destination) {
+    let steps = match cheapest_path(map, ruleset, Journey::enforced(mode), origin, destination) {
         Ok(steps) => steps,
         Err(RouteProblem::NoKnownRoute) => {
             // "No known route" is a poor answer when the only thing in the way is water. Ask again
             // as though the unit could swim: if that finds a path, the sea is the reason, and
             // naming the hex it founders at is what makes the refusal actionable.
             return Err(blocked_by_water(map, ruleset, mode, origin, destination)
+                .or_else(|| blocked_by_sailing_rule(map, ruleset, mode, origin, destination))
                 .unwrap_or(RouteProblem::NoKnownRoute));
         }
         Err(other) => return Err(other),
@@ -315,6 +331,61 @@ pub(crate) fn blocks(
     ruleset.is_water(terrain) && ruleset.water_needs_a_ship() && !flies(mode)
 }
 
+/// Whether the sailing rule's "one end of every step must be ocean" is being enforced.
+///
+/// `Enforced` is the game's rule and what every route a player is offered is planned under.
+/// `Lifted` exists only for [`blocked_by_sailing_rule`]'s probe: a route that appears only when
+/// the rule is lifted is a route that rule is what stopped, and the first land-to-land step on it
+/// is the one worth naming. The same trick [`blocked_by_water`] plays with `MovementMode::Fly`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SailRule {
+    Enforced,
+    Lifted,
+}
+
+/// How a journey is being made, as far as the search needs to know: the mode, and whether the
+/// sailing rule is being enforced for it.
+///
+/// One value rather than two parameters because [`step_into`] already carries seven arguments and
+/// the gate denies `clippy::too_many_arguments`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Journey {
+    pub(crate) mode: MovementMode,
+    pub(crate) sail_rule: SailRule,
+}
+
+impl Journey {
+    /// This mode, under the game's own sailing rule - every journey but the probe.
+    pub(crate) fn enforced(mode: MovementMode) -> Self {
+        Self {
+            mode,
+            sail_rule: SailRule::Enforced,
+        }
+    }
+}
+
+/// Whether the sailing rule refuses this step outright, whatever the two hexes are like on their
+/// own.
+///
+/// `rules/movement_sailing`: "A fleet can move from an ocean region to another ocean region, or
+/// from a coastal region to an ocean region, or from an ocean region to a coastal region." All
+/// three have ocean at one end, so a step with land at both ends is none of them - even where both
+/// hexes are coastal and [`blocks`] is therefore content with each of them separately.
+///
+/// Gated on the ruleset's own `land_needs_coast`, the flag that says this world models the sailing
+/// restriction at all. A ruleset that does not is not to be overruled by a belief hardcoded here.
+pub(crate) fn refused_by_sailing_step(
+    ruleset: &Ruleset,
+    mode: MovementMode,
+    from_terrain: &str,
+    into_terrain: &str,
+) -> bool {
+    mode == MovementMode::Sail
+        && ruleset.sailing_land_needs_coast()
+        && !ruleset.is_water(from_terrain)
+        && !ruleset.is_water(into_terrain)
+}
+
 /// Whether a hex has at least one neighbour the map itself describes as water.
 fn is_coastal(ruleset: &Ruleset, map: &MapKnowledge, coordinate: Coordinate) -> bool {
     map.neighbours(coordinate).any(|(_, neighbour)| {
@@ -354,7 +425,14 @@ fn blocked_by_water(
         return None;
     }
 
-    let swimming = cheapest_path(map, ruleset, MovementMode::Fly, origin, destination).ok()?;
+    let swimming = cheapest_path(
+        map,
+        ruleset,
+        Journey::enforced(MovementMode::Fly),
+        origin,
+        destination,
+    )
+    .ok()?;
     let founders = swimming.iter().find(|step| {
         map.hex(step.to)
             .is_some_and(|hex| ruleset.is_water(&hex.terrain))
@@ -363,6 +441,58 @@ fn blocked_by_water(
     Some(RouteProblem::OceanNeedsShip {
         coordinate: founders.to,
     })
+}
+
+/// Whether the sailing rule is the only thing standing between the fleet and its destination.
+///
+/// Re-runs the search with that rule lifted. A route that appears only under the relaxation means
+/// the rule is the obstacle, so the refusal can name the step the fleet would be refused at rather
+/// than shrugging - and "nothing joins those two hexes up" reads plainly wrong to a player looking
+/// at two hexes side by side that the faction has both seen.
+///
+/// Returns `None` for anything but a fleet, and for a fleet whose journey the relaxation does not
+/// rescue: then something else is in the way and [`RouteProblem::NoKnownRoute`] is the honest
+/// answer.
+fn blocked_by_sailing_rule(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    mode: MovementMode,
+    origin: Coordinate,
+    destination: Coordinate,
+) -> Option<RouteProblem> {
+    if mode != MovementMode::Sail {
+        return None;
+    }
+
+    let relaxed = cheapest_path(
+        map,
+        ruleset,
+        Journey {
+            mode,
+            sail_rule: SailRule::Lifted,
+        },
+        origin,
+        destination,
+    )
+    .ok()?;
+
+    // Walk it and name the first step the rule refuses. The origin's terrain comes from the map;
+    // every later step carries the terrain it landed in.
+    let mut from = origin;
+    let mut from_terrain = map.hex(origin)?.terrain.clone();
+    for step in &relaxed {
+        if refused_by_sailing_step(ruleset, mode, &from_terrain, &step.terrain) {
+            return Some(RouteProblem::SailNeedsOcean {
+                from,
+                from_terrain,
+                to: step.to,
+                to_terrain: step.terrain.clone(),
+            });
+        }
+        from = step.to;
+        from_terrain = step.terrain.clone();
+    }
+    None
 }
 
 /// What entering `into` costs from `from`, or `None` when the unit may not go there at all.
@@ -460,7 +590,7 @@ type Standing = (String, String);
 fn cheapest_path(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    mode: MovementMode,
+    journey: Journey,
     origin: Coordinate,
     destination: Coordinate,
 ) -> Result<Vec<RouteStep>, RouteProblem> {
@@ -503,8 +633,15 @@ fn cheapest_path(
             if !area.holds(neighbour) || (!may_guess && map.hex(neighbour).is_none()) {
                 continue;
             }
-            let Some(step) = step_into(map, ruleset, mode, here, &standing.1, direction, neighbour)
-            else {
+            let Some(step) = step_into(
+                map,
+                ruleset,
+                journey,
+                here,
+                &standing.1,
+                direction,
+                neighbour,
+            ) else {
                 continue;
             };
             let total: Price = (price.0 + usize::from(step.estimated), price.1 + step.cost);
@@ -579,14 +716,20 @@ struct Step {
 fn step_into(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    mode: MovementMode,
+    journey: Journey,
     from: Coordinate,
     carried: &str,
     direction: Direction,
     into: Coordinate,
 ) -> Option<Step> {
+    let Journey { mode, sail_rule } = journey;
     if let Some(hex) = map.hex(into) {
         let (cost, road) = step_cost(map, ruleset, mode, from, direction, into)?;
+        if sail_rule == SailRule::Enforced
+            && refused_by_sailing_step(ruleset, mode, carried, &hex.terrain)
+        {
+            return None;
+        }
         return Some(Step {
             cost,
             road,
@@ -599,7 +742,10 @@ fn step_into(
     // to sea, and the sea is exactly what a walker may not cross. For a fleet the same guard asks
     // the opposite question: fog beyond the described map cannot be confirmed coastal, so a land
     // guess blocks it rather than assuming a way in.
-    if blocks(ruleset, map, mode, into, carried) {
+    if blocks(ruleset, map, mode, into, carried)
+        || (sail_rule == SailRule::Enforced
+            && refused_by_sailing_step(ruleset, mode, carried, carried))
+    {
         return None;
     }
     Some(Step {

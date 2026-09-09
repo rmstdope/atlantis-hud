@@ -376,3 +376,87 @@ fn a_unit_that_boards_a_fleet_this_month_is_traced_as_sailing_with_it() {
     .expect("the ruleset loads");
     assert_eq!(ashore.path, None, "a unit ashore follows nobody");
 }
+
+// ------------------------------------------------------- the sailing rule's step test
+
+/// Fixture A of `ah-g6gn.1`: `forest (2,2)` and `forest (3,3)` are neighbours and both coastal,
+/// and `ocean (2,4)` touches both. Built rather than taken from a committed report: `is_coastal`
+/// reads a hex's own stated exits, so both ends of the step must be described in full, and no
+/// committed report carries such a pair.
+fn coastal_pair_report() -> String {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : forest (2,2) in Coast.\n\n");
+    text.push_str("forest (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : forest (3,3) in Coast.\n  \
+         South : ocean (2,4) in Sea.\n\n",
+    );
+    text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    text.push_str(
+        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n\n",
+    );
+    text.push_str("ocean (2,4) in Sea.\n\n");
+    text.push_str(
+        "Exits:\n  North : forest (2,2) in Coast.\n  Northeast : forest (3,3) in Coast.\n\n",
+    );
+    text.push_str("forest (3,3) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : forest (2,2) in Coast.\n  Southwest : ocean (2,4) in Sea.\n",
+    );
+    text
+}
+
+/// Traces one unit's orders over a report built in the test rather than committed.
+fn trace_over(text: &str, unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
+    trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        text,
+        "[]",
+        unit_id,
+        &document(unit_id, orders),
+    )
+    .expect("the ruleset loads")
+}
+
+/// `rules/movement_sailing`: "A fleet can move from an ocean region to another ocean region, or
+/// from a coastal region to an ocean region, or from an ocean region to a coastal region." All
+/// three have ocean at one end, so a step from one coastal land hex straight into another is none
+/// of them - and the trace dots the line from that step on.
+#[test]
+fn a_sail_between_two_coastal_hexes_is_dotted_from_that_step() {
+    let path = trace_over(&coastal_pair_report(), "900", "SAIL SE")
+        .path
+        .expect("a traced path");
+
+    assert_eq!(path.steps.len(), 1);
+    assert_eq!(path.steps[0].to, at(3, 3));
+    assert_eq!(
+        path.mode,
+        Some(atlantis_hud_core::movement::rules::MovementMode::Sail)
+    );
+    assert_eq!(
+        path.blocked_from,
+        Some(0),
+        "the coastal-to-coastal step is itself the first the game refuses"
+    );
+}
+
+/// The guard against a rule that refuses every fleet: a step out to sea from the same coastal hex
+/// is one of the three the rule allows, and is drawn solid.
+#[test]
+fn a_sail_out_to_sea_from_a_coastal_hex_is_still_undotted() {
+    let path = trace_over(&coastal_pair_report(), "900", "SAIL S")
+        .path
+        .expect("a traced path");
+
+    assert_eq!(path.steps.len(), 1);
+    assert_eq!(path.steps[0].to, at(2, 4));
+    assert_eq!(path.blocked_from, None, "coastal to ocean is allowed");
+}

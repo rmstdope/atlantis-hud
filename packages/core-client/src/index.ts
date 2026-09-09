@@ -187,7 +187,14 @@ export type RouteProblem =
   | { kind: "originUnknown" }
   | { kind: "oceanNeedsShip"; coordinate: Coordinate }
   | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate }
-  | { kind: "crewCannotSail"; required: number; available: number };
+  | { kind: "crewCannotSail"; required: number; available: number }
+  | {
+      kind: "sailNeedsOcean";
+      from: Coordinate;
+      fromTerrain: string;
+      to: Coordinate;
+      toTerrain: string;
+    };
 
 export type RiskLevel = "low" | "medium" | "high";
 
