@@ -35,7 +35,13 @@ import {
   type StructuresByRegion
 } from "../structureLabel";
 import { describeMenBriefly } from "../unitComposition";
-import { NOT_KNOWN, unitWasFullyRead, unreadCount, unreadLine } from "../unitRead";
+import {
+  NOT_KNOWN,
+  silverWasNeverRead,
+  unitWasFullyRead,
+  unreadCount,
+  unreadLine
+} from "../unitRead";
 import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { unitSkillsCell } from "../battleSkillPresentation";
 import { presentUnitMovement } from "../unitMovement";
@@ -2260,7 +2266,12 @@ function UnitRow({
   // A dissolving unit will not exist at month end, so the column shows no figure for it - the dash
   // is written explicitly rather than taken from `silverFigure(null)`, whose `?` means "could not
   // be priced", a different sentence (`ah-ty3s.3`, decision **S1**).
-  const figure = dissolving ? (
+  // The money itself was never read, so the cell says so in words. The other read-doubt keeps the
+  // dim `?`, which already means exactly "this month could not be priced" (`ah-l09a.4`).
+  const moneyNotKnown = silverWasNeverRead(silver);
+  const figure = moneyNotKnown ? (
+    <span className="text-warn">{NOT_KNOWN}</span>
+  ) : dissolving ? (
     <>
       <span className="sr-only">no month end</span>
       <span aria-hidden className="text-ink-dim">
@@ -2618,7 +2629,9 @@ function UnitRow({
         ) : (
           <span
             className={
-              !silverIsRed(shownSilver, silver) && silverIsDim(shownSilver)
+              // `silverIsDim(null)` is true, so without the first term the amber words would sit
+              // inside a dim wrapper.
+              !moneyNotKnown && !silverIsRed(shownSilver, silver) && silverIsDim(shownSilver)
                 ? "text-ink-dim"
                 : undefined
             }

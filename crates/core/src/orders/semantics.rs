@@ -49,11 +49,11 @@ use crate::orders::silver::{
     readiness_reason, settle_unclaimed, split_pool, tax_overstated_by, taxes, taxing_men,
     transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster,
     ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
-    LateFoodRelief, Lookups, MarketFunds, MarketSide, PhaseFacts, PhaseSilver, Pillagers,
-    PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts,
-    RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket, SilverChange,
-    SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
-    UpkeepSettlement, Workforce,
+    LateFoodRelief, Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver,
+    Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove,
+    Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket,
+    SilverChange, SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts,
+    UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -64,7 +64,7 @@ use crate::orders::transfers::{in_report_order, PendingTransfer};
 use crate::report::composition;
 use crate::report::flags::FlagChange;
 use crate::report::model::{
-    Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Skill, Structure,
+    Coordinate, ItemAmount, MarketItem, ReportRegion, ReportUnit, Skill, Structure, UnitRead,
 };
 use crate::report::ParsedReport;
 
@@ -5252,6 +5252,25 @@ fn hex_facts<'a>(
         .collect()
 }
 
+/// How much of this unit's line reached the money (`ah-l09a.4`).
+///
+/// The **report's** items and not the projection's: a `GIVE` this month may put silver into a unit
+/// whose own `SILV` was never read, and that gift says nothing about what the unit already held.
+fn money_read_of(unit: &ReportUnit) -> MoneyRead {
+    if unit.read == UnitRead::Complete {
+        return MoneyRead::Whole;
+    }
+    if unit
+        .items
+        .iter()
+        .any(|item| item.tag.eq_ignore_ascii_case(SILVER))
+    {
+        MoneyRead::MoneyKept
+    } else {
+        MoneyRead::MoneyLost
+    }
+}
+
 /// One own unit as maintenance sees it - the row [`hex_facts`] builds for each of them, lifted out
 /// so a caller holding one `Ordered` and no index can read the same facts.
 ///
@@ -5275,6 +5294,7 @@ fn unit_facts<'a>(
         men: ordered.early_men(),
         men_reported: ordered.unit.men,
         men_estimated: ordered.unit.men_estimated,
+        money_read: money_read_of(ordered.unit),
         men_by_race: ordered.early_men_by_race(),
         items: ordered.early_items(),
         flags: &ordered.flags,

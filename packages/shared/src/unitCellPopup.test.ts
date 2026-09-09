@@ -1322,6 +1322,64 @@ describe("the column popups", () => {
     expect(doubted.lines[0]).toEqual({ label: "silver", value: "?" });
   });
 
+  it("says the money is not known when the line lost it", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true, read: "nothing" }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            income: null,
+            lateIncome: null,
+            expense: null,
+            upkeep: null,
+            atMonthEnd: null,
+            doubt: "silver-never-read"
+          })
+        })
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "silver", value: "not known" },
+      { label: "at month end", value: "not known" }
+    ]);
+    expect(popup.notes).toEqual([
+      "This unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read."
+    ]);
+  });
+
+  it("shows silver it did read above a month it could not price", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({
+          own: true,
+          read: "partial",
+          items: [{ tag: "SILV", name: "silver", amount: 7500 }]
+        }),
+        facts({
+          silver: aUnitSilver({
+            held: 7500,
+            income: null,
+            lateIncome: null,
+            expense: null,
+            upkeep: null,
+            atMonthEnd: null,
+            doubt: "unit-line-cut-short"
+          })
+        })
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "silver", value: "7500" },
+      { label: "at month end", value: "not known" }
+    ]);
+    expect(popup.notes).toEqual([
+      "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up."
+    ]);
+  });
+
   it("the silver popup merges every movement with one cause into one line", () => {
     const popup = columnPopup(
       popupForCell(

@@ -26,6 +26,7 @@ import {
   type PreviewedUnit
 } from "./unitPreview";
 import { SILVER_NOTES, summariseUnit, type SilverFacts } from "./unitTooltip";
+import { monthLostToAnUnreadLine, NOT_KNOWN, silverWasNeverRead } from "./unitRead";
 import {
   COLUMN_LABELS,
   silverIsRed,
@@ -1810,6 +1811,35 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const silver = facts.silver;
   if (silver === null) {
     return { lines: [], notes: ["Only your own units have a silver forecast."] };
+  }
+
+  if (monthLostToAnUnreadLine(silver)) {
+    // Two lines and no causes: `silver.changes` is empty for any doubted unit, and a month that
+    // was never priced has no working to show. `at month end` is spelled out here rather than
+    // folded into the headline, because the headline is the money and they are now two different
+    // answers - an arrow between a fact and a thing nobody knows would say something false.
+    const lines: PopupLine[] = [
+      {
+        label: "silver",
+        value: silverWasNeverRead(silver) ? NOT_KNOWN : String(silver.held)
+      },
+      { label: "at month end", value: NOT_KNOWN }
+    ];
+    const noteFacts: SilverFacts = {
+      unit,
+      silver,
+      warned: facts.silverWarned,
+      countUpkeep: facts.countUpkeep
+    };
+    // The generic "this month cannot be added up" line below is deliberately not reached: the
+    // agreed note directly under it says the same thing better.
+    return {
+      lines,
+      notes: SILVER_NOTES.filter((note) => note.when(noteFacts)).flatMap((note) =>
+        note.say(noteFacts).split("\n")
+      ),
+      warning: silverMarkWarning(silver, null, facts.silverWarned)
+    };
   }
 
   const shown = silverShown(silver, facts.countUpkeep);

@@ -11,7 +11,7 @@
  * lives outside a component.
  */
 
-import type { ReportUnit } from "@atlantis/core-client";
+import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { itemEntryId, type GameDataIndex } from "./gameData";
 
 /**
@@ -85,4 +85,36 @@ export function unreadLine(unread: number, total: number): string | null {
     return null;
   }
   return `⚠ ${unread} of these ${total} unit${total === 1 ? "" : "s"} could not be read. Anything counted here is a floor.`;
+}
+
+/**
+ * The report never reached this unit's silver, so `held` is a zero nobody measured.
+ *
+ * Asked of the forecast rather than of the unit's items, because the row a table draws is a
+ * `PreviewedUnit` whose items already carry this month's gifts: a unit given silver by a
+ * neighbour would look as though its own had been read.
+ */
+export function silverWasNeverRead(silver: UnitSilver | null | undefined): boolean {
+  return silver?.doubt === "silver-never-read";
+}
+
+/** This unit's month cannot be added up because its line was cut short - either way round. */
+export function monthLostToAnUnreadLine(silver: UnitSilver | null | undefined): boolean {
+  return silver?.doubt === "silver-never-read" || silver?.doubt === "unit-line-cut-short";
+}
+
+/**
+ * How the silver notes open: the whole line was lost, or part of it was.
+ *
+ * The agreed record writes the two sentences out in full and they differ only here, so the clause
+ * is shared and the rest of each sentence is written once.
+ *
+ * `complete` is unreachable by construction - the core raises these doubts only for a unit whose
+ * line was cut short - and it falls to the whole-line clause rather than to "Part of", which would
+ * be false of a unit that was read.
+ */
+export function unreadLineClause(unit: ReportUnit): string {
+  return unit.read === "partial"
+    ? "Part of this unit's line in the turn report"
+    : "This unit's line in the turn report";
 }

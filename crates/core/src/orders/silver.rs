@@ -256,7 +256,12 @@ pub struct NoStudyFee {
 pub struct UnitSilver {
     pub unit_id: String,
     pub region_id: String,
-    /// Silver the unit holds now, from its `SILV` item. Always known.
+    /// Silver the unit holds now, from its `SILV` item.
+    ///
+    /// A figure, never `None` - but not always a *measurement*: where `doubt` is
+    /// [`SilverDoubt::SilverNeverRead`] this is `0` because the report's line was cut short before
+    /// the unit's `SILV`, not because the unit is penniless, and a reader must say so rather than
+    /// print it (`ah-l09a.4`). Every other case is what the report stated.
     pub held: i64,
     /// What this month's orders are expected to earn. `None` when a term could not be priced.
     pub income: Option<i64>,
@@ -800,6 +805,14 @@ pub enum SilverDoubt {
     /// A later order prices goods an earlier `GIVE` may or may not have taken away, so what this
     /// unit earns or spends afterwards cannot be said (`ah-66yi`).
     GiveConsequencesUncertain,
+    /// This unit's line was cut short before its `SILV` item, so how much silver it holds was
+    /// never read - `held` is `0` because nothing was read, not because the unit is penniless.
+    /// Nothing about its month is a number (`ah-l09a.4`).
+    SilverNeverRead,
+    /// This unit's line was cut short *after* its `SILV` item. What it holds now is a fact; its
+    /// month is not, because the men, flags and skills that price income and maintenance went with
+    /// the tail (`ah-l09a.4`).
+    UnitLineCutShort,
 }
 
 /// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
@@ -1091,13 +1104,30 @@ pub struct Receipts {
     pub takes_a_whole_class: bool,
 }
 
+/// How much of a unit's line the report gave up, as the money cares about it.
+///
+/// Derived once in `super::semantics::unit_facts` from [`crate::report::model::UnitRead`] and the
+/// *report's* own items, so no reader has to ask that question twice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MoneyRead {
+    /// The whole line was read. Every unit of every healthy report.
+    #[default]
+    Whole,
+    /// Cut short after the `SILV` item: the money stands, the month does not.
+    MoneyKept,
+    /// Cut short before the `SILV` item: the money was never read either.
+    MoneyLost,
+}
+
 /// Everything about one unit that the arithmetic needs, so the call site reads as a description of
 /// the unit rather than as eleven positional arguments.
 #[derive(Debug, Clone, Copy)]
 pub struct UnitFacts<'a> {
     pub unit_id: &'a str,
     pub region_id: &'a str,
-    /// Silver the unit holds now. 0 for a unit carrying no `SILV` item.
+    /// Silver the unit holds now. 0 for a unit carrying no `SILV` item - and also `0`, for the
+    /// same lack of an item, where `money_read` is [`MoneyRead::MoneyLost`] and the report never
+    /// reached the unit's silver at all (`ah-l09a.4`).
     pub held: i64,
     /// The unit's headcount as the turn's early phases see it - the report's own figure, with
     /// this month's `GIVE`/`TAKE` orders applied where `super::semantics` could follow them
@@ -1162,6 +1192,8 @@ pub struct UnitFacts<'a> {
     /// this application does not model.
     pub men_by_race_after_arrivals: &'a [ItemAmount],
     pub men_by_race_after_arrivals_unknown: bool,
+    /// How much of this unit's line reached the money. See [`MoneyRead`].
+    pub money_read: MoneyRead,
     /// The same unit once the market, the withdrawals and this month's production have run.
     ///
     /// `rules/sequenceofevents` settles STUDY, PRODUCE, ENTERTAIN, WORK and maintenance after the
@@ -1804,10 +1836,76 @@ pub fn forecast_unit(
         held,
         men: _,
         men_estimated,
+        money_read,
         intents,
         receipts,
         ..
     } = facts;
+
+    // Unconditional, unlike the estimated-headcount arm below: that one is gated on orders that
+    // multiply something out, while a line that lost its tail lost the flags and skills that say
+    // whether this unit works at all, so no term is priceable whatever the orders say. Placed
+    // first because a broken line is the more fundamental fact, and the one whose sentence a
+    // reader needs (`ah-l09a.4`).
+    if money_read != MoneyRead::Whole {
+        return UnitSilver {
+            unit_id: unit_id.to_string(),
+            region_id: region_id.to_string(),
+            held,
+            income: None,
+            late_income: None,
+            expense: None,
+            wanted_for_orders: None,
+            no_study_fee: None,
+            at_month_end: None,
+            short_for_orders: None,
+            short_on: None,
+            upkeep,
+            doubt: Some(if money_read == MoneyRead::MoneyLost {
+                SilverDoubt::SilverNeverRead
+            } else {
+                SilverDoubt::UnitLineCutShort
+            }),
+            doubt_subject: None,
+            received: 0,
+            givers: Vec::new(),
+            taken: 0,
+            taken_from: Vec::new(),
+            taken_unshown: 0,
+            taken_unshown_from: Vec::new(),
+            faction_food_covered: 0,
+            shared_silver_covered: 0,
+            shared_silver_for_orders: 0,
+            market_purse_held_only: false,
+            borrowed_for_orders: 0,
+            own_food_covered: 0,
+            forced_own_food: 0,
+            forced_own_food_tag: None,
+            forced_faction_food: 0,
+            food_contended: false,
+            unclaimed_covered: 0,
+            unclaimed_contended: false,
+            given_to_nobody: 0,
+            withdrawing: false,
+            produced: 0,
+            production_men_left: 0,
+            produced_name: None,
+            production_wanted: 0,
+            production_requested: None,
+            production_capped_by: None,
+            production_region_name: None,
+            works_by_default: is_set_to_work(unit_flags, intents),
+            taxes_by_flag: false,
+            cast_made: 0,
+            cast_made_named: None,
+            cast_wanted: 0,
+            cast_capped_by: None,
+            cast_summons: false,
+            formed,
+            buy_all: Vec::new(),
+            changes: Vec::new(),
+        };
+    }
 
     // A headcount that is a guess cannot multiply anything out, so it short-circuits both sides
     // before any rule below is read - exactly as `semantics::study` refuses to price one.
@@ -3047,11 +3145,12 @@ struct OwnFoodPass {
 /// Maintenance is assessed after the market, the withdrawals and this month's production have run
 /// (`rules/sequenceofevents`), so this reads `facts.maintenance()` throughout (`ah-dxfd.2`).
 ///
-/// `None` for a headcount that is itself a guess: charge nothing rather than a guess.
+/// `None` for a headcount that is itself a guess, or one that was never read at all: charge
+/// nothing rather than a guess.
 fn own_food_pass(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<OwnFoodPass> {
     // `food_uncertain`: a `GIVE` this month may or may not have taken the food this unit would eat,
     // so charge nothing rather than a guess - exactly what an estimated headcount gets (`ah-66yi`).
-    if facts.men_estimated || facts.food_uncertain {
+    if facts.men_estimated || facts.food_uncertain || facts.money_read != MoneyRead::Whole {
         return None;
     }
     let late = facts.maintenance();
@@ -4001,6 +4100,11 @@ impl NearMiss {
 #[must_use]
 pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Readiness> {
     if facts.men_estimated {
+        return None;
+    }
+    // A line cut short lost the men, the weapons and the skills that make a unit combat ready, so
+    // there is nothing here to add up (`ah-l09a.4`).
+    if facts.money_read != MoneyRead::Whole {
         return None;
     }
     if facts.skills_unknown {
@@ -7107,6 +7211,7 @@ mod tests {
             // No transfers in these tests, so the report's headcount is the early one (`ah-qct4`).
             men_reported: men,
             men_estimated: false,
+            money_read: MoneyRead::Whole,
             men_by_race: &[],
             items: &[],
             flags: &[],
@@ -8568,6 +8673,120 @@ mod tests {
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::EstimatedMen));
         assert_eq!(unit.income, None);
+    }
+
+    /// A line cut short before its `SILV` never said what the unit holds, so the `0` in `held` is
+    /// an absence of reading rather than an empty purse - and nothing about the month is a number.
+    /// The unit has no intents at all, which is what makes this refusal unconditional where the
+    /// estimated-headcount arm beside it is not.
+    #[test]
+    fn a_unit_whose_line_lost_its_silver_is_not_priced() {
+        let receipts = Receipts::default();
+        let intents: [PlacedIntent; 0] = [];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 0,
+                money_read: MoneyRead::MoneyLost,
+                ..facts(100, &intents, &receipts)
+            },
+            paying("$12.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert_eq!(unit.doubt, Some(SilverDoubt::SilverNeverRead));
+        assert_eq!(unit.income, None);
+        assert_eq!(unit.late_income, None);
+        assert_eq!(unit.expense, None);
+        assert_eq!(unit.wanted_for_orders, None);
+        assert_eq!(unit.at_month_end, None);
+        assert_eq!(unit.short_for_orders, None);
+    }
+
+    /// Silver that *was* read is a fact and stays in `held`; the month it belongs to is still not
+    /// a number, because the men, flags and skills that price it went with the tail of the line.
+    #[test]
+    fn a_unit_whose_line_kept_its_silver_is_still_not_priced() {
+        let receipts = Receipts::default();
+        let intents: [PlacedIntent; 0] = [];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 7500,
+                money_read: MoneyRead::MoneyKept,
+                ..facts(100, &intents, &receipts)
+            },
+            paying("$12.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert_eq!(unit.doubt, Some(SilverDoubt::UnitLineCutShort));
+        assert_eq!(unit.held, 7500);
+        assert_eq!(unit.at_month_end, None);
+    }
+
+    /// The refusal is about a broken line and nothing else: a unit the report read whole is priced
+    /// exactly as it always was.
+    #[test]
+    fn a_wholly_read_unit_is_priced_exactly_as_before() {
+        let receipts = Receipts::default();
+        let intents: [PlacedIntent; 0] = [];
+        let unit = forecast_unit(
+            UnitFacts {
+                held: 600,
+                money_read: MoneyRead::Whole,
+                ..facts(8, &intents, &receipts)
+            },
+            paying("$12.0", None),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            None,
+        );
+        assert_eq!(unit.doubt, None);
+        // 600 held plus a defaulted month's wages of 8 men at $12.
+        assert_eq!(unit.at_month_end, Some(696));
+    }
+
+    /// `rules/economy_maintenance` prices maintenance per head, so a headcount that was never read
+    /// prices no month at all - and a `0` fee on a unit of a hundred men is exactly the confident
+    /// wrong answer this refusal exists to stop.
+    #[test]
+    fn no_upkeep_is_charged_for_a_line_that_was_cut_short() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let intents: [PlacedIntent; 0] = [];
+        let whole = facts(100, &intents, &receipts);
+        assert_eq!(unit_upkeep(&whole, Some(&ruleset)), Some(1000));
+        let cut = UnitFacts {
+            money_read: MoneyRead::MoneyKept,
+            ..facts(100, &intents, &receipts)
+        };
+        assert_eq!(unit_upkeep(&cut, Some(&ruleset)), None);
+    }
+
+    /// The hex's combat ready men cannot be added up either, so its neighbours get a doubt rather
+    /// than a pillage threshold tested against a false zero.
+    #[test]
+    fn a_line_that_was_cut_short_has_no_countable_ready_men() {
+        let ruleset = ruleset();
+        let receipts = Receipts::default();
+        let intents: [PlacedIntent; 0] = [];
+        let whole = facts(100, &intents, &receipts);
+        assert!(readiness(&whole, Some(&ruleset)).is_some());
+        let cut = UnitFacts {
+            money_read: MoneyRead::MoneyLost,
+            ..facts(100, &intents, &receipts)
+        };
+        assert_eq!(readiness(&cut, Some(&ruleset)), None);
     }
 
     #[test]
@@ -10358,6 +10577,7 @@ mod tests {
             // No transfers in these tests, so the report's headcount is the early one (`ah-qct4`).
             men_reported: men,
             men_estimated: false,
+            money_read: MoneyRead::Whole,
             men_by_race,
             items,
             flags,
@@ -11640,6 +11860,7 @@ mod combat_ready_tests {
             // No transfers in these tests, so the report's headcount is the early one (`ah-qct4`).
             men_reported: men,
             men_estimated: false,
+            money_read: MoneyRead::Whole,
             men_by_race: &[],
             items,
             flags,

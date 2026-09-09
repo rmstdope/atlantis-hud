@@ -1696,6 +1696,10 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
     "doubt-unknown-goods":
       "The report does not say what widgets are, so what this sale earns cannot be said.",
     "doubt-estimated-men": "This unit's headcount is an estimate, so its month cannot be priced.",
+    "doubt-silver-never-read":
+      "This unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read.",
+    "doubt-unit-line-cut-short":
+      "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up.",
     "doubt-contested-region-pool":
       "Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out.",
     "doubt-market-does-not-sell":
@@ -1924,6 +1928,107 @@ describe("who paid this unit's upkeep, in one sentence (ah-x36v)", () => {
   });
 });
 
+describe("a unit whose line was cut short (ah-l09a.4)", () => {
+  const rowsOf = (unit: ReturnType<typeof aReportUnit>, silver: UnitSilver) =>
+    Object.fromEntries(
+      (summariseUnit(unit, silver, false, true).silver?.rows ?? []).map((row) => [
+        row.label,
+        row.value
+      ])
+    );
+
+  it("says a unit whose silver was never read holds an unknown amount", () => {
+    const unit = aReportUnit({ unitId: "1", read: "nothing" });
+    const silver = aUnitSilver({
+      doubt: "silver-never-read",
+      held: 0,
+      income: null,
+      lateIncome: null,
+      expense: null,
+      upkeep: null,
+      atMonthEnd: null
+    });
+
+    expect(rowsOf(unit, silver)).toEqual({
+      "Held now": "not known",
+      "In, in time": "not known",
+      "In, too late": "not known",
+      Out: "not known",
+      Upkeep: "not known",
+      "At month end": "not known"
+    });
+    expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(
+      "This unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read."
+    );
+  });
+
+  it("opens with 'Part of' when only part of the line was lost", () => {
+    const unit = aReportUnit({ unitId: "1", read: "partial" });
+    const silver = aUnitSilver({
+      doubt: "silver-never-read",
+      held: 0,
+      income: null,
+      lateIncome: null,
+      expense: null,
+      atMonthEnd: null
+    });
+    expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(
+      "Part of this unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read."
+    );
+  });
+
+  it("keeps silver it did read and refuses the month", () => {
+    const unit = aReportUnit({
+      unitId: "1",
+      read: "partial",
+      items: [{ tag: "SILV", name: "silver", amount: 7500 }]
+    });
+    const silver = aUnitSilver({
+      doubt: "unit-line-cut-short",
+      held: 7500,
+      income: null,
+      lateIncome: null,
+      expense: null,
+      upkeep: null,
+      atMonthEnd: null
+    });
+
+    expect(rowsOf(unit, silver)).toEqual({
+      "Held now": "7500",
+      "In, in time": "not known",
+      "In, too late": "not known",
+      Out: "not known",
+      Upkeep: "not known",
+      "At month end": "not known"
+    });
+    expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(
+      "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up."
+    );
+  });
+
+  it("leaves every other doubt showing ?", () => {
+    const unit = aReportUnit({ unitId: "1", menEstimated: true });
+    const silver = aUnitSilver({
+      doubt: "estimated-men",
+      held: 60,
+      income: null,
+      lateIncome: null,
+      expense: null,
+      upkeep: null,
+      atMonthEnd: null
+    });
+
+    expect(rowsOf(unit, silver)).toEqual({
+      "Held now": "60",
+      "In, in time": "?",
+      "In, too late": "?",
+      Out: "?",
+      Upkeep: "?",
+      "At month end": "?"
+    });
+  });
+});
+
 describe("no note can be shadowed by another (ah-x36v)", () => {
   // The old guard set one field per note, so no combination was ever tried and a note unreachable
   // only alongside another was invisible to it - which is exactly how `ah-moq3` and `ah-awcm` both
@@ -1942,7 +2047,9 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "contested-faction-food",
     "unknown-combat-ready",
     "unknown-skills-after-arrivals",
-    "give-consequences-uncertain"
+    "give-consequences-uncertain",
+    "silver-never-read",
+    "unit-line-cut-short"
   ];
 
   // Built with `aUnitSilver` (`ah-uhnd`) so a field added to `UnitSilver` later does not silently

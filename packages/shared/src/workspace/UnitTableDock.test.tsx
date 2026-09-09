@@ -694,6 +694,64 @@ describe("the Silver column", () => {
     );
   }
 
+  /**
+   * A unit's Silver cell, without the `sr-only` sentence that follows it: the sentence names the
+   * agreed words too, so a whole-markup assertion could not tell the cell from its explanation
+   * (`ah-l09a.4`).
+   */
+  const silverCell = (markup: string): string =>
+    /<td[^>]*>((?:(?!<\/td>)[\s\S])*?)<span class="sr-only" data-explains="silver"/.exec(
+      markup
+    )?.[1] ?? "";
+
+  it("says not known in the Silver column when the money was never read", () => {
+    const cell = silverCell(
+      drawSilver(
+        forecast({
+          held: 0,
+          income: null,
+          lateIncome: null,
+          expense: null,
+          upkeep: null,
+          atMonthEnd: null,
+          doubt: "silver-never-read"
+        })
+      )
+    );
+
+    expect(cell).toContain("not known");
+    // Amber words, and not the dim ink a null figure would otherwise be wrapped in.
+    expect(cell).toContain("text-warn");
+    expect(cell).not.toContain("text-ink-dim");
+    expect(cell).not.toContain(">?<");
+  });
+
+  it("keeps the dim ? when the silver was read and the month was not", () => {
+    const cell = silverCell(
+      drawSilver(
+        forecast({
+          held: 7500,
+          income: null,
+          lateIncome: null,
+          expense: null,
+          upkeep: null,
+          atMonthEnd: null,
+          doubt: "unit-line-cut-short"
+        })
+      )
+    );
+
+    expect(cell).not.toContain("not known");
+    expect(cell).toContain("?");
+    expect(cell).toContain("text-ink-dim");
+  });
+
+  it("leaves a completely read row's Silver cell exactly as it was", () => {
+    const cell = silverCell(drawSilver(forecast({ held: 800, atMonthEnd: 800 })));
+    expect(cell).toContain(">800<");
+    expect(cell).not.toContain("not known");
+  });
+
   it("a_unit_in_credit_shows_its_figure_in_default_ink", () => {
     const markup = drawSilver(forecast({ atMonthEnd: 800 }));
     expect(markup).toContain(">800<");
