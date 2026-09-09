@@ -597,7 +597,8 @@ pub enum SilverChangeCause {
     /// booked on the source rather than on the taker.
     ///
     /// The order is in the *taker's* block, so this arrives through [`Receipts`] exactly as
-    /// [`Self::WasGiven`] does, and carries no line of this unit's own. The ITEMS ledger already
+    /// [`Self::WasGiven`] does, and so carries the *taker's* line rather than one of this unit's
+    /// own (`ah-1x2h.3`). The ITEMS ledger already
     /// books this end as `ItemChangeCause::WasTakenFrom`; this is silver catching up (`ah-42li`).
     WasTaken,
 }
@@ -615,9 +616,10 @@ pub struct SilverChange {
     /// is not recorded.
     pub amount: i64,
     pub cause: SilverChangeCause,
-    /// The 1-based document line of the order responsible, when one order is. `None` for the
-    /// taxing flag with no `TAX` order, for a unit set to work by default, and for every receipt,
-    /// whose order is in another unit's block.
+    /// The 1-based document line of the order responsible, when one order is - whichever unit's
+    /// block that order lives in, so a receipt carries the *issuing* unit's line rather than
+    /// nothing (`ah-1x2h.3`). `None` for the taxing flag with no `TAX` order, and for a unit set
+    /// to work by default.
     pub line: Option<i64>,
     /// The other unit, as `<name> (<id>)` or `unit <id>` - the same two shapes
     /// [`UnitSilver::givers`] and [`UnitSilver::taken_unshown_from`] already carry. `None` on
@@ -974,6 +976,10 @@ pub struct ReceiptMove {
     pub cause: SilverChangeCause,
     /// The other unit's label, the same string the matching `givers`/`*_from` entry carries.
     pub other: String,
+    /// The 1-based document line of the order that moved it, in the block of the unit that
+    /// *issued* it - which for a gift received, or silver taken away, is another unit's block
+    /// (`ah-1x2h.3`).
+    pub line: i64,
 }
 
 /// Every silver movement another unit's block settles against this one this month, in or out.
@@ -1892,7 +1898,7 @@ pub fn forecast_unit(
             phases::StatePhase::Give,
             move_in.amount,
             move_in.cause,
-            None,
+            Some(move_in.line),
             Some(move_in.other.clone()),
         );
     }
@@ -7764,6 +7770,7 @@ mod tests {
                 amount: 600,
                 cause: SilverChangeCause::WasGiven,
                 other: "Paymaster (2390)".to_string(),
+                line: 2,
             }],
             ..Receipts::default()
         };
@@ -9205,6 +9212,7 @@ mod tests {
                 amount: 200,
                 cause: SilverChangeCause::WasGiven,
                 other: "Paymaster (2390)".to_string(),
+                line: 2,
             }],
             ..Receipts::default()
         };
@@ -9235,6 +9243,7 @@ mod tests {
                 amount: 100,
                 cause: SilverChangeCause::Took,
                 other: "Workers (6567)".to_string(),
+                line: 2,
             }],
             ..Receipts::default()
         };
@@ -9265,6 +9274,7 @@ mod tests {
                 amount: 100,
                 cause: SilverChangeCause::TookUnshown,
                 other: "unit 999".to_string(),
+                line: 2,
             }],
             ..Receipts::default()
         };
@@ -9317,6 +9327,7 @@ mod tests {
                 amount: 200,
                 cause: SilverChangeCause::WasGiven,
                 other: "Paymaster (2390)".to_string(),
+                line: 2,
             }],
             ..Receipts::default()
         };
@@ -10705,6 +10716,7 @@ mod tests {
                 amount: 90,
                 cause: SilverChangeCause::WasGiven,
                 other: "Scout (1789)".to_string(),
+                line: 2,
             }],
             ..Receipts::default()
         };
@@ -10735,7 +10747,9 @@ mod tests {
             [SilverChangeCause::WasGiven, SilverChangeCause::Discarded]
         );
         assert_eq!(unit.changes[0].amount, 90);
-        assert_eq!(unit.changes[0].line, None);
+        // `ah-1x2h.3`: the giver's own line, recorded rather than dropped - the order behind a
+        // received gift lives in the giver's block, and the receipt now carries it.
+        assert_eq!(unit.changes[0].line, Some(2));
         assert_eq!(unit.changes[0].other.as_deref(), Some("Scout (1789)"));
     }
 
@@ -10748,6 +10762,7 @@ mod tests {
                 amount: 25,
                 cause: SilverChangeCause::TookUnshown,
                 other: "unit 42".to_string(),
+                line: 2,
             }],
             ..Receipts::default()
         };

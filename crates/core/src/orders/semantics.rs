@@ -2715,6 +2715,7 @@ fn debit_source(
     taker: usize,
     taker_label: String,
     moved: i64,
+    line: i64,
 ) {
     // A unit written to take from itself would show `took +100` and `was taken -100` on one row for
     // a transfer that moves nothing - but it never arrives here. `rules/give`: the server refuses a
@@ -2733,6 +2734,7 @@ fn debit_source(
         amount: -moved,
         cause: SilverChangeCause::WasTaken,
         other: taker_label.clone(),
+        line,
     });
     if !entry.taken_by.contains(&taker_label) {
         entry.taken_by.push(taker_label);
@@ -2903,6 +2905,7 @@ fn apply_transfers(
                                         amount: *count,
                                         cause: SilverChangeCause::TookUnshown,
                                         other: label.clone(),
+                                        line: transfer.line as i64,
                                     });
                                     if !entry.taken_unshown_from.contains(&label) {
                                         entry.taken_unshown_from.push(label);
@@ -3072,6 +3075,7 @@ fn apply_transfers(
                                 amount: moved,
                                 cause: SilverChangeCause::WasGiven,
                                 other: source_label.clone(),
+                                line: transfer.line as i64,
                             });
                             if !entry.givers.contains(&source_label) {
                                 entry.givers.push(source_label);
@@ -3090,6 +3094,7 @@ fn apply_transfers(
                             transfer.actor,
                             taker_label(),
                             moved,
+                            transfer.line as i64,
                         );
                     }
                     // `ah-sgn6`: the ledger's own `transfer` returns early for a class selector,
@@ -3107,6 +3112,7 @@ fn apply_transfers(
                         transfer.actor,
                         taker_label(),
                         moved,
+                        transfer.line as i64,
                     );
                     let entry = receipts_by_position.entry(transfer.actor).or_default();
                     entry.taken = entry.taken.saturating_add(moved);
@@ -3114,6 +3120,7 @@ fn apply_transfers(
                         amount: moved,
                         cause: SilverChangeCause::Took,
                         other: source_label.clone(),
+                        line: transfer.line as i64,
                     });
                     if !entry.taken_from.contains(&source_label) {
                         entry.taken_from.push(source_label);
@@ -14677,6 +14684,35 @@ mod tests {
             .collect()
     }
 
+    /// `ah-1x2h.3`: a settled transfer carries the document line of the order that caused it -
+    /// the *issuing* unit's line, which for a gift received or silver taken away is a line in
+    /// another unit's block. `rules/sequenceofevents` settles GIVE and TAKE in the Give phase, so
+    /// all four causes here come from that one walk and there is one line per movement.
+    #[test]
+    fn a_settled_transfer_records_the_line_of_the_order_behind_it() {
+        let region = region(vec![
+            with_silver(unit("2390"), 500),
+            with_silver(unit("2391"), 500),
+        ]);
+        let source = "unit 2390\nGIVE 2391 200 SILV\nunit 2391\nTAKE FROM 2390 100 SILV\nTAKE FROM 999 25 SILV\n";
+
+        let receipts = receipts_in(&region, source);
+
+        let taker = receipts.get("2391").expect("the receiver has receipts");
+        assert_eq!(
+            taker.silver_moves.iter().map(|m| m.line).collect::<Vec<_>>(),
+            vec![2, 4, 5],
+            "the giver's GIVE line, then the taker's own two TAKE lines"
+        );
+
+        let source = receipts.get("2390").expect("the source has receipts");
+        assert_eq!(
+            source.silver_moves.iter().map(|m| m.line).collect::<Vec<_>>(),
+            vec![4],
+            "the taker's line, not any line of the source's own"
+        );
+    }
+
     /// `ah-rgkk.4.4`: the four producers of [`Receipts::silver_moves`], through the settlement
     /// that actually writes them rather than a hand-built `Receipts`. Each entry must carry the
     /// quantity that moved and the same label the `givers`/`taken_from` entry beside it carries -
@@ -14699,16 +14735,19 @@ mod tests {
                     amount: 200,
                     cause: SilverChangeCause::WasGiven,
                     other: "Unit 2390 (2390)".to_string(),
+                    line: 2,
                 },
                 ReceiptMove {
                     amount: 100,
                     cause: SilverChangeCause::Took,
                     other: "Unit 2390 (2390)".to_string(),
+                    line: 4,
                 },
                 ReceiptMove {
                     amount: 25,
                     cause: SilverChangeCause::TookUnshown,
                     other: "unit 999".to_string(),
+                    line: 5,
                 },
             ]
         );
@@ -14738,6 +14777,7 @@ mod tests {
                 amount: -100,
                 cause: SilverChangeCause::WasTaken,
                 other: "Unit 2391 (2391)".to_string(),
+                line: 4,
             }]
         );
         for move_out in &source.silver_moves {
@@ -14812,6 +14852,7 @@ mod tests {
                 amount: -100,
                 cause: SilverChangeCause::WasTaken,
                 other: "Unit 2391 (2391)".to_string(),
+                line: 2,
             }]
         );
         // The invariant `each_settled_silver_transfer_is_recorded_as_a_movement` states for the
@@ -14852,6 +14893,7 @@ mod tests {
                 amount: -100,
                 cause: SilverChangeCause::WasTaken,
                 other: "Unit 2391 (2391)".to_string(),
+                line: 2,
             }],
             "one movement, not a second zero one for the taker that came too late"
         );
@@ -14964,6 +15006,7 @@ mod tests {
                 amount: 500,
                 cause: SilverChangeCause::Took,
                 other: "Unit 2390 (2390)".to_string(),
+                line: 2,
             }]
         );
         assert!(!taker.takes_a_whole_class);
