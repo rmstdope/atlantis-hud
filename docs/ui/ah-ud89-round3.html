@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-ud89 round 3 &mdash; option B, drawn correctly</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 72px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; margin:40px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); } code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:12px; max-width:94ch; }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:8px; border-bottom:1px solid var(--edge-soft); padding-bottom:6px; }
+  .rows { display:grid; grid-template-columns:1fr auto; gap:2px 14px; font-size:12px; color:var(--ink-soft); }
+  .rows span:nth-child(even) { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); text-align:right; }
+  .note { display:block; margin-top:9px; padding-top:8px; border-top:1px solid var(--edge-soft); font-size:12px; color:var(--ink-soft); }
+  .note.new { color:var(--ok); }
+  .red { color:var(--danger); } .good { color:var(--ok); }
+  .problems { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; margin-top:14px; font-size:12.5px; }
+  .problems b { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; display:block; margin-bottom:7px; }
+  .problems div { color:var(--ink-soft); padding:3px 0; }
+  .problems .code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--danger); font-size:11.5px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.n { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  ul.pc { margin:10px 0 0 0; padding:0; list-style:none; max-width:94ch; }
+  ul.pc li { font-size:13.5px; color:var(--ink-soft); padding:4px 0 4px 20px; position:relative; }
+  ul.pc li:before { position:absolute; left:0; top:4px; }
+  ul.pc li.pro:before { content:"+"; color:var(--ok); }
+  ul.pc li.con:before { content:"\2212"; color:var(--danger); }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; max-width:94ch; } .cap b { color:var(--ink); }
+</style></head>
+<body>
+<header>
+  <h1><span>ah-ud89</span> round 3 &mdash; option B, drawn correctly</h1>
+  <p>You moved to <strong>option B</strong> once you saw that the Silver hover already states the
+  settled truth. My option B panel in round 1 drew the money wrong, and the correction matters
+  because it decides whether B is a small change or a large one.</p>
+  <blockquote><strong>Settled, 2026-09-09.</strong> I first drew <code>Out 0 / At month end 0</code>,
+  then <code>Out 200 / At month end &minus;100</code> on the strength of <code>ah-ofpb.4</code>&rsquo;s
+  rule that a mage who can afford none of a spell is still charged for one so its warning survives.
+  You chose <strong><code>Out 0 / At month end 100</code></strong>: no amulet is created, so nothing
+  is spent. <code>ah-ofpb.4</code>&rsquo;s floor is not reversed &mdash; it exists to keep a warning
+  alive, and here there is no warning to keep: against the hopeful purse the mage <em>could</em> have
+  paid, which is the reading every <code>not-enough-silver</code> uses. A mage with no money at all
+  is still charged for one and still warned, exactly as today.</blockquote>
+</header>
+
+<main>
+
+<section>
+  <h2 class="rule"><em>Option B</em> the fixture at pool $200, as it would really look</h2>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver &mdash; hover on 900</div>
+      <div class="hd">Orc levy (900)</div>
+      <div class="rows"><span>Held now</span><span>0</span><span>In, in time</span><span>100</span>
+        <span>In, too late</span><span>0</span><span>Out</span><span class="good">0</span>
+        <span>At month end</span><span class="good">100</span></div>
+      <span class="note new">This unit has silver for 0 amulets of protection, not the 1 its level could make.</span>
+    </div>
+    <div class="tip">
+      <div class="sect">Items &mdash; projected</div>
+      <div class="hd">Orc levy (900)</div>
+      <div class="rows"><span>amulet of protection</span><span class="good">0 &rarr; 0</span></div>
+      <span class="note new">This unit has silver for 0 amulets of protection, not the 1 its level could make.</span>
+    </div>
+  </div>
+  <div class="problems"><b>Problems panel</b>
+    <div><span class="code">region-pool-oversubscribed</span> &nbsp;your units here tax for 1000 between them and this region has 200</div>
+  </div>
+  <p class="cap"><b>The two halves agree now, and the month is honest.</b> The count says none, one
+  sentence says why, nothing is spent on a cast that will not happen, and the projected inventory no
+  longer carries an amulet the game would refuse. The shipped &ldquo;cannot pay the 100 its casting
+  costs&rdquo; line goes with it &mdash; there is no longer anything unpaid for.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>The one thing I am deciding, unless you say otherwise</em></h2>
+  <p>The cap and the shortfall warning read the same number today. Under B they must not: the cap
+  needs the settled share, and the <code>not-enough-silver</code> warning is deliberately
+  <em>accept-on-doubt</em> &mdash; it fires only when a unit is short even in the best case.</p>
+  <table class="q">
+    <tr><th>Reading</th><th>Used by</th><th>Effect here</th></tr>
+    <tr><td>Settled purse (new)</td><td>the CAST, BUY ALL and manufacturing PRODUCE caps, on both surfaces</td><td>0 amulets, and the sentence that says why</td></tr>
+    <tr><td>Hopeful balance (unchanged)</td><td>every <code>not-enough-silver</code> finding in the Problems panel</td><td>silent, exactly as today</td></tr>
+  </table>
+  <p class="cap">So <strong>no warning appears or disappears anywhere in the game</strong> as a
+  result of this bead &mdash; only counts and the sentences beside them move. The alternative &mdash;
+  settling the ledger balance itself &mdash; would make <code>not-enough-silver</code> fire on every
+  contended taxer whose STUDY or GIVE outruns its share, which is a much wider change than the one
+  you asked for and is not in this bead.</p>
+  <ul class="pc">
+    <li class="pro">Both surfaces still read <em>one</em> figure per question, so the SILVER/ITEMS agreement <code>ah-6m7b</code> was built for is kept by construction, not by six suites happening to match.</li>
+    <li class="con">Two named readings of one purse where there was one, each of which a later reader has to pick between deliberately.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 class="rule"><em>The states</em> under B</h2>
+  <table class="q">
+    <tr><th>State</th><th>What the cap reads</th><th>What the player sees</th></tr>
+    <tr><td>Uncontended, or a pool that covers everyone</td><td class="n">unchanged</td><td>Nothing changes at all.</td></tr>
+    <tr><td>Pool $100 &mdash; already capped today</td><td class="n">50</td><td>Still 0 amulets, same sentence. Today it is charged 200 and warned; it now spends 0, because against the hopeful $100 it still cannot pay for one &mdash; so <b>this row keeps its charge and its warning</b>, unchanged.</td></tr>
+    <tr><td>A contender&rsquo;s headcount is a guess (<code>Unknowable</code>)</td><td class="n">the pool</td><td>Unchanged &mdash; there is no settled number to read, and the income doubt already speaks.</td></tr>
+    <tr><td>A foreign faction also taxing here</td><td class="n">the pool</td><td>Unchanged &mdash; the app cannot see their orders.</td></tr>
+    <tr><td>Hex was pillaged</td><td class="n">nothing</td><td>A certain zero from the pillage; no contention arithmetic runs.</td></tr>
+    <tr><td>A numbered <code>BUY 5 grain</code></td><td class="n">n/a</td><td>Unchanged &mdash; a numbered BUY is never quantity-capped by silver.</td></tr>
+    <tr><td>Wages / entertainment contention</td><td class="n">n/a</td><td>Unchanged &mdash; that money arrives after the market closes and funds none of these orders.</td></tr>
+  </table>
+</section>
+
+</main>
+</body>
+</html>

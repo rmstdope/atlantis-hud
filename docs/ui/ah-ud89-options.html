@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A contended taxer's caps (ah-ud89)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 72px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:40px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  h3.sub { font-size:14px; margin:22px 0 6px; color:var(--ink); letter-spacing:0.2px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  blockquote { border-left:2px solid var(--brass); padding-left:12px; color:var(--ink-soft); font-size:13.5px; margin-top:12px; max-width:94ch; }
+  .orders { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12.5px; background:var(--panel); border:1px solid var(--edge);
+    border-radius:5px; padding:12px 14px; margin-top:14px; color:var(--ink); white-space:pre; overflow-x:auto; }
+  .orders .c { color:var(--ink-dim); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+  table.q td.n { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; }
+  tr.focus td { background:rgba(217,164,65,.10); }
+  .red { color:var(--danger); } .good { color:var(--ok); } .amber { color:var(--brass-bright); }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:8px; border-bottom:1px solid var(--edge-soft); padding-bottom:6px; }
+  .rows { display:grid; grid-template-columns:1fr auto; gap:2px 14px; font-size:12px; color:var(--ink-soft); font-family:'Helvetica Neue',Arial,sans-serif; }
+  .rows span:nth-child(even) { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--ink); text-align:right; }
+  .note { display:block; margin-top:9px; padding-top:8px; border-top:1px solid var(--edge-soft); font-size:12px; font-style:italic; color:var(--ink-soft); }
+  .note.new { color:var(--ok); font-style:normal; }
+  .note.miss { color:var(--danger); }
+  .problems { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; margin-top:14px; font-size:12.5px; }
+  .problems b { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; display:block; margin-bottom:7px; }
+  .problems div { color:var(--ink-soft); padding:3px 0; }
+  .problems .code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--danger); font-size:11.5px; }
+  ul.pc { margin:10px 0 0 0; padding:0; list-style:none; max-width:94ch; }
+  ul.pc li { font-size:13.5px; color:var(--ink-soft); padding:4px 0 4px 20px; position:relative; }
+  ul.pc li:before { position:absolute; left:0; top:4px; font-size:13px; }
+  ul.pc li.pro:before { content:"+"; color:var(--ok); }
+  ul.pc li.con:before { content:"\2212"; color:var(--danger); }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; max-width:94ch; } .cap b { color:var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-ud89</span> &mdash; a contended taxer's CAST and BUY ALL caps</h1>
+  <p>When two of <strong>your own</strong> units tax one region whose pool cannot pay them both,
+  the app already knows how the money splits &mdash; the Silver column's income row shows the split
+  figure, and the Problems panel says the pool is oversubscribed. But the <strong>cap</strong> on
+  what that unit can then CAST or BUY ALL is still sized against the <strong>whole</strong> pool.
+  So the app tells the unit it makes an amulet, and in the same breath tells you it ends the month
+  a hundred short.</p>
+  <blockquote>This is a deliberate convention, not an oversight. <code>ah-omn7</code> Q2 decided
+  that a cap reads the <em>hopeful</em> purse while the money columns keep the <em>settled</em>
+  figure &mdash; you accepted then that &ldquo;where a tax really is split, the projected inventory
+  can show goods the unit will not get&rdquo;. The narrow question here is whether that should
+  still hold when the hopefulness comes from <strong>your own other units</strong>, which the app
+  can see and has already counted. Nothing outside that is being re-opened.</p>
+</header>
+
+<main>
+
+<section>
+  <h2 class="rule"><em>The fixture</em> one hex, two taxers, one mage</h2>
+  <div class="orders">unit 900   <span class="c">; ten orcs, holds $0, level 1 CRPA</span>
+  tax
+  cast Create_Amulet_Of_Protection   <span class="c">; "their level in amulets [AMPR] ... at a cost of 200 silver"</span>
+
+unit 901   <span class="c">; ten orcs, holds $0</span>
+  tax                                <span class="c">; rules/economy_taxingpillaging: "if the number of taxers would</span>
+                                     <span class="c">; tax more than the available tax income, the tax income is</span>
+                                     <span class="c">; split evenly among all taxers"</span></div>
+  <p>Each unit asks $500 of the pool (ten men at $50). What each actually collects, and what the
+  app currently does with it, walking the region's tax pool down:</p>
+  <table class="q">
+    <tr><th>Tax pool</th><th>900's income (shown)</th><th>Cap reads</th><th>Amulets</th><th>Capped by</th><th>Month end</th></tr>
+    <tr><td class="n">$300</td><td class="n">100 &rarr; <b>150</b></td><td class="n">300</td><td class="n">1</td><td class="n">&mdash;</td><td class="n red">&minus;50</td></tr>
+    <tr class="focus"><td class="n">$200</td><td class="n"><b>100</b></td><td class="n">200</td><td class="n">1</td><td class="n">&mdash;</td><td class="n red">&minus;100</td></tr>
+    <tr><td class="n">$100</td><td class="n"><b>50</b></td><td class="n">100</td><td class="n">0</td><td class="n">silver</td><td class="n red">&minus;150</td></tr>
+    <tr><td class="n">$200, <em>one</em> taxer</td><td class="n"><b>200</b></td><td class="n">200</td><td class="n">1</td><td class="n">&mdash;</td><td class="n good">0</td></tr>
+  </table>
+  <p class="cap"><b>The cap flips between $200 and $100 of <em>pool</em></b>, not between $200 and
+  $100 of 900's own share. It is the pool being divided by the item price. The highlighted row is
+  the one to decide on: two surfaces agree on a confident <b>1 amulet</b> while the panel below
+  says the unit is $100 short.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Today</em> the $200 row, as it ships</h2>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver &mdash; hover on 900</div>
+      <div class="hd">Orc levy (900)</div>
+      <div class="rows"><span>Held now</span><span>0</span><span>In, in time</span><span>100</span>
+        <span>In, too late</span><span>0</span><span>Out</span><span>200</span>
+        <span>At month end</span><span class="red">&minus;100</span></div>
+      <span class="note">This unit cannot pay the 100 its casting costs.</span>
+    </div>
+    <div class="tip">
+      <div class="sect">Items &mdash; projected</div>
+      <div class="hd">Orc levy (900)</div>
+      <div class="rows"><span>amulet of protection</span><span>0 &rarr; 1</span></div>
+      <span class="note">amulet of protection: cast Create_Amulet_Of_Protection.</span>
+    </div>
+  </div>
+  <div class="problems"><b>Problems panel</b>
+    <div><span class="code">region-pool-oversubscribed</span> &nbsp;your units here tax for 1000 between them and this region has 200</div>
+  </div>
+  <p class="cap"><b>The contradiction, in one screen.</b> The Silver hover says the unit cannot
+  pay for its cast; the ITEMS column projects the amulet anyway, with nothing qualifying it, and
+  neither surface says the two are the same fact or which of them to believe. The cast count is the
+  half that is wrong, and it is the half nothing speaks about.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option A</em> nothing changes &mdash; the cap stays hopeful</h2>
+  <p>Exactly the screen above. <code>ah-omn7</code> Q2's rule holds everywhere without exception:
+  one rule for caps, no new plumbing, no test churn. You close this bead.</p>
+  <ul class="pc">
+    <li class="pro">One rule, stated once, that a player can learn: <em>a cap assumes your income arrives in full</em>.</li>
+    <li class="pro">A player who is about to cancel 901's TAX &mdash; a normal thing to do once the Problems panel tells them &mdash; sees the amulet they are about to secure, not a zero that would vanish a second later.</li>
+    <li class="con">The projected inventory keeps an amulet the game will refuse, and no sentence anywhere says why the month ends short.</li>
+    <li class="con">It is the case the app is <em>best</em> placed to be certain about &mdash; both taxers are yours, both headcounts are exact, the split is arithmetic.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option B</em> the cap reads the settled share, where the app settled it</h2>
+  <p>When the contention is between your own units and every headcount is exact, the app already
+  computes each unit's share. The CAST and BUY ALL caps read that share instead of the pool. The
+  money columns are untouched; only the count and its sentence move.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver &mdash; hover on 900</div>
+      <div class="hd">Orc levy (900)</div>
+      <div class="rows"><span>Held now</span><span>0</span><span>In, in time</span><span>100</span>
+        <span>In, too late</span><span>0</span><span>Out</span><span class="good">0</span>
+        <span>At month end</span><span class="good">100</span></div>
+      <span class="note new">This unit has silver for 0 amulets of protection, not the 1 its level could make.</span>
+    </div>
+    <div class="tip">
+      <div class="sect">Items &mdash; projected</div>
+      <div class="hd">Orc levy (900)</div>
+      <div class="rows"><span>amulet of protection</span><span class="good">0 &rarr; 0</span></div>
+      <span class="note new">This unit has silver for 0 amulets of protection, not the 1 its level could make.</span>
+    </div>
+  </div>
+  <div class="problems"><b>Problems panel</b>
+    <div><span class="code">region-pool-oversubscribed</span> &nbsp;your units here tax for 1000 between them and this region has 200</div>
+  </div>
+  <h3 class="sub">Where it does <em>not</em> apply, deliberately</h3>
+  <table class="q">
+    <tr><th>Situation</th><th>Cap reads</th><th>Why</th></tr>
+    <tr><td>A foreign faction also taxing here</td><td class="n">the pool</td><td>The app cannot see their orders. Unchanged from today.</td></tr>
+    <tr><td>A contending unit whose headcount is a guess</td><td class="n">the pool</td><td>The share is <code>Unknowable</code> &mdash; there is no number to read.</td></tr>
+    <tr><td>Wages and entertainment contention</td><td class="n">the pool</td><td>Paid after the market closes, so they fund no cast or purchase either way.</td></tr>
+  </table>
+  <ul class="pc">
+    <li class="pro">The two surfaces and the Problems panel finally tell one story, and the month no longer ends red for a cast the app itself said was affordable.</li>
+    <li class="pro">The projected inventory stops showing an item the game will refuse.</li>
+    <li class="con">Two rules where there was one: a cap is hopeful about a foreign taxer and settled about your own. A player has to know which.</li>
+    <li class="con">A player who intends to cancel 901's TAX sees a discouraging <b>0</b> until they do &mdash; and cancelling it is the fix the panel is pointing at.</li>
+    <li class="con">Real plumbing, and it is not the cheap version: making only the column read the share re-opens exactly the SILVER/ITEMS drift <code>ah-6m7b</code> was built to close. Done properly the settlement reaches the ledger, and the ledger&rsquo;s deliberate <em>accept-on-doubt</em> policy then needs a second, optimistic reading of its own or a false <code>not-enough-silver</code> fires in every contended tax hex.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 class="rule"><em>Option C</em> keep the hopeful count, and say that it is hopeful</h2>
+  <p><code>ah-omn7</code> Q2 stands untouched &mdash; the count stays 1 &mdash; and the cast and
+  BUY ALL sentences gain a clause naming the assumption they rest on. The contradiction is removed
+  by explanation rather than by changing a number.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Silver &mdash; hover on 900</div>
+      <div class="hd">Orc levy (900)</div>
+      <div class="rows"><span>Held now</span><span>0</span><span>In, in time</span><span>100</span>
+        <span>In, too late</span><span>0</span><span>Out</span><span>200</span>
+        <span>At month end</span><span class="red">&minus;100</span></div>
+      <span class="note">This unit cannot pay the 100 its casting costs.</span>
+      <span class="note new">This unit makes 1 amulet of protection only if its TAX arrives in full: your other units in this region are competing for the same tax money.</span>
+    </div>
+    <div class="tip">
+      <div class="sect">Items &mdash; projected</div>
+      <div class="hd">Orc levy (900)</div>
+      <div class="rows"><span>amulet of protection</span><span class="amber">0 &rarr; 1</span></div>
+      <span class="note new">This unit makes 1 amulet of protection only if its TAX arrives in full: your other units in this region are competing for the same tax money.</span>
+    </div>
+  </div>
+  <div class="problems"><b>Problems panel</b>
+    <div><span class="code">region-pool-oversubscribed</span> &nbsp;your units here tax for 1000 between them and this region has 200</div>
+  </div>
+  <p class="cap">The same clause serves a BUY ALL: <em>&ldquo;This unit buys 4 swords only if its
+  TAX arrives in full: your other units in this region are competing for the same tax money.&rdquo;</em></p>
+  <ul class="pc">
+    <li class="pro">One rule for caps survives, and the screen stops contradicting itself.</li>
+    <li class="pro">A player about to cancel the other TAX still sees the amulet they are securing.</li>
+    <li class="pro">Cheapest of the three by a wide margin &mdash; two sentences, no change to any number.</li>
+    <li class="con">The projected inventory still shows an amulet the game will refuse; the player has to read a sentence to know it is provisional.</li>
+    <li class="con">One more line on a hover that is already dense, on every contended taxer that casts or buys.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 class="rule"><em>The states</em> whichever you pick</h2>
+  <table class="q">
+    <tr><th>State</th><th>A</th><th>B</th><th>C</th></tr>
+    <tr><td>Pool covers everyone (no contention)</td><td>unchanged</td><td>unchanged</td><td>no clause</td></tr>
+    <tr><td>Pool $100 &mdash; already capped today</td><td>unchanged</td><td>unchanged (0 either way)</td><td>existing silver sentence, no clause added</td></tr>
+    <tr><td>A contender's headcount is a guess</td><td>unchanged</td><td>unchanged (no share to read)</td><td>clause still shown</td></tr>
+    <tr><td>Hex was pillaged</td><td colspan="3">A certain zero from the pillage; no contention arithmetic runs at all.</td></tr>
+    <tr><td>Unit writes both a CAST and a BUY ALL</td><td colspan="3">Whatever you pick applies to both &mdash; they share the seam.</td></tr>
+  </table>
+</section>
+
+</main>
+</body>
+</html>
