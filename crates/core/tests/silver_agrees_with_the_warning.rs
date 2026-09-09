@@ -311,6 +311,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         faction_food_covered: 0,
         shared_silver_covered,
         shared_silver_for_orders: 0,
+        market_purse_held_only: false,
         borrowed_for_orders: 0,
         taxes_by_flag: false,
         own_food_covered: 0,

@@ -348,6 +348,15 @@ pub struct UnitSilver {
     /// purse, and `semantics::sharing_purse` settles it - the same computation the
     /// `not-enough-silver` warning is judged against, so the two surfaces cannot disagree.
     pub shared_silver_for_orders: i64,
+    /// `true` when this hex's `SHARE` purse could not be settled and fell back to the silver its
+    /// sharers actually hold, so every `BUY ALL` count on this unit is a floor rather than a
+    /// forecast (`ah-3c2t.3`). `false` for a unit in a hex that shares nothing, and `false`
+    /// wherever the tax settlement produced a number.
+    ///
+    /// Carried once per unit rather than once per [`BuyAllShown`] because the fallback is a
+    /// property of the hex: every line on the unit is a floor or none of them is, and a per-line
+    /// flag would need adding to some forty test literals that have nothing to do with it.
+    pub market_purse_held_only: bool,
     /// What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
     /// this unit's own overdraft, where the hex's purse settled it (`ah-3c2t.2`).
     ///
@@ -487,8 +496,13 @@ pub struct UnitSilver {
     /// `formed_by`, since a unit that does not exist cannot be selected.
     pub formed: Option<FormedSubject>,
     /// This unit's `BUY ALL` orders, settled, in document order. Empty for the overwhelming
-    /// majority of units, and empty for a unit whose sums are doubted - the market block and the
-    /// gift arms are skipped for a doubted unit.
+    /// majority of units.
+    ///
+    /// Empty for a doubted unit too, with one exception: a unit whose only doubt is a contended
+    /// tax pool it could not settle, in a hex whose `SHARE` purse fell back to silver in hand.
+    /// There the count was decided from money nobody disputes, so it is reported as a floor
+    /// rather than withheld (`ah-3c2t.3`). [`UnitSilver::changes`] has no such exception and
+    /// stays empty for every doubted unit.
     pub buy_all: Vec<BuyAllShown>,
     /// Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
     /// the turn, ties broken by document line.
@@ -1736,6 +1750,29 @@ fn exact_market_spend(
 /// that is actually unknown; `at_month_end` is `None` when either is. When more than one term is
 /// doubted, `doubt` reports the first match in order of increasing scope - [`SilverDoubt::EstimatedMen`]
 /// first, which short-circuits, because nothing per-man can be multiplied out.
+/// One `BUY ALL` the ledger settled, named for the column.
+///
+/// Nothing is priced here: `settle_buy_all` has already run `price_buy_all` over the ledger's own
+/// market-phase silver, and this only names the counts (`ah-6m7b.2`).
+///
+/// A function rather than two literals because [`forecast_unit`] builds this in two arms now - the
+/// certain one and the fallen-back purse's (`ah-3c2t.3`) - and two literals naming the same ten
+/// fields is how one purchase comes to be described two ways.
+fn shown_buy_all(settled: &SettledBuyAll, lookups: &Lookups<'_>) -> BuyAllShown {
+    BuyAllShown {
+        bought_named: (lookups.counted_or_none)(settled.plan.bought, &settled.tag),
+        market_named: (lookups.counted_or_none)(settled.plan.market_has, &settled.tag),
+        bought: settled.plan.bought,
+        affordable: settled.plan.affordable,
+        available: settled.plan.available,
+        market_has: settled.plan.market_has,
+        already_bought: settled.plan.already_bought,
+        silver_available: settled.silver_available,
+        price: settled.price,
+        capped_by: settled.plan.capped_by,
+    }
+}
+
 #[must_use]
 #[allow(clippy::too_many_arguments)]
 pub fn forecast_unit(
@@ -1801,6 +1838,7 @@ pub fn forecast_unit(
             faction_food_covered: 0,
             shared_silver_covered: 0,
             shared_silver_for_orders: 0,
+            market_purse_held_only: false,
             borrowed_for_orders: 0,
             own_food_covered: 0,
             forced_own_food: 0,
@@ -2766,7 +2804,9 @@ pub fn forecast_unit(
                 buy.price,
                 buy.allowed,
                 match shared_market {
-                    SharedMarket::Adds(adds) => MarketFunds::Silver(funds.saturating_add(adds)),
+                    SharedMarket::Adds(adds) | SharedMarket::HeldOnly(adds) => {
+                        MarketFunds::Silver(funds.saturating_add(adds))
+                    }
                     SharedMarket::Unmeasured => MarketFunds::Unmeasured,
                 },
             );
@@ -2785,18 +2825,7 @@ pub fn forecast_unit(
         // already run `price_buy_all` over the ledger's own market-phase silver, and this arm only
         // names the counts (`ah-6m7b.2`).
         for settled in facts.settled_buy_all() {
-            buy_all.push(BuyAllShown {
-                bought_named: (lookups.counted_or_none)(settled.plan.bought, &settled.tag),
-                market_named: (lookups.counted_or_none)(settled.plan.market_has, &settled.tag),
-                bought: settled.plan.bought,
-                affordable: settled.plan.affordable,
-                available: settled.plan.available,
-                market_has: settled.plan.market_has,
-                already_bought: settled.plan.already_bought,
-                silver_available: settled.silver_available,
-                price: settled.price,
-                capped_by: settled.plan.capped_by,
-            });
+            buy_all.push(shown_buy_all(settled, &lookups));
             if settled.spends > 0 {
                 spent_on = spent_on.or(Some(SilverSpender::Buy));
             }
@@ -2823,6 +2852,46 @@ pub fn forecast_unit(
                 Some(buy.line),
                 None,
             );
+        }
+
+        // A `BUY ALL` this unit's *certain* silver settled, in a hex whose purse could not be
+        // worked out. `ah-3c2t.1` made that purse silver in hand alone and took this unit's own
+        // uncollectable tax off its balance with it, so the count `settle_buy_all` recorded was
+        // decided from money nobody disputes - a floor, which `rules/buy` guarantees ("it will
+        // attempt to buy as many as it can": more silver can only buy more). Reported rather than
+        // withheld, so the row is a number the player can act on instead of a `?` (`ah-3c2t.3`,
+        // option D2 in `docs/ui/ah-3c2t-shared-purse.html`).
+        //
+        // Narrowed to a unit whose *only* doubt is `ContestedRegionPool`: it is the one doubt the
+        // fallback answers. A unit doubted for an unpriceable sale or an untraceable gift has no
+        // certain balance to have bought from, and its `BUY ALL` stays unreported exactly as
+        // today.
+        //
+        // `expense_doubt` is tested as well as `income_doubt`, because `doubt` below is
+        // `income_doubt.or(expense_doubt)` and a unit can carry both: an unpriceable bounded `BUY`
+        // beside a contended pool would otherwise reach this arm with the income half looking
+        // clean. The ledger's own `doubted` set empties `settled_buy_all` for such a unit today,
+        // so the two agree - but that is a coupling in another module, and this arm must not
+        // depend on it.
+        //
+        // `spent_on` is deliberately not set here, unlike the certain arm above: `short_on` is
+        // only read where `short_for_orders` is `Some`, and `short_before_sharing` below is
+        // `None` wherever `income` is, so it can never be read on this path.
+        if income_doubt == Some(SilverDoubt::ContestedRegionPool)
+            && expense_doubt.is_none()
+            && matches!(shared_market, SharedMarket::HeldOnly(_))
+        {
+            for settled in facts.settled_buy_all() {
+                buy_all.push(shown_buy_all(settled, &lookups));
+                record(
+                    &mut moves,
+                    phases::StatePhase::Market,
+                    -settled.spends,
+                    SilverChangeCause::Bought,
+                    Some(settled.line),
+                    None,
+                );
+            }
         }
     }
 
@@ -2903,6 +2972,7 @@ pub fn forecast_unit(
         faction_food_covered: 0,
         shared_silver_covered: 0,
         shared_silver_for_orders: shared,
+        market_purse_held_only: matches!(shared_market, SharedMarket::HeldOnly(_)),
         borrowed_for_orders: 0,
         own_food_covered,
         forced_own_food: 0,
@@ -4255,6 +4325,15 @@ pub enum SharedMarket {
     /// What every *other* sharing unit in the region holds as the market opens. `0` where nothing
     /// shares, or where every sharer is spent up.
     Adds(i64),
+    /// What every *other* sharing unit holds, in a hex whose tax pool could not be settled at all,
+    /// so the purse counted silver actually in hand and nothing else (`ah-3c2t.1`'s
+    /// `MarketPurse::fell_back`).
+    ///
+    /// Arithmetically identical to [`Self::Adds`] and never treated differently by a cap - a
+    /// separate variant only because the count it produces is a **floor**, and the column has to
+    /// say so (`ah-3c2t.3`). Distinct from [`Self::Unmeasured`], which is a purse that could not
+    /// be read at all.
+    HeldOnly(i64),
     /// A sharer's balance could not be priced. No bounded `BUY` is capped, and a `BUY ALL` is
     /// capped by the unit's own silver alone.
     Unmeasured,

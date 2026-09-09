@@ -1702,6 +1702,9 @@ fn forecast_hex(
                 uncertain_after_gifts: &uncertain_after_gifts,
             },
             match market_purse.adds_for(index) {
+                // An unreadable purse is a stronger statement than a fallen-back one, and
+                // `adds_for` already answers `None` for it, so `Unmeasured` still wins here.
+                Some(adds) if market_purse.fell_back() => SharedMarket::HeldOnly(adds),
                 Some(adds) => SharedMarket::Adds(adds),
                 None => SharedMarket::Unmeasured,
             },
@@ -8618,9 +8621,9 @@ struct MarketPurse {
     /// market-open balance that genuinely cannot be priced, whenever the doubt was raised.
     trusted: bool,
     /// `true` when any sharer's tax was unknowable and the purse therefore lent silver in hand
-    /// alone. Nothing in this bead reads it; `ah-3c2t.3` renders it as the sentence that tells the
-    /// player the quantity is a floor. Kept on the purse rather than recomputed there because the
-    /// rule that chose the fallback lives here.
+    /// alone. `ah-3c2t.3` renders it as the sentence that tells the player the quantity is a
+    /// floor. Kept on the purse rather than recomputed there because the rule that chose the
+    /// fallback lives here.
     fell_back: bool,
 }
 
@@ -8733,8 +8736,8 @@ impl MarketPurse {
     }
 
     /// `true` when this hex's purse lent silver in hand alone because no sharer's settled income
-    /// was a number. Read by `ah-3c2t.3` and by nothing in this bead.
-    #[allow(dead_code)]
+    /// was a number. Read by `forecast_hex`, which turns it into `SharedMarket::HeldOnly` so the
+    /// column can say the counts it shows are floors (`ah-3c2t.3`).
     fn fell_back(&self) -> bool {
         self.fell_back
     }
@@ -21050,6 +21053,215 @@ BUILD
                     "the $600 held buys 12 horses at $50, and neither taxer's hopeful income counts"
                 );
             });
+        }
+
+        /// The hex's row for a unit whose income nothing doubts still carries the fact that the
+        /// purse fell back, because the fallback is a property of the hex and every `BUY ALL` in
+        /// it is a floor (`ah-3c2t.3`).
+        ///
+        /// Asserted on unit 3, which holds $600, shares and does not tax: nothing doubts its
+        /// income, so this test is about the flag arriving and about nothing else.
+        #[test]
+        fn a_fallen_back_purse_marks_the_units_it_lent_to() {
+            fn held_only(hex: ReportRegion, unit_id: &str) -> bool {
+                review_turn(
+                    &report(vec![hex]),
+                    SETTLED_PURSE_ORDERS,
+                    Some(&ruleset()),
+                    CheckOptions::default(),
+                )
+                .silver
+                .iter()
+                .find(|row| row.unit_id == unit_id)
+                .expect("the unit is forecast")
+                .market_purse_held_only
+            }
+
+            assert!(
+                !held_only(settled_purse_hex(), "3"),
+                "a settleable pool lends the settlement, so no count is a floor"
+            );
+
+            let mut unknowable = settled_purse_hex();
+            unknowable.units[1].men_estimated = true;
+
+            assert!(
+                held_only(unknowable, "3"),
+                "no sharer's share is a number, so the purse lent silver in hand alone"
+            );
+        }
+
+        /// A hex whose pool could not be settled still reports what the buyer's *certain* silver
+        /// bought: the count came from money nobody disputes, so it is shown as a floor rather
+        /// than withheld as a row of `?` (`ah-3c2t.3`, option D2).
+        #[test]
+        fn an_unsettleable_pool_still_counts_what_certain_silver_buys() {
+            let mut hex = settled_purse_hex();
+            hex.units[1].men_estimated = true;
+            let review = review_turn(
+                &report(vec![hex]),
+                SETTLED_PURSE_ORDERS,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+
+            assert_eq!(buyer.income, None, "the contended pool is still doubted");
+            assert_eq!(buyer.at_month_end, None, "and so is the month end");
+            assert_eq!(
+                buyer.expense,
+                Some(600),
+                "12 horses at $50, the silver the hex actually holds"
+            );
+            assert_eq!(buyer.buy_all.len(), 1, "the BUY ALL line is reported");
+            assert_eq!(buyer.buy_all[0].bought, 12);
+            assert_eq!(buyer.buy_all[0].capped_by, BuyAllCap::Silver);
+            assert!(
+                buyer.changes.is_empty(),
+                "a doubted unit still shows no change list"
+            );
+        }
+
+        /// The fallback answers one doubt and only that one. Each of the new arm's two conditions
+        /// guarded on its own: first a hex whose pool settled perfectly well, so only the purse
+        /// condition can be refusing; then a hex whose purse did fall back, on a unit doubted for
+        /// something else, so only the doubt condition can be (`ah-3c2t.3`).
+        ///
+        /// The case where both conditions hold and the unit is doubted anyway is
+        /// [`a_unit_doubted_on_both_sides_reports_no_buy_all_even_when_the_purse_fell_back`].
+        #[test]
+        fn a_doubted_unit_in_a_settleable_hex_still_reports_no_buy_all() {
+            let review = review_turn(
+                &report(vec![settled_purse_hex()]),
+                "unit 1\nTAX\nSELL 1 wibble\nBUY ALL horse\nunit 2\nTAX\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+
+            assert_eq!(
+                buyer.doubt,
+                Some(SilverDoubt::UnknownGoods),
+                "the doubt is this unit's own sale, not the region's pool"
+            );
+            assert!(
+                buyer.buy_all.is_empty(),
+                "an unsettleable pool is not what doubts this unit, so nothing is reported"
+            );
+
+            // And a buyer in a hex whose pool *did* fall back, doubted for something else: the
+            // purse condition holds now, so this half is the narrowing to `ContestedRegionPool` on
+            // its own. Unit 3 rather than unit 1, because a unit that taxes a contended region is
+            // doubted for the pool whatever else it does; unit 3 shares, holds $600 and taxes
+            // nothing, so its only doubt is the sale it could not price - and a unit that cannot
+            // price its own sale has no certain balance to have bought from.
+            let mut unknowable = settled_purse_hex();
+            unknowable.units[1].men_estimated = true;
+            let review = review_turn(
+                &report(vec![unknowable]),
+                "unit 1\nTAX\nunit 2\nTAX\nunit 3\nSELL 1 wibble\nBUY ALL horse\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "3")
+                .expect("the buyer is forecast");
+
+            assert!(
+                buyer.market_purse_held_only,
+                "the purse did fall back, so only the doubt is left to guard this"
+            );
+            assert_eq!(buyer.doubt, Some(SilverDoubt::UnknownGoods));
+            assert!(
+                buyer.buy_all.is_empty(),
+                "the fallback answers a contended pool and no other doubt"
+            );
+        }
+
+        /// Both of the new arm's conditions hold and the unit is still doubted on its *expense*
+        /// side - a bounded `BUY` this market cannot price, beside the contended pool. The count
+        /// is not a floor then, because what the unit will spend is not a number either, so
+        /// nothing is reported (`ah-3c2t.3`).
+        ///
+        /// The composed case: `income_doubt` really is `ContestedRegionPool` and the purse really
+        /// did fall back, so neither of the two conditions in `a_doubted_unit_in_a_settleable_hex`
+        /// is doing the guarding here.
+        ///
+        /// **What this test does and does not pin.** It pins the behaviour - the row is withheld -
+        /// and nothing narrower. It does *not* fail if `forecast_unit`'s `expense_doubt` guard is
+        /// removed, because the ledger's own `doubted` set empties `settled_buy_all` for this unit
+        /// as well, and that alone keeps `buy_all` empty. Every order shape reached for was tried:
+        /// an unpriceable bounded `BUY`, an unpriceable `SELL`, `STUDY`, `PRODUCE`, `CAST` and two
+        /// `GIVE` forms. Each either doubts the unit in the ledger too, or doubts a *sharer* and
+        /// so makes the whole purse untrusted (`SharedMarket::Unmeasured`, not `HeldOnly`), which
+        /// takes the case out of this arm by the other condition. So no scene makes the column's
+        /// guard the only thing refusing, and this doc claims no more than that. The guard stays
+        /// as the arm's own statement of what it covers, rather than a dependence on a coupling
+        /// in another module.
+        #[test]
+        fn a_unit_doubted_on_both_sides_reports_no_buy_all_even_when_the_purse_fell_back() {
+            let mut unknowable = settled_purse_hex();
+            unknowable.units[1].men_estimated = true;
+            let review = review_turn(
+                &report(vec![unknowable]),
+                "unit 1\nTAX\nBUY 1 widget\nBUY ALL horse\nunit 2\nTAX\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+
+            assert!(buyer.market_purse_held_only, "the purse did fall back");
+            assert_eq!(
+                buyer.doubt,
+                Some(SilverDoubt::ContestedRegionPool),
+                "the income half reads exactly as the reported case does"
+            );
+            assert_eq!(
+                buyer.expense, None,
+                "and the expense half is doubted too, which is what this test composes"
+            );
+            assert!(
+                buyer.buy_all.is_empty(),
+                "what this unit will spend is not a number, so its count is not a floor"
+            );
+        }
+
+        /// Most hexes see nothing at all: where the pool goes round, the flag is `false` and every
+        /// figure is exactly what `ah-3c2t.1` left it (`ah-3c2t.3`).
+        #[test]
+        fn an_ordinary_sharing_hex_reports_exactly_what_it_reported_before() {
+            let review = review_turn(
+                &report(vec![settled_purse_hex()]),
+                SETTLED_PURSE_ORDERS,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+
+            assert!(!buyer.market_purse_held_only, "the pool settled");
+            assert_eq!(buyer.buy_all.len(), 1);
+            assert_eq!(buyer.buy_all[0].bought, 52);
+            assert_eq!(buyer.income, Some(1000), "its settled share of the pool");
+            assert_eq!(buyer.expense, Some(2600), "52 horses at $50");
+            assert_eq!(buyer.at_month_end, Some(-1600));
         }
 
         /// Accept-on-doubt means "your own silver" for a `BUY ALL`, not "unlimited": it has always

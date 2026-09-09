@@ -493,6 +493,91 @@ describe("buyAllSentences (ah-jown)", () => {
     ]);
   });
 
+  it("says a buy is a floor when the hex's purse could not be settled (ah-3c2t.3)", () => {
+    expect(
+      buyAllSentences(
+        aUnitSilver({
+          marketPurseHeldOnly: true,
+          buyAll: [
+            {
+              boughtNamed: "12 horses",
+              marketNamed: "100 horses",
+              bought: 12,
+              affordable: 12,
+              available: 100,
+              marketHas: 100,
+              alreadyBought: 0,
+              silverAvailable: 600,
+              price: 50,
+              cappedBy: "silver"
+            }
+          ]
+        })
+      )
+    ).toEqual([
+      "This unit buys at least 12 horses: what your other units here will earn cannot be worked out, so only the silver they hold is counted."
+    ]);
+  });
+
+  it("claims a floor only where silver was the cap (ah-3c2t.3)", () => {
+    const fallenBack = (overrides: Partial<UnitSilver["buyAll"][number]> = {}) => ({
+      ...buyAll(overrides),
+      marketPurseHeldOnly: true
+    });
+
+    expect(
+      buyAllSentences(
+        fallenBack({ cappedBy: "market", boughtNamed: "5 grain", bought: 5, affordable: 19 })
+      )
+    ).toEqual(["This market has 5 grain, not the 19 this unit's silver would buy."]);
+
+    expect(
+      buyAllSentences(
+        fallenBack({
+          cappedBy: "shared",
+          bought: 5,
+          available: 5,
+          marketHas: 10,
+          marketNamed: "10 grain"
+        })
+      )
+    ).toEqual([
+      "This unit gets 5 of the 10 grain this market has, because your units in this region are competing for it."
+    ]);
+
+    expect(
+      buyAllSentences(
+        fallenBack({
+          cappedBy: "already-bought",
+          bought: 5,
+          boughtNamed: "5 grain",
+          alreadyBought: 25,
+          available: 30,
+          marketHas: 30
+        })
+      )
+    ).toEqual([
+      "This unit buys 5 grain: its earlier orders have taken the other 25 of the 30 this market has."
+    ]);
+
+    expect(
+      buyAllSentences(
+        fallenBack({
+          cappedBy: "silver",
+          bought: 0,
+          boughtNamed: "no grain",
+          affordable: 0,
+          silverAvailable: 10,
+          price: 18
+        })
+      )
+    ).toEqual(["This unit buys no grain: it can have 10 silver and one costs 18."]);
+
+    expect(buyAllSentences(buyAll({ cappedBy: "silver" }))).toEqual([
+      "This unit has silver for 19 grain, not the 30 this market offers."
+    ]);
+  });
+
   it("says nothing for a unit that wrote no BUY ALL", () => {
     expect(buyAllSentences(aUnitSilver())).toEqual([]);
     expect(buyAllSentences(null)).toEqual([]);
