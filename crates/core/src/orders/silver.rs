@@ -2609,8 +2609,21 @@ pub fn forecast_unit(
             //
             // Less what this unit's hopeful tax overstates its settled share of a contended
             // region pool by - so a numbered `BUY` is sized by what the unit will actually
-            // collect, exactly as the income row above it already is (`ah-ud89.4`). Subtracted
-            // before the single clamp, as `semantics::buy` subtracts it before its own.
+            // collect, exactly as the income row above it already is (`ah-ud89.4`).
+            //
+            // Subtracted **before** this arm's single clamp, which is *not* where
+            // `semantics::buy` puts it: that side subtracts after its own clamp, so that a purse
+            // `rules/share` lends cannot refill the hole (`ah-ud89.2`'s rule). The placements
+            // differ because this arm has the month's own `Sold` credit to add first and clamps
+            // once at the end (`ah-6m7b.5.3`), and moving the clamp here would drop it.
+            //
+            // The two placements can only disagree where a unit's Market-phase balance is
+            // *below* its overstatement, and no report reaches that state: the overstatement is
+            // `hopeful - settled` and `hopeful` is itself credited into the balance, so
+            // `balance - overstatement >= held >= 0`. The one way to spend between the tax phase
+            // and the market is a `CAST`, which `ah-ud89.1` caps by the settled share too, and
+            // `rules/sequenceofevents` settles GIVE *before* TAX, so a unit cannot give its tax
+            // away either (`tests/give_all_silver_precedes_the_tax.rs`).
             Some(silver) => silver
                 .before_the_market_opens()
                 .saturating_add(moved_by(&moves, SilverChangeCause::Sold))

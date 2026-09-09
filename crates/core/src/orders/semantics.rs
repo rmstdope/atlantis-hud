@@ -6591,6 +6591,11 @@ fn buy(
                 // one unit's two `BUY` forms would read one purse two ways. The clamp itself does
                 // not move, so a unit nobody contends with - overstatement `0` - is funded to the
                 // silver it is funded to today.
+                //
+                // The SILVER column subtracts *before* its own clamp instead, because it has the
+                // month's `Sold` credit to add first (`ah-6m7b.5.3`). The two can only disagree
+                // where a unit's Market-phase balance is below its overstatement, and no report
+                // reaches that state - see the argument at the column's `opening`.
                 .saturating_sub(standing.overstated_tax())
                 .saturating_add(shared),
         ),
