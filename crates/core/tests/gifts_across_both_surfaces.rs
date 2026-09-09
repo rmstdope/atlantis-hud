@@ -65,6 +65,22 @@ fn review_of(text: &str, script: &str) -> TurnReview {
     )
 }
 
+/// The same review with no catalogue at all. `preview_holding` cannot follow - it goes through
+/// `preview_orders_for_remembered_report`, which is given a ruleset by construction - so a test
+/// using this asserts on the column and the findings, which is where case 3's defect showed.
+fn review_without_a_catalogue(text: &str, script: &str) -> TurnReview {
+    let parsed = parse_report_full(text);
+    let template = extract_orders_template(text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    review_turn(
+        &parsed,
+        &format!("{template}\n{script}"),
+        None,
+        CheckOptions::default(),
+    )
+}
+
 fn row_of(review: &TurnReview, unit_id: &str) -> UnitSilver {
     review
         .silver
@@ -419,4 +435,44 @@ fn a_doubt_raised_by_a_later_gift_no_longer_hides_this_ones_size() {
     assert_eq!(unit.doubt_subject.as_deref(), Some("MAGIC"));
     assert_eq!(unit.expense, None, "a doubted side is not a number");
     assert_eq!(unit.given_to_nobody, 300, "but the size of the gift is");
+}
+
+/// `ah-jo6b`, case 3. With no catalogue the ledger refused to expand `ALL ITEMS` at all, while
+/// `class_carries_silver` answered `Some(true)` for it without one - the two surfaces disagreeing
+/// about one order, which is what `ah-lu0f` forbids. `rules/give` defines `ITEM`/`ITEMS` as "the
+/// combination of all of the previous categories", so it needs no catalogue.
+///
+/// What the column shows here is *nothing*: with no catalogue it cannot identify men, so every row
+/// carries `EstimatedMen` and no figure at all. That is measured rather than assumed, and it is
+/// what makes the column safe while the catalogue is still arriving - it is the ledger, read by the
+/// ITEMS surface, that this bead corrects (see `semantics.rs`'s
+/// `a_gift_of_everything_is_counted_without_a_catalogue`). This test holds the column to saying
+/// nothing, so a later change that gives it a figure without also giving it the ledger's gift
+/// cannot pass unnoticed.
+#[test]
+fn giving_everything_away_with_no_catalogue_leaves_the_column_saying_nothing() {
+    let text = report(QUIET, &[], &[&giver(100), &hands("901")]);
+    let review = review_without_a_catalogue(&text, "unit 900\nGIVE 901 ALL ITEMS\n");
+    let row = row_of(&review, "900");
+    assert_eq!(
+        row.doubt,
+        Some(SilverDoubt::EstimatedMen),
+        "no catalogue means no headcount, so the whole row is in doubt"
+    );
+    assert_eq!(row.at_month_end, None, "and it names no month-end figure");
+    assert_eq!(
+        row.expense, None,
+        "so it cannot contradict the ledger, which now charges the whole purse"
+    );
+}
+
+/// `ah-jo6b`, case 2. A word the catalogue has never heard of costs this unit nothing and hides
+/// nothing: the column is unchanged and the ledger no longer stops following the unit.
+#[test]
+fn a_gift_of_goods_the_catalogue_cannot_name_leaves_the_month_priced() {
+    let text = report(QUIET, &[], &[&giver(100), &hands("901")]);
+    let review = review_of(&text, "unit 900\nGIVE 901 50 SPCIES\n");
+    let row = row_of(&review, "900");
+    assert_eq!(row.at_month_end, Some(100));
+    assert_eq!(row.doubt, None);
 }
