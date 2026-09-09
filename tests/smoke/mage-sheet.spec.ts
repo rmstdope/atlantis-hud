@@ -174,3 +174,44 @@ test("asks what to do with mages a newer sheet leaves out", async ({ page }) => 
     "2 mages from Mantzikert (39), turn 18, taken in — 3 kept from turn 17, now stale"
   );
 });
+
+/**
+ * Two allies' sheets in one selection, and the header keeping up (`ah-buo2`).
+ *
+ * The batch writes allied mages straight through the client, so nothing but this walk can tell
+ * that the cache the chip renders from was told about it: every unit test of the walk passes
+ * while the screen stays empty until a reload.
+ */
+test("shows both allies' sheets when two are imported at once", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Two allies");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  // Both at once: the batch path, not the single-file one.
+  await page.setInputFiles('input[type="file"]', [
+    {
+      name: "mages-Mantzikert-turn-18.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from(readMageSheet("g7f39t18"), "utf8")
+    },
+    {
+      name: "mages-Borg-turn-18.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from(readMageSheet("g7f62t18"), "utf8")
+    }
+  ]);
+
+  const dialog = page.getByTestId("import-summary");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("2 mage sheets taken in.");
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+
+  // The bead: no reload, and both allies are on screen.
+  const chip = page.getByTestId("mage-sheets-chip");
+  await expect(chip).toHaveText(/2 mage sheets/u);
+  await chip.click();
+  const panel = page.getByTestId("mage-sheets");
+  await expect(panel).toContainText(/\(39\)/u);
+  await expect(panel).toContainText(/\(62\)/u);
+});

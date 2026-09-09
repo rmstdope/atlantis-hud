@@ -84,6 +84,7 @@ import { chooseViewerFaction } from "../reportBatch";
 import {
   batchFinish,
   batchSummary,
+  batchTouchedMageSheets,
   prepareBatch,
   viewerFactionOptions,
   walkBatch,
@@ -2188,6 +2189,13 @@ export function AppShell({
             () => new Date().toISOString(),
             (done, total) => setImportProgress({ done, total })
           );
+
+          // The walk wrote allied mages straight through the client, so the cache the header
+          // renders from is behind storage. Reloaded rather than reconstructed: storage is the
+          // truth, and the walk's own in-memory tally was built for its refusals, not the screen.
+          if (batchTouchedMageSheets(walk)) {
+            await useAlliedMagesStore.getState().load(client, game);
+          }
 
           const finish = batchFinish(walk, viewerFactionId);
           if (finish.kind === "apply-turn") {

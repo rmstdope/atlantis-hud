@@ -386,6 +386,18 @@ export function batchFinish(walk: BatchWalk, viewerFactionId: string | null): Ba
 }
 
 /** The summary dialog's contents. */
+/**
+ * Whether the batch had a mage sheet in it, and so whether the allied-mages cache is now behind
+ * storage.
+ *
+ * Read off `plan.steps` rather than `walk.landed` on purpose: a sheet whose step failed may still
+ * have been written before it failed, and a stale screen is the fault being fixed here. The cost
+ * of being wrong this way is one extra read; the cost of being wrong the other way is the bug.
+ */
+export function batchTouchedMageSheets(walk: BatchWalk): boolean {
+  return walk.plan.steps.some((step) => step.kind === "mageSheet");
+}
+
 export function batchSummary(walk: BatchWalk, viewerReport: ParsedReport | null): ImportSummary {
   return {
     steps: walk.landed,
