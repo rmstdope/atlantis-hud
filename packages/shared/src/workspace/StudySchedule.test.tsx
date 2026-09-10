@@ -379,6 +379,14 @@ describe("CellPopover", () => {
     expect(force.slice(0, 400)).toContain("w-10");
   });
 
+  it("emphasizes each study choice's projected outcome", () => {
+    const outcome = popover().slice(
+      popover().indexOf('data-testid="study-schedule-choice-outcome-FORC"')
+    );
+
+    expect(outcome.slice(0, 200)).toContain("font-medium text-ink");
+  });
+
   it("marks the row the cell already holds", () => {
     const pressed = popover().slice(
       popover().indexOf('data-testid="study-schedule-choice-FORC"')

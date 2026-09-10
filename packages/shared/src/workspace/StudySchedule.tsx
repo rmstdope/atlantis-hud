@@ -875,7 +875,20 @@ export function CellPopover({
               {row.detail === null ? null : (
                 <>
                   {" "}
-                  <span className={row.taught ? "text-ok" : "text-ink-dim"}>{row.detail}</span>
+                  <span
+                    data-testid={
+                      row.tag === null ? undefined : `study-schedule-choice-outcome-${row.tag}`
+                    }
+                    className={
+                      row.taught
+                        ? "text-ok"
+                        : row.tag === null
+                          ? "text-ink-dim"
+                          : "font-medium text-ink"
+                    }
+                  >
+                    {row.detail}
+                  </span>
                 </>
               )}
             </button>
