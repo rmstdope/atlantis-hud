@@ -178,7 +178,7 @@ async function fetchWith(
   page: import("@playwright/test").Page,
   { scope = "this-turn" }: { scope?: "this-turn" | "history" } = {}
 ) {
-  await page.getByTestId("newage-control").click();
+  await page.getByTestId("fetch-control").click();
   await page.getByTestId("newage-faction-number").fill("27");
   await page.getByTestId("newage-password").fill("right");
   if (scope === "history") {
@@ -197,7 +197,7 @@ test("fetches this turn's report with the password typed into the dialog", async
   await clearGames(page);
   await arcanumGame(page);
 
-  await expect(page.getByTestId("newage-control")).toHaveText("Fetch");
+  await expect(page.getByTestId("fetch-control")).toHaveText("Fetch");
   await fetchWith(page);
 
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
@@ -348,7 +348,7 @@ test("switching game closes the fetch dialog, and coming back does not reopen it
   await page.getByTestId("new-game").click();
   await arcanumGame(page, "Second Arcanum game");
 
-  await page.getByTestId("newage-control").click();
+  await page.getByTestId("fetch-control").click();
   await expect(page.getByTestId("newage-fetch-panel")).toBeVisible();
 
   await activate(page, "game-indicator");
@@ -364,5 +364,5 @@ test("switching game closes the fetch dialog, and coming back does not reopen it
   await page.getByRole("button", { name: "Second Arcanum game", exact: true }).click();
   await expect(page.getByTestId("game-indicator")).toContainText("Second Arcanum game");
   await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
-  await expect(page.getByTestId("newage-control")).toHaveText("Fetch");
+  await expect(page.getByTestId("fetch-control")).toHaveText("Fetch");
 });

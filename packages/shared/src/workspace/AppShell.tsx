@@ -201,6 +201,17 @@ import { fetchedTurnName } from "./newAgeHistoryView";
 import { performNewAgeSend } from "./newAgeSend";
 import type { NewAgeSendPhase } from "./newAgeSendView";
 import { NEW_AGE_HOST, signInFailure } from "./newAgeSignInView";
+import { downloadNewOriginsReport, NEW_ORIGINS_HOST } from "./newOriginsApi";
+import { NewOriginsFetchDialog } from "./NewOriginsFetchDialog";
+import { runNewOriginsFetch } from "./newOriginsFetchRun";
+import {
+  FETCHED_REPORT_NAME,
+  loadedStatus,
+  stillShowing,
+  UNREACHABLE,
+  UNREADABLE,
+  type NewOriginsFetchPhase
+} from "./newOriginsFetchView";
 import type { SendOrdersPhase } from "./sendOrdersView";
 import { sendDisabledReason } from "./sendOrdersView";
 import { performOrdersSend } from "./sendOrders";
@@ -423,7 +434,8 @@ export function AppShell({
   appUpdate = UNSUPPORTED_UPDATES,
   openExternal = OPEN_EXTERNAL_IN_NEW_TAB,
   uploadOrders,
-  newAgeTransport
+  newAgeTransport,
+  pbemTransport
 }: {
   client: CoreClient;
   platformLabel: string;
@@ -463,6 +475,12 @@ export function AppShell({
    * whole of what hides the sign-in control there.
    */
   newAgeTransport?: HttpTransport;
+  /**
+   * How this shell reaches atlantis-pbem.com, or absent when it cannot - which is the web build,
+   * since the site sends no CORS headers and a browser could post the download form and never read
+   * the reply. Its absence is the whole of what hides the Fetch button there on a New Origins game.
+   */
+  pbemTransport?: HttpTransport;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // The report currently on screen, readable at async resolve time. The restore effect below
@@ -3773,10 +3791,24 @@ export function AppShell({
   /** Set when the dialog is dismissed mid-run; the run reads it at each boundary. */
   const fetchAbandoned = useRef(false);
 
+  /** Where the New Origins fetch dialog has got to, or null when it is closed. */
+  const [originsPhase, setOriginsPhase] = useState<NewOriginsFetchPhase | null>(null);
+  const originsAbort = useRef<AbortController | null>(null);
+  /** Set when the dialog is dismissed mid-run; the run reads it at each boundary. */
+  const originsAbandoned = useRef(false);
+  /**
+   * The report a question is about, held here rather than on the phase so the view module stays a
+   * module about words. Cleared whenever the phase leaves an `ask` kind.
+   */
+  const originsPending = useRef<{ report: ParsedReport; text: string } | null>(null);
+
   /** The faction the orders name, which is what the server is told to file them under. */
   const sendFactionId = ordersFileFaction(ordersDocument);
   const uploadUrl = rulesetById(game?.manifest.metadata.rulesetId ?? "")?.ordersUploadUrl ?? null;
   const newAgeWorld = newAgeWorldFor(game?.manifest.metadata.rulesetId);
+  // A literal comparison rather than a table: there is one such ruleset (`rulesets.ts`), and a
+  // one-row table would be ceremony.
+  const isNewOrigins = game?.manifest.metadata.rulesetId === "neworigins";
   // The ruleset's full label where there is room - `New Age: Arcanum` - falling back to the world's
   // one short word, which is what the header control uses in any case.
   const newAgeRulesetLabel =
@@ -3848,6 +3880,18 @@ export function AppShell({
     setFetchPhase(null);
   }, []);
 
+  /**
+   * Cancel, Escape and the backdrop on the New Origins dialog. Stops a run at its next boundary,
+   * and throws away a report a question was about: nothing was loaded, so nothing is left behind.
+   */
+  const dismissOriginsFetch = useCallback(() => {
+    originsAbandoned.current = true;
+    originsAbort.current?.abort();
+    originsAbort.current = null;
+    originsPending.current = null;
+    setOriginsPhase(null);
+  }, []);
+
   /** Cancel, Escape and the backdrop. Aborts a sign-in or a send, whichever is in flight. */
   const dismissNewAgeSend = useCallback(() => {
     newAgeSendAbort.current?.abort();
@@ -3862,8 +3906,15 @@ export function AppShell({
   // dialog headed `Fetch from New Age: Arcanum` must not sit over a game that is now Trident.
   useEffect(() => {
     dismissFetch();
+    dismissOriginsFetch();
     dismissNewAgeSend();
-  }, [openGameId, newAgeWorld?.worldId, dismissFetch, dismissNewAgeSend]);
+  }, [
+    openGameId,
+    newAgeWorld?.worldId,
+    dismissFetch,
+    dismissOriginsFetch,
+    dismissNewAgeSend
+  ]);
 
   /** What the game already holds, in the shape `missingTurns` reads. */
   const storedTurns = useMemo(
@@ -3892,6 +3943,146 @@ export function AppShell({
   const currentWorkingTurn = useCallback(
     () => viewerRef.current?.header.turnNumber ?? null,
     []
+  );
+
+  /**
+   * Puts a fetched report on screen and says so.
+   *
+   * `loadReport` is the same door a dropped file goes through, and it writes `countsStatus` -
+   * `4 regions · 11 units` - on its way. The agreed line for a fetch names the turn as well, so
+   * this writes over it once the load has returned. Only for a fetch: a dropped file is unchanged.
+   */
+  const openFetchedReport = useCallback(
+    async (report: ParsedReport, text: string) => {
+      const outcome = await loadReport(text, FETCHED_REPORT_NAME);
+      if (outcome !== "loaded" || report.header.turnNumber === null) {
+        // `loadReport` refused it and has already said why in red; do not paint over that.
+        return;
+      }
+      // The same expression `loadTurn` uses, so the two lines can never disagree about a unit.
+      const unitCount = report.regions.reduce((total, region) => total + region.units.length, 0);
+      setStatus(
+        noticeStatus(loadedStatus(report.header.turnNumber, report.regions.length, unitCount))
+      );
+    },
+    [loadReport]
+  );
+
+  /** `Open turn 84` and `Load it again`. */
+  const openPendingReport = useCallback(async () => {
+    const pending = originsPending.current;
+    originsPending.current = null;
+    setOriginsPhase(null);
+    if (pending) {
+      await openFetchedReport(pending.report, pending.text);
+    }
+  }, [openFetchedReport]);
+
+  /** `Keep turn 83` files the fetched turn; `Keep what I have` files nothing. */
+  const keepPendingReport = useCallback(async () => {
+    const pending = originsPending.current;
+    const phase = originsPhase;
+    originsPending.current = null;
+    setOriginsPhase(null);
+    if (!pending || phase === null) {
+      return;
+    }
+    if (phase.kind === "askSame") {
+      // There is nowhere to file a turn you are already looking at.
+      setStatus(noticeStatus(stillShowing(phase.turnNumber)));
+      return;
+    }
+    if (phase.kind === "askNewer") {
+      // `storeOlderTurn` never checks age; it names the incoming turn and the current one, which
+      // is exactly `turn 84 stored for history; still showing turn 83.`
+      await storeReportOnly(pending.report, pending.text, phase.currentTurn);
+    }
+  }, [originsPhase, storeReportOnly]);
+
+  /**
+   * One press of Fetch on a New Origins game: post the site's own download form with what the
+   * dialog was given, and put what came back on screen - asking first when it would replace
+   * something.
+   *
+   * The credentials arrive from the dialog for this one call and are kept nowhere, and nothing is
+   * logged: a reply from this host can echo an orders document carrying the password in cleartext.
+   */
+  const fetchFromNewOrigins = useCallback(
+    async (factionNumber: string, password: string) => {
+      if (pbemTransport === undefined || openGameId === null) {
+        return;
+      }
+      const transport = pbemTransport;
+      // The game this run belongs to, captured now: the player may have left it before this lands.
+      const runGameId = openGameId;
+      const controller = new AbortController();
+      originsAbort.current = controller;
+      originsAbandoned.current = false;
+
+      const outcome = await runNewOriginsFetch(
+        { factionNumber, password },
+        {
+          download: (id, secret) =>
+            downloadNewOriginsReport(transport, id, secret, controller.signal),
+          parse: (text) => parseReport(text),
+          // From `viewerRef`, not from the render's `parsed`: this closure holds whatever was on
+          // screen when Fetch was pressed, and back-to-back fetches must route on what is there now.
+          current: () =>
+            viewerRef.current === null
+              ? null
+              : {
+                  factionId: viewerRef.current.header.factionId,
+                  turnNumber: viewerRef.current.header.turnNumber
+                },
+          onPhase: (phase) => setOriginsPhase(phase),
+          abandoned: () => originsAbandoned.current || originsAbort.current !== controller
+        }
+      );
+
+      if (originsAbort.current !== controller) {
+        // The dialog was dismissed or replaced while this ran, so it is told nothing.
+        return;
+      }
+      originsAbort.current = null;
+      if (openGameIdRef.current !== runGameId) {
+        // A run headed for one game must not land in another.
+        setOriginsPhase(null);
+        return;
+      }
+
+      if (outcome.kind === "abandoned") {
+        return;
+      }
+      if (outcome.kind === "refused") {
+        // A typo is by far the commonest cause, so the password is cleared and refocused.
+        setOriginsPhase({ kind: "ready", message: outcome.message, retype: true });
+        return;
+      }
+      if (outcome.kind === "unreachable" || outcome.kind === "unreadable") {
+        // Both fields keep what was typed: pressing Fetch again is the whole of the retry.
+        setOriginsPhase({
+          kind: "ready",
+          message: outcome.kind === "unreachable" ? UNREACHABLE : UNREADABLE,
+          retype: false
+        });
+        return;
+      }
+
+      if (outcome.arrival.kind === "askNewer" || outcome.arrival.kind === "askSame") {
+        originsPending.current = { report: outcome.report, text: outcome.text };
+        setOriginsPhase(outcome.arrival);
+        return;
+      }
+      setOriginsPhase(null);
+      if (outcome.arrival.kind === "load") {
+        await openFetchedReport(outcome.report, outcome.text);
+        return;
+      }
+      // `storeOnly` and `foreign`: `loadReport` routes both, and says so itself - the filing line
+      // for the first, the strip under the header for the second. No status of our own.
+      await loadReport(outcome.text, FETCHED_REPORT_NAME);
+    },
+    [pbemTransport, openGameId, parseReport, loadReport, openFetchedReport]
   );
 
   /**
@@ -4821,13 +5012,21 @@ export function AppShell({
         }
         canSend={canSendOrders}
         sendDisabledReason={sendOffReason}
-        newAge={
-          newAgeApi === null || newAgeWorld === null || openGameId === null
+        fetchControl={
+          openGameId === null
             ? undefined
-            : {
-                label: FETCH_CONTROL_LABEL,
-                onFetch: () => setFetchPhase({ kind: "ready", message: null, retype: false })
-              }
+            : newAgeApi !== null && newAgeWorld !== null
+              ? {
+                  label: FETCH_CONTROL_LABEL,
+                  onFetch: () => setFetchPhase({ kind: "ready", message: null, retype: false })
+                }
+              : isNewOrigins && pbemTransport !== undefined
+                ? {
+                    label: FETCH_CONTROL_LABEL,
+                    onFetch: () =>
+                      setOriginsPhase({ kind: "ready", message: null, retype: false })
+                  }
+                : undefined
         }
         onExportOrdersLong={exportOrdersLong}
         canExportLong={ordersDocument.length > 0 && ordersTemplateText !== null}
@@ -5292,6 +5491,28 @@ export function AppShell({
             void fetchFromNewAge(factionNumber, password, scope)
           }
           onDismiss={dismissFetch}
+        />
+      )}
+      {originsPhase === null ? null : (
+        <NewOriginsFetchDialog
+          host={NEW_ORIGINS_HOST}
+          factionName={parsed?.header.factionName ?? null}
+          factionNumber={parsed?.header.factionId ?? null}
+          turnNumber={parsed?.header.turnNumber ?? null}
+          // Only when the report's own faction id is digits: prefilling anything else would put a
+          // value in the field that the field then refuses.
+          suggestedFactionNumber={
+            parsed?.header.factionId && /^\d+$/.test(parsed.header.factionId)
+              ? parsed.header.factionId
+              : null
+          }
+          phase={originsPhase}
+          onFetch={(factionNumber, password) =>
+            void fetchFromNewOrigins(factionNumber, password)
+          }
+          onKeep={() => void keepPendingReport()}
+          onOpen={() => void openPendingReport()}
+          onDismiss={dismissOriginsFetch}
         />
       )}
       {exportOpen ? (

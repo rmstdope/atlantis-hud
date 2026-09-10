@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  FETCH_CONFIRM,
   FETCH_DIALOG_TITLE,
   FETCH_WORKING,
   KEEP_WHAT_I_HAVE,
@@ -19,6 +18,7 @@ import {
   sameTurnQuestion,
   stillShowing
 } from "./newOriginsFetchView";
+import { FETCH_CONFIRM } from "./newAgeFetchView";
 
 const HOST = "atlantis-pbem.com";
 

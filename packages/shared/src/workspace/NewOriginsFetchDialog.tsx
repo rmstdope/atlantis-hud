@@ -3,9 +3,9 @@ import type { FormEvent } from "react";
 
 import { useEscapeToDismiss } from "./dismissLayer";
 import { NewAgeSignInFields } from "./NewAgeSignInFields";
+import { FETCH_CONFIRM } from "./newAgeFetchView";
 import { credentialNote } from "./newAgeSignInView";
 import {
-  FETCH_CONFIRM,
   FETCH_DIALOG_TITLE,
   FETCH_WORKING,
   KEEP_WHAT_I_HAVE,
