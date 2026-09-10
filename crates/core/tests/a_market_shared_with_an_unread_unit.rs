@@ -133,3 +133,47 @@ fn an_unread_hex_mate_with_no_sell_order_bounds_nothing() {
         "901 cannot sell without an order, so the figure is exact"
     );
 }
+
+/// Review of PR #1162, finding 1. A `Wanted` line the hex's known sellers do not fill is bounded
+/// **too**, and deliberately: what the unread unit holds went with the tail, so nothing here can
+/// say its claim is small. A hex-mate holding a thousand furs would push this line short and take
+/// most of it, and `rules/sell` would then split the line in proportion - so the sentence "this
+/// unit may be paid less than this" is true of an uncontended line exactly as it is of a short one.
+///
+/// This is the opposite of the three silver pools, where `ah-0n2k.1` does not bound an empty pool:
+/// a pool of nothing is divided among nobody whatever anyone claims, whereas a `Wanted` line with
+/// money in it can always be pushed short by a claim nobody can see.
+#[test]
+fn a_line_the_known_sellers_do_not_fill_is_bounded_too() {
+    let review = review_of(
+        &report(
+            QUIET,
+            &["Wanted: 1000 furs [FUR] at $24.", "For Sale: none."],
+            &[SELLER, CUT_SHORT],
+        ),
+        BOTH_SELL,
+    );
+    let seller = row_of(&review, "900");
+    assert_eq!(seller.income, Some(240), "all ten furs it holds, at $24");
+    assert!(
+        seller.income_in_time_at_most,
+        "901's holding is unknown and could push even this line short"
+    );
+}
+
+/// Review of PR #1162, finding 2. A cut-short line that reached *some* items is
+/// [`UnitRead::Partial`], and it is bounded like any other: the item list is truncated, so the furs
+/// the tail would have named are lost exactly as a `Nothing`-read unit's whole inventory is. The
+/// claim that is counted here is a floor on what 901 really offered, so what 900 is shown earning
+/// is a ceiling.
+#[test]
+fn a_hex_mate_whose_items_were_cut_off_part_way_bounds_the_line() {
+    const PART_READ: &str = "* Cut short (901), Foo (1), 10 orcs [ORC], 10 furs [FUR],";
+    let review = review_of(&report(QUIET, WANTS_FURS, &[SELLER, PART_READ]), BOTH_SELL);
+    let seller = row_of(&review, "900");
+    assert_eq!(seller.income, Some(120), "the furs that were read do claim");
+    assert!(
+        seller.income_in_time_at_most,
+        "the tail may have named more furs than the line shows"
+    );
+}

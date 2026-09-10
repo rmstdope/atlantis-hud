@@ -912,9 +912,12 @@ pub struct PoolShares {
     /// The same, for the region's entertainment demand. See [`Self::unread_claimant_tax`].
     pub unread_claimant_entertainment: bool,
     /// True when this hex holds an own unit whose report line was cut short **and which is itself
-    /// ordered to sell**, so every own seller's market earnings here are an **upper bound**: that
-    /// unit's goods went with the tail, its `SELL` claim reads `0`, and no share of any `Wanted`
-    /// line counted a claim for it (`ah-0n2k.2`).
+    /// ordered to sell**, so every own seller's market earnings here are an **upper bound**: the
+    /// goods its `SELL` is measured in went with the tail, in whole or in part, so the claim
+    /// counted for it on a `Wanted` line is a floor and never a fact (`ah-0n2k.2`). A
+    /// `UnitRead::Nothing` unit claims `0`; a `UnitRead::Partial` one claims what the truncated
+    /// item list happened to reach. Both bound their neighbours, and an uncontended line is bounded
+    /// too - a holding nobody can see can always push a line short.
     ///
     /// Narrower than the three `unread_claimant_*` flags above on purpose. A market claim needs an
     /// order, and the orders file is intact however badly the report was wrapped - so an unread
@@ -3082,9 +3085,9 @@ pub fn forecast_unit(
         && ((shares.unread_claimant_wages && draws_wages)
             || (shares.unread_claimant_entertainment && draws_entertainment));
     // A hex-mate whose line was cut short and which is ordered to sell makes every own seller's
-    // market earnings a ceiling: its own claim on the line read `0` because its goods went with
-    // the tail, so `rules/sell`'s proportional split divided the line among too few sellers
-    // (`ah-0n2k.2`). `SELL` is a Market-phase order (`rules/sequenceofevents`), so the
+    // market earnings a ceiling: the goods its claim is measured in went with the tail, so
+    // `rules/sell`'s proportional split ran against a claim that is a floor - too small, or
+    // missing altogether (`ah-0n2k.2`). `SELL` is a Market-phase order (`rules/sequenceofevents`), so the
     // overstatement is in the in-time half, which is the term this flag speaks for.
     //
     // Read off the movement record rather than recomputed: `moved_by` is the one place a cause's

@@ -799,7 +799,9 @@ fn pool_shares_for(
     let unread_claimant = !unread.is_empty();
     // A market claim needs an order, and a cut-short line takes no order away: what it takes is
     // the goods the claim is measured in (`ah-0n2k.2`). So a `Wanted` line is under-counted only
-    // where an unread unit was told to sell - `Intent::Sell` alone, without resolving the item,
+    // where an unread unit was told to sell - and there whatever claim was counted for it is a
+    // floor, whether the tail took its whole inventory (`UnitRead::Nothing`) or cut the item list
+    // off part way (`UnitRead::Partial`). `Intent::Sell` alone, without resolving the item,
     // because the spelling of what it meant may be resolvable only from the inventory that was
     // lost. Set unconditionally rather than per pool: the market lines are not one of the three
     // pools above, and a hex with no `Wanted` line has no seller to bound anyway.
