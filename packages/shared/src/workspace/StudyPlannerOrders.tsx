@@ -85,8 +85,12 @@ export function StudyPlannerOrders({
           )}
         </div>
       ) : (
-        orders.sections.map((section) => (
-          <section key={section.factionId} data-testid={`study-planner-orders-${section.factionId}`}>
+        orders.sections.map((section, index) => (
+          <section
+            key={section.factionId}
+            data-testid={`study-planner-orders-${section.factionId}`}
+            className={index === 0 ? "" : "mt-3 border-t border-edge pt-3"}
+          >
             <div className="flex items-center gap-2 py-1">
               <span className="text-ink-soft">{section.heading}</span>
               <span className="flex-1" />
@@ -98,7 +102,7 @@ export function StudyPlannerOrders({
                   data-testid="study-planner-write"
                   disabled={asking}
                   onClick={onAskWrite}
-                  className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink disabled:opacity-50"
+                  className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim disabled:opacity-50"
                 >
                   Put into my orders
                 </button>
@@ -108,14 +112,14 @@ export function StudyPlannerOrders({
                 label="Copy"
                 testId={`study-planner-copy-${section.factionId}`}
                 disabled={asking}
-                className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink disabled:opacity-50"
+                className="rounded border border-select px-1.5 text-select hover:bg-select/15 disabled:border-edge disabled:text-ink-dim disabled:opacity-50"
               />
               <button
                 type="button"
                 data-testid={`study-planner-save-${section.factionId}`}
                 disabled={asking}
                 onClick={() => onSaveText(section.fileName, section.text)}
-                className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink disabled:opacity-50"
+                className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim disabled:opacity-50"
               >
                 Save…
               </button>

@@ -59,6 +59,32 @@ describe("StudyPlannerOrders", () => {
     expect(html).toContain("Save…");
   });
 
+  it("separates faction sections and distinguishes their actions", () => {
+    const html = renderToStaticMarkup(
+      <StudyPlannerOrders
+        orders={orders}
+        emptyCopy={EMPTY}
+        error={null}
+        onSaveText={() => {}}
+        writePlan={writePlan}
+        asking={false}
+        notice={null}
+        onAskWrite={() => {}}
+        onConfirmWrite={() => {}}
+        onCancelWrite={() => {}}
+        onUndoWrite={() => {}}
+      />
+    );
+    const section = (factionId: string) =>
+      html.slice(html.indexOf(`data-testid="study-planner-orders-${factionId}"`), html.indexOf("</section>", html.indexOf(`data-testid="study-planner-orders-${factionId}"`)));
+
+    expect(section("17")).toContain("border-t border-edge");
+    expect(section("95")).toContain("border-brass");
+    expect(section("95")).toContain("text-brass");
+    expect(section("95")).toContain("border-select");
+    expect(section("95")).toContain("text-select");
+  });
+
   it("the_empty_panel_replaces_the_sections_when_nothing_is_planned", () => {
     const html = renderToStaticMarkup(
       <StudyPlannerOrders
