@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { readReport, readRuleset } from "@atlantis/fixtures";
 import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
 import { createMemoryWebStore } from "./webStore";
 
@@ -31,16 +32,10 @@ async function realCore(): Promise<CoreWasmModule> {
 }
 
 /** The committed report the Rust wiring test cuts, as its own text. */
-const REPORT = readFileSync(
-  new URL("../../../tests/fixtures/reports/neworigins-3.0.0-g5-f21-t39.rep", import.meta.url),
-  "utf8"
-);
+const REPORT = readReport("g5f21t39");
 
 /** The ruleset the app serves for this fixture's game (`rulesetUrlFor`, `ah-qled.8`). */
-const RULESET = readFileSync(
-  new URL("../../../config/public/ruleset.json", import.meta.url),
-  "utf8"
-);
+const RULESET = readRuleset();
 
 const NEEDLE = "* Drone (8537), Borg (21), avoiding, behind, revealing faction,";
 const CUT = "* Drone (8537), Borg (21), avoiding, revealing faction,";
