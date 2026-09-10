@@ -291,10 +291,10 @@ export function StudyPlannerDialog({
         // 20rem beside six turn columns, and All mages spends the same width on standing its three
         // lists side by side. One width for all three views, so the dialog does not resize under
         // the pointer as the tabs are walked.
-        className="grid max-h-[80vh] w-[74rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
+        className="grid max-h-[80vh] w-[74rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
       >
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
-          <span className="text-ink-soft">Study planner</span>
+          <span className="text-brass">Study planner</span>
           <span role="tablist" aria-label="Study planner view" className="flex gap-1">
             <ViewTab view="all" label="Overview" open={view} onOpen={setView} />
             <ViewTab view="schedule" label="Planner" open={view} onOpen={setView} />
@@ -306,7 +306,7 @@ export function StudyPlannerDialog({
               type="button"
               data-testid="study-planner-save-all"
               onClick={() => onSaveText(orders.allFileName, orders.allText)}
-              className="rounded px-1.5 text-ink-dim hover:text-ink"
+              className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10"
             >
               Save all…
             </button>
@@ -317,7 +317,7 @@ export function StudyPlannerDialog({
             aria-label="Close study planner"
             title="Close study planner"
             onClick={onDismiss}
-            className="rounded px-1.5 text-ink-dim hover:text-ink"
+            className="rounded border border-edge px-1.5 text-ink-dim hover:border-brass hover:text-brass"
           >
             ×
           </button>
@@ -331,7 +331,7 @@ export function StudyPlannerDialog({
         {subLine === null && notice === null ? (
           <div />
         ) : (
-        <div className="border-b border-edge px-2 py-1 text-ink-dim">
+        <div className="border-b border-edge bg-panel px-2 py-1 text-ink-dim">
           {subLine === null ? null : (
             <span data-testid="study-planner-summary">{subLine}</span>
           )}
@@ -419,8 +419,10 @@ export function StudyPlannerDialog({
           />
         ) : picked === null ? (
           <div data-testid="study-planner-empty" className="min-h-0 overflow-y-auto p-3">
-            <p className="text-ink">{emptyCopy.headline}</p>
-            <p className="text-ink-dim">{emptyCopy.detail}</p>
+            <div className="rounded border border-edge bg-panel-raised p-3">
+              <p className="m-0 text-ink">{emptyCopy.headline}</p>
+              <p className="text-ink-dim">{emptyCopy.detail}</p>
+            </div>
           </div>
         ) : (
           <div className="grid min-h-0 grid-cols-[17rem_1fr]">
@@ -485,7 +487,7 @@ function ViewTab({
       onClick={() => onOpen(view)}
       className={`rounded border px-2 py-0.5 ${
         selected
-          ? "border-brass bg-panel text-brass"
+          ? "border-brass bg-brass/10 text-brass"
           : "border-edge bg-panel-raised text-ink-soft hover:bg-panel hover:text-ink"
       }`}
     >
@@ -527,7 +529,7 @@ export function StudyPlannerList({
         <li key={group.factionId} role="presentation">
           <p
             data-testid={`study-planner-group-${group.factionId}`}
-            className="sticky top-0 bg-panel-raised px-2 py-0.5 text-brass"
+            className="sticky top-0 border-b border-brass/60 bg-brass/10 px-2 py-1 text-brass"
           >
             {group.heading}
           </p>
@@ -549,7 +551,7 @@ export function StudyPlannerList({
                 className={`cursor-pointer border-l-2 px-2 py-0.5 ${
                   mage.key === picked.key
                     ? "border-select bg-select/15 text-ink"
-                    : `border-transparent text-ink-soft hover:text-ink ${
+                    : `border-transparent text-ink-soft hover:bg-select/15 hover:text-ink ${
                         group.stale ? "bg-panel" : ""
                       }`
                 }`}
@@ -595,13 +597,23 @@ export function StudyPlannerDetail({
   const missing = mage.standing.missing;
   return (
     <div data-testid="study-planner-detail" className="min-h-0 overflow-y-auto p-3">
-      <p className="text-ink">
-        {mage.name} ({mage.unitId})
-      </p>
-      <p className="text-ink-dim">
-        {`${mage.factionLabel} · ${label(mage.regionId)}`}
-        {mage.sheetTurn === null ? " · from this turn's report" : ""}
-      </p>
+      <div
+        data-testid="study-planner-detail-context"
+        className="rounded border border-brass/60 bg-brass/10 px-2 py-1"
+      >
+        <div className="flex items-center gap-2 text-brass">
+          <span className="flex-1">
+            {mage.name} ({mage.unitId})
+          </span>
+          <span className="rounded border border-brass/60 px-1 text-pane-xs">
+            {turn === null ? "Now" : `Turn ${turn}`}
+          </span>
+        </div>
+        <p className="m-0 text-ink-dim">
+          {`${mage.factionLabel} · ${label(mage.regionId)}`}
+          {mage.sheetTurn === null ? " · from this turn's report" : ""}
+        </p>
+      </div>
       {unreported === null ? null : (
         <p
           data-testid="study-planner-unreported"
@@ -613,7 +625,7 @@ export function StudyPlannerDetail({
 
       {/* Read-only: the plan is written in the Schedule view, and two editors for one thing was
           the alternative the navigator rejected. */}
-      <p data-testid="study-planner-plan-line" className="mt-2 text-ink-dim">
+      <p data-testid="study-planner-plan-line" className="mt-2 rounded border border-edge bg-panel px-2 py-1 text-ink-dim">
         {turn === null ? "Nothing planned." : planLine(plannedGoals(plan?.goals ?? []), turn, tree, names)}
       </p>
 
@@ -630,7 +642,7 @@ export function StudyPlannerDetail({
           the Schedule's pane anyway, so the width was already paid for. */}
       <div className="mt-3 grid grid-cols-3 gap-3">
         <section>
-          <p className="m-0 text-ink-soft">Knows</p>
+          <p className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass">Knows</p>
           <ul className="m-0 list-none p-0">
             {mage.knows.map((skill) => (
               <li
@@ -653,7 +665,7 @@ export function StudyPlannerDetail({
         </section>
 
         <section>
-          <p className="m-0 text-ink-soft" data-testid="study-planner-can-study-heading">
+          <p className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass" data-testid="study-planner-can-study-heading">
             Can study now — {mage.canStudy.length}
           </p>
           <ul className="m-0 list-none p-0">
@@ -668,7 +680,7 @@ export function StudyPlannerDetail({
         </section>
 
         <section>
-          <p className="m-0 text-ink-soft">Held back</p>
+          <p className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass">Held back</p>
           {heldBack.length === 0 ? (
             <p className="m-0 text-ink-dim">Nothing he holds is at a prerequisite&apos;s ceiling.</p>
           ) : (
@@ -756,7 +768,7 @@ function StudyPlannerNote({
 
   return (
     <div data-testid="study-planner-note" className="mt-3">
-      <p className="m-0 text-ink-soft">Note</p>
+      <p className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass">Note</p>
       <textarea
         rows={3}
         maxLength={STUDY_NOTE_MAX_CHARS}

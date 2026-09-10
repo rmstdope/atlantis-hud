@@ -110,6 +110,8 @@ describe("StudyPlannerList", () => {
   it("gives each row its summary", () => {
     expect(markup).toContain("Six of Seven");
     expect(markup).toContain("can study");
+    expect(markup).toContain("bg-brass/10");
+    expect(markup).toContain("hover:bg-select/15");
   });
 });
 
@@ -149,6 +151,9 @@ describe("StudyPlannerDetail", () => {
 
   it("counts what he may study now", () => {
     expect(own).toContain(`Can study now — ${mageBy("881").canStudy.length}`);
+    expect(own).toContain('data-testid="study-planner-detail-context"');
+    expect(own).toContain("Turn 72");
+    expect(own).toContain("border-brass/60 bg-brass/10");
   });
 
   it("keeps the held-back section even when nothing is", () => {
@@ -306,6 +311,7 @@ describe("the Orders tab", () => {
 
     expect(tab("all")).toContain('aria-selected="true"');
     expect(tab("all")).toContain("border-brass");
+    expect(tab("all")).toContain("bg-brass/10");
     expect(tab("all")).toContain("text-brass");
 
     expect(tab("schedule")).toContain('aria-selected="false"');
