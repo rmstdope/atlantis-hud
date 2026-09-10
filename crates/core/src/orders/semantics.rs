@@ -843,19 +843,18 @@ fn pool_shares_for(
             .filter(|index| want_of(&wants[*index]) > 0)
             .collect();
         // A hex-mate whose line was cut short asks this pool for nothing, so it is not in `wanting`
-        // and no share below counted a claim for it: every share of a pool the region *does* state
-        // is therefore an upper bound (`ah-0n2k.1`). Set before the `continue` below, because one
-        // known claimant beside an unread one is exactly the case - it reads `Uncontended`, the
-        // whole pool, and that is the figure the bound is about.
+        // and no share below counted a claim for it: every share of a pool with money in it is
+        // therefore an upper bound (`ah-0n2k.1`).
         //
         // What the pool *holds*, and not merely whether the region stated it: a pool of nothing is
         // divided among nobody, so its arithmetic is exact whoever else is standing here and a
-        // ceiling would be false. That one question subsumes all three: `Entertainment available:
-        // $0.` parses to `Some(0)`, a region stating no wage ceiling is `None`, and a pillaged
-        // hex's tax base is filtered out above.
+        // ceiling would be false. That one question subsumes all three ways a pool can be empty -
+        // `Entertainment available: $0.` parses to `Some(0)`, a region stating no wage ceiling is
+        // `None`, and a pillaged hex's tax base is filtered out above.
         //
         // `pool` and not `pool.filter(|_| wanting.len() > 1)`: one known claimant beside an unread
-        // one is exactly the case this bead is about, and it takes the `continue` below.
+        // one is exactly the case this bead is about - it reads `Uncontended`, the whole pool, and
+        // that is the figure the bound is about - so this is set before the `continue` below.
         if unread_claimant && pool.is_some_and(|pool| pool > 0) {
             for share in &mut shares {
                 *bound_of(share) = true;
