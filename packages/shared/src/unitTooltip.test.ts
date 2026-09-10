@@ -878,9 +878,9 @@ describe("the silver section", () => {
     ]);
   });
 
-  /// `ah-0n2k.1`. A hex-mate whose line was cut short bounds the halves this unit drew from, and
-  /// only those: `Held now`, `Out` and `Upkeep` are never bounded, because nothing in these pools
-  /// bounds what a unit spends or owes.
+  // `ah-0n2k.1`. A hex-mate whose line was cut short bounds the halves this unit drew from, and
+  // only those: `Held now`, `Out` and `Upkeep` are never bounded, because nothing in these pools
+  // bounds what a unit spends or owes.
   it("the_silver_section_bounds_only_the_halves_an_unread_hex_mate_could_claim", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),

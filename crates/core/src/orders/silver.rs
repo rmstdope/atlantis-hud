@@ -891,17 +891,26 @@ pub struct PoolShares {
     pub wages: PoolShare,
     /// This unit's share of the region's entertainment demand.
     pub entertainment: PoolShare,
-    /// True when this hex holds an own unit whose report line was cut short, so every share above
-    /// is an **upper bound**: the men, flags and skills that say what that unit asks of a pool went
-    /// with the tail, so it asks `0`, drops out of every `wanting`, and no share here counted a
-    /// claim for it (`ah-0n2k.1`).
+    /// For each pool above, true when this hex holds an own unit whose report line was cut short
+    /// **and** the region states that pool, so the share is an **upper bound**: the men, flags and
+    /// skills that say what that unit asks went with the tail, so it asks `0`, drops out of every
+    /// `wanting`, and no share here counted a claim for it (`ah-0n2k.1`).
+    ///
+    /// Per pool and not per hex, because a pool the region does not state is not divided at all: a
+    /// region with no wage ceiling pays a worker exactly what it asked for whoever else is standing
+    /// there, a region stating no entertainment demand pays a certain nothing, and a pillaged hex's
+    /// tax base is filtered out for the same reason. A ceiling on any of those would be false.
     ///
     /// A property of the hex rather than of one unit, carried per unit for the same reason
     /// [`UnitSilver::market_purse_held_only`] is: this is the struct the settlement already hands
-    /// down to both of its readers, index-aligned with `hex.units`. `charge_upkeep` receives it and
-    /// ignores it - a bound changes no figure, and the pessimistic charge it already makes against
-    /// a settled share is still the right one.
-    pub unread_claimant: bool,
+    /// down to both of its readers, index-aligned with `hex.units`. `charge_upkeep` receives them
+    /// and ignores them - a bound changes no figure, and the pessimistic charge it already makes
+    /// against a settled share is still the right one.
+    pub unread_claimant_tax: bool,
+    /// The same, for the region's wage pool. See [`Self::unread_claimant_tax`].
+    pub unread_claimant_wages: bool,
+    /// The same, for the region's entertainment demand. See [`Self::unread_claimant_tax`].
+    pub unread_claimant_entertainment: bool,
 }
 
 /// What one unit's orders ask of each of its region's contended pools, before any settlement.
@@ -3045,13 +3054,21 @@ pub fn forecast_unit(
     // `ContestedRegionPool` sentence, and that stricter answer wins. Gated on the unit actually
     // drawing on the pool, because a unit that neither works, entertains nor taxes here has no
     // share to bound - the same two predicates the `Unknowable` doubt above is raised from.
-    let draws_late = is_set_to_work(unit_flags, intents)
+    // Each pool is asked about separately, exactly as the `Unknowable` doubts above are: a worker
+    // in a region with no wage ceiling but a finite entertainment demand draws on one pool and not
+    // the other, and one predicate for both would bound it off the wrong one.
+    let draws_wages = is_set_to_work(unit_flags, intents)
         || intents
             .iter()
-            .any(|placed| matches!(placed.intent, Intent::Work | Intent::Entertain));
-    let late_income_at_most = shares.unread_claimant && late_income.is_some() && draws_late;
+            .any(|placed| matches!(placed.intent, Intent::Work));
+    let draws_entertainment = intents
+        .iter()
+        .any(|placed| matches!(placed.intent, Intent::Entertain));
+    let late_income_at_most = late_income.is_some()
+        && ((shares.unread_claimant_wages && draws_wages)
+            || (shares.unread_claimant_entertainment && draws_entertainment));
     let income_in_time_at_most =
-        shares.unread_claimant && income.is_some() && taxes(unit_flags, intents);
+        shares.unread_claimant_tax && income.is_some() && taxes(unit_flags, intents);
     // What the hex's `SHARE` purse actually lends this unit: never more than it is short of, so an
     // allowance settled from the ledger cannot inflate a figure here (`ah-moq3`).
     let short_before_sharing = match (income, wanted_for_orders) {
