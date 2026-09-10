@@ -100,7 +100,7 @@ export function SettingsDialog({
         aria-label="Settings"
         // `whitespace-normal` undoes the header's `whitespace-nowrap`, which would otherwise
         // inherit through the anchor span this dialog is mounted in.
-        className="w-[26rem] rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
+        className="w-[40rem] max-w-[94vw] rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         <div className="flex items-center justify-between">
           <h2 className="text-ink">Settings</h2>

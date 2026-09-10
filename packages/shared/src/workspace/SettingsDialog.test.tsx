@@ -13,6 +13,7 @@ import {
   GameMapSettings,
   ColumnSettings,
   GlobalSettings,
+  SettingsDialog,
   WARNING_GROUPS,
   WarningSettings
 } from "./SettingsDialog";
@@ -62,6 +63,29 @@ function tag(html: string, testid: string): string {
   if (!match) {
     throw new Error(`no element carries data-testid="${testid}"`);
   }
+
+  describe("the Settings dialog width", () => {
+    it("keeps every tab on one line when the viewport has room, without overflowing a narrow one", () => {
+      const html = renderToStaticMarkup(
+        <SettingsDialog
+          platformLabel="Web"
+          appUpdate={UNSUPPORTED_UPDATES}
+          openExternal={() => undefined}
+          game={null}
+          busy={false}
+          error={null}
+          onChangeRuleset={() => {}}
+          onChangeMap={() => {}}
+          onDismiss={() => {}}
+        />
+      );
+      const panel = tag(html, "settings-panel");
+
+      expect(panel).toContain("w-[40rem]");
+      expect(panel).toContain("max-w-[94vw]");
+      expect(html).toContain('class="mt-2 flex flex-wrap gap-1"');
+    });
+  });
   return match[0];
 }
 
