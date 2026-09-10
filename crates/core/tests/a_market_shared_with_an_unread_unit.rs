@@ -3,9 +3,11 @@
 //!
 //! `rules/sell`: *"If more of the item are on sale (by all the units in the region) than are wanted
 //! by the region, the number sold per unit will be split up in proportion to the number each unit
-//! tried to sell."* A unit whose line was cut short reached the model with no items, so its claim
-//! on the line reads `0` and the split divided the line among too few sellers. The figure is kept
-//! and relabelled as the most it can be.
+//! tried to sell."* A unit whose line was cut short lost the goods its claim is measured in - all
+//! of them (`UnitRead::Nothing`) or whatever the truncated item list did not reach
+//! (`UnitRead::Partial`) - so the claim the split counted for it is a floor, and the line was
+//! divided among too few sellers or in the wrong proportion. The figure is kept and relabelled as
+//! the most it can be.
 //!
 //! `rules/sequenceofevents` puts *SELL orders* in the Market phase, before the month-long orders,
 //! so the overstatement is in-time income - which is why `income_in_time_at_most` is the flag.
