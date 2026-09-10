@@ -91,6 +91,23 @@ describe("plannerGroups", () => {
     expect(groups.map((group) => group.source)).toEqual(["own", "sheet", "sheet"]);
   });
 
+  it("orders every faction's mages by unit number", () => {
+    const groups = groupsOf({
+      ownMages: [
+        ownStanding("100", "One Hundred", { FORC: [1, 30] }),
+        ownStanding("9", "Nine", { FORC: [1, 30] }),
+        ownStanding("10", "Ten", { FORC: [1, 30] })
+      ],
+      alliedMages: [
+        alliedRecord("17", "Creeping Death", "300", 71, { SPIR: [3, 270] }),
+        alliedRecord("17", "Creeping Death", "42", 71, { SPIR: [3, 270] })
+      ]
+    });
+
+    expect(groups[0].mages.map((mage) => mage.unitId)).toEqual(["9", "10", "100"]);
+    expect(groups[1].mages.map((mage) => mage.unitId)).toEqual(["42", "300"]);
+  });
+
   it("heads your own group with the faction, its role and the turn", () => {
     expect(groupsOf({}).at(0)?.heading).toBe("Borg TNG (95) — your faction, turn 71");
     expect(

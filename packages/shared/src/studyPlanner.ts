@@ -6,6 +6,7 @@ import { isApprentice, openingMage, standingOf, type MageStanding, type SkillSta
 import type { MagicSkillNode, MagicTree } from "./magicTree";
 import { skillWords } from "./skillReading";
 import { projectedLevel } from "./studyProgress";
+import { compareUnitIds } from "./unitOrder";
 
 /**
  * Every row, every group and every string the study planner shows (`ah-lyg6.2.2`), as pure
@@ -230,17 +231,19 @@ export function plannerGroups(input: {
       source: "own",
       heading: `${label}${role}${turn}`,
       stale: false,
-      mages: ownMages.map((standing) =>
-        plannerMage({
-          standing,
-          factionId: input.report?.header.factionId ?? "",
-          factionLabel: label,
-          tree: input.tree,
-          skills: null,
-          sheetTurn: null,
-          monthsUnreported: 0
-        })
-      )
+      mages: ownMages
+        .map((standing) =>
+          plannerMage({
+            standing,
+            factionId: input.report?.header.factionId ?? "",
+            factionLabel: label,
+            tree: input.tree,
+            skills: null,
+            sheetTurn: null,
+            monthsUnreported: 0
+          })
+        )
+        .sort((left, right) => compareUnitIds(left.unitId, right.unitId))
     });
   }
 
@@ -261,22 +264,24 @@ export function plannerGroups(input: {
       source: "sheet",
       heading: `${row.factionLabel} — ${row.turnText}`,
       stale: row.turnsOld > 0,
-      mages: records.map(({ record, standing }) =>
-        plannerMage({
-          standing,
-          factionId: record.factionId,
-          factionLabel: row.factionLabel,
-          tree: input.tree,
-          skills: record.unit.skills,
-          // The faction's own row, not this record's, for both: the heading says how old the
-          // news about this faction is, and a detail sentence that disagreed with the heading
-          // above it would be a second answer to a question the navigator settled once.
-          // `mageSheetRows` floors the age at zero, so a sheet ahead of the viewed turn is never
-          // projected backwards.
-          sheetTurn: row.sheetTurn,
-          monthsUnreported: row.turnsOld
-        })
-      )
+      mages: records
+        .map(({ record, standing }) =>
+          plannerMage({
+            standing,
+            factionId: record.factionId,
+            factionLabel: row.factionLabel,
+            tree: input.tree,
+            skills: record.unit.skills,
+            // The faction's own row, not this record's, for both: the heading says how old the
+            // news about this faction is, and a detail sentence that disagreed with the heading
+            // above it would be a second answer to a question the navigator settled once.
+            // `mageSheetRows` floors the age at zero, so a sheet ahead of the viewed turn is never
+            // projected backwards.
+            sheetTurn: row.sheetTurn,
+            monthsUnreported: row.turnsOld
+          })
+        )
+        .sort((left, right) => compareUnitIds(left.unitId, right.unitId))
     });
   }
 
