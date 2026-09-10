@@ -4,6 +4,7 @@ import { openExternalOnDesktop } from "./openExternal";
 import { beforeQuit } from "./quitGuard";
 import { desktopTextFileSaver } from "./saveTextFile";
 import { desktopNewAgeTransport } from "./newAgeTransport";
+import { desktopPbemTransport } from "./pbemTransport";
 import { desktopOrdersUploader } from "./uploadOrders";
 import { useDesktopAppUpdate } from "./updateCheck";
 
@@ -35,6 +36,7 @@ export default function App({ client }: { client: CoreClient }) {
       // the live web deploy is not on the list. Rejects when this bundle is opened in a plain
       // browser.
       newAgeTransport={desktopNewAgeTransport()}
+      pbemTransport={desktopPbemTransport()}
     />
   );
 }

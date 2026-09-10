@@ -46,7 +46,7 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       canExportMap={false}
       onExportMageSheet={() => {}}
       canExportMageSheet={false}
-      newAge={undefined}
+      fetchControl={undefined}
       settingsOpen={false}
       onToggleSettings={() => {}}
       settings={null}
@@ -407,14 +407,14 @@ describe("AppHeader mage-sheet chip", () => {
   });
 });
 
-describe("the New Age world control", () => {
-  it("shows no New Age control when the shell offers none", () => {
-    expect(draw({ newAge: undefined })).not.toContain("newage-control");
+describe("the fetch control", () => {
+  it("shows no fetch control when the shell offers none", () => {
+    expect(draw({ fetchControl: undefined })).not.toContain("fetch-control");
   });
 
-  it("offers one Fetch button for a New Age world", () => {
+  it("offers one Fetch button for a server this shell can reach", () => {
     const markup = draw({
-      newAge: { label: FETCH_CONTROL_LABEL, onFetch: () => {} }
+      fetchControl: { label: FETCH_CONTROL_LABEL, onFetch: () => {} }
     });
 
     expect(markup).toContain("Fetch");
@@ -423,7 +423,7 @@ describe("the New Age world control", () => {
   });
 });
 
-/** The New Age control's own tag, so its classes and attributes can be read off it. */
+/** The fetch control's own tag, so its classes and attributes can be read off it. */
 function controlTag(markup: string): string {
-  return markup.match(/<button[^>]*data-testid="newage-control"[^>]*>/)?.[0] ?? "";
+  return markup.match(/<button[^>]*data-testid="fetch-control"[^>]*>/)?.[0] ?? "";
 }

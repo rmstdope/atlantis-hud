@@ -127,7 +127,7 @@ async function withTurnLoaded(page: import("@playwright/test").Page) {
   await page.keyboard.press("Escape");
   await expect(gameData).not.toBeVisible();
 
-  await page.getByTestId("newage-control").click();
+  await page.getByTestId("fetch-control").click();
   await page.getByTestId("newage-faction-number").fill("95");
   await page.getByTestId("newage-password").fill("right");
   await page.getByTestId("newage-fetch-confirm").click();

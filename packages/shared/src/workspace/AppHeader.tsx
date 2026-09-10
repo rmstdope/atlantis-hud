@@ -37,13 +37,13 @@ export type HeaderPopoverId =
   | "export";
 
 /**
- * The New Age world control, as the shell hands it over.
+ * The fetch control, as the shell hands it over.
  *
  * One object rather than two props, because they are only ever both present or both absent: the
- * control exists for a game played under a New Age world in a shell that can reach one. There is
- * no signed-in state to name any more - the button reads `Fetch` and opens the fetch dialog.
+ * control exists for a game whose server this shell can fetch from - a New Age world or the New
+ * Origins site alike. The button reads `Fetch` and opens that server's own fetch dialog.
  */
-export type NewAgeHeaderControl = {
+export type FetchHeaderControl = {
   /** Always `FETCH_CONTROL_LABEL`. A field so the header still owns no strings. */
   label: string;
   onFetch: () => void;
@@ -182,11 +182,11 @@ type AppHeaderProps = {
   /** Why Send is off, shown on hover - so a dialog that could do nothing is never opened. */
   sendDisabledReason?: string;
   /**
-   * The New Age world control, or absent when there is none: the web build, and any game not
-   * played under a New Age world. Absence is the whole of what hides it, the trick `onSendOrders`
+   * The fetch control, or absent when there is none: the web build, and any game whose server
+   * this shell cannot reach. Absence is the whole of what hides it, the trick `onSendOrders`
    * already plays.
    */
-  newAge?: NewAgeHeaderControl;
+  fetchControl?: FetchHeaderControl;
   /** Whether the settings panel is showing. Same split as the picker: header owns the button. */
   settingsOpen: boolean;
   onToggleSettings: () => void;
@@ -243,7 +243,7 @@ export function AppHeader({
   onSendOrders,
   canSend = false,
   sendDisabledReason,
-  newAge,
+  fetchControl,
   settingsOpen,
   onToggleSettings,
   settings
@@ -660,18 +660,18 @@ export function AppHeader({
       </ChipPopover>
 
       {/*
-        The New Age world, between Export and Send: it is about the world the orders are going to,
-        so it belongs beside Send rather than beside the settings cog. Brass-bordered because it is
-        now the world's primary action rather than a state to leave.
+        Fetching, between Export and Send: it is about the server the orders are going to, so it
+        belongs beside Send rather than beside the settings cog. Brass-bordered because it is the
+        server's primary action rather than a state to leave.
       */}
-      {newAge === undefined ? null : (
+      {fetchControl === undefined ? null : (
         <button
           type="button"
-          data-testid="newage-control"
-          onClick={newAge.onFetch}
+          data-testid="fetch-control"
+          onClick={fetchControl.onFetch}
           className="rounded border border-brass bg-panel-raised px-2.5 py-1 text-brass"
         >
-          {newAge.label}
+          {fetchControl.label}
         </button>
       )}
 
