@@ -638,7 +638,7 @@ export function StudyPlannerDetail({
       <div className="mt-3 grid grid-cols-2 gap-3">
         <section>
           <p className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass">Knows</p>
-          <ul className="m-0 list-none p-0">
+          <ul className="m-0 list-none space-y-1 p-0">
             {mage.knows.map((skill) => (
               <li
                 key={skill.tag}
@@ -662,7 +662,7 @@ export function StudyPlannerDetail({
           <p className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass" data-testid="study-planner-can-study-heading">
             Can study now — {mage.canStudy.length}
           </p>
-          <ul className="m-0 list-none p-0">
+          <ul className="m-0 list-none space-y-1 p-0">
             {mage.canStudy.map((node) => (
               <li key={node.tag} data-testid={`study-planner-open-${node.tag}`}>
                 <span className={`rounded border px-1.5 py-0.5 text-pane ${STANDING_CHIP.open}`}>

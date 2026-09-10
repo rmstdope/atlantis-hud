@@ -155,6 +155,7 @@ describe("StudyPlannerDetail", () => {
     expect(own).toContain("Turn 72");
     expect(own).toContain("border-brass/60 bg-brass/10");
     expect(own).toContain("rounded border px-1.5 py-0.5 text-pane");
+    expect(own.match(/list-none space-y-1/g)).toHaveLength(2);
   });
 
   it("shows the useful study information in two columns", () => {
