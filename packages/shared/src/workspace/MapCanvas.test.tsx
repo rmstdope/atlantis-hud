@@ -5,7 +5,7 @@ import type { HexNoteRecord, MapShape } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
 import { CONGESTED_HEXES } from "./mapThemes/congestedFixture";
 import { allBadges } from "./mapThemes/hexView";
-import { terrainTextureRotation } from "./mapHexView";
+import { terrainTextureBrightness, terrainTextureRotation } from "./mapHexView";
 import { COLUMN_PITCH, ROW_PITCH, worldOf } from "./mapViewport";
 import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
 
@@ -179,10 +179,12 @@ describe("what the map hands a theme", () => {
   it("defines a stable rotated texture pattern for textured ground", () => {
     const svg = draw(probe(), [], allBadges(true), undefined, true);
     const rotation = terrainTextureRotation("1:7,51");
+    const brightness = terrainTextureBrightness("1:7,51");
+    const tone = Math.round(brightness * 100);
 
     expect(svg).toMatch(
       new RegExp(
-        `<pattern id="biome-texture-mountain-${rotation}"[^>]*patternTransform="rotate\\(${rotation} 0.5 0.5\\)"`
+        `<pattern id="biome-texture-mountain-${rotation}-${tone}"[^>]*patternTransform="rotate\\(${rotation} 0.5 0.5\\)"><image[^>]*style="filter:brightness\\(${brightness}\\)"`
       )
     );
     expect(svg).not.toContain('id="biome-texture-nexus-');

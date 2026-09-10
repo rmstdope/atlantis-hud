@@ -20,6 +20,7 @@ import type { BattleInvolvement } from "../battles";
 import { worldOf } from "../mapViewport";
 import {
   hexPaint,
+  terrainTextureBrightness,
   terrainTexturePatternId,
   terrainTextureRotation,
   terrainTextureUrl
@@ -116,7 +117,7 @@ export type HexView = {
   at: { x: number; y: number };
   terrain: string;
   /** The biome image to paint under the theme's own treatment, or null when textures are off. */
-  texture: { url: string; patternId: string; rotation: number } | null;
+  texture: { url: string; patternId: string; rotation: number; brightness: number } | null;
   /**
    * How far this hex has faded, already scaled by the theme's `fogDamping`: paint it as it
    * arrives, for a named hex and a stale one alike.
@@ -367,11 +368,15 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
 function textureOf(
   terrain: string,
   regionId: string
-): { url: string; patternId: string; rotation: number } | null {
+): { url: string; patternId: string; rotation: number; brightness: number } | null {
   const url = terrainTextureUrl(terrain);
   const basePatternId = terrainTexturePatternId(terrain);
   const rotation = terrainTextureRotation(regionId);
-  return url && basePatternId ? { url, patternId: `${basePatternId}-${rotation}`, rotation } : null;
+  const brightness = terrainTextureBrightness(regionId);
+  const tone = Math.round(brightness * 100);
+  return url && basePatternId
+    ? { url, patternId: `${basePatternId}-${rotation}-${tone}`, rotation, brightness }
+    : null;
 }
 
 /**

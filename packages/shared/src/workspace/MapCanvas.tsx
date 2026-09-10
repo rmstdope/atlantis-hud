@@ -1068,6 +1068,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                     width="1"
                     height="1"
                     preserveAspectRatio="xMidYMid slice"
+                    style={{ filter: `brightness(${texture.brightness})` }}
                   />
                 </pattern>
               ))

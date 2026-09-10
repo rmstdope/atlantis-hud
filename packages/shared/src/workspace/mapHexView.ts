@@ -113,13 +113,27 @@ export function terrainTexturePatternId(terrain: string): string | null {
  * reports and sessions, so its small hash looks random across the map while producing the same
  * 0–359° angle for the same hex every time.
  */
-export function terrainTextureRotation(regionId: string): number {
+function textureHash(value: string): number {
   let hash = 2166136261;
-  for (const character of regionId) {
+  for (const character of value) {
     hash ^= character.codePointAt(0) ?? 0;
     hash = Math.imul(hash, 16777619);
   }
-  return (hash >>> 0) % 360;
+  return hash >>> 0;
+}
+
+export function terrainTextureRotation(regionId: string): number {
+  return textureHash(regionId) % 360;
+}
+
+/**
+ * A small, stable brightness adjustment for one hex's texture.
+ *
+ * The 0.92–1.08 range makes neighbouring terrain feel less tiled without obscuring a theme's
+ * terrain colour or the information drawn over it.
+ */
+export function terrainTextureBrightness(regionId: string): number {
+  return 0.92 + (textureHash(`${regionId}:brightness`) % 17) / 100;
 }
 
 /**

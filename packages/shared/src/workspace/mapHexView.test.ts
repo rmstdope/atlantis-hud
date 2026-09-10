@@ -11,6 +11,7 @@ import {
   routePoints,
   routeSegments,
   staleFadeAmount,
+  terrainTextureBrightness,
   terrainTexturePatternId,
   terrainTextureRotation,
   terrainTextureUrl,
@@ -89,6 +90,19 @@ describe("terrain texture", () => {
     expect(first).toBeLessThan(360);
     expect(neighbour).toBeGreaterThanOrEqual(0);
     expect(neighbour).toBeLessThan(360);
+    expect(neighbour).not.toBe(first);
+  });
+
+  it("keeps texture brightness within a subtle stable range", () => {
+    const first = terrainTextureBrightness("1:7,53");
+    const second = terrainTextureBrightness("1:7,53");
+    const neighbour = terrainTextureBrightness("1:8,53");
+
+    expect(first).toBe(second);
+    expect(first).toBeGreaterThanOrEqual(0.92);
+    expect(first).toBeLessThanOrEqual(1.08);
+    expect(neighbour).toBeGreaterThanOrEqual(0.92);
+    expect(neighbour).toBeLessThanOrEqual(1.08);
     expect(neighbour).not.toBe(first);
   });
 });
