@@ -103,6 +103,8 @@ describe("ScheduleGrid", () => {
 
     expect(markup).toContain("24 · next");
     expect(markup).toContain(">25<");
+    expect(markup).toContain("border-brass/60");
+    expect(markup).toContain("bg-brass/10");
   });
 
   it("highlights the turn currently shown in the mage pane", () => {
@@ -126,8 +128,11 @@ describe("ScheduleGrid", () => {
   });
 
   it("heads each faction with the words the All mages view uses", () => {
-    expect(grid()).toContain("Wardens of the North (12) — your faction, turn 23");
-    expect(grid()).toContain('data-testid="study-schedule-group-12"');
+    const markup = grid();
+
+    expect(markup).toContain("Wardens of the North (12) — your faction, turn 23");
+    expect(markup).toContain('data-testid="study-schedule-group-12"');
+    expect(markup).toContain("border-y border-brass/60 bg-brass/10 px-2 py-1 text-brass");
   });
 
   it("tints the cell where a level is gained", () => {
@@ -155,7 +160,12 @@ describe("ScheduleGrid", () => {
   });
 
   it("draws an unplanned cell as a dash", () => {
-    expect(grid()).toContain(">—<");
+    const markup = grid();
+    const unplanned = markup.slice(markup.indexOf('study-schedule-cell-2432-24'));
+
+    expect(unplanned).toContain(">—<");
+    expect(unplanned.slice(0, 400)).toContain("border-edge bg-panel-raised");
+    expect(unplanned.slice(0, 400)).toContain("hover:border-select hover:bg-select/10");
   });
 
   it("puts a pencil on a mage who has a note, and on no one else", () => {
@@ -201,6 +211,7 @@ describe("StudySchedule", () => {
 
     expect(markup).toContain("Load a report and the coming six turns appear here.");
     expect(markup).not.toContain("study-schedule-cell-");
+    expect(markup).toContain("rounded border border-edge bg-panel-raised");
   });
 
   // Both paths, from one component. This does **not** reproduce a hook-order change and cannot:

@@ -130,7 +130,9 @@ export function StudySchedule({
   if (empty) {
     return (
       <div data-testid="study-schedule" className="min-h-0 overflow-auto p-3">
-        <p className="text-ink-dim">Load a report and the coming six turns appear here.</p>
+        <div className="rounded border border-edge bg-panel-raised p-3">
+          <p className="m-0 text-ink-dim">Load a report and the coming six turns appear here.</p>
+        </div>
       </div>
     );
   }
@@ -148,13 +150,12 @@ export function StudySchedule({
     <div data-testid="study-schedule" className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden">
       {/* One grid child, whatever it holds: the error line and the strip share the `auto` row, so
           the scroller below keeps the `1fr` whether an error is showing or not. */}
-      <div>
-      {saveError === null ? null : (
-        <p data-testid="study-schedule-error" className="m-0 px-2 py-1 text-warn">
-          {saveError}
-        </p>
-      )}
-      <div className="px-2 py-1">
+      <div className="border-b border-edge bg-panel px-2 py-1">
+        {saveError === null ? null : (
+          <p data-testid="study-schedule-error" className="m-0 text-warn">
+            {saveError}
+          </p>
+        )}
         {notices.length === 0 ? (
           <p data-testid="study-planner-warnings-none" className="m-0 text-ink-dim">
             {noticeSummary([])}
@@ -166,14 +167,14 @@ export function StudySchedule({
               data-testid="study-planner-warnings-toggle"
               aria-expanded={stripOpen}
               onClick={() => setStripOpen((was) => !was)}
-              className="text-ink"
+              className="rounded border border-warn/60 bg-warn/10 px-1.5 text-warn hover:bg-warn/15"
             >
               {`${stripOpen ? "▾" : "▸"} ${noticeSummary(notices)}`}
             </button>
             {!stripOpen ? null : (
               <ul
                 data-testid="study-planner-warnings"
-                className="m-0 max-h-36 list-none overflow-y-auto p-0"
+                className="m-0 mt-1 max-h-36 list-none overflow-y-auto p-0"
               >
                 {notices.map((notice, index) => (
                   <li key={`${notice.rowKey}:${notice.turnIndex}:${index}`}>
@@ -181,7 +182,7 @@ export function StudySchedule({
                       type="button"
                       data-testid={`study-planner-warning-${index}`}
                       onClick={() => focusCell(notice)}
-                      className={`flex w-full gap-2 px-1 text-left ${
+                      className={`flex w-full gap-2 rounded px-1 text-left hover:bg-panel-raised ${
                         notice.level === "warning"
                           ? "border-l-2 border-warn text-warn"
                           : "border-l-2 border-edge text-ink-dim"
@@ -196,7 +197,6 @@ export function StudySchedule({
             )}
           </>
         )}
-      </div>
       </div>
       {/* The grid scrolls; the pane beside it is a column of its own and does not. */}
       <div className="grid min-h-0 grid-cols-[1fr_20rem] overflow-hidden">
@@ -452,15 +452,15 @@ export function ScheduleGrid({
     <table className="w-full border-collapse text-pane" onKeyDown={walk}>
       <thead>
         <tr>
-          <th className="sticky left-0 top-0 z-20 bg-panel-raised px-2 py-1 text-left text-ink-soft">
+          <th className="sticky left-0 top-0 z-20 border-b border-r border-brass/60 bg-brass/10 px-2 py-1 text-left text-pane-xs uppercase tracking-[0.08em] text-brass">
             Mage
           </th>
           {turns.map((turn, index) => (
             <th
               key={turn}
               data-testid={`study-schedule-turn-${turn}`}
-              className={`sticky top-0 z-10 px-2 py-1 text-left ${
-                index === activeTurnIndex ? "bg-select/15 text-ink" : "bg-panel-raised text-ink-soft"
+              className={`sticky top-0 z-10 border-b border-l border-brass/60 px-2 py-1 text-left ${
+                index === activeTurnIndex ? "bg-select/15 text-ink" : "bg-brass/10 text-brass"
               }`}
             >
               {index === 0 ? `${turn} · next` : `${turn}`}
@@ -521,7 +521,7 @@ function FactionRows({
   return (
     <>
       <tr data-testid={`study-schedule-group-${group.factionId}`}>
-        <td colSpan={turns.length + 1} className="bg-panel px-2 py-1 text-ink-soft">
+        <td colSpan={turns.length + 1} className="border-y border-brass/60 bg-brass/10 px-2 py-1 text-brass">
           {group.heading}
         </td>
       </tr>
@@ -537,7 +537,7 @@ function FactionRows({
             <td
               data-testid={`study-schedule-name-${row.unitId}`}
               onMouseEnter={() => onAt?.({ rowKey: row.key, turnIndex: null })}
-              className={`sticky left-0 z-10 px-2 py-1 align-top ${
+              className={`sticky left-0 z-10 border-b border-r border-edge px-2 py-1 align-top ${
                 row.key === activeRowKey ? "bg-select/15" : "bg-panel-raised"
               }`}
             >
@@ -545,7 +545,7 @@ function FactionRows({
                 {row.name} ({row.unitId})
               </span>
               {row.hasNote ? (
-                <span data-testid={`study-schedule-note-${row.unitId}`} title="Has a note">
+                <span data-testid={`study-schedule-note-${row.unitId}`} title="Has a note" className="text-brass">
                   {" "}
                   ✎
                 </span>
@@ -571,7 +571,7 @@ function FactionRows({
                       ? STANDING_CHIP.known
                       : "";
               return (
-                <td key={turn} className="px-1 py-1 align-top">
+                <td key={turn} className="border-b border-edge px-1 py-1 align-top">
                   <button
                     type="button"
                     data-testid={`study-schedule-cell-${row.unitId}-${turn}`}
@@ -589,7 +589,7 @@ function FactionRows({
                     onClick={() =>
                       onEvent({ kind: "cell-opened", rowKey: row.key, turnIndex: index })
                     }
-                    className={`w-full rounded border px-1 text-left ${tint}`}
+                    className={`w-full rounded border border-edge bg-panel-raised px-1 text-left text-ink-soft transition-colors hover:border-select hover:bg-select/10 hover:text-ink ${tint}`}
                   >
                     {cellLabel(cell)}
                   </button>
