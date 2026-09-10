@@ -154,6 +154,7 @@ describe("StudyPlannerDetail", () => {
     expect(own).toContain('data-testid="study-planner-detail-context"');
     expect(own).toContain("Turn 72");
     expect(own).toContain("border-brass/60 bg-brass/10");
+    expect(own).toContain("rounded border px-1.5 py-0.5 text-pane");
   });
 
   it("shows the useful study information in two columns", () => {

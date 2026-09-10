@@ -646,7 +646,7 @@ export function StudyPlannerDetail({
                 className="text-ink"
               >
                 <span
-                  className={`rounded border px-1 text-pane-xs ${STANDING_CHIP[skill.standing.kind]}`}
+                  className={`rounded border px-1.5 py-0.5 text-pane ${STANDING_CHIP[skill.standing.kind]}`}
                 >
                   {knownChip(skill)}
                 </span>{" "}
@@ -665,7 +665,7 @@ export function StudyPlannerDetail({
           <ul className="m-0 list-none p-0">
             {mage.canStudy.map((node) => (
               <li key={node.tag} data-testid={`study-planner-open-${node.tag}`}>
-                <span className={`rounded border px-1 text-pane-xs ${STANDING_CHIP.open}`}>
+                <span className={`rounded border px-1.5 py-0.5 text-pane ${STANDING_CHIP.open}`}>
                   {node.name}
                 </span>
               </li>
