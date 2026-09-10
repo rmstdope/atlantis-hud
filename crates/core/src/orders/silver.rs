@@ -9045,7 +9045,10 @@ mod tests {
         assert_eq!(unit.income, Some(960), "the figure is kept");
         assert_eq!(unit.doubt, None, "a bound is not a doubt");
         assert!(unit.income_in_time_at_most);
-        assert!(!unit.late_income_at_most, "nothing bounds the late half here");
+        assert!(
+            !unit.late_income_at_most,
+            "nothing bounds the late half here"
+        );
     }
 
     /// `ah-0n2k.2`, the narrowing. A market claim needs an order, and a cut-short report line takes
