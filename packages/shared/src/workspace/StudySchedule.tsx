@@ -208,6 +208,7 @@ export function StudySchedule({
             mode={mode}
             onEvent={onEvent}
             onAt={setAt}
+            activeTurnIndex={at?.turnIndex ?? null}
             notices={notices}
           />
         </div>
@@ -393,6 +394,7 @@ export function ScheduleGrid({
   mode,
   onEvent,
   onAt,
+  activeTurnIndex = null,
   notices
 }: {
   rows: readonly ScheduleRow[];
@@ -406,6 +408,8 @@ export function ScheduleGrid({
    * pointer crosses a gap.
    */
   onAt?: (at: { rowKey: string; turnIndex: number | null }) => void;
+  /** The turn currently shown in the mage pane, or null when it is showing the mage now. */
+  activeTurnIndex?: number | null;
   /** Everything the planner has to say, so a cell can be tinted and titled by what it raised. */
   notices?: readonly PlannerNotice[];
 }) {
@@ -451,7 +455,9 @@ export function ScheduleGrid({
             <th
               key={turn}
               data-testid={`study-schedule-turn-${turn}`}
-              className="sticky top-0 z-10 bg-panel-raised px-2 py-1 text-left text-ink-soft"
+              className={`sticky top-0 z-10 px-2 py-1 text-left ${
+                index === activeTurnIndex ? "bg-select/15 text-ink" : "bg-panel-raised text-ink-soft"
+              }`}
             >
               {index === 0 ? `${turn} · next` : `${turn}`}
             </th>

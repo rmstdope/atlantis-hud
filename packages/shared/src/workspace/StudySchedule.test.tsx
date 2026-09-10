@@ -69,9 +69,20 @@ const rows = scheduleRows({
   after: new Map()
 });
 
-function grid(mode: CellMode = { kind: "idle" }, drawnRows: readonly ScheduleRow[] = rows) {
+function grid(
+  mode: CellMode = { kind: "idle" },
+  drawnRows: readonly ScheduleRow[] = rows,
+  activeTurnIndex: number | null = null
+) {
   return renderToStaticMarkup(
-    <ScheduleGrid rows={drawnRows} groups={groups} turns={turns} mode={mode} onEvent={() => {}} />
+    <ScheduleGrid
+      rows={drawnRows}
+      groups={groups}
+      turns={turns}
+      mode={mode}
+      activeTurnIndex={activeTurnIndex}
+      onEvent={() => {}}
+    />
   );
 }
 
@@ -90,6 +101,17 @@ describe("ScheduleGrid", () => {
 
     expect(markup).toContain("24 · next");
     expect(markup).toContain(">25<");
+  });
+
+  it("highlights the turn currently shown in the mage pane", () => {
+    const markup = grid({ kind: "idle" }, rows, 1);
+    const header = (turn: number) =>
+      new RegExp(`<th[^>]*data-testid="study-schedule-turn-${turn}"[^>]*>`).exec(markup)?.[0] ?? "";
+    const selected = header(25);
+    const other = header(24);
+
+    expect(selected).toContain("bg-select/15");
+    expect(other).not.toContain("bg-select/15");
   });
 
   it("heads each faction with the words the All mages view uses", () => {
