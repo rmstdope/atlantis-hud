@@ -77,3 +77,33 @@ built rather than handed back. One sentence in either place removes the judgemen
 
 **Seen before.** None found — `grep -rln "increments 4\|Increments section" docs/retrospectives/`
 finds nothing of this shape among 358 files.
+
+## The reopened run failed against a gitignored wasm artifact older than the merge, and no test covered the boundary
+
+**What happened.** (Reopened run, PR #1164 — the sections above are the original build, PR #1160.)
+The navigator's verification failed: the SILVER column read exact figures beside an unread
+hex-mate, with no "at most" and no sentence. Investigation found every link of the chain correct —
+`cargo test -p atlantis-hud-core --test a_hex_shared_with_an_unread_unit` green on main, every
+TypeScript renderer carrying the bound — until the artifact: the web shell the verification drove
+had been started before #1160 and #1162 merged, and `atlantis_core_bg.wasm` is gitignored and built
+locally, so it predated the feature by hours (`wasm/.source-fingerprint` stamped Sep 9 17:49; the
+PRs merged Sep 10 morning). Nothing in the tracked code was wrong; nothing could have said so.
+
+**Why.** `scripts/ensure-wasm.mjs` rebuilds the module only when its fingerprint stamp mismatches,
+and that check runs at typecheck and dev-server start — never against a server already running. A
+long-lived shell survives core changes with a stale artifact, and verification drove exactly such a
+shell. The wasm-flavoured version of what ah-m9q.2 recorded, not a new failure mode.
+
+**Cost.** The failed verification, a P0 reopen, and one implementation session to diagnose and
+close the loop — for a feature that was already correct when it merged.
+
+**Prevent by.** Two things, one shipped in #1164 and one still the navigator's call. Shipped:
+`packages/browser-core/src/silverBound.wasm.test.ts` loads the artifact the shell serves and fails
+on `incomeInTimeAtMost` being `undefined` whenever the module predates the feature — demonstrated
+red against the pre-feature build, so any checkout whose suite runs after a merge can no longer
+hold a stale artifact silently. Still the navigator's call (as in ah-m9q.2): Psylocke's prep step
+should run `node scripts/ensure-wasm.mjs` — or restart the shell — before driving a verification,
+since a verification session never runs the vitest suite that would now catch it.
+
+**Seen before.** ah-m9q.2 — verification failed against a build that predated the merge it was
+checking; different artifact layer, same shape.
