@@ -12,11 +12,23 @@ export type SettingToggleProps = {
   testId: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 };
 
-export function SettingToggle({ title, description, testId, checked, onChange }: SettingToggleProps) {
+export function SettingToggle({
+  title,
+  description,
+  testId,
+  checked,
+  onChange,
+  disabled = false
+}: SettingToggleProps) {
   return (
-    <label className="flex items-center justify-between gap-2 rounded border border-edge bg-panel px-2 py-1 text-ink-soft hover:border-brass/60">
+    <label
+      className={`flex items-center justify-between gap-2 rounded border border-edge bg-panel px-2 py-1 text-ink-soft ${
+        disabled ? "opacity-50" : "hover:border-brass/60"
+      }`}
+    >
       <span>
         <span className="block">{title}</span>
         <span className="block text-pane-sm text-ink-dim">{description}</span>
@@ -26,6 +38,7 @@ export function SettingToggle({ title, description, testId, checked, onChange }:
         data-testid={testId}
         aria-label={title}
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
         className="accent-brass"
       />

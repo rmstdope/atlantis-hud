@@ -67,7 +67,8 @@ function draw(
   notes: HexNoteRecord[] = [],
   badges = allBadges(true),
   battles?: ReadonlyMap<string, "own" | "other">,
-  showTextures = false
+  showTextures = false,
+  rotateTextures = true
 ): string {
   return renderToStaticMarkup(
     <MapCanvas
@@ -81,6 +82,7 @@ function draw(
       onSelectRegion={() => {}}
       showStaleness
       showTextures={showTextures}
+      rotateTextures={rotateTextures}
       badges={badges}
       notes={notes}
       battles={battles}
@@ -188,6 +190,14 @@ describe("what the map hands a theme", () => {
       )
     );
     expect(svg).not.toContain('id="biome-texture-nexus-');
+  });
+
+  it("leaves biome textures unrotated when rotation is off", () => {
+    const svg = draw(probe(), [], allBadges(true), undefined, true, false);
+    const pattern = svg.match(/<pattern id="biome-texture-mountain-0-\d+"[^>]*>/)?.[0];
+
+    expect(pattern).toBeDefined();
+    expect(pattern).not.toContain("patternTransform");
   });
 
   it("hands a theme the fade already damped by its own factor", () => {

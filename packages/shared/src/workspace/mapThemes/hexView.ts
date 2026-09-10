@@ -221,6 +221,8 @@ export type BattleMark = BattleInvolvement | null;
 export type HexViewOptions = {
   showStaleness: boolean;
   showTextures: boolean;
+  /** Defaults to true so existing renderers retain the textured map's varied orientation. */
+  rotateTextures?: boolean;
   badges: Record<BadgeName, boolean>;
   /**
    * Where last turn's battles were fought, from `battleHexes`, keyed by `HexNode.regionId`.
@@ -367,11 +369,12 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
  */
 function textureOf(
   terrain: string,
-  regionId: string
+  regionId: string,
+  rotateTextures: boolean
 ): { url: string; patternId: string; rotation: number; brightness: number } | null {
   const url = terrainTextureUrl(terrain);
   const basePatternId = terrainTexturePatternId(terrain);
-  const rotation = terrainTextureRotation(regionId);
+  const rotation = rotateTextures ? terrainTextureRotation(regionId) : 0;
   const brightness = terrainTextureBrightness(regionId);
   const tone = Math.round(brightness * 100);
   return url && basePatternId
@@ -442,7 +445,9 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     key: hex.regionId,
     at: worldOf(hex.coordinate),
     terrain: hex.terrain,
-    texture: options.showTextures ? textureOf(hex.terrain, hex.regionId) : null,
+    texture: options.showTextures
+      ? textureOf(hex.terrain, hex.regionId, options.rotateTextures !== false)
+      : null,
     fogOpacity: dampFog(paint.fogOpacity, options.fogDamping ?? 1),
     hatched: paint.hatched,
     knowledge: hex.knowledge,

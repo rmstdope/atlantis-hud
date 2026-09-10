@@ -63,6 +63,10 @@ describe("settings store", () => {
     expect(store().biomeTextures).toBe(true);
   });
 
+  it("enables biome texture rotation by default", () => {
+    expect(store().biomeTextureRotation).toBe(true);
+  });
+
   /**
    * Off by default, and that is the whole point of it being a setting. Most hexes are deliberately
    * left unguarded, so this check speaks about hex after hex - measured against the committed turn
@@ -224,6 +228,23 @@ describe("settings store", () => {
     await useSettingsStore.persist.rehydrate();
 
     expect(store().biomeTextures).toBe(false);
+  });
+
+  it("persists the biome texture rotation preference", async () => {
+    store().setBiomeTextureRotation(false);
+    expect(store().biomeTextureRotation).toBe(false);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    useSettingsStore.setState({ biomeTextureRotation: true });
+    await storage.setItem("atlantis-hud-settings", persisted);
+    await useSettingsStore.persist.rehydrate();
+
+    expect(store().biomeTextureRotation).toBe(false);
   });
 
   it("stamps the chosen theme onto the document root", () => {

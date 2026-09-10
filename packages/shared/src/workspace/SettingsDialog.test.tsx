@@ -134,6 +134,25 @@ describe("the pane transparency setting", () => {
   });
 });
 
+describe("the biome texture rotation setting", () => {
+  afterEach(() => {
+    restoreStoresForTest();
+    resetSettingsStore();
+  });
+
+  it("is nested under biome textures and unavailable while textures are off", () => {
+    const html = renderWithStoreState(<GlobalSettings />, useSettingsStore, {
+      biomeTextures: false,
+      biomeTextureRotation: true
+    });
+
+    expect(html).toContain("Rotate biome textures");
+    expect(html).toContain("Turns each hex&#x27;s texture by a different angle.");
+    expect(html).toContain('class="ml-4 border-l-2 border-brass/40 pl-2"');
+    expect(tag(html, "settings-biome-texture-rotation")).toContain("disabled");
+  });
+});
+
 describe("the Interface size setting", () => {
   afterEach(() => {
     restoreStoresForTest();

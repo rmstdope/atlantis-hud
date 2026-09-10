@@ -948,6 +948,7 @@ export function AppShell({
   const layers = useWorkspaceStore((state) => state.layers);
   const badges = useWorkspaceStore((state) => state.badges);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
+  const rotateTextures = useSettingsStore((state) => state.biomeTextureRotation);
   const mapThemeId = useSettingsStore((state) => state.mapTheme);
   const advisoryChecks = useSettingsStore((state) => state.advisoryChecks);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
@@ -5157,6 +5158,7 @@ export function AppShell({
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
           showTextures={showTextures}
+          rotateTextures={rotateTextures}
           badges={badges}
           route={chooseRouteOverlay({
             movementLayerOn: layers.movement,

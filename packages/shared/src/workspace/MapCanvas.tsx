@@ -188,6 +188,8 @@ type MapCanvasProps = {
   onSelectRegion: (regionId: string) => void;
   showStaleness: boolean;
   showTextures: boolean;
+  /** Whether each biome texture is rotated by its stable per-hex angle. */
+  rotateTextures?: boolean;
   /** Which marks the themes may draw over the terrain, one flag per kind. */
   badges: Record<BadgeName, boolean>;
   /**
@@ -274,6 +276,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     onSelectRegion,
     showStaleness,
     showTextures,
+    rotateTextures = true,
     badges,
     route = null,
     arrow = null,
@@ -335,8 +338,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
    * the rest.
    */
   const viewOptions = useMemo(
-    () => ({ showStaleness, showTextures, badges, battles, fogDamping: theme.fogDamping }),
-    [showStaleness, showTextures, badges, battles, theme.fogDamping]
+    () => ({
+      showStaleness,
+      showTextures,
+      rotateTextures,
+      badges,
+      battles,
+      fogDamping: theme.fogDamping
+    }),
+    [showStaleness, showTextures, rotateTextures, badges, battles, theme.fogDamping]
   );
   const allViews = useMemo(() => buildHexViews(onLevel, viewOptions), [onLevel, viewOptions]);
   const texturePatterns = useMemo(() => {
@@ -1059,7 +1069,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                   patternContentUnits="objectBoundingBox"
                   width="1"
                   height="1"
-                  patternTransform={`rotate(${texture.rotation} 0.5 0.5)`}
+                  patternTransform={
+                    texture.rotation === 0
+                      ? undefined
+                      : `rotate(${texture.rotation} 0.5 0.5)`
+                  }
                 >
                   <image
                     href={texture.url}

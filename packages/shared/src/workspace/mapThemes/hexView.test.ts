@@ -86,6 +86,12 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
     expect(viewOf(hex({ knowledge: "current" }), { showTextures: false }).texture).toBeNull();
   });
 
+  it("leaves texture orientation alone when rotation is off", () => {
+    const texture = viewOf(hex({ knowledge: "current" }), { rotateTextures: false }).texture;
+
+    expect(texture?.rotation).toBe(0);
+  });
+
   it("leaves a terrain with no texture solid even with textures on", () => {
     expect(viewOf(hex({ knowledge: "current", terrain: "nexus" })).texture).toBeNull();
   });

@@ -215,6 +215,8 @@ export function GlobalSettings() {
   const setMapTheme = useSettingsStore((state) => state.setMapTheme);
   const biomeTextures = useSettingsStore((state) => state.biomeTextures);
   const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
+  const biomeTextureRotation = useSettingsStore((state) => state.biomeTextureRotation);
+  const setBiomeTextureRotation = useSettingsStore((state) => state.setBiomeTextureRotation);
   // Per theme (ah-j1xd): the slider always shows and writes the theme the player is looking at.
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
@@ -272,6 +274,17 @@ export function GlobalSettings() {
         checked={biomeTextures}
         onChange={setBiomeTextures}
       />
+
+      <div className="ml-4 border-l-2 border-brass/40 pl-2">
+        <SettingToggle
+          title="Rotate biome textures"
+          description="Turns each hex's texture by a different angle."
+          testId="settings-biome-texture-rotation"
+          checked={biomeTextureRotation}
+          onChange={setBiomeTextureRotation}
+          disabled={!biomeTextures}
+        />
+      </div>
 
       {/*
         The two map layers that used to be chips over the map (ah-l9mp). Both are set once and then
