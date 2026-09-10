@@ -101,7 +101,10 @@ describe("MagicTreeDialog", () => {
     expect(occurrences(html, 'data-testid="magic-tree-skill-')).toBe(70);
     expect(html).toContain("70 skills");
     expect(html).toContain("Magic study tree");
-    expect(html).toContain("Close");
+    expect(html).toContain('aria-label="Close magic study tree"');
+    expect(html).toContain(">×</button>");
+    expect(html).toContain("border-brass/60");
+    expect(html).toContain("shadow-xl");
   });
 
   it("states the cap rule once, under the header", () => {
@@ -150,16 +153,13 @@ describe("landing on a skill", () => {
   it("picks out the skill it was opened on", () => {
     const html = markup("INVI");
 
-    expect(html).toMatch(/data-testid="magic-tree-skill-INVI"[^>]*class="[^"]*bg-panel/);
-    expect(html).not.toMatch(/data-testid="magic-tree-skill-FORC"[^>]*class="[^"]*bg-panel/);
+    expect(html).toMatch(/data-testid="magic-tree-skill-INVI"[^>]*class="[^"]*bg-select\/15/);
+    expect(html).not.toMatch(/data-testid="magic-tree-skill-FORC"[^>]*class="[^"]*bg-select\/15/);
     expect(html).toMatch(/data-testid="magic-tree-skill-FORC"[^>]*class="[^"]*text-ink-soft/);
   });
 
   it("picks out nothing when it was opened at the top", () => {
-    // Named on the row rather than on the class alone: the header's view toggle draws its pressed
-    // half with `bg-panel` too, so a bare search for the class no longer says anything about which
-    // skill is picked out.
-    expect(markup()).not.toMatch(/data-testid="magic-tree-skill-[A-Z]+"[^>]*class="[^"]*bg-panel/);
+    expect(markup()).not.toMatch(/data-testid="magic-tree-skill-[A-Z]+"[^>]*class="[^"]*bg-select\/15/);
   });
 });
 

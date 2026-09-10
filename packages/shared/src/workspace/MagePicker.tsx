@@ -45,7 +45,7 @@ export function MagePicker({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => (open ? setOpen(false) : show())}
-        className="rounded border border-edge px-1.5 text-ink hover:text-ink"
+        className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10"
       >
         Mage: {picked.name} ({picked.unitId})
       </button>
@@ -110,15 +110,15 @@ export function MageMenu({
     <div
       data-testid="magic-tree-mage-menu"
       role="menu"
-      className="absolute top-full left-0 z-10 mt-1 max-h-[50vh] w-72 overflow-y-auto rounded border border-edge bg-panel-raised py-1 shadow-lg"
+      className="absolute top-full left-0 z-10 mt-1 max-h-[50vh] w-72 overflow-y-auto rounded border border-brass/60 bg-panel-raised py-1 shadow-xl"
     >
-      <p className="m-0 px-2 text-ink-dim">Mages — {adepts.length}</p>
+      <p className="m-0 border-b border-brass/60 bg-brass/10 px-2 py-1 text-pane-xs uppercase tracking-[0.08em] text-brass">Mages — {adepts.length}</p>
       {adepts.map((mage) => (
         <MageRow key={mage.unitId} mage={mage} picked={picked} label={label} onPick={onPick} />
       ))}
       {apprentices.length === 0 ? null : apprenticesShown ? (
         <>
-          <p className="m-0 mt-1 px-2 text-ink-dim">
+          <p className="m-0 mt-1 border-b border-brass/60 bg-brass/10 px-2 py-1 text-pane-xs uppercase tracking-[0.08em] text-brass">
             Apprentices — {apprentices.length}, manipulation only
           </p>
           {apprentices.map((mage) => (
@@ -131,7 +131,7 @@ export function MageMenu({
           data-testid="magic-tree-mage-apprentices"
           aria-expanded={false}
           onClick={onShowApprentices}
-          className="mt-1 block w-full bg-transparent px-2 text-left text-ink-dim hover:text-ink"
+          className="mt-1 block w-full border-y border-edge bg-panel px-2 py-1 text-left text-ink-dim hover:text-ink"
         >
           Apprentices — {apprentices.length}, manipulation only
         </button>
@@ -158,8 +158,8 @@ function MageRow({
       role="menuitemradio"
       aria-checked={mage.unitId === picked.unitId}
       onClick={() => onPick(mage.unitId)}
-      className={`block w-full bg-transparent px-2 text-left hover:bg-panel ${
-        mage.unitId === picked.unitId ? "text-ink" : "text-ink-soft"
+      className={`block w-full border-l-2 bg-transparent px-2 text-left hover:bg-select/15 ${
+        mage.unitId === picked.unitId ? "border-select bg-select/15 text-ink" : "border-transparent text-ink-soft"
       }`}
     >
       {mage.name} ({mage.unitId}){" "}

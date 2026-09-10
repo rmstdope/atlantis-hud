@@ -141,7 +141,7 @@ export function MagicTreeDialog({
         // top offset + max height must leave a real margin, or the dialog runs to the screen edge.
         // theme.css caps every modal at 90vh, but as a `:where()` default at zero specificity
         // (ah-y4zb) - so this 80vh simply wins, with no `!` needed.
-        className={`grid grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg ${
+        className={`grid grid-rows-[auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl ${
           // The graph is 1366 world units wide and cannot reflow, so its box opens out - and takes
           // a real height rather than a maximum, because `fitGraph` fits into the height it is
           // given and a box that sized to its content would fit the graph into its own answer.
@@ -151,8 +151,8 @@ export function MagicTreeDialog({
         }`}
       >
         <div className="flex flex-wrap items-center gap-2 border-b border-edge px-2 py-1.5">
-          <span className="text-ink-soft">Magic study tree</span>
-          <div className="flex overflow-hidden rounded border border-edge">
+          <span className="text-brass">Magic study tree</span>
+          <div className="flex overflow-hidden rounded border border-brass/60">
             <ViewButton
               testId="magic-tree-view-branches"
               pressed={!showingGraph}
@@ -171,7 +171,7 @@ export function MagicTreeDialog({
           {picked === null || onPick === undefined ? null : (
             <>
               <MagePicker mages={mages} picked={picked} label={label} onPick={onPick} />
-              <span data-testid="magic-tree-tally" className="text-ink-dim">
+              <span data-testid="magic-tree-tally" className="rounded border border-edge bg-panel px-1 text-ink-dim">
                 {tally(picked)}
               </span>
             </>
@@ -205,14 +205,14 @@ export function MagicTreeDialog({
             // Said out loud, because the same click does two things depending on what is already
             // lit - which is exactly the behaviour a reader cannot guess. It wraps to a second line
             // on a narrow window rather than being dropped.
-            <span data-testid="magic-tree-lit" className="flex items-center gap-1 text-ink">
+            <span data-testid="magic-tree-lit" className="flex items-center gap-1 rounded border border-select bg-select/10 px-1 text-ink">
               {litSkill.name}
               <span className="text-ink-dim">— click again to open in the dictionary</span>
               <button
                 type="button"
                 data-testid="magic-tree-show-all"
                 onClick={() => setHighlighted(null)}
-                className="rounded border border-edge px-1 text-ink-dim hover:text-ink"
+                className="rounded border border-select px-1 text-select hover:bg-select/15"
               >
                 Show all
               </button>
@@ -232,9 +232,11 @@ export function MagicTreeDialog({
             // controls.
             autoFocus
             onClick={onDismiss}
-            className="rounded px-1.5 text-ink-dim hover:text-ink"
+            aria-label="Close magic study tree"
+            title="Close magic study tree"
+            className="rounded border border-edge px-1.5 text-ink-dim hover:border-brass hover:text-brass"
           >
-            Close
+            ×
           </button>
         </div>
 
@@ -249,7 +251,7 @@ export function MagicTreeDialog({
             // reference page whether or not a report is loaded.
             <p
               data-testid="magic-tree-no-mages"
-              className="m-0 border-b border-edge px-3 py-1.5 text-ink-dim"
+              className="m-0 border-b border-edge bg-panel px-3 py-1.5 text-ink-dim"
             >
               None of your units has studied magic. A unit becomes a mage by studying force,
               pattern or spirit.
@@ -257,7 +259,7 @@ export function MagicTreeDialog({
           ) : (
             <p
               data-testid="magic-tree-no-report"
-              className="m-0 border-b border-edge px-3 py-1.5 text-ink-dim"
+              className="m-0 border-b border-edge bg-panel px-3 py-1.5 text-ink-dim"
             >
               No turn report is loaded. The tree shows every magic skill and what it stands on.
               Load a report and it will also show what your own mages know.
@@ -270,7 +272,7 @@ export function MagicTreeDialog({
             // conclude the tree is simply wrong.
             <p
               data-testid="magic-tree-missing"
-              className="m-0 border-b border-edge px-3 py-1.5 text-warn"
+              className="m-0 border-b border-warn/60 bg-warn/10 px-3 py-1.5 text-warn"
             >
               {missingLine(picked)}
             </p>
@@ -283,7 +285,7 @@ export function MagicTreeDialog({
           */}
           <p
             data-testid="magic-tree-cap"
-            className="m-0 border-b border-edge px-3 py-1.5 text-ink-dim"
+            className="m-0 border-b border-brass/60 bg-panel px-3 py-1.5 text-ink-dim"
           >
             A magic skill can never rise above the skills it stands on — the levels below are
             floors to begin, and ceilings thereafter.
@@ -345,7 +347,7 @@ function ViewButton({
       data-testid={testId}
       aria-pressed={pressed}
       onClick={onClick}
-      className={`px-2 ${pressed ? "bg-panel text-ink" : "text-ink-dim hover:text-ink"}`}
+      className={`px-2 py-0.5 ${pressed ? "bg-brass/10 text-brass" : "text-ink-dim hover:bg-panel hover:text-ink"}`}
     >
       {children}
     </button>
@@ -371,7 +373,7 @@ function ZoomButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink"
+      className="rounded border border-select px-1.5 text-select hover:bg-select/15"
     >
       {children}
     </button>
@@ -398,12 +400,12 @@ function Card({
   return (
     <section
       data-testid={`magic-tree-branch-${branch.key}`}
-      className={`mb-3 rounded border px-2 py-1.5 ${
+      className={`mb-3 rounded border bg-panel-raised px-2 py-1.5 ${
         // The apprenticeship is set apart, because it is not a foundation and nothing builds on it.
-        branch.key === "MANI" ? "border-dashed border-edge" : "border-edge"
+        branch.key === "MANI" ? "border-dashed border-brass/60" : "border-brass/60"
       }`}
     >
-      <h3 className="m-0 text-ink">{branch.title}</h3>
+      <h3 className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass">{branch.title}</h3>
       {branch.blurb === null ? null : <p className="m-0 mb-1 text-ink-dim">{branch.blurb}</p>}
       {branch.skills.map((skill) => (
         <Skill
@@ -445,8 +447,8 @@ function Skill({
       // gap between the left edge and the text, and it is added here rather than as a `pl-`
       // utility because an inline `paddingLeft` would win over one anyway.
       style={{ paddingLeft: `calc(${(skill.depth - floor) * 0.75}rem + 5px)` }}
-      className={`flex items-baseline gap-1.5 rounded py-0.5 ${
-        highlighted ? "bg-panel " : ""
+      className={`flex items-baseline gap-1.5 rounded py-0.5 hover:bg-panel ${
+        highlighted ? "bg-select/15 " : ""
       }${
         style === null
           ? `border-l-4 border-transparent ${highlighted ? "text-ink" : "text-ink-soft"}`
