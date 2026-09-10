@@ -548,7 +548,7 @@ export function StudyPlannerList({
                 // selection would come down to the ink alone.
                 className={`cursor-pointer border-l-2 px-2 py-0.5 ${
                   mage.key === picked.key
-                    ? "border-select bg-panel text-ink"
+                    ? "border-select bg-select/15 text-ink"
                     : `border-transparent text-ink-soft hover:text-ink ${
                         group.stale ? "bg-panel" : ""
                       }`

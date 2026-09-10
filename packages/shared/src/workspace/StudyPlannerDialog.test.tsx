@@ -103,7 +103,7 @@ describe("StudyPlannerList", () => {
       <StudyPlannerList groups={GROUPS} picked={mageBy("300")} onPick={() => {}} onMove={() => false} />
     );
     // The stale tint is on unselected rows only, so it cannot swallow the selected row's own.
-    expect(staleSelected).toContain("border-select bg-panel text-ink");
+    expect(staleSelected).toContain("border-select bg-select/15 text-ink");
     expect(staleSelected.match(/border-select/g)).toHaveLength(1);
   });
 
