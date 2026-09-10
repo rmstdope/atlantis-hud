@@ -66,7 +66,11 @@ td { color:var(--ink-soft); } td b { color:var(--ink); font-weight:600; }
   on the window. Every turn.</p>
   <p>The New Age worlds already do this by themselves — one <b>Fetch</b> button, a faction number, a
   password, and the report lands. This page is the agreed shape of the same thing for New Origins.
-  Chosen 2026-09-09 across four rounds; every string here is quoted as it will ship, not paraphrased.</p>
+  Chosen 2026-09-09 across four rounds and amended 2026-09-10; every string here is quoted as it
+  will ship, not paraphrased.</p>
+  <p><b>Fetching is one single request.</b> The faction number and the password go with the download
+  itself &mdash; there is no signing in to New Origins, and no step before the fetch. That is why
+  there is one working line rather than two, and one failure message rather than three.</p>
   <p style="color:var(--ink-dim)"><b>Scope is fetching this turn only.</b> Sending orders back, and
   pulling earlier turns into the game's history, are separate pieces of work.</p>
 </header>
@@ -123,18 +127,10 @@ The password takes focus when it opens.</p>
   </div>
 </div>
 
-<h3 class="sec">3 · While it works</h3>
+<h3 class="sec">3 &middot; While it works</h3>
 <p>The fields go away, the dialog does not. <b>Cancel</b> is in the same place throughout, and Escape
-does what pressing it does.</p>
+does what pressing it does. One request, so one line: there is no signing-in step to describe.</p>
 <div class="cards2">
-  <div class="card">
-    <div class="ui">
-      <h4>Fetch from New Origins</h4>
-      <div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div>
-      <div class="body" style="margin:10px 0">Signing in to New Origins&hellip;</div>
-      <div class="foot"><span class="btn">Cancel</span></div>
-    </div>
-  </div>
   <div class="card">
     <div class="ui">
       <h4>Fetch from New Origins</h4>
@@ -142,6 +138,7 @@ does what pressing it does.</p>
       <div class="body" style="margin:10px 0">Fetching this turn's report from New Origins&hellip;</div>
       <div class="foot"><span class="btn">Cancel</span></div>
     </div>
+    <p class="caption">The only thing that appears between pressing <b>Fetch</b> and the report arriving.</p>
   </div>
 </div>
 
@@ -201,14 +198,21 @@ different place.</p>
   </div>
 </div>
 
-<h3 class="sec">5 · When it goes wrong</h3>
+<h3 class="sec">5 &middot; When it goes wrong</h3>
 <p>Three failures. A refusal and an unreachable site keep the dialog open for a second try; an
 unreadable reply says what still works instead.</p>
 <div class="cards3">
   <div class="card">
     <h2><em>refused</em></h2>
-    <div class="ui"><div class="danger" style="margin:0">New Origins did not accept that faction number and password.</div></div>
-    <p class="caption">Password cleared and refocused; faction number kept. If it refuses <i>after</i> signing in, the sentence is <b>New Origins stopped accepting that faction number and password.</b></p>
+    <p class="concept">A wrong password and a turn that has not been generated yet come back as the
+    same thing: an ordinary web page carrying a red block. Rather than guess which, the site&rsquo;s own
+    sentence out of that block <b>is</b> the message, word for word &mdash; the same thing sending
+    orders already does today.</p>
+    <div class="ui"><div class="danger" style="margin:0">Faction password is incorrect.</div></div>
+    <span class="tag">and when the reply carries no sentence of its own</span>
+    <div class="ui"><div class="danger" style="margin:0">New Origins would not give up this turn&rsquo;s report. Check the faction number and password.</div></div>
+    <p class="caption">Password cleared and refocused, faction number kept: a typo is far and away the
+    commonest reason this appears.</p>
   </div>
   <div class="card">
     <h2><em>unreachable</em></h2>
@@ -221,8 +225,6 @@ unreadable reply says what still works instead.</p>
     <p class="caption">The one failure New Age does not have. Never a dead end: it names the way round.</p>
   </div>
 </div>
-<span class="tag">Nothing there for you yet — on the status line, dialog closed</span>
-<div class="status bad">could not fetch this turn's report: New Origins has no report for you yet</div>
 
 <h3 class="sec">6 · Every string on the page</h3>
 <p>Quoted as they will ship. Nothing here is a paraphrase.</p>
@@ -235,19 +237,17 @@ unreadable reply says what still works instead.</p>
   <tr><td>Note under the fields</td><td><b>Used for this fetch only. Nothing is written to this machine.</b></td></tr>
   <tr><td>Buttons</td><td><b>Cancel</b> · <b>Fetch</b> — Cancel alone while working</td></tr>
   <tr><td>Field complaints</td><td><b>A faction number is digits only.</b> · <b>A faction number cannot be empty.</b> · <b>A faction password cannot be empty.</b></td></tr>
-  <tr><td>Signing in</td><td><b>Signing in to New Origins…</b></td></tr>
-  <tr><td>Fetching</td><td><b>Fetching this turn's report from New Origins…</b></td></tr>
+  <tr><td>While it works</td><td><b>Fetching this turn's report from New Origins…</b> — the only line; there is no step before it</td></tr>
   <tr><td>A newer turn asks</td><td><b>Turn 84 has arrived. Opening it replaces turn 83 on screen, and anything you have changed since it was loaded.</b> — <b>Keep turn 83</b> · <b>Open turn 84</b></td></tr>
   <tr><td>The same turn asks</td><td><b>New Origins still has turn 83 — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since.</b> — <b>Keep what I have</b> · <b>Load it again</b></td></tr>
   <tr><td>Opened</td><td><b>turn 84 loaded — 4 regions, 11 units.</b></td></tr>
   <tr><td>Kept, and filed</td><td><b>turn 84 stored for history; still showing turn 83.</b></td></tr>
   <tr><td>Kept, same turn</td><td><b>still showing turn 83.</b></td></tr>
   <tr><td>An older turn</td><td><b>turn 80 stored for history; still showing turn 83.</b></td></tr>
-  <tr><td>Refused</td><td><b>New Origins did not accept that faction number and password.</b></td></tr>
-  <tr><td>Refused mid-run</td><td><b>New Origins stopped accepting that faction number and password.</b></td></tr>
+  <tr><td>Refused</td><td>The site's own sentence, quoted — e.g. <b>Faction password is incorrect.</b></td></tr>
+  <tr><td>Refused, no sentence given</td><td><b>New Origins would not give up this turn's report. Check the faction number and password.</b></td></tr>
   <tr><td>Unreachable</td><td><b>Could not reach atlantis-pbem.com.</b></td></tr>
   <tr><td>Unreadable</td><td><b>atlantis-pbem.com answered with something Atlantis HUD could not read. The site may have changed — downloading the report in a browser and dropping it here still works.</b></td></tr>
-  <tr><td>Nothing there yet</td><td><b>could not fetch this turn's report: New Origins has no report for you yet</b></td></tr>
 </table>
 
 <h3 class="sec">7 · Considered and rejected</h3>
@@ -261,6 +261,12 @@ unreadable reply says what still works instead.</p>
   <li><b>Asking about an older turn too.</b> Rejected: nothing on screen changes, so it is a question whose answer is always yes.</li>
   <li><b>Throwing away a report you declined to open.</b> Rejected: it is already fetched and read, and fetching it again costs the password and the wait a second time.</li>
   <li><b>One message for every failure that is not a refusal.</b> Rejected: a site that is down and a site that has changed want opposite things done about them, and only one of them is worth waiting out.</li>
+  <li><b>Two working lines, signing in then fetching.</b> Rejected on fact: there is one request, so the first line would describe something that never happens.</li>
+  <li><b>Asking New Origins for this turn's report…</b> as the working line, naming who is being waited on rather than what is being done. Rejected in favour of the line that reads the same as the New Age worlds' own.</li>
+  <li><b>A second, past-tense refusal</b> — <i>New Origins stopped accepting that faction number and password.</i> — for a password that fails after signing in worked. Rejected on fact: there is no after.</li>
+  <li><b>Two separate outcomes for a refusal and for a turn that is not ready</b>, a red message in the dialog and a status line with the dialog closed. Rejected: both arrive as the same kind of page, and nobody has yet seen the wording that would tell them apart. Quoting the site says the truth without guessing.</li>
+  <li><b>One sentence of ours covering both</b> — <i>either the faction number and password are wrong, or this turn has not been generated yet</i>. Always true and never wrong, but it puts a question in front of a player every time, including for an ordinary typo, when the site itself usually says which it was.</li>
+  <li><b>Leaving the password as typed after a refusal</b>, on the grounds that it may have been right and the turn simply not ready. Rejected: a typo is far and away the commonest cause, and clearing is what the field already does.</li>
   <li><b>Calling the far end "the game" or "atlantis-pbem.com" in the refusal.</b> Rejected: "game" also means the thing open in the HUD, and an address is the wrong subject for a password being refused.</li>
 </ul>
 
