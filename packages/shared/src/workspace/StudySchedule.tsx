@@ -818,7 +818,10 @@ export function CellPopover({
       aria-label={menu.heading}
       className="rounded border border-brass/60 bg-panel-raised p-2 shadow-xl"
     >
-      <PopoverHeading>{menu.heading}</PopoverHeading>
+      <p className="m-0 mb-1 flex items-center gap-2 rounded border border-brass/60 bg-brass/10 px-2 py-1 text-brass">
+        <span className="flex-1">{mageName}</span>
+        <span className="rounded border border-brass/60 px-1 text-pane-xs">Turn {turn}</span>
+      </p>
       <ul
         // Every list in this menu scrolls rather than grows, at the same height. A menu whose last
         // row is below the bottom edge cannot be chosen from and has nowhere left to flip to: the

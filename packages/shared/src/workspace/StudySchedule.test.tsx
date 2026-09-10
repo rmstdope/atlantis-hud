@@ -352,13 +352,16 @@ describe("CellPopover", () => {
 
   it("heads the dropdown with the mage and the turn", () => {
     const markup = popover();
+    const heading = markup.slice(0, 500);
 
     expect(markup).toContain("Ereb — turn 26");
-    expect(markup.slice(0, 200)).toContain("border-brass/60");
-    expect(markup.slice(0, 200)).toContain("shadow-xl");
+    expect(heading).toContain("border-brass/60");
+    expect(heading).toContain("shadow-xl");
     expect(markup).toContain("border-brass/60");
     expect(markup).toContain("bg-brass/10");
     expect(markup).toContain("text-brass");
+    expect(heading).toContain("Turn 26");
+    expect(heading).toContain("text-pane-xs");
   });
 
   it("lists — nothing, the teaches row and the skills, in that order", () => {
