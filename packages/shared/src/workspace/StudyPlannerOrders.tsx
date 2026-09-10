@@ -46,7 +46,10 @@ export function StudyPlannerOrders({
   return (
     <div data-testid="study-planner-orders" className="min-h-0 overflow-auto p-3">
       {error === null ? null : (
-        <p data-testid="study-planner-orders-error" className="m-0 px-2 py-1 text-warn">
+        <p
+          data-testid="study-planner-orders-error"
+          className="m-0 rounded border border-warn/60 bg-warn/10 px-2 py-1 text-warn"
+        >
           {error}
         </p>
       )}
@@ -60,8 +63,10 @@ export function StudyPlannerOrders({
       {notice === null ? null : (
         <p
           data-testid="study-planner-write-notice"
-          className={`m-0 flex items-center gap-2 px-2 py-1 ${
-            notice.undoable ? "text-ok" : "text-ink-dim"
+          className={`m-0 flex items-center gap-2 rounded border px-2 py-1 ${
+            notice.undoable
+              ? "border-standing-known-edge bg-standing-known-fill text-standing-known-ink"
+              : "border-edge bg-panel text-ink-dim"
           }`}
         >
           {notice.text}
@@ -70,7 +75,7 @@ export function StudyPlannerOrders({
               type="button"
               data-testid="study-planner-write-undo"
               onClick={onUndoWrite}
-              className="rounded border border-edge px-1.5 text-ink-dim hover:text-ink"
+              className="rounded border border-select px-1.5 text-select hover:bg-select/15"
             >
               Undo
             </button>
@@ -78,8 +83,11 @@ export function StudyPlannerOrders({
         </p>
       )}
       {orders.sections.length === 0 ? (
-        <div data-testid="study-planner-orders-empty">
-          <p className="text-ink">{emptyCopy.headline}</p>
+        <div
+          data-testid="study-planner-orders-empty"
+          className="rounded border border-edge bg-panel-raised p-3"
+        >
+          <p className="m-0 text-ink">{emptyCopy.headline}</p>
           {emptyCopy.detail === "" ? null : (
             <p className="text-ink-dim">{emptyCopy.detail}</p>
           )}
@@ -89,10 +97,10 @@ export function StudyPlannerOrders({
           <section
             key={section.factionId}
             data-testid={`study-planner-orders-${section.factionId}`}
-            className={index === 0 ? "" : "mt-3 border-t border-edge pt-3"}
+            className={`${index === 0 ? "" : "mt-3"} rounded border border-brass/60 bg-panel-raised`}
           >
-            <div className="flex items-center gap-2 py-1">
-              <span className="text-ink-soft">{section.heading}</span>
+            <div className="flex items-center gap-2 border-b border-brass/60 bg-brass/10 px-2 py-1">
+              <span className="text-brass">{section.heading}</span>
               <span className="flex-1" />
               {/* Absent, not greyed, when nothing of yours can be written: a heading button that
                   exists in one condition only, beside a body that already says why. */}
@@ -126,9 +134,11 @@ export function StudyPlannerOrders({
             </div>
             {/* `whitespace-pre` and a sideways scroller, not wrapping: the comment column is the
                 whole point of the chosen format, and a wrapped order line reads as two orders. */}
-            <pre className="m-0 overflow-x-auto whitespace-pre font-mono text-ink">
-              {section.text}
-            </pre>
+            <div className="p-2">
+              <pre className="m-0 overflow-x-auto rounded border border-edge bg-panel p-2 whitespace-pre font-mono text-ink">
+                {section.text}
+              </pre>
+            </div>
           </section>
         ))
       )}

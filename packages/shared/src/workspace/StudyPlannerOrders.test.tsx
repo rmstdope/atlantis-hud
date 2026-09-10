@@ -78,7 +78,9 @@ describe("StudyPlannerOrders", () => {
     const section = (factionId: string) =>
       html.slice(html.indexOf(`data-testid="study-planner-orders-${factionId}"`), html.indexOf("</section>", html.indexOf(`data-testid="study-planner-orders-${factionId}"`)));
 
-    expect(section("17")).toContain("border-t border-edge");
+    expect(section("17")).toContain("rounded border border-brass/60 bg-panel-raised");
+    expect(section("17")).toContain("border-b border-brass/60 bg-brass/10");
+    expect(section("17")).toContain("rounded border border-edge bg-panel p-2");
     expect(section("95")).toContain("border-brass");
     expect(section("95")).toContain("text-brass");
     expect(section("95")).toContain("border-select");
@@ -103,6 +105,7 @@ describe("StudyPlannerOrders", () => {
     );
     expect(html).toContain("No mage has a plan for turn 72.");
     expect(html).not.toContain("study-planner-orders-95");
+    expect(html).toContain("rounded border border-edge bg-panel-raised p-3");
   });
 
   it("the_error_line_is_drawn_above_the_sections", () => {
@@ -125,6 +128,7 @@ describe("StudyPlannerOrders", () => {
       html.indexOf("study-planner-orders-95")
     );
     expect(html).toContain("Could not save these orders.");
+    expect(html).toContain("border-warn/60 bg-warn/10");
   });
 });
 
@@ -188,6 +192,8 @@ describe("StudyPlannerOrders — put into my orders", () => {
     expect(undoable).toContain('data-testid="study-planner-write-notice"');
     expect(undoable).toContain("Wrote study orders for 1 mage.");
     expect(undoable).toContain('data-testid="study-planner-write-undo"');
+    expect(undoable).toContain("border-standing-known-edge bg-standing-known-fill");
+    expect(undoable).toContain("border-select px-1.5 text-select");
 
     const spent = drawWith({
       notice: { text: "Wrote study orders for 1 mage.", undoable: false }
