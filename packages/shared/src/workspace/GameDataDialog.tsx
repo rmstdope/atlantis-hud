@@ -135,17 +135,17 @@ export function GameDataDialog({
         // theme.css caps every modal at 90vh, but as a `:where()` default at zero specificity
         // (ah-y4zb) - so this 80vh simply wins, with no `!` needed. Left uncapped, 10vh + 90vh is
         // the whole window and the margin below is exactly zero.
-        className="grid max-h-[80vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
+        className="grid max-h-[80vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
       >
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
-          <span className="text-ink-soft">Game data</span>
+          <span className="text-brass">Game data</span>
           <span className="flex-1" />
           {returnsTo === undefined ? null : (
             <button
               type="button"
               data-testid="game-data-back"
               onClick={() => setState((current) => goBack(index, current))}
-              className="rounded px-1.5 text-ink-dim hover:text-ink"
+              className="rounded border border-select px-1.5 text-select hover:bg-select/15"
             >
               ← Back to {returnsToName}
             </button>
@@ -154,13 +154,15 @@ export function GameDataDialog({
             type="button"
             data-testid="game-data-close"
             onClick={onDismiss}
-            className="rounded px-1.5 text-ink-dim hover:text-ink"
+            aria-label="Close game data"
+            title="Close game data"
+            className="rounded border border-edge px-1.5 text-ink-dim hover:border-brass hover:text-brass"
           >
-            Close
+            ×
           </button>
         </div>
 
-        <div role="tablist" aria-label="Game data" className="flex gap-1 border-b border-edge px-2 py-1">
+        <div role="tablist" aria-label="Game data" className="flex gap-1 border-b border-edge bg-panel px-2 py-1">
           {GAME_DATA_CATEGORIES.map((category) => (
             <button
               key={category}
@@ -171,8 +173,8 @@ export function GameDataDialog({
               onClick={() => setState((current) => selectGameDataTab(index, current, category))}
               className={
                 category === state.category
-                  ? "rounded px-2 py-0.5 bg-panel text-ink"
-                  : "rounded px-2 py-0.5 text-ink-dim hover:text-ink"
+                  ? "rounded border border-brass bg-brass/10 px-2 py-0.5 text-brass"
+                  : "rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-dim hover:bg-panel hover:text-ink"
               }
             >
               {GAME_DATA_CATEGORY_LABELS[category]} {entriesOf(index, category).length}
@@ -181,7 +183,7 @@ export function GameDataDialog({
         </div>
 
         <div className="grid min-h-0 grid-cols-[15rem_1fr]">
-          <div className="grid min-h-0 grid-rows-[auto_1fr] border-r border-edge">
+          <div className="grid min-h-0 grid-rows-[auto_1fr] border-r border-edge bg-panel">
             <input
               type="search"
               autoFocus
@@ -208,7 +210,7 @@ export function GameDataDialog({
                   event.preventDefault();
                 }
               }}
-              className="w-full border-b border-edge bg-transparent px-2 py-1 outline-none"
+              className="w-full border-b border-brass/60 bg-panel-raised px-2 py-1 text-ink outline-none placeholder:text-ink-dim"
             />
             <ul
               ref={list}
@@ -231,8 +233,8 @@ export function GameDataDialog({
                     }
                     className={
                       entry.id === state.selectedId
-                        ? "w-full px-2 py-0.5 text-left bg-panel text-ink"
-                        : "w-full px-2 py-0.5 text-left text-ink-soft hover:text-ink"
+                        ? "w-full border-l-2 border-select bg-select/15 px-2 py-0.5 text-left text-ink"
+                        : "w-full border-l-2 border-transparent px-2 py-0.5 text-left text-ink-soft hover:bg-select/15 hover:text-ink"
                     }
                   >
                     {entry.tag === null ? entry.name : `${entry.name} ${entry.tag}`}
@@ -243,7 +245,9 @@ export function GameDataDialog({
           </div>
           <div data-testid="game-data-detail" className="min-h-0 overflow-y-auto p-3">
             {detail === null ? (
-              <p className="text-ink-dim">Nothing to show.</p>
+              <div className="rounded border border-edge bg-panel-raised p-3">
+                <p className="m-0 text-ink-dim">Nothing to show.</p>
+              </div>
             ) : (
               <Detail detail={detail} index={index} onFollow={follow} />
             )}
@@ -256,8 +260,8 @@ export function GameDataDialog({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex gap-2">
-      <span className="w-40 shrink-0 text-ink-dim">{label}</span>
+    <div className="flex gap-2 rounded border border-edge bg-panel px-2 py-1">
+      <span className="w-40 shrink-0 text-pane-xs uppercase tracking-[0.08em] text-brass">{label}</span>
       <span className="text-ink">{children}</span>
     </div>
   );
@@ -276,7 +280,7 @@ function Links({
 }) {
   return (
     <section className="mt-3">
-      <h3 className="text-ink-soft">{title}</h3>
+      <h3 className="mb-1 border-b border-brass/60 pb-1 text-pane-xs uppercase tracking-[0.08em] text-brass">{title}</h3>
       {links.length === 0 ? (
         <p className="text-ink-dim">{empty}</p>
       ) : (
@@ -330,9 +334,11 @@ function Detail({
   onFollow: (id: string) => void;
 }) {
   const heading = (
-    <h2 className="text-ink">
-      {detail.entry.name}
-      {detail.entry.tag === null ? null : <span className="text-ink-dim"> {detail.entry.tag}</span>}
+    <h2 className="m-0 flex items-center gap-2 rounded border border-brass/60 bg-brass/10 px-2 py-1 text-brass">
+      <span className="flex-1">{detail.entry.name}</span>
+      {detail.entry.tag === null ? null : (
+        <span className="rounded border border-brass/60 px-1 text-pane-xs">{detail.entry.tag}</span>
+      )}
     </h2>
   );
 
@@ -366,7 +372,7 @@ function Detail({
         />
         {detail.levels.length === 0 ? null : (
           <section className="mt-3">
-            <h3 className="text-ink-soft">What it does</h3>
+            <h3 className="mb-1 border-b border-brass/60 pb-1 text-pane-xs uppercase tracking-[0.08em] text-brass">What it does</h3>
             {detail.levels.map((level) => (
               <p key={level.level} className="mt-1">
                 <span className="text-ink-dim">Level {level.level}. </span>
@@ -444,7 +450,7 @@ function Detail({
       </div>
       {detail.combat === null ? null : (
         <section className="mt-3">
-          <h3 className="text-ink-soft">Combat</h3>
+          <h3 className="mb-1 border-b border-brass/60 pb-1 text-pane-xs uppercase tracking-[0.08em] text-brass">Combat</h3>
           <div className="grid gap-0.5">
             <Field label="Skill">{detail.combat.skill}</Field>
             <Field label="Attacks a round">{detail.combat.attacksPerRound}</Field>

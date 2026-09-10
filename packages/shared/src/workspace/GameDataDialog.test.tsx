@@ -124,7 +124,10 @@ describe("GameDataDialog", () => {
     expect(html).toContain("Buildings");
     expect(html).toContain("Filter skills…");
     expect(html).toContain("Game data");
-    expect(html).toContain("Close");
+    expect(html).toContain('aria-label="Close game data"');
+    expect(html).toContain(">×</button>");
+    expect(html).toContain("border-brass/60");
+    expect(html).toContain("shadow-xl");
   });
   // ah-vwdi: the dialog opens at pt-[10vh], so its max height must leave a matching margin below
   // rather than running to the bottom edge of the screen. A string assertion is all a
