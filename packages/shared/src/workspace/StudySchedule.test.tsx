@@ -372,6 +372,13 @@ describe("CellPopover", () => {
     expect(markup).toContain("Teaches…");
   });
 
+  it("gives each study choice a compact skill tag", () => {
+    const force = popover().slice(popover().indexOf('data-testid="study-schedule-choice-FORC"'));
+
+    expect(force.slice(0, 400)).toContain('data-testid="study-schedule-choice-tag-FORC"');
+    expect(force.slice(0, 400)).toContain("w-10");
+  });
+
   it("marks the row the cell already holds", () => {
     const pressed = popover().slice(
       popover().indexOf('data-testid="study-schedule-choice-FORC"')

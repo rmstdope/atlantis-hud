@@ -863,6 +863,14 @@ export function CellPopover({
               className={`w-full rounded px-1 text-left ${ROW_HIGHLIGHT}`}
             >
               <ChoiceMark on={row.pressed} />
+              {row.tag === null ? null : (
+                <span
+                  data-testid={`study-schedule-choice-tag-${row.tag}`}
+                  className="inline-block w-10 rounded border border-select/60 bg-select/10 px-1 text-center text-pane-xs text-select"
+                >
+                  {row.tag}
+                </span>
+              )}{" "}
               <span className="text-ink">{row.name}</span>
               {row.detail === null ? null : (
                 <>
@@ -937,6 +945,8 @@ function rowsOf(
 ): {
   key: string;
   testId: string;
+  /** Upper-cased skill tag, or null for the non-skill actions. */
+  tag: string | null;
   name: string;
   detail: string | null;
   /** True for a month somebody would double: the row is drawn green rather than dim. */
@@ -952,6 +962,7 @@ function rowsOf(
     {
       key: "nothing",
       testId: "study-schedule-choice-nothing",
+      tag: null,
       name: "— nothing",
       detail: null,
       taught: false,
@@ -961,6 +972,7 @@ function rowsOf(
     {
       key: "teach",
       testId: "study-schedule-choice-teach",
+      tag: null,
       name: "Teaches…",
       detail: menu.teachDetail,
       taught: false,
@@ -986,6 +998,7 @@ function rowsOf(
     ...menu.choices.map((choice) => ({
       key: choice.skill,
       testId: `study-schedule-choice-${choice.skill}`,
+      tag: choice.skill,
       name: choice.name,
       detail: choice.detail,
       taught: choice.taughtBy !== null,
