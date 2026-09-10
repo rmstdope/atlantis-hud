@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   DOWNLOAD_REPORT_URL,
@@ -69,6 +69,20 @@ describe("downloadNewOriginsReport", () => {
     );
     expect(result).toEqual({ kind: "unreachable" });
     expect(JSON.stringify(result)).not.toContain("hunter2");
+  });
+
+  it("refuses a faction number the site could not file under, rather than throwing", async () => {
+    const transport = vi.fn();
+    const result = await downloadNewOriginsReport(
+      transport,
+      "foo",
+      "hunter2",
+      new AbortController().signal
+    );
+    // The dialog gates this, so it is defence in depth - but a throw here escapes the run, whose
+    // caller does not await it, and would leave the dialog fetching for ever.
+    expect(result).toEqual({ kind: "refused", reason: null });
+    expect(transport).not.toHaveBeenCalled();
   });
 
   it("posts the form and reads what came back", async () => {

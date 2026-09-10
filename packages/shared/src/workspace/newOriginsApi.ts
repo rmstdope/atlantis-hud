@@ -88,6 +88,12 @@ export function interpretDownloadReply(reply: HttpReply): NewOriginsDownloadResu
  *
  * A transport rejection is caught and discarded unexamined: an HTTP error object can carry the
  * request body, and that body carries the password.
+ *
+ * A faction number the site could not file under is answered rather than thrown. This function's
+ * caller does not await its promise, so a throw escaping here would leave the dialog fetching for
+ * ever with no phase to land in. It is answered `refused` rather than caught alongside the
+ * transport's own failures, because `unreachable` would name a site that was never asked. The
+ * dialog gates that number before ever calling, so this is defence in depth.
  */
 export async function downloadNewOriginsReport(
   transport: HttpTransport,
@@ -95,7 +101,13 @@ export async function downloadNewOriginsReport(
   password: string,
   signal: AbortSignal
 ): Promise<NewOriginsDownloadResult> {
-  const request = downloadReportRequest(factionId, password);
+  let request: { url: string; contentType: string; body: string };
+  try {
+    request = downloadReportRequest(factionId, password);
+  } catch {
+    return { kind: "refused", reason: null };
+  }
+
   let reply: HttpReply;
   try {
     reply = await transport(

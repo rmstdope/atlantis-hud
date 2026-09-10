@@ -28,7 +28,6 @@ export type NewOriginsFetchPhase =
   | { kind: "askNewer"; currentTurn: number; incomingTurn: number }
   | { kind: "askSame"; turnNumber: number };
 
-export const NEW_ORIGINS_LABEL = "New Origins";
 // `FETCH_CONFIRM` is not redefined here: `newAgeFetchView.ts` already owns the one `Fetch` this
 // application's fetch dialogs confirm with, the way both dialogs share `FETCH_CONTROL_LABEL`.
 export const FETCH_DIALOG_TITLE = "Fetch from New Origins";
