@@ -21,6 +21,8 @@ import { hoverCard, type ScheduleRow } from "./studySchedule";
 
 /** One skill he holds, worded as the pane shows it. */
 export type MagePaneLine = {
+  /** Upper-cased tag, as the planner grid and popup show it. */
+  tag: string;
   /** `MagicSkillNode.name`, lower case. */
   name: string;
   /** `4(330) → 4(360)` where the month moved it, `3(270)` where it did not. */
@@ -178,6 +180,7 @@ function knownNow(
       continue;
     }
     lines.push({
+      tag,
       name: node.name,
       right: skillWords(held),
       studying: false

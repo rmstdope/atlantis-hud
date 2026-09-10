@@ -237,6 +237,7 @@ describe("MagePaneView", () => {
     expect(markup).toContain("3(270) → 4(300)");
     const line = markup.slice(markup.indexOf("study-schedule-knows-force"));
     expect(line.slice(0, 200)).toContain(STANDING_CHIP.known);
+    expect(line.slice(0, 300)).toContain('data-testid="study-schedule-knows-tag-FORC"');
   });
 
   it("draws what he could study then, under a heading that counts them", () => {
@@ -244,6 +245,11 @@ describe("MagePaneView", () => {
 
     expect(markup).toContain("Can study on turn 24 —");
     expect(markup).toContain('data-testid="study-schedule-can-study-PATT"');
+    expect(markup).toContain('data-testid="study-schedule-can-study-tag-PATT"');
+    const outcome = markup.slice(
+      markup.indexOf('data-testid="study-schedule-can-study-outcome-PATT"')
+    );
+    expect(outcome.slice(0, 200)).toContain("font-medium text-ink");
   });
 
   it("reads him as he stands now when the pointer is on his name", () => {
@@ -259,6 +265,7 @@ describe("MagePaneView", () => {
 
     expect(written).toContain("heading for gate lore");
     expect(written.indexOf("heading for gate lore")).toBeLessThan(written.indexOf('data-testid="study-schedule-knows"'));
+    expect(written).toContain("border-brass/60 bg-brass/10");
     expect(shown(0)).not.toContain('data-testid="study-schedule-note"');
   });
 
@@ -276,6 +283,7 @@ describe("MagePaneView", () => {
 
     expect(markup).toContain("Point at a mage");
     expect(markup).toContain('data-testid="study-schedule-mage-pane"');
+    expect(markup).toContain("border border-edge bg-panel-raised");
   });
 });
 

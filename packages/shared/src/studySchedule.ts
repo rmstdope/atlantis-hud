@@ -760,7 +760,7 @@ export function hoverCard(
 ): {
   heading: string;
   sub: string;
-  lines: { name: string; right: string; studying: boolean }[];
+  lines: { tag: string; name: string; right: string; studying: boolean }[];
   foot: string;
 } {
   const turn = turns[turnIndex];
@@ -769,7 +769,7 @@ export function hoverCard(
   const after = row.standings[turnIndex + 1] ?? before;
   const studying = cell?.kind === "study" ? cell.skill : null;
 
-  const lines: { name: string; right: string; studying: boolean }[] = [];
+  const lines: { tag: string; name: string; right: string; studying: boolean }[] = [];
   // Both ends, not merely `before`: the turn a mage *begins* a skill from nothing, that skill is
   // absent from `before` entirely, and a card whose sub-line says "studying pattern" with no
   // pattern line in it is the card telling the player two different things.
@@ -789,6 +789,7 @@ export function hoverCard(
     // arrow between two readings of the same figure, nineteen times over, hides the one line that
     // is actually going somewhere. A skill standing still is a standing, and reads as one.
     lines.push({
+      tag,
       name: node.name,
       right: skillWords(held, ends),
       studying: tag === studying

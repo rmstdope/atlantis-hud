@@ -617,9 +617,11 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
         data-testid="study-schedule-mage-pane"
         className="min-h-0 overflow-y-auto border-l border-edge p-2"
       >
-        <p className="m-0 text-ink-dim">
-          Point at a mage, or at one of his months, to see what he knows and what he could study.
-        </p>
+        <div className="rounded border border-edge bg-panel-raised p-2">
+          <p className="m-0 text-ink-dim">
+            Point at a mage, or at one of his months, to see what he knows and what he could study.
+          </p>
+        </div>
       </aside>
     );
   }
@@ -649,14 +651,17 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
         {pane.note === "" ? null : (
           <p
             data-testid="study-schedule-note"
-            className="m-0 mt-2 border-l-2 border-edge pl-2 whitespace-pre-wrap text-ink-soft"
+            className="m-0 mt-2 rounded border border-brass/60 bg-brass/10 px-2 py-1 whitespace-pre-wrap text-brass"
           >
             {pane.note}
           </p>
         )}
       </div>
 
-      <p className="m-0 mt-2 shrink-0 text-ink-soft" data-testid="study-schedule-knows">
+      <p
+        className="m-0 mt-2 shrink-0 text-pane-xs uppercase tracking-[0.08em] text-brass"
+        data-testid="study-schedule-knows"
+      >
         {pane.knowsHeading}
       </p>
       <ul className="m-0 shrink-0 list-none p-0">
@@ -664,14 +669,28 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
           <li
             key={line.name}
             data-testid={`study-schedule-knows-${line.name.replace(/\s+/g, "-")}`}
-            className={line.studying ? `rounded px-1 ${STANDING_CHIP.known}` : "px-1 text-ink"}
+            className={
+              line.studying
+                ? `flex items-center gap-1 rounded px-1 ${STANDING_CHIP.known}`
+                : "flex items-center gap-1 px-1 text-ink"
+            }
           >
-            {line.name} <span className="text-ink-dim">{line.right}</span>
+            <span
+              data-testid={`study-schedule-knows-tag-${line.tag}`}
+              className="inline-block w-10 rounded border border-select/60 bg-select/10 px-1 text-center text-pane-xs text-select"
+            >
+              {line.tag}
+            </span>
+            <span className="flex-1">{line.name}</span>
+            <span className="text-ink-dim">{line.right}</span>
           </li>
         ))}
       </ul>
 
-      <p className="m-0 mt-2 shrink-0 text-ink-soft" data-testid="study-schedule-can-study">
+      <p
+        className="m-0 mt-2 shrink-0 border-t border-edge pt-2 text-pane-xs uppercase tracking-[0.08em] text-brass"
+        data-testid="study-schedule-can-study"
+      >
         {pane.canStudyHeading}
       </p>
       <ul className="fade-bottom m-0 min-h-0 flex-1 list-none overflow-y-auto p-0">
@@ -679,10 +698,19 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
           <li
             key={choice.skill}
             data-testid={`study-schedule-can-study-${choice.skill}`}
-            className="px-1 text-ink"
+            className="flex items-center gap-1 px-1 text-ink"
           >
-            {choice.name}{" "}
-            <span className={choice.taughtBy === null ? "text-ink-dim" : "text-ok"}>
+            <span
+              data-testid={`study-schedule-can-study-tag-${choice.skill}`}
+              className="inline-block w-10 rounded border border-select/60 bg-select/10 px-1 text-center text-pane-xs text-select"
+            >
+              {choice.skill}
+            </span>
+            <span className="flex-1">{choice.name}</span>
+            <span
+              data-testid={`study-schedule-can-study-outcome-${choice.skill}`}
+              className={choice.taughtBy === null ? "font-medium text-ink" : "text-ok"}
+            >
               {choice.detail}
             </span>
           </li>
