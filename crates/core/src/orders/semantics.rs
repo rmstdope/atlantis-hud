@@ -791,12 +791,34 @@ fn pool_shares_for(
     //
     // `ordered.unit.read` and **not** `Ordered::unread`, which is a different fact about the
     // unit's *orders*. The same field `money_read_of` reads.
-    let unread_claimant = hex
+    let unread: Vec<&Ordered<'_>> = hex
         .units
         .iter()
-        .any(|ordered| ordered.unit.read != UnitRead::Complete);
+        .filter(|ordered| ordered.unit.read != UnitRead::Complete)
+        .collect();
+    let unread_claimant = !unread.is_empty();
+    // A market claim needs an order, and a cut-short line takes no order away: what it takes is
+    // the goods the claim is measured in (`ah-0n2k.2`). So a `Wanted` line is under-counted only
+    // where an unread unit was told to sell - and there whatever claim was counted for it is a
+    // floor, whether the tail took its whole inventory (`UnitRead::Nothing`) or cut the item list
+    // off part way (`UnitRead::Partial`). `Intent::Sell` alone, without resolving the item,
+    // because the spelling of what it meant may be resolvable only from the inventory that was
+    // lost. Set unconditionally rather than per pool: the market lines are not one of the three
+    // pools above, and a hex with no `Wanted` line has no seller to bound anyway.
+    let unread_seller = unread.iter().any(|ordered| {
+        ordered
+            .intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Sell { .. }))
+    });
 
-    let mut shares = vec![PoolShares::default(); hex.units.len()];
+    let mut shares = vec![
+        PoolShares {
+            unread_seller,
+            ..PoolShares::default()
+        };
+        hex.units.len()
+    ];
     let mut overruns: Vec<PoolOverrun> = Vec::new();
     // `max_wages: None` means the region states *no ceiling*, not that it has no money, so it is
     // never contended - dividing a pool of zero would pay every worker nothing. `entertainment:
