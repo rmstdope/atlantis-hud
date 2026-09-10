@@ -865,7 +865,15 @@ export function CellPopover({
               } ${row.pressed ? "hover:bg-brass/15 focus:bg-brass/15" : ROW_HIGHLIGHT}`}
             >
               <ChoiceMark on={row.pressed} />
-              {row.tag === null ? null : (
+              {row.kind === "teach" ? (
+                <span
+                  aria-hidden="true"
+                  data-testid="study-schedule-choice-teach-mark"
+                  className="inline-block w-10 text-center text-select"
+                >
+                  ↗
+                </span>
+              ) : row.tag === null ? null : (
                 <span
                   data-testid={`study-schedule-choice-tag-${row.tag}`}
                   className="inline-block w-10 rounded border border-select/60 bg-select/10 px-1 text-center text-pane-xs text-select"
@@ -873,7 +881,7 @@ export function CellPopover({
                   {row.tag}
                 </span>
               )}{" "}
-              <span className="text-ink">{row.name}</span>
+              <span className={row.kind === "teach" ? "text-select" : "text-ink"}>{row.name}</span>
               {row.detail === null ? null : (
                 <>
                   {" "}
@@ -960,6 +968,7 @@ function rowsOf(
 ): {
   key: string;
   testId: string;
+  kind: "nothing" | "teach" | "study";
   /** Upper-cased skill tag, or null for the non-skill actions. */
   tag: string | null;
   name: string;
@@ -977,6 +986,7 @@ function rowsOf(
     {
       key: "nothing",
       testId: "study-schedule-choice-nothing",
+      kind: "nothing",
       tag: null,
       name: "— nothing",
       detail: null,
@@ -987,6 +997,7 @@ function rowsOf(
     {
       key: "teach",
       testId: "study-schedule-choice-teach",
+      kind: "teach",
       tag: null,
       name: "Teaches…",
       detail: menu.teachDetail,
@@ -1013,6 +1024,7 @@ function rowsOf(
     ...menu.choices.map((choice) => ({
       key: choice.skill,
       testId: `study-schedule-choice-${choice.skill}`,
+      kind: "study" as const,
       tag: choice.skill,
       name: choice.name,
       detail: choice.detail,

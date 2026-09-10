@@ -372,6 +372,14 @@ describe("CellPopover", () => {
     expect(markup).toContain("Teaches…");
   });
 
+  it("distinguishes the teaching action from study choices", () => {
+    const markup = popover();
+    const mark = markup.slice(markup.indexOf('data-testid="study-schedule-choice-teach-mark"'));
+
+    expect(mark).toContain('data-testid="study-schedule-choice-teach-mark"');
+    expect(mark.slice(0, 200)).toContain("text-select");
+  });
+
   it("gives each study choice a compact skill tag", () => {
     const force = popover().slice(popover().indexOf('data-testid="study-schedule-choice-FORC"'));
 
