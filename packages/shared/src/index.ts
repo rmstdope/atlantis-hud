@@ -78,6 +78,7 @@ export * from "./workspace/newAgeWorlds";
 export * from "./workspace/newAgeSignInView";
 export * from "./workspace/newAgeFetchView";
 export * from "./workspace/newOriginsApi";
+export * from "./workspace/newOriginsFetchView";
 export * from "./workspace/newAgeSendView";
 export * from "./workspace/newAgeSend";
 export * from "./workspace/ordersUpload";
