@@ -35,6 +35,7 @@ const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 /** Terrain classes, written out in full so nothing can tree-shake one away. */
 const TERRAIN_CLASSES: Record<string, string> = {
   ocean: "ed-terrain-ocean",
+  lake: "ed-terrain-ocean",
   plain: "ed-terrain-plain",
   forest: "ed-terrain-forest",
   mountain: "ed-terrain-mountain",

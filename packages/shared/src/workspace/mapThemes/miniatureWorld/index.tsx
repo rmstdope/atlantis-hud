@@ -36,6 +36,7 @@ const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 /** Terrain gradients, written out in full. Each is a lit ground rather than a flat fill. */
 const TERRAIN_GRADIENTS: Record<string, string> = {
   ocean: "mw-grad-ocean",
+  lake: "mw-grad-ocean",
   plain: "mw-grad-plain",
   forest: "mw-grad-forest",
   mountain: "mw-grad-mountain",

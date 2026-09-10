@@ -27,6 +27,7 @@ import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
  */
 const TERRAIN_CLASSES: Record<string, string> = {
   ocean: "fill-terrain-ocean",
+  lake: "fill-terrain-ocean",
   plain: "fill-terrain-plain",
   forest: "fill-terrain-forest",
   mountain: "fill-terrain-mountain",
@@ -96,12 +97,12 @@ export function terrainFillClass(terrain: string): string {
 }
 
 export function terrainTextureUrl(terrain: string): string | null {
-  const name = terrain.toLowerCase();
+  const name = terrain.toLowerCase() === "lake" ? "ocean" : terrain.toLowerCase();
   return TEXTURED_TERRAINS.has(name) ? `/biomes/${name}_512.png` : null;
 }
 
 export function terrainTexturePatternId(terrain: string): string | null {
-  const name = terrain.toLowerCase();
+  const name = terrain.toLowerCase() === "lake" ? "ocean" : terrain.toLowerCase();
   return TEXTURED_TERRAINS.has(name) ? `biome-texture-${name}` : null;
 }
 

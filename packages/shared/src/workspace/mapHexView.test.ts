@@ -70,6 +70,12 @@ describe("terrain texture", () => {
     expect(terrainTexturePatternId("wasteland")).toBe("biome-texture-wasteland");
   });
 
+  it("paints lakes with the ocean's colour and texture", () => {
+    expect(terrainFillClass("lake")).toBe("fill-terrain-ocean");
+    expect(terrainTextureUrl("lake")).toBe("/biomes/ocean_512.png");
+    expect(terrainTexturePatternId("lake")).toBe("biome-texture-ocean");
+  });
+
   it("reads texture names case-insensitively", () => {
     expect(terrainTextureUrl("Mountain")).toBe("/biomes/mountain_512.png");
   });

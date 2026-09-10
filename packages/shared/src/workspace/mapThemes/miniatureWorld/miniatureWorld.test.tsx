@@ -190,6 +190,7 @@ describe("terrain, painted rather than filled", () => {
     expect(decorationFor("forest")).toBe("trees");
     expect(decorationFor("jungle")).toBe("trees");
     expect(decorationFor("ocean")).toBe("waves");
+    expect(decorationFor("lake")).toBe("waves");
     expect(decorationFor("desert")).toBe("dunes");
     expect(decorationFor("plain")).toBeNull();
   });

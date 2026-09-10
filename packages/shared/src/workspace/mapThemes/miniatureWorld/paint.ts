@@ -130,6 +130,7 @@ export function decorationFor(terrain: string): "peaks" | "trees" | "waves" | "d
     case "swamp":
       return "trees";
     case "ocean":
+    case "lake":
       return "waves";
     case "desert":
     case "wasteland":

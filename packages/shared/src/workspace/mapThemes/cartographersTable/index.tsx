@@ -33,6 +33,7 @@ const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 /** Terrain classes, written out in full so Tailwind's scanner is never the reason one vanishes. */
 const TERRAIN_CLASSES: Record<string, string> = {
   ocean: "ct-terrain-ocean",
+  lake: "ct-terrain-ocean",
   plain: "ct-terrain-plain",
   forest: "ct-terrain-forest",
   mountain: "ct-terrain-mountain",
