@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import {
+  atMost,
   monthLostToAnUnreadLine,
+  shareBoundedByAnUnreadUnit,
   NOT_KNOWN,
   silverWasNeverRead,
   unitWasFullyRead,
@@ -150,5 +152,28 @@ describe("unreadLineClause's unreachable case", () => {
     expect(unreadLineClause(aReportUnit({ read: "complete" }))).toBe(
       "This unit's line in the turn report"
     );
+  });
+});
+
+describe("atMost", () => {
+  it("puts the qualifier after the figure, in the words the designer agreed", () => {
+    expect(atMost("60")).toBe("60 at most");
+    expect(atMost("582")).toBe("582 at most");
+  });
+});
+
+describe("shareBoundedByAnUnreadUnit", () => {
+  it("is true when either half of the month is a ceiling", () => {
+    expect(shareBoundedByAnUnreadUnit(aUnitSilver({ incomeInTimeAtMost: true }))).toBe(true);
+    expect(shareBoundedByAnUnreadUnit(aUnitSilver({ lateIncomeAtMost: true }))).toBe(true);
+  });
+
+  it("is false for a unit in a hex the report read in full", () => {
+    expect(shareBoundedByAnUnreadUnit(aUnitSilver())).toBe(false);
+  });
+
+  it("is false where there is no forecast at all", () => {
+    expect(shareBoundedByAnUnreadUnit(null)).toBe(false);
+    expect(shareBoundedByAnUnreadUnit(undefined)).toBe(false);
   });
 });

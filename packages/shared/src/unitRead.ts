@@ -118,3 +118,24 @@ export function unreadLineClause(unit: ReportUnit): string {
     ? "Part of this unit's line in the turn report"
     : "This unit's line in the turn report";
 }
+
+/**
+ * A figure that is the most it can be, in the words the designer agreed: `60 at most`.
+ *
+ * Takes the already-formatted text rather than a number, so it composes with both formatters that
+ * reach it - the hover's bare `String(amount)` and the Silver cell's own.
+ */
+export function atMost(text: string): string {
+  return `${text} at most`;
+}
+
+/**
+ * Whether this unit's month-end figure is a ceiling rather than a forecast, because a unit in the
+ * same hex whose line was cut short may be drawing on a pool it draws on too (`ah-0n2k.1`).
+ *
+ * Either half bounds the total. The core sets neither field where the figure is not a number, so
+ * this never fires on a unit whose month reads `not known`.
+ */
+export function shareBoundedByAnUnreadUnit(silver: UnitSilver | null | undefined): boolean {
+  return (silver?.incomeInTimeAtMost ?? false) || (silver?.lateIncomeAtMost ?? false);
+}

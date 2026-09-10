@@ -36,7 +36,9 @@ import {
 } from "../structureLabel";
 import { describeMenBriefly } from "../unitComposition";
 import {
+  atMost,
   NOT_KNOWN,
+  shareBoundedByAnUnreadUnit,
   silverWasNeverRead,
   unitWasFullyRead,
   unreadCount,
@@ -2279,7 +2281,7 @@ function UnitRow({
       </span>
     </>
   ) : (
-    silverFigure(shownSilver)
+    silverFigure(shownSilver, shareBoundedByAnUnreadUnit(silver))
   );
 
   /**
@@ -2804,13 +2806,15 @@ function Td({ children, className = "", column, predicted }: TdProps) {
 }
 
 /**
- * What the Silver cell prints: the figure, or `?` for a month that could not be priced.
+ * What the Silver cell prints: the figure, or `?` for a month that could not be priced - and the
+ * figure followed by ` at most` where a hex-mate whose line was cut short may claim the same pool,
+ * so what is shown is a ceiling rather than a forecast (`ah-0n2k.1`).
  *
  * Never a number that might be wrong - see `orders::silver` in the core, which is where the
  * decision that a doubted term poisons the whole side is made.
  */
-function silverFigure(shown: number | null): string {
-  return shown === null ? "?" : String(shown);
+function silverFigure(shown: number | null, bounded: boolean): string {
+  return shown === null ? "?" : bounded ? atMost(String(shown)) : String(shown);
 }
 
 /**
