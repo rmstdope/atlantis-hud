@@ -296,8 +296,8 @@ export function StudyPlannerDialog({
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
           <span className="text-ink-soft">Study planner</span>
           <span role="tablist" aria-label="Study planner view" className="flex gap-1">
-            <ViewTab view="all" label="All mages" open={view} onOpen={setView} />
-            <ViewTab view="schedule" label="Schedule" open={view} onOpen={setView} />
+            <ViewTab view="all" label="Overview" open={view} onOpen={setView} />
+            <ViewTab view="schedule" label="Planner" open={view} onOpen={setView} />
             <ViewTab view="orders" label="Orders" open={view} onOpen={setView} />
           </span>
           <span className="flex-1" />
@@ -314,10 +314,12 @@ export function StudyPlannerDialog({
           <button
             type="button"
             data-testid="study-planner-close"
+            aria-label="Close study planner"
+            title="Close study planner"
             onClick={onDismiss}
             className="rounded px-1.5 text-ink-dim hover:text-ink"
           >
-            Close
+            ×
           </button>
         </div>
 

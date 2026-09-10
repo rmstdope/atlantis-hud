@@ -315,6 +315,17 @@ describe("the Orders tab", () => {
     expect(tab("schedule")).toContain("hover:");
   });
 
+  it("uses concise names for the views and an accessible close icon", () => {
+    const markup = dialog([]);
+
+    expect(markup).toContain(">Overview</button>");
+    expect(markup).toContain(">Planner</button>");
+    expect(markup).toContain(
+      'data-testid="study-planner-close" aria-label="Close study planner" title="Close study planner"'
+    );
+    expect(markup).toContain(">×</button>");
+  });
+
   it("save_all_is_offered_only_on_the_orders_tab_and_only_with_sections", () => {
     expect(dialog([])).not.toContain('data-testid="study-planner-save-all"');
   });
