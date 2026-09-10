@@ -285,7 +285,7 @@ describe("terrain, flat and dark so the readout stays a readout", () => {
   it("dims the biome image hard, so a photograph never becomes the readout", () => {
     const svg = draw(tacticalHud.TerrainLayer, [CONGESTED_CENTRE], { showTextures: true });
 
-    expect(svg).toContain("url(#biome-texture-plain)");
+    expect(svg).toContain("url(#biome-texture-plain-");
     const tint = /data-tint="texture"[^>]*/.exec(svg)?.[0] ?? "";
     expect(Number(/opacity="([\d.]+)"/.exec(tint)?.[1])).toBeGreaterThanOrEqual(0.45);
   });
@@ -376,7 +376,7 @@ describe("unsurveyed ground, drawn light and rimmed", () => {
       "hud-terrain-jungle"
     );
     expect(draw(tacticalHud.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
-      "url(#biome-texture-jungle)"
+      "url(#biome-texture-jungle-"
     );
   });
 });

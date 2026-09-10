@@ -328,7 +328,7 @@ describe("terrain and roads", () => {
     const svg = draw(beveledTile.TerrainLayer, [CONGESTED_CENTRE], { showTextures: true });
     const tint = /data-tint="texture"[^>]*/.exec(svg)?.[0] ?? "";
 
-    expect(svg).toContain("url(#biome-texture-plain)");
+    expect(svg).toContain("url(#biome-texture-plain-");
     expect(Number(/opacity="([\d.]+)"/.exec(tint)?.[1])).toBeCloseTo(0.14);
   });
 
@@ -385,7 +385,7 @@ describe("unsurveyed ground, drawn light and rimmed", () => {
       "bt-terrain-jungle"
     );
     expect(draw(beveledTile.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
-      "url(#biome-texture-jungle)"
+      "url(#biome-texture-jungle-"
     );
   });
 });

@@ -106,6 +106,23 @@ export function terrainTexturePatternId(terrain: string): string | null {
 }
 
 /**
+ * A stable, whole-degree texture angle for one hex.
+ *
+ * Texture variation must survive every redraw: choosing from `Math.random()` in a renderer would
+ * make the ground visibly turn while panning or changing a badge. The region id is stable across
+ * reports and sessions, so its small hash looks random across the map while producing the same
+ * 0–359° angle for the same hex every time.
+ */
+export function terrainTextureRotation(regionId: string): number {
+  let hash = 2166136261;
+  for (const character of regionId) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % 360;
+}
+
+/**
  * How far a sighting has faded.
  *
  * Age fades continuously rather than switching at a threshold: a hex seen last turn is nearly

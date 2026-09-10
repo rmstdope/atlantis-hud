@@ -12,6 +12,7 @@ import {
   routeSegments,
   staleFadeAmount,
   terrainTexturePatternId,
+  terrainTextureRotation,
   terrainTextureUrl,
   terrainFillClass,
   type Point
@@ -76,6 +77,19 @@ describe("terrain texture", () => {
     expect(terrainTextureUrl("nexus")).toBeNull();
     expect(terrainTextureUrl("unknown")).toBeNull();
     expect(terrainTexturePatternId("unknown")).toBeNull();
+  });
+
+  it("gives every region a stable whole-degree texture rotation", () => {
+    const first = terrainTextureRotation("1:7,53");
+    const second = terrainTextureRotation("1:7,53");
+    const neighbour = terrainTextureRotation("1:8,53");
+
+    expect(first).toBe(second);
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(first).toBeLessThan(360);
+    expect(neighbour).toBeGreaterThanOrEqual(0);
+    expect(neighbour).toBeLessThan(360);
+    expect(neighbour).not.toBe(first);
   });
 });
 

@@ -18,7 +18,12 @@ import type { ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-cli
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 import type { BattleInvolvement } from "../battles";
 import { worldOf } from "../mapViewport";
-import { hexPaint, terrainTexturePatternId, terrainTextureUrl } from "../mapHexView";
+import {
+  hexPaint,
+  terrainTexturePatternId,
+  terrainTextureRotation,
+  terrainTextureUrl
+} from "../mapHexView";
 
 /**
  * The monster faction, whose units are wandering hazards rather than somebody's army.
@@ -111,7 +116,7 @@ export type HexView = {
   at: { x: number; y: number };
   terrain: string;
   /** The biome image to paint under the theme's own treatment, or null when textures are off. */
-  texture: { url: string; patternId: string } | null;
+  texture: { url: string; patternId: string; rotation: number } | null;
   /**
    * How far this hex has faded, already scaled by the theme's `fogDamping`: paint it as it
    * arrives, for a named hex and a stale one alike.
@@ -359,10 +364,14 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
  * Worked out only when textures are asked for: with the toggle off this runs for every hex on
  * screen to produce a null, and it lowercases the terrain word and probes a set to do it.
  */
-function textureOf(terrain: string): { url: string; patternId: string } | null {
+function textureOf(
+  terrain: string,
+  regionId: string
+): { url: string; patternId: string; rotation: number } | null {
   const url = terrainTextureUrl(terrain);
-  const patternId = terrainTexturePatternId(terrain);
-  return url && patternId ? { url, patternId } : null;
+  const basePatternId = terrainTexturePatternId(terrain);
+  const rotation = terrainTextureRotation(regionId);
+  return url && basePatternId ? { url, patternId: `${basePatternId}-${rotation}`, rotation } : null;
 }
 
 /**
@@ -428,7 +437,7 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     key: hex.regionId,
     at: worldOf(hex.coordinate),
     terrain: hex.terrain,
-    texture: options.showTextures ? textureOf(hex.terrain) : null,
+    texture: options.showTextures ? textureOf(hex.terrain, hex.regionId) : null,
     fogOpacity: dampFog(paint.fogOpacity, options.fogDamping ?? 1),
     hatched: paint.hatched,
     knowledge: hex.knowledge,

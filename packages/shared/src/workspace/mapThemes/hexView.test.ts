@@ -14,6 +14,7 @@ import {
   type HexView,
   type HexViewOptions
 } from "./hexView";
+import { terrainTextureRotation } from "../mapHexView";
 
 function at(x: number, y: number, z = 1): Coordinate {
   return { x, y, z };
@@ -72,9 +73,12 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
   });
 
   it("offers the biome texture only while textures are asked for", () => {
-    expect(viewOf(hex({ knowledge: "current" })).texture).toEqual({
+    const textured = viewOf(hex({ knowledge: "current" })).texture;
+
+    expect(textured).toEqual({
       url: "/biomes/mountain_512.png",
-      patternId: "biome-texture-mountain"
+      patternId: `biome-texture-mountain-${terrainTextureRotation("1:7,53")}`,
+      rotation: terrainTextureRotation("1:7,53")
     });
     expect(viewOf(hex({ knowledge: "current" }), { showTextures: false }).texture).toBeNull();
   });

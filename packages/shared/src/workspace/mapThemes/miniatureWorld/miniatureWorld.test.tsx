@@ -214,7 +214,7 @@ describe("terrain, painted rather than filled", () => {
       { showTextures: true }
     );
 
-    expect(svg).toContain("url(#biome-texture-mountain)");
+    expect(svg).toContain("url(#biome-texture-mountain-");
     expect(svg).not.toContain('data-decoration="peaks"');
     expect(svg).not.toContain("data-tint");
   });
@@ -344,7 +344,7 @@ describe("what unvisited ground and a foreign guard look like", () => {
       { showTextures: true }
     );
 
-    expect(svg).toContain("url(#biome-texture-mountain)");
+    expect(svg).toContain("url(#biome-texture-mountain-");
     expect(svg).toContain('data-wash="unpainted"');
     expect(svg).toContain('data-rim="unsurveyed"');
   });
@@ -423,7 +423,7 @@ describe("unsurveyed board, primed rather than blank", () => {
   it("shows the biome image on a named hex when the textures are on", () => {
     const svg = draw(miniatureWorld.TerrainLayer, [NAMED_ONLY], { showTextures: true });
 
-    expect(svg).toContain("url(#biome-texture-jungle)");
+    expect(svg).toContain("url(#biome-texture-jungle-");
     expect(svg).toContain('data-wash="unpainted"');
   });
 });

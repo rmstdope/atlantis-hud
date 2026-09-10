@@ -385,7 +385,7 @@ describe("terrain, in pigment rather than in the app's own colours", () => {
   it("puts a light parchment gauze over the biome image, so the ink stays legible", () => {
     const svg = draw(cartographersTable.TerrainLayer, [CONGESTED_CENTRE], { showTextures: true });
 
-    expect(svg).toContain("url(#biome-texture-plain)");
+    expect(svg).toContain("url(#biome-texture-plain-");
     expect(svg).toContain('data-gauze="parchment"');
   });
 
@@ -446,7 +446,7 @@ describe("unsurveyed ground, drawn light and rimmed", () => {
       "ct-terrain-jungle"
     );
     expect(draw(cartographersTable.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
-      "url(#biome-texture-jungle)"
+      "url(#biome-texture-jungle-"
     );
   });
 });

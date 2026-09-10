@@ -53,12 +53,10 @@ import { guardSelection } from "./selectionGuard";
 import {
   fogPatternTile,
   hexPointsAttribute,
-  routeSegments,
-  terrainTexturePatternId,
-  terrainTextureUrl
+  routeSegments
 } from "./mapHexView";
 import { radii } from "./mapThemes/geometry";
-import { buildHexViews, type BadgeName } from "./mapThemes/hexView";
+import { buildHexViews, type BadgeName, type HexView } from "./mapThemes/hexView";
 import type { BattleInvolvement } from "./battles";
 import type { MapTheme } from "./mapThemes/mapTheme";
 import {
@@ -85,21 +83,6 @@ const COLUMN_LABEL_ROOM = 44;
 const ROW_LABEL_ROOM = 16;
 
 const ARROWS: ArrowKey[] = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
-const TEXTURED_TERRAIN_NAMES = [
-  "ocean",
-  "plain",
-  "forest",
-  "mountain",
-  "swamp",
-  "jungle",
-  "desert",
-  "tundra",
-  "volcano",
-  "cavern",
-  "underforest",
-  "wasteland"
-] as const;
-
 /** Identifies a position on the lattice, whether or not a hex is known to be there. */
 function cursorKeyOf(coordinate: Coordinate): string {
   return `${coordinate.x},${coordinate.y}`;
@@ -356,6 +339,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     [showStaleness, showTextures, badges, battles, theme.fogDamping]
   );
   const allViews = useMemo(() => buildHexViews(onLevel, viewOptions), [onLevel, viewOptions]);
+  const texturePatterns = useMemo(() => {
+    const patterns = new Map<string, NonNullable<HexView["texture"]>>();
+    for (const view of allViews) {
+      if (view.texture) {
+        patterns.set(view.texture.patternId, view.texture);
+      }
+    }
+    return [...patterns.values()];
+  }, [allViews]);
   // The knowledge buckets are cut from that one pass rather than built again from `hexLayers`:
   // every view carries its own knowledge, and building them twice meant two structure tallies and
   // two unit scans for every hex on screen. Model order is preserved either way.
@@ -1059,17 +1051,18 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             />
           </pattern>
           {showTextures
-            ? TEXTURED_TERRAIN_NAMES.map((terrain) => (
+            ? texturePatterns.map((texture) => (
                 <pattern
-                  key={terrain}
-                  id={terrainTexturePatternId(terrain) ?? undefined}
+                  key={texture.patternId}
+                  id={texture.patternId}
                   patternUnits="objectBoundingBox"
                   patternContentUnits="objectBoundingBox"
                   width="1"
                   height="1"
+                  patternTransform={`rotate(${texture.rotation} 0.5 0.5)`}
                 >
                   <image
-                    href={terrainTextureUrl(terrain) ?? undefined}
+                    href={texture.url}
                     x="0"
                     y="0"
                     width="1"
@@ -1733,4 +1726,3 @@ function NoteTagsDismiss({ onDismiss }: { onDismiss: () => void }) {
 
   return null;
 }
-
