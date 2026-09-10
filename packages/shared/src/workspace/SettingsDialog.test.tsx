@@ -83,7 +83,10 @@ function tag(html: string, testid: string): string {
 
       expect(panel).toContain("w-[40rem]");
       expect(panel).toContain("max-w-[94vw]");
-      expect(html).toContain('class="mt-2 flex flex-wrap gap-1"');
+      expect(panel).toContain("border-brass/60");
+      expect(panel).toContain("shadow-xl");
+      expect(html).toContain('class="mt-2 flex flex-wrap gap-1 rounded border border-edge bg-panel p-1"');
+      expect(tag(html, "settings-tab-global")).toContain("border-brass bg-brass/10 text-brass");
     });
   });
   return match[0];

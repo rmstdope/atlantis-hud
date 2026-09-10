@@ -100,10 +100,10 @@ export function SettingsDialog({
         aria-label="Settings"
         // `whitespace-normal` undoes the header's `whitespace-nowrap`, which would otherwise
         // inherit through the anchor span this dialog is mounted in.
-        className="w-[40rem] max-w-[94vw] rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
+        className="w-[40rem] max-w-[94vw] rounded border border-brass/60 bg-panel-raised p-3 text-pane whitespace-normal shadow-xl"
       >
-        <div className="flex items-center justify-between">
-          <h2 className="text-ink">Settings</h2>
+        <div className="flex items-center justify-between border-b border-brass/60 pb-2">
+          <h2 className="m-0 text-brass">Settings</h2>
           <button
             type="button"
             data-testid="settings-close"
@@ -137,14 +137,14 @@ export function SettingsDialog({
           // Wraps rather than overflowing: a sixth tab (ah-20di) is already wider than the panel
           // at some sizes, and a tab strip scrolled off the side is one nobody can find. The
           // chosen mockup shows the wrapped strip.
-          className="mt-2 flex flex-wrap gap-1"
+          className="mt-2 flex flex-wrap gap-1 rounded border border-edge bg-panel p-1"
         >
           {SETTINGS_TABS.map((entry) => (
             <Tab key={entry.id} id={entry.id} label={entry.label} active={tab} onTab={setTab} />
           ))}
         </div>
 
-        <div className="mt-3 min-h-32">
+        <div className="mt-3 min-h-32 rounded border border-edge bg-panel-raised p-3">
           {tab === "global" ? <GlobalSettings /> : null}
           {tab === "game" ? (
             <GameSettings
@@ -193,7 +193,9 @@ function Tab({
       data-testid={`settings-tab-${id}`}
       onClick={() => onTab(id)}
       className={`rounded border px-2 py-0.5 ${
-        selected ? "border-brass text-brass" : "border-edge text-ink-soft hover:text-ink"
+        selected
+          ? "border-brass bg-brass/10 text-brass"
+          : "border-edge bg-panel text-ink-soft hover:bg-panel-raised hover:text-ink"
       }`}
     >
       {label}
@@ -813,7 +815,7 @@ export function WarningSettings() {
     <div className="flex flex-col gap-3">
       {WARNING_GROUPS.map((group) => (
         <div key={group.heading} className="flex flex-col gap-2">
-          <div className="mt-2 text-pane-sm uppercase tracking-wider text-ink-dim border-b border-edge/60 pb-0.5">
+          <div className="mt-2 border-b border-brass/60 pb-0.5 text-pane-sm uppercase tracking-wider text-brass">
             {group.heading}
           </div>
           {group.entries.map((entry) => (
@@ -852,7 +854,9 @@ function ThemeChoice({
       aria-pressed={selected}
       onClick={() => onPick(name)}
       className={`rounded border px-2 py-0.5 ${
-        selected ? "border-brass text-brass" : "border-edge text-ink-soft hover:text-ink"
+        selected
+          ? "border-brass bg-brass/10 text-brass"
+          : "border-edge bg-panel text-ink-soft hover:bg-panel-raised hover:text-ink"
       }`}
     >
       {label}

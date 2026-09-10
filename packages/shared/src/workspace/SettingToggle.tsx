@@ -16,7 +16,7 @@ export type SettingToggleProps = {
 
 export function SettingToggle({ title, description, testId, checked, onChange }: SettingToggleProps) {
   return (
-    <label className="flex items-center justify-between gap-2 text-ink-soft">
+    <label className="flex items-center justify-between gap-2 rounded border border-edge bg-panel px-2 py-1 text-ink-soft hover:border-brass/60">
       <span>
         <span className="block">{title}</span>
         <span className="block text-pane-sm text-ink-dim">{description}</span>
