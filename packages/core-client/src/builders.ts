@@ -254,6 +254,8 @@ export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
     sharedSilverCovered: 0,
     sharedSilverForOrders: 0,
     marketPurseHeldOnly: false,
+    incomeInTimeAtMost: false,
+    lateIncomeAtMost: false,
     borrowedForOrders: 0,
     withdrawing: false,
     produced: 0,

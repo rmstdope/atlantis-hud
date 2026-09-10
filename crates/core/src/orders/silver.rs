@@ -362,6 +362,22 @@ pub struct UnitSilver {
     /// property of the hex: every line on the unit is a floor or none of them is, and a per-line
     /// flag would need adding to some forty test literals that have nothing to do with it.
     pub market_purse_held_only: bool,
+    /// True when `income` less `late_income` - the silver that arrives in time to pay for this
+    /// unit's orders - is an **upper bound** rather than a forecast, because a unit in this hex
+    /// whose report line was cut short may be an uncounted claimant on the region's tax base
+    /// (`ah-0n2k.1`).
+    ///
+    /// `false` wherever those terms are exact, `false` wherever `income` is `None` - a term that is
+    /// not a number needs no bound, and [`SilverDoubt::ContestedRegionPool`] already speaks for the
+    /// hex that could not be settled at all - and `false` for a unit that draws on no pool here.
+    pub income_in_time_at_most: bool,
+    /// The same, for `late_income`: the wage and entertainment terms, which arrive in the turn's
+    /// last phase (`ah-0n2k.1`).
+    ///
+    /// Two booleans and not one, because the hover prints those two halves as separate rows
+    /// (`In, in time` and `In, too late`) and one boolean would put ` at most` beside an exact
+    /// figure on whichever row the bound did not land in.
+    pub late_income_at_most: bool,
     /// What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
     /// this unit's own overdraft, where the hex's purse settled it (`ah-3c2t.2`).
     ///
@@ -875,6 +891,26 @@ pub struct PoolShares {
     pub wages: PoolShare,
     /// This unit's share of the region's entertainment demand.
     pub entertainment: PoolShare,
+    /// For each pool above, true when this hex holds an own unit whose report line was cut short
+    /// **and** the region states that pool, so the share is an **upper bound**: the men, flags and
+    /// skills that say what that unit asks went with the tail, so it asks `0`, drops out of every
+    /// `wanting`, and no share here counted a claim for it (`ah-0n2k.1`).
+    ///
+    /// Per pool and not per hex, because a pool the region does not state is not divided at all: a
+    /// region with no wage ceiling pays a worker exactly what it asked for whoever else is standing
+    /// there, a region stating no entertainment demand pays a certain nothing, and a pillaged hex's
+    /// tax base is filtered out for the same reason. A ceiling on any of those would be false.
+    ///
+    /// A property of the hex rather than of one unit, carried per unit for the same reason
+    /// [`UnitSilver::market_purse_held_only`] is: this is the struct the settlement already hands
+    /// down to both of its readers, index-aligned with `hex.units`. `charge_upkeep` receives them
+    /// and ignores them - a bound changes no figure, and the pessimistic charge it already makes
+    /// against a settled share is still the right one.
+    pub unread_claimant_tax: bool,
+    /// The same, for the region's wage pool. See [`Self::unread_claimant_tax`].
+    pub unread_claimant_wages: bool,
+    /// The same, for the region's entertainment demand. See [`Self::unread_claimant_tax`].
+    pub unread_claimant_entertainment: bool,
 }
 
 /// What one unit's orders ask of each of its region's contended pools, before any settlement.
@@ -1877,6 +1913,8 @@ pub fn forecast_unit(
             shared_silver_covered: 0,
             shared_silver_for_orders: 0,
             market_purse_held_only: false,
+            income_in_time_at_most: false,
+            late_income_at_most: false,
             borrowed_for_orders: 0,
             own_food_covered: 0,
             forced_own_food: 0,
@@ -1937,6 +1975,8 @@ pub fn forecast_unit(
             shared_silver_covered: 0,
             shared_silver_for_orders: 0,
             market_purse_held_only: false,
+            income_in_time_at_most: false,
+            late_income_at_most: false,
             borrowed_for_orders: 0,
             own_food_covered: 0,
             forced_own_food: 0,
@@ -3008,6 +3048,27 @@ pub fn forecast_unit(
     let expense = expense_doubt.is_none().then_some(expense);
     let wanted_for_orders = expense.map(|_| wanted);
     let doubt = income_doubt.or(expense_doubt);
+    // A hex-mate whose line was cut short may claim any of these pools and no share above counted
+    // it, so the terms it could have taken from are upper bounds (`ah-0n2k.1`). Gated on the term
+    // being a number: a pool that could not be settled at all already reads the agreed
+    // `ContestedRegionPool` sentence, and that stricter answer wins. Gated on the unit actually
+    // drawing on the pool, because a unit that neither works, entertains nor taxes here has no
+    // share to bound - the same two predicates the `Unknowable` doubt above is raised from.
+    // Each pool is asked about separately, exactly as the `Unknowable` doubts above are: a worker
+    // in a region with no wage ceiling but a finite entertainment demand draws on one pool and not
+    // the other, and one predicate for both would bound it off the wrong one.
+    let draws_wages = is_set_to_work(unit_flags, intents)
+        || intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Work));
+    let draws_entertainment = intents
+        .iter()
+        .any(|placed| matches!(placed.intent, Intent::Entertain));
+    let late_income_at_most = late_income.is_some()
+        && ((shares.unread_claimant_wages && draws_wages)
+            || (shares.unread_claimant_entertainment && draws_entertainment));
+    let income_in_time_at_most =
+        shares.unread_claimant_tax && income.is_some() && taxes(unit_flags, intents);
     // What the hex's `SHARE` purse actually lends this unit: never more than it is short of, so an
     // allowance settled from the ledger cannot inflate a figure here (`ah-moq3`).
     let short_before_sharing = match (income, wanted_for_orders) {
@@ -3071,6 +3132,8 @@ pub fn forecast_unit(
         shared_silver_covered: 0,
         shared_silver_for_orders: shared,
         market_purse_held_only: matches!(shared_market, SharedMarket::HeldOnly(_)),
+        income_in_time_at_most,
+        late_income_at_most,
         borrowed_for_orders: 0,
         own_food_covered,
         forced_own_food: 0,

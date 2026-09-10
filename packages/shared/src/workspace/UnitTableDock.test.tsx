@@ -746,6 +746,17 @@ describe("the Silver column", () => {
     expect(cell).toContain("text-ink-dim");
   });
 
+  it("relabels the Silver figure as a ceiling beside an unread hex-mate (ah-0n2k.1)", () => {
+    const cell = silverCell(
+      drawSilver(forecast({ held: 522, atMonthEnd: 582, lateIncomeAtMost: true }))
+    );
+
+    // The figure is kept and only its label changes: not `not known`, not `?`, not a dash.
+    expect(cell).toContain("582 at most");
+    expect(cell).not.toContain("not known");
+    expect(cell).not.toContain(">?<");
+  });
+
   it("leaves a completely read row's Silver cell exactly as it was", () => {
     const cell = silverCell(drawSilver(forecast({ held: 800, atMonthEnd: 800 })));
     expect(cell).toContain(">800<");

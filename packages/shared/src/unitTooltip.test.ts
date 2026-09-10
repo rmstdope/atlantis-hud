@@ -878,6 +878,81 @@ describe("the silver section", () => {
     ]);
   });
 
+  // `ah-0n2k.1`. A hex-mate whose line was cut short bounds the halves this unit drew from, and
+  // only those: `Held now`, `Out` and `Upkeep` are never bounded, because nothing in these pools
+  // bounds what a unit spends or owes.
+  it("the_silver_section_bounds_only_the_halves_an_unread_hex_mate_could_claim", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        held: 60,
+        income: 60,
+        lateIncome: 60,
+        expense: 0,
+        upkeep: 50,
+        atMonthEnd: 582,
+        lateIncomeAtMost: true
+      }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "60" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "60 at most" },
+      { label: "Out", value: "0" },
+      { label: "Upkeep", value: "50" },
+      { label: "At month end", value: "532 at most" }
+    ]);
+  });
+
+  it("the_silver_section_bounds_the_in_time_half_for_a_taxer", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        held: 60,
+        income: 500,
+        lateIncome: 0,
+        expense: 0,
+        atMonthEnd: 560,
+        incomeInTimeAtMost: true
+      }),
+      false
+    );
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "60" },
+      { label: "In, in time", value: "500 at most" },
+      { label: "In, too late", value: "0" },
+      { label: "Out", value: "0" },
+      { label: "At month end", value: "560 at most" }
+    ]);
+  });
+
+  it("the_silver_section_puts_no_ceiling_beside_a_figure_that_is_not_a_number", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        held: 60,
+        income: null,
+        lateIncome: null,
+        expense: 0,
+        atMonthEnd: null,
+        doubt: "contested-region-pool"
+      }),
+      false
+    );
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "60" },
+      { label: "In, in time", value: "?" },
+      { label: "In, too late", value: "?" },
+      { label: "Out", value: "0" },
+      { label: "At month end", value: "?" }
+    ]);
+  });
+
   it("the_silver_section_shows_an_upkeep_row_only_when_counting", () => {
     const counting = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), true, true);
 
@@ -1702,6 +1777,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up.",
     "doubt-contested-region-pool":
       "Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out.",
+    "pool-bounded-by-an-unread-unit":
+      "Another of your units here draws on the same pool and its line could not be read from the turn report, so this unit may be paid less than this.",
     "doubt-market-does-not-sell":
       "This region is not selling horses, so what the purchase costs cannot be said.",
     "doubt-gives-a-whole-class":
@@ -2093,6 +2170,9 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
       // Men left this unit as well as its silver running short: both notes are true at once, and
       // the men note reads first because it explains the count the cap note quotes (`ah-qct4`).
       productionMenLeft: 5,
+      // `ah-0n2k.1`: a hex-mate whose line was cut short bounds both halves of the month.
+      incomeInTimeAtMost: true,
+      lateIncomeAtMost: true,
       worksByDefault: true,
       taxesByFlag: true,
       castMade: 2,

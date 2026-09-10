@@ -26,7 +26,13 @@ import {
   type PreviewedUnit
 } from "./unitPreview";
 import { SILVER_NOTES, summariseUnit, type SilverFacts } from "./unitTooltip";
-import { monthLostToAnUnreadLine, NOT_KNOWN, silverWasNeverRead } from "./unitRead";
+import {
+  atMost,
+  monthLostToAnUnreadLine,
+  NOT_KNOWN,
+  shareBoundedByAnUnreadUnit,
+  silverWasNeverRead
+} from "./unitRead";
 import {
   COLUMN_LABELS,
   silverIsRed,
@@ -1747,12 +1753,14 @@ function silverCauseWhy(
  * figure is a number and has moved. Never a pair on a `?`.
  */
 function silverTotalLine(silver: UnitSilver, shown: number | null): PopupLine {
+  const bounded = shareBoundedByAnUnreadUnit(silver);
+  const value = shown === null ? "?" : bounded ? atMost(String(shown)) : String(shown);
   if (shown === null || shown === silver.held) {
-    return { label: "silver", value: shown === null ? "?" : String(shown) };
+    return { label: "silver", value };
   }
   return {
     label: "silver",
-    value: String(shown),
+    value,
     change: { direction: shown > silver.held ? "up" : "down", from: String(silver.held) }
   };
 }

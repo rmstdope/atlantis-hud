@@ -2,8 +2,10 @@ import type { ProductionCap, ReportUnit, UnitSilver } from "@atlantis/core-clien
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { withoutSilver } from "./silverTag";
 import {
+  atMost,
   monthLostToAnUnreadLine,
   NOT_KNOWN,
+  shareBoundedByAnUnreadUnit,
   silverWasNeverRead,
   unreadLineClause
 } from "./unitRead";
@@ -195,16 +197,29 @@ function summariseSilver(
   // A term this unit's own broken line lost reads the agreed words; every other doubt keeps the
   // `?` it has always shown, which means "I could not price it", a different sentence.
   const unknown = monthLostToAnUnreadLine(silver) ? NOT_KNOWN : "?";
+  // Only where the figure is a number: `? at most` and `not known at most` are both nonsense, and
+  // `end` can be null while `income` is not, when the setting counts an upkeep nobody could price.
+  const atMostIf = (text: string, amount: number | null, bounded: boolean): string =>
+    amount !== null && bounded ? atMost(text) : text;
   const rows: TooltipEntry[] = [
     {
       label: "Held now",
       value: silverWasNeverRead(silver) ? NOT_KNOWN : String(silver.held)
     },
-    { label: "In, in time", value: figure(inTime(silver), unknown) },
-    { label: "In, too late", value: figure(silver.lateIncome, unknown) },
+    {
+      label: "In, in time",
+      value: atMostIf(figure(inTime(silver), unknown), inTime(silver), silver.incomeInTimeAtMost)
+    },
+    {
+      label: "In, too late",
+      value: atMostIf(figure(silver.lateIncome, unknown), silver.lateIncome, silver.lateIncomeAtMost)
+    },
     { label: "Out", value: figure(silver.expense, unknown) },
     ...(countUpkeep ? [{ label: "Upkeep", value: figure(silver.upkeep, unknown) }] : []),
-    { label: "At month end", value: figure(end, unknown) }
+    {
+      label: "At month end",
+      value: atMostIf(figure(end, unknown), end, shareBoundedByAnUnreadUnit(silver))
+    }
   ];
 
   return { rows, note: silverNote(unit, silver, warned, countUpkeep) };
@@ -691,6 +706,26 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({ doubt: "contested-region-pool" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  // Not `doubt-`-prefixed, unlike its neighbours: every other id in this array names a `SilverDoubt`
+  // value, and this note fires on a unit that has no doubt at all - its figure is a number, kept,
+  // and only its label changed (`ah-0n2k.1`).
+  {
+    id: "pool-bounded-by-an-unread-unit",
+    when: ({ silver }) => shareBoundedByAnUnreadUnit(silver),
+    say: () =>
+      "Another of your units here draws on the same pool and its line could not be read from the turn report, so this unit may be paid less than this.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({
+        lateIncomeAtMost: true,
+        income: 60,
+        lateIncome: 60,
+        atMonthEnd: 582
+      }),
       warned: false,
       countUpkeep: true
     })

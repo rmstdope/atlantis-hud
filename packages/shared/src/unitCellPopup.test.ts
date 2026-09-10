@@ -1302,6 +1302,42 @@ describe("the column popups", () => {
     ]);
   });
 
+  it("bounds the headline when a hex-mate's line could not be read (ah-0n2k.1)", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 522,
+            income: 60,
+            lateIncome: 60,
+            atMonthEnd: 582,
+            lateIncomeAtMost: true,
+            changes: [{ amount: 60, cause: "entertained", line: 2, other: null }]
+          })
+        })
+      )
+    );
+
+    // The headline carries the ceiling and keeps its pair; the cause line stays plain, so the
+    // qualifier is not repeated three times in one small popup.
+    expect(popup.lines[0]).toEqual({
+      label: "silver",
+      value: "582 at most",
+      change: { direction: "up", from: "522" }
+    });
+    expect(popup.lines[1]).toEqual({
+      label: "entertained",
+      value: "+60",
+      tone: "up",
+      why: "arrives too late"
+    });
+    expect(popup.notes).toContain(
+      "Another of your units here draws on the same pool and its line could not be read from the turn report, so this unit may be paid less than this."
+    );
+  });
+
   it("the silver popup shows no pair for a figure that did not move or could not be priced", () => {
     const still = columnPopup(
       popupForCell(
