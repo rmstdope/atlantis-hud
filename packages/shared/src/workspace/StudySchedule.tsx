@@ -550,7 +550,7 @@ function FactionRows({
                   ? warned
                     ? STANDING_CHIP.ceiling
                     : STANDING_CHIP.maxed
-                  : cell?.kind === "study" && cell.blocked !== null
+                  : cell?.kind === "study" && (cell.unsheltered || cell.blocked !== null)
                     ? STANDING_CHIP.ceiling
                     : cell?.kind === "study" && cell.gained
                       ? STANDING_CHIP.known

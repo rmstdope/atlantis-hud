@@ -69,9 +69,9 @@ const rows = scheduleRows({
   after: new Map()
 });
 
-function grid(mode: CellMode = { kind: "idle" }) {
+function grid(mode: CellMode = { kind: "idle" }, drawnRows: readonly ScheduleRow[] = rows) {
   return renderToStaticMarkup(
-    <ScheduleGrid rows={rows} groups={groups} turns={turns} mode={mode} onEvent={() => {}} />
+    <ScheduleGrid rows={drawnRows} groups={groups} turns={turns} mode={mode} onEvent={() => {}} />
   );
 }
 
@@ -102,6 +102,23 @@ describe("ScheduleGrid", () => {
     const first = markup.slice(markup.indexOf('study-schedule-cell-2431-24'));
 
     expect(first.slice(0, 400)).toContain(STANDING_CHIP.known);
+  });
+
+  it("warns when an unsheltered mage studies above level two", () => {
+    const unsheltered = rows.map((row) =>
+      row.unitId !== "2431"
+        ? row
+        : {
+            ...row,
+            cells: row.cells.map((cell, index) =>
+              index === 0 && cell.kind === "study" ? { ...cell, unsheltered: true } : cell
+            )
+          }
+    );
+    const markup = grid({ kind: "idle" }, unsheltered);
+    const first = markup.slice(markup.indexOf("study-schedule-cell-2431-24"));
+
+    expect(first.slice(0, 400)).toContain(STANDING_CHIP.ceiling);
   });
 
   it("draws an unplanned cell as a dash", () => {
