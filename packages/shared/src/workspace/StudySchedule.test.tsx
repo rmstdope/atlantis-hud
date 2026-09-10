@@ -231,6 +231,8 @@ describe("MagePaneView", () => {
     const markup = shown(0);
 
     expect(markup).toContain("Ereb (2431) — turn 24");
+    expect(markup).toContain("Turn 24");
+    expect(markup).toContain("border-brass/60 bg-brass/10");
     expect(markup).toContain("Wardens of the North (12) · studying force");
     expect(markup).toContain("3(270) → 4(300)");
     const line = markup.slice(markup.indexOf("study-schedule-knows-force"));
@@ -248,6 +250,7 @@ describe("MagePaneView", () => {
     const markup = shown(null);
 
     expect(markup).toContain("Ereb (2431) — now");
+    expect(markup).toContain("Now");
     expect(markup).toContain("Can study now —");
   });
 

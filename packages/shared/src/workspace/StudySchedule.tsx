@@ -635,7 +635,13 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
       className="flex min-h-0 flex-col overflow-y-auto border-l border-edge p-2"
     >
       <div className="shrink-0">
-        <p className="m-0 text-ink">{pane.heading}</p>
+        <p
+          aria-label={pane.heading}
+          className="m-0 flex items-center gap-2 rounded border border-brass/60 bg-brass/10 px-2 py-1 text-brass"
+        >
+          <span className="flex-1">{pane.mage}</span>
+          <span className="rounded border border-brass/60 px-1 text-pane-xs">{pane.when}</span>
+        </p>
         <p className="m-0 text-ink-dim">{pane.sub}</p>
         {/* Above the skills, not below them: a note says where his studies are heading, which is
             the thing to have read before a month is chosen for him. `whitespace-pre-wrap` because

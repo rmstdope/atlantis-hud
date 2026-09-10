@@ -46,6 +46,10 @@ export type MagePaneChoice = {
 export type MagePane = {
   /** `Ereb (2431) — turn 26`, or `Ereb (2431) — now`. */
   heading: string;
+  /** `Ereb (2431)`, the mage the pane is about. */
+  mage: string;
+  /** `Turn 26`, or `Now` when the pane shows the report's current standing. */
+  when: string;
   /** `Wardens of the North (12) · studying force`. */
   sub: string;
   /**
@@ -115,6 +119,8 @@ export function magePane(input: {
     const knows = knownNow(standing, tree);
     return {
       heading: `${row.name} (${row.unitId}) — now`,
+      mage: `${row.name} (${row.unitId})`,
+      when: "Now",
       sub: factionLabel,
       note: row.note,
       knowsHeading: knowsWords(knows),
@@ -138,6 +144,8 @@ export function magePane(input: {
   const knows = card.lines;
   return {
     heading: card.heading,
+    mage: `${row.name} (${row.unitId})`,
+    when: `Turn ${turn}`,
     sub: card.sub,
     note: row.note,
     knowsHeading: knowsWords(knows),
