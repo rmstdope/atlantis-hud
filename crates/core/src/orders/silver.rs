@@ -911,6 +911,20 @@ pub struct PoolShares {
     pub unread_claimant_wages: bool,
     /// The same, for the region's entertainment demand. See [`Self::unread_claimant_tax`].
     pub unread_claimant_entertainment: bool,
+    /// True when this hex holds an own unit whose report line was cut short **and which is itself
+    /// ordered to sell**, so every own seller's market earnings here are an **upper bound**: that
+    /// unit's goods went with the tail, its `SELL` claim reads `0`, and no share of any `Wanted`
+    /// line counted a claim for it (`ah-0n2k.2`).
+    ///
+    /// Narrower than the three `unread_claimant_*` flags above on purpose. A market claim needs an
+    /// order, and the orders file is intact however badly the report was wrapped - so an unread
+    /// unit with no `SELL` provably takes nothing off a neighbour's sale, and a ceiling there would
+    /// be false. The silver pools are the other case: a cut-short line loses the very flags and
+    /// skills that say whether the unit works, taxes or entertains, so there it has to be assumed.
+    ///
+    /// Not per item: a unit ordered to sell anything bounds every `Wanted` line this hex has. The
+    /// coarseness is deliberate - see this bead's plan.
+    pub unread_seller: bool,
 }
 
 /// What one unit's orders ask of each of its region's contended pools, before any settlement.
@@ -3067,8 +3081,20 @@ pub fn forecast_unit(
     let late_income_at_most = late_income.is_some()
         && ((shares.unread_claimant_wages && draws_wages)
             || (shares.unread_claimant_entertainment && draws_entertainment));
-    let income_in_time_at_most =
-        shares.unread_claimant_tax && income.is_some() && taxes(unit_flags, intents);
+    // A hex-mate whose line was cut short and which is ordered to sell makes every own seller's
+    // market earnings a ceiling: its own claim on the line read `0` because its goods went with
+    // the tail, so `rules/sell`'s proportional split divided the line among too few sellers
+    // (`ah-0n2k.2`). `SELL` is a Market-phase order (`rules/sequenceofevents`), so the
+    // overstatement is in the in-time half, which is the term this flag speaks for.
+    //
+    // Read off the movement record rather than recomputed: `moved_by` is the one place a cause's
+    // total is read (`ah-6m7b.4`), and `record` never pushes a zero - so this is true exactly of a
+    // unit that really does earn silver selling here, which is the mockup's "a unit that is not
+    // earning here is not bounded".
+    let sells_here = moved_by(&moves, SilverChangeCause::Sold) > 0;
+    let income_in_time_at_most = income.is_some()
+        && ((shares.unread_claimant_tax && taxes(unit_flags, intents))
+            || (shares.unread_seller && sells_here));
     // What the hex's `SHARE` purse actually lends this unit: never more than it is short of, so an
     // allowance settled from the ledger cannot inflate a figure here (`ah-moq3`).
     let short_before_sharing = match (income, wanted_for_orders) {
@@ -8972,6 +8998,134 @@ mod tests {
         let unit = sold(&[selling("furs", Amount::Exact(40))], &wanted(24, 40, 40));
         assert_eq!(unit.income, Some(960));
         assert_eq!(unit.doubt, None);
+    }
+
+    /// [`sold`] with a hex whose pools carry a bound. `sold` itself passes
+    /// `PoolShares::default()`, which is every other selling test and must stay that way.
+    fn sold_beside(
+        intents: &[PlacedIntent],
+        sale: &dyn Fn(&str) -> SaleAnswer,
+        shares: PoolShares,
+    ) -> UnitSilver {
+        let receipts = Receipts::default();
+        forecast_unit(
+            facts(1, intents, &receipts),
+            RegionWages::default(),
+            shares,
+            FactionPurse::default(),
+            0,
+            Lookups {
+                sale,
+                ..no_market()
+            },
+            SharedMarket::Adds(0),
+            None,
+        )
+    }
+
+    /// `ah-0n2k.2`. An own hex-mate whose line was cut short, ordered to sell the same goods,
+    /// claimed `0` of the line because its goods went with the tail - so what this unit is shown
+    /// earning is the most it can be, not a forecast. The figure itself is kept.
+    ///
+    /// The bare `SAIL` is what spends the month: without it the unit is set to work by default and
+    /// `ah-0n2k.1` bounds its late half too, which is a different statement from this one.
+    #[test]
+    fn a_seller_beside_an_unread_seller_reads_its_takings_as_a_ceiling() {
+        let unit = sold_beside(
+            &[
+                selling("furs", Amount::Exact(40)),
+                placed(Intent::MonthLong("SAIL")),
+            ],
+            &wanted(24, 40, 40),
+            PoolShares {
+                unread_seller: true,
+                ..PoolShares::default()
+            },
+        );
+        assert_eq!(unit.income, Some(960), "the figure is kept");
+        assert_eq!(unit.doubt, None, "a bound is not a doubt");
+        assert!(unit.income_in_time_at_most);
+        assert!(!unit.late_income_at_most, "nothing bounds the late half here");
+    }
+
+    /// `ah-0n2k.2`, the narrowing. A market claim needs an order, and a cut-short report line takes
+    /// no order away - so an unread hex-mate that was never told to sell provably takes nothing off
+    /// this unit's sale and the figure it is shown is exact.
+    #[test]
+    fn a_seller_beside_an_unread_unit_that_was_not_told_to_sell_is_not_bounded() {
+        let unit = sold_beside(
+            &[
+                selling("furs", Amount::Exact(40)),
+                placed(Intent::MonthLong("SAIL")),
+            ],
+            &wanted(24, 40, 40),
+            PoolShares {
+                unread_claimant_tax: true,
+                unread_claimant_wages: true,
+                unread_claimant_entertainment: true,
+                unread_seller: false,
+                ..PoolShares::default()
+            },
+        );
+        assert_eq!(unit.income, Some(960));
+        assert!(!unit.income_in_time_at_most);
+        assert!(!unit.late_income_at_most);
+    }
+
+    /// `ah-0n2k.2`. A hex whose every line was read - which is every committed fixture - costs
+    /// nothing.
+    #[test]
+    fn a_hex_read_in_full_bounds_no_sale() {
+        let unit = sold_beside(
+            &[
+                selling("furs", Amount::Exact(40)),
+                placed(Intent::MonthLong("SAIL")),
+            ],
+            &wanted(24, 40, 40),
+            PoolShares::default(),
+        );
+        assert_eq!(unit.income, Some(960));
+        assert!(!unit.income_in_time_at_most);
+        assert!(!unit.late_income_at_most);
+    }
+
+    /// `ah-0n2k.2`. A unit that earns no silver selling here has nothing to bound, which falls out
+    /// of reading the movement record rather than the orders: `record` never pushes a zero.
+    #[test]
+    fn a_unit_that_sells_nothing_here_is_not_bounded() {
+        let unit = sold_beside(
+            &[
+                selling("furs", Amount::Exact(40)),
+                placed(Intent::MonthLong("SAIL")),
+            ],
+            &|_item: &str| SaleAnswer::NotWanted,
+            PoolShares {
+                unread_seller: true,
+                ..PoolShares::default()
+            },
+        );
+        assert_eq!(unit.income, Some(0));
+        assert!(!unit.income_in_time_at_most);
+    }
+
+    /// `ah-0n2k.2`. `not known at most` is nonsense: where the sale itself could not be priced the
+    /// stricter answer wins and no ceiling is printed.
+    #[test]
+    fn a_doubted_sale_beside_an_unread_seller_is_not_bounded() {
+        let unit = sold_beside(
+            &[
+                selling("furs", Amount::Exact(40)),
+                placed(Intent::MonthLong("SAIL")),
+            ],
+            &|_item: &str| SaleAnswer::Unknown,
+            PoolShares {
+                unread_seller: true,
+                ..PoolShares::default()
+            },
+        );
+        assert_eq!(unit.doubt, Some(SilverDoubt::UnknownGoods));
+        assert_eq!(unit.income, None);
+        assert!(!unit.income_in_time_at_most);
     }
 
     #[test]
