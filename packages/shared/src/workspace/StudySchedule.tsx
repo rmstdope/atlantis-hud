@@ -755,7 +755,7 @@ export function CellPopover({
           }
         }}
       >
-        <p className="m-0 text-ink">{teachHeading(mageName, turn, mode.live)}</p>
+        <PopoverHeading>{teachHeading(mageName, turn, mode.live)}</PopoverHeading>
         <ul className="m-0 max-h-[45vh] list-none overflow-y-auto p-0">
           {menu.teach.map((choice) => (
             <li key={choice.unitId}>
@@ -818,7 +818,7 @@ export function CellPopover({
       aria-label={menu.heading}
       className="rounded border border-edge bg-panel-raised p-2 shadow-lg"
     >
-      <p className="m-0 text-ink">{menu.heading}</p>
+      <PopoverHeading>{menu.heading}</PopoverHeading>
       <ul
         // Every list in this menu scrolls rather than grows, at the same height. A menu whose last
         // row is below the bottom edge cannot be chosen from and has nowhere left to flip to: the
@@ -881,6 +881,14 @@ export function CellPopover({
       )}
       <p className="m-0 mt-2 text-ink-dim">↑↓ to move · ↵ to choose · Esc to close</p>
     </div>
+  );
+}
+
+function PopoverHeading({ children }: { children: ReactNode }) {
+  return (
+    <p className="m-0 mb-1 rounded border border-brass/60 bg-brass/10 px-2 py-1 text-brass">
+      {children}
+    </p>
   );
 }
 
