@@ -69,26 +69,26 @@ export function GameForm({
   return (
     <form data-testid="game-form" onSubmit={submit} className="flex flex-col gap-2 text-pane">
       <label className="flex flex-col gap-1">
-        <span className="text-ink-soft">Name</span>
+        <span className="text-pane-xs uppercase tracking-[0.08em] text-brass">Name</span>
         <input
           data-testid="game-name"
           aria-label="game name"
           value={name}
           disabled={busy}
           onChange={(event) => setName(event.target.value)}
-          className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+          className="rounded border border-edge bg-panel px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
         />
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-ink-soft">Ruleset</span>
+        <span className="text-pane-xs uppercase tracking-[0.08em] text-brass">Ruleset</span>
         <select
           data-testid="game-ruleset"
           aria-label="ruleset"
           value={rulesetId}
           disabled={busy}
           onChange={(event) => chooseRuleset(event.target.value)}
-          className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+          className="rounded border border-edge bg-panel px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
         >
           {RULESETS.map((ruleset) => (
             <option key={ruleset.id} value={ruleset.id}>
@@ -98,14 +98,14 @@ export function GameForm({
         </select>
       </label>
 
-      <fieldset className="flex flex-col gap-2 rounded border border-edge p-2">
-        <legend className="px-1 text-ink-soft">Map</legend>
+      <fieldset className="flex flex-col gap-2 rounded border border-brass/60 bg-panel p-2">
+        <legend className="px-1 text-pane-xs uppercase tracking-[0.08em] text-brass">Map</legend>
         <p className="text-ink-soft">
           How far the map runs, and where it joins back onto itself. Clear these if you do not know.
         </p>
         <div className="flex gap-2">
           <label className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="text-ink-soft">Width</span>
+            <span className="text-pane-xs uppercase tracking-[0.08em] text-brass">Width</span>
             <input
               data-testid="game-map-width"
               aria-label="map width"
@@ -113,11 +113,11 @@ export function GameForm({
               value={map.width}
               disabled={busy}
               onChange={(event) => setMap({ ...map, width: event.target.value })}
-              className="w-full min-w-0 rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+              className="w-full min-w-0 rounded border border-edge bg-panel-raised px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
             />
           </label>
           <label className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="text-ink-soft">Height</span>
+            <span className="text-pane-xs uppercase tracking-[0.08em] text-brass">Height</span>
             <input
               data-testid="game-map-height"
               aria-label="map height"
@@ -125,7 +125,7 @@ export function GameForm({
               value={map.height}
               disabled={busy}
               onChange={(event) => setMap({ ...map, height: event.target.value })}
-              className="w-full min-w-0 rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+              className="w-full min-w-0 rounded border border-edge bg-panel-raised px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
             />
           </label>
         </div>
@@ -155,7 +155,7 @@ export function GameForm({
       </fieldset>
 
       {error ? (
-        <span data-testid="game-form-error" role="alert" className="text-danger">
+        <span data-testid="game-form-error" role="alert" className="rounded border border-danger/40 bg-danger/10 px-2 py-1 text-danger">
           {error}
         </span>
       ) : null}
@@ -163,7 +163,7 @@ export function GameForm({
       <button
         type="submit"
         disabled={busy || problems.length > 0}
-        className="rounded border border-brass px-2.5 py-1 text-brass disabled:opacity-50"
+        className="rounded border border-brass bg-brass/10 px-2.5 py-1 text-brass hover:bg-brass/15 disabled:border-edge disabled:bg-transparent disabled:text-ink-dim disabled:opacity-50"
       >
         {busy ? "Creating…" : submitLabel}
       </button>

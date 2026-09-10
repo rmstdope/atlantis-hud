@@ -68,19 +68,19 @@ export function GameGate({
         data-testid="game-gate"
         className="flex min-h-0 flex-1 items-center justify-center p-6"
       >
-        <div className="w-72 rounded border border-edge bg-panel-raised p-4">
-          <h1 className="mb-1 text-pane-lg text-ink">No game yet</h1>
+        <div className="w-80 rounded border border-brass/60 bg-panel-raised p-4 shadow-xl">
+          <h1 className="mb-1 text-pane-lg text-brass">No game yet</h1>
           <p className="mb-3 text-pane text-ink-soft">
             Every turn you load belongs to a game. Name one to begin.
           </p>
           <GameForm busy={busy} error={error} onCreate={onCreate} />
-          <div className="mt-2 border-t border-edge pt-2">
+          <div className="mt-3 border-t border-brass/60 pt-3">
             <button
               type="button"
               data-testid="game-gate-import"
               disabled={busy}
               onClick={() => importRef.current?.click()}
-              className="w-full rounded border border-edge px-2.5 py-1 text-left text-brass disabled:opacity-50"
+              className="w-full rounded border border-brass bg-brass/10 px-2.5 py-1 text-left text-brass hover:bg-brass/15 disabled:border-edge disabled:bg-transparent disabled:text-ink-dim disabled:opacity-50"
             >
               Import game backup…
             </button>

@@ -28,4 +28,12 @@ describe("GameGate header", () => {
     expect(headerClass).toContain("min-h-9");
     expect(headerClass.split(/\s+/)).not.toContain("h-9");
   });
+
+  it("frames the setup card as the application entry point", () => {
+    const markup = draw();
+
+    expect(markup).toContain("w-80 rounded border border-brass/60 bg-panel-raised p-4 shadow-xl");
+    expect(markup).toContain("text-pane-lg text-brass");
+    expect(markup).toContain("border-brass bg-brass/10");
+  });
 });
