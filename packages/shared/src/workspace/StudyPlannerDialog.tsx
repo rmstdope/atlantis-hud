@@ -10,7 +10,7 @@ import {
   type PlannerMage
 } from "../studyPlanner";
 import { useEscapeToDismiss } from "./dismissLayer";
-import { STANDING_CHIP, standingLimit, standingWords } from "./standingChip";
+import { STANDING_CHIP, standingLimit } from "./standingChip";
 import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
 import { planLine, scheduleRows, scheduleTurns } from "../studySchedule";
@@ -593,7 +593,6 @@ export function StudyPlannerDetail({
   onSaveNote: (comment: string) => void;
 }) {
   const unreported = unreportedLine(mage);
-  const heldBack = mage.knows.filter((skill) => skill.standing.kind === "ceiling");
   const missing = mage.standing.missing;
   return (
     <div data-testid="study-planner-detail" className="min-h-0 overflow-y-auto p-3">
@@ -636,11 +635,7 @@ export function StudyPlannerDetail({
         onSave={onSaveNote}
       />
 
-      {/* Three columns rather than three stacked lists (navigator, 2026-09-07): they answer one
-          question between them - where this mage stands - and a reader who has to scroll from one
-          to the next is holding two of the three answers in their head. The dialog is 74rem for
-          the Schedule's pane anyway, so the width was already paid for. */}
-      <div className="mt-3 grid grid-cols-3 gap-3">
+      <div className="mt-3 grid grid-cols-2 gap-3">
         <section>
           <p className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass">Knows</p>
           <ul className="m-0 list-none p-0">
@@ -656,8 +651,7 @@ export function StudyPlannerDetail({
                   {knownChip(skill)}
                 </span>{" "}
                 {/* Not `standingWords`: the chip beside it has just said `force 4`, and `at 4`
-                    after it is the same number twice. The `Held back` list keeps the full wording,
-                    having no chip of its own. */}
+                    after it is the same number twice. */}
                 <span className="text-ink-dim">{standingLimit(skill.standing)}</span>
               </li>
             ))}
@@ -679,29 +673,14 @@ export function StudyPlannerDetail({
           </ul>
         </section>
 
-        <section>
-          <p className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass">Held back</p>
-          {heldBack.length === 0 ? (
-            <p className="m-0 text-ink-dim">Nothing he holds is at a prerequisite&apos;s ceiling.</p>
-          ) : (
-            <ul className="m-0 list-none p-0">
-              {heldBack.map((skill) => (
-                <li key={skill.tag} className="text-ink">
-                  {`${skill.name} — ${standingWords(skill.standing)}`}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {missing.length === 0 ? null : (
-            <p className="mt-3 text-ink-dim" data-testid="study-planner-missing">
-              {missing.length === 1
-                ? "Also knows 1 skill this ruleset does not describe."
-                : `Also knows ${missing.length} skills this ruleset does not describe.`}
-            </p>
-          )}
-        </section>
       </div>
+      {missing.length === 0 ? null : (
+        <p className="mt-3 text-ink-dim" data-testid="study-planner-missing">
+          {missing.length === 1
+            ? "Also knows 1 skill this ruleset does not describe."
+            : `Also knows ${missing.length} skills this ruleset does not describe.`}
+        </p>
+      )}
     </div>
   );
 }

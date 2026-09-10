@@ -156,9 +156,9 @@ describe("StudyPlannerDetail", () => {
     expect(own).toContain("border-brass/60 bg-brass/10");
   });
 
-  it("keeps the held-back section even when nothing is", () => {
-    expect(own).toContain("Held back");
-    expect(own).toContain("Nothing he holds is at a prerequisite&#x27;s ceiling.");
+  it("shows the useful study information in two columns", () => {
+    expect(own).toContain("grid-cols-2");
+    expect(own).not.toContain("Held back");
   });
 
   it("says nothing is planned for next turn when the mage has no plan", () => {
@@ -187,7 +187,7 @@ describe("StudyPlannerDetail", () => {
     expect(planned).toContain("Next turn: force");
   });
 
-  it("names what holds a skill back in the tree's own words", () => {
+  it("does not duplicate ceiling information in a separate list", () => {
     const heldBack = renderToStaticMarkup(<StudyPlannerDetail
         mage={mageBy("883")}
         turn={72}
@@ -197,8 +197,8 @@ describe("StudyPlannerDetail", () => {
         saveError={null}
         onSaveNote={() => {}}
       />);
-    expect(heldBack).toContain("fire — at 1, held by force");
-    expect(heldBack).not.toContain("Nothing he holds is at a prerequisite");
+    expect(heldBack).not.toContain("Held back");
+      expect(heldBack.match(/held by force/g)).toHaveLength(1);
   });
 });
 
