@@ -99,6 +99,14 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
     expect(viewOf(hex({ knowledge: "current", terrain: "mountain" })).texture?.moves).toBe(false);
   });
 
+  it("leaves water textures still when animation is off", () => {
+    const texture = viewOf(hex({ knowledge: "current", terrain: "ocean" }), {
+      animateWaterTextures: false
+    }).texture;
+
+    expect(texture?.moves).toBe(false);
+  });
+
   it("leaves a terrain with no texture solid even with textures on", () => {
     expect(viewOf(hex({ knowledge: "current", terrain: "nexus" })).texture).toBeNull();
   });

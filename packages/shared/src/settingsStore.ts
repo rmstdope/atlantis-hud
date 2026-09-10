@@ -75,6 +75,7 @@ export type SettingsState = {
   mapTheme: string;
   biomeTextures: boolean;
   biomeTextureRotation: boolean;
+  animateWaterTextures: boolean;
   /**
    * How see-through the panes floating over the map are, in percent.
    *
@@ -134,6 +135,7 @@ export type SettingsState = {
   setMapTheme: (id: string) => void;
   setBiomeTextures: (enabled: boolean) => void;
   setBiomeTextureRotation: (enabled: boolean) => void;
+  setAnimateWaterTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
   setInterfaceSize: (percent: number) => void;
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
@@ -152,6 +154,7 @@ type Persisted = Pick<
   | "mapTheme"
   | "biomeTextures"
   | "biomeTextureRotation"
+  | "animateWaterTextures"
   | "paneTransparency"
   | "interfaceSize"
   | "advisoryChecks"
@@ -312,6 +315,7 @@ const DEFAULTS: Persisted = {
   mapTheme: DEFAULT_MAP_THEME_ID,
   biomeTextures: true,
   biomeTextureRotation: true,
+  animateWaterTextures: true,
   paneTransparency: { ...DEFAULT_PANE_TRANSPARENCY },
   interfaceSize: DEFAULT_INTERFACE_SIZE,
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
@@ -346,6 +350,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       setBiomeTextureRotation: (biomeTextureRotation) => {
         set({ biomeTextureRotation });
+      },
+
+      setAnimateWaterTextures: (animateWaterTextures) => {
+        set({ animateWaterTextures });
       },
 
       setPaneTransparency: (percent) => {
@@ -408,6 +416,7 @@ export const useSettingsStore = create<SettingsState>()(
         mapTheme: state.mapTheme,
         biomeTextures: state.biomeTextures,
         biomeTextureRotation: state.biomeTextureRotation,
+        animateWaterTextures: state.animateWaterTextures,
         paneTransparency: state.paneTransparency,
         interfaceSize: state.interfaceSize,
         advisoryChecks: state.advisoryChecks,

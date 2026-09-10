@@ -68,7 +68,8 @@ function draw(
   badges = allBadges(true),
   battles?: ReadonlyMap<string, "own" | "other">,
   showTextures = false,
-  rotateTextures = true
+  rotateTextures = true,
+  animateWaterTextures = true
 ): string {
   return renderToStaticMarkup(
     <MapCanvas
@@ -83,6 +84,7 @@ function draw(
       showStaleness
       showTextures={showTextures}
       rotateTextures={rotateTextures}
+      animateWaterTextures={animateWaterTextures}
       badges={badges}
       notes={notes}
       battles={battles}
@@ -206,6 +208,12 @@ describe("what the map hands a theme", () => {
     expect(svg).toMatch(
       /<pattern id="biome-texture-ocean-[^"]+"[^>]*>.*<animateTransform attributeName="transform" type="translate" from="0 0" to="1 0" dur="18s" repeatCount="indefinite"><\/animateTransform><\/g><\/pattern>/
     );
+  });
+
+  it("leaves water textures still when their animation is off", () => {
+    const svg = draw(probe(), [], allBadges(true), undefined, true, true, false);
+
+    expect(svg).not.toContain("<animateTransform");
   });
 
   it("hands a theme the fade already damped by its own factor", () => {

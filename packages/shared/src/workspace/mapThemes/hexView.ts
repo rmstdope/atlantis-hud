@@ -229,6 +229,8 @@ export type HexViewOptions = {
   showTextures: boolean;
   /** Defaults to true so existing renderers retain the textured map's varied orientation. */
   rotateTextures?: boolean;
+  /** Defaults to true so ocean and lake texture patterns move by default. */
+  animateWaterTextures?: boolean;
   badges: Record<BadgeName, boolean>;
   /**
    * Where last turn's battles were fought, from `battleHexes`, keyed by `HexNode.regionId`.
@@ -376,7 +378,8 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
 function textureOf(
   terrain: string,
   regionId: string,
-  rotateTextures: boolean
+  rotateTextures: boolean,
+  animateWaterTextures: boolean
 ): {
   url: string;
   patternId: string;
@@ -395,7 +398,7 @@ function textureOf(
         patternId: `${basePatternId}-${rotation}-${tone}`,
         rotation,
         brightness,
-        moves: basePatternId === "biome-texture-ocean"
+        moves: animateWaterTextures && basePatternId === "biome-texture-ocean"
       }
     : null;
 }
@@ -464,7 +467,12 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     at: worldOf(hex.coordinate),
     terrain: hex.terrain,
     texture: options.showTextures
-      ? textureOf(hex.terrain, hex.regionId, options.rotateTextures !== false)
+      ? textureOf(
+          hex.terrain,
+          hex.regionId,
+          options.rotateTextures !== false,
+          options.animateWaterTextures !== false
+        )
       : null,
     fogOpacity: dampFog(paint.fogOpacity, options.fogDamping ?? 1),
     hatched: paint.hatched,

@@ -190,6 +190,8 @@ type MapCanvasProps = {
   showTextures: boolean;
   /** Whether each biome texture is rotated by its stable per-hex angle. */
   rotateTextures?: boolean;
+  /** Whether ocean and lake textures scroll continuously along their texture axis. */
+  animateWaterTextures?: boolean;
   /** Which marks the themes may draw over the terrain, one flag per kind. */
   badges: Record<BadgeName, boolean>;
   /**
@@ -277,6 +279,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     showStaleness,
     showTextures,
     rotateTextures = true,
+    animateWaterTextures = true,
     badges,
     route = null,
     arrow = null,
@@ -342,11 +345,20 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       showStaleness,
       showTextures,
       rotateTextures,
+      animateWaterTextures,
       badges,
       battles,
       fogDamping: theme.fogDamping
     }),
-    [showStaleness, showTextures, rotateTextures, badges, battles, theme.fogDamping]
+    [
+      showStaleness,
+      showTextures,
+      rotateTextures,
+      animateWaterTextures,
+      badges,
+      battles,
+      theme.fogDamping
+    ]
   );
   const allViews = useMemo(() => buildHexViews(onLevel, viewOptions), [onLevel, viewOptions]);
   const texturePatterns = useMemo(() => {
