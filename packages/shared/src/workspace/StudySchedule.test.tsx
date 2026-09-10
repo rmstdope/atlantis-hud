@@ -103,12 +103,13 @@ describe("ScheduleGrid", () => {
 
     expect(markup).toContain("24 · next");
     expect(markup).toContain(">25<");
+    expect(markup).toContain("border-separate border-spacing-0");
     expect(markup).toContain("border-brass/60");
-    expect(markup).toContain("bg-brass/10");
+    expect(markup).toContain("bg-panel-raised");
     // The sticky mage rail stays below every frozen turn header while the table body scrolls.
     const nextTurnHeader =
       new RegExp(`<th[^>]*data-testid="study-schedule-turn-${turns[0]}"[^>]*>`).exec(markup)?.[0] ?? "";
-    expect(nextTurnHeader).toContain("sticky top-0 z-20");
+    expect(nextTurnHeader).toContain("sticky top-0 z-30");
   });
 
   it("highlights the turn currently shown in the mage pane", () => {
@@ -118,8 +119,9 @@ describe("ScheduleGrid", () => {
     const selected = header(25);
     const other = header(24);
 
-    expect(selected).toContain("bg-select/15");
-    expect(other).not.toContain("bg-select/15");
+    expect(selected).toContain("bg-panel-raised");
+    expect(selected).toContain("border-select text-select");
+    expect(other).not.toContain("border-select");
   });
 
   it("highlights the mage currently shown in the mage pane", () => {

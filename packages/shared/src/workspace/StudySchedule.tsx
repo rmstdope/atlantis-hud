@@ -449,18 +449,20 @@ export function ScheduleGrid({
       ?.focus();
   };
   return (
-    <table className="w-full border-collapse text-pane" onKeyDown={walk}>
+    <table className="w-full border-separate border-spacing-0 text-pane" onKeyDown={walk}>
       <thead>
         <tr>
-          <th className="sticky left-0 top-0 z-20 border-b border-r border-brass/60 bg-brass/10 px-2 py-1 text-left text-pane-xs uppercase tracking-[0.08em] text-brass">
+          <th className="sticky left-0 top-0 z-30 border-b border-r border-brass/60 bg-panel-raised px-2 py-1 text-left text-pane-xs uppercase tracking-[0.08em] text-brass">
             Mage
           </th>
           {turns.map((turn, index) => (
             <th
               key={turn}
               data-testid={`study-schedule-turn-${turn}`}
-              className={`sticky top-0 z-20 border-b border-l border-brass/60 px-2 py-1 text-left ${
-                index === activeTurnIndex ? "bg-select/15 text-ink" : "bg-brass/10 text-brass"
+              className={`sticky top-0 z-30 border-b border-l border-brass/60 bg-panel-raised px-2 py-1 text-left ${
+                index === activeTurnIndex
+                  ? "border-select text-select"
+                  : "text-brass"
               }`}
             >
               {index === 0 ? `${turn} · next` : `${turn}`}
