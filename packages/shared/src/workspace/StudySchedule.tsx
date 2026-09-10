@@ -860,7 +860,9 @@ export function CellPopover({
               // are what should scroll this list, never the mouse.
               onPointerMove={(event) => event.currentTarget.focus({ preventScroll: true })}
               onClick={row.onClick(onEvent, onChoose, current)}
-              className={`w-full rounded px-1 text-left ${ROW_HIGHLIGHT}`}
+              className={`w-full rounded border-l-2 px-1 text-left ${
+                row.pressed ? "border-brass bg-brass/10" : "border-transparent"
+              } ${row.pressed ? "hover:bg-brass/15 focus:bg-brass/15" : ROW_HIGHLIGHT}`}
             >
               <ChoiceMark on={row.pressed} />
               {row.tag === null ? null : (

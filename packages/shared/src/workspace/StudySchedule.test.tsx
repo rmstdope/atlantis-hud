@@ -396,6 +396,9 @@ describe("CellPopover", () => {
     // And says it to the eye as well: `aria-pressed` alone left the row that is set looking
     // exactly like every row that is not.
     expect(pressed.slice(0, 400)).toContain("✓");
+    expect(pressed.slice(0, 400)).toContain("border-l-2");
+    expect(pressed.slice(0, 400)).toContain("border-brass");
+    expect(pressed.slice(0, 400)).toContain("bg-brass/10");
   });
 
   it("marks — nothing when the cell holds nothing", () => {
