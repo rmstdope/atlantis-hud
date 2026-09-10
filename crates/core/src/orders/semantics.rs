@@ -848,10 +848,15 @@ fn pool_shares_for(
         // known claimant beside an unread one is exactly the case - it reads `Uncontended`, the
         // whole pool, and that is the figure the bound is about.
         //
-        // `pool` and not `pool.filter(...)`: a pool the region does not state is not divided at
-        // all, so its arithmetic is exact whoever else is standing here and a ceiling would be
-        // false. A pillaged hex's tax base is filtered out above for the same reason.
-        if unread_claimant && pool.is_some() {
+        // What the pool *holds*, and not merely whether the region stated it: a pool of nothing is
+        // divided among nobody, so its arithmetic is exact whoever else is standing here and a
+        // ceiling would be false. That one question subsumes all three: `Entertainment available:
+        // $0.` parses to `Some(0)`, a region stating no wage ceiling is `None`, and a pillaged
+        // hex's tax base is filtered out above.
+        //
+        // `pool` and not `pool.filter(|_| wanting.len() > 1)`: one known claimant beside an unread
+        // one is exactly the case this bead is about, and it takes the `continue` below.
+        if unread_claimant && pool.is_some_and(|pool| pool > 0) {
             for share in &mut shares {
                 *bound_of(share) = true;
             }
@@ -14416,6 +14421,18 @@ mod tests {
             assert_eq!(forecast.income, Some(500));
         }
 
+        /// A tax base of nothing is the same: there is no share for an unread hex-mate to take.
+        #[test]
+        fn a_taxer_where_the_region_states_a_tax_base_of_nothing_is_not_bounded() {
+            let review = tax_review(
+                Some(0),
+                vec![taxer("2390", 10), unread("4501")],
+                "unit 2390\nTAX\n",
+            );
+
+            assert!(!silver_of(&review, "2390").income_in_time_at_most);
+        }
+
         /// `ah-0n2k.1`. A pillage empties the hex before any `TAX` reaches it (`ah-cxxa`), so the
         /// tax pool is filtered out and every taxer collects a certain nothing. There is no share
         /// for an unread hex-mate to take, so no ceiling is put on one.
@@ -15117,6 +15134,42 @@ mod tests {
             let forecast = silver_of(&review, "2390");
             assert_eq!(forecast.late_income, Some(0));
             assert!(!forecast.late_income_at_most);
+        }
+
+        /// A pool the region states as **zero** is the same case as one it does not state at all:
+        /// there is nothing to divide, so every share of it is a certain nothing and cannot be
+        /// less. `Entertainment available: $0.` parses to `Some(0)`, not `None`, so the guard has
+        /// to ask what the pool holds rather than only whether it was stated (`ah-0n2k.1`).
+        #[test]
+        fn an_entertainer_where_the_region_states_no_money_at_all_is_not_bounded() {
+            let review = wage_review(
+                "$12.0",
+                Some(579),
+                Some(0),
+                vec![entertainer("2390", 1, 2), unread("4501")],
+                "unit 2390\nENTERTAIN\n",
+            );
+
+            let forecast = silver_of(&review, "2390");
+            assert_eq!(forecast.late_income, Some(0));
+            assert!(
+                !forecast.late_income_at_most,
+                "a certain nothing cannot be less than nothing"
+            );
+        }
+
+        /// The same for the wage pool: `Wages: $0.0 (Max: $0)` is a stated ceiling of nothing.
+        #[test]
+        fn a_worker_where_the_region_states_a_wage_ceiling_of_nothing_is_not_bounded() {
+            let review = wage_review(
+                "$0.0",
+                Some(0),
+                Some(179),
+                vec![worker("2390", 5), unread("4501")],
+                "unit 2390\nWORK\n",
+            );
+
+            assert!(!silver_of(&review, "2390").late_income_at_most);
         }
 
         /// A unit that works by default with no order at all is the commonest way the wage pool is
