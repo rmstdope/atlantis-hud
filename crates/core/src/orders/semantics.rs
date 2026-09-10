@@ -14337,7 +14337,10 @@ mod tests {
             let mut unit = with_men(unit(id), 0);
             unit.items = vec![];
             unit.read = UnitRead::Nothing;
-            assert_eq!(unit.men, 0, "an unread hex-mate must ask the hex for nothing");
+            assert_eq!(
+                unit.men, 0,
+                "an unread hex-mate must ask the hex for nothing"
+            );
             assert!(
                 !unit.men_estimated,
                 "and must not reach the estimated-headcount guard"
@@ -14376,7 +14379,6 @@ mod tests {
             let hex = Hex::read(&hex_region, &ordered, &[]);
             pool_shares_for(&hex, region_wages(&hex, None), None, None).overruns
         }
-
 
         /// `ah-0n2k.1`. The tax base is drawn in the turn's earlier phase, so an unread hex-mate
         /// bounds the silver that arrives *in time* and not the wage and entertainment half.
@@ -14735,7 +14737,10 @@ mod tests {
             let mut unit = with_men(unit(id), 0);
             unit.items = vec![];
             unit.read = UnitRead::Nothing;
-            assert_eq!(unit.men, 0, "an unread hex-mate must ask the hex for nothing");
+            assert_eq!(
+                unit.men, 0,
+                "an unread hex-mate must ask the hex for nothing"
+            );
             assert!(
                 !unit.men_estimated,
                 "and must not reach the estimated-headcount guard"
@@ -14964,7 +14969,6 @@ mod tests {
                 short.message
             );
         }
-
 
         /// `ah-0n2k.1`. A hex-mate whose line was cut short asks the hex for nothing, so it drops
         /// out of every `wanting` and no share counted a claim for it. The neighbour keeps its

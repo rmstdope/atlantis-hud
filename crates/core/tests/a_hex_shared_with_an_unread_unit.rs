@@ -89,7 +89,10 @@ fn a_taxers_share_is_a_ceiling_when_a_hex_mate_was_not_read() {
         !taxer.late_income_at_most,
         "1288 taxes and does not work, so the late half is exact"
     );
-    assert_eq!(taxer.doubt, None, "the figure is kept, only its label changes");
+    assert_eq!(
+        taxer.doubt, None,
+        "the figure is kept, only its label changes"
+    );
     assert_eq!(
         taxer.income,
         forecast_of(&the_report(), "1288").income,
