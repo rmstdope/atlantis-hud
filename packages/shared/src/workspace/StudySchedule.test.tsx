@@ -354,6 +354,8 @@ describe("CellPopover", () => {
     const markup = popover();
 
     expect(markup).toContain("Ereb — turn 26");
+    expect(markup.slice(0, 200)).toContain("border-brass/60");
+    expect(markup.slice(0, 200)).toContain("shadow-xl");
     expect(markup).toContain("border-brass/60");
     expect(markup).toContain("bg-brass/10");
     expect(markup).toContain("text-brass");

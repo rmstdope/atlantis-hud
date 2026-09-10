@@ -737,7 +737,7 @@ export function CellPopover({
         data-testid="study-schedule-popover"
         role="dialog"
         aria-label={teachHeading(mageName, turn, mode.live)}
-        className="rounded border border-edge bg-panel-raised p-2 shadow-lg"
+        className="rounded border border-brass/60 bg-panel-raised p-2 shadow-xl"
         // `Cmd/Ctrl+Enter` only. **Escape is not handled here and must not be**: the layer's
         // `useEscapeToDismiss` is a capture-phase document listener that stops propagation before
         // React dispatches, so a `cancel` branch on this element would be dead code reading like
@@ -816,7 +816,7 @@ export function CellPopover({
       data-testid="study-schedule-popover"
       role="dialog"
       aria-label={menu.heading}
-      className="rounded border border-edge bg-panel-raised p-2 shadow-lg"
+      className="rounded border border-brass/60 bg-panel-raised p-2 shadow-xl"
     >
       <PopoverHeading>{menu.heading}</PopoverHeading>
       <ul
