@@ -459,7 +459,7 @@ export function ScheduleGrid({
             <th
               key={turn}
               data-testid={`study-schedule-turn-${turn}`}
-              className={`sticky top-0 z-10 border-b border-l border-brass/60 px-2 py-1 text-left ${
+              className={`sticky top-0 z-20 border-b border-l border-brass/60 px-2 py-1 text-left ${
                 index === activeTurnIndex ? "bg-select/15 text-ink" : "bg-brass/10 text-brass"
               }`}
             >
