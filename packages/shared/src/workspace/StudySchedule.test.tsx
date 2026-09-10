@@ -72,7 +72,8 @@ const rows = scheduleRows({
 function grid(
   mode: CellMode = { kind: "idle" },
   drawnRows: readonly ScheduleRow[] = rows,
-  activeTurnIndex: number | null = null
+  activeTurnIndex: number | null = null,
+  activeRowKey: string | null = null
 ) {
   return renderToStaticMarkup(
     <ScheduleGrid
@@ -81,6 +82,7 @@ function grid(
       turns={turns}
       mode={mode}
       activeTurnIndex={activeTurnIndex}
+      activeRowKey={activeRowKey}
       onEvent={() => {}}
     />
   );
@@ -112,6 +114,15 @@ describe("ScheduleGrid", () => {
 
     expect(selected).toContain("bg-select/15");
     expect(other).not.toContain("bg-select/15");
+  });
+
+  it("highlights the mage currently shown in the mage pane", () => {
+    const markup = grid({ kind: "idle" }, rows, null, "12/2432");
+    const name = (unitId: string) =>
+      new RegExp(`<td[^>]*data-testid="study-schedule-name-${unitId}"[^>]*>`).exec(markup)?.[0] ?? "";
+
+    expect(name("2432")).toContain("bg-select/15");
+    expect(name("2431")).not.toContain("bg-select/15");
   });
 
   it("heads each faction with the words the All mages view uses", () => {

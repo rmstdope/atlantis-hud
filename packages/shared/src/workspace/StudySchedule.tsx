@@ -209,6 +209,7 @@ export function StudySchedule({
             onEvent={onEvent}
             onAt={setAt}
             activeTurnIndex={at?.turnIndex ?? null}
+            activeRowKey={at?.rowKey ?? null}
             notices={notices}
           />
         </div>
@@ -395,6 +396,7 @@ export function ScheduleGrid({
   onEvent,
   onAt,
   activeTurnIndex = null,
+  activeRowKey = null,
   notices
 }: {
   rows: readonly ScheduleRow[];
@@ -410,6 +412,8 @@ export function ScheduleGrid({
   onAt?: (at: { rowKey: string; turnIndex: number | null }) => void;
   /** The turn currently shown in the mage pane, or null when it is showing the mage now. */
   activeTurnIndex?: number | null;
+  /** The mage currently shown in the mage pane, or null before one is selected. */
+  activeRowKey?: string | null;
   /** Everything the planner has to say, so a cell can be tinted and titled by what it raised. */
   notices?: readonly PlannerNotice[];
 }) {
@@ -474,6 +478,7 @@ export function ScheduleGrid({
             mode={mode}
             onEvent={onEvent}
             onAt={onAt}
+            activeRowKey={activeRowKey}
             notices={notices}
             indexOfRow={indexOfRow}
           />
@@ -499,6 +504,7 @@ function FactionRows({
   mode,
   onEvent,
   onAt,
+  activeRowKey,
   notices
 }: {
   group: PlannerGroup;
@@ -509,6 +515,7 @@ function FactionRows({
   mode: CellMode;
   onEvent: (event: CellEvent) => void;
   onAt?: (at: { rowKey: string; turnIndex: number | null }) => void;
+  activeRowKey: string | null;
   notices?: readonly PlannerNotice[];
 }) {
   return (
@@ -530,7 +537,9 @@ function FactionRows({
             <td
               data-testid={`study-schedule-name-${row.unitId}`}
               onMouseEnter={() => onAt?.({ rowKey: row.key, turnIndex: null })}
-              className="sticky left-0 z-10 bg-panel-raised px-2 py-1 align-top"
+              className={`sticky left-0 z-10 px-2 py-1 align-top ${
+                row.key === activeRowKey ? "bg-select/15" : "bg-panel-raised"
+              }`}
             >
               <span className="text-ink">
                 {row.name} ({row.unitId})
