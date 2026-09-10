@@ -81,7 +81,8 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
         terrainTextureBrightness("1:7,53") * 100
       )}`,
       rotation: terrainTextureRotation("1:7,53"),
-      brightness: terrainTextureBrightness("1:7,53")
+      brightness: terrainTextureBrightness("1:7,53"),
+      moves: false
     });
     expect(viewOf(hex({ knowledge: "current" }), { showTextures: false }).texture).toBeNull();
   });
@@ -90,6 +91,12 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
     const texture = viewOf(hex({ knowledge: "current" }), { rotateTextures: false }).texture;
 
     expect(texture?.rotation).toBe(0);
+  });
+
+  it("marks ocean and lake textures for movement", () => {
+    expect(viewOf(hex({ knowledge: "current", terrain: "ocean" })).texture?.moves).toBe(true);
+    expect(viewOf(hex({ knowledge: "current", terrain: "lake" })).texture?.moves).toBe(true);
+    expect(viewOf(hex({ knowledge: "current", terrain: "mountain" })).texture?.moves).toBe(false);
   });
 
   it("leaves a terrain with no texture solid even with textures on", () => {

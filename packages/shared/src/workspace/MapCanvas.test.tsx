@@ -200,6 +200,14 @@ describe("what the map hands a theme", () => {
     expect(pattern).not.toContain("patternTransform");
   });
 
+  it("moves water textures along their rotated pattern axis", () => {
+    const svg = draw(probe(), [], allBadges(true), undefined, true);
+
+    expect(svg).toMatch(
+      /<pattern id="biome-texture-ocean-[^"]+"[^>]*>.*<animateTransform attributeName="transform" type="translate" from="0 0" to="1 0" dur="18s" repeatCount="indefinite"><\/animateTransform><\/g><\/pattern>/
+    );
+  });
+
   it("hands a theme the fade already damped by its own factor", () => {
     // CONGESTED_HEXES' one stale hex is eight turns old: 0.46 raw, halved by the probe theme's own
     // 0.5 damping.

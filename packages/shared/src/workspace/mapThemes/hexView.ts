@@ -117,7 +117,13 @@ export type HexView = {
   at: { x: number; y: number };
   terrain: string;
   /** The biome image to paint under the theme's own treatment, or null when textures are off. */
-  texture: { url: string; patternId: string; rotation: number; brightness: number } | null;
+  texture: {
+    url: string;
+    patternId: string;
+    rotation: number;
+    brightness: number;
+    moves: boolean;
+  } | null;
   /**
    * How far this hex has faded, already scaled by the theme's `fogDamping`: paint it as it
    * arrives, for a named hex and a stale one alike.
@@ -371,14 +377,26 @@ function textureOf(
   terrain: string,
   regionId: string,
   rotateTextures: boolean
-): { url: string; patternId: string; rotation: number; brightness: number } | null {
+): {
+  url: string;
+  patternId: string;
+  rotation: number;
+  brightness: number;
+  moves: boolean;
+} | null {
   const url = terrainTextureUrl(terrain);
   const basePatternId = terrainTexturePatternId(terrain);
   const rotation = rotateTextures ? terrainTextureRotation(regionId) : 0;
   const brightness = terrainTextureBrightness(regionId);
   const tone = Math.round(brightness * 100);
   return url && basePatternId
-    ? { url, patternId: `${basePatternId}-${rotation}-${tone}`, rotation, brightness }
+    ? {
+        url,
+        patternId: `${basePatternId}-${rotation}-${tone}`,
+        rotation,
+        brightness,
+        moves: basePatternId === "biome-texture-ocean"
+      }
     : null;
 }
 

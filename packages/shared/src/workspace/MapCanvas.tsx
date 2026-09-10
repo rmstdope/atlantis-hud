@@ -1075,15 +1075,40 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                       : `rotate(${texture.rotation} 0.5 0.5)`
                   }
                 >
-                  <image
-                    href={texture.url}
-                    x="0"
-                    y="0"
-                    width="1"
-                    height="1"
-                    preserveAspectRatio="xMidYMid slice"
-                    style={{ filter: `brightness(${texture.brightness})` }}
-                  />
+                  {texture.moves ? (
+                    <g>
+                      {[-1, 0, 1].map((x) => (
+                        <image
+                          key={x}
+                          href={texture.url}
+                          x={x}
+                          y="0"
+                          width="1"
+                          height="1"
+                          preserveAspectRatio="xMidYMid slice"
+                          style={{ filter: `brightness(${texture.brightness})` }}
+                        />
+                      ))}
+                      <animateTransform
+                        attributeName="transform"
+                        type="translate"
+                        from="0 0"
+                        to="1 0"
+                        dur="18s"
+                        repeatCount="indefinite"
+                      />
+                    </g>
+                  ) : (
+                    <image
+                      href={texture.url}
+                      x="0"
+                      y="0"
+                      width="1"
+                      height="1"
+                      preserveAspectRatio="xMidYMid slice"
+                      style={{ filter: `brightness(${texture.brightness})` }}
+                    />
+                  )}
                 </pattern>
               ))
             : null}
