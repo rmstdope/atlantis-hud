@@ -132,6 +132,7 @@ import { useArmiesStore } from "../armiesStore";
 import { useAlliedMagesStore } from "../alliedMagesStore";
 import { useStudyPlansStore } from "../studyPlansStore";
 import type { StudyGoal } from "@atlantis/core-client";
+import type { ScheduleChange } from "./studyPlans";
 import {
   forgetFailedText,
   forgottenStatusText,
@@ -794,6 +795,22 @@ export function AppShell({
           }));
       } catch {
         setStudyPlanError(failure);
+      }
+    },
+    [client, game]
+  );
+
+  /** Reshapes the whole schedule: insert an empty turn or remove one, for every mage (ah-j9wn). */
+  const reshapeStudySchedule = useCallback(
+    async (change: ScheduleChange) => {
+      if (!game) {
+        return;
+      }
+      setStudyPlanError(null);
+      try {
+        await useStudyPlansStore.getState().reshapeSchedule(client, game, change);
+      } catch {
+        setStudyPlanError("Could not reshape this schedule.");
       }
     },
     [client, game]
@@ -4758,6 +4775,7 @@ export function AppShell({
           onSaveNote={(factionId, unitId, comment) =>
             void saveStudyPlan(factionId, unitId, { comment }, "Could not save this note. It is still here — keep typing and it will try again.")
           }
+          onScheduleChange={(change) => void reshapeStudySchedule(change)}
           onDismiss={() => setStudyPlannerOpen(false)}
         />
       ) : null}

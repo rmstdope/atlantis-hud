@@ -11,7 +11,8 @@ import type { PlannerGroup } from "../studyPlanner";
 import { plannerNotices } from "../studyTeaching";
 import type { StandingAfterOrders } from "../studyStanding";
 import { STANDING_CHIP } from "./standingChip";
-import { CellPopover, MagePaneView, ScheduleGrid, StudySchedule } from "./StudySchedule";
+import { CellPopover, MagePaneView, ScheduleConfirmDialog, ScheduleGrid, StudySchedule } from "./StudySchedule";
+import type { ScheduleChange } from "../studyPlans";
 import type { CellMode, CellPick } from "./studyCellState";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
@@ -864,5 +865,90 @@ describe("a mage whose orders take him into a building", () => {
         ])
       )
     ).not.toContain("outside any building");
+  });
+});
+
+describe("ScheduleGrid header reshape controls", () => {
+  function headerMarkup(mode: CellMode = { kind: "idle" }) {
+    return grid(mode);
+  }
+
+  it("gives every turn an insert control before its number and a remove control after", () => {
+    const markup = headerMarkup();
+
+    for (const turn of turns) {
+      const header = markup.slice(
+        markup.indexOf(`data-testid="study-schedule-turn-${turn}"`),
+        markup.indexOf("</th>", markup.indexOf(`data-testid="study-schedule-turn-${turn}"`))
+      );
+      expect(
+        header.indexOf(`data-testid="study-schedule-insert-${turn}"`)
+      ).toBeLessThan(header.indexOf(`>${turn}`));
+      expect(
+        header.indexOf(`>${turn}`),
+        `${turn}: turn number should sit between its two controls`
+      ).toBeLessThan(header.indexOf(`data-testid="study-schedule-remove-${turn}"`));
+    }
+  });
+
+  it("labels the controls for the schedule-wide effect, not the one cell", () => {
+    const markup = headerMarkup();
+
+    expect(markup).toContain('aria-label="Insert an empty turn before 24 for every mage"');
+    expect(markup).toContain('aria-label="Remove turn 24 for every mage"');
+  });
+
+  it("keeps the controls in the same table and sticky header as the cells", () => {
+    const markup = headerMarkup();
+
+    // One table still: the header row sits inside it, before the first cell button.
+    const table = markup.slice(markup.indexOf("<table"), markup.indexOf("</table>"));
+    expect(table).toContain('data-testid="study-schedule-insert-24"');
+    expect(table).toContain('data-testid="study-schedule-cell-2431-24"');
+  });
+});
+
+describe("ScheduleConfirmDialog", () => {
+  function confirm(change: ScheduleChange) {
+    return renderToStaticMarkup(
+      <ScheduleConfirmDialog
+        change={change}
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />
+    );
+  }
+
+  it("offers itself as a dialog", () => {
+    expect(confirm({ kind: "remove", turn: 24 })).toContain('role="dialog"');
+  });
+
+  it("heads an insertion with the turn and the every-mage effect", () => {
+    const markup = confirm({ kind: "insert", turn: 24 });
+
+    expect(markup).toContain("Insert an empty turn before 24 for every mage?");
+    expect(markup).toContain(
+      "Turn 24 and every later planned turn will move one turn later for every mage. The final visible turn will be removed to keep the schedule at six turns. This cannot be undone here."
+    );
+    expect(markup).toContain('data-testid="study-schedule-confirm-action"');
+    expect(markup).toContain(">Insert turn</button>");
+  });
+
+  it("heads a removal with the turn and names the shift", () => {
+    const markup = confirm({ kind: "remove", turn: 24 });
+
+    expect(markup).toContain("Remove turn 24 for every mage?");
+    expect(markup).toContain(
+      "Turn 25 and every later planned turn will move one turn earlier for every mage. This cannot be undone here."
+    );
+    expect(markup).toContain('data-testid="study-schedule-confirm-action"');
+    expect(markup).toContain(">Remove turn</button>");
+  });
+
+  it("offers Cancel beside the action", () => {
+    const markup = confirm({ kind: "remove", turn: 24 });
+
+    expect(markup).toContain('data-testid="study-schedule-confirm-cancel"');
+    expect(markup).toContain(">Cancel</button>");
   });
 });

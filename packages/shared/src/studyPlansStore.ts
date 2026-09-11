@@ -11,8 +11,10 @@ import { create } from "zustand";
 import type { CoreClient, OpenedGame } from "@atlantis/core-client";
 import {
   loadStudyPlans,
+  reshapeStudyGoals,
   saveStudyPlans,
   sortStudyPlans,
+  type ScheduleChange,
   type StudyPlanKey,
   type StudyPlanRecord
 } from "./studyPlans";
@@ -47,6 +49,12 @@ export type StudyPlansState = {
   ) => Promise<void>;
   /** Drops rows, then removes them from the cache. Rethrows. */
   remove: (client: CoreClient, game: OpenedGame, keys: readonly StudyPlanKey[]) => Promise<void>;
+  /**
+   * Reshapes every cached mage's plan at once: insert an empty turn before `change.turn` or
+   * remove `change.turn` (ah-j9wn). One write of the complete replacement list, cache updated
+   * only after it succeeds. Rethrows, serialized like every other write.
+   */
+  reshapeSchedule: (client: CoreClient, game: OpenedGame, change: ScheduleChange) => Promise<void>;
   clear: () => void;
 };
 
@@ -124,6 +132,20 @@ export const useStudyPlansStore = create<StudyPlansState>()((set, get) => ({
       set((state) => ({
         plans: state.plans.filter((row) => !dropped.has(keyText(row.factionId, row.unitId)))
       }));
+    }),
+
+  reshapeSchedule: (client, game, change) =>
+    queued(async () => {
+      const plans = get().plans;
+      // Every cached row is written, not only the ones holding a goal at the target turn: the
+      // operation is schedule-wide and durable for all mages, and a row is written whole.
+      const next = plans.map((plan) => ({
+        ...plan,
+        goals: reshapeStudyGoals(plan.goals, change),
+        updatedAt: new Date().toISOString()
+      }));
+      await saveStudyPlans(client, game, next, []);
+      set({ plans: sortStudyPlans(next) });
     }),
 
   clear: () => set({ gameId: null, status: "idle", plans: [] })

@@ -687,3 +687,100 @@ test("a skill somebody would teach shows its month doubled", async ({ page }) =>
     "taught by Six of Seven"
   );
 });
+
+/**
+ * The schedule-wide reshape (ah-j9wn): the header's insert and remove controls change a whole
+ * planned turn for every mage, behind a confirmation dialog. The static tests in `packages/shared`
+ * pin the markup and the words; what only a browser can reach is the focus moving into the dialog
+ * and back, Escape as a no-write path, the six-column horizon, the narrow scroller and the reload.
+ */
+test("inserting and removing a turn reshapes every mage's plan, behind its dialog", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  // One month planned for two mages, so a reshape can be seen moving rows together.
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await page.getByTestId("study-schedule-choice-FORC").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await page.getByTestId(`study-schedule-cell-${STUDENT}-72`).click();
+  await page.getByTestId("study-schedule-choice-GATE").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+
+  // A second month for Six of Seven, two turns later, so a shift has somewhere visible to go.
+  await page.getByTestId(`study-schedule-cell-${MAGE}-74`).click();
+  await page.getByTestId("study-schedule-choice-FORC").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
+
+  // Cancel writes nothing and returns focus to the control that opened the dialog.
+  await page.getByTestId("study-schedule-remove-73").click();
+  const confirm = page.getByTestId("study-schedule-confirm");
+  await expect(confirm).toBeVisible();
+  await expect(page.getByTestId("study-schedule-confirm-heading")).toContainText(
+    "Remove turn 73 for every mage?"
+  );
+  await expect(page.getByTestId("study-schedule-confirm-action")).toBeFocused();
+  await page.getByTestId("study-schedule-confirm-cancel").click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByTestId("study-schedule-remove-73")).toBeFocused();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+
+  // Escape is the same no-write path, with the same focus return.
+  await page.getByTestId("study-schedule-remove-73").click();
+  await expect(confirm).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByTestId("study-schedule-remove-73")).toBeFocused();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
+
+  // Removing an empty turn shifts every later goal one turn earlier, for every mage.
+  await page.getByTestId("study-schedule-remove-73").click();
+  await page.getByTestId("study-schedule-confirm-action").click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("—");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+
+  // Inserting before a turn shifts every later goal one turn later, and the visible horizon
+  // stays six turns: 72..77 before and after, with nothing at 78. Inserting before 73 moves the
+  // FORC goal the removal above pulled from 74 to 73 back out to 74, leaving 73 empty.
+  await page.getByTestId("study-schedule-insert-73").click();
+  await expect(page.getByTestId("study-schedule-confirm-heading")).toContainText(
+    "Insert an empty turn before 73 for every mage?"
+  );
+  await expect(page.getByTestId("study-schedule-confirm-detail")).toContainText(
+    "Turn 73 and every later planned turn will move one turn later for every mage."
+  );
+  await page.getByTestId("study-schedule-confirm-action").click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("—");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+  await expect(page.getByTestId("study-schedule-turn-77")).toBeVisible();
+  await expect(page.getByTestId("study-schedule-turn-78")).toHaveCount(0);
+
+  // The reshape is one persisted write, so it survives a reload.
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+
+  // At a narrow width the header controls stay reachable through the schedule's own scroller.
+  await page.setViewportSize({ width: 480, height: 800 });
+  const insert = page.getByTestId("study-schedule-insert-77");
+  await insert.scrollIntoViewIfNeeded();
+  await expect(insert).toBeVisible();
+  await insert.click();
+  await expect(page.getByTestId("study-schedule-confirm")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("study-schedule-confirm")).toHaveCount(0);
+});
