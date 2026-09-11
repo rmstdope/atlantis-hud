@@ -2408,6 +2408,11 @@ export function AppShell({
   useEffect(() => {
     let cancelled = false;
     setOrderCommands([]);
+    if (rulesetText === null) {
+      return () => {
+        cancelled = true;
+      };
+    }
     void Promise.resolve()
       .then(() => client.orderCommands(rulesetText))
       .then((commands) => {
@@ -2428,6 +2433,11 @@ export function AppShell({
     // Cleared first: the words are the open ruleset's, so holding the previous one's while the
     // new call is in flight would uppercase against a catalogue that is no longer on screen.
     setOrderVocabulary([]);
+    if (rulesetText === null) {
+      return () => {
+        cancelled = true;
+      };
+    }
     void Promise.resolve()
       .then(() => client.orderVocabulary(rulesetText))
       .then((words) => {
@@ -2468,6 +2478,14 @@ export function AppShell({
     (linePrefix) => {
       const unitId = unit?.unitId ?? null;
       const report = rawReport || null;
+      if (rulesetText === null) {
+        return Promise.resolve({
+          position: "nowhere",
+          wordStart: linePrefix.length,
+          word: "",
+          options: []
+        });
+      }
       const hit = lastCaret.current;
       if (
         hit &&
