@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Call Pirates: item-granted magic</title>
+<style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--blue:#4a9fd8;--green:#4fb783;--warn:#eebe63}*{box-sizing:border-box}body{margin:0;padding:30px 20px 58px;background:var(--ground);color:var(--ink);font:15px/1.5 Georgia,serif}header,main{max-width:1080px;margin:auto}h1{margin:0;font-size:25px}h1 span,h2{color:var(--brass)}header p{max-width:84ch;color:var(--soft)}.card{margin-top:25px;padding:16px;border:1px solid var(--edge);border-radius:9px;background:var(--panel)}.card>p{color:var(--soft);font-size:13px}.stage{overflow:auto;padding:14px;background:#0b0f14;border:1px solid var(--edge);border-radius:7px}.dialog{min-width:700px;overflow:hidden;border:1px solid var(--edge);border-radius:6px;background:var(--raised);font:12.5px/1.45 Arial,sans-serif}.bar{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--edge)}.bar b{font-size:14px}.grow{margin-left:auto}.button{padding:3px 9px;border:1px solid var(--edge);border-radius:4px;color:var(--soft);background:var(--ground)}.button.on{border-color:var(--brass);color:var(--brass)}.columns{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}.box{padding:9px;border:1px solid var(--edge);border-radius:5px;background:#141a23}.box h3{margin:0 0 5px;color:var(--brass);font-size:12px;letter-spacing:.6px;text-transform:uppercase}.box p{margin:5px 0;color:var(--soft)}.skill{display:flex;gap:7px;align-items:baseline;padding:3px 4px;border-left:4px solid transparent}.tag{font:10px monospace;color:var(--dim)}.open{border-left:4px dashed var(--blue)}.known{border-left-color:var(--green)}.item{border-left:4px double var(--brass);background:#2e2718}.chip{margin-left:auto;padding:1px 5px;border:1px solid #6b5424;border-radius:3px;color:var(--warn);font-size:10px;white-space:nowrap}.summary{padding:8px 12px;border-top:1px solid var(--edge);color:var(--dim)}table{width:100%;border-collapse:collapse}th,td{padding:7px 9px;border-bottom:1px solid var(--edge);text-align:left;vertical-align:top}th{color:var(--brass);font-size:10px;letter-spacing:1px;text-transform:uppercase}.choice{margin:10px;border-left:3px solid var(--blue);padding:8px 10px;background:#141a23;color:var(--soft)}.choice b{color:var(--ink)}.choice ul{margin:4px 0 0;padding-left:18px}.muted{color:var(--dim)}.words{margin-top:14px;padding:11px 12px;border-left:3px solid var(--brass);background:#141a23;color:var(--soft);font:12px Arial,sans-serif}.words b{color:var(--ink)}
+</style>
+</head>
+<body>
+<header>
+<h1>Call Pirates — <span>item-granted magic, not a study path</span></h1>
+<p>In a Trident game, Call Pirates stays available to look up. It is clearly separate from the magic a mage studies: the Bosun’s Whistle grants it, and neither study nor teaching can add it to a plan.</p>
+</header>
+<main>
+<section class="card">
+<h2>Magic study tree</h2>
+<p>The three foundations remain the clear starting point for learned magic. Call Pirates has its own short category, shown in the branch view and as a separate unconnected node in the whole graph.</p>
+<div class="stage"><div class="dialog">
+<div class="bar"><b>Magic study tree</b><button class="button on">Branches</button><button class="button">Whole graph</button><span class="grow"></span><span class="muted">93 skills</span><button class="button">Close</button></div>
+<div class="columns">
+<div class="box"><h3>The foundations</h3><div class="skill open"><span>force</span><span class="tag">FORC</span><span class="chip">can study</span></div><div class="skill open"><span>pattern</span><span class="tag">PATT</span><span class="chip">can study</span></div><div class="skill open"><span>spirit</span><span class="tag">SPIR</span><span class="chip">can study</span></div><p>Studied first. Everything else stands on these.</p></div>
+<div class="box"><h3>Item-granted magic</h3><div class="skill item"><span>call pirates</span><span class="tag">CPIR</span><span class="chip">not learnable</span></div><p>Granted by the Bosun's Whistle. It cannot be studied or taught.</p></div>
+<div class="box"><h3>Weather lore</h3><div class="skill known"><span>weather lore</span><span class="tag">WEAT</span><span class="chip">at 2, ceiling 3</span></div><div class="skill open"><span>summon wind</span><span class="tag">SWIN</span><span class="chip">can study</span></div></div>
+<div class="box"><h3>Necromancy</h3><div class="skill open"><span>necromancy</span><span class="tag">NECR</span><span class="chip">can study</span></div><div class="skill"><span>banish undead</span><span class="tag">BUND</span></div></div>
+</div><div class="summary">3 foundations · 1 item-granted skill</div>
+</div></div>
+</section>
+<section class="card">
+<h2>Study planner</h2>
+<p>Call Pirates is absent from every list of skills a mage can study or teach. A plan imported from an earlier version is silently cleaned up while it is read; it does not show as a failed month, gain points, give a teaching benefit, or appear in the outgoing orders.</p>
+<div class="stage"><div class="dialog">
+<div class="bar"><b>Study planner</b><button class="button">Overview</button><button class="button on">Planner</button><button class="button">Orders</button><span class="grow"></span><button class="button">Close</button></div>
+<table><tr><th>Mage</th><th>Turn 74</th><th>Turn 75</th><th>Turn 76</th></tr><tr><td><b>Maris (181)</b><br><span class="tag">force 3 · Bosun's Whistle</span></td><td class="muted">Nothing planned.</td><td><span style="color:var(--green)">force, to 4</span></td><td><span style="color:var(--green)">force, to 4</span></td></tr></table>
+<div class="choice"><b>Choose study</b><ul><li>force — raise from 3</li><li>pattern — begin</li><li>spirit — begin</li></ul><span class="muted">Call Pirates is not offered for study or teaching.</span></div>
+</div></div>
+</section>
+<section class="words"><b>The words, exactly</b><br>“Item-granted magic”<br>“not learnable”<br>“Granted by the Bosun's Whistle. It cannot be studied or taught.”</section>
+</main>
+</body>
+</html>
