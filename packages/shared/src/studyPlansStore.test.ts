@@ -158,6 +158,85 @@ describe("remove", () => {
   });
 });
 
+describe("reshapeSchedule", () => {
+  const reshaped = (
+    store: ReturnType<typeof useStudyPlansStore.getState>,
+    core: CoreClient,
+    turn: number
+  ) => store.reshapeSchedule(core, game(), { kind: "insert" as const, turn });
+  const row = (unitId: string, goals: StudyPlanRecord["goals"]): StudyPlanRecord => ({
+    factionId: "21",
+    unitId,
+    goals,
+    comment: "",
+    updatedAt: "2026-01-01T00:00:00.000Z"
+  });
+  const goal = (turn: number, skill: string) => ({ kind: "study" as const, turn, skill });
+  /** Puts rows in the cache directly: reshape is tested against what a ready cache holds. */
+  const seed = (plans: StudyPlanRecord[]) =>
+    useStudyPlansStore.setState({ gameId: "aug-2026", status: "ready", plans });
+
+  it("shifts every cached plan together in one write, with no removals", async () => {
+    const core = client();
+    seed([row("1204", [goal(24, "FORC")]), row("1205", [])]);
+
+    await reshaped(useStudyPlansStore.getState(), core, 24);
+
+    expect(core.saveStudyPlans).toHaveBeenCalledTimes(1);
+    expect(core.saveStudyPlans).toHaveBeenCalledWith(
+      "g.sqlite",
+      "aug-2026",
+      [
+        { ...row("1204", [goal(25, "FORC")]), updatedAt: expect.any(String) },
+        { ...row("1205", []), updatedAt: expect.any(String) }
+      ],
+      []
+    );
+    expect(useStudyPlansStore.getState().plans.map((one) => one.goals)).toEqual([
+      [goal(25, "FORC")],
+      []
+    ]);
+  });
+
+  it("refreshes updatedAt on the records being written", async () => {
+    const core = client();
+    seed([row("1204", [goal(24, "FORC")])]);
+
+    await reshaped(useStudyPlansStore.getState(), core, 24);
+
+    expect(useStudyPlansStore.getState().plans[0].updatedAt).not.toBe(
+      "2026-01-01T00:00:00.000Z"
+    );
+  });
+
+  it("removes a turn from every plan", async () => {
+    const core = client();
+    seed([row("1204", [goal(24, "FORC"), goal(26, "PATT")])]);
+
+    await useStudyPlansStore
+      .getState()
+      .reshapeSchedule(core, game(), { kind: "remove", turn: 24 });
+
+    expect(useStudyPlansStore.getState().plans[0].goals).toEqual([goal(25, "PATT")]);
+    expect(core.saveStudyPlans).toHaveBeenCalledWith(
+      "g.sqlite",
+      "aug-2026",
+      [expect.objectContaining({ unitId: "1204", goals: [goal(25, "PATT")], updatedAt: expect.any(String) })],
+      []
+    );
+  });
+
+  it("leaves the cache alone and rethrows when the write fails", async () => {
+    seed([row("1204", [goal(24, "FORC")])]);
+    const failing = client({ saveStudyPlans: vi.fn().mockRejectedValue(new Error("no")) });
+
+    await expect(reshaped(useStudyPlansStore.getState(), failing, 24)).rejects.toThrow("no");
+
+    expect(useStudyPlansStore.getState().plans[0].goals).toEqual([goal(24, "FORC")]);
+    expect(useStudyPlansStore.getState().plans[0].updatedAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+});
+
 describe("clear", () => {
   it("empties everything", async () => {
     await useStudyPlansStore.getState().load(client(), game());

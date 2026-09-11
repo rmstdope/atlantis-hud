@@ -5,7 +5,9 @@ import {
   loadStudyPlans,
   planFor,
   plannedGoals,
-  saveStudyPlans
+  reshapeStudyGoals,
+  saveStudyPlans,
+  type ScheduleChange
 } from "./studyPlans";
 
 function game(gameId = "aug-2026"): OpenedGame {
@@ -114,5 +116,73 @@ describe("plannedGoals", () => {
   it("leaves a good list alone", () => {
     const goals = [study(25, "FORC"), study(26, "PATT")];
     expect(plannedGoals(goals)).toEqual(goals);
+  });
+});
+
+describe("reshapeStudyGoals", () => {
+  const study = (turn: number, skill: string): StudyGoal => ({ kind: "study", turn, skill });
+  const teach = (turn: number, student: string): StudyGoal => ({
+    kind: "teach",
+    turn,
+    students: [student],
+    live: true
+  });
+  const change = (kind: "insert" | "remove", turn: number): ScheduleChange => ({ kind, turn });
+
+  it("inserts an empty turn by moving the target and every later goal one turn later", () => {
+    expect(
+      reshapeStudyGoals([study(25, "FORC"), study(26, "PATT"), study(27, "FORC")], change("insert", 26))
+    ).toEqual([study(25, "FORC"), study(27, "PATT"), study(28, "FORC")]);
+  });
+
+  it("removes the target turn and moves every later goal one turn earlier", () => {
+    expect(
+      reshapeStudyGoals([study(25, "FORC"), study(26, "PATT"), study(27, "FORC")], change("remove", 26))
+    ).toEqual([study(25, "FORC"), study(26, "FORC")]);
+  });
+
+  it("leaves every goal before the target alone", () => {
+    expect(
+      reshapeStudyGoals([study(25, "FORC"), study(26, "PATT")], change("insert", 27))
+    ).toEqual([study(25, "FORC"), study(26, "PATT")]);
+    expect(
+      reshapeStudyGoals([study(25, "FORC"), study(26, "PATT")], change("remove", 27))
+    ).toEqual([study(25, "FORC"), study(26, "PATT")]);
+  });
+
+  it("keeps goal payloads across both directions", () => {
+    const goals = [teach(25, "1205"), study(26, "PATT")];
+    expect(reshapeStudyGoals(goals, change("insert", 25))).toEqual([
+      teach(26, "1205"),
+      study(27, "PATT")
+    ]);
+    expect(reshapeStudyGoals(goals, change("remove", 26))).toEqual([teach(25, "1205")]);
+  });
+
+  it("shifts the rightmost goal to an off-horizon turn on insert rather than dropping it", () => {
+    // The schedule shows six turns; a goal pushed past them must survive so the report's
+    // advancing turn brings it back.
+    expect(reshapeStudyGoals([study(30, "FORC")], change("insert", 30))).toEqual([study(31, "FORC")]);
+  });
+
+  it("drops a goal whose turn is not a positive whole number, through plannedGoals", () => {
+    expect(
+      reshapeStudyGoals(
+        [{ kind: "study", skill: "FORC" } as unknown as StudyGoal, study(25, "PATT")],
+        change("remove", 30)
+      )
+    ).toEqual([study(25, "PATT")]);
+  });
+
+  it("sanitizes the result: ascending, one goal per turn, invalid turns gone", () => {
+    // A hand-edited row with two entries naming one turn reads as its last entry before reshaping.
+    expect(
+      reshapeStudyGoals([study(27, "C"), study(25, "A"), study(26, "B")], change("insert", 25))
+    ).toEqual([study(26, "A"), study(27, "B"), study(28, "C")]);
+  });
+
+  it("answers an empty list for an empty plan", () => {
+    expect(reshapeStudyGoals([], change("insert", 25))).toEqual([]);
+    expect(reshapeStudyGoals([], change("remove", 25))).toEqual([]);
   });
 });
