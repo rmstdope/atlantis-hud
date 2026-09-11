@@ -2119,6 +2119,7 @@ struct UnitOrders {
     /// are read as one turn, so the second block's flag orders follow the first's and the last
     /// one wins - which is what the server would do.
     flag_changes: Vec<FlagChange>,
+    destroys_structure: bool,
 }
 
 /// `reported` with each change applied in document order, last order winning.
@@ -2147,6 +2148,7 @@ impl OrderedUnits {
             intents,
             unread,
             flag_changes,
+            destroys_structure,
         } in read_intents_with_ruleset(source, ruleset)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
@@ -2154,10 +2156,12 @@ impl OrderedUnits {
                 intents: Vec::new(),
                 unread: false,
                 flag_changes: Vec::new(),
+                destroys_structure: false,
             });
             entry.intents.extend(intents);
             entry.flag_changes.extend(flag_changes);
             entry.unread |= !unread.is_empty();
+            entry.destroys_structure |= destroys_structure;
         }
         Self { by_unit }
     }
@@ -2272,6 +2276,8 @@ struct Ordered<'a> {
     /// reading `unit.flags` and their own intents, and both stay authoritative for their setting -
     /// repointing either here would be a behaviour change dressed as a refactor.
     flags: Vec<String>,
+    /// Whether this unit has a syntactically valid `DESTROY` order this month.
+    destroys_structure: bool,
     /// The intents that can actually execute this month: every order that does not spend the
     /// month, plus the one month claim that wins (`ah-rzkm`), so every projection and every
     /// specialized check describes the executable month.
@@ -2365,6 +2371,7 @@ impl<'a> Hex<'a> {
                         &unit.flags,
                         orders.map_or(&[][..], |orders| orders.flag_changes.as_slice()),
                     ),
+                    destroys_structure: orders.is_some_and(|orders| orders.destroys_structure),
                     intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
                     all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
                     teaching_eligible: None,
@@ -2391,6 +2398,7 @@ impl<'a> Hex<'a> {
                 .map(|formed| Ordered {
                     unit: &formed.unit,
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
+                    destroys_structure: formed.block.destroys_structure,
                     intents: formed.block.intents.clone(),
                     all_intents: &formed.block.intents,
                     teaching_eligible: None,
@@ -7281,21 +7289,46 @@ fn founding_site_refusal(
     hex: &Hex<'_>,
     ruleset: &Ruleset,
     kind: &str,
+    destroyed_structure_ids: &BTreeSet<String>,
 ) -> Option<super::effects::BuildPlacementRefusalReason> {
     let building = ruleset.buildings.get(&kind.to_ascii_uppercase())?;
     if building.requires_settlement && hex.region.settlement.is_none() {
         return Some(super::effects::BuildPlacementRefusalReason::MissingSettlement);
     }
     if building.unique_per_region
-        && hex
-            .region
-            .structures
-            .iter()
-            .any(|structure| super::effects::structure_kind_is(structure, kind))
+        && hex.region.structures.iter().any(|structure| {
+            !destroyed_structure_ids.contains(&structure.structure_id)
+                && super::effects::structure_kind_is(structure, kind)
+        })
     {
         return Some(super::effects::BuildPlacementRefusalReason::DuplicateInRegion);
     }
     None
+}
+
+/// Existing structures that a valid, executable `DESTROY` order removes before BUILD.
+///
+/// `DESTROY` is not an [`Intent`] because it is a free order, but it still changes the set of
+/// structures that `BUILD` sees. This deliberately accepts only what the report can establish:
+/// the unit has a valid DESTROY line, remains inside a reported structure after ENTER/LEAVE
+/// orders, and is not in an ocean region. Ownership is enforced by the game when the order runs;
+/// the report does not expose structure ownership separately from the own unit that is inside it.
+fn destroyed_structure_ids(hex: &Hex<'_>) -> BTreeSet<String> {
+    if hex.region.terrain.eq_ignore_ascii_case("ocean") {
+        return BTreeSet::new();
+    }
+    hex.units
+        .iter()
+        .filter(|ordered| ordered.destroys_structure)
+        .filter_map(|ordered| structure_after_orders(ordered))
+        .filter(|structure_id| {
+            hex.region
+                .structures
+                .iter()
+                .any(|structure| structure.structure_id == *structure_id)
+        })
+        .map(str::to_string)
+        .collect()
 }
 
 /// `BUILD`, in whichever of the rules' forms it was written: what it spends this month.
@@ -7321,6 +7354,7 @@ fn build(
 ) {
     let hex = pool.hex;
     let who = &actor.unit.unit_id;
+    let destroyed_structure_ids = destroyed_structure_ids(hex);
 
     // 1. No ruleset, or a ruleset that knows no buildings.
     let Some(ruleset) = ruleset else { return };
@@ -7445,7 +7479,7 @@ fn build(
     };
     if let Some(reason) = founding_kind
         .as_deref()
-        .and_then(|kind| founding_site_refusal(hex, ruleset, kind))
+        .and_then(|kind| founding_site_refusal(hex, ruleset, kind, &destroyed_structure_ids))
     {
         let material = if resolved.len() == 1 {
             Some(resolved[0].name.clone())
@@ -22878,6 +22912,45 @@ BUILD
                     .all(|movement| movement.cause != ItemChangeCause::BuildSpent));
                 assert_eq!(balance_of(ledger, "900", "STON"), 120);
             });
+        }
+
+        #[test]
+        fn destroying_a_unique_trident_building_allows_same_turn_replacement() {
+            let mut replacement_site = region(vec![in_structure(
+                with_skill(
+                    with_item(with_men(unit("900"), 10), 120, "stone", "STON"),
+                    "BUIL",
+                    3,
+                ),
+                "4",
+            )]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nDESTROY\nBUILD Palace\n",
+                |ledger| {
+                    assert!(ledger.build_placement_refusals.is_empty());
+                    assert!(ledger.movements.contains(&movement(
+                        "900",
+                        "STON",
+                        "stone",
+                        -30,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(3),
+                    )));
+                    assert_eq!(balance_of(ledger, "900", "STON"), 90);
+                },
+            );
         }
 
         /// A hex whose one own unit stands in an unfinished Stockade, for the `BUILD` cases.

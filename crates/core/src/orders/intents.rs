@@ -177,6 +177,12 @@ pub struct UnitIntents {
     ///
     /// Not placed: nothing hangs a finding on a flag order line, so no line number is carried.
     pub flag_changes: Vec<FlagChange>,
+    /// Whether this unit has a syntactically valid `DESTROY` order in this month's block.
+    ///
+    /// `DESTROY` is an instant/free order, so it is not an [`Intent`]. It still matters to the
+    /// BUILD projection because `rules/sequenceofevents` settles it before new structures are
+    /// laid down.
+    pub destroys_structure: bool,
 }
 
 impl UnitIntents {
@@ -232,6 +238,7 @@ pub fn read_intents_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Vec
                     intents: Vec::new(),
                     unread: Vec::new(),
                     flag_changes: Vec::new(),
+                    destroys_structure: false,
                 });
             }
         }
@@ -258,6 +265,7 @@ pub fn read_intents_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Vec
                     // being understood.
                     unit.unread.push(line.number);
                 }
+                unit.destroys_structure |= is_valid_destroy_order(line.command, line.arguments);
             }
         }
         // A TURN block holds next month's orders, which this reader deliberately skips - so a unit
@@ -326,6 +334,8 @@ pub struct FormedBlock {
     /// The flag orders written inside this `FORM` block, read exactly as
     /// [`UnitIntents::flag_changes`] reads them. An inner `FORM`'s belong to the inner unit.
     pub flag_changes: Vec<FlagChange>,
+    /// Whether this formed unit's block contains a syntactically valid `DESTROY` order.
+    pub destroys_structure: bool,
 }
 
 /// Every unit this document's `FORM` blocks create this month, in document order.
@@ -476,6 +486,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
             intents: Vec::new(),
             unread: Vec::new(),
             flag_changes: Vec::new(),
+            destroys_structure: false,
         });
         self.forms.open(Some(index));
     }
@@ -499,6 +510,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
         } else if !is_free_order(command, self.ruleset) {
             block.unread.push(line_number);
         }
+        block.destroys_structure |= is_valid_destroy_order(command, arguments);
     }
 }
 
@@ -574,6 +586,16 @@ fn is_free_order(command: &Token, ruleset: Option<&Ruleset>) -> bool {
         .iter()
         .any(|free| command.text.eq_ignore_ascii_case(free))
         && super::grammar::find_order_with_ruleset(&command.text, ruleset).is_some()
+}
+
+/// Whether a `DESTROY` line is shaped well enough for the game to attempt it.
+///
+/// The order is intentionally not an [`Intent`]: it is free and no existing phase application
+/// needs to consume it. The semantic BUILD projection is the one consumer that needs to know it
+/// happened.
+fn is_valid_destroy_order(command: &Token, arguments: &[Token]) -> bool {
+    command.text.eq_ignore_ascii_case("DESTROY")
+        && super::grammar::consumed_arguments(command, arguments).is_some()
 }
 
 /// One order line, as an intent - or nothing, for an order no check reads and for one whose shape
@@ -913,6 +935,14 @@ mod tests {
     #[test]
     fn a_free_order_is_not_unread() {
         let unit = only_unit("unit 5\nNAME \"Scouts\"\n");
+        assert!(unit.intents.is_empty(), "{unit:?}");
+        assert!(unit.unread.is_empty(), "{unit:?}");
+    }
+
+    #[test]
+    fn a_valid_destroy_is_carried_separately_from_month_intents() {
+        let unit = only_unit("unit 5\nDESTROY\n");
+        assert!(unit.destroys_structure, "{unit:?}");
         assert!(unit.intents.is_empty(), "{unit:?}");
         assert!(unit.unread.is_empty(), "{unit:?}");
     }
