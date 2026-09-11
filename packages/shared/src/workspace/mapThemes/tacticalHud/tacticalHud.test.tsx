@@ -269,11 +269,31 @@ describe("how old the reading is", () => {
 });
 
 describe("terrain, flat and dark so the readout stays a readout", () => {
+  const tridentTerrains = ["hill", "tunnels", "grotto", "deepforest", "chasm"] as const;
+
   it("paints each terrain in the readout's own dark palette", () => {
     const svg = draw(tacticalHud.TerrainLayer, [CONGESTED_CENTRE]);
 
     expect(svg).toContain("hud-terrain-plain");
     expect(svg).not.toContain("fill-terrain-plain");
+  });
+
+  it.each(tridentTerrains)("gives Trident's %s terrain its readout treatment and texture", (terrain) => {
+    const flat = draw(
+      tacticalHud.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: false }
+    );
+    const textured = draw(
+      tacticalHud.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: true }
+    );
+
+    expect(flat).toContain(`hud-terrain-${terrain}`);
+    expect(flat).not.toContain("hud-terrain-other");
+    expect(textured).toContain(`url(#biome-texture-${terrain}-`);
+    expect(textured).toContain('data-tint="texture"');
   });
 
   it("falls back rather than vanishing on a terrain it has no colour for", () => {

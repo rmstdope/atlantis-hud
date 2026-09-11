@@ -47,7 +47,12 @@ const TERRAIN_GRADIENTS: Record<string, string> = {
   volcano: "mw-grad-volcano",
   cavern: "mw-grad-cavern",
   underforest: "mw-grad-underforest",
-  wasteland: "mw-grad-wasteland"
+  wasteland: "mw-grad-wasteland",
+  hill: "mw-grad-hill",
+  tunnels: "mw-grad-tunnels",
+  grotto: "mw-grad-grotto",
+  deepforest: "mw-grad-deepforest",
+  chasm: "mw-grad-chasm"
 };
 
 /**
@@ -71,6 +76,11 @@ const GRADIENT_TERRAINS = [
   "cavern",
   "underforest",
   "wasteland",
+  "hill",
+  "tunnels",
+  "grotto",
+  "deepforest",
+  "chasm",
   "other"
 ] as const;
 

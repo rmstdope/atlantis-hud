@@ -44,7 +44,12 @@ const TERRAIN_CLASSES: Record<string, string> = {
   volcano: "ct-terrain-volcano",
   cavern: "ct-terrain-cavern",
   underforest: "ct-terrain-underforest",
-  wasteland: "ct-terrain-wasteland"
+  wasteland: "ct-terrain-wasteland",
+  hill: "ct-terrain-hill",
+  tunnels: "ct-terrain-tunnels",
+  grotto: "ct-terrain-grotto",
+  deepforest: "ct-terrain-deepforest",
+  chasm: "ct-terrain-chasm"
 };
 
 function pigment(terrain: string): string {

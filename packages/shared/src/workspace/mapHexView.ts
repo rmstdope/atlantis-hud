@@ -38,7 +38,12 @@ const TERRAIN_CLASSES: Record<string, string> = {
   volcano: "fill-terrain-volcano",
   cavern: "fill-terrain-cavern",
   underforest: "fill-terrain-underforest",
-  wasteland: "fill-terrain-wasteland"
+  wasteland: "fill-terrain-wasteland",
+  hill: "fill-terrain-hill",
+  tunnels: "fill-terrain-tunnels",
+  grotto: "fill-terrain-grotto",
+  deepforest: "fill-terrain-deepforest",
+  chasm: "fill-terrain-chasm"
 };
 
 const TERRAIN_FALLBACK = "fill-terrain-other";
@@ -54,7 +59,12 @@ const TEXTURED_TERRAINS = new Set([
   "volcano",
   "cavern",
   "underforest",
-  "wasteland"
+  "wasteland",
+  "hill",
+  "tunnels",
+  "grotto",
+  "deepforest",
+  "chasm"
 ]);
 
 /**

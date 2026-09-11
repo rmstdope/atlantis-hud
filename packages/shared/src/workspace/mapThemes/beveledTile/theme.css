@@ -23,6 +23,11 @@
   --bt-terrain-cavern: #4f4f5a;
   --bt-terrain-underforest: #33553f;
   --bt-terrain-wasteland: #7c6c52;
+  --bt-terrain-hill: #806e5a;
+  --bt-terrain-tunnels: #55535f;
+  --bt-terrain-grotto: #426b6b;
+  --bt-terrain-deepforest: #315741;
+  --bt-terrain-chasm: #513c4d;
   --bt-terrain-other: #5a606a;
 
   --bt-chip-battle: #c05252;
@@ -71,6 +76,11 @@
   --bt-terrain-cavern: #b6b6c2;
   --bt-terrain-underforest: #a8c3b2;
   --bt-terrain-wasteland: #c7b298;
+  --bt-terrain-hill: #d7c4a6;
+  --bt-terrain-tunnels: #c0bdc7;
+  --bt-terrain-grotto: #acd0cc;
+  --bt-terrain-deepforest: #afd0b8;
+  --bt-terrain-chasm: #c6b3c2;
   --bt-terrain-other: #b7bec7;
 
   --bt-chip-battle: #a83e3e;
@@ -140,6 +150,21 @@
 }
 .bt-terrain-wasteland {
   fill: var(--bt-terrain-wasteland);
+}
+.bt-terrain-hill {
+  fill: var(--bt-terrain-hill);
+}
+.bt-terrain-tunnels {
+  fill: var(--bt-terrain-tunnels);
+}
+.bt-terrain-grotto {
+  fill: var(--bt-terrain-grotto);
+}
+.bt-terrain-deepforest {
+  fill: var(--bt-terrain-deepforest);
+}
+.bt-terrain-chasm {
+  fill: var(--bt-terrain-chasm);
 }
 .bt-terrain-other {
   fill: var(--bt-terrain-other);
