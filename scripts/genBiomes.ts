@@ -17,7 +17,12 @@ const BIOMES = [
   "volcano",
   "cavern",
   "underforest",
-  "wasteland"
+  "wasteland",
+  "hill",
+  "tunnels",
+  "grotto",
+  "deepforest",
+  "chasm"
 ] as const;
 
 type Rgb = readonly [number, number, number];
@@ -201,6 +206,31 @@ function renderBiome(name: (typeof BIOMES)[number]): Buffer {
       field: normalize(mix(fbm(RENDER, 4, 7, 140), sineField(6, fbm(RENDER, 7, 5, 141)), 0.7, 0.3)),
       colours: [[0, [54, 44, 42]], [0.45, [92, 70, 56]], [0.75, [132, 100, 70]], [1, [184, 142, 92]]],
       seed: 150
+    },
+    hill: {
+      field: normalize(mix(fbm(RENDER, 3, 7, 160), fbm(RENDER, 5, 5, 161), 0.7, 0.3)),
+      colours: [[0, [46, 42, 38]], [0.45, [85, 75, 62]], [0.75, [135, 117, 88]], [1, [190, 170, 130]]],
+      seed: 160
+    },
+    tunnels: {
+      field: normalize(mix(sineField(12, fbm(RENDER, 3, 4, 170)), fbm(RENDER, 5, 6, 171), 0.65, 0.35)),
+      colours: [[0, [26, 29, 35]], [0.45, [55, 56, 65]], [0.75, [88, 84, 90]], [1, [132, 123, 126]]],
+      seed: 180
+    },
+    grotto: {
+      field: normalize(mix(fbm(RENDER, 4, 6, 180), sineField(3, fbm(RENDER, 8, 4, 181)), 0.6, 0.4)),
+      colours: [[0, [16, 43, 45]], [0.45, [35, 79, 78]], [0.75, [73, 123, 113]], [1, [145, 184, 165]]],
+      seed: 190
+    },
+    deepforest: {
+      field: normalize(mix(fbm(RENDER, 18, 7, 200), fbm(RENDER, 30, 6, 201), 0.55, 0.45)),
+      colours: [[0, [8, 33, 24]], [0.35, [16, 65, 38]], [0.65, [31, 100, 49]], [0.9, [60, 128, 62]], [1, [91, 145, 70]]],
+      seed: 210
+    },
+    chasm: {
+      field: normalize(mix(sineField(9, fbm(RENDER, 4, 5, 220)), fbm(RENDER, 3, 7, 221), 0.72, 0.28)),
+      colours: [[0, [24, 19, 28]], [0.45, [52, 35, 47]], [0.75, [85, 55, 60]], [1, [143, 100, 88]]],
+      seed: 230
     }
   };
   const definition = definitions[name];

@@ -123,14 +123,17 @@ export function decorationFor(terrain: string): "peaks" | "trees" | "waves" | "d
   switch (terrain.toLowerCase()) {
     case "mountain":
     case "volcano":
+    case "hill":
       return "peaks";
     case "forest":
     case "jungle":
     case "underforest":
     case "swamp":
+    case "deepforest":
       return "trees";
     case "ocean":
     case "lake":
+    case "grotto":
       return "waves";
     case "desert":
     case "wasteland":

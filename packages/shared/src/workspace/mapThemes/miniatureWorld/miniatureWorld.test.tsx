@@ -185,6 +185,8 @@ describe("the rest of the scene", () => {
 });
 
 describe("terrain, painted rather than filled", () => {
+  const tridentTerrains = ["hill", "tunnels", "grotto", "deepforest", "chasm"] as const;
+
   it("decorates the ground with what grows or stands on it", () => {
     expect(decorationFor("mountain")).toBe("peaks");
     expect(decorationFor("forest")).toBe("trees");
@@ -193,6 +195,33 @@ describe("terrain, painted rather than filled", () => {
     expect(decorationFor("lake")).toBe("waves");
     expect(decorationFor("desert")).toBe("dunes");
     expect(decorationFor("plain")).toBeNull();
+  });
+
+  it.each([
+    ["hill", "peaks"],
+    ["grotto", "waves"],
+    ["deepforest", "trees"],
+    ["tunnels", null],
+    ["chasm", null]
+  ] as const)("chooses the planned decoration for Trident's %s terrain", (terrain, decoration) => {
+    expect(decorationFor(terrain)).toBe(decoration);
+  });
+
+  it.each(tridentTerrains)("gives Trident's %s terrain its ground and texture", (terrain) => {
+    const flat = draw(
+      miniatureWorld.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: false }
+    );
+    const textured = draw(
+      miniatureWorld.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: true }
+    );
+
+    expect(flat).toContain(`url(#mw-grad-${terrain})`);
+    expect(textured).toContain(`url(#biome-texture-${terrain}-`);
+    expect(textured).not.toContain("data-decoration");
   });
 
   it("paints the decorations in flat colour", () => {

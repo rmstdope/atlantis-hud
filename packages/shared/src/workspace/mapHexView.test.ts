@@ -41,6 +41,8 @@ function hex(overrides: Partial<HexNode> & { knowledge: HexKnowledge }): HexNode
 }
 
 describe("terrain colour", () => {
+  const tridentTerrains = ["hill", "tunnels", "grotto", "deepforest", "chasm"] as const;
+
   it("names a class for every terrain the renderer knows", () => {
     // Written out in full rather than built from a template: Tailwind only generates a utility it
     // has literally seen in a source file.
@@ -48,6 +50,10 @@ describe("terrain colour", () => {
     expect(terrainFillClass("wasteland")).toBe("fill-terrain-wasteland");
     expect(terrainFillClass("underforest")).toBe("fill-terrain-underforest");
     expect(terrainFillClass("volcano")).toBe("fill-terrain-volcano");
+  });
+
+  it.each(tridentTerrains)("names a class for Trident's %s terrain", (terrain) => {
+    expect(terrainFillClass(terrain)).toBe(`fill-terrain-${terrain}`);
   });
 
   it("reads the terrain whatever case the report wrote it in", () => {
@@ -62,12 +68,19 @@ describe("terrain colour", () => {
 });
 
 describe("terrain texture", () => {
+  const tridentTerrains = ["hill", "tunnels", "grotto", "deepforest", "chasm"] as const;
+
   it("maps every generated biome to a public texture asset", () => {
     expect(terrainTextureUrl("ocean")).toBe("/biomes/ocean_512.png");
     expect(terrainTextureUrl("cavern")).toBe("/biomes/cavern_512.png");
     expect(terrainTextureUrl("underforest")).toBe("/biomes/underforest_512.png");
     expect(terrainTextureUrl("wasteland")).toBe("/biomes/wasteland_512.png");
     expect(terrainTexturePatternId("wasteland")).toBe("biome-texture-wasteland");
+  });
+
+  it.each(tridentTerrains)("maps Trident's %s terrain to its generated texture", (terrain) => {
+    expect(terrainTextureUrl(terrain)).toBe(`/biomes/${terrain}_512.png`);
+    expect(terrainTexturePatternId(terrain)).toBe(`biome-texture-${terrain}`);
   });
 
   it("paints lakes with the ocean's colour and texture", () => {
@@ -78,6 +91,11 @@ describe("terrain texture", () => {
 
   it("reads texture names case-insensitively", () => {
     expect(terrainTextureUrl("Mountain")).toBe("/biomes/mountain_512.png");
+  });
+
+  it("reads Trident texture names case-insensitively", () => {
+    expect(terrainTextureUrl("DeepForest")).toBe("/biomes/deepforest_512.png");
+    expect(terrainTexturePatternId("DeepForest")).toBe("biome-texture-deepforest");
   });
 
   it("keeps fallback and unexplored states solid", () => {

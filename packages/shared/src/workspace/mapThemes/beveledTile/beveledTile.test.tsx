@@ -317,11 +317,31 @@ describe("how the board shows what it knows", () => {
 });
 
 describe("terrain and roads", () => {
+  const tridentTerrains = ["hill", "tunnels", "grotto", "deepforest", "chasm"] as const;
+
   it("paints each terrain in the board's own palette, falling back rather than vanishing", () => {
     expect(draw(beveledTile.TerrainLayer, [CONGESTED_CENTRE])).toContain("bt-terrain-plain");
     expect(draw(beveledTile.TerrainLayer, [{ ...CONGESTED_CENTRE, terrain: "nexus" }])).toContain(
       "bt-terrain-other"
     );
+  });
+
+  it.each(tridentTerrains)("gives Trident's %s terrain its tile face and texture", (terrain) => {
+    const flat = draw(
+      beveledTile.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: false }
+    );
+    const textured = draw(
+      beveledTile.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: true }
+    );
+
+    expect(flat).toContain(`bt-terrain-${terrain}`);
+    expect(flat).not.toContain("bt-terrain-other");
+    expect(textured).toContain(`url(#biome-texture-${terrain}-`);
+    expect(textured).toContain('data-tint="texture"');
   });
 
   it("tints the biome image only lightly, because the bevel carries the contrast", () => {

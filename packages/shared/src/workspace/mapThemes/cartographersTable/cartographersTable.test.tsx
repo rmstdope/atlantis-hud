@@ -268,11 +268,31 @@ describe("roads, as an atlas draws them", () => {
 });
 
 describe("terrain, in pigment rather than in the app's own colours", () => {
+  const tridentTerrains = ["hill", "tunnels", "grotto", "deepforest", "chasm"] as const;
+
   it("paints each terrain in the atlas's own muted palette", () => {
     const svg = draw(cartographersTable.TerrainLayer, [CONGESTED_CENTRE]);
 
     expect(svg).toContain("ct-terrain-plain");
     expect(svg).not.toContain("fill-terrain-plain");
+  });
+
+  it.each(tridentTerrains)("gives Trident's %s terrain its atlas pigment and texture", (terrain) => {
+    const flat = draw(
+      cartographersTable.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: false }
+    );
+    const textured = draw(
+      cartographersTable.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: true }
+    );
+
+    expect(flat).toContain(`ct-terrain-${terrain}`);
+    expect(flat).not.toContain("ct-terrain-other");
+    expect(textured).toContain(`url(#biome-texture-${terrain}-`);
+    expect(textured).toContain('data-gauze="parchment"');
   });
 
   it("falls back rather than vanishing on a terrain it has no pigment for", () => {

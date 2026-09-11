@@ -84,6 +84,11 @@
   --color-terrain-cavern: #3a3a44;
   --color-terrain-underforest: #2a4433;
   --color-terrain-wasteland: #6a5a46;
+  --color-terrain-hill: #75695b;
+  --color-terrain-tunnels: #484753;
+  --color-terrain-grotto: #31585b;
+  --color-terrain-deepforest: #244a39;
+  --color-terrain-chasm: #342c3b;
   --color-terrain-unknown: #161c24;
   /* The ruleset can name a terrain nobody has listed here, and it must still be drawn. */
   --color-terrain-other: #555f6b;
@@ -230,6 +235,11 @@
   --color-terrain-cavern: #b6b6c2;
   --color-terrain-underforest: #a8c3b2;
   --color-terrain-wasteland: #c7b298;
+  --color-terrain-hill: #c6b8a6;
+  --color-terrain-tunnels: #aaa9b7;
+  --color-terrain-grotto: #9bc2c0;
+  --color-terrain-deepforest: #9fc4ad;
+  --color-terrain-chasm: #b8a9bb;
   --color-terrain-unknown: #e3dfd3;
   --color-terrain-other: #b7bec7;
 

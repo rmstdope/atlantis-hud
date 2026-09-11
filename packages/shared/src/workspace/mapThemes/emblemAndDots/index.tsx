@@ -46,7 +46,12 @@ const TERRAIN_CLASSES: Record<string, string> = {
   volcano: "ed-terrain-volcano",
   cavern: "ed-terrain-cavern",
   underforest: "ed-terrain-underforest",
-  wasteland: "ed-terrain-wasteland"
+  wasteland: "ed-terrain-wasteland",
+  hill: "ed-terrain-hill",
+  tunnels: "ed-terrain-tunnels",
+  grotto: "ed-terrain-grotto",
+  deepforest: "ed-terrain-deepforest",
+  chasm: "ed-terrain-chasm"
 };
 
 function terrainClass(terrain: string): string {

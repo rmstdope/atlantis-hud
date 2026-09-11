@@ -41,6 +41,11 @@
   --hud-terrain-cavern: #33333c;
   --hud-terrain-underforest: #23372b;
   --hud-terrain-wasteland: #453d31;
+  --hud-terrain-hill: #4d453d;
+  --hud-terrain-tunnels: #3d3c46;
+  --hud-terrain-grotto: #2f5050;
+  --hud-terrain-deepforest: #203d30;
+  --hud-terrain-chasm: #382d3a;
   --hud-terrain-other: #3a4048;
 }
 
@@ -75,6 +80,11 @@
   --hud-terrain-cavern: #c8c8d0;
   --hud-terrain-underforest: #b4ccb8;
   --hud-terrain-wasteland: #d8ccb6;
+  --hud-terrain-hill: #d7cbbc;
+  --hud-terrain-tunnels: #c4c2ca;
+  --hud-terrain-grotto: #b5d0ce;
+  --hud-terrain-deepforest: #b2cabd;
+  --hud-terrain-chasm: #c9becb;
   --hud-terrain-other: #c4cad2;
 }
 
@@ -113,6 +123,21 @@
 }
 .hud-terrain-wasteland {
   fill: var(--hud-terrain-wasteland);
+}
+.hud-terrain-hill {
+  fill: var(--hud-terrain-hill);
+}
+.hud-terrain-tunnels {
+  fill: var(--hud-terrain-tunnels);
+}
+.hud-terrain-grotto {
+  fill: var(--hud-terrain-grotto);
+}
+.hud-terrain-deepforest {
+  fill: var(--hud-terrain-deepforest);
+}
+.hud-terrain-chasm {
+  fill: var(--hud-terrain-chasm);
 }
 .hud-terrain-other {
   fill: var(--hud-terrain-other);

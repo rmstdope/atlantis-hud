@@ -314,11 +314,31 @@ describe("the three knowledge states", () => {
 });
 
 describe("terrain and roads", () => {
+  const tridentTerrains = ["hill", "tunnels", "grotto", "deepforest", "chasm"] as const;
+
   it("paints each terrain in the theme's own palette, falling back rather than vanishing", () => {
     expect(draw(emblemAndDots.TerrainLayer, [CONGESTED_CENTRE])).toContain("ed-terrain-plain");
     expect(
       draw(emblemAndDots.TerrainLayer, [{ ...CONGESTED_CENTRE, terrain: "nexus" }])
     ).toContain("ed-terrain-other");
+  });
+
+  it.each(tridentTerrains)("gives Trident's %s terrain its medallion palette and texture", (terrain) => {
+    const flat = draw(
+      emblemAndDots.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: false }
+    );
+    const textured = draw(
+      emblemAndDots.TerrainLayer,
+      [{ ...CONGESTED_CENTRE, terrain }],
+      { showTextures: true }
+    );
+
+    expect(flat).toContain(`ed-terrain-${terrain}`);
+    expect(flat).not.toContain("ed-terrain-other");
+    expect(textured).toContain(`url(#biome-texture-${terrain}-`);
+    expect(textured).toContain('data-tint="texture"');
   });
 
   it("tints the biome image enough to keep the emblem's contrast", () => {

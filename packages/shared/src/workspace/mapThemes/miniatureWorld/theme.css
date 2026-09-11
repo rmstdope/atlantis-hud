@@ -35,6 +35,16 @@
   --mw-shade-underforest: #274736;
   --mw-lit-wasteland: #8a7a60;
   --mw-shade-wasteland: #6a5c46;
+  --mw-lit-hill: #a18f72;
+  --mw-shade-hill: #756653;
+  --mw-lit-tunnels: #686775;
+  --mw-shade-tunnels: #474652;
+  --mw-lit-grotto: #548b88;
+  --mw-shade-grotto: #376563;
+  --mw-lit-deepforest: #4c835b;
+  --mw-shade-deepforest: #2d5b3d;
+  --mw-lit-chasm: #735466;
+  --mw-shade-chasm: #4a3549;
   --mw-lit-other: #6b6b73;
   --mw-shade-other: #515158;
 
@@ -104,6 +114,16 @@
   --mw-shade-underforest: #61947a;
   --mw-lit-wasteland: #c9b99b;
   --mw-shade-wasteland: #a89877;
+  --mw-lit-hill: #dfcda9;
+  --mw-shade-hill: #bba67b;
+  --mw-lit-tunnels: #d0cfda;
+  --mw-shade-tunnels: #a9a8b8;
+  --mw-lit-grotto: #9bc9c5;
+  --mw-shade-grotto: #70a7a1;
+  --mw-lit-deepforest: #9cc8a8;
+  --mw-shade-deepforest: #6da27f;
+  --mw-lit-chasm: #c5adc2;
+  --mw-shade-chasm: #997f96;
   --mw-lit-other: #b2b2ba;
   --mw-shade-other: #909099;
 
@@ -218,6 +238,36 @@
 }
 .mw-shade-wasteland {
   stop-color: var(--mw-shade-wasteland);
+}
+.mw-lit-hill {
+  stop-color: var(--mw-lit-hill);
+}
+.mw-shade-hill {
+  stop-color: var(--mw-shade-hill);
+}
+.mw-lit-tunnels {
+  stop-color: var(--mw-lit-tunnels);
+}
+.mw-shade-tunnels {
+  stop-color: var(--mw-shade-tunnels);
+}
+.mw-lit-grotto {
+  stop-color: var(--mw-lit-grotto);
+}
+.mw-shade-grotto {
+  stop-color: var(--mw-shade-grotto);
+}
+.mw-lit-deepforest {
+  stop-color: var(--mw-lit-deepforest);
+}
+.mw-shade-deepforest {
+  stop-color: var(--mw-shade-deepforest);
+}
+.mw-lit-chasm {
+  stop-color: var(--mw-lit-chasm);
+}
+.mw-shade-chasm {
+  stop-color: var(--mw-shade-chasm);
 }
 .mw-lit-other {
   stop-color: var(--mw-lit-other);
