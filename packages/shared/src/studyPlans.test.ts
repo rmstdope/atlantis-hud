@@ -176,6 +176,20 @@ describe("reshapeStudyGoals", () => {
     expect(reshapeStudyGoals(goals, change("remove", 26))).toEqual([teach(25, "1205")]);
   });
 
+  it("drops an unlearnable study while reshaping a legacy plan", () => {
+    const tree = buildMagicTree(parseGameData(readTridentRuleset()) as GameDataIndex);
+    const goals = [
+      study(25, "CPIR"),
+      teach(26, "1205"),
+      study(27, "FORC")
+    ];
+
+    expect(reshapeStudyGoals(goals, change("insert", 25), tree)).toEqual([
+      teach(27, "1205"),
+      study(28, "FORC")
+    ]);
+  });
+
   it("shifts the rightmost goal to an off-horizon turn on insert rather than dropping it", () => {
     // The schedule shows six turns; a goal pushed past them must survive so the report's
     // advancing turn brings it back.

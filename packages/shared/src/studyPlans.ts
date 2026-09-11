@@ -106,9 +106,10 @@ export type ScheduleChange = { kind: "insert" | "remove"; turn: number };
  */
 export function reshapeStudyGoals(
   goals: readonly StudyGoal[],
-  change: ScheduleChange
+  change: ScheduleChange,
+  tree?: MagicTree
 ): StudyGoal[] {
-  const planned = plannedGoals(goals);
+  const planned = plannedGoals(goals, tree);
   if (change.kind === "insert") {
     return planned.map((goal) =>
       goal.turn >= change.turn ? { ...goal, turn: goal.turn + 1 } : goal

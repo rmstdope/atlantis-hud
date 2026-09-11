@@ -811,12 +811,14 @@ export function AppShell({
       }
       setStudyPlanError(null);
       try {
-        await useStudyPlansStore.getState().reshapeSchedule(client, game, change);
+        await useStudyPlansStore
+          .getState()
+          .reshapeSchedule(client, game, change, magicTree ?? undefined);
       } catch {
         setStudyPlanError("Could not reshape this schedule.");
       }
     },
-    [client, game]
+    [client, game, magicTree]
   );
 
   /** The combat skills recovered from this game's battle rosters (`ah-1mpx.6.2`). */

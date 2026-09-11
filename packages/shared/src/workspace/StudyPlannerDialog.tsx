@@ -629,7 +629,9 @@ export function StudyPlannerDetail({
       {/* Read-only: the plan is written in the Schedule view, and two editors for one thing was
           the alternative the navigator rejected. */}
       <p data-testid="study-planner-plan-line" className="mt-2 rounded border border-edge bg-panel px-2 py-1 text-ink-dim">
-        {turn === null ? "Nothing planned." : planLine(plannedGoals(plan?.goals ?? []), turn, tree, names)}
+        {turn === null
+          ? "Nothing planned."
+          : planLine(plannedGoals(plan?.goals ?? [], tree), turn, tree, names)}
       </p>
 
       <StudyPlannerNote
