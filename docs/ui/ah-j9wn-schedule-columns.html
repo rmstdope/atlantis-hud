@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-j9wn - reshape planned turns</title>
+<style>
+  :root{color-scheme:dark;--bg:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#303b4a;--ink:#dbe3ec;--muted:#a3b0c0;--dim:#8290a0;--brass:#d9a441;--blue:#4a9fd8;--danger:#e89494}
+  *{box-sizing:border-box}body{margin:0;padding:32px 20px 56px;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}main{max-width:900px;margin:auto}h1{font:600 24px Georgia,serif;margin:0 0 7px}h1 span{color:var(--brass)}p{margin:0 0 22px;color:var(--muted)}.pane{background:var(--raised);border:1px solid var(--edge);border-radius:8px;overflow:hidden}.top{display:flex;gap:12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--edge)}.top strong{font-size:14px}.top small{color:var(--dim)}.top button{margin-left:auto}.sub{padding:7px 14px;color:var(--dim);font-size:12px;border-bottom:1px solid var(--edge)}.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:760px;font-size:13px}th,td{padding:10px;border-bottom:1px solid var(--edge);text-align:left;vertical-align:top}th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.7px}.mage{min-width:175px}.mage small{display:block;color:var(--dim);margin-top:2px}.turn{min-width:138px}.cell{display:flex;align-items:center;gap:6px;white-space:nowrap}.skill{color:#8ed1ad}.empty{color:var(--dim)}button{border:1px solid var(--edge);border-radius:4px;background:var(--bg);color:var(--ink);padding:3px 8px;font:12px system-ui}.add{color:var(--brass);font-size:17px;line-height:1}.chosen{outline:2px solid var(--blue);outline-offset:-3px;background:#182838}.dialog{margin:24px auto 0;max-width:470px;border:1px solid var(--edge);border-radius:8px;background:var(--panel);box-shadow:0 14px 34px #0008;padding:17px}.dialog h2{font-size:17px;margin:0 0 6px}.dialog p{font-size:13px;margin-bottom:14px}.buttons{display:flex;justify-content:flex-end;gap:8px}.buttons .remove{border-color:#774447;color:var(--danger)}.caption{font-size:12px;color:var(--dim);margin:13px 0 0}@media(max-width:560px){body{padding:18px 10px}.top small{display:none}.dialog{margin:18px 0}}
+</style>
+</head>
+<body>
+<main>
+<h1>Study planner: <span>reshape planned turns</span></h1>
+<p>Each turn header has controls for inserting a blank turn before it or removing it. The action applies to every mage: the selected column and every later column shift together.</p>
+<section class="pane" aria-label="Study planner">
+  <div class="top"><strong>Study planner</strong><small>F4</small><button>Close</button></div>
+  <div class="sub">3 mages - turns 72-76</div>
+  <div class="scroll"><table><thead><tr><th class="mage">Mage</th><th class="turn"><div class="cell"><button class="add" aria-label="Insert before turn 72">+</button>72 - next<button aria-label="Remove turn 72">-</button></div></th><th class="turn"><div class="cell"><button class="add" aria-label="Insert before turn 73">+</button>73<button aria-label="Remove turn 73">-</button></div></th><th class="turn chosen"><div class="cell"><button class="add" aria-label="Insert before turn 74">+</button>74<button aria-label="Remove turn 74">-</button></div></th><th class="turn"><div class="cell"><button class="add" aria-label="Insert before turn 75">+</button>75<button aria-label="Remove turn 75">-</button></div></th><th class="turn"><div class="cell"><button class="add" aria-label="Insert before turn 76">+</button>76<button aria-label="Remove turn 76">-</button></div></th></tr></thead>
+  <tbody><tr><td class="mage">Six of Seven <small>force 4 - towards force 5</small></td><td><span class="skill">FORC 4 (355)</span></td><td><span class="skill">FORC 4 (385)</span></td><td class="chosen"><span class="skill">FORC 4 (415)</span></td><td><span class="skill">FORC 5 (450)</span></td><td><span class="empty">-</span></td></tr><tr><td class="mage">Two of Seven <small>gate lore 0 - nothing planned</small></td><td><span class="empty">-</span></td><td><span class="empty">-</span></td><td class="chosen"><span class="empty">-</span></td><td><span class="empty">-</span></td><td><span class="empty">-</span></td></tr></tbody></table></div>
+</section>
+<section class="dialog" role="dialog" aria-label="Remove planned turn">
+  <h2>Remove turn 74 for every mage?</h2>
+  <p>Turn 75 and every later planned turn will move one turn earlier for every mage. This cannot be undone here.</p>
+  <div class="buttons"><button>Cancel</button><button class="remove">Remove turn</button></div>
+</section>
+<p class="caption">Inserting has the matching confirmation: “Insert an empty turn before 74 for every mage?” The final visible turn is removed, so the schedule always shows the same number of future turns. Escape or Cancel closes the dialog without changing the schedule. Keyboard focus moves to the dialog when it opens and returns to the header control that opened it. On a narrow window, the schedule scrolls sideways as one unit.</p>
+</main>
+</body>
+</html>
