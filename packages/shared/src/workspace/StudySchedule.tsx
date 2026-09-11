@@ -1158,10 +1158,13 @@ export function scheduleConfirmCopy(change: ScheduleChange): { heading: string; 
  */
 export function ScheduleConfirmDialog({
   change,
+  actionRef,
   onCancel,
   onConfirm
 }: {
   change: ScheduleChange;
+  /** Ref to the action button, for the layer's opening focus (`ah-j9wn` review). */
+  actionRef?: React.RefObject<HTMLButtonElement | null>;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -1196,8 +1199,8 @@ export function ScheduleConfirmDialog({
           </button>
           <button
             type="button"
+            ref={actionRef}
             data-testid="study-schedule-confirm-action"
-            data-confirm-action="study-schedule-confirm-action"
             onClick={onConfirm}
             className="rounded border border-brass/60 bg-brass/15 px-2 py-1 text-brass hover:bg-brass/25"
           >
@@ -1235,14 +1238,14 @@ function ScheduleConfirmLayer({
     onCancel();
   };
   useEscapeToDismiss(back);
+  const actionRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
-    document
-      .querySelector<HTMLElement>('[data-confirm-action="study-schedule-confirm-action"]')
-      ?.focus();
+    actionRef.current?.focus();
   }, []);
   return (
     <ScheduleConfirmDialog
       change={change}
+      actionRef={actionRef}
       onCancel={back}
       onConfirm={() => {
         opener?.focus();
