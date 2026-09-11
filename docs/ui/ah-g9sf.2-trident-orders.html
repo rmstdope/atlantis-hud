@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trident order suggestions</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d;
+    --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 24px 72px; background:var(--ground); color:var(--ink);
+    font:15px/1.55 Georgia, "Times New Roman", serif; }
+  header,main { max-width:1080px; margin:auto; } h1 { margin:0; font-size:26px; }
+  h1 span,h2 { color:var(--brass); } header p,.lead { max-width:86ch; margin:10px 0 0; color:var(--soft); font-size:14px; }
+  h2 { margin:38px 0 8px; font:600 14px/1.4 system-ui,sans-serif; letter-spacing:1.4px; text-transform:uppercase; }
+  .app { padding:14px; border:1px solid var(--edge); border-radius:8px; background:#111821; font:12px/1.45 system-ui,sans-serif; }
+  .orders { overflow:hidden; border:1px solid var(--edge); border-radius:5px; background:var(--panel); }
+  .bar { display:flex; gap:8px; padding:6px 9px; border-bottom:1px solid var(--edge); color:var(--brass);
+    font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  .bar span { margin-left:auto; color:var(--dim); font-size:10px; letter-spacing:0; text-transform:none; }
+  .editor { position:relative; min-height:115px; padding:8px 10px; font:12px/1.6 "SFMono-Regular",Menlo,Consolas,monospace; }
+  .line { white-space:pre; } .dim { color:var(--dim); } .caret { display:inline-block; height:13px; border-left:1px solid var(--ink); vertical-align:-3px; }
+  .completion { position:absolute; top:57px; left:38px; min-width:140px; border:1px solid var(--edge);
+    border-radius:4px; background:var(--raised); box-shadow:0 8px 18px #000a; overflow:hidden; }
+  .choice { padding:3px 8px; background:var(--select); color:#10151c; }
+  .palette { margin-top:12px; padding:8px; border:1px solid var(--edge); border-radius:5px; background:var(--raised); }
+  .search { padding:5px 7px; border:1px solid var(--edge); border-radius:3px; color:var(--soft); background:var(--ground); }
+  .result { display:flex; justify-content:space-between; margin-top:5px; padding:4px 6px; border-radius:3px; background:#26303d; }
+  .result span { color:var(--dim); font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+  .setting { max-width:390px; margin:14px 0; padding:12px; border:1px solid var(--edge); border-radius:5px; background:var(--panel); font:12px/1.45 system-ui,sans-serif; }
+  .setting label { display:block; margin-bottom:4px; color:var(--soft); }
+  .value { padding:5px 7px; border:1px solid var(--edge); border-radius:3px; background:var(--raised); color:var(--ink); }
+  .note { margin-top:7px; color:var(--dim); font-size:11px; }
+  .states { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+  .state { min-height:124px; padding:12px; border:1px solid var(--edge); border-radius:6px; background:var(--panel);
+    font:12px/1.45 system-ui,sans-serif; color:var(--soft); } .state h3 { margin:0 0 7px; color:var(--brass); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  @media (max-width:700px) { .states { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Trident order suggestions</span> in the existing editor</h1>
+  <p>A player chooses the ruleset while creating a game. That choice remains fixed, and the editor
+  and command palette quietly follow it. In a New Age: Trident game, the four Trident order names
+  appear with the existing command suggestions; New Origins-only names do not.</p>
+</header>
+<main>
+  <h2>Writing an order</h2>
+  <div class="app">
+    <div class="orders">
+      <div class="bar">Orders <span>Sea Watch (4021)</span></div>
+      <div class="editor">
+        <div class="line">unit 4021</div>
+        <div class="line">CAP<span class="caret"></span></div>
+        <div class="line dim">; appoint this city as capital</div>
+        <div class="completion"><div class="choice">CAPITAL</div></div>
+      </div>
+    </div>
+    <div class="palette">
+      <div class="search">cre</div>
+      <div class="result">CREATE <span>order</span></div>
+    </div>
+  </div>
+  <p class="lead">CREATE, EXPLORE and QUEST are offered in the same two existing places. Typing
+  narrows a suggestion list; no matching name leaves it closed; Enter or Tab inserts the selected
+  command. The palette remains one scrollable list, where these names join the existing rows
+  marked “order”. No new shortcut, dialog, focus movement, or separate command-help surface is
+  added.</p>
+
+  <h2>The selected ruleset</h2>
+  <div class="setting">
+    <label>Ruleset</label>
+    <div class="value">New Age: Trident</div>
+    <div class="note">The ruleset is chosen when this game is created.</div>
+  </div>
+  <p class="lead">The game settings show the chosen ruleset as a read-only value. A player creates
+  another game to use a different ruleset; an existing game never changes its command language, so
+  there is no transition between one world's suggestions and another's.</p>
+
+  <h2>States that stay within the existing surfaces</h2>
+  <div class="states">
+    <section class="state"><h3>Too few or no matches</h3>CAPITAL appears after “CAP”. An unknown
+    word shows no suggestion; the editor’s existing problem marker remains the feedback.</section>
+    <section class="state"><h3>Too many matches</h3>The command palette remains its existing
+    scrollable list. New order names do not create a section or a second help page.</section>
+    <section class="state"><h3>Narrow window</h3>The existing editor and palette widths continue to
+    govern wrapping and scrolling. No ruleset label adds a second line to either compact surface.</section>
+  </div>
+</main>
+</body>
+</html>
