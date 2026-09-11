@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trident terrain — five distinct places</title>
+<style>
+  :root { color-scheme:dark; --ground:#151b23; --panel:#212a35; --edge:#526273; --ink:#e0e7ef; --soft:#aebdcb; --brass:#e0b25a }
+  * { box-sizing:border-box } body { margin:0; padding:30px; background:var(--ground); color:var(--ink); font:15px/1.5 ui-sans-serif,system-ui,sans-serif }
+  main { max-width:1100px; margin:auto } h1 { margin:0; font:600 26px Georgia,serif } h1 span,h2 { color:var(--brass) } p { color:var(--soft); max-width:82ch }
+  .mode { border:1px solid var(--edge); border-radius:9px; background:var(--panel); padding:18px; margin-top:16px } h2 { font-size:16px; margin:0 0 6px }
+  .map { display:grid; grid-template-columns:repeat(5,minmax(130px,1fr)); gap:14px; margin:26px 0 }
+  .hex { aspect-ratio:1.14; clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); display:grid; place-items:center; text-align:center; border:2px solid #0b1016; box-shadow:inset 0 0 0 1px rgba(255,255,255,.22) }
+  .hex b { display:block; text-shadow:0 1px 2px #000; font-size:17px } .hex small { text-shadow:0 1px 2px #000 }
+  .hill { background:#75695b } .tunnels { background:#484753; background-image:repeating-linear-gradient(135deg,transparent 0 8px,#62616e 8px 10px) }
+  .grotto { background:#31585b; background-image:radial-gradient(circle at 35% 35%,#7ec6bf 0 5%,transparent 6%),radial-gradient(circle at 70% 63%,#7ec6bf 0 4%,transparent 5%) }
+  .deepforest { background:#244a39; background-image:repeating-linear-gradient(70deg,transparent 0 13px,#49755a 14px 17px) }
+  .chasm { background:#342c3b; background-image:linear-gradient(105deg,transparent 43%,#090b10 44% 56%,transparent 57%) }
+  .texture .hill { background-image:linear-gradient(rgba(117,105,91,.24),rgba(117,105,91,.24)),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18'%3E%3Cpath d='M0 15L6 7l3 5 3-8 6 11' stroke='%23c9b28c' stroke-width='1.5' fill='none' opacity='.7'/%3E%3C/svg%3E") }
+  .texture .tunnels { background-image:repeating-linear-gradient(135deg,transparent 0 8px,#62616e 8px 10px),radial-gradient(ellipse at center,#1d2028 0 18%,transparent 20%) }
+  .texture .grotto { background-image:radial-gradient(circle at 35% 35%,#9ae0d7 0 5%,transparent 7%),radial-gradient(circle at 70% 63%,#9ae0d7 0 4%,transparent 6%),repeating-radial-gradient(ellipse at 50% 110%,#1c3c43 0 4px,transparent 5px 12px) }
+  .texture .deepforest { background-image:repeating-linear-gradient(70deg,transparent 0 13px,#49755a 14px 17px),radial-gradient(ellipse at 50% 100%,#132e25 0 3px,transparent 4px 11px) }
+  .texture .chasm { background-image:linear-gradient(105deg,transparent 43%,#090b10 44% 56%,transparent 57%),repeating-linear-gradient(0deg,transparent 0 9px,#574764 10px 11px) }
+  .note { color:var(--soft); font-size:13px } @media(max-width:650px) { body { padding:18px }.map { grid-template-columns:repeat(2,1fr) } }
+</style>
+<main>
+  <h1>Trident terrain <span>— five distinct places</span></h1>
+  <p>Hill, tunnels, grotto, deepforest and chasm each have their own recognisable colour and texture. Their base colours remain distinct when textures are off, so none is confused with an unknown place.</p>
+  <section class="mode texture"><h2>Textures on</h2><div class="map">
+    <div class="hex hill"><div><b>Hill</b><small>sun-baked slopes</small></div></div><div class="hex tunnels"><div><b>Tunnels</b><small>worked passages</small></div></div><div class="hex grotto"><div><b>Grotto</b><small>water-lit cave</small></div></div><div class="hex deepforest"><div><b>Deepforest</b><small>dense canopy</small></div></div><div class="hex chasm"><div><b>Chasm</b><small>dark rift</small></div></div>
+  </div></section>
+  <section class="mode"><h2>Textures off</h2><div class="map">
+    <div class="hex hill"><div><b>Hill</b></div></div><div class="hex tunnels"><div><b>Tunnels</b></div></div><div class="hex grotto"><div><b>Grotto</b></div></div><div class="hex deepforest"><div><b>Deepforest</b></div></div><div class="hex chasm"><div><b>Chasm</b></div></div>
+  </div><div class="note">Turning textures off removes only the patterned detail; each terrain remains recognisable by colour.</div></section>
+</main>
