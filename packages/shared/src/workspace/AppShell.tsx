@@ -132,7 +132,7 @@ import { useArmiesStore } from "../armiesStore";
 import { useAlliedMagesStore } from "../alliedMagesStore";
 import { useStudyPlansStore } from "../studyPlansStore";
 import type { StudyGoal } from "@atlantis/core-client";
-import type { ScheduleChange } from "./studyPlans";
+import type { ScheduleChange } from "../studyPlans";
 import {
   forgetFailedText,
   forgottenStatusText,

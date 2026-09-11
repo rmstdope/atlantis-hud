@@ -227,7 +227,6 @@ describe("reshapeSchedule", () => {
   });
 
   it("leaves the cache alone and rethrows when the write fails", async () => {
-    const core = client();
     seed([row("1204", [goal(24, "FORC")])]);
     const failing = client({ saveStudyPlans: vi.fn().mockRejectedValue(new Error("no")) });
 
