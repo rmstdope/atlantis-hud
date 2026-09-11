@@ -226,6 +226,7 @@ describe("the Warnings settings tab", () => {
       "Overloaded fleets",
       "Undercrewed fleets",
       "More quartermasters than allowed",
+      "Study of an unlearnable skill",
       "Producing in too many regions",
       "Claiming more than the faction has",
       "Upkeep the faction cannot pay",

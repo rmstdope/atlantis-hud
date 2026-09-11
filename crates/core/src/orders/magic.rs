@@ -29,7 +29,7 @@ pub(crate) const LEADER_TAG: &str = "LEAD";
 /// skill needs one of those first, so a unit ordered to study one is already a mage or is already
 /// answered by `magic-study-capped-by-prerequisites`. No tag is hard-coded.
 pub(crate) fn begins_magic(ruleset: &Ruleset, skill: &SkillEntry) -> bool {
-    ruleset.is_magic(&skill.tag) && skill.requires.is_empty()
+    skill.is_studyable() && ruleset.is_magic(&skill.tag) && skill.requires.is_empty()
 }
 
 /// Whether this unit has already begun magic.
@@ -100,6 +100,17 @@ mod tests {
         let entry = ruleset
             .find_skill("ESWO")
             .expect("the catalogue should carry the derived skill");
+        assert!(!begins_magic(&ruleset, entry));
+    }
+
+    #[test]
+    fn item_granted_magic_does_not_begin_magic() {
+        let ruleset = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset should be usable");
+        let entry = ruleset
+            .find_skill("CPIR")
+            .expect("Trident should carry Call Pirates");
+        assert!(!entry.is_studyable());
         assert!(!begins_magic(&ruleset, entry));
     }
 

@@ -672,6 +672,17 @@ pub struct SkillEntry {
     pub levels: Vec<SkillLevel>,
 }
 
+impl SkillEntry {
+    /// Whether the game permits ordinary `STUDY` of this skill.
+    ///
+    /// `data/skills` leaves `cost` absent for skills granted by an item (for example Trident's
+    /// `CPIR`), so the catalogue's existing price is the authoritative eligibility predicate.
+    #[must_use]
+    pub fn is_studyable(&self) -> bool {
+        self.cost.is_some()
+    }
+}
+
 /// What a skill's page says at one level, once the placeholders are dropped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(

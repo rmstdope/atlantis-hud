@@ -23,7 +23,8 @@ export const STANDING_CHIP: Record<StandingKind, string> = {
   ceiling: "border-standing-ceiling-edge bg-standing-ceiling-fill text-standing-ceiling-ink",
   maxed: "border-standing-maxed-edge bg-standing-maxed-fill text-standing-maxed-ink",
   open: "border-standing-open-edge bg-standing-open-fill text-standing-open-ink",
-  locked: ""
+  locked: "",
+  unlearnable: "border-edge bg-panel text-ink-dim"
 };
 
 /**
@@ -55,6 +56,8 @@ export function standingLimit(standing: SkillStanding): string {
       return "can study";
     case "locked":
       return "";
+    case "unlearnable":
+      return "not learnable";
   }
 }
 
@@ -73,6 +76,7 @@ export function standingWords(standing: SkillStanding): string {
       return `at ${standing.level}, ${limit}`;
     case "open":
     case "locked":
+    case "unlearnable":
       return limit;
   }
 }

@@ -402,7 +402,9 @@ function Card({
       data-testid={`magic-tree-branch-${branch.key}`}
       className={`mb-3 rounded border bg-panel-raised px-2 py-1.5 ${
         // The apprenticeship is set apart, because it is not a foundation and nothing builds on it.
-        branch.key === "MANI" ? "border-dashed border-brass/60" : "border-brass/60"
+        branch.key === "MANI" || branch.key === "ITEM_GRANTED"
+          ? "border-dashed border-brass/60"
+          : "border-brass/60"
       }`}
     >
       <h3 className="m-0 text-pane-xs uppercase tracking-[0.08em] text-brass">{branch.title}</h3>
@@ -469,8 +471,13 @@ function Skill({
       >
         {skill.tag}
       </span>
+      {skill.learnable ? null : (
+        <span className="text-pane-xs whitespace-nowrap rounded border border-edge px-1 text-ink-dim">
+          not learnable
+        </span>
+      )}
       <Gate prerequisites={skill.within} meta={style === null ? "text-ink-dim" : style.meta} />
-      {standing === null || standing.kind === "locked" ? null : (
+      {standing === null || standing.kind === "locked" || standing.kind === "unlearnable" ? null : (
         // Locked takes no chip and keeps its gate text: what is missing is the reason for showing
         // a locked row at all.
         <span
@@ -545,6 +552,12 @@ const ROW_STYLE: Record<StandingKind, { edge: string; row: string; meta: string;
     row: "text-ink-dim opacity-55",
     meta: "text-ink",
     chip: STANDING_CHIP.locked
+  },
+  unlearnable: {
+    edge: "border-l-4 border-dashed border-edge",
+    row: "text-ink-dim",
+    meta: "text-ink-dim",
+    chip: STANDING_CHIP.locked
   }
 };
 
@@ -555,7 +568,8 @@ function tally(picked: MageStanding): string {
     ["ceiling", "at ceiling"],
     ["maxed", "at maximum"],
     ["open", "can study"],
-    ["locked", "locked"]
+    ["locked", "locked"],
+    ["unlearnable", "not learnable"]
   ];
   return words
     .filter(([kind]) => picked.counts[kind] > 0)

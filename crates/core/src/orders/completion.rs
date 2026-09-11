@@ -393,7 +393,7 @@ fn skill_completions(
     ruleset
         .skills
         .values()
-        .filter(|skill| !studying || skill.cost.is_some())
+        .filter(|skill| !studying || skill.is_studyable())
         .filter(|skill| {
             level_of(unit, &skill.tag).is_none_or(|level| {
                 level < study::study_ceiling(ruleset, races_of(unit), skill).level()
@@ -702,6 +702,18 @@ mod tests {
                     .is_some_and(|skill| skill.cost.is_none())
             }),
             "a skill the data page prices nowhere cannot be studied, so it is never offered"
+        );
+    }
+
+    #[test]
+    fn trident_item_granted_magic_is_not_offered_for_study() {
+        let ruleset = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset should be usable");
+        let offered = order_argument_completions("STUDY ", Some(&ruleset), None, None);
+
+        assert!(
+            !offered.iter().any(|entry| entry.value == "CPIR"),
+            "Call Pirates is item-granted magic, not a study option"
         );
     }
 

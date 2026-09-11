@@ -21,6 +21,7 @@ export const ADVISORY_CHECK_CODES = [
   "unit-overloaded",
   "too-many-quartermasters",
   "study-at-maximum",
+  "study-unlearnable",
   "already-built",
   "too-many-trade-regions",
   "magic-study-outside-building",

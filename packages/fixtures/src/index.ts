@@ -106,8 +106,22 @@ export function readAtlaClientMap(key: AtlaClientMapKey): string {
 
 /** The shipped ruleset, config/public/ruleset.json. */
 export const RULESET_PATH = join(__dirname, "..", "..", "..", "config", "public", "ruleset.json");
+export const TRIDENT_RULESET_PATH = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "config",
+  "public",
+  "ruleset-newage-trident.json"
+);
 
 /** The shipped ruleset's text. */
 export function readRuleset(): string {
   return readFileSync(RULESET_PATH, "utf8");
+}
+
+/** The committed Trident ruleset used by new-age magic tests. */
+export function readTridentRuleset(): string {
+  return readFileSync(TRIDENT_RULESET_PATH, "utf8");
 }

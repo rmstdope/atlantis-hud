@@ -179,6 +179,8 @@ export function blockedBecause(
         missing.map((need) => `${need.name} reaches ${need.level}`)
       )}.`;
     }
+    case "unlearnable":
+      return `${name} is not learnable through study.`;
     default:
       return null;
   }
@@ -708,7 +710,7 @@ export function scheduleRows(input: {
         leftBuilding: stood?.leftBuilding ?? null,
         leftBy: stood?.leftBy ?? null,
         start: startOf(mage.skills),
-        goals: plannedGoals(byKey.get(mage.key)?.goals ?? [])
+        goals: plannedGoals(byKey.get(mage.key)?.goals ?? [], input.tree)
       });
       names.set(mage.unitId, mage.name);
     }
@@ -725,7 +727,7 @@ export function scheduleRows(input: {
   for (const group of input.groups) {
     for (const mage of group.mages) {
       const plan = byKey.get(mage.key) ?? null;
-      const goals = plannedGoals(plan?.goals ?? []);
+      const goals = plannedGoals(plan?.goals ?? [], input.tree);
       const start = startOf(mage.skills);
       const { cells, standings } = projected.get(mage.key) ?? { cells: [], standings: [start] };
       rows.push({

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-g9sf.12 - cross-faction teaching forecast</title>
+<style>
+  :root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--blue:#8fb4e0;--green:#7fcaa5;--amber:#eebe63}
+  *{box-sizing:border-box}body{margin:0;padding:28px 22px 56px;background:var(--ground);color:var(--ink);font:15px/1.5 Georgia,serif}main{max-width:1080px;margin:auto}h1{margin:0;font-size:26px}h1 span{color:var(--brass)}h2{margin:0;color:var(--brass);font:600 11px Arial,sans-serif;letter-spacing:1.2px;text-transform:uppercase}.lead{max-width:84ch;color:var(--soft)}.card{margin-top:22px;border:1px solid var(--edge);border-radius:8px;overflow:hidden;background:var(--raised);font-family:Arial,sans-serif}.top{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--edge)}.top strong{font-size:14px}.tabs{display:flex;gap:4px}.tab{padding:3px 9px;border:1px solid var(--edge);border-radius:4px;color:var(--soft);font-size:12px}.tab.on{border-color:var(--brass);background:#d9a44118;color:var(--brass)}.close{margin-left:auto;padding:2px 8px;border:1px solid var(--edge);border-radius:4px;color:var(--soft);font-size:12px}.sub{padding:7px 12px;border-bottom:1px solid var(--edge);color:var(--dim);font-size:12px}.grid{overflow:auto}.schedule{min-width:770px;width:100%;border-collapse:collapse;font-size:12px}.schedule th{padding:8px;text-align:left;color:var(--dim);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--edge)}.schedule th.next{color:var(--brass)}.schedule td{padding:8px;border-bottom:1px solid #222b37;vertical-align:top}.who{width:220px;border-right:1px solid var(--edge)}.name{color:var(--ink)}.detail{display:block;margin-top:2px;color:var(--dim);font-size:11px}.cell{display:inline-block;padding:2px 6px;border-radius:3px;white-space:nowrap}.plain{color:var(--soft)}.result{border:1px solid #4a3d21;background:#2e2718;color:var(--amber)}.confirmed{border-color:#2c4a3e;background:#1b2c26;color:var(--green)}.uncertain{border-style:dashed}.explain{margin:14px;border-left:3px solid var(--amber);padding:10px 12px;background:#1a1710;color:var(--soft);font-size:12px}.explain b{color:var(--ink)}.explain.unknown{border-color:var(--blue);background:#141a23}.updated{padding:8px 12px;border-bottom:1px solid #2c4a3e;background:#111c18;color:var(--green);font-size:12px}.states{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:22px}.state{border:1px solid var(--edge);border-radius:8px;padding:13px;background:var(--panel)}.state p{margin:8px 0 0;color:var(--soft);font:13px/1.45 Arial,sans-serif}.state .cell{margin-bottom:7px}.caption{margin:10px 0 0;color:var(--dim);font:12px/1.45 Arial,sans-serif}.focus{outline:2px solid var(--blue);outline-offset:2px}@media(max-width:720px){body{padding:16px}.tabs{display:none}.states{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Cross-faction teaching: <span>the forecast says what will happen</span></h1>
+  <p class="lead">When a mage plans to teach someone from another faction, the Planner puts the result in the student's schedule cell. A confirmed teaching bonus, a study that will proceed normally, and a result that cannot be forecast are distinct at a glance. The detail is available by hovering or focusing the highlighted cell.</p>
+
+  <section class="card">
+    <div class="top"><strong>Study planner</strong><div class="tabs"><span class="tab">Overview</span><span class="tab on">Planner</span><span class="tab">Orders</span></div><span class="close">Close</span></div>
+    <div class="sub">4 mages - 2 yours, 2 from 1 ally - turns 24-29</div>
+    <div class="grid"><table class="schedule">
+      <thead><tr><th class="who">Mage</th><th class="next">24 - next</th><th>25</th><th>26</th></tr></thead>
+      <tbody>
+        <tr><td class="who"><span class="name">Uln (3012)</span><span class="detail">Borg (21) - teaches Sable</span></td><td><span class="cell plain">TEACH Sable</span></td><td><span class="cell plain">TEACH Sable</span></td><td><span class="cell plain">force 3</span></td></tr>
+        <tr><td class="who"><span class="name">Sable (2517)</span><span class="detail">Wardens of the North (12) - force 1</span></td><td><span class="cell result focus">force 1 - studies normally</span></td><td><span class="cell result">force 2 - studies normally</span></td><td><span class="cell plain">force 2</span></td></tr>
+      </tbody>
+    </table></div>
+    <div class="explain"><b>Sable has not declared Uln Friendly.</b> Uln's teaching will not add a bonus to Sable's study this turn.</div>
+  </section>
+
+  <section class="states">
+    <article class="state"><h2>Teaching confirmed</h2><p><span class="cell result confirmed">force 2 - teaching bonus</span><br>“Sable has declared Uln Friendly. Uln's teaching doubles her study this turn.”</p></article>
+    <article class="state"><h2>Teaching refused</h2><p><span class="cell result">force 1 - studies normally</span><br>“Sable has not declared Uln Friendly. Uln's teaching will not add a bonus to Sable's study this turn.”</p></article>
+    <article class="state"><h2>Teaching not known</h2><p><span class="cell result uncertain">teaching uncertain</span><br>“Sable's Friendly declaration for Uln is not in the report. Her teaching bonus cannot be forecast.”</p></article>
+  </section>
+  <p class="caption">The unknown state deliberately does not show a skill result: either ordinary study or a teaching bonus may be correct, and the report does not establish which.</p>
+
+  <section class="card">
+    <div class="top"><strong>Study planner</strong><div class="tabs"><span class="tab">Overview</span><span class="tab on">Planner</span><span class="tab">Orders</span></div><span class="close">Close</span></div>
+    <div class="updated">Teaching forecast updated from this turn's orders.</div>
+    <div class="grid"><table class="schedule">
+      <thead><tr><th class="who">Mage</th><th class="next">24 - next</th><th>25</th><th>26</th></tr></thead>
+      <tbody>
+        <tr><td class="who"><span class="name">Uln (3012)</span><span class="detail">Borg (21) - teaches Sable</span></td><td><span class="cell plain">TEACH Sable</span></td><td><span class="cell plain">TEACH Sable</span></td><td><span class="cell plain">force 3</span></td></tr>
+        <tr><td class="who"><span class="name">Sable (2517)</span><span class="detail">Wardens of the North (12) - force 1</span></td><td><span class="cell result confirmed">force 2 - teaching bonus</span></td><td><span class="cell result confirmed">force 2 - teaching bonus</span></td><td><span class="cell result confirmed">force 3 - teaching bonus</span></td></tr>
+      </tbody>
+    </table></div>
+    <div class="explain unknown"><b>Sable has declared Uln Friendly.</b> Uln's teaching doubles her study this turn.</div>
+  </section>
+  <p class="caption">Adding or removing a Friendly declaration in the current orders immediately recalculates every affected planned month. There is no new button, dialog, shortcut, or saved display preference; closing the study planner leaves the orders themselves unchanged.</p>
+</main>
+</body>
+</html>

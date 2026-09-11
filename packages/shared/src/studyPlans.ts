@@ -13,6 +13,7 @@ import {
   type StudyPlanKey,
   type StudyPlanRecord
 } from "@atlantis/core-client";
+import type { MagicTree } from "./magicTree";
 
 export { sortStudyPlans, type StudyGoal, type StudyPlanKey, type StudyPlanRecord };
 
@@ -67,10 +68,17 @@ export function keyOf(plan: StudyPlanRecord): StudyPlanKey {
  * Where two entries name one turn, the last wins - `goalsAfterChoice` never writes such a list, and
  * a hand-edited or restored row should read as something rather than as an error.
  */
-export function plannedGoals(goals: readonly StudyGoal[]): StudyGoal[] {
+export function plannedGoals(goals: readonly StudyGoal[], tree?: MagicTree): StudyGoal[] {
   const byTurn = new Map<number, StudyGoal>();
   for (const goal of goals) {
     if (!Number.isInteger(goal.turn) || goal.turn <= 0) {
+      continue;
+    }
+    if (
+      tree !== undefined &&
+      goal.kind === "study" &&
+      tree.byTag.get(goal.skill.toUpperCase())?.learnable === false
+    ) {
       continue;
     }
     byTurn.set(goal.turn, goal);
@@ -98,9 +106,10 @@ export type ScheduleChange = { kind: "insert" | "remove"; turn: number };
  */
 export function reshapeStudyGoals(
   goals: readonly StudyGoal[],
-  change: ScheduleChange
+  change: ScheduleChange,
+  tree?: MagicTree
 ): StudyGoal[] {
-  const planned = plannedGoals(goals);
+  const planned = plannedGoals(goals, tree);
   if (change.kind === "insert") {
     return planned.map((goal) =>
       goal.turn >= change.turn ? { ...goal, turn: goal.turn + 1 } : goal

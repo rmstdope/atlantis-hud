@@ -31,7 +31,9 @@ export type SkillStanding =
    * No ceiling, on purpose: a skill can be locked and still have a non-zero one, and the number
    * would be a promise about a skill that cannot be begun at all.
    */
-  | { kind: "locked" };
+  | { kind: "locked" }
+  /** Present in the catalogue, but only granted by an item and never studyable. */
+  | { kind: "unlearnable" };
 
 export type StandingKind = SkillStanding["kind"];
 
@@ -98,6 +100,9 @@ function prerequisitesOf(node: MagicSkillNode): readonly MagicPrerequisite[] {
 function standingIn(node: MagicSkillNode, levels: ReadonlyMap<string, number>): SkillStanding {
   const level = levels.get(node.tag) ?? 0;
   const prerequisites = prerequisitesOf(node);
+  if (!node.learnable) {
+    return { kind: "unlearnable" };
+  }
   const ceiling = prerequisites.reduce(
     (lowest, need) => Math.min(lowest, levels.get(need.tag) ?? 0),
     node.maxLevel
@@ -136,7 +141,14 @@ export function standingsFrom(
   tree: MagicTree
 ): { byTag: Map<string, SkillStanding>; counts: StandingCounts } {
   const byTag = new Map<string, SkillStanding>();
-  const counts: StandingCounts = { known: 0, ceiling: 0, maxed: 0, open: 0, locked: 0 };
+  const counts: StandingCounts = {
+    known: 0,
+    ceiling: 0,
+    maxed: 0,
+    open: 0,
+    locked: 0,
+    unlearnable: 0
+  };
   for (const [tag, node] of tree.byTag) {
     const standing = standingIn(node, levels);
     byTag.set(tag, standing);
@@ -159,7 +171,9 @@ export function standingOf(
     name: unit.name,
     regionId: unit.regionId,
     structureId: unit.structureId,
-    adept: [...levels.keys()].some((tag) => tag !== "MANI" && tree.byTag.has(tag)),
+    adept: [...levels.keys()].some(
+      (tag) => tag !== "MANI" && tree.byTag.get(tag)?.learnable === true
+    ),
     byTag,
     counts,
     skills: unit.skills,
@@ -177,7 +191,7 @@ export function standingOf(
 export function isApprentice(standing: MageStanding): boolean {
   let mani = false;
   for (const [tag, held] of standing.byTag) {
-    if (held.kind === "open" || held.kind === "locked") {
+    if (held.kind === "open" || held.kind === "locked" || held.kind === "unlearnable") {
       continue;
     }
     if (tag !== "MANI") {
@@ -202,7 +216,9 @@ export function magesOf(
   index: GameDataIndex
 ): readonly MageStanding[] {
   const mages = units
-    .filter((unit) => unit.skills.some((skill) => tree.byTag.has(skill.tag.toUpperCase())))
+    .filter((unit) =>
+      unit.skills.some((skill) => tree.byTag.get(skill.tag.toUpperCase())?.learnable === true)
+    )
     .map((unit) => standingOf(unit, tree, index));
   return [...mages.filter((mage) => mage.adept), ...mages.filter((mage) => !mage.adept)];
 }
@@ -212,7 +228,11 @@ function reach(mage: MageStanding): { studied: number; highest: number } {
   let studied = 0;
   let highest = 0;
   for (const standing of mage.byTag.values()) {
-    if (standing.kind === "open" || standing.kind === "locked") {
+    if (
+      standing.kind === "open" ||
+      standing.kind === "locked" ||
+      standing.kind === "unlearnable"
+    ) {
       continue;
     }
     studied += 1;
