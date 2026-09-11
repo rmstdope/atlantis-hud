@@ -40968,7 +40968,7 @@ BUILD
         }
 
         #[test]
-        fn a_capped_study_of_an_unpriced_skill_is_not_doubted() {
+        fn an_unlearnable_study_is_not_doubted_or_capped() {
             let mut student = capped_gnolls(900);
             student.skills = vec![Skill {
                 name: "annihilation".to_string(),
@@ -40983,8 +40983,9 @@ BUILD
             );
             let silver = silver_for(&review, "8573");
 
-            assert!(silver.no_study_fee.is_some(), "{silver:?}");
-            assert_eq!(silver.doubt, None, "with no fee there is nothing to doubt");
+            assert!(silver.no_study_fee.is_none(), "{silver:?}");
+            assert_eq!(silver.expense, Some(0), "{silver:?}");
+            assert_eq!(silver.doubt, None, "{silver:?}");
         }
 
         /// An estimated headcount is the column's `SilverDoubt::EstimatedMen` and nothing else: the
@@ -41466,7 +41467,8 @@ BUILD
             .iter()
             .find(|entry| entry.unit_id == "5")
             .expect("the ordered unit should have a silver forecast");
-        assert_eq!(silver.expense, None, "{silver:?}");
+        assert_eq!(silver.expense, Some(0), "{silver:?}");
+        assert_eq!(silver.doubt, None, "{silver:?}");
         assert_eq!(silver.no_study_fee, None, "{silver:?}");
 
         let effects = item_effects(&report, orders, Some(&trident));
