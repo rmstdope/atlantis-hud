@@ -57,7 +57,7 @@ test("F4 opens the planner, arrows walk it, and Escape closes it", async ({ page
   await expect(dialog).toHaveCount(0);
 });
 
-test("All mages shows the points behind each level, three lists abreast", async ({ page }) => {
+test("All mages shows the points behind each level, two lists abreast", async ({ page }) => {
   await loadReport(page);
 
   await page.keyboard.press("F4");
@@ -69,15 +69,14 @@ test("All mages shows the points behind each level, three lists abreast", async 
   await expect(forc).toContainText("ceiling 5");
   await expect(forc).not.toContainText("at 4");
 
-  // Side by side rather than stacked: the three answer one question between them, so `Can study
-  // now` and `Held back` start no lower down the pane than `Knows` does.
+  // Side by side rather than stacked: the two answer one question between them, so `Can study
+  // now` starts no lower down the pane than `Knows` does. The `Held back` list is gone - a skill
+  // at a prerequisite's ceiling is already the loudest row of `Knows`.
   const knows = await detail.getByText("Knows", { exact: true }).boundingBox();
   const canStudy = await page.getByTestId("study-planner-can-study-heading").boundingBox();
-  const heldBack = await detail.getByText("Held back", { exact: true }).boundingBox();
   expect(knows?.y).toBe(canStudy?.y);
-  expect(knows?.y).toBe(heldBack?.y);
   expect(canStudy?.x ?? 0).toBeGreaterThan(knows?.x ?? 0);
-  expect(heldBack?.x ?? 0).toBeGreaterThan(canStudy?.x ?? 0);
+  await expect(detail).not.toContainText("Held back");
 });
 
 test("the palette offers the planner with its key beside it", async ({ page }) => {
@@ -111,7 +110,10 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await cell.click();
   const popover = page.getByTestId("study-schedule-popover");
   await expect(popover).toBeVisible();
-  await expect(popover).toContainText("Six of Seven — turn 72");
+  // The heading is the mage's name with the turn badged beside it (`style: badge study popup
+  // turn`), so the two are asserted apart rather than as one inline phrase.
+  await expect(popover).toContainText("Six of Seven");
+  await expect(popover.getByText("Turn 72", { exact: true })).toBeVisible();
 
   // Every row says both ends of the month, level and points, so the choice is made against how far
   // he has actually got rather than against a level alone.
@@ -255,12 +257,15 @@ test("the dropdown fills the row the arrows and the pointer land on", async ({ p
     row(at).evaluate((element) => getComputedStyle(element).backgroundColor);
   const CLEAR = "rgba(0, 0, 0, 0)";
 
-  // The menu opens on a marked row, so there is never a moment where nothing is marked.
+  // The menu opens on a marked row, so there is never a moment where nothing is marked. Row 0 is
+  // the already-chosen `— nothing`, which keeps its own brass fill wherever the mark goes
+  // (`style: distinguish selected study popup choice`); what the arrows move is the highlight on
+  // the rows that are not chosen.
   expect(await fill(0)).not.toBe(CLEAR);
 
   await page.keyboard.press("ArrowDown");
-  expect(await fill(0)).toBe(CLEAR);
   expect(await fill(1)).not.toBe(CLEAR);
+  expect(await fill(2)).toBe(CLEAR);
 
   // And the pointer moves that same mark rather than lighting a second one.
   await row(3).hover();
@@ -425,25 +430,29 @@ test("the mage pane follows the pointer and the focus, and keeps what it last sh
   await expect(pane).toContainText("Point at a mage");
 
   await page.getByTestId(`study-schedule-cell-${MAGE}-72`).hover();
-  await expect(pane).toContainText("Six of Seven (881) — turn 72");
+  // The pane's heading is the mage's name with the turn badged beside it, so name and turn are
+  // asserted apart.
+  await expect(pane.getByText("Six of Seven (881)", { exact: true })).toBeVisible();
+  await expect(pane.getByText("Turn 72", { exact: true })).toBeVisible();
   await expect(pane).toContainText("Knows");
   await expect(pane).toContainText("Can study on turn 72 —");
 
   // The name reads him as he stands now, which no column can show: every column is a month that
   // has already happened.
   await page.getByTestId(`study-schedule-name-${MAGE}`).hover();
-  await expect(pane).toContainText("Six of Seven (881) — now");
+  await expect(pane.getByText("Now", { exact: true })).toBeVisible();
   await expect(pane).toContainText("Can study now —");
 
   // Reachable without a mouse: the arrow keys walk the grid and the pane follows the focus.
   await page.getByTestId(`study-schedule-cell-${MAGE}-72`).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(pane).toContainText("turn 73");
+  await expect(pane.getByText("Turn 73", { exact: true })).toBeVisible();
 
   // And it keeps its mage when the pointer leaves the table, so the pane can be read without
   // holding the mouse still on a row.
   await page.getByTestId("study-planner-view-schedule").hover();
-  await expect(pane).toContainText("Six of Seven (881) — turn 73");
+  await expect(pane.getByText("Six of Seven (881)", { exact: true })).toBeVisible();
+  await expect(pane.getByText("Turn 73", { exact: true })).toBeVisible();
 });
 
 test("Escape closes the cell popover and leaves the pane open", async ({ page }) => {
@@ -499,7 +508,8 @@ test("a teach month is planned in the popover, warned about in the strip, and su
   await page.getByTestId("study-schedule-choice-teach").click();
   await expect(popover).toContainText("Six of Seven teaches on turn 72");
   await page.keyboard.press("Escape");
-  await expect(popover).toContainText("Six of Seven — turn 72");
+  await expect(popover).toContainText("Six of Seven");
+  await expect(popover.getByText("Turn 72", { exact: true })).toBeVisible();
 
   // The pupil arrives ticked (ah-af7i), so Set alone is the whole of planning this month.
   await page.getByTestId("study-schedule-choice-teach").click();
@@ -686,4 +696,101 @@ test("a skill somebody would teach shows its month doubled", async ({ page }) =>
   await expect(page.getByTestId("study-schedule-choice-GATE")).toContainText(
     "taught by Six of Seven"
   );
+});
+
+/**
+ * The schedule-wide reshape (ah-j9wn): the header's insert and remove controls change a whole
+ * planned turn for every mage, behind a confirmation dialog. The static tests in `packages/shared`
+ * pin the markup and the words; what only a browser can reach is the focus moving into the dialog
+ * and back, Escape as a no-write path, the six-column horizon, the narrow scroller and the reload.
+ */
+test("inserting and removing a turn reshapes every mage's plan, behind its dialog", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  // One month planned for two mages, so a reshape can be seen moving rows together.
+  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await page.getByTestId("study-schedule-choice-FORC").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await page.getByTestId(`study-schedule-cell-${STUDENT}-72`).click();
+  await page.getByTestId("study-schedule-choice-GATE").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+
+  // A second month for Six of Seven, two turns later, so a shift has somewhere visible to go.
+  await page.getByTestId(`study-schedule-cell-${MAGE}-74`).click();
+  await page.getByTestId("study-schedule-choice-FORC").click();
+  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
+
+  // Cancel writes nothing and returns focus to the control that opened the dialog.
+  await page.getByTestId("study-schedule-remove-73").click();
+  const confirm = page.getByTestId("study-schedule-confirm");
+  await expect(confirm).toBeVisible();
+  await expect(page.getByTestId("study-schedule-confirm-heading")).toContainText(
+    "Remove turn 73 for every mage?"
+  );
+  await expect(page.getByTestId("study-schedule-confirm-action")).toBeFocused();
+  await page.getByTestId("study-schedule-confirm-cancel").click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByTestId("study-schedule-remove-73")).toBeFocused();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+
+  // Escape is the same no-write path, with the same focus return.
+  await page.getByTestId("study-schedule-remove-73").click();
+  await expect(confirm).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByTestId("study-schedule-remove-73")).toBeFocused();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
+
+  // Removing an empty turn shifts every later goal one turn earlier, for every mage.
+  await page.getByTestId("study-schedule-remove-73").click();
+  await page.getByTestId("study-schedule-confirm-action").click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("—");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+
+  // Inserting before a turn shifts every later goal one turn later, and the visible horizon
+  // stays six turns: 72..77 before and after, with nothing at 78. Inserting before 73 moves the
+  // FORC goal the removal above pulled from 74 to 73 back out to 74, leaving 73 empty.
+  await page.getByTestId("study-schedule-insert-73").click();
+  await expect(page.getByTestId("study-schedule-confirm-heading")).toContainText(
+    "Insert an empty turn before 73 for every mage?"
+  );
+  await expect(page.getByTestId("study-schedule-confirm-detail")).toContainText(
+    "Turn 73 and every later planned turn will move one turn later for every mage."
+  );
+  await page.getByTestId("study-schedule-confirm-action").click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("—");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+  await expect(page.getByTestId("study-schedule-turn-77")).toBeVisible();
+  await expect(page.getByTestId("study-schedule-turn-78")).toHaveCount(0);
+
+  // The reshape is one persisted write, so it survives a reload.
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+
+  // At a narrow width the header controls stay reachable through the schedule's own scroller.
+  await page.setViewportSize({ width: 480, height: 800 });
+  const insert = page.getByTestId("study-schedule-insert-77");
+  await insert.scrollIntoViewIfNeeded();
+  await expect(insert).toBeVisible();
+  await insert.click();
+  await expect(page.getByTestId("study-schedule-confirm")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("study-schedule-confirm")).toHaveCount(0);
 });

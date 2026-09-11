@@ -77,3 +77,36 @@ export function plannedGoals(goals: readonly StudyGoal[]): StudyGoal[] {
   }
   return [...byTurn.values()].sort((left, right) => left.turn - right.turn);
 }
+
+/**
+ * A schedule-wide reshape: insert an empty turn before `turn`, or remove `turn` itself.
+ *
+ * Applies to every mage's plan at once - the Schedule's header controls (ah-j9wn) - so the one
+ * helper is pure and the store calls it once per cached row.
+ */
+export type ScheduleChange = { kind: "insert" | "remove"; turn: number };
+
+/**
+ * Reshapes one mage's goals for `change`, returning sanitized ascending goals.
+ *
+ * Insertion keeps every goal before the target and moves the target and every later goal one turn
+ * later - so the plan's last goal lands one turn past the schedule's visible horizon, where it
+ * becomes visible again when the report advances, rather than being dropped. Removal drops the
+ * target and moves every later goal one turn earlier. Built on `plannedGoals`, so legacy goals
+ * without a turn are dropped and a duplicated turn keeps its last entry, exactly as any other
+ * read of a stored row reads it.
+ */
+export function reshapeStudyGoals(
+  goals: readonly StudyGoal[],
+  change: ScheduleChange
+): StudyGoal[] {
+  const planned = plannedGoals(goals);
+  if (change.kind === "insert") {
+    return planned.map((goal) =>
+      goal.turn >= change.turn ? { ...goal, turn: goal.turn + 1 } : goal
+    );
+  }
+  return planned
+    .filter((goal) => goal.turn !== change.turn)
+    .map((goal) => (goal.turn > change.turn ? { ...goal, turn: goal.turn - 1 } : goal));
+}

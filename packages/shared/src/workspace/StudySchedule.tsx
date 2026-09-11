@@ -12,7 +12,7 @@ import {
   teachWarning,
   type CellMenu
 } from "../studyCell";
-import { plannedGoals } from "../studyPlans";
+import { plannedGoals, type ScheduleChange } from "../studyPlans";
 import { cellLabel, type ScheduleRow } from "../studySchedule";
 import { magePane, type MagePane } from "../studyMagePane";
 import { noticeSummary, type PlannerNotice } from "../studyTeaching";
@@ -54,7 +54,8 @@ export function StudySchedule({
   onCommit,
   saveError,
   notices = [],
-  label = (regionId: string) => regionId
+  label = (regionId: string) => regionId,
+  onScheduleChange
 }: {
   rows: readonly ScheduleRow[];
   /** For the faction headings, worded exactly as the All mages view words them. */
@@ -78,6 +79,13 @@ export function StudySchedule({
   notices?: readonly PlannerNotice[];
   /** How a region id reads to a player, for a teach row naming a student's hex. */
   label?: (regionId: string) => string;
+  /**
+   * Applies a schedule-wide reshape once its dialog is confirmed (`ah-j9wn`).
+   *
+   * Called only by the dialog's action button, never by the header control that opens it: no
+   * column moves before the player has confirmed.
+   */
+  onScheduleChange?: (change: ScheduleChange) => void;
 }) {
   // The pane follows the *focused* cell as well as the hovered one, or it would be unreachable
   // without a mouse - and the grid is walked with the arrow keys, which is what moves focus. A
@@ -87,6 +95,10 @@ export function StudySchedule({
   // gave for the picked mage and ah-lyg6.2.3 for the view switch. **Above every return**, like
   // every other hook in this body; see the comment below.
   const [stripOpen, setStripOpen] = useState(false);
+  // The reshape waiting on its dialog, or null (ah-j9wn). `opener` is the header control that
+  // opened the dialog, kept so focus can go back to it on every close path. The dialog's action
+  // is the only thing that calls `onScheduleChange` - no column moves until it is pressed.
+  const [pending, setPending] = useState<{ change: ScheduleChange; opener: HTMLElement | null } | null>(null);
 
   // `scheduleTurns(null)` is empty, so this component is rendered both before and after a report
   // is loaded, on the same mounted instance. **Every hook in this body stays above every return**:
@@ -211,10 +223,22 @@ export function StudySchedule({
             activeTurnIndex={at?.turnIndex ?? null}
             activeRowKey={at?.rowKey ?? null}
             notices={notices}
+            onScheduleChange={(change, opener) => setPending({ change, opener })}
           />
         </div>
         <MagePaneView pane={pane} />
       </div>
+      {pending === null ? null : (
+        <ScheduleConfirmLayer
+          change={pending.change}
+          opener={pending.opener}
+          onCancel={() => setPending(null)}
+          onConfirm={() => {
+            setPending(null);
+            onScheduleChange?.(pending.change);
+          }}
+        />
+      )}
       {menu === null || open === null || editing === null ? null : (
         <CellPopoverLayer
           menu={menu}
@@ -397,7 +421,8 @@ export function ScheduleGrid({
   onAt,
   activeTurnIndex = null,
   activeRowKey = null,
-  notices
+  notices,
+  onScheduleChange
 }: {
   rows: readonly ScheduleRow[];
   groups: readonly PlannerGroup[];
@@ -416,6 +441,12 @@ export function ScheduleGrid({
   activeRowKey?: string | null;
   /** Everything the planner has to say, so a cell can be tinted and titled by what it raised. */
   notices?: readonly PlannerNotice[];
+  /**
+   * Opens the reshape dialog for a schedule-wide change (ah-j9wn). `opener` is the header control
+   * that was pressed, so the dialog can give focus back to it; it is not the place the change is
+   * applied - the dialog's action does that.
+   */
+  onScheduleChange?: (change: ScheduleChange, opener: HTMLElement | null) => void;
 }) {
   const byKey = new Map(rows.map((row) => [row.key, row]));
   // Arrow keys walk the grid cell by cell; `Enter` is the button's own. Delegated from the table
@@ -465,7 +496,27 @@ export function ScheduleGrid({
                   : "text-brass"
               }`}
             >
-              {index === 0 ? `${turn} · next` : `${turn}`}
+              <span className="flex items-center gap-1 whitespace-nowrap">
+                <button
+                  type="button"
+                  data-testid={`study-schedule-insert-${turn}`}
+                  aria-label={`Insert an empty turn before ${turn} for every mage`}
+                  onClick={(event) => onScheduleChange?.({ kind: "insert", turn }, event.currentTarget)}
+                  className="rounded border border-edge px-1 leading-tight text-brass hover:bg-brass/10"
+                >
+                  +
+                </button>
+                <span className="flex-1">{index === 0 ? `${turn} · next` : `${turn}`}</span>
+                <button
+                  type="button"
+                  data-testid={`study-schedule-remove-${turn}`}
+                  aria-label={`Remove turn ${turn} for every mage`}
+                  onClick={(event) => onScheduleChange?.({ kind: "remove", turn }, event.currentTarget)}
+                  className="rounded border border-edge px-1 leading-tight text-brass hover:bg-brass/10"
+                >
+                  −
+                </button>
+              </span>
             </th>
           ))}
         </tr>
@@ -1078,4 +1129,128 @@ function rowsOf(
           onChoose({ kind: "study", skill: choice.skill })
     }))
   ];
+}
+
+/**
+ * The words the reshape dialog says for a change, decided once rather than inline in the markup,
+ * so the smoke suite and the static tests read the same sentence.
+ */
+export function scheduleConfirmCopy(change: ScheduleChange): { heading: string; detail: string; action: string } {
+  if (change.kind === "insert") {
+    return {
+      heading: `Insert an empty turn before ${change.turn} for every mage?`,
+      detail: `Turn ${change.turn} and every later planned turn will move one turn later for every mage. The final visible turn will be removed to keep the schedule at six turns. This cannot be undone here.`,
+      action: "Insert turn"
+    };
+  }
+  return {
+    heading: `Remove turn ${change.turn} for every mage?`,
+    detail: `Turn ${change.turn + 1} and every later planned turn will move one turn earlier for every mage. This cannot be undone here.`,
+    action: "Remove turn"
+  };
+}
+
+/**
+ * The reshape confirmation's markup, hook-free so `renderToStaticMarkup` can walk it.
+ *
+ * The schedule stays visible behind it; this is the planner's nested dialog, not a second
+ * planner-sized surface.
+ */
+export function ScheduleConfirmDialog({
+  change,
+  actionRef,
+  onCancel,
+  onConfirm
+}: {
+  change: ScheduleChange;
+  /** Ref to the action button, for the layer's opening focus (`ah-j9wn` review). */
+  actionRef?: React.RefObject<HTMLButtonElement | null>;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const copy = scheduleConfirmCopy(change);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="study-schedule-confirm-heading"
+      data-testid="study-schedule-confirm"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+    >
+      <div className="w-full max-w-sm rounded border border-brass/60 bg-panel p-3 shadow-lg">
+        <h2
+          id="study-schedule-confirm-heading"
+          data-testid="study-schedule-confirm-heading"
+          className="m-0 text-brass"
+        >
+          {copy.heading}
+        </h2>
+        <p data-testid="study-schedule-confirm-detail" className="mt-2 text-ink-dim">
+          {copy.detail}
+        </p>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            data-testid="study-schedule-confirm-cancel"
+            onClick={onCancel}
+            className="rounded border border-edge px-2 py-1 text-ink hover:bg-panel-raised"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            ref={actionRef}
+            data-testid="study-schedule-confirm-action"
+            onClick={onConfirm}
+            className="rounded border border-brass/60 bg-brass/15 px-2 py-1 text-brass hover:bg-brass/25"
+          >
+            {copy.action}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The dialog's own dismiss layer and its focus, kept apart from `ScheduleConfirmDialog` so that
+ * component stays hook-free (`ah-nass`).
+ *
+ * A layer of its own, so `Escape` closes only this dialog and leaves the study planner open -
+ * `useEscapeToDismiss` gives the topmost surface the key, which is exactly what is wanted here.
+ * Opening focus lands on the action button, the one that confirms; every close path returns focus
+ * to the header control that opened the dialog, the planner's own convention for its nested
+ * surfaces.
+ */
+function ScheduleConfirmLayer({
+  change,
+  opener,
+  onCancel,
+  onConfirm
+}: {
+  change: ScheduleChange;
+  opener: HTMLElement | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const back = () => {
+    opener?.focus();
+    onCancel();
+  };
+  useEscapeToDismiss(back);
+  const actionRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    actionRef.current?.focus();
+  }, []);
+  return (
+    <ScheduleConfirmDialog
+      change={change}
+      actionRef={actionRef}
+      onCancel={back}
+      onConfirm={() => {
+        opener?.focus();
+        onConfirm();
+      }}
+    />
+  );
 }

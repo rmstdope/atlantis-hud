@@ -19,7 +19,7 @@ import { studyOrders } from "../studyOrders";
 import { studyWritePlan } from "../studyOrdersWrite";
 import type { StandingAfterOrders } from "../studyStanding";
 import { mageShelters, type ShelterSeats } from "../studyShelter";
-import { planFor, plannedGoals } from "../studyPlans";
+import { planFor, plannedGoals, type ScheduleChange } from "../studyPlans";
 import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
 import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
 import { StudySchedule } from "./StudySchedule";
@@ -68,6 +68,7 @@ export function StudyPlannerDialog({
   regionBanner,
   onWriteOrdersDocument,
   onSaveNote,
+  onScheduleChange,
   onDismiss
 }: {
   groups: readonly PlannerGroup[];
@@ -114,6 +115,8 @@ export function StudyPlannerDialog({
     unitId: string,
     edit: (current: readonly StudyGoal[]) => StudyGoal[]
   ) => void;
+  /** Reshapes the schedule for every mage once its dialog is confirmed (`ah-j9wn`). */
+  onScheduleChange: (change: ScheduleChange) => void;
   onSaveNote: (factionId: string, unitId: string, comment: string) => void;
   onDismiss: () => void;
 }) {
@@ -416,6 +419,7 @@ export function StudyPlannerDialog({
             saveError={saveError}
             notices={notices}
             label={label}
+            onScheduleChange={onScheduleChange}
           />
         ) : picked === null ? (
           <div data-testid="study-planner-empty" className="min-h-0 overflow-y-auto p-3">

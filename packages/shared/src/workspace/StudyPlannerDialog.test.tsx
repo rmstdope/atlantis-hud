@@ -289,6 +289,7 @@ describe("the Orders tab", () => {
         onWriteOrdersDocument={() => {}}
         onSavePlan={() => {}}
         onSaveNote={() => {}}
+        onScheduleChange={() => {}}
         onDismiss={() => {}}
       />
     );
