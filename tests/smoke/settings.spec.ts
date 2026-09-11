@@ -231,8 +231,8 @@ test("the per-game tab shows the open game's ruleset", async ({ page }) => {
 
   const ruleset = page.getByTestId("settings-game-ruleset");
   await expect(ruleset).toBeVisible();
-  await expect(ruleset).toBeEnabled();
-  await expect(ruleset).toHaveValue("neworigins");
+  await expect(ruleset).toHaveText("New Origins");
+  await expect(page.getByText("The ruleset is chosen when this game is created.")).toBeVisible();
 });
 
 /** The turn-71 fixture; Inholm at (7,53) holds 92 units, so every cap the slider offers bites. */
