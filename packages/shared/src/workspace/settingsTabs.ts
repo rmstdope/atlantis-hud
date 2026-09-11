@@ -62,6 +62,7 @@ export type GameSettingsPresentation =
       kind: "ruleset";
       gameName: string;
       rulesetId: string;
+      rulesetLabel: string;
       /** The map this game is played on, or `null` when neither it nor its ruleset names one. */
       map: MapShape | null;
       /**
@@ -88,6 +89,9 @@ export function gameSettingsPresentation(game: WorkspaceGame | null): GameSettin
     kind: "ruleset",
     gameName: game.gameName,
     rulesetId: game.rulesetId,
+    rulesetLabel:
+      RULESETS.find((ruleset) => ruleset.id === game.rulesetId)?.label ??
+      `${game.rulesetId} (not shipped)`,
     map: shape.map,
     mapStated: shape.stated
   };

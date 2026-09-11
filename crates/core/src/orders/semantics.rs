@@ -24,7 +24,8 @@ use serde::{Deserialize, Serialize};
 use super::effects::{self, ItemChangeCause, ItemChangeParty};
 use super::forms::{Amount, Party, Selector};
 use super::intents::{
-    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
+    read_formed_with_ruleset, read_intents_with_ruleset, spends_the_month, FormedBlock, Intent,
+    PlacedIntent, UnitIntents,
 };
 use super::phases::{self, StatePhase};
 use super::standing::{self, standing_after, Boarding};
@@ -425,7 +426,16 @@ fn food_uncertain_after_gifts(ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) 
 /// fallback map below always has the parent by the time a nested block asks for it - mirroring
 /// `effects::Working::open_form`, which resolves a nested parent from `self.units` for the same
 /// reason. Without this, a nested `FORM`'s unit is silently dropped.
+#[cfg(test)]
 fn formed_units(report: &ParsedReport, source: &str) -> Vec<Formed> {
+    formed_units_with_ruleset(report, source, None)
+}
+
+fn formed_units_with_ruleset(
+    report: &ParsedReport,
+    source: &str,
+    ruleset: Option<&Ruleset>,
+) -> Vec<Formed> {
     let unit_regions = where_the_report_shows_each_unit(report);
     let unit_by_id = units_by_id(report);
     // Report-wide, so keyed on [`UnitKey`]: `rules/form` scopes an alias to its region, so two
@@ -434,7 +444,7 @@ fn formed_units(report: &ParsedReport, source: &str) -> Vec<Formed> {
     // already puts the right unit in reach - but a map spanning hexes keyed on a bare number is
     // one edit away from being wrong, which is what this bead is about.
     let mut minted: BTreeMap<UnitKey, ReportUnit> = BTreeMap::new();
-    read_formed(source, &unit_regions)
+    read_formed_with_ruleset(source, &unit_regions, ruleset)
         .into_iter()
         .filter_map(|block| {
             // The first lookup stays on a bare number: it resolves a unit the report physically
@@ -496,7 +506,7 @@ pub fn review_turn(
     ruleset: Option<&Ruleset>,
     options: CheckOptions,
 ) -> TurnReview {
-    let ordered = OrderedUnits::read(source);
+    let ordered = OrderedUnits::read_with_ruleset(source, ruleset);
     // `validate_turn` runs this on every keystroke once typing settles, so the lookup is built only
     // when the check that reads it is actually enabled - skipping a walk of every region and unit
     // in the report (the map insert per unit below, not a label - that is formatted only where a
@@ -512,7 +522,7 @@ pub fn review_turn(
     // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
     // `formed_units` is the one reader `item_effects` uses too - see its own doc comment for the
     // nested-FORM resolution it carries.
-    let formed: Vec<Formed> = formed_units(report, source);
+    let formed: Vec<Formed> = formed_units_with_ruleset(report, source, ruleset);
     // Same reasoning as `located` above: `review_turn` runs on every keystroke once typing
     // settles, so the index a sailing passenger's produce check walks is built only when that
     // check is actually enabled (`ah-8myf`).
@@ -2122,7 +2132,12 @@ fn flags_after_orders(reported: &[String], changes: &[FlagChange]) -> Vec<String
 }
 
 impl OrderedUnits {
+    #[cfg(test)]
     fn read(source: &str) -> Self {
+        Self::read_with_ruleset(source, None)
+    }
+
+    fn read_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Self {
         let mut by_unit: BTreeMap<String, UnitOrders> = BTreeMap::new();
         for UnitIntents {
             unit_id,
@@ -2130,7 +2145,7 @@ impl OrderedUnits {
             intents,
             unread,
             flag_changes,
-        } in read_intents(source)
+        } in read_intents_with_ruleset(source, ruleset)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
                 block_line: line,
@@ -2529,10 +2544,10 @@ pub(super) fn transfer_projection_for_tests(
     source: &str,
     ruleset: Option<&Ruleset>,
 ) -> Vec<TransferProjection> {
-    let ordered = OrderedUnits::read(source);
+    let ordered = OrderedUnits::read_with_ruleset(source, ruleset);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
-    let formed: Vec<Formed> = formed_units(report, source);
+    let formed: Vec<Formed> = formed_units_with_ruleset(report, source, ruleset);
 
     let mut projections = Vec::new();
     for region in &report.regions {
@@ -5026,7 +5041,7 @@ pub(crate) fn item_effects(
     orders_document: &str,
     ruleset: Option<&Ruleset>,
 ) -> BTreeMap<UnitKey, UnitItemEffects> {
-    let ordered = OrderedUnits::read(orders_document);
+    let ordered = OrderedUnits::read_with_ruleset(orders_document, ruleset);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
     let mut result: BTreeMap<UnitKey, UnitItemEffects> = BTreeMap::new();
@@ -5039,7 +5054,7 @@ pub(crate) fn item_effects(
     // exactly as `review_turn` does - one reader for both entry points, so they cannot
     // diverge. `item_effects` only ever reads `ledger.movements` and `ledger.uncounted`,
     // neither of which the projection touches, so this changes no output here.
-    let formed = formed_units(report, orders_document);
+    let formed = formed_units_with_ruleset(report, orders_document, ruleset);
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
@@ -13534,6 +13549,34 @@ mod tests {
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
+    }
+
+    #[test]
+    fn trident_month_segments_ignore_form_and_turn_orders() {
+        let ruleset = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset should be usable");
+        let unit = read_intents_with_ruleset(
+            concat!(
+                "unit 5\n",
+                "CREATE VILLAGE \"New Hope\"\n",
+                "FORM 6\n",
+                "BUY 1 IRON\n",
+                "END\n",
+                "EXPLORE RMAP\n",
+                "TURN\n",
+                "CREATE VILLAGE \"Next Month\"\n",
+                "ENDTURN\n",
+            ),
+            Some(&ruleset),
+        )
+        .pop()
+        .expect("the document should contain one unit");
+
+        assert_eq!(
+            month_segments(&unit.intents, None),
+            vec![vec![0], vec![2]],
+            "CREATE and EXPLORE compete for the month; FORM and TURN do not"
+        );
     }
 
     #[test]

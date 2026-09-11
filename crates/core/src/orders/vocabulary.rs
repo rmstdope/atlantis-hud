@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use super::grammar::{self, Arg, GRAMMAR};
+use super::grammar::{self, Arg};
 use crate::movement::rules::Ruleset;
 
 /// Every word the rules know, uppercase, deduplicated and sorted.
@@ -26,7 +26,7 @@ use crate::movement::rules::Ruleset;
 pub fn order_vocabulary(ruleset: Option<&Ruleset>) -> Vec<String> {
     let mut words: BTreeSet<String> = BTreeSet::new();
 
-    for order in GRAMMAR {
+    for order in grammar::selected_orders(ruleset) {
         words.insert(order.name.to_ascii_uppercase());
         for form in order.forms {
             for argument in *form {

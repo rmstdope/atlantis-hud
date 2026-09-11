@@ -3,11 +3,12 @@ import type { BuildingEntry } from "./BuildingEntry";
 import type { Gaps } from "./Gaps";
 import type { ItemEntry } from "./ItemEntry";
 import type { MovementRules } from "./MovementRules";
+import type { OrderLanguage } from "./OrderLanguage";
 import type { RiskThresholds } from "./RiskThresholds";
 import type { RulesetSource } from "./RulesetSource";
 import type { SkillEntry } from "./SkillEntry";
 
-export type Ruleset = { source: RulesetSource, movement: MovementRules, risk: RiskThresholds, gaps: Gaps, items: { [key in string]: ItemEntry }, 
+export type Ruleset = { source: RulesetSource, orderLanguage: OrderLanguage, movement: MovementRules, risk: RiskThresholds, gaps: Gaps, items: { [key in string]: ItemEntry }, 
 /**
  * Empty for a ruleset generated before study costs were scraped. A missing catalogue means
  * nothing can be priced, not that everything is free.

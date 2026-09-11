@@ -114,7 +114,6 @@ import {
 } from "../orderEditor";
 import { openNewestGame, rulesetUrlFor } from "../gameSession";
 import {
-  changeRuleset as changeRulesetAction,
   createGame as createGameAction,
   deleteGame as deleteGameAction,
   resetGame as resetGameAction,
@@ -1005,7 +1004,6 @@ export function AppShell({
   }, [movementPlanner, clearPlan]);
 
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
-  const updateGameRulesetInStore = useWorkspaceStore((state) => state.updateGameRuleset);
   const updateGameNameInStore = useWorkspaceStore((state) => state.updateGameName);
   const updateGameMapInStore = useWorkspaceStore((state) => state.updateGameMap);
 
@@ -2409,8 +2407,9 @@ export function AppShell({
 
   useEffect(() => {
     let cancelled = false;
+    setOrderCommands([]);
     void Promise.resolve()
-      .then(() => client.orderCommands())
+      .then(() => client.orderCommands(rulesetText))
       .then((commands) => {
         if (!cancelled) {
           setOrderCommands(commands);
@@ -2422,7 +2421,7 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [client, rulesetText]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2865,34 +2864,6 @@ export function AppShell({
       });
     },
     [client, game, runGameAction, updateGameMapInStore]
-  );
-
-  /**
-   * Moves the open game to another ruleset, and re-reads the world under it.
-   *
-   * Handing `setGame` a fresh object is the second half of the change: the ruleset fetch effect is
-   * keyed on `game`, so the new identity makes it fetch the new ruleset, and the turn-restore
-   * effect then re-parses the stored turn under it. Without that, every unit count would silently
-   * keep the old ruleset's reading until the next manual reload.
-   */
-  const changeRuleset = useCallback(
-    (rulesetId: string) => {
-      if (!game) {
-        return;
-      }
-      return runGameAction(async () => {
-        // The re-restore below re-reads orders from the database, so the draft must be there first.
-        await flush();
-        const result = await changeRulesetAction(client, game, rulesetId);
-        if (!result) {
-          return;
-        }
-        setGame({ ...game, manifest: result.manifest });
-        updateGameRulesetInStore(rulesetId);
-        setGames(result.games);
-      });
-    },
-    [client, game, flush, runGameAction, updateGameRulesetInStore]
   );
 
   /**
@@ -4728,7 +4699,6 @@ export function AppShell({
       game={game ? workspaceGameOf(game) : null}
       busy={busy}
       error={gameError}
-      onChangeRuleset={(rulesetId) => void changeRuleset(rulesetId)}
       onChangeMap={(map) => void changeMap(map)}
       onDismiss={() => setSettingsOpen(false)}
     />

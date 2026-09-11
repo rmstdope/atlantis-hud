@@ -710,8 +710,16 @@ pub fn validate_orders_state(
 /// Every order name, so the shell need not keep a copy of its own. Its wider twin below,
 /// `order_vocabulary_state`, answers every word the rules know rather than only the commands.
 #[wasm_bindgen]
-pub fn order_commands_state() -> Result<JsValue, JsValue> {
-    to_js(&atlantis_hud_core::order_commands())
+pub fn order_commands_state(ruleset_json: Option<String>) -> Result<JsValue, JsValue> {
+    let ruleset = atlantis_hud_core::cache::with_global(|cache| {
+        ruleset_json
+            .as_deref()
+            .and_then(|json| cache.ruleset(json).ok())
+    });
+
+    to_js(&atlantis_hud_core::order_commands_with_ruleset(
+        ruleset.as_deref(),
+    ))
 }
 
 /// Every word the rules know, for the editor that has to spot a keyword as it is typed.

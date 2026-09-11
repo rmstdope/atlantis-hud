@@ -15,6 +15,7 @@ use super::forms::{self, Amount, Party, Selector};
 use super::lexer::{Token, TokenKind};
 use super::walk::{self, Depth, Event};
 use crate::movement::orders::MoveStep;
+use crate::movement::rules::Ruleset;
 use crate::report::flags::FlagChange;
 use crate::report::model::ReportRegion;
 
@@ -195,8 +196,8 @@ impl UnitIntents {
 /// `""` for a keyword `GRAMMAR` does not hold. Unreachable for anything that yields an intent -
 /// the parser checks argument shape against the same table - so the empty string is a floor rather
 /// than a case, and a reader skips it instead of printing it.
-fn canonical_keyword(command: &str) -> &'static str {
-    super::grammar::find_order(command).map_or("", |order| order.name)
+fn canonical_keyword(command: &str, ruleset: Option<&Ruleset>) -> &'static str {
+    super::grammar::find_order_with_ruleset(command, ruleset).map_or("", |order| order.name)
 }
 
 /// Reads a whole orders document into one entry per unit block.
@@ -210,6 +211,10 @@ fn canonical_keyword(command: &str) -> &'static str {
 /// work it is not doing and move it out of a hex it is still standing in.
 #[must_use]
 pub fn read_intents(source: &str) -> Vec<UnitIntents> {
+    read_intents_with_ruleset(source, None)
+}
+
+pub fn read_intents_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents> {
     let mut units: Vec<UnitIntents> = Vec::new();
 
     walk::walk(source, |event| match event {
@@ -238,15 +243,16 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                 {
                     unit.flag_changes.push(change);
                 }
-                if let Some(intent) = read_order(line.command, line.arguments) {
+                if let Some(intent) = read_order_with_ruleset(line.command, line.arguments, ruleset)
+                {
                     unit.intents.push(PlacedIntent {
                         intent,
                         line: line.number,
                         column_start: line.command.column_start,
                         column_end: line.command.column_end,
-                        keyword: canonical_keyword(&line.command.text),
+                        keyword: canonical_keyword(&line.command.text, ruleset),
                     });
-                } else if !is_free_order(line.command) {
+                } else if !is_free_order(line.command, ruleset) {
                     // A recognised free order is dropped exactly as an unread one used to be: it
                     // yields no intent because no check reads it, which is not the same as not
                     // being understood.
@@ -283,7 +289,7 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                     line: line.number,
                     column_start: line.command.column_start,
                     column_end: line.command.column_end,
-                    keyword: canonical_keyword(&line.command.text),
+                    keyword: canonical_keyword(&line.command.text, ruleset),
                 });
             }
         }
@@ -333,8 +339,17 @@ pub struct FormedBlock {
 /// report itself.
 #[must_use]
 pub fn read_formed(source: &str, regions: &BTreeMap<&str, &ReportRegion>) -> Vec<FormedBlock> {
+    read_formed_with_ruleset(source, regions, None)
+}
+
+pub fn read_formed_with_ruleset(
+    source: &str,
+    regions: &BTreeMap<&str, &ReportRegion>,
+    ruleset: Option<&Ruleset>,
+) -> Vec<FormedBlock> {
     let mut reader = FormReader {
         regions,
+        ruleset,
         current: None,
         current_region: None,
         forms: super::blocks::FormStack::new(),
@@ -345,8 +360,9 @@ pub fn read_formed(source: &str, regions: &BTreeMap<&str, &ReportRegion>) -> Vec
     reader.results
 }
 
-struct FormReader<'a> {
+struct FormReader<'a, 'r> {
     regions: &'a BTreeMap<&'a str, &'a ReportRegion>,
+    ruleset: Option<&'r Ruleset>,
     /// The physically reported unit whose block we are in.
     current: Option<String>,
     /// That unit's hex, unchanged by `FORM` nesting: forming a unit never moves anybody to a
@@ -360,7 +376,7 @@ struct FormReader<'a> {
     results: Vec<FormedBlock>,
 }
 
-impl FormReader<'_> {
+impl<'a, 'r> FormReader<'a, 'r> {
     fn visit(&mut self, event: Event<'_>) {
         match event {
             Event::Directive(_) => {
@@ -472,15 +488,15 @@ impl FormReader<'_> {
         if let Some(change) = super::effects::read_flag_order(command, arguments) {
             block.flag_changes.push(change);
         }
-        if let Some(intent) = read_order(command, arguments) {
+        if let Some(intent) = read_order_with_ruleset(command, arguments, self.ruleset) {
             block.intents.push(PlacedIntent {
                 intent,
                 line: line_number,
                 column_start: command.column_start,
                 column_end: command.column_end,
-                keyword: canonical_keyword(&command.text),
+                keyword: canonical_keyword(&command.text, self.ruleset),
             });
-        } else if !is_free_order(command) {
+        } else if !is_free_order(command, self.ruleset) {
             block.unread.push(line_number);
         }
     }
@@ -506,6 +522,7 @@ const FREE_ORDERS: &[&str] = &[
     "AVOID",
     "BEHIND",
     "BUY",
+    "CAPITAL",
     "CAST",
     "CLAIM",
     "COMBAT",
@@ -533,6 +550,7 @@ const FREE_ORDERS: &[&str] = &[
     "PASSWORD",
     "PREPARE",
     "PROMOTE",
+    "QUEST",
     "QUIT",
     "RESTART",
     "REVEAL",
@@ -551,10 +569,11 @@ const FREE_ORDERS: &[&str] = &[
 /// Whether the rules place this keyword outside the month, so that a line yielding no intent is
 /// still a line we understand. Keyed on the keyword rather than on "no intent": ah-dwk6 failed
 /// verification when every unread line silenced the check, and most orders yield no intent.
-fn is_free_order(command: &Token) -> bool {
+fn is_free_order(command: &Token, ruleset: Option<&Ruleset>) -> bool {
     FREE_ORDERS
         .iter()
         .any(|free| command.text.eq_ignore_ascii_case(free))
+        && super::grammar::find_order_with_ruleset(&command.text, ruleset).is_some()
 }
 
 /// One order line, as an intent - or nothing, for an order no check reads and for one whose shape
@@ -571,24 +590,33 @@ fn is_free_order(command: &Token) -> bool {
 /// when their own arguments do not parse (documented at each arm below), and gating them on the
 /// grammar's success would turn that deliberate fallback into no intent at all.
 pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
+    read_order_with_ruleset(command, arguments, None)
+}
+
+pub fn read_order_with_ruleset(
+    command: &Token,
+    arguments: &[Token],
+    ruleset: Option<&Ruleset>,
+) -> Option<Intent> {
     let name = command.text.to_ascii_uppercase();
+    super::grammar::find_order_with_ruleset(&command.text, ruleset)?;
 
     match name.as_str() {
         "GIVE" => {
-            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             let (to, rest) = forms::read_party(arguments)?;
             let (what, amount) = forms::read_transfer(rest)?;
             Some(Intent::Give { to, what, amount })
         }
         "TAKE" => {
-            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             let rest = arguments.split_first().filter(|(kw, _)| kw.is("FROM"))?.1;
             let (from, rest) = forms::read_party(rest)?;
             let (what, amount) = forms::read_transfer(rest)?;
             Some(Intent::Take { from, what, amount })
         }
         "BUY" | "SELL" => {
-            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             let (amount, rest) = forms::read_amount(arguments)?;
             let item = rest.first().filter(|_| rest.len() == 1)?.text.clone();
             if name == "BUY" {
@@ -600,7 +628,7 @@ pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         // "STUDY [skill]" and "STUDY [skill] [level]". The level says how far to go, not what a
         // month costs, so it changes nothing any check reads.
         "STUDY" => {
-            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             let skill = arguments.first()?;
             let trailing = arguments.get(1);
             if arguments.len() > 2 || trailing.is_some_and(|token| token.kind != TokenKind::Number)
@@ -613,7 +641,7 @@ pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         }
         "TEACH" => {
             let mut students = Vec::new();
-            let mut rest = super::grammar::consumed_arguments(command, arguments)?;
+            let mut rest = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             while !rest.is_empty() {
                 let (student, remaining) = forms::read_party(rest)?;
                 students.push(student);
@@ -625,19 +653,19 @@ pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             Some(Intent::Teach { students })
         }
         "GUARD" => {
-            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             Some(Intent::Guard(forms::read_flag(arguments)?))
         }
         "AVOID" => {
-            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             Some(Intent::Avoid(forms::read_flag(arguments)?))
         }
         "SHARE" => {
-            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             Some(Intent::Share(forms::read_flag(arguments)?))
         }
         "CLAIM" => {
-            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             Some(Intent::Claim(forms::read_only_number(arguments)?))
         }
         // These four take no arguments at all, so trailing text is never anything but the
@@ -648,7 +676,7 @@ pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         "ENTERTAIN" => Some(Intent::Entertain),
         // The grammar gives WITHDRAW no `ALL` form, unlike BUY and SELL: `[number] [item]` or a
         // bare `[item]`, which withdraws one.
-        "WITHDRAW" => match super::grammar::consumed_arguments(command, arguments)? {
+        "WITHDRAW" => match super::grammar::consumed_arguments(command, arguments, ruleset)? {
             [count, item] if count.kind == TokenKind::Number => Some(Intent::Withdraw {
                 count: count.text.parse().ok()?,
                 item: item.text.clone(),
@@ -684,6 +712,8 @@ pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             }),
             _ => Some(Intent::MonthLong("PRODUCE")),
         },
+        "CREATE" => Some(Intent::MonthLong("CREATE")),
+        "EXPLORE" => Some(Intent::MonthLong("EXPLORE")),
         // The rules' enumerated list omits IDLE, but describes it as "do nothing for the entire
         // month" - so it spends the month, and a unit told to be idle is not a forgotten one.
         "IDLE" => Some(Intent::MonthLong("IDLE")),
@@ -696,7 +726,7 @@ pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         // strictly - a token the grammar's own consumed prefix does not account for makes the
         // order unreadable, the same as everywhere else in this module, rather than being
         // silently dropped; trailing text beyond that prefix is the engine-ignored kind.
-        "BUILD" => match super::grammar::consumed_arguments(command, arguments)? {
+        "BUILD" => match super::grammar::consumed_arguments(command, arguments, ruleset)? {
             [] => Some(Intent::Build {
                 founding: None,
                 helping: None,
@@ -738,7 +768,7 @@ pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             steps: forms::read_move_line(command, arguments)?,
         }),
         "ENTER" => {
-            let arguments = super::grammar::consumed_arguments(command, arguments)?;
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             Some(Intent::Enter {
                 structure: forms::read_only_number(arguments)?.to_string(),
             })
@@ -851,6 +881,13 @@ mod tests {
             .collect()
     }
 
+    fn only_unit_with_ruleset(source: &str, ruleset_json: &str) -> UnitIntents {
+        let ruleset = Ruleset::from_json(ruleset_json).expect("fixture ruleset should parse");
+        let mut units = read_intents_with_ruleset(source, Some(&ruleset));
+        assert_eq!(units.len(), 1, "expected one unit block: {units:?}");
+        units.remove(0)
+    }
+
     // --- the document's own shape ---------------------------------------------------------
 
     /// `MOVE` and `ADVANCE` share one `Intent::Move`, so a message that quotes the order the
@@ -903,6 +940,69 @@ mod tests {
             intents("unit 5\nANNIHILATE 1\n"),
             vec![Intent::MonthLong("ANNIHILATE")]
         );
+    }
+
+    #[test]
+    fn new_age_orders_are_classified_only_when_the_selected_ruleset_has_them() {
+        let arcanum = only_unit_with_ruleset(
+            "unit 5\nCAPITAL\nEXPLORE RMAP\nQUEST\nCREATE VILLAGE \"New Hope\"\n",
+            atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+        );
+        assert_eq!(
+            arcanum
+                .intents
+                .iter()
+                .map(|placed| placed.keyword)
+                .collect::<Vec<_>>(),
+            ["EXPLORE"]
+        );
+        assert!(arcanum
+            .intents
+            .iter()
+            .all(|placed| matches!(placed.intent, Intent::MonthLong(_))));
+        assert_eq!(arcanum.unread, vec![5]);
+
+        let trident = only_unit_with_ruleset(
+            "unit 5\nCAPITAL\nEXPLORE RMAP\nQUEST\nCREATE VILLAGE \"New Hope\"\n",
+            atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        );
+        assert_eq!(trident.unread, Vec::<usize>::new());
+        assert_eq!(
+            trident
+                .intents
+                .iter()
+                .map(|placed| placed.keyword)
+                .collect::<Vec<_>>(),
+            ["EXPLORE", "CREATE"]
+        );
+    }
+
+    #[test]
+    fn create_and_explore_spend_the_month_but_form_and_turn_do_not() {
+        let unit = only_unit_with_ruleset(
+            concat!(
+                "unit 5\n",
+                "CREATE VILLAGE \"New Hope\"\n",
+                "FORM 6\n",
+                "BUY 1 IRON\n",
+                "END\n",
+                "EXPLORE RMAP\n",
+                "TURN\n",
+                "CREATE VILLAGE \"Next Month\"\n",
+                "ENDTURN\n",
+            ),
+            atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        );
+        assert_eq!(
+            unit.intents
+                .iter()
+                .map(|placed| placed.keyword)
+                .collect::<Vec<_>>(),
+            ["CREATE", "FORM", "EXPLORE"]
+        );
+        assert!(spends_the_month(&unit.intents[0].intent));
+        assert!(!spends_the_month(&unit.intents[1].intent));
+        assert!(spends_the_month(&unit.intents[2].intent));
     }
 
     #[test]

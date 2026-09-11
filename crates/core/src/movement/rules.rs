@@ -8,6 +8,23 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+/// The order language served by a ruleset.
+///
+/// The value is explicit because a ruleset's source URL is provenance, not a stable language
+/// selection API. The three profiles are the worlds this build ships.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/OrderLanguage.ts")
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum OrderLanguage {
+    NewOrigins,
+    NewAgeArcanum,
+    NewAgeTrident,
+}
+
 /// How a unit is getting about, in the order the game prefers.
 ///
 /// There is deliberately no `Swim`. The rules page names exactly three modes of travel on foot or
@@ -730,6 +747,7 @@ pub struct BuildingEntry {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Ruleset {
     pub source: RulesetSource,
+    pub order_language: OrderLanguage,
     pub movement: MovementRules,
     pub risk: RiskThresholds,
     pub gaps: Gaps,

@@ -496,7 +496,7 @@ describe("web core adapter", () => {
       rawReport: "the report",
       disabledCodes: ["hex-unguarded"]
     });
-    expect(await adapter.orderCommands()).toEqual(["GIVE", "MOVE", "WORK"]);
+    expect(await adapter.orderCommands(null)).toEqual(["GIVE", "MOVE", "WORK"]);
   });
 
   it("hands the ruleset to the wasm vocabulary call", async () => {

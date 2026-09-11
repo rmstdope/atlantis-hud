@@ -331,14 +331,14 @@ describe("merging an allied report", () => {
     expect(result.diagnostics[1].unitId).toBe("18642");
   });
 
-  it("asks tauri for the order vocabulary rather than keeping one of its own", async () => {
+  it("asks tauri for the order commands rather than keeping one of its own", async () => {
     const calls: string[] = [];
     const invoke: TauriInvoke = <T,>(command: string) => {
       calls.push(command);
       return Promise.resolve(["GIVE", "MOVE", "WORK"] as T);
     };
 
-    await expect(createCoreClient(createTauriAdapter(invoke)).orderCommands()).resolves.toEqual([
+    await expect(createCoreClient(createTauriAdapter(invoke)).orderCommands(null)).resolves.toEqual([
       "GIVE",
       "MOVE",
       "WORK"

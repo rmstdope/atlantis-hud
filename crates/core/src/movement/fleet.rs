@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::movement::orders::MoveStep;
+use crate::movement::rules::Ruleset;
 use crate::orders::intents::Intent;
 use crate::orders::standing::{self, standing_after, Boarding, BoardingOrder};
 use crate::report::model::ReportUnit;
@@ -36,6 +37,11 @@ impl OrderedUnits {
     /// Reads every unit's block out of one orders document.
     #[must_use]
     pub fn from_document(orders_document: &str) -> Self {
+        Self::from_document_with_ruleset(orders_document, None)
+    }
+
+    #[must_use]
+    pub fn from_document_with_ruleset(orders_document: &str, ruleset: Option<&Ruleset>) -> Self {
         use crate::orders::walk::{walk, BlockKind, Event};
 
         let mut by_unit: BTreeMap<String, Vec<MoveStep>> = BTreeMap::new();
@@ -88,8 +94,11 @@ impl OrderedUnits {
                 // one line two ways. Before `ah-i33f` this walk read the raw token slice and
                 // refused an `ENTER 5 junk` the validator and the preview both accept, so one
                 // document put a unit ashore in the pane and left it aboard on the map.
-                let Some(intent) = crate::orders::intents::read_order(line.command, line.arguments)
-                else {
+                let Some(intent) = crate::orders::intents::read_order_with_ruleset(
+                    line.command,
+                    line.arguments,
+                    ruleset,
+                ) else {
                     return;
                 };
                 let owner = forms.owner();

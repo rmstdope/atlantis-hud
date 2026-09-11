@@ -16,7 +16,7 @@ use atlantis_hud_core::report::merge::{
 };
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    completions_at_caret, engine_info, order_argument_completions, order_commands,
+    completions_at_caret, engine_info, order_argument_completions, order_commands_with_ruleset,
     order_vocabulary, parse_report, plan_merge, reject_import, reserved_merge_identity,
     CaretCompletions, EngineInfo, MergePlan, OrderCheckOptions, OrderCompletion,
     OrderValidationResult, ReportParseResult, ReportParseResultWire,
@@ -345,8 +345,15 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "order_commands")
     )]
-    pub fn command_order_commands() -> Vec<String> {
-        order_commands().into_iter().map(str::to_string).collect()
+    pub fn command_order_commands(ruleset_json: Option<&str>) -> Vec<String> {
+        let ruleset = atlantis_hud_core::cache::with_global(|cache| {
+            ruleset_json.and_then(|json| cache.ruleset(json).ok())
+        });
+
+        order_commands_with_ruleset(ruleset.as_deref())
+            .into_iter()
+            .map(str::to_string)
+            .collect()
     }
 
     /// Every word the rules know, for the editor that has to spot a keyword as it is typed.

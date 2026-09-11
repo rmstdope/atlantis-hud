@@ -7,6 +7,7 @@
  */
 
 import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
+import type { OrderLanguage } from "./generated/OrderLanguage";
 
 /** Where a world's catalogue comes from: an HTML data page, or a JSON database. */
 export type CatalogueSource = "data-page" | "database";
@@ -19,6 +20,7 @@ export type ScrapedWorld = {
   rulesUrl: string;
   catalogueUrl: string;
   catalogueSource: CatalogueSource;
+  orderLanguage: OrderLanguage;
   /** Repository-relative, as `committed.test.ts` and the scrape commands spell them. */
   rulesFixture: string;
   catalogueFixture: string;
@@ -32,6 +34,7 @@ export const WORLDS: readonly ScrapedWorld[] = [
     rulesUrl: "https://atlantis-pbem.com/rules",
     catalogueUrl: "https://atlantis-pbem.com/data",
     catalogueSource: "data-page",
+    orderLanguage: "new-origins",
     rulesFixture: "tests/fixtures/ruleset/neworigins-rules.html",
     catalogueFixture: "tests/fixtures/ruleset/neworigins-data.html",
     rulesetPath: "config/public/ruleset.json"
@@ -42,6 +45,7 @@ export const WORLDS: readonly ScrapedWorld[] = [
     rulesUrl: "https://atlantis-newage.com/api/worlds/arcanum/game/rules",
     catalogueUrl: "https://atlantis-newage.com/api/worlds/arcanum/game/database",
     catalogueSource: "database",
+    orderLanguage: "new-age-arcanum",
     rulesFixture: "tests/fixtures/ruleset/newage-arcanum-rules.html",
     catalogueFixture: "tests/fixtures/ruleset/newage-arcanum-database.json",
     rulesetPath: "config/public/ruleset-newage-arcanum.json"
@@ -52,6 +56,7 @@ export const WORLDS: readonly ScrapedWorld[] = [
     rulesUrl: "https://atlantis-newage.com/api/worlds/trident/game/rules",
     catalogueUrl: "https://atlantis-newage.com/api/worlds/trident/game/database",
     catalogueSource: "database",
+    orderLanguage: "new-age-trident",
     rulesFixture: "tests/fixtures/ruleset/newage-trident-rules.html",
     catalogueFixture: "tests/fixtures/ruleset/newage-trident-database.json",
     rulesetPath: "config/public/ruleset-newage-trident.json"
