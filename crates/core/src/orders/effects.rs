@@ -2096,7 +2096,9 @@ impl Working {
         let Some(active) = self.active() else {
             return;
         };
-        let Some(arguments) = super::grammar::consumed_arguments(command, arguments) else {
+        let Some(arguments) =
+            super::grammar::consumed_arguments(command, arguments, Some(self.ruleset.as_ref()))
+        else {
             return;
         };
 

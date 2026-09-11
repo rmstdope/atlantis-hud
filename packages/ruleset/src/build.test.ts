@@ -16,6 +16,7 @@ describe("buildRuleset", () => {
       dataHtml: DATA_HTML,
       rulesUrl: "https://atlantis-pbem.com/rules",
       dataUrl: "https://atlantis-pbem.com/data",
+      orderLanguage: "new-origins",
       fetchedAt: "2026-08-08T00:00:00.000Z"
     });
 
@@ -53,6 +54,7 @@ describe("buildRuleset", () => {
         dataHtml: DATA_HTML,
         rulesUrl: "x",
         dataUrl: "y",
+        orderLanguage: "new-origins",
         fetchedAt: "now"
       })
     ).toThrowError(/reworded/);
@@ -69,6 +71,7 @@ describe("buildRuleset", () => {
       dataHtml: data,
       rulesUrl: "x",
       dataUrl: "y",
+      orderLanguage: "new-origins",
       fetchedAt: "now"
     });
     expect(ruleset.items.MANN.maintenanceValue).toBe(45);
@@ -81,7 +84,12 @@ describe("buildRuleset", () => {
     );
     expect(data).not.toBe(DATA_HTML);
     expect(() => buildRuleset({
-      rulesHtml: RULES_HTML, dataHtml: data, rulesUrl: "x", dataUrl: "y", fetchedAt: "now"
+      rulesHtml: RULES_HTML,
+      dataHtml: data,
+      rulesUrl: "x",
+      dataUrl: "y",
+      orderLanguage: "new-origins",
+      fetchedAt: "now"
     })).toThrowError(/FISH/);
   });
 
@@ -173,6 +181,7 @@ stone [STON], weight 50, costs 75 silver to withdraw. This item is a trade resou
 </pre></body></html>`,
         rulesUrl: "x",
         dataUrl: "y",
+        orderLanguage: "new-origins",
         fetchedAt: "2026-08-08T00:00:00.000Z"
       })
     ).toThrowError(/race/i);
@@ -185,6 +194,7 @@ stone [STON], weight 50, costs 75 silver to withdraw. This item is a trade resou
         dataHtml: DATA_HTML,
         rulesUrl: "x",
         dataUrl: "y",
+        orderLanguage: "new-origins",
         fetchedAt: "2026-08-08T00:00:00.000Z"
       })
     ).toThrowError(/movementPoints/);
@@ -200,6 +210,7 @@ describe("buildRuleset and the terrain table", () => {
       dataHtml: DATA_HTML,
       rulesUrl: "https://example.test/rules",
       dataUrl: "https://example.test/data",
+      orderLanguage: "new-origins",
       fetchedAt: "2026-01-01T00:00:00Z"
     });
 
@@ -219,6 +230,7 @@ describe("buildRuleset and the terrain table", () => {
         dataHtml,
         rulesUrl: "https://example.test/rules",
         dataUrl: "https://example.test/data",
+        orderLanguage: "new-origins",
         fetchedAt: "2026-01-01T00:00:00Z"
       })
     ).toThrowError(/names twice/);
@@ -236,6 +248,7 @@ describe("buildRuleset and the terrain table", () => {
         dataHtml: DATA_HTML,
         rulesUrl: "https://example.test/rules",
         dataUrl: "https://example.test/data",
+        orderLanguage: "new-origins",
         fetchedAt: "2026-01-01T00:00:00Z"
       })
     ).toThrowError(/plain[\s\S]*unobtanium|unobtanium[\s\S]*plain/);

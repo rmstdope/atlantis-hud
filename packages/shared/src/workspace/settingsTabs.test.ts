@@ -82,6 +82,7 @@ describe("per-game settings presentation", () => {
       kind: "ruleset",
       gameName: "Spring campaign",
       rulesetId: "neworigins",
+      rulesetLabel: "New Origins",
       map: { width: 72, height: 96, wrapX: true, wrapY: false },
       mapStated: false
     });

@@ -55,7 +55,7 @@ export type CoreWasmModule = {
     rawReport: string | null,
     disabledCodes: readonly string[] | null
   ): OrderValidationResult;
-  order_commands_state(): string[];
+  order_commands_state(rulesetJson: string | null): string[];
   order_vocabulary_state(rulesetJson: string | null): string[];
   order_argument_completions_state(
     linePrefix: string,
@@ -597,8 +597,8 @@ export function createWebCoreAdapter(
       // validating against the turn already on screen re-parses nothing.
       return wasm.validate_orders_state(rawOrders, rulesetJson, rawReport, disabledCodes);
     },
-    async orderCommands() {
-      return wasm.order_commands_state();
+    async orderCommands(rulesetJson: string | null) {
+      return wasm.order_commands_state(rulesetJson);
     },
     async orderVocabulary(rulesetJson: string | null) {
       return wasm.order_vocabulary_state(rulesetJson);

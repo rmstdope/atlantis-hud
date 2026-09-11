@@ -372,6 +372,7 @@ function verifyWorld(world: ScrapedWorld, io: Io): boolean {
     dataHtml: catalogueDataPage(world.catalogueSource, io.readFile(world.catalogueFixture)),
     rulesUrl: committed.source.rulesUrl,
     dataUrl: committed.source.dataUrl,
+    orderLanguage: world.orderLanguage,
     fetchedAt: committed.source.fetchedAt
   });
 
@@ -562,6 +563,8 @@ async function runRefresh(io: Io, json: boolean): Promise<number> {
         tempRules,
         world.catalogueSource === "database" ? "--database" : "--data",
         tempCatalogue,
+        "--order-language",
+        world.orderLanguage,
         "--out",
         tempOut
       ]);
@@ -604,6 +607,8 @@ async function runRefresh(io: Io, json: boolean): Promise<number> {
       world.rulesFixture,
       world.catalogueSource === "database" ? "--database" : "--data",
       world.catalogueFixture,
+      "--order-language",
+      world.orderLanguage,
       "--out",
       world.rulesetPath
     ]);

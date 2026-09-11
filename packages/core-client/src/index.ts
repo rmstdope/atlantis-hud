@@ -537,7 +537,7 @@ export interface CoreAdapter {
     rawReport: string | null,
     disabledCodes: readonly string[] | null
   ): Promise<OrderValidationResult>;
-  orderCommands(): Promise<string[]>;
+  orderCommands(rulesetJson: string | null): Promise<string[]>;
   /**
    * Every word the rules know, uppercase and sorted: the order names, the grammar's own fixed
    * words, and - when a ruleset is passed - the item and skill tags and the words of their names.

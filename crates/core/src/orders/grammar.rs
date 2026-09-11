@@ -1,4 +1,4 @@
-//! Every order the NewOrigins ruleset accepts, and the shapes its arguments may take.
+//! Every order the supported rulesets accept, and the shapes its arguments may take.
 //!
 //! Written by hand from the rules page's own Order Summary rather than scraped from it, which is a
 //! deliberate departure from how movement costs and the item catalogue are obtained. Those are
@@ -13,7 +13,7 @@
 
 use super::lexer::{lex_line, Token, TokenKind};
 use crate::movement::graph::Direction;
-use crate::movement::rules::Ruleset;
+use crate::movement::rules::{OrderLanguage, Ruleset};
 
 /// One argument position in an order's signature.
 ///
@@ -526,17 +526,90 @@ const TRANSPORT_FORMS: &[&[Arg]] = &[
     &[Arg::Unit, Arg::Number, Arg::Item],
 ];
 
+/// The additions documented by the New Age rulesets.
+const NEW_AGE_ORDERS: &[Order] = &[
+    Order {
+        name: "CAPITAL",
+        forms: &[&[]],
+    },
+    Order {
+        name: "CREATE",
+        forms: &[&[Arg::Kw("VILLAGE"), Arg::Name]],
+    },
+    Order {
+        name: "EXPLORE",
+        forms: &[&[Arg::OneOf(&["RMAP", "TMAP"])]],
+    },
+    Order {
+        name: "QUEST",
+        forms: &[
+            &[],
+            &[Arg::Number],
+            &[Arg::Number, Arg::OneOf(&["RESOURCE", "EQUIPMENT"])],
+        ],
+    },
+];
+
+const ORIGINS_ONLY_ORDERS: &[&str] = &["ANNIHILATE", "SACRIFICE"];
+
+fn is_new_age(ruleset: Option<&Ruleset>) -> bool {
+    ruleset.is_some_and(|ruleset| {
+        matches!(
+            ruleset.order_language,
+            OrderLanguage::NewAgeArcanum | OrderLanguage::NewAgeTrident
+        )
+    })
+}
+
+fn is_trident(ruleset: Option<&Ruleset>) -> bool {
+    ruleset.is_some_and(|ruleset| ruleset.order_language == OrderLanguage::NewAgeTrident)
+}
+
+/// The selected profile's orders in command-list order.
+pub(super) fn selected_orders(ruleset: Option<&Ruleset>) -> Vec<&'static Order> {
+    let new_age = is_new_age(ruleset);
+    let mut orders: Vec<&'static Order> = GRAMMAR
+        .iter()
+        .filter(|order| {
+            (!new_age || !ORIGINS_ONLY_ORDERS.contains(&order.name))
+                && (order.name != "CREATE" || is_trident(ruleset))
+        })
+        .collect();
+    if new_age {
+        orders.extend(
+            NEW_AGE_ORDERS
+                .iter()
+                .filter(|order| order.name != "CREATE" || is_trident(ruleset)),
+        );
+    }
+    orders.sort_unstable_by_key(|order| order.name);
+    orders
+}
+
 /// Every order name, for callers that only need the vocabulary.
 #[must_use]
 pub fn order_commands() -> Vec<&'static str> {
-    GRAMMAR.iter().map(|order| order.name).collect()
+    order_commands_with_ruleset(None)
+}
+
+#[must_use]
+pub fn order_commands_with_ruleset(ruleset: Option<&Ruleset>) -> Vec<&'static str> {
+    selected_orders(ruleset)
+        .into_iter()
+        .map(|order| order.name)
+        .collect()
 }
 
 /// The order this keyword names, if the ruleset has one.
 #[must_use]
 pub fn find_order(command: &str) -> Option<&'static Order> {
-    GRAMMAR
-        .iter()
+    find_order_with_ruleset(command, None)
+}
+
+#[must_use]
+pub fn find_order_with_ruleset(command: &str, ruleset: Option<&Ruleset>) -> Option<&'static Order> {
+    selected_orders(ruleset)
+        .into_iter()
         .find(|order| order.name.eq_ignore_ascii_case(command))
 }
 
@@ -549,8 +622,11 @@ pub fn find_order(command: &str) -> Option<&'static Order> {
 /// `None` in the command position, inside a comment or an unclosed quote, or for an order the table
 /// does not have. The `Arg`s are de-duplicated in form order: several forms often agree on what may
 /// stand next, and each is worth answering only once.
-pub(super) fn arguments_at_caret(line_prefix: &str) -> Option<(&'static Order, Vec<&'static Arg>)> {
-    match caret_at(line_prefix).shape {
+pub(super) fn arguments_at_caret(
+    line_prefix: &str,
+    ruleset: Option<&Ruleset>,
+) -> Option<(&'static Order, Vec<&'static Arg>)> {
+    match caret_at(line_prefix, ruleset).shape {
         CaretShape::InOrder(order, offered) => Some((order, offered)),
         _ => None,
     }
@@ -581,7 +657,7 @@ pub(super) struct Caret {
 /// `line_prefix` is one order line from its first character up to the caret, the caret's own
 /// half-typed word included: the position is worked out from the complete words before it, and the
 /// half-typed word is what the shell filters the answer by.
-pub(super) fn caret_at(line_prefix: &str) -> Caret {
+pub(super) fn caret_at(line_prefix: &str, ruleset: Option<&Ruleset>) -> Caret {
     let lexed = lex_line(line_prefix);
     if lexed.comment.is_some() || lexed.unterminated_quote.is_some() {
         return Caret {
@@ -604,7 +680,7 @@ pub(super) fn caret_at(line_prefix: &str) -> Caret {
             word,
         };
     };
-    let Some(order) = find_order(&command.text) else {
+    let Some(order) = find_order_with_ruleset(&command.text, ruleset) else {
         return Caret {
             shape: CaretShape::Nowhere,
             word,
@@ -758,9 +834,10 @@ pub(super) struct MatchedOrder {
 pub(super) fn consumed_arguments<'a>(
     command: &Token,
     arguments: &'a [Token],
+    ruleset: Option<&Ruleset>,
 ) -> Option<&'a [Token]> {
-    let order = find_order(&command.text)?;
-    let matched = match_order(order, arguments, None).ok()?;
+    let order = find_order_with_ruleset(&command.text, ruleset)?;
+    let matched = match_order(order, arguments, ruleset).ok()?;
     Some(&arguments[..matched.consumed])
 }
 
@@ -1127,6 +1204,26 @@ mod tests {
         assert_eq!(find_order("give").map(|order| order.name), Some("GIVE"));
         assert_eq!(find_order("Give").map(|order| order.name), Some("GIVE"));
         assert!(find_order("fly").is_none());
+    }
+
+    #[test]
+    fn selected_profiles_keep_their_order_languages_separate() {
+        let origins = Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).unwrap();
+        let arcanum =
+            Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON).unwrap();
+        let trident =
+            Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON).unwrap();
+
+        assert!(find_order_with_ruleset("ANNIHILATE", Some(&origins)).is_some());
+        assert!(find_order_with_ruleset("SACRIFICE", Some(&origins)).is_some());
+        assert!(find_order_with_ruleset("ANNIHILATE", Some(&arcanum)).is_none());
+        assert!(find_order_with_ruleset("SACRIFICE", Some(&arcanum)).is_none());
+        assert!(find_order_with_ruleset("CREATE", Some(&arcanum)).is_none());
+        assert!(find_order_with_ruleset("CREATE", Some(&trident)).is_some());
+        for command in ["CAPITAL", "EXPLORE", "QUEST"] {
+            assert!(find_order_with_ruleset(command, Some(&arcanum)).is_some());
+            assert!(find_order_with_ruleset(command, Some(&trident)).is_some());
+        }
     }
 
     // The `order_argument_completions` tests that used to live here moved to

@@ -74,7 +74,6 @@ function tag(html: string, testid: string): string {
           game={null}
           busy={false}
           error={null}
-          onChangeRuleset={() => {}}
           onChangeMap={() => {}}
           onDismiss={() => {}}
         />

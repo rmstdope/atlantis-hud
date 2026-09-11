@@ -6,7 +6,7 @@
 //! whole file when any of it is wrong - which is exactly the kind of mistake a per-line check cannot
 //! see.
 
-use super::grammar::{find_order, match_order, Mismatch};
+use super::grammar::{find_order_with_ruleset, match_order, Mismatch};
 use super::lexer::{utf16_column, Token, TokenKind};
 use super::walk::{self, Event, Line, Opened};
 use crate::movement::rules::Ruleset;
@@ -141,7 +141,7 @@ impl Document {
     /// The argument-shape check every order gets, block keywords included. An unrecognised command
     /// is `unknown-command`; a recognised one is checked against the grammar's own shape.
     fn check_shape(&mut self, line: &Line<'_>, ruleset: Option<&Ruleset>) {
-        let Some(order) = find_order(&line.command.text) else {
+        let Some(order) = find_order_with_ruleset(&line.command.text, ruleset) else {
             self.error(
                 line.number,
                 line.command.column_start,
@@ -331,6 +331,10 @@ mod tests {
         validate_orders(source, None).diagnostics
     }
 
+    fn diagnose_with_ruleset(source: &str, ruleset_json: &str) -> Vec<OrderDiagnostic> {
+        validate_orders(source, Some(ruleset_json)).diagnostics
+    }
+
     fn codes(source: &str) -> Vec<String> {
         diagnose(source)
             .into_iter()
@@ -408,6 +412,43 @@ mod tests {
             "sail se\n",
             "work\n",
         ));
+    }
+
+    #[test]
+    fn new_age_orders_follow_the_selected_ruleset() {
+        let cases = [
+            (
+                atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+                "CAPITAL\nEXPLORE RMAP\nQUEST\n",
+                false,
+            ),
+            (
+                atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+                "CREATE VILLAGE \"New Hope\"\n",
+                true,
+            ),
+            (
+                atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+                "CAPITAL\nEXPLORE RMAP\nQUEST\nCREATE VILLAGE \"New Hope\"\n",
+                false,
+            ),
+            (
+                atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+                "ANNIHILATE\n",
+                true,
+            ),
+        ];
+
+        for (ruleset, source, invalid) in cases {
+            let diagnostics = diagnose_with_ruleset(source, ruleset);
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == "unknown-command"),
+                invalid,
+                "unexpected diagnostics for {source:?}: {diagnostics:?}"
+            );
+        }
     }
 
     #[test]

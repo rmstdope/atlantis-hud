@@ -93,7 +93,7 @@ pub fn completions_at_caret(
     report: Option<&ParsedReport>,
     unit_id: Option<&str>,
 ) -> CaretCompletions {
-    let caret = caret_at(line_prefix);
+    let caret = caret_at(line_prefix, ruleset);
     let (word_start, word) = match caret.word {
         Some(token) => (token.column_start, token.text),
         None => (utf16_column(line_prefix, line_prefix.len()), String::new()),
@@ -131,7 +131,7 @@ pub fn order_argument_completions(
     report: Option<&ParsedReport>,
     unit_id: Option<&str>,
 ) -> Vec<OrderCompletion> {
-    let Some((order, args)) = arguments_at_caret(line_prefix) else {
+    let Some((order, args)) = arguments_at_caret(line_prefix, ruleset) else {
         return Vec::new();
     };
     completions_for(order, args, ruleset, report, unit_id)
@@ -529,6 +529,27 @@ mod tests {
     #[test]
     fn an_unknown_order_offers_nothing() {
         assert_eq!(no_ruleset("WROK "), Vec::<OrderCompletion>::new());
+    }
+
+    #[test]
+    fn trident_completion_uses_only_the_selected_new_age_forms() {
+        let arcanum =
+            Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON).unwrap();
+        let trident =
+            Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON).unwrap();
+
+        assert_eq!(
+            order_argument_completions("CREATE ", Some(&arcanum), None, None),
+            Vec::<OrderCompletion>::new()
+        );
+        assert_eq!(
+            order_argument_completions("CREATE ", Some(&trident), None, None),
+            vec![kw("VILLAGE")]
+        );
+        assert_eq!(
+            order_argument_completions("EXPLORE ", Some(&trident), None, None),
+            vec![kw("RMAP"), kw("TMAP")]
+        );
     }
 
     #[test]

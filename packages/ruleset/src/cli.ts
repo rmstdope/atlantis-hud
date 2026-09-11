@@ -28,6 +28,7 @@ import { argv, exit, pid } from "node:process";
 import { pathToFileURL } from "node:url";
 import { buildRuleset } from "./build";
 import { catalogueDataPage } from "./worlds";
+import type { OrderLanguage } from "./generated/OrderLanguage";
 import { RulesetScrapeError } from "./rules";
 
 const DEFAULT_OUTPUT = new URL("../../../config/public/ruleset.json", import.meta.url);
@@ -76,13 +77,28 @@ export async function main(): Promise<void> {
   const rulesUrl = readArgument("rules");
   const dataUrl = readArgument("data");
   const databaseUrl = readArgument("database");
+  const orderLanguage = readArgument("order-language");
   const output = readArgument("out");
 
-  if (!rulesUrl || (!dataUrl && !databaseUrl)) {
+  if (!rulesUrl || !orderLanguage || (!dataUrl && !databaseUrl)) {
     throw new Error(
-      "usage: scrape --rules <url|path> (--data <url|path> | --database <url|path>) [--out <path>]\n" +
+      "usage: scrape --rules <url|path> --order-language <value> " +
+        "(--data <url|path> | --database <url|path>) [--out <path>]\n" +
         "Point --rules at the rules page of the game you are playing, and either --data at its " +
-        "data page\nor --database at its JSON database. --database needs --out."
+        "data page\nor --database at its JSON database. --database needs --out. " +
+        "Supported order languages: new-origins, new-age-arcanum, new-age-trident."
+    );
+  }
+
+  const validOrderLanguages: readonly OrderLanguage[] = [
+    "new-origins",
+    "new-age-arcanum",
+    "new-age-trident"
+  ];
+  if (!validOrderLanguages.includes(orderLanguage as OrderLanguage)) {
+    throw new Error(
+      `unsupported --order-language "${orderLanguage}"; ` +
+        `choose one of ${validOrderLanguages.join(", ")}`
     );
   }
 
@@ -112,6 +128,7 @@ export async function main(): Promise<void> {
     dataHtml,
     rulesUrl,
     dataUrl: catalogueUrl,
+    orderLanguage: orderLanguage as OrderLanguage,
     fetchedAt: new Date().toISOString()
   });
 

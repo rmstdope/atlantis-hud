@@ -15,7 +15,8 @@ import type { Ruleset } from "./build";
 
 const ARCANUM = {
   rules: "tests/fixtures/ruleset/newage-arcanum-rules.html",
-  database: "tests/fixtures/ruleset/newage-arcanum-database.json"
+  database: "tests/fixtures/ruleset/newage-arcanum-database.json",
+  orderLanguage: "new-age-arcanum"
 };
 
 /** Repository-relative, so the case proves where a relative `--out` actually lands. */
@@ -62,7 +63,16 @@ describe("the scraper CLI", () => {
     const out = join(scratchDirectory(), "arcanum.json");
 
     expect(
-      await run(["--rules", ARCANUM.rules, "--database", ARCANUM.database, "--out", out])
+      await run([
+        "--rules",
+        ARCANUM.rules,
+        "--database",
+        ARCANUM.database,
+        "--order-language",
+        ARCANUM.orderLanguage,
+        "--out",
+        out
+      ])
     ).toBeNull();
 
     const written = JSON.parse(readFileSync(out, "utf8")) as Ruleset;
@@ -72,7 +82,14 @@ describe("the scraper CLI", () => {
   });
 
   it("refuses --database without --out rather than overwriting the standard ruleset", async () => {
-    const error = await run(["--rules", ARCANUM.rules, "--database", ARCANUM.database]);
+    const error = await run([
+      "--rules",
+      ARCANUM.rules,
+      "--database",
+      ARCANUM.database,
+      "--order-language",
+      ARCANUM.orderLanguage
+    ]);
     expect(error?.message).toMatch(/--database needs --out/);
   });
 
@@ -84,6 +101,8 @@ describe("the scraper CLI", () => {
       "tests/fixtures/ruleset/neworigins-data.html",
       "--database",
       ARCANUM.database,
+      "--order-language",
+      ARCANUM.orderLanguage,
       "--out",
       "unused.json"
     ]);
@@ -91,7 +110,7 @@ describe("the scraper CLI", () => {
   });
 
   it("refuses a catalogue-less invocation with the usage line", async () => {
-    const error = await run(["--rules", ARCANUM.rules]);
+    const error = await run(["--rules", ARCANUM.rules, "--order-language", ARCANUM.orderLanguage]);
     expect(error?.message).toMatch(/usage: scrape/);
   });
 
@@ -101,7 +120,16 @@ describe("the scraper CLI", () => {
     mkdirSync(new URL("../../../.cerebro/scratch/", import.meta.url), { recursive: true });
 
     expect(
-      await run(["--rules", ARCANUM.rules, "--database", ARCANUM.database, "--out", RELATIVE_OUT])
+      await run([
+        "--rules",
+        ARCANUM.rules,
+        "--database",
+        ARCANUM.database,
+        "--order-language",
+        ARCANUM.orderLanguage,
+        "--out",
+        RELATIVE_OUT
+      ])
     ).toBeNull();
 
     // Read back through the repository root, which is what the assertion is about: resolved

@@ -114,7 +114,6 @@ import {
 } from "../orderEditor";
 import { openNewestGame, rulesetUrlFor } from "../gameSession";
 import {
-  changeRuleset as changeRulesetAction,
   createGame as createGameAction,
   deleteGame as deleteGameAction,
   resetGame as resetGameAction,
@@ -1010,7 +1009,6 @@ export function AppShell({
   }, [movementPlanner, clearPlan]);
 
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
-  const updateGameRulesetInStore = useWorkspaceStore((state) => state.updateGameRuleset);
   const updateGameNameInStore = useWorkspaceStore((state) => state.updateGameName);
   const updateGameMapInStore = useWorkspaceStore((state) => state.updateGameMap);
 
@@ -2414,8 +2412,14 @@ export function AppShell({
 
   useEffect(() => {
     let cancelled = false;
+    setOrderCommands([]);
+    if (rulesetText === null) {
+      return () => {
+        cancelled = true;
+      };
+    }
     void Promise.resolve()
-      .then(() => client.orderCommands())
+      .then(() => client.orderCommands(rulesetText))
       .then((commands) => {
         if (!cancelled) {
           setOrderCommands(commands);
@@ -2427,13 +2431,18 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [client, rulesetText]);
 
   useEffect(() => {
     let cancelled = false;
     // Cleared first: the words are the open ruleset's, so holding the previous one's while the
     // new call is in flight would uppercase against a catalogue that is no longer on screen.
     setOrderVocabulary([]);
+    if (rulesetText === null) {
+      return () => {
+        cancelled = true;
+      };
+    }
     void Promise.resolve()
       .then(() => client.orderVocabulary(rulesetText))
       .then((words) => {
@@ -2474,6 +2483,14 @@ export function AppShell({
     (linePrefix) => {
       const unitId = unit?.unitId ?? null;
       const report = rawReport || null;
+      if (rulesetText === null) {
+        return Promise.resolve({
+          position: "nowhere",
+          wordStart: linePrefix.length,
+          word: "",
+          options: []
+        });
+      }
       const hit = lastCaret.current;
       if (
         hit &&
@@ -2870,34 +2887,6 @@ export function AppShell({
       });
     },
     [client, game, runGameAction, updateGameMapInStore]
-  );
-
-  /**
-   * Moves the open game to another ruleset, and re-reads the world under it.
-   *
-   * Handing `setGame` a fresh object is the second half of the change: the ruleset fetch effect is
-   * keyed on `game`, so the new identity makes it fetch the new ruleset, and the turn-restore
-   * effect then re-parses the stored turn under it. Without that, every unit count would silently
-   * keep the old ruleset's reading until the next manual reload.
-   */
-  const changeRuleset = useCallback(
-    (rulesetId: string) => {
-      if (!game) {
-        return;
-      }
-      return runGameAction(async () => {
-        // The re-restore below re-reads orders from the database, so the draft must be there first.
-        await flush();
-        const result = await changeRulesetAction(client, game, rulesetId);
-        if (!result) {
-          return;
-        }
-        setGame({ ...game, manifest: result.manifest });
-        updateGameRulesetInStore(rulesetId);
-        setGames(result.games);
-      });
-    },
-    [client, game, flush, runGameAction, updateGameRulesetInStore]
   );
 
   /**
@@ -4733,7 +4722,6 @@ export function AppShell({
       game={game ? workspaceGameOf(game) : null}
       busy={busy}
       error={gameError}
-      onChangeRuleset={(rulesetId) => void changeRuleset(rulesetId)}
       onChangeMap={(map) => void changeMap(map)}
       onDismiss={() => setSettingsOpen(false)}
     />

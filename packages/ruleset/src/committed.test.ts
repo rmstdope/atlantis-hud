@@ -27,6 +27,7 @@ describe("the committed rulesets", () => {
         dataHtml,
         rulesUrl: committed.source.rulesUrl,
         dataUrl: committed.source.dataUrl,
+        orderLanguage: world.orderLanguage,
         fetchedAt: committed.source.fetchedAt
       });
 
@@ -34,6 +35,7 @@ describe("the committed rulesets", () => {
         "pnpm --filter @atlantis/ruleset scrape -- " +
         `--rules ${world.rulesFixture} ` +
         `${world.catalogueSource === "database" ? "--database" : "--data"} ${world.catalogueFixture} ` +
+        `--order-language ${world.orderLanguage} ` +
         `--out ${world.rulesetPath}`;
 
       // toEqual, not toStrictEqual: an optional the scraper leaves `undefined` is a key the file

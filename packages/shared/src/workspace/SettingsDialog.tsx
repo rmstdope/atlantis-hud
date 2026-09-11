@@ -22,7 +22,7 @@ import type { AppUpdateControl } from "./appUpdate";
 import { updatePresentationFor } from "./appUpdate";
 import type { OpenExternal } from "./openExternal";
 import type { SettingsTabId } from "./settingsTabs";
-import { SETTINGS_TABS, gameSettingsPresentation, nextTab, rulesetOptions } from "./settingsTabs";
+import { SETTINGS_TABS, gameSettingsPresentation, nextTab } from "./settingsTabs";
 
 /**
  * The settings dialog: global preferences, the open game's, and what this build is.
@@ -48,7 +48,6 @@ export function SettingsDialog({
   game,
   busy,
   error,
-  onChangeRuleset,
   onChangeMap,
   onDismiss
 }: {
@@ -58,7 +57,6 @@ export function SettingsDialog({
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
-  onChangeRuleset: (rulesetId: string) => void;
   onChangeMap: (map: MapShape | undefined) => void;
   onDismiss: () => void;
 }) {
@@ -151,7 +149,6 @@ export function SettingsDialog({
               game={game}
               busy={busy}
               error={error}
-              onChangeRuleset={onChangeRuleset}
               onChangeMap={onChangeMap}
             />
           ) : null}
@@ -898,13 +895,11 @@ function GameSettings({
   game,
   busy,
   error,
-  onChangeRuleset,
   onChangeMap
 }: {
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
-  onChangeRuleset: (rulesetId: string) => void;
   onChangeMap: (map: MapShape | undefined) => void;
 }) {
   const presentation = gameSettingsPresentation(game);
@@ -920,23 +915,19 @@ function GameSettings({
   return (
     <div className="flex flex-col gap-2">
       <p className="text-ink-soft">{presentation.gameName}</p>
-      <label className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1">
         <span className="text-ink-soft">Ruleset</span>
-        <select
+        <span
           data-testid="settings-game-ruleset"
           aria-label="ruleset"
-          value={presentation.rulesetId}
-          disabled={busy}
-          onChange={(event) => onChangeRuleset(event.target.value)}
-          className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+          className="rounded border border-edge bg-panel px-2 py-1 text-ink"
         >
-          {rulesetOptions(presentation.rulesetId).map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          {presentation.rulesetLabel}
+        </span>
+        <span className="text-sm text-ink-soft">
+          The ruleset is chosen when this game is created.
+        </span>
+      </div>
       <GameMapSettings
         map={presentation.map}
         stated={presentation.mapStated}

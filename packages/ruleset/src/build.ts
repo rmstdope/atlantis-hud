@@ -7,10 +7,12 @@
  */
 
 export type { Gap } from "./generated/Gap";
+export type { OrderLanguage } from "./generated/OrderLanguage";
 export type { RiskThresholds } from "./generated/RiskThresholds";
 export type { Ruleset } from "./generated/Ruleset";
 
 import type { RiskThresholds } from "./generated/RiskThresholds";
+import type { OrderLanguage } from "./generated/OrderLanguage";
 import type { Ruleset } from "./generated/Ruleset";
 import {
   itemClassesOf,
@@ -34,6 +36,7 @@ export type BuildInput = {
   dataHtml: string;
   rulesUrl: string;
   dataUrl: string;
+  orderLanguage: OrderLanguage;
   fetchedAt: string;
 };
 
@@ -181,6 +184,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
         "carry here, whatever their own data-page descriptions say. Re-run the fetch rather than " +
         "hand-editing the generated ruleset."
     },
+    orderLanguage: input.orderLanguage,
     movement,
     risk: DEFAULT_RISK,
     gaps: { weather },
