@@ -7368,6 +7368,7 @@ fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<S
             }
             if unit_is_in_structure(hex, target, structure_id) {
                 owner = target.clone();
+                break;
             }
         }
     }
@@ -23159,6 +23160,49 @@ BUILD
                         }]
                     );
                     assert_eq!(balance_of(ledger, "901", "STON"), 120);
+                },
+            );
+        }
+
+        #[test]
+        fn an_owner_can_promote_only_once_before_replacement_destroy() {
+            let mut replacement_site = region(vec![
+                in_structure(unit("900"), "4"),
+                in_structure(
+                    with_skill(
+                        with_item(with_men(unit("901"), 10), 120, "stone", "STON"),
+                        "BUIL",
+                        3,
+                    ),
+                    "4",
+                ),
+                in_structure(unit("902"), "4"),
+            ]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nPROMOTE 901\nPROMOTE 902\nunit 901\nDESTROY\nBUILD Palace\nunit 902\n",
+                |ledger| {
+                    assert!(ledger.build_placement_refusals.is_empty());
+                    assert!(ledger.movements.contains(&movement(
+                        "901",
+                        "STON",
+                        "stone",
+                        -30,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(6),
+                    )));
+                    assert_eq!(balance_of(ledger, "901", "STON"), 90);
                 },
             );
         }
