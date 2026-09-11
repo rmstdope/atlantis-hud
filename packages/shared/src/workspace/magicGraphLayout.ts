@@ -55,7 +55,7 @@ const ALTERNATING_SWEEPS = 4;
 const SETTLING_SWEEPS = 4;
 
 /** How a node's box is drawn. `MANI` is set apart because it is not a Foundation. */
-export type NodeKind = "foundation" | "apprenticeship" | "skill";
+export type NodeKind = "foundation" | "apprenticeship" | "item-granted" | "skill";
 
 export type GraphNode = {
   tag: string;
@@ -121,7 +121,10 @@ const APPRENTICESHIP = "MANI";
  * this is about what the skill *is*. It restates the rule `magicTree.ts` uses to file `MANI` under
  * its own branch, deliberately.
  */
-function kindOf(tag: string, depth: number): NodeKind {
+function kindOf(tag: string, depth: number, learnable: boolean): NodeKind {
+  if (!learnable) {
+    return "item-granted";
+  }
   if (depth !== 0) {
     return "skill";
   }
@@ -327,7 +330,7 @@ export function buildMagicGraph(tree: MagicTree): MagicGraph {
       name: skill.name,
       id: skill.id,
       depth: skill.depth,
-      kind: kindOf(skill.tag, skill.depth),
+      kind: kindOf(skill.tag, skill.depth, skill.learnable),
       // Placed below, by `seatColumns`: a box slides freely down its column towards what it
       // stands on and what stands on it, so `y` is no longer a whole number of rows from the top.
       x: 0,

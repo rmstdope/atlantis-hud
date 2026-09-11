@@ -253,7 +253,7 @@ export function StudySchedule({
             // against the sanitized one the grid drew: a row written before goals named turns
             // would otherwise be carried forward by a write instead of dropped by it.
             onCommit(open.key, (goals) =>
-              goalsAfterChoice(plannedGoals(goals), turns[editing.turnIndex], choice)
+              goalsAfterChoice(plannedGoals(goals, tree), turns[editing.turnIndex], choice)
             );
             onEvent({ kind: "closed" });
           }}

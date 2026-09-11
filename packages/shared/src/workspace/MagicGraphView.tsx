@@ -89,7 +89,7 @@ const APPRENTICE_BOX_STYLE = {
  * zoom and dissolves.
  */
 const STANDING_STYLE: Record<
-  Exclude<StandingKind, "locked">,
+  Exclude<StandingKind, "locked" | "unlearnable">,
   { className: string; style: { strokeWidth: string; strokeDasharray?: string } }
 > = {
   known: { className: "stroke-ok", style: { strokeWidth: constant(3) } },
@@ -108,7 +108,7 @@ const STANDING_STYLE: Record<
 };
 
 /** The state's colour for the level mark, which is a fill rather than a stroke. */
-const MARK_FILL: Record<Exclude<StandingKind, "locked">, string> = {
+const MARK_FILL: Record<Exclude<StandingKind, "locked" | "unlearnable">, string> = {
   known: "fill-ok",
   ceiling: "fill-warn",
   maxed: "fill-ink-soft",
@@ -127,6 +127,7 @@ function markOf(standing: SkillStanding): string {
     case "open":
       return "○";
     case "locked":
+    case "unlearnable":
       return "";
   }
 }
@@ -312,6 +313,7 @@ function Skill({
 }) {
   const foundation = node.kind === "foundation";
   const apprentice = node.kind === "apprenticeship";
+  const itemGranted = node.kind === "item-granted";
   return (
     <g
       data-testid={`magic-graph-skill-${node.tag}`}
@@ -335,10 +337,12 @@ function Skill({
               ? "stroke-brass"
               : apprentice
                 ? "stroke-select"
+                : itemGranted
+                  ? "stroke-warn"
                 : "stroke-edge"
         }`}
       />
-      {standing === null || standing.kind === "locked" ? null : (
+      {standing === null || standing.kind === "locked" || standing.kind === "unlearnable" ? null : (
         <line
           data-testid={`magic-graph-bar-${node.tag}`}
           x1={node.x + 2}
@@ -349,7 +353,10 @@ function Skill({
           className={STANDING_STYLE[standing.kind].className}
         />
       )}
-      {standing === null || standing.kind === "locked" || band !== "names" ? null : (
+      {standing === null ||
+      standing.kind === "locked" ||
+      standing.kind === "unlearnable" ||
+      band !== "names" ? null : (
         // The names band only: the view opens at step -3, and a mark that shrank with the box
         // would be about six pixels there - a smudge rather than a number.
         <text

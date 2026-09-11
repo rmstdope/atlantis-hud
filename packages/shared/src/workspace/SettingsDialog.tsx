@@ -457,6 +457,12 @@ export const WARNING_GROUPS: readonly {
           "A unit ordered to study a skill that at least one of its races cannot learn any further."
       },
       {
+        code: "study-unlearnable",
+        title: "Study of an unlearnable skill",
+        description:
+          "A unit ordered to study a magic skill that is granted by an item rather than learned normally."
+      },
+      {
         code: "magic-study-capped-by-prerequisites",
         title: "Magic study capped by prerequisites",
         description:

@@ -17,6 +17,10 @@ export type MagicSkillNode = {
   name: string;
   /** The highest level the game allows in this skill. 5 for every magic skill in the shipped ruleset. */
   maxLevel: number;
+  /** False when the ruleset grants the skill through an item rather than ordinary study. */
+  learnable: boolean;
+  /** The item named by the skill description when it is granted by an item, or null. */
+  itemGrant: string | null;
   /** Longest path to a root. 0 for FORC, PATT, SPIR and MANI. Drives indentation. */
   depth: number;
   /** The key of the branch this skill is filed under. */
@@ -51,6 +55,7 @@ export type MagicTree = {
 const FOUNDATIONS = "FOUND";
 const DIRECT = "DIRECT";
 const APPRENTICESHIP = "MANI";
+const ITEM_GRANTED = "ITEM_GRANTED";
 
 const NAMED_BRANCHES: Readonly<Record<string, { title: string; blurb: string }>> = {
   [FOUNDATIONS]: {
@@ -65,6 +70,10 @@ const NAMED_BRANCHES: Readonly<Record<string, { title: string; blurb: string }>>
     title: "Apprenticeship",
     blurb:
       "Not a foundation, and nothing builds on it: manipulation makes an apprentice, who may use a mage's items but cast no spell."
+  },
+  [ITEM_GRANTED]: {
+    title: "Item-granted magic",
+    blurb: "Granted by the Bosun's Whistle. It cannot be studied or taught."
   }
 };
 
@@ -74,6 +83,8 @@ type RawMagicSkill = {
   tag: string;
   name: string;
   maxLevel: number;
+  cost: number | null;
+  itemGrant: string | null;
   requires: readonly GameDataLink[];
 };
 
@@ -95,11 +106,16 @@ function magicSkillsOf(index: GameDataIndex): Map<string, RawMagicSkill> {
     if (detail === null || detail.kind !== "skill" || !detail.magic) {
       continue;
     }
+    const description = detail.levels[0]?.description ?? detail.description ?? "";
+    const itemGrant =
+      description.match(/\bgranted by the ([^.]+?)(?: at a level|\.|,)/i)?.[1] ?? null;
     skills.set(entry.tag, {
       id: entry.id,
       tag: entry.tag,
       name: entry.name,
       maxLevel: detail.maxLevel,
+      cost: detail.cost,
+      itemGrant,
       requires: detail.requires
     });
   }
@@ -180,6 +196,10 @@ function branchesOf(
       return FOUNDATIONS;
     }
     const depth = depths.get(tag) ?? 0;
+    if (skill.cost === null) {
+      branches.set(tag, ITEM_GRANTED);
+      return ITEM_GRANTED;
+    }
     if (depth === 0) {
       const branch = tag === APPRENTICESHIP ? APPRENTICESHIP : FOUNDATIONS;
       branches.set(tag, branch);
@@ -224,6 +244,9 @@ export function buildMagicTree(index: GameDataIndex): MagicTree {
     sizes.set(branch, (sizes.get(branch) ?? 0) + 1);
   }
   const filedUnder = (tag: string): string => {
+    if (skills.get(tag)?.cost === null) {
+      return ITEM_GRANTED;
+    }
     const branch = branches.get(tag) ?? FOUNDATIONS;
     return branch !== APPRENTICESHIP && sizes.get(branch) === 1 ? DIRECT : branch;
   };
@@ -254,6 +277,8 @@ export function buildMagicTree(index: GameDataIndex): MagicTree {
       tag: skill.tag,
       name: skill.name,
       maxLevel: skill.maxLevel,
+      learnable: skill.cost !== null,
+      itemGrant: skill.itemGrant,
       depth,
       branch,
       within,
@@ -285,7 +310,15 @@ export function buildMagicTree(index: GameDataIndex): MagicTree {
   // which puts artifact lore's twenty-six beside the eye rather than after eight small cards; and
   // the two collections close, `DIRECT` before the apprenticeship that is set apart from all of it.
   const rank = (branch: MagicBranch) =>
-    branch.key === FOUNDATIONS ? 0 : branch.key === DIRECT ? 2 : branch.key === APPRENTICESHIP ? 3 : 1;
+    branch.key === FOUNDATIONS
+      ? 0
+      : branch.key === DIRECT
+        ? 2
+        : branch.key === APPRENTICESHIP
+          ? 3
+          : branch.key === ITEM_GRANTED
+            ? 4
+            : 1;
   cards.sort(
     (left, right) =>
       rank(left) - rank(right) ||

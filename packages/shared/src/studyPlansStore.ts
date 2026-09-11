@@ -18,6 +18,7 @@ import {
   type StudyPlanKey,
   type StudyPlanRecord
 } from "./studyPlans";
+import type { MagicTree } from "./magicTree";
 
 export type StudyPlansStatus = "idle" | "loading" | "ready" | "error";
 
@@ -54,7 +55,12 @@ export type StudyPlansState = {
    * remove `change.turn` (ah-j9wn). One write of the complete replacement list, cache updated
    * only after it succeeds. Rethrows, serialized like every other write.
    */
-  reshapeSchedule: (client: CoreClient, game: OpenedGame, change: ScheduleChange) => Promise<void>;
+  reshapeSchedule: (
+    client: CoreClient,
+    game: OpenedGame,
+    change: ScheduleChange,
+    tree?: MagicTree
+  ) => Promise<void>;
   clear: () => void;
 };
 
@@ -134,14 +140,14 @@ export const useStudyPlansStore = create<StudyPlansState>()((set, get) => ({
       }));
     }),
 
-  reshapeSchedule: (client, game, change) =>
+  reshapeSchedule: (client, game, change, tree) =>
     queued(async () => {
       const plans = get().plans;
       // Every cached row is written, not only the ones holding a goal at the target turn: the
       // operation is schedule-wide and durable for all mages, and a row is written whole.
       const next = plans.map((plan) => ({
         ...plan,
-        goals: reshapeStudyGoals(plan.goals, change),
+        goals: reshapeStudyGoals(plan.goals, change, tree),
         updatedAt: new Date().toISOString()
       }));
       await saveStudyPlans(client, game, next, []);

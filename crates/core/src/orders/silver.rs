@@ -2491,6 +2491,9 @@ pub fn forecast_unit(
             }
             Intent::Study { skill } => {
                 let entry = ruleset.and_then(|ruleset| ruleset.find_skill(skill));
+                if entry.is_some_and(|entry| !entry.is_studyable()) {
+                    continue;
+                }
                 let capped = ruleset.zip(entry).and_then(|(ruleset, entry)| {
                     study::at_the_ceiling(
                         ruleset,
@@ -8913,7 +8916,7 @@ mod tests {
     }
 
     #[test]
-    fn a_studying_unit_the_ruleset_cannot_price_is_doubted() {
+    fn a_studying_unit_the_ruleset_cannot_price_is_ignored() {
         let ruleset = ruleset();
         let receipts = Receipts::default();
         let intents = [placed(Intent::Study {
@@ -8932,10 +8935,10 @@ mod tests {
             SharedMarket::Adds(0),
             Some(&ruleset),
         );
-        assert_eq!(unit.doubt, Some(SilverDoubt::UnpricedSkill));
-        assert_eq!(unit.expense, None);
+        assert_eq!(unit.doubt, None);
+        assert_eq!(unit.expense, Some(0));
         assert_eq!(unit.income, Some(0));
-        assert_eq!(unit.at_month_end, None);
+        assert_eq!(unit.at_month_end, Some(600));
     }
 
     #[test]
