@@ -1666,8 +1666,26 @@ describe("parseBuildingReference", () => {
       cost: 10,
       materials: ["stone"],
       mages: 0,
+      requiresSettlement: false,
+      uniquePerRegion: false,
       buildSkill: "BUIL",
       buildLevel: 1
+    });
+  });
+
+  it("reads settlement and uniqueness policy from a building's own prose", () => {
+    const html =
+      "<pre>" +
+      "Caravanserai: This is a building. This structure can only be built in settlements " +
+      "(villages, towns or cities).\n\n" +
+      "Palace: This is a building. Only one such structure can exist in any region.\n\n" +
+      "Tower: This is a building. This structure provides defense to the first 10 men inside it." +
+      "</pre>";
+
+    expect(parseBuildingReference(html)).toMatchObject({
+      CARAVANSERAI: { requiresSettlement: true, uniquePerRegion: false },
+      PALACE: { requiresSettlement: false, uniquePerRegion: true },
+      TOWER: { requiresSettlement: false, uniquePerRegion: false }
     });
   });
 });

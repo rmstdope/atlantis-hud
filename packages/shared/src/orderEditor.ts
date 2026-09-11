@@ -1,4 +1,9 @@
-import type { OrderDiagnostic, OrderValidationResult, UnitSilver } from "@atlantis/core-client";
+import type {
+  BuildPlacementRefusal,
+  OrderDiagnostic,
+  OrderValidationResult,
+  UnitSilver
+} from "@atlantis/core-client";
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
 import { blockFor, findFormBlocks, formBlockFor, formedAlias } from "./ordersDocument";
 import type { FormBlock } from "./ordersDocument";
@@ -225,6 +230,48 @@ export function diagnosticsForUnit(
       lineEnd:
         diagnostic.lineEnd === null ? null : Math.min(diagnostic.lineEnd, last) - block.firstLine
     }));
+}
+
+/**
+ * The placement refusals belonging to one unit, numbered from the top of that unit's block.
+ *
+ * Unlike diagnostics, refusals are already attached to their direct founder by the core. The
+ * document is still debounced, so an absolute line can fall outside the block or inside a nested
+ * FORM by the time it reaches the editor; both cases are dropped rather than shown under the
+ * wrong order.
+ */
+export function buildPlacementRefusalsForUnit(
+  document: string,
+  unitId: string,
+  refusals: BuildPlacementRefusal[],
+  regionUnitIds?: ReadonlySet<string>
+): BuildPlacementRefusal[] {
+  const block = blockFor(document, unitId, regionUnitIds);
+  if (!block) {
+    return [];
+  }
+
+  const formBlocks = regionUnitIds === undefined ? [] : findFormBlocks(document);
+  const reachable = (candidate: FormBlock): boolean =>
+    regionUnitIds !== undefined &&
+    formBlockFor(document, candidate.alias, regionUnitIds)?.headerLine === candidate.headerLine;
+  const nested = formBlocks.filter((candidate) => {
+    if (!reachable(candidate)) {
+      return false;
+    }
+    const parent = candidate.parentIndex === null ? null : formBlocks[candidate.parentIndex];
+    return parent === null
+      ? formedAlias(unitId) === null && candidate.unitId === unitId
+      : parent.headerLine === block.headerLine;
+  });
+  const insideNestedForm = (line: number): boolean =>
+    nested.some((candidate) => line >= candidate.firstLine + 1 && line <= candidate.lastLine + 1);
+
+  const first = block.firstLine + 1;
+  const last = block.lastLine + 1;
+  return refusals
+    .filter((refusal) => refusal.line >= first && refusal.line <= last && !insideNestedForm(refusal.line))
+    .map((refusal) => ({ ...refusal, line: refusal.line - block.firstLine }));
 }
 
 /** Everything the checks found in one hex, unit-level and hex-level alike. */

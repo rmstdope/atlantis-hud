@@ -744,6 +744,12 @@ pub struct BuildingEntry {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub build_level: Option<i64>,
+    /// The data page says this structure can only be built in a settlement.
+    #[serde(default)]
+    pub requires_settlement: bool,
+    /// The data page says only one of this structure may exist in a region.
+    #[serde(default)]
+    pub unique_per_region: bool,
     /// How many mages the building provides study facilities for. **Zero for a Tower**, which is
     /// the ruleset's own answer and not an oversight: a mage studying in one gets half a month.
     pub mages: i64,

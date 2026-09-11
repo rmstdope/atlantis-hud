@@ -1028,6 +1028,10 @@ function mageCount(text: string): number {
   return /^one$/i.test(match[1]) ? 1 : Number.parseInt(match[1], 10);
 }
 
+const SETTLEMENT_REQUIREMENT =
+  /This structure can only be built in settlements \(villages, towns or cities\)\./i;
+const REGION_UNIQUENESS = /Only one such structure can exist in any region\./i;
+
 /**
  * Reads the buildings out of the data page: the object entries say what a structure is and how
  * many mages it seats, and the skill entries say what building it costs.
@@ -1070,6 +1074,8 @@ export function parseBuildingReference(html: string): BuildingReference {
       description: paragraph.slice(opening[0].length - "This is a building.".length).trim(),
       ...(product === null ? {} : { produces: product }),
       ...(size === null ? {} : { size }),
+      requiresSettlement: SETTLEMENT_REQUIREMENT.test(paragraph),
+      uniquePerRegion: REGION_UNIQUENESS.test(paragraph),
       mages: mageCount(paragraph)
     };
   }

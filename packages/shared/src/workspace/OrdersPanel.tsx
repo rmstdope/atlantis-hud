@@ -1,4 +1,4 @@
-import type { OrderDiagnostic, ReportUnit } from "@atlantis/core-client";
+import type { BuildPlacementRefusal, OrderDiagnostic, ReportUnit } from "@atlantis/core-client";
 import { useMemo } from "react";
 import type { HexNode } from "../hexMapModel";
 import { readableTime, type SaveState } from "../orderDraft";
@@ -46,6 +46,8 @@ type OrdersPanelProps = {
    * is not always the one on screen.
    */
   validated: ValidatedOrders;
+  /** Placement refusals rebased to this unit's block, from the current successful preview only. */
+  placementRefusals?: BuildPlacementRefusal[];
   save: SaveState;
   /** The core's order vocabulary, for the editor's completion popup. */
   commands: readonly string[];
@@ -85,6 +87,7 @@ export function OrdersPanel({
   ownFactionName,
   onChange,
   validated,
+  placementRefusals = [],
   save,
   commands,
   orderVocabulary,
@@ -97,6 +100,9 @@ export function OrdersPanel({
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
   // keeps the editor's `latest` ref current without rebuilding the view.
   const orderOcd = useSettingsStore((state) => state.orderOcd);
+  const showBuildPlacementRefusals = useSettingsStore(
+    (state) => state.showBuildPlacementRefusals
+  );
   const block = unitId === null ? null : readUnitOrders(document, unitId, regionUnitIds);
   const lock = lockFor(unit, hex, formed);
 
@@ -154,6 +160,7 @@ export function OrdersPanel({
               formed ? `Orders for new ${formed.alias}` : `Orders for unit ${unitId ?? ""}`
             }
             problems={problems}
+            placementRefusals={showBuildPlacementRefusals ? placementRefusals : []}
             commands={commands}
             orderVocabulary={orderVocabulary}
             orderOcd={orderOcd}

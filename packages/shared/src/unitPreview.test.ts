@@ -27,9 +27,16 @@ import type { PreviewedUnit } from "./unitPreview";
 const unit = (overrides: Partial<ReportUnit>): ReportUnit =>
   aReportUnit({ unitId: "900", name: "Walker", weight: 10, capacity: "0/0/15/0", ...overrides });
 
-const preview = (units: RegionPreview["units"]): RegionPreview => ({
+type PreviewUnit = Omit<RegionPreview["units"][number], "buildPlacementRefusals"> & {
+  buildPlacementRefusals?: RegionPreview["units"][number]["buildPlacementRefusals"];
+};
+
+const preview = (units: PreviewUnit[]): RegionPreview => ({
   regionId: "1:1,1",
-  units
+  units: units.map((unit) => ({
+    ...unit,
+    buildPlacementRefusals: unit.buildPlacementRefusals ?? []
+  }))
 });
 
 /** One previewed unit, with every field the wire carries defaulted. */
@@ -60,7 +67,8 @@ const previewedRow = (
   recruitsUnmerged: false,
   menOfUnknownSkill: [],
   study: null,
-  ...overrides
+  ...overrides,
+  buildPlacementRefusals: overrides.buildPlacementRefusals ?? []
 });
 
 describe("the skills the preview carries", () => {

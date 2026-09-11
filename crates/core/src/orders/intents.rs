@@ -177,6 +177,17 @@ pub struct UnitIntents {
     ///
     /// Not placed: nothing hangs a finding on a flag order line, so no line number is carried.
     pub flag_changes: Vec<FlagChange>,
+    /// Whether this unit has a syntactically valid `DESTROY` order in this month's block.
+    ///
+    /// `DESTROY` is an instant/free order, so it is not an [`Intent`]. It still matters to the
+    /// BUILD projection because `rules/sequenceofevents` settles it before new structures are
+    /// laid down.
+    pub destroys_structure: bool,
+    /// The units named by syntactically valid `PROMOTE` orders in this month's block.
+    ///
+    /// `PROMOTE` is also an instant/free order. Its target matters to the BUILD projection because
+    /// `rules/sequenceofevents` settles ownership changes before `DESTROY`.
+    pub promotes_units: Vec<String>,
 }
 
 impl UnitIntents {
@@ -232,6 +243,8 @@ pub fn read_intents_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Vec
                     intents: Vec::new(),
                     unread: Vec::new(),
                     flag_changes: Vec::new(),
+                    destroys_structure: false,
+                    promotes_units: Vec::new(),
                 });
             }
         }
@@ -257,6 +270,11 @@ pub fn read_intents_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Vec
                     // yields no intent because no check reads it, which is not the same as not
                     // being understood.
                     unit.unread.push(line.number);
+                }
+                unit.destroys_structure |=
+                    is_valid_destroy_order(line.command, line.arguments, ruleset);
+                if let Some(target) = promoted_unit(line.command, line.arguments, ruleset) {
+                    unit.promotes_units.push(target);
                 }
             }
         }
@@ -326,6 +344,10 @@ pub struct FormedBlock {
     /// The flag orders written inside this `FORM` block, read exactly as
     /// [`UnitIntents::flag_changes`] reads them. An inner `FORM`'s belong to the inner unit.
     pub flag_changes: Vec<FlagChange>,
+    /// Whether this formed unit's block contains a syntactically valid `DESTROY` order.
+    pub destroys_structure: bool,
+    /// The units named by syntactically valid `PROMOTE` orders in this formed unit's block.
+    pub promotes_units: Vec<String>,
 }
 
 /// Every unit this document's `FORM` blocks create this month, in document order.
@@ -476,6 +498,8 @@ impl<'a, 'r> FormReader<'a, 'r> {
             intents: Vec::new(),
             unread: Vec::new(),
             flag_changes: Vec::new(),
+            destroys_structure: false,
+            promotes_units: Vec::new(),
         });
         self.forms.open(Some(index));
     }
@@ -498,6 +522,10 @@ impl<'a, 'r> FormReader<'a, 'r> {
             });
         } else if !is_free_order(command, self.ruleset) {
             block.unread.push(line_number);
+        }
+        block.destroys_structure |= is_valid_destroy_order(command, arguments, self.ruleset);
+        if let Some(target) = promoted_unit(command, arguments, self.ruleset) {
+            block.promotes_units.push(target);
         }
     }
 }
@@ -574,6 +602,37 @@ fn is_free_order(command: &Token, ruleset: Option<&Ruleset>) -> bool {
         .iter()
         .any(|free| command.text.eq_ignore_ascii_case(free))
         && super::grammar::find_order_with_ruleset(&command.text, ruleset).is_some()
+}
+
+/// Whether a `DESTROY` line is shaped well enough for the game to attempt it.
+///
+/// The order is intentionally not an [`Intent`]: it is free and no existing phase application
+/// needs to consume it. The semantic BUILD projection is the one consumer that needs to know it
+/// happened.
+fn is_valid_destroy_order(command: &Token, arguments: &[Token], ruleset: Option<&Ruleset>) -> bool {
+    command.text.eq_ignore_ascii_case("DESTROY")
+        && super::grammar::consumed_arguments(command, arguments, ruleset).is_some()
+}
+
+/// The target of a syntactically valid `PROMOTE` order, if any.
+fn promoted_unit(
+    command: &Token,
+    arguments: &[Token],
+    ruleset: Option<&Ruleset>,
+) -> Option<String> {
+    if !command.text.eq_ignore_ascii_case("PROMOTE") {
+        return None;
+    }
+    let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
+    let (target, rest) = forms::read_party(arguments)?;
+    if !rest.is_empty() {
+        return None;
+    }
+    match target {
+        forms::Party::Unit(unit_id) => Some(unit_id),
+        forms::Party::New(alias) => Some(format!("new-{alias}")),
+        forms::Party::Foreign { .. } | forms::Party::Discard => None,
+    }
 }
 
 /// One order line, as an intent - or nothing, for an order no check reads and for one whose shape
@@ -913,6 +972,30 @@ mod tests {
     #[test]
     fn a_free_order_is_not_unread() {
         let unit = only_unit("unit 5\nNAME \"Scouts\"\n");
+        assert!(unit.intents.is_empty(), "{unit:?}");
+        assert!(unit.unread.is_empty(), "{unit:?}");
+    }
+
+    #[test]
+    fn a_valid_destroy_is_carried_separately_from_month_intents() {
+        let unit = only_unit("unit 5\nDESTROY\n");
+        assert!(unit.destroys_structure, "{unit:?}");
+        assert!(unit.intents.is_empty(), "{unit:?}");
+        assert!(unit.unread.is_empty(), "{unit:?}");
+    }
+
+    #[test]
+    fn a_valid_promote_target_is_carried_separately_from_month_intents() {
+        let unit = only_unit("unit 5\nPROMOTE 7\n");
+        assert_eq!(unit.promotes_units, vec!["7".to_string()], "{unit:?}");
+        assert!(unit.intents.is_empty(), "{unit:?}");
+        assert!(unit.unread.is_empty(), "{unit:?}");
+    }
+
+    #[test]
+    fn a_new_promote_target_is_carried_as_the_formed_unit_id() {
+        let unit = only_unit("unit 5\nPROMOTE NEW 2\n");
+        assert_eq!(unit.promotes_units, vec!["new-2".to_string()], "{unit:?}");
         assert!(unit.intents.is_empty(), "{unit:?}");
         assert!(unit.unread.is_empty(), "{unit:?}");
     }

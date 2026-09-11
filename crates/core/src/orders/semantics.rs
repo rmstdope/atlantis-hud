@@ -2119,6 +2119,8 @@ struct UnitOrders {
     /// are read as one turn, so the second block's flag orders follow the first's and the last
     /// one wins - which is what the server would do.
     flag_changes: Vec<FlagChange>,
+    destroys_structure: bool,
+    promotes_units: Vec<String>,
 }
 
 /// `reported` with each change applied in document order, last order winning.
@@ -2147,6 +2149,8 @@ impl OrderedUnits {
             intents,
             unread,
             flag_changes,
+            destroys_structure,
+            promotes_units,
         } in read_intents_with_ruleset(source, ruleset)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
@@ -2154,10 +2158,14 @@ impl OrderedUnits {
                 intents: Vec::new(),
                 unread: false,
                 flag_changes: Vec::new(),
+                destroys_structure: false,
+                promotes_units: Vec::new(),
             });
             entry.intents.extend(intents);
             entry.flag_changes.extend(flag_changes);
             entry.unread |= !unread.is_empty();
+            entry.destroys_structure |= destroys_structure;
+            entry.promotes_units.extend(promotes_units);
         }
         Self { by_unit }
     }
@@ -2272,6 +2280,10 @@ struct Ordered<'a> {
     /// reading `unit.flags` and their own intents, and both stay authoritative for their setting -
     /// repointing either here would be a behaviour change dressed as a refactor.
     flags: Vec<String>,
+    /// Whether this unit has a syntactically valid `DESTROY` order this month.
+    destroys_structure: bool,
+    /// The units named by syntactically valid `PROMOTE` orders this month.
+    promotes_units: Vec<String>,
     /// The intents that can actually execute this month: every order that does not spend the
     /// month, plus the one month claim that wins (`ah-rzkm`), so every projection and every
     /// specialized check describes the executable month.
@@ -2365,6 +2377,9 @@ impl<'a> Hex<'a> {
                         &unit.flags,
                         orders.map_or(&[][..], |orders| orders.flag_changes.as_slice()),
                     ),
+                    destroys_structure: orders.is_some_and(|orders| orders.destroys_structure),
+                    promotes_units: orders
+                        .map_or_else(Vec::new, |orders| orders.promotes_units.clone()),
                     intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
                     all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
                     teaching_eligible: None,
@@ -2391,6 +2406,8 @@ impl<'a> Hex<'a> {
                 .map(|formed| Ordered {
                     unit: &formed.unit,
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
+                    destroys_structure: formed.block.destroys_structure,
+                    promotes_units: formed.block.promotes_units.clone(),
                     intents: formed.block.intents.clone(),
                     all_intents: &formed.block.intents,
                     teaching_eligible: None,
@@ -4368,6 +4385,9 @@ struct Ledger<'a> {
     /// What each unit's `BUILD` orders spend, in document order (`ah-ofpb.2`). Keyed by unit id,
     /// exactly as `uncounted` is, because a `BUILD` records more than a movement can carry.
     pub(crate) built: BTreeMap<String, Vec<super::effects::BuildSpend>>,
+    /// Direct founding `BUILD`s whose selected ruleset refuses their reported site.
+    pub(crate) build_placement_refusals:
+        BTreeMap<String, Vec<super::effects::BuildPlacementRefusal>>,
     /// `BUY ALL` lines, per unit, in document order, read but not yet settled.
     ///
     /// `rules/buy` gives a `BUY ALL` as many as the unit can afford, and what it can afford is
@@ -4673,6 +4693,7 @@ fn ledger_for_with_production<'a>(
         uncounted: BTreeMap::new(),
         refused_recruits: Vec::new(),
         built: BTreeMap::new(),
+        build_placement_refusals: BTreeMap::new(),
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
@@ -5154,6 +5175,12 @@ pub(crate) fn item_effects(
                 .or_default()
                 .built = spends;
         }
+        for (unit_id, refusals) in ledger.build_placement_refusals {
+            result
+                .entry(unit_key(&hex.region.region_id, &unit_id))
+                .or_default()
+                .build_placement_refusals = refusals;
+        }
     }
 
     // Into the month's order, once, after every hex has been walked (`ah-rgkk.3.1`).
@@ -5184,6 +5211,8 @@ pub(crate) struct UnitItemEffects {
     pub uncounted: Vec<String>,
     /// What this unit's `BUILD` orders spend this month, in document order (`ah-ofpb.2`).
     pub built: Vec<super::effects::BuildSpend>,
+    /// Direct founding `BUILD`s whose selected ruleset refuses their reported site.
+    pub build_placement_refusals: Vec<super::effects::BuildPlacementRefusal>,
     /// This unit's settled recruits this month, one entry per man tag `Ledger::bought` credited
     /// it. Empty both when nothing was recruited and when a `BUY ALL` makes the exact figure
     /// unknowable - either way the preview falls back to its own net-count inference
@@ -7261,6 +7290,108 @@ fn plan_build(men: i64, level: i64, remaining: i64, held: i64) -> BuildPlan {
     }
 }
 
+/// The certain site refusal for a founding kind, if the selected ruleset states one.
+///
+/// Only structures already present in the report count for uniqueness. Competing founding orders
+/// in this turn have no settled winner in the report and therefore stay unrefused.
+fn founding_site_refusal(
+    hex: &Hex<'_>,
+    ruleset: &Ruleset,
+    kind: &str,
+    destroyed_structure_ids: &BTreeSet<String>,
+) -> Option<super::effects::BuildPlacementRefusalReason> {
+    let building = ruleset.buildings.get(&kind.to_ascii_uppercase())?;
+    if building.requires_settlement && hex.region.settlement.is_none() {
+        return Some(super::effects::BuildPlacementRefusalReason::MissingSettlement);
+    }
+    if building.unique_per_region
+        && hex.region.structures.iter().any(|structure| {
+            !destroyed_structure_ids.contains(&structure.structure_id)
+                && super::effects::structure_kind_is(structure, kind)
+        })
+    {
+        return Some(super::effects::BuildPlacementRefusalReason::DuplicateInRegion);
+    }
+    None
+}
+
+/// Existing structures that a valid, executable `DESTROY` order removes before BUILD.
+///
+/// `DESTROY` is not an [`Intent`] because it is a free order, but it still changes the set of
+/// structures that `BUILD` sees. The report's first unit in a structure is its owner, and valid
+/// `PROMOTE` orders are projected before `DESTROY`; anything the report cannot establish keeps the
+/// structure present so a replacement is not charged optimistically.
+fn destroyed_structure_ids(hex: &Hex<'_>) -> BTreeSet<String> {
+    if hex.region.terrain.eq_ignore_ascii_case("ocean") {
+        return BTreeSet::new();
+    }
+
+    let mut destroyed = BTreeSet::new();
+    for structure in &hex.region.structures {
+        let structure_id = &structure.structure_id;
+        let Some(owner) = structure_owner_after_promotes(hex, structure_id) else {
+            continue;
+        };
+        if hex.units.iter().any(|ordered| {
+            ordered.destroys_structure
+                && ordered.unit.unit_id == owner
+                && structure_after_orders(ordered) == Some(structure_id.as_str())
+        }) {
+            destroyed.insert(structure_id.clone());
+        }
+    }
+    destroyed
+}
+
+/// The owner that can execute `DESTROY` after this turn's `PROMOTE` orders, when ownership is
+/// knowable from the report. A unit that leaves the structure cannot promote its ownership, and
+/// only the owner at each point in the report-order pass can transfer ownership.
+fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
+    let mut owner = hex
+        .region
+        .units
+        .iter()
+        .find(|unit| unit.structure_id.as_deref() == Some(structure_id))?
+        .unit_id
+        .clone();
+
+    for promoter in &hex.units {
+        if promoter.unit.unit_id != owner {
+            continue;
+        }
+        if structure_after_orders(promoter) != Some(structure_id) {
+            continue;
+        }
+        for target in &promoter.promotes_units {
+            if target == &owner {
+                continue;
+            }
+            if unit_is_in_structure(hex, target, structure_id) {
+                owner = target.clone();
+                break;
+            }
+        }
+    }
+    Some(owner)
+}
+
+/// Whether a unit is still in a structure after this month's ENTER/LEAVE projection.
+fn unit_is_in_structure(hex: &Hex<'_>, unit_id: &str, structure_id: &str) -> bool {
+    if let Some(ordered) = hex
+        .units
+        .iter()
+        .find(|ordered| ordered.unit.unit_id == unit_id)
+    {
+        return structure_after_orders(ordered) == Some(structure_id);
+    }
+    hex.region
+        .units
+        .iter()
+        .find(|unit| unit.unit_id == unit_id)
+        .and_then(|unit| unit.structure_id.as_deref())
+        == Some(structure_id)
+}
+
 /// `BUILD`, in whichever of the rules' forms it was written: what it spends this month.
 ///
 /// Reuses the same structure resolution the four BUILD checks already do (`check_building`,
@@ -7284,6 +7415,7 @@ fn build(
 ) {
     let hex = pool.hex;
     let who = &actor.unit.unit_id;
+    let destroyed_structure_ids = destroyed_structure_ids(hex);
 
     // 1. No ruleset, or a ruleset that knows no buildings.
     let Some(ruleset) = ruleset else { return };
@@ -7349,7 +7481,7 @@ fn build(
 
     // 4/5. The structure being worked on, and its recipe. A founding build spends against its
     // whole cost, and is named by the kind the player wrote, verbatim.
-    let (place, kind, is_founding, existing_remaining) = if let Some(kind) = founding_kind {
+    let (place, kind, is_founding, existing_remaining) = if let Some(kind) = founding_kind.clone() {
         (kind.clone(), kind, true, None)
     } else {
         let Some(structure_id) = structure_after_orders(task_owner) else {
@@ -7406,6 +7538,49 @@ fn build(
     let available_of = |tag: &str| {
         material_available_at(ledger, StatePhase::Build, pool, &tag.to_ascii_uppercase())
     };
+    if let Some(reason) = founding_kind
+        .as_deref()
+        .and_then(|kind| founding_site_refusal(hex, ruleset, kind, &destroyed_structure_ids))
+    {
+        let material = if resolved.len() == 1 {
+            Some(resolved[0].name.clone())
+        } else {
+            let mut holding = None;
+            let mut ambiguous = false;
+            for item in &resolved {
+                match available_of(&item.tag) {
+                    Some(amount) if amount > 0 && holding.is_none() => holding = Some(item),
+                    Some(amount) if amount > 0 => {
+                        ambiguous = true;
+                        break;
+                    }
+                    Some(_) => {}
+                    None => {
+                        ambiguous = true;
+                        break;
+                    }
+                }
+            }
+            if ambiguous {
+                None
+            } else {
+                holding.map(|item| item.name.clone())
+            }
+        };
+        if founding.is_some() && helping.is_none() {
+            ledger
+                .build_placement_refusals
+                .entry(who.clone())
+                .or_default()
+                .push(super::effects::BuildPlacementRefusal {
+                    line: placed.line,
+                    building: founding_kind.as_deref().unwrap_or_default().to_string(),
+                    reason,
+                    material,
+                });
+        }
+        return;
+    }
     if resolved
         .iter()
         .any(|item| available_of(&item.tag).is_none())
@@ -20736,6 +20911,19 @@ BUILD
             read(&ledger)
         }
 
+        fn with_trident_ledger<R>(
+            hex_region: ReportRegion,
+            orders: &str,
+            read: impl FnOnce(&Ledger<'_>) -> R,
+        ) -> R {
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+                .expect("the committed Trident ruleset should be usable");
+            let ledger = ledger_for(&hex, Some(&rules));
+            read(&ledger)
+        }
+
         /// An [`ItemMovement`] with the optional attribution left unset - what a test that is not
         /// about a price or a second unit wants (`ah-rgkk.3.1`).
         fn movement(
@@ -22713,6 +22901,311 @@ BUILD
         }
 
         // --- BUILD (`ah-ofpb.2`) -----------------------------------------------------------
+
+        #[test]
+        fn a_trident_founder_at_a_forbidden_site_keeps_pooled_material() {
+            let mut wilderness = region(vec![
+                with_item(
+                    with_skill(with_men(unit("900"), 10), "BUIL", 3),
+                    120,
+                    "stone",
+                    "STON",
+                ),
+                sharing(with_item(unit("901"), 120, "stone", "STON")),
+            ]);
+            wilderness.structures.clear();
+            with_trident_ledger(wilderness, "unit 900\nBUILD Palace\n", |ledger| {
+                assert_eq!(
+                    ledger.build_placement_refusals.get("900"),
+                    Some(&vec![effects::BuildPlacementRefusal {
+                        line: 2,
+                        building: "Palace".to_string(),
+                        reason: effects::BuildPlacementRefusalReason::MissingSettlement,
+                        material: Some("stone".to_string()),
+                    }])
+                );
+                assert!(
+                    ledger
+                        .movements
+                        .iter()
+                        .all(|movement| movement.cause != ItemChangeCause::BuildSpent),
+                    "a refused site must not consume the builder or donor stock: {:?}",
+                    ledger.movements
+                );
+                assert_eq!(balance_of(ledger, "900", "STON"), 120);
+                assert_eq!(balance_of(ledger, "901", "STON"), 120);
+                assert!(!ledger.uncounted.contains_key("900"));
+            });
+        }
+
+        #[test]
+        fn a_duplicate_trident_building_reports_one_direct_founder_refusal() {
+            let mut duplicate = region(vec![with_item(
+                with_skill(with_men(unit("900"), 10), "BUIL", 3),
+                120,
+                "stone",
+                "STON",
+            )]);
+            duplicate.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                needs: Some(20),
+                ..Default::default()
+            });
+            duplicate.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            with_trident_ledger(duplicate, "unit 900\nBUILD Palace\n", |ledger| {
+                assert_eq!(
+                    ledger.build_placement_refusals["900"],
+                    vec![effects::BuildPlacementRefusal {
+                        line: 2,
+                        building: "Palace".to_string(),
+                        reason: effects::BuildPlacementRefusalReason::DuplicateInRegion,
+                        material: Some("stone".to_string()),
+                    }]
+                );
+                assert!(ledger
+                    .movements
+                    .iter()
+                    .all(|movement| movement.cause != ItemChangeCause::BuildSpent));
+                assert_eq!(balance_of(ledger, "900", "STON"), 120);
+            });
+        }
+
+        #[test]
+        fn destroying_a_unique_trident_building_allows_same_turn_replacement() {
+            let mut replacement_site = region(vec![in_structure(
+                with_skill(
+                    with_item(with_men(unit("900"), 10), 120, "stone", "STON"),
+                    "BUIL",
+                    3,
+                ),
+                "4",
+            )]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nDESTROY\nBUILD Palace\n",
+                |ledger| {
+                    assert!(ledger.build_placement_refusals.is_empty());
+                    assert!(ledger.movements.contains(&movement(
+                        "900",
+                        "STON",
+                        "stone",
+                        -30,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(3),
+                    )));
+                    assert_eq!(balance_of(ledger, "900", "STON"), 90);
+                },
+            );
+        }
+
+        #[test]
+        fn a_non_owner_cannot_destroy_a_unique_trident_building_for_replacement() {
+            let mut replacement_site = region(vec![
+                in_structure(unit("900"), "4"),
+                in_structure(
+                    with_skill(
+                        with_item(with_men(unit("901"), 10), 120, "stone", "STON"),
+                        "BUIL",
+                        3,
+                    ),
+                    "4",
+                ),
+            ]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 901\nDESTROY\nBUILD Palace\n",
+                |ledger| {
+                    assert_eq!(
+                        ledger.build_placement_refusals["901"],
+                        vec![effects::BuildPlacementRefusal {
+                            line: 3,
+                            building: "Palace".to_string(),
+                            reason: effects::BuildPlacementRefusalReason::DuplicateInRegion,
+                            material: Some("stone".to_string()),
+                        }]
+                    );
+                    assert!(ledger
+                        .movements
+                        .iter()
+                        .all(|movement| movement.cause != ItemChangeCause::BuildSpent));
+                    assert_eq!(balance_of(ledger, "901", "STON"), 120);
+                },
+            );
+        }
+
+        #[test]
+        fn an_owner_promoting_before_destroy_allows_same_turn_replacement() {
+            let mut replacement_site = region(vec![
+                in_structure(unit("900"), "4"),
+                in_structure(
+                    with_skill(
+                        with_item(with_men(unit("901"), 10), 120, "stone", "STON"),
+                        "BUIL",
+                        3,
+                    ),
+                    "4",
+                ),
+            ]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nPROMOTE 901\nunit 901\nDESTROY\nBUILD Palace\n",
+                |ledger| {
+                    assert!(ledger.build_placement_refusals.is_empty());
+                    assert!(ledger.movements.contains(&movement(
+                        "901",
+                        "STON",
+                        "stone",
+                        -30,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(5),
+                    )));
+                    assert_eq!(balance_of(ledger, "901", "STON"), 90);
+                },
+            );
+        }
+
+        #[test]
+        fn an_owner_promoting_a_formed_unit_before_destroy_allows_replacement() {
+            let mut replacement_site = region(vec![in_structure(unit("900"), "4")]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nFORM 1\nDESTROY\nBUILD Palace\nEND\nPROMOTE NEW 1\n",
+                |ledger| {
+                    assert!(ledger.build_placement_refusals.is_empty());
+                },
+            );
+        }
+
+        #[test]
+        fn mutually_promoting_owners_are_processed_once_in_report_order() {
+            let mut replacement_site = region(vec![
+                in_structure(unit("900"), "4"),
+                in_structure(
+                    with_skill(
+                        with_item(with_men(unit("901"), 10), 120, "stone", "STON"),
+                        "BUIL",
+                        3,
+                    ),
+                    "4",
+                ),
+            ]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nPROMOTE 901\nunit 901\nPROMOTE 900\nDESTROY\nBUILD Palace\n",
+                |ledger| {
+                    assert_eq!(
+                        ledger.build_placement_refusals["901"],
+                        vec![effects::BuildPlacementRefusal {
+                            line: 6,
+                            building: "Palace".to_string(),
+                            reason: effects::BuildPlacementRefusalReason::DuplicateInRegion,
+                            material: Some("stone".to_string()),
+                        }]
+                    );
+                    assert_eq!(balance_of(ledger, "901", "STON"), 120);
+                },
+            );
+        }
+
+        #[test]
+        fn an_owner_can_promote_only_once_before_replacement_destroy() {
+            let mut replacement_site = region(vec![
+                in_structure(unit("900"), "4"),
+                in_structure(
+                    with_skill(
+                        with_item(with_men(unit("901"), 10), 120, "stone", "STON"),
+                        "BUIL",
+                        3,
+                    ),
+                    "4",
+                ),
+                in_structure(unit("902"), "4"),
+            ]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nPROMOTE 901\nPROMOTE 902\nunit 901\nDESTROY\nBUILD Palace\nunit 902\n",
+                |ledger| {
+                    assert!(ledger.build_placement_refusals.is_empty());
+                    assert!(ledger.movements.contains(&movement(
+                        "901",
+                        "STON",
+                        "stone",
+                        -30,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(6),
+                    )));
+                    assert_eq!(balance_of(ledger, "901", "STON"), 90);
+                },
+            );
+        }
 
         /// A hex whose one own unit stands in an unfinished Stockade, for the `BUILD` cases.
         /// 10 humans (`men`), `building [BUIL] 3`, holding 120 wood.
