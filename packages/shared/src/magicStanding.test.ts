@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readRuleset } from "@atlantis/fixtures";
+import { readRuleset, readTridentRuleset } from "@atlantis/fixtures";
 import { aReportUnit } from "@atlantis/core-client";
 import type { SkillInfo } from "@atlantis/core-client";
 import { parseGameData, type GameDataIndex } from "./gameData";
@@ -66,6 +66,19 @@ describe("standingsFrom", () => {
 });
 
 describe("standingOf", () => {
+  it("does not make item-granted magic open or make its holder an adept", () => {
+    const tridentIndex = parseGameData(readTridentRuleset()) as GameDataIndex;
+    const tridentTree = buildMagicTree(tridentIndex);
+    const mage = standingOf(
+      aReportUnit({ skills: held({ CPIR: 5 }) }),
+      tridentTree,
+      tridentIndex
+    );
+
+    expect(mage.byTag.get("CPIR")).toEqual({ kind: "unlearnable" });
+    expect(mage.adept).toBe(false);
+  });
+
   it("separates known, stuck, finished, open and locked", () => {
     const mage = standing({ FORC: 4, PATT: 3, ILLU: 3, ARTI: 2 });
 
@@ -95,7 +108,14 @@ describe("standingOf", () => {
   it("counts every skill exactly once", () => {
     const counts = SIX_OF_SEVEN.counts;
 
-    expect(counts).toEqual({ known: 8, ceiling: 9, maxed: 0, open: 21, locked: 32 });
+    expect(counts).toEqual({
+      known: 8,
+      ceiling: 9,
+      maxed: 0,
+      open: 21,
+      locked: 32,
+      unlearnable: 0
+    });
     expect(Object.values(counts).reduce((sum, count) => sum + count, 0)).toBe(tree.skillCount);
   });
 

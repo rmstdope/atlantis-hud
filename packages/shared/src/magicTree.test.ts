@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readRuleset } from "@atlantis/fixtures";
+import { readRuleset, readTridentRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree, highestMagicSkill } from "./magicTree";
 
@@ -47,6 +47,23 @@ const RULESET = JSON.stringify({
 const index = parseGameData(RULESET) as GameDataIndex;
 
 describe("buildMagicTree", () => {
+  it("files Trident's item-granted Call Pirates separately from studyable magic", () => {
+    const trident = buildMagicTree(parseGameData(readTridentRuleset()) as GameDataIndex);
+    const cpir = trident.byTag.get("CPIR");
+    const branch = trident.branches.find((candidate) => candidate.key === "ITEM_GRANTED");
+
+    expect(cpir).toMatchObject({
+      branch: "ITEM_GRANTED",
+      depth: 0,
+      learnable: false,
+      itemGrant: "Bosun's Whistle",
+      within: [],
+      crossing: []
+    });
+    expect(branch?.title).toBe("Item-granted magic");
+    expect(branch?.blurb).toBe("Granted by the Bosun's Whistle. It cannot be studied or taught.");
+  });
+
   it("keeps the magic skills and drops the rest", () => {
     const tree = buildMagicTree(index);
 

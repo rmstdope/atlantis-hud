@@ -132,7 +132,7 @@ import { useArmiesStore } from "../armiesStore";
 import { useAlliedMagesStore } from "../alliedMagesStore";
 import { useStudyPlansStore } from "../studyPlansStore";
 import type { StudyGoal } from "@atlantis/core-client";
-import type { ScheduleChange } from "../studyPlans";
+import { plannedGoals, type ScheduleChange } from "../studyPlans";
 import {
   forgetFailedText,
   forgottenStatusText,
@@ -789,7 +789,10 @@ export function AppShell({
           .save(client, game, { factionId, unitId }, (current) => ({
             factionId,
             unitId,
-            goals: change.goals ? change.goals(current?.goals ?? []) : (current?.goals ?? []),
+            goals: plannedGoals(
+              change.goals ? change.goals(current?.goals ?? []) : (current?.goals ?? []),
+              magicTree ?? undefined
+            ),
             comment: change.comment ?? current?.comment ?? "",
             updatedAt: new Date().toISOString()
           }));
@@ -797,7 +800,7 @@ export function AppShell({
         setStudyPlanError(failure);
       }
     },
-    [client, game]
+    [client, game, magicTree]
   );
 
   /** Reshapes the whole schedule: insert an empty turn or remove one, for every mage (ah-j9wn). */

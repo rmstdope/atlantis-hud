@@ -142,6 +142,7 @@ pub mod codes {
     pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
     pub const STUDY_AT_MAXIMUM: Code = Code("study-at-maximum");
+    pub const STUDY_UNLEARNABLE: Code = Code("study-unlearnable");
     pub const MAGIC_STUDY_CAPPED_BY_PREREQUISITES: Code =
         Code("magic-study-capped-by-prerequisites");
     pub const ALREADY_BUILT: Code = Code("already-built");
@@ -184,7 +185,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 49] = [
+    pub const ALL: [Code; 50] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -203,6 +204,7 @@ pub mod codes {
         UNIT_OVERLOADED,
         TOO_MANY_QUARTERMASTERS,
         STUDY_AT_MAXIMUM,
+        STUDY_UNLEARNABLE,
         ALREADY_BUILT,
         TOO_MANY_TRADE_REGIONS,
         MAGIC_STUDY_OUTSIDE_BUILDING,
@@ -7586,6 +7588,9 @@ fn study(
     // differently from the column - and `ledger.doubted` is read well past the fee.
     if let Some(ruleset) = ruleset.filter(|_| !actor.unit.men_estimated) {
         if let Some(entry) = ruleset.find_skill(skill) {
+            if !entry.is_studyable() {
+                return;
+            }
             if study::at_the_ceiling(
                 ruleset,
                 actor.skills(),
@@ -10777,7 +10782,7 @@ fn check_studying(
 ) {
     // No ruleset, no stated ceiling: there is nothing to compare the unit's level against.
     let Some(ruleset) = ruleset else { return };
-    if !options.emits(codes::STUDY_AT_MAXIMUM) {
+    if !options.emits(codes::STUDY_AT_MAXIMUM) && !options.emits(codes::STUDY_UNLEARNABLE) {
         return;
     }
 
@@ -10791,6 +10796,18 @@ fn check_studying(
         let Some(skill) = ruleset.find_skill(studying) else {
             continue;
         };
+        if !skill.is_studyable() && options.emits(codes::STUDY_UNLEARNABLE) {
+            findings.push(ordered.finding(
+                hex,
+                codes::STUDY_UNLEARNABLE,
+                format!("{} cannot be studied by normal means", skill.name),
+                Some(placed),
+            ));
+            continue;
+        }
+        if !skill.is_studyable() {
+            continue;
+        }
         // `None` means the unit's skills cannot be said this month, so it goes unjudged. No entry
         // for this skill on the unit means it has never studied it, so it is not at any maximum.
         let Some(skills) = ordered.skills() else {
@@ -10807,7 +10824,7 @@ fn check_studying(
         // The composition the study month has, which `rules/sequenceofevents` puts after this
         // month's GIVE and TAKE - the same view `skills()` above was merged from.
         let ceiling = study::study_ceiling(ruleset, &men[index].men_by_race, skill);
-        if level >= ceiling.level() {
+        if options.emits(codes::STUDY_AT_MAXIMUM) && level >= ceiling.level() {
             findings.push(ordered.finding(
                 hex,
                 codes::STUDY_AT_MAXIMUM,
@@ -11249,6 +11266,9 @@ fn one_study_forecast(
 
     let (_, studying) = ordered.studies_placed()?;
     let skill = ruleset.find_skill(studying)?;
+    if !skill.is_studyable() {
+        return None;
+    }
     // `None` means the unit's skills cannot be said this month, so there is nothing to add to.
     let skills = ordered.skills()?;
 
@@ -35233,6 +35253,13 @@ BUILD
                 unclaimed: None,
             },
             Case {
+                code: codes::STUDY_UNLEARNABLE,
+                regions: vec![region(vec![mage(1)])],
+                orders: "unit 5\nSTUDY annihilation\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
                 code: codes::MEN_SENT_INTO_A_MAGE,
                 regions: vec![region(vec![mage(2), men_holder("1010", 5)])],
                 orders: "unit 1010\nGIVE 5 1 HUMN\n",
@@ -41402,27 +41429,51 @@ BUILD
         assert!(study.cannot_raise_the_level, "{study:?}");
     }
 
-    /// The catalogue prices `annihilation` nowhere, so the fee cannot be said at all - and the
-    /// projection is still produced in full beside the doubt (decision **U2**).
+    /// The catalogue prices `annihilation` nowhere, so it cannot be studied or projected.
     #[test]
-    fn a_skill_the_catalogue_prices_nowhere_is_doubted_and_still_projected() {
+    fn a_skill_the_catalogue_prices_nowhere_is_not_projected() {
         let student = with_silver(with_race(unit("900"), 1, "leader", "LEAD"), 1000);
-        let study = study_of(
-            vec![region(vec![student])],
-            "unit 900\nSTUDY annihilation\n",
-            "900",
-        )
-        .expect("a studying unit is forecast");
-
-        assert_eq!(
-            study
-                .doubts
-                .iter()
-                .map(|doubt| doubt.reason)
-                .collect::<Vec<_>>(),
-            [effects::StudyDoubtReason::FeeUnpriced]
+        assert!(
+            study_of(
+                vec![region(vec![student])],
+                "unit 900\nSTUDY annihilation\n",
+                "900",
+            )
+            .is_none(),
+            "an unlearnable study should not produce a forecast"
         );
-        assert_eq!(study.points_after, 30);
+    }
+
+    #[test]
+    fn trident_item_granted_magic_is_rejected_without_side_effects() {
+        let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset should be usable");
+        let report = report(vec![region(vec![mage(1)])]);
+        let orders = "unit 5\nSTUDY Call_Pirates\n";
+
+        let review = review_turn(&report, orders, Some(&trident), CheckOptions::default());
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::STUDY_UNLEARNABLE),
+            "manual Call Pirates study should be called out: {:?}",
+            review.findings
+        );
+
+        let silver = review
+            .silver
+            .iter()
+            .find(|entry| entry.unit_id == "5")
+            .expect("the ordered unit should have a silver forecast");
+        assert_eq!(silver.expense, None, "{silver:?}");
+        assert_eq!(silver.no_study_fee, None, "{silver:?}");
+
+        let effects = item_effects(&report, orders, Some(&trident));
+        assert!(
+            effects_for(&effects, "5").is_none(),
+            "an unlearnable study should not produce item effects or a forecast"
+        );
     }
 
     /// A skill the catalogue does not know has no ceiling, no fee and no tag to find the unit's

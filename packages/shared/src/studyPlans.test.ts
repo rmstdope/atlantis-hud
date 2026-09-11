@@ -9,6 +9,9 @@ import {
   saveStudyPlans,
   type ScheduleChange
 } from "./studyPlans";
+import { parseGameData, type GameDataIndex } from "./gameData";
+import { buildMagicTree } from "./magicTree";
+import { readTridentRuleset } from "@atlantis/fixtures";
 
 function game(gameId = "aug-2026"): OpenedGame {
   return {
@@ -88,6 +91,20 @@ describe("keyOf", () => {
 });
 
 describe("plannedGoals", () => {
+  it("drops only unlearnable study goals when a tree is supplied", () => {
+    const tree = buildMagicTree(parseGameData(readTridentRuleset()) as GameDataIndex);
+    const goals = [
+      { kind: "study", turn: 25, skill: "CPIR" } as StudyGoal,
+      { kind: "teach", turn: 26, students: ["1205"], live: false } as StudyGoal,
+      { kind: "study", turn: 27, skill: "FORC" } as StudyGoal
+    ];
+
+    expect(plannedGoals(goals, tree)).toEqual([
+      goals[1],
+      goals[2]
+    ]);
+  });
+
   const study = (turn: number, skill: string): StudyGoal => ({ kind: "study", turn, skill });
 
   it("drops a goal with no turn", () => {
