@@ -836,6 +836,10 @@ const COLUMN_DESCRIPTIONS: Record<HideableColumn, string> = {
 export function WarningSettings() {
   const advisoryChecks = useSettingsStore((state) => state.advisoryChecks);
   const setAdvisoryCheck = useSettingsStore((state) => state.setAdvisoryCheck);
+  const showBuildPlacementRefusals = useSettingsStore((state) => state.showBuildPlacementRefusals);
+  const setShowBuildPlacementRefusals = useSettingsStore(
+    (state) => state.setShowBuildPlacementRefusals
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -854,6 +858,15 @@ export function WarningSettings() {
               onChange={(checked) => setAdvisoryCheck(entry.code, checked)}
             />
           ))}
+         {group.heading === "Building" ? (
+           <SettingToggle
+             title="Construction sites the game will refuse"
+             description="A BUILD order that cannot start a new building in this region."
+             testId="settings-build-placement-refusals"
+             checked={showBuildPlacementRefusals}
+             onChange={setShowBuildPlacementRefusals}
+           />
+         ) : null}
         </div>
       ))}
     </div>

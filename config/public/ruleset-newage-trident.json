@@ -8461,6 +8461,8 @@
     "CASTLE": {
       "description": "This is a building. Units may enter this structure. This structure provides defense to the first 300 men inside it. This structure gives a defensive bonus of 3 against melee attacks, 2 against energy attacks, 2 against spirit attacks, 2 against weather attacks, 3 against riding attacks and 3 against ranged attacks. This structure also protects in all adjacent regions. This structure will allow up to 5 mages to study above level 2.",
       "size": 300,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 5,
       "cost": 300,
       "materials": [
@@ -8472,6 +8474,8 @@
     "CITADEL": {
       "description": "This is a building. Units may enter this structure. This structure provides defense to the first 1000 men inside it. This structure gives a defensive bonus of 3 against melee attacks, 2 against energy attacks, 2 against spirit attacks, 2 against weather attacks, 3 against riding attacks and 3 against ranged attacks. This structure also protects in all adjacent regions. This structure will allow up to 10 mages to study above level 2.",
       "size": 1000,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 10,
       "cost": 800,
       "materials": [
@@ -8483,6 +8487,8 @@
     "FORT": {
       "description": "This is a building. Units may enter this structure. This structure provides defense to the first 50 men inside it. This structure gives a defensive bonus of 2 against melee attacks, 2 against energy attacks, 2 against spirit attacks, 2 against weather attacks, 2 against riding attacks and 2 against ranged attacks. This structure also protects in all adjacent regions. This structure will allow one mage to study above level 2.",
       "size": 50,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 1,
       "cost": 40,
       "materials": [
@@ -8494,6 +8500,8 @@
     "HERMITS HUT": {
       "description": "This is a building. Units may enter this structure. This structure provides defense to the first 1 men inside it. This structure gives a defensive bonus of This structure also protects in all adjacent regions. This structure will allow one mage to study above level 2.",
       "size": 1,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 1,
       "cost": 5,
       "materials": [
@@ -8505,6 +8513,8 @@
     "MAGICAL CASTLE": {
       "description": "This is a building. Units may enter this structure. This structure provides defense to the first 300 men inside it. This structure gives a defensive bonus of 4 against melee attacks, 4 against energy attacks, 4 against spirit attacks, 4 against weather attacks, 4 against riding attacks and 4 against ranged attacks. This structure also protects in all adjacent regions. Units in this structure are not affected by an earthquake. This structure will allow up to 30 mages to study above level 2.",
       "size": 300,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 30,
       "cost": 300,
       "materials": [
@@ -8516,6 +8526,8 @@
     "MAGICAL CITADEL": {
       "description": "This is a building. Units may enter this structure. This structure provides defense to the first 1000 men inside it. This structure gives a defensive bonus of 4 against melee attacks, 4 against energy attacks, 4 against spirit attacks, 4 against weather attacks, 4 against riding attacks and 4 against ranged attacks. This structure also protects in all adjacent regions. Units in this structure are not affected by an earthquake. This structure will allow up to 50 mages to study above level 2.",
       "size": 1000,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 50,
       "cost": 800,
       "materials": [
@@ -8527,6 +8539,8 @@
     "MAGICAL FORTRESS": {
       "description": "This is a building. Units may enter this structure. This structure provides defense to the first 50 men inside it. This structure gives a defensive bonus of 3 against melee attacks, 3 against energy attacks, 3 against spirit attacks, 3 against weather attacks, 3 against riding attacks and 3 against ranged attacks. This structure also protects in all adjacent regions. Units in this structure are not affected by an earthquake. This structure will allow up to 10 mages to study above level 2.",
       "size": 50,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 10,
       "cost": 40,
       "materials": [
@@ -8538,6 +8552,8 @@
     "MAGICAL TOWER": {
       "description": "This is a building. Units may enter this structure. Units garrisoning this tower observe all adjacent regions at basic observation level, regardless of their Observation skill. Skills such as Observation, True Seeing and Mind Reading do not enhance this ability: stealth units and invisible items will not be detected. This structure provides defense to the first 10 men inside it. This structure gives a defensive bonus of 3 against melee attacks, 3 against energy attacks, 3 against spirit attacks, 3 against weather attacks, 3 against riding attacks and 3 against ranged attacks. This structure also protects in all adjacent regions. Units in this structure are not affected by an earthquake. This structure will allow up to 3 mages to study above level 2.",
       "size": 10,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 3,
       "cost": 10,
       "materials": [
@@ -8549,6 +8565,8 @@
     "PALACE": {
       "description": "This is a building. Units may enter this structure. This structure can only be built in settlements (villages, towns or cities). Only one such structure can exist in any region. This structure provides defense to the first 300 men inside it. This structure gives a defensive bonus of 3 against melee attacks, 2 against energy attacks, 2 against spirit attacks, 2 against weather attacks, 3 against riding attacks and 3 against ranged attacks. This structure also protects in all adjacent regions. This structure will allow up to 5 mages to study above level 2.",
       "size": 300,
+      "requiresSettlement": true,
+      "uniquePerRegion": true,
       "mages": 5,
       "cost": 300,
       "materials": [
@@ -8560,6 +8578,8 @@
     "STOCKADE": {
       "description": "This is a building. Units may enter this structure. This structure provides defense to the first 50 men inside it. This structure gives a defensive bonus of 2 against melee attacks, 2 against energy attacks, 2 against spirit attacks, 2 against weather attacks, 2 against riding attacks and 2 against ranged attacks. This structure also protects in all adjacent regions. This structure will allow one mage to study above level 2.",
       "size": 50,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 1,
       "cost": 60,
       "materials": [
@@ -8572,6 +8592,8 @@
       "description": "This is a building. Units may enter this structure. This structure provides defense to the first 20 men inside it. This structure gives a defensive bonus of 3 against spirit attacks. This structure also protects in all adjacent regions. This trade structure increases the amount of herbs available in the region.",
       "produces": "herbs",
       "size": 20,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8583,6 +8605,8 @@
     "TOWER": {
       "description": "This is a building. Units may enter this structure. Units garrisoning this tower observe all adjacent regions at basic observation level, regardless of their Observation skill. Skills such as Observation, True Seeing and Mind Reading do not enhance this ability: stealth units and invisible items will not be detected. This structure provides defense to the first 10 men inside it. This structure gives a defensive bonus of 2 against melee attacks, 2 against energy attacks, 2 against spirit attacks, 2 against weather attacks, 2 against riding attacks and 2 against ranged attacks. This structure also protects in all adjacent regions.",
       "size": 10,
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8594,6 +8618,8 @@
     "ALCHEMIST LAB": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of admantium available in the region.",
       "produces": "admantium",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8605,6 +8631,8 @@
     "ARCANE MINE": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of mithril available in the region.",
       "produces": "mithril",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8616,6 +8644,8 @@
     "FAERIE RING": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of mushrooms available in the region.",
       "produces": "mushrooms",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8627,6 +8657,8 @@
     "FARM": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of grain available in the region.",
       "produces": "grain",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8639,6 +8671,8 @@
     "FOREST PRESERVE": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of ironwood available in the region.",
       "produces": "ironwood",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8650,6 +8684,8 @@
     "INN": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of entertainment available in the region.",
       "produces": "entertainment",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8662,6 +8698,8 @@
     "MINE": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of iron available in the region.",
       "produces": "iron",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8674,6 +8712,8 @@
     "MYSTIC QUARRY": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of rootstone available in the region.",
       "produces": "rootstone",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8685,6 +8725,8 @@
     "MYTHIC STABLES": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of winged horses available in the region.",
       "produces": "winged horses",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8696,6 +8738,8 @@
     "OASIS": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of camels available in the region.",
       "produces": "camels",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8708,6 +8752,8 @@
     "QUARRY": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of stone available in the region.",
       "produces": "stone",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8720,6 +8766,8 @@
     "RANCH": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of livestock available in the region.",
       "produces": "livestock",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8732,6 +8780,8 @@
     "SACRED GROVE": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of yew available in the region.",
       "produces": "yew",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8743,6 +8793,8 @@
     "STABLES": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of horses available in the region.",
       "produces": "horses",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8755,6 +8807,8 @@
     "TIMBER YARD": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of wood available in the region.",
       "produces": "wood",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8767,6 +8821,8 @@
     "TRAPPING HUT": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of furs available in the region.",
       "produces": "furs",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8779,6 +8835,8 @@
     "TRAPPING LODGE": {
       "description": "This is a building. Units may enter this structure. This trade structure increases the amount of floater hides available in the region.",
       "produces": "floater hides",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 10,
       "materials": [
@@ -8789,66 +8847,98 @@
     },
     "BOG": {
       "description": "This is a building. Hydrae can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "CAVE": {
       "description": "This is a building. Dragons can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "CAVERN": {
       "description": "This is a building. Merfolk can potentially lair in this structure. This structure provides defense to the first 100 monsters inside it. This structure gives a defensive bonus of 2 against melee attacks, 3 against energy attacks, 3 against spirit attacks, 2 against riding attacks and 2 against ranged attacks. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "CRYPT": {
       "description": "This is a building. Skeletons can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "DARK MAGE TOWER": {
       "description": "This is a building. Dark mages can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "DEMON PIT": {
       "description": "This is a building. Imps can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "DERELICT SHIP": {
       "description": "This is a building. Kraken can potentially lair in this structure. This structure provides defense to the first 10 monsters inside it. This structure gives a defensive bonus of 2 against melee attacks, 2 against riding attacks and 2 against ranged attacks. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "GIANT'S CASTLE": {
       "description": "This is a building. Storm giants can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "ICE CAVE": {
       "description": "This is a building. Ice dragons can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "IFRIT LAIR": {
       "description": "This is a building. Ifrits can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "ISLAND": {
       "description": "This is a building. Pirates can potentially lair in this structure. This structure provides defense to the first 120 monsters inside it. This structure gives a defensive bonus of 2 against melee attacks, 3 against energy attacks, 3 against spirit attacks, 3 against weather attacks, 2 against riding attacks and 2 against ranged attacks. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "LAIR": {
       "description": "This is a building. Illyrthil can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "MAGICIAN'S TOWER": {
       "description": "This is a building. Evil magicians can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "RUIN": {
       "description": "This is a building. Centaurs can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "WHIRLPOOL": {
       "description": "This is a building. Elementals can potentially lair in this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "ROAD N": {
       "description": "This is a building. Units may enter this structure.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 30,
       "materials": [
@@ -8859,6 +8949,8 @@
     },
     "ROAD NE": {
       "description": "This is a building. Units may enter this structure.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 30,
       "materials": [
@@ -8869,6 +8961,8 @@
     },
     "ROAD NW": {
       "description": "This is a building. Units may enter this structure.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 30,
       "materials": [
@@ -8879,6 +8973,8 @@
     },
     "ROAD S": {
       "description": "This is a building. Units may enter this structure.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 30,
       "materials": [
@@ -8889,6 +8985,8 @@
     },
     "ROAD SE": {
       "description": "This is a building. Units may enter this structure.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 30,
       "materials": [
@@ -8899,6 +8997,8 @@
     },
     "ROAD SW": {
       "description": "This is a building. Units may enter this structure.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 30,
       "materials": [
@@ -8909,6 +9009,8 @@
     },
     "BLACK KEEP": {
       "description": "This is a building. Units may enter this structure.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 1000,
       "materials": [
@@ -8919,6 +9021,8 @@
     },
     "CANAL": {
       "description": "This is a building. Units may enter this structure. Only one such structure can exist in any region. This canal allows ships to sail through this coastal land region in any direction, bypassing the isthmus restriction. Passage through a stone canal costs 2 movement points. A canal built in a non-coastal region has no effect on ship movement.",
+      "requiresSettlement": false,
+      "uniquePerRegion": true,
       "mages": 0,
       "cost": 300,
       "materials": [
@@ -8929,6 +9033,8 @@
     },
     "CARAVANSERAI": {
       "description": "This is a building. Units may enter this structure. This structure can only be built in settlements (villages, towns or cities).",
+      "requiresSettlement": true,
+      "uniquePerRegion": false,
       "mages": 0,
       "cost": 20,
       "materials": [
@@ -8940,14 +9046,20 @@
     },
     "DUNGEON ENTRANCE": {
       "description": "This is a building. Units may enter this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "GATEWAY": {
       "description": "This is a building. Units may enter this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "MYSTIC CANAL": {
       "description": "This is a building. Units may enter this structure. Only one such structure can exist in any region. This canal allows ships to sail through this coastal land region in any direction, bypassing the isthmus restriction. Passage through a mystic canal costs 1 movement point. A canal built in a non-coastal region has no effect on ship movement.",
+      "requiresSettlement": false,
+      "uniquePerRegion": true,
       "mages": 0,
       "cost": 150,
       "materials": [
@@ -8958,10 +9070,14 @@
     },
     "SHAFT": {
       "description": "This is a building. Units may enter this structure. This structure cannot be built by players.",
+      "requiresSettlement": false,
+      "uniquePerRegion": false,
       "mages": 0
     },
     "TOWN HALL": {
       "description": "This is a building. Units may enter this structure. This structure can only be built in settlements (villages, towns or cities). Only one such structure can exist in any region.",
+      "requiresSettlement": true,
+      "uniquePerRegion": true,
       "mages": 0,
       "cost": 30,
       "materials": [

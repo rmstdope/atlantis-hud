@@ -1,7 +1,15 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { SKILL_OPENING, itemClassesOf, parseItemReference, parseSkillReference } from "./data";
+import {
+  SKILL_OPENING,
+  itemClassesOf,
+  parseBuildingReference,
+  parseItemReference,
+  parseSkillReference
+} from "./data";
+import { preformattedText } from "./html";
+import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
 
 /**
  * Holds the *parser* to what the *page* says, rather than to what the parser said last time.
@@ -42,6 +50,22 @@ const ENTRIES = read("tests/fixtures/ruleset/neworigins-data.html")
 
 const SKILLS = parseSkillReference(read("tests/fixtures/ruleset/neworigins-data.html"));
 
+const TRIDENT_PAGE = newAgeDataPage(
+  parseNewAgeDatabase(read("tests/fixtures/ruleset/newage-trident-database.json"))
+);
+const BUILDING_OPENING = /^([^.:[\]]{1,40}): This is a building\./u;
+const TRIDENT_BUILDINGS = preformattedText(TRIDENT_PAGE)
+  .split(/\n[ \t]*\n/u)
+  .map((paragraph) => paragraph.replace(/\s+/gu, " ").trim())
+  .filter((paragraph) => BUILDING_OPENING.test(paragraph));
+const TRIDENT_BUILDINGS_WITH = (marker: RegExp): string[] =>
+  TRIDENT_BUILDINGS.filter((entry) => marker.test(entry))
+    .map((entry) => entry.match(BUILDING_OPENING)![1].toUpperCase())
+    .sort();
+const SETTLEMENT_MARKER =
+  /This structure can only be built in settlements \(villages, towns or cities\)\./iu;
+const UNIQUE_REGION_MARKER = /Only one such structure can exist in any region\./iu;
+
 /** The tags of every skill whose page entries state `marker` on at least one level. */
 const statedBy = (...markers: RegExp[]): string[] =>
   [
@@ -62,6 +86,39 @@ describe("the skill catalogue against the page's own grammar", () => {
   it("finds the parser's ninety-six skills across the page's 480 level paragraphs", () => {
     expect(ENTRIES.length).toBe(480);
     expect(statedBy(/./u)).toEqual(Object.keys(SKILLS).sort());
+  });
+
+  describe("the Trident building catalogue against the page's own grammar", () => {
+    it("counts settlement and region-unique markers independently", () => {
+      expect(TRIDENT_BUILDINGS_WITH(SETTLEMENT_MARKER)).toEqual([
+        "CARAVANSERAI",
+        "PALACE",
+        "TOWN HALL"
+      ]);
+      expect(TRIDENT_BUILDINGS_WITH(UNIQUE_REGION_MARKER)).toEqual([
+        "CANAL",
+        "MYSTIC CANAL",
+        "PALACE",
+        "TOWN HALL"
+      ]);
+    });
+
+    it("carries exactly the source-stated policies into the building catalogue", () => {
+      const buildings = parseBuildingReference(TRIDENT_PAGE);
+
+      expect(
+        Object.entries(buildings)
+          .filter(([, building]) => building.requiresSettlement)
+          .map(([name]) => name)
+          .sort()
+      ).toEqual(TRIDENT_BUILDINGS_WITH(SETTLEMENT_MARKER));
+      expect(
+        Object.entries(buildings)
+          .filter(([, building]) => building.uniquePerRegion)
+          .map(([name]) => name)
+          .sort()
+      ).toEqual(TRIDENT_BUILDINGS_WITH(UNIQUE_REGION_MARKER));
+    });
   });
 
   it("prices every skill the page prices, and no other", () => {

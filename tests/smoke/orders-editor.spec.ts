@@ -5,6 +5,7 @@ import {
   expectOrders,
   expectOrdersNot,
   fillOrders,
+  importReport,
   loadReport,
   ordersInput,
   ordersText,
@@ -27,6 +28,17 @@ const OWN_UNIT = "18642";
 /** Another of the player's units, in the mountain at (26,52) - a different editor entirely. */
 const OTHER_OWN_UNIT = "13401";
 
+/** The standard report with one Trident builder in an unsettled region. */
+const TRIDENT_REPORT = readReport("g7f95t71")
+  .replace(
+    "* Drone (13432), Borg TNG (95), avoiding, behind, revealing faction,\n  holding, sharing, sailing battle spoils, hill dwarf [HDWA], horse\n  [HORS], 22 silver [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills:\n  none.",
+    "* Drone (13432), Borg TNG (95), avoiding, behind, revealing faction,\n  holding, sharing, sailing battle spoils, hill dwarf [HDWA], horse\n  [HORS], 20 wood [WOOD], 22 silver [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills:\n  building [BUIL] 2 (90)."
+  )
+  .replace(
+    ";  sailing battle spoils, hill dwarf [HDWA], horse [HORS], 22 silver\n;  [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills: none.",
+    ";  sailing battle spoils, hill dwarf [HDWA], horse [HORS], 20 wood [WOOD], 22 silver\n;  [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills: building [BUIL] 2 (90)."
+  );
+
 /**
  * Where the first character actually starts: `.cm-line`'s own bounding box is its border edge,
  * not its text - the line's `padding-left` (2px, per gh-205) sits between the two. Measuring the
@@ -46,6 +58,17 @@ async function openEditor(page: Page) {
   await loadReport(page, "Editor smoke");
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
+}
+
+async function openTridentBuilder(page: Page) {
+  await clearGames(page);
+  await page.getByTestId("game-ruleset").selectOption("newage-trident");
+  await createGame(page, "Trident placement smoke");
+  await importReport(page, "trident-turn.rep", TRIDENT_REPORT);
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  await selectHex(page, "1:10,50");
+  await selectUnit(page, "13432");
+  await expect(page.getByTestId("orders-input")).toBeVisible();
 }
 
 test("typing can be undone and redone from the keyboard", async ({ page }) => {
@@ -195,6 +218,34 @@ test("a bad order is marked in the editor's own margin", async ({ page }) => {
   // editor already has its own coverage and keeps working alongside them.
   await expect(page.getByTestId("orders-input").locator(".cm-lint-marker")).toBeVisible();
   await expect(page.getByTestId("orders-diagnostics")).toContainText("WROK");
+});
+
+test("a refused Trident construction is an inline warning and can be hidden", async ({ page }) => {
+  await openTridentBuilder(page);
+  await fillOrders(page, "BUILD CARAVANSERAI");
+
+  const warning = page.getByTestId("build-placement-refusal");
+  await expect(warning).toContainText(
+    "Cannot start a Caravanserai here: this region has no settlement. No wood will be used."
+  );
+  await expect(page.getByTestId("orders-input").locator(".cm-lint-marker")).toHaveCount(0);
+
+  await fillOrders(page, "@work");
+  await expect(warning).toHaveCount(0);
+
+  await fillOrders(page, "BUILD CARAVANSERAI");
+  await expect(warning).toBeVisible();
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-build-placement-refusals").click();
+  await page.getByTestId("settings-close").click();
+  await expect(warning).toHaveCount(0);
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-build-placement-refusals").click();
+  await page.getByTestId("settings-close").click();
+  await expect(warning).toBeVisible();
 });
 
 test("the order text starts within 6px of the editor's edge, marker still showing (gh-205)", async ({

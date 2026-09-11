@@ -112,6 +112,8 @@ pub struct UnitPreview {
     /// went and what cut the work short. Empty for a unit not building, and for one whose build
     /// comes to nothing (`ah-ofpb.2`).
     pub built: Vec<BuildSpend>,
+    /// Direct founding `BUILD` orders whose site the selected ruleset refuses.
+    pub build_placement_refusals: Vec<BuildPlacementRefusal>,
     /// What this unit's `CAST` orders create this month, so the hover can say what is arriving and
     /// the column can show a chance creation as a range. Empty for a unit not casting, and for one
     /// whose cast creates nothing an item catalogue can carry (`ah-ofpb.5`).
@@ -478,6 +480,29 @@ pub struct BuildSpend {
     pub capped_by: Option<BuildCap>,
 }
 
+/// Why a direct founding `BUILD` cannot start in this region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub enum BuildPlacementRefusalReason {
+    MissingSettlement,
+    DuplicateInRegion,
+}
+
+/// A founding `BUILD` whose site is certain to be refused by the selected ruleset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct BuildPlacementRefusal {
+    /// The absolute, one-based line of the founding order.
+    pub line: usize,
+    /// The building kind named by the founding order.
+    pub building: String,
+    pub reason: BuildPlacementRefusalReason,
+    /// The material the existing pooled-stock resolution proves this order would use.
+    pub material: Option<String>,
+}
+
 /// Why one item moved into or out of a unit this month (`ah-rgkk.3.1`).
 ///
 /// One cause per movement. `ah-rgkk.3.2` adds the GIVE/TAKE cases to this enum; a reader must
@@ -820,6 +845,11 @@ pub fn preview_orders_on_map(
         } else {
             entry.built.clone()
         };
+        let build_placement_refusals = if dissolving {
+            Vec::new()
+        } else {
+            entry.build_placement_refusals.clone()
+        };
         let created = if dissolving {
             Vec::new()
         } else {
@@ -850,6 +880,7 @@ pub fn preview_orders_on_map(
             && transport_sent.is_empty()
             && transport_received.is_empty()
             && transport_target_issues.is_empty()
+            && build_placement_refusals.is_empty()
             && study.is_none()
             // A unit that buys five of a tag and sells five of the same tag ends the month holding
             // what it started with, so `changes()` records nothing - and the row would be dropped
@@ -912,6 +943,7 @@ pub fn preview_orders_on_map(
                     taken_unshown: taken_unshown.clone(),
                     produced: produced.clone(),
                     built: built.clone(),
+                    build_placement_refusals: build_placement_refusals.clone(),
                     created: created.clone(),
                     item_changes: item_changes.clone(),
                     transport_sent: transport_sent.clone(),
@@ -942,6 +974,7 @@ pub fn preview_orders_on_map(
                     taken_unshown,
                     produced,
                     built,
+                    build_placement_refusals,
                     created,
                     item_changes,
                     transport_sent,
@@ -971,6 +1004,7 @@ pub fn preview_orders_on_map(
                     taken_unshown,
                     produced,
                     built,
+                    build_placement_refusals,
                     created,
                     item_changes,
                     transport_sent,
@@ -1289,6 +1323,8 @@ struct WorkingUnit {
     /// What this unit's `BUILD` orders spend this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.2`).
     built: Vec<BuildSpend>,
+    /// Direct founding `BUILD`s whose selected ruleset refuses their reported site.
+    build_placement_refusals: Vec<BuildPlacementRefusal>,
     /// What this unit's `CAST` orders create this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.5`).
     created: Vec<CreatedItem>,
@@ -1592,12 +1628,22 @@ struct TransportTargetFacts {
 /// empty on a hex remembered before that field existed, whose JSON defaulted it; the kind before
 /// its first comma is the same answer the parser would have derived (`ah-64wm`).
 fn is_caravanserai(structure: &crate::report::model::Structure) -> bool {
+    structure_kind_is(structure, "Caravanserai")
+}
+
+/// Whether a report structure has the given base kind.
+///
+/// Remembered reports may predate `base_kind`, so retain the parser's old prefix fallback.
+pub(crate) fn structure_kind_is(
+    structure: &crate::report::model::Structure,
+    expected: &str,
+) -> bool {
     let base = if structure.base_kind.is_empty() {
         structure.kind.split(',').next().unwrap_or_default().trim()
     } else {
         structure.base_kind.as_str()
     };
-    base.eq_ignore_ascii_case("Caravanserai")
+    base.eq_ignore_ascii_case(expected)
 }
 
 /// What the report says about every unit it shows, as a `TRANSPORT` target (`ah-64wm`).
@@ -1701,6 +1747,7 @@ impl Working {
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
                 built: Vec::new(),
+                build_placement_refusals: Vec::new(),
                 created: Vec::new(),
                 item_changes: Vec::new(),
                 items_moved: false,
@@ -1991,6 +2038,7 @@ impl Working {
                 })
                 .collect();
             unit.built = effect.built.clone();
+            unit.build_placement_refusals = effect.build_placement_refusals.clone();
             // `extend`, never assign: `apply_transfers` has already written this month's GIVE and
             // TAKE here in the Give phase, and `apply_transports` appends after us (`ah-rgkk.3.1`).
             unit.item_changes
@@ -2068,6 +2116,7 @@ impl Working {
             taken_unshown: Vec::new(),
             produced: Vec::new(),
             built: Vec::new(),
+            build_placement_refusals: Vec::new(),
             created: Vec::new(),
             item_changes: Vec::new(),
             items_moved: false,
@@ -3580,6 +3629,67 @@ mod tests {
     fn preview_over(report: &str, orders: &str) -> OrdersPreviewResponse {
         preview_orders_for_remembered_report(&mut ReportCache::new(), RULESET, report, "[]", orders)
             .expect("the ruleset loads")
+    }
+
+    fn trident_preview_over(report: &str, orders: &str) -> OrdersPreviewResponse {
+        preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+            report,
+            "[]",
+            orders,
+        )
+        .expect("the Trident ruleset loads")
+    }
+
+    fn trident_wilderness_report() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "mountain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Builder (900), Foo (1), 10 humans [HUMN], 120 stone [STON]. Weight: 130. Capacity: 0/0/150/0. Skills: building [BUIL] 3 (180).",
+            "",
+        ]
+        .join("\n")
+    }
+
+    #[test]
+    fn a_refused_founder_is_retained_with_typed_preview_data() {
+        let response =
+            trident_preview_over(&trident_wilderness_report(), "unit 900\nBUILD Palace\n");
+        let unit = only_unit(&response);
+
+        assert_eq!(
+            unit.build_placement_refusals,
+            vec![BuildPlacementRefusal {
+                line: 2,
+                building: "Palace".to_string(),
+                reason: BuildPlacementRefusalReason::MissingSettlement,
+                material: Some("stone".to_string()),
+            }]
+        );
+        assert!(
+            unit.built.is_empty(),
+            "a refused founder has no BuildSpend: {:?}",
+            unit.built
+        );
+        assert!(
+            unit.item_changes.is_empty(),
+            "a refused founder has no material movement: {:?}",
+            unit.item_changes
+        );
+        assert_eq!(
+            unit.unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount),
+            Some(120)
+        );
     }
 
     fn only_unit(response: &OrdersPreviewResponse) -> &UnitPreview {
