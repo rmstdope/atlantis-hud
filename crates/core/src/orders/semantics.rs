@@ -7344,8 +7344,8 @@ fn destroyed_structure_ids(hex: &Hex<'_>) -> BTreeSet<String> {
 }
 
 /// The owner that can execute `DESTROY` after this turn's `PROMOTE` orders, when ownership is
-/// knowable from the report. A unit that leaves the structure cannot promote its ownership, and a
-/// malformed or ambiguous promotion leaves the answer conservative.
+/// knowable from the report. A unit that leaves the structure cannot promote its ownership, and
+/// only the owner at each point in the report-order pass can transfer ownership.
 fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
     let mut owner = hex
         .region
@@ -7355,25 +7355,23 @@ fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<S
         .unit_id
         .clone();
 
-    loop {
-        let Some(promoter) = hex
-            .units
-            .iter()
-            .find(|ordered| ordered.unit.unit_id == owner)
-        else {
-            return Some(owner);
-        };
-        if structure_after_orders(promoter) != Some(structure_id) {
-            return None;
+    for promoter in &hex.units {
+        if promoter.unit.unit_id != owner {
+            continue;
         }
-        match promoter.promotes_units.as_slice() {
-            [] => return Some(owner),
-            [target] if target != &owner && unit_is_in_structure(hex, target, structure_id) => {
+        if structure_after_orders(promoter) != Some(structure_id) {
+            continue;
+        }
+        for target in &promoter.promotes_units {
+            if target == &owner {
+                continue;
+            }
+            if unit_is_in_structure(hex, target, structure_id) {
                 owner = target.clone();
             }
-            _ => return None,
         }
     }
+    Some(owner)
 }
 
 /// Whether a unit is still in a structure after this month's ENTER/LEAVE projection.
@@ -23098,6 +23096,69 @@ BUILD
                         Some(5),
                     )));
                     assert_eq!(balance_of(ledger, "901", "STON"), 90);
+                },
+            );
+        }
+
+        #[test]
+        fn an_owner_promoting_a_formed_unit_before_destroy_allows_replacement() {
+            let mut replacement_site = region(vec![in_structure(unit("900"), "4")]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nFORM 1\nDESTROY\nBUILD Palace\nEND\nPROMOTE NEW 1\n",
+                |ledger| {
+                    assert!(ledger.build_placement_refusals.is_empty());
+                },
+            );
+        }
+
+        #[test]
+        fn mutually_promoting_owners_are_processed_once_in_report_order() {
+            let mut replacement_site = region(vec![
+                in_structure(unit("900"), "4"),
+                in_structure(
+                    with_skill(
+                        with_item(with_men(unit("901"), 10), 120, "stone", "STON"),
+                        "BUIL",
+                        3,
+                    ),
+                    "4",
+                ),
+            ]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nPROMOTE 901\nunit 901\nPROMOTE 900\nDESTROY\nBUILD Palace\n",
+                |ledger| {
+                    assert_eq!(
+                        ledger.build_placement_refusals["901"],
+                        vec![effects::BuildPlacementRefusal {
+                            line: 6,
+                            building: "Palace".to_string(),
+                            reason: effects::BuildPlacementRefusalReason::DuplicateInRegion,
+                            material: Some("stone".to_string()),
+                        }]
+                    );
+                    assert_eq!(balance_of(ledger, "901", "STON"), 120);
                 },
             );
         }

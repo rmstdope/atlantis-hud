@@ -618,10 +618,16 @@ fn promoted_unit(command: &Token, arguments: &[Token]) -> Option<String> {
     if !command.text.eq_ignore_ascii_case("PROMOTE") {
         return None;
     }
-    let [target] = super::grammar::consumed_arguments(command, arguments)? else {
+    let arguments = super::grammar::consumed_arguments(command, arguments)?;
+    let (target, rest) = forms::read_party(arguments)?;
+    if !rest.is_empty() {
         return None;
-    };
-    (target.kind == TokenKind::Number).then(|| target.text.clone())
+    }
+    match target {
+        forms::Party::Unit(unit_id) => Some(unit_id),
+        forms::Party::New(alias) => Some(format!("new-{alias}")),
+        forms::Party::Foreign { .. } | forms::Party::Discard => None,
+    }
 }
 
 /// One order line, as an intent - or nothing, for an order no check reads and for one whose shape
@@ -977,6 +983,14 @@ mod tests {
     fn a_valid_promote_target_is_carried_separately_from_month_intents() {
         let unit = only_unit("unit 5\nPROMOTE 7\n");
         assert_eq!(unit.promotes_units, vec!["7".to_string()], "{unit:?}");
+        assert!(unit.intents.is_empty(), "{unit:?}");
+        assert!(unit.unread.is_empty(), "{unit:?}");
+    }
+
+    #[test]
+    fn a_new_promote_target_is_carried_as_the_formed_unit_id() {
+        let unit = only_unit("unit 5\nPROMOTE NEW 2\n");
+        assert_eq!(unit.promotes_units, vec!["new-2".to_string()], "{unit:?}");
         assert!(unit.intents.is_empty(), "{unit:?}");
         assert!(unit.unread.is_empty(), "{unit:?}");
     }
