@@ -271,8 +271,9 @@ pub fn read_intents_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Vec
                     // being understood.
                     unit.unread.push(line.number);
                 }
-                unit.destroys_structure |= is_valid_destroy_order(line.command, line.arguments);
-                if let Some(target) = promoted_unit(line.command, line.arguments) {
+                unit.destroys_structure |=
+                    is_valid_destroy_order(line.command, line.arguments, ruleset);
+                if let Some(target) = promoted_unit(line.command, line.arguments, ruleset) {
                     unit.promotes_units.push(target);
                 }
             }
@@ -522,8 +523,8 @@ impl<'a, 'r> FormReader<'a, 'r> {
         } else if !is_free_order(command, self.ruleset) {
             block.unread.push(line_number);
         }
-        block.destroys_structure |= is_valid_destroy_order(command, arguments);
-        if let Some(target) = promoted_unit(command, arguments) {
+        block.destroys_structure |= is_valid_destroy_order(command, arguments, self.ruleset);
+        if let Some(target) = promoted_unit(command, arguments, self.ruleset) {
             block.promotes_units.push(target);
         }
     }
@@ -608,17 +609,21 @@ fn is_free_order(command: &Token, ruleset: Option<&Ruleset>) -> bool {
 /// The order is intentionally not an [`Intent`]: it is free and no existing phase application
 /// needs to consume it. The semantic BUILD projection is the one consumer that needs to know it
 /// happened.
-fn is_valid_destroy_order(command: &Token, arguments: &[Token]) -> bool {
+fn is_valid_destroy_order(command: &Token, arguments: &[Token], ruleset: Option<&Ruleset>) -> bool {
     command.text.eq_ignore_ascii_case("DESTROY")
-        && super::grammar::consumed_arguments(command, arguments).is_some()
+        && super::grammar::consumed_arguments(command, arguments, ruleset).is_some()
 }
 
 /// The target of a syntactically valid `PROMOTE` order, if any.
-fn promoted_unit(command: &Token, arguments: &[Token]) -> Option<String> {
+fn promoted_unit(
+    command: &Token,
+    arguments: &[Token],
+    ruleset: Option<&Ruleset>,
+) -> Option<String> {
     if !command.text.eq_ignore_ascii_case("PROMOTE") {
         return None;
     }
-    let arguments = super::grammar::consumed_arguments(command, arguments)?;
+    let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
     let (target, rest) = forms::read_party(arguments)?;
     if !rest.is_empty() {
         return None;

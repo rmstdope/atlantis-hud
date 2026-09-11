@@ -2147,10 +2147,10 @@ impl OrderedUnits {
             unit_id,
             line,
             intents,
-           unread,
-           flag_changes,
-           destroys_structure,
-           promotes_units,
+            unread,
+            flag_changes,
+            destroys_structure,
+            promotes_units,
         } in read_intents_with_ruleset(source, ruleset)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
