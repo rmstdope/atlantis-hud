@@ -220,32 +220,73 @@ test("a bad order is marked in the editor's own margin", async ({ page }) => {
   await expect(page.getByTestId("orders-diagnostics")).toContainText("WROK");
 });
 
-test("a refused Trident construction is an inline warning and can be hidden", async ({ page }) => {
+/**
+ * `ah-g9sf.11`: a refused founding site is an ordinary problem. It stands in the list beneath the
+ * editor and in the region panel's Problems section, counted in the status line, marked by the
+ * editor's amber lint bar, and a stop on the F8 walk - and switching its warning off in
+ * Settings > Warnings > Building takes all of that away at once, with nothing left saying anything
+ * is hidden.
+ */
+test("a refused Trident construction is an ordinary problem in both lists", async ({ page }) => {
   await openTridentBuilder(page);
+
+  // The fixture's unordered units are `unit-does-nothing` findings that sort ahead of this one,
+  // and the walk would stop at the first of them - the same reason `shortcuts.spec.ts` switches
+  // that check off before walking.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
+  await page.getByTestId("settings-close").click();
+
   await fillOrders(page, "BUILD CARAVANSERAI");
 
-  const warning = page.getByTestId("build-placement-refusal");
-  await expect(warning).toContainText(
-    "Cannot start a Caravanserai here: this region has no settlement. No wood will be used."
-  );
-  await expect(page.getByTestId("orders-input").locator(".cm-lint-marker")).toHaveCount(0);
+  const sentence =
+    "Cannot start a Caravanserai here: this region has no settlement. No wood will be used.";
+  const editorList = page.getByTestId("orders-diagnostics");
+  const regionList = page.getByTestId("region-problems");
+  const marker = page.getByTestId("orders-input").locator(".cm-lint-marker");
 
+  await expect(editorList).toContainText(sentence);
+  await expect(regionList).toContainText(sentence);
+  await expect(regionList).toContainText("13432");
+  await expect(marker).toHaveCount(1);
+  await expect(page.getByTestId("orders-status")).toContainText("1 warning");
+
+  // Nothing of its own inside the editor any more: the margin bar is the editor's whole part.
+  await expect(page.getByTestId("build-placement-refusal")).toHaveCount(0);
+
+  // An emptied list is removed from the page altogether, so the absence is a count rather than a
+  // `not.toContainText`, which fails on a locator that resolves to nothing.
   await fillOrders(page, "@work");
-  await expect(warning).toHaveCount(0);
+  await expect(editorList).toHaveCount(0);
+  await expect(regionList).toHaveCount(0);
 
   await fillOrders(page, "BUILD CARAVANSERAI");
-  await expect(warning).toBeVisible();
-  await page.getByTestId("settings-indicator").click();
-  await page.getByTestId("settings-tab-warnings").click();
-  await page.getByTestId("settings-build-placement-refusals").click();
-  await page.getByTestId("settings-close").click();
-  await expect(warning).toHaveCount(0);
+  await expect(editorList).toContainText(sentence);
+
+  // The walk stops on it and selects the order, which needs the finding's own column span.
+  await ordersInput(page).click();
+  await page.keyboard.press("F8");
+  await expect(page.getByTestId("panel-unit")).toContainText("13432");
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ""))
+    .toContain("BUILD");
 
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-tab-warnings").click();
-  await page.getByTestId("settings-build-placement-refusals").click();
+  await page.getByTestId("settings-warning-build-site-refused").uncheck();
   await page.getByTestId("settings-close").click();
-  await expect(warning).toBeVisible();
+
+  await expect(editorList).toHaveCount(0);
+  await expect(regionList).toHaveCount(0);
+  await expect(marker).toHaveCount(0);
+  await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-build-site-refused").check();
+  await page.getByTestId("settings-close").click();
+  await expect(editorList).toContainText(sentence);
 });
 
 test("the order text starts within 6px of the editor's edge, marker still showing (gh-205)", async ({

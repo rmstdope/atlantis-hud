@@ -5181,12 +5181,6 @@ pub(crate) fn item_effects(
                 .or_default()
                 .built = spends;
         }
-        for (unit_id, refusals) in ledger.build_placement_refusals {
-            result
-                .entry(unit_key(&hex.region.region_id, &unit_id))
-                .or_default()
-                .build_placement_refusals = refusals;
-        }
     }
 
     // Into the month's order, once, after every hex has been walked (`ah-rgkk.3.1`).
@@ -5217,8 +5211,6 @@ pub(crate) struct UnitItemEffects {
     pub uncounted: Vec<String>,
     /// What this unit's `BUILD` orders spend this month, in document order (`ah-ofpb.2`).
     pub built: Vec<super::effects::BuildSpend>,
-    /// Direct founding `BUILD`s whose selected ruleset refuses their reported site.
-    pub build_placement_refusals: Vec<super::effects::BuildPlacementRefusal>,
     /// This unit's settled recruits this month, one entry per man tag `Ledger::bought` credited
     /// it. Empty both when nothing was recruited and when a `BUY ALL` makes the exact figure
     /// unknowable - either way the preview falls back to its own net-count inference
@@ -10441,7 +10433,9 @@ fn check_build_site(
             let article = article_for(&building);
             let mut message = match refusal.reason {
                 super::effects::BuildPlacementRefusalReason::MissingSettlement => {
-                    format!("Cannot start {article} {building} here: this region has no settlement.")
+                    format!(
+                        "Cannot start {article} {building} here: this region has no settlement."
+                    )
                 }
                 super::effects::BuildPlacementRefusalReason::DuplicateInRegion => format!(
                     "Cannot start {article} {building} here: this region already has {article} \
@@ -42217,7 +42211,12 @@ BUILD
         for (kind, order, material, tag) in [
             ("Palace", "BUILD Palace", "stone", "STON"),
             ("Town Hall", "BUILD \"Town Hall\"", "wood", "WOOD"),
-            ("Mystic Canal", "BUILD \"Mystic Canal\"", "rootstone", "ROOT"),
+            (
+                "Mystic Canal",
+                "BUILD \"Mystic Canal\"",
+                "rootstone",
+                "ROOT",
+            ),
         ] {
             let mut duplicate = settled(region(vec![founder("900", 120, material, tag)]));
             duplicate.structures.push(finished_structure("4", kind));
@@ -42260,7 +42259,9 @@ BUILD
     #[test]
     fn the_settlement_rule_takes_precedence_over_the_duplicate_rule() {
         let mut wilderness = region(vec![founder("900", 120, "stone", "STON")]);
-        wilderness.structures.push(finished_structure("4", "Palace"));
+        wilderness
+            .structures
+            .push(finished_structure("4", "Palace"));
         let findings = refusals(
             vec![wilderness],
             "unit 900\nBUILD Palace\n",
@@ -42292,9 +42293,9 @@ BUILD
                 .collect::<Vec<_>>(),
             vec![Some("900".to_string()), Some("901".to_string())]
         );
-        assert!(findings
-            .iter()
-            .all(|finding| finding.message.starts_with("Cannot start a Caravanserai here:")));
+        assert!(findings.iter().all(|finding| finding
+            .message
+            .starts_with("Cannot start a Caravanserai here:")));
     }
 
     /// A helper is not a founder, and a bare continuation inside a finished unique building is not
@@ -42376,17 +42377,12 @@ BUILD
             vec![]
         );
 
+        // The ledger still refuses the site and still withholds the material, whatever the
+        // settings say: the month moves nothing, so the builder has no item effects at all.
         let effects = item_effects(&report(regions), orders, Some(&trident()));
-        let unit = effects_for(&effects, "900").expect("the builder should have item effects");
         assert!(
-            unit.built.is_empty(),
-            "a refused site spends nothing: {unit:?}"
-        );
-        assert!(
-            unit.moved
-                .iter()
-                .all(|movement| movement.cause != ItemChangeCause::BuildSpent),
-            "a refused site moves no material: {unit:?}"
+            effects_for(&effects, "900").is_none(),
+            "a refused site spends and moves nothing: {effects:?}"
         );
     }
 }

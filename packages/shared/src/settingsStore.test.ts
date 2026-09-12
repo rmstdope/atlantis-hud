@@ -125,32 +125,6 @@ describe("settings store", () => {
     expect(store().orderOcd).toBe(true);
   });
 
-  it("shows build placement refusals by default and preserves an explicit false", async () => {
-    expect(store().showBuildPlacementRefusals).toBe(true);
-    store().setShowBuildPlacementRefusals(false);
-    expect(store().showBuildPlacementRefusals).toBe(false);
-
-    const storage = useSettingsStore.persist.getOptions().storage;
-    const persisted = await storage?.getItem("atlantis-hud-settings");
-    if (!storage || !persisted) {
-      throw new Error("settings storage was not available");
-    }
-
-    useSettingsStore.setState({ showBuildPlacementRefusals: true });
-    await storage.setItem("atlantis-hud-settings", persisted);
-    await useSettingsStore.persist.rehydrate();
-    applyPersistedSettings();
-
-    expect(store().showBuildPlacementRefusals).toBe(false);
-  });
-
-  it("supplies the build placement refusal default to an older settings blob", () => {
-    useSettingsStore.setState({ showBuildPlacementRefusals: undefined as never });
-    applyPersistedSettings();
-
-    expect(store().showBuildPlacementRefusals).toBe(true);
-  });
-
   it("counts upkeep by default, and persists the preference", async () => {
     expect(store().countUpkeep).toBe(true);
     store().setCountUpkeep(false);

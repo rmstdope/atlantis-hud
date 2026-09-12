@@ -22,7 +22,6 @@ const previewedRow = (
   takenUnshown: [],
   produced: [],
   built: [],
-  buildPlacementRefusals: [],
   created: [],
   transportSent: [],
   transportReceived: [],

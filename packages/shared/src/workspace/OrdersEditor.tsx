@@ -1,16 +1,9 @@
-import type { BuildPlacementRefusal, OrderDiagnostic } from "@atlantis/core-client";
+import type { OrderDiagnostic } from "@atlantis/core-client";
 import { autocompletion } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, redo } from "@codemirror/commands";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
-import { Annotation, EditorState, StateEffect, StateField, Transaction } from "@codemirror/state";
-import {
-  Decoration,
-  type DecorationSet,
-  EditorView,
-  keymap,
-  tooltips,
-  WidgetType
-} from "@codemirror/view";
+import { Annotation, EditorState, Transaction } from "@codemirror/state";
+import { EditorView, keymap, tooltips } from "@codemirror/view";
 import {
   forwardRef,
   useEffect,
@@ -67,8 +60,6 @@ type OrdersEditorProps = {
   ariaLabel: string;
   /** This unit's diagnostics, lines counted from the top of its block as `diagnosticsForUnit` re-bases them. */
   problems: OrderDiagnostic[];
-  /** Preview-only placement refusals, lines counted from the top of this unit's block. */
-  placementRefusals: BuildPlacementRefusal[];
   /** The core's order vocabulary, for the completion popup. Empty until fetched, which just keeps it quiet. */
   commands: readonly string[];
   /** Whether keywords uppercase themselves as they are typed (the Order OCD setting, ah-bn6.2). */
@@ -95,79 +86,6 @@ type OrdersEditorProps = {
  * echo it into `onChange` - it came from there.
  */
 const External = Annotation.define<boolean>();
-
-const setPlacementRefusalDecorations = StateEffect.define<DecorationSet>();
-const placementRefusalField = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  update(value, transaction) {
-    let next = value.map(transaction.changes);
-    for (const effect of transaction.effects) {
-      if (effect.is(setPlacementRefusalDecorations)) {
-        next = effect.value;
-      }
-    }
-    return next;
-  },
-  provide: (field) => EditorView.decorations.from(field)
-});
-
-function placementRefusalMessage(refusal: BuildPlacementRefusal): string {
-  const building = refusal.building
-    .toLowerCase()
-    .split(" ")
-    .map((word) => (word === "" ? word : `${word[0].toUpperCase()}${word.slice(1)}`))
-    .join(" ");
-  const reason =
-    refusal.reason === "missingSettlement"
-      ? "this region has no settlement."
-      : `this region already has a ${building}.`;
-  const material =
-    refusal.material === null ? "" : ` No ${refusal.material} will be used.`;
-  return `Cannot start a ${building} here: ${reason}${material}`;
-}
-
-class BuildPlacementRefusalWidget extends WidgetType {
-  constructor(private readonly refusal: BuildPlacementRefusal) {
-    super();
-  }
-
-  toDOM(): HTMLElement {
-    const element = document.createElement("div");
-    const message = placementRefusalMessage(this.refusal);
-    element.className = "cm-build-placement-refusal";
-    element.dataset.testid = "build-placement-refusal";
-    element.textContent = message;
-    element.setAttribute("aria-label", message);
-    element.setAttribute("aria-live", "polite");
-    element.contentEditable = "false";
-    element.tabIndex = -1;
-    return element;
-  }
-
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
-function placementRefusalDecorations(
-  document: EditorState["doc"],
-  refusals: BuildPlacementRefusal[]
-): DecorationSet {
-  const decorations = refusals.flatMap((refusal) => {
-    if (!Number.isInteger(refusal.line) || refusal.line < 1 || refusal.line > document.lines) {
-      return [];
-    }
-    const line = document.line(refusal.line);
-    return [
-      Decoration.widget({
-        widget: new BuildPlacementRefusalWidget(refusal),
-        block: true,
-        side: 1
-      }).range(line.to)
-    ];
-  });
-  return Decoration.set(decorations, true);
-}
 
 /**
  * The keys the editor claims, and deliberately not all of them.
@@ -202,7 +120,6 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     savedAt,
     ariaLabel,
     problems,
-    placementRefusals,
     commands,
     orderOcd,
     orderVocabulary,
@@ -256,7 +173,6 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       state: EditorState.create({
         doc: shownUnitText(latest.current.text, latest.current.savedAt),
         extensions: [
-          placementRefusalField,
           history(),
           // Order OCD, as the word ends: the space or newline that finishes a keyword uppercases
           // it in the same transaction that inserts the space, so one Ctrl+Z puts back both.
@@ -500,12 +416,6 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
             // CodeMirror's base theme reserves 6px here; the mockup's budget only holds with
             // this trimmed too, alongside the gutter and marker above.
             ".cm-line": { paddingLeft: "2px" },
-            ".cm-build-placement-refusal": {
-              color: "var(--color-warn)",
-              whiteSpace: "pre-wrap",
-              overflowWrap: "anywhere",
-              padding: "0.25rem 0.25rem 0.35rem 2px"
-            },
             ".cm-tooltip": {
               backgroundColor: "var(--color-panel-raised)",
               color: "var(--color-ink)",
@@ -536,18 +446,6 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       view.current = null;
     };
   }, [unitId]);
-
-  useEffect(() => {
-    const editor = view.current;
-    if (!editor) {
-      return;
-    }
-    editor.dispatch({
-      effects: setPlacementRefusalDecorations.of(
-        placementRefusalDecorations(editor.state.doc, placementRefusals)
-      )
-    });
-  }, [placementRefusals, unitId]);
 
   // A write from outside - an import, a restore, a route from the planner - and only that: the
   // editor's own writes never come back through here (see OrdersOrigin), so there is no echo to

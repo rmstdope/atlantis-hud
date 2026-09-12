@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
-import type { BuildPlacementRefusal, OrderValidationResult } from "@atlantis/core-client";
+import type { OrderValidationResult } from "@atlantis/core-client";
 import type { OrderDiagnostic } from "@atlantis/core-client";
 import {
   canExportOrders,
-  buildPlacementRefusalsForUnit,
   diagnosticsForUnit,
   findingsByHex,
   findingsForHex,
@@ -621,29 +620,4 @@ describe("a FORM nested inside a FORM", () => {
     expect(diagnosticsForUnit(NESTED, "1922", [unnamed(5)], REGION)).toEqual([]);
   });
 
-  const refusal = (line: number): BuildPlacementRefusal => ({
-    line,
-    building: "Palace",
-    reason: "missingSettlement",
-    material: "stone"
-  });
-
-  it("rebases a refusal to the selected unit block", () => {
-    expect(buildPlacementRefusalsForUnit(VALIDATED, "18642", [refusal(5)])).toEqual([
-      { ...refusal(5), line: 2 }
-    ]);
-  });
-
-  it("drops stale and neighboring-unit refusal lines", () => {
-    expect(
-      buildPlacementRefusalsForUnit(VALIDATED, "18642", [refusal(1), refusal(8)])
-    ).toEqual([]);
-  });
-
-  it("keeps a nested refusal with its formed unit, not its parent", () => {
-    expect(buildPlacementRefusalsForUnit(NESTED, "new-1", [refusal(6)], REGION)).toEqual([]);
-    expect(buildPlacementRefusalsForUnit(NESTED, "new-2", [refusal(6)], REGION)).toEqual([
-      { ...refusal(6), line: 1 }
-    ]);
-  });
 });

@@ -110,7 +110,6 @@ export type SettingsState = {
    */
   orderOcd: boolean;
   /** Whether the editor shows preview-only warnings for BUILD orders refused at their site. */
-  showBuildPlacementRefusals: boolean;
   /**
    * Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`).
    *
@@ -143,7 +142,6 @@ export type SettingsState = {
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
   setOrderOcd: (value: boolean) => void;
-  setShowBuildPlacementRefusals: (value: boolean) => void;
   setCountUpkeep: (value: boolean) => void;
   setShowShortcutsAtStartup: (enabled: boolean) => void;
   addSnippet: (snippet: OrderSnippet) => void;
@@ -163,7 +161,6 @@ type Persisted = Pick<
   | "advisoryChecks"
   | "movementPlanner"
   | "orderOcd"
-  | "showBuildPlacementRefusals"
   | "countUpkeep"
   | "showShortcutsAtStartup"
   | "snippets"
@@ -325,7 +322,6 @@ const DEFAULTS: Persisted = {
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
   movementPlanner: false,
   orderOcd: false,
-  showBuildPlacementRefusals: true,
   countUpkeep: true,
   showShortcutsAtStartup: true,
   snippets: []
@@ -387,10 +383,6 @@ export const useSettingsStore = create<SettingsState>()(
         set({ orderOcd });
       },
 
-      setShowBuildPlacementRefusals: (showBuildPlacementRefusals) => {
-        set({ showBuildPlacementRefusals });
-      },
-
       setCountUpkeep: (countUpkeep) => {
         set({ countUpkeep });
       },
@@ -431,7 +423,6 @@ export const useSettingsStore = create<SettingsState>()(
         advisoryChecks: state.advisoryChecks,
         movementPlanner: state.movementPlanner,
         orderOcd: state.orderOcd,
-        showBuildPlacementRefusals: state.showBuildPlacementRefusals,
         countUpkeep: state.countUpkeep,
         showShortcutsAtStartup: state.showShortcutsAtStartup,
         snippets: state.snippets
@@ -466,13 +457,6 @@ export function applyPersistedSettings() {
   // hand-editable, and an older blob has no snippets key at all.
   useSettingsStore.setState({
     snippets: normalizeSnippets(useSettingsStore.getState().snippets)
-  });
-  // Missing from an older settings blob means the new warning is enabled by default; preserve an
-  // explicit boolean, including `false`, rather than treating it as a missing migration.
-  const showBuildPlacementRefusals = useSettingsStore.getState().showBuildPlacementRefusals;
-  useSettingsStore.setState({
-    showBuildPlacementRefusals:
-      typeof showBuildPlacementRefusals === "boolean" ? showBuildPlacementRefusals : true
   });
   // Migration, not clamping: a player who ticked the old "warn about unguarded hexes" checkbox has
   // `warnOnUnguardedHex: true` sitting in storage under a key this build no longer declares.
