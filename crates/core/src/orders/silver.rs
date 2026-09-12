@@ -65,7 +65,8 @@ const EARTH_LORE_TAG: &str = "EART";
 /// same number. Do not "fix" this by multiplying by `facts.men`.
 const EARTH_LORE_PER_LEVEL_PER_WAGE: i64 = 2;
 
-/// What a leader and an ordinary character each owe this month, in that order.
+/// What an ordinary character and a leader each owe this month, in [`Maintenance`]'s own field
+/// order so the pair cannot be read the wrong way round.
 ///
 /// The fee is a fact about the world rather than about the game - `rules/economy_maintenance` says
 /// 50 silver for a leader on New Origins and New Age: Arcanum and 90 on New Age: Trident - so it
@@ -73,8 +74,8 @@ const EARTH_LORE_PER_LEVEL_PER_WAGE: i64 = 2;
 /// New Origins' published figures; see [`Ruleset::upkeep_per_leader`].
 fn upkeep_rates(ruleset: Option<&Ruleset>) -> (i64, i64) {
     ruleset.map_or(
-        (DEFAULT_UPKEEP_PER_LEADER, DEFAULT_UPKEEP_PER_CHARACTER),
-        |rules| (rules.upkeep_per_leader(), rules.upkeep_per_character()),
+        (DEFAULT_UPKEEP_PER_CHARACTER, DEFAULT_UPKEEP_PER_LEADER),
+        |rules| (rules.upkeep_per_character(), rules.upkeep_per_leader()),
     )
 }
 
@@ -3271,7 +3272,7 @@ fn own_food_pass(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Own
     let leaders = leaders.clamp(0, late.men);
     let characters = late.men - leaders;
 
-    let (per_leader, per_character) = upkeep_rates(ruleset);
+    let (per_character, per_leader) = upkeep_rates(ruleset);
     let owed = leaders
         .saturating_mul(per_leader)
         .saturating_add(characters.saturating_mul(per_character))

@@ -1015,8 +1015,13 @@ impl Ruleset {
                 ),
             ] {
                 if value <= 0 {
+                    let consequence = if value == 0 {
+                        "which would make upkeep free"
+                    } else {
+                        "which would pay a unit to exist"
+                    };
                     return Err(RulesetError::Unusable(format!(
-                        "{name} is {value}, which would make upkeep free"
+                        "{name} is {value}, {consequence}"
                     )));
                 }
             }
@@ -1860,10 +1865,11 @@ mod tests {
         assert_eq!(without.upkeep_per_leader(), 50);
     }
 
-    /// A free fee is a wrong answer presented confidently, which this module refuses everywhere
-    /// else - so it is refused here too, in the style of the terrain checks beside it.
+    /// A free fee, or one that pays the unit, is a wrong answer presented confidently - which
+    /// this module refuses everywhere else, so it is refused here too, in the style of the
+    /// terrain checks beside it.
     #[test]
-    fn a_zero_leader_fee_makes_a_ruleset_unusable() {
+    fn a_zero_or_negative_fee_makes_a_ruleset_unusable() {
         let mut broken = ruleset();
         broken.maintenance = Some(Maintenance {
             per_character: 10,
@@ -1880,6 +1886,25 @@ mod tests {
                 );
             }
             other => panic!("a zero leader fee should be unusable, got {other:?}"),
+        }
+
+        // A negative fee is refused too, and says what it would actually do rather than borrowing
+        // the zero case's words.
+        broken.maintenance = Some(Maintenance {
+            per_character: -10,
+            per_leader: 50,
+            evidence: "made up for this test".to_string(),
+        });
+        let json = serde_json::to_string(&broken).expect("it re-serialises");
+
+        match Ruleset::from_json(&json) {
+            Err(RulesetError::Unusable(message)) => {
+                assert!(
+                    message.contains("would pay a unit to exist"),
+                    "unexpected message: {message}"
+                );
+            }
+            other => panic!("a negative character fee should be unusable, got {other:?}"),
         }
     }
 
