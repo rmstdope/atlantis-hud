@@ -2693,6 +2693,45 @@ test("selecting a passenger draws the fleet's voyage", async ({ page }) => {
 });
 
 /**
+ * ah-ofra: a fleet takes its course from its **owner** - the first unit listed under it
+ * (`rules/world_structures`) - and nobody else (`rules/movement_sailing`). Raft [235] lists
+ * Drones (10575) first, so a `SAIL SE` written by Drones (10594) sets no direction: the map keeps
+ * drawing the owner's course, and the Problems pane says so.
+ */
+test("a course from a unit that does not own the fleet is overruled and reported", async ({
+  page
+}) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Wrong unit game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await choose(page, "turn-24.rep", F21_T24);
+  await expect(page.getByTestId("import-status")).toContainText("regions");
+
+  await selectHex(page, "1:36,44");
+
+  // The owner's own voyage first, so the second unit's can be compared against something drawn.
+  await selectUnit(page, "10575");
+  await fillOrders(page, "sail se ne");
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  const owners = await page.getByTestId("route-line-solid").getAttribute("points");
+
+  // Drones (10594) is the second unit listed under the raft, so its SE lends a pair of hands and
+  // sets no direction: the map keeps drawing the owner's SE NE.
+  await selectUnit(page, "10594");
+  await fillOrders(page, "sail se");
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveAttribute("points", owners ?? "");
+
+  const chip = page.getByTestId("turn-report-chip");
+  await chip.click();
+  await page.getByTestId("turn-report-tab-problems").click();
+  await expect(page.getByTestId("problems-panel")).toContainText(
+    "Only Raft [235]'s owner, Drones (10575), can set its course: Drones (10594) ordered SAIL SE, and the owner ordered SE NE, so the ship sails SE NE."
+  );
+});
+
+/**
  * ah-0fa: the same voyage, seen from the other end. Standing in the destination hex, the units table
  * already lists the units arriving there this month - but selecting one used to find nothing at all,
  * because the shell looked for the selected unit in the report's units for the hex and an arriving
