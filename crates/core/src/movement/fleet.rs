@@ -723,8 +723,9 @@ mod tests {
         );
     }
 
-    /// Among several `PROMOTE`s from one owner the first written takes the hull: once it has run
-    /// the owner no longer owns the object, so its later ones hand on nothing. The walk then
+    /// Among several `PROMOTE`s from one owner the first valid one written takes the hull: once it
+    /// has run the owner no longer owns the object, so its later ones hand on nothing, and one
+    /// naming a unit that is not aboard promotes nobody and leaves the next to run. The walk then
     /// continues from the new owner, so a hull promoted on twice ends with the unit holding it.
     #[test]
     fn the_first_promote_takes_the_hull_and_the_walk_goes_on_from_there() {
