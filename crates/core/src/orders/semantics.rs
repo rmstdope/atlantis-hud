@@ -696,12 +696,39 @@ pub fn review_turn(
     let settlement = settle_unclaimed(&claims, available);
     apply_relief(&mut hexes, &settlement);
 
+    // What quartermasters are sent in the first TRANSPORT phase, report-wide, so the second phase
+    // prices goods a quartermaster forwards (`rules/sequenceofevents`, `ah-7ale.3`).
+    let nothing_received = BTreeMap::new();
+    let mut received_early: BTreeMap<(String, String), i64> = BTreeMap::new();
+    for (hex, ledger) in &hexes {
+        let (_, delivered) = shipping_bills(
+            hex,
+            ledger,
+            shipping.as_ref(),
+            options.geometry,
+            ruleset,
+            false,
+            &nothing_received,
+        );
+        for (key, quantity) in delivered {
+            *received_early.entry(key).or_default() += quantity;
+        }
+    }
+
     for priced in &hexes {
         let (hex, ledger) = priced;
         // Per hex, because the pools are: what one region's units ask of its tax base says nothing
         // about the next region's.
         let mut overruns: Vec<PoolOverrun> = Vec::new();
-        let bills = shipping_bills(hex, ledger, shipping.as_ref(), options.geometry, ruleset);
+        let (bills, _) = shipping_bills(
+            hex,
+            ledger,
+            shipping.as_ref(),
+            options.geometry,
+            ruleset,
+            true,
+            &received_early,
+        );
         forecast_hex(
             priced,
             &receipts,
@@ -12862,6 +12889,14 @@ fn check_transport_reach(
 /// `transport::priced` what it costs - all three shared with `effects.rs` through
 /// `orders::transport`. What is this pass's own is the weight, which is a fact about the goods and
 /// not about transport.
+///
+/// `rules/sequenceofevents` runs TRANSPORT in phases: items go from non-quartermasters to
+/// quartermasters first, then from one quartermaster to another. The ledger books no transport, so
+/// a quartermaster forwarding what it was sent this month would read an empty stock. Hence two
+/// calls: `quartermaster_senders: false` walks the first phase and returns what each unit
+/// receives from it; `true` walks the second, adding `received_earlier` to each sender's stock.
+/// The first phase is always free (`Reach::Local`), so only the second call's bills are booked.
+#[allow(clippy::type_complexity)]
 fn shipping_bills(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
@@ -12871,14 +12906,23 @@ fn shipping_bills(
     )>,
     geometry: Option<crate::movement::graph::MapGeometry>,
     ruleset: Option<&Ruleset>,
-) -> BTreeMap<String, Vec<ShipmentPriced>> {
+    quartermaster_senders: bool,
+    received_earlier: &BTreeMap<(String, String), i64>,
+) -> (
+    BTreeMap<String, Vec<ShipmentPriced>>,
+    Vec<((String, String), i64)>,
+) {
     let mut bills = BTreeMap::new();
+    let mut delivered = Vec::new();
     let (Some((quartermasters, targets)), Some(rules)) = (shipping, ruleset) else {
-        return bills;
+        return (bills, delivered);
     };
 
     for ordered in &hex.units {
         let sender = ordered.unit.unit_id.as_str();
+        if quartermasters.contains(sender) != quartermaster_senders {
+            continue;
+        }
         // What this unit's own earlier shipments already took, by tag: `rules/sequenceofevents`
         // moves each item "only once in each phase", which `apply_transport_phase`'s allowance
         // snapshot enforces on the preview's side.
@@ -12935,11 +12979,17 @@ fn shipping_bills(
                 continue;
             }
             // The last phase's stock: every TRANSPORT runs immediately before maintenance
-            // (`rules/sequenceofevents`), and the ledger carries every earlier delta into it.
+            // (`rules/sequenceofevents`), and the ledger carries every earlier delta into it -
+            // every one but an earlier transport phase's, which is added here.
             let already = shipped.get(&tag).copied().unwrap_or_default();
+            let arrived = received_earlier
+                .get(&(sender.to_string(), tag.clone()))
+                .copied()
+                .unwrap_or_default();
             let held = (ledger
                 .state
                 .balance_at(StatePhase::Maintenance, sender, &tag)
+                + arrived
                 - already)
                 .max(0);
             let quantity = super::transfers::quantity_moved(amount, held);
@@ -12947,6 +12997,7 @@ fn shipping_bills(
                 continue;
             }
             *shipped.entry(tag.clone()).or_default() += quantity;
+            delivered.push(((id.clone(), tag.clone()), quantity));
             let weight = quantity.saturating_mul(entry.weight);
             if let super::transport::Priced::Charged { rate, weight, cost } =
                 super::transport::priced(
@@ -12972,7 +13023,7 @@ fn shipping_bills(
             bills.insert(sender.to_string(), priced_here);
         }
     }
-    bills
+    (bills, delivered)
 }
 
 /// The refusal sentence the agreed experience quotes, word for word.
@@ -37558,6 +37609,60 @@ BUILD
             (except.shipping[0].weight, except.shipping[0].cost),
             (5, 25)
         );
+    }
+
+    /// `rules/sequenceofevents` sends items from non-quartermasters to quartermasters before one
+    /// quartermaster ships to another, so goods a quartermaster is sent this month are priced when
+    /// it ships them on - the ledger books no transport, so they were once read as absent.
+    #[test]
+    fn a_quartermaster_forwarding_what_it_was_sent_is_charged_for_it() {
+        let regions = || {
+            let mut regions = priced_shipping(5, &[], vec![caravanserai_owner("901", 1, 0, 6)]);
+            regions[0]
+                .units
+                .push(with_item(unit("800"), 9, "fur", "FUR"));
+            regions
+        };
+        let orders = "unit 800\nTRANSPORT 900 9 FUR\nunit 900\nTRANSPORT 901 9 FUR\n";
+        let rules = ruleset();
+
+        let silver = sender_silver(regions(), orders, with_map());
+        assert_eq!(
+            silver.shipping,
+            vec![ShipmentPriced {
+                line: 4,
+                to: "901".to_string(),
+                sent: "9 FUR".to_string(),
+                weight: 9,
+                rate: 5,
+                cost: 45,
+            }]
+        );
+
+        let moved = super::super::effects::transported_out(
+            &report(regions()),
+            &rules,
+            orders,
+            Some(FIXTURE_MAP),
+        );
+        assert_eq!(moved.get("900"), Some(&vec![("FUR".to_string(), 9)]));
+    }
+
+    /// The Settings switch takes the out-of-reach sentence away and leaves every figure honest, so
+    /// a paid shipment is still charged with the check turned off (`ah-7ale.3`).
+    #[test]
+    fn the_transport_switch_does_not_reach_the_price() {
+        let silver = sender_silver(
+            priced_shipping(
+                5,
+                &[(9, "fur", "FUR")],
+                vec![caravanserai_owner("901", 1, 0, 6)],
+            ),
+            "unit 900\nTRANSPORT 901 9 FUR\n",
+            disabling(codes::TRANSPORT_OUT_OF_REACH),
+        );
+        assert_eq!(shipped(&silver).len(), 1);
+        assert_eq!(silver.shipping.len(), 1);
     }
 
     /// The two transport readers agree about what was shipped: every priced shipment weighs exactly

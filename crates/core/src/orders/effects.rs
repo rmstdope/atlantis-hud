@@ -1100,11 +1100,6 @@ pub fn preview_orders_on_map(
     })
 }
 
-/// Every own unit as this month's orders leave it, before movement is resolved, with the rows
-/// `rules/form` dissolves and what each one's goods revert to.
-///
-/// Extracted from [`preview_orders_on_map`] rather than duplicated because the map's own trace
-/// needs the same answer for a `FORM`ed unit: its speed comes from the men and goods its block is
 /// What every own unit's `TRANSPORT`/`DISTRIBUTE` orders actually moved, by unit number, as
 /// `(tag, moved)` - for `semantics`' test that holds the shipping price to the goods (`ah-7ale.3`).
 #[cfg(test)]
@@ -1136,6 +1131,11 @@ pub(super) fn transported_out(
         .collect()
 }
 
+/// Every own unit as this month's orders leave it, before movement is resolved, with the rows
+/// `rules/form` dissolves and what each one's goods revert to.
+///
+/// Extracted from [`preview_orders_on_map`] rather than duplicated because the map's own trace
+/// needs the same answer for a `FORM`ed unit: its speed comes from the men and goods its block is
 /// given, so a caller that rebuilt the row from [`formed_unit`] alone would trace a unit of
 /// unstated speed (`ah-4hux`). The order of the steps inside is load-bearing and each one's reason
 /// is on the line that runs it.
