@@ -9490,5 +9490,10 @@
       "ADMT",
       "MITH"
     ]
+  },
+  "maintenance": {
+    "perCharacter": 10,
+    "perLeader": 90,
+    "evidence": "This fee is generally 10 silver for a normal character, and 90 silver for a leader."
   }
 }

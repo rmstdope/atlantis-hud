@@ -346,6 +346,36 @@ export function parseFoodMaintenance(html: string): FoodMaintenance {
   };
 }
 
+/** What a month of maintenance costs per head, and the sentence it was read from. */
+export type MaintenanceFee = {
+  /** Silver an ordinary character owes for the month. */
+  perCharacter: number;
+  /** Silver a leader owes for the month. */
+  perLeader: number;
+  /** The page's own sentence, collapsed to one line. */
+  evidence: string;
+};
+
+/**
+ * Reads `rules/economy_maintenance`'s fee sentence.
+ *
+ * A leader costs 50 on two of the three committed worlds and 90 on New Age: Trident, so the figure
+ * is scraped rather than chosen, and a page that does not state it stops the run.
+ */
+export function parseMaintenanceFee(html: string): MaintenanceFee {
+  const match = requireMatch(
+    htmlToText(html),
+    "maintenanceFee",
+    /This fee is generally (\d+) silver for a normal character, and (\d+) silver for a leader\./i
+  );
+
+  return {
+    perCharacter: Number.parseInt(match[1], 10),
+    perLeader: Number.parseInt(match[2], 10),
+    evidence: sentence(match)
+  };
+}
+
 /**
  * The rules page never states a weather rule, but it proves one exists.
  *
