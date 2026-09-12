@@ -501,3 +501,106 @@ mod a_market_before_the_manufacture {
         assert_eq!(got.codes, ["region-pool-oversubscribed"]);
     }
 }
+
+// --- the two columns under Trident (`ah-g9sf.5`) -------------------------------------------------
+
+/// Trident settles every BUILD before one combined production phase
+/// (`newage trident rules/sequenceofevents`), which moves a manufacturing PRODUCE from
+/// `StatePhase::Manufacturing` to `StatePhase::PrimaryProduction` in the ITEMS ledger.
+///
+/// `orders/silver.rs` is deliberately untouched by that change: it records a production's silver at
+/// `Manufacturing` and reads the purse with `as_manufacturing_opens()`, and BUILD spends no silver
+/// at all, so nothing writes silver between the two slots. This test pins that agreement rather
+/// than leaving it to the argument.
+///
+/// `newage trident data/carpenter`: "CARP 1 ... may PRODUCE wagons [WAGO] from wood [WOOD] at a
+/// rate of 1 per man-month". `newage trident data/farming`: "FARM 3: ... may BUILD a Farm from 10
+/// wood".
+mod under_trident {
+    use super::{
+        classify_units, extract_orders_template, parse_report_full,
+        preview_orders_for_remembered_report, review_turn, CheckOptions, ReportCache,
+    };
+    use atlantis_hud_core::movement::rules::Ruleset;
+
+    fn trident() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset parses and validates")
+    }
+
+    /// A carpenter above a sharer of fifteen wood, and a farmer below founding a Farm - the same
+    /// hex `builders_take_material_first_in_trident.rs` reads the item changes of.
+    fn report() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Wainwrights (900), Foo (1), 5 orcs [ORC], 500 silver [SILV]. Weight: 50. \
+             Capacity: 0/0/75/0. Skills: carpenter [CARP] 1 (30).",
+            "* Woodpile (901), Foo (1), sharing, orc [ORC], 15 wood [WOOD], 500 silver [SILV]. \
+             Weight: 160. Capacity: 0/0/15/0.",
+            "* Fieldhands (902), Foo (1), 10 orcs [ORC], 500 silver [SILV]. Weight: 100. \
+             Capacity: 0/0/150/0. Skills: farming [FARM] 3 (180).",
+            "",
+        ]
+        .join("\n")
+    }
+
+    fn orders() -> String {
+        let text = report();
+        let template = extract_orders_template(&text)
+            .map(|template| template.text)
+            .unwrap_or_default();
+        format!("{template}\nunit 900\nPRODUCE wagon\nunit 902\nBUILD Farm\n")
+    }
+
+    #[test]
+    fn a_trident_production_agrees_with_the_silver_column() {
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+            &report(),
+            "[]",
+            &orders(),
+        )
+        .expect("the Trident ruleset loads");
+        let items: i64 = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the carpenter is on the ITEMS surface")
+            .produced
+            .iter()
+            .filter(|produced| produced.tag == "WAGO")
+            .map(|produced| produced.amount)
+            .sum();
+
+        let mut parsed = parse_report_full(&report());
+        classify_units(&mut parsed, &trident());
+        let review = review_turn(
+            &parsed,
+            &orders(),
+            Some(&trident()),
+            CheckOptions::default(),
+        );
+        let silver = review
+            .silver
+            .iter()
+            .find(|silver| silver.unit_id == "900")
+            .expect("the carpenter is on the SILVER surface");
+
+        assert_eq!(
+            items, 5,
+            "the builder took ten of the fifteen a phase earlier, leaving five"
+        );
+        assert_eq!(
+            silver.produced, items,
+            "the SILVER hover and the ITEMS cell answer one PRODUCE the same way"
+        );
+    }
+}

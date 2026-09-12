@@ -1332,6 +1332,25 @@ impl Ruleset {
         !self.buildings.is_empty()
     }
 
+    /// Whether this world settles every BUILD before any PRODUCE, in one production phase.
+    ///
+    /// `newage trident rules/sequenceofevents` runs "BUILD orders are processed: new structures
+    /// are laid down first, then the work of everyone building on them is counted" and then
+    /// "PRODUCE orders are processed -- both those that make items out of other items ... and
+    /// those that take items from the region's own resources", with CREATE, ENTERTAIN, WORK and
+    /// EXPLORE in that same phase. New Origins splits the two PRODUCE phases around BUILD
+    /// instead, and that is what `false` means here.
+    ///
+    /// Read off [`Ruleset::order_language`] rather than scraped from the rules page, and
+    /// deliberately `false` for Arcanum even though Arcanum's own page states Trident's order:
+    /// the compatibility audit this answers is a Trident audit, whose charter is to preserve New
+    /// Origins and Arcanum behaviour and never to change all worlds to match Trident. An Arcanum
+    /// audit is what should flip Arcanum, with its own regressions behind it.
+    #[must_use]
+    pub fn builds_before_production(&self) -> bool {
+        self.order_language == OrderLanguage::NewAgeTrident
+    }
+
     /// The catalogue entry one **exact** spelling names - no plural rule and no underscores, both
     /// of which the caller has already applied.
     ///

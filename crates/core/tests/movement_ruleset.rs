@@ -934,3 +934,9 @@ fn knows_lakes_are_water_in_trident() {
         "New Origins has no lake sentence, so a lake there is dry land"
     );
 }
+
+#[test]
+fn new_origins_splits_production_around_build() {
+    // `rules/sequenceofevents`: manufacturing PRODUCE, then BUILD, then primary PRODUCE.
+    assert!(!ruleset().builds_before_production());
+}

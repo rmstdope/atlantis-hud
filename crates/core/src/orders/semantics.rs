@@ -4884,17 +4884,16 @@ fn ledger_for_with_production<'a>(
 
     let sharing = Sharing::read(hex);
 
-    // Three passes, in the order `rules/sequenceofevents` states: manufacturing PRODUCE, then
-    // BUILD, then primary PRODUCE. Each walks `hex.units` whole before the next begins, because
-    // the rules settle a phase across the region rather than a unit's block at a time - so a
+    // The month-long passes, in the order this world's rules state - three in New Origins
+    // (manufacturing PRODUCE, then BUILD, then primary PRODUCE), two in Trident (BUILD, then one
+    // combined production phase); see `month_long_passes`. Each walks `hex.units` whole before
+    // the next begins, because the rules settle a phase across the region rather than a unit's
+    // block at a time - so a
     // sharing unit's material is consumed by the manufacturer above it on the report before the
     // builder below it can spend the rest, and "units that appear higher on the report get
     // precedence" is what breaks the tie inside each pass (`ah-728m.2.2`).
-    for pass in [
-        StatePhase::Manufacturing,
-        StatePhase::Build,
-        StatePhase::PrimaryProduction,
-    ] {
+    for pass in month_long_passes(ruleset) {
+        let pass = *pass;
         for (index, ordered) in hex.units.iter().enumerate() {
             // The tools and the men this unit works with, as its month-long orders open. Not its
             // materials: those are read from `PhaseState` inside `produce`, which pools the hex's
@@ -5014,12 +5013,24 @@ fn unwind_unconsumed_production(ledger: &mut Ledger<'_>) {
 ///
 /// An order nothing in the ruleset prices settles in the manufacturing pass, so its existing
 /// uncounted/doubted handling runs exactly once and in the place it always ran.
+///
+/// Trident has one production phase rather than two, and it runs after BUILD - see the early
+/// return in the body, and [`month_long_passes`] below.
 fn produce_phase(
     hex: &Hex<'_>,
     actor: &Ordered<'_>,
     item: &str,
     ruleset: Option<&Ruleset>,
 ) -> StatePhase {
+    // Trident has one production phase holding both kinds, and it runs after BUILD
+    // (`newage trident rules/sequenceofevents`), so every PRODUCE there settles in the later slot
+    // whatever its recipe - which is also what makes this month's output invisible to this
+    // month's BUILD, since `PhaseState::apply` writes a delta into its own slot and every later
+    // one. The unpriced-settles-in-the-manufacturing-pass rule in this function's own doc comment
+    // has nothing to choose between in a world with a single production phase.
+    if ruleset.is_some_and(Ruleset::builds_before_production) {
+        return StatePhase::PrimaryProduction;
+    }
     let primary = resolve_item(item, hex, actor, ruleset)
         .as_deref()
         .and_then(|tag| producing_skill(ruleset, tag, actor.skills()))
@@ -5028,6 +5039,25 @@ fn produce_phase(
         StatePhase::PrimaryProduction
     } else {
         StatePhase::Manufacturing
+    }
+}
+
+/// The month-long passes this world runs, in the turn's order.
+///
+/// New Origins settles manufacturing PRODUCE, then BUILD, then primary PRODUCE
+/// (`rules/sequenceofevents`). Trident settles BUILD and then one production phase holding both
+/// kinds (`newage trident rules/sequenceofevents`), which is why its list is two long:
+/// [`produce_phase`] sends every Trident PRODUCE to [`StatePhase::PrimaryProduction`], so a
+/// manufacturing pass would be a whole extra walk of every unit in the hex with nothing to do.
+fn month_long_passes(ruleset: Option<&Ruleset>) -> &'static [StatePhase] {
+    if ruleset.is_some_and(Ruleset::builds_before_production) {
+        &[StatePhase::Build, StatePhase::PrimaryProduction]
+    } else {
+        &[
+            StatePhase::Manufacturing,
+            StatePhase::Build,
+            StatePhase::PrimaryProduction,
+        ]
     }
 }
 
@@ -20924,6 +20954,226 @@ mod tests {
 
         fn builder(id: &str, structure_id: &str) -> ReportUnit {
             in_structure(with_skill(with_men(unit(id), 10), "BUIL", 3), structure_id)
+        }
+
+        /// The same ledger, read under the committed Trident ruleset. `mod item_movements` has its
+        /// own copy; this module's `with_ledger` is New Origins only and the sibling's helper is
+        /// not in scope here.
+        fn with_trident_ledger<R>(
+            hex_region: ReportRegion,
+            orders: &str,
+            read: impl FnOnce(&Ledger<'_>) -> R,
+        ) -> R {
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+                .expect("the committed Trident ruleset should be usable");
+            let ledger = ledger_for(&hex, Some(&rules));
+            read(&ledger)
+        }
+
+        /// `newage trident rules/sequenceofevents` runs "BUILD orders are processed" first and
+        /// then one PRODUCE phase, so the builder reads a pool no manufacturer has touched - the
+        /// exact opposite of the New Origins case above.
+        ///
+        /// `newage trident data/carpenter`: "CARP 1 ... may PRODUCE wagons [WAGO] from wood
+        /// [WOOD] at a rate of 1 per man-month". `newage trident data/farming`: "FARM 3: ... may
+        /// BUILD a Farm from 10 wood".
+        #[test]
+        fn a_trident_builder_takes_shared_material_before_a_manufacturer() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_building("4")],
+                ..region(vec![
+                    with_skill(with_men(unit("900"), 15), "CARP", 1),
+                    sharing(with_item(unit("901"), 40, "wood", "WOOD")),
+                    builder("902", "4"),
+                ])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900
+PRODUCE wagon
+unit 902
+BUILD
+",
+                |ledger| {
+                    assert_eq!(
+                        ledger.built.get("902").map(|spends| spends[0].amount),
+                        Some(30),
+                        "the builder settles first and takes the thirty its men can lay"
+                    );
+                    assert_eq!(
+                        ledger
+                            .movements
+                            .iter()
+                            .filter(|movement| movement.tag == "WOOD")
+                            .map(|movement| (movement.unit_id.as_str(), movement.delta))
+                            .collect::<Vec<_>>(),
+                        vec![("901", -30), ("901", -10)],
+                        "the build debit comes first; the wagons get what is left"
+                    );
+                    assert_eq!(balance_of(ledger, "901", "WOOD"), 0);
+                },
+            );
+        }
+
+        /// Under Trident the whole BUILD phase is over before any PRODUCE runs, so a unit cannot
+        /// lay this month's own output: `PhaseState::apply` writes a credit into its own slot and
+        /// every later one, and `PrimaryProduction` is later than `Build`.
+        ///
+        /// `newage trident data/lumberjack`: "LUMB 1 ... may PRODUCE wood [WOOD] at a rate of 1
+        /// per man-month". `newage trident data/farming`: "FARM 3: ... may BUILD a Farm from 10
+        /// wood".
+        #[test]
+        fn a_trident_producer_cannot_build_with_what_it_produces() {
+            let hex_region = ReportRegion {
+                products: vec![ItemAmount {
+                    amount: 100,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                }],
+                ..region(vec![with_skill(
+                    with_skill(with_men(unit("900"), 10), "LUMB", 1),
+                    "FARM",
+                    3,
+                )])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900
+PRODUCE wood
+BUILD Farm
+",
+                |ledger| {
+                    assert_eq!(
+                        ledger.built.get("900"),
+                        None,
+                        "the Farm is laid before the wood is cut, so nothing is spent on it"
+                    );
+                    assert!(
+                        !ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.tag == "WOOD"
+                                && movement.cause == ItemChangeCause::BuildSpent),
+                        "{:?}",
+                        ledger.movements
+                    );
+                    assert!(
+                        ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.tag == "WOOD"
+                                && movement.unit_id == "900"
+                                && movement.delta > 0),
+                        "the wood is still cut, and still credited: {:?}",
+                        ledger.movements
+                    );
+                },
+            );
+        }
+
+        /// Trident settles manufacturing and primary production in one phase, tied by report
+        /// position, so a lumberjack above a carpenter feeds it the wood it cuts this month. New
+        /// Origins settles primary production last and gets this the other way round.
+        #[test]
+        fn a_trident_primary_producer_feeds_a_manufacturer_below_it() {
+            let hex_region = ReportRegion {
+                products: vec![ItemAmount {
+                    amount: 100,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                }],
+                ..region(vec![
+                    sharing(with_skill(with_men(unit("900"), 10), "LUMB", 1)),
+                    with_skill(with_men(unit("901"), 5), "CARP", 1),
+                ])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900
+PRODUCE wood
+unit 901
+PRODUCE wagon
+",
+                |ledger| {
+                    assert!(
+                        ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.tag == "WAGO"
+                                && movement.unit_id == "901"
+                                && movement.delta == 5),
+                        "the wagon-maker works from the wood cut above it: {:?}",
+                        ledger.movements
+                    );
+                    assert_eq!(
+                        ledger
+                            .movements
+                            .iter()
+                            .filter(|movement| movement.tag == "WOOD")
+                            .map(|movement| (movement.unit_id.as_str(), movement.delta))
+                            .collect::<Vec<_>>(),
+                        vec![("900", 10), ("900", -5)],
+                        "ten cut, five of them handed to the carpenter below in the same phase"
+                    );
+                },
+            );
+        }
+
+        /// "Where there is no other basis for deciding in which order units will be processed
+        /// within a phase, units that appear higher on the report get precedence"
+        /// (`newage trident rules/sequenceofevents`) - and in Trident the builder is not in that
+        /// phase at all, so it goes first however low it sits.
+        #[test]
+        fn trident_producers_share_one_pool_in_report_order() {
+            let small_builder =
+                |id: &str| in_structure(with_skill(with_men(unit(id), 2), "BUIL", 3), "4");
+            let units = |first: &str, second: &str| ReportRegion {
+                structures: vec![unfinished_building("4")],
+                ..region(vec![
+                    with_skill(with_men(unit(first), 7), "CARP", 1),
+                    sharing(with_item(unit("901"), 20, "wood", "WOOD")),
+                    with_skill(with_men(unit(second), 7), "CARP", 1),
+                    small_builder("903"),
+                ])
+            };
+            let orders = |first: &str, second: &str| {
+                format!(
+                    "unit {first}\nPRODUCE wagon\nunit {second}\nPRODUCE wagon\nunit 903\nBUILD\n"
+                )
+            };
+            let debits = |ledger: &Ledger<'_>| {
+                ledger
+                    .movements
+                    .iter()
+                    .filter(|movement| movement.tag == "WOOD" && movement.delta < 0)
+                    .map(|movement| movement.delta)
+                    .collect::<Vec<_>>()
+            };
+
+            with_trident_ledger(units("900", "902"), &orders("900", "902"), |ledger| {
+                assert_eq!(
+                    debits(ledger),
+                    vec![-6, -7, -7],
+                    "the builder takes its six first, then the two producers top-down"
+                );
+                assert_eq!(
+                    (
+                        ledger.built.get("903").map(|spends| spends[0].amount),
+                        balance_of(ledger, "901", "WOOD"),
+                    ),
+                    (Some(6), 0)
+                );
+            });
+
+            with_trident_ledger(units("902", "900"), &orders("902", "900"), |ledger| {
+                assert_eq!(
+                    debits(ledger),
+                    vec![-6, -7, -7],
+                    "swapping the two producers in the report swaps only which of them is served first"
+                );
+            });
         }
 
         /// `rules/sequenceofevents` runs "Manufacturing PRODUCE orders ... are processed" before
