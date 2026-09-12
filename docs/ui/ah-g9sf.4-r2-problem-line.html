@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wood or stone &mdash; round 2: the problem line</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 20px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:102ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, footer code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:36px 0 6px; font-size:16px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:102ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:11px; }
+  .hexlab { font:10.5px/1.35 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:9px; }
+  .rec { color:var(--ok); font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .side { display:grid; grid-template-columns:repeat(auto-fit,minmax(395px,1fr)); gap:10px; }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:112ch; }
+  .settled b { color:var(--ink); font-weight:normal; }
+  .aside { background:var(--raised); border-left:3px solid var(--select); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:112ch; }
+  .ed { width:330px; background:var(--panel); border:1px solid var(--edge); border-radius:4px 4px 0 0;
+        font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; padding:5px 0; }
+  .ln { display:flex; height:19px; align-items:center; white-space:pre; }
+  .gut { flex:none; width:14px; text-align:center; font-size:9px; }
+  .gut.w { color:var(--brass); } .gut.e { color:var(--danger); }
+  .sq { text-decoration:underline; text-decoration-style:wavy; text-decoration-thickness:1px; text-underline-offset:3px; }
+  .sq.w { text-decoration-color:var(--brass); } .sq.e { text-decoration-color:var(--danger); }
+  .strip { width:330px; background:var(--panel); border:1px solid var(--edge); border-top:0;
+           font:10.5px/1.6 'Helvetica Neue',Arial,sans-serif; padding:3px 7px; display:flex; gap:9px; color:var(--ink-dim); }
+  .strip .e0 { color:var(--ok); } .strip .e1 { color:var(--danger); } .strip .w1 { color:var(--brass); }
+  .strip .save { margin-left:auto; }
+  .diag { width:330px; background:var(--ground); border:1px solid var(--edge); border-top:0; border-radius:0 0 4px 4px;
+          font:11px/1.5 'Helvetica Neue',Arial,sans-serif; padding:4px 7px; }
+  .diag div { display:flex; gap:6px; align-items:baseline; padding:1px 0; }
+  .diag .m { flex:none; width:9px; text-align:center; font-size:9px; }
+  .diag .m.w { color:var(--brass); } .diag .m.e { color:var(--danger); }
+  .diag .ln2 { flex:none; color:var(--ink-dim); font-variant-numeric:tabular-nums; font-size:10.5px; }
+  .diag .tok { flex:none; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:10px; color:var(--brass-bright);
+               background:var(--raised); border-radius:3px; padding:0 3px; }
+  .diag .msg { color:var(--ink-soft); }
+  .pane { width:330px; background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:8px 10px;
+          font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; }
+  .pane .ttl { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .pane .who { color:var(--ink); }
+  .pane .who .mk { color:var(--brass); font-size:9px; margin-right:5px; }
+  .pane .what { color:var(--ink-soft); padding-left:14px; margin-bottom:5px; }
+  .pane .dim { color:var(--ink-dim); font-style:italic; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:112ch; line-height:1.7; }
+</style></head><body>
+<header>
+<h1>A Farm of wood, a Farm of stone &mdash; <span>round 2: the problem line</span></h1>
+<div class="settled"><b>Settled in round 1.</b>
+<b>Q1</b> &mdash; a build the game will refuse is reported where every other trouble with an order line is reported,
+not in the unit table's hover.
+<b>Q2&nbsp;A</b> &mdash; when a unit holds both and the rule picks stone, nothing new is said: the stone drops in the
+cell and the existing <span class="mono">&ldquo;Spends 10 STON on a new Farm this month.&rdquo;</span> is the whole story.
+<b>Q3&nbsp;B</b> &mdash; a month that spends stone then wood says it in one sentence:
+<span class="mono">&ldquo;Spends 4 STON and 6 WOOD on a new Farm this month &mdash; all the stone it has, then wood for the
+rest.&rdquo;</span>
+<b>Q4&nbsp;A</b> &mdash; the editor offers <code>COMPLETE</code>, <code>STONE</code> and <code>WOOD</code> as bare words,
+with nothing appended.</div>
+<p>Round 1's answer settles <i>where</i>. Four things it does not settle: how loudly, in what words, whether the region's
+own problem list carries it too, and what happens to a unit that has neither material.</p>
+<div class="aside"><b>The shape a problem already has.</b> It appears in three places at once, from one source: a coloured
+dot in the editor's left margin with a wavy line under the offending words; a count in the strip beneath
+(<span class="mono">0 errors &middot; 2 warnings</span>), walkable with F8; and a line in the region's
+<span class="mono">Problems</span> pane. The message is written as a phrase completing the unit's name &mdash;
+<span class="mono">&ldquo;Miners (7227) cannot build a Mine: needs mining 3, has mining 1&rdquo;</span>,
+<span class="mono">&ldquo;is in no structure to build in&rdquo;</span>. Every option below keeps that shape.</div>
+</header>
+<main>
+<div class="settled" style="margin-bottom:8px"><b>Chosen, and this is the record.</b>
+<b>Q5&nbsp;A</b> &mdash; a warning: amber dot, amber wavy line, counted in the strip, walkable with F8, and
+<span class="mono">0 errors</span> keeps meaning &ldquo;well formed&rdquo;.
+<b>Q6&nbsp;B</b> &mdash; <span class="mono">&ldquo;cannot build a Farm from wood: has no wood, but 20 stone&rdquo;</span>,
+falling back to <span class="mono">&ldquo;&hellip; has no wood&rdquo;</span> when the unit holds neither.
+<b>Q7&nbsp;A</b> &mdash; a unit carrying neither material is caught too, in the same colour and the same places:
+<span class="mono">&ldquo;cannot build a Farm: has neither wood nor stone&rdquo;</span>.</div>
+
+<h4 class="q"><em>Q5</em> How loudly &mdash; a warning, or an error?</h4>
+<p>The distinction the application draws today: <b>errors</b> are lines the game will not accept at all, <b>warnings</b> are
+lines it accepts and which then achieve nothing. This case is arguably both &mdash; the rules say the order
+<i>&ldquo;will fail with an error&rdquo;</i>, and the month is wasted as a result. Only the colour, the count it joins and
+the green <span class="mono">0 errors</span> differ.</p>
+<div class="card"><div class="side">
+
+<div class="stage">
+  <div class="hexlab">Q5&middot;A &mdash; a warning, with every other wasted month <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="ed">
+    <div class="ln"><span class="gut"></span>unit 5541</div>
+    <div class="ln"><span class="gut w">&#9679;</span>  BUILD <span class="sq w">Farm WOOD</span></div>
+    <div class="ln"><span class="gut"></span>  WORK</div>
+  </div>
+  <div class="strip"><span class="e0">0 errors</span><span class="w1">1 warning</span><span class="save">saved 21:04</span></div>
+  <div class="diag"><div><span class="m w">&#9650;</span><span class="ln2">line 2</span><span class="tok">BUILD</span><span class="msg">cannot build a Farm from wood: has no wood</span></div></div>
+  <ul class="notes">
+    <li>Sits with its own family: every other &ldquo;this order will achieve nothing&rdquo; line is a warning, and a
+      build that cannot find its material is exactly that kind of mistake.</li>
+    <li>Keeps <span class="mono">errors</span> meaning what it means today &mdash; the application could not even read
+      the line &mdash; so a green <span class="mono">0 errors</span> stays trustworthy.</li>
+    <li class="con">Amber is the colour of &ldquo;probably not what you meant&rdquo;, and this is certain.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q5&middot;B &mdash; an error, because the game rejects the line</div>
+  <div class="ed">
+    <div class="ln"><span class="gut"></span>unit 5541</div>
+    <div class="ln"><span class="gut e">&#9679;</span>  BUILD <span class="sq e">Farm WOOD</span></div>
+    <div class="ln"><span class="gut"></span>  WORK</div>
+  </div>
+  <div class="strip"><span class="e1">1 error</span><span>0 warnings</span><span class="save">saved 21:04</span></div>
+  <div class="diag"><div><span class="m e">&#9632;</span><span class="ln2">line 2</span><span class="tok">BUILD</span><span class="msg">cannot build a Farm from wood: has no wood</span></div></div>
+  <ul class="notes">
+    <li>Matches the rules' own word: the order fails, and nothing a player does later in the month rescues it.</li>
+    <li>Red is harder to send orders past than amber.</li>
+    <li class="con">Changes what <span class="mono">errors</span> means. Today it counts lines the application could not
+      read; this one it reads perfectly and simply knows is doomed. A player who has learned to trust
+      <span class="mono">0 errors</span> as &ldquo;this file is well formed&rdquo; loses that.</li>
+    <li class="con">No other order in the application is an error on the strength of what a unit is carrying, so it
+      would be alone.</li>
+  </ul>
+</div>
+
+</div></div>
+
+<h4 class="q"><em>Q6</em> The exact words</h4>
+<p>This is the string that ships, read after the unit's name in the region's problem list and after a
+<code>BUILD</code> chip in the editor's own list. Shown in both places for the fit. The same sentence must work for
+<code>STONE</code> with no stone.</p>
+<div class="card"><div class="side">
+
+<div class="stage">
+  <div class="hexlab">Q6&middot;A &mdash; the house shape, nothing more</div>
+  <div class="diag" style="border-radius:4px;border-top:1px solid var(--edge)">
+    <div><span class="m w">&#9650;</span><span class="ln2">line 2</span><span class="tok">BUILD</span><span class="msg">cannot build a Farm from wood: has no wood</span></div>
+    <div><span class="m w">&#9650;</span><span class="ln2">line 7</span><span class="tok">BUILD</span><span class="msg">cannot build a Mine from stone: has no stone</span></div>
+  </div>
+  <div class="pane" style="margin-top:10px"><div class="ttl">Problems &mdash; plain (16,0)</div>
+    <div class="who"><span class="mk">&#9650;</span>Builder (5541)</div>
+    <div class="what">cannot build a Farm from wood: has no wood</div>
+    <div class="who"><span class="mk">&#9650;</span>Miners (5547)</div>
+    <div class="what">cannot build a Mine from stone: has no stone</div></div>
+  <ul class="notes">
+    <li>Word for word the shape the other build warnings use &mdash; <i>cannot build a X: needs &hellip;, has &hellip;</i>.</li>
+    <li>The shortest of the three, in a list that is often long.</li>
+    <li class="con">Says nothing about the way out, and the way out is not obvious to a player who has just met the
+      material words.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q6&middot;B &mdash; and names the way out, when there is one <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="diag" style="border-radius:4px;border-top:1px solid var(--edge)">
+    <div><span class="m w">&#9650;</span><span class="ln2">line 2</span><span class="tok">BUILD</span><span class="msg">cannot build a Farm from wood: has no wood, but 20 stone</span></div>
+    <div><span class="m w">&#9650;</span><span class="ln2">line 7</span><span class="tok">BUILD</span><span class="msg">cannot build a Mine from stone: has no stone, but 30 wood</span></div>
+  </div>
+  <div class="pane" style="margin-top:10px"><div class="ttl">Problems &mdash; plain (16,0)</div>
+    <div class="who"><span class="mk">&#9650;</span>Builder (5541)</div>
+    <div class="what">cannot build a Farm from wood: has no wood, but 20 stone</div>
+    <div class="who"><span class="mk">&#9650;</span>Miners (5547)</div>
+    <div class="what">cannot build a Mine from stone: has no stone, but 30 wood</div></div>
+  <ul class="notes">
+    <li>The player can see at a glance that deleting one word fixes it, without going to look at what the unit holds.</li>
+    <li>Still the house shape, and still one line &mdash; the clause hangs off the existing <i>has</i>.</li>
+    <li>Falls back to exactly Q6&middot;A when the unit holds neither, so there is one sentence, not two.</li>
+    <li class="con">Longer, and the figure is one more number to keep correct.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q6&middot;C &mdash; spells out the consequence</div>
+  <div class="diag" style="border-radius:4px;border-top:1px solid var(--edge)">
+    <div><span class="m w">&#9650;</span><span class="ln2">line 2</span><span class="tok">BUILD</span><span class="msg">has no wood, so this Farm is not begun and the month is spent for nothing</span></div>
+  </div>
+  <div class="pane" style="margin-top:10px"><div class="ttl">Problems &mdash; plain (16,0)</div>
+    <div class="who"><span class="mk">&#9650;</span>Builder (5541)</div>
+    <div class="what">has no wood, so this Farm is not begun and the month is spent for nothing</div></div>
+  <ul class="notes">
+    <li>Leaves nothing to infer about what the mistake costs.</li>
+    <li class="con">Abandons the <i>cannot build a X</i> opening that the other build problems share, so a list of
+      three build warnings reads in three voices.</li>
+    <li class="con">Every warning in the application costs a month; saying so here and nowhere else implies the others
+      do not.</li>
+  </ul>
+</div>
+
+</div></div>
+
+<h4 class="q"><em>Q7</em> A unit carrying neither wood nor stone</h4>
+<p>Not a new case &mdash; it exists in the older game world too &mdash; but the application is silent about it today, and
+everything needed to catch it arrives with this change. Plain <code>BUILD Farm</code>, nothing in the packs.</p>
+<div class="card"><div class="side">
+
+<div class="stage">
+  <div class="hexlab">Q7&middot;A &mdash; caught, in the same words <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="ed">
+    <div class="ln"><span class="gut"></span>unit 5548</div>
+    <div class="ln"><span class="gut w">&#9679;</span>  BUILD <span class="sq w">Farm</span></div>
+  </div>
+  <div class="strip"><span class="e0">0 errors</span><span class="w1">1 warning</span><span class="save">saved 21:04</span></div>
+  <div class="diag"><div><span class="m w">&#9650;</span><span class="ln2">line 2</span><span class="tok">BUILD</span><span class="msg">cannot build a Farm: has neither wood nor stone</span></div></div>
+  <ul class="notes">
+    <li>A wasted month the application can prove, marked like every other wasted month it can prove.</li>
+    <li>The commonest version of this mistake by far: a builder sent to a hex having forgotten its materials.</li>
+    <li class="con">Touches the older game world too, where nothing was asked for.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q7&middot;B &mdash; left alone, as today</div>
+  <div class="ed">
+    <div class="ln"><span class="gut"></span>unit 5548</div>
+    <div class="ln"><span class="gut"></span>  BUILD Farm</div>
+  </div>
+  <div class="strip"><span class="e0">0 errors</span><span>0 warnings</span><span class="save">saved 21:04</span></div>
+  <ul class="notes">
+    <li>This change stays strictly about the two material words, and nothing else moves.</li>
+    <li class="con">The application now warns a player who asked for wood and has none, and says nothing to one who
+      asked for either and has neither. The second is the worse mistake.</li>
+  </ul>
+</div>
+
+</div></div>
+
+</main>
+<footer>
+Rules looked up rather than recalled &mdash; <code>rules/build</code> (Trident): <i>&ldquo;By default the unit will use
+whatever is available, consuming stone before wood. You can specify WOOD or STONE after the object type to restrict which
+material is used. If the preferred material is not available, the order will fail with an error.&rdquo;</i>
+<code>data/farming</code>: FARM&nbsp;3 builds a Farm from 10 WOOD or STON.
+<code>rules/economy_buildings</code>: each unit of work consumes one unit of the resource.<br>
+Still out of scope: helping another unit build, unfinished ships, and the material a <i>neighbour</i> in the hex supplies,
+all of which keep behaving exactly as they do now.
+</footer>
+</body></html>
