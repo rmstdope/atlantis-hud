@@ -1,0 +1,103 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shipping to a quartermaster that may refuse</title><style>
+:root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441; --blue:#4a9fd8; --green:#4fb783; --red:#e2705f; }
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,serif; padding:32px 24px 64px; }
+header, main, footer { max-width:1060px; margin:auto; } h1 { font-size:26px; } h1 span,h2 { color:var(--brass); }
+header p { color:var(--soft); margin-top:10px; max-width:84ch; } h2 { font-size:15px; letter-spacing:1.3px; margin:35px 0 8px; text-transform:uppercase; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:9px; padding:15px; margin-bottom:14px; }
+.cols { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.label { color:var(--dim); font:10px system-ui,sans-serif; letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px; }
+.editor { background:#0c1016; border:1px solid var(--edge); border-radius:6px; color:var(--ink); font:12.5px/1.65 "SF Mono",Menlo,Consolas,monospace; margin-top:8px; padding:10px 12px; }
+.muted { color:var(--dim); } .quiet { color:var(--dim); font-size:12.5px; margin-top:9px; }
+.pane { background:var(--raised); border:1px solid var(--edge); border-radius:6px; font:12.5px/1.5 system-ui,sans-serif; }
+.pane .hd { border-bottom:1px solid var(--edge); padding:6px 9px; } .pane .hd .t { color:var(--brass); } .pane .hd .h { color:var(--dim); font-size:11.5px; }
+.pane .bd { padding:8px 9px; }
+table.pop { border-collapse:collapse; font:11.9px/1.5 system-ui,sans-serif; width:100%; }
+table.pop td { padding:3px 0; } table.pop td.k { color:var(--dim); padding-right:12px; white-space:nowrap; }
+table.pop td.v { color:var(--ink); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+table.pop td.v.down { color:var(--red); } table.pop td.v.up { color:var(--green); }
+table.pop tr.hl td { border-top:1px solid #2b3643; border-bottom:1px solid #2b3643; background:rgba(217,164,65,.07); }
+table.pop tr.maybe td { color:var(--dim); font-style:italic; }
+table.pop td.why { color:var(--dim); font-size:11px; padding-left:10px; }
+.note2 { color:var(--soft); font-size:11.5px; margin-top:7px; } .note2.new { border-left:2px solid var(--brass); padding-left:6px; }
+.amber { color:#f0c36a; } .qmark { color:#f0c36a; font-weight:650; }
+.cell { background:#0b0f14; border:1px solid var(--edge); border-radius:4px; display:inline-block; font:12px "SF Mono",Menlo,monospace; padding:4px 8px; }
+.tip { background:var(--raised); border:1px solid var(--edge); border-radius:5px; font:12px/1.5 system-ui,sans-serif; margin-top:8px; padding:9px 11px; }
+.tip b { color:var(--brass); display:block; font-weight:normal; margin-bottom:4px; }
+.verdict { background:var(--raised); border-left:3px solid var(--brass); border-radius:0 6px 6px 0; color:var(--soft); margin-top:14px; padding:10px 13px; font-size:13.5px; }
+.settled { background:var(--raised); border-left:3px solid var(--green); border-radius:0 6px 6px 0; color:var(--soft); margin-top:14px; padding:10px 13px; font-size:13.5px; }
+footer { color:var(--dim); font-size:12px; margin-top:40px; max-width:84ch; }
+@media (max-width:880px) { .cols { grid-template-columns:1fr; } body { padding:20px 16px 48px; } }
+
+table.grid { border-collapse:collapse; font:12px/1.5 system-ui,sans-serif; width:100%; margin-top:6px; }
+table.grid th { color:var(--dim); font-size:10px; letter-spacing:.08em; text-align:left; text-transform:uppercase; padding:4px 6px; border-bottom:1px solid var(--edge); }
+table.grid td { padding:4px 6px; border-bottom:1px solid #222b36; white-space:nowrap; }
+table.grid td.n { text-align:right; font-variant-numeric:tabular-nums; width:96px; max-width:96px; overflow:hidden; text-overflow:ellipsis; }
+table.grid td.id { color:var(--blue); } .pred { color:var(--brass); font-style:italic; } .red { color:var(--red); font-style:italic; }
+.opt { color:var(--brass); font:11px system-ui,sans-serif; letter-spacing:.12em; text-transform:uppercase; }
+.warnrow { color:#f0c36a; font:12px/1.5 system-ui,sans-serif; margin-top:6px; } .warnrow::before { content:"\26A0  "; }
+.open { border:1px dashed var(--brass); }
+</style>
+</head><body>
+<header><h1>Shipping to a quartermaster that may refuse &mdash; <span>what the sender's silver says</span></h1>
+<p>A shipment to another faction's quartermaster whose position is in the report has a price that can be worked out. What the report cannot show is whether that faction accepts goods from ours, or &mdash; for a Caravanserai owner whose skills are hidden &mdash; whether it can receive them at all. The goods already stay with the sender and carry <span class="qmark">+ ?</span>. Until now the month's silver was added up as though shipping were free. Instead, the silver shows <b>both ways the month can end</b>.</p>
+<p class="muted" style="font:12.5px/1.6 'SF Mono',Menlo,monospace;margin-top:12px;color:var(--brass)">unit 900 <span style="color:var(--dim)">; owns a Caravanserai, Quartermaster 5, silver 1000</span><br>&nbsp;&nbsp;TRANSPORT 7003 9 FUR <span style="color:var(--dim)">; another faction's quartermaster, 3 hexes: 45 silver</span></p>
+</header><main>
+
+<h2>1 &middot; One shipment that may be refused</h2>
+<div class="cols">
+ <section class="card"><div class="label">The goods &mdash; unchanged from today</div><div class="pane"><div class="hd"><span class="t">unit 900</span> <span class="h">&mdash; items, hovered</span></div><div class="bd"><span class="cell">9 FUR <span class="qmark">+ ?</span></span><div class="tip"><b>was: 9 FUR</b>Could not count 9 FUR for unit 7003 because your report does not show whether its faction accepts transports from yours.</div></div></div>
+ <p class="quiet">The sentence stays word for word. The price is not added to it; it lives with the silver.</p></section>
+ <section class="card"><div class="label">The silver working, opened</div><div class="pane"><div class="hd"><span class="t">unit 900</span> <span class="h">&mdash; silver</span></div><div class="bd"><table class="pop"><tr class=""><td class="k">silver</td><td class="v ">1000 <span class="amber">or</span> 955 <span class="muted">&darr; 1000</span></td></tr><tr class=""><td class="k">taxed</td><td class="v up">+200</td></tr><tr class=""><td class="k">bought</td><td class="v down">&minus;180</td><td class="why">4 grain at 45</td></tr><tr class="hl maybe"><td class="k">shipped</td><td class="v down">&minus;45</td><td class="why">if unit 7003 accepts &middot; 9 weight at 5 silver</td></tr><tr class=""><td class="k">upkeep</td><td class="v down">&minus;20</td></tr></table><div class="note2 new">955 if unit 7003 accepts the 9 FUR, 1000 if it does not.</div></div></div>
+ <p class="quiet">Refused first, accepted second. The shipment gets a <i>shipped</i> line of its own, marked with its condition, and never folds into a certain <i>shipped</i> line.</p></section>
+</div>
+<div class="cols">
+ <section class="card"><div class="label">The unit table's Silver column</div><table class="grid"><tr><th>Unit</th><th>Name</th><th style="text-align:right">Silver &uarr;</th></tr><tr><td class="id">901</td><td>Guards</td><td class="n pred">310</td></tr><tr><td class="id">900</td><td>Traders</td><td class="n pred">1000 or 955</td></tr><tr><td class="id">903</td><td>Miners</td><td class="n pred">980</td></tr></table>
+ <p class="quiet">Both answers in the cell. Sorted by the <b>lower</b> answer, so 900 sorts as 955 &mdash; the careful figure. A pair too wide for the column (&ldquo;12500 or 11900&rdquo;) is cut, and its hover shows it in full.</p></section>
+ <section class="card"><div class="label">The unit's hover summary</div><div class="pane"><div class="hd"><span class="t">unit 900</span> <span class="h">&mdash; hovered</span></div><div class="bd"><table class="pop"><tr class=""><td class="k">Held now</td><td class="v ">1000</td></tr><tr class=""><td class="k">In, in time</td><td class="v ">200</td></tr><tr class=""><td class="k">In, too late</td><td class="v ">0</td></tr><tr class=""><td class="k">Out</td><td class="v ">200 <span class="amber">or</span> 245</td></tr><tr class=""><td class="k">At month end</td><td class="v ">1000 <span class="amber">or</span> 955</td></tr></table><div class="note2 new">955 if unit 7003 accepts the 9 FUR, 1000 if it does not.</div></div></div>
+ <p class="quiet">Every figure the shipment touches shows both answers, in the same order.</p></section>
+</div>
+
+<h2>2 &middot; Several shipments that may be refused</h2>
+<div class="cols">
+ <section class="card"><div class="label">Orders</div><div class="editor">TRANSPORT 7003 9 FUR <span class="muted">; 45 if accepted</span><br>TRANSPORT 7004 20 GRAI <span class="muted">; 500 if accepted</span></div>
+ <table class="grid"><tr><th>Unit</th><th>Name</th><th style="text-align:right">Silver &uarr;</th></tr><tr><td class="id">900</td><td>Traders</td><td class="n pred">455 to 1000</td></tr></table>
+ <p class="quiet">More than two endings, so the silver reads as a range, lowest first, in the cell, the working and the summary alike. One note however many shipments there are.</p></section>
+ <section class="card"><div class="label">The silver working, opened</div><div class="pane"><div class="hd"><span class="t">unit 900</span> <span class="h">&mdash; silver</span></div><div class="bd"><table class="pop"><tr class=""><td class="k">silver</td><td class="v ">455 <span class="amber">to</span> 1000 <span class="muted">&darr; 1000</span></td></tr><tr class=""><td class="k">taxed</td><td class="v up">+200</td></tr><tr class=""><td class="k">bought</td><td class="v down">&minus;180</td><td class="why">4 grain at 45</td></tr><tr class="hl maybe"><td class="k">shipped</td><td class="v down">&minus;45</td><td class="why">if unit 7003 accepts &middot; 9 weight at 5 silver</td></tr><tr class="hl maybe"><td class="k">shipped</td><td class="v down">&minus;500</td><td class="why">if unit 7004 accepts &middot; 100 weight at 5 silver</td></tr><tr class=""><td class="k">upkeep</td><td class="v down">&minus;20</td></tr></table><div class="note2 new">Between 455 and 1000, depending on which of 2 shipments are accepted.</div></div></div></section>
+</div>
+<section class="card"><div class="label">Beside a shipment that is certain</div>
+ <div class="cols"><div><div class="editor">TRANSPORT 901 9 FUR <span class="muted">; our own quartermaster: certain, 45</span><br>TRANSPORT 7003 20 GRAI <span class="muted">; may refuse, 500</span></div><p class="quiet">Only one shipment is uncertain, so this is still two answers joined by <i>or</i>. The certain one keeps its ordinary <i>shipped</i> line.</p></div>
+ <div class="pane"><div class="hd"><span class="t">unit 900</span> <span class="h">&mdash; silver</span></div><div class="bd"><table class="pop"><tr class=""><td class="k">silver</td><td class="v ">955 <span class="amber">or</span> 455 <span class="muted">&darr; 1000</span></td></tr><tr class="hl"><td class="k">shipped</td><td class="v down">&minus;45</td><td class="why">9 weight at 5 silver</td></tr><tr class="hl maybe"><td class="k">shipped</td><td class="v down">&minus;500</td><td class="why">if unit 7003 accepts &middot; 100 weight at 5 silver</td></tr></table><div class="note2 new">455 if unit 7003 accepts the 20 GRAI, 955 if it does not.</div></div></div></div></section>
+
+<h2>3 &middot; Accepted, but the sender could not pay</h2>
+<div class="cols">
+ <section class="card"><div class="editor">unit 900 <span class="muted">; silver 20</span><br>&nbsp;&nbsp;TRANSPORT 7003 9 FUR <span class="muted">; 45 if accepted</span></div>
+ <div class="warnrow">short $25 if unit 7003 accepts: this unit can have $20 and its orders spend $45, so it ships none of the 9 furs ordered</div>
+ <p class="quiet">Refused or accepted, the furs and the silver stay, so the month is certain and reads plain <b>20</b>. The player is still told the shipment could never have gone: the existing shortfall sentence with the condition after its amount, counted, marked and walked like any other shortfall.</p></section>
+ <section class="card"><div class="label">The unit table</div><table class="grid"><tr><th>Unit</th><th>Name</th><th style="text-align:right">Silver &uarr;</th></tr><tr><td class="id">900</td><td>Traders</td><td class="n red">20</td></tr></table>
+ <p class="quiet">Red, as any unit short for its orders already is.</p></section>
+</div>
+
+<h2>4 &middot; The same rules, everywhere else</h2>
+<div class="cols">
+ <section class="card"><div class="label">The other uncertain target</div><div class="pane"><div class="hd"><span class="t">unit 900</span> <span class="h">&mdash; items, hovered</span></div><div class="bd"><span class="cell">9 FUR <span class="qmark">+ ?</span></span><div class="tip"><b>was: 9 FUR</b>Could not count 9 FUR for unit 7004 because your report does not show whether it is an eligible transport target.</div></div></div>
+ <p class="quiet">A Caravanserai owner whose skills the report does not show. Its silver behaves exactly as sections 1&ndash;3.</p></section>
+ <section class="card"><div class="label">Nothing changes when the shipment is free</div><div class="editor">TRANSPORT 7003 9 FUR <span class="muted">; Trident, two hexes: free</span><br>Silver&nbsp;<span class="cell">1000</span></div>
+ <p class="quiet">Accepted or refused it costs nothing, so the silver stays certain: no <i>or</i>, no note. In New Origins a shipment between quartermasters is charged at any distance, so there it is uncertain.</p></section>
+</div>
+<div class="cols">
+ <section class="card"><div class="label">The month cannot be added up for another reason too</div><div class="pane"><div class="hd"><span class="t">unit 900</span> <span class="h">&mdash; silver</span></div><div class="bd"><table class="pop"><tr class=""><td class="k">silver</td><td class="v "><span class="qmark">?</span> <span class="muted">&darr; 1000</span></td></tr><tr class=""><td class="k">at month end</td><td class="v "><span class="qmark">?</span></td></tr></table><div class="note2">This month cannot be added up, so what moved this unit&rsquo;s silver is not listed.</div><div class="note2">The distance a shipment must travel is not known, so what it costs cannot be said.</div></div></div>
+ <p class="quiet">An unknown price means no total: <span class="qmark">?</span> wins over <i>or</i>, and only the existing notes remain.</p></section>
+ <section class="card"><div class="label">And the rest</div><p class="quiet" style="margin-top:0">A shipment that is certainly refused for another reason &mdash; out of reach, not a quartermaster &mdash; is never uncertain and keeps its own warning. While the forecast is loading or in error, none of this is shown. On a narrow window the notes wrap inside the panel. Nothing new is remembered: a reload or new report works it out again. The Transport warning switch never takes away <i>or</i> or <i>to</i>, because they describe the figure rather than warn about an order; the conditional shortfall follows the silver warning, like every shortfall.</p></section>
+</div>
+
+<h2>5 &middot; Shipments each affordable alone, but not together</h2>
+<div class="cols">
+ <section class="card"><div class="editor">unit 900 <span class="muted">; silver 520</span><br>&nbsp;&nbsp;TRANSPORT 7003 9 FUR <span class="muted">; 45 if accepted</span><br>&nbsp;&nbsp;TRANSPORT 7004 20 GRAI <span class="muted">; 500 if accepted</span></div>
+ <p class="quiet">Either can be paid for alone. If both are accepted the furs go first and 475 is left, so the grain stays. The endings are 520, 475 and 20, so the silver reads <b>20 to 520</b>.</p></section>
+ <section class="card"><div class="label">Warned, naming every acceptance it needs</div>
+ <div class="warnrow">short $25 if units 7003 and 7004 both accept: this unit can have $520 and its orders spend $545, so it ships none of the 20 grain ordered</div>
+ <p class="quiet">The player is warned about the ending in which a shipment fails, the same way section 3 warns about a single one. With three it reads <i>if units 7003, 7004 and 7005 all accept</i>.</p></section>
+</div>
+</main>
+<footer>A drawing, not a running screen. Reach and price: <code>rules/economy_transport</code> (Trident: free within 2 hexes; New Origins: no free short range) and <code>data/quartermaster</code> (4&minus;((level+1)/2) &times; 5 silver per weight unit). A target must be at least Friendly to the sender, and our report prints only our own attitudes: <code>rules/com_attitudes</code>. The first unit listed under a structure is its owner: <code>rules/reportformat</code>. Weights from <code>data/items</code>: fur 1, grain 5.</footer></body></html>
