@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah-3u7c &mdash; a route that goes through an inner passage</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+    --hexface:#1a212b; --hexline:#2b3542;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:40px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:16px; max-width:96ch; }
+  .row { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; flex:1 1 420px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .stage + .stage { margin-top:10px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .ui { font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane { background:var(--raised); border:1px solid var(--edge); border-radius:7px; padding:0; overflow:hidden; }
+  .pane .hdr { background:#202935; border-bottom:1px solid var(--edge); padding:6px 10px; font-size:11px;
+               letter-spacing:.09em; text-transform:uppercase; color:var(--ink-soft); display:flex; justify-content:space-between; }
+  .pane .body { padding:9px 10px; }
+  .prob { display:flex; gap:8px; padding:5px 0; border-bottom:1px solid var(--edge-soft); }
+  .prob:last-child { border-bottom:none; }
+  .dot { width:8px; height:8px; border-radius:50%; margin-top:5px; flex:none; background:var(--brass); }
+  .dot.grey { background:var(--ink-dim); }
+  .dot.red { background:var(--danger); }
+  .prob .txt { color:var(--ink); }
+  .prob .txt b { color:var(--brass-bright); font-weight:normal; }
+  .chip { display:inline-block; border:1px solid var(--edge); border-radius:11px; padding:1px 9px; font-size:11px; color:var(--ink-soft); }
+  .chip.on { border-color:var(--brass); color:var(--brass-bright); }
+  .tip { background:#0c1016; border:1px solid var(--brass); border-radius:6px; padding:7px 9px; font:12px/1.45 'Helvetica Neue',Arial,sans-serif;
+         color:var(--ink); max-width:44ch; }
+  .lvl { display:flex; gap:6px; margin-bottom:8px; }
+  table.w { width:100%; border-collapse:collapse; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  table.w th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); font-weight:400;
+               padding:3px 8px; border-bottom:1px solid var(--edge); }
+  table.w td { padding:4px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  .q { background:var(--raised); border-left:3px solid var(--brass); padding:10px 14px; border-radius:0 8px 8px 0; margin:6px 0 20px; }
+  .q b { color:var(--brass-bright); font-weight:normal; }
+</style></head><body>
+<header>
+  <h1><span>Going through a passage</span> &mdash; what the map shows</h1>
+  <p>Some structures hold a passage that leads out somewhere else entirely &mdash; a shaft down into
+  the underworld, a gate that opens on the far side of the world. A player's orders can send a unit
+  through one, and then keep walking on the other side.</p>
+  <p>Today Atlantis HUD acts as though the passage were not there. The unit is left standing where
+  it was, and every step written after the passage is drawn from the old hex &mdash; a firm, ordinary
+  brass line through country the unit will never see. When the report does not say where the passage
+  comes out, the map still draws that line with total confidence.</p>
+  <p>The rules are plain about what the order means &mdash; <code class="mono">rules/move</code>:
+  &ldquo;IN, which will move through an inner passage in the structure that the unit is currently
+  in&rdquo;; and <code class="mono">rules/tableitemweights</code>: &ldquo;the movement point cost is
+  equal to the normal cost to enter the destination region&rdquo;. So it is travel, and it is not
+  free.</p>
+  <p>Three questions. Each one is drawn below: the same unit, the same orders, three ways of
+  showing them. Only hand-written orders are affected &mdash; the route planner never proposes a
+  passage, because it only ever offers journeys it can stand behind.</p>
+</header>
+<main>
+
+<h3 class="sec">What the map does today, and why it is wrong</h3>
+<p>One unit standing in a shaft at the top-left, ordered through the passage and then two steps
+south-east. The line you see is what ships today.</p>
+<div class="card" style="flex-basis:100%">
+  <div class="stage"><div class="hexlab">Today &mdash; the passage is ignored</div>
+    <div class="mapbox" data-map="today"></div></div>
+  <ul class="notes">
+    <li class="con">The two steps after the passage are drawn from the shaft's own hex.</li>
+    <li class="con">Solid brass, the same line the map uses for a journey it is sure of.</li>
+    <li class="con">The passage itself costs nothing and moves nothing.</li>
+  </ul>
+</div>
+
+<h3 class="sec">Question 1 &mdash; the passage leads somewhere we do not know</h3>
+<p>The commonest case by far: the report never says where the shaft comes out, because the player has
+not been down it. We know the unit leaves; we do not know where it arrives. Three ways to draw that.</p>
+<div class="q"><b>Which of these should the map do when the far side of a passage is unknown?</b></div>
+<div class="row">
+  <div class="card">
+    <h2><em>A</em> The line stops, and the hex is marked</h2>
+    <p class="concept">The route ends at the structure's hex. That hex carries a small brass ring with a
+    question mark: the journey goes on, somewhere we cannot draw. Hovering it says so.</p>
+    <div class="stage"><div class="mapbox" data-map="a"></div></div>
+    <div style="margin-top:10px"><div class="tip"><b style="color:var(--brass-bright);font-weight:normal">Through the passage in Shaft [3]</b><br>
+      Where this passage comes out is not in any report yet, so the rest of the journey &mdash; 2 more
+      steps &mdash; cannot be drawn.</div></div>
+    <ul class="notes">
+      <li>Nothing false is drawn anywhere on the map.</li>
+      <li>The mark says the route is unfinished, not that it failed.</li>
+      <li>The remaining steps are still counted, so the player knows how much is missing.</li>
+      <li class="con">A new mark to learn.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>B</em> The line simply stops</h2>
+    <p class="concept">The route ends at the structure's hex and nothing else is drawn. The map says
+    only what it knows. Everything about the passage is told in words, elsewhere.</p>
+    <div class="stage"><div class="mapbox" data-map="b"></div></div>
+    <ul class="notes">
+      <li>Quietest possible map; no new vocabulary at all.</li>
+      <li class="con">Looks exactly like a unit that was ordered to stop there.</li>
+      <li class="con">A player reading the map alone learns nothing about the missing half.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>C</em> The remaining steps trail off the hex</h2>
+    <p class="concept">The route ends at the structure, and the steps we cannot place are drawn as a
+    short faded stub leaving that hex in no particular direction &mdash; a tail that fades out.</p>
+    <div class="stage"><div class="mapbox" data-map="c"></div></div>
+    <ul class="notes">
+      <li>The unfinished journey is visible without reading anything.</li>
+      <li class="con">The stub points somewhere, and every direction it could point is a lie.</li>
+      <li class="con">On a crowded map it reads as a real route into the neighbouring hex.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Question 2 &mdash; where the player is told, and in what words</h3>
+<p>Whatever the map does, something has to say why the route is short. Atlantis HUD already keeps a
+counted list of Problems and a Warnings tab of things a player can switch on and off.</p>
+<div class="q"><b>Does an unknown passage belong in the Problems list, and what should it say?</b></div>
+<div class="row">
+  <div class="card">
+    <h2><em>1</em> A problem, in a new <i>Movement</i> group</h2>
+    <p class="concept">It joins the counted Problems list like an overloaded fleet or a gift to a unit
+    that is not here, under a heading of its own, switchable like the rest.</p>
+    <div class="stage">
+      <div class="pane ui"><div class="hdr"><span>Problems</span><span class="chip on">4</span></div>
+        <div class="body">
+          <div class="prob"><div class="dot"></div><div class="txt"><b>Patrol (1841)</b> goes through the passage in Shaft [3], and no report says where that passage comes out, so the 2 steps after it cannot be planned.</div></div>
+          <div class="prob"><div class="dot grey"></div><div class="txt"><b>Scouts (2207)</b> is overloaded: it carries 512 and can carry 500, so it will not move.</div></div>
+        </div></div>
+      <div style="margin-top:10px" class="pane ui"><div class="hdr"><span>Units in hex</span></div>
+        <div class="body" style="font-family:'Helvetica Neue',Arial">
+          <div style="color:var(--ink-soft)">Patrol (1841) &middot; 6 men &nbsp; <span style="color:var(--ink-dim)">&rarr; &hellip;</span></div>
+          <div style="color:var(--ink-dim);font-size:11.5px;margin-top:3px">The destination column already says <span style="color:var(--ink-soft)">&rarr; &hellip;</span> when it cannot name where a unit ends up. It would say it here too.</div>
+        </div></div>
+      <div style="margin-top:10px" class="pane ui"><div class="hdr"><span>Settings &mdash; Warnings</span></div>
+        <div class="body">
+          <div style="color:var(--brass);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;margin:2px 0 4px">Movement</div>
+          <div class="prob"><div class="dot" style="background:var(--ok)"></div><div class="txt"><b>Passages with no known exit</b><br><span style="color:var(--ink-soft)">A route goes through an inner passage and no report says where it leads.</span></div></div>
+        </div></div>
+    </div>
+    <ul class="notes">
+      <li>Found the way every other movement mistake is found, including by the problem walk.</li>
+      <li>A player who never uses passages can switch the whole group off.</li>
+      <li class="con">It is not really a mistake &mdash; nothing is wrong with the orders.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>2</em> Only on the unit, never in the list</h2>
+    <p class="concept">The unit's own movement summary says it, and the map mark says it. The Problems
+    list stays for things the player has got wrong.</p>
+    <div class="stage">
+      <div class="pane ui"><div class="hdr"><span>Patrol (1841)</span><span style="color:var(--ink-dim)">movement</span></div>
+        <div class="body">
+          <div style="color:var(--ink-soft)">3 steps this month &middot; 6 movement points</div>
+          <div style="margin-top:6px;color:var(--brass-bright)">Beyond the passage in Shaft [3] the route is unknown &mdash; 2 steps not planned.</div>
+        </div></div>
+    </div>
+    <ul class="notes">
+      <li>Honest: an unknown passage is a gap in what we know, not a player error.</li>
+      <li>Nothing new to switch on or off.</li>
+      <li class="con">Invisible until that unit is selected; a fleet of forty units hides it.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">Question 3 &mdash; the passage leads somewhere we <i>do</i> know</h3>
+<p>Once the far side has been seen, the HUD knows both ends. The two ends are usually on different
+levels of the map &mdash; a shaft joins the surface to the underworld &mdash; and the map draws one level
+at a time, so the route arrives on a map the player is not looking at.</p>
+<div class="q"><b>How should the map show a journey that comes out somewhere else?</b></div>
+<div class="row">
+  <div class="card">
+    <h2><em>K1</em> Each level draws its own half, with a matched pair of marks</h2>
+    <p class="concept">The surface shows the walk up to the shaft, ending in a brass ring. Switch to
+    the underworld and the journey picks up at a matching ring and carries on. The rings name each
+    other.</p>
+    <div class="stage"><div class="lvl"><span class="chip">nexus</span><span class="chip on">surface</span><span class="chip">underworld</span></div>
+      <div class="mapbox" data-map="k1a"></div></div>
+    <div class="stage"><div class="lvl"><span class="chip">nexus</span><span class="chip">surface</span><span class="chip on">underworld</span></div>
+      <div class="mapbox" data-map="k1b"></div></div>
+    <div style="margin-top:10px"><div class="tip"><b style="color:var(--brass-bright);font-weight:normal">Through the passage in Shaft [3]</b><br>
+      Comes out in cavern (12,34) in the underworld. Costs 2 movement points, the cost of entering
+      that cavern.</div></div>
+    <ul class="notes">
+      <li>Truthful about distance: nothing is drawn crossing country it does not cross.</li>
+      <li>Works whether the two ends are on the same level or not.</li>
+      <li class="con">The two halves are never on screen together.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>K2</em> A drawn link between the two hexes</h2>
+    <p class="concept">On the same level, a long faded arc joins entry to exit, so the whole journey is
+    one line. On different levels it falls back to the pair of marks, because there is nowhere to draw
+    the arc.</p>
+    <div class="stage"><div class="mapbox" data-map="k2"></div></div>
+    <ul class="notes">
+      <li>The whole journey reads as one thing when both ends are visible.</li>
+      <li class="con">The arc crosses hexes the unit never enters &mdash; the exact fault being fixed.</li>
+      <li class="con">Behaves differently on one level than on two, which has to be explained.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>K3</em> Follow the unit &mdash; the map changes level with the route</h2>
+    <p class="concept">Selecting the unit shows the level the route <i>ends</i> on, with the earlier
+    half left behind on the level above.</p>
+    <div class="stage"><div class="lvl"><span class="chip">nexus</span><span class="chip">surface</span><span class="chip on">underworld</span></div>
+      <div class="mapbox" data-map="k3"></div></div>
+    <ul class="notes">
+      <li>Puts the interesting end in front of the player without a click.</li>
+      <li class="con">The map moves under the player when they select a unit, which nothing else does.</li>
+      <li class="con">The half they were looking at vanishes.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">The cases the three drawings above hide</h3>
+<p>These are not variants to choose between &mdash; they are the corners, drawn so the answers can be
+checked against them.</p>
+<div class="card" style="flex-basis:100%">
+  <table class="w">
+    <tr><th style="width:26%">Case</th><th style="width:36%">What happens</th><th>Why</th></tr>
+    <tr><td>Entering a structure by its number, and leaving it again</td>
+        <td>Unchanged in every way. No mark, no notice, no cost, no step.</td>
+        <td>Walking into a tower is not travel; it has always been free and invisible and stays so.</td></tr>
+    <tr><td>Through the passage and nothing after it</td>
+        <td>The route ends at the structure's hex and the mark is still drawn; the words say the
+        journey ends somewhere unknown.</td>
+        <td>The unit really does end the month somewhere the player cannot point at.</td></tr>
+    <tr><td>Through a passage whose far side is known, and on for three more steps</td>
+        <td>Drawn in full on the far level, priced at the cost of entering the destination.</td>
+        <td>The rules price a passage as the cost of entering the region it leads to.</td></tr>
+    <tr><td>A nexus gate, which lands somewhere chosen at random</td>
+        <td>Treated as unknown, always &mdash; even in worlds where a preference exists.</td>
+        <td>A guess drawn confidently is the fault being fixed; no exception for a clever guess.</td></tr>
+    <tr><td>Through a passage in a structure the unit is not in</td>
+        <td>The existing refusal, untouched.</td>
+        <td>Already handled; the passage work adds nothing to it.</td></tr>
+    <tr><td>The month runs out before the passage</td>
+        <td>The line goes solid then dotted as it always has; the mark sits on the structure's hex
+        whichever month reaches it.</td>
+        <td>The mark is about knowledge, the dotting is about time; they stack.</td></tr>
+    <tr><td>A narrow window</td>
+        <td>The problem line wraps to as many lines as it needs; nothing is shortened.</td>
+        <td>Every other problem line already behaves this way.</td></tr>
+  </table>
+</div>
+<h3 class="sec">What is not being changed</h3>
+<div class="card" style="flex-basis:100%">
+  <ul class="notes">
+    <li class="n">The brass route line itself &mdash; solid for the month ahead, dotted beyond it &mdash; keeps
+    every rule it has. A passage mark sits on top of that language rather than replacing it.</li>
+    <li class="n">The route planner is untouched. It plans over country the faction has seen and will
+    not offer a passage at all.</li>
+    <li class="n">Nothing guesses where a random gate lands, in any world.</li>
+  </ul>
+</div>
+</main>
+<footer style="margin-top:36px;color:var(--ink-dim);font-size:12.5px;max-width:96ch">
+  <p>A static drawing for the passage-travel work. Spacing and type are in the app's palette but are
+  not the app. The green dot marking where a unit starts is drawing licence &mdash; the real map has no
+  origin marker &mdash; and the small hex fields stand in for whole maps.</p>
+  <p style="margin-top:6px">Rules quoted from <span class="mono">rules/move</span> and
+  <span class="mono">rules/tableitemweights</span>. Everything shown as &ldquo;today&rdquo; was read
+  from the shipping route overlay, not recalled.</p>
+</footer>
+
+<script>
+const HEXR = 30, HEXW = Math.sqrt(3)*HEXR, HEXH = HEXR*1.5;
+function hexPts(cx, cy){ let p=[]; for(let i=0;i<6;i++){const a=Math.PI/180*(60*i-90); p.push([cx+HEXR*Math.cos(a), cy+HEXR*Math.sin(a)]);} return p.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' '); }
+function ctr(x,y){ return [ 40 + x*HEXW + (y%2? HEXW/2 : 0), 40 + y*HEXH ]; }
+function draw(el, spec){
+  const W = 40 + (spec.cols+0.5)*HEXW + 40, H = 40 + spec.rows*HEXH + 40;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%">`;
+  for(let y=0;y<spec.rows;y++) for(let x=0;x<spec.cols;x++){
+    const [cx,cy]=ctr(x,y);
+    s += `<polygon points="${hexPts(cx,cy)}" fill="var(--hexface)" stroke="var(--hexline)" stroke-width="1"/>`;
+  }
+  (spec.enter||[]).forEach(h=>{ const [cx,cy]=ctr(h[0],h[1]);
+    s += `<polygon points="${hexPts(cx,cy)}" fill="var(--brass)" fill-opacity="0.16" stroke="none"/>`; });
+  (spec.lines||[]).forEach(l=>{
+    const pts = l.pts.map(p=>{const c=ctr(p[0],p[1]); return c[0].toFixed(1)+','+c[1].toFixed(1);}).join(' ');
+    s += `<polyline points="${pts}" fill="none" stroke="var(--ground)" stroke-width="7" stroke-linejoin="round" ${l.dash?'stroke-dasharray="6 6"':''}/>`;
+    s += `<polyline points="${pts}" fill="none" stroke="var(--brass)" stroke-width="3" stroke-linejoin="round" ${l.dash?'stroke-dasharray="6 6"':''} ${l.fade?'opacity="0.35"':''}/>`;
+  });
+  (spec.arc||[]).forEach(a=>{ const p=ctr(a[0],a[1]), q=ctr(a[2],a[3]);
+    const mx=(p[0]+q[0])/2, my=(p[1]+q[1])/2 - 70;
+    s += `<path d="M${p[0]},${p[1]} Q${mx},${my} ${q[0]},${q[1]}" fill="none" stroke="var(--brass)" stroke-width="3" stroke-dasharray="8 7" opacity="0.45"/>`; });
+  (spec.marks||[]).forEach(m=>{ const [cx,cy]=ctr(m[0],m[1]);
+    s += `<circle cx="${cx}" cy="${cy}" r="13" fill="var(--ground)" stroke="var(--brass)" stroke-width="2.5"/>`;
+    s += `<text x="${cx}" y="${cy+5}" text-anchor="middle" font-family="Helvetica Neue,Arial" font-size="15" fill="var(--brass-bright)">${m[2]}</text>`; });
+  (spec.labels||[]).forEach(t=>{ const [cx,cy]=ctr(t[0],t[1]);
+    s += `<text x="${cx}" y="${cy+ (t[3]||24)}" text-anchor="middle" font-family="Helvetica Neue,Arial" font-size="10.5" fill="var(--ink-dim)">${t[2]}</text>`; });
+  (spec.units||[]).forEach(u=>{ const [cx,cy]=ctr(u[0],u[1]);
+    s += `<circle cx="${cx}" cy="${cy}" r="6" fill="var(--ok)"/>`; });
+  el.innerHTML = s + '</svg>';
+}
+const SHAFT=[0,1], SHAFTLBL=[0,1,'Shaft [3]'];
+const MAPS = {
+  today:{cols:5,rows:3, enter:[[1,1],[2,1]], units:[[0,1]], labels:[SHAFTLBL],
+         lines:[{pts:[[0,1],[1,1],[2,1]]}]},
+  a:{cols:5,rows:3, units:[[0,1]], labels:[SHAFTLBL], marks:[[0,1,'?']]},
+  b:{cols:5,rows:3, units:[[0,1]], labels:[SHAFTLBL]},
+  c:{cols:5,rows:3, units:[[0,1]], labels:[SHAFTLBL],
+     lines:[{pts:[[0,1],[0.55,1]], dash:true, fade:true}]},
+  k1a:{cols:5,rows:3, enter:[[2,1],[1,1]], units:[[3,1]], labels:[[1,1,'Shaft [3]']],
+       lines:[{pts:[[3,1],[2,1],[1,1]]}], marks:[[1,1,'↓']]},
+  k1b:{cols:5,rows:3, enter:[[2,1],[3,1]], labels:[[1,1,'cavern (12,34)']],
+       lines:[{pts:[[1,1],[2,1],[3,1]]}], marks:[[1,1,'↑']]},
+  k2:{cols:6,rows:3, enter:[[1,1],[4,1],[5,1]], units:[[0,1]], labels:[[1,1,'Gate [7]']],
+      lines:[{pts:[[0,1],[1,1]]},{pts:[[4,1],[5,1]]}], arc:[[1,1,4,1]]},
+  k3:{cols:5,rows:3, enter:[[2,1],[3,1]], labels:[[1,1,'cavern (12,34)']],
+      lines:[{pts:[[1,1],[2,1],[3,1]]}], marks:[[1,1,'↑']]}
+};
+document.querySelectorAll('.mapbox').forEach(el=>draw(el, MAPS[el.dataset.map]));
+</script>
+</body></html>
