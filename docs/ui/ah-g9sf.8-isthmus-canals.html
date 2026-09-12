@@ -79,7 +79,8 @@
   <h2 class="sec">The situation <small>three hexes, used in every card below</small></h2>
   <p>A one-hex-wide plain between two stretches of ocean. The fleet is in the ocean top left and wants the
   ocean bottom right. Straight through is <b>SE&nbsp;SE</b> — in one side of the plain, out the opposite
-  side. That is the illegal move. The legal way is <b>E&nbsp;SE&nbsp;S</b>, three steps by open water.</p>
+  side. That is the illegal move &mdash; and so are two others, which the next section sets out. The legal
+  way is <b>E&nbsp;SE&nbsp;S</b>, three steps by open water.</p>
   <svg class="map" width="560" height="260" viewBox="0 0 560 260">
     <defs>
       <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d97070"/></marker>
@@ -107,6 +108,72 @@
     <path d="M 140 70 L 200 44 L 282 74 L 288 140" stroke="#4fb783" stroke-width="2" fill="none" marker-end="url(#ag)"/>
     <text x="352" y="36" fill="#4fb783" font-size="11">E SE S — round by water</text>
   </svg>
+
+  <h2 class="sec">Which sides the rule refuses <small>three of the six, and only one of them is &ldquo;opposite&rdquo;</small></h2>
+  <p>The fleet sails <b>SE</b> out of the ocean into the plain, so it came in through the plain&rsquo;s
+  <b>NW</b> side. It may leave by that side, or by either of the two beside it &mdash; <b>N</b> and
+  <b>SW</b>. The other three &mdash; <b>NE</b>, <b>SE</b> and <b>S</b> &mdash; are refused
+  (<span class="mono">newage/trident rules/movement_sailing</span>). <b>One wording covers all three</b>, and
+  it does not use the word <em>opposite</em>, which is true of only one of them.</p>
+  <svg class="map" width="680" height="300" viewBox="0 0 680 300">
+    <g transform="translate(230,42)">
+      <polygon points="100,0 190,52 190,156 100,208 10,156 10,52" fill="#2b2a1c" stroke="#26303d" stroke-width="1.5"/>
+      <line x1="100" y1="0" x2="190" y2="52" stroke="#4fb783" stroke-width="6"/>
+      <line x1="190" y1="52" x2="190" y2="156" stroke="#d97070" stroke-width="6"/>
+      <line x1="190" y1="156" x2="100" y2="208" stroke="#d97070" stroke-width="6"/>
+      <line x1="100" y1="208" x2="10" y2="156" stroke="#4fb783" stroke-width="6"/>
+      <line x1="10" y1="156" x2="10" y2="52" stroke="#4fb783" stroke-width="6"/>
+      <line x1="10" y1="52" x2="100" y2="0" stroke="#eebe63" stroke-width="6"/>
+      <text x="100" y="100" text-anchor="middle" fill="#d9a441" font-size="13">plain (2,2)</text>
+      <text x="100" y="118" text-anchor="middle" fill="#8a97a8" font-size="10">entered through NW</text>
+      <text x="150" y="-10" fill="#4fb783" font-size="11">N &mdash; beside it, allowed</text>
+      <text x="202" y="104" fill="#d97070" font-size="11">NE &mdash; refused</text>
+      <text x="202" y="192" fill="#d97070" font-size="11">SE &mdash; refused (the opposite side)</text>
+      <text x="100" y="232" text-anchor="middle" fill="#d97070" font-size="11">S &mdash; refused</text>
+      <text x="-4" y="192" text-anchor="end" fill="#4fb783" font-size="11">SW &mdash; beside it, allowed</text>
+      <text x="-4" y="26" text-anchor="end" fill="#eebe63" font-size="11">NW &mdash; came in here, allowed</text>
+      <text x="-4" y="44" text-anchor="end" fill="#8a97a8" font-size="10">(sailed SE from ocean (1,1))</text>
+    </g>
+  </svg>
+  <table>
+    <tr><th>The order</th><th>Side entered</th><th>Side left</th><th>The game</th><th>What the player sees</th></tr>
+    <tr><td class="mono">SAIL SE SE</td><td>NW</td><td>SE</td><td class="n">refused &mdash; the opposite side</td><td class="n">the Problems line, naming NW and SE</td></tr>
+    <tr><td class="mono">SAIL SE NE</td><td>NW</td><td>NE</td><td class="n">refused &mdash; neither the entry side nor beside it</td><td class="n">the same line, naming NW and NE</td></tr>
+    <tr><td class="mono">SAIL SE S</td><td>NW</td><td>S</td><td class="n">refused &mdash; neither the entry side nor beside it</td><td class="n">the same line, naming NW and S</td></tr>
+    <tr><td class="mono">SAIL SE N</td><td>NW</td><td>N</td><td class="y">allowed &mdash; beside the entry side</td><td class="d">nothing at all</td></tr>
+    <tr><td class="mono">SAIL SE SW</td><td>NW</td><td>SW</td><td class="y">allowed &mdash; beside the entry side</td><td class="d">nothing at all</td></tr>
+    <tr><td class="mono">SAIL SE NW</td><td>NW</td><td>NW</td><td class="y">allowed &mdash; back the way it came</td><td class="d">nothing at all</td></tr>
+  </table>
+  <div class="cards two" style="margin-top:18px">
+    <section class="card">
+      <h3><em>AGREED</em> one wording, every refused side</h3>
+      <p class="concept">Only the two side names change. Nothing claims the side is <em>opposite</em>, because
+      two of the three refused sides are not.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="pbody">
+          <div class="prob"><span class="uid">1471</span><span class="sev">&#9888;</span><span class="msg">a fleet must leave a land hex by the side it entered or one beside it: SE enters plain (2,2) from the NW and SE is neither that side nor beside it, so it will not move</span></div>
+          <div class="prob" style="margin-top:4px"><span class="uid">1471</span><span class="sev">&#9888;</span><span class="msg">a fleet must leave a land hex by the side it entered or one beside it: SE enters plain (2,2) from the NW and NE is neither that side nor beside it, so it will not move</span></div>
+        </div></div>
+        <p class="cap">Top: <span class="mono">SAIL SE SE</span>. Bottom: <span class="mono">SAIL SE NE</span>.</p>
+      </div>
+    </section>
+    <section class="card was">
+      <h3><em>REJECTED</em> two wordings, keeping &ldquo;opposite&rdquo;</h3>
+      <p class="concept">Keep the vivid sentence for the straight-through case and write a second for the two
+      refused turns. Rejected: two sentences to keep true, and a player meeting both wonders why they differ.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="pbody">
+          <div class="prob"><span class="uid">1471</span><span class="sev">&#9888;</span><span class="msg">&hellip; and SE leaves by the opposite side, so it will not move</span></div>
+          <div class="prob" style="margin-top:4px"><span class="uid">1471</span><span class="sev">&#9888;</span><span class="msg">&hellip; and NE is too far round to count as beside it, so it will not move</span></div>
+        </div></div>
+      </div>
+      <ul class="notes">
+        <li>Also rejected: naming the ways out &mdash; <em>&ldquo;so it can only leave by NW, N or SW &mdash; not
+        NE &mdash; and it will not move&rdquo;</em>. Most helpful of the three, but three wrapped lines in the
+        narrow panel, and no two lines ever read alike.</li>
+      </ul>
+    </section>
+  </div>
 
   <h2 class="sec">1 &middot; The planner, when there is no way through at all</h2>
   <p>Suppose the far ocean is a landlocked pocket: through the plain is the only route, and it is illegal.
@@ -298,9 +365,10 @@
           <text x="305" y="119" fill="#8a97a8" font-size="10">dotted: will not</text>
         </svg>
         <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="pbody">
-          <div class="prob"><span class="uid">1471</span><span class="sev">&#9888;</span><span class="msg">a fleet must leave a land hex by the side it entered or one beside it: SE enters plain (2,2) from the NW and SE leaves by the opposite side, so it will not move</span></div>
+          <div class="prob"><span class="uid">1471</span><span class="sev">&#9888;</span><span class="msg">a fleet must leave a land hex by the side it entered or one beside it: SE enters plain (2,2) from the NW and SE is neither that side nor beside it, so it will not move</span></div>
         </div></div>
-        <p class="cap">Both sides named, so the player can see which turn <em>would</em> have worked.</p>
+        <p class="cap">Both sides named, so the player can see which turn <em>would</em> have worked. The same
+        wording serves all three refused sides &mdash; see <em>which sides the rule refuses</em> below.</p>
       </div>
       <ul class="notes">
         <li>Rejected: drawing a refused step in red. Every other refused step in the app dots; a new colour
@@ -331,7 +399,7 @@
           <div class="setrow existing"><div class="box"></div><div><div class="t">Overloaded fleets</div><div class="d">A fleet ordered to sail with more weight aboard than it can carry.</div></div></div>
           <div class="setrow existing"><div class="box"></div><div><div class="t">Undercrewed fleets</div><div class="d">A fleet ordered to sail without enough sailing skill aboard.</div></div></div>
           <div class="setrow existing"><div class="box"></div><div><div class="t">Sailing from land to land</div><div class="d">A SAIL step from a land region into another land region, which the game never allows.</div></div></div>
-          <div class="setrow"><div class="box"></div><div><div class="t">Sailing through a neck of land</div><div class="d">A SAIL that enters a land region one side and leaves by the opposite side in the same month, which needs a canal.</div></div></div>
+          <div class="setrow"><div class="box"></div><div><div class="t">Sailing through a neck of land</div><div class="d">A SAIL that crosses a land region in one month. A fleet may only leave by the side it entered or one beside it, unless there is a canal.</div></div></div>
         </div></div>
       </div>
       <ul class="notes">
@@ -351,8 +419,8 @@
 The Problems line, amber ⚠, against the ordered unit:
 
   a fleet must leave a land hex by the side it entered or one beside it: SE
-  enters plain (2,2) from the NW and SE leaves by the opposite side, so it
-  will not move
+  enters plain (2,2) from the NW and SE is neither that side nor beside it,
+  so it will not move
 
 A route step through each grade of canal:
 
@@ -362,8 +430,8 @@ A route step through each grade of canal:
 The Settings row, under Order checks › Sailing:
 
   Sailing through a neck of land
-  A SAIL that enters a land region one side and leaves by the opposite side in
-  the same month, which needs a canal.</div>
+  A SAIL that crosses a land region in one month. A fleet may only leave by
+  the side it entered or one beside it, unless there is a canal.</div>
 
   <h2 class="sec">Every state <small>including the ones where nothing happens</small></h2>
   <table>
@@ -371,7 +439,7 @@ The Settings row, under Order checks › Sailing:
     <tr><td>Fleet ended <b>last</b> month in the land hex</td><td class="y">It may sail out by any side that touches water. No refusal, no mark, no message — the restriction is about passing through within one month.</td></tr>
     <tr><td>Enters and leaves by the <em>same</em> side</td><td class="y">Unchanged from today.</td></tr>
     <tr><td>Enters and leaves by a <em>neighbouring</em> side</td><td class="y">Unchanged from today.</td></tr>
-    <tr><td>Enters and leaves by the <em>opposite</em> side, no canal</td><td class="n">Planner shows the refusal, or routes round if it can. A typed order gets the amber Problems line and dots from that step.</td></tr>
+    <tr><td>Enters and leaves by <em>any of the three refused sides</em> &mdash; the opposite one, or either of the two beyond the neighbours &mdash; no canal</td><td class="n">Planner shows the refusal, or routes round if it can. A typed order gets the amber Problems line, naming the side entered and the side left, and dots from that step. One wording serves all three.</td></tr>
     <tr><td>The same, with a stone <b>Canal</b></td><td class="y">Allowed. The step reads <span class="mono">plain (2,2) &middot; 2 &middot; Canal</span>.</td></tr>
     <tr><td>The same, with a <b>Mystic Canal</b></td><td class="y">Allowed. The step reads <span class="mono">plain (2,2) &middot; 1 &middot; Mystic Canal</span>.</td></tr>
     <tr><td>A canal in a region touching no water</td><td class="d">No effect whatever. Never named; the crossing is refused exactly as if the canal were not there.</td></tr>
@@ -382,14 +450,16 @@ The Settings row, under Order checks › Sailing:
     <tr><td>The month runs out mid-crossing because a stone Canal cost 2</td><td class="d">The existing <em>Months</em> section splits the route and the map line dots at the boundary. No new words.</td></tr>
     <tr><td>The <b>Movement planner</b> setting is off</td><td class="d">No planner at all, so only the Problems line and the map line appear.</td></tr>
     <tr><td>This check is switched off in Settings</td><td class="d">No Problems line. The planner still refuses — it plans only legal routes whatever the checks say.</td></tr>
-    <tr><td>World is <b>New Origins</b> or <b>New Age: Arcanum</b></td><td class="d">The side restriction applies, being in every world's sailing rules. Canals exist only in Trident, so no canal wording can ever appear there.</td></tr>
+    <tr><td>World is <b>New Age: Arcanum</b></td><td class="d">Behaves exactly as Trident: the side restriction applies, and Arcanum has both grades of canal at the same prices (<span class="mono">newage/arcanum rules/economy_canals</span>, <span class="mono">newage/arcanum data/Mystic&nbsp;Canal</span>).</td></tr>
+    <tr><td>World is <b>New Origins</b></td><td class="d">The side restriction applies, being in every world's sailing rules. New Origins has no canals at all, so no canal wording can ever appear there.</td></tr>
   </table>
 
 </main>
 <footer>
-  Agreed with the navigator over two rounds, 2026-09-12. Facts from
+  Agreed over two rounds and amended in a third, 2026-09-12. Facts from
   <span class="mono">newage/trident rules/movement_sailing</span>,
   <span class="mono">newage/trident rules/economy_canals</span>,
   <span class="mono">newage/trident data/Canal</span> and
-  <span class="mono">newage/trident data/Mystic&nbsp;Canal</span>.
+  <span class="mono">newage/trident data/Mystic&nbsp;Canal</span>, and
+  <span class="mono">newage/arcanum rules/economy_canals</span>.
 </footer>
