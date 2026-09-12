@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teaching forecast - close and refresh</title>
+<style>
+  :root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--blue:#8fb4e0;--green:#7fcaa5;--amber:#eebe63}
+  *{box-sizing:border-box}body{margin:0;padding:28px 22px 56px;background:var(--ground);color:var(--ink);font:15px/1.5 Georgia,serif}main{max-width:1050px;margin:auto}h1{margin:0;font-size:26px}h1 span{color:var(--brass)}.lead,.caption{max-width:82ch;color:var(--soft)}.card{margin-top:22px;border:1px solid var(--edge);border-radius:8px;overflow:hidden;background:var(--raised);font-family:Arial,sans-serif}.top{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--edge)}.tabs{display:flex;gap:4px}.tab,.button{padding:3px 9px;border:1px solid var(--edge);border-radius:4px;color:var(--soft);font-size:12px}.tab.on,.button.primary{border-color:var(--brass);background:#d9a44118;color:var(--brass)}.close{margin-left:auto}.sub,.notice{padding:7px 12px;border-bottom:1px solid var(--edge);color:var(--dim);font-size:12px}.notice{background:#1a1710;border-color:#4a3d21;color:var(--amber)}.grid{overflow:auto}.schedule{min-width:660px;width:100%;border-collapse:collapse;font-size:12px}.schedule th{padding:8px;text-align:left;color:var(--dim);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--edge)}.schedule td{padding:8px;border-bottom:1px solid #222b37;vertical-align:top}.who{width:230px;border-right:1px solid var(--edge)}.detail{display:block;margin-top:2px;color:var(--dim);font-size:11px}.cell{display:inline-block;padding:2px 6px;border-radius:3px;white-space:nowrap}.uncertain{border:1px dashed var(--blue);background:#141a23;color:var(--blue)}.confirmed{border:1px solid #2c4a3e;background:#1b2c26;color:var(--green)}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px;font-family:Arial,sans-serif}.step{border:1px solid var(--edge);border-radius:8px;padding:13px;background:var(--panel)}.num{color:var(--brass);font:bold 12px Arial,sans-serif}.step h2{margin:5px 0;font-size:15px}.step p{margin:0;color:var(--soft);font-size:13px}.editor{margin-top:8px;border:1px solid var(--edge);background:#10151c;padding:10px;color:#d9e5f2;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}.changed{background:#1b2c26;color:var(--green)}.actions{display:flex;gap:7px;margin-top:10px}.focus{outline:2px solid var(--blue);outline-offset:2px}@media(max-width:720px){body{padding:16px}.tabs{display:none}.steps{grid-template-columns:1fr}.schedule{min-width:560px}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Teaching forecast: <span>edit orders, then refresh the view</span></h1>
+  <p class="lead">This option keeps Friendly declarations in the existing orders editor. The study planner closes before a player changes an order; reopening it recalculates the forecast from the changed order.</p>
+
+  <section class="card">
+    <div class="top"><strong>Study planner</strong><div class="tabs"><span class="tab">Overview</span><span class="tab on">Planner</span><span class="tab">Orders</span></div><span class="button close focus">Close</span></div>
+    <div class="sub">4 mages - 2 yours, 2 from 1 ally - turns 24-29</div>
+    <div class="grid"><table class="schedule"><thead><tr><th class="who">Mage</th><th>24 - next</th><th>25</th></tr></thead><tbody>
+      <tr><td class="who">Uln (3012)<span class="detail">Borg (21) - teaches Sable</span></td><td><span class="cell">TEACH Sable</span></td><td><span class="cell">TEACH Sable</span></td></tr>
+      <tr><td class="who">Sable (2517)<span class="detail">Wardens of the North (12) - force 1</span></td><td><span class="cell uncertain">teaching uncertain</span></td><td><span class="cell uncertain">teaching uncertain</span></td></tr>
+    </tbody></table></div>
+    <div class="notice">Sable's Friendly declaration for Uln is not in the report. Her teaching bonus cannot be forecast.</div>
+  </section>
+
+  <section class="steps">
+    <article class="step"><span class="num">1. Close the planner</span><h2>Return to orders</h2><p>Close returns focus to the control that opened the planner. Escape and clicking the backdrop do the same. No order is changed.</p></article>
+    <article class="step"><span class="num">2. Edit the existing orders</span><h2>Declare Uln Friendly</h2><div class="editor"><span class="changed">DECLARE 21 FRIENDLY</span><br>STUDY FORCE</div><p>The ordinary orders editor remains the only place to write this declaration.</p><div class="actions"><span class="button primary">Open study planner</span></div></article>
+    <article class="step"><span class="num">3. Reopen the planner</span><h2>See the refreshed forecast</h2><p>The planner opens as it normally does. It reads the changed order and shows the confirmed result; it does not show a separate update notice.</p></article>
+  </section>
+
+  <section class="card">
+    <div class="top"><strong>Study planner</strong><div class="tabs"><span class="tab">Overview</span><span class="tab on">Planner</span><span class="tab">Orders</span></div><span class="button close">Close</span></div>
+    <div class="grid"><table class="schedule"><thead><tr><th class="who">Mage</th><th>24 - next</th><th>25</th></tr></thead><tbody>
+      <tr><td class="who">Uln (3012)<span class="detail">Borg (21) - teaches Sable</span></td><td><span class="cell">TEACH Sable</span></td><td><span class="cell">TEACH Sable</span></td></tr>
+      <tr><td class="who">Sable (2517)<span class="detail">Wardens of the North (12) - force 1</span></td><td><span class="cell confirmed">force 2 - teaching bonus</span></td><td><span class="cell confirmed">force 2 - teaching bonus</span></td></tr>
+    </tbody></table></div>
+  </section>
+  <p class="caption">At a narrow width the schedule scrolls horizontally as it does now. The complete result stays together in each cell. A report reload also recalculates the forecast; no earlier result is kept.</p>
+</main>
+</body>
+</html>
