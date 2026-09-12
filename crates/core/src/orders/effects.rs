@@ -6904,11 +6904,14 @@ mod tests {
             preview("unit 900\nMOVE NW SE\n"),
             "two lines preview exactly as the one line they chain into"
         );
-        assert_ne!(
-            chained,
-            preview("unit 900\nMOVE SE\n"),
-            "the earlier line is not thrown away"
-        );
+        let southeast = preview("unit 900\nMOVE SE\n");
+        let origin = southeast
+            .regions
+            .iter()
+            .find(|region| region.region_id == "1:1,1")
+            .expect("the origin changed");
+        assert_eq!(origin.units[0].departing_to.as_deref(), Some("1:2,2"));
+        assert_ne!(chained, southeast, "the earlier line is not thrown away");
     }
 
     /// Two sea hexes, and in the first a named, priceable hull with two own units aboard, a
