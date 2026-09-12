@@ -192,6 +192,10 @@ pub mod codes {
     /// A route goes through an inner passage, and no report says where the passage comes out
     /// (`rules/move`, 4), so the steps ordered after it cannot be placed on any map.
     pub const PASSAGE_WITH_NO_KNOWN_EXIT: Code = Code("passage-with-no-known-exit");
+    /// A `TRANSPORT`/`DISTRIBUTE` the game will refuse because of how far apart the two ends are -
+    /// or, once `ah-7ale.5` lands, one whose distance cannot be worked out at all. One code for
+    /// both, because the agreed experience gives them one switch.
+    pub const TRANSPORT_OUT_OF_REACH: Code = Code("transport-out-of-reach");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -200,7 +204,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 54] = [
+    pub const ALL: [Code; 55] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -255,6 +259,7 @@ pub mod codes {
         BUILD_WITHOUT_MATERIAL,
         PASSAGE_WITH_NO_KNOWN_EXIT,
         SAIL_THROUGH_NECK_OF_LAND,
+        TRANSPORT_OUT_OF_REACH,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -541,6 +546,15 @@ pub fn review_turn(
     } else {
         BTreeMap::new()
     };
+    // Read from the report and the catalogue alone, and only by the reach check, so they are built
+    // only when it is enabled - `located`'s own reasoning above, and `ah-8myf`'s (`ah-7ale.2.2.1`).
+    let shipping = ruleset
+        .filter(|_| options.emits(codes::TRANSPORT_OUT_OF_REACH))
+        .map(|ruleset| {
+            let quartermasters = super::transport::Quartermasters::read(report, ruleset);
+            let targets = super::transport::target_facts(report, &quartermasters);
+            (quartermasters, targets)
+        });
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
@@ -730,6 +744,7 @@ pub fn review_turn(
         check_idle_units(hex, &options, &mut findings);
         check_two_month_long_orders(hex, &options, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
+        check_transport_reach(hex, shipping.as_ref(), ruleset, &options, &mut findings);
         check_take_from_another_faction(hex, &options, &mut findings);
         check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
@@ -12691,6 +12706,126 @@ fn check_transfer_targets(
             };
             findings.push(ordered.finding(hex, codes::GIVE_TARGET_NOT_HERE, message, Some(placed)));
         }
+    }
+}
+
+/// Every `TRANSPORT`/`DISTRIBUTE` in this hex that the game will refuse because the two ends are
+/// too far apart, reported against the unit that wrote it (`ah-7ale.2.2.1`).
+///
+/// A reader of the same decision the forecast makes, not a second one: `transport::acceptance`
+/// settles whether the target would take the goods and `transport::out_of_reach` settles the
+/// distance, both shared with `effects.rs`. What is this check's own is the sentence and where it is
+/// anchored.
+fn check_transport_reach(
+    hex: &Hex<'_>,
+    shipping: Option<&(
+        super::transport::Quartermasters,
+        BTreeMap<String, super::transport::TargetFacts>,
+    )>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::TRANSPORT_OUT_OF_REACH) {
+        return;
+    }
+    let Some((quartermasters, targets)) = shipping else {
+        return;
+    };
+
+    for ordered in &hex.units {
+        let sender = ordered.unit.unit_id.as_str();
+        for placed in &ordered.intents {
+            let Intent::Transport { to, what, amount } = &placed.intent else {
+                continue;
+            };
+            // Exactly the five skips the forecast makes (`effects.rs`'s `Working::transport`), so a
+            // line it never queues is never warned about either.
+            let Party::Unit(id) = to else {
+                continue;
+            };
+            if id == sender {
+                continue;
+            }
+            if !matches!(what, Selector::Item(_)) {
+                continue;
+            }
+            // Every other answer is one of `ah-64wm`'s four refusals, which the unit preview
+            // explains and which this check says nothing about.
+            if super::transport::acceptance(targets.get(id.as_str()))
+                != super::transport::Acceptance::Eligible
+            {
+                continue;
+            }
+            let Some(reach) = super::transport::reach_for(
+                quartermasters.contains(sender),
+                quartermasters.contains(id),
+                quartermasters.level(sender),
+            ) else {
+                continue;
+            };
+            // The target's hex comes from the same facts the forecast measures from, so the two
+            // cannot disagree about where the far end stands.
+            let Some(to_hex) = targets.get(id.as_str()).map(|facts| facts.coordinate) else {
+                continue;
+            };
+            let Some(refused) = super::transport::out_of_reach(
+                reach,
+                hex.region.coordinate,
+                to_hex,
+                options.geometry,
+            ) else {
+                continue;
+            };
+            let goods = match (amount, what) {
+                (Amount::Exact(moved), Selector::Item(text)) if *moved > 0 => {
+                    resolve_item(text, hex, ordered, ruleset)
+                        .filter(|tag| ruleset.is_some_and(|rules| rules.can_be_transported(tag)))
+                        .map(|tag| (*moved, tag.to_ascii_uppercase()))
+                }
+                // `ALL` is a question about stock, which this check does not ask.
+                _ => None,
+            };
+            let message = transport_reach_sentence(id, refused, goods.as_ref());
+            findings.push(ordered.finding(
+                hex,
+                codes::TRANSPORT_OUT_OF_REACH,
+                message,
+                Some(placed),
+            ));
+        }
+    }
+}
+
+/// The refusal sentence the agreed experience quotes, word for word.
+///
+/// The same three shapes `packages/shared/src/unitPreview.ts`'s `transportTargetSentence` produces
+/// for the unit preview (`ah-7ale.2.1`), so one refused shipment reads identically wherever it is
+/// shown. The two are separate strings in separate languages; the tests on both sides quote them in
+/// full so neither can drift unnoticed.
+fn transport_reach_sentence(
+    to: &str,
+    refusal: super::transport::OutOfReach,
+    goods: Option<&(i64, String)>,
+) -> String {
+    let super::transport::OutOfReach {
+        away,
+        limit,
+        between_quartermasters,
+    } = refusal;
+    // `ALL`, a whole class, or an item transport refuses anyway: the sentence speaks of the order
+    // alone, in the words the unit preview already uses for the same case.
+    let tail = match goods {
+        Some((moved, tag)) => {
+            let verb = if *moved == 1 { "stays" } else { "stay" };
+            format!("{moved} {tag} {verb} with this unit")
+        }
+        None => "this TRANSPORT moves nothing".to_string(),
+    };
+    if between_quartermasters {
+        format!("Unit {to} is {away} hexes away and this unit can ship {limit} hexes, so {tail}.")
+    } else {
+        format!("Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}.")
     }
 }
 
@@ -36666,6 +36801,224 @@ BUILD
         assert_eq!(findings[1].line, Some(3));
     }
 
+    // --- a shipment the game will not carry ---------------------------------------------------
+
+    /// The far end of a shipment: a `QUAM` quartermaster owning the Caravanserai it stands in,
+    /// which is what `rules/transport` asks a target to be.
+    fn caravanserai_owner(id: &str, level: u32, x: i32, y: i32) -> ReportRegion {
+        let mut owner = with_skill(unit(id), "QUAM", level);
+        owner.structure_id = Some("500".to_string());
+        let mut region = region_at(&format!("1:{x},{y}"), x, y, vec![owner]);
+        region.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+        region
+    }
+
+    /// The sender's hex, `x`/`y` hexes from the quartermaster's.
+    fn shipping_from(units: Vec<ReportUnit>) -> ReportRegion {
+        region_at("1:0,0", 0, 0, units)
+    }
+
+    fn with_map() -> CheckOptions {
+        CheckOptions {
+            geometry: Some(FIXTURE_MAP),
+            ..CheckOptions::default()
+        }
+    }
+
+    fn reach_findings(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        options: CheckOptions,
+    ) -> Vec<Finding> {
+        check_turn(&report(regions), orders, Some(&ruleset()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::TRANSPORT_OUT_OF_REACH)
+            .collect()
+    }
+
+    /// `rules/economy_transport`: items may be transported to a transport structure "by any unit
+    /// located within 2 hexes of the transport structure" - so three hexes away is refused, and the
+    /// sentence is the agreed experience's own, character for character.
+    #[test]
+    fn a_shipment_further_than_two_hexes_is_an_ordinary_problem() {
+        let sender = with_item(unit("900"), 5, "stone", "STON");
+        let finding = only(reach_findings(
+            vec![
+                shipping_from(vec![sender]),
+                caravanserai_owner("901", 1, 0, 6),
+            ],
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            with_map(),
+        ));
+
+        assert_eq!(finding.code, codes::TRANSPORT_OUT_OF_REACH);
+        // Against the unit that wrote the order, in that unit's own hex - never against the
+        // quartermaster at the far end, which did nothing.
+        assert_eq!(finding.region_id, "1:0,0");
+        assert_eq!(finding.unit_id.as_deref(), Some("900"));
+        assert_eq!(finding.line, Some(2));
+        // The order keyword's own span, as `PlacedIntent` records it: `TRANSPORT` is nine
+        // characters from the start of the line.
+        assert_eq!(finding.column_start, Some(0));
+        assert_eq!(finding.column_end, Some(9));
+        assert_eq!(
+            finding.message,
+            "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit."
+        );
+    }
+
+    /// `data/quartermaster`: between two quartermasters the reach is "3 plus (level+1)/3 hexes", so
+    /// the sentence names the sender's own limit - and never the skill that set it.
+    #[test]
+    fn a_quartermaster_shipping_too_far_names_the_reach_its_skill_gives_it() {
+        let shipper = |level: u32| {
+            let mut sender = with_item(with_skill(unit("900"), "QUAM", level), 1, "iron", "IRON");
+            sender.structure_id = Some("400".to_string());
+            let mut region = region_at("1:0,0", 0, 0, vec![sender]);
+            region.structures = vec![Structure {
+                structure_id: "400".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }];
+            vec![region, caravanserai_owner("901", 1, 0, 8)]
+        };
+
+        let finding = only(reach_findings(
+            shipper(1),
+            "unit 900\nTRANSPORT 901 1 IRON\n",
+            with_map(),
+        ));
+        assert_eq!(
+            finding.message,
+            "Unit 901 is 4 hexes away and this unit can ship 3 hexes, so 1 IRON stays with this unit."
+        );
+
+        // `Reach::hexes` gives a level 5 quartermaster five hexes, so the same shipment goes.
+        assert_eq!(
+            reach_findings(shipper(5), "unit 900\nTRANSPORT 901 1 IRON\n", with_map()),
+            Vec::new()
+        );
+    }
+
+    /// A shipment that is in reach says nothing at all - and neither does one whose distance the
+    /// map's own shape leaves unsettled, whose target the game would refuse anyway, or whose switch
+    /// the player has turned off.
+    #[test]
+    fn a_shipment_the_game_will_carry_is_reported_nowhere() {
+        let sender = || with_item(unit("900"), 5, "stone", "STON");
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+        let in_reach = vec![
+            shipping_from(vec![sender()]),
+            caravanserai_owner("901", 1, 0, 4),
+        ];
+        let too_far = || {
+            vec![
+                shipping_from(vec![sender()]),
+                caravanserai_owner("901", 1, 0, 6),
+            ]
+        };
+
+        // Two hexes away: inside the flat reach.
+        assert_eq!(reach_findings(in_reach, orders, with_map()), Vec::new());
+        // No map shape, so the distance is an upper bound only (`ah-7ale.5` marks that case).
+        assert_eq!(
+            reach_findings(too_far(), orders, CheckOptions::default()),
+            Vec::new()
+        );
+        // A target the game refuses anyway: the unit preview explains those, and this check does
+        // not speak twice about one order (`ah-64wm`).
+        assert_eq!(
+            reach_findings(
+                vec![
+                    shipping_from(vec![sender()]),
+                    region_at("1:0,6", 0, 6, vec![with_skill(unit("901"), "QUAM", 1)]),
+                ],
+                orders,
+                with_map()
+            ),
+            Vec::new()
+        );
+        // The switch off.
+        assert_eq!(
+            reach_findings(
+                too_far(),
+                orders,
+                CheckOptions {
+                    geometry: Some(FIXTURE_MAP),
+                    ..disabling(codes::TRANSPORT_OUT_OF_REACH)
+                }
+            ),
+            Vec::new()
+        );
+
+        // Two refused shipments written by one unit get one line each, in the order they were
+        // written, each naming its own goods.
+        let both = reach_findings(
+            vec![
+                shipping_from(vec![with_item(
+                    with_item(unit("900"), 5, "stone", "STON"),
+                    1,
+                    "iron",
+                    "IRON",
+                )]),
+                caravanserai_owner("901", 1, 0, 6),
+            ],
+            "unit 900\nTRANSPORT 901 5 STON\nTRANSPORT 901 1 IRON\n",
+            with_map(),
+        );
+        let said: Vec<&str> = both
+            .iter()
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            said,
+            vec![
+                "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.",
+                "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 1 IRON stays with this unit."
+            ]
+        );
+        assert_eq!(
+            both.iter().map(|finding| finding.line).collect::<Vec<_>>(),
+            vec![Some(2), Some(3)]
+        );
+    }
+
+    /// What `ALL` comes to is a question about stock, and a mount is something transport will not
+    /// carry at all (`newage trident data/horse`: "This is a mount") - so neither sentence names
+    /// goods, in the words the unit preview uses for the same case.
+    #[test]
+    fn a_refused_shipment_of_a_whole_class_names_no_goods() {
+        let regions = || {
+            vec![
+                shipping_from(vec![with_item(
+                    with_item(unit("900"), 5, "stone", "STON"),
+                    5,
+                    "horse",
+                    "HORS",
+                )]),
+                caravanserai_owner("901", 1, 0, 6),
+            ]
+        };
+
+        for orders in [
+            "unit 900\nTRANSPORT 901 ALL STON\n",
+            "unit 900\nTRANSPORT 901 5 HORS\n",
+        ] {
+            let finding = only(reach_findings(regions(), orders, with_map()));
+            assert_eq!(
+                finding.message,
+                "Unit 901 is 3 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing.",
+                "{orders}"
+            );
+        }
+    }
+
     /// A plain, non-wrapping map of the size the shipped worlds use, for the checks that measure a
     /// distance: without a shape every distance is an upper bound only (`ah-7ale.2.2.1`).
     const FIXTURE_MAP: crate::movement::graph::MapGeometry = crate::movement::graph::MapGeometry {
@@ -37271,6 +37624,18 @@ BUILD
                     3,
                 )])],
                 orders: "unit 900\nBUILD Mine\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::TRANSPORT_OUT_OF_REACH,
+                // Three hexes apart, which is one more than `rules/economy_transport` lets an
+                // ordinary unit ship to a quartermaster (`ah-7ale.2.2.1`).
+                regions: vec![
+                    shipping_from(vec![with_item(unit("900"), 5, "stone", "STON")]),
+                    caravanserai_owner("901", 1, 0, 6),
+                ],
+                orders: "unit 900\nTRANSPORT 901 5 STON\n",
                 allowance: None,
                 unclaimed: None,
             },

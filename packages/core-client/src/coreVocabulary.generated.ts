@@ -56,7 +56,8 @@ export const ADVISORY_CHECK_CODES = [
   "build-site-refused",
   "build-without-material",
   "passage-with-no-known-exit",
-  "sail-through-neck-of-land"
+  "sail-through-neck-of-land",
+  "transport-out-of-reach"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
