@@ -578,7 +578,10 @@ fn a_written_sail_onto_a_shore_only_the_sea_has_named_is_drawn_solid() {
 
     assert_eq!(path.steps.len(), 1);
     assert_eq!(path.steps[0].to, at(2, 2));
-    assert_eq!(path.blocked_from, None, "ocean to a named coastal hex is allowed");
+    assert_eq!(
+        path.blocked_from, None,
+        "ocean to a named coastal hex is allowed"
+    );
 }
 
 /// The tracer and the planner must mark the same hexes as water - they share `Ruleset::is_water`,
