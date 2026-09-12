@@ -284,7 +284,12 @@ pub mod codes {
     pub const SILVER_TROUBLE: [Code; 2] = [NOT_ENOUGH_SILVER, UPKEEP_EXCEEDS_UNCLAIMED];
 }
 
-/// Which checks to run.
+/// Which checks to run, and - in the forecast - which refusals to make.
+///
+/// A disabled code silences its sentence in [`review_turn`] and, where the forecast asks the same
+/// question, stops that question being asked at all (`crates/core/src/orders/effects.rs`). That is
+/// what turning a warning off has always meant here: the check is not made, rather than made and
+/// hidden.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckOptions {
     /// Advisory codes not to emit. Unknown codes are ignored.

@@ -63,6 +63,17 @@ export function reconcileAdvisoryChecks(stored: unknown): AdvisoryChecks {
   return checks;
 }
 
+/**
+ * Every advisory code whose switch is off, for the calls that take a disabled set.
+ *
+ * Derived rather than stored: the store holds what is *on*, code by code, and both the order
+ * checks and the forecast want the complement of that. Deriving it in one place is what stops the
+ * two calls being given different answers about the same settings (`ah-7ale.2.2.2`).
+ */
+export function disabledAdvisoryCodes(checks: AdvisoryChecks): AdvisoryCheckCode[] {
+  return ADVISORY_CHECK_CODES.filter((code) => !checks[code]);
+}
+
 export type SettingsState = {
   theme: ThemeName;
   /**

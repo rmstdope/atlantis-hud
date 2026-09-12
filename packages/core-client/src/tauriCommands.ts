@@ -100,7 +100,8 @@ export const TAURI_COMMANDS = {
     "raw_report",
     "remembered_json",
     "orders_document",
-    "map_json"
+    "map_json",
+    "disabled_codes"
   ],
   tradeRoutes: ["trade_routes", "ruleset_json", "raw_report", "remembered_json", "map_json"],
   loadRegionSightings: ["load_region_sightings", "database_path", "game_id", "faction_id"],

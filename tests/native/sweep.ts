@@ -181,7 +181,8 @@ export const SWEEP: SweepEntry[] = [
       raw_report: REPORT,
       remembered_json: "[]",
       orders_document: "unit 18642\nGUARD 1",
-      map_json: MAP
+      map_json: MAP,
+      disabled_codes: []
     })
   },
   {

@@ -679,6 +679,7 @@ pub fn preview_orders_for_remembered_report(
         remembered_json,
         orders_document,
         "",
+        super::semantics::CheckOptions::default(),
     )
 }
 
@@ -686,6 +687,9 @@ pub fn preview_orders_for_remembered_report(
 ///
 /// `map_json` as [`crate::movement::request::plan_on_map`]: the game's own dimensions, or empty
 /// for a game that never recorded any, which leaves every preview exactly as it was.
+///
+/// `options` says which advisory checks are on. The forecast reads only the codes whose refusal it
+/// makes itself; every other code is the order checks' business alone.
 ///
 /// # Errors
 ///
@@ -697,6 +701,7 @@ pub fn preview_orders_on_map(
     remembered_json: &str,
     orders_document: &str,
     map_json: &str,
+    options: super::semantics::CheckOptions,
 ) -> Result<OrdersPreviewResponse, String> {
     use crate::movement::graph::MapKnowledge;
     use crate::movement::trace::trace_move;
@@ -711,7 +716,7 @@ pub fn preview_orders_on_map(
     let report = cache.classified(raw_report, ruleset_json);
 
     let geometry = crate::movement::graph::geometry_from_json(map_json)?;
-    let (units, dissolved) = settle(&report, &ruleset, orders_document, geometry);
+    let (units, dissolved) = settle(&report, &ruleset, orders_document, geometry, options);
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
@@ -1108,8 +1113,9 @@ fn settle(
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
     orders_document: &str,
     geometry: Option<crate::movement::graph::MapGeometry>,
+    options: super::semantics::CheckOptions,
 ) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
-    let mut working = Working::over_own_units(report, ruleset.clone(), geometry);
+    let mut working = Working::over_own_units(report, ruleset.clone(), geometry, options);
     super::walk::walk_with_ruleset(orders_document, Some(ruleset.as_ref()), |event| {
         working.visit(event);
     });
@@ -1211,7 +1217,13 @@ pub(crate) fn formed_unit_as_ordered(
     }
     // A `FORM`ed row is looked up on its own; no transport is applied here, so the map's shape
     // is not needed (`ah-7ale.2.1`).
-    let (units, _) = settle(report, ruleset, orders_document, None);
+    let (units, _) = settle(
+        report,
+        ruleset,
+        orders_document,
+        None,
+        super::semantics::CheckOptions::default(),
+    );
     units
         .into_iter()
         .find(|entry| entry.formed && entry.unit.unit_id == unit_id)
@@ -1681,6 +1693,8 @@ struct Working {
     /// across (`ah-7ale.2.1`). `None` is a game that never recorded one, which leaves every
     /// shipment forecast exactly as it was.
     geometry: Option<crate::movement::graph::MapGeometry>,
+    /// Which advisory checks are on, for the refusals the forecast makes itself (`ah-7ale.2.2.2`).
+    options: super::semantics::CheckOptions,
 }
 
 /// What the report can say about a named `TRANSPORT`/`DISTRIBUTE` target (`ah-64wm`).
@@ -1726,6 +1740,7 @@ impl Working {
         report: &crate::report::ParsedReport,
         ruleset: std::sync::Arc<crate::movement::rules::Ruleset>,
         geometry: Option<crate::movement::graph::MapGeometry>,
+        options: super::semantics::CheckOptions,
     ) -> Self {
         let mut units = Vec::new();
         let mut by_id = BTreeMap::new();
@@ -1797,6 +1812,7 @@ impl Working {
             transport_targets,
             hex_of_region,
             geometry,
+            options,
         }
     }
 
@@ -2827,10 +2843,23 @@ impl Working {
     ///
     /// `AtMost(n)` with `n <= limit` is a shipment that is *certainly* in reach - an upper bound
     /// inside the limit settles the question - and is likewise no refusal.
+    ///
+    /// A sixth case, and the first one asked: the `transport-out-of-reach` warning turned off
+    /// (`ah-7ale.2.2.2`).
     fn out_of_reach(
         &self,
         pending: &PendingTransport,
     ) -> Option<(TransportTargetReason, TransportReach)> {
+        // A silenced warning is a check not made: the shipment is forecast as going through, goods
+        // and weight gone and the target credited, exactly as if the two hexes were next to each
+        // other. Gated here rather than at the call site so every reader of this decision gets one
+        // answer.
+        if !self
+            .options
+            .emits(super::semantics::codes::TRANSPORT_OUT_OF_REACH)
+        {
+            return None;
+        }
         let reach = self.transport_reach(pending)?;
         let from = self
             .hex_of_region
@@ -3442,6 +3471,47 @@ mod tests {
                 "NAME {synonym} must preview as NAME {canonical}"
             );
         }
+    }
+
+    #[test]
+    fn the_preview_carries_the_checks_it_is_given() {
+        let orders = "unit 900\nNAME UNIT \"Dawn Treader\"\n";
+
+        let with_default =
+            preview_with_options(orders, super::super::semantics::CheckOptions::default());
+        let with_transport_silenced = preview_with_options(
+            orders,
+            super::super::semantics::CheckOptions {
+                disabled: ["transport-out-of-reach".to_string()].into_iter().collect(),
+                ..super::super::semantics::CheckOptions::default()
+            },
+        );
+
+        assert_eq!(
+            with_default,
+            preview(orders),
+            "the options the forecast is handed must not change a preview with no refusal in it"
+        );
+        assert_eq!(
+            with_transport_silenced, with_default,
+            "silencing an unrelated refusal must leave this preview alone"
+        );
+    }
+
+    fn preview_with_options(
+        orders: &str,
+        options: super::super::semantics::CheckOptions,
+    ) -> OrdersPreviewResponse {
+        preview_orders_on_map(
+            &mut ReportCache::new(),
+            RULESET,
+            &report(),
+            "[]",
+            orders,
+            "",
+            options,
+        )
+        .expect("the ruleset loads")
     }
 
     fn preview(orders: &str) -> OrdersPreviewResponse {
@@ -9890,7 +9960,12 @@ mod tests {
             wrap_y: false,
         };
 
-        let working = Working::over_own_units(&parsed, ruleset, Some(geometry));
+        let working = Working::over_own_units(
+            &parsed,
+            ruleset,
+            Some(geometry),
+            super::super::semantics::CheckOptions::default(),
+        );
 
         assert_eq!(working.geometry, Some(geometry));
     }
@@ -9904,7 +9979,12 @@ mod tests {
             .expect("the ruleset loads")
             .clone();
 
-        let working = Working::over_own_units(&parsed, ruleset, None);
+        let working = Working::over_own_units(
+            &parsed,
+            ruleset,
+            None,
+            super::super::semantics::CheckOptions::default(),
+        );
 
         let hex = |unit_id: &str| {
             working
@@ -9946,7 +10026,12 @@ mod tests {
             .expect("the ruleset loads")
             .clone();
 
-        let working = Working::over_own_units(&parsed, ruleset, None);
+        let working = Working::over_own_units(
+            &parsed,
+            ruleset,
+            None,
+            super::super::semantics::CheckOptions::default(),
+        );
 
         assert_eq!(working.quartermasters.level("5531"), 3);
         assert_eq!(working.quartermasters.level("6857"), 5);
@@ -10015,6 +10100,26 @@ mod tests {
             "[]",
             orders,
             map_json,
+            super::super::semantics::CheckOptions::default(),
+        )
+        .expect("the ruleset loads")
+    }
+
+    /// The same, with the advisory checks the caller names - increment 2's silenced case.
+    fn reach_preview_with_options(
+        report: &str,
+        orders: &str,
+        map_json: &str,
+        options: super::super::semantics::CheckOptions,
+    ) -> OrdersPreviewResponse {
+        preview_orders_on_map(
+            &mut ReportCache::new(),
+            RULESET,
+            report,
+            "[]",
+            orders,
+            map_json,
+            options,
         )
         .expect("the ruleset loads")
     }
@@ -10082,6 +10187,64 @@ mod tests {
             .clone();
         assert_eq!(sender.unit.weight, reported.weight, "the weight stayed too");
         assert_eq!(sender.unit.capacity, reported.capacity);
+    }
+
+    /// `ah-7ale.2.2.2`: with `Settings > Warnings > Transport` off the reach check is not made at
+    /// all, so the shipment is forecast as going through - goods gone, the target credited, and
+    /// nothing left in the problem list.
+    #[test]
+    fn a_silenced_reach_warning_forecasts_the_shipment_as_going_through() {
+        let report = reach_report((0, 0), (0, 6), (0, 1));
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+
+        // The control, and `ah-7ale.2.1`'s own behaviour: with every check on, the goods stay.
+        let refused = reach_preview(&report, orders, FLAT_MAP);
+        assert_eq!(reach_held(&refused, "900", "STON"), 5, "the stone stayed");
+        assert_eq!(reach_held(&refused, "901", "STON"), 0, "and never arrived");
+        assert_eq!(
+            reach_unit(&refused, "900")
+                .transport_target_issues
+                .iter()
+                .map(|issue| issue.reason)
+                .collect::<Vec<_>>(),
+            vec![TransportTargetReason::TooFarToAccept],
+        );
+
+        let silenced = reach_preview_with_options(
+            &report,
+            orders,
+            FLAT_MAP,
+            super::super::semantics::CheckOptions {
+                disabled: ["transport-out-of-reach".to_string()].into_iter().collect(),
+                ..super::super::semantics::CheckOptions::default()
+            },
+        );
+
+        assert_eq!(
+            reach_held(&silenced, "900", "STON"),
+            0,
+            "a check that is not made cannot keep the goods with the sender"
+        );
+        assert_eq!(
+            reach_held(&silenced, "901", "STON"),
+            5,
+            "the target is credited"
+        );
+        let sender = reach_unit(&silenced, "900");
+        assert!(
+            sender.transport_target_issues.is_empty(),
+            "nothing is left to explain: {:?}",
+            sender.transport_target_issues
+        );
+        assert_eq!(
+            sender
+                .transport_sent
+                .iter()
+                .map(|sent| (sent.to.clone(), sent.amount, sent.tag.clone()))
+                .collect::<Vec<_>>(),
+            vec![("901".to_string(), 5, "STON".to_string())],
+            "the shipment is drawn as going through"
+        );
     }
 
     /// The control: without it the test above would pass on a build that refuses every shipment.

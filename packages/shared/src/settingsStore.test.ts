@@ -3,10 +3,11 @@ import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import {
   applyPersistedSettings,
   DEFAULT_ADVISORY_CHECKS,
+  disabledAdvisoryCodes,
   resetSettingsStore,
   useSettingsStore
 } from "./settingsStore";
-import type { ThemeName } from "./settingsStore";
+import type { AdvisoryChecks, ThemeName } from "./settingsStore";
 import { DEFAULT_MAP_THEME_ID, MAP_THEMES } from "./workspace/mapThemes";
 
 const store = () => useSettingsStore.getState();
@@ -850,5 +851,25 @@ describe("the map theme", () => {
     resetSettingsStore();
 
     expect(store().mapTheme).toBe(DEFAULT_MAP_THEME_ID);
+  });
+});
+
+describe("disabledAdvisoryCodes", () => {
+  it("names every advisory code whose switch is off, and nothing else", () => {
+    expect(disabledAdvisoryCodes(DEFAULT_ADVISORY_CHECKS)).toEqual(["hex-unguarded"]);
+
+    const everythingOn = Object.fromEntries(
+      ADVISORY_CHECK_CODES.map((code) => [code, true])
+    ) as AdvisoryChecks;
+    expect(disabledAdvisoryCodes(everythingOn)).toEqual([]);
+
+    const transportOff: AdvisoryChecks = {
+      ...DEFAULT_ADVISORY_CHECKS,
+      "transport-out-of-reach": false
+    };
+    const off = disabledAdvisoryCodes(transportOff);
+    expect(off).toContain("hex-unguarded");
+    expect(off).toContain("transport-out-of-reach");
+    expect(off).toHaveLength(2);
   });
 });
