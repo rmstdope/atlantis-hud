@@ -611,7 +611,18 @@ pub fn preview_orders_state(
     remembered_json: String,
     orders_document: String,
     map_json: String,
+    disabled_codes: Option<Vec<String>>,
 ) -> Result<JsValue, JsValue> {
+    // `geometry` stays `None`: the forecast takes the map's shape from `map_json` above, which it
+    // needs for the movement trace anyway, and reads this field not at all. Only the `disabled` set
+    // crosses into the preview (`ah-7ale.2.2.2`).
+    let options = OrderCheckOptions {
+        disabled: disabled_codes
+            .map(|codes| codes.into_iter().collect())
+            .unwrap_or_else(|| OrderCheckOptions::default().disabled),
+        geometry: None,
+    };
+
     let response = atlantis_hud_core::cache::with_global(|cache| {
         atlantis_hud_core::orders::effects::preview_orders_on_map(
             cache,
@@ -620,6 +631,7 @@ pub fn preview_orders_state(
             &remembered_json,
             &orders_document,
             &map_json,
+            options,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;

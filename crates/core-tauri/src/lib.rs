@@ -1165,7 +1165,18 @@ pub mod commands {
         remembered_json: &str,
         orders_document: &str,
         map_json: &str,
+        disabled_codes: Option<Vec<String>>,
     ) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
+        // `geometry` stays `None`: the forecast takes the map's shape from `map_json` above, which
+        // it needs for the movement trace anyway, and reads this field not at all. Only the
+        // `disabled` set crosses into the preview (`ah-7ale.2.2.2`).
+        let options = OrderCheckOptions {
+            disabled: disabled_codes
+                .map(|codes| codes.into_iter().collect())
+                .unwrap_or_else(|| OrderCheckOptions::default().disabled),
+            geometry: None,
+        };
+
         atlantis_hud_core::cache::with_global(|cache| {
             atlantis_hud_core::orders::effects::preview_orders_on_map(
                 cache,
@@ -1174,6 +1185,7 @@ pub mod commands {
                 remembered_json,
                 orders_document,
                 map_json,
+                options,
             )
         })
     }
@@ -1433,6 +1445,23 @@ mod preview_orders_command_tests {
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
+    /// `ah-7ale.2.2.2`: a caller that omits the list forecasts the same month as one that spells
+    /// the core's own default out, so the default lives in Rust once.
+    #[test]
+    fn absent_disabled_codes_preview_the_same_month_as_the_conservative_default() {
+        let report = "Foo (1) Report\n\nplain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n";
+        let orders = "unit 900\nNAME UNIT \"Renamed\"\n";
+        let default_disabled: Vec<String> = atlantis_hud_core::OrderCheckOptions::default()
+            .disabled
+            .into_iter()
+            .collect();
+
+        assert_eq!(
+            command_preview_orders(RULESET, report, "[]", orders, "", None),
+            command_preview_orders(RULESET, report, "[]", orders, "", Some(default_disabled))
+        );
+    }
+
     #[test]
     fn previews_the_orders_it_is_handed() {
         let report = "Foo (1) Report\n\nplain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n";
@@ -1443,6 +1472,7 @@ mod preview_orders_command_tests {
             "[]",
             "unit 900\nNAME UNIT \"Renamed\"\n",
             "",
+            None,
         )
         .expect("the ruleset loads");
 

@@ -467,6 +467,35 @@ describe("createCoreClient", () => {
     expect(fake.validateOrders).toHaveBeenNthCalledWith(2, "orders", null, null, null, null);
   });
 
+  it("passes disabled codes through to the preview, and null when no options are given", async () => {
+    const fake = fakeAdapter();
+    const client = createCoreClient(fake);
+
+    await client.previewOrders("ruleset", "raw", "[]", "orders", "", {
+      disabledCodes: ["transport-out-of-reach"]
+    });
+    await client.previewOrders("ruleset", "raw", "[]", "orders", "");
+
+    expect(fake.previewOrders).toHaveBeenNthCalledWith(
+      1,
+      "ruleset",
+      "raw",
+      "[]",
+      "orders",
+      "",
+      ["transport-out-of-reach"]
+    );
+    expect(fake.previewOrders).toHaveBeenNthCalledWith(
+      2,
+      "ruleset",
+      "raw",
+      "[]",
+      "orders",
+      "",
+      null
+    );
+  });
+
   it("resolves with exactly what the adapter resolved", async () => {
     const games: GameManifest[] = [];
     const turn: ImportedTurnRecord | null = null;

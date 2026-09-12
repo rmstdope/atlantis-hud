@@ -104,7 +104,8 @@ export type CoreWasmModule = {
     rawReport: string,
     rememberedJson: string,
     ordersDocument: string,
-    mapJson: string
+    mapJson: string,
+    disabledCodes: readonly string[] | null
   ): OrdersPreviewResponse;
   trade_routes_state(
     rulesetJson: string,
@@ -578,7 +579,8 @@ export function createWebCoreAdapter(
       rawReport: string,
       rememberedJson: string,
       ordersDocument: string,
-      mapJson: string
+      mapJson: string,
+      disabledCodes: readonly string[] | null
     ) {
       // Straight through as well: the preview is pure computation over the arguments.
       return wasm.preview_orders_state(
@@ -586,7 +588,8 @@ export function createWebCoreAdapter(
         rawReport,
         rememberedJson,
         ordersDocument,
-        mapJson
+        mapJson,
+        disabledCodes
       );
     },
     async tradeRoutes(

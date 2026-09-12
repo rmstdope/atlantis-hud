@@ -686,7 +686,8 @@ export interface CoreAdapter {
     rawReport: string,
     rememberedJson: string,
     ordersDocument: string,
-    mapJson: string
+    mapJson: string,
+    disabledCodes: readonly string[] | null
   ): Promise<OrdersPreviewResponse>;
   /** Every trade worth making in the map the faction has seen, best first. */
   tradeRoutes(
@@ -850,7 +851,10 @@ export function sortStudyPlans(plans: readonly StudyPlanRecord[]): StudyPlanReco
  * options where the wire takes a list of disabled codes. Everything else is the adapter as it is —
  * `createCoreClient` is the whole of the difference.
  */
-export type CoreClient = Omit<CoreAdapter, "validateOrders" | "exportMap" | "knownMap"> & {
+export type CoreClient = Omit<
+  CoreAdapter,
+  "validateOrders" | "previewOrders" | "exportMap" | "knownMap"
+> & {
   /**
    * Checks one orders document, and the turn it was written for.
    *
@@ -868,6 +872,21 @@ export type CoreClient = Omit<CoreAdapter, "validateOrders" | "exportMap" | "kno
     rawReport?: string | null,
     options?: OrderCheckOptions
   ): Promise<OrderValidationResult>;
+  /**
+   * What the orders document makes of the faction's units, region by region.
+   *
+   * `options.disabledCodes` names the advisory checks that are off. A check that is off is not
+   * made, so a refusal it would have produced does not shape the forecast either - the same
+   * meaning the order checks give it. Omitted = the core's own default.
+   */
+  previewOrders(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    ordersDocument: string,
+    mapJson: string,
+    options?: OrderCheckOptions
+  ): Promise<OrdersPreviewResponse>;
   /**
    * The known map inside one rectangle, written as report-shaped text for an ally to read.
    *
@@ -914,6 +933,17 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         rawReport,
         options.disabledCodes ?? null,
         options.mapJson ?? null
+      );
+    },
+    previewOrders(rulesetJson, rawReport, rememberedJson, ordersDocument, mapJson, options = {}) {
+      // As `validateOrders` above: `null` is "use the core's own default", written in Rust once.
+      return adapter.previewOrders(
+        rulesetJson,
+        rawReport,
+        rememberedJson,
+        ordersDocument,
+        mapJson,
+        options.disabledCodes ?? null
       );
     },
     exportMap(rawReport, rememberedJson, request) {
