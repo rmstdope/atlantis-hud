@@ -278,6 +278,11 @@ pub struct KnownHex {
 pub struct MapKnowledge {
     hexes: BTreeMap<String, KnownHex>,
     exits: BTreeMap<String, Vec<(Direction, Coordinate)>>,
+    /// The reverse of `exits`: for each hex, the hexes whose own exit lists name it, in the
+    /// direction that points back at them. An ocean hex states no exits, and the shore that named
+    /// it is the only evidence it has a coast at all.
+    #[serde(default)]
+    into: BTreeMap<String, Vec<(Direction, Coordinate)>>,
     /// Exits held until every hex is in place, so adjacency can be resolved in either direction.
     #[serde(default, skip)]
     pending_exits: BTreeMap<String, Vec<crate::report::model::Exit>>,
@@ -426,6 +431,7 @@ impl MapKnowledge {
     /// costs nothing and a silently-dropped exit target would be worse.
     fn rebuild_exits(&mut self) {
         let pending = std::mem::take(&mut self.pending_exits);
+        self.into.clear();
 
         for (from, exits) in &pending {
             let mut resolved = Vec::new();
@@ -450,6 +456,14 @@ impl MapKnowledge {
                         units: Vec::new(),
                         last_seen_turn: None,
                     });
+            }
+            if let Some(origin) = self.hexes.get(from).map(|hex| hex.coordinate) {
+                for (direction, coordinate) in &resolved {
+                    self.into
+                        .entry(key(*coordinate))
+                        .or_default()
+                        .push((direction.opposite(), origin));
+                }
             }
             self.exits.insert(from.clone(), resolved);
         }
@@ -508,6 +522,30 @@ impl MapKnowledge {
             .get(&key(coordinate))
             .into_iter()
             .flat_map(|exits| exits.iter().copied())
+    }
+
+    /// Every hex the reports place beside this one, in either direction, one entry per direction.
+    ///
+    /// [`MapKnowledge::neighbours`] answers only what this hex's own report said, which is nothing
+    /// at all for a hex known only by name. That is the ordinary state of an ocean hex - nobody
+    /// stood in it - and the land hex whose exits named it is the only evidence there is that it
+    /// has a shore. A direction stated from both ends appears once; the hex's own statement wins.
+    ///
+    /// Stated adjacency only, deliberately. [`MapKnowledge::geometric_neighbour`] would fill the
+    /// gaps, but a computed adjacency between two hexes the reports both describe is a crossing
+    /// they had every chance to mention and did not - the map wraps and nothing says where the
+    /// seam is. The same objection `ways_out` records in `movement::plan`.
+    #[must_use]
+    pub fn adjacent(&self, coordinate: Coordinate) -> Vec<(Direction, Coordinate)> {
+        let mut adjacent: Vec<(Direction, Coordinate)> = self.neighbours(coordinate).collect();
+        if let Some(reverse) = self.into.get(&key(coordinate)) {
+            for (direction, origin) in reverse {
+                if !adjacent.iter().any(|(stated, _)| stated == direction) {
+                    adjacent.push((*direction, *origin));
+                }
+            }
+        }
+        adjacent
     }
 
     /// Whether a road runs the whole way between a hex and its neighbour.
