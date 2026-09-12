@@ -165,17 +165,22 @@ describe("scanStoredTurns (ah-3u7c.2.1)", () => {
   });
 
   it("counts only the report as unread when the saved orders will not load", async () => {
+    // Turn 55's draft throws, so it claims nothing; turn 56's is read, and turn 57 answers it.
     const client = fakeClient([
       { factionId: "1", turn: 55, report: standingIn(SHAFT_HEX, "plain"), draft: "unit 5\nMOVE IN\n" },
-      { factionId: "1", turn: 56, report: standingIn(UNDERWORLD, "cavern"), draft: null }
+      { factionId: "1", turn: 56, report: standingIn(SHAFT_HEX, "plain"), draft: "unit 5\nMOVE IN\n" },
+      { factionId: "1", turn: 57, report: standingIn(UNDERWORLD, "cavern"), draft: null }
     ]);
     (client.loadOrderDraft as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("nope"));
 
-    const { unreadTurns } = await scanStoredTurns(client, game(), "{}");
+    const { memory, unreadTurns } = await scanStoredTurns(client, game(), "{}");
 
+    // The report was read, so the turn is not unread - and the walk carried on far enough for
+    // turn 56 to seed a claim that turn 57 then answered.
     expect(unreadTurns).toBe(0);
-    // Both reports were read: the walk carried on rather than skipping the turn whose draft threw.
-    expect(client.parseReportFull).toHaveBeenCalledTimes(2);
+    expect(knownPassagesOf(memory)).toEqual([
+      expect.objectContaining({ destination: UNDERWORLD, learnedInTurn: 57 })
+    ]);
   });
 
   it("makes no claims for a turn with no saved orders", async () => {
