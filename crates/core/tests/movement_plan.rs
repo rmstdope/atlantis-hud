@@ -911,7 +911,16 @@ fn a_sea_route_can_end_on_a_coastal_land_hex_but_not_an_inland_one() {
     assert_eq!(coastal.mode, MovementMode::Sail);
 
     let inland = plan(&report, "900", at(3, 3)).expect_err("plain (3,3) has no water neighbour");
-    assert!(matches!(inland, RouteProblem::OceanNeedsShip { .. }));
+    // The refusal names the world's water, not the dry hex: `blocks` refuses a fleet an inland hex
+    // for a reason that has nothing to do with water, and "the plain is in the way, and crossing it
+    // needs a ship" would be a contradiction in front of the player.
+    assert_eq!(
+        inland,
+        RouteProblem::OceanNeedsShip {
+            coordinate: at(3, 3),
+            terrain: "ocean".to_string(),
+        }
+    );
 }
 
 // ------------------------------------------------------- a flying fleet

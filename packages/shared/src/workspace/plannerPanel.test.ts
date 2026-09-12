@@ -16,6 +16,21 @@ describe("explaining why there is no route", () => {
     ).toContain("(8,52)");
   });
 
+  /**
+   * Core refuses a fleet an inland hex through the same variant, and that hex is dry - so the
+   * terrain it hands over is the world's own water rather than the hex's, and this is the sentence
+   * that would read as a contradiction if it were not.
+   */
+  it("never calls a dry hex the water in the way", () => {
+    expect(
+      describeProblem({
+        kind: "oceanNeedsShip",
+        coordinate: { x: 3, y: 3, z: 1 },
+        terrain: "ocean"
+      })
+    ).toBe("The sea at (3,3) is in the way, and crossing it needs a ship.");
+  });
+
   it("has something to say about every refusal the core can produce", () => {
     const kinds = [
       "notYourUnit",
@@ -28,6 +43,18 @@ describe("explaining why there is no route", () => {
 
     for (const kind of kinds) {
       const sentence = describeProblem({ kind });
+      expect(sentence.length, `${kind} should be explained`).toBeGreaterThan(20);
+      expect(sentence.endsWith("."), `${kind} should read as a sentence`).toBe(true);
+    }
+
+    // The water refusals carry a terrain, so they cannot be built from a bare kind - but they are
+    // part of "every refusal the core can produce" and this test would overclaim without them.
+    for (const kind of ["oceanNeedsShip", "destinationNeedsShip", "flightWouldEndOverOcean"] as const) {
+      const sentence = describeProblem({
+        kind,
+        coordinate: { x: 1, y: 1, z: 1 },
+        terrain: "lake"
+      });
       expect(sentence.length, `${kind} should be explained`).toBeGreaterThan(20);
       expect(sentence.endsWith("."), `${kind} should read as a sentence`).toBe(true);
     }

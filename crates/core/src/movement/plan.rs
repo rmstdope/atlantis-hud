@@ -250,7 +250,7 @@ pub(crate) fn route_for_mode(
         if blocks(ruleset, map, journey, destination, &target.terrain) {
             // A water destination is the hex the player clicked on, and "in the way" is untrue of
             // it. Anything else blocked here - an inland hex a fleet cannot reach, say - keeps the
-            // older refusal, which is not about the destination being wet.
+            // refusal it has always had, which is not about the destination being wet.
             return Err(if ruleset.is_water(&target.terrain) {
                 RouteProblem::DestinationNeedsShip {
                     coordinate: destination,
@@ -259,7 +259,7 @@ pub(crate) fn route_for_mode(
             } else {
                 RouteProblem::OceanNeedsShip {
                     coordinate: destination,
-                    terrain: target.terrain.clone(),
+                    terrain: water_named(ruleset, &target.terrain),
                 }
             });
         }
@@ -268,7 +268,7 @@ pub(crate) fn route_for_mode(
         if blocks(ruleset, map, journey, origin, &here.terrain) {
             return Err(RouteProblem::OceanNeedsShip {
                 coordinate: origin,
-                terrain: here.terrain.clone(),
+                terrain: water_named(ruleset, &here.terrain),
             });
         }
     }
@@ -307,6 +307,20 @@ pub(crate) fn route_for_mode(
     }
 
     Ok((steps, months))
+}
+
+/// The terrain [`RouteProblem::OceanNeedsShip`] should name for a hex the journey is blocked at.
+///
+/// Water names itself, so a lake is refused as a lake. A dry hex does not: `blocks` also refuses a
+/// fleet an inland land hex, which has nothing to do with water, and naming it would print "the
+/// plain is in the way, and crossing it needs a ship". That case keeps the world's own water word,
+/// which is the sentence it has always been refused with.
+fn water_named(ruleset: &Ruleset, terrain: &str) -> String {
+    if ruleset.is_water(terrain) {
+        terrain.to_string()
+    } else {
+        ruleset.movement.ocean.terrain.clone()
+    }
 }
 
 fn flies(mode: MovementMode) -> bool {
