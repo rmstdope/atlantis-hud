@@ -1,7 +1,12 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { RULESETS, defaultMapFor, rulesetById } from "./rulesets";
+import {
+  RULESETS,
+  defaultMapFor,
+  orderCommentSyntaxFor,
+  rulesetById
+} from "./rulesets";
 
 describe("rulesets", () => {
   it("spells the variant the way a player reads it", () => {
@@ -64,5 +69,16 @@ describe("rulesets", () => {
       expect(ruleset.url, `${ruleset.id} is served from this build`).toMatch(/^\/[\w.-]+$/);
       expect(existsSync(served(ruleset.url)), `${ruleset.id} points at ${ruleset.url}`).toBe(true);
     }
+  });
+
+  it("reads a semicolon the way the selected world's rules page does", () => {
+    expect(orderCommentSyntaxFor("newage-trident")).toBe("trident");
+    expect(orderCommentSyntaxFor("neworigins")).toBe("origins");
+    expect(orderCommentSyntaxFor("newage-arcanum")).toBe("origins");
+    // An absent or unknown game keeps the documented New Origins behaviour rather than
+    // silently dropping order text this build cannot prove is a comment.
+    expect(orderCommentSyntaxFor(null)).toBe("origins");
+    expect(orderCommentSyntaxFor(undefined)).toBe("origins");
+    expect(orderCommentSyntaxFor("not-a-ruleset")).toBe("origins");
   });
 });

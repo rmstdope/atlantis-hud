@@ -7,6 +7,8 @@
  * unit ids, numbers and email addresses are safe by construction.
  */
 
+import type { OrderCommentSyntax } from "./rulesets";
+
 /** The words the rules know, uppercase. Built once from `client.orderVocabulary`. */
 export type Vocabulary = ReadonlySet<string>;
 
@@ -44,7 +46,10 @@ export function isKeyword(word: string, vocabulary: Vocabulary): boolean {
  * A `"` opens a quoted run that ends at the next `"`; an unterminated quote swallows the rest of
  * the line, the way `lex_line` does, so a name is left alone while it is still being typed.
  */
-export function bareWords(line: string): BareWord[] {
+export function bareWords(
+  line: string,
+  syntax: OrderCommentSyntax = "origins"
+): BareWord[] {
   const words: BareWord[] = [];
   let index = 0;
   let tokenStart = -1;
@@ -66,8 +71,18 @@ export function bareWords(line: string): BareWord[] {
   while (index < line.length) {
     const char = line[index];
     if (char === ";") {
-      flush(index);
-      return words;
+      // Where the comment starts is the selected world's answer. Trident ends whatever word the
+      // semicolon lands in; New Origins keeps one that is in the middle of a word, so the word
+      // runs on and is no longer bare letters - which is exactly what stops it being shouted at.
+      const endsTheWord =
+        syntax === "trident" || index + 1 >= line.length || /\s/u.test(line[index + 1] as string);
+      if (endsTheWord) {
+        flush(index);
+        return words;
+      }
+      index += 1;
+      if (tokenStart < 0) tokenStart = index - 1;
+      continue;
     }
     if (char === '"') {
       flush(index);
@@ -89,8 +104,12 @@ export function bareWords(line: string): BareWord[] {
 }
 
 /** One line with every keyword uppercased. Returns the line unchanged when nothing matches. */
-export function uppercaseLine(line: string, vocabulary: Vocabulary): string {
-  const matches = bareWords(line).filter((word) => isKeyword(word.text, vocabulary));
+export function uppercaseLine(
+  line: string,
+  vocabulary: Vocabulary,
+  syntax: OrderCommentSyntax = "origins"
+): string {
+  const matches = bareWords(line, syntax).filter((word) => isKeyword(word.text, vocabulary));
   let result = line;
   for (let i = matches.length - 1; i >= 0; i -= 1) {
     const word = matches[i] as BareWord;
@@ -117,12 +136,13 @@ export interface CaseChange {
 export function keywordCaseChanges(
   text: string,
   vocabulary: Vocabulary,
-  protect: number | null
+  protect: number | null,
+  syntax: OrderCommentSyntax = "origins"
 ): CaseChange[] {
   const changes: CaseChange[] = [];
   let lineStart = 0;
   for (const line of text.split("\n")) {
-    for (const word of bareWords(line)) {
+    for (const word of bareWords(line, syntax)) {
       if (!isKeyword(word.text, vocabulary)) continue;
       const insert = word.text.toUpperCase();
       if (insert === word.text) continue;
@@ -137,9 +157,13 @@ export function keywordCaseChanges(
 }
 
 /** A whole orders block, line by line. Returns the text unchanged when nothing matches. */
-export function uppercaseKeywords(text: string, vocabulary: Vocabulary): string {
+export function uppercaseKeywords(
+  text: string,
+  vocabulary: Vocabulary,
+  syntax: OrderCommentSyntax = "origins"
+): string {
   let result = text;
-  const changes = keywordCaseChanges(text, vocabulary, null);
+  const changes = keywordCaseChanges(text, vocabulary, null, syntax);
   for (let i = changes.length - 1; i >= 0; i -= 1) {
     const change = changes[i] as CaseChange;
     result = result.slice(0, change.from) + change.insert + result.slice(change.to);
@@ -154,12 +178,13 @@ export function uppercaseKeywords(text: string, vocabulary: Vocabulary): string 
 export function keywordJustFinished(
   line: string,
   at: number,
-  vocabulary: Vocabulary
+  vocabulary: Vocabulary,
+  syntax: OrderCommentSyntax = "origins"
 ): { from: number; to: number; upper: string } | null {
   // `at` may sit past the word's own end when the player typed trailing punctuation - `move n,`
   // then a space - which `bareWords` strips from the span. Anything between the two must be that
   // punctuation and nothing else, so `move n, ` still shouts and `move n x ` does not.
-  const word = bareWords(line).find(
+  const word = bareWords(line, syntax).find(
     (candidate) =>
       candidate.to <= at && /^[,.]*$/.test(line.slice(candidate.to, at))
   );
