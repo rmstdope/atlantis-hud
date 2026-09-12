@@ -366,6 +366,52 @@ test("a shipment the game will not carry is an ordinary problem in both lists", 
   await expect(editorList).toContainText(sentence);
 });
 
+/**
+ * `ah-7ale.2.2.2`: the other half of the same switch. The case above proves the *sentence* goes;
+ * this one proves the goods move, which is the only thing the player can see in the figures.
+ */
+test("silencing the transport warning delivers the shipment", async ({ page }) => {
+  await loadReport(page, "Transport reach smoke", QUARTERMASTER_REPORT, "34 regions");
+  await selectHex(page, "1:38,0");
+  await selectUnit(page, SHIPPING_UNIT);
+  await expect(page.getByTestId("orders-input")).toBeVisible();
+
+  await fillOrders(page, "TRANSPORT 6857 5 WOOD");
+
+  const reachSentence =
+    "Unit 6857 is 3 hexes away and takes goods from 2 hexes, so 5 WOOD stay with this unit.";
+  // What the ITEMS cell itself says once the goods move - the table's own wording, not the unit
+  // panel's `Sends <n> <TAG> to unit <id>.`
+  const sentSentence = "wood: sent 5 to Trader (6857).";
+  const predicted = page
+    .getByTestId(`unit-row-${SHIPPING_UNIT}`)
+    .locator('[data-predicted="true"]');
+
+  // The control, and `ah-7ale.2.1`'s behaviour: a refusal keeps the goods where they are, so the
+  // row's figures say nothing changed this month - the refusal is a sentence and nothing else.
+  await expect(page.getByTestId("region-problems")).toContainText(reachSentence);
+  await expect(predicted).toHaveCount(0);
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-transport-out-of-reach").uncheck();
+  await page.getByTestId("settings-close").click();
+
+  // Without touching the orders text: the forecast re-runs on the setting alone, which is what
+  // the effect's dependency array buys.
+  await expect(predicted.first()).toContainText("wood WOOD 15, down from 20");
+  await expect(predicted.first()).toContainText(sentSentence);
+  await expect(predicted.first()).not.toContainText(reachSentence);
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-transport-out-of-reach").check();
+  await page.getByTestId("settings-close").click();
+
+  await expect(predicted).toHaveCount(0);
+  await expect(page.getByTestId("region-problems")).toContainText(reachSentence);
+});
+
 test("the order text starts within 6px of the editor's edge, marker still showing (gh-205)", async ({
   page
 }) => {

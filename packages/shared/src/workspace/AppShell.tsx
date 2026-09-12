@@ -16,7 +16,6 @@ import type {
   RoutePlanResponse,
   TradeRoute
 } from "@atlantis/core-client";
-import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { splitTurnMessages, turnMessagesForUnit } from "../turnMessages";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -155,7 +154,7 @@ import { useResourceMemoryStore } from "../resourceMemoryStore";
 import { usePassageMemoryStore } from "../passageMemoryStore";
 import { derivedSkillsFor } from "../battleSkills";
 import { unitsByIdIn } from "../armies";
-import { useSettingsStore } from "../settingsStore";
+import { disabledAdvisoryCodes, useSettingsStore } from "../settingsStore";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
 import { comparisonChipLabel, type ComparisonTurn } from "../turnCompare";
@@ -3259,7 +3258,7 @@ export function AppShell({
         // `mapJson` is what the reach check measures a distance across: without it every distance
         // is an upper bound and nothing is refused (`ah-7ale.2.2.1`).
         .validateOrders(ordersDocument, rulesetText, rawReport || null, {
-          disabledCodes: ADVISORY_CHECK_CODES.filter((code) => !advisoryChecks[code]),
+          disabledCodes: disabledAdvisoryCodes(advisoryChecks),
           mapJson
         })
         .then((result) => {
@@ -3541,7 +3540,9 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument, mapJson)
+        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument, mapJson, {
+          disabledCodes: disabledAdvisoryCodes(advisoryChecks)
+        })
         .then((answer) => {
           if (!cancelled) {
             setOrdersPreview(answer);
@@ -3557,7 +3558,10 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument, ruleset, rawReport, rememberedJson, mapJson]);
+    // `advisoryChecks` is in here because a switch turned off must reach the figures at once: the
+    // forecast asks a refusal's question only when its check is on (`ah-7ale.2.2.2`), so without
+    // this the goods would not move until the next keystroke.
+  }, [client, ordersDocument, ruleset, rawReport, rememberedJson, mapJson, advisoryChecks]);
 
   /** The selected unit as the orders leave it, for the unit panel. */
   const unitPreview = useMemo(() => {
@@ -3723,7 +3727,7 @@ export function AppShell({
         writer.markDirty(game, draftKey, pending.text);
 
         const result = await client.validateOrders(pending.text, rulesetText, rawReport || null, {
-          disabledCodes: ADVISORY_CHECK_CODES.filter((code) => !advisoryChecks[code]),
+          disabledCodes: disabledAdvisoryCodes(advisoryChecks),
           mapJson
         });
 
