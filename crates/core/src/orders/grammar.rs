@@ -11,7 +11,7 @@
 //! say", and it accepts anything, including nothing. That is the accept-on-doubt policy made
 //! concrete: a `CAST` whose arguments depend on the spell must not be guessed at.
 
-use super::lexer::{lex_line, Token, TokenKind};
+use super::lexer::{lex_line, lex_line_with_ruleset, Token, TokenKind};
 use crate::movement::graph::Direction;
 use crate::movement::rules::{OrderLanguage, Ruleset};
 
@@ -658,7 +658,7 @@ pub(super) struct Caret {
 /// half-typed word included: the position is worked out from the complete words before it, and the
 /// half-typed word is what the shell filters the answer by.
 pub(super) fn caret_at(line_prefix: &str, ruleset: Option<&Ruleset>) -> Caret {
-    let lexed = lex_line(line_prefix);
+    let lexed = lex_line_with_ruleset(line_prefix, ruleset);
     if lexed.comment.is_some() || lexed.unterminated_quote.is_some() {
         return Caret {
             shape: CaretShape::Nowhere,

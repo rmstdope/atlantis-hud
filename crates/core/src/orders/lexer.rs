@@ -10,8 +10,16 @@
 //! > spaces, the name must be surrounded by double quotes, or else underscore characters must be
 //! > used in place of spaces in the name.
 //!
+//! New Age Trident states the same grammar with one difference, and this module implements that
+//! difference and no more:
+//!
+//! > A semicolon ends whatever word it lands in, so it starts a comment wherever it appears - the
+//! > only place one survives as an ordinary character is inside a quoted name.
+//!
 //! Hand written rather than regex based, for the reason [`crate::report::scan`] gives: the crate has
 //! no regex dependency and is not about to acquire one for this.
+
+use crate::movement::rules::{OrderLanguage, Ruleset};
 
 /// What a token is, as far as splitting the line can tell.
 ///
@@ -89,9 +97,25 @@ impl LexedLine {
     }
 }
 
-/// Splits one line into tokens.
+/// Splits one line into tokens, under the New Origins comment rule.
+///
+/// Kept for callers that have no ruleset in hand; [`lex_line_with_ruleset`] is the world-aware
+/// entry point every reader with a selected game goes through.
 #[must_use]
 pub fn lex_line(line: &str) -> LexedLine {
+    lex_line_with_ruleset(line, None)
+}
+
+/// Splits one line into tokens, under the selected world's comment rule.
+///
+/// Trident's `rules/orders` says a semicolon ends whatever word it lands in, so it starts a comment
+/// wherever it appears; the only place one survives as an ordinary character is inside a quoted
+/// name. New Origins instead keeps a semicolon that is in the middle of a word. The difference is
+/// deliberate and is the whole of what this argument decides.
+#[must_use]
+pub fn lex_line_with_ruleset(line: &str, ruleset: Option<&Ruleset>) -> LexedLine {
+    let semicolon_always_comments = ruleset
+        .is_some_and(|ruleset| ruleset.order_language == OrderLanguage::NewAgeTrident);
     let bytes = line.as_bytes();
     let end = bytes.len();
     let mut lexed = LexedLine::default();
@@ -127,7 +151,7 @@ pub fn lex_line(line: &str) -> LexedLine {
                 at = closing + 1;
             }
             _ => {
-                let (word_end, comment_starts) = scan_word(bytes, at);
+                let (word_end, comment_starts) = scan_word(bytes, at, semicolon_always_comments);
                 let text = &line[at..word_end];
                 lexed.tokens.push(Token {
                     kind: if is_number(text) {
@@ -188,12 +212,15 @@ fn find_byte(bytes: &[u8], from: usize, wanted: u8) -> Option<usize> {
 /// comments the rest, while `friend;ly` is one word with a semicolon in it. The first form appears in
 /// the committed turn 71 report, so reading it as part of the word would invent an error on real
 /// orders.
-fn scan_word(bytes: &[u8], from: usize) -> (usize, bool) {
+fn scan_word(bytes: &[u8], from: usize, semicolon_always_comments: bool) -> (usize, bool) {
     let mut at = from;
     while at < bytes.len() {
         match bytes[at] {
             b' ' | b'\t' | b'\r' => return (at, false),
-            b';' if at + 1 >= bytes.len() || matches!(bytes[at + 1], b' ' | b'\t' | b'\r') => {
+            b';' if semicolon_always_comments
+                || at + 1 >= bytes.len()
+                || matches!(bytes[at + 1], b' ' | b'\t' | b'\r') =>
+            {
                 return (at, true)
             }
             _ => at += 1,
@@ -422,4 +449,89 @@ mod tests {
         assert!(lexed.tokens[0].is("study"));
         assert!(!lexed.tokens[0].is("work"));
     }
+
+    #[test]
+    fn trident_unquoted_semicolons_end_tokens_while_origins_keeps_middle_semicolons() {
+        let origins =
+            crate::movement::rules::Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
+                .expect("the Origins ruleset loads");
+        let trident = crate::movement::rules::Ruleset::from_json(
+            atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        )
+        .expect("the Trident ruleset loads");
+
+        let trident_texts = |line: &str| -> Vec<String> {
+            lex_line_with_ruleset(line, Some(&trident))
+                .tokens
+                .into_iter()
+                .map(|token| token.text)
+                .collect::<Vec<_>>()
+        };
+        let origins_texts = |line: &str| -> Vec<String> {
+            lex_line_with_ruleset(line, Some(&origins))
+                .tokens
+                .into_iter()
+                .map(|token| token.text)
+                .collect::<Vec<_>>()
+        };
+
+        // A keyword, a number and an item tag each terminate at the semicolon in Trident.
+        assert_eq!(trident_texts("WORK;note"), ["WORK"]);
+        assert_eq!(trident_texts("GUARD 1;note"), ["GUARD", "1"]);
+        assert_eq!(
+            trident_texts("GIVE 42 1 SILV;note"),
+            ["GIVE", "42", "1", "SILV"]
+        );
+        assert_eq!(trident_texts("unit 42;note"), ["unit", "42"]);
+        assert_eq!(trident_texts("#end;note"), ["#end"]);
+
+        // The number is still a number, not a word ending in a semicolon.
+        let lexed = lex_line_with_ruleset("GUARD 1;note", Some(&trident));
+        assert_eq!(lexed.tokens[1].kind, TokenKind::Number);
+        assert_eq!(lexed.comment, Some((7, "GUARD 1;note".len())));
+
+        // The @ prefix survives, and the comment after it is still a comment.
+        let repeating = lex_line_with_ruleset("@WORK;note", Some(&trident));
+        assert!(repeating.repeat);
+        assert_eq!(
+            repeating
+                .tokens
+                .iter()
+                .map(|token| token.text.clone())
+                .collect::<Vec<_>>(),
+            ["WORK"]
+        );
+
+        // A semicolon inside a quoted name is an ordinary character in both worlds.
+        assert_eq!(
+            trident_texts("NAME UNIT \"A;B\""),
+            ["NAME", "UNIT", "A;B"]
+        );
+        assert_eq!(
+            origins_texts("NAME UNIT \"A;B\""),
+            ["NAME", "UNIT", "A;B"]
+        );
+
+        // Whitespace before the semicolon behaves the same in both worlds.
+        assert_eq!(trident_texts("WORK ;note"), ["WORK"]);
+        assert_eq!(origins_texts("WORK ;note"), ["WORK"]);
+
+        // The Origins regression control: a middle-of-word semicolon stays in the word.
+        assert_eq!(origins_texts("WORK;note"), ["WORK;note"]);
+        assert_eq!(origins_texts("GIVE 42 1 SILV;note"), ["GIVE", "42", "1", "SILV;note"]);
+        assert_eq!(lex_line("WORK;note").tokens[0].text, "WORK;note");
+
+        // UTF-16 spans survive the new branch: the comment starts after a non-ASCII word.
+        let non_ascii = lex_line_with_ruleset("NAME UNIT Mörk;note", Some(&trident));
+        assert_eq!(
+            non_ascii.comment,
+            Some((14, "NAME UNIT Mörk;note".encode_utf16().count()))
+        );
+        assert_eq!(non_ascii.tokens[2].text, "Mörk");
+        assert_eq!(
+            (non_ascii.tokens[2].column_start, non_ascii.tokens[2].column_end),
+            (10, 14)
+        );
+    }
+
 }
