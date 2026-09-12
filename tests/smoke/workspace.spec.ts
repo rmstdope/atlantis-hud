@@ -5566,3 +5566,69 @@ test("a route through a passage stops at the structure and says why", async ({ p
     "no report says where that passage comes out, so the 2 steps after it cannot be placed on the map"
   );
 });
+
+/**
+ * ah-3u7c.2.2: once one of our own units has gone through a passage and the next turn's report put
+ * it somewhere else, the passage is known, and a route through it carries on where it comes out.
+ *
+ * No committed pair of consecutive turns carries a structure with an inner location, so the pair
+ * is made here from `g3f42t40`/`g3f42t41` by turning the one Fort line into a Shaft. Unit 5480
+ * stands beside it in turn 40 and is in `mountain (35,5)` in turn 41; unit 1162 is still there.
+ */
+test("a route through a known passage carries on where it comes out", async ({ page }) => {
+  const FORT = "\n+ Building [1] : Fort.\n";
+  const SHAFT = "\n+ Building [1] : Shaft, contains an inner location.\n";
+  const passageT40 = F42_T40.replace(FORT, SHAFT);
+  const passageT41 = F42_T41.replace(FORT, SHAFT);
+  expect(passageT40).not.toBe(F42_T40);
+  expect(passageT41).not.toBe(F42_T41);
+
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Known passage game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await importReport(page, "turn-40.rep", passageT40);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  // The turn-40 draft is the crossing being ordered.
+  await selectHex(page, "1:36,4");
+  await selectUnit(page, "5480");
+  await fillOrders(page, "MOVE 1 IN");
+  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+
+  // Turn 41 is the crossing answered.
+  await importReport(page, "turn-41.rep", passageT41);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await selectHex(page, "1:36,4");
+  await selectUnit(page, "1162");
+  await fillOrders(page, "MOVE 1 IN NW");
+
+  const entry = page.getByTestId("map-passage-entry-ring");
+  await expect(entry).toHaveCount(1);
+  await expect(entry.locator("title")).toHaveText(
+    "Through the passage in Building [1]\nComes out in mountain (35,5). Costs 2 movement points, the cost of entering that mountain."
+  );
+  const exit = page.getByTestId("map-passage-exit-ring");
+  await expect(exit).toHaveCount(1);
+  await expect(exit.locator("title")).toHaveText(
+    "Out of the passage from Building [1]\nOn the surface, in mountain (36,4). The journey carries on from here."
+  );
+  await expect(page.getByTestId("map-passage-ring")).toHaveCount(0);
+
+  // The crossing spends the walker's month, so the step beyond it is next month's; nothing joins
+  // the two ends.
+  await expect(page.getByTestId("route-line-beyond-dotted")).not.toHaveCount(0);
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
+
+  // The rings prove only that the trace answered. A line the checker refuses outright proves the
+  // checks have answered for this document too, so the missing warning is an answer, not a race.
+  await fillOrders(page, "MOVE 1 IN NW\nFLY");
+  await expect(page.getByTestId("orders-diagnostics")).toContainText("unknown order command: FLY");
+  await expect(
+    page.getByTestId("orders-diagnostics").locator('[data-code="passage-with-no-known-exit"]')
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("region-problems").locator('[data-code="passage-with-no-known-exit"]')
+  ).toHaveCount(0);
+});

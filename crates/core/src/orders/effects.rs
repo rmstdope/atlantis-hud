@@ -679,6 +679,7 @@ pub fn preview_orders_for_remembered_report(
         remembered_json,
         orders_document,
         "",
+        "",
         super::semantics::CheckOptions::default(),
     )
 }
@@ -694,6 +695,9 @@ pub fn preview_orders_for_remembered_report(
 /// # Errors
 ///
 /// As [`preview_orders_for_remembered_report`], plus an error when the map shape cannot be read.
+// Eight, for the same reason as `trace_orders_on_map`: each document the screen holds crosses as
+// its own text, beside the options the forecast reads (`ah-3u7c.2.2`).
+#[allow(clippy::too_many_arguments)]
 pub fn preview_orders_on_map(
     cache: &mut ReportCache,
     ruleset_json: &str,
@@ -701,6 +705,7 @@ pub fn preview_orders_on_map(
     remembered_json: &str,
     orders_document: &str,
     map_json: &str,
+    passages_json: &str,
     options: super::semantics::CheckOptions,
 ) -> Result<OrdersPreviewResponse, String> {
     use crate::movement::graph::MapKnowledge;
@@ -720,7 +725,11 @@ pub fn preview_orders_on_map(
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
-    let map = MapKnowledge::from_remembered(&report, &remembered).with_geometry(geometry);
+    let map = MapKnowledge::from_remembered(&report, &remembered)
+        .with_geometry(geometry)
+        .with_passages(crate::movement::passages::known_passages_from_json(
+            passages_json,
+        )?);
     // Where each unit stands once its own ENTER/LEAVE have run: `entry.unit` is already corrected
     // (see `Working::visit`), but the map and the aboard set it is compared against are the
     // report's, so the correction was thrown away one call later. `Working` applies the same
@@ -799,10 +808,16 @@ pub fn preview_orders_on_map(
                         None => status = UnitPreviewStatus::Departing,
                     }
 
-                    // Through a passage: where the month ends is not on any map we have, so this
-                    // is a departure with no destination to name. The dock draws `→ …` for exactly
-                    // this, the same way it does for a passenger of an untraceable ship.
-                    if path.passage.is_some() {
+                    // Through a passage nobody has proved the far side of: where the month ends is
+                    // not on any map we have, so this is a departure with no destination to name.
+                    // The dock draws `→ …` for exactly this, the same way it does for a passenger
+                    // of an untraceable ship. A passage the faction *has* proved is named like any
+                    // other journey - the months already run across the crossing (`ah-3u7c.2.2`).
+                    if path
+                        .passage
+                        .as_ref()
+                        .is_some_and(|passage| passage.exit.is_none())
+                    {
                         status = UnitPreviewStatus::Departing;
                         arrival = None;
                     }
@@ -3539,6 +3554,7 @@ mod tests {
             &report(),
             "[]",
             orders,
+            "",
             "",
             options,
         )
@@ -10131,6 +10147,7 @@ mod tests {
             "[]",
             orders,
             map_json,
+            "",
             super::super::semantics::CheckOptions::default(),
         )
         .expect("the ruleset loads")
@@ -10150,6 +10167,7 @@ mod tests {
             "[]",
             orders,
             map_json,
+            "",
             options,
         )
         .expect("the ruleset loads")

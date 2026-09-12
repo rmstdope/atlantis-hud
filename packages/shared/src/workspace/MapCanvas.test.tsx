@@ -164,7 +164,8 @@ function drawWithRoute(): string {
         origin: { x: 7, y: 53, z: 1 },
         hexes: [{ x: 7, y: 51, z: 1 }],
         solidSteps: 1,
-        passage: null
+        passage: null,
+        beyond: null
       }}
       routeRisk={[
         {
@@ -659,8 +660,11 @@ function drawWithPassage(level: number, passageLevel: number): string {
         passage: {
           coordinate: { x: 7, y: 53, z: passageLevel },
           structure: "Shaft [3]",
-          stepsAfter: 2
-        }
+          stepsAfter: 2,
+          terrain: "mountain",
+          exit: null
+        },
+        beyond: null
       }}
     />
   );
@@ -685,5 +689,74 @@ describe("the mark where a route ran into an inner passage", () => {
 
   it("is not drawn on another level", () => {
     expect(drawWithPassage(1, 2)).not.toContain('data-testid="map-passage-ring"');
+  });
+});
+
+/** The same map with a route through a passage the faction has proved, drawn at `level`. */
+function drawWithKnownPassage(level: number): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={model}
+      theme={probe()}
+      level={level}
+      selectedRegionId={null}
+      selectionEpoch={0}
+      pickEpoch={0}
+      onSelectRegion={() => {}}
+      showStaleness
+      showTextures={false}
+      badges={allBadges(true)}
+      route={{
+        origin: { x: 7, y: 53, z: 1 },
+        hexes: [],
+        solidSteps: 0,
+        passage: {
+          coordinate: { x: 7, y: 53, z: 1 },
+          structure: "Shaft [3]",
+          stepsAfter: 0,
+          terrain: "mountain",
+          exit: {
+            coordinate: { x: 12, y: 34, z: 2 },
+            terrain: "cavern",
+            cost: 2,
+            steps: []
+          }
+        },
+        beyond: { origin: { x: 12, y: 34, z: 2 }, hexes: [{ x: 13, y: 34, z: 2 }], solidSteps: 0 }
+      }}
+    />
+  );
+}
+
+describe("the matched pair of rings on a passage the faction has proved", () => {
+  it("draws each end on its own level, and never the question mark", () => {
+    const surface = drawWithKnownPassage(1);
+
+    expect(surface).toContain('data-testid="map-passage-entry-ring"');
+    expect(surface).not.toContain('data-testid="map-passage-exit-ring"');
+    expect(surface).not.toContain('data-testid="map-passage-ring"');
+    expect(surface).toContain("Through the passage in Shaft [3]");
+    expect(surface).toContain("Comes out in cavern (12,34), in the underworld.");
+    expect(surface).toContain("Costs 2 movement points, the cost of entering that cavern.");
+
+    const underworld = drawWithKnownPassage(2);
+
+    expect(underworld).toContain('data-testid="map-passage-exit-ring"');
+    expect(underworld).not.toContain('data-testid="map-passage-entry-ring"');
+    expect(underworld).toContain("Out of the passage from Shaft [3]");
+    expect(underworld).toContain("On the surface, in mountain (7,53).");
+  });
+
+  it("draws the far half on the level it comes out on, and not on the entry level", () => {
+    expect(drawWithKnownPassage(2)).toContain('data-testid="route-line-beyond-dotted"');
+    expect(drawWithKnownPassage(1)).not.toContain("route-line-beyond");
+  });
+
+  it("draws neither end on a level holding neither", () => {
+    const elsewhere = drawWithKnownPassage(3);
+
+    expect(elsewhere).not.toContain("map-passage-entry-ring");
+    expect(elsewhere).not.toContain("map-passage-exit-ring");
   });
 });

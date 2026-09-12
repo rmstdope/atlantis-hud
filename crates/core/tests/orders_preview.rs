@@ -450,3 +450,54 @@ fn a_passage_after_a_step_still_departs_to_nowhere_nameable() {
         "the month ends beyond the passage, which no report names"
     );
 }
+
+/// The dock names the destination again once a report has proved where the passage comes out
+/// (`ah-3u7c.2.2`): the unit departs to that hex and appears there as an arriving row.
+#[test]
+fn a_unit_through_a_known_passage_arrives_where_it_comes_out() {
+    let mut report = String::from("Foo (1) Report\n\n");
+    report.push_str("plain (1,1) in Inland, 10 peasants (orcs), $5.\n\n");
+    report.push_str("Exits:\n  Southeast : plain (2,2) in Inland.\n\n");
+    report.push_str("+ Shaft [3] : Shaft, contains an inner location.\n");
+    report.push_str(
+        "  * Walker (900), Foo (1), sharing, man [MAN]. Weight: 10. \
+         Capacity: 0/0/15/0. Skills: none.\n\n",
+    );
+    report.push_str("plain (2,2) in Inland, 10 peasants (orcs), $5.\n\n");
+    report.push_str("Exits:\n  Northwest : plain (1,1) in Inland.\n");
+
+    let response = atlantis_hud_core::orders::effects::preview_orders_on_map(
+        &mut ReportCache::new(),
+        RULESET,
+        &report,
+        "[]",
+        "unit 900\nMOVE 3 IN\n",
+        "",
+        r#"[{"entry":{"x":1,"y":1,"z":1},"structureId":"3","structure":"Shaft [3]",
+            "destination":{"x":2,"y":2,"z":1},"destinationTerrain":"plain","learnedInTurn":40}]"#,
+        atlantis_hud_core::orders::semantics::CheckOptions::default(),
+    )
+    .expect("the ruleset loads");
+
+    let unit = response
+        .regions
+        .iter()
+        .flat_map(|region| &region.units)
+        .find(|unit| unit.unit.unit_id == "900" && unit.status == UnitPreviewStatus::Departing)
+        .expect("the unit that got the orders");
+    assert_eq!(
+        unit.departing_to.as_deref(),
+        Some("1:2,2"),
+        "the hex the passage comes out in, named"
+    );
+
+    assert!(
+        response
+            .regions
+            .iter()
+            .filter(|region| region.region_id == "1:2,2")
+            .flat_map(|region| &region.units)
+            .any(|unit| unit.unit.unit_id == "900" && unit.status == UnitPreviewStatus::Arriving),
+        "and it arrives there"
+    );
+}

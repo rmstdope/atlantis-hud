@@ -22,6 +22,22 @@ export type RouteOverlay = {
    * routes over country the faction has seen and never proposes a passage.
    */
   passage: TracedPassage | null;
+  /**
+   * The journey past a passage whose far side is known, or null. Never joined to the near half by
+   * a line: the two ends can be one hex apart on the same level, and a line between them would
+   * cross country the unit never enters (`ah-3u7c.2.2`).
+   */
+  beyond: RouteBeyond | null;
+};
+
+/** The half of a journey beyond a followed passage, drawn on the destination's own level. */
+export type RouteBeyond = {
+  /** The destination hex, where the far-side ring sits and the far line starts. */
+  origin: Coordinate;
+  /** The hexes entered beyond it, in order. */
+  hexes: Coordinate[];
+  /** How many of them the coming month covers; null when the unit's speed is unknown. */
+  solidSteps: number | null;
 };
 
 /**
@@ -52,7 +68,8 @@ export function chooseRouteOverlay(input: {
       // The planner only ever proposes what it can stand behind, so its preview stays one solid
       // line exactly as it always was; the month split belongs to written orders.
       solidSteps: input.plan.steps.length,
-      passage: null
+      passage: null,
+      beyond: null
     };
   }
 
@@ -62,14 +79,24 @@ export function chooseRouteOverlay(input: {
   // The solid line reaches as far as the coming month does - but never past a step the game
   // would refuse. A walker ordered to sea sees its whole crossing dotted, whatever the month
   // arithmetic says: doubt trumps timing.
+  //
+  // The month's own count runs across a followed crossing, which counts as one step of it
+  // (`ah-3u7c.2.2`), so the reach is split between the two halves rather than applied twice.
   const monthReach = input.trace.months[0]?.steps ?? 0;
+  const reach = Math.min(monthReach, input.trace.blockedFrom ?? monthReach);
+  const near = input.trace.steps.length;
+  const exit = input.trace.passage?.exit ?? null;
   return {
     origin: input.trace.from,
     hexes: input.trace.steps.map((step) => step.to),
-    solidSteps:
-      input.trace.mode === null
-        ? null
-        : Math.min(monthReach, input.trace.blockedFrom ?? monthReach),
-    passage: input.trace.passage
+    solidSteps: input.trace.mode === null ? null : Math.min(reach, near),
+    passage: input.trace.passage,
+    beyond: exit
+      ? {
+          origin: exit.coordinate,
+          hexes: exit.steps.map((step) => step.to),
+          solidSteps: input.trace.mode === null ? null : Math.max(0, reach - near - 1)
+        }
+      : null
   };
 }

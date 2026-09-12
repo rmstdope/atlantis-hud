@@ -652,6 +652,141 @@ fn a_move_into_a_structure_by_its_number_is_still_free_and_invisible() {
     }
 }
 
+// ------------------- a passage the faction has proved the far side of (ah-3u7c.2.2)
+
+/// `Shaft [3]` in `plain (1,1)` comes out in a mountain hex two levels down, as the screen's own
+/// memory would hand it over.
+fn known_shaft() -> String {
+    r#"[{"entry":{"x":1,"y":1,"z":1},"structureId":"3","structure":"Shaft [3]",
+        "destination":{"x":5,"y":5,"z":3},"destinationTerrain":"mountain","learnedInTurn":40}]"#
+        .to_string()
+}
+
+/// Traces one unit's orders over the shaft report, told what the faction has learned.
+fn trace_in_shaft_knowing(
+    passages_json: &str,
+    unit_id: &str,
+    orders: &str,
+) -> MoveOrderTraceResponse {
+    atlantis_hud_core::movement::request::trace_orders_on_map(
+        &mut ReportCache::new(),
+        RULESET,
+        &report_with_a_shaft(),
+        "[]",
+        unit_id,
+        &document(unit_id, orders),
+        "",
+        passages_json,
+    )
+    .expect("the ruleset loads")
+}
+
+/// The far hex, two levels down.
+fn far() -> atlantis_hud_core::report::model::Coordinate {
+    atlantis_hud_core::report::model::Coordinate { x: 5, y: 5, z: 3 }
+}
+
+/// State 3: the journey carries on where the passage comes out.
+#[test]
+fn a_known_passage_carries_the_journey_on_where_it_comes_out() {
+    let path = trace_in_shaft_knowing(&known_shaft(), "900", "MOVE IN SE")
+        .path
+        .expect("a traced path");
+
+    assert!(path.steps.is_empty(), "nothing is drawn before the passage");
+    let passage = path.passage.expect("the passage the route followed");
+    assert_eq!(passage.coordinate, at(1, 1));
+    assert_eq!(passage.terrain, "plain", "the entry hex's own terrain");
+    assert_eq!(passage.steps_after, 0, "the tail is drawn, not dropped");
+
+    let exit = passage.exit.expect("the far side");
+    assert_eq!(exit.coordinate, far());
+    assert_eq!(exit.terrain, "mountain");
+    assert_eq!(exit.steps.len(), 1, "the SE beyond is drawn from there");
+    assert_eq!(exit.steps[0].to.z, 3, "on the destination's own level");
+}
+
+/// `rules/tableitemweights`: "the movement point cost is equal to the normal cost to enter the
+/// destination region", and mountain costs two to enter for a walker.
+#[test]
+fn a_crossing_is_priced_at_the_cost_of_entering_the_destination() {
+    // `rules/tableitemweights`: "the following terrain types take two movement points for riding
+    // or walking units to enter: Forest, Mountain, Swamp, Jungle, and Tundra".
+    let expected = 2;
+
+    let path = trace_in_shaft_knowing(&known_shaft(), "900", "MOVE IN")
+        .path
+        .expect("a traced path");
+    let exit = path.passage.expect("a passage").exit.expect("a far side");
+    assert_eq!(exit.cost, expected);
+}
+
+/// State 8: timing and knowledge stack. A walker has two movement points a month and the crossing
+/// into mountain spends both, so the step beyond it is next month's.
+#[test]
+fn the_month_split_runs_across_the_crossing() {
+    let path = trace_in_shaft_knowing(&known_shaft(), "900", "MOVE IN SE")
+        .path
+        .expect("a traced path");
+
+    assert_eq!(path.months.len(), 2, "the crossing fills the first month");
+    assert_eq!(path.months[0].steps, 1, "the crossing itself");
+    assert_eq!(path.months[1].steps, 1, "the step beyond is next month's");
+}
+
+/// State 4 one link along: the first passage is followed, and a second one in the tail is not.
+#[test]
+fn a_second_passage_in_the_tail_is_not_followed() {
+    let path = trace_in_shaft_knowing(&known_shaft(), "900", "MOVE IN SE IN SE")
+        .path
+        .expect("a traced path");
+
+    let passage = path.passage.expect("a passage");
+    let exit = passage.exit.expect("a far side");
+    assert_eq!(exit.steps.len(), 1, "the SE beyond, and no further");
+    assert_eq!(
+        passage.steps_after, 2,
+        "the second IN and the SE after it could not be placed"
+    );
+}
+
+/// A map told nothing answers exactly what `ah-3u7c.1` pins.
+#[test]
+fn an_unknown_passage_is_untouched() {
+    for passages in ["", "[]"] {
+        let path = trace_in_shaft_knowing(passages, "900", "MOVE IN SE")
+            .path
+            .expect("a traced path");
+        let passage = path.passage.expect("a passage");
+        assert_eq!(passage.exit, None, "{passages}");
+        assert_eq!(passage.steps_after, 1, "{passages}");
+        assert!(path.steps.is_empty(), "{passages}");
+    }
+}
+
+/// The wire contract for the far side: the screen reads `passage.exit.coordinate` and
+/// `passage.terrain`.
+#[test]
+fn the_serde_shape_of_a_followed_passage() {
+    let answer = trace_in_shaft_knowing(&known_shaft(), "900", "MOVE IN SE");
+    let json = serde_json::to_value(&answer).expect("serializes");
+
+    let passage = &json["path"]["passage"];
+    assert_eq!(passage["terrain"], "plain");
+    let exit = &passage["exit"];
+    assert_eq!(exit["terrain"], "mountain");
+    assert_eq!(exit["cost"], 2);
+    assert_eq!(exit["coordinate"]["z"], 3);
+    assert!(exit["steps"].is_array());
+
+    let unknown =
+        serde_json::to_value(trace_in_shaft_knowing("", "900", "MOVE IN SE")).expect("serializes");
+    assert!(
+        unknown["path"]["passage"]["exit"].is_null(),
+        "no proof, null"
+    );
+}
+
 /// The wire contract for the new field: TypeScript reads `passage.stepsAfter`, the way it reads
 /// `blockedFrom`.
 #[test]

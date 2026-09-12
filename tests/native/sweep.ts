@@ -136,7 +136,8 @@ export const SWEEP: SweepEntry[] = [
       unit_id: "18642",
       // The whole document, not one unit's block: a passenger's route is the hull's (ah-048).
       orders_document: "unit 18642\nMOVE N",
-      map_json: MAP
+      map_json: MAP,
+      passages_json: "[]"
     })
   },
   {
@@ -182,6 +183,7 @@ export const SWEEP: SweepEntry[] = [
       remembered_json: "[]",
       orders_document: "unit 18642\nGUARD 1",
       map_json: MAP,
+      passages_json: "[]",
       disabled_codes: []
     })
   },

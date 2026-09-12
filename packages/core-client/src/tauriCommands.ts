@@ -55,7 +55,8 @@ export const TAURI_COMMANDS = {
     "ruleset_json",
     "raw_report",
     "disabled_codes",
-    "map_json"
+    "map_json",
+    "known_passages_json"
   ],
   orderCommands: ["order_commands", "ruleset_json"],
   orderVocabulary: ["order_vocabulary", "ruleset_json"],
@@ -89,7 +90,8 @@ export const TAURI_COMMANDS = {
     "remembered_json",
     "unit_id",
     "orders_document",
-    "map_json"
+    "map_json",
+    "passages_json"
   ],
   exportMap: ["export_map", "raw_report", "remembered_json", "request_json"],
   exportMageSheet: ["export_mage_sheet", "raw_report", "unit_ids_json"],
@@ -101,6 +103,7 @@ export const TAURI_COMMANDS = {
     "remembered_json",
     "orders_document",
     "map_json",
+    "passages_json",
     "disabled_codes"
   ],
   tradeRoutes: ["trade_routes", "ruleset_json", "raw_report", "remembered_json", "map_json"],

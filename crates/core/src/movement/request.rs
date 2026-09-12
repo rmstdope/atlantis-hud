@@ -200,6 +200,7 @@ pub fn trace_orders_for_remembered_report(
         unit_id,
         orders_document,
         "",
+        "",
     )
 }
 
@@ -210,7 +211,12 @@ pub fn trace_orders_for_remembered_report(
 ///
 /// # Errors
 ///
-/// As [`trace_orders_for_remembered_report`], plus an error when the map shape cannot be read.
+/// As [`trace_orders_for_remembered_report`], plus an error when the map shape or the passages the
+/// faction has proved cannot be read.
+// Eight, because each of the three documents the screen holds - the remembered map, the game's own
+// shape, and the passages it has proved - crosses as its own text rather than being bundled into a
+// struct that every caller would then have to build (`ah-3u7c.2.2`).
+#[allow(clippy::too_many_arguments)]
 pub fn trace_orders_on_map(
     cache: &mut ReportCache,
     ruleset_json: &str,
@@ -219,6 +225,7 @@ pub fn trace_orders_on_map(
     unit_id: &str,
     orders_document: &str,
     map_json: &str,
+    passages_json: &str,
 ) -> Result<MoveOrderTraceResponse, String> {
     use crate::movement::fleet::{steps_followed_by, OrderedUnits};
     use crate::movement::graph::MapKnowledge;
@@ -255,7 +262,10 @@ pub fn trace_orders_on_map(
     };
 
     let map = MapKnowledge::from_remembered(&report, &remembered)
-        .with_geometry(crate::movement::graph::geometry_from_json(map_json)?);
+        .with_geometry(crate::movement::graph::geometry_from_json(map_json)?)
+        .with_passages(crate::movement::passages::known_passages_from_json(
+            passages_json,
+        )?);
     Ok(MoveOrderTraceResponse {
         path: trace_move(&map, &ruleset, &unit, steps, Some(&ordered)),
     })

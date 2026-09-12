@@ -19,7 +19,7 @@ use crate::movement::mode::{
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{
     base_terrain_cost, blocks, constrains_departure, leaving_land, refused_by_sailing_step,
-    split_into_months, step_cost, Hull, Isthmus, Journey, MonthLeg, RouteStep,
+    split_costs, step_cost, Hull, Isthmus, Journey, MonthLeg, RouteStep,
 };
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::ReportUnit;
@@ -59,6 +59,30 @@ pub struct TracedPassage {
     pub structure: String,
     /// Ordered steps after the passage that could not be placed.
     pub steps_after: usize,
+    /// The entry hex's own terrain, so the far-side ring can name where the journey came from
+    /// without the screen looking the hex up on a level it is not showing.
+    pub terrain: String,
+    /// Where the passage comes out and what the journey does there, when the faction has proved
+    /// it. `None` is the unknown case: the route stops, and `steps_after` says what was dropped.
+    pub exit: Option<TracedPassageExit>,
+}
+
+/// The far side of a passage the faction has crossed, and the journey that carries on there.
+///
+/// `rules/tableitemweights`: "the movement point cost is equal to the normal cost to enter the
+/// destination region", which is what `cost` is - `base_terrain_cost` for the destination's terrain
+/// and this journey's mode, never halved by a road and never zero.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TracedPassageExit {
+    /// The hex the unit comes out in, which is where the far-side mark belongs.
+    pub coordinate: crate::report::model::Coordinate,
+    /// That hex's terrain, from the map where it describes the hex and from the memory otherwise.
+    pub terrain: String,
+    /// What the crossing costs: the cost of entering that region.
+    pub cost: u32,
+    /// The journey beyond, walked from the destination. Drawn on the destination's own level.
+    pub steps: Vec<RouteStep>,
 }
 
 /// Walks a MOVE order from where the unit stands.
@@ -99,22 +123,147 @@ pub fn trace_move(
     let journey =
         mode.map(|mode| Journey::enforced(mode, hull).with_swim(swim_ability(unit, ruleset)));
 
+    // `IN` is travel through an inner passage to another region (`rules/move`, 4). Where the
+    // faction has proved where one comes out the journey carries on there (`ah-3u7c.2.2`);
+    // otherwise everything ordered after it is drawn nowhere rather than drawn from the hex the
+    // unit has just left.
+    let ordered_passage = first_passage(unit.structure_id.as_deref(), steps);
+    let near_steps = ordered_passage
+        .as_ref()
+        .map_or(steps, |passage| &steps[..passage.before]);
+
+    let near = walk(map, ruleset, journey, from, &origin.terrain, near_steps);
+
+    // The structure is resolved against the hex the near walk finished in. Where the order named
+    // none, the hex was never visited, or no structure there carries that id, nothing is claimed
+    // about why the route is short - `accept on doubt`.
+    let followed = ordered_passage.and_then(|ordered| {
+        let structure_id = ordered.structure_id.clone()?;
+        let structure = map
+            .hex(near.position)?
+            .structures
+            .iter()
+            .find(|structure| structure.structure_id == structure_id)?;
+        let structure = crate::report::model::numbered_structure_label(structure);
+
+        let crossed = map.passage(near.position, &structure_id).map(|known| {
+            // The map is this turn's word and the memory an older turn's, so the map wins wherever
+            // it describes the destination at all.
+            let terrain = map.hex(known.destination).map_or_else(
+                || known.destination_terrain.clone(),
+                |hex| hex.terrain.clone(),
+            );
+            // A second `IN` in the tail is not followed: the tail's walk stops at it exactly as the
+            // near walk stopped at this one, and what is left counts as steps that could not be
+            // placed.
+            let tail = &steps[ordered.before + 1..];
+            let stopped_at = tail
+                .iter()
+                .position(|step| matches!(step, MoveStep::In))
+                .unwrap_or(tail.len());
+            let beyond = walk(
+                map,
+                ruleset,
+                journey,
+                known.destination,
+                &terrain,
+                &tail[..stopped_at],
+            );
+            let steps_after = tail[stopped_at..]
+                .iter()
+                .filter(|step| matches!(step, MoveStep::Go(_) | MoveStep::In))
+                .count();
+
+            let exit = TracedPassageExit {
+                coordinate: known.destination,
+                cost: journey.map_or(0, |journey| {
+                    base_terrain_cost(ruleset, journey.mode, &terrain)
+                }),
+                terrain,
+                steps: beyond.route,
+            };
+            (exit, beyond.blocked_from, steps_after)
+        });
+
+        let (exit, beyond_blocked, steps_after) = match crossed {
+            Some((exit, blocked, after)) => (Some(exit), blocked, after),
+            None => (None, None, ordered.steps_after),
+        };
+
+        Some((
+            TracedPassage {
+                coordinate: near.position,
+                structure,
+                steps_after,
+                terrain: near.terrain.clone(),
+                exit,
+            },
+            beyond_blocked,
+        ))
+    });
+    let (passage, beyond_blocked) = match followed {
+        Some((passage, blocked)) => (Some(passage), blocked),
+        None => (None, None),
+    };
+
+    // Counted over the whole journey: the steps before the passage, then the crossing, then the
+    // steps beyond. The crossing itself is never the blocked step - a passage's far side is a
+    // region the game itself puts the unit in, so there is no terrain test to fail.
+    let blocked_from = near
+        .blocked_from
+        .or_else(|| beyond_blocked.map(|index| near.route.len() + 1 + index));
+
+    // The month split runs across the crossing, so a unit cannot cross a passage for free in a
+    // month it could not afford.
+    let mut arrivals: Vec<(u32, crate::report::model::Coordinate)> =
+        near.route.iter().map(|step| (step.cost, step.to)).collect();
+    if let Some(exit) = passage.as_ref().and_then(|passage| passage.exit.as_ref()) {
+        arrivals.push((exit.cost, exit.coordinate));
+        arrivals.extend(exit.steps.iter().map(|step| (step.cost, step.to)));
+    }
+    let months = mode_and_points.map_or_else(Vec::new, |(_, points_per_month)| {
+        split_costs(points_per_month, from, &arrivals)
+    });
+
+    Some(TracedPath {
+        from,
+        steps: near.route,
+        months,
+        mode,
+        blocked_from,
+        passage,
+    })
+}
+
+/// What one walk of a run of ordered steps produced.
+struct Walked {
+    route: Vec<RouteStep>,
+    position: crate::report::model::Coordinate,
+    terrain: String,
+    blocked_from: Option<usize>,
+}
+
+/// Walks a run of ordered steps from one hex, exactly as a whole order used to be walked.
+///
+/// Run once over the steps before a passage and again, from the far side, over the steps after a
+/// passage the faction has proved (`ah-3u7c.2.2`). The two halves are drawn on their own levels
+/// and are never joined by a line.
+fn walk(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    journey: Option<Journey>,
+    from: crate::report::model::Coordinate,
+    from_terrain: &str,
+    steps: &[MoveStep],
+) -> Walked {
     let mut position = from;
-    let mut terrain = origin.terrain.clone();
+    let mut terrain = from_terrain.to_string();
     let mut route = Vec::new();
     let mut blocked_from = None;
     // `None` for the hex the order starts in: "Ships ending their movement in a land hex may sail
     // out along any side connecting to water", so the first step is a departure, never a
-    // through-pass.
+    // through-pass. A unit stepping out of a passage entered its hex by no side either.
     let mut entered_by: Option<Direction> = None;
-
-    // `IN` is travel through an inner passage to another region (`rules/move`, 4), and no report
-    // anywhere says which region that is - so everything ordered after it is drawn nowhere rather
-    // than drawn from the hex the unit has just left.
-    let ordered_passage = first_passage(unit.structure_id.as_deref(), steps);
-    let steps = ordered_passage
-        .as_ref()
-        .map_or(steps, |passage| &steps[..passage.before]);
 
     for step in steps {
         let MoveStep::Go(direction) = step else {
@@ -195,36 +344,12 @@ pub fn trace_move(
         terrain = next_terrain;
     }
 
-    let months = mode_and_points.map_or_else(Vec::new, |(_, points_per_month)| {
-        split_into_months(points_per_month, from, &route)
-    });
-
-    // The structure is resolved against the hex the loop finished in. Where the order named none,
-    // the hex was never visited, or no structure there carries that id, nothing is claimed about
-    // why the route is short - `accept on doubt`.
-    let passage = ordered_passage.and_then(|passage| {
-        let structure_id = passage.structure_id?;
-        let structure = map
-            .hex(position)?
-            .structures
-            .iter()
-            .find(|structure| structure.structure_id == structure_id)?;
-
-        Some(TracedPassage {
-            coordinate: position,
-            structure: crate::report::model::numbered_structure_label(structure),
-            steps_after: passage.steps_after,
-        })
-    });
-
-    Some(TracedPath {
-        from,
-        steps: route,
-        months,
-        mode,
+    Walked {
+        route,
+        position,
+        terrain,
         blocked_from,
-        passage,
-    })
+    }
 }
 
 #[cfg(test)]

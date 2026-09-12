@@ -118,3 +118,42 @@ fn has_an_inner_location(structure: &crate::report::model::Structure) -> bool {
         .iter()
         .any(|qualifier| qualifier.eq_ignore_ascii_case("contains an inner location"))
 }
+
+/// Where an inner passage comes out, proved by one of our own units going through it.
+///
+/// The screen learns these (`passageMemory.ts`) and hands them back to every call that has to draw
+/// or price a journey. The core never guesses one: a passage the faction has not crossed is absent
+/// here, and absent is the unknown case `ah-3u7c.1` draws.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "KnownPassage.ts"))]
+pub struct KnownPassage {
+    /// The hex the passage is entered from.
+    pub entry: Coordinate,
+    /// The structure's number as the report writes it, unique only within `entry`.
+    pub structure_id: String,
+    /// The structure as a sentence points at one: `Shaft [3]`.
+    pub structure: String,
+    /// The hex the unit came out in.
+    pub destination: Coordinate,
+    /// The destination's terrain as the report that proved it wrote it, so the crossing can be
+    /// priced even for a hex this turn's map has never described.
+    pub destination_terrain: String,
+    /// The turn whose report proved it. Carried for the screen; nothing in the core reads it.
+    pub learned_in_turn: u32,
+}
+
+/// Every passage a caller has learned, read from the JSON the screen sends.
+///
+/// An empty or whitespace-only document is nothing known rather than an error, exactly as
+/// `remembered_json`'s `"[]"` and `map_json`'s `""` are.
+///
+/// # Errors
+///
+/// Returns an error when the document is present and cannot be read.
+pub fn known_passages_from_json(json: &str) -> Result<Vec<KnownPassage>, String> {
+    if json.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_str(json).map_err(|error| format!("known passages could not be read: {error}"))
+}

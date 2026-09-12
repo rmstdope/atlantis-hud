@@ -470,6 +470,7 @@ pub mod commands {
         raw_report: Option<&str>,
         disabled_codes: Option<Vec<String>>,
         map_json: Option<&str>,
+        known_passages_json: Option<&str>,
     ) -> OrderValidationResult {
         // Absent means the conservative default: `hex-unguarded` off, same as the bool this
         // replaced defaulted to `false` (do not warn). Reuses `OrderCheckOptions::default()`
@@ -478,12 +479,24 @@ pub mod commands {
         let disabled = disabled_codes
             .map(|codes| codes.into_iter().collect())
             .unwrap_or_else(|| OrderCheckOptions::default().disabled);
+        // Validation has no error channel, so a list that will not read is nothing known and the
+        // passage warning simply stays: an advisory pane that answers conservatively beats one
+        // that refuses to answer (`ah-3u7c.2.2`).
+        let known_passages = known_passages_json
+            .and_then(|json| {
+                atlantis_hud_core::movement::passages::known_passages_from_json(json).ok()
+            })
+            .unwrap_or_default();
         // A shape that cannot be read is treated as no shape at all: bad config, not bad orders,
         // exactly as an unusable ruleset already is (`ah-7ale.2.2.1`).
         let geometry = map_json
             .and_then(|json| atlantis_hud_core::movement::graph::geometry_from_json(json).ok())
             .flatten();
-        let options = OrderCheckOptions { disabled, geometry };
+        let options = OrderCheckOptions {
+            disabled,
+            geometry,
+            known_passages,
+        };
         let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
             let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
             let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
@@ -1137,6 +1150,7 @@ pub mod commands {
         unit_id: &str,
         orders_document: &str,
         map_json: &str,
+        passages_json: &str,
     ) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
             atlantis_hud_core::movement::request::trace_orders_on_map(
@@ -1147,6 +1161,7 @@ pub mod commands {
                 unit_id,
                 orders_document,
                 map_json,
+                passages_json,
             )
         })
     }
@@ -1165,6 +1180,7 @@ pub mod commands {
         remembered_json: &str,
         orders_document: &str,
         map_json: &str,
+        passages_json: &str,
         disabled_codes: Option<Vec<String>>,
     ) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
         // `geometry` stays `None`: the forecast takes the map's shape from `map_json` above, which
@@ -1175,6 +1191,7 @@ pub mod commands {
                 .map(|codes| codes.into_iter().collect())
                 .unwrap_or_else(|| OrderCheckOptions::default().disabled),
             geometry: None,
+            known_passages: Vec::new(),
         };
 
         atlantis_hud_core::cache::with_global(|cache| {
@@ -1185,6 +1202,7 @@ pub mod commands {
                 remembered_json,
                 orders_document,
                 map_json,
+                passages_json,
                 options,
             )
         })
@@ -1457,8 +1475,16 @@ mod preview_orders_command_tests {
             .collect();
 
         assert_eq!(
-            command_preview_orders(RULESET, report, "[]", orders, "", None),
-            command_preview_orders(RULESET, report, "[]", orders, "", Some(default_disabled))
+            command_preview_orders(RULESET, report, "[]", orders, "", "", None),
+            command_preview_orders(
+                RULESET,
+                report,
+                "[]",
+                orders,
+                "",
+                "",
+                Some(default_disabled)
+            )
         );
     }
 
@@ -1471,6 +1497,7 @@ mod preview_orders_command_tests {
             report,
             "[]",
             "unit 900\nNAME UNIT \"Renamed\"\n",
+            "",
             "",
             None,
         )
@@ -1522,6 +1549,7 @@ mod trace_move_orders_command_tests {
             "900",
             "unit 900\nMOVE SE SE",
             "",
+            "",
         )
         .expect("the ruleset loads");
         let path = answer.path.expect("a traced path");
@@ -1541,7 +1569,7 @@ mod trace_move_orders_command_tests {
         );
 
         let answer =
-            command_trace_move_orders(RULESET, &current, "[]", "900", "unit 900\nwork", "")
+            command_trace_move_orders(RULESET, &current, "[]", "900", "unit 900\nwork", "", "")
                 .expect("the ruleset loads");
         assert_eq!(answer.path, None);
     }
@@ -2429,7 +2457,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let validation = command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None);
+        let validation =
+            command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None, None);
         assert_eq!(
             validation.diagnostics,
             vec![atlantis_hud_core::OrderDiagnostic {
@@ -2475,9 +2504,49 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .collect();
 
         assert_eq!(
-            command_validate_orders(orders, None, None, None, None),
-            command_validate_orders(orders, None, None, Some(default_disabled), None)
+            command_validate_orders(orders, None, None, None, None, None),
+            command_validate_orders(orders, None, None, Some(default_disabled), None, None)
         );
+    }
+
+    /// The far side reaches the shell over real IPC types, not only in the core's own tests
+    /// (`ah-3u7c.2.2`).
+    #[test]
+    fn tauri_adapter_traces_through_a_known_passage() {
+        let mut report = String::from("Foo (1) Report\n\n");
+        report.push_str("plain (1,1) in Inland, 10 peasants (orcs), $5.\n\n");
+        report.push_str("Exits:\n  Southeast : plain (2,2) in Inland.\n\n");
+        report.push_str("+ Shaft [3] : Shaft, contains an inner location.\n");
+        report.push_str(
+            "  * Walker (900), Foo (1), sharing, man [MAN]. Weight: 10. \
+             Capacity: 0/0/15/0. Skills: none.\n\n",
+        );
+        report.push_str("plain (2,2) in Inland, 10 peasants (orcs), $5.\n\n");
+        report.push_str("Exits:\n  Northwest : plain (1,1) in Inland.\n");
+
+        let passages = r#"[{"entry":{"x":1,"y":1,"z":1},"structureId":"3","structure":"Shaft [3]",
+            "destination":{"x":12,"y":34,"z":2},"destinationTerrain":"cavern","learnedInTurn":40}]"#;
+
+        let answer = command_trace_move_orders(
+            atlantis_hud_fixtures::RULESET_JSON,
+            &report,
+            "[]",
+            "900",
+            "unit 900\nMOVE 3 IN\n",
+            "",
+            passages,
+        )
+        .expect("the ruleset loads");
+
+        let exit = answer
+            .path
+            .expect("a traced path")
+            .passage
+            .expect("a passage")
+            .exit
+            .expect("the far side");
+        assert_eq!(exit.coordinate.z, 2);
+        assert_eq!(exit.terrain, "cavern");
     }
 
     /// The command answers over the same IPC types the shell will hand it, so the four-way

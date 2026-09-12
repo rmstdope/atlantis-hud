@@ -1431,6 +1431,20 @@ pub(crate) fn split_into_months(
     origin: Coordinate,
     steps: &[RouteStep],
 ) -> Vec<MonthLeg> {
+    let arrivals: Vec<(u32, Coordinate)> = steps.iter().map(|step| (step.cost, step.to)).collect();
+    split_costs(points_per_month, origin, &arrivals)
+}
+
+/// The month split over a sequence of costed arrivals, whatever produced them.
+///
+/// A passage crossing is an arrival with a cost and no direction, so the split cannot be expressed
+/// over [`RouteStep`] alone (`ah-3u7c.2.2`).
+pub(crate) fn split_costs(
+    points_per_month: u32,
+    origin: Coordinate,
+    arrivals: &[(u32, Coordinate)],
+) -> Vec<MonthLeg> {
+    let steps = arrivals;
     let allowance = points_per_month;
     let mut months = Vec::new();
 
@@ -1450,12 +1464,12 @@ pub(crate) fn split_into_months(
         points += allowance;
         let mut this_month = 0;
 
-        while let Some(step) = steps.get(taken) {
-            if step.cost > points {
+        while let Some(&(cost, to)) = steps.get(taken) {
+            if cost > points {
                 break;
             }
-            points -= step.cost;
-            position = step.to;
+            points -= cost;
+            position = to;
             taken += 1;
             this_month += 1;
         }

@@ -290,6 +290,9 @@ pub mod codes {
 /// question, stops that question being asked at all (`crates/core/src/orders/effects.rs`). That is
 /// what turning a warning off has always meant here: the check is not made, rather than made and
 /// hidden.
+///
+/// It also carries what the faction has learned that a check cannot work out from the turn in
+/// front of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckOptions {
     /// Advisory codes not to emit. Unknown codes are ignored.
@@ -298,6 +301,9 @@ pub struct CheckOptions {
     /// distance. `None` - a game that never recorded it - leaves every distance unsettled, and
     /// `transport::out_of_reach` then refuses nothing (`ah-7ale.2.2.1`).
     pub geometry: Option<crate::movement::graph::MapGeometry>,
+    /// Every inner passage the faction has proved the far side of. Empty by default: a caller that
+    /// knows nothing is the ordinary case, and it is also every test that says nothing about one.
+    pub known_passages: Vec<crate::movement::passages::KnownPassage>,
 }
 
 impl CheckOptions {
@@ -305,6 +311,17 @@ impl CheckOptions {
     #[must_use]
     pub fn emits(&self, code: Code) -> bool {
         !self.disabled.contains(code.as_str())
+    }
+
+    /// Whether a report has already proved where this structure's passage comes out.
+    ///
+    /// Keyed by the hex and the structure's number together, as the screen's own memory is: numbers
+    /// repeat between hexes, so a number alone would silence a warning about a different passage.
+    #[must_use]
+    pub fn knows_passage(&self, entry: Coordinate, structure_id: &str) -> bool {
+        self.known_passages
+            .iter()
+            .any(|known| known.entry == entry && known.structure_id == structure_id)
     }
 }
 
@@ -319,6 +336,7 @@ impl Default for CheckOptions {
         Self {
             disabled: std::iter::once(codes::HEX_UNGUARDED.as_str().to_string()).collect(),
             geometry: None,
+            known_passages: Vec::new(),
         }
     }
 }
@@ -13862,6 +13880,12 @@ fn check_passages(
                 continue; // no structure of that number here: accept on doubt
             };
 
+            // A passage a report has already proved the far side of is drawn on the map and priced
+            // (`ah-3u7c.2.2`), so there is nothing left to warn about.
+            if options.knows_passage(standing.coordinate, &structure_id) {
+                continue;
+            }
+
             let label = crate::report::model::numbered_structure_label(structure);
             let message = if passage.steps_after > 0 {
                 let count = passage.steps_after;
@@ -26137,6 +26161,58 @@ BUILD
         );
     }
 
+    /// A passage a report has already proved the far side of is not warned about: the map draws
+    /// the crossing, and a warning beside a drawn route is a contradiction (`ah-3u7c.2.2`).
+    #[test]
+    fn a_passage_whose_far_side_is_known_is_not_warned_about() {
+        let regions = vec![with_shaft(region(vec![unit("5")]))];
+        let known = crate::movement::passages::KnownPassage {
+            entry: Coordinate { x: 7, y: 53, z: 1 },
+            structure_id: "1".to_string(),
+            structure: "Shaft [1]".to_string(),
+            destination: Coordinate { x: 12, y: 34, z: 2 },
+            destination_terrain: "cavern".to_string(),
+            learned_in_turn: 40,
+        };
+
+        let mut options = disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]);
+        options.known_passages = vec![known];
+        let findings = check_turn(
+            &report(regions),
+            "unit 5\nMOVE 1 IN\n",
+            Some(&ruleset()),
+            options,
+        );
+
+        assert!(passages(&findings).is_empty(), "{findings:?}");
+    }
+
+    /// Structure numbers repeat between hexes, so a passage proved in one hex says nothing about
+    /// the same number in another.
+    #[test]
+    fn a_passage_known_in_another_hex_is_still_warned_about() {
+        let regions = vec![with_shaft(region(vec![unit("5")]))];
+        let known = crate::movement::passages::KnownPassage {
+            entry: Coordinate { x: 8, y: 54, z: 1 },
+            structure_id: "1".to_string(),
+            structure: "Shaft [1]".to_string(),
+            destination: Coordinate { x: 12, y: 34, z: 2 },
+            destination_terrain: "cavern".to_string(),
+            learned_in_turn: 40,
+        };
+
+        let mut options = disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]);
+        options.known_passages = vec![known];
+        let findings = check_turn(
+            &report(regions),
+            "unit 5\nMOVE 1 IN\n",
+            Some(&ruleset()),
+            options,
+        );
+
+        assert_eq!(passages(&findings).len(), 1, "{findings:?}");
+    }
+
     /// The warning describes the order the map draws, which is the *last* movement line.
     ///
     /// `rules/move` says "Multiple MOVE orders given by one unit will chain together", and this
@@ -32431,7 +32507,7 @@ BUILD
     fn avoid_after_guard_one_does_not_report_an_unguarded_hex() {
         let options = CheckOptions {
             disabled: BTreeSet::new(),
-            geometry: None,
+            ..CheckOptions::default()
         };
 
         assert!(!codes(&check_turn(
@@ -32588,7 +32664,7 @@ BUILD
         let regions = vec![region(vec![unit("5")])];
         let options = CheckOptions {
             disabled: BTreeSet::new(),
-            geometry: None,
+            ..CheckOptions::default()
         };
 
         let finding = only(check_turn(
@@ -32607,7 +32683,7 @@ BUILD
         guarding.on_guard = true;
         let options = CheckOptions {
             disabled: BTreeSet::new(),
-            geometry: None,
+            ..CheckOptions::default()
         };
 
         assert_eq!(
@@ -38399,6 +38475,7 @@ BUILD
                 CheckOptions {
                     disabled: BTreeSet::new(),
                     geometry: Some(FIXTURE_MAP),
+                    ..CheckOptions::default()
                 },
             );
             assert!(
@@ -44940,7 +45017,7 @@ BUILD
                 disabled: [codes::BUILD_WITHOUT_MATERIAL.as_str().to_string()]
                     .into_iter()
                     .collect(),
-                geometry: None,
+                ..CheckOptions::default()
             },
         );
         assert!(

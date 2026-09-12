@@ -41,6 +41,7 @@ export type { BattleUnit } from "./generated/BattleUnit";
 export type { BattleSkill } from "./generated/BattleSkill";
 export type { RosterSkills } from "./generated/RosterSkills";
 export type { PassageClaim } from "./generated/PassageClaim";
+export type { KnownPassage } from "./generated/KnownPassage";
 export type { Casualty } from "./generated/Casualty";
 export type { BattleRound } from "./generated/BattleRound";
 export type { Battle } from "./generated/Battle";
@@ -121,6 +122,7 @@ import type { EngineInfo } from "./generated/EngineInfo";
 import type { ParsedReport } from "./generated/ParsedReport";
 import type { RosterSkills } from "./generated/RosterSkills";
 import type { PassageClaim } from "./generated/PassageClaim";
+import type { KnownPassage } from "./generated/KnownPassage";
 import type { AlliedMageRecord } from "./generated/AlliedMageRecord";
 import type { AlliedMageKey } from "./generated/AlliedMageKey";
 import type { StudyPlanRecord } from "./generated/StudyPlanRecord";
@@ -434,6 +436,27 @@ export type TracedPassage = {
   structure: string;
   /** Ordered steps after the passage that could not be placed. */
   stepsAfter: number;
+  /** The entry hex's own terrain. */
+  terrain: string;
+  /** Where the passage comes out, or null when no report has proved it. */
+  exit: TracedPassageExit | null;
+};
+
+/**
+ * The far side of a passage the faction has crossed, and the journey that carries on there.
+ *
+ * Mirrors `TracedPassageExit` in crates/core/src/movement/trace.rs by hand, as `TracedPassage`
+ * does and for the same reason.
+ */
+export type TracedPassageExit = {
+  /** The hex the unit comes out in. */
+  coordinate: Coordinate;
+  /** That hex's terrain. */
+  terrain: string;
+  /** What the crossing cost: the cost of entering that region. */
+  cost: number;
+  /** The journey beyond, drawn on the destination's own level. */
+  steps: RouteStep[];
 };
 
 /** The traced order, or nothing when the unit has no readable movement order to draw. */
@@ -519,6 +542,12 @@ export type OrderCheckOptions = {
   disabledCodes?: readonly AdvisoryCheckCode[];
   /** The map's shape as JSON, or `null` for a game that never recorded one. */
   mapJson?: string | null;
+  /**
+   * Every inner passage the faction has proved the far side of. A passage in this list raises no
+   * `passage-with-no-known-exit`: the map draws the crossing, and a warning beside a drawn route
+   * is a contradiction the player cannot resolve (`ah-3u7c.2.2`).
+   */
+  knownPassages?: readonly KnownPassage[];
 };
 
 export type OrderDraftKey = {
@@ -609,7 +638,8 @@ export interface CoreAdapter {
     rulesetJson: string | null,
     rawReport: string | null,
     disabledCodes: readonly string[] | null,
-    mapJson: string | null
+    mapJson: string | null,
+    knownPassagesJson: string | null
   ): Promise<OrderValidationResult>;
   orderCommands(rulesetJson: string | null): Promise<string[]>;
   /**
@@ -673,7 +703,9 @@ export interface CoreAdapter {
     rememberedJson: string,
     unitId: string,
     ordersDocument: string,
-    mapJson: string
+    mapJson: string,
+    /** Every inner passage the faction has proved the far side of, as JSON. `""` for none. */
+    passagesJson: string
   ): Promise<MoveOrderTraceResponse>;
   exportMap(rawReport: string, rememberedJson: string, requestJson: string): Promise<string>;
   /**
@@ -688,6 +720,8 @@ export interface CoreAdapter {
     rememberedJson: string,
     ordersDocument: string,
     mapJson: string,
+    /** Every inner passage the faction has proved the far side of, as JSON. `""` for none. */
+    passagesJson: string,
     disabledCodes: readonly string[] | null
   ): Promise<OrdersPreviewResponse>;
   /** Every trade worth making in the map the faction has seen, best first. */
@@ -886,6 +920,8 @@ export type CoreClient = Omit<
     rememberedJson: string,
     ordersDocument: string,
     mapJson: string,
+    /** Every inner passage the faction has proved the far side of, as JSON. `""` for none. */
+    passagesJson: string,
     options?: OrderCheckOptions
   ): Promise<OrdersPreviewResponse>;
   /**
@@ -933,10 +969,11 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         rulesetJson,
         rawReport,
         options.disabledCodes ?? null,
-        options.mapJson ?? null
+        options.mapJson ?? null,
+options.knownPassages ? JSON.stringify(options.knownPassages) : null
       );
     },
-    previewOrders(rulesetJson, rawReport, rememberedJson, ordersDocument, mapJson, options = {}) {
+    previewOrders(rulesetJson, rawReport, rememberedJson, ordersDocument, mapJson, passagesJson, options = {}) {
       // As `validateOrders` above: `null` is "use the core's own default", written in Rust once.
       return adapter.previewOrders(
         rulesetJson,
@@ -944,6 +981,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         rememberedJson,
         ordersDocument,
         mapJson,
+        passagesJson,
         options.disabledCodes ?? null
       );
     },

@@ -294,6 +294,16 @@ pub struct MapKnowledge {
     /// exactly as it did before this field existed.
     #[serde(default)]
     geometry: Option<MapGeometry>,
+    /// Every inner passage the faction has proved the far side of, keyed by `entry.id()` and the
+    /// structure's number. `#[serde(default)]`, so every stored `MapKnowledge` still reads.
+    #[serde(default)]
+    passages: BTreeMap<String, crate::movement::passages::KnownPassage>,
+}
+
+/// Keys a passage the way the screen's own memory keys one: the hex and the structure's number
+/// together, because numbers repeat between hexes.
+fn passage_key(entry: Coordinate, structure_id: &str) -> String {
+    format!("{}#{structure_id}", entry.id())
 }
 
 /// Keys a hex the way the game writes one, so the map is stable and readable in a dump.
@@ -323,6 +333,30 @@ impl MapKnowledge {
     pub fn with_geometry(mut self, geometry: Option<MapGeometry>) -> Self {
         self.geometry = geometry;
         self
+    }
+
+    /// The same map, told where the passages it knows come out.
+    ///
+    /// A later entry replaces an earlier one under the same key: the screen's memory is keyed the
+    /// same way and holds one answer per passage, so a duplicate is a caller's repetition, not two
+    /// facts.
+    #[must_use]
+    pub fn with_passages(mut self, passages: Vec<crate::movement::passages::KnownPassage>) -> Self {
+        for passage in passages {
+            self.passages
+                .insert(passage_key(passage.entry, &passage.structure_id), passage);
+        }
+        self
+    }
+
+    /// Where the passage in this structure comes out, when the faction has proved it.
+    #[must_use]
+    pub fn passage(
+        &self,
+        entry: Coordinate,
+        structure_id: &str,
+    ) -> Option<&crate::movement::passages::KnownPassage> {
+        self.passages.get(&passage_key(entry, structure_id))
     }
 
     /// The shape of this map, or `None` when the game never recorded one.
