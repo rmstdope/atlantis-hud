@@ -1643,5 +1643,4 @@ mod tests {
         let origins_caret = completions_at_caret("GIVE 42 1 SILV;a ti", Some(&origins), None, None);
         assert_eq!(origins_caret.position, CaretPosition::Argument);
     }
-
 }

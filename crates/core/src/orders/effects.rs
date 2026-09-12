@@ -9603,10 +9603,12 @@ mod tests {
                 .on_guard
         };
 
-        assert!(guarding(&commented), "the comment must not cancel the guard");
+        assert!(
+            guarding(&commented),
+            "the comment must not cancel the guard"
+        );
         assert_eq!(silver(&commented, "900"), silver(&plain, "900"));
         assert_eq!(silver(&commented, "901"), silver(&plain, "901"));
         assert_eq!(silver(&commented, "901"), 40, "the transfer is applied");
     }
-
 }

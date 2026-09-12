@@ -11,7 +11,7 @@
 //! say", and it accepts anything, including nothing. That is the accept-on-doubt policy made
 //! concrete: a `CAST` whose arguments depend on the spell must not be guessed at.
 
-use super::lexer::{lex_line, lex_line_with_ruleset, Token, TokenKind};
+use super::lexer::{lex_line_with_ruleset, Token, TokenKind};
 use crate::movement::graph::Direction;
 use crate::movement::rules::{OrderLanguage, Ruleset};
 
@@ -1251,7 +1251,7 @@ mod tests {
 
     /// One token of a lexed line, for building the argument slices these tests match against.
     fn arguments(line: &str) -> (Token, Vec<Token>) {
-        let mut tokens = lex_line(line).tokens;
+        let mut tokens = super::super::lexer::lex_line(line).tokens;
         let command = tokens.remove(0);
         (command, tokens)
     }

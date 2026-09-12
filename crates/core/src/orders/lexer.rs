@@ -114,8 +114,8 @@ pub fn lex_line(line: &str) -> LexedLine {
 /// deliberate and is the whole of what this argument decides.
 #[must_use]
 pub fn lex_line_with_ruleset(line: &str, ruleset: Option<&Ruleset>) -> LexedLine {
-    let semicolon_always_comments = ruleset
-        .is_some_and(|ruleset| ruleset.order_language == OrderLanguage::NewAgeTrident);
+    let semicolon_always_comments =
+        ruleset.is_some_and(|ruleset| ruleset.order_language == OrderLanguage::NewAgeTrident);
     let bytes = line.as_bytes();
     let end = bytes.len();
     let mut lexed = LexedLine::default();
@@ -503,14 +503,8 @@ mod tests {
         );
 
         // A semicolon inside a quoted name is an ordinary character in both worlds.
-        assert_eq!(
-            trident_texts("NAME UNIT \"A;B\""),
-            ["NAME", "UNIT", "A;B"]
-        );
-        assert_eq!(
-            origins_texts("NAME UNIT \"A;B\""),
-            ["NAME", "UNIT", "A;B"]
-        );
+        assert_eq!(trident_texts("NAME UNIT \"A;B\""), ["NAME", "UNIT", "A;B"]);
+        assert_eq!(origins_texts("NAME UNIT \"A;B\""), ["NAME", "UNIT", "A;B"]);
 
         // Whitespace before the semicolon behaves the same in both worlds.
         assert_eq!(trident_texts("WORK ;note"), ["WORK"]);
@@ -518,7 +512,10 @@ mod tests {
 
         // The Origins regression control: a middle-of-word semicolon stays in the word.
         assert_eq!(origins_texts("WORK;note"), ["WORK;note"]);
-        assert_eq!(origins_texts("GIVE 42 1 SILV;note"), ["GIVE", "42", "1", "SILV;note"]);
+        assert_eq!(
+            origins_texts("GIVE 42 1 SILV;note"),
+            ["GIVE", "42", "1", "SILV;note"]
+        );
         assert_eq!(lex_line("WORK;note").tokens[0].text, "WORK;note");
 
         // UTF-16 spans survive the new branch: the comment starts after a non-ASCII word.
@@ -529,9 +526,11 @@ mod tests {
         );
         assert_eq!(non_ascii.tokens[2].text, "Mörk");
         assert_eq!(
-            (non_ascii.tokens[2].column_start, non_ascii.tokens[2].column_end),
+            (
+                non_ascii.tokens[2].column_start,
+                non_ascii.tokens[2].column_end
+            ),
             (10, 14)
         );
     }
-
 }

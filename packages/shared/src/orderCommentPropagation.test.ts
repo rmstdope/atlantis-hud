@@ -73,7 +73,8 @@ describe("the comment policy reaches every reader of the document", () => {
       lineStart: 4,
       lineEnd: 4,
       columnStart: null,
-      columnEnd: null
+      columnEnd: null,
+      regionId: null
     };
     expect(unitIdForDiagnostic(DOCUMENT, diagnostic, TRIDENT)).toBe("42");
     expect(unitIdForDiagnostic(DOCUMENT, diagnostic, ORIGINS)).toBeNull();

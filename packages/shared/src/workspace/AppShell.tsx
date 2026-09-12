@@ -3627,7 +3627,15 @@ export function AppShell({
         return next;
       });
     },
-    [game, draftKey, writer, writeOrdersDocument, newBlockBanner, regionUnitIds]
+    [
+      game,
+      draftKey,
+      writer,
+      writeOrdersDocument,
+      newBlockBanner,
+      regionUnitIds,
+      orderCommentSyntax
+    ]
   );
 
   /**
@@ -3667,7 +3675,15 @@ export function AppShell({
     if (line) {
       setStatus(line);
     }
-  }, [externalOrdersRevision, ordersDocument, writeOrdersDocument, writer, game, draftKey]);
+  }, [
+    externalOrdersRevision,
+    ordersDocument,
+    writeOrdersDocument,
+    writer,
+    game,
+    draftKey,
+    orderCommentSyntax
+  ]);
 
   /**
    * Applies the confirmed orders import: the file text becomes the document, through the same
@@ -3856,7 +3872,7 @@ export function AppShell({
       false,
       orderCommentSyntax
     );
-  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile]);
+  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile, orderCommentSyntax]);
 
   /**
    * The same file, with the server's long-format unit descriptions put back in - see issue #52.
@@ -3872,7 +3888,7 @@ export function AppShell({
       true,
       orderCommentSyntax
     );
-  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile]);
+  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile, orderCommentSyntax]);
 
   /**
    * Where the send dialog has got to, or null when it is closed.
@@ -3975,7 +3991,16 @@ export function AppShell({
         setSendPhase(phase);
       }
     },
-    [uploadOrders, uploadUrl, sendFactionId, canSendOrders, flush, ordersDocument, ordersTemplateText]
+    [
+      uploadOrders,
+      uploadUrl,
+      sendFactionId,
+      canSendOrders,
+      flush,
+      ordersDocument,
+      ordersTemplateText,
+      orderCommentSyntax
+    ]
   );
 
   /**
@@ -4371,7 +4396,8 @@ export function AppShell({
       openGameId,
       flush,
       ordersDocument,
-      ordersTemplateText
+      ordersTemplateText,
+      orderCommentSyntax
     ]
   );
 
