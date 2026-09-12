@@ -368,11 +368,9 @@ pub(crate) fn route_for_mode(
             // "No known route" is a poor answer when the only thing in the way is water. Ask again
             // as though the unit could swim: if that finds a path, the sea is the reason, and
             // naming the hex it founders at is what makes the refusal actionable.
-            return Err(
-                blocked_by_water(map, ruleset, journey, origin, destination)
-                    .or_else(|| blocked_by_sailing_rule(map, ruleset, journey, origin, destination))
-                    .unwrap_or(RouteProblem::NoKnownRoute),
-            );
+            return Err(blocked_by_water(map, ruleset, journey, origin, destination)
+                .or_else(|| blocked_by_sailing_rule(map, ruleset, journey, origin, destination))
+                .unwrap_or(RouteProblem::NoKnownRoute));
         }
         Err(other) => return Err(other),
     };
@@ -910,7 +908,12 @@ fn blocked_by_water(
     swimming.iter().find_map(|step| {
         let hex = map.hex(step.to)?;
         let verdict = water_verdict(ruleset, map, journey, step.to, &hex.terrain);
-        water_problem(verdict, step.to, hex.terrain.clone(), step.to == destination)
+        water_problem(
+            verdict,
+            step.to,
+            hex.terrain.clone(),
+            step.to == destination,
+        )
     })
 }
 
@@ -1495,8 +1498,8 @@ mod tests {
     fn a_dry_route_is_unaffected_by_an_unstated_swim_capacity() {
         let map = MapKnowledge::from_report(&parse_report_full(SEA_AND_SHORE));
         let ruleset = trident();
-        let journey =
-            Journey::enforced(MovementMode::Walk, Hull::Bound).with_swim(crate::movement::mode::Swim::Unstated);
+        let journey = Journey::enforced(MovementMode::Walk, Hull::Bound)
+            .with_swim(crate::movement::mode::Swim::Unstated);
 
         assert_eq!(
             water_verdict(

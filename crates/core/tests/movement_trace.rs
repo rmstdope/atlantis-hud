@@ -688,7 +688,9 @@ fn trace_trident(report: &str, orders: &str) -> MoveOrderTraceResponse {
 #[test]
 fn a_typed_move_into_coastal_water_is_not_marked_refused() {
     let report = trident_sea_and_shore("lizardman [LIZA]", 10, "0/0/15/15");
-    let path = trace_trident(&report, "MOVE SE").path.expect("a traced path");
+    let path = trace_trident(&report, "MOVE SE")
+        .path
+        .expect("a traced path");
 
     assert_eq!(path.steps.len(), 1);
     assert_eq!(path.steps[0].to, at(2, 2));

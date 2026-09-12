@@ -645,11 +645,7 @@ fn deep_water_refuses_a_swimmer_with_no_sea_creatures() {
 /// Three lizardmen and a turtle weigh 80; the turtle bears 70 of it, which is not the whole.
 #[test]
 fn sea_creatures_that_fall_short_are_named() {
-    let report = sea_and_shore(
-        "3 lizardman [LIZA], giant turtle [TURT]",
-        80,
-        "0/70/85/115",
-    );
+    let report = sea_and_shore("3 lizardman [LIZA], giant turtle [TURT]", 80, "0/70/85/115");
     let problem = plan_in(&report, &trident_ruleset(), "900", at(3, 3))
         .expect_err("its creatures cannot bear it entire");
 
@@ -669,11 +665,7 @@ fn sea_creatures_that_fall_short_are_named() {
 /// safely" - exactly its whole weight is enough.
 #[test]
 fn sea_creatures_bearing_exactly_the_whole_weight_ride_out() {
-    let report = sea_and_shore(
-        "2 lizardman [LIZA], giant turtle [TURT]",
-        70,
-        "0/70/80/100",
-    );
+    let report = sea_and_shore("2 lizardman [LIZA], giant turtle [TURT]", 70, "0/70/80/100");
     let route = plan_in(&report, &trident_ruleset(), "900", at(3, 3)).expect("it rides out");
 
     assert_eq!(route.steps.len(), 2);

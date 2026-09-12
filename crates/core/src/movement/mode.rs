@@ -96,8 +96,7 @@ pub fn swim_ability(unit: &ReportUnit, ruleset: &Ruleset) -> Swim {
     if ruleset.swimming().is_none() {
         return Swim::Cannot;
     }
-    let Some(movement) =
-        unit_movement_from_items(unit, ruleset).or_else(|| unit_movement(unit))
+    let Some(movement) = unit_movement_from_items(unit, ruleset).or_else(|| unit_movement(unit))
     else {
         return Swim::Cannot;
     };
@@ -986,10 +985,7 @@ mod tests {
         };
         assert_eq!(
             swim_ability(&lizardman, &trident()),
-            Swim::Coastal {
-                borne: 0,
-                load: 10
-            }
+            Swim::Coastal { borne: 0, load: 10 }
         );
         assert_eq!(
             swim_ability(&lizardman, &ruleset()),
