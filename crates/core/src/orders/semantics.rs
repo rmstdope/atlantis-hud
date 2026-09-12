@@ -7534,16 +7534,6 @@ fn unit_is_in_structure(hex: &Hex<'_>, unit_id: &str, structure_id: &str) -> boo
         == Some(structure_id)
 }
 
-/// `BUILD`, in whichever of the rules' forms it was written: what it spends this month.
-///
-/// Reuses the same structure resolution the four BUILD checks already do (`check_building`,
-/// `check_building_outside`, `check_build_help`, `check_build_skill`) rather than inventing a
-/// second reading of "what is this unit working on" (`ah-ofpb.2`).
-///
-/// **No `SILV` movement, and nothing is credited.** A BUILD costs no silver, and the column has
-/// never tracked silver anyway. Nothing is credited because a structure is not an item; the
-/// material simply leaves. `ledger.doubted` is not touched either - that set is about sums of
-/// money, and a build puts no sum in question, the same reasoning the bare-`PRODUCE` arm records.
 /// What a `BUILD` order named, straight off [`Intent::Build`].
 #[derive(Debug, Clone, Copy)]
 struct BuildOrder<'a> {
@@ -7556,6 +7546,16 @@ struct BuildOrder<'a> {
     material: Option<super::intents::BuildMaterial>,
 }
 
+/// `BUILD`, in whichever of the rules' forms it was written: what it spends this month.
+///
+/// Reuses the same structure resolution the four BUILD checks already do (`check_building`,
+/// `check_building_outside`, `check_build_help`, `check_build_skill`) rather than inventing a
+/// second reading of "what is this unit working on" (`ah-ofpb.2`).
+///
+/// **No `SILV` movement, and nothing is credited.** A BUILD costs no silver, and the column has
+/// never tracked silver anyway. Nothing is credited because a structure is not an item; the
+/// material simply leaves. `ledger.doubted` is not touched either - that set is about sums of
+/// money, and a build puts no sum in question, the same reasoning the bare-`PRODUCE` arm records.
 fn build(
     ledger: &mut Ledger<'_>,
     actor: &Ordered<'_>,

@@ -858,6 +858,8 @@ pub fn read_order_with_ruleset(
             [name, word] if BuildMaterial::read(word).is_some() => Some(Intent::Build {
                 founding: Some(name.text.clone()),
                 helping: None,
+                // The guard has just settled this, and a guard cannot bind: a later form must
+                // still be allowed to match a two-token line whose second word is not a material.
                 material: BuildMaterial::read(word),
             }),
             [name, word, complete] if complete.is("COMPLETE") => {

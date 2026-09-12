@@ -3744,6 +3744,12 @@ mod tests {
 
     /// The other half of the same case: nothing is spent, and the line is marked uncounted rather
     /// than forecast.
+    ///
+    /// The builder holds stone and no wood, and it is the *recipe* that settles this rather than
+    /// the empty pocket: `BUILD Farm WOOD` by a unit with no wood warns and spends nothing
+    /// (`a_build_from_a_material_the_unit_has_not_got_is_a_warning`), where a Tower's recipe not
+    /// offering wood at all cannot be settled either way. Do not weaken this fixture to a unit
+    /// holding wood: it would then pass for the wrong reason.
     #[test]
     fn trident_build_from_a_material_the_recipe_does_not_offer_is_uncounted() {
         let response =
