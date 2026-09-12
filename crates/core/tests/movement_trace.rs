@@ -530,3 +530,37 @@ fn a_sail_out_to_sea_from_a_coastal_hex_is_still_undotted() {
     assert_eq!(path.steps[0].to, at(2, 4));
     assert_eq!(path.blocked_from, None, "coastal to ocean is allowed");
 }
+
+/// The tracer and the planner must mark the same hexes as water - they share `Ruleset::is_water`,
+/// and this is what pins that they share its answer too. Trident counts a lake as water
+/// (`newage trident rules/movement_sailing`), so a flight over one says so on the step itself.
+#[test]
+fn a_traced_flight_marks_its_water_steps() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Southeast : lake (2,2) in Nowhere.\n\n");
+    text.push_str("* Wings (900), Foo (1), 1 orcs [ORC]. Weight: 10. Capacity: 15/0/15/0.\n\n");
+    text.push_str("lake (2,2) in Nowhere.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : plain (1,1) in Nowhere.\n  \
+         Southeast : plain (3,3) in Nowhere.\n\n",
+    );
+    text.push_str("plain (3,3) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Northwest : lake (2,2) in Nowhere.\n");
+
+    let path = trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        &text,
+        "[]",
+        "900",
+        &document("900", "MOVE SE SE"),
+    )
+    .expect("the ruleset loads")
+    .path
+    .expect("a traced path");
+
+    assert_eq!(path.steps.len(), 2);
+    assert!(path.steps[0].over_water, "the lake is water in Trident");
+    assert!(!path.steps[1].over_water, "the far plain is dry");
+}

@@ -330,7 +330,7 @@ mod tests {
         assert!(response.risk.is_none());
         assert!(matches!(
             response.problem,
-            Some(crate::movement::plan::RouteProblem::OceanNeedsShip { .. })
+            Some(crate::movement::plan::RouteProblem::DestinationNeedsShip { .. })
         ));
     }
 

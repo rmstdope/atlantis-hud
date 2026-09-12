@@ -12930,7 +12930,7 @@ fn check_sail_route(
                     hex,
                     codes::SAIL_BETWEEN_LAND_HEXES,
                     format!(
-                        "a fleet may only sail where one end of the step is ocean: {} leaves {from} \
+                        "a fleet may only sail where one end of the step is water: {} leaves {from} \
                          for {to}, so it will not move",
                         direction.abbreviation()
                     ),
@@ -24847,11 +24847,53 @@ BUILD
         assert_eq!(sailing.len(), 1, "{findings:?}");
         assert_eq!(
             sailing[0].message,
-            "a fleet may only sail where one end of the step is ocean: N leaves mountain (7,53) \
+            "a fleet may only sail where one end of the step is water: N leaves mountain (7,53) \
              for mountain (7,51), so it will not move"
         );
         assert_eq!(sailing[0].line, Some(2));
         assert_eq!(sailing[0].unit_id, Some("3493".to_string()));
+    }
+
+    /// New Age: Trident counts a lake as water - "Lakes count as water for this purpose, and a
+    /// region bordering one counts as its shore, so fleets may also sail between a lake and the
+    /// land around it" (`newage trident rules/movement_sailing`) - so this legal sailing must draw
+    /// no warning there, while a step with no water at either end still does.
+    #[test]
+    fn a_sail_onto_a_lake_is_no_warning_in_trident() {
+        let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset parses and validates");
+        let exiting = |terrain: &str| {
+            vec![ReportRegion {
+                exits: vec![Exit {
+                    direction: "North".to_string(),
+                    terrain: terrain.to_string(),
+                    coordinate: Coordinate { x: 7, y: 51, z: 1 },
+                    province: "Inhead".to_string(),
+                    settlement: None,
+                }],
+                ..region(vec![unit("3493")])
+            }]
+        };
+
+        let onto_a_lake = check_against(&trident, exiting("lake"), "unit 3493\nSAIL N\n");
+        assert!(
+            !onto_a_lake
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES),
+            "a lake shore is a shore in Trident: {onto_a_lake:?}"
+        );
+
+        let onto_a_mountain = check_against(&trident, exiting("mountain"), "unit 3493\nSAIL N\n");
+        let sailing: Vec<&Finding> = onto_a_mountain
+            .iter()
+            .filter(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES)
+            .collect();
+        assert_eq!(sailing.len(), 1, "{onto_a_mountain:?}");
+        assert_eq!(
+            sailing[0].message,
+            "a fleet may only sail where one end of the step is water: N leaves mountain (7,53) \
+             for mountain (7,51), so it will not move"
+        );
     }
 
     /// The check never speaks where the report has not told it enough - and the `by_coordinate`
