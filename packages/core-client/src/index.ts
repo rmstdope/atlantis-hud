@@ -41,6 +41,7 @@ export type { BattleUnit } from "./generated/BattleUnit";
 export type { BattleSkill } from "./generated/BattleSkill";
 export type { RosterSkills } from "./generated/RosterSkills";
 export type { PassageClaim } from "./generated/PassageClaim";
+export type { KnownPassage } from "./generated/KnownPassage";
 export type { Casualty } from "./generated/Casualty";
 export type { BattleRound } from "./generated/BattleRound";
 export type { Battle } from "./generated/Battle";

@@ -12,23 +12,22 @@
  * Pure: no React, no store, no client, no clock.
  */
 
-import type { Coordinate, ParsedReport, PassageClaim } from "@atlantis/core-client";
+import type {
+  Coordinate,
+  KnownPassage,
+  ParsedReport,
+  PassageClaim,
+} from "@atlantis/core-client";
 
-/** Where an inner passage comes out, proved by one of our own units going through it. */
-export type KnownPassage = {
-  /** The hex the passage is entered from. */
-  entry: Coordinate;
-  /** The structure's number, unique only within `entry`. */
-  structureId: string;
-  /** The structure as the report writes it: `Shaft [3]`. */
-  structure: string;
-  /** The hex the unit came out in. */
-  destination: Coordinate;
-  /** The destination's terrain, so the crossing can be priced without a map. */
-  destinationTerrain: string;
-  /** The turn whose report proved it. */
-  learnedInTurn: number;
-};
+/**
+ * Where an inner passage comes out, proved by one of our own units going through it.
+ *
+ * Generated from the Rust declaration (`movement::passages::KnownPassage`), because this type
+ * crosses the wire in both directions: the memory builds them here, and the core reads them back
+ * to draw and price the crossing (`ah-3u7c.2.2`). Two hand-written declarations of one wire type
+ * would be free to drift.
+ */
+export type { KnownPassage } from "@atlantis/core-client";
 
 /** Every passage this faction has seen the far side of, keyed by {@link passageKey}. */
 export type PassageMemory = ReadonlyMap<string, KnownPassage>;

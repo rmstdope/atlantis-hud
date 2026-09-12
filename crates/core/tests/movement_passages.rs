@@ -99,3 +99,72 @@ fn a_nexus_gate_is_never_claimed() {
 
     assert_eq!(passage_claims(&report, &ordered), vec![]);
 }
+
+// ------------------------------------------ what the faction has proved, on the map (ah-3u7c.2.2)
+
+/// A passage is an edge of the map: two hexes joined by something the faction has seen. The key is
+/// the hex and the structure's number together, because numbers repeat between hexes.
+#[test]
+fn a_map_told_about_a_passage_answers_for_that_hex_and_structure() {
+    use atlantis_hud_core::movement::graph::MapKnowledge;
+    use atlantis_hud_core::movement::passages::KnownPassage;
+
+    let report = parse_report_full(&report_with_a_shaft());
+    let entry = Coordinate { x: 1, y: 1, z: 1 };
+    let elsewhere = Coordinate { x: 2, y: 2, z: 1 };
+    let first = KnownPassage {
+        entry,
+        structure_id: "1".to_string(),
+        structure: "Shaft [1]".to_string(),
+        destination: Coordinate { x: 5, y: 5, z: 2 },
+        destination_terrain: "cavern".to_string(),
+        learned_in_turn: 4,
+    };
+
+    let map = MapKnowledge::from_report(&report).with_passages(vec![first.clone()]);
+
+    assert_eq!(map.passage(entry, "1"), Some(&first));
+    assert_eq!(map.passage(entry, "2"), None, "another structure, same hex");
+    assert_eq!(
+        map.passage(elsewhere, "1"),
+        None,
+        "the same number in another hex is another passage"
+    );
+
+    let fresher = KnownPassage {
+        destination: Coordinate { x: 6, y: 6, z: 2 },
+        learned_in_turn: 9,
+        ..first.clone()
+    };
+    let map = MapKnowledge::from_report(&report).with_passages(vec![first, fresher.clone()]);
+    assert_eq!(
+        map.passage(entry, "1"),
+        Some(&fresher),
+        "a later entry replaces an earlier one under the same key"
+    );
+}
+
+/// The wire form the screen sends. An absent document is nothing known, exactly as `map_json`'s
+/// `""` is - not an error.
+#[test]
+fn an_absent_passage_document_is_nothing_known_and_a_broken_one_is_an_error() {
+    use atlantis_hud_core::movement::passages::known_passages_from_json;
+
+    assert_eq!(known_passages_from_json("").expect("empty is nothing"), vec![]);
+    assert_eq!(
+        known_passages_from_json("  \n ").expect("whitespace is nothing"),
+        vec![]
+    );
+    assert_eq!(known_passages_from_json("[]").expect("an empty list"), vec![]);
+
+    let one = known_passages_from_json(
+        r#"[{"entry":{"x":1,"y":1,"z":1},"structureId":"1","structure":"Shaft [1]",
+            "destination":{"x":5,"y":5,"z":2},"destinationTerrain":"cavern","learnedInTurn":4}]"#,
+    )
+    .expect("camelCase, as the screen writes it");
+    assert_eq!(one.len(), 1);
+    assert_eq!(one[0].destination_terrain, "cavern");
+    assert_eq!(one[0].learned_in_turn, 4);
+
+    assert!(known_passages_from_json("{oh no").is_err());
+}
