@@ -1,0 +1,229 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Transport reach and shipping fees</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441; --blue:#4a9fd8; --green:#4fb783; --red:#e2705f; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1060px; margin:auto; } h1 { font-size:27px; } h1 span,h2 { color:var(--brass); }
+  header p { color:var(--soft); margin-top:10px; max-width:84ch; } h2 { font-size:15px; letter-spacing:1.3px; margin:35px 0 8px; text-transform:uppercase; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:9px; padding:15px; margin-bottom:14px; }
+  .card.pick { border-color:#3d5063; }
+  .cols { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .cols3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+  .label { color:var(--dim); font:10px system-ui,sans-serif; letter-spacing:.1em; text-transform:uppercase; }
+  .pill { background:rgba(217,164,65,.15); border-radius:3px; color:var(--brass); font:10.5px system-ui,sans-serif; letter-spacing:.09em; padding:2px 6px; text-transform:uppercase; }
+  .editor { background:#0c1016; border:1px solid var(--edge); border-radius:6px; color:var(--ink); font:12.5px/1.65 "SF Mono",Menlo,Consolas,monospace; margin-top:8px; padding:10px 12px; }
+  .unit { color:var(--blue); } .muted,.quiet { color:var(--dim); } .quiet { font-size:12.5px; margin-top:9px; }
+  .warning { color:#f0c36a; display:block; padding-left:2ch; } .warning::before { content:"\26A0 "; }
+  .notice { background:var(--raised); border-left:3px solid var(--green); border-radius:0 6px 6px 0; color:var(--soft); margin-top:14px; padding:10px 13px; font-size:13.5px; }
+  footer { color:var(--dim); font-size:12px; margin-top:40px; max-width:84ch; }
+  @media (max-width:880px) { .cols,.cols3 { grid-template-columns:1fr; } body { padding:20px 12px 48px; } }
+  .pane { background:var(--raised); border:1px solid var(--edge); border-radius:6px; font:12.5px/1.5 system-ui,sans-serif; }
+  .pane .hd { align-items:center; border-bottom:1px solid var(--edge); display:flex; gap:6px; padding:6px 9px; }
+  .pane .hd .t { color:var(--brass); } .pane .hd .h { color:var(--dim); font-size:11.5px; } .pane .hd .sp { flex:1; } .pane .hd .w { color:var(--dim); }
+  .pos { background:rgba(217,164,65,.15); border-radius:3px; color:var(--brass); font:11px "SF Mono",Menlo,monospace; padding:0 4px; }
+  .pane .bd { padding:8px 9px; }
+  .ed2 { background:#0b0f14; border:1px solid var(--edge); border-radius:4px; color:#c7d2de; font:11.5px/1.75 "SF Mono",Menlo,Consolas,monospace; padding:7px 6px; }
+  .ed2 .bar { border-left:3px solid transparent; padding-left:4px; } .ed2 .bar.w { border-left-color:#f0c36a; }
+  .row { align-items:baseline; display:flex; gap:7px; font:11.9px/1.5 system-ui,sans-serif; padding:4px 0; }
+  .row + .row { border-top:1px solid #222b36; }
+  .m { color:#f0c36a; flex:none; width:1.2ch; } .ln { color:var(--dim); flex:none; font-variant-numeric:tabular-nums; }
+  .who { color:var(--brass); flex:none; } .who.hex { color:var(--dim); font-style:italic; }
+  .tx { color:var(--ink); } .tx.dimmer { color:var(--soft); }
+  .stat { border-top:1px solid var(--edge); color:var(--soft); display:flex; font-size:11.5px; gap:12px; margin-top:7px; padding-top:6px; }
+  .stat .k { color:#f0c36a; } .stat .o { color:var(--green); }
+  .sec { color:var(--brass); font:10.5px system-ui,sans-serif; letter-spacing:.14em; margin-bottom:5px; text-transform:uppercase; }
+  .sec b { color:var(--dim); font-weight:normal; margin-left:5px; }
+  .lbl { color:var(--dim); font:10px system-ui,sans-serif; letter-spacing:.1em; margin-bottom:4px; text-transform:uppercase; }
+  table.pop { border-collapse:collapse; font:11.9px/1.5 system-ui,sans-serif; width:100%; }
+  table.pop td { padding:3px 0; } table.pop td.k { color:var(--dim); padding-right:12px; white-space:nowrap; }
+  table.pop td.v { color:var(--ink); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+  table.pop td.v.down { color:var(--red); } table.pop td.v.up { color:var(--green); }
+  table.pop tr.hl td { border-top:1px solid #2b3643; border-bottom:1px solid #2b3643; background:rgba(217,164,65,.07); }
+  table.pop td.why { color:var(--dim); font-size:11px; padding-left:10px; }
+  .note2 { color:var(--soft); font-size:11.5px; margin-top:7px; }
+  .amber { color:#f0c36a; } .qmark { color:#f0c36a; font-weight:650; }
+  .cell { background:#0b0f14; border:1px solid var(--edge); border-radius:4px; display:inline-block; font:12px "SF Mono",Menlo,monospace; padding:4px 8px; }
+  .setting { align-items:flex-start; display:flex; gap:10px; font:13px system-ui,sans-serif; }
+  .toggle { background:#b38b31; border-radius:20px; flex:none; height:20px; position:relative; width:36px; }
+  .toggle::after { background:#fff7e7; border-radius:50%; content:""; height:14px; position:absolute; right:3px; top:3px; width:14px; }
+  .title { font-weight:650; } .desc { color:var(--soft); font-size:12px; margin-top:2px; }
+  .grp { color:var(--brass); font:10.5px system-ui,sans-serif; letter-spacing:.14em; margin:0 0 8px; text-transform:uppercase; }
+  .settled { background:var(--raised); border-left:3px solid var(--green); border-radius:0 6px 6px 0; color:var(--soft); margin-top:16px; padding:11px 14px; font-size:13.5px; }
+</style></head><body>
+<header>
+  <h1>Shipping goods to a quartermaster &mdash; <span>reach, price, and what cannot be known</span></h1>
+  <p>Today this application forecasts every TRANSPORT order as succeeding and as costing nothing. It never
+  looks at how far the goods must travel, so it takes them off the sender, puts them on a quartermaster
+  that will never receive them, re-works what each of them can carry on the strength of that, and leaves
+  the sender's month-end silver too high by the whole shipping bill. Everything below is the agreed
+  behaviour instead. Every sentence is quoted as it will ship.</p>
+  <p class="muted" style="font:12.5px/1.6 'SF Mono',Menlo,monospace;margin-top:14px;color:var(--brass)">unit 900 &nbsp;<span style="color:var(--dim)">; owns a Caravanserai, Quartermaster 5</span><br>&nbsp;&nbsp;TRANSPORT 901 9 FUR</p>
+  <div class="settled">A shipment the game will refuse is an <b>ordinary problem in every sense</b>: counted in
+  the warning strip and in the hex's problem count, marked by the editor's amber bar beside the shipping
+  line, a stop on the <kbd>F8</kbd> walk that selects the order, and worded identically in the editor's list
+  and the hex's. A shipment the application cannot <i>measure</i> is not a problem at all &mdash; it may well
+  succeed &mdash; so it is never reported as one; it is marked on the figures instead.</div>
+</header>
+<main>
+
+<h2>1 &middot; The target is too far away</h2>
+<div class="cols">
+  <section class="card">
+    <div class="lbl">Beneath the orders editor</div>
+    <div class="pane">
+      <div class="hd"><span class="t">Orders</span><span class="h">&mdash; unit 900</span><span class="sp"></span><span class="w">&lsaquo;</span><span class="pos">1/2</span><span class="w">&rsaquo;</span></div>
+      <div class="bd">
+        <div class="ed2"><div class="bar"><span class="unit">unit 900</span></div><div class="bar w">&nbsp;&nbsp;TRANSPORT 901 5 STON</div><div class="bar">&nbsp;&nbsp;WORK</div></div>
+        <div class="stat"><span class="o">0 errors</span><span class="k">1 warning</span></div>
+        <div style="margin-top:5px"><div class="row"><span class="m">&#9888;</span><span class="ln">line 2</span><span class="tx">Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.</span></div></div>
+      </div>
+    </div>
+  </section>
+  <section class="card">
+    <div class="lbl">On the sender's own hex</div>
+    <div class="pane">
+      <div class="hd"><span class="t">Region</span><span class="h">&mdash; plain (0,0)</span></div>
+      <div class="bd">
+        <div class="sec">Problems <b>2</b></div>
+        <div class="row"><span class="m">&#9888;</span><span class="who">900</span><span class="tx">Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.</span></div>
+        <div class="row"><span class="m">&#9888;</span><span class="who hex">hex</span><span class="tx dimmer">nobody is guarding this hex</span></div>
+      </div>
+    </div>
+    <p class="quiet">Reported against the unit that wrote the order, in that unit's own hex &mdash; never
+    against the quartermaster at the far end, which did nothing.</p>
+  </section>
+</div>
+<section class="card"><div class="label">The other reach: quartermaster to quartermaster, which grows with skill</div>
+  <div class="editor"><span class="unit">unit 900</span> <span class="muted">; owns a Caravanserai, Quartermaster 1</span><br>&nbsp;&nbsp;TRANSPORT 901 1 IRON<br><span class="warning">Unit 901 is 4 hexes away and this unit can ship 3 hexes, so 1 IRON stays with this unit.</span></div>
+  <p class="quiet">The limit rises with the sender's own skill, so the same order becomes possible later
+  without the sentence ever naming a skill. Two shipments refused by one unit get a line each, in the order
+  they were written. On a narrow window each line wraps inside its own list.</p>
+</section>
+<div class="notice"><b>The forecast keeps the goods.</b> The sender keeps the stone and its weight, so what
+it can carry this month is right again too; the quartermaster's forecast gains nothing. A shipment that
+<i>is</i> in reach says nothing at all &mdash; no warning, no extra line.</div>
+
+<h2>2 &middot; A long shipment costs silver</h2>
+<div class="cols">
+  <section class="card">
+    <div class="lbl">The shipment's own line names the price</div>
+    <div class="editor">Sends 9 FUR to unit 901 for 45 silver.</div>
+    <p class="quiet">The price sits beside the order that caused it, so it is read while reading the
+    shipment. A shipment that costs nothing says nothing &mdash; never &ldquo;for 0 silver&rdquo;.</p>
+  </section>
+  <section class="card">
+    <div class="lbl">The sender's silver, opened</div>
+    <div class="pane"><div class="hd"><span class="t">unit 900</span><span class="h">&mdash; silver</span></div><div class="bd">
+      <table class="pop">
+        <tr><td class="k">silver</td><td class="v">955 <span class="muted">&darr; 1000</span></td></tr>
+        <tr><td class="k">taxed</td><td class="v up">+200</td></tr>
+        <tr><td class="k">bought</td><td class="v down">&minus;180</td><td class="why">4 grain at 45</td></tr>
+        <tr class="hl"><td class="k">shipped</td><td class="v down">&minus;45</td><td class="why">9 weight at 5 silver</td></tr>
+        <tr><td class="k">upkeep</td><td class="v down">&minus;20</td></tr>
+      </table>
+    </div></div>
+    <p class="quiet">One word, at home among <em>taxed</em>, <em>bought</em> and <em>studied</em>, with the
+    aside that explains the number &mdash; the same kind of clause a purchase already carries, and the only
+    place a player can see that a better quartermaster ships more cheaply.</p>
+  </section>
+</div>
+<div class="cols3">
+  <section class="card"><div class="label">Several shipments</div><div class="editor">Sends 9 FUR to unit 901 for 45 silver.<br>Sends 20 GRAI to unit 902 for 500 silver.<br>Sends 4 HERB to unit 903.</div><p class="quiet">The paid ones add into one <em>shipped &minus;545</em> line, the way two purchases already add into one <em>bought</em>. The free one is silent. Grain is heavy: twenty of it weighs a hundred.</p></section>
+  <section class="card"><div class="label">A beginner's bill</div><div class="pane"><div class="bd"><table class="pop"><tr><td class="k">shipped</td><td class="v down">&minus;135</td><td class="why">9 weight at 15 silver</td></tr></table></div></div><p class="quiet">Three times the price for the same nine furs at Quartermaster 1, and the aside is what says why.</p></section>
+  <section class="card"><div class="label">Free, and the other game</div><div class="editor">Sends 9 FUR to unit 901.<br><span class="muted">; two hexes, Trident: free</span><br><br>Sends 9 FUR to unit 901 for 45 silver.<br><span class="muted">; two hexes, New Origins: charged</span></div><p class="quiet">Trident carries a short shipment free; New Origins has no free short range. Each game is priced by its own rules.</p></section>
+</div>
+
+<h2>3 &middot; The sender cannot pay the bill</h2>
+<div class="cols">
+  <section class="card">
+    <div class="lbl">Beneath the orders editor &mdash; the shortfall sentence it already has</div>
+    <div class="pane"><div class="hd"><span class="t">Orders</span><span class="h">&mdash; unit 900</span></div><div class="bd">
+      <div class="ed2"><div class="bar"><span class="unit">unit 900</span></div><div class="bar w">&nbsp;&nbsp;TRANSPORT 901 9 FUR</div></div>
+      <div class="stat"><span class="o">0 errors</span><span class="k">1 warning</span></div>
+      <div style="margin-top:5px"><div class="row"><span class="m">&#9888;</span><span class="ln">line 2</span><span class="tx">short $25: this unit can have $20 and its orders spend $45, so it ships none of the 9 furs ordered</span></div></div>
+    </div></div>
+    <p class="quiet">No new sentence is invented: this is the shortfall wording already in use, with the
+    tail clause a purchase already uses &mdash; <em>&hellip;so it buys 2 of the 5 horses ordered</em>. The
+    arithmetic is the whole month's, so a unit short because of a study as well reads one figure for both.</p>
+  </section>
+  <section class="card">
+    <div class="lbl">The forecast keeps everything</div>
+    <div class="editor">Items&nbsp;&nbsp;<span class="cell">9 FUR</span> <span class="muted">&larr; kept</span><br>Silver&nbsp;<span class="cell">20</span> <span class="muted">&larr; untouched</span><br><br><span class="muted">; no shipping line at all</span></div>
+    <p class="quiet">A shipment is all or nothing, so the tail always says <em>none of the 9 furs</em>. Silver
+    already pools across your units in a hex, and shipping draws on it like any other cost: a faction-mate
+    here with money enough means no shortfall and nothing said.</p>
+  </section>
+</div>
+
+<h2>4 &middot; The distance cannot be worked out</h2>
+<div class="cols">
+  <section class="card"><div class="label">The target's position was never reported</div>
+    <div class="editor">Could not count 9 FUR for unit 901 because your report does not show where it is.</div>
+    <p class="quiet">Actionable: scout it, or read a turn it appears in.</p></section>
+  <section class="card"><div class="label">The world's width was never reported</div>
+    <div class="editor">Could not count 9 FUR for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out.</div>
+    <p class="quiet">Nothing the player did wrong and nothing scouting fixes &mdash; worth its own sentence for
+    exactly that reason.</p></section>
+</div>
+<div class="cols">
+  <section class="card">
+    <div class="lbl">The goods are neither delivered nor kept</div>
+    <div class="pane"><div class="hd"><span class="t">unit 900</span><span class="h">&mdash; items</span></div><div class="bd">
+      <div class="editor" style="margin-top:0">Items&nbsp;&nbsp;<span class="cell">9 FUR <span class="qmark">+ ?</span></span></div>
+      <div class="note2"><span class="amber">&#9888;</span> &ldquo;+ ?&rdquo; in the cell: this month is only partly counted, so this list may be short.</div>
+    </div></div>
+    <p class="quiet">The furs are still listed, because for all the application knows they are still there,
+    and the <span class="qmark">+ ?</span> says the list is not the whole story. Both the mark and that
+    sentence already exist for every month that cannot be fully added up.</p>
+  </section>
+  <section class="card">
+    <div class="lbl">The bill cannot be added up either</div>
+    <div class="pane"><div class="hd"><span class="t">unit 900</span><span class="h">&mdash; silver</span></div><div class="bd">
+      <table class="pop">
+        <tr><td class="k">silver</td><td class="v"><span class="qmark">?</span></td></tr>
+        <tr><td class="k">at month end</td><td class="v"><span class="qmark">?</span></td></tr>
+      </table>
+      <div class="note2">This month cannot be added up, so what moved this unit's silver is not listed.</div>
+      <div class="note2">The distance a shipment must travel is not known, so what it costs cannot be said.</div>
+    </div></div>
+    <p class="quiet">An unknown distance is an unknown price, so the month has no total &mdash; the same
+    <span class="qmark">?</span> and the same pair of notes already shown when a cost cannot be priced.</p>
+  </section>
+</div>
+<div class="notice"><b>Nothing certain is ever reported as uncertain.</b> A target you can see, at a distance
+that can be measured, behaves exactly as it does today: the goods go, the price is named, and no mark
+appears anywhere.</div>
+
+<h2>5 &middot; Settings &rsaquo; Warnings &rsaquo; Transport</h2>
+<section class="card">
+  <div class="grp">On by default, remembered across reloads and report changes</div>
+  <div class="setting"><span class="toggle"></span><div><div class="title">Shipments the game will not carry</div><div class="desc">A TRANSPORT order whose target is too far away, or too far to measure.</div></div></div>
+</section>
+<div class="cols">
+  <section class="card"><div class="label">Turned off &mdash; the refusal, like every other warning</div>
+    <div class="pane"><div class="hd"><span class="t">Orders</span><span class="h">&mdash; unit 900</span></div><div class="bd">
+      <div class="ed2"><div class="bar"><span class="unit">unit 900</span></div><div class="bar">&nbsp;&nbsp;TRANSPORT 901 5 STON</div></div>
+      <div class="stat"><span class="o">0 errors</span><span class="o">0 warnings</span></div>
+      <div class="note2"><span class="muted">; nothing in either list, nothing in the counts, no bar in the margin, no stop on the walk, and nothing saying anything is hidden</span></div>
+    </div></div>
+    <p class="quiet">The check is simply not made, so the shipment is forecast as going through &mdash; which
+    is what turning off a warning has always meant here.</p>
+  </section>
+  <section class="card"><div class="label">Turned off &mdash; the unmeasurable case keeps its marks</div>
+    <div class="pane"><div class="hd"><span class="t">unit 900</span><span class="h">&mdash; items</span></div><div class="bd">
+      <div class="editor" style="margin-top:0">Items&nbsp;&nbsp;<span class="cell">9 FUR <span class="qmark">+ ?</span></span><br>Silver&nbsp;<span class="cell"><span class="qmark">?</span></span></div>
+      <div class="note2"><span class="muted">; the two &ldquo;could not count&rdquo; sentences are gone</span></div>
+    </div></div>
+    <p class="quiet">The switch takes the words, never the marks. No figure ever claims to be certain when it
+    is not; what is lost is the explanation of which shipment caused the <span class="qmark">?</span>.</p>
+  </section>
+</div>
+</main>
+<footer>This is a drawing, not a running screen. The reaches and the price are from Trident's
+<code>rules/economy_transport</code> &mdash; any unit may send to a quartermaster within 2 hexes, a
+quartermaster may ship to another quartermaster further, free within 2 hexes and otherwise 5 silver a
+weight unit at the top skill and more below it &mdash; and <code>data/quartermaster</code>, which gives the
+reach as 3 plus (level+1)/3 hexes and the rate as 4&minus;((level+1)/2) &times; 5 silver per weight unit.
+New Origins' <code>rules/economy_transport</code> carries the same reaches without the free short range.
+Weights are from <code>data/items</code>: a fur weighs 1, grain 5, stone 50. Sentences are quoted exactly
+as they will ship.</footer>
+</body></html>
