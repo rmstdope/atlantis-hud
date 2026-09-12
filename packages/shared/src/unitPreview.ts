@@ -591,6 +591,12 @@ export function hasUncertainTransportTarget(unit: PreviewedUnit | undefined): bo
  */
 export function transportTargetSentence(issue: TransportTargetIssue): string {
   const goods = issue.tag === "" ? null : `${issue.amount} ${issue.tag}`;
+  // The two reach refusals are the only reasons that name a distance, and the agreed record
+  // writes "1 IRON stays" against "5 STON stay", so the verb agrees with the count. The four
+  // reasons below keep their unconditional "stay": they were agreed as they stand (`ah-7ale.2.1`).
+  const away = issue.reach?.away ?? 0;
+  const limit = issue.reach?.limit ?? 0;
+  const verb = issue.amount === 1 ? "stays" : "stay";
   switch (issue.reason) {
     case "notQuartermaster":
       return goods === null
@@ -604,6 +610,14 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
       return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether it is an eligible transport target.`;
     case "acceptanceUnknown":
       return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether its faction accepts transports from yours.`;
+    case "tooFarToAccept":
+      return goods === null
+        ? `Unit ${issue.to} is ${away} hexes away and takes goods from ${limit} hexes, so this TRANSPORT moves nothing.`
+        : `Unit ${issue.to} is ${away} hexes away and takes goods from ${limit} hexes, so ${goods} ${verb} with this unit.`;
+    case "tooFarToShip":
+      return goods === null
+        ? `Unit ${issue.to} is ${away} hexes away and this unit can ship ${limit} hexes, so this TRANSPORT moves nothing.`
+        : `Unit ${issue.to} is ${away} hexes away and this unit can ship ${limit} hexes, so ${goods} ${verb} with this unit.`;
   }
 }
 

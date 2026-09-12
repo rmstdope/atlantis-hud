@@ -77,6 +77,7 @@ export type { UnitPreview } from "./generated/UnitPreview";
 export type { TransportSent } from "./generated/TransportSent";
 export type { TransportReceived } from "./generated/TransportReceived";
 export type { TransportTargetReason } from "./generated/TransportTargetReason";
+export type { TransportReach } from "./generated/TransportReach";
 export type { TransportTargetIssue } from "./generated/TransportTargetIssue";
 export type { SkillMergeCause } from "./generated/SkillMergeCause";
 export type { SkillMerge } from "./generated/SkillMerge";

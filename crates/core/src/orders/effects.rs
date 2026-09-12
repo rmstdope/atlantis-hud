@@ -241,6 +241,27 @@ pub enum TransportTargetReason {
     /// A foreign unit the report shows as a quartermaster owning a Caravanserai. Whether its
     /// faction is FRIENDLY toward ours is not in our report (`rules/com_attitudes`).
     AcceptanceUnknown,
+    /// Further than the flat two hexes within which any unit may send to a quartermaster
+    /// (`rules/economy_transport`). The target would accept the goods; they cannot get there.
+    TooFarToAccept,
+    /// Quartermaster to quartermaster, beyond the reach the *sender's* own skill gives it
+    /// (`data/quartermaster`: "up to 3 plus (level+1)/3 hexes distant from each other").
+    TooFarToShip,
+}
+
+/// How far apart the two ends of a refused shipment are, and how far it was allowed to travel.
+///
+/// Beside the reason rather than inside it: the reason is a plain string on the wire, which every
+/// TypeScript reader already switches on, and the two numbers belong to exactly the two reach
+/// refusals (`ah-7ale.2.1`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct TransportReach {
+    /// Hexes between the sender's hex and the target's, settled by the map's own shape.
+    pub away: i64,
+    /// The most this shipment was allowed to travel, in hexes.
+    pub limit: i64,
 }
 
 /// One `TRANSPORT`/`DISTRIBUTE` the target gate stopped, in document order (`ah-64wm`).
@@ -265,6 +286,9 @@ pub struct TransportTargetIssue {
     /// counter [`TransportSent::order_index`] carries - so a refused order and a successful one
     /// read back in the order they were written (`ah-64wm`).
     pub order_index: i64,
+    /// The distance and the limit, for the two reach refusals. `None` for every other reason,
+    /// whose sentence names no number (`ah-7ale.2.1`).
+    pub reach: Option<TransportReach>,
 }
 
 /// Why men joined a unit this month, in `rules/sequenceofevents` order (`ah-rgkk.2.1`).
@@ -686,12 +710,12 @@ pub fn preview_orders_on_map(
 
     let report = cache.classified(raw_report, ruleset_json);
 
-    let (units, dissolved) = settle(&report, &ruleset, orders_document);
+    let geometry = crate::movement::graph::geometry_from_json(map_json)?;
+    let (units, dissolved) = settle(&report, &ruleset, orders_document, geometry);
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
-    let map = MapKnowledge::from_remembered(&report, &remembered)
-        .with_geometry(crate::movement::graph::geometry_from_json(map_json)?);
+    let map = MapKnowledge::from_remembered(&report, &remembered).with_geometry(geometry);
     // Where each unit stands once its own ENTER/LEAVE have run: `entry.unit` is already corrected
     // (see `Working::visit`), but the map and the aboard set it is compared against are the
     // report's, so the correction was thrown away one call later. `Working` applies the same
@@ -1048,8 +1072,9 @@ fn settle(
     report: &crate::report::ParsedReport,
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
     orders_document: &str,
+    geometry: Option<crate::movement::graph::MapGeometry>,
 ) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
-    let mut working = Working::over_own_units(report, ruleset.clone());
+    let mut working = Working::over_own_units(report, ruleset.clone(), geometry);
     super::walk::walk_with_ruleset(orders_document, Some(ruleset.as_ref()), |event| {
         working.visit(event);
     });
@@ -1149,7 +1174,9 @@ pub(crate) fn formed_unit_as_ordered(
     if !unit_id.starts_with(FORMED_ID_PREFIX) {
         return None;
     }
-    let (units, _) = settle(report, ruleset, orders_document);
+    // A `FORM`ed row is looked up on its own; no transport is applied here, so the map's shape
+    // is not needed (`ah-7ale.2.1`).
+    let (units, _) = settle(report, ruleset, orders_document, None);
     units
         .into_iter()
         .find(|entry| entry.formed && entry.unit.unit_id == unit_id)
@@ -1611,6 +1638,18 @@ struct Working {
     /// keyed by unit id. A target missing from here is one the report never described
     /// (`ah-64wm`).
     transport_targets: BTreeMap<String, TransportTargetFacts>,
+    /// Each region's coordinate, by the `region_id` every `ReportUnit` carries - the sending end
+    /// of a shipment, including a unit this document forms, whose `unit_id` the report never
+    /// printed but whose `region_id` its parent's row supplies (`ah-7ale.2.1`).
+    hex_of_region: BTreeMap<String, crate::report::model::Coordinate>,
+    /// Each quartermaster's level in that skill, by unit number: `Reach::BetweenQuartermasters`'s
+    /// input. Keyed exactly as `quartermasters` is, and a unit is in one iff it is in the other
+    /// (`ah-7ale.2.1`).
+    quartermaster_levels: BTreeMap<String, u32>,
+    /// The map's own shape, as the shell recorded it, for the distance a `TRANSPORT` is measured
+    /// across (`ah-7ale.2.1`). `None` is a game that never recorded one, which leaves every
+    /// shipment forecast exactly as it was.
+    geometry: Option<crate::movement::graph::MapGeometry>,
 }
 
 /// What the report shows about one unit that a `TRANSPORT` could name (`ah-64wm`).
@@ -1633,6 +1672,9 @@ struct TransportTargetFacts {
     /// The unit is the first one listed inside a Caravanserai in its hex, which is what
     /// `rules/world_structures` makes the owner of the structure.
     caravanserai_owner: bool,
+    /// The hex the report shows this unit standing in, for the reach the shipment is measured
+    /// against (`ah-7ale.2.1`).
+    coordinate: crate::report::model::Coordinate,
 }
 
 /// Whether a structure is the one `rules/economy_transport` allows transport into: "The structures
@@ -1691,6 +1733,7 @@ fn transport_target_facts(
                     quartermaster_disclosed: quartermaster_known,
                     quartermaster: quartermasters.contains(&unit.unit_id),
                     caravanserai_owner,
+                    coordinate: region.coordinate,
                 },
             );
         }
@@ -1740,6 +1783,7 @@ impl Working {
     fn over_own_units(
         report: &crate::report::ParsedReport,
         ruleset: std::sync::Arc<crate::movement::rules::Ruleset>,
+        geometry: Option<crate::movement::graph::MapGeometry>,
     ) -> Self {
         let mut units = Vec::new();
         let mut by_id = BTreeMap::new();
@@ -1782,15 +1826,21 @@ impl Working {
         let quartermaster_tag = ruleset
             .find_skill("quartermaster")
             .map(|skill| skill.tag.to_string());
+        // The level is read in the same pass as the set, so the two cannot disagree about who
+        // holds the skill (`ah-7ale.2.1`).
+        let mut quartermaster_levels: BTreeMap<String, u32> = BTreeMap::new();
         let quartermasters = match &quartermaster_tag {
             Some(tag) => report
                 .units()
-                .filter(|unit| {
-                    unit.skills
+                .filter_map(|unit| {
+                    let level = unit
+                        .skills
                         .iter()
-                        .any(|skill| skill.tag.eq_ignore_ascii_case(tag))
+                        .find(|skill| skill.tag.eq_ignore_ascii_case(tag))?
+                        .level;
+                    quartermaster_levels.insert(unit.unit_id.clone(), level);
+                    Some(unit.unit_id.clone())
                 })
-                .map(|unit| unit.unit_id.clone())
                 .collect(),
             // No catalogue entry for the skill: nothing can be classified, every sender falls to
             // the first phase, and transport settles in one pass as it did before `ah-d0ku`. No
@@ -1804,7 +1854,9 @@ impl Working {
             transport_target_facts(report, &quartermasters, quartermaster_tag.is_some());
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
+        let mut hex_of_region: BTreeMap<String, crate::report::model::Coordinate> = BTreeMap::new();
         for region in &report.regions {
+            hex_of_region.insert(region.region_id.clone(), region.coordinate);
             let shown = shown_in_region.entry(region.region_id.clone()).or_default();
             for unit in &region.units {
                 shown.insert(unit.unit_id.clone());
@@ -1828,6 +1880,9 @@ impl Working {
                 .collect(),
             transfers: Vec::new(),
             transport_targets,
+            hex_of_region,
+            quartermaster_levels,
+            geometry,
         }
     }
 
@@ -2848,6 +2903,86 @@ impl Working {
         }
     }
 
+    /// Which of `rules/economy_transport`'s two reaches this shipment is measured against, and
+    /// how far it may travel - or `None` when no reach rule applies to it (`ah-7ale.2.1`).
+    ///
+    /// Only ever asked of a shipment `transport_target` has already called `Eligible`, and an
+    /// eligible target is one of ours holding the quartermaster skill by construction (`ah-64wm`).
+    /// So `TransportPhase::FromQuartermaster` - the fallback phase for a target the report cannot
+    /// classify - cannot reach this, and answers `None` rather than inventing a rule for it.
+    fn transport_reach(&self, pending: &PendingTransport) -> Option<super::transport::Reach> {
+        use super::transport::Reach;
+        match self.transport_phase(pending) {
+            TransportPhase::ToQuartermaster => Some(Reach::Local),
+            TransportPhase::BetweenQuartermasters => {
+                let sender = &self.units[pending.sender].unit.unit_id;
+                let level = self.quartermaster_levels.get(sender).copied()?;
+                Some(Reach::BetweenQuartermasters { level })
+            }
+            TransportPhase::FromQuartermaster => None,
+        }
+    }
+
+    /// Whether the game will refuse this shipment for distance alone, and the two numbers its
+    /// sentence names (`ah-7ale.2.1`).
+    ///
+    /// `None` - the shipment goes - covers four cases as well as "near enough": no reach rule
+    /// applies (see `transport_reach`); either end's hex is not in the report; the two ends are on
+    /// different levels of the map (`hex_distance` answers `None`); and a distance the map's own
+    /// shape leaves unsettled that is *not* provably too far. That last one is
+    /// `HexDistance::AtMost(n)` with `n > limit`: the real distance may be anything down to zero,
+    /// so refusing would state a guess as a fact. `ah-7ale.5` is what marks that case as
+    /// uncertain; until it lands such a shipment is forecast exactly as it is today.
+    ///
+    /// `AtMost(n)` with `n <= limit` is a shipment that is *certainly* in reach - an upper bound
+    /// inside the limit settles the question - and is likewise no refusal.
+    fn out_of_reach(
+        &self,
+        pending: &PendingTransport,
+    ) -> Option<(TransportTargetReason, TransportReach)> {
+        use super::transport::Reach;
+        use crate::movement::graph::{hex_distance, HexDistance};
+
+        let reach = self.transport_reach(pending)?;
+        let from = self
+            .hex_of_region
+            .get(&self.units[pending.sender].unit.region_id)
+            .copied()?;
+        let to = self.transport_targets.get(&pending.to)?.coordinate;
+        let limit = reach.hexes();
+        let away = match hex_distance(from, to, self.geometry)? {
+            HexDistance::Exact(hexes) => hexes,
+            // An upper bound only refuses nothing: see this function's own note.
+            HexDistance::AtMost(_) => return None,
+        };
+        if away <= limit {
+            return None;
+        }
+        let reason = match reach {
+            Reach::Local => TransportTargetReason::TooFarToAccept,
+            Reach::BetweenQuartermasters { .. } => TransportTargetReason::TooFarToShip,
+        };
+        Some((
+            reason,
+            TransportReach {
+                away: i64::from(away),
+                limit: i64::from(limit),
+            },
+        ))
+    }
+
+    /// What a refusal's sentence may claim about the goods this order named.
+    ///
+    /// A single tag the game would carry has a claim to make about those goods; anything else - an
+    /// item transport refuses anyway, or several tags at once - leaves the sentence to speak of
+    /// the order alone. Shared by both refusal gates so the two cannot drift (`ah-7ale.2.1`).
+    fn goods_claimed(&self, moving: &[(String, String, i64)]) -> (i64, String) {
+        match moving {
+            [(_, tag, moved)] if self.ruleset.can_be_transported(tag) => (*moved, tag.clone()),
+            _ => (0, String::new()),
+        }
+    }
+
     /// One phase of transport, over every queued line that belongs to it.
     ///
     /// Each unit's holdings as the phase opened are the allowance every send in this phase is
@@ -2895,15 +3030,8 @@ impl Working {
                 continue;
             }
             if let TransportTargetOutcome::Refused(reason) = self.transport_target(&pending.to) {
-                // One record for the order. A single tag the game would carry has a claim to make
-                // about those goods; anything else - an item transport refuses anyway, or several
-                // tags at once - leaves the sentence to speak of the order alone.
-                let (amount, tag) = match moving.as_slice() {
-                    [(_, tag, moved)] if self.ruleset.can_be_transported(tag) => {
-                        (*moved, tag.clone())
-                    }
-                    _ => (0, String::new()),
-                };
+                // One record for the order, naming the goods only where there is a claim to make.
+                let (amount, tag) = self.goods_claimed(&moving);
                 issues[pending.sender].push((
                     pending.sequence,
                     TransportTargetIssue {
@@ -2912,6 +3040,24 @@ impl Working {
                         tag,
                         reason,
                         order_index: index,
+                        reach: None,
+                    },
+                ));
+                continue;
+            }
+            // The goods are welcome, but the hexes are too far apart: `rules/economy_transport`
+            // moves nothing, so they and their weight stay with the sender (`ah-7ale.2.1`).
+            if let Some((reason, reach)) = self.out_of_reach(pending) {
+                let (amount, tag) = self.goods_claimed(&moving);
+                issues[pending.sender].push((
+                    pending.sequence,
+                    TransportTargetIssue {
+                        to: pending.to.clone(),
+                        amount,
+                        tag,
+                        reason,
+                        order_index: index,
+                        reach: Some(reach),
                     },
                 ));
                 continue;
@@ -8286,6 +8432,7 @@ mod tests {
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::NotQuartermaster,
                     order_index: 0,
+                    reach: None,
                 }
             );
             // The sender keeps them, so no row of ours gains them either.
@@ -8306,6 +8453,7 @@ mod tests {
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
+                    reach: None,
                 }
             );
         }
@@ -8334,6 +8482,7 @@ mod tests {
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::EligibilityUnknown,
                     order_index: 0,
+                    reach: None,
                 }
             );
         }
@@ -8353,6 +8502,7 @@ mod tests {
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::AcceptanceUnknown,
                     order_index: 0,
+                    reach: None,
                 }
             );
         }
@@ -8386,6 +8536,7 @@ mod tests {
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
+                    reach: None,
                 }
             );
             // No row of ours gains anything: 7001 is not our unit.
@@ -8404,6 +8555,7 @@ mod tests {
                     tag: "STON".to_string(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
+                    reach: None,
                 }
             );
         }
@@ -8429,6 +8581,7 @@ mod tests {
                     tag: String::new(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
+                    reach: None,
                 }
             );
         }
@@ -8468,6 +8621,7 @@ mod tests {
                     tag: "FUR".to_string(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 1,
+                    reach: None,
                 }]
             );
         }
@@ -8488,6 +8642,7 @@ mod tests {
                     tag: "FUR".to_string(),
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
+                    reach: None,
                 }]
             );
             assert_eq!(
@@ -9760,5 +9915,333 @@ mod tests {
         assert_eq!(silver(&commented, "900"), silver(&plain, "900"));
         assert_eq!(silver(&commented, "901"), silver(&plain, "901"));
         assert_eq!(silver(&commented, "901"), 40, "the transfer is applied");
+    }
+
+    /// `ah-7ale.2.1` increment 1: the map's own shape has to reach the settlement, because the
+    /// reach of a `TRANSPORT` is measured across it.
+    #[test]
+    fn a_preview_carries_the_maps_shape_into_the_transports() {
+        let report = report_across_two_hexes();
+        let ruleset = ReportCache::new()
+            .ruleset(RULESET)
+            .expect("the ruleset loads")
+            .clone();
+        let parsed = ReportCache::new().classified(&report, RULESET);
+        let geometry = crate::movement::graph::MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        };
+
+        let working = Working::over_own_units(&parsed, ruleset, Some(geometry));
+
+        assert_eq!(working.geometry, Some(geometry));
+    }
+
+    /// `ah-7ale.2.1` increment 2: both ends of a shipment need the hex the report shows them in.
+    #[test]
+    fn a_transport_target_carries_the_hex_the_report_shows_it_in() {
+        let parsed = ReportCache::new().classified(&report_across_two_hexes(), RULESET);
+        let ruleset = ReportCache::new()
+            .ruleset(RULESET)
+            .expect("the ruleset loads")
+            .clone();
+
+        let working = Working::over_own_units(&parsed, ruleset, None);
+
+        let hex = |unit_id: &str| {
+            working
+                .transport_targets
+                .get(unit_id)
+                .expect("the report shows the unit")
+                .coordinate
+        };
+        assert_eq!(
+            hex("5530"),
+            crate::report::model::Coordinate { x: 1, y: 1, z: 1 }
+        );
+        assert_eq!(
+            hex("6857"),
+            crate::report::model::Coordinate { x: 2, y: 2, z: 1 }
+        );
+
+        // The sending end is looked up by region, because a `FORM`ed sender has no unit row in
+        // the report at all - only its parent's `region_id`.
+        let sender_region = parsed
+            .regions
+            .iter()
+            .find(|region| region.units.iter().any(|unit| unit.unit_id == "5530"))
+            .expect("the sender's region")
+            .region_id
+            .clone();
+        assert_eq!(
+            working.hex_of_region.get(&sender_region).copied(),
+            Some(crate::report::model::Coordinate { x: 1, y: 1, z: 1 })
+        );
+    }
+
+    /// `ah-7ale.2.1` increment 3: `Reach::BetweenQuartermasters` takes the *sender's* own level.
+    #[test]
+    fn a_quartermasters_level_is_read_beside_its_skill() {
+        let parsed = ReportCache::new().classified(&report_across_two_hexes(), RULESET);
+        let ruleset = ReportCache::new()
+            .ruleset(RULESET)
+            .expect("the ruleset loads")
+            .clone();
+
+        let working = Working::over_own_units(&parsed, ruleset, None);
+
+        assert_eq!(working.quartermaster_levels.get("5531").copied(), Some(3));
+        assert_eq!(working.quartermaster_levels.get("6857").copied(), Some(5));
+        assert!(working.quartermasters.contains("5531"));
+        // A unit with no quartermaster skill is in neither.
+        assert_eq!(working.quartermaster_levels.get("5530"), None);
+        assert!(!working.quartermasters.contains("5530"));
+    }
+
+    /// `ah-7ale.2.1`: an ordinary source and its own quartermaster, each in a hex of its own, for
+    /// the reaches `rules/economy_transport` states. `Source` carries enough stone for the weight
+    /// assertion to have something to say.
+    fn reach_report(source_hex: (i32, i32), target_hex: (i32, i32), levels: (u32, u32)) -> String {
+        let (sx, sy) = source_hex;
+        let (tx, ty) = target_hex;
+        let (source_level, target_level) = levels;
+        // A quartermaster ships *between transport structures* (`data/quartermaster`), so a
+        // quartermaster sender is the first unit listed inside a Caravanserai of its own; an
+        // ordinary sender needs no structure at all (`rules/economy_transport`).
+        let (source_skills, source_post, source_indent) = if source_level == 0 {
+            (String::new(), String::new(), "")
+        } else {
+            (
+                format!(" Skills: quartermaster [QUAM] {source_level} (450)."),
+                "+ Post Zero [9] : Caravanserai.".to_string(),
+                "  ",
+            )
+        };
+        [
+            "Foo (1) Report".to_string(),
+            String::new(),
+            format!("plain ({sx},{sy}) in Nowhere, 10 peasants (orcs), $5."),
+            String::new(),
+            "Exits:".to_string(),
+            format!("  Southeast : plain ({},{}) in Nowhere.", sx + 1, sy + 1),
+            String::new(),
+            source_post,
+            format!(
+                "{source_indent}* Source (900), Foo (1), leader [LEAD], 5 stone [STON], \
+                 1 iron [IRON]. Weight: 61. Capacity: 0/0/15/0.{source_skills}"
+            ),
+            String::new(),
+            format!("plain ({tx},{ty}) in Nowhere, 10 peasants (orcs), $5."),
+            String::new(),
+            "Exits:".to_string(),
+            format!("  Southeast : plain ({},{}) in Nowhere.", tx + 1, ty + 1),
+            String::new(),
+            "+ Post One [1] : Caravanserai.".to_string(),
+            format!(
+                "  * Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                 Skills: quartermaster [QUAM] {target_level} (450)."
+            ),
+            String::new(),
+        ]
+        .join("\n")
+    }
+
+    /// A map that never wraps, so every distance in these tests is settled exactly.
+    const FLAT_MAP: &str = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
+
+    fn reach_preview(report: &str, orders: &str, map_json: &str) -> OrdersPreviewResponse {
+        preview_orders_on_map(
+            &mut ReportCache::new(),
+            RULESET,
+            report,
+            "[]",
+            orders,
+            map_json,
+        )
+        .expect("the ruleset loads")
+    }
+
+    fn reach_drawn<'a>(
+        response: &'a OrdersPreviewResponse,
+        unit_id: &str,
+    ) -> Option<&'a UnitPreview> {
+        response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit.unit_id == unit_id)
+    }
+
+    fn reach_unit<'a>(response: &'a OrdersPreviewResponse, unit_id: &str) -> &'a UnitPreview {
+        reach_drawn(response, unit_id).expect("the unit is previewed")
+    }
+
+    /// What the unit holds once the month is forecast. A unit the orders leave alone is absent
+    /// from the response entirely (see [`OrdersPreviewResponse`]), so it still holds exactly what
+    /// the report gave it - which for a target that received nothing is no stone at all.
+    fn reach_held(response: &OrdersPreviewResponse, unit_id: &str, tag: &str) -> i64 {
+        reach_drawn(response, unit_id).map_or(0, |unit| {
+            unit.unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map_or(0, |item| item.amount)
+        })
+    }
+
+    /// `rules/economy_transport`: "A Quartermaster unit may accept TRANSPORTed items from any unit
+    /// within 2 hexes distance". Three hexes away, the goods - and their weight - stay put.
+    #[test]
+    fn a_shipment_further_than_two_hexes_stays_with_the_sender() {
+        let report = reach_report((0, 0), (0, 6), (0, 1));
+        let response = reach_preview(&report, "unit 900\nTRANSPORT 901 5 STON\n", FLAT_MAP);
+
+        assert_eq!(reach_held(&response, "900", "STON"), 5, "the stone stayed");
+        assert_eq!(reach_held(&response, "901", "STON"), 0, "and never arrived");
+        let sender = reach_unit(&response, "900");
+        assert!(sender.transport_sent.is_empty(), "nothing was sent");
+        assert_eq!(
+            sender.transport_target_issues,
+            vec![TransportTargetIssue {
+                to: "901".to_string(),
+                amount: 5,
+                tag: "STON".to_string(),
+                reason: TransportTargetReason::TooFarToAccept,
+                order_index: 0,
+                reach: Some(TransportReach { away: 3, limit: 2 }),
+            }]
+        );
+        // The agreed record: "the forecast keeps the goods *and their weight*", so what the sender
+        // can carry this month reads exactly as the report left it - the row the preview would
+        // have re-worked had the stone gone.
+        let reported = ReportCache::new()
+            .classified(&report, RULESET)
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit_id == "900")
+            .expect("the report shows the sender")
+            .clone();
+        assert_eq!(sender.unit.weight, reported.weight, "the weight stayed too");
+        assert_eq!(sender.unit.capacity, reported.capacity);
+    }
+
+    /// The control: without it the test above would pass on a build that refuses every shipment.
+    #[test]
+    fn a_shipment_of_two_hexes_is_delivered_and_reported_nowhere() {
+        let response = reach_preview(
+            &reach_report((0, 0), (0, 4), (0, 1)),
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            FLAT_MAP,
+        );
+
+        assert_eq!(reach_held(&response, "900", "STON"), 0, "the stone left");
+        assert_eq!(reach_held(&response, "901", "STON"), 5, "and arrived");
+        assert!(reach_unit(&response, "900")
+            .transport_target_issues
+            .is_empty());
+    }
+
+    /// `data/quartermaster`: "Items may be shipped between two transport structures which are up to
+    /// 3 plus (level+1)/3 hexes distant from each other" - the *sender's* own level.
+    #[test]
+    fn a_quartermaster_ships_as_far_as_its_own_skill_allows() {
+        let orders = "unit 900\nTRANSPORT 901 1 IRON\n";
+
+        let too_far = reach_preview(&reach_report((0, 0), (0, 8), (1, 1)), orders, FLAT_MAP);
+        assert_eq!(reach_held(&too_far, "900", "IRON"), 1, "the iron stayed");
+        assert_eq!(
+            reach_unit(&too_far, "900").transport_target_issues,
+            vec![TransportTargetIssue {
+                to: "901".to_string(),
+                amount: 1,
+                tag: "IRON".to_string(),
+                reason: TransportTargetReason::TooFarToShip,
+                order_index: 0,
+                reach: Some(TransportReach { away: 4, limit: 3 }),
+            }]
+        );
+
+        let in_reach = reach_preview(&reach_report((0, 0), (0, 6), (1, 1)), orders, FLAT_MAP);
+        assert_eq!(
+            reach_held(&in_reach, "901", "IRON"),
+            1,
+            "three hexes is fine"
+        );
+        assert!(reach_unit(&in_reach, "900")
+            .transport_target_issues
+            .is_empty());
+
+        // `Reach::hexes` at level 5 is 3 + 6/3 = 5, so the four-hex shipment now goes.
+        let skilled = reach_preview(&reach_report((0, 0), (0, 8), (5, 1)), orders, FLAT_MAP);
+        assert_eq!(
+            reach_held(&skilled, "901", "IRON"),
+            1,
+            "a better shipper reaches"
+        );
+        assert!(reach_unit(&skilled, "900")
+            .transport_target_issues
+            .is_empty());
+    }
+
+    /// A distance the map's own shape leaves unsettled refuses nothing: the real distance may be
+    /// anything down to zero, and stating a guess as a fact is the defect this family removes.
+    /// `ah-7ale.5` is what marks such a shipment as uncertain.
+    #[test]
+    fn a_shipment_whose_distance_cannot_be_worked_out_is_left_as_it_is() {
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+        let far = reach_report((0, 0), (0, 6), (0, 1));
+
+        for map_json in ["", r#"{"width":0,"height":96,"wrapX":true,"wrapY":false}"#] {
+            let response = reach_preview(&far, orders, map_json);
+            assert_eq!(
+                reach_held(&response, "901", "STON"),
+                5,
+                "delivered as today"
+            );
+            assert!(reach_unit(&response, "900")
+                .transport_target_issues
+                .is_empty());
+        }
+
+        // An `AtMost` bound *inside* the limit settles the question the other way, and is likewise
+        // no refusal and no issue.
+        let near = reach_preview(&reach_report((0, 0), (0, 4), (0, 1)), orders, "");
+        assert_eq!(reach_held(&near, "901", "STON"), 5);
+        assert!(reach_unit(&near, "900").transport_target_issues.is_empty());
+    }
+
+    /// A `FORM`ed sender is why the sending end is looked up by region rather than by unit: its
+    /// `unit_id` is `new-<alias>`, which the report never printed, and only its parent's
+    /// `region_id` says where it stands. Without this the reach gate would fail open for every
+    /// unit this document creates.
+    #[test]
+    fn a_shipment_from_a_unit_this_document_forms_is_measured_too() {
+        let response = reach_preview(
+            &reach_report((0, 0), (0, 6), (0, 1)),
+            "unit 900\nFORM 1\nTRANSPORT 901 5 STON\nEND\nGIVE NEW 1 1 LEAD\nGIVE NEW 1 5 STON\n",
+            FLAT_MAP,
+        );
+
+        let formed = reach_unit(&response, "new-1");
+        assert_eq!(
+            reach_held(&response, "new-1", "STON"),
+            5,
+            "the stone stayed"
+        );
+        assert_eq!(reach_held(&response, "901", "STON"), 0, "and never arrived");
+        assert_eq!(
+            formed.transport_target_issues,
+            vec![TransportTargetIssue {
+                to: "901".to_string(),
+                amount: 5,
+                tag: "STON".to_string(),
+                reason: TransportTargetReason::TooFarToAccept,
+                order_index: 0,
+                reach: Some(TransportReach { away: 3, limit: 2 }),
+            }]
+        );
     }
 }
