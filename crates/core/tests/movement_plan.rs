@@ -598,7 +598,9 @@ fn new_origins_still_refuses_every_swimmer() {
 }
 
 /// The sea and the shore: `(2,2)` coastal, `(3,3)` deep - its six neighbours are all water - and
-/// `(4,4)` water of a depth nothing can tell, named by `(3,3)` alone.
+/// `(4,4)` water of a depth nothing can tell, naming only `(3,3)` and `(5,5)` of its six
+/// directions. `(5,5)` itself is named but undescribed here; a test that needs it described
+/// appends a region of its own to [`sea_and_shore_text`].
 fn sea_and_shore(items: &str, weight: i64, capacity: &str) -> ParsedReport {
     parse_report_full(&sea_and_shore_text(items, weight, capacity))
 }
@@ -689,8 +691,6 @@ fn sea_creatures_bearing_more_than_enough_ride_out() {
     assert_eq!(route.steps.len(), 2);
 }
 
-/// `(4,4)` is named by one hex alone, so five of its six directions are unaccounted for and
-/// nothing can say whether it is deep. Refused rather than guessed at.
 /// Deep water *in the way* rather than clicked on: the destination is the unknown-depth hex beyond
 /// it, so the refusal arrives through the mid-route probe and carries `destination: false`. The
 /// deep hex is named, not the one the player asked for, because the deep hex is what stops it.
@@ -721,6 +721,8 @@ fn deep_water_in_the_way_is_named_rather_than_the_hex_beyond_it() {
     );
 }
 
+/// `(4,4)` states two of its six directions, so four are unaccounted for and nothing can say
+/// whether it is deep. Refused rather than guessed at.
 #[test]
 fn water_of_unknown_depth_is_refused_rather_than_guessed() {
     let report = sea_and_shore("lizardman [LIZA]", 10, "0/0/15/15");
