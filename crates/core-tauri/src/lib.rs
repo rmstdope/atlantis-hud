@@ -185,11 +185,10 @@ pub mod commands {
     ) -> Vec<atlantis_hud_core::movement::passages::PassageClaim> {
         let report = atlantis_hud_core::report::parse_report_full(raw_report);
         let ruleset = atlantis_hud_core::movement::rules::Ruleset::from_json(ruleset_json).ok();
-        let ordered =
-            atlantis_hud_core::movement::fleet::OrderedUnits::from_document_with_ruleset(
-                orders_document,
-                ruleset.as_ref(),
-            );
+        let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document_with_ruleset(
+            orders_document,
+            ruleset.as_ref(),
+        );
         atlantis_hud_core::movement::passages::passage_claims(&report, &ordered)
     }
 
@@ -1213,11 +1212,10 @@ pub use commands::{
     command_load_order_draft, command_load_region_sightings, command_merge_report,
     command_order_argument_completions, command_order_commands, command_order_vocabulary,
     command_parse_report, command_parse_report_classified, command_parse_report_full,
-    command_passage_claims,
-    command_plan_route, command_preview_orders, command_preview_report_import,
-    command_roster_skills, command_save_allied_mages, command_save_army, command_save_hex_note,
-    command_save_order_draft, command_save_study_plans, command_trace_move_orders,
-    command_trade_routes, command_validate_orders,
+    command_passage_claims, command_plan_route, command_preview_orders,
+    command_preview_report_import, command_roster_skills, command_save_allied_mages,
+    command_save_army, command_save_hex_note, command_save_order_draft, command_save_study_plans,
+    command_trace_move_orders, command_trade_routes, command_validate_orders,
 };
 
 /// Creates a game under the application's games directory and applies migrations.

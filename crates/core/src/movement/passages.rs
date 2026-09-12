@@ -93,7 +93,7 @@ pub fn passage_claims(report: &ParsedReport, ordered: &OrderedUnits) -> Vec<Pass
 
             claims.push(PassageClaim {
                 unit_id: unit.unit_id.clone(),
-                entry: region.coordinate.clone(),
+                entry: region.coordinate,
                 structure_id,
                 structure: numbered_structure_label(structure),
             });
