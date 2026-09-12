@@ -633,3 +633,37 @@ fn the_refused_sides_after_sailing_southeast_are_the_mockups_three() {
         );
     }
 }
+
+/// An ocean hex is known only by the shore that named it, so it states no exits of its own -
+/// and that shore is the only evidence there is that the water has a coast. `adjacent` reads the
+/// statement from both ends; `neighbours` reads only the hex's own, and for an ocean hex that is
+/// nothing at all.
+#[test]
+fn an_ocean_hex_named_from_the_shore_knows_its_shore() {
+    let report = parse_report_full(
+        "Foo (1) Report\n\
+         \n\
+         plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\
+         \n\
+         Exits:\n  \
+         Southeast : ocean (2,2) in Atlantis Ocean.\n",
+    );
+    let map = MapKnowledge::from_report(&report);
+
+    assert_eq!(
+        map.neighbours(at(2, 2)).count(),
+        0,
+        "nothing described the ocean's own exits"
+    );
+    assert_eq!(
+        map.adjacent(at(2, 2)),
+        vec![(Direction::Northwest, at(1, 1))],
+        "the shore that named it is adjacency all the same"
+    );
+
+    // The hex's own statement is unchanged, and is not duplicated by the reverse edge.
+    assert_eq!(
+        map.adjacent(at(1, 1)),
+        vec![(Direction::Southeast, at(2, 2))]
+    );
+}

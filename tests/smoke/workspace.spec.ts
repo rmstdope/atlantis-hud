@@ -2309,6 +2309,37 @@ test("an illegal move is refused with the reason", async ({ page }) => {
   await expect(page.getByTestId("planner-route")).toHaveCount(0);
 });
 
+/**
+ * The same click, in a world that swims. `newage trident rules/movement_normal`: "Swimming units
+ * are restricted to coastal ocean regions and lakes." (8,52) is named by (7,53)'s own exit list,
+ * which is what makes it coastal, and the unit's items are what decide - the printed capacity line
+ * is patched to agree with them rather than to do the deciding.
+ */
+test("a swimmer crosses the coastal water the walker was refused", async ({ page }) => {
+  const swimmerReport = REPORT.replace(
+    "  faction, holding, sharing, sailing battle spoils, leader [LEAD].\n  Weight: 10. Capacity: 0/0/15/0.",
+    "  faction, holding, sharing, sailing battle spoils, lizardman [LIZA].\n  Weight: 10. Capacity: 0/0/15/15."
+  ).replace(
+    ";  sharing, sailing battle spoils, leader [LEAD]. Weight: 10. Capacity:\n;  0/0/15/0.",
+    ";  sharing, sailing battle spoils, lizardman [LIZA]. Weight: 10. Capacity:\n;  0/0/15/15."
+  );
+
+  await clearGames(page);
+  await page.getByTestId("game-ruleset").selectOption("newage-trident");
+  await createGame(page, "Swimmer smoke");
+  await importReport(page, "trident-turn.rep", swimmerReport);
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await page.getByTestId("planner-arm").click();
+  await selectHex(page, "1:8,52");
+
+  await expect(page.getByTestId("planner-route")).toBeVisible();
+  await expect(page.getByTestId("planner-route")).toContainText("ocean (8,52) · 1 · swimming");
+  await expect(page.getByTestId("planner-problem")).toHaveCount(0);
+});
+
 test("a planned route can be written into the unit's orders", async ({ page }) => {
   await loadReport(page);
   await enableMovementPlanner(page);
