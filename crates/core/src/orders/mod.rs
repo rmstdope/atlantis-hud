@@ -37,6 +37,8 @@ mod transfer_agreement;
 /// Core-internal: the one Give-phase transfer record and report order both `effects` and
 /// `semantics` read.
 mod transfers;
+/// The one transport reach and shipping rate `effects`, `semantics` and `silver` read.
+pub mod transport;
 pub mod vocabulary;
 pub mod walk;
 
