@@ -224,8 +224,13 @@ export function parseMovementRules(html: string): MovementRules {
     new RegExp(
       "Swimming units are restricted to coastal (\\w+) regions and (\\w+?)s\\. " +
         "Deep \\1 regions cannot be entered by swimming units, with one exception: " +
-        "a unit carried by sea creatures able to bear its whole weight rides out into deep " +
-        "water safely\\. Ships are not affected by this restriction\\.",
+        "a unit carried by sea creatures able to bear its whole weight" +
+        // The tail is optional on purpose. The rule itself is in the first two sentences, and a
+        // miss here is silent - it would read as "this world has no swimming at all" - so
+        // requiring the fleet exemption would turn a reworded last sentence into a non-swimming
+        // world. Captured when present so `provenance.swimming` carries the whole paragraph,
+        // including the exemption; `committed.test.ts` and `rules.test.ts` assert it is there.
+        "(?: rides out into deep water safely\\. Ships are not affected by this restriction\\.)?",
       "i"
     )
   );

@@ -175,7 +175,10 @@ describe("parseMovementRules", () => {
     const reworded = TRIDENT_RULES_HTML.replace(
       "restricted to coastal ocean regions and lakes. Deep",
       "restricted to coastal marsh regions and lakes. Deep"
-    ).replace("ocean regions cannot be entered by swimming", "marsh regions cannot be entered by swimming");
+    ).replace(
+      "ocean regions cannot be entered by swimming",
+      "marsh regions cannot be entered by swimming"
+    );
     expect(reworded).not.toBe(TRIDENT_RULES_HTML);
 
     expect(() => parseMovementRules(reworded)).toThrow(RulesetScrapeError);
