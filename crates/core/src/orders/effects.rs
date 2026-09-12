@@ -10196,4 +10196,36 @@ mod tests {
         assert_eq!(reach_held(&near, "901", "STON"), 5);
         assert!(reach_unit(&near, "900").transport_target_issues.is_empty());
     }
+
+    /// A `FORM`ed sender is why the sending end is looked up by region rather than by unit: its
+    /// `unit_id` is `new-<alias>`, which the report never printed, and only its parent's
+    /// `region_id` says where it stands. Without this the reach gate would fail open for every
+    /// unit this document creates.
+    #[test]
+    fn a_shipment_from_a_unit_this_document_forms_is_measured_too() {
+        let response = reach_preview(
+            &reach_report((0, 0), (0, 6), (0, 1)),
+            "unit 900\nFORM 1\nTRANSPORT 901 5 STON\nEND\nGIVE NEW 1 1 LEAD\nGIVE NEW 1 5 STON\n",
+            FLAT_MAP,
+        );
+
+        let formed = reach_unit(&response, "new-1");
+        assert_eq!(
+            reach_held(&response, "new-1", "STON"),
+            5,
+            "the stone stayed"
+        );
+        assert_eq!(reach_held(&response, "901", "STON"), 0, "and never arrived");
+        assert_eq!(
+            formed.transport_target_issues,
+            vec![TransportTargetIssue {
+                to: "901".to_string(),
+                amount: 5,
+                tag: "STON".to_string(),
+                reason: TransportTargetReason::TooFarToAccept,
+                order_index: 0,
+                reach: Some(TransportReach { away: 3, limit: 2 }),
+            }]
+        );
+    }
 }
