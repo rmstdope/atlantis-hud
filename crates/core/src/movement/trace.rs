@@ -176,8 +176,9 @@ pub fn trace_move(
 
             let exit = TracedPassageExit {
                 coordinate: known.destination,
-                cost: journey
-                    .map_or(0, |journey| base_terrain_cost(ruleset, journey.mode, &terrain)),
+                cost: journey.map_or(0, |journey| {
+                    base_terrain_cost(ruleset, journey.mode, &terrain)
+                }),
                 terrain,
                 steps: beyond.route,
             };

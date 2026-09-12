@@ -251,7 +251,8 @@ describe("merging an allied report", () => {
         ruleset_json: null,
         raw_report: null,
         disabled_codes: null,
-        map_json: null
+        map_json: null,
+        known_passages_json: null
       }
     ]);
   });
@@ -471,10 +472,10 @@ describe("createCoreClient", () => {
     const fake = fakeAdapter();
     const client = createCoreClient(fake);
 
-    await client.previewOrders("ruleset", "raw", "[]", "orders", "", {
+    await client.previewOrders("ruleset", "raw", "[]", "orders", "", "", {
       disabledCodes: ["transport-out-of-reach"]
     });
-    await client.previewOrders("ruleset", "raw", "[]", "orders", "");
+    await client.previewOrders("ruleset", "raw", "[]", "orders", "", "");
 
     expect(fake.previewOrders).toHaveBeenNthCalledWith(
       1,
@@ -482,6 +483,7 @@ describe("createCoreClient", () => {
       "raw",
       "[]",
       "orders",
+      "",
       "",
       ["transport-out-of-reach"]
     );
@@ -491,6 +493,7 @@ describe("createCoreClient", () => {
       "raw",
       "[]",
       "orders",
+      "",
       "",
       null
     );

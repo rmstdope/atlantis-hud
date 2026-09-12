@@ -213,6 +213,10 @@ pub fn trace_orders_for_remembered_report(
 ///
 /// As [`trace_orders_for_remembered_report`], plus an error when the map shape or the passages the
 /// faction has proved cannot be read.
+// Eight, because each of the three documents the screen holds - the remembered map, the game's own
+// shape, and the passages it has proved - crosses as its own text rather than being bundled into a
+// struct that every caller would then have to build (`ah-3u7c.2.2`).
+#[allow(clippy::too_many_arguments)]
 pub fn trace_orders_on_map(
     cache: &mut ReportCache,
     ruleset_json: &str,

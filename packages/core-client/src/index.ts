@@ -920,6 +920,8 @@ export type CoreClient = Omit<
     rememberedJson: string,
     ordersDocument: string,
     mapJson: string,
+    /** Every inner passage the faction has proved the far side of, as JSON. `""` for none. */
+    passagesJson: string,
     options?: OrderCheckOptions
   ): Promise<OrdersPreviewResponse>;
   /**

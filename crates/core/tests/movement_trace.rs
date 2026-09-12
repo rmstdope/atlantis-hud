@@ -663,7 +663,11 @@ fn known_shaft() -> String {
 }
 
 /// Traces one unit's orders over the shaft report, told what the faction has learned.
-fn trace_in_shaft_knowing(passages_json: &str, unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
+fn trace_in_shaft_knowing(
+    passages_json: &str,
+    unit_id: &str,
+    orders: &str,
+) -> MoveOrderTraceResponse {
     atlantis_hud_core::movement::request::trace_orders_on_map(
         &mut ReportCache::new(),
         RULESET,
@@ -775,8 +779,8 @@ fn the_serde_shape_of_a_followed_passage() {
     assert_eq!(exit["coordinate"]["z"], 3);
     assert!(exit["steps"].is_array());
 
-    let unknown = serde_json::to_value(trace_in_shaft_knowing("", "900", "MOVE IN SE"))
-        .expect("serializes");
+    let unknown =
+        serde_json::to_value(trace_in_shaft_knowing("", "900", "MOVE IN SE")).expect("serializes");
     assert!(
         unknown["path"]["passage"]["exit"].is_null(),
         "no proof, null"

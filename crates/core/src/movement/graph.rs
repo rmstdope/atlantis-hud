@@ -341,10 +341,7 @@ impl MapKnowledge {
     /// same way and holds one answer per passage, so a duplicate is a caller's repetition, not two
     /// facts.
     #[must_use]
-    pub fn with_passages(
-        mut self,
-        passages: Vec<crate::movement::passages::KnownPassage>,
-    ) -> Self {
+    pub fn with_passages(mut self, passages: Vec<crate::movement::passages::KnownPassage>) -> Self {
         for passage in passages {
             self.passages
                 .insert(passage_key(passage.entry, &passage.structure_id), passage);

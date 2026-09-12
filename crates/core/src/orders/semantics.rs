@@ -319,9 +319,9 @@ impl CheckOptions {
     /// repeat between hexes, so a number alone would silence a warning about a different passage.
     #[must_use]
     pub fn knows_passage(&self, entry: Coordinate, structure_id: &str) -> bool {
-        self.known_passages.iter().any(|known| {
-            known.entry == entry && known.structure_id == structure_id
-        })
+        self.known_passages
+            .iter()
+            .any(|known| known.entry == entry && known.structure_id == structure_id)
     }
 }
 

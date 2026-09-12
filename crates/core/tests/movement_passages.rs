@@ -150,12 +150,18 @@ fn a_map_told_about_a_passage_answers_for_that_hex_and_structure() {
 fn an_absent_passage_document_is_nothing_known_and_a_broken_one_is_an_error() {
     use atlantis_hud_core::movement::passages::known_passages_from_json;
 
-    assert_eq!(known_passages_from_json("").expect("empty is nothing"), vec![]);
+    assert_eq!(
+        known_passages_from_json("").expect("empty is nothing"),
+        vec![]
+    );
     assert_eq!(
         known_passages_from_json("  \n ").expect("whitespace is nothing"),
         vec![]
     );
-    assert_eq!(known_passages_from_json("[]").expect("an empty list"), vec![]);
+    assert_eq!(
+        known_passages_from_json("[]").expect("an empty list"),
+        vec![]
+    );
 
     let one = known_passages_from_json(
         r#"[{"entry":{"x":1,"y":1,"z":1},"structureId":"1","structure":"Shaft [1]",
