@@ -331,3 +331,105 @@ describe("saying when the sailing weight check could not be made", () => {
     expect(describeLoadCheck(route)).toBeNull();
   });
 });
+
+describe("explaining why the water refuses a swimmer", () => {
+  it("names the numbers rather than a ship when a swimmer carries too much", () => {
+    expect(
+      describeProblem({
+        kind: "swimLoadTooHeavy",
+        coordinate: { x: 2, y: 2, z: 1 },
+        terrain: "ocean",
+        capacity: 20,
+        load: 40,
+        destination: false
+      })
+    ).toBe("The sea at (2,2) is in the way, and this unit cannot swim carrying 40 when it can bear 20.");
+  });
+
+  it("names the hex the player clicked when that is the one refusing", () => {
+    expect(
+      describeProblem({
+        kind: "swimLoadTooHeavy",
+        coordinate: { x: 2, y: 2, z: 1 },
+        terrain: "ocean",
+        capacity: 20,
+        load: 40,
+        destination: true
+      })
+    ).toBe("(2,2) is ocean, and this unit cannot swim carrying 40 when it can bear 20.");
+  });
+
+  it("says a swimmer with no sea creatures keeps to coastal water", () => {
+    expect(
+      describeProblem({
+        kind: "deepWaterNeedsSeaCreatures",
+        coordinate: { x: 3, y: 3, z: 1 },
+        terrain: "ocean",
+        borne: 0,
+        load: 40,
+        destination: false
+      })
+    ).toBe("The deep sea at (3,3) is in the way, and this unit can swim only in coastal water.");
+  });
+
+  it("says how much sea creatures that fall short can bear", () => {
+    expect(
+      describeProblem({
+        kind: "deepWaterNeedsSeaCreatures",
+        coordinate: { x: 3, y: 3, z: 1 },
+        terrain: "ocean",
+        borne: 20,
+        load: 40,
+        destination: true
+      })
+    ).toBe("(3,3) is deep sea, and this unit's sea creatures can bear 20 of its 40.");
+  });
+
+  it("refuses water whose depth cannot be told rather than guessing", () => {
+    expect(
+      describeProblem({
+        kind: "waterDepthUnknown",
+        coordinate: { x: 3, y: 3, z: 1 },
+        terrain: "ocean"
+      })
+    ).toBe(
+      "There is no telling whether the sea at (3,3) is deep, and this unit can swim only in coastal water."
+    );
+  });
+
+  it("says when the report is silent about swimming capacity", () => {
+    expect(
+      describeProblem({
+        kind: "swimCapacityUnstated",
+        coordinate: { x: 2, y: 2, z: 1 },
+        terrain: "ocean"
+      })
+    ).toBe(
+      "The report does not say how much this unit can carry while swimming, so there is no telling whether it can enter the sea at (2,2)."
+    );
+  });
+});
+
+describe("marking a wet step", () => {
+  const wet = {
+    direction: "southeast" as const,
+    to: { x: 2, y: 2, z: 1 },
+    terrain: "ocean",
+    cost: 1,
+    road: false,
+    estimated: false,
+    overWater: true
+  };
+
+  it("says a walker in the water is swimming", () => {
+    expect(describeStep(wet, "walk")).toBe("ocean (2,2) · 1 · swimming");
+  });
+
+  it("keeps the flier over the water", () => {
+    expect(describeStep(wet, "fly")).toBe("ocean (2,2) · 1 · over water");
+  });
+
+  it("says nothing of a fleet, which is on water nearly all the way", () => {
+    expect(describeStep(wet, "sail")).toBe("ocean (2,2) · 1");
+  });
+});

@@ -1,4 +1,5 @@
 import type {
+  Coordinate,
   ReportUnit,
   RoutePlan,
   RoutePlanResponse,
@@ -159,8 +160,16 @@ export function PlannerBody({
  * How a water terrain is named in a sentence: "the lake"/"a lake" for anything the report names,
  * but the ocean is "the sea" and "ocean", because that is what players already read.
  */
-const WATER_WORDS: Record<string, { definite: string; indefinite: string }> = {
-  ocean: { definite: "the sea", indefinite: "ocean" }
+const WATER_WORDS: Record<
+  string,
+  { definite: string; indefinite: string; deepDefinite?: string; deepIndefinite?: string }
+> = {
+  ocean: {
+    definite: "the sea",
+    indefinite: "ocean",
+    deepDefinite: "the deep sea",
+    deepIndefinite: "deep sea"
+  }
 };
 
 function definiteWater(terrain: string): string {
@@ -171,6 +180,44 @@ function definiteWater(terrain: string): string {
 function indefiniteWater(terrain: string): string {
   const word = terrain.toLowerCase();
   return WATER_WORDS[word]?.indefinite ?? `a ${word}`;
+}
+
+function capitalised(sentence: string): string {
+  return sentence[0].toUpperCase() + sentence.slice(1);
+}
+
+/**
+ * The two halves of a water refusal: one for water standing in the way, one for water the player
+ * clicked on, of which "in the way" is untrue.
+ */
+function waterOpening(problem: {
+  coordinate: Coordinate;
+  terrain: string;
+  destination: boolean;
+}): string {
+  const where = `(${problem.coordinate.x},${problem.coordinate.y})`;
+  return problem.destination
+    ? `${where} is ${indefiniteWater(problem.terrain)}`
+    : `${capitalised(definiteWater(problem.terrain))} at ${where} is in the way`;
+}
+
+/**
+ * The same, for water the depth rule refuses: "the deep sea" rather than "the sea".
+ *
+ * Deep water can only ever be the ocean terrain - every terrain the swimming rule names as
+ * unrestricted is open whatever its depth - so the fallback here exists for the compiler rather
+ * than for a player.
+ */
+function deepOpening(problem: {
+  coordinate: Coordinate;
+  terrain: string;
+  destination: boolean;
+}): string {
+  const word = problem.terrain.toLowerCase();
+  const where = `(${problem.coordinate.x},${problem.coordinate.y})`;
+  return problem.destination
+    ? `${where} is ${WATER_WORDS[word]?.deepIndefinite ?? `deep ${word}`}`
+    : `${capitalised(WATER_WORDS[word]?.deepDefinite ?? `the deep ${word}`)} at ${where} is in the way`;
 }
 
 /** Turns a typed refusal into a sentence, because a reason is the whole point of refusing. */
@@ -188,12 +235,20 @@ export function describeProblem(problem: RouteProblem): string {
       return "Nothing the faction has seen joins those two hexes up.";
     case "originUnknown":
       return "The map does not know the hex this unit is standing in.";
-    case "oceanNeedsShip": {
-      const water = definiteWater(problem.terrain);
-      return `${water[0].toUpperCase() + water.slice(1)} at (${problem.coordinate.x},${problem.coordinate.y}) is in the way, and crossing it needs a ship.`;
-    }
+    case "oceanNeedsShip":
+      return `${capitalised(definiteWater(problem.terrain))} at (${problem.coordinate.x},${problem.coordinate.y}) is in the way, and crossing it needs a ship.`;
     case "destinationNeedsShip":
       return `(${problem.coordinate.x},${problem.coordinate.y}) is ${indefiniteWater(problem.terrain)}, and this unit would need a ship to be there.`;
+    case "swimLoadTooHeavy":
+      return `${waterOpening(problem)}, and this unit cannot swim carrying ${problem.load} when it can bear ${problem.capacity}.`;
+    case "deepWaterNeedsSeaCreatures":
+      return problem.borne > 0
+        ? `${deepOpening(problem)}, and this unit's sea creatures can bear ${problem.borne} of its ${problem.load}.`
+        : `${deepOpening(problem)}, and this unit can swim only in coastal water.`;
+    case "waterDepthUnknown":
+      return `There is no telling whether ${definiteWater(problem.terrain)} at (${problem.coordinate.x},${problem.coordinate.y}) is deep, and this unit can swim only in coastal water.`;
+    case "swimCapacityUnstated":
+      return `The report does not say how much this unit can carry while swimming, so there is no telling whether it can enter ${definiteWater(problem.terrain)} at (${problem.coordinate.x},${problem.coordinate.y}).`;
     case "flightWouldEndOverOcean":
       return `A single MOVE order would leave this unit over ${definiteWater(problem.terrain)} at (${problem.coordinate.x},${problem.coordinate.y}) when the month ran out, and a unit that ends a turn over water drowns.`;
     case "crewCannotSail":
@@ -257,6 +312,16 @@ export function describeLoadCheck(plan: RoutePlan): string | null {
  * `· over water` is a flier's news and no news at all for a fleet, which is on water nearly all the
  * way - so the mode decides whether a wet step says so.
  */
+/**
+ * What a wet step says it is. A flier is over the water, a fleet is on it and has nothing to
+ * report, and anything else standing in water got there by swimming - there is no other way in.
+ */
+function waterMark(mode: RoutePlan["mode"]): string {
+  if (mode === "fly") return " · over water";
+  if (mode === "sail") return "";
+  return " · swimming";
+}
+
 export function describeStep(step: RouteStep, mode: RoutePlan["mode"]): string {
   if (step.estimated) {
     // An unexplored hex is named as such rather than by the terrain it was taken for: that terrain
@@ -264,7 +329,7 @@ export function describeStep(step: RouteStep, mode: RoutePlan["mode"]): string {
     // sighting.
     return `unexplored (${step.to.x},${step.to.y}) · ${step.cost} · estimated`;
   }
-  const wet = step.overWater && mode === "fly" ? " · over water" : "";
+  const wet = step.overWater ? waterMark(mode) : "";
   // The suffix sits where `· road` sits. No sailing step is ever both - a fleet's step is never on
   // a road and a canal region is land, so `overWater` is false - so the order is settled rather
   // than load-bearing.
@@ -310,7 +375,7 @@ function Route({ answer }: { answer: RoutePlanResponse }) {
           {plan.steps.map((step, index) => (
             <li
               key={`${step.to.x},${step.to.y},${index}`}
-              className={step.overWater && plan.mode === "fly" ? "text-select" : undefined}
+              className={step.overWater && plan.mode !== "sail" ? "text-select" : undefined}
             >
               <Row
                 // The same shorthand the exits list and the MOVE order itself use.

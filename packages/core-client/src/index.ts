@@ -200,6 +200,24 @@ export type RouteProblem =
   | { kind: "originUnknown" }
   | { kind: "oceanNeedsShip"; coordinate: Coordinate; terrain: string }
   | { kind: "destinationNeedsShip"; coordinate: Coordinate; terrain: string }
+  | {
+      kind: "swimLoadTooHeavy";
+      coordinate: Coordinate;
+      terrain: string;
+      capacity: number;
+      load: number;
+      destination: boolean;
+    }
+  | {
+      kind: "deepWaterNeedsSeaCreatures";
+      coordinate: Coordinate;
+      terrain: string;
+      borne: number;
+      load: number;
+      destination: boolean;
+    }
+  | { kind: "waterDepthUnknown"; coordinate: Coordinate; terrain: string }
+  | { kind: "swimCapacityUnstated"; coordinate: Coordinate; terrain: string }
   | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate; terrain: string }
   | { kind: "crewCannotSail"; required: number; available: number }
   | {
