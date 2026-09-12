@@ -1,32 +1,42 @@
 # ah-g9sf.11 — retrospective
 
-- **Implementer:** Cyclops
-- **Date:** 2026-09-11
-- **PR:** #1175
+- **Implementer:** Wolverine
+- **Date:** 2026-09-12
+- **PR:** #1181
 
-## A rebase conflict resolution left stale helper calls that only the rebased CI build found
+## "No checks reported" was a merge conflict, and the PR said so all along
 
-**What happened.** The final pre-rebase `pnpm run check:fast` passed on `5599762c`. Rebasing onto
-main required resolving a conflict where `read_intents_with_ruleset(source, ruleset)` was combined
-with DESTROY/PROMOTE metadata parsing. The resolved branch `c4885f0e` was pushed, but CI run
-`34655187642` failed: `cargo fmt --check` found indentation left by the resolution, and the WASM
-build found two-argument calls to `grammar::consumed_arguments` even though main's API now requires
-the third `Option<&Ruleset>` argument. Passing the ruleset through those helpers and formatting
-the destructuring fixed the failures in `b84651c8`; the targeted core tests and subsequent CI run
-then passed.
+**What happened.** `gh pr checks 1181` answered "no checks reported on the branch" for sixteen
+consecutive polls over eight minutes, across two pushes. `gh run list --branch …` showed no run,
+and `gh api repos/…/commits/<sha>/check-runs` answered `total_count: 0` for both heads. Other PRs
+opened in the same window got their runs normally, so it was not an Actions incident. The cause was
+visible in one command I did not run until after eight minutes of polling:
 
-**Why.** Established. The rebase combined the ruleset-aware intent reader with the branch's
-metadata helpers, but the helper signature changes were not updated in every call site during
-conflict resolution. The formatter issue was also introduced by the resolved destructuring.
+    gh pr view 1181 --json mergeable,mergeStateStatus
+    {"mergeStateStatus":"DIRTY","mergeable":"CONFLICTING"}
 
-**Cost.** One full CI cycle, one fix commit, one delta review, and the associated wait for the
-rebuilt checks.
+`ah-g9sf.3` had merged while the PR was in review and conflicted with it. Rebasing onto `origin/main`
+and force-pushing scheduled a full run within seconds, and every check went green.
 
-**Prevent by.** After resolving a rebase conflict that changes a shared function signature, run
-`cargo fmt --all -- --check` and compile the affected Rust/WASM targets before pushing, then search
-for every call to the changed helper (`consumed_arguments` here). This catches cleanly merged
-stale call sites that conflict markers cannot identify.
+**Why.** Established, and this is the part worth recording: GitHub does not schedule a `pull_request`
+workflow for a head it cannot compute a merge ref for. `ah-64wm` recorded the same correlation and
+left it at "not established"; this run confirms it, with the conflict verdict read directly off the
+PR while the checks were silent.
 
-**Seen before.** `ah-oq3` — a rebase left a tuple-arity mismatch that git did not flag;
-`ah-jw85` — a shared signature change broke concurrent call sites; `ah-ofpb.5` — textual conflict
-resolution left invalid syntax that compilation caught.
+**Cost.** About eight minutes of polling, plus one review round's worth of confusion about whether
+the gate had run at all. Nothing was wasted beyond the wait — no CI cycles were spent, since none
+ran.
+
+**Prevent by.** `implement-bead`'s *Merging* section already carries the `mergeable`/
+`mergeStateStatus` check, but places it **before waiting on CI after a push that could have raced
+main** — a rebase, an `update-branch`, a fix onto a head that sat through a review. It is not asked
+for after the PR first opens, which is exactly where this bit. The cheap fix is to make that check
+the first thing the CI wait does, every time, not only after a racing push: one `gh pr view` call
+distinguishes "checks pending" from "checks will never run", and `CONFLICTING DIRTY` is already the
+one state the section says not to enter the CI wait on. That also gives `ah-t2pn.1`'s open question —
+"treat 'no checks reported' as a distinct state and bound it" — a diagnosis rather than a timeout.
+
+**Seen before.** `ah-64wm` (same symptom, same `CONFLICTING` correlation, cause left unproven),
+`ah-t2pn.1` (same symptom, cause not found, asked for a bound on the wait), `ah-wwyr` (same symptom
+from an actual Actions incident — the one case where the conflict check would come back clean),
+`ah-6uo` (cerebro repository).

@@ -291,8 +291,11 @@ describe("the Warnings settings tab", () => {
     for (const code of ADVISORY_CHECK_CODES) {
       expect(html).toContain(`data-testid="settings-warning-${code}"`);
     }
-    expect(html).toContain('data-testid="settings-build-placement-refusals"');
-    expect(tag(html, "settings-build-placement-refusals")).toContain('checked=""');
+    expect(html).toContain("Construction sites the game will refuse");
+    expect(html).toContain(
+      "A BUILD order that cannot start a new building in this region."
+    );
+    expect(html).toContain('data-testid="settings-warning-build-site-refused"');
   });
 
   it("starts every check on, except the unguarded-hex one", () => {
@@ -316,12 +319,12 @@ describe("the Warnings settings tab", () => {
     expect(tag(html, "settings-warning-not-enough-silver")).not.toContain('checked=""');
   });
 
-  it("reflects the independent build placement preference", () => {
+  it("reflects a toggled refused-site check", () => {
     resetSettingsStore();
-    useSettingsStore.getState().setShowBuildPlacementRefusals(false);
+    useSettingsStore.getState().setAdvisoryCheck("build-site-refused", false);
     const html = renderWithStoreState(<WarningSettings />, useSettingsStore);
 
-    expect(tag(html, "settings-build-placement-refusals")).not.toContain('checked=""');
+    expect(tag(html, "settings-warning-build-site-refused")).not.toContain('checked=""');
   });
 });
 

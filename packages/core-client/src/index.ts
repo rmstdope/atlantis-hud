@@ -88,8 +88,6 @@ export type { TakenUnshown } from "./generated/TakenUnshown";
 export type { ProducedItem } from "./generated/ProducedItem";
 export type { BuildCap } from "./generated/BuildCap";
 export type { BuildSpend } from "./generated/BuildSpend";
-export type { BuildPlacementRefusal } from "./generated/BuildPlacementRefusal";
-export type { BuildPlacementRefusalReason } from "./generated/BuildPlacementRefusalReason";
 export type { ItemChangeCause } from "./generated/ItemChangeCause";
 export type { ItemChangeParty } from "./generated/ItemChangeParty";
 export type { ItemChange } from "./generated/ItemChange";

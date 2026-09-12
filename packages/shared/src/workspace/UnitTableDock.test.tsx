@@ -143,7 +143,6 @@ describe("a unit carried away by a sailing fleet", () => {
         takenUnshown: [],
         produced: [],
         built: [],
-        buildPlacementRefusals: [],
         created: [],
         transportSent: [],
         transportReceived: [],
@@ -282,7 +281,6 @@ describe("the structure column", () => {
             takenUnshown: [],
             produced: [],
             built: [],
-            buildPlacementRefusals: [],
             created: [],
             transportSent: [],
             transportReceived: [],
@@ -956,7 +954,6 @@ describe("the items column", () => {
         recruitsUnmerged: false,
         menOfUnknownSkill: [],
         study: null,
-        buildPlacementRefusals: [],
         ...previewOverrides
       }
     ]
@@ -1174,7 +1171,6 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
         recruitsUnmerged: false,
         menOfUnknownSkill: [],
         study: null,
-        buildPlacementRefusals: [],
         ...previewOverrides
       }
     ]
@@ -1624,7 +1620,6 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     menOfUnknownSkill: [],
     study: null,
     ...overrides,
-    buildPlacementRefusals: overrides.buildPlacementRefusals ?? []
   });
 
   /** The pane on `All my units`, as markup. `hex={null}`: this source never needed one. */
@@ -2174,7 +2169,6 @@ describe("a row the game dissolves", () => {
     recruitsUnmerged: false,
     menOfUnknownSkill: [],
     study: null,
-    buildPlacementRefusals: [],
     ...overrides
   });
 
@@ -2392,8 +2386,7 @@ describe("the skills cell's hidden sentence names where men came from (ah-rgkk.2
             itemChanges: [],
             recruitsUnmerged: false,
             menOfUnknownSkill: [],
-            study: null,
-            buildPlacementRefusals: []
+            study: null
           }
         ]
       }

@@ -1,6 +1,5 @@
 import type {
   AlliedMageRecord,
-  BuildPlacementRefusal,
   CaretCompletions,
   ArmyRecord,
   CoreClient,
@@ -106,7 +105,6 @@ import {
   type SaveState
 } from "../orderDraft";
 import {
-  buildPlacementRefusalsForUnit,
   findingsByHex,
   findingsForHex,
   shouldTriggerAutosave,
@@ -702,10 +700,6 @@ export function AppShell({
   // What the whole orders document makes of the faction's units, so the units table and the unit
   // panel show the coming month. Follows the editor exactly as validation does.
   const [ordersPreview, setOrdersPreview] = useState<OrdersPreviewResponse | null>(null);
-  // The preview is deliberately retained through a rejected request for the tables, but refusal
-  // widgets must know which exact document produced the answer so they never decorate newer text.
-  const [ordersPreviewDocument, setOrdersPreviewDocument] = useState<string | null>(null);
-
   // Bumped by `enterGame` alone - open, create and every import mode, replace included. What the
   // ruleset-fetch, turn-restore and hex-notes effects below actually need to know is "did the
   // player just land in a (possibly different) database", not "did `game`'s reference change":
@@ -3503,7 +3497,6 @@ export function AppShell({
   // debounce, same stale-reply guard, same policy of leaving the last answer standing on failure -
   // the preview is advisory, and the server has the last word on every order.
   useEffect(() => {
-    setOrdersPreviewDocument(null);
     if (!ordersDocument || ruleset.status !== "ready" || !rawReport) {
       setOrdersPreview(null);
       return undefined;
@@ -3516,13 +3509,11 @@ export function AppShell({
         .then((answer) => {
           if (!cancelled) {
             setOrdersPreview(answer);
-            setOrdersPreviewDocument(ordersDocument);
           }
         })
         .catch(() => {
-          if (!cancelled) {
-            setOrdersPreviewDocument(null);
-          }
+          // The last answer deliberately stands: the preview is advisory, and the diagnostics
+          // that carry a refusal travel with the text they were counted in.
         });
     }, 300);
 
@@ -3539,35 +3530,6 @@ export function AppShell({
     }
     return hexPreview.units.find((previewed) => previewed.unit.unitId === unit.unitId) ?? null;
   }, [unit, hexPreview]);
-
-  const placementRefusals = useMemo<BuildPlacementRefusal[]>(() => {
-    if (
-      unitPreview === null ||
-      selectedUnitId === null ||
-      ordersPreviewDocument !== ordersDocument ||
-      !ordersDocument ||
-      ruleset.status !== "ready" ||
-      rawReport === null
-    ) {
-      return [];
-    }
-    return buildPlacementRefusalsForUnit(
-      ordersDocument,
-      selectedUnitId,
-      unitPreview.buildPlacementRefusals,
-      regionUnitIds,
-      orderCommentSyntax
-    );
-  }, [
-    unitPreview,
-    selectedUnitId,
-    ordersPreviewDocument,
-    ordersDocument,
-    ruleset.status,
-    rawReport,
-    regionUnitIds,
-    orderCommentSyntax
-  ]);
 
   /** The faction and turn the document in front of the player belongs to. */
   const draftKey = useMemo(() => draftKeyFor(parsed), [parsed]);
@@ -5513,7 +5475,6 @@ export function AppShell({
                   ownFactionName={factionLabel ?? "your faction"}
                   onChange={onOrdersChange}
                   validated={validated}
-                  placementRefusals={placementRefusals}
                   save={save}
                   commands={orderCommands}
                   orderVocabulary={orderVocabulary}

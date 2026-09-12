@@ -112,8 +112,6 @@ pub struct UnitPreview {
     /// went and what cut the work short. Empty for a unit not building, and for one whose build
     /// comes to nothing (`ah-ofpb.2`).
     pub built: Vec<BuildSpend>,
-    /// Direct founding `BUILD` orders whose site the selected ruleset refuses.
-    pub build_placement_refusals: Vec<BuildPlacementRefusal>,
     /// What this unit's `CAST` orders create this month, so the hover can say what is arriving and
     /// the column can show a chance creation as a range. Empty for a unit not casting, and for one
     /// whose cast creates nothing an item catalogue can carry (`ah-ofpb.5`).
@@ -481,19 +479,15 @@ pub struct BuildSpend {
 }
 
 /// Why a direct founding `BUILD` cannot start in this region.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
-pub enum BuildPlacementRefusalReason {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BuildPlacementRefusalReason {
     MissingSettlement,
     DuplicateInRegion,
 }
 
 /// A founding `BUILD` whose site is certain to be refused by the selected ruleset.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
-pub struct BuildPlacementRefusal {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BuildPlacementRefusal {
     /// The absolute, one-based line of the founding order.
     pub line: usize,
     /// The building kind named by the founding order.
@@ -845,11 +839,6 @@ pub fn preview_orders_on_map(
         } else {
             entry.built.clone()
         };
-        let build_placement_refusals = if dissolving {
-            Vec::new()
-        } else {
-            entry.build_placement_refusals.clone()
-        };
         let created = if dissolving {
             Vec::new()
         } else {
@@ -880,7 +869,6 @@ pub fn preview_orders_on_map(
             && transport_sent.is_empty()
             && transport_received.is_empty()
             && transport_target_issues.is_empty()
-            && build_placement_refusals.is_empty()
             && study.is_none()
             // A unit that buys five of a tag and sells five of the same tag ends the month holding
             // what it started with, so `changes()` records nothing - and the row would be dropped
@@ -943,7 +931,6 @@ pub fn preview_orders_on_map(
                     taken_unshown: taken_unshown.clone(),
                     produced: produced.clone(),
                     built: built.clone(),
-                    build_placement_refusals: build_placement_refusals.clone(),
                     created: created.clone(),
                     item_changes: item_changes.clone(),
                     transport_sent: transport_sent.clone(),
@@ -974,7 +961,6 @@ pub fn preview_orders_on_map(
                     taken_unshown,
                     produced,
                     built,
-                    build_placement_refusals,
                     created,
                     item_changes,
                     transport_sent,
@@ -1004,7 +990,6 @@ pub fn preview_orders_on_map(
                     taken_unshown,
                     produced,
                     built,
-                    build_placement_refusals,
                     created,
                     item_changes,
                     transport_sent,
@@ -1325,8 +1310,6 @@ struct WorkingUnit {
     /// What this unit's `BUILD` orders spend this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.2`).
     built: Vec<BuildSpend>,
-    /// Direct founding `BUILD`s whose selected ruleset refuses their reported site.
-    build_placement_refusals: Vec<BuildPlacementRefusal>,
     /// What this unit's `CAST` orders create this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.5`).
     created: Vec<CreatedItem>,
@@ -1749,7 +1732,6 @@ impl Working {
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
                 built: Vec::new(),
-                build_placement_refusals: Vec::new(),
                 created: Vec::new(),
                 item_changes: Vec::new(),
                 items_moved: false,
@@ -2040,7 +2022,6 @@ impl Working {
                 })
                 .collect();
             unit.built = effect.built.clone();
-            unit.build_placement_refusals = effect.build_placement_refusals.clone();
             // `extend`, never assign: `apply_transfers` has already written this month's GIVE and
             // TAKE here in the Give phase, and `apply_transports` appends after us (`ah-rgkk.3.1`).
             unit.item_changes
@@ -2118,7 +2099,6 @@ impl Working {
             taken_unshown: Vec::new(),
             produced: Vec::new(),
             built: Vec::new(),
-            build_placement_refusals: Vec::new(),
             created: Vec::new(),
             item_changes: Vec::new(),
             items_moved: false,
@@ -3659,38 +3639,38 @@ mod tests {
         .join("\n")
     }
 
+    /// A refused founding spends nothing, so the month leaves this unit exactly as the report
+    /// showed it and the preview has no row to draw at all. The refusal itself is an advisory
+    /// finding now (`build-site-refused`), not preview data (`ah-g9sf.11`).
     #[test]
-    fn a_refused_founder_is_retained_with_typed_preview_data() {
+    fn a_refused_founder_changes_nothing_at_all() {
         let response =
             trident_preview_over(&trident_wilderness_report(), "unit 900\nBUILD Palace\n");
-        let unit = only_unit(&response);
 
-        assert_eq!(
-            unit.build_placement_refusals,
-            vec![BuildPlacementRefusal {
-                line: 2,
-                building: "Palace".to_string(),
-                reason: BuildPlacementRefusalReason::MissingSettlement,
-                material: Some("stone".to_string()),
-            }]
-        );
         assert!(
-            unit.built.is_empty(),
-            "a refused founder has no BuildSpend: {:?}",
-            unit.built
+            response.regions.is_empty(),
+            "a refused founder keeps its material, so nothing changed: {:?}",
+            response.regions
         );
+
+        // The control, so "nothing changed" is the refusal's doing rather than a preview that
+        // cannot see this fixture at all: a Fort carries neither placement rule
+        // (`newage trident data/Fort`), and the same builder in the same wilderness spends for it.
+        let allowed = trident_preview_over(&trident_wilderness_report(), "unit 900\nBUILD Fort\n");
+        let built = only_unit(&allowed);
         assert!(
-            unit.item_changes.is_empty(),
-            "a refused founder has no material movement: {:?}",
-            unit.item_changes
+            !built.built.is_empty(),
+            "an unrefused founder does spend: {built:?}"
         );
         assert_eq!(
-            unit.unit
+            built
+                .unit
                 .items
                 .iter()
                 .find(|item| item.tag == "STON")
                 .map(|item| item.amount),
-            Some(120)
+            Some(90),
+            "the refused case keeps the 120 stone this one spends 30 of"
         );
     }
 
