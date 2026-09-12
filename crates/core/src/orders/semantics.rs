@@ -12913,6 +12913,13 @@ fn shipping_bills(
             ) else {
                 continue;
             };
+            // A shipment the game refuses for distance keeps its goods (`ah-7ale.2.1`), and a
+            // shipment that moves nothing is charged nothing.
+            if super::transport::out_of_reach(reach, hex.region.coordinate, facts.coordinate, geometry)
+                .is_some()
+            {
+                continue;
+            }
             let Some(entry) = resolve_item(text, hex, ordered, ruleset)
                 .and_then(|tag| rules.find_item(&tag))
             else {
@@ -37405,6 +37412,12 @@ BUILD
                 with_map(),
             ),
             (
+                "out of reach, so the goods stay",
+                &default,
+                priced_shipping(1, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 8)]),
+                with_map(),
+            ),
+            (
                 "no map shape",
                 &trident,
                 priced_shipping(5, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 8)]),
@@ -37428,7 +37441,7 @@ BUILD
                 &[(9, "fur", "FUR"), (20, "grain", "GRAI")],
                 vec![
                     caravanserai_owner("901", 1, 0, 6),
-                    caravanserai_owner("902", 1, 6, 0),
+                    caravanserai_owner("902", 1, 0, 8),
                 ],
             )
         };
@@ -37474,7 +37487,7 @@ BUILD
                 &[(9, "fur", "FUR")],
                 vec![
                     caravanserai_owner("901", 1, 0, 6),
-                    caravanserai_owner("902", 1, 6, 0),
+                    caravanserai_owner("902", 1, 0, 8),
                 ],
             )
         };
@@ -37502,6 +37515,52 @@ BUILD
         );
         assert_eq!(except.shipping.len(), 1);
         assert_eq!((except.shipping[0].weight, except.shipping[0].cost), (5, 25));
+    }
+
+    /// The two transport readers agree about what was shipped: every priced shipment weighs exactly
+    /// what the preview's `TransportedOut` rows moved for that unit, by `data/items` weight. Nothing
+    /// else compares the silver side to the item side (`ah-7ale.3`).
+    #[test]
+    fn a_shipment_is_priced_for_what_it_actually_moves() {
+        let rules = ruleset();
+        let regions = || {
+            priced_shipping(
+                5,
+                &[(9, "fur", "FUR"), (20, "grain", "GRAI")],
+                vec![
+                    caravanserai_owner("901", 1, 0, 6),
+                    caravanserai_owner("902", 1, 0, 8),
+                ],
+            )
+        };
+        for orders in [
+            "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 20 GRAI\n",
+            "unit 900\nTRANSPORT 901 ALL FUR\nTRANSPORT 902 ALL FUR\n",
+            "unit 900\nTRANSPORT 901 ALL FUR EXCEPT 4\nTRANSPORT 902 5 GRAI\n",
+            "unit 900\nTRANSPORT 901 30 FUR\n",
+        ] {
+            let silver = sender_silver(regions(), orders, with_map());
+            let moved = super::super::effects::transported_out(
+                &report(regions()),
+                &rules,
+                orders,
+                Some(FIXTURE_MAP),
+            );
+            let moved_weight: i64 = moved
+                .get("900")
+                .map(|rows| {
+                    rows.iter()
+                        .map(|(tag, count)| {
+                            count * rules.find_item(tag).map_or(0, |entry| entry.weight)
+                        })
+                        .sum()
+                })
+                .unwrap_or_default();
+            let priced_weight: i64 = silver.shipping.iter().map(|one| one.weight).sum();
+
+            assert!(priced_weight > 0, "{orders}: something is priced");
+            assert_eq!(priced_weight, moved_weight, "{orders}");
+        }
     }
 
     /// A plain, non-wrapping map of the size the shipped worlds use, for the checks that measure a

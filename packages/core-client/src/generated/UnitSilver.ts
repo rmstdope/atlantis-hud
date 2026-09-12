@@ -3,6 +3,7 @@ import type { BuyAllShown } from "./BuyAllShown";
 import type { FormedSubject } from "./FormedSubject";
 import type { NoStudyFee } from "./NoStudyFee";
 import type { ProductionCap } from "./ProductionCap";
+import type { ShipmentPriced } from "./ShipmentPriced";
 import type { SilverChange } from "./SilverChange";
 import type { SilverDoubt } from "./SilverDoubt";
 import type { SilverSpender } from "./SilverSpender";
@@ -380,6 +381,11 @@ formed: FormedSubject | null,
  * stays empty for every doubted unit.
  */
 buyAll: Array<BuyAllShown>, 
+/**
+ * Every shipment this unit pays for this month, in document order. Empty for a unit that
+ * ships nothing, ships only free, or whose price could not be worked out (`ah-7ale.3`).
+ */
+shipping: Array<ShipmentPriced>, 
 /**
  * Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
  * the turn, ties broken by document line.

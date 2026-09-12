@@ -494,6 +494,11 @@ export function itemsTooltip(
   if (castCap !== undefined) {
     lines.push(castCap);
   }
+  // What a shipment cost is silver, which the `transported-out` clause cannot name, so every paid
+  // shipment reads here - before the refused ones, since the two lists share no key (`ah-7ale.3`).
+  for (const sentence of shippingSentences(silver)) {
+    lines.push(sentence);
+  }
   // Only what no clause can name: a refused TRANSPORT, and one that moved nothing at all - the
   // core writes the `TransportSent` row unconditionally but records the `TransportedOut` change
   // only `if moved != 0` (`crates/core/src/orders/effects.rs`). Every line that did move is what
@@ -528,6 +533,20 @@ export function buildSpendTarget(spend: BuildSpend): string {
     ? `NEW ${spend.helping.slice("new-".length)}`
     : `unit ${spend.helping}`;
   return `helping ${helped} build ${place}`;
+}
+
+/**
+ * Every shipment this unit pays for, one sentence each in document order (`ah-7ale.3`).
+ *
+ * Built from the silver forecast rather than from `transportSent`, because the price is worked out
+ * where the silver is and the two lists share no key: a `TransportSent` carries an order index and
+ * a priced shipment carries a document line. A free shipment is absent from `shipping` and so says
+ * nothing here - never "for 0 silver".
+ */
+export function shippingSentences(silver: UnitSilver | null | undefined): string[] {
+  return [...(silver?.shipping ?? [])]
+    .sort((left, right) => left.line - right.line)
+    .map((shipment) => `Sends ${shipment.sent} to unit ${shipment.to} for ${shipment.cost} silver.`);
 }
 
 /** One transported line as the hover states it. */

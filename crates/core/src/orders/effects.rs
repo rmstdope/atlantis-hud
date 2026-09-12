@@ -1105,6 +1105,37 @@ pub fn preview_orders_on_map(
 ///
 /// Extracted from [`preview_orders_on_map`] rather than duplicated because the map's own trace
 /// needs the same answer for a `FORM`ed unit: its speed comes from the men and goods its block is
+/// What every own unit's `TRANSPORT`/`DISTRIBUTE` orders actually moved, by unit number, as
+/// `(tag, moved)` - for `semantics`' test that holds the shipping price to the goods (`ah-7ale.3`).
+#[cfg(test)]
+pub(super) fn transported_out(
+    report: &crate::report::ParsedReport,
+    ruleset: &crate::movement::rules::Ruleset,
+    orders_document: &str,
+    geometry: Option<crate::movement::graph::MapGeometry>,
+) -> BTreeMap<String, Vec<(String, i64)>> {
+    let ruleset = std::sync::Arc::new(ruleset.clone());
+    let (units, _) = settle(
+        report,
+        &ruleset,
+        orders_document,
+        geometry,
+        super::semantics::CheckOptions::default(),
+    );
+    units
+        .iter()
+        .map(|working| {
+            let moved = working
+                .item_changes
+                .iter()
+                .filter(|change| change.cause == ItemChangeCause::TransportedOut)
+                .map(|change| (change.tag.to_ascii_uppercase(), -change.delta))
+                .collect();
+            (working.unit.unit_id.clone(), moved)
+        })
+        .collect()
+}
+
 /// given, so a caller that rebuilt the row from [`formed_unit`] alone would trace a unit of
 /// unstated speed (`ah-4hux`). The order of the steps inside is load-bearing and each one's reason
 /// is on the line that runs it.
