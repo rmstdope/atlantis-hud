@@ -505,9 +505,206 @@ impl MapKnowledge {
     }
 }
 
+/// How far apart two hexes are, and how sure the map's own shape lets us be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HexDistance {
+    /// The map settles it: exactly this many hexes.
+    Exact(i32),
+    /// A route round the far edge cannot be measured, because the game never recorded the width
+    /// (or, on a map that wraps north to south, the height). The real distance is this or less,
+    /// and may be anything down to zero.
+    AtMost(i32),
+}
+
+/// How many hexes apart two hexes are, or `None` when they are on different levels of the map.
+///
+/// `geometry` is what `geometry_from_json` read: `None` is a game that never recorded its map's
+/// shape, which is the ordinary state for every game created before the app asked, and is why the
+/// answer is `AtMost` rather than a number.
+#[must_use]
+pub fn hex_distance(
+    from: Coordinate,
+    to: Coordinate,
+    geometry: Option<MapGeometry>,
+) -> Option<HexDistance> {
+    if from.z != to.z {
+        return None;
+    }
+
+    // A separation, and whether the map's own shape settles it.
+    //
+    // The separation is brought onto the map with `rem_euclid` before the seam is considered,
+    // exactly as `MapGeometry::wrap` does: a map shape is player-entered, so a coordinate outside
+    // the width it states is ordinary input rather than a defect, and `span - raw` would otherwise
+    // go negative and be chosen as the shorter route.
+    //
+    // The `(dy - dx) / 2` below relies on `x + y` having the same parity in both hexes. Going
+    // round a seam of *odd* span flips that parity, and the division then truncates a step off;
+    // no committed world has an odd dimension, and a player-entered one cannot be asserted away.
+    let separation = |a: i32, b: i32, wraps: bool, span: i32| {
+        let raw = (a - b).abs();
+        match geometry {
+            Some(_) if wraps && span > 0 => {
+                let raw = raw.rem_euclid(span);
+                (raw.min(span - raw), true)
+            }
+            Some(_) if !wraps => (raw, true),
+            // No geometry at all, or an axis that wraps over a span the game never recorded.
+            _ => (raw, false),
+        }
+    };
+
+    let (wrap_x, width, wrap_y, height) = match geometry {
+        Some(map) => (map.wrap_x, map.width, map.wrap_y, map.height),
+        None => (false, 0, false, 0),
+    };
+    let (dx, x_settled) = separation(from.x, to.x, wrap_x, width);
+    let (dy, y_settled) = separation(from.y, to.y, wrap_y, height);
+
+    // A step east or west also moves one row, so `dx` steps cover `dx` columns and up to `dx`
+    // rows; every further row costs half a North/South step. `x + y` has the same parity in every
+    // Atlantis coordinate, so `dy - dx` is even and the truncation is exact.
+    let steps = if dy <= dx { dx } else { dx + (dy - dx) / 2 };
+
+    Some(if x_settled && y_settled {
+        HexDistance::Exact(steps)
+    } else {
+        HexDistance::AtMost(steps)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A map shape is player-entered, so a coordinate beyond the stated width is ordinary input.
+    /// A negative distance would read as *in reach* to every caller in the `ah-7ale` family.
+    #[test]
+    fn a_hex_distance_beyond_a_stated_width_stays_a_real_distance() {
+        let map = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        };
+
+        let measured = hex_distance(
+            Coordinate { x: 100, y: 0, z: 1 },
+            Coordinate { x: 0, y: 0, z: 1 },
+            Some(map),
+        );
+
+        assert_eq!(measured, Some(HexDistance::Exact(28)));
+    }
+
+    /// `Direction::offset`: a vertical step moves two rows, a diagonal one row and one column.
+    #[test]
+    fn a_hex_distance_counts_the_steps_a_unit_would_walk() {
+        let map = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: false,
+            wrap_y: false,
+        };
+        let origin = Coordinate { x: 0, y: 0, z: 1 };
+        let steps = |x: i32, y: i32| hex_distance(origin, Coordinate { x, y, z: 1 }, Some(map));
+
+        assert_eq!(steps(0, 6), Some(HexDistance::Exact(3)));
+        assert_eq!(steps(0, 4), Some(HexDistance::Exact(2)));
+        assert_eq!(steps(0, 8), Some(HexDistance::Exact(4)));
+        assert_eq!(steps(1, 1), Some(HexDistance::Exact(1)));
+        assert_eq!(steps(2, 2), Some(HexDistance::Exact(2)));
+        assert_eq!(steps(1, 3), Some(HexDistance::Exact(2)));
+        assert_eq!(steps(3, 1), Some(HexDistance::Exact(3)));
+    }
+
+    #[test]
+    fn a_hex_distance_goes_round_the_seam_on_a_map_that_wraps() {
+        let wrapping_east = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        };
+        assert_eq!(
+            hex_distance(
+                Coordinate { x: 71, y: 1, z: 1 },
+                Coordinate { x: 0, y: 0, z: 1 },
+                Some(wrapping_east)
+            ),
+            Some(HexDistance::Exact(1))
+        );
+
+        let wrapping_both = MapGeometry {
+            wrap_y: true,
+            ..wrapping_east
+        };
+        assert_eq!(
+            hex_distance(
+                Coordinate { x: 0, y: 94, z: 1 },
+                Coordinate { x: 0, y: 0, z: 1 },
+                Some(wrapping_both)
+            ),
+            Some(HexDistance::Exact(1))
+        );
+    }
+
+    /// A dimension that is not positive is unknown, exactly as `MapGeometry::wrap` treats it.
+    #[test]
+    fn a_hex_distance_with_no_map_shape_is_only_an_upper_bound() {
+        let from = Coordinate { x: 71, y: 1, z: 1 };
+        let to = Coordinate { x: 0, y: 0, z: 1 };
+
+        assert_eq!(hex_distance(from, to, None), Some(HexDistance::AtMost(71)));
+        assert_eq!(
+            hex_distance(
+                from,
+                to,
+                Some(MapGeometry {
+                    width: 0,
+                    height: 0,
+                    wrap_x: true,
+                    wrap_y: true,
+                })
+            ),
+            Some(HexDistance::AtMost(71))
+        );
+        // A map that states it does not wrap has no seam to go round, so nothing is unmeasurable.
+        assert_eq!(
+            hex_distance(
+                from,
+                to,
+                Some(MapGeometry {
+                    width: 72,
+                    height: 96,
+                    wrap_x: false,
+                    wrap_y: false,
+                })
+            ),
+            Some(HexDistance::Exact(71))
+        );
+    }
+
+    #[test]
+    fn a_hex_distance_between_levels_is_no_distance_at_all() {
+        let from = Coordinate { x: 0, y: 0, z: 1 };
+        let to = Coordinate { x: 0, y: 0, z: 2 };
+
+        assert_eq!(hex_distance(from, to, None), None);
+        assert_eq!(
+            hex_distance(
+                from,
+                to,
+                Some(MapGeometry {
+                    width: 72,
+                    height: 96,
+                    wrap_x: true,
+                    wrap_y: true,
+                })
+            ),
+            None
+        );
+    }
 
     #[test]
     fn every_direction_reverses_to_the_one_facing_it() {
