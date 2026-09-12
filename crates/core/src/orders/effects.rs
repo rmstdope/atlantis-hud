@@ -1044,7 +1044,9 @@ fn settle(
     orders_document: &str,
 ) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
     let mut working = Working::over_own_units(report, ruleset.clone());
-    super::walk::walk(orders_document, |event| working.visit(event));
+    super::walk::walk_with_ruleset(orders_document, Some(ruleset.as_ref()), |event| {
+        working.visit(event);
+    });
     // `rules/move` gives a movement order two more directions that change the structure a unit is
     // standing in - "2) A structure number" and "3) OUT" - and they run in a later phase than the
     // ENTER and LEAVE orders `visit` already settled, so they are composed on top of that answer
@@ -9558,4 +9560,53 @@ mod tests {
             .expect("the row shows the skill");
         assert_eq!(study.points_before, shown.points);
     }
+
+    #[test]
+    fn a_trident_comment_still_leaves_the_guard_and_the_give_applied() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "mountain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Giver (900), Foo (1), 10 humans [HUMN], 100 silver [SILV]. Weight: 100. Capacity: 0/0/150/0. Skills: none.",
+            "* Taker (901), Foo (1), 1 humans [HUMN]. Weight: 10. Capacity: 0/0/15/0. Skills: none.",
+            "",
+        ]
+        .join("\n");
+
+        let commented = trident_preview_over(
+            &report,
+            "unit 900\nGUARD 1;keep the hex\nGIVE 901 40 SILV;a tip\n",
+        );
+        let plain = trident_preview_over(&report, "unit 900\nGUARD 1\nGIVE 901 40 SILV\n");
+
+        let silver = |response: &OrdersPreviewResponse, id: &str| {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == id)
+                .and_then(|unit| unit.unit.items.iter().find(|item| item.tag == "SILV"))
+                .map_or(0, |item| item.amount)
+        };
+        let guarding = |response: &OrdersPreviewResponse| {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == "900")
+                .expect("the giver is previewed")
+                .unit
+                .on_guard
+        };
+
+        assert!(guarding(&commented), "the comment must not cancel the guard");
+        assert_eq!(silver(&commented, "900"), silver(&plain, "900"));
+        assert_eq!(silver(&commented, "901"), silver(&plain, "901"));
+        assert_eq!(silver(&commented, "901"), 40, "the transfer is applied");
+    }
+
 }
