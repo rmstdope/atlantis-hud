@@ -13,8 +13,7 @@ import type {
   Coordinate,
   HexNoteRecord,
   HexRisk,
-  MapShape,
-  TracedPassage
+  MapShape
 } from "@atlantis/core-client";
 import { parseRegionId, regionIdOf, type HexMapModel, type HexNode } from "../hexMapModel";
 import { isMacPlatform } from "../shortcuts";
@@ -51,6 +50,7 @@ import {
 import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
+import { passageExitTitle, passageTitle } from "./passageMarks";
 import { viewportForArrow, type TradeArrow } from "./tradeArrow";
 import { peekStep, type KeepClear, type PeekMode } from "./dossierPeek";
 import { HOVER_DELAY_MS } from "../unitTooltip";
@@ -140,18 +140,101 @@ const RISK_OUTLINE = radii(0.111);
 const PASSAGE_RADIUS = radii(0.36);
 
 /**
- * The two lines the passage mark's hover reads, as the design stage agreed them.
+ * One polyline of a route, over a casing that keeps it readable on any terrain.
  *
- * An SVG `<title>` rather than an HTML layer, which is how every hover on this map works - the hex
- * itself and the note pins both - so the first line is a line rather than bold type.
+ * Four of these are drawn - the solid and dotted halves of the journey before a passage and of the
+ * journey after one - so the construction lives here once rather than four times over.
  */
-function passageTitle(passage: TracedPassage): string {
-  return [
-    `Through the passage in ${passage.structure}`,
-    passage.stepsAfter === 0
-      ? "Where this passage comes out is not in any report yet, so where this unit ends the month is unknown."
-      : `Where this passage comes out is not in any report yet, so the rest of the journey — ${passage.stepsAfter} more ${passage.stepsAfter === 1 ? "step" : "steps"} — cannot be drawn.`
-  ].join("\n");
+function RouteLine({
+  points,
+  testId,
+  dotted = false
+}: {
+  points: string;
+  testId: string;
+  dotted?: boolean;
+}) {
+  if (!points) {
+    return null;
+  }
+  const dash = dotted ? "6 6" : undefined;
+  return (
+    <>
+      <polyline
+        points={points}
+        fill="none"
+        className="stroke-ground"
+        strokeWidth={ROUTE_CASING}
+        strokeLinejoin="round"
+        strokeDasharray={dash}
+      />
+      <polyline
+        points={points}
+        fill="none"
+        className="stroke-brass"
+        strokeWidth={ROUTE_LINE}
+        strokeLinejoin="round"
+        strokeDasharray={dash}
+        data-testid={testId}
+      />
+    </>
+  );
+}
+
+/**
+ * A pair of interlocked rings (U+26AD), the mark the design stage chose for a passage whose far
+ * side is known - one at each end (`docs/ui/ah-3u7c-inner-passage-words.html`, set `M2`).
+ */
+const PASSAGE_PAIR = "\u26AD";
+
+/**
+ * One end of an inner passage, marked on the map and explained by its hover.
+ *
+ * Pointer events are on deliberately: an SVG `<title>` under a `pointer-events: none` element never
+ * appears, which is why this is drawn here rather than as a theme mark.
+ */
+function PassageRing({
+  at,
+  glyph,
+  title,
+  testId,
+  translateAt
+}: {
+  at: Coordinate;
+  glyph: string;
+  title: string;
+  testId: string;
+  translateAt: (coordinate: Coordinate) => string;
+}) {
+  return (
+    <g
+      transform={translateAt(at)}
+      role="img"
+      // The whole two-line string, not its first line: an `aria-label` overrides the child
+      // `<title>`, so naming only the first line would announce that the route met a passage and
+      // never say what happened at it. A newline collapses to a space in the accessibility tree,
+      // so this is the same two sentences a sighted reader gets from the hover.
+      aria-label={title.split("\n").join(" ")}
+      data-testid={testId}
+      style={GHOSTABLE_HIT}
+    >
+      <title>{title}</title>
+      <circle
+        r={PASSAGE_RADIUS}
+        className="fill-ground stroke-brass"
+        strokeWidth={ROUTE_LINE}
+        vectorEffect="non-scaling-stroke"
+      />
+      <text
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={radii(0.34)}
+        className="fill-brass-bright"
+      >
+        {glyph}
+      </text>
+    </g>
+  );
 }
 
 type MapCanvasProps = {
@@ -984,9 +1067,22 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
         : { solid: "", dotted: "" },
     [route, level]
   );
+  const routeBeyondLine = useMemo(
+    () =>
+      route?.beyond
+        ? routeSegments(
+            [route.beyond.origin, ...route.beyond.hexes],
+            route.beyond.solidSteps,
+            level
+          )
+        : { solid: "", dotted: "" },
+    [route, level]
+  );
   // Risk is painted on hexes the unit enters, never its own - which is why the origin stays out.
+  // Both halves of a journey through a passage, so risk is painted on every hex it enters.
   const routeOnLevel = useMemo(
-    () => (route?.hexes ?? []).filter((step) => step.z === level),
+    () =>
+      [...(route?.hexes ?? []), ...(route?.beyond?.hexes ?? [])].filter((step) => step.z === level),
     [route, level]
   );
   // Unexplored ground is selectable and has no hex to look up, so the ring is drawn from the id
@@ -1288,49 +1384,20 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             </g>
           )}
 
-          {(routeLine.solid || routeLine.dotted) && (
+          {(routeLine.solid ||
+            routeLine.dotted ||
+            routeBeyondLine.solid ||
+            routeBeyondLine.dotted) && (
             <g pointerEvents="none">
-              {/* A casing under each line, so a route stays readable over any terrain. */}
-              {routeLine.solid && (
-                <>
-                  <polyline
-                    points={routeLine.solid}
-                    fill="none"
-                    className="stroke-ground"
-                    strokeWidth={ROUTE_CASING}
-                    strokeLinejoin="round"
-                  />
-                  <polyline
-                    points={routeLine.solid}
-                    fill="none"
-                    className="stroke-brass"
-                    strokeWidth={ROUTE_LINE}
-                    strokeLinejoin="round"
-                    data-testid="route-line-solid"
-                  />
-                </>
-              )}
-              {routeLine.dotted && (
-                <>
-                  <polyline
-                    points={routeLine.dotted}
-                    fill="none"
-                    className="stroke-ground"
-                    strokeWidth={ROUTE_CASING}
-                    strokeLinejoin="round"
-                    strokeDasharray="6 6"
-                  />
-                  <polyline
-                    points={routeLine.dotted}
-                    fill="none"
-                    className="stroke-brass"
-                    strokeWidth={ROUTE_LINE}
-                    strokeLinejoin="round"
-                    strokeDasharray="6 6"
-                    data-testid="route-line-dotted"
-                  />
-                </>
-              )}
+              {/*
+                Both halves of the journey, each drawn where it belongs. The far half is never
+                joined to the near one by a line: the two ends can be a hex apart on one level, and
+                a line between them would cross country the unit never enters (`ah-3u7c.2.2`).
+              */}
+              <RouteLine points={routeLine.solid} testId="route-line-solid" />
+              <RouteLine points={routeLine.dotted} testId="route-line-dotted" dotted />
+              <RouteLine points={routeBeyondLine.solid} testId="route-line-beyond-solid" />
+              <RouteLine points={routeBeyondLine.dotted} testId="route-line-beyond-dotted" dotted />
               {routeOnLevel.map((step, index) => {
                 const world = worldOf(step);
                 const risk = riskByHex.get(`${step.x},${step.y}`) ?? "low";
@@ -1350,40 +1417,39 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
 
           {/*
             Where the route ran into an inner passage. `rules/move`, direction 4: `IN` travels
-            through the structure to another region, and no report names which - so the line
-            stops here and this says so rather than leaving it unexplained. Drawn after the
-            line so it caps it, and with pointer events on: a `<title>` under a
-            `pointer-events: none` element never shows, which is why it cannot be a theme mark.
+            through the structure to another region. Where no report names which, the line stops
+            here and a `?` says so rather than leaving it unexplained; where one does, a matched
+            pair of interlocked rings marks the two ends and each hover names the other
+            (`ah-3u7c.2.2`). Drawn after the line so they cap it, and with pointer events on: a
+            `<title>` under a `pointer-events: none` element never shows, which is why these cannot
+            be theme marks.
           */}
-          {route?.passage && route.passage.coordinate.z === level && (
-            <g
-              transform={translateAt(route.passage.coordinate)}
-              role="img"
-              // The whole two-line string, not its first line: an `aria-label` overrides the
-              // child `<title>`, so naming only the first line would announce that the route ran
-              // into a passage and never say why the rest could not be drawn. A newline collapses
-              // to a space in the accessibility tree, so this is the same two sentences a sighted
-              // reader gets from the hover.
-              aria-label={passageTitle(route.passage).split("\n").join(" ")}
-              data-testid="map-passage-ring"
-              style={GHOSTABLE_HIT}
-            >
-              <title>{passageTitle(route.passage)}</title>
-              <circle
-                r={PASSAGE_RADIUS}
-                className="fill-ground stroke-brass"
-                strokeWidth={ROUTE_LINE}
-                vectorEffect="non-scaling-stroke"
-              />
-              <text
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={radii(0.34)}
-                className="fill-brass-bright"
-              >
-                ?
-              </text>
-            </g>
+          {route?.passage && route.passage.exit === null && route.passage.coordinate.z === level && (
+            <PassageRing
+              at={route.passage.coordinate}
+              glyph="?"
+              title={passageTitle(route.passage)}
+              testId="map-passage-ring"
+              translateAt={translateAt}
+            />
+          )}
+          {route?.passage?.exit && route.passage.coordinate.z === level && (
+            <PassageRing
+              at={route.passage.coordinate}
+              glyph={PASSAGE_PAIR}
+              title={passageTitle(route.passage)}
+              testId="map-passage-entry-ring"
+              translateAt={translateAt}
+            />
+          )}
+          {route?.passage?.exit && route.passage.exit.coordinate.z === level && (
+            <PassageRing
+              at={route.passage.exit.coordinate}
+              glyph={PASSAGE_PAIR}
+              title={passageExitTitle(route.passage)}
+              testId="map-passage-exit-ring"
+              translateAt={translateAt}
+            />
           )}
 
           <theme.MarkLayer views={allViews} />

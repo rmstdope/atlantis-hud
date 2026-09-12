@@ -436,6 +436,27 @@ export type TracedPassage = {
   structure: string;
   /** Ordered steps after the passage that could not be placed. */
   stepsAfter: number;
+  /** The entry hex's own terrain. */
+  terrain: string;
+  /** Where the passage comes out, or null when no report has proved it. */
+  exit: TracedPassageExit | null;
+};
+
+/**
+ * The far side of a passage the faction has crossed, and the journey that carries on there.
+ *
+ * Mirrors `TracedPassageExit` in crates/core/src/movement/trace.rs by hand, as `TracedPassage`
+ * does and for the same reason.
+ */
+export type TracedPassageExit = {
+  /** The hex the unit comes out in. */
+  coordinate: Coordinate;
+  /** That hex's terrain. */
+  terrain: string;
+  /** What the crossing cost: the cost of entering that region. */
+  cost: number;
+  /** The journey beyond, drawn on the destination's own level. */
+  steps: RouteStep[];
 };
 
 /** The traced order, or nothing when the unit has no readable movement order to draw. */

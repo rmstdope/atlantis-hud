@@ -46,7 +46,21 @@ const trace: TracedPath = {
 const passage = {
   coordinate: at(7, 53),
   structure: "Shaft [3]",
-  stepsAfter: 2
+  stepsAfter: 2,
+  terrain: "plain",
+  exit: null
+};
+
+/** The same passage, proved: it comes out two levels down, with two steps drawn from there. */
+const followed = {
+  ...passage,
+  stepsAfter: 0,
+  exit: {
+    coordinate: at(30, 30, 3),
+    terrain: "mountain",
+    cost: 2,
+    steps: [step(31, 31), step(32, 32)]
+  }
 };
 
 describe("which movement line the map draws", () => {
@@ -68,7 +82,8 @@ describe("which movement line the map draws", () => {
       origin: at(7, 53),
       hexes: [at(7, 51), at(7, 49)],
       solidSteps: 2,
-      passage: null
+      passage: null,
+      beyond: null
     });
   });
 
@@ -92,7 +107,8 @@ describe("which movement line the map draws", () => {
       origin: at(7, 53),
       hexes: [at(7, 51), at(7, 49), at(7, 47)],
       solidSteps: 1,
-      passage: null
+      passage: null,
+      beyond: null
     });
   });
 
@@ -157,5 +173,83 @@ describe("a route that ran into an inner passage", () => {
     });
 
     expect(overlay?.passage).toBeNull();
+  });
+});
+
+describe("a passage the faction has proved the far side of", () => {
+  /** The near half solid to the month's reach, the far half its own leg (`ah-3u7c.2.2`). */
+  it("puts the far half in its own leg, never joined to the near one", () => {
+    const overlay = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: {
+        ...trace,
+        steps: [step(7, 51)],
+        months: [{ month: 1, steps: 4, endsAt: at(32, 32, 3) }],
+        passage: followed
+      }
+    });
+
+    expect(overlay?.hexes).toEqual([at(7, 51)]);
+    expect(overlay?.beyond).toEqual({
+      origin: at(30, 30, 3),
+      hexes: [at(31, 31), at(32, 32)],
+      solidSteps: 2
+    });
+  });
+
+  it("splits the month's reach across the two halves", () => {
+    // One near step, then the crossing, then two beyond: a reach of two covers the near step and
+    // the crossing and no more, so the far half is wholly dotted.
+    const short = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: {
+        ...trace,
+        steps: [step(7, 51)],
+        months: [{ month: 1, steps: 2, endsAt: at(30, 30, 3) }],
+        passage: followed
+      }
+    });
+    expect(short?.solidSteps).toBe(1);
+    expect(short?.beyond?.solidSteps).toBe(0);
+
+    // A reach of three covers the first step beyond as well.
+    const longer = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: {
+        ...trace,
+        steps: [step(7, 51)],
+        months: [{ month: 1, steps: 3, endsAt: at(31, 31) }],
+        passage: followed
+      }
+    });
+    expect(longer?.beyond?.solidSteps).toBe(1);
+  });
+
+  it("has no far half for a passage nobody has proved", () => {
+    const overlay = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: { ...trace, steps: [], months: [], passage }
+    });
+
+    expect(overlay?.beyond).toBeNull();
+  });
+
+  it("never has one on a planner preview", () => {
+    const overlay = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan,
+      trace: { ...trace, passage: followed }
+    });
+
+    expect(overlay?.beyond).toBeNull();
   });
 });
