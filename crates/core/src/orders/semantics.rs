@@ -54,7 +54,7 @@ use crate::orders::silver::{
     LateFoodRelief, Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver,
     Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove,
     Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket,
-    SilverChange, SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts,
+    ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts,
     UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
@@ -570,11 +570,10 @@ pub fn review_turn(
     } else {
         BTreeMap::new()
     };
-    // Read from the report and the catalogue alone, and only by the reach check, so they are built
-    // only when it is enabled - `located`'s own reasoning above, and `ah-8myf`'s (`ah-7ale.2.2.1`).
-    let shipping = ruleset
-        .filter(|_| options.emits(codes::TRANSPORT_OUT_OF_REACH))
-        .map(|ruleset| {
+    // Read from the report and the catalogue alone. Built whenever there is a catalogue, not only
+    // when the reach check is enabled: the shipping price reads them too, and the agreed record
+    // says the switch takes sentences away and leaves every figure honest (`ah-7ale.3`).
+    let shipping = ruleset.map(|ruleset| {
             let quartermasters = super::transport::Quartermasters::read(report, ruleset);
             let targets = super::transport::target_facts(report, &quartermasters);
             (quartermasters, targets)
@@ -702,6 +701,7 @@ pub fn review_turn(
         // Per hex, because the pools are: what one region's units ask of its tax base says nothing
         // about the next region's.
         let mut overruns: Vec<PoolOverrun> = Vec::new();
+        let bills = shipping_bills(hex, ledger, shipping.as_ref(), options.geometry, ruleset);
         forecast_hex(
             priced,
             &receipts,
@@ -717,6 +717,7 @@ pub fn review_turn(
             &mut silver,
             &mut overruns,
             &claim_allowances,
+            &bills,
         );
         if hex.units.is_empty() {
             continue;
@@ -1618,6 +1619,8 @@ fn forecast_hex(
     into: &mut Vec<UnitSilver>,
     overruns: &mut Vec<PoolOverrun>,
     claim_allowances: &ClaimAllowances,
+    // What each unit in this hex pays to ship goods, from `shipping_bills` (`ah-7ale.3`).
+    bills: &BTreeMap<String, Vec<ShipmentPriced>>,
 ) {
     let Relief {
         shared_silver,
@@ -2012,6 +2015,34 @@ fn forecast_hex(
         forecast.upkeep = Some((owed - covered).max(0));
     }
 
+    // What each unit pays to ship goods, booked onto the column the way `Lent` is: the price is
+    // settled against the report's quartermasters and the map, which `forecast_unit` never sees.
+    // One change per shipment, so each keeps its own document line; the hover merges them into
+    // one `shipped` line. `wanted_for_orders` rises with `expense` because nothing here cuts a
+    // shipment down to what the sender can afford - that is `ah-7ale.4` (`ah-7ale.3`).
+    for forecast in into[start..].iter_mut() {
+        let Some(priced) = bills.get(&forecast.unit_id) else {
+            continue;
+        };
+        let bill: i64 = priced.iter().map(|shipment| shipment.cost).sum();
+        forecast.shipping.clone_from(priced);
+        forecast.expense = forecast.expense.map(|spent| spent.saturating_add(bill));
+        forecast.wanted_for_orders = forecast
+            .wanted_for_orders
+            .map(|wanted| wanted.saturating_add(bill));
+        forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(bill));
+        if forecast.doubt.is_none() {
+            for shipment in priced {
+                forecast.changes.push(SilverChange {
+                    amount: -shipment.cost,
+                    cause: SilverChangeCause::Shipped,
+                    line: Some(shipment.line),
+                    other: None,
+                });
+            }
+        }
+    }
+
     // Last in the body, and it must be: the lending pass above pushed the `Lent` rows and the
     // three settlements after it still mutate `upkeep`, so anywhere earlier compares a half-built
     // `UnitSilver` (`ah-6m7b.5.3`).
@@ -2090,6 +2121,9 @@ fn compared_silver_rows(
                     // Booked by the hex pass onto the column alone, exactly as `Lent` is - the
                     // ledger has no borrowing to record, because no silver moves (`ah-3c2t.2`).
                     | SilverChangeCause::WasLent
+                    // Booked by the hex pass onto the column alone: the ledger models no
+                    // transport at all, so it has no shipment to charge (`ah-7ale.3`).
+                    | SilverChangeCause::Shipped
             )
         })
         // No cause is compared without its amount any more (`ah-1x2h.2`), and no transfer cause is
@@ -12819,6 +12853,111 @@ fn check_transport_reach(
             ));
         }
     }
+}
+
+/// What each unit in this hex pays to ship goods this month, by unit number (`ah-7ale.3`).
+///
+/// A reader of the same rules the forecast reads, not a second one: `transport::acceptance`
+/// settles whether the target would take the goods, `transport::reach_for` which reach applies and
+/// `transport::priced` what it costs - all three shared with `effects.rs` through
+/// `orders::transport`. What is this pass's own is the weight, which is a fact about the goods and
+/// not about transport.
+fn shipping_bills(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    shipping: Option<&(
+        super::transport::Quartermasters,
+        BTreeMap<String, super::transport::TargetFacts>,
+    )>,
+    geometry: Option<crate::movement::graph::MapGeometry>,
+    ruleset: Option<&Ruleset>,
+) -> BTreeMap<String, Vec<ShipmentPriced>> {
+    let mut bills = BTreeMap::new();
+    let (Some((quartermasters, targets)), Some(rules)) = (shipping, ruleset) else {
+        return bills;
+    };
+
+    for ordered in &hex.units {
+        let sender = ordered.unit.unit_id.as_str();
+        // What this unit's own earlier shipments already took, by tag: `rules/sequenceofevents`
+        // moves each item "only once in each phase", which `apply_transport_phase`'s allowance
+        // snapshot enforces on the preview's side.
+        let mut shipped: BTreeMap<String, i64> = BTreeMap::new();
+        let mut priced_here = Vec::new();
+        for placed in &ordered.intents {
+            let Intent::Transport { to, what, amount } = &placed.intent else {
+                continue;
+            };
+            // The forecast's own skips (`effects.rs`'s `Working::transport`), so a shipment it
+            // never queues is never priced. An unfinished hull is skipped as well: the catalogue
+            // weighs no such thing, so no honest price exists.
+            let Party::Unit(id) = to else {
+                continue;
+            };
+            if id == sender {
+                continue;
+            }
+            let Selector::Item(text) = what else {
+                continue;
+            };
+            let Some(facts) = targets.get(id.as_str()) else {
+                continue;
+            };
+            if super::transport::acceptance(Some(facts)) != super::transport::Acceptance::Eligible {
+                continue;
+            }
+            let Some(reach) = super::transport::reach_for(
+                quartermasters.contains(sender),
+                quartermasters.contains(id),
+                quartermasters.level(sender),
+            ) else {
+                continue;
+            };
+            let Some(entry) = resolve_item(text, hex, ordered, ruleset)
+                .and_then(|tag| rules.find_item(&tag))
+            else {
+                continue;
+            };
+            let tag = entry.tag.to_ascii_uppercase();
+            if !rules.can_be_transported(&tag) {
+                continue;
+            }
+            // The last phase's stock: every TRANSPORT runs immediately before maintenance
+            // (`rules/sequenceofevents`), and the ledger carries every earlier delta into it.
+            let already = shipped.get(&tag).copied().unwrap_or_default();
+            let held = (ledger.state.balance_at(StatePhase::Maintenance, sender, &tag) - already)
+                .max(0);
+            let quantity = super::transfers::quantity_moved(amount, held);
+            if quantity <= 0 {
+                continue;
+            }
+            *shipped.entry(tag.clone()).or_default() += quantity;
+            let weight = quantity.saturating_mul(entry.weight);
+            if let super::transport::Priced::Charged { rate, weight, cost } =
+                super::transport::priced(
+                    reach,
+                    hex.region.coordinate,
+                    facts.coordinate,
+                    geometry,
+                    rules.order_language,
+                    weight,
+                )
+            {
+                priced_here.push(ShipmentPriced {
+                    line: i64::try_from(placed.line).unwrap_or(i64::MAX),
+                    to: id.clone(),
+                    sent: format!("{quantity} {tag}"),
+                    weight,
+                    rate,
+                    cost,
+                });
+            }
+        }
+        if !priced_here.is_empty() {
+            bills.insert(sender.to_string(), priced_here);
+        }
+    }
+    bills
 }
 
 /// The refusal sentence the agreed experience quotes, word for word.
@@ -37141,6 +37280,228 @@ BUILD
                 "{orders}"
             );
         }
+    }
+
+    // --- what a shipment costs (`ah-7ale.3`) ---------------------------------------------------
+
+    /// A Quartermaster-`level` sender owning the Caravanserai it stands in at `1:0,0`, holding
+    /// `goods` and $1000, and every far end in `targets`.
+    fn priced_shipping(
+        level: u32,
+        goods: &[(i64, &str, &str)],
+        targets: Vec<ReportRegion>,
+    ) -> Vec<ReportRegion> {
+        let mut sender = with_silver(with_skill(unit("900"), "QUAM", level), 1000);
+        for (amount, name, tag) in goods {
+            sender = with_item(sender, *amount, name, tag);
+        }
+        sender.structure_id = Some("400".to_string());
+        let mut region = shipping_from(vec![sender]);
+        region.structures = vec![Structure {
+            structure_id: "400".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+        let mut regions = vec![region];
+        regions.extend(targets);
+        regions
+    }
+
+    fn sender_silver(regions: Vec<ReportRegion>, orders: &str, options: CheckOptions) -> UnitSilver {
+        sender_silver_in(&ruleset(), regions, orders, options)
+    }
+
+    fn sender_silver_in(
+        rules: &Ruleset,
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        options: CheckOptions,
+    ) -> UnitSilver {
+        review_turn(&report(regions), orders, Some(rules), options)
+            .silver
+            .into_iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast")
+    }
+
+    fn shipped(silver: &UnitSilver) -> Vec<&SilverChange> {
+        silver
+            .changes
+            .iter()
+            .filter(|change| change.cause == SilverChangeCause::Shipped)
+            .collect()
+    }
+
+    /// `data/quartermaster`: shipping between transport structures costs `4-((level+1)/2) * 5`
+    /// silver per weight unit, and `data/items` weighs a fur at 1.
+    #[test]
+    fn a_priced_shipment_is_charged_to_the_senders_silver() {
+        let silver = sender_silver(
+            priced_shipping(5, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 6)]),
+            "unit 900\nTRANSPORT 901 9 FUR\n",
+            with_map(),
+        );
+        let baseline = sender_silver(
+            priced_shipping(5, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 6)]),
+            "unit 900\n",
+            with_map(),
+        );
+
+        assert_eq!(
+            silver.expense,
+            baseline.expense.map(|spent| spent + 45),
+            "the bill is the only new expense"
+        );
+        assert_eq!(silver.at_month_end, baseline.at_month_end.map(|end| end - 45));
+        assert_eq!(
+            shipped(&silver),
+            vec![&SilverChange {
+                amount: -45,
+                cause: SilverChangeCause::Shipped,
+                line: Some(2),
+                other: None,
+            }]
+        );
+    }
+
+    /// `rules/economy_transport`, New Age: "Sending items to a quartermaster no more than 2 hexes
+    /// away is free"; the flat reach costs nothing anywhere; a refused shipment moves nothing.
+    #[test]
+    fn a_free_or_refused_shipment_moves_no_silver() {
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\n";
+        // The free short range is New Age's alone, and the committed default catalogue is New
+        // Origins', so the two cases that turn on it are asked of Trident's.
+        let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset should be usable");
+        let default = ruleset();
+        let cases = [
+            (
+                "two hexes",
+                &trident,
+                priced_shipping(5, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 4)]),
+                with_map(),
+            ),
+            (
+                "not a quartermaster sender",
+                &default,
+                vec![
+                    shipping_from(vec![with_silver(
+                        with_item(unit("900"), 9, "fur", "FUR"),
+                        1000,
+                    )]),
+                    caravanserai_owner("901", 1, 0, 6),
+                ],
+                with_map(),
+            ),
+            (
+                "an ineligible target",
+                &default,
+                priced_shipping(
+                    5,
+                    &[(9, "fur", "FUR")],
+                    vec![region_at("1:0,6", 0, 6, vec![with_skill(unit("901"), "QUAM", 1)])],
+                ),
+                with_map(),
+            ),
+            (
+                "no map shape",
+                &trident,
+                priced_shipping(5, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 8)]),
+                CheckOptions::default(),
+            ),
+        ];
+        for (case, rules, regions, options) in cases {
+            let silver = sender_silver_in(rules, regions, orders, options);
+            assert!(shipped(&silver).is_empty(), "{case}: {:?}", silver.changes);
+            assert!(silver.shipping.is_empty(), "{case}");
+        }
+    }
+
+    /// Two paid shipments add into one `shipped` line in the hover, and each keeps its own row
+    /// here; `data/items` weighs grain at 5.
+    #[test]
+    fn several_paid_shipments_add_into_one_line_and_keep_their_own_rows() {
+        let regions = || {
+            priced_shipping(
+                5,
+                &[(9, "fur", "FUR"), (20, "grain", "GRAI")],
+                vec![
+                    caravanserai_owner("901", 1, 0, 6),
+                    caravanserai_owner("902", 1, 6, 0),
+                ],
+            )
+        };
+        let silver = sender_silver(
+            regions(),
+            "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 20 GRAI\n",
+            with_map(),
+        );
+        let baseline = sender_silver(regions(), "unit 900\n", with_map());
+
+        assert_eq!(
+            silver.shipping,
+            vec![
+                ShipmentPriced {
+                    line: 2,
+                    to: "901".to_string(),
+                    sent: "9 FUR".to_string(),
+                    weight: 9,
+                    rate: 5,
+                    cost: 45,
+                },
+                ShipmentPriced {
+                    line: 3,
+                    to: "902".to_string(),
+                    sent: "20 GRAI".to_string(),
+                    weight: 100,
+                    rate: 5,
+                    cost: 500,
+                },
+            ]
+        );
+        assert_eq!(shipped(&silver).len(), 2);
+        assert_eq!(silver.expense, baseline.expense.map(|spent| spent + 545));
+    }
+
+    /// `rules/sequenceofevents` runs every TRANSPORT immediately before maintenance, so an `ALL`
+    /// shipment is priced from what the month leaves the unit - and a second one finds it empty.
+    #[test]
+    fn an_all_shipment_is_priced_from_the_stock_the_month_leaves() {
+        let regions = || {
+            priced_shipping(
+                5,
+                &[(9, "fur", "FUR")],
+                vec![
+                    caravanserai_owner("901", 1, 0, 6),
+                    caravanserai_owner("902", 1, 6, 0),
+                ],
+            )
+        };
+        let silver = sender_silver(
+            regions(),
+            "unit 900\nTRANSPORT 901 ALL FUR\nTRANSPORT 902 ALL FUR\n",
+            with_map(),
+        );
+        assert_eq!(
+            silver.shipping,
+            vec![ShipmentPriced {
+                line: 2,
+                to: "901".to_string(),
+                sent: "9 FUR".to_string(),
+                weight: 9,
+                rate: 5,
+                cost: 45,
+            }]
+        );
+
+        let except = sender_silver(
+            regions(),
+            "unit 900\nTRANSPORT 901 ALL FUR EXCEPT 4\n",
+            with_map(),
+        );
+        assert_eq!(except.shipping.len(), 1);
+        assert_eq!((except.shipping[0].weight, except.shipping[0].cost), (5, 25));
     }
 
     /// A plain, non-wrapping map of the size the shipped worlds use, for the checks that measure a

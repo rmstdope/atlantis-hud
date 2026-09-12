@@ -536,6 +536,9 @@ pub struct UnitSilver {
     /// rather than withheld (`ah-3c2t.3`). [`UnitSilver::changes`] has no such exception and
     /// stays empty for every doubted unit.
     pub buy_all: Vec<BuyAllShown>,
+    /// Every shipment this unit pays for this month, in document order. Empty for a unit that
+    /// ships nothing, ships only free, or whose price could not be worked out (`ah-7ale.3`).
+    pub shipping: Vec<ShipmentPriced>,
     /// Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
     /// the turn, ties broken by document line.
     ///
@@ -597,6 +600,31 @@ pub struct SettledGift {
     /// The target's label, as `targets::party_label` writes it - the same string the column's own
     /// arms build, so the two cannot name one target two ways.
     pub other: String,
+}
+
+/// One priced shipment, as the SILVER hover's aside and the editor's note state it (`ah-7ale.3`).
+///
+/// A `Vec` on [`UnitSilver`] rather than flat fields, for [`BuyAllShown`]'s reason: a unit may
+/// write several `TRANSPORT` lines and each has its own sentence, while all of them add into one
+/// `shipped` line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct ShipmentPriced {
+    /// The 1-based document line of the order that wrote it - what joins this row to its
+    /// [`SilverChange`], and what orders the sentences.
+    pub line: i64,
+    /// The unit number the order named, for the sentence.
+    pub to: String,
+    /// The goods as the sentence names them: the amount and the catalogue tag, `"9 FUR"`. Counted
+    /// by the core, because an `ALL` shipment's amount is the ledger's and not the document's.
+    pub sent: String,
+    /// The total weight shipped, which is what the rate is charged on.
+    pub weight: i64,
+    /// Silver per weight unit, from the sending quartermaster's own skill.
+    pub rate: i64,
+    /// `weight * rate` - what this one shipment costs.
+    pub cost: i64,
 }
 
 /// One `BUY ALL` on one unit, as the ITEMS and SILVER hovers say it.
@@ -693,6 +721,10 @@ pub enum SilverChangeCause {
     /// why `crates/core/tests/silver_totals_are_its_movements.rs` excludes it from the sum, and
     /// the exclusion is the whole of the cost the navigator accepted for it.
     WasLent,
+    /// What a `TRANSPORT`/`DISTRIBUTE` pays to ship goods by weight (`data/quartermaster`). One
+    /// line however many shipments the unit wrote, the way two purchases already add into one
+    /// `Bought` (`ah-7ale.3`).
+    Shipped,
 }
 
 /// One movement of a unit's silver this month, and what caused it.
@@ -1969,6 +2001,7 @@ pub fn forecast_unit(
             cast_summons: false,
             formed,
             buy_all: Vec::new(),
+            shipping: Vec::new(),
             changes: Vec::new(),
         };
     }
@@ -2031,6 +2064,7 @@ pub fn forecast_unit(
             cast_summons: false,
             formed,
             buy_all: Vec::new(),
+            shipping: Vec::new(),
             changes: Vec::new(),
         };
     }
@@ -3210,6 +3244,7 @@ pub fn forecast_unit(
         cast_summons: cast.as_ref().is_some_and(|plan| plan.summons),
         formed,
         buy_all,
+        shipping: Vec::new(),
         changes: if doubt.is_some() {
             Vec::new()
         } else {
