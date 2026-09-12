@@ -60,7 +60,8 @@ export type CoreWasmModule = {
     rulesetJson: string | null,
     rawReport: string | null,
     disabledCodes: readonly string[] | null,
-    mapJson: string | null
+    mapJson: string | null,
+    knownPassagesJson: string | null
   ): OrderValidationResult;
   order_commands_state(rulesetJson: string | null): string[];
   order_vocabulary_state(rulesetJson: string | null): string[];
@@ -90,7 +91,8 @@ export type CoreWasmModule = {
     rememberedJson: string,
     unitId: string,
     ordersDocument: string,
-    mapJson: string
+    mapJson: string,
+    passagesJson: string
   ): MoveOrderTraceResponse;
   export_map_state(rawReport: string, rememberedJson: string, requestJson: string): string;
   export_mage_sheet_state(rawReport: string, unitIdsJson: string): string;
@@ -105,6 +107,7 @@ export type CoreWasmModule = {
     rememberedJson: string,
     ordersDocument: string,
     mapJson: string,
+    passagesJson: string,
     disabledCodes: readonly string[] | null
   ): OrdersPreviewResponse;
   trade_routes_state(
@@ -547,7 +550,8 @@ export function createWebCoreAdapter(
       rememberedJson: string,
       unitId: string,
       ordersDocument: string,
-      mapJson: string
+      mapJson: string,
+      passagesJson: string
     ) {
       // Straight through for the same reason planRoute is: no browser storage stands in. The whole
       // document goes, not one unit's block: a passenger's route is the hull's (ah-048).
@@ -557,7 +561,8 @@ export function createWebCoreAdapter(
         rememberedJson,
         unitId,
         ordersDocument,
-        mapJson
+        mapJson,
+        passagesJson
       );
     },
     async exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
@@ -580,6 +585,7 @@ export function createWebCoreAdapter(
       rememberedJson: string,
       ordersDocument: string,
       mapJson: string,
+      passagesJson: string,
       disabledCodes: readonly string[] | null
     ) {
       // Straight through as well: the preview is pure computation over the arguments.
@@ -589,6 +595,7 @@ export function createWebCoreAdapter(
         rememberedJson,
         ordersDocument,
         mapJson,
+        passagesJson,
         disabledCodes
       );
     },
@@ -606,11 +613,19 @@ export function createWebCoreAdapter(
       rulesetJson: string | null,
       rawReport: string | null,
       disabledCodes: readonly string[] | null,
-      mapJson: string | null
+      mapJson: string | null,
+      knownPassagesJson: string | null
     ) {
       // As with planning, the report goes across as text: the core keys its last parse on it, so
       // validating against the turn already on screen re-parses nothing.
-      return wasm.validate_orders_state(rawOrders, rulesetJson, rawReport, disabledCodes, mapJson);
+      return wasm.validate_orders_state(
+        rawOrders,
+        rulesetJson,
+        rawReport,
+        disabledCodes,
+        mapJson,
+        knownPassagesJson
+      );
     },
     async orderCommands(rulesetJson: string | null) {
       return wasm.order_commands_state(rulesetJson);

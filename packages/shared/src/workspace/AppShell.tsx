@@ -152,6 +152,7 @@ import { useBattleSkillsStore } from "../battleSkillsStore";
 import { rememberedFor } from "../resourceMemory";
 import { useResourceMemoryStore } from "../resourceMemoryStore";
 import { usePassageMemoryStore } from "../passageMemoryStore";
+import { knownPassagesOf } from "../passageMemory";
 import { derivedSkillsFor } from "../battleSkills";
 import { unitsByIdIn } from "../armies";
 import { disabledAdvisoryCodes, useSettingsStore } from "../settingsStore";
@@ -1080,6 +1081,14 @@ export function AppShell({
    * structured value above rather than parsing this back.
    */
   const mapJson = useMemo(() => mapShapeJson(mapShape), [mapShape]);
+  /**
+   * What this faction has proved about its passages, as the core takes it. Beside `rememberedJson`
+   * and `mapJson`, and for the same reason: four calls take it, and each stringifies once per
+   * change rather than once per call (`ah-3u7c.2.2`).
+   */
+  const passageMemory = usePassageMemoryStore((state) => state.memory);
+  const knownPassages = useMemo(() => knownPassagesOf(passageMemory), [passageMemory]);
+  const passagesJson = useMemo(() => JSON.stringify(knownPassages), [knownPassages]);
 
   // Writes the whole map view whenever any part of it changes - level, hex or the map's own pan
   // and zoom, all held in one place by the store's `mapView` slice now (ah-ian). Guarded on a
@@ -3217,7 +3226,8 @@ export function AppShell({
           rememberedJson,
           unit.unitId,
           ordersDocument,
-          mapJson
+          mapJson,
+          passagesJson
         )
         .then((answer) => {
           if (!cancelled) {
@@ -3231,7 +3241,17 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, unit, ordersDocument, ruleset, rawReport, rememberedJson, mapJson, layers.movement]);
+  }, [
+    client,
+    unit,
+    ordersDocument,
+    ruleset,
+    rawReport,
+    rememberedJson,
+    mapJson,
+    passagesJson,
+    layers.movement
+  ]);
 
   // Validation follows the document, debounced so it does not run on every keystroke. Kept whole
   // rather than counted here: the orders panel shows one unit, and which of these belong to it is a
@@ -3259,7 +3279,8 @@ export function AppShell({
         // is an upper bound and nothing is refused (`ah-7ale.2.2.1`).
         .validateOrders(ordersDocument, rulesetText, rawReport || null, {
           disabledCodes: disabledAdvisoryCodes(advisoryChecks),
-          mapJson
+          mapJson,
+          knownPassages
         })
         .then((result) => {
           if (!cancelled) {
@@ -3282,7 +3303,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument, rulesetText, rawReport, advisoryChecks, mapJson]);
+  }, [client, ordersDocument, rulesetText, rawReport, advisoryChecks, mapJson, knownPassages]);
 
   /**
    * What the checks found, hex by hex, for the header chip and the list it opens.
@@ -3540,7 +3561,7 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument, mapJson, {
+        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument, mapJson, passagesJson, {
           disabledCodes: disabledAdvisoryCodes(advisoryChecks)
         })
         .then((answer) => {
@@ -3561,7 +3582,7 @@ export function AppShell({
     // `advisoryChecks` is in here because a switch turned off must reach the figures at once: the
     // forecast asks a refusal's question only when its check is on (`ah-7ale.2.2.2`), so without
     // this the goods would not move until the next keystroke.
-  }, [client, ordersDocument, ruleset, rawReport, rememberedJson, mapJson, advisoryChecks]);
+  }, [client, ordersDocument, ruleset, rawReport, rememberedJson, mapJson, passagesJson, advisoryChecks]);
 
   /** The selected unit as the orders leave it, for the unit panel. */
   const unitPreview = useMemo(() => {
@@ -3726,9 +3747,12 @@ export function AppShell({
         writeOrdersDocument("external", pending.text);
         writer.markDirty(game, draftKey, pending.text);
 
+        // The import summary counts with the same knowledge the pane shows, so a count that
+        // disagreed with the pane is impossible (`ah-3u7c.2.2`).
         const result = await client.validateOrders(pending.text, rulesetText, rawReport || null, {
           disabledCodes: disabledAdvisoryCodes(advisoryChecks),
-          mapJson
+          mapJson,
+          knownPassages
         });
 
         if (result.diagnostics.length > 0) {
@@ -3757,6 +3781,7 @@ export function AppShell({
     rawReport,
     advisoryChecks,
     mapJson,
+    knownPassages,
     writeOrdersDocument
   ]);
 

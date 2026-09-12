@@ -583,6 +583,7 @@ pub fn trace_move_orders_state(
     unit_id: String,
     orders_document: String,
     map_json: String,
+    passages_json: String,
 ) -> Result<JsValue, JsValue> {
     let response = atlantis_hud_core::cache::with_global(|cache| {
         atlantis_hud_core::movement::request::trace_orders_on_map(
@@ -593,6 +594,7 @@ pub fn trace_move_orders_state(
             &unit_id,
             &orders_document,
             &map_json,
+            &passages_json,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;
@@ -611,6 +613,7 @@ pub fn preview_orders_state(
     remembered_json: String,
     orders_document: String,
     map_json: String,
+    passages_json: String,
     disabled_codes: Option<Vec<String>>,
 ) -> Result<JsValue, JsValue> {
     // `geometry` stays `None`: the forecast takes the map's shape from `map_json` above, which it
@@ -631,6 +634,7 @@ pub fn preview_orders_state(
             &remembered_json,
             &orders_document,
             &map_json,
+            &passages_json,
             options,
         )
     })
@@ -715,6 +719,7 @@ pub fn validate_orders_state(
     raw_report: Option<String>,
     disabled_codes: Option<Vec<String>>,
     map_json: Option<String>,
+    known_passages_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     // A shape that cannot be read is treated as no shape at all, which silences the one check that
     // measures a distance rather than failing the whole validation: bad config, not bad orders -
@@ -728,6 +733,15 @@ pub fn validate_orders_state(
             .map(|codes| codes.into_iter().collect())
             .unwrap_or_else(|| OrderCheckOptions::default().disabled),
         geometry,
+        // Validation has no error channel, so a list that will not read is nothing known and the
+        // warning simply stays: an advisory pane that answers conservatively beats one that
+        // refuses to answer (`ah-3u7c.2.2`).
+        known_passages: known_passages_json
+            .as_deref()
+            .and_then(|json| {
+                atlantis_hud_core::movement::passages::known_passages_from_json(json).ok()
+            })
+            .unwrap_or_default(),
     };
 
     // Both the ruleset and the report come from the cache. This runs every time the player stops

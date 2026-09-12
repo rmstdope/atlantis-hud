@@ -37,7 +37,8 @@ describe("TAURI_COMMANDS", () => {
       ruleset_json: null,
       raw_report: null,
       disabled_codes: null,
-      map_json: null
+      map_json: null,
+      known_passages_json: null
     });
   });
 });

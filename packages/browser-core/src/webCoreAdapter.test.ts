@@ -496,7 +496,7 @@ describe("web core adapter", () => {
     // checks that read the turn depend on, and an adapter that dropped them would still return a
     // perfectly well-shaped answer with half the checks silently not run.
     expect(
-      await adapter.validateOrders("MOVE R1 R2", null, "the report", ["hex-unguarded"], "{}")
+      await adapter.validateOrders("MOVE R1 R2", null, "the report", ["hex-unguarded"], "{}", null)
     ).toEqual({
       diagnostics: [],
       silver: [],
