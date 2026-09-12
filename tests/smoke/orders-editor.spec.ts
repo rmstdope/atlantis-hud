@@ -53,6 +53,11 @@ async function textStartX(line: ReturnType<Page["locator"]>) {
   return box!.x + paddingLeft;
 }
 
+/** The committed turn 40, whose Trader (6857) is a quartermaster owning a Caravanserai. */
+const QUARTERMASTER_REPORT = readReport("g3f42t40");
+/** Woodsmen, in forest (38,0) with 20 wood - three hexes from that Caravanserai. */
+const SHIPPING_UNIT = "9431";
+
 /** A loaded game with OWN_UNIT selected and its orders on screen - where every walk here starts. */
 async function openEditor(page: Page) {
   await loadReport(page, "Editor smoke");
@@ -285,6 +290,78 @@ test("a refused Trident construction is an ordinary problem in both lists", asyn
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-build-site-refused").check();
+  await page.getByTestId("settings-close").click();
+  await expect(editorList).toContainText(sentence);
+});
+
+/**
+ * `ah-7ale.2.2.1`: a shipment the game will refuse for distance is an ordinary problem. It stands in
+ * the list beneath the editor and in the region panel's Problems section, counted in the status
+ * line, marked by the editor's amber lint bar, and a stop on the F8 walk - and switching its warning
+ * off in Settings > Warnings > Transport takes all of that away at once, with nothing left saying
+ * anything is hidden.
+ *
+ * The fixture is the committed turn 40, whose Trader (6857) is a `QUAM 5` quartermaster owning the
+ * Caravanserai in mountain (36,4), three hexes from Woodsmen (9431) in forest (38,0) - one more than
+ * `rules/economy_transport` lets an ordinary unit ship to a quartermaster.
+ */
+test("a shipment the game will not carry is an ordinary problem in both lists", async ({ page }) => {
+  await loadReport(page, "Transport reach smoke", QUARTERMASTER_REPORT, "34 regions");
+  await selectHex(page, "1:38,0");
+  await selectUnit(page, SHIPPING_UNIT);
+  await expect(page.getByTestId("orders-input")).toBeVisible();
+
+  // The fixture's unordered units sort ahead of this finding, and the walk would stop at the first
+  // of them - the same reason the Trident construction case above switches that check off.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
+  await page.getByTestId("settings-close").click();
+
+  await fillOrders(page, "TRANSPORT 6857 5 WOOD");
+
+  const sentence =
+    "Unit 6857 is 3 hexes away and takes goods from 2 hexes, so 5 WOOD stay with this unit.";
+  const editorList = page.getByTestId("orders-diagnostics");
+  const regionList = page.getByTestId("region-problems");
+  const marker = page.getByTestId("orders-input").locator(".cm-lint-marker");
+
+  await expect(editorList).toContainText(sentence);
+  await expect(regionList).toContainText(sentence);
+  await expect(regionList).toContainText(SHIPPING_UNIT);
+  await expect(marker).toHaveCount(1);
+  await expect(page.getByTestId("orders-status")).toContainText("1 warning");
+
+  // An emptied list is removed from the page altogether, so the absence is a count rather than a
+  // `not.toContainText`, which fails on a locator that resolves to nothing.
+  await fillOrders(page, "@work");
+  await expect(editorList).toHaveCount(0);
+  await expect(regionList).toHaveCount(0);
+
+  await fillOrders(page, "TRANSPORT 6857 5 WOOD");
+  await expect(editorList).toContainText(sentence);
+
+  // The walk stops on it and selects the order, which needs the finding's own column span.
+  await ordersInput(page).click();
+  await page.keyboard.press("F8");
+  await expect(page.getByTestId("panel-unit")).toContainText(SHIPPING_UNIT);
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ""))
+    .toContain("TRANSPORT");
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-transport-out-of-reach").uncheck();
+  await page.getByTestId("settings-close").click();
+
+  await expect(editorList).toHaveCount(0);
+  await expect(regionList).toHaveCount(0);
+  await expect(marker).toHaveCount(0);
+  await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-transport-out-of-reach").check();
   await page.getByTestId("settings-close").click();
   await expect(editorList).toContainText(sentence);
 });

@@ -754,6 +754,16 @@ export const WARNING_GROUPS: readonly {
           "A SAIL that crosses a land region in one month. A fleet may only leave by the side it entered or one beside it, unless there is a canal."
       }
     ]
+  },
+  {
+    heading: "Transport",
+    entries: [
+      {
+        code: "transport-out-of-reach",
+        title: "Shipments the game will not carry",
+        description: "A TRANSPORT order whose target is too far away, or too far to measure."
+      }
+    ]
   }
 ];
 
