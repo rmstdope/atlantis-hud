@@ -1364,7 +1364,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               // into a passage and never say why the rest could not be drawn. A newline collapses
               // to a space in the accessibility tree, so this is the same two sentences a sighted
               // reader gets from the hover.
-              aria-label={passageTitle(route.passage).replace("\n", " ")}
+              aria-label={passageTitle(route.passage).split("\n").join(" ")}
               data-testid="map-passage-ring"
               style={GHOSTABLE_HIT}
             >
