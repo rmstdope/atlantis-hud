@@ -27,6 +27,7 @@ import type {
   OrderValidationResult,
   OrdersPreviewResponse,
   ParsedReport,
+  PassageClaim,
   ReportParseResult,
   ReportRegion,
   RosterSkills,
@@ -48,6 +49,11 @@ export type CoreWasmModule = {
   parse_report_state(rawReport: string): ReportParseResult;
   parse_report_full_state(rawReport: string): ParsedReport;
   roster_skills_state(rawReport: string): RosterSkills[];
+  passage_claims_state(
+    rawReport: string,
+    ordersDocument: string,
+    rulesetJson: string
+  ): PassageClaim[];
   parse_report_classified_state(rawReport: string, rulesetJson: string): ParsedReport;
   validate_orders_state(
     rawOrders: string,
@@ -379,6 +385,10 @@ export function createWebCoreAdapter(
 
     async rosterSkills(rawReport: string) {
       return wasm.roster_skills_state(rawReport);
+    },
+
+    async passageClaims(rawReport: string, ordersDocument: string, rulesetJson: string) {
+      return wasm.passage_claims_state(rawReport, ordersDocument, rulesetJson);
     },
 
     async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {

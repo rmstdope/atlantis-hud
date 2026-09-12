@@ -104,6 +104,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     // `ReportParseResult` - a different shape, caught by Copilot review on PR #331.
     parseReportFull: vi.fn().mockResolvedValue(aParsedReport()),
     rosterSkills: vi.fn().mockResolvedValue([]),
+    passageClaims: vi.fn().mockResolvedValue([]),
     parseReportClassified: vi.fn().mockResolvedValue(aParsedReport()),
     previewReportImport: vi.fn().mockResolvedValue({
       parseResult: reportParseResult,

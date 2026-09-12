@@ -9,6 +9,7 @@ pub mod fleet;
 pub mod graph;
 pub mod mode;
 pub mod orders;
+pub mod passages;
 pub mod plan;
 pub mod request;
 pub mod risk;

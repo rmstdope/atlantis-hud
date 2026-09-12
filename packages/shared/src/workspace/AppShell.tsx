@@ -152,6 +152,7 @@ import { mageSheetStatus, sharedSheetTurn } from "../mageSheetPrompt";
 import { useBattleSkillsStore } from "../battleSkillsStore";
 import { rememberedFor } from "../resourceMemory";
 import { useResourceMemoryStore } from "../resourceMemoryStore";
+import { usePassageMemoryStore } from "../passageMemoryStore";
 import { derivedSkillsFor } from "../battleSkills";
 import { unitsByIdIn } from "../armies";
 import { useSettingsStore } from "../settingsStore";
@@ -2635,6 +2636,38 @@ export function AppShell({
   // it would cost the same answer.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, openGameId, gameEpoch, gameData]);
+
+  /**
+   * And the same again for where this faction's own turns proved an inner passage comes out
+   * (ah-3u7c.2.1), with the ruleset in the dependencies as well: an orders document is read against
+   * a world's own comment syntax (ah-g9sf.3), so a ruleset that arrives after the game must
+   * re-scan.
+   */
+  useEffect(() => {
+    if (game) {
+      void usePassageMemoryStore.getState().scan(client, game, rulesetText);
+    } else {
+      usePassageMemoryStore.getState().clear();
+    }
+  // Keyed on openGameId, gameEpoch and rulesetText on purpose, as the pair above are: a rename
+  // hands the shell a fresh `game` under the same id, and re-walking the game for it would cost
+  // the same answer.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, openGameId, gameEpoch, rulesetText]);
+
+  /**
+   * The turn on screen answered against the one before it, so an import counts at once without
+   * walking the whole game again.
+   */
+  useEffect(() => {
+    const turn = parsed?.header.turnNumber;
+    if (!game || openGameId === null || !parsed || turn === null || turn === undefined) {
+      return;
+    }
+    void usePassageMemoryStore
+      .getState()
+      .learnLatest(client, game, parsed, turn, rulesetText);
+  }, [client, game, openGameId, parsed, rulesetText]);
 
   /**
    * Folds the turn on screen into that memory, so a report imported this minute counts at once.

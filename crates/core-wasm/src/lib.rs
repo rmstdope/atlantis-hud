@@ -658,6 +658,34 @@ pub fn roster_skills_state(raw_report: String) -> Result<JsValue, JsValue> {
     ))
 }
 
+/// Every crossing of an inner passage this turn's own orders claim.
+///
+/// Deliberately **not** through `atlantis_hud_core::cache`, for the reason
+/// `roster_skills_state` gives just above: the only caller is a scan over many stored turns.
+///
+/// The ruleset is taken because an orders document is read against a world's own comment syntax
+/// (`ah-g9sf.3`); one that will not parse falls back to `None`.
+///
+/// # Errors
+///
+/// Returns an error only when the answer cannot be serialised to JS.
+#[wasm_bindgen]
+pub fn passage_claims_state(
+    raw_report: String,
+    orders_document: String,
+    ruleset_json: String,
+) -> Result<JsValue, JsValue> {
+    let report = atlantis_hud_core::report::parse_report_full(&raw_report);
+    let ruleset = atlantis_hud_core::movement::rules::Ruleset::from_json(&ruleset_json).ok();
+    let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document_with_ruleset(
+        &orders_document,
+        ruleset.as_ref(),
+    );
+    to_js(&atlantis_hud_core::movement::passages::passage_claims(
+        &report, &ordered,
+    ))
+}
+
 /// Validates one draft of Atlantis orders and returns structured diagnostics.
 ///
 /// Order validation is pure, so unlike the persistence entry points this is available on every

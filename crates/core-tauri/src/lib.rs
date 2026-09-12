@@ -164,6 +164,34 @@ pub mod commands {
         )
     }
 
+    /// Every crossing of an inner passage this turn's own orders claim.
+    ///
+    /// Deliberately **not** through `atlantis_hud_core::cache` - the only caller is a scan over many
+    /// stored turns, and the cache holds one report, so going through it would evict the player's
+    /// open turn on every iteration and make the next order-validation keystroke re-parse it.
+    ///
+    /// The ruleset is taken because an orders document is read against a world's own comment
+    /// syntax (`ah-g9sf.3`); one that will not parse falls back to `None`, exactly as
+    /// `OrderedUnits::from_document` already means.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "passage_claims")
+    )]
+    pub fn command_passage_claims(
+        raw_report: &str,
+        orders_document: &str,
+        ruleset_json: &str,
+    ) -> Vec<atlantis_hud_core::movement::passages::PassageClaim> {
+        let report = atlantis_hud_core::report::parse_report_full(raw_report);
+        let ruleset = atlantis_hud_core::movement::rules::Ruleset::from_json(ruleset_json).ok();
+        let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document_with_ruleset(
+            orders_document,
+            ruleset.as_ref(),
+        );
+        atlantis_hud_core::movement::passages::passage_claims(&report, &ordered)
+    }
+
     /// Parses one report and returns tolerant parser output.
     #[must_use]
     #[cfg_attr(
@@ -1184,10 +1212,10 @@ pub use commands::{
     command_load_order_draft, command_load_region_sightings, command_merge_report,
     command_order_argument_completions, command_order_commands, command_order_vocabulary,
     command_parse_report, command_parse_report_classified, command_parse_report_full,
-    command_plan_route, command_preview_orders, command_preview_report_import,
-    command_roster_skills, command_save_allied_mages, command_save_army, command_save_hex_note,
-    command_save_order_draft, command_save_study_plans, command_trace_move_orders,
-    command_trade_routes, command_validate_orders,
+    command_passage_claims, command_plan_route, command_preview_orders,
+    command_preview_report_import, command_roster_skills, command_save_allied_mages,
+    command_save_army, command_save_hex_note, command_save_order_draft, command_save_study_plans,
+    command_trace_move_orders, command_trade_routes, command_validate_orders,
 };
 
 /// Creates a game under the application's games directory and applies migrations.
@@ -2414,6 +2442,23 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             command_validate_orders(orders, None, None, None),
             command_validate_orders(orders, None, None, Some(default_disabled))
         );
+    }
+
+    /// The command answers over the same IPC types the shell will hand it, so the four-way
+    /// lockstep is not the only thing proving this call exists.
+    #[test]
+    fn tauri_adapter_reads_a_passage_claim() {
+        let mut report = String::from("Foo (1) Report\n\n");
+        report.push_str("plain (1,1) in Coast, 10 peasants (orcs), $5.\n\n");
+        report.push_str("Exits:\n  North : plain (1,-1) in Coast.\n\n");
+        report.push_str("+ Shaft [1] : Shaft, contains an inner location.\n");
+        report.push_str("  * Digger (5), Foo (1), leader [LEAD]. Weight: 10.\n");
+
+        let claims = command_passage_claims(&report, "unit 5\nMOVE IN\n", "");
+
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0].unit_id, "5");
+        assert_eq!(claims[0].structure, "Shaft [1]");
     }
 
     #[test]
