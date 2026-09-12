@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trident leader upkeep (ah-g9sf.9) — agreed</title>
+<style>
+  :root { --ground:#10151c; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 20px 64px; }
+  header, main, section { max-width:1140px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; margin:36px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); } code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:.9em; color:var(--brass-bright); }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip.chosen { border-color:var(--ok); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip.chosen .sect { color:var(--ok); }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:6px; border-bottom:1px solid var(--edge-soft); padding-bottom:5px;}
+  .il { font-size:12px; color:var(--ink-soft); padding:3px 0; border-bottom:1px solid var(--edge-soft); display:flex; justify-content:space-between; gap:12px;}
+  .il:last-child { border-bottom:0; } .il .k { color:var(--ink); }
+  .il .v { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink); white-space:nowrap;}
+  .il .s { display:block; color:var(--ink-dim); font-size:11px; font-style:italic; margin-top:2px; font-family:Georgia,serif;}
+  .il.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .il.badline { background:rgba(217,112,112,.09); border-left:2px solid var(--danger); padding-left:7px; }
+  .note { font-size:11.5px; color:var(--ink-soft); font-style:italic; padding-top:7px; margin-top:5px; border-top:1px solid var(--edge-soft); font-family:Georgia,serif;}
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; max-width:94ch;} .cap b { color:var(--ink); }
+  .bad { color:var(--danger); } .good { color:var(--ok); }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+  .warnbar { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; background:rgba(217,112,112,.10); border-left:3px solid var(--danger); padding:8px 11px; margin-top:12px; border-radius:3px; color:var(--ink);}
+  .verdict { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12.5px; background:rgba(79,183,131,.08); border-left:3px solid var(--ok); padding:9px 12px; margin-top:14px; border-radius:3px; color:var(--ink);}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-g9sf.9</span> &mdash; what a leader costs to keep in Trident</h1>
+  <p>In <strong>New Origins</strong> and <strong>New Age: Arcanum</strong> a leader's monthly
+  maintenance is <strong>50 silver</strong>, and one grain, livestock, fish or meal covers up to
+  <strong>50</strong> of what a unit owes. In <strong>New Age: Trident</strong> the leader costs
+  <strong>90</strong> and one food covers only <strong>30</strong>. An ordinary character is 10 in
+  every world. Sources: <code>newage/trident rules/economy_maintenance</code>,
+  <code>newage/arcanum rules/economy_maintenance</code>, <code>rules/economy_maintenance</code>,
+  <code>newage/trident data/MEAL</code>.</p>
+  <p>Atlantis HUD charges 50 and credits 50-a-food everywhere, so a Trident player is shown a fatter
+  purse than they will have and is not warned when a leader is about to starve.</p>
+  <p class="verdict"><b>Agreed:</b> the figures are corrected and <b>no new words appear anywhere</b>.
+  Every chosen panel below is bordered in green.</p>
+</header>
+
+<main>
+
+<section>
+  <h2 class="rule"><em>One</em> A leader with 100 silver, idle</h2>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Today &mdash; wrong</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, idle</div>
+      <div class="il"><span class="k">silver</span><span class="v">100 &rarr; <span class="bad">50</span></span></div>
+      <div class="il badline"><span class="k">upkeep<span class="s">the other worlds' price, charged in Trident</span></span><span class="v bad">&minus;50</span></div>
+    </div>
+    <div class="tip chosen">
+      <div class="sect">Chosen &mdash; just the right number</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, idle</div>
+      <div class="il"><span class="k">silver</span><span class="v">100 &rarr; <span class="good">10</span></span></div>
+      <div class="il newline"><span class="k">upkeep</span><span class="v good">&minus;90</span></div>
+      <div class="note">Nothing explains the rate &mdash; not here, not in the warning, not anywhere.</div>
+    </div>
+    <div class="tip">
+      <div class="sect">Rejected &mdash; the line explains itself</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, idle</div>
+      <div class="il"><span class="k">silver</span><span class="v">100 &rarr; 10</span></div>
+      <div class="il"><span class="k">upkeep<span class="s">$90 for a leader in this world</span></span><span class="v">&minus;90</span></div>
+      <div class="note">Small print under every leader, every month, forever.</div>
+    </div>
+    <div class="tip">
+      <div class="sect">Rejected &mdash; only when it bites</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, idle</div>
+      <div class="il"><span class="k">silver</span><span class="v">100 &rarr; 10</span></div>
+      <div class="il"><span class="k">upkeep</span><span class="v">&minus;90</span></div>
+      <div class="note">The rate named in the shortage warning instead: "&hellip; &mdash; a leader costs $90 a month in this world".</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Two</em> The same leader holding only 50 silver</h2>
+  <p>It cannot pay. The shortfall is 40, not zero, and the hex warning appears where today there is
+  silence. <strong>The sentence is the one already in the app</strong>, with the true figures in it.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Today &mdash; wrong</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, 50 silver</div>
+      <div class="il"><span class="k">silver</span><span class="v">50 &rarr; <span class="bad">0</span></span></div>
+      <div class="il badline"><span class="k">upkeep</span><span class="v bad">&minus;50</span></div>
+      <div class="note">No warning at all: the fee looks exactly covered.</div>
+    </div>
+    <div class="tip chosen">
+      <div class="sect">Chosen</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, 50 silver</div>
+      <div class="il"><span class="k">silver</span><span class="v">50 &rarr; <span class="good">&minus;40</span></span></div>
+      <div class="il newline"><span class="k">upkeep</span><span class="v good">&minus;90</span></div>
+      <div class="warnbar">the units in this hex are short $40 of upkeep between them: they can have $50 and their upkeep costs $90</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Three</em> No silver, two grain, set to eat its own food</h2>
+  <p>Each food covers 30 here, so two grain cover 60 of the 90 and <strong>30 is still owed</strong>
+  &mdash; and a unit that ends the month owing has a one-in-three chance of starving to death.
+  Today the app believes the fee is 50 and each grain covers 50, so it reports the whole thing
+  settled and says nothing.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Today &mdash; wrong</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, 2 grain, no silver</div>
+      <div class="il badline"><span class="k">upkeep</span><span class="v bad">0</span></div>
+      <div class="note">This unit's upkeep was paid by its own food (50).</div>
+    </div>
+    <div class="tip chosen">
+      <div class="sect">Chosen &mdash; say who paid, nothing else</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, 2 grain, no silver</div>
+      <div class="il newline"><span class="k">upkeep</span><span class="v good">&minus;30</span></div>
+      <div class="note">This unit's upkeep was paid by its own food (60).</div>
+      <div class="warnbar">the units in this hex are short $30 of upkeep between them: they can have $60 and their upkeep costs $90</div>
+    </div>
+    <div class="tip">
+      <div class="sect">Rejected &mdash; name what is left unpaid</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, 2 grain, no silver</div>
+      <div class="il"><span class="k">upkeep</span><span class="v">&minus;30</span></div>
+      <div class="note">This unit's upkeep was paid by its own food (60). $30 of it is still unpaid.</div>
+    </div>
+    <div class="tip">
+      <div class="sect">Rejected &mdash; show the arithmetic</div>
+      <div class="hd">Warden (1043) &mdash; 1 leader, 2 grain, no silver</div>
+      <div class="il"><span class="k">upkeep</span><span class="v">&minus;30</span></div>
+      <div class="note">Each food covers $30 here, so its two grain cover $60 of the $90 fee. $30 is still unpaid.</div>
+    </div>
+  </div>
+  <p class="cap"><b>The existing sentence's figure moves with the world.</b> It reads
+  <em>its own food (60)</em> rather than <em>(50)</em>, because that is what the food actually
+  covered. The words around it are untouched.</p>
+</section>
+
+<section>
+  <h2 class="rule"><em>Four</em> One unit holding a leader and five ordinary people</h2>
+  <p>90 for the leader and 10 each for the five: <strong>140</strong>, where the app charges 100
+  today.</p>
+  <div class="tips">
+    <div class="tip">
+      <div class="sect">Today &mdash; wrong</div>
+      <div class="hd">Escort (1120) &mdash; 1 leader, 5 people</div>
+      <div class="il"><span class="k">silver</span><span class="v">300 &rarr; <span class="bad">200</span></span></div>
+      <div class="il badline"><span class="k">upkeep</span><span class="v bad">&minus;100</span></div>
+    </div>
+    <div class="tip chosen">
+      <div class="sect">Chosen &mdash; one figure</div>
+      <div class="hd">Escort (1120) &mdash; 1 leader, 5 people</div>
+      <div class="il"><span class="k">silver</span><span class="v">300 &rarr; <span class="good">160</span></span></div>
+      <div class="il newline"><span class="k">upkeep</span><span class="v good">&minus;140</span></div>
+      <div class="note">Exactly what a unit of only leaders or only ordinary people shows.</div>
+    </div>
+    <div class="tip">
+      <div class="sect">Rejected &mdash; the sum under the line</div>
+      <div class="hd">Escort (1120) &mdash; 1 leader, 5 people</div>
+      <div class="il"><span class="k">silver</span><span class="v">300 &rarr; 160</span></div>
+      <div class="il"><span class="k">upkeep<span class="s">1 leader at $90, 5 people at $10</span></span><span class="v">&minus;140</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Five</em> The other worlds do not move</h2>
+  <table class="q">
+    <tr><th>World</th><th>Leader</th><th>Ordinary</th><th>One food covers</th><th>Idle leader with 100 silver ends at</th></tr>
+    <tr><td class="k">New Origins</td><td>50</td><td>10</td><td>50</td><td>50 &mdash; unchanged</td></tr>
+    <tr><td class="k">New Age: Arcanum</td><td>50</td><td>10</td><td>50</td><td>50 &mdash; unchanged</td></tr>
+    <tr><td class="k">New Age: Trident</td><td class="good">90</td><td>10</td><td class="good">30</td><td class="good">10 &mdash; was 50</td></tr>
+  </table>
+  <p class="cap">A player who switches a game between worlds sees these figures move with it. No
+  screen, no setting and no wording anywhere in the app changes.</p>
+</section>
+
+</main>
+</body>
+</html>
