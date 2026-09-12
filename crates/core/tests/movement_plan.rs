@@ -1294,6 +1294,36 @@ fn a_sea_route_can_end_on_a_coastal_land_hex_but_not_an_inland_one() {
     );
 }
 
+/// A land hex nobody stood in is coastal when an ocean hex's report names it among its exits -
+/// `rules/movement_sailing`: "A coastal region is defined as a non-ocean region with at least one
+/// adjacent ocean region." The forest has no block of its own, so its only evidence of a shore is
+/// the sea's report.
+#[test]
+fn a_fleet_lands_on_a_shore_only_the_sea_has_named() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : forest (2,2) in Coast.\n\n");
+    text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \\
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    text.push_str(
+        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \\
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    let report = parse_report_full(&text);
+
+    let route = plan(&report, "900", at(2, 2)).expect("the sea names the forest as its shore");
+    assert_eq!(route.mode, MovementMode::Sail);
+    assert_eq!(route.steps.len(), 1);
+    assert_eq!(route.steps[0].to, at(2, 2));
+    assert_eq!(route.steps[0].terrain, "forest");
+    assert!(!route.steps[0].estimated);
+    assert_eq!(route.steps[0].cost, 1);
+    assert_eq!(route.order, "SAIL SE");
+}
+
 // ------------------------------------------------------- an overloaded fleet
 
 /// A Longship docked in an ocean hex at (1,1) with a coastal plain at (2,2) one step southeast, so

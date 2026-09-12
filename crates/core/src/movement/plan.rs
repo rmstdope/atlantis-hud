@@ -519,7 +519,7 @@ fn sail_mode(
 /// Reads the ruleset's own water rule rather than assuming it: a game that let anyone cross water
 /// would otherwise be quietly overruled by a hardcoded belief. A fleet is the water rule turned
 /// round: water never blocks it, and land blocks it unless the hex is coastal - "a non-ocean region
-/// with at least one adjacent ocean region" - which is asked of the map itself, an estimated
+/// with at least one adjacent ocean region" - which is asked of the map itself in either direction, via `is_coastal`, an estimated
 /// neighbour (one the search only reached by geometric guess) never counting as confirming it.
 ///
 /// Shared with the order tracer, which draws the blocked step anyway and marks it as doubt.
@@ -814,9 +814,13 @@ pub(crate) fn refused_by_sailing_step(
         && !ruleset.is_water(into_terrain)
 }
 
-/// Whether a hex has at least one neighbour the map itself describes as water.
+/// Whether a hex has at least one hex the reports place beside it - in either direction - that the
+/// map describes as water. Reads `MapKnowledge::adjacent`, not `neighbours`: a land hex known only
+/// by name states no exits, and the ocean hex whose report named it is the only evidence it has a
+/// coast (`rules/movement_sailing`: "A coastal region is defined as a non-ocean region with at
+/// least one adjacent ocean region.").
 fn is_coastal(ruleset: &Ruleset, map: &MapKnowledge, coordinate: Coordinate) -> bool {
-    map.neighbours(coordinate).any(|(_, neighbour)| {
+    map.adjacent(coordinate).into_iter().any(|(_, neighbour)| {
         map.hex(neighbour)
             .is_some_and(|hex| ruleset.is_water(&hex.terrain))
     })
