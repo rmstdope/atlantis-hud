@@ -4884,9 +4884,11 @@ fn ledger_for_with_production<'a>(
 
     let sharing = Sharing::read(hex);
 
-    // Three passes, in the order `rules/sequenceofevents` states: manufacturing PRODUCE, then
-    // BUILD, then primary PRODUCE. Each walks `hex.units` whole before the next begins, because
-    // the rules settle a phase across the region rather than a unit's block at a time - so a
+    // The month-long passes, in the order this world's rules state - three in New Origins
+    // (manufacturing PRODUCE, then BUILD, then primary PRODUCE), two in Trident (BUILD, then one
+    // combined production phase); see `month_long_passes`. Each walks `hex.units` whole before
+    // the next begins, because the rules settle a phase across the region rather than a unit's
+    // block at a time - so a
     // sharing unit's material is consumed by the manufacturer above it on the report before the
     // builder below it can spend the rest, and "units that appear higher on the report get
     // precedence" is what breaks the tie inside each pass (`ah-728m.2.2`).
@@ -5011,6 +5013,35 @@ fn unwind_unconsumed_production(ledger: &mut Ledger<'_>) {
 ///
 /// An order nothing in the ruleset prices settles in the manufacturing pass, so its existing
 /// uncounted/doubted handling runs exactly once and in the place it always ran.
+///
+/// Trident has one production phase rather than two, and it runs after BUILD - see the early
+/// return in the body, and [`month_long_passes`] below.
+fn produce_phase(
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    item: &str,
+    ruleset: Option<&Ruleset>,
+) -> StatePhase {
+    // Trident has one production phase holding both kinds, and it runs after BUILD
+    // (`newage trident rules/sequenceofevents`), so every PRODUCE there settles in the later slot
+    // whatever its recipe - which is also what makes this month's output invisible to this
+    // month's BUILD, since `PhaseState::apply` writes a delta into its own slot and every later
+    // one. The unpriced-settles-in-the-manufacturing-pass rule in this function's own doc comment
+    // has nothing to choose between in a world with a single production phase.
+    if ruleset.is_some_and(Ruleset::builds_before_production) {
+        return StatePhase::PrimaryProduction;
+    }
+    let primary = resolve_item(item, hex, actor, ruleset)
+        .as_deref()
+        .and_then(|tag| producing_skill(ruleset, tag, actor.skills()))
+        .is_some_and(|(_, recipe)| recipe.inputs.is_empty());
+    if primary {
+        StatePhase::PrimaryProduction
+    } else {
+        StatePhase::Manufacturing
+    }
+}
+
 /// The month-long passes this world runs, in the turn's order.
 ///
 /// New Origins settles manufacturing PRODUCE, then BUILD, then primary PRODUCE
@@ -5027,32 +5058,6 @@ fn month_long_passes(ruleset: Option<&Ruleset>) -> &'static [StatePhase] {
             StatePhase::Build,
             StatePhase::PrimaryProduction,
         ]
-    }
-}
-
-fn produce_phase(
-    hex: &Hex<'_>,
-    actor: &Ordered<'_>,
-    item: &str,
-    ruleset: Option<&Ruleset>,
-) -> StatePhase {
-    // Trident has one production phase holding both kinds, and it runs after BUILD
-    // (`newage trident rules/sequenceofevents`), so every PRODUCE there settles in the later slot
-    // whatever its recipe - which is also what makes this month's output invisible to this
-    // month's BUILD, since `PhaseState::apply` writes a delta into its own slot and every later
-    // one. The unpriced-settles-in-the-manufacturing-pass rule above has nothing to choose
-    // between in a world with a single production phase.
-    if ruleset.is_some_and(Ruleset::builds_before_production) {
-        return StatePhase::PrimaryProduction;
-    }
-    let primary = resolve_item(item, hex, actor, ruleset)
-        .as_deref()
-        .and_then(|tag| producing_skill(ruleset, tag, actor.skills()))
-        .is_some_and(|(_, recipe)| recipe.inputs.is_empty());
-    if primary {
-        StatePhase::PrimaryProduction
-    } else {
-        StatePhase::Manufacturing
     }
 }
 
