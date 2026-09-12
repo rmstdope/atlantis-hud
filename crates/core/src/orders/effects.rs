@@ -1408,6 +1408,9 @@ struct WorkingUnit {
     /// The movement command as written, upper-cased: `MOVE`, `ADVANCE` or `SAIL`. Kept beside
     /// `move_steps` so a rendered order clause names the word the player actually typed.
     move_command: Option<String>,
+    /// Every readable order of this unit's block, chained into the route `move_steps` and
+    /// `move_command` are read from.
+    movement: crate::movement::chain::RouteChain,
     /// `MOVE OUT`/`MOVE 12`/... when a step of the movement order set this unit's structure in the
     /// hex it started in. Read by `changes()`.
     move_origin_cause: Option<String>,
@@ -1798,6 +1801,7 @@ impl Working {
                 formed: false,
                 move_steps: None,
                 move_command: None,
+                movement: crate::movement::chain::RouteChain::default(),
                 move_origin_cause: None,
                 move_destination: None,
                 reported: unit.structure_id.clone(),
@@ -2149,6 +2153,7 @@ impl Working {
             formed: true,
             move_steps: None,
             move_command: None,
+            movement: crate::movement::chain::RouteChain::default(),
             move_origin_cause: None,
             move_destination: None,
             reported,
@@ -2184,6 +2189,7 @@ impl Working {
         arguments: &[super::lexer::Token],
         line: usize,
     ) {
+        let written = arguments;
         let Some(active) = self.active() else {
             return;
         };
@@ -2193,20 +2199,16 @@ impl Working {
             return;
         };
 
-        if crate::movement::orders::is_movement_command(&command.text) {
-            if let Some(steps) = super::forms::read_move_line(command, arguments) {
-                // The last movement order wins - the command word with it, so a rendered clause
-                // names the word the player actually typed.
-                //
-                // `rules/move` says otherwise: "Multiple MOVE orders given by one unit will chain
-                // together", which `semantics.rs` already models. Keeping only the last one is a
-                // known divergence this module has always carried, and `ah-ehgy` left it alone on
-                // purpose: chaining here means deciding what a chained route costs and where it
-                // ends, which is a bead of its own.
-                self.units[active].move_steps = Some(steps);
-                self.units[active].move_command = Some(command.text.to_uppercase());
-            }
-        } else if command.is("name") {
+        // Chained by `movement::chain::RouteChain` (`rules/move`).
+        if let Some(intent) =
+            super::intents::read_order_with_ruleset(command, written, Some(self.ruleset.as_ref()))
+        {
+            let working = &mut self.units[active];
+            working.movement.push(&command.text, &intent);
+            working.move_steps = working.movement.route().map(|route| route.steps.clone());
+            working.move_command = working.movement.route().map(|route| route.command.clone());
+        }
+        if command.is("name") {
             self.rename(active, arguments);
         } else if let Some(change) = read_flag_order(command, arguments) {
             let unit = &mut self.units[active].unit;
@@ -6893,16 +6895,23 @@ mod tests {
         );
     }
 
+    /// `rules/move`: "Multiple MOVE orders given by one unit will chain together."
     #[test]
-    fn the_last_movement_order_wins() {
-        // The game executes the later MOVE, exactly as the map trace draws it.
-        let response = preview("unit 900\nMOVE N\nMOVE SE\n");
-        let origin = response
+    fn movement_lines_chain_into_one_route_in_the_preview() {
+        let chained = preview("unit 900\nMOVE NW\nMOVE SE\n");
+        assert_eq!(
+            chained,
+            preview("unit 900\nMOVE NW SE\n"),
+            "two lines preview exactly as the one line they chain into"
+        );
+        let southeast = preview("unit 900\nMOVE SE\n");
+        let origin = southeast
             .regions
             .iter()
             .find(|region| region.region_id == "1:1,1")
             .expect("the origin changed");
         assert_eq!(origin.units[0].departing_to.as_deref(), Some("1:2,2"));
+        assert_ne!(chained, southeast, "the earlier line is not thrown away");
     }
 
     /// Two sea hexes, and in the first a named, priceable hull with two own units aboard, a

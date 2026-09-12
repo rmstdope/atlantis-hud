@@ -174,3 +174,34 @@ fn an_absent_passage_document_is_nothing_known_and_a_broken_one_is_an_error() {
 
     assert!(known_passages_from_json("{oh no").is_err());
 }
+
+/// The bead's reproduction (`ah-vmxn`): `rules/move` - "Multiple MOVE orders given by one unit will
+/// chain together" - so `MOVE N` / `MOVE IN` is `MOVE N IN`, and the passage is not in this hex.
+#[test]
+fn a_passage_on_a_second_move_line_after_a_step_is_not_claimed() {
+    assert_eq!(claims("unit 5\nMOVE N\nMOVE IN\n"), vec![]);
+}
+
+/// Unit 5 already stands in Shaft [1], so this is a guard that chaining keeps the claim rather than
+/// a reproduction: keeping only the last line claimed it too.
+#[test]
+fn a_passage_chained_after_an_enter_is_still_claimed() {
+    let claimed = claims("unit 5\nMOVE 1\nMOVE IN\n");
+
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].structure_id, "1");
+}
+
+#[test]
+fn a_step_on_a_later_line_after_the_passage_is_not_claimed() {
+    use atlantis_hud_core::movement::graph::Direction::Southeast;
+    use atlantis_hud_core::movement::orders::MoveStep;
+
+    let orders = "unit 5\nMOVE IN\nMOVE SE\n";
+    assert_eq!(
+        OrderedUnits::from_document(orders).steps_for("5"),
+        Some(&[MoveStep::In, MoveStep::Go(Southeast)][..]),
+        "the two lines are one route, so the step follows the passage"
+    );
+    assert_eq!(claims(orders), vec![]);
+}

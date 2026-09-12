@@ -13843,22 +13843,36 @@ fn check_passages(
     }
 
     for ordered in &hex.units {
-        // The *last* movement line, because that is the one the map draws and the dock previews
-        // (`effects.rs`: "The last movement order wins"). `rules/move` says movement orders chain,
-        // and this module models that elsewhere - but warning about an earlier line here would put
-        // a passage warning beside a solid route drawn from a different order, a contradiction the
-        // player cannot resolve. The warning describes what is on the map.
-        let last_move = ordered
+        // The whole chained route, the same one the map traces and the dock previews
+        // (`movement::chain::RouteChain`). `ordered.intents` is already the settled month, so every
+        // `Intent::Move` still in it belongs to one chain, in the order written.
+        let moves: Vec<(&PlacedIntent, &[MoveStep])> = ordered
             .intents
             .iter()
-            .rev()
-            .find(|placed| matches!(placed.intent, Intent::Move { .. }));
+            .filter_map(|placed| match &placed.intent {
+                Intent::Move { steps } => Some((placed, steps.as_slice())),
+                _ => None,
+            })
+            .collect();
+        if moves.is_empty() {
+            continue;
+        }
+        let steps: Vec<MoveStep> = moves
+            .iter()
+            .flat_map(|(_, steps)| steps.iter().cloned())
+            .collect();
 
-        if let Some(placed) = last_move {
-            let Intent::Move { steps } = &placed.intent else {
+        {
+            let steps = &steps;
+            let Some(passage) = first_passage(ordered.unit.structure_id.as_deref(), steps) else {
                 continue;
             };
-            let Some(passage) = first_passage(ordered.unit.structure_id.as_deref(), steps) else {
+            // The line holding the passage step is where the warning is placed.
+            let mut end = 0;
+            let Some(placed) = moves.iter().find_map(|(placed, line_steps)| {
+                end += line_steps.len();
+                (end > passage.before).then_some(*placed)
+            }) else {
                 continue;
             };
             let Some(structure_id) = passage.structure_id else {
@@ -26213,15 +26227,11 @@ BUILD
         assert_eq!(passages(&findings).len(), 1, "{findings:?}");
     }
 
-    /// The warning describes the order the map draws, which is the *last* movement line.
-    ///
-    /// `rules/move` says "Multiple MOVE orders given by one unit will chain together", and this
-    /// module models that elsewhere - but the trace and the preview keep only the last line
-    /// (`effects.rs`, a divergence `ah-ehgy` left alone on purpose). Warning about an earlier one
-    /// would put a passage warning beside a solid route drawn from a different order, which is a
-    /// contradiction the player cannot resolve.
+    /// The warning describes the whole chained route, the same one the map traces and the dock
+    /// previews: `rules/move` - "Multiple MOVE orders given by one unit will chain together." It
+    /// is placed on the line that holds the passage.
     #[test]
-    fn a_later_move_is_the_one_the_passage_warning_describes() {
+    fn the_passage_warning_describes_the_whole_chain() {
         let regions = vec![ReportRegion {
             exits: vec![Exit {
                 direction: "Southeast".to_string(),
@@ -26233,13 +26243,35 @@ BUILD
             ..with_shaft(region(vec![unit("5")]))
         }];
 
-        // The map traces `MOVE SE` and draws it: no passage, so nothing to warn about.
-        let findings = check(regions.clone(), "unit 5\nMOVE 1 IN\nMOVE SE\n");
-        assert!(passages(&findings).is_empty(), "{findings:?}");
+        let findings = check(regions, "unit 5\nMOVE 1 IN\nMOVE SE\n");
+        let passages = passages(&findings);
 
-        // And the other way round: the last line is the passage, so that is what is warned about.
+        assert_eq!(passages.len(), 1, "{findings:?}");
+        assert_eq!(passages[0].line, Some(2), "{findings:?}");
+        assert_eq!(
+            passages[0].message,
+            "goes through the passage in Shaft [1], and no report says where that passage comes \
+             out, so the 1 step after it cannot be placed on the map"
+        );
+    }
+
+    /// The chained route leaves the hex before the passage, and this one-region report cannot say
+    /// which hex the step leads to, so the check accepts on doubt.
+    #[test]
+    fn a_step_on_an_earlier_line_leaves_the_passage_unplaceable_by_this_report() {
+        let regions = vec![ReportRegion {
+            exits: vec![Exit {
+                direction: "Southeast".to_string(),
+                terrain: "mountain".to_string(),
+                coordinate: Coordinate { x: 8, y: 54, z: 1 },
+                province: "Inhead".to_string(),
+                settlement: None,
+            }],
+            ..with_shaft(region(vec![unit("5")]))
+        }];
+
         let findings = check(regions, "unit 5\nMOVE SE\nMOVE 1 IN\n");
-        assert_eq!(passages(&findings).len(), 1, "{findings:?}");
+        assert!(passages(&findings).is_empty(), "{findings:?}");
     }
 
     /// State 6: entering a structure by its number is not a passage and is never warned about.
