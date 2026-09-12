@@ -6124,6 +6124,10 @@ fn apply(
         // see `ledger_for_with_production`, this function's only caller, which skips `Produce`
         // here and calls `produce` from that pass (`rules/sequenceofevents`, `ah-l80z`).
         Intent::Produce { .. } => {}
+        // A shipment costs the sender a fee the quartermaster charges, and that fee is `ah-7ale.3`.
+        // Until it lands this ledger says nothing about a TRANSPORT, exactly as it did before
+        // `TRANSPORT` became an intent (`ah-7ale.2.2.1`).
+        Intent::Transport { .. } => {}
         Intent::Give { to, what, amount } => {
             let GiveEndpoint {
                 reach,

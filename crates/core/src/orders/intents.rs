@@ -27,6 +27,14 @@ pub enum Intent {
         what: Selector,
         amount: Amount,
     },
+    /// `TRANSPORT`/`DISTRIBUTE target amount item`. A free order - it takes no part of the month
+    /// (`rules/sequenceofevents`) - carried as an intent because the reach check needs the line it
+    /// stands on.
+    Transport {
+        to: Party,
+        what: Selector,
+        amount: Amount,
+    },
     /// `TAKE FROM`, which is a GIVE written from the other end.
     Take {
         from: Party,
@@ -707,6 +715,12 @@ pub fn read_order_with_ruleset(
             let (what, amount) = forms::read_transfer(rest)?;
             Some(Intent::Give { to, what, amount })
         }
+        "TRANSPORT" | "DISTRIBUTE" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
+            let (to, rest) = forms::read_party(arguments)?;
+            let (what, amount) = forms::read_transfer(rest)?;
+            Some(Intent::Transport { to, what, amount })
+        }
         "TAKE" => {
             let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             let rest = arguments.split_first().filter(|(kw, _)| kw.is("FROM"))?.1;
@@ -953,6 +967,7 @@ pub fn spends_the_month(intent: &Intent) -> bool {
         // guard can tax as well - and FORM only asks for a unit to exist.
         Intent::Cast { .. }
         | Intent::Give { .. }
+        | Intent::Transport { .. }
         | Intent::Take { .. }
         | Intent::Buy { .. }
         | Intent::Sell { .. }
@@ -2190,5 +2205,21 @@ mod tests {
             "a Trident comment must not change what the order does"
         );
         assert_eq!(unit.unread, Vec::<usize>::new());
+    }
+
+    #[test]
+    fn a_transport_line_is_read_as_an_intent() {
+        let expected = vec![Intent::Transport {
+            to: Party::Unit("901".to_string()),
+            what: Selector::Item("STON".to_string()),
+            amount: Amount::Exact(5),
+        }];
+        assert_eq!(intents("unit 900\nTRANSPORT 901 5 STON\n"), expected);
+        assert_eq!(intents("unit 900\nDISTRIBUTE 901 5 STON\n"), expected);
+
+        // A free order, so the month is still the unit's own.
+        assert!(works_by_default(
+            &only_unit("unit 900\nTRANSPORT 901 5 STON\n").intents
+        ));
     }
 }

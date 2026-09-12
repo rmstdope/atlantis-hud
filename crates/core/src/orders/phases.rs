@@ -38,11 +38,16 @@ pub(crate) enum StatePhase {
     /// module has no ruleset. [`super::semantics`] classifies it where it has one.
     PrimaryProduction,
     Wages,
+    /// TRANSPORT and DISTRIBUTE. `rules/sequenceofevents` runs them after WORK and the
+    /// teleportation spells and before maintenance is assessed, in three sub-phases this enum does
+    /// not distinguish - no answer any reader of this module gives turns on which of the three a
+    /// shipment belongs to.
+    Transport,
     Maintenance,
 }
 
 impl StatePhase {
-    pub(crate) const COUNT: usize = 14;
+    pub(crate) const COUNT: usize = 15;
 }
 
 /// Every phase an order can settle in, in the turn's order.
@@ -51,7 +56,7 @@ impl StatePhase {
 /// after every order has run. So is [`StatePhase::PrimaryProduction`]: [`phase_of`] cannot answer
 /// it without a ruleset, and [`super::semantics`] runs both PRODUCE passes outside this walk
 /// anyway (`ah-728m.2.2`).
-pub(crate) const ORDER: [StatePhase; 12] = [
+pub(crate) const ORDER: [StatePhase; 13] = [
     StatePhase::Instant,
     StatePhase::Claim,
     StatePhase::Give,
@@ -64,6 +69,7 @@ pub(crate) const ORDER: [StatePhase; 12] = [
     StatePhase::Manufacturing,
     StatePhase::Build,
     StatePhase::Wages,
+    StatePhase::Transport,
 ];
 
 /// The phase one order settles in, per `rules/sequenceofevents`.
@@ -83,6 +89,8 @@ pub(crate) fn phase_of(intent: &Intent) -> StatePhase {
         Intent::Claim(_) => StatePhase::Claim,
         // "Give orders. GIVE and TAKE orders are processed."
         Intent::Give { .. } | Intent::Take { .. } => StatePhase::Give,
+        // "TRANSPORT orders are processed in multiple phases", after WORK and before maintenance.
+        Intent::Transport { .. } => StatePhase::Transport,
         // "Tax orders. ... PILLAGE ... TAX ... are processed."
         Intent::Tax | Intent::Pillage => StatePhase::Tax,
         // "Instant Magic ... Spells are CAST".
