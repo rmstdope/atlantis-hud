@@ -1191,6 +1191,7 @@ pub mod commands {
                 .map(|codes| codes.into_iter().collect())
                 .unwrap_or_else(|| OrderCheckOptions::default().disabled),
             geometry: None,
+            known_passages: Vec::new(),
         };
 
         atlantis_hud_core::cache::with_global(|cache| {
@@ -1474,8 +1475,16 @@ mod preview_orders_command_tests {
             .collect();
 
         assert_eq!(
-            command_preview_orders(RULESET, report, "[]", orders, "", None),
-            command_preview_orders(RULESET, report, "[]", orders, "", Some(default_disabled))
+            command_preview_orders(RULESET, report, "[]", orders, "", "", None),
+            command_preview_orders(
+                RULESET,
+                report,
+                "[]",
+                orders,
+                "",
+                "",
+                Some(default_disabled)
+            )
         );
     }
 
@@ -2448,7 +2457,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let validation = command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None);
+        let validation =
+            command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None, None);
         assert_eq!(
             validation.diagnostics,
             vec![atlantis_hud_core::OrderDiagnostic {
@@ -2494,8 +2504,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .collect();
 
         assert_eq!(
-            command_validate_orders(orders, None, None, None, None),
-            command_validate_orders(orders, None, None, Some(default_disabled), None)
+            command_validate_orders(orders, None, None, None, None, None),
+            command_validate_orders(orders, None, None, Some(default_disabled), None, None)
         );
     }
 

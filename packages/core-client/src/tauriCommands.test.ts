@@ -30,7 +30,7 @@ describe("TAURI_COMMANDS", () => {
     const invoke = vi.fn().mockResolvedValue(null);
     const adapter = createTauriAdapter(invoke) as unknown as CoreAdapter;
 
-    await adapter.validateOrders("raw orders", null, null, null, null);
+    await adapter.validateOrders("raw orders", null, null, null, null, null);
 
     expect(invoke).toHaveBeenCalledWith("validate_orders", {
       raw_orders: "raw orders",

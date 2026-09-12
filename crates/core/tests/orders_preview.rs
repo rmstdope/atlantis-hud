@@ -475,6 +475,7 @@ fn a_unit_through_a_known_passage_arrives_where_it_comes_out() {
         "",
         r#"[{"entry":{"x":1,"y":1,"z":1},"structureId":"3","structure":"Shaft [3]",
             "destination":{"x":2,"y":2,"z":1},"destinationTerrain":"plain","learnedInTurn":40}]"#,
+        atlantis_hud_core::orders::semantics::CheckOptions::default(),
     )
     .expect("the ruleset loads");
 

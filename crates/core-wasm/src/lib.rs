@@ -624,6 +624,7 @@ pub fn preview_orders_state(
             .map(|codes| codes.into_iter().collect())
             .unwrap_or_else(|| OrderCheckOptions::default().disabled),
         geometry: None,
+        known_passages: Vec::new(),
     };
 
     let response = atlantis_hud_core::cache::with_global(|cache| {
