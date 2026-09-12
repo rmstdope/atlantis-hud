@@ -519,21 +519,24 @@ pub fn cargo_capacity(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<i6
 /// exceed the fleet's capacity", `rules/movement_sailing`, looked up 2026-09-12), it is what the
 /// server's own `Load:` first number is computed from (`Longship [329]` states 110 and holds
 /// 50 + 50 + 10 - `tests/fixtures/reports/neworigins-3.0.0-g3-f42-t41.rep:2018`), and it is the
-/// figure `orders::semantics`' `FLEET_OVERLOADED` finding compares, so planner and problems pane
-/// cannot disagree about the same fleet. A unit aboard whose weight the report never gave - a
+/// arithmetic `orders::semantics`' `FLEET_OVERLOADED` finding does, so the two agree wherever both
+/// speak. Only wherever: that finding skips a hull holding any foreign unit at all
+/// (`orders::semantics`, `foreign_aboard`) and sums `weight_after_orders` where this reads the
+/// report's raw weight, so a fleet can be refused here with no problem line beside it. A unit
+/// aboard whose weight the report never gave - a
 /// stranger's unit in our hull - makes the sum a partial total, and a partial total is not a total,
 /// so the stated `Load: H/N` first number is taken instead; it counts what we cannot weigh. An
 /// empty aboard set is not a total either, and falls to the same fallback.
 #[must_use]
 pub fn fleet_load(fleet: &Structure, units_in_hex: &[ReportUnit]) -> Option<i64> {
-    let aboard: Vec<&ReportUnit> = units_in_hex
+    let mut aboard = units_in_hex
         .iter()
         .filter(|unit| unit.structure_id.as_deref() == Some(fleet.structure_id.as_str()))
-        .collect();
+        .peekable();
 
-    if !aboard.is_empty() {
-        let summed: Option<i64> = aboard.iter().map(|unit| unit.weight).sum();
-        if let Some(total) = summed {
+    if aboard.peek().is_some() {
+        // `sum` over `Option` stops at the first `None`, which is the partial total this refuses.
+        if let Some(total) = aboard.map(|unit| unit.weight).sum::<Option<i64>>() {
             return Some(total);
         }
     }

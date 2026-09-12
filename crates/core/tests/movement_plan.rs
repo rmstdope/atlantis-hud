@@ -1047,6 +1047,32 @@ fn a_fleet_whose_load_cannot_be_weighed_is_planned_with_the_check_unmade() {
     );
 }
 
+/// "Capacity unknown but load known" is a state of its own: the hull states its `Sailors:` and
+/// `MaxSpeed:`, so the fleet can be priced and sailed, but its kind is one the ruleset carries no
+/// item for and it states no `Load:` line, so nothing can say what it holds. The panel cannot judge
+/// what it has only half of.
+#[test]
+fn a_fleet_whose_capacity_is_unknown_is_planned_with_the_check_unmade() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
+    text.push_str("+ Ship [329] : Dhow; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "  * Sailors (900), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 4 (90).\n\n",
+    );
+    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Northwest : ocean (1,1) in Sea.\n");
+    let report = parse_report_full(&text);
+
+    let route = plan(&report, "900", at(2, 2)).expect("the route stands, unchecked");
+    assert_eq!(route.mode, MovementMode::Sail);
+    assert!(
+        route.load_unchecked,
+        "the load is 50 but no source gives a capacity to weigh it against"
+    );
+}
+
 /// The sailing rule says nothing about a walker, so a walker never carries the caution.
 #[test]
 fn a_walking_unit_never_carries_the_fleet_caution() {
