@@ -35,6 +35,93 @@ pub enum Mobility {
     Unstated,
 }
 
+/// What a unit may do in the water under its own power, as far as the search needs to know.
+///
+/// Not a [`MovementMode`]: swimming is a legality question and never a speed - a lizardman still
+/// walks two hexes. `newage trident rules/movement_normal` gives it no allowance of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Swim {
+    /// This world has no swimming rule, or nothing in hand classifies this unit at all.
+    Cannot,
+    /// The world swims and nothing in hand says how much this unit can carry doing it.
+    Unstated,
+    /// It could swim, but not carrying this much. The numbers are the refusal's whole point.
+    Overloaded { capacity: i64, load: i64 },
+    /// Its own swimming bears the load. `borne` is what its sea creatures can bear - zero when it
+    /// has none - and is short of `load`, so deep water is closed to it.
+    Coastal { borne: i64, load: i64 },
+    /// Sea creatures bear its whole weight: every water hex, deep included.
+    Anywhere,
+}
+
+/// What this unit's sea creatures can bear, or `None` where the inventory cannot be resolved.
+///
+/// A sea creature is any item that is not a man and can carry in the water. The rule names no
+/// list, and the catalogue marks no such kind: `newage trident data/giant turtle` is a `mount`
+/// with a swimming capacity of 20, `newage trident data/lizardman` is a `man` with one of 5, and
+/// the difference between "carried by sea creatures" and "swimming under its own power" is
+/// exactly that.
+///
+/// `None` the moment a tag is missing from the catalogue, exactly as [`capacities_from_items`]
+/// does and for the same reason: a partial sum understates, and understating here refuses a legal
+/// route.
+#[must_use]
+pub fn sea_creature_capacity(unit: &ReportUnit, ruleset: &Ruleset) -> Option<i64> {
+    let mut borne = 0_i64;
+    for amount in &unit.items {
+        let item = ruleset.find_item(&amount.tag)?;
+        if item.kind == ItemKind::Man {
+            continue;
+        }
+        let count = amount.amount.max(0);
+        borne = borne.saturating_add(count.saturating_mul(
+            item.capacity.swim
+                + if item.self_mobile.swim {
+                    item.weight
+                } else {
+                    0
+                },
+        ));
+    }
+    Some(borne)
+}
+
+/// What this unit may do in the water, in this world.
+///
+/// The rule's exception is asked first: "a unit carried by sea creatures able to bear its whole
+/// weight rides out into deep water safely" (`newage trident rules/movement_normal`) is a licence,
+/// not a capacity, so a unit whose creatures bear it entirely is never told it carries too much.
+#[must_use]
+pub fn swim_ability(unit: &ReportUnit, ruleset: &Ruleset) -> Swim {
+    if ruleset.swimming().is_none() {
+        return Swim::Cannot;
+    }
+    let Some(movement) =
+        unit_movement_from_items(unit, ruleset).or_else(|| unit_movement(unit))
+    else {
+        return Swim::Cannot;
+    };
+    match movement.swim {
+        SwimCapacity::Absent => Swim::Cannot,
+        SwimCapacity::Unstated => Swim::Unstated,
+        SwimCapacity::Stated { capacity } => {
+            let load = movement.load;
+            let borne = sea_creature_capacity(unit, ruleset).unwrap_or(0);
+            if borne >= load {
+                Swim::Anywhere
+            } else if capacity <= 0 {
+                // No swimming of its own and no creatures to carry it: today's answer, and today's
+                // "crossing it needs a ship" sentence. A leader is exactly this.
+                Swim::Cannot
+            } else if capacity < load {
+                Swim::Overloaded { capacity, load }
+            } else {
+                Swim::Coastal { borne, load }
+            }
+        }
+    }
+}
+
 /// Reads `0/70/85/0` into the four capacities.
 ///
 /// Anything that is not four numbers is refused rather than partially believed: a capacity read
@@ -828,6 +915,143 @@ mod tests {
         let movement =
             unit_movement_from_items(&unit, &trident()).expect("a priced inventory classifies");
         assert_eq!(movement.swim, SwimCapacity::Stated { capacity: 750 });
+    }
+
+    // ------------------------------------------------------------ swimming
+
+    /// The rule's own exception: "a unit carried by sea creatures able to bear its whole weight
+    /// rides out into deep water safely" (`newage trident rules/movement_normal`). A giant turtle
+    /// bears 70 - its swimming capacity of 20 plus the 50 it no longer makes anybody carry - which
+    /// covers one lizardman and itself, but not three lizardmen and itself.
+    #[test]
+    fn sea_creatures_bearing_the_whole_weight_open_deep_water() {
+        let with_turtle = |men: i64| ReportUnit {
+            men,
+            items: vec![
+                crate::report::model::ItemAmount {
+                    amount: men,
+                    name: "lizardmen".to_string(),
+                    tag: "LIZA".to_string(),
+                },
+                crate::report::model::ItemAmount {
+                    amount: 1,
+                    name: "giant turtle".to_string(),
+                    tag: "TURT".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            swim_ability(&with_turtle(1), &trident()),
+            Swim::Anywhere,
+            "one lizardman and its turtle weigh 60, and the turtle bears 70"
+        );
+        assert_eq!(
+            swim_ability(&with_turtle(3), &trident()),
+            Swim::Coastal {
+                borne: 70,
+                load: 80
+            },
+            "three lizardmen and a turtle weigh 80, which the turtle cannot bear alone"
+        );
+    }
+
+    /// A leader swims nowhere, and New Origins swims nowhere at all.
+    #[test]
+    fn a_unit_with_no_swimming_capacity_cannot_swim() {
+        let leader = ReportUnit {
+            men: 1,
+            items: vec![crate::report::model::ItemAmount {
+                amount: 1,
+                name: "leader".to_string(),
+                tag: "LEAD".to_string(),
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            swim_ability(&leader, &trident()),
+            Swim::Cannot,
+            "a leader swims nowhere, and keeps today's needs-a-ship sentence"
+        );
+
+        let lizardman = ReportUnit {
+            men: 1,
+            items: vec![crate::report::model::ItemAmount {
+                amount: 1,
+                name: "lizardman".to_string(),
+                tag: "LIZA".to_string(),
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            swim_ability(&lizardman, &trident()),
+            Swim::Coastal {
+                borne: 0,
+                load: 10
+            }
+        );
+        assert_eq!(
+            swim_ability(&lizardman, &ruleset()),
+            Swim::Cannot,
+            "New Origins has no swimming rule at all"
+        );
+    }
+
+    /// A swimmer carrying more than its own swimming bears is refused with the numbers, even
+    /// though its turtle bears some of it: it cannot swim at that weight at all.
+    #[test]
+    fn a_swimmer_carrying_too_much_is_overloaded_not_coastal() {
+        let unit = ReportUnit {
+            men: 1,
+            items: vec![
+                crate::report::model::ItemAmount {
+                    amount: 1,
+                    name: "leader".to_string(),
+                    tag: "LEAD".to_string(),
+                },
+                crate::report::model::ItemAmount {
+                    amount: 1,
+                    name: "giant turtle".to_string(),
+                    tag: "TURT".to_string(),
+                },
+                crate::report::model::ItemAmount {
+                    amount: 4,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(
+            swim_ability(&unit, &trident()),
+            Swim::Overloaded {
+                capacity: 70,
+                load: 80
+            }
+        );
+    }
+
+    /// An item the catalogue cannot price counts as no sea creatures rather than as a guess.
+    #[test]
+    fn an_unpriceable_inventory_bears_nothing() {
+        let unit = ReportUnit {
+            men: 1,
+            items: vec![
+                crate::report::model::ItemAmount {
+                    amount: 1,
+                    name: "lizardman".to_string(),
+                    tag: "LIZA".to_string(),
+                },
+                crate::report::model::ItemAmount {
+                    amount: 1,
+                    name: "unknown".to_string(),
+                    tag: "ZZZZ".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(sea_creature_capacity(&unit, &trident()), None);
     }
 
     // ------------------------------------------------------------ capacities_from_items
