@@ -41,7 +41,8 @@ const ROUTE: RoutePlanResponse = {
     ],
     totalCost: 1,
     months: [{ month: 1, steps: 1, endsAt: { x: 7, y: 51, z: SURFACE } }],
-    order: "MOVE N"
+    order: "MOVE N",
+    loadUnchecked: false
   },
   problem: null,
   risk: null,
@@ -130,6 +131,45 @@ describe("the shared Unit/Movement slot", () => {
   it("puts the dot on the movement tab whenever a route stands, whichever tab is showing", () => {
     expect(draw(PLANNER, "unit")).toContain('aria-label="Movement, a route is planned"');
     expect(draw({ ...PLANNER, answer: null }, "unit")).not.toContain("a route is planned");
+  });
+
+  /**
+   * The refusal replaces the whole route, the fields and the pinned Apply row: there is no voyage
+   * to apply (ah-co6w). No Apply button also means no focus move and no tab dot, both of which are
+   * keyed on the plan.
+   */
+  it("gives an overloaded fleet a sentence and no Apply button", () => {
+    const refused: RoutePlanResponse = {
+      plan: null,
+      problem: { kind: "fleetOverloaded", load: 210, capacity: 150, crew: null },
+      risk: null,
+      fullyModelled: true
+    };
+
+    const markup = draw({ ...PLANNER, answer: refused }, "movement");
+
+    expect(markup).toContain('data-testid="planner-problem"');
+    expect(markup).not.toContain('data-testid="planner-apply"');
+    expect(draw({ ...PLANNER, answer: refused }, "unit")).not.toContain("a route is planned");
+  });
+
+  /** The caution rides above the fields, and below the unexplored caution when both apply. */
+  it("cautions above the route when the load could not be checked", () => {
+    const estimated: RoutePlanResponse = {
+      ...ROUTE,
+      plan: {
+        ...ROUTE.plan!,
+        loadUnchecked: true,
+        steps: [{ ...ROUTE.plan!.steps[0], estimated: true }]
+      }
+    };
+
+    const markup = draw({ ...PLANNER, answer: estimated }, "movement");
+
+    expect(markup).toContain('data-testid="planner-load-caution"');
+    expect(markup.indexOf('data-testid="planner-estimate"')).toBeLessThan(
+      markup.indexOf('data-testid="planner-load-caution"')
+    );
   });
 
   it("keeps the one fold control the smoke suite's foldPanel looks for", () => {

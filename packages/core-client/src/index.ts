@@ -181,6 +181,8 @@ export type RoutePlan = {
   months: MonthLeg[];
   /** The order this route becomes, as core writes it - `SAIL …` for a fleet, `MOVE …` for everyone else. */
   order: string;
+  /** Whether the sailing weight check could not be made - the route stands, unchecked. */
+  loadUnchecked: boolean;
 };
 
 /**
@@ -200,6 +202,13 @@ export type RouteProblem =
   | { kind: "destinationNeedsShip"; coordinate: Coordinate; terrain: string }
   | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate; terrain: string }
   | { kind: "crewCannotSail"; required: number; available: number }
+  | {
+      kind: "fleetOverloaded";
+      load: number;
+      capacity: number;
+      /** The crew shortfall as well, when there is one, so one sentence names both faults. */
+      crew: { required: number; available: number } | null;
+    }
   | {
       kind: "sailNeedsOcean";
       from: Coordinate;

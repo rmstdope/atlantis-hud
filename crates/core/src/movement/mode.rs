@@ -393,6 +393,13 @@ fn stated_cargo_capacity(description: &str) -> Option<i64> {
     need.trim().parse().ok()
 }
 
+/// `"Load: 110/150"` states current and capacity; this reads the first number, the weight the
+/// fleet is carrying now.
+fn stated_cargo_load(description: &str) -> Option<i64> {
+    let (have, _need) = stated_field(description, "Load:")?.split_once('/')?;
+    have.trim().parse().ok()
+}
+
 /// `"MaxSpeed: 4"` states the fleet's speed directly.
 fn stated_max_speed(description: &str) -> Option<u32> {
     stated_field(description, "MaxSpeed:")?.trim().parse().ok()
@@ -502,6 +509,36 @@ pub fn cargo_capacity(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<i6
         total += item.cargo_capacity? * i64::from(*count);
     }
     Some(total)
+}
+
+/// How much weight a fleet is carrying, or `None` when no source can say.
+///
+/// The sum of the stated `Weight:` of every unit standing in the hull comes first, and only when
+/// every one of them states a weight: that sum is then the "total weight of everything aboard" the
+/// sailing rule speaks of ("A fleet can only move if the total weight of everything aboard does not
+/// exceed the fleet's capacity", `rules/movement_sailing`, looked up 2026-09-12), it is what the
+/// server's own `Load:` first number is computed from (`Longship [329]` states 110 and holds
+/// 50 + 50 + 10 - `tests/fixtures/reports/neworigins-3.0.0-g3-f42-t41.rep:2018`), and it is the
+/// figure `orders::semantics`' `FLEET_OVERLOADED` finding compares, so planner and problems pane
+/// cannot disagree about the same fleet. A unit aboard whose weight the report never gave - a
+/// stranger's unit in our hull - makes the sum a partial total, and a partial total is not a total,
+/// so the stated `Load: H/N` first number is taken instead; it counts what we cannot weigh. An
+/// empty aboard set is not a total either, and falls to the same fallback.
+#[must_use]
+pub fn fleet_load(fleet: &Structure, units_in_hex: &[ReportUnit]) -> Option<i64> {
+    let aboard: Vec<&ReportUnit> = units_in_hex
+        .iter()
+        .filter(|unit| unit.structure_id.as_deref() == Some(fleet.structure_id.as_str()))
+        .collect();
+
+    if !aboard.is_empty() {
+        let summed: Option<i64> = aboard.iter().map(|unit| unit.weight).sum();
+        if let Some(total) = summed {
+            return Some(total);
+        }
+    }
+
+    fleet.description.as_deref().and_then(stated_cargo_load)
 }
 
 /// How a fleet is named to the player: `Longship [329]` for one hull, `Fleet [988] (8 Corsairs)`
@@ -1464,5 +1501,77 @@ mod tests {
                 .structure_id,
             "329"
         );
+    }
+
+    /// A Longship hull for the `fleet_load` cases, with whatever the report states about it.
+    fn longship(description: Option<&str>) -> Structure {
+        Structure {
+            structure_id: "329".to_string(),
+            kind: "Longship".to_string(),
+            description: description.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    /// "A fleet can only move if the total weight of everything aboard does not exceed the fleet's
+    /// capacity" (`rules/movement_sailing`), so the load is what the units aboard weigh - and a
+    /// unit standing elsewhere is not aboard.
+    #[test]
+    fn fleet_load_sums_the_weights_of_the_units_aboard() {
+        let mut a = sample_unit("11125", Some("329"));
+        a.weight = Some(50);
+        let mut b = sample_unit("12590", Some("329"));
+        b.weight = Some(10);
+        let mut elsewhere = sample_unit("99", Some("1"));
+        elsewhere.weight = Some(1000);
+
+        let units = vec![a, b, elsewhere];
+        assert_eq!(fleet_load(&longship(None), &units), Some(60));
+    }
+
+    /// A stranger's unit in our hull weighs something the report never said, so the sum is a
+    /// partial total - and a partial total is not a total. The server's own stated first number
+    /// counts what we cannot weigh.
+    #[test]
+    fn fleet_load_falls_back_to_the_stated_line_when_a_weight_is_missing() {
+        let mut ours = sample_unit("11125", Some("329"));
+        ours.weight = Some(50);
+        let mut stranger = sample_unit("100", Some("329"));
+        stranger.own = false;
+        stranger.weight = None;
+
+        let units = vec![ours, stranger];
+        assert_eq!(
+            fleet_load(
+                &longship(Some("Load: 210/150; Sailors: 4/4; MaxSpeed: 4.")),
+                &units
+            ),
+            Some(210)
+        );
+    }
+
+    #[test]
+    fn fleet_load_is_none_when_neither_source_can_say() {
+        let mut ours = sample_unit("11125", Some("329"));
+        ours.weight = Some(50);
+        let mut stranger = sample_unit("100", Some("329"));
+        stranger.own = false;
+        stranger.weight = None;
+
+        let units = vec![ours, stranger];
+        assert_eq!(fleet_load(&longship(None), &units), None);
+    }
+
+    /// An empty hull is not a load of zero: nothing aboard may simply mean nothing was reported.
+    #[test]
+    fn fleet_load_reads_the_stated_line_for_an_empty_hull() {
+        assert_eq!(
+            fleet_load(
+                &longship(Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.")),
+                &[]
+            ),
+            Some(110)
+        );
+        assert_eq!(fleet_load(&longship(None), &[]), None);
     }
 }

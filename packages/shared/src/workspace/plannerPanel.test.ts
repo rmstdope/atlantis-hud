@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeEstimate, describeProblem, describeStep } from "./PlannerPanel";
+import { describeEstimate, describeLoadCheck, describeProblem, describeStep } from "./PlannerPanel";
 
 describe("explaining why there is no route", () => {
   /**
@@ -63,6 +63,19 @@ describe("explaining why there is no route", () => {
       expect(sentence.length, `${kind} should be explained`).toBeGreaterThan(20);
       expect(sentence.endsWith("."), `${kind} should read as a sentence`).toBe(true);
     }
+
+    // The overload refusal carries numbers and an optional second fault, so both of its shapes are
+    // asked for here: it is part of "every refusal the core can produce" too.
+    for (const crew of [null, { required: 4, available: 2 }] as const) {
+      const sentence = describeProblem({
+        kind: "fleetOverloaded",
+        load: 210,
+        capacity: 150,
+        crew
+      });
+      expect(sentence.length, "fleetOverloaded should be explained").toBeGreaterThan(20);
+      expect(sentence.endsWith("."), "fleetOverloaded should read as a sentence").toBe(true);
+    }
   });
 
   /** The drowning refusal is about the order, not the journey, and has to say so. */
@@ -87,6 +100,35 @@ describe("explaining why there is no route", () => {
 
     expect(sentence).toBe(
       "The crew cannot sail this fleet: it needs 4 levels of sailing, and the units aboard have 1."
+    );
+  });
+
+  /**
+   * Navigator-approved wording (ah-co6w): the weight aboard first, then the hull's capacity, then
+   * what follows from it.
+   */
+  it("names the load and the capacity it beats", () => {
+    expect(
+      describeProblem({ kind: "fleetOverloaded", load: 210, capacity: 150, crew: null })
+    ).toBe(
+      "This fleet is carrying more than it can hold: 210 aboard on a capacity of 150, so it will not sail."
+    );
+  });
+
+  /**
+   * One sentence for both faults, so a player does not shift cargo, re-plan, and meet a second
+   * refusal nobody mentioned (ah-co6w).
+   */
+  it("names both faults in one sentence", () => {
+    expect(
+      describeProblem({
+        kind: "fleetOverloaded",
+        load: 210,
+        capacity: 150,
+        crew: { required: 4, available: 2 }
+      })
+    ).toBe(
+      "This fleet will not sail: it is carrying 210 on a capacity of 150, and the units aboard have 2 levels of sailing where it needs 4."
     );
   });
 
@@ -260,5 +302,32 @@ describe("printing one route step", () => {
       "plain (2,2) · 1 · Mystic Canal"
     );
     expect(describeStep(dry, "sail")).toBe("plain (2,2) · 1");
+  });
+});
+
+describe("saying when the sailing weight check could not be made", () => {
+  const route = {
+    from: { x: 1, y: 1, z: 1 },
+    to: { x: 2, y: 2, z: 1 },
+    mode: "sail" as const,
+    steps: [],
+    totalCost: 1,
+    months: [{ month: 1, steps: 1, endsAt: { x: 2, y: 2, z: 1 } }],
+    order: "SAIL SE",
+    loadUnchecked: false
+  };
+
+  /**
+   * A route the panel is sure about and one it could not check must not look alike; that is the
+   * silent confidence this sentence exists to remove (ah-co6w).
+   */
+  it("says when the weight check could not be made", () => {
+    expect(describeLoadCheck({ ...route, loadUnchecked: true })).toBe(
+      "The report doesn't say how much this fleet is carrying, so whether it is light enough to sail has not been checked."
+    );
+  });
+
+  it("says nothing when the check was made", () => {
+    expect(describeLoadCheck(route)).toBeNull();
   });
 });

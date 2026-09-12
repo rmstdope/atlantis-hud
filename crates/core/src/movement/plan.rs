@@ -36,7 +36,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::{may_leave_land, Direction, KnownHex, MapKnowledge};
 use crate::movement::mode::{
-    fleet_flies, fleet_of, fleet_sailing, mobility_with_ruleset, Mobility,
+    cargo_capacity, fleet_flies, fleet_load, fleet_of, fleet_sailing, mobility_with_ruleset,
+    Mobility,
 };
 use crate::movement::orders::{render_move, render_sail, MoveStep};
 use crate::movement::rules::{MovementMode, Ruleset};
@@ -87,6 +88,17 @@ pub enum RouteProblem {
     /// sail it - "there must be enough sailors aboard ... to sail the fleet, or it will not go
     /// anywhere."
     CrewCannotSail { required: i64, available: i64 },
+    /// The fleet is carrying more than its hull holds, so the game will not move it - "A fleet can
+    /// only move if the total weight of everything aboard does not exceed the fleet's capacity"
+    /// (`rules/movement_sailing`). `crew` is `Some` when the crew falls short as well, so one
+    /// sentence can name both faults and the player is not refused a second time for a reason
+    /// nobody mentioned.
+    #[serde(rename_all = "camelCase")]
+    FleetOverloaded {
+        load: i64,
+        capacity: i64,
+        crew: Option<CrewShortfall>,
+    },
     /// A fleet asked to step from one land hex straight into another, which the sailing rule
     /// allows in none of its three forms: "A fleet can move from an ocean region to another ocean
     /// region, or from a coastal region to an ocean region, or from an ocean region to a coastal
@@ -163,6 +175,26 @@ pub struct RoutePlan {
     /// The order this route becomes, exactly as the shell writes it into the unit's block:
     /// `SAIL …` for a fleet, `MOVE …` for everything else (a flier and a rider MOVE too).
     pub order: String,
+    /// Whether the sailing weight check could not be made at all - a load or a capacity no source
+    /// could give. The route stands; the panel says the check is missing. Always false for a
+    /// walker, a rider and a flier, which this rule says nothing about.
+    pub load_unchecked: bool,
+}
+
+/// A fleet's crew falling short, when it is not the only thing wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrewShortfall {
+    pub required: i64,
+    pub available: i64,
+}
+
+/// What a priceable fleet under a unit costs to sail, once it is known it will move at all.
+struct Sailing {
+    points_per_month: u32,
+    hull: Hull,
+    /// See [`RoutePlan::load_unchecked`].
+    load_unchecked: bool,
 }
 
 /// Plans the cheapest route a unit can take to a hex.
@@ -189,10 +221,16 @@ pub fn plan_route(
     // question would happily answer Walk for someone standing at sea. An unknown hull (no ruleset
     // entry and no server-stated numbers) falls back to the land question as if the unit were not
     // aboard at all, rather than guessing a ship's speed.
-    let (mode, points_per_month, hull) = match sail_mode(ruleset, unit, origin_hex)? {
-        Some(resolved) => resolved,
+    let (mode, points_per_month, hull, load_unchecked) = match sail_mode(ruleset, unit, origin_hex)?
+    {
+        Some(sailing) => (
+            MovementMode::Sail,
+            sailing.points_per_month,
+            sailing.hull,
+            sailing.load_unchecked,
+        ),
         None => match mobility_with_ruleset(unit, ruleset) {
-            Mobility::Moves(mode) => (mode, ruleset.movement_points(mode), Hull::Bound),
+            Mobility::Moves(mode) => (mode, ruleset.movement_points(mode), Hull::Bound, false),
             Mobility::Overloaded => return Err(RouteProblem::Overloaded),
             Mobility::Unstated => return Err(RouteProblem::MobilityUnstated),
         },
@@ -230,6 +268,7 @@ pub fn plan_route(
         total_cost,
         months,
         order,
+        load_unchecked,
     })
 }
 
@@ -350,12 +389,13 @@ fn flies(mode: MovementMode) -> bool {
 ///
 /// `Ok(None)` when the unit is not aboard a fleet at all, or is aboard one no source can price -
 /// both cases fall through to the ordinary land `mobility` question, because neither is a reason to
-/// invent a number. `Err` only for a fleet that *can* be priced but whose crew falls short.
+/// invent a number. `Err` only for a fleet that *can* be priced but that the game will refuse to
+/// move: too heavy, or short of crew.
 fn sail_mode(
     ruleset: &Ruleset,
     unit: &ReportUnit,
     origin_hex: &KnownHex,
-) -> Result<Option<(MovementMode, u32, Hull)>, RouteProblem> {
+) -> Result<Option<Sailing>, RouteProblem> {
     // The planner answers from the report on purpose, and passes no orders view below to say so.
     // It is
     // asked "where could this unit get to", which is a question about the turn as it stands rather
@@ -369,17 +409,45 @@ fn sail_mode(
     let Some((required, available, speed)) = fleet_sailing(ruleset, origin_hex, fleet, None) else {
         return Ok(None);
     };
-    if available < required {
+
+    let short = (available < required).then_some(CrewShortfall {
+        required,
+        available,
+    });
+
+    // Weight before crew, and it absorbs the crew: a player told to unload would otherwise shift
+    // cargo, re-plan, and meet a second refusal nobody mentioned. A crew-only shortfall keeps its
+    // own refusal below.
+    let load_unchecked = match (
+        fleet_load(fleet, &origin_hex.units),
+        cargo_capacity(fleet, Some(ruleset)),
+    ) {
+        (Some(load), Some(capacity)) => {
+            // Strictly greater: the rule is "does not exceed", so 150 aboard on 150 sails.
+            if load > capacity {
+                return Err(RouteProblem::FleetOverloaded {
+                    load,
+                    capacity,
+                    crew: short,
+                });
+            }
+            false
+        }
+        _ => true,
+    };
+
+    if let Some(crew) = short {
         return Err(RouteProblem::CrewCannotSail {
-            required,
-            available,
+            required: crew.required,
+            available: crew.available,
         });
     }
-    Ok(Some((
-        MovementMode::Sail,
-        speed,
-        Hull::from_flies(fleet_flies(fleet, Some(ruleset))),
-    )))
+
+    Ok(Some(Sailing {
+        points_per_month: speed,
+        hull: Hull::from_flies(fleet_flies(fleet, Some(ruleset))),
+        load_unchecked,
+    }))
 }
 
 /// Whether this terrain stops this unit.

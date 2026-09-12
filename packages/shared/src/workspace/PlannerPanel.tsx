@@ -198,6 +198,13 @@ export function describeProblem(problem: RouteProblem): string {
       return `A single MOVE order would leave this unit over ${definiteWater(problem.terrain)} at (${problem.coordinate.x},${problem.coordinate.y}) when the month ran out, and a unit that ends a turn over water drowns.`;
     case "crewCannotSail":
       return `The crew cannot sail this fleet: it needs ${problem.required} levels of sailing, and the units aboard have ${problem.available}.`;
+    case "fleetOverloaded":
+      // The weight aboard first, then the hull's capacity, then what follows from it - the
+      // skeleton the crew refusal beside this one uses. Naming the shortfall ("put 60 ashore")
+      // was offered and not taken: it promises a fix that is false when the crew is short too.
+      return problem.crew
+        ? `This fleet will not sail: it is carrying ${problem.load} on a capacity of ${problem.capacity}, and the units aboard have ${problem.crew.available} levels of sailing where it needs ${problem.crew.required}.`
+        : `This fleet is carrying more than it can hold: ${problem.load} aboard on a capacity of ${problem.capacity}, so it will not sail.`;
     case "sailNeedsOcean":
       return `A fleet may only sail where one end of the step is water, so it cannot go from ${problem.fromTerrain} (${problem.from.x},${problem.from.y}) straight to ${problem.toTerrain} (${problem.to.x},${problem.to.y}).`;
     case "isthmusNeedsCanal":
@@ -231,6 +238,20 @@ export function describeEstimate(steps: RouteStep[]): string | null {
 }
 
 /**
+ * Why the sailing weight check is missing, or nothing when it was made.
+ *
+ * A route the panel is sure about and one it could not check must not look alike; that is the
+ * silent confidence this exists to remove.
+ */
+export function describeLoadCheck(plan: RoutePlan): string | null {
+  if (!plan.loadUnchecked) {
+    return null;
+  }
+
+  return "The report doesn't say how much this fleet is carrying, so whether it is light enough to sail has not been checked.";
+}
+
+/**
  * One route step as the panel prints it.
  *
  * `· over water` is a flier's news and no news at all for a fleet, which is on water nearly all the
@@ -259,12 +280,19 @@ function Route({ answer }: { answer: RoutePlanResponse }) {
 
   const months = plan.months.length;
   const estimate = describeEstimate(plan.steps);
+  const loadCheck = describeLoadCheck(plan);
 
   return (
     <div data-testid="planner-route">
       {estimate ? (
         <p data-testid="planner-estimate" className="m-0 mb-2 text-warn">
           {estimate}
+        </p>
+      ) : null}
+
+      {loadCheck ? (
+        <p data-testid="planner-load-caution" className="m-0 mb-2 text-warn">
+          {loadCheck}
         </p>
       ) : null}
 
