@@ -7495,7 +7495,7 @@ fn founding_site_refusal(
     if building.unique_per_region
         && hex.region.structures.iter().any(|structure| {
             !destroyed_structure_ids.contains(&structure.structure_id)
-                && super::effects::structure_kind_is(structure, kind)
+                && super::transport::structure_kind_is(structure, kind)
         })
     {
         return Some(super::effects::BuildPlacementRefusalReason::DuplicateInRegion);

@@ -1630,115 +1630,22 @@ struct Working {
     /// not the order their blocks were written in (`ah-3mwm`). The rule itself, and the sort that
     /// obeys it, are [`in_report_order`]'s.
     transfers: Vec<PendingTransfer<'static>>,
-    /// Every unit id the report shows holding the quartermaster skill, resolved through the
-    /// catalogue rather than by tag spelling - `QUAM` is quartermaster and `QUAR` is quarrying
-    /// (`ah-d0ku`).
-    quartermasters: std::collections::BTreeSet<String>,
+    /// Every unit id the report shows holding the quartermaster skill and at what level, resolved
+    /// through the catalogue rather than by tag spelling (`ah-d0ku`). Shared with the orders
+    /// advisory, so the forecast and the sentence read one set (`ah-7ale.2.2.1`).
+    quartermasters: super::transport::Quartermasters,
     /// What the report can say about each unit it shows as a `TRANSPORT`/`DISTRIBUTE` target,
     /// keyed by unit id. A target missing from here is one the report never described
     /// (`ah-64wm`).
-    transport_targets: BTreeMap<String, TransportTargetFacts>,
+    transport_targets: BTreeMap<String, super::transport::TargetFacts>,
     /// Each region's coordinate, by the `region_id` every `ReportUnit` carries - the sending end
     /// of a shipment, including a unit this document forms, whose `unit_id` the report never
     /// printed but whose `region_id` its parent's row supplies (`ah-7ale.2.1`).
     hex_of_region: BTreeMap<String, crate::report::model::Coordinate>,
-    /// Each quartermaster's level in that skill, by unit number: `Reach::BetweenQuartermasters`'s
-    /// input. Keyed exactly as `quartermasters` is, and a unit is in one iff it is in the other
-    /// (`ah-7ale.2.1`).
-    quartermaster_levels: BTreeMap<String, u32>,
     /// The map's own shape, as the shell recorded it, for the distance a `TRANSPORT` is measured
     /// across (`ah-7ale.2.1`). `None` is a game that never recorded one, which leaves every
     /// shipment forecast exactly as it was.
     geometry: Option<crate::movement::graph::MapGeometry>,
-}
-
-/// What the report shows about one unit that a `TRANSPORT` could name (`ah-64wm`).
-///
-/// Read from the report alone, before any order runs: `rules/transport` asks about the target's
-/// skill and its structure, and neither is something this month's orders are being previewed to
-/// change here.
-struct TransportTargetFacts {
-    /// Ours, whose skills the report prints in full - so an absent skill is an absent skill,
-    /// rather than an undisclosed one.
-    own: bool,
-    /// Whether the absence of the skill can be read as absence at all. It cannot when the
-    /// catalogue names no quartermaster skill to resolve: nothing about the unit is then known,
-    /// and saying "is not a quartermaster" would state a catalogue fault as a fact about the
-    /// player's report (`ah-64wm`, `ah-d0ku`).
-    quartermaster_disclosed: bool,
-    /// The report shows the quartermaster skill on this unit, resolved through the catalogue
-    /// rather than by tag spelling (`ah-d0ku`).
-    quartermaster: bool,
-    /// The unit is the first one listed inside a Caravanserai in its hex, which is what
-    /// `rules/world_structures` makes the owner of the structure.
-    caravanserai_owner: bool,
-    /// The hex the report shows this unit standing in, for the reach the shipment is measured
-    /// against (`ah-7ale.2.1`).
-    coordinate: crate::report::model::Coordinate,
-}
-
-/// Whether a structure is the one `rules/economy_transport` allows transport into: "The structures
-/// which allow this are: Caravanserai."
-///
-/// `base_kind` is the kind with its qualifiers stripped, and is what a bare-word match wants. It is
-/// empty on a hex remembered before that field existed, whose JSON defaulted it; the kind before
-/// its first comma is the same answer the parser would have derived (`ah-64wm`).
-fn is_caravanserai(structure: &crate::report::model::Structure) -> bool {
-    structure_kind_is(structure, "Caravanserai")
-}
-
-/// Whether a report structure has the given base kind.
-///
-/// Remembered reports may predate `base_kind`, so retain the parser's old prefix fallback.
-pub(crate) fn structure_kind_is(
-    structure: &crate::report::model::Structure,
-    expected: &str,
-) -> bool {
-    let base = if structure.base_kind.is_empty() {
-        structure.kind.split(',').next().unwrap_or_default().trim()
-    } else {
-        structure.base_kind.as_str()
-    };
-    base.eq_ignore_ascii_case(expected)
-}
-
-/// What the report says about every unit it shows, as a `TRANSPORT` target (`ah-64wm`).
-fn transport_target_facts(
-    report: &crate::report::ParsedReport,
-    quartermasters: &std::collections::BTreeSet<String>,
-    quartermaster_known: bool,
-) -> BTreeMap<String, TransportTargetFacts> {
-    let mut facts = BTreeMap::new();
-    for region in &report.regions {
-        // The first unit listed inside each Caravanserai owns it (`rules/world_structures`), so
-        // the owners are read off the region's unit list in the order the report wrote them.
-        let mut owners: BTreeMap<&str, &str> = BTreeMap::new();
-        for structure in region.structures.iter().filter(|one| is_caravanserai(one)) {
-            if let Some(owner) = region
-                .units
-                .iter()
-                .find(|unit| unit.structure_id.as_deref() == Some(&structure.structure_id))
-            {
-                owners.insert(structure.structure_id.as_str(), owner.unit_id.as_str());
-            }
-        }
-        for unit in &region.units {
-            let caravanserai_owner = unit.structure_id.as_deref().is_some_and(|structure_id| {
-                owners.get(structure_id) == Some(&unit.unit_id.as_str())
-            });
-            facts.insert(
-                unit.unit_id.clone(),
-                TransportTargetFacts {
-                    own: unit.own,
-                    quartermaster_disclosed: quartermaster_known,
-                    quartermaster: quartermasters.contains(&unit.unit_id),
-                    caravanserai_owner,
-                    coordinate: region.coordinate,
-                },
-            );
-        }
-    }
-    facts
 }
 
 /// What the report can say about a named `TRANSPORT`/`DISTRIBUTE` target (`ah-64wm`).
@@ -1820,38 +1727,11 @@ impl Working {
         }
         let known_units: std::collections::BTreeSet<String> =
             report.units().map(|unit| unit.unit_id.clone()).collect();
-        // `rules/sequenceofevents` phases TRANSPORT by whether each end is a quartermaster, so the
-        // skill has to be resolved by name through the catalogue: `QUAM` is quartermaster and
-        // `QUAR` is quarrying, and matching the spelling alone confuses the two (`ah-d0ku`).
-        let quartermaster_tag = ruleset
-            .find_skill("quartermaster")
-            .map(|skill| skill.tag.to_string());
-        // The level is read in the same pass as the set, so the two cannot disagree about who
-        // holds the skill (`ah-7ale.2.1`).
-        let mut quartermaster_levels: BTreeMap<String, u32> = BTreeMap::new();
-        let quartermasters = match &quartermaster_tag {
-            Some(tag) => report
-                .units()
-                .filter_map(|unit| {
-                    let level = unit
-                        .skills
-                        .iter()
-                        .find(|skill| skill.tag.eq_ignore_ascii_case(tag))?
-                        .level;
-                    quartermaster_levels.insert(unit.unit_id.clone(), level);
-                    Some(unit.unit_id.clone())
-                })
-                .collect(),
-            // No catalogue entry for the skill: nothing can be classified, every sender falls to
-            // the first phase, and transport settles in one pass as it did before `ah-d0ku`. No
-            // target can be classified either, so `transport_target` reports every one of them as
-            // eligibility the report cannot establish rather than stating a catalogue fault as a
-            // missing skill (`ah-64wm`). The shipped ruleset states `quartermaster [QUAM]`, so
-            // this is a catalogue fault rather than a report one (`ah-d0ku`).
-            None => std::collections::BTreeSet::new(),
-        };
-        let transport_targets =
-            transport_target_facts(report, &quartermasters, quartermaster_tag.is_some());
+        // The skill set, the levels and the target facts are all read from the report and the
+        // catalogue by `super::transport`, which the orders advisory reads too - so the forecast
+        // and the sentence cannot disagree about one shipment (`ah-7ale.2.2.1`).
+        let quartermasters = super::transport::Quartermasters::read(report, &ruleset);
+        let transport_targets = super::transport::target_facts(report, &quartermasters);
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
         let mut hex_of_region: BTreeMap<String, crate::report::model::Coordinate> = BTreeMap::new();
@@ -1881,7 +1761,6 @@ impl Working {
             transfers: Vec::new(),
             transport_targets,
             hex_of_region,
-            quartermaster_levels,
             geometry,
         }
     }
@@ -2782,42 +2661,23 @@ impl Working {
     /// declare toward other factions, never theirs toward us, so a foreign target that passes both
     /// structural tests is still unknown - accept on doubt, and say so.
     fn transport_target(&self, id: &str) -> TransportTargetOutcome {
-        use TransportTargetReason::{
-            AcceptanceUnknown, EligibilityUnknown, NotCaravanseraiOwner, NotQuartermaster,
-        };
+        use super::transport::Acceptance;
 
-        let Some(facts) = self.transport_targets.get(id) else {
-            // A unit number the report never described: an ally's quartermaster, or a mistake.
-            return TransportTargetOutcome::Refused(EligibilityUnknown);
-        };
-        if facts.own {
-            // Our own report prints our own units' skills in full, so a missing quartermaster is
-            // a fact rather than a gap - and it is the reason worth naming when the unit fails
-            // both tests.
-            if !facts.quartermaster {
-                if !facts.quartermaster_disclosed {
-                    // The catalogue names no quartermaster skill, so the report was never asked
-                    // the question: missing evidence, not a missing skill.
-                    return TransportTargetOutcome::Refused(EligibilityUnknown);
-                }
-                return TransportTargetOutcome::Refused(NotQuartermaster);
+        match super::transport::acceptance(self.transport_targets.get(id)) {
+            Acceptance::Eligible => TransportTargetOutcome::Eligible,
+            Acceptance::NotQuartermaster => {
+                TransportTargetOutcome::Refused(TransportTargetReason::NotQuartermaster)
             }
-            if !facts.caravanserai_owner {
-                return TransportTargetOutcome::Refused(NotCaravanseraiOwner);
+            Acceptance::NotCaravanseraiOwner => {
+                TransportTargetOutcome::Refused(TransportTargetReason::NotCaravanseraiOwner)
             }
-            return TransportTargetOutcome::Eligible;
+            Acceptance::EligibilityUnknown => {
+                TransportTargetOutcome::Refused(TransportTargetReason::EligibilityUnknown)
+            }
+            Acceptance::AcceptanceUnknown => {
+                TransportTargetOutcome::Refused(TransportTargetReason::AcceptanceUnknown)
+            }
         }
-        // A foreign unit's structure is drawn in our report even though its skills are not, so
-        // ownership is certain either way and is asked first.
-        if !facts.caravanserai_owner {
-            return TransportTargetOutcome::Refused(NotCaravanseraiOwner);
-        }
-        if !facts.quartermaster {
-            // A foreign unit's skills are undisclosed (`rules/reportformat`), so an empty list is
-            // missing evidence rather than proof.
-            return TransportTargetOutcome::Refused(EligibilityUnknown);
-        }
-        TransportTargetOutcome::Refused(AcceptanceUnknown)
     }
 
     /// Applies every queued `TRANSPORT`/`DISTRIBUTE`, last of all: `rules/sequenceofevents` runs
@@ -2911,16 +2771,12 @@ impl Working {
     /// So `TransportPhase::FromQuartermaster` - the fallback phase for a target the report cannot
     /// classify - cannot reach this, and answers `None` rather than inventing a rule for it.
     fn transport_reach(&self, pending: &PendingTransport) -> Option<super::transport::Reach> {
-        use super::transport::Reach;
-        match self.transport_phase(pending) {
-            TransportPhase::ToQuartermaster => Some(Reach::Local),
-            TransportPhase::BetweenQuartermasters => {
-                let sender = &self.units[pending.sender].unit.unit_id;
-                let level = self.quartermaster_levels.get(sender).copied()?;
-                Some(Reach::BetweenQuartermasters { level })
-            }
-            TransportPhase::FromQuartermaster => None,
-        }
+        let sender = &self.units[pending.sender].unit.unit_id;
+        super::transport::reach_for(
+            self.quartermasters.contains(sender),
+            self.quartermasters.contains(&pending.to),
+            self.quartermasters.level(sender),
+        )
     }
 
     /// Whether the game will refuse this shipment for distance alone, and the two numbers its
@@ -2940,33 +2796,23 @@ impl Working {
         &self,
         pending: &PendingTransport,
     ) -> Option<(TransportTargetReason, TransportReach)> {
-        use super::transport::Reach;
-        use crate::movement::graph::{hex_distance, HexDistance};
-
         let reach = self.transport_reach(pending)?;
         let from = self
             .hex_of_region
             .get(&self.units[pending.sender].unit.region_id)
             .copied()?;
         let to = self.transport_targets.get(&pending.to)?.coordinate;
-        let limit = reach.hexes();
-        let away = match hex_distance(from, to, self.geometry)? {
-            HexDistance::Exact(hexes) => hexes,
-            // An upper bound only refuses nothing: see this function's own note.
-            HexDistance::AtMost(_) => return None,
-        };
-        if away <= limit {
-            return None;
-        }
-        let reason = match reach {
-            Reach::Local => TransportTargetReason::TooFarToAccept,
-            Reach::BetweenQuartermasters { .. } => TransportTargetReason::TooFarToShip,
+        let refused = super::transport::out_of_reach(reach, from, to, self.geometry)?;
+        let reason = if refused.between_quartermasters {
+            TransportTargetReason::TooFarToShip
+        } else {
+            TransportTargetReason::TooFarToAccept
         };
         Some((
             reason,
             TransportReach {
-                away: i64::from(away),
-                limit: i64::from(limit),
+                away: i64::from(refused.away),
+                limit: i64::from(refused.limit),
             },
         ))
     }
@@ -8747,21 +8593,24 @@ mod tests {
                 kind: "Caravanserai, needs 40".to_string(),
                 ..Structure::default()
             };
-            assert!(is_caravanserai(&remembered));
+            assert!(crate::orders::transport::is_caravanserai(&remembered));
 
             let parsed = Structure {
                 kind: "caravanserai".to_string(),
                 base_kind: "caravanserai".to_string(),
                 ..Structure::default()
             };
-            assert!(is_caravanserai(&parsed), "the kind is matched by word");
+            assert!(
+                crate::orders::transport::is_caravanserai(&parsed),
+                "the kind is matched by word"
+            );
 
             let other = Structure {
                 kind: "Magical Citadel".to_string(),
                 base_kind: "Magical Citadel".to_string(),
                 ..Structure::default()
             };
-            assert!(!is_caravanserai(&other));
+            assert!(!crate::orders::transport::is_caravanserai(&other));
         }
 
         #[test]
@@ -9992,11 +9841,11 @@ mod tests {
 
         let working = Working::over_own_units(&parsed, ruleset, None);
 
-        assert_eq!(working.quartermaster_levels.get("5531").copied(), Some(3));
-        assert_eq!(working.quartermaster_levels.get("6857").copied(), Some(5));
+        assert_eq!(working.quartermasters.level("5531"), 3);
+        assert_eq!(working.quartermasters.level("6857"), 5);
         assert!(working.quartermasters.contains("5531"));
-        // A unit with no quartermaster skill is in neither.
-        assert_eq!(working.quartermaster_levels.get("5530"), None);
+        // A unit with no quartermaster skill holds no level and is not in the set.
+        assert_eq!(working.quartermasters.level("5530"), 0);
         assert!(!working.quartermasters.contains("5530"));
     }
 
