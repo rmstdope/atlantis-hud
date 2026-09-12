@@ -2670,6 +2670,31 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
  * it and Drones (10594) simply aboard. The captain's SAIL SE is written, and then the passenger is
  * selected: the map draws the passenger the same voyage, because it is the same voyage.
  */
+/**
+ * The drawn route's `points`, once the line has settled to `steps` steps.
+ *
+ * A capture taken straight after `fillOrders` can read the route the unit's **previous** orders
+ * drew: `neworigins-3.0.0-g5-f21-t24.rep` carries its own orders template, which gives Drones
+ * (10575) `sail se ne` (fixture line 2357), so a test that writes a one-step course over it sees
+ * the two-step voyage until the edit lands and validation re-runs. On a fast machine the capture
+ * wins that race and on a loaded CI runner it does not, which is how two of the tests below came
+ * to fail on one smoke shard and pass in isolation (`ah-ofra`).
+ *
+ * A polyline of n steps has n + 1 vertices, so waiting on the vertex count is waiting for the
+ * edit. It is not fail-open: an edit that never lands times the assertion out rather than letting
+ * a wrong route be captured.
+ */
+async function settledRoute(page: Page, steps: number): Promise<string | null> {
+  const line = page.getByTestId("route-line-solid");
+  await expect(line).toHaveCount(1);
+  const vertex = String.raw`[\d.]+,[\d.]+`;
+  await expect(line).toHaveAttribute(
+    "points",
+    new RegExp(`^${Array.from({ length: steps + 1 }, () => vertex).join(" ")}$`)
+  );
+  return line.getAttribute("points");
+}
+
 test("selecting a passenger draws the fleet's voyage", async ({ page }) => {
   await clearGames(page);
   await expect(page.getByTestId("game-gate")).toBeVisible();
@@ -2683,8 +2708,7 @@ test("selecting a passenger draws the fleet's voyage", async ({ page }) => {
   await fillOrders(page, "sail se");
 
   // The captain's own voyage first, so the passenger's can be compared against something drawn.
-  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
-  const captain = await page.getByTestId("route-line-solid").getAttribute("points");
+  const captain = await settledRoute(page, 1);
 
   // The passenger wrote nothing, so its own block is empty - and the map draws the hull's route.
   await selectUnit(page, "10594");
@@ -2713,8 +2737,7 @@ test("a course from a unit that does not own the fleet is overruled and reported
   // The owner's own voyage first, so the second unit's can be compared against something drawn.
   await selectUnit(page, "10575");
   await fillOrders(page, "sail se ne");
-  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
-  const owners = await page.getByTestId("route-line-solid").getAttribute("points");
+  const owners = await settledRoute(page, 2);
 
   // Drones (10594) is the second unit listed under the raft, so its SE lends a pair of hands and
   // sets no direction: the map keeps drawing the owner's SE NE.
@@ -2753,18 +2776,7 @@ test("selecting an arriving unit in its destination hex draws its route", async 
   await fillOrders(page, "sail se");
 
   // The voyage as its origin hex draws it, to compare the destination's drawing against.
-  //
-  // Waiting for the **one-step** route first, not merely for a line: this report's own orders
-  // template already gives 10575 `sail se ne` (line 2357 of the fixture), so the drawn route
-  // changes under the edit above, and a capture taken before the edit lands reads the two-step
-  // voyage the report came with. Two vertices is one step. Seen failing on a CI runner under
-  // `ah-ofra`, which re-sharded this spec onto a slower neighbour; it passes in isolation.
-  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
-  await expect(page.getByTestId("route-line-solid")).toHaveAttribute(
-    "points",
-    /^[\d.]+,[\d.]+ [\d.]+,[\d.]+$/
-  );
-  const fromOrigin = await page.getByTestId("route-line-solid").getAttribute("points");
+  const fromOrigin = await settledRoute(page, 1);
 
   // Now the destination, where the unit is listed as arriving rather than standing.
   await selectHex(page, "1:37,45");
