@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use crate::movement::graph::{may_leave_land, Direction, KnownHex, MapKnowledge};
 use crate::movement::mode::{
     cargo_capacity, fleet_flies, fleet_load, fleet_of, fleet_sailing, mobility_with_ruleset,
-    Mobility,
+    swim_ability, Mobility, Swim,
 };
 use crate::movement::orders::{render_move, render_sail, MoveStep};
 use crate::movement::rules::{MovementMode, Ruleset};
@@ -69,6 +69,38 @@ pub enum RouteProblem {
     /// the way" is untrue of the hex the player asked for, and a small inland lake is easy to click
     /// by accident.
     DestinationNeedsShip {
+        coordinate: Coordinate,
+        terrain: String,
+    },
+    /// A unit that can swim, but not carrying this much. The numbers say how much to put down,
+    /// and a ship is never mentioned, because a ship is not what this unit needs.
+    SwimLoadTooHeavy {
+        coordinate: Coordinate,
+        terrain: String,
+        capacity: i64,
+        load: i64,
+        /// Whether this hex is the one the player clicked rather than one standing in the way.
+        destination: bool,
+    },
+    /// Deep water, which a swimmer may enter only when sea creatures bear its whole weight.
+    /// `borne` is what they can bear, and zero when there are none to name.
+    DeepWaterNeedsSeaCreatures {
+        coordinate: Coordinate,
+        terrain: String,
+        borne: i64,
+        load: i64,
+        destination: bool,
+    },
+    /// Whether this water is deep cannot be told: some hex beside it is unexplored. Refused rather
+    /// than annotated - doubt about the cost of a step is a warning, doubt about whether it is
+    /// legal at all is a refusal.
+    WaterDepthUnknown {
+        coordinate: Coordinate,
+        terrain: String,
+    },
+    /// The report does not say what this unit can carry while swimming, so nothing can say whether
+    /// it may enter this hex. Dry routes are unaffected.
+    SwimCapacityUnstated {
         coordinate: Coordinate,
         terrain: String,
     },
@@ -243,7 +275,7 @@ pub fn plan_route(
     let (steps, months) = route_for_mode(
         map,
         ruleset,
-        Journey::enforced(mode, hull),
+        Journey::enforced(mode, hull).with_swim(swim_ability(unit, ruleset)),
         points_per_month,
         origin,
         destination,
@@ -305,25 +337,28 @@ pub(crate) fn route_for_mode(
             // A water destination is the hex the player clicked on, and "in the way" is untrue of
             // it. Anything else blocked here - an inland hex a fleet cannot reach, say - keeps the
             // refusal it has always had, which is not about the destination being wet.
-            return Err(if ruleset.is_water(&target.terrain) {
-                RouteProblem::DestinationNeedsShip {
-                    coordinate: destination,
-                    terrain: target.terrain.clone(),
-                }
-            } else {
-                RouteProblem::OceanNeedsShip {
-                    coordinate: destination,
-                    terrain: water_named(ruleset, &target.terrain),
-                }
-            });
+            let verdict = water_verdict(ruleset, map, journey, destination, &target.terrain);
+            return Err(
+                water_problem(verdict, destination, target.terrain.clone(), true).unwrap_or(
+                    RouteProblem::OceanNeedsShip {
+                        coordinate: destination,
+                        terrain: water_named(ruleset, &target.terrain),
+                    },
+                ),
+            );
         }
     }
     if let Some(here) = map.hex(origin) {
         if blocks(ruleset, map, journey, origin, &here.terrain) {
-            return Err(RouteProblem::OceanNeedsShip {
-                coordinate: origin,
-                terrain: water_named(ruleset, &here.terrain),
-            });
+            let verdict = water_verdict(ruleset, map, journey, origin, &here.terrain);
+            return Err(
+                water_problem(verdict, origin, here.terrain.clone(), false).unwrap_or(
+                    RouteProblem::OceanNeedsShip {
+                        coordinate: origin,
+                        terrain: water_named(ruleset, &here.terrain),
+                    },
+                ),
+            );
         }
     }
 
@@ -334,7 +369,7 @@ pub(crate) fn route_for_mode(
             // as though the unit could swim: if that finds a path, the sea is the reason, and
             // naming the hex it founders at is what makes the refusal actionable.
             return Err(
-                blocked_by_water(map, ruleset, journey.mode, origin, destination)
+                blocked_by_water(map, ruleset, journey, origin, destination)
                     .or_else(|| blocked_by_sailing_rule(map, ruleset, journey, origin, destination))
                     .unwrap_or(RouteProblem::NoKnownRoute),
             );
@@ -477,7 +512,7 @@ pub(crate) fn blocks(
         }
         return ruleset.sailing_land_needs_coast() && !is_coastal(ruleset, map, coordinate);
     }
-    ruleset.is_water(terrain) && ruleset.water_needs_a_ship() && !flies(journey.mode)
+    water_verdict(ruleset, map, journey, coordinate, terrain) != WaterVerdict::Passable
 }
 
 /// Whether the sailing rule's "one end of every step must be ocean" is being enforced.
@@ -536,17 +571,174 @@ pub(crate) struct Journey {
     pub(crate) mode: MovementMode,
     pub(crate) hull: Hull,
     pub(crate) sail_rule: SailRule,
+    /// What the traveller may do in the water. [`Swim::Cannot`] for a hypothetical traveller and
+    /// for the probes, which is what every caller but `plan_route` and `trace_move` is.
+    pub(crate) swim: Swim,
 }
 
 impl Journey {
     /// This mode and hull, under the game's own sailing rule - every journey but the probe.
+    ///
+    /// Swimming defaults to [`Swim::Cannot`], which is what a hypothetical traveller and the
+    /// probes are: only a journey made by a unit whose inventory can be read gains an ability, via
+    /// [`Journey::with_swim`].
     pub(crate) fn enforced(mode: MovementMode, hull: Hull) -> Self {
         Self {
             mode,
             hull,
             sail_rule: SailRule::Enforced,
+            swim: Swim::Cannot,
         }
     }
+
+    /// The same journey, made by something that can swim this well.
+    pub(crate) fn with_swim(self, swim: Swim) -> Self {
+        Self { swim, ..self }
+    }
+}
+
+/// How deep a water hex is, as far as the reports can say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Depth {
+    /// At least one hex the reports place beside it is dry land, which is what makes it coastal.
+    Coastal,
+    /// All six directions are hexes the reports know, and every one of them is water.
+    Deep,
+    /// Some direction is unaccounted for, so nothing can be said. The ordinary state of open sea.
+    Unknown,
+}
+
+/// Whether this water hex is coastal, deep, or beyond telling.
+///
+/// Deep demands all six directions because a missing one may be the shore: refusing to guess is
+/// the whole of the agreed behaviour here, and the cost of the strict test is an `Unknown` where a
+/// player might have said "obviously deep", which is a refusal either way for a swimmer with no
+/// sea creatures.
+fn water_depth(ruleset: &Ruleset, map: &MapKnowledge, coordinate: Coordinate) -> Depth {
+    let mut directions = std::collections::BTreeSet::new();
+    for (direction, neighbour) in map.adjacent(coordinate) {
+        let Some(hex) = map.hex(neighbour) else {
+            continue;
+        };
+        if !ruleset.is_water(&hex.terrain) {
+            return Depth::Coastal;
+        }
+        directions.insert(direction as u8);
+    }
+    if directions.len() == 6 {
+        Depth::Deep
+    } else {
+        Depth::Unknown
+    }
+}
+
+/// Why water refuses this unit here, or that it does not.
+///
+/// One function rather than a condition per refusal site: the search, the two endpoint guards, the
+/// mid-route probe and the order tracer all ask the same question, and three of them have already
+/// been wrong about it separately.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WaterVerdict {
+    Passable,
+    /// It cannot swim at all: today's answer, and today's sentence.
+    NeedsShip,
+    CannotSwimLoaded {
+        capacity: i64,
+        load: i64,
+    },
+    /// Deep water. `borne` is what its sea creatures can bear, and is zero when it has none.
+    DeepWater {
+        borne: i64,
+        load: i64,
+    },
+    DepthUnknown,
+    SwimCapacityUnstated,
+}
+
+/// What the water at `coordinate` does to this journey.
+pub(crate) fn water_verdict(
+    ruleset: &Ruleset,
+    map: &MapKnowledge,
+    journey: Journey,
+    coordinate: Coordinate,
+    terrain: &str,
+) -> WaterVerdict {
+    if !ruleset.is_water(terrain) || !ruleset.water_needs_a_ship() || flies(journey.mode) {
+        return WaterVerdict::Passable;
+    }
+    let (borne, load) = match journey.swim {
+        Swim::Cannot => return WaterVerdict::NeedsShip,
+        Swim::Unstated => return WaterVerdict::SwimCapacityUnstated,
+        Swim::Overloaded { capacity, load } => {
+            return WaterVerdict::CannotSwimLoaded { capacity, load }
+        }
+        Swim::Anywhere => return WaterVerdict::Passable,
+        Swim::Coastal { borne, load } => (borne, load),
+    };
+    // Defensive: a world with no swimming rule cannot have produced anything but `Cannot` above.
+    let Some(rule) = ruleset.swimming() else {
+        return WaterVerdict::NeedsShip;
+    };
+    if rule
+        .unrestricted
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(terrain))
+        || !rule.deep_needs_sea_creatures
+    {
+        return WaterVerdict::Passable;
+    }
+    match water_depth(ruleset, map, coordinate) {
+        Depth::Coastal => WaterVerdict::Passable,
+        Depth::Deep => WaterVerdict::DeepWater { borne, load },
+        Depth::Unknown => WaterVerdict::DepthUnknown,
+    }
+}
+
+/// The refusal this verdict is, or `None` where the water is no obstacle.
+fn water_problem(
+    verdict: WaterVerdict,
+    coordinate: Coordinate,
+    terrain: String,
+    destination: bool,
+) -> Option<RouteProblem> {
+    Some(match verdict {
+        WaterVerdict::Passable => return None,
+        WaterVerdict::NeedsShip => {
+            if destination {
+                RouteProblem::DestinationNeedsShip {
+                    coordinate,
+                    terrain,
+                }
+            } else {
+                RouteProblem::OceanNeedsShip {
+                    coordinate,
+                    terrain,
+                }
+            }
+        }
+        WaterVerdict::CannotSwimLoaded { capacity, load } => RouteProblem::SwimLoadTooHeavy {
+            coordinate,
+            terrain,
+            capacity,
+            load,
+            destination,
+        },
+        WaterVerdict::DeepWater { borne, load } => RouteProblem::DeepWaterNeedsSeaCreatures {
+            coordinate,
+            terrain,
+            borne,
+            load,
+            destination,
+        },
+        WaterVerdict::DepthUnknown => RouteProblem::WaterDepthUnknown {
+            coordinate,
+            terrain,
+        },
+        WaterVerdict::SwimCapacityUnstated => RouteProblem::SwimCapacityUnstated {
+            coordinate,
+            terrain,
+        },
+    })
 }
 
 /// Whether the sailing rule refuses this step outright, whatever the two hexes are like on their
@@ -694,13 +886,13 @@ pub(crate) fn base_terrain_cost(ruleset: &Ruleset, mode: MovementMode, terrain: 
 fn blocked_by_water(
     map: &MapKnowledge,
     ruleset: &Ruleset,
-    mode: MovementMode,
+    journey: Journey,
     origin: Coordinate,
     destination: Coordinate,
 ) -> Option<RouteProblem> {
     // A fleet already crosses water freely, so the "what if it could swim" probe answers a
     // question Sail does not have.
-    if flies(mode) || mode == MovementMode::Sail {
+    if flies(journey.mode) || journey.mode == MovementMode::Sail {
         return None;
     }
 
@@ -713,23 +905,12 @@ fn blocked_by_water(
     )
     .ok()?
     .0;
-    let (coordinate, terrain) = swimming.iter().find_map(|step| {
+    // Asked with the real journey, never the probe's: the probe flies, and a flier is refused
+    // nothing by water.
+    swimming.iter().find_map(|step| {
         let hex = map.hex(step.to)?;
-        ruleset
-            .is_water(&hex.terrain)
-            .then(|| (step.to, hex.terrain.clone()))
-    })?;
-
-    Some(if coordinate == destination {
-        RouteProblem::DestinationNeedsShip {
-            coordinate,
-            terrain,
-        }
-    } else {
-        RouteProblem::OceanNeedsShip {
-            coordinate,
-            terrain,
-        }
+        let verdict = water_verdict(ruleset, map, journey, step.to, &hex.terrain);
+        water_problem(verdict, step.to, hex.terrain.clone(), step.to == destination)
     })
 }
 
@@ -1088,6 +1269,7 @@ fn step_into(
         mode,
         hull: _,
         sail_rule,
+        swim: _,
     } = journey;
     let carried = arrival.terrain;
     if let Some(hex) = map.hex(into) {
@@ -1284,4 +1466,84 @@ mod tests {
             "an undescribed hex must refuse rather than invent a cost"
         );
     }
+
+    /// The three shapes a water hex's depth can be read as. `(2,2)` has a shore, `(3,3)` names six
+    /// water neighbours, and `(4,4)` is named by one hex and nothing else - the ordinary state of
+    /// open sea, and refused rather than guessed at.
+    #[test]
+    fn open_sea_with_an_unexplored_neighbour_cannot_be_told() {
+        let map = MapKnowledge::from_report(&parse_report_full(SEA_AND_SHORE));
+        let ruleset = trident();
+
+        assert_eq!(
+            water_depth(&ruleset, &map, Coordinate { x: 2, y: 2, z: 1 }),
+            Depth::Coastal
+        );
+        assert_eq!(
+            water_depth(&ruleset, &map, Coordinate { x: 3, y: 3, z: 1 }),
+            Depth::Deep
+        );
+        assert_eq!(
+            water_depth(&ruleset, &map, Coordinate { x: 4, y: 4, z: 1 }),
+            Depth::Unknown
+        );
+    }
+
+    /// `Swim::Unstated` cannot be reached through a report - `parse_capacities` refuses anything
+    /// but four numbers - so the verdict is asked directly. A dry route is unaffected by it.
+    #[test]
+    fn a_dry_route_is_unaffected_by_an_unstated_swim_capacity() {
+        let map = MapKnowledge::from_report(&parse_report_full(SEA_AND_SHORE));
+        let ruleset = trident();
+        let journey =
+            Journey::enforced(MovementMode::Walk, Hull::Bound).with_swim(crate::movement::mode::Swim::Unstated);
+
+        assert_eq!(
+            water_verdict(
+                &ruleset,
+                &map,
+                journey,
+                Coordinate { x: 2, y: 2, z: 1 },
+                "ocean"
+            ),
+            WaterVerdict::SwimCapacityUnstated
+        );
+        assert!(
+            !blocks(
+                &ruleset,
+                &map,
+                journey,
+                Coordinate { x: 1, y: 1, z: 1 },
+                "plain"
+            ),
+            "dry land refuses nobody for want of a swimming capacity"
+        );
+    }
+
+    fn trident() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset loads")
+    }
+
+    /// A shore, the coastal water beside it, a deep hex whose six neighbours are all water, and a
+    /// hex of open water named by one report line alone.
+    const SEA_AND_SHORE: &str = "Foo (1) Report\n\n\
+         plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : ocean (2,2) in Atlantis Ocean.\n\n\
+         ocean (2,2) in Atlantis Ocean.\n\n\
+         Exits:\n  \
+         Northwest : plain (1,1) in Nowhere.\n  \
+         North : ocean (2,0) in Atlantis Ocean.\n  \
+         Northeast : ocean (3,1) in Atlantis Ocean.\n  \
+         Southeast : ocean (3,3) in Atlantis Ocean.\n  \
+         South : ocean (2,4) in Atlantis Ocean.\n  \
+         Southwest : ocean (1,3) in Atlantis Ocean.\n\n\
+         ocean (3,3) in Atlantis Ocean.\n\n\
+         Exits:\n  \
+         North : ocean (3,1) in Atlantis Ocean.\n  \
+         Northeast : ocean (4,2) in Atlantis Ocean.\n  \
+         Southeast : ocean (4,4) in Atlantis Ocean.\n  \
+         South : ocean (3,5) in Atlantis Ocean.\n  \
+         Southwest : ocean (2,4) in Atlantis Ocean.\n  \
+         Northwest : ocean (2,2) in Atlantis Ocean.\n";
 }

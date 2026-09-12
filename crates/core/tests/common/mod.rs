@@ -16,6 +16,12 @@ pub fn ruleset() -> Ruleset {
     Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).expect("the committed ruleset loads")
 }
 
+/// The committed Trident ruleset - the one world here that swims.
+pub fn trident_ruleset() -> Ruleset {
+    Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+        .expect("the committed Trident ruleset parses and validates")
+}
+
 /// The report's own orders template with the standing month-long orders of `units` dropped.
 ///
 /// `rules/tax`, `rules/move` and `rules/study` each spend the unit's month, so a `PILLAGE`
