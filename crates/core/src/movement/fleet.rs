@@ -15,12 +15,6 @@ use crate::orders::standing::{self, standing_after, Boarding, BoardingOrder};
 use crate::report::model::{ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
 
-/// The last top-level movement order each unit wrote, read once from the whole orders document.
-///
-/// Only lines that are a unit's own for this turn count: a `TURN` block holds orders for the turn
-/// after this one and a `FORM` block's orders belong to the unit being formed, so movement inside
-/// either says nothing about where the unit whose block it is goes next. The last readable
-/// movement line wins, because a later order replaces an earlier one when the game executes them.
 /// A unit's own movement order, and whether it was written as a `SAIL`.
 ///
 /// The two are kept together because only a `SAIL` is a fleet's business: a `MOVE` written by a
@@ -31,6 +25,12 @@ struct UnitCourse {
     sail: bool,
 }
 
+/// The last top-level movement order each unit wrote, read once from the whole orders document.
+///
+/// Only lines that are a unit's own for this turn count: a `TURN` block holds orders for the turn
+/// after this one and a `FORM` block's orders belong to the unit being formed, so movement inside
+/// either says nothing about where the unit whose block it is goes next. The last readable
+/// movement line wins, because a later order replaces an earlier one when the game executes them.
 #[derive(Debug, Default, Clone)]
 pub struct OrderedUnits {
     by_unit: BTreeMap<String, UnitCourse>,
@@ -305,8 +305,12 @@ pub fn reported_owner<'r>(
 /// The report's own answer first; then, for a hull the report lists nobody under, the first unit in
 /// report order that boards it this month ("The first unit to enter an object is considered to be
 /// the owner", `rules/world_structures` - and `rules/sequenceofevents` runs ENTER before movement);
-/// then each valid `PROMOTE` written by the owner to a unit aboard the same hull, in report order.
-/// `None` when no unit can be named at all.
+/// then each valid `PROMOTE` written by the owner to a unit aboard the same hull.
+///
+/// Among several `PROMOTE`s from one owner the **first written** takes the hull, not the last: once
+/// it has run, that unit no longer owns the object, so its later `PROMOTE`s hand on nothing. The
+/// walk then continues from the new owner, so a hull promoted on twice in one month ends with the
+/// unit actually holding it. `None` when no unit can be named at all.
 #[must_use]
 pub fn fleet_owner(
     region: &ReportRegion,
@@ -714,6 +718,23 @@ mod tests {
             scene_followed("unit 900\nSAIL NE\nunit 902\nMOVE SW\n", "902"),
             go(crate::movement::graph::Direction::Southwest),
             "standing in a fleet does not stop a unit walking off"
+        );
+    }
+
+    /// Among several `PROMOTE`s from one owner the first written takes the hull: once it has run
+    /// the owner no longer owns the object, so its later ones hand on nothing. The walk then
+    /// continues from the new owner, so a hull promoted on twice ends with the unit holding it.
+    #[test]
+    fn the_first_promote_takes_the_hull_and_the_walk_goes_on_from_there() {
+        assert_eq!(
+            scene_owner("unit 900\nPROMOTE 901\nPROMOTE 902\n", "329"),
+            Some("901".to_string()),
+            "900's second PROMOTE hands on nothing: it no longer owns the hull"
+        );
+        assert_eq!(
+            scene_owner("unit 900\nPROMOTE 901\nunit 901\nPROMOTE 902\n", "329"),
+            Some("902".to_string()),
+            "the hull was handed on twice, and ends with the unit holding it"
         );
     }
 

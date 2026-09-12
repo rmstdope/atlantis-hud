@@ -547,7 +547,15 @@ pub fn review_turn(
     // The movement reader of the same name, aliased: `semantics`' own `OrderedUnits` above is a
     // different type with different readers, and importing both unaliased fails in a way that
     // reads like a missing method. This one states the fleet-owner rule (`ah-ofra`).
-    let fleet_orders = FleetOrders::from_document_with_ruleset(source, ruleset);
+    //
+    // Built only when its one consumer can emit, for the same reason `located` below is built
+    // lazily: this runs on every keystroke once typing settles, and it is a second full walk of
+    // the orders document.
+    let fleet_orders = if options.emits(codes::SAIL_NOT_BY_OWNER) {
+        FleetOrders::from_document_with_ruleset(source, ruleset)
+    } else {
+        FleetOrders::default()
+    };
     // `validate_turn` runs this on every keystroke once typing settles, so the lookup is built only
     // when the check that reads it is actually enabled - skipping a walk of every region and unit
     // in the report (the map insert per unit below, not a label - that is formatted only where a
@@ -13161,21 +13169,6 @@ fn check_refused_transfers(
     }
 }
 
-/// Every fleet in the hex that one of our units orders to SAIL: is what is aboard within what the
-/// hull carries, and is enough sailing skill aboard to sail it? Aboard means the report's units in
-/// the fleet, plus those that ENTER it this month, minus those that LEAVE - the instant orders the
-/// server runs before anything moves. Each of them is weighed at what this month's orders leave it
-/// holding (`weight_after_orders`), not at what the report printed, because the server runs every
-/// transfer and every market order before it moves a fleet. The crew is counted the same way
-/// (`sailing_levels_after_orders`): men given or taken away this month take their sailing levels
-/// with them, and men arriving into a unit aboard silence the crew check for the fleet, because
-/// the game merges them and recomputes the receiving unit's skill and that is not modelled here.
-/// Two different kinds of "cannot price" behave differently, deliberately: a MOVE touching the
-/// fleet, a foreign unit aboard, or a report that never states a unit's weight silences the whole
-/// fleet - never a guess. A single transfer the ledger or the ruleset cannot price (an
-/// item with no catalogue weight, a WITHDRAW of something the ruleset prices nowhere) instead
-/// falls back to that unit's report weight for its own
-/// contribution (`weight_after_orders`'s doc comment), rather than silencing the fleet outright.
 /// A course written for a fleet by a unit that does not own it: it lends a pair of hands and sets
 /// no direction, so the ship goes where its owner said or nowhere at all (`ah-ofra`).
 ///
@@ -13273,6 +13266,21 @@ fn check_fleet_course(
     }
 }
 
+/// Every fleet in the hex that one of our units orders to SAIL: is what is aboard within what the
+/// hull carries, and is enough sailing skill aboard to sail it? Aboard means the report's units in
+/// the fleet, plus those that ENTER it this month, minus those that LEAVE - the instant orders the
+/// server runs before anything moves. Each of them is weighed at what this month's orders leave it
+/// holding (`weight_after_orders`), not at what the report printed, because the server runs every
+/// transfer and every market order before it moves a fleet. The crew is counted the same way
+/// (`sailing_levels_after_orders`): men given or taken away this month take their sailing levels
+/// with them, and men arriving into a unit aboard silence the crew check for the fleet, because
+/// the game merges them and recomputes the receiving unit's skill and that is not modelled here.
+/// Two different kinds of "cannot price" behave differently, deliberately: a MOVE touching the
+/// fleet, a foreign unit aboard, or a report that never states a unit's weight silences the whole
+/// fleet - never a guess. A single transfer the ledger or the ruleset cannot price (an
+/// item with no catalogue weight, a WITHDRAW of something the ruleset prices nowhere) instead
+/// falls back to that unit's report weight for its own
+/// contribution (`weight_after_orders`'s doc comment), rather than silencing the fleet outright.
 fn check_sailing(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
@@ -38244,6 +38252,52 @@ BUILD
             Some("902".to_string()),
             "the offender on the lower line"
         );
+    }
+
+    /// The accepted cost the agreed record names in as many words: "the line fires on the harmless
+    /// habit of writing a direction on every unit aboard, which is why it has a switch". A helper
+    /// writing the **same** course as the owner is the commonest way a player meets this check, so
+    /// it is pinned rather than left to the fixtures that happen to write one.
+    #[test]
+    fn a_helper_repeating_the_owners_own_course_is_still_warned() {
+        let all = check(
+            vec![owned_longship(vec![])],
+            "unit 900\nSAIL NE\nunit 901\nSAIL NE\n",
+        );
+        let mine: Vec<&Finding> = all
+            .iter()
+            .filter(|finding| finding.code == codes::SAIL_NOT_BY_OWNER)
+            .collect();
+        assert_eq!(mine.len(), 1, "{all:?}");
+        assert_eq!(
+            mine[0].message,
+            "Only Longship [329]'s owner, Sea Rovers (900), can set its course: Deckhands (901) \
+             ordered SAIL NE, and the owner ordered NE, so the ship sails NE."
+        );
+    }
+
+    /// The check asks `fleet_speed(...).is_some()` and never `hulls_named_in`, which reads any
+    /// non-empty kind - `Fort` included - as a one-hull fleet. A garrison's orders are nobody
+    /// else's course, and nothing in a building may earn this line.
+    #[test]
+    fn a_unit_in_a_building_is_not_warned_about_a_fleet_course() {
+        let fort = Structure {
+            structure_id: "329".to_string(),
+            name: "Fort".to_string(),
+            kind: "Fort".to_string(),
+            ..Default::default()
+        };
+        let region = ReportRegion {
+            structures: vec![fort],
+            ..region(vec![
+                crew("900", "Sea Rovers", "329", 4),
+                crew("901", "Deckhands", "329", 4),
+            ])
+        };
+
+        assert!(check(vec![region], "unit 901\nSAIL SE\n")
+            .iter()
+            .all(|finding| finding.code != codes::SAIL_NOT_BY_OWNER));
     }
 
     #[test]
