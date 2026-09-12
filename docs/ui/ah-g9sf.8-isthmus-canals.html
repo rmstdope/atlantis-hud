@@ -1,0 +1,395 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-g9sf.8 — sailing through a neck of land, and the two grades of canal</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1400px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; color:var(--brass-bright); }
+  h2.sec { margin-top:38px; font-size:18px; color:var(--brass); border-top:1px solid var(--edge); padding-top:18px; }
+  h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; font-family:Georgia,serif; }
+  h2.sec + p { color:var(--ink-soft); font-size:13.5px; max-width:100ch; margin-top:8px; }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .cards.two { grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass-bright); font-style:normal; font-size:11px; letter-spacing:1.6px; display:block; margin-bottom:4px; }
+  .card.was { border-style:dashed; opacity:0.72; } .card.was h3 em { color:var(--danger); }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .cap { font:italic 11.5px Georgia,serif; color:var(--ink-dim); }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; padding:0; }
+  .notes li::before { content:"\00b7 "; color:var(--ink-dim); }
+
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; justify-content:space-between; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); }
+  .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .pbody { padding:8px 9px 9px; display:grid; gap:6px; }
+  dl.fields { display:grid; grid-template-columns:auto 1fr; column-gap:12px; row-gap:1px; margin:0; font-size:11.5px; }
+  dl.fields dt { color:var(--ink-dim); } dl.fields dd { margin:0; color:var(--ink); }
+  .sect { margin-top:5px; }
+  .sect .h { font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--brass); border-bottom:1px solid var(--edge-soft); padding-bottom:2px; margin-bottom:3px; display:flex; justify-content:space-between; }
+  .sect ol { list-style:none; margin:0; padding:0; color:var(--ink-soft); }
+  .sect .row { display:grid; grid-template-columns:52px 1fr; column-gap:8px; }
+  .sect .row .k { color:var(--ink-dim); } .sect .row .v { color:var(--ink-soft); }
+  .sect .row .v b { color:var(--brass-bright); font-weight:600; }
+  .refusal { color:var(--danger); } .warnline { color:var(--warn); }
+  .apply { display:flex; align-items:center; gap:8px; border-top:1px solid var(--edge); padding:6px 9px; }
+  .apply button { font:inherit; font-size:11px; background:var(--ground); color:var(--brass); border:1px solid var(--edge); border-radius:4px; padding:2px 7px; }
+  .apply code { font-size:11px; color:var(--ink-soft); }
+  .prob { display:flex; gap:6px; align-items:flex-start; } .prob .uid { color:var(--brass); min-width:44px; } .prob .sev { color:var(--warn); } .prob .msg { color:var(--ink); }
+
+  .setrow { display:grid; grid-template-columns:auto 1fr; column-gap:9px; padding:7px 0; border-bottom:1px solid var(--edge-soft); font-family:'Helvetica Neue',Arial,sans-serif; }
+  .setrow .box { width:12px; height:12px; border:1px solid var(--brass); border-radius:2px; background:var(--brass); position:relative; margin-top:2px; }
+  .setrow .box::after { content:"\2713"; position:absolute; inset:0; color:#10151c; font-size:9px; line-height:12px; text-align:center; }
+  .setrow .t { font-size:12px; color:var(--ink); } .setrow .d { font-size:11px; color:var(--ink-dim); }
+  .setgroup { font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--brass); margin-bottom:4px; }
+  .existing { opacity:0.55; }
+
+  svg.map { display:block; margin:0 auto; }
+  svg.map text { font:10px 'SF Mono',Menlo,monospace; fill:var(--ink-soft); }
+  svg.map text.lbl { font-size:9px; fill:var(--ink-dim); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; }
+  th, td { text-align:left; padding:6px 9px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  td.y { color:var(--ok); } td.n { color:var(--danger); } td.d { color:var(--ink-dim); }
+  .words { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:12px 14px; color:var(--ink); white-space:pre-wrap; margin-top:12px; line-height:1.7; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; border-top:1px solid var(--edge); padding-top:16px; }
+</style>
+<header>
+  <h1>ah-g9sf.8 — <span>sailing through a neck of land, and the two grades of canal</span></h1>
+  <p>A fleet cannot barge straight across a strip of land. It must leave by the side it entered or a side
+  beside that one (<span class="mono">newage/trident rules/movement_sailing</span>). A <b>canal</b> in that
+  region lifts the restriction, and the two grades are priced apart: a stone <b>Canal</b>'s through-pass
+  costs <b>2</b> movement points, a <b>Mystic Canal</b>'s costs <b>1</b>, where an ordinary sailing step
+  costs 1 (<span class="mono">newage/trident rules/economy_canals</span>,
+  <span class="mono">newage/trident data/Canal</span>,
+  <span class="mono">newage/trident data/Mystic&nbsp;Canal</span>).</p>
+  <p>Today Atlantis HUD knows none of it. It plans the shortcut with confidence, prices every sailing step
+  at 1, marks nothing in Problems, and the turn comes back with the fleet exactly where it started — or a
+  month later than promised.</p>
+  <p><b>The shape agreed:</b> the app <em>refuses</em> in the player's own words when the crossing is
+  illegal, and <em>says nothing extra</em> when it is legal. The building's name carries its price. No new
+  colour on the map, no new panel, no advice about what to build.</p>
+</header>
+<main>
+
+  <h2 class="sec">The situation <small>three hexes, used in every card below</small></h2>
+  <p>A one-hex-wide plain between two stretches of ocean. The fleet is in the ocean top left and wants the
+  ocean bottom right. Straight through is <b>SE&nbsp;SE</b> — in one side of the plain, out the opposite
+  side. That is the illegal move. The legal way is <b>E&nbsp;SE&nbsp;S</b>, three steps by open water.</p>
+  <svg class="map" width="560" height="260" viewBox="0 0 560 260">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d97070"/></marker>
+      <marker id="ag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#4fb783"/></marker>
+    </defs>
+    <g stroke="#26303d" stroke-width="1.5">
+      <polygon points="90,60 130,38 170,60 170,104 130,126 90,104" fill="#16293c"/>
+      <polygon points="170,104 210,82 250,104 250,148 210,170 170,148" fill="#2b2a1c"/>
+      <polygon points="250,148 290,126 330,148 330,192 290,214 250,192" fill="#16293c"/>
+      <polygon points="170,16 210,-6 250,16 250,60 210,82 170,60" fill="#16293c" opacity="0.85"/>
+      <polygon points="250,60 290,38 330,60 330,104 290,126 250,104" fill="#16293c" opacity="0.85"/>
+      <polygon points="330,104 370,82 410,104 410,148 370,170 330,148" fill="#16293c" opacity="0.85"/>
+    </g>
+    <text x="130" y="86" text-anchor="middle" fill="#eebe63">fleet</text>
+    <text x="130" y="99" text-anchor="middle" class="lbl">ocean (1,1)</text>
+    <text x="210" y="128" text-anchor="middle" fill="#d9a441">plain</text>
+    <text x="210" y="141" text-anchor="middle" class="lbl">(2,2)</text>
+    <text x="290" y="174" text-anchor="middle" fill="#eebe63">goal</text>
+    <text x="290" y="187" text-anchor="middle" class="lbl">ocean (3,3)</text>
+    <text x="210" y="44" text-anchor="middle" class="lbl">ocean</text>
+    <text x="290" y="88" text-anchor="middle" class="lbl">ocean</text>
+    <text x="370" y="132" text-anchor="middle" class="lbl">ocean</text>
+    <path d="M 140 92 L 278 158" stroke="#d97070" stroke-width="2.5" stroke-dasharray="6 4" fill="none" marker-end="url(#ar)"/>
+    <text x="196" y="196" fill="#d97070" font-size="11">SE SE — in one side, out the opposite side: not allowed</text>
+    <path d="M 140 70 L 200 44 L 282 74 L 288 140" stroke="#4fb783" stroke-width="2" fill="none" marker-end="url(#ag)"/>
+    <text x="352" y="36" fill="#4fb783" font-size="11">E SE S — round by water</text>
+  </svg>
+
+  <h2 class="sec">1 &middot; The planner, when there is no way through at all</h2>
+  <p>Suppose the far ocean is a landlocked pocket: through the plain is the only route, and it is illegal.
+  The planner names the restriction and the hex it stopped at, in the voice of the fleet refusal already
+  beside it. It says <b>nothing about canals</b> — the app states what will happen, it does not recommend
+  construction projects.</p>
+  <div class="cards two">
+    <section class="card was">
+      <h3><em>TODAY — WRONG</em> a confident illegal route</h3>
+      <p class="concept">Offered as fact, applied to the orders, and the fleet does not move.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="pbody">
+          <dl class="fields"><dt>To</dt><dd>(3,3)</dd><dt>Travel</dt><dd>sail</dd><dt>Cost</dt><dd>2 movement points</dd><dt>Arrives</dt><dd>this month</dd></dl>
+          <div class="sect"><div class="h"><span>Route</span><span>2</span></div><ol>
+            <li class="row"><span class="k">1. SE</span><span class="v">plain (2,2) &middot; 1</span></li>
+            <li class="row"><span class="k">2. SE</span><span class="v">ocean (3,3) &middot; 1</span></li>
+          </ol></div>
+        </div><div class="apply"><button>Apply to orders</button><code>SAIL SE SE</code></div></div>
+      </div>
+    </section>
+    <section class="card">
+      <h3><em>AGREED</em> the restriction, named</h3>
+      <p class="concept">The panel's one red sentence, in the same shape as every other refusal it has.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="pbody">
+          <p class="refusal">A fleet must leave a land hex by the side it entered or one beside it, so it
+          cannot sail straight through plain (2,2).</p>
+        </div></div>
+        <p class="cap">No route, no Apply button — as with every refusal.</p>
+      </div>
+      <ul class="notes">
+        <li>Rejected: reusing <em>&ldquo;Nothing the faction has seen joins those two hexes up&rdquo;</em> — it
+        is untrue, and the player can see the plain on the map.</li>
+        <li>Rejected: adding <em>&ldquo;A canal there would let it through&rdquo;</em> — the app would be
+        teaching the rules and suggesting a 300-stone building.</li>
+      </ul>
+    </section>
+  </div>
+
+  <h2 class="sec">2 &middot; The planner, when a longer way round exists</h2>
+  <p>Back to the map at the top. The shortcut is illegal, <b>E&nbsp;SE&nbsp;S</b> is not. The planner simply
+  gives that route. Not a word about the shortcut it could not take.</p>
+  <div class="cards two">
+    <section class="card">
+      <h3><em>AGREED</em> just the route</h3>
+      <p class="concept">The panel exactly as it is today, with a correct route in it.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="pbody">
+          <dl class="fields"><dt>To</dt><dd>(3,3)</dd><dt>Travel</dt><dd>sail</dd><dt>Cost</dt><dd>3 movement points</dd><dt>Arrives</dt><dd>this month</dd></dl>
+          <div class="sect"><div class="h"><span>Route</span><span>3</span></div><ol>
+            <li class="row"><span class="k">1. E</span><span class="v">ocean (2,1) &middot; 1</span></li>
+            <li class="row"><span class="k">2. SE</span><span class="v">ocean (3,2) &middot; 1</span></li>
+            <li class="row"><span class="k">3. S</span><span class="v">ocean (3,3) &middot; 1</span></li>
+          </ol></div>
+        </div><div class="apply"><button>Apply to orders</button><code>SAIL E SE S</code></div></div>
+        <p class="cap">Not one new word on a successful plan.</p>
+      </div>
+      <ul class="notes">
+        <li>Rejected: a note reading <em>&ldquo;The direct way through plain (2,2) is not open to fleets: a
+        canal there would save 1 movement point&rdquo;</em> — it would appear on a great many coastal detours,
+        and the panel would become a commentary on what will not happen.</li>
+      </ul>
+    </section>
+    <section class="card">
+      <h3><em>AGREED</em> the same, unexplored neck of land</h3>
+      <p class="concept">The app cannot see whether a canal stands in an unseen hex, so it assumes there is
+      none and offers only the route that cannot fail.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="pbody">
+          <dl class="fields"><dt>To</dt><dd>(3,3)</dd><dt>Travel</dt><dd>sail</dd><dt>Cost</dt><dd>3 movement points</dd><dt>Arrives</dt><dd>this month</dd></dl>
+          <div class="sect"><div class="h"><span>Route</span><span>3</span></div><ol>
+            <li class="row"><span class="k">1. E</span><span class="v">ocean (2,1) &middot; 1</span></li>
+            <li class="row"><span class="k">2. SE</span><span class="v">ocean (3,2) &middot; 1</span></li>
+            <li class="row"><span class="k">3. S</span><span class="v">ocean (3,3) &middot; 1</span></li>
+          </ol></div>
+        </div><div class="apply"><button>Apply to orders</button><code>SAIL E SE S</code></div></div>
+        <p class="cap">Indistinguishable from a plain it has seen. The hex it avoided is not mentioned.</p>
+      </div>
+      <ul class="notes">
+        <li>Guessing wrong the other way costs the player a whole month; this way costs a movement point.</li>
+        <li>Rejected: offering <span class="mono">SAIL SE SE</span> with the hex marked
+        <span class="mono">unexplored &middot; estimated</span> under the existing guesswork line — the
+        planner proposes only what it can stand behind, and most land has no canal.</li>
+      </ul>
+    </section>
+  </div>
+
+  <h2 class="sec">3 &middot; A step through a canal</h2>
+  <p>Put a canal in the plain and the shortcut becomes legal, at the grade's own price. The suffix names the
+  building, so the cost follows from it — the shape <span class="mono">&middot; road</span> already has on a
+  land step. A canal seen once counts for ever: canals do not fall down, and a remembered one is drawn
+  exactly like one seen this month.</p>
+  <div class="cards">
+    <section class="card was">
+      <h3><em>TODAY — WRONG</em> both grades priced at 1</h3>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="pbody">
+          <dl class="fields"><dt>Cost</dt><dd>2 movement points</dd><dt>Arrives</dt><dd>this month</dd></dl>
+          <div class="sect"><div class="h"><span>Route</span><span>2</span></div><ol>
+            <li class="row"><span class="k">1. SE</span><span class="v">plain (2,2) &middot; 1</span></li>
+            <li class="row"><span class="k">2. SE</span><span class="v">ocean (3,3) &middot; 1</span></li>
+          </ol></div>
+        </div></div>
+        <p class="cap">Identical whether the hex holds a Canal, a Mystic Canal, or nothing at all.</p>
+      </div>
+    </section>
+    <section class="card">
+      <h3><em>AGREED</em> a stone Canal &mdash; 2</h3>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="pbody">
+          <dl class="fields"><dt>To</dt><dd>(3,3)</dd><dt>Travel</dt><dd>sail</dd><dt>Cost</dt><dd>3 movement points</dd><dt>Arrives</dt><dd>this month</dd></dl>
+          <div class="sect"><div class="h"><span>Route</span><span>2</span></div><ol>
+            <li class="row"><span class="k">1. SE</span><span class="v">plain (2,2) &middot; <b>2</b> &middot; Canal</span></li>
+            <li class="row"><span class="k">2. SE</span><span class="v">ocean (3,3) &middot; 1</span></li>
+          </ol></div>
+        </div><div class="apply"><button>Apply to orders</button><code>SAIL SE SE</code></div></div>
+        <p class="cap">The name explains the 2.</p>
+      </div>
+    </section>
+    <section class="card">
+      <h3><em>AGREED</em> a Mystic Canal &mdash; 1</h3>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Planner</span></div><div class="pbody">
+          <dl class="fields"><dt>To</dt><dd>(3,3)</dd><dt>Travel</dt><dd>sail</dd><dt>Cost</dt><dd>2 movement points</dd><dt>Arrives</dt><dd>this month</dd></dl>
+          <div class="sect"><div class="h"><span>Route</span><span>2</span></div><ol>
+            <li class="row"><span class="k">1. SE</span><span class="v">plain (2,2) &middot; <b>1</b> &middot; Mystic Canal</span></li>
+            <li class="row"><span class="k">2. SE</span><span class="v">ocean (3,3) &middot; 1</span></li>
+          </ol></div>
+        </div><div class="apply"><button>Apply to orders</button><code>SAIL SE SE</code></div></div>
+        <p class="cap">Full speed, and the player can see which grade the hex has.</p>
+      </div>
+    </section>
+  </div>
+  <ul class="notes" style="margin-top:14px">
+    <li>Rejected: the bare number with no suffix — a 2 among 1s reads as a bug.</li>
+    <li>Rejected: a lower-case <span class="mono">&middot; canal</span> — it explains the cost but hides the grade.</li>
+    <li>Rejected: <span class="mono">&middot; through the Canal, which costs 2 not 1</span> — three wrapped lines on every canal step, for ever.</li>
+    <li>Rejected: <span class="mono">&middot; Mystic Canal, last seen month 3</span> — nothing else in the route list dates a sighting, and every hex in the list is a memory.</li>
+  </ul>
+
+  <h2 class="sec">4 &middot; The player typed the illegal order themselves</h2>
+  <p>A typed <code>SAIL</code> gets no planner and <b>no list of steps anywhere</b>: it is drawn on the map,
+  and the words live in Problems. The line is solid as far as the month reaches and as far as the game will
+  allow, then dotted. A step the game refuses is therefore already dotted, and stays so — no new colour.</p>
+  <div class="cards two">
+    <section class="card was">
+      <h3><em>TODAY — WRONG</em> silent, and solid all the way</h3>
+      <div class="stage">
+        <svg class="map" width="400" height="215" viewBox="0 0 400 215">
+          <g stroke="#26303d" stroke-width="1.5">
+            <polygon points="50,50 90,28 130,50 130,94 90,116 50,94" fill="#16293c"/>
+            <polygon points="130,94 170,72 210,94 210,138 170,160 130,138" fill="#2b2a1c"/>
+            <polygon points="210,138 250,116 290,138 290,182 250,204 210,182" fill="#16293c"/>
+          </g>
+          <text x="90" y="76" text-anchor="middle" fill="#eebe63">fleet</text>
+          <text x="90" y="89" text-anchor="middle" class="lbl">ocean (1,1)</text>
+          <text x="170" y="120" text-anchor="middle" fill="#d9a441">plain</text>
+          <text x="170" y="133" text-anchor="middle" class="lbl">(2,2)</text>
+          <text x="250" y="166" text-anchor="middle" class="lbl">ocean (3,3)</text>
+          <path d="M 90 72 L 170 116 L 248 160" stroke="#10151c" stroke-width="6" fill="none"/>
+          <path d="M 90 72 L 170 116 L 248 160" stroke="#d9a441" stroke-width="2.5" fill="none"/>
+          <text x="305" y="104" fill="#d97070" font-size="10">solid all the way:</text>
+          <text x="305" y="119" fill="#d97070" font-size="10">a promise it cannot keep</text>
+        </svg>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="pbody">
+          <p class="cap" style="font-style:italic">nothing at all</p>
+        </div></div>
+      </div>
+    </section>
+    <section class="card">
+      <h3><em>AGREED</em> dotted from the refused step, and an amber line</h3>
+      <div class="stage">
+        <svg class="map" width="400" height="215" viewBox="0 0 400 215">
+          <g stroke="#26303d" stroke-width="1.5">
+            <polygon points="50,50 90,28 130,50 130,94 90,116 50,94" fill="#16293c"/>
+            <polygon points="130,94 170,72 210,94 210,138 170,160 130,138" fill="#2b2a1c"/>
+            <polygon points="210,138 250,116 290,138 290,182 250,204 210,182" fill="#16293c"/>
+          </g>
+          <text x="90" y="76" text-anchor="middle" fill="#eebe63">fleet</text>
+          <text x="90" y="89" text-anchor="middle" class="lbl">ocean (1,1)</text>
+          <text x="170" y="120" text-anchor="middle" fill="#d9a441">plain</text>
+          <text x="170" y="133" text-anchor="middle" class="lbl">(2,2)</text>
+          <text x="250" y="166" text-anchor="middle" class="lbl">ocean (3,3)</text>
+          <path d="M 90 72 L 170 116" stroke="#10151c" stroke-width="6" fill="none"/>
+          <path d="M 90 72 L 170 116" stroke="#d9a441" stroke-width="2.5" fill="none"/>
+          <path d="M 170 116 L 248 160" stroke="#10151c" stroke-width="6" fill="none"/>
+          <path d="M 170 116 L 248 160" stroke="#d9a441" stroke-width="2.5" stroke-dasharray="6 6" fill="none"/>
+          <text x="305" y="104" fill="#a3b0c0" font-size="10">solid: will happen</text>
+          <text x="305" y="119" fill="#8a97a8" font-size="10">dotted: will not</text>
+        </svg>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="pbody">
+          <div class="prob"><span class="uid">1471</span><span class="sev">&#9888;</span><span class="msg">a fleet must leave a land hex by the side it entered or one beside it: SE enters plain (2,2) from the NW and SE leaves by the opposite side, so it will not move</span></div>
+        </div></div>
+        <p class="cap">Both sides named, so the player can see which turn <em>would</em> have worked.</p>
+      </div>
+      <ul class="notes">
+        <li>Rejected: drawing a refused step in red. Every other refused step in the app dots; a new colour
+        here would have to be applied to all of them or look arbitrary.</li>
+        <li>Rejected the shorter line <em>&ldquo;a fleet cannot sail straight through plain (2,2) without a
+        canal&hellip;&rdquo;</em> — it does not say which exits are legal.</li>
+      </ul>
+    </section>
+  </div>
+  <div class="cards two" style="margin-top:18px">
+    <section class="card">
+      <h3><em>FOR COMPARISON</em> the sibling line, already shipped</h3>
+      <p class="concept">The voice being matched: <em>the rule</em>, colon, <em>this step</em>, <em>what will
+      happen</em>.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="pbody">
+          <div class="prob"><span class="uid">1471</span><span class="sev">&#9888;</span><span class="msg">a fleet may only sail where one end of the step is ocean: N leaves mountain (36,4) for mountain (36,2), so it will not move</span></div>
+        </div></div>
+      </div>
+    </section>
+    <section class="card">
+      <h3><em>AGREED</em> the switch in Settings</h3>
+      <p class="concept">A fourth row under <b>Order checks &rsaquo; Sailing</b>, so the new check can be
+      silenced on its own like every sibling. Existing rows dimmed.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Settings &mdash; order checks</span></div><div class="pbody">
+          <div class="setgroup">Sailing</div>
+          <div class="setrow existing"><div class="box"></div><div><div class="t">Overloaded fleets</div><div class="d">A fleet ordered to sail with more weight aboard than it can carry.</div></div></div>
+          <div class="setrow existing"><div class="box"></div><div><div class="t">Undercrewed fleets</div><div class="d">A fleet ordered to sail without enough sailing skill aboard.</div></div></div>
+          <div class="setrow existing"><div class="box"></div><div><div class="t">Sailing from land to land</div><div class="d">A SAIL step from a land region into another land region, which the game never allows.</div></div></div>
+          <div class="setrow"><div class="box"></div><div><div class="t">Sailing through a neck of land</div><div class="d">A SAIL that enters a land region one side and leaves by the opposite side in the same month, which needs a canal.</div></div></div>
+        </div></div>
+      </div>
+      <ul class="notes">
+        <li>Rejected: widening the row next door into <em>&ldquo;Sailing where a fleet cannot go&rdquo;</em> —
+        a player who had switched the old one off would silently lose the new check too.</li>
+        <li>Rejected: no switch at all — it would be the only check of its kind a player cannot silence.</li>
+      </ul>
+    </section>
+  </div>
+
+  <h2 class="sec">Every word that ships <small>quoted, not paraphrased</small></h2>
+  <div class="words">The planner refusal, in red, where the route list would be:
+
+  A fleet must leave a land hex by the side it entered or one beside it, so it
+  cannot sail straight through plain (2,2).
+
+The Problems line, amber ⚠, against the ordered unit:
+
+  a fleet must leave a land hex by the side it entered or one beside it: SE
+  enters plain (2,2) from the NW and SE leaves by the opposite side, so it
+  will not move
+
+A route step through each grade of canal:
+
+  1. SE    plain (2,2) · 2 · Canal
+  1. SE    plain (2,2) · 1 · Mystic Canal
+
+The Settings row, under Order checks › Sailing:
+
+  Sailing through a neck of land
+  A SAIL that enters a land region one side and leaves by the opposite side in
+  the same month, which needs a canal.</div>
+
+  <h2 class="sec">Every state <small>including the ones where nothing happens</small></h2>
+  <table>
+    <tr><th>Situation</th><th>What a player sees</th></tr>
+    <tr><td>Fleet ended <b>last</b> month in the land hex</td><td class="y">It may sail out by any side that touches water. No refusal, no mark, no message — the restriction is about passing through within one month.</td></tr>
+    <tr><td>Enters and leaves by the <em>same</em> side</td><td class="y">Unchanged from today.</td></tr>
+    <tr><td>Enters and leaves by a <em>neighbouring</em> side</td><td class="y">Unchanged from today.</td></tr>
+    <tr><td>Enters and leaves by the <em>opposite</em> side, no canal</td><td class="n">Planner shows the refusal, or routes round if it can. A typed order gets the amber Problems line and dots from that step.</td></tr>
+    <tr><td>The same, with a stone <b>Canal</b></td><td class="y">Allowed. The step reads <span class="mono">plain (2,2) &middot; 2 &middot; Canal</span>.</td></tr>
+    <tr><td>The same, with a <b>Mystic Canal</b></td><td class="y">Allowed. The step reads <span class="mono">plain (2,2) &middot; 1 &middot; Mystic Canal</span>.</td></tr>
+    <tr><td>A canal in a region touching no water</td><td class="d">No effect whatever. Never named; the crossing is refused exactly as if the canal were not there.</td></tr>
+    <tr><td>A canal seen months ago, nobody there now</td><td class="y">Counted, and drawn identically to one seen this month. Canals do not fall down.</td></tr>
+    <tr><td>The neck of land is <b>unexplored</b></td><td class="d">Taken to have no canal: the shortcut is not offered and the hex is not mentioned.</td></tr>
+    <tr><td>A <b>lake</b> shore rather than an ocean one</td><td class="d">Identical in every respect. A lake is water and the land around it is its shore.</td></tr>
+    <tr><td>A <b>flying</b> fleet</td><td class="d">Unbound by all of this, as today. No refusal, no canal cost.</td></tr>
+    <tr><td>The month runs out mid-crossing because a stone Canal cost 2</td><td class="d">The existing <em>Months</em> section splits the route and the map line dots at the boundary. No new words.</td></tr>
+    <tr><td>The <b>Movement planner</b> setting is off</td><td class="d">No planner at all, so only the Problems line and the map line appear.</td></tr>
+    <tr><td>This check is switched off in Settings</td><td class="d">No Problems line. The planner still refuses — it plans only legal routes whatever the checks say.</td></tr>
+    <tr><td>World is <b>New Origins</b> or <b>New Age: Arcanum</b></td><td class="d">The side restriction applies, being in every world's sailing rules. Canals exist only in Trident, so no canal wording can ever appear there.</td></tr>
+  </table>
+
+</main>
+<footer>
+  Agreed with the navigator over two rounds, 2026-09-12. Facts from
+  <span class="mono">newage/trident rules/movement_sailing</span>,
+  <span class="mono">newage/trident rules/economy_canals</span>,
+  <span class="mono">newage/trident data/Canal</span> and
+  <span class="mono">newage/trident data/Mystic&nbsp;Canal</span>.
+</footer>
