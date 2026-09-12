@@ -13,7 +13,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::{Direction, MapKnowledge};
-use crate::movement::mode::{fleet_flies, fleet_of, fleet_sailing, mobility, Mobility};
+use crate::movement::mode::{
+    fleet_flies, fleet_of, fleet_sailing, mobility, swim_ability, Mobility,
+};
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{
     base_terrain_cost, blocks, constrains_departure, leaving_land, refused_by_sailing_step,
@@ -94,7 +96,8 @@ pub fn trace_move(
         },
     };
     let mode = mode_and_points.map(|(mode, _)| mode);
-    let journey = mode.map(|mode| Journey::enforced(mode, hull));
+    let journey =
+        mode.map(|mode| Journey::enforced(mode, hull).with_swim(swim_ability(unit, ruleset)));
 
     let mut position = from;
     let mut terrain = origin.terrain.clone();
