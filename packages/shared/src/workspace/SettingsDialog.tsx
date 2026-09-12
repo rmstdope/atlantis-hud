@@ -742,6 +742,11 @@ export const WARNING_GROUPS: readonly {
         description: "A fleet ordered to sail without enough sailing skill aboard."
       },
       {
+        code: "sail-not-by-owner",
+        title: "Courses set by the wrong unit",
+        description: "A fleet given a course by a unit that does not own it."
+      },
+      {
         code: "sail-between-land-hexes",
         title: "Sailing from land to land",
         description:

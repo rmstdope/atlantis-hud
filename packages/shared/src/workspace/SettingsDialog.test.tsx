@@ -262,6 +262,7 @@ describe("the Warnings settings tab", () => {
       "Producing what the region has not",
       "Overloaded fleets",
       "Undercrewed fleets",
+      "Courses set by the wrong unit",
       "More quartermasters than allowed",
       "Study of an unlearnable skill",
       "Producing in too many regions",
