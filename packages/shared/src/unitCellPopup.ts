@@ -483,7 +483,11 @@ function buildSpendPlace(change: ItemChange, unit: PreviewedUnit): string {
   if (change.other) {
     return `for ${party(change.other)} to build`;
   }
-  const spend = (unit.built ?? []).find((entry) => entry.tag === change.tag);
+  // A New Age month may spend two materials on one build, so the spend is found by whichever of
+  // its materials this change names (`crates/core/src/orders/semantics.rs`).
+  const spend = (unit.built ?? []).find((entry) =>
+    entry.materials.some((material) => material.tag === change.tag)
+  );
   return spend ? buildSpendTarget(spend) : "on a build";
 }
 

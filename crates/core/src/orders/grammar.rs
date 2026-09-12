@@ -552,13 +552,30 @@ const NEW_AGE_ORDERS: &[Order] = &[
 
 const ORIGINS_ONLY_ORDERS: &[&str] = &["ANNIHILATE", "SACRIFICE"];
 
+/// The material words a New Age `BUILD` may name, in the order the editor offers them.
+const BUILD_MATERIALS: &[&str] = &["STONE", "WOOD"];
+
+/// Orders whose forms a New Age world states differently. Keyed by name; the entry here replaces
+/// the [`GRAMMAR`] entry of the same name, which New Origins keeps.
+///
+/// `rules/build` (New Age: Trident and Arcanum) lists `BUILD [object type] WOOD` and `STONE`, each
+/// also with a trailing `COMPLETE`. New Origins' own page has none of them.
+const NEW_AGE_ORDER_FORMS: &[Order] = &[Order {
+    name: "BUILD",
+    forms: &[
+        &[Arg::Kw("HELP"), Arg::Unit, Arg::Kw("COMPLETE")],
+        &[Arg::Kw("HELP"), Arg::Unit],
+        &[Arg::Kw("COMPLETE")],
+        &[Arg::Name, Arg::Kw("COMPLETE")],
+        &[Arg::Name, Arg::OneOf(BUILD_MATERIALS), Arg::Kw("COMPLETE")],
+        &[Arg::Name, Arg::OneOf(BUILD_MATERIALS)],
+        &[Arg::Name],
+        &[],
+    ],
+}];
+
 fn is_new_age(ruleset: Option<&Ruleset>) -> bool {
-    ruleset.is_some_and(|ruleset| {
-        matches!(
-            ruleset.order_language,
-            OrderLanguage::NewAgeArcanum | OrderLanguage::NewAgeTrident
-        )
-    })
+    ruleset.is_some_and(Ruleset::is_new_age)
 }
 
 fn is_trident(ruleset: Option<&Ruleset>) -> bool {
@@ -573,6 +590,16 @@ pub(super) fn selected_orders(ruleset: Option<&Ruleset>) -> Vec<&'static Order> 
         .filter(|order| {
             (!new_age || !ORIGINS_ONLY_ORDERS.contains(&order.name))
                 && (order.name != "CREATE" || is_trident(ruleset))
+        })
+        .map(|order| {
+            if new_age {
+                NEW_AGE_ORDER_FORMS
+                    .iter()
+                    .find(|replacement| replacement.name == order.name)
+                    .unwrap_or(order)
+            } else {
+                order
+            }
         })
         .collect();
     if new_age {
@@ -1224,6 +1251,39 @@ mod tests {
             assert!(find_order_with_ruleset(command, Some(&arcanum)).is_some());
             assert!(find_order_with_ruleset(command, Some(&trident)).is_some());
         }
+    }
+
+    /// `rules/build` (New Age: Trident and Arcanum) gives `BUILD [object type] WOOD` and `STONE`,
+    /// each also with a trailing `COMPLETE`. New Origins' own `rules/build` has no material forms
+    /// at all, so there the word stays trailing text the engine ignores (`ah-86vk`).
+    #[test]
+    fn build_material_forms_belong_to_new_age_worlds() {
+        fn consumed(line: &str, ruleset: &Ruleset) -> usize {
+            let lexed = crate::orders::lexer::lex_line_with_ruleset(line, Some(ruleset));
+            let (command, arguments) = lexed.tokens.split_first().expect("a command");
+            consumed_arguments(command, arguments, Some(ruleset))
+                .expect("the line matches a form")
+                .len()
+        }
+
+        let origins = Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).unwrap();
+        let trident =
+            Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON).unwrap();
+        let arcanum =
+            Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON).unwrap();
+
+        for new_age in [&trident, &arcanum] {
+            assert_eq!(consumed("BUILD Farm WOOD", new_age), 2);
+            assert_eq!(consumed("BUILD Farm STONE", new_age), 2);
+            assert_eq!(consumed("BUILD Farm STONE COMPLETE", new_age), 3);
+            assert_eq!(consumed("BUILD Farm COMPLETE", new_age), 2);
+            assert_eq!(consumed("BUILD Farm", new_age), 1);
+            assert_eq!(consumed("BUILD HELP 5", new_age), 2);
+        }
+
+        assert_eq!(consumed("BUILD Farm WOOD", &origins), 1);
+        assert_eq!(consumed("BUILD Farm STONE COMPLETE", &origins), 1);
+        assert_eq!(consumed("BUILD Farm COMPLETE", &origins), 2);
     }
 
     // The `order_argument_completions` tests that used to live here moved to

@@ -552,6 +552,32 @@ mod tests {
         );
     }
 
+    /// `rules/build` (New Age: Trident) states `BUILD [object type] WOOD`/`STONE`, with or without
+    /// a trailing `COMPLETE`. New Origins states neither, so its editor offers neither.
+    #[test]
+    fn trident_build_offers_the_material_words() {
+        let origins = Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).unwrap();
+        let trident =
+            Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON).unwrap();
+
+        assert_eq!(
+            order_argument_completions("BUILD Farm ", Some(&trident), None, None),
+            vec![kw("COMPLETE"), kw("STONE"), kw("WOOD")]
+        );
+        assert_eq!(
+            order_argument_completions("BUILD Farm WOOD ", Some(&trident), None, None),
+            vec![kw("COMPLETE")]
+        );
+        assert_eq!(
+            order_argument_completions("BUILD Farm ", Some(&origins), None, None),
+            vec![kw("COMPLETE")]
+        );
+        assert_eq!(
+            order_argument_completions("BUILD ", Some(&trident), None, None),
+            order_argument_completions("BUILD ", Some(&origins), None, None)
+        );
+    }
+
     #[test]
     fn a_finished_form_offers_nothing() {
         for prefix in ["DECLARE 15 ALLY ", "TAX "] {

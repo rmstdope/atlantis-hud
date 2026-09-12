@@ -1024,9 +1024,8 @@ describe("the items column", () => {
           changes: [{ field: "items", original: "120 WOOD" }],
           built: [
             {
+              materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
               amount: 30,
-              tag: "WOOD",
-              name: "wood",
               place: "Building 4",
               founding: false,
               helping: null,

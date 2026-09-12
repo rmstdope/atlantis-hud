@@ -455,17 +455,30 @@ pub enum BuildCap {
     Needs,
 }
 
+/// One material's share of a month's `BUILD`, in the order the rules spend it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct BuildMaterialShare {
+    /// Material consumed of this one, which is also the units of work it did.
+    pub amount: i64,
+    /// The tag, as the item list keys it - `WOOD`.
+    pub tag: String,
+    /// The display name, as the cap sentence says it - `wood`.
+    pub name: String,
+}
+
 /// What one `BUILD` order spends this month (`ah-ofpb.2`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct BuildSpend {
-    /// Material consumed, which is also the units of work done.
+    /// What this month's build spent, in the order it was spent. Never empty. One entry is the
+    /// ordinary month; two is a New Age build that exhausted the stone and fell back on wood
+    /// (`rules/build`, New Age: Trident).
+    pub materials: Vec<BuildMaterialShare>,
+    /// Material consumed in total, which is also the units of work done.
     pub amount: i64,
-    /// The material's tag, as the item list keys it - `WOOD`.
-    pub tag: String,
-    /// The material's display name, as the cap sentence says it - `wood`.
-    pub name: String,
     /// What is being worked on: `structure_label` for one that exists, or the kind the player
     /// wrote when `founding`.
     pub place: String,
@@ -3672,6 +3685,144 @@ mod tests {
             Some(90),
             "the refused case keeps the 120 stone this one spends 30 of"
         );
+    }
+
+    /// A mountain wilderness holding one farmer, with whatever it carries written in.
+    ///
+    /// A Farm costs 10 and is built from either wood or stone (`newage trident data/farming`,
+    /// `rules/tabletradestructures`), and farming 3 is what raises one - so this builder's men
+    /// alone could do 30 units of work and the Farm wants only 10.
+    fn trident_farmer_report(carrying: &str) -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "mountain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            &format!(
+                "* Builder (900), Foo (1), 10 humans [HUMN], {carrying}. Weight: 130. \
+                 Capacity: 0/0/150/0. Skills: farming [FARM] 3 (180)."
+            ),
+            "",
+        ]
+        .join("\n")
+    }
+
+    fn build_spent(unit: &UnitPreview, tag: &str) -> Option<i64> {
+        unit.item_changes
+            .iter()
+            .find(|change| change.tag == tag && change.cause == ItemChangeCause::BuildSpent)
+            .map(|change| change.delta)
+    }
+
+    /// `rules/build` (New Age: Trident): "You can specify WOOD or STONE after the object type to
+    /// restrict which material is used. If the preferred material is not available, the order will
+    /// fail with an error."
+    #[test]
+    fn trident_build_from_wood_never_spends_stone() {
+        let stone_only = trident_preview_over(
+            &trident_farmer_report("20 stone [STON]"),
+            "unit 900\nBUILD Farm WOOD\n",
+        );
+        assert!(
+            stone_only.regions.is_empty(),
+            "a build with no wood spends nothing: {:?}",
+            stone_only.regions
+        );
+
+        let both = trident_preview_over(
+            &trident_farmer_report("20 stone [STON], 20 wood [WOOD]"),
+            "unit 900\nBUILD Farm WOOD\n",
+        );
+        let unit = only_unit(&both);
+        assert_eq!(build_spent(unit, "WOOD"), Some(-10));
+        assert_eq!(build_spent(unit, "STON"), None);
+        assert_eq!(unit.built.len(), 1, "{:?}", unit.built);
+    }
+
+    /// The other half of the same case: nothing is spent, and the line is marked uncounted rather
+    /// than forecast.
+    ///
+    /// The builder holds stone and no wood, and it is the *recipe* that settles this rather than
+    /// the empty pocket: `BUILD Farm WOOD` by a unit with no wood warns and spends nothing
+    /// (`a_build_from_a_material_the_unit_has_not_got_is_a_warning`), where a Tower's recipe not
+    /// offering wood at all cannot be settled either way. Do not weaken this fixture to a unit
+    /// holding wood: it would then pass for the wrong reason.
+    #[test]
+    fn trident_build_from_a_material_the_recipe_does_not_offer_is_uncounted() {
+        let response =
+            trident_preview_over(&trident_wilderness_report(), "unit 900\nBUILD Tower WOOD\n");
+        let unit = only_unit(&response);
+        assert!(unit.built.is_empty(), "{:?}", unit.built);
+        assert_eq!(unit.uncounted, vec!["BUILD Tower WOOD".to_string()]);
+    }
+
+    /// `rules/build` (New Age: Trident): "By default the unit will use whatever is available,
+    /// consuming stone before wood." New Origins' own `rules/build` states no such default, so a
+    /// unit there holding both stays unknowable.
+    #[test]
+    fn trident_build_without_a_material_spends_stone_first() {
+        let report = trident_farmer_report("20 stone [STON], 20 wood [WOOD]");
+        let trident = trident_preview_over(&report, "unit 900\nBUILD Farm\n");
+        let unit = only_unit(&trident);
+        assert_eq!(unit.built.len(), 1, "{:?}", unit.built);
+        assert_eq!(
+            unit.built[0]
+                .materials
+                .iter()
+                .map(|share| (share.tag.as_str(), share.amount))
+                .collect::<Vec<_>>(),
+            [("STON", 10)]
+        );
+        assert_eq!(unit.built[0].amount, 10);
+        assert_eq!(build_spent(unit, "STON"), Some(-10));
+        assert_eq!(build_spent(unit, "WOOD"), None);
+        assert!(unit.uncounted.is_empty(), "{:?}", unit.uncounted);
+
+        let origins = preview_over(&report, "unit 900\nBUILD Farm\n");
+        assert!(
+            origins
+                .regions
+                .iter()
+                .flat_map(|region| &region.units)
+                .all(|unit| unit.built.is_empty()),
+            "New Origins states no default, so nothing is forecast: {:?}",
+            origins.regions
+        );
+        assert!(
+            origins
+                .regions
+                .iter()
+                .flat_map(|region| &region.units)
+                .any(|unit| !unit.uncounted.is_empty()),
+            "and the line is marked uncounted instead: {:?}",
+            origins.regions
+        );
+    }
+
+    /// One build, two materials: the stone runs out and the wood finishes the month
+    /// (`rules/build`, New Age: Trident).
+    #[test]
+    fn trident_build_falls_back_to_wood_as_one_spend() {
+        let response = trident_preview_over(
+            &trident_farmer_report("4 stone [STON], 20 wood [WOOD]"),
+            "unit 900\nBUILD Farm\n",
+        );
+        let unit = only_unit(&response);
+        assert_eq!(unit.built.len(), 1, "{:?}", unit.built);
+        assert_eq!(
+            unit.built[0]
+                .materials
+                .iter()
+                .map(|share| (share.tag.as_str(), share.amount))
+                .collect::<Vec<_>>(),
+            [("STON", 4), ("WOOD", 6)]
+        );
+        assert_eq!(unit.built[0].amount, 10);
+        assert_eq!(build_spent(unit, "STON"), Some(-4));
+        assert_eq!(build_spent(unit, "WOOD"), Some(-6));
     }
 
     fn only_unit(response: &OrdersPreviewResponse) -> &UnitPreview {
@@ -7613,9 +7764,12 @@ mod tests {
             assert_eq!(
                 unit.built,
                 vec![BuildSpend {
+                    materials: vec![BuildMaterialShare {
+                        amount: 30,
+                        tag: "WOOD".to_string(),
+                        name: "wood".to_string(),
+                    }],
                     amount: 30,
-                    tag: "WOOD".to_string(),
-                    name: "wood".to_string(),
                     place: "Building 4".to_string(),
                     founding: false,
                     helping: None,

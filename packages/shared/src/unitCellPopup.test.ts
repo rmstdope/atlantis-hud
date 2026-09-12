@@ -2929,9 +2929,8 @@ describe("the items popup's cause sentences", () => {
         itemChanges: [moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -10 })],
         built: [
           {
+            materials: [{ amount: 10, tag: "WOOD", name: "wood" }],
             amount: 10,
-            tag: "WOOD",
-            name: "wood",
             place: "Fort",
             founding: false,
             helping: null,
@@ -2941,6 +2940,38 @@ describe("the items popup's cause sentences", () => {
         ]
       })[0]
     ).toBe("wood: spent 10 on Fort.");
+  });
+
+  it("names the structure for both halves of a mixed build", () => {
+    // One New Age build may spend stone and then wood (`rules/build`), so each debit has to find
+    // the same spend.
+    const notes = notesFor({
+      items: [
+        { name: "wood", tag: "WOOD", amount: 14 },
+        { name: "stone", tag: "STON", amount: 0 }
+      ],
+      itemChanges: [
+        moved({ tag: "STON", name: "stone", cause: "build-spent", delta: -4 }),
+        moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -6 })
+      ],
+      built: [
+        {
+          materials: [
+            { amount: 4, tag: "STON", name: "stone" },
+            { amount: 6, tag: "WOOD", name: "wood" }
+          ],
+          amount: 10,
+          place: "Farm",
+          founding: true,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(notes).toContain("stone: spent 4 on a new Farm.");
+    expect(notes).toContain("wood: spent 6 on a new Farm.");
   });
 
   it("falls back to a bare build when it cannot match the spend", () => {

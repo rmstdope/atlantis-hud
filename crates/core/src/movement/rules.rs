@@ -1268,6 +1268,20 @@ impl Ruleset {
         Some((building.build_skill.as_deref()?, building.build_level?))
     }
 
+    /// Whether this world's `rules/build` states the `WOOD`/`STONE` forms and the default order.
+    ///
+    /// Both New Age worlds do - "By default the unit will use whatever is available, consuming
+    /// stone before wood" (`rules/build`, New Age: Trident and Arcanum). New Origins' own
+    /// `rules/build` has neither the forms nor any statement of which material the engine takes,
+    /// so a unit there holding both alternatives stays unknowable.
+    #[must_use]
+    pub fn is_new_age(&self) -> bool {
+        matches!(
+            self.order_language,
+            OrderLanguage::NewAgeArcanum | OrderLanguage::NewAgeTrident
+        )
+    }
+
     /// What a structure costs in work and material, and which materials may be spent on it.
     ///
     /// `None` when the catalogue states neither - 22 of the data page's 58 structures (a Shaft, a
