@@ -34,6 +34,7 @@ import type {
   StructureInfo
 } from "@atlantis/core-client";
 import { commandsOnly, findUnitBlocks, readUnitOrders } from "./ordersDocument";
+import type { OrderCommentSyntax } from "./rulesets";
 
 /** One field that differs, preformatted on both sides so a view can render it without knowing the
  * arithmetic behind it (item multisets, skill lists, and so on). */
@@ -333,9 +334,13 @@ function commandsEqual(a: string[], b: string[]): boolean {
  * A unit formed this turn has no id until the next report - it appears in a draft as a `FORM` block
  * rather than a `unit <id>` block, so it falls outside this function entirely, on both sides.
  */
-export function diffOrders(olderText: string, newerText: string): OrdersDiff {
-  const olderIds = findUnitBlocks(olderText).map((block) => block.unitId);
-  const newerIds = findUnitBlocks(newerText).map((block) => block.unitId);
+export function diffOrders(
+  olderText: string,
+  newerText: string,
+  syntax: OrderCommentSyntax = "origins"
+): OrdersDiff {
+  const olderIds = findUnitBlocks(olderText, syntax).map((block) => block.unitId);
+  const newerIds = findUnitBlocks(newerText, syntax).map((block) => block.unitId);
   const olderIdSet = new Set(olderIds);
   const newerIdSet = new Set(newerIds);
 
@@ -347,8 +352,8 @@ export function diffOrders(olderText: string, newerText: string): OrdersDiff {
     if (!newerIdSet.has(unitId)) {
       continue;
     }
-    const before = commandsOnly(readUnitOrders(olderText, unitId) ?? "");
-    const after = commandsOnly(readUnitOrders(newerText, unitId) ?? "");
+    const before = commandsOnly(readUnitOrders(olderText, unitId, undefined, syntax) ?? "");
+    const after = commandsOnly(readUnitOrders(newerText, unitId, undefined, syntax) ?? "");
     if (!commandsEqual(before, after)) {
       changed.push({ unitId, before, after });
     }

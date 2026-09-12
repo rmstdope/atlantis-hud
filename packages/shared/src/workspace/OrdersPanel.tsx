@@ -1,6 +1,7 @@
 import type { BuildPlacementRefusal, OrderDiagnostic, ReportUnit } from "@atlantis/core-client";
 import { useMemo } from "react";
 import type { HexNode } from "../hexMapModel";
+import type { OrderCommentSyntax } from "../rulesets";
 import { readableTime, type SaveState } from "../orderDraft";
 import {
   diagnosticsForUnit,
@@ -74,6 +75,14 @@ type OrdersPanelProps = {
    * everything (ah-9ess).
    */
   walkPosition?: { at: number; of: number } | null;
+
+  /**
+   * How the game played reads an unquoted semicolon (`rulesets.orderCommentSyntaxFor`).
+   *
+   * Passed down rather than derived here: the shell holds the open game, and every reader of the
+   * document has to answer the question the same way the validator does.
+   */
+  orderCommentSyntax?: OrderCommentSyntax;
 };
 
 export function OrdersPanel({
@@ -95,7 +104,8 @@ export function OrdersPanel({
   caretCompletions,
   editorRef,
   onWalkProblems,
-  walkPosition
+  walkPosition,
+  orderCommentSyntax = "origins"
 }: OrdersPanelProps) {
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
   // keeps the editor's `latest` ref current without rebuilding the view.
@@ -103,7 +113,10 @@ export function OrdersPanel({
   const showBuildPlacementRefusals = useSettingsStore(
     (state) => state.showBuildPlacementRefusals
   );
-  const block = unitId === null ? null : readUnitOrders(document, unitId, regionUnitIds);
+  const block =
+    unitId === null
+      ? null
+      : readUnitOrders(document, unitId, regionUnitIds, orderCommentSyntax);
   const lock = lockFor(unit, hex, formed);
 
   // This unit's problems, and how many the rest of the faction has. The document-wide figure is
@@ -117,14 +130,22 @@ export function OrdersPanel({
     () =>
       locked || unitId === null
         ? []
-        : diagnosticsForUnit(validated.text, unitId, validated.diagnostics, regionUnitIds),
-    [locked, unitId, validated, regionUnitIds]
+        : diagnosticsForUnit(
+            validated.text,
+            unitId,
+            validated.diagnostics,
+            regionUnitIds,
+            orderCommentSyntax
+          ),
+    [locked, unitId, validated, regionUnitIds, orderCommentSyntax]
   );
   // The text those line and column numbers were counted in, which validation being debounced means
   // is not always the draft on screen. Quoting a token out of the draft instead would occasionally
   // quote whatever now sits at those columns.
   const validatedBlock =
-    unitId === null ? "" : (readUnitOrders(validated.text, unitId, regionUnitIds) ?? "");
+    unitId === null
+      ? ""
+      : (readUnitOrders(validated.text, unitId, regionUnitIds, orderCommentSyntax) ?? "");
   const here = summarizeOrderValidation({ diagnostics: problems });
   // What the rest of the faction has wrong, counted apart from this unit's own. A whole-document
   // total sitting beside a per-unit count reads as though the two should be added together.
@@ -163,6 +184,7 @@ export function OrdersPanel({
             placementRefusals={showBuildPlacementRefusals ? placementRefusals : []}
             commands={commands}
             orderVocabulary={orderVocabulary}
+            orderCommentSyntax={orderCommentSyntax}
             orderOcd={orderOcd}
             snippets={snippets}
             caretCompletions={caretCompletions}

@@ -6,6 +6,7 @@ import type {
 } from "@atlantis/core-client";
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
 import { blockFor, findFormBlocks, formBlockFor, formedAlias } from "./ordersDocument";
+import type { OrderCommentSyntax } from "./rulesets";
 import type { FormBlock } from "./ordersDocument";
 import { unitRowKey, type UnitRowKey } from "./unitTable";
 
@@ -159,9 +160,10 @@ export function diagnosticsForUnit(
   document: string,
   unitId: string,
   diagnostics: OrderDiagnostic[],
-  regionUnitIds?: ReadonlySet<string>
+  regionUnitIds?: ReadonlySet<string>,
+  syntax: OrderCommentSyntax = "origins"
 ): OrderDiagnostic[] {
-  const block = blockFor(document, unitId, regionUnitIds);
+  const block = blockFor(document, unitId, regionUnitIds, syntax);
   if (!block) {
     return [];
   }
@@ -179,10 +181,11 @@ export function diagnosticsForUnit(
   // Only a block a formed unit's own editor can actually reach: a duplicate `form 1` the server
   // swallows is reachable from no editor, so excluding its lines would leave a syntax error inside
   // it underlined nowhere.
-  const formBlocks = regionUnitIds === undefined ? [] : findFormBlocks(document);
+  const formBlocks = regionUnitIds === undefined ? [] : findFormBlocks(document, syntax);
   const reachable = (candidate: FormBlock): boolean =>
     regionUnitIds !== undefined &&
-    formBlockFor(document, candidate.alias, regionUnitIds)?.headerLine === candidate.headerLine;
+    formBlockFor(document, candidate.alias, regionUnitIds, syntax)?.headerLine ===
+      candidate.headerLine;
   const nested = formBlocks.filter((candidate) => {
     if (!reachable(candidate)) {
       return false;
@@ -244,17 +247,19 @@ export function buildPlacementRefusalsForUnit(
   document: string,
   unitId: string,
   refusals: BuildPlacementRefusal[],
-  regionUnitIds?: ReadonlySet<string>
+  regionUnitIds?: ReadonlySet<string>,
+  syntax: OrderCommentSyntax = "origins"
 ): BuildPlacementRefusal[] {
-  const block = blockFor(document, unitId, regionUnitIds);
+  const block = blockFor(document, unitId, regionUnitIds, syntax);
   if (!block) {
     return [];
   }
 
-  const formBlocks = regionUnitIds === undefined ? [] : findFormBlocks(document);
+  const formBlocks = regionUnitIds === undefined ? [] : findFormBlocks(document, syntax);
   const reachable = (candidate: FormBlock): boolean =>
     regionUnitIds !== undefined &&
-    formBlockFor(document, candidate.alias, regionUnitIds)?.headerLine === candidate.headerLine;
+    formBlockFor(document, candidate.alias, regionUnitIds, syntax)?.headerLine ===
+      candidate.headerLine;
   const nested = formBlocks.filter((candidate) => {
     if (!reachable(candidate)) {
       return false;

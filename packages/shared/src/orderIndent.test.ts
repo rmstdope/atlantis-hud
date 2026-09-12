@@ -147,3 +147,25 @@ describe("tidyInsertion", () => {
     expect(tidyInsertion("form 1\n\nend", 1, vocabulary)).toBe("FORM 1\n\n END");
   });
 });
+
+describe("the selected world's comment boundary", () => {
+  it("counts a Trident FORM and END that carry comments", () => {
+    const text = ["FORM 1;the scout", "MOVE N;north", "END;done", "WORK;mine"].join("\n");
+    expect(lineDepths(text, "trident")).toEqual([0, 1, 0, 0]);
+  });
+
+  it("leaves a New Origins FORM;note as an ordinary line, opening nothing", () => {
+    const text = ["FORM;the scout", "MOVE N", "END;done", "WORK"].join("\n");
+    // `FORM;the` is one word under the middle-of-word rule, so no block opens - and `END;done`
+    // closes nothing, which is what keeps every line at depth zero.
+    expect(lineDepths(text, "origins")).toEqual([0, 0, 0, 0]);
+    // The same document in Trident nests the two lines between FORM and END.
+    expect(lineDepths(text, "trident")).toEqual([0, 1, 0, 0]);
+  });
+
+  it("indents a Trident block written with comments", () => {
+    expect(indentBlock(["FORM 1;x", "MOVE N;y", "END;z"].join("\n"), "trident")).toBe(
+      ["FORM 1;x", " MOVE N;y", "END;z"].join("\n")
+    );
+  });
+});

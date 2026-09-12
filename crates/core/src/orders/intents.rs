@@ -228,7 +228,7 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
 pub fn read_intents_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents> {
     let mut units: Vec<UnitIntents> = Vec::new();
 
-    walk::walk(source, |event| match event {
+    walk::walk_with_ruleset(source, ruleset, |event| match event {
         // A unit line ends the previous block, nesting and all: the walk abandons whatever was
         // still open before this event, so an unclosed TURN cannot swallow the next unit's orders.
         Event::Unit(line) => {
@@ -378,7 +378,7 @@ pub fn read_formed_with_ruleset(
         by_alias: BTreeMap::new(),
         results: Vec::new(),
     };
-    walk::walk(source, |event| reader.visit(event));
+    walk::walk_with_ruleset(source, ruleset, |event| reader.visit(event));
     reader.results
 }
 
@@ -2056,5 +2056,30 @@ mod tests {
             }],
             "the BUY belongs to the inner unit, not the outer one"
         );
+    }
+
+    #[test]
+    fn trident_comment_suffix_preserves_guard_and_give() {
+        let unit = only_unit_with_ruleset(
+            "unit 5\nGUARD 1;keep the hex\nGIVE 4573 100 SILV;a tip\n",
+            atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        );
+
+        assert_eq!(
+            unit.intents
+                .iter()
+                .map(|placed| placed.intent.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                Intent::Guard(true),
+                Intent::Give {
+                    to: Party::Unit("4573".to_string()),
+                    what: Selector::Item("SILV".to_string()),
+                    amount: Amount::Exact(100),
+                },
+            ],
+            "a Trident comment must not change what the order does"
+        );
+        assert_eq!(unit.unread, Vec::<usize>::new());
     }
 }

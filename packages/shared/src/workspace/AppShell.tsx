@@ -44,7 +44,7 @@ import {
 } from "../ordersDocument";
 import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
-import { rulesetById } from "../rulesets";
+import { orderCommentSyntaxFor, rulesetById } from "../rulesets";
 import { unitRowKey } from "../unitTable";
 import { unitAtCursor, unitCursor } from "./unitCursor";
 import type { MapShape } from "@atlantis/core-client";
@@ -514,6 +514,19 @@ export function AppShell({
     return found;
   }, [parsed]);
 
+  // Which game is open, and every game there is. Both live here because both change together:
+  // creating, switching and deleting all move the open game and the list in one step.
+  const [game, setGame] = useState<OpenedGame | null>(null);
+  const openRulesetId = game?.manifest.metadata.rulesetId;
+  /**
+   * How the open game reads an unquoted semicolon, derived once from its recorded ruleset id.
+   *
+   * Everything that locates, classifies, rewrites or exports order text is given this, because a
+   * Trident `WORK;note` is a `WORK` with a comment on it and a New Origins `WORK;note` is one
+   * word (`rules/orders` on each server). A game with no ruleset id answers `"origins"`.
+   */
+  const orderCommentSyntax = orderCommentSyntaxFor(openRulesetId);
+
   /**
    * What a unit will spend the month on, read from the live document so the units table follows an
    * edit in the orders pane without anything having to be reselected. `readUnitOrders` answers null
@@ -521,8 +534,16 @@ export function AppShell({
    */
   const getLongOrder = useCallback(
     (unitId: string, regionId: string) =>
-      longOrderOf(readUnitOrders(ordersDocument, unitId, unitIdsByRegion.get(regionId)) ?? ""),
-    [ordersDocument, unitIdsByRegion]
+      longOrderOf(
+        readUnitOrders(
+          ordersDocument,
+          unitId,
+          unitIdsByRegion.get(regionId),
+          orderCommentSyntax
+        ) ?? "",
+        orderCommentSyntax
+      ),
+    [ordersDocument, unitIdsByRegion, orderCommentSyntax]
   );
   /**
    * Each unit's long order as the report's own orders template had it - the baseline the Long
@@ -531,8 +552,8 @@ export function AppShell({
    * the popup is there to show against it.
    */
   const reportedLongOrderIndex = useMemo(
-    () => reportedLongOrders(parsed?.ordersTemplate),
-    [parsed]
+    () => reportedLongOrders(parsed?.ordersTemplate, orderCommentSyntax),
+    [parsed, orderCommentSyntax]
   );
   const getReportedLongOrder = useCallback(
     (unitId: string) => reportedLongOrderFor(reportedLongOrderIndex, unitId),
@@ -683,9 +704,7 @@ export function AppShell({
   // The preview is deliberately retained through a rejected request for the tables, but refusal
   // widgets must know which exact document produced the answer so they never decorate newer text.
   const [ordersPreviewDocument, setOrdersPreviewDocument] = useState<string | null>(null);
-  // Which game is open, and every game there is. Both live here because both change together:
-  // creating, switching and deleting all move the open game and the list in one step.
-  const [game, setGame] = useState<OpenedGame | null>(null);
+
   // Bumped by `enterGame` alone - open, create and every import mode, replace included. What the
   // ruleset-fetch, turn-restore and hex-notes effects below actually need to know is "did the
   // player just land in a (possibly different) database", not "did `game`'s reference change":
@@ -1054,7 +1073,6 @@ export function AppShell({
    * declared default, and a ruleset that declares none yields the empty string, which is how the
    * core hears "the game never said" and keeps computing neighbours exactly as it always did.
    */
-  const openRulesetId = game?.manifest.metadata.rulesetId;
   const recordedMapShape = game?.manifest.metadata.map;
   const mapShape = useMemo(
     () =>
@@ -1292,8 +1310,9 @@ export function AppShell({
    * tested without a jsdom (`ah-nass`, `.cerebro/traps.md`).
    */
   const formedSelection = useMemo(
-    () => formedSelectionFor(ordersDocument, selectedUnitId, regionUnitIds),
-    [ordersDocument, selectedUnitId, regionUnitIds]
+    () =>
+      formedSelectionFor(ordersDocument, selectedUnitId, regionUnitIds, orderCommentSyntax),
+    [ordersDocument, selectedUnitId, regionUnitIds, orderCommentSyntax]
   );
 
   /** Every own unit in the report, for the units dock's `All my units` source. `ah-1mpx.2`. */
@@ -1379,8 +1398,14 @@ export function AppShell({
 
   // Every problem the F8 walk can visit, in document order, against the text validation saw.
   const problemTargets = useMemo(
-    () => diagnosticTargets(validated.text, validated.diagnostics, unitIdsByRegion),
-    [validated, unitIdsByRegion]
+    () =>
+      diagnosticTargets(
+        validated.text,
+        validated.diagnostics,
+        unitIdsByRegion,
+        orderCommentSyntax
+      ),
+    [validated, unitIdsByRegion, orderCommentSyntax]
   );
 
   // The document position of each stop, for carrying the walk across a re-validation.
@@ -3529,7 +3554,8 @@ export function AppShell({
       ordersDocument,
       selectedUnitId,
       unitPreview.buildPlacementRefusals,
-      regionUnitIds
+      regionUnitIds,
+      orderCommentSyntax
     );
   }, [
     unitPreview,
@@ -3538,7 +3564,8 @@ export function AppShell({
     ordersDocument,
     ruleset.status,
     rawReport,
-    regionUnitIds
+    regionUnitIds,
+    orderCommentSyntax
   ]);
 
   /** The faction and turn the document in front of the player belongs to. */
@@ -3588,12 +3615,27 @@ export function AppShell({
       writeOrdersDocument("editor", (document) => {
         // The block is created on the first keystroke, not on selection: an edit that arrives with
         // no text in it has typed nothing (ah-0gs8).
-        const next = applyUnitOrders(document, unitId, orders, newBlockBanner, regionUnitIds);
+        const next = applyUnitOrders(
+          document,
+          unitId,
+          orders,
+          newBlockBanner,
+          regionUnitIds,
+          orderCommentSyntax
+        );
         writer.markDirty(game, draftKey, next);
         return next;
       });
     },
-    [game, draftKey, writer, writeOrdersDocument, newBlockBanner, regionUnitIds]
+    [
+      game,
+      draftKey,
+      writer,
+      writeOrdersDocument,
+      newBlockBanner,
+      regionUnitIds,
+      orderCommentSyntax
+    ]
   );
 
   /**
@@ -3619,7 +3661,7 @@ export function AppShell({
       return;
     }
     repaired.current = { revision: externalOrdersRevision, document: ordersDocument };
-    const repair = repairFormedUnitBlocks(ordersDocument);
+    const repair = repairFormedUnitBlocks(ordersDocument, orderCommentSyntax);
     if (repair.document !== ordersDocument) {
       repaired.current = { revision: externalOrdersRevision, document: repair.document };
       // External, not "editor": the editor may already have taken the stale text, and only an
@@ -3633,7 +3675,15 @@ export function AppShell({
     if (line) {
       setStatus(line);
     }
-  }, [externalOrdersRevision, ordersDocument, writeOrdersDocument, writer, game, draftKey]);
+  }, [
+    externalOrdersRevision,
+    ordersDocument,
+    writeOrdersDocument,
+    writer,
+    game,
+    draftKey,
+    orderCommentSyntax
+  ]);
 
   /**
    * Applies the confirmed orders import: the file text becomes the document, through the same
@@ -3717,13 +3767,23 @@ export function AppShell({
           unitId: unit.unitId,
           banner: newBlockBanner,
           regionUnitIds,
-          order
+          order,
+          syntax: orderCommentSyntax
         });
         writer.markDirty(game, draftKey, written);
         return written;
       });
     },
-    [unit, game, draftKey, writer, writeOrdersDocument, newBlockBanner, regionUnitIds]
+    [
+      unit,
+      game,
+      draftKey,
+      writer,
+      writeOrdersDocument,
+      newBlockBanner,
+      regionUnitIds,
+      orderCommentSyntax
+    ]
   );
 
   /**
@@ -3804,8 +3864,15 @@ export function AppShell({
   const ordersTemplateText = parsed?.ordersTemplate?.text ?? null;
 
   const exportOrders = useCallback(() => {
-    void deliverOrdersExport(saveTextFile, parsed?.header.turnNumber, ordersDocument, ordersTemplateText, false);
-  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile]);
+    void deliverOrdersExport(
+      saveTextFile,
+      parsed?.header.turnNumber,
+      ordersDocument,
+      ordersTemplateText,
+      false,
+      orderCommentSyntax
+    );
+  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile, orderCommentSyntax]);
 
   /**
    * The same file, with the server's long-format unit descriptions put back in - see issue #52.
@@ -3813,8 +3880,15 @@ export function AppShell({
    * second kind of file.
    */
   const exportOrdersLong = useCallback(() => {
-    void deliverOrdersExport(saveTextFile, parsed?.header.turnNumber, ordersDocument, ordersTemplateText, true);
-  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile]);
+    void deliverOrdersExport(
+      saveTextFile,
+      parsed?.header.turnNumber,
+      ordersDocument,
+      ordersTemplateText,
+      true,
+      orderCommentSyntax
+    );
+  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile, orderCommentSyntax]);
 
   /**
    * Where the send dialog has got to, or null when it is closed.
@@ -3906,7 +3980,7 @@ export function AppShell({
         url: uploadUrl,
         factionId: sendFactionId,
         password,
-        ordersText: ordersExportText(ordersDocument, ordersTemplateText, false),
+        ordersText: ordersExportText(ordersDocument, ordersTemplateText, false, orderCommentSyntax),
         boundary: `----atlantis-hud-${crypto.randomUUID()}`,
         signal: controller.signal
       });
@@ -3917,7 +3991,16 @@ export function AppShell({
         setSendPhase(phase);
       }
     },
-    [uploadOrders, uploadUrl, sendFactionId, canSendOrders, flush, ordersDocument, ordersTemplateText]
+    [
+      uploadOrders,
+      uploadUrl,
+      sendFactionId,
+      canSendOrders,
+      flush,
+      ordersDocument,
+      ordersTemplateText,
+      orderCommentSyntax
+    ]
   );
 
   /**
@@ -4288,7 +4371,7 @@ export function AppShell({
         upload: (text, boundary, signal) => newAgeApi.uploadOrders(bound, text, boundary, signal),
         // The unit descriptions are left out, exactly as the New Origins send does: the Export
         // menu's "keep the descriptions" choice is about a file for a person to read.
-        ordersText: ordersExportText(ordersDocument, ordersTemplateText, false),
+        ordersText: ordersExportText(ordersDocument, ordersTemplateText, false, orderCommentSyntax),
         password,
         boundary: `----atlantis-hud-${crypto.randomUUID()}`,
         signal: controller.signal
@@ -4313,7 +4396,8 @@ export function AppShell({
       openGameId,
       flush,
       ordersDocument,
-      ordersTemplateText
+      ordersTemplateText,
+      orderCommentSyntax
     ]
   );
 
@@ -4687,8 +4771,8 @@ export function AppShell({
       { turn: workingTurn, value: ordersDocument },
       { turn: comparison.key.turnNumber, value: comparedOrders.text }
     );
-    return diffOrders(older, newer);
-  }, [turnDiff, comparison, comparedOrders, parsed, ordersDocument]);
+    return diffOrders(older, newer, orderCommentSyntax);
+  }, [turnDiff, comparison, comparedOrders, parsed, ordersDocument, orderCommentSyntax]);
 
   const ordersStillLoading = comparedOrdersLoading({
     dialogOpen: changesOpen,
@@ -4794,6 +4878,7 @@ export function AppShell({
           onSaveText={(fileName, text) => void saveStudyOrders(fileName, text)}
           ordersError={studyOrdersError}
           ordersDocument={ordersDocument}
+          orderCommentSyntax={orderCommentSyntax}
           regionBanner={regionBanner}
           onWriteOrdersDocument={writeStudyOrdersDocument}
           tree={magicTree}
@@ -5172,6 +5257,7 @@ export function AppShell({
       */}
       {ordersImportSummary ? (
         <OrdersImportSummaryDialog
+          orderCommentSyntax={orderCommentSyntax}
           summary={ordersImportSummary}
           onDismiss={() => setOrdersImportSummary(null)}
         />
@@ -5393,6 +5479,7 @@ export function AppShell({
                   unit={unit}
                   unitId={selectedUnitId}
                   formed={formedSelection}
+                  orderCommentSyntax={orderCommentSyntax}
                   regionUnitIds={regionUnitIds}
                   hex={hex}
                   document={ordersDocument}

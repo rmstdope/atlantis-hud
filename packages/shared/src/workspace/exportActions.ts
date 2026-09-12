@@ -16,6 +16,7 @@ import { mageSheetFileName } from "../mageSheet";
 import { exportFileName, exportRequestOf } from "../mapExport";
 import { ordersExportText } from "./ordersExport";
 import type { MapRect } from "./mapMarquee";
+import type { OrderCommentSyntax } from "../rulesets";
 
 /**
  * Builds and delivers an orders export - the part of `exportOrders`/`exportOrdersLong` that has no
@@ -31,10 +32,11 @@ export async function deliverOrdersExport(
   turnNumber: number | null | undefined,
   ordersDocument: string,
   ordersTemplateText: string | null,
-  withDescriptions: boolean
+  withDescriptions: boolean,
+  syntax: OrderCommentSyntax = "origins"
 ): Promise<void> {
   const fileName = `orders-turn-${turnNumber ?? "unknown"}.txt`;
-  const text = ordersExportText(ordersDocument, ordersTemplateText, withDescriptions);
+  const text = ordersExportText(ordersDocument, ordersTemplateText, withDescriptions, syntax);
   try {
     await saveTextFile(fileName, text, "text/plain");
   } catch (error: unknown) {

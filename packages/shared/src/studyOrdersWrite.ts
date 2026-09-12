@@ -20,6 +20,7 @@ import {
   stripLongOrderLines,
   writeUnitOrders
 } from "./ordersDocument";
+import type { OrderCommentSyntax } from "./rulesets";
 import type { OrdersEntry } from "./studyOrders";
 
 /** One line of the confirmation: a change about to be made, or a mage this write leaves alone. */
@@ -93,7 +94,10 @@ export function studyWritePlan(input: {
   banner: (regionId: string) => string | null;
   /** How a region id reads to a player: `AppShell`'s `hexLabel`. */
   label: (regionId: string) => string;
+  /** How the game played reads an unquoted semicolon. */
+  syntax?: OrderCommentSyntax;
 }): StudyWritePlan {
+  const syntax = input.syntax ?? "origins";
   const rows: WriteRow[] = [];
   let next = input.document;
   let changed = 0;
@@ -111,7 +115,7 @@ export function studyWritePlan(input: {
       continue;
     }
 
-    const hadBlock = findUnitBlocks(next).some((block) => block.unitId === entry.unitId);
+    const hadBlock = findUnitBlocks(next, syntax).some((block) => block.unitId === entry.unitId);
     const banner = hadBlock ? null : input.banner(entry.regionId);
     if (!hadBlock && banner === null) {
       // `writeUnitOrders` silently does nothing for a unit with no block, and inventing a banner
@@ -125,16 +129,22 @@ export function studyWritePlan(input: {
       continue;
     }
 
-    const base = hadBlock ? next : ensureUnitBlock(next, entry.unitId, banner ?? "");
-    const existing = readUnitOrders(base, entry.unitId) ?? "";
-    const previous = longOrderOf(existing);
-    const kept = stripLongOrderLines(existing);
+    const base = hadBlock ? next : ensureUnitBlock(next, entry.unitId, banner ?? "", syntax);
+    const existing = readUnitOrders(base, entry.unitId, undefined, syntax) ?? "";
+    const previous = longOrderOf(existing, syntax);
+    const kept = stripLongOrderLines(existing, syntax);
     const line = lineFor({ ...entry, order: entry.order });
 
     // `kept.trim()`, not `kept === ""`: a block that held nothing but a blank line and a long
     // order leaves a blank line behind, and `writeUnitOrders` drops only *trailing* blanks - so
     // the written line would land under one.
-    next = writeUnitOrders(base, entry.unitId, kept.trim() === "" ? line : `${kept}\n${line}`);
+    next = writeUnitOrders(
+      base,
+      entry.unitId,
+      kept.trim() === "" ? line : `${kept}\n${line}`,
+      undefined,
+      syntax
+    );
     changed += 1;
     if (previous !== null && !OWN_KIND.test(previous)) {
       replaced += 1;

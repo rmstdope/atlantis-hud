@@ -32,7 +32,7 @@ pub fn validate(source: &str, ruleset_json: Option<&str>) -> OrderValidationResu
 pub fn validate_against(source: &str, ruleset: Option<&Ruleset>) -> OrderValidationResult {
     let mut document = Document::default();
 
-    walk::walk(source, |event| document.visit(event, ruleset));
+    walk::walk_with_ruleset(source, ruleset, |event| document.visit(event, ruleset));
     document.finish(source);
 
     let mut diagnostics = document.diagnostics;
@@ -995,6 +995,36 @@ mod tests {
                 .map(|diagnostic| (diagnostic.line_start, diagnostic.code.as_str()))
                 .collect::<Vec<_>>(),
             vec![(Some(1), "unclosed-block"), (Some(2), "unknown-command")]
+        );
+    }
+
+    #[test]
+    fn trident_comments_do_not_create_command_or_item_diagnostics() {
+        let source = concat!(
+            "#atlantis 1 \"pw\"\n",
+            "unit 42;the miner\n",
+            "WORK;paying for the guard\n",
+            "GUARD 1;keep the hex\n",
+            "GIVE 42 1 SILV;a tip\n",
+            "#end;done\n",
+        );
+
+        let diagnostics =
+            diagnose_with_ruleset(source, atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON);
+        assert_eq!(
+            diagnostics,
+            Vec::<OrderDiagnostic>::new(),
+            "a Trident comment attached to a token is a comment, not part of it"
+        );
+
+        // The Origins control: the same document keeps the documented middle-of-word behaviour.
+        let origins_codes: Vec<String> = diagnose_with_ruleset(source, RULESET)
+            .into_iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect();
+        assert!(
+            origins_codes.contains(&"unknown-command".to_string()),
+            "New Origins still reads WORK;note as one word: {origins_codes:?}"
         );
     }
 }

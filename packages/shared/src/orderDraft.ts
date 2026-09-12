@@ -12,6 +12,7 @@
 
 import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
 import { stripUnitComments } from "./ordersDocument";
+import type { OrderCommentSyntax } from "./rulesets";
 
 /**
  * Which draft a document is.
@@ -114,9 +115,10 @@ export async function documentFor(
   client: CoreClient,
   game: OpenedGame,
   key: DraftKey | null,
-  template: string
+  template: string,
+  syntax: OrderCommentSyntax = "origins"
 ): Promise<DocumentChoice> {
-  const clean = stripUnitComments(template);
+  const clean = stripUnitComments(template, syntax);
 
   if (key === null) {
     return { text: clean, restored: false, savedAt: null, warning: null };

@@ -86,3 +86,26 @@ export function rulesetById(rulesetId: string): Ruleset | null {
 export function defaultMapFor(rulesetId: string): MapShape | null {
   return rulesetById(rulesetId)?.defaultMap ?? null;
 }
+
+/**
+ * How a ruleset reads an unquoted semicolon in an order line.
+ *
+ * Trident's `rules/orders` says a semicolon ends whatever word it lands in, so it starts a comment
+ * wherever it appears; New Origins' own page keeps one that is in the middle of a word. The
+ * difference is deliberate, which is why this is a ruleset-shaped fact rather than one policy for
+ * every world.
+ */
+export type OrderCommentSyntax = "origins" | "trident";
+
+/**
+ * The comment policy for the game played under this ruleset.
+ *
+ * An absent or unknown id answers `"origins"`: that is the documented behaviour of the world this
+ * build started with, and it is the safe answer for a game whose ruleset this build does not ship -
+ * reading a semicolon as a comment where the server does not would silently drop order text.
+ */
+export function orderCommentSyntaxFor(
+  rulesetId: string | null | undefined
+): OrderCommentSyntax {
+  return rulesetId === "newage-trident" ? "trident" : "origins";
+}

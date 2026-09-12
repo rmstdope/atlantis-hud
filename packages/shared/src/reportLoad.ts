@@ -56,6 +56,7 @@ import { sortUnitsForDisplay } from "./hexMapModel";
 import { countsStatus, noticeStatus, warningStatus } from "./workspace/shellStatus";
 import { seedOrdersDocument } from "./ordersDocument";
 import { factionLabelOf } from "./factionLabel";
+import { orderCommentSyntaxFor } from "./rulesets";
 
 // Moved to `factionLabel.ts` so `mageSheetImport.ts` can use it without a cycle through this
 // module; re-exported here so every existing importer is untouched.
@@ -123,7 +124,13 @@ export async function loadTurn(
   // work; a new turn's report brings a clean template with it.
   const template = seedOrdersDocument(report.ordersTemplate?.text ?? "", report.header.factionId);
   const chosen = game
-    ? await documentFor(client, game, draftKeyFor(report), template)
+    ? await documentFor(
+        client,
+        game,
+        draftKeyFor(report),
+        template,
+        orderCommentSyntaxFor(game.manifest.metadata.rulesetId)
+      )
     : { text: template, restored: false, savedAt: null, warning: null };
 
   // The faction the player chose is the faction the game remembers (ah-do8). Only the paths that

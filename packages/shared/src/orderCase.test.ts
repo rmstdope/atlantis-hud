@@ -166,3 +166,60 @@ describe("keywordCaseChanges", () => {
     expect(keywordCaseChanges("move n", vocabulary, 0)).toEqual([{ from: 5, to: 6, insert: "N" }]);
   });
 });
+
+describe("the selected world's comment boundary", () => {
+  const vocabulary = buildVocabulary(["WORK", "GUARD", "MOVE"]);
+
+  it("shouts a Trident keyword that a comment is attached to", () => {
+    // Trident `rules/orders`: the semicolon ends the word, so `work` is the keyword.
+    expect(uppercaseLine("work;paying the guard", vocabulary, "trident")).toBe(
+      "WORK;paying the guard"
+    );
+    expect(bareWords("work;note", "trident").map((word) => word.text)).toEqual(["work"]);
+  });
+
+  it("leaves a New Origins word with a semicolon in the middle of it alone", () => {
+    // New Origins `rules/orders`: a comment only starts where the semicolon is not in the middle
+    // of a word - so `work;note` is one word, and not the keyword WORK.
+    // No comment ever starts, so what follows is order text rather than prose - which is why
+    // `guard` is still shouted and `work;paying` is not.
+    expect(uppercaseLine("work;paying the guard", vocabulary, "origins")).toBe(
+      "work;paying the GUARD"
+    );
+    expect(bareWords("work;note", "origins").map((word) => word.text)).toEqual([]);
+    // One at the end of a word still comments, in both worlds.
+    expect(uppercaseLine("work ;note", vocabulary, "origins")).toBe("WORK ;note");
+  });
+
+  it("stops at a semicolon that opens the line, in both worlds", () => {
+    // The regression this pins: a comment line's prose is not order text, so nothing in it is a
+    // keyword to shout at - and the `;***` region banner is a comment line too.
+    for (const syntax of ["origins", "trident"] as const) {
+      expect(bareWords(";Scout heading north, work later", syntax)).toEqual([]);
+      expect(uppercaseLine(";Scout heading north, work later", vocabulary, syntax)).toBe(
+        ";Scout heading north, work later"
+      );
+      expect(uppercaseLine(";*** plain (1,1) move ***", vocabulary, syntax)).toBe(
+        ";*** plain (1,1) move ***"
+      );
+      // And one that opens a token mid-line, after a word that is already finished.
+      expect(uppercaseLine("work ;and move later", vocabulary, syntax)).toBe(
+        "WORK ;and move later"
+      );
+    }
+  });
+
+  it("comments after a closed quote, in both worlds", () => {
+    // A semicolon following a finished quoted name is not in the middle of a word, so it starts a
+    // comment under both rules - `NAME UNIT "Scouts";north` carries a comment, not an argument.
+    for (const syntax of ["origins", "trident"] as const) {
+      expect(uppercaseLine('NAME UNIT "Scouts";work later', vocabulary, syntax)).toBe(
+        'NAME UNIT "Scouts";work later'
+      );
+    }
+  });
+
+  it("defaults to New Origins when no world is named", () => {
+    expect(uppercaseLine("work;note", vocabulary)).toBe("work;note");
+  });
+});

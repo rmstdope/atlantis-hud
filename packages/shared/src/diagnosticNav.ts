@@ -1,5 +1,6 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
 import { blockFor, findFormBlocks, findUnitBlocks, formBlockFor, formedAlias } from "./ordersDocument";
+import type { OrderCommentSyntax } from "./rulesets";
 import type { UnitBlock } from "./ordersDocument";
 
 /**
@@ -34,10 +35,11 @@ export type DiagnosticTarget = {
 export function diagnosticTargets(
   text: string,
   diagnostics: OrderDiagnostic[],
-  unitIdsByRegion?: ReadonlyMap<string, ReadonlySet<string>>
+  unitIdsByRegion?: ReadonlyMap<string, ReadonlySet<string>>,
+  syntax: OrderCommentSyntax = "origins"
 ): DiagnosticTarget[] {
-  const blocks = findUnitBlocks(text);
-  const formBlocks = unitIdsByRegion === undefined ? [] : findFormBlocks(text);
+  const blocks = findUnitBlocks(text, syntax);
+  const formBlocks = unitIdsByRegion === undefined ? [] : findFormBlocks(text, syntax);
 
   /**
    * Which hex each reported unit stands in.
@@ -66,7 +68,10 @@ export function diagnosticTargets(
       if (line < candidate.firstLine + 1 || line > candidate.lastLine + 1) {
         continue;
       }
-      if (formBlockFor(text, candidate.alias, regionUnitIds)?.headerLine !== candidate.headerLine) {
+      if (
+        formBlockFor(text, candidate.alias, regionUnitIds, syntax)?.headerLine !==
+        candidate.headerLine
+      ) {
         continue;
       }
       if (innermost === null || candidate.firstLine > innermost.firstLine) {
@@ -108,7 +113,7 @@ export function diagnosticTargets(
       (regionUnitIds === undefined ? null : formBlockAt(line, regionUnitIds)) ??
       null;
     const block: UnitBlock | null =
-      owner === null ? enclosing : blockFor(text, owner, regionUnitIds);
+      owner === null ? enclosing : blockFor(text, owner, regionUnitIds, syntax);
     if (!block) {
       continue;
     }

@@ -36,7 +36,9 @@ import {
   withFactionPassword,
   withUnitComments,
   writeRouteOrder,
-  writeUnitOrders
+  writeUnitOrders,
+  type FormBlock,
+  type UnitBlock
 } from "./ordersDocument";
 
 /** Shaped exactly like the template a real report carries. */
@@ -1576,5 +1578,93 @@ describe("writeRouteOrder", () => {
     });
     expect(written).toContain("buy 1 hdwa\nMOVE N\nend");
     expect(written).not.toContain("unit new-1");
+  });
+});
+
+describe("Trident comment boundaries", () => {
+  // Trident `rules/orders`: an unquoted semicolon starts a comment wherever it appears. The
+  // matching New Origins control is in each case, since the difference is the whole point.
+  const document = [
+    "#atlantis 1",
+    ";*** plain (1,1) in Nowhere ***",
+    "unit 42;the miner",
+    "WORK;paying the guard",
+    "FORM 1;the scout",
+    "MOVE N;north",
+    "END;done",
+    "",
+    "#end;that is all"
+  ].join("\n");
+
+  it("reads a unit header whose id carries a comment", () => {
+    expect(findUnitBlocks(document, "trident").map((block) => block.unitId)).toEqual(["42"]);
+    // New Origins reads `42;the` and `miner` as two separate arguments, so the line is not the
+    // `unit <id>` header at all and the block is never found.
+    expect(findUnitBlocks(document, "origins")).toEqual([]);
+  });
+
+  it("winds a block back over a #end that carries a comment", () => {
+    const block = findUnitBlocks(document, "trident")[0] as UnitBlock;
+    expect(document.split("\n")[block.lastLine]).toBe("END;done");
+  });
+
+  it("reads a FORM alias and its END through the comment", () => {
+    const forms = findFormBlocks(document, "trident");
+    expect(forms.map((form) => ({ alias: form.alias, unitId: form.unitId }))).toEqual([
+      { alias: "1", unitId: "42" }
+    ]);
+    expect(document.split("\n")[(forms[0] as FormBlock).lastLine]).toBe("MOVE N;north");
+    // Neither the unit nor the alias is readable under the New Origins rule.
+    expect(findFormBlocks(document, "origins")).toEqual([]);
+  });
+
+  it("reads a unit's own lines out of a commented block", () => {
+    expect(readUnitOrders(document, "42", undefined, "trident")).toBe(
+      ["WORK;paying the guard", "FORM 1;the scout", "MOVE N;north", "END;done"].join("\n")
+    );
+  });
+
+  it("finds the month-long order behind a comment, and only at top level", () => {
+    const orders = ["WORK;paying the guard", "FORM 1;x", "STUDY COMB;y", "END;z"].join("\n");
+    expect(longOrderOf(orders, "trident")).toBe("WORK;paying the guard");
+    // The nested STUDY belongs to the formed unit, comment or no.
+    expect(longOrderOf(["FORM 1;x", "STUDY COMB;y", "END;z"].join("\n"), "trident")).toBeNull();
+    // Under New Origins `WORK;paying` is one unknown word and no long order at all.
+    expect(longOrderOf(orders, "origins")).toBeNull();
+  });
+
+  it("keeps #end a directive that stands alone on its line", () => {
+    // As strict as the pattern it replaced: only the comment is new.
+    const trailing = ["unit 42;m", "WORK", "#end and then some", ""].join("\n");
+    const block = findUnitBlocks(trailing, "trident")[0] as UnitBlock;
+    expect(trailing.split("\n")[block.lastLine]).toBe("#end and then some");
+  });
+
+  it("still strips an order whose keyword carries punctuation", () => {
+    // The `\\b` patterns this replaced matched `MOVE, N`; leaving it would write a second
+    // movement order beside the first.
+    for (const syntax of ["origins", "trident"] as const) {
+      expect(stripMovementOrderLines("MOVE, N", syntax)).toBe("");
+      expect(stripLongOrderLines("WORK.", syntax)).toBe("");
+    }
+  });
+
+  it("opens and closes a block whose keyword carries punctuation", () => {
+    // The same unsafe direction as the keyword test above, one layer up: a `FORM, 1` that opened
+    // nothing would mark the formed unit's lines as the outer unit's own, and rewriting the outer
+    // unit's long order would then delete them.
+    const orders = ["WORK", "FORM, 1", "MOVE N", "END,", "TAX"].join("\n");
+    for (const syntax of ["origins", "trident"] as const) {
+      expect(stripLongOrderLines(orders, syntax)).toBe(["FORM, 1", "MOVE N", "END,"].join("\n"));
+    }
+  });
+
+  it("replaces a commented movement order rather than writing a second one", () => {
+    // The keyword itself carries the comment, which is the case the two worlds disagree about:
+    // with `MOVE N;note` the keyword is bare either way and both strip it.
+    const orders = "MOVE;the old plan";
+    expect(stripMovementOrderLines(orders, "trident")).toBe("");
+    expect(stripMovementOrderLines(orders, "origins")).toBe("MOVE;the old plan");
+    expect(stripMovementOrderLines("MOVE N;note", "origins")).toBe("");
   });
 });

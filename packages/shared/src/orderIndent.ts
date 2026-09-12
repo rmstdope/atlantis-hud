@@ -18,6 +18,7 @@ import {
   type Vocabulary
 } from "./orderCase";
 import { withoutTrailingBlankLines } from "./ordersDocument";
+import type { OrderCommentSyntax } from "./rulesets";
 
 type Block = "turn" | "form";
 
@@ -28,13 +29,16 @@ type Block = "turn" | "form";
  * to — so a closer reports the depth *outside* the block it closes, which is what puts `END` under
  * its `FORM` rather than under the block's contents.
  */
-export function lineDepths(text: string): number[] {
+export function lineDepths(
+  text: string,
+  syntax: OrderCommentSyntax = "origins"
+): number[] {
   const stack: Block[] = [];
   const depths: number[] = [];
 
   for (const line of text.split("\n")) {
     const trimmed = line.trimStart();
-    const first = bareWords(line)[0]?.text.toUpperCase();
+    const first = bareWords(line, syntax)[0]?.text.toUpperCase();
 
     // A `#` directive (`#atlantis`, `#end`) or a `unit` header can only arrive by paste - the
     // editor holds one unit's block - but `walk.rs` abandons everything open on both, so this does
@@ -69,8 +73,11 @@ export function lineDepths(text: string): number[] {
  * A line whose `trim()` is empty is left alone entirely, so a blank line stays truly empty and no
  * invisible whitespace is ever written into an orders file.
  */
-export function indentChanges(text: string): CaseChange[] {
-  const depths = lineDepths(text);
+export function indentChanges(
+  text: string,
+  syntax: OrderCommentSyntax = "origins"
+): CaseChange[] {
+  const depths = lineDepths(text, syntax);
   const changes: CaseChange[] = [];
   let lineStart = 0;
 
@@ -92,8 +99,8 @@ export function indentChanges(text: string): CaseChange[] {
 }
 
 /** The block with every line indented to its depth. */
-export function indentBlock(text: string): string {
-  return applyChanges(text, indentChanges(text));
+export function indentBlock(text: string, syntax: OrderCommentSyntax = "origins"): string {
+  return applyChanges(text, indentChanges(text, syntax));
 }
 
 /** The block ending in exactly one newline - and an empty block left empty. */
@@ -128,11 +135,15 @@ export function trailingNewlineChange(text: string): CaseChange | null {
 export function contentChanges(
   text: string,
   vocabulary: Vocabulary,
-  protect: number | null
+  protect: number | null,
+  syntax: OrderCommentSyntax = "origins"
 ): CaseChange[] {
   // `to` breaks the tie so a zero-width indent insertion sorts ahead of a case change that starts
   // at the same offset - the line's first word, on a line with no indentation yet.
-  return [...keywordCaseChanges(text, vocabulary, protect), ...indentChanges(text)].sort(
+  return [
+    ...keywordCaseChanges(text, vocabulary, protect, syntax),
+    ...indentChanges(text, syntax)
+  ].sort(
     (a, b) => a.from - b.from || a.to - b.to
   );
 }
@@ -153,9 +164,14 @@ function applyChanges(text: string, changes: readonly CaseChange[]): string {
  * The first line keeps whatever leading whitespace it arrived with: it is continuing the line the
  * caret was already on, and re-indenting it would move text the paste is not responsible for.
  */
-export function tidyInsertion(text: string, baseDepth: number, vocabulary: Vocabulary): string {
-  const shouted = uppercaseKeywords(text, vocabulary);
-  const depths = lineDepths(shouted);
+export function tidyInsertion(
+  text: string,
+  baseDepth: number,
+  vocabulary: Vocabulary,
+  syntax: OrderCommentSyntax = "origins"
+): string {
+  const shouted = uppercaseKeywords(text, vocabulary, syntax);
+  const depths = lineDepths(shouted, syntax);
   return shouted
     .split("\n")
     .map((line, index) => {

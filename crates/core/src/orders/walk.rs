@@ -7,7 +7,8 @@
 //! had to be fixed in three of them at once (c6ee017), and they had drifted apart again by ah-nc7.
 //! This module walks once and reports what it passes; what to do about it is each reader's.
 
-use super::lexer::{lex_line, LexedLine, Token};
+use super::lexer::{lex_line_with_ruleset, LexedLine, Token};
+use crate::movement::rules::Ruleset;
 
 /// Which kind of block a line opens or closes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,12 +125,23 @@ fn abandon_all(stack: &mut Vec<Opened>, mut visit: impl FnMut(Event<'_>)) {
 
 /// Walks `source` and calls `visit` once per event, in document order. Blank lines and
 /// comment-only lines produce no event. Every reader in this crate goes through here.
-pub fn walk(source: &str, mut visit: impl FnMut(Event<'_>)) {
+pub fn walk(source: &str, visit: impl FnMut(Event<'_>)) {
+    walk_with_ruleset(source, None, visit);
+}
+
+/// The same walk, under the selected world's lexical rules - the one world-aware document walk in
+/// this crate. Every reader that already holds a ruleset comes through here, so the tokens a
+/// projection acts on are the tokens the validator accepted.
+pub fn walk_with_ruleset(
+    source: &str,
+    ruleset: Option<&Ruleset>,
+    mut visit: impl FnMut(Event<'_>),
+) {
     let mut stack: Vec<Opened> = Vec::new();
 
     for (index, text) in source.lines().enumerate() {
         let number = index + 1;
-        let lexed = lex_line(text);
+        let lexed = lex_line_with_ruleset(text, ruleset);
 
         if let Some(span) = lexed.unterminated_quote {
             visit(Event::Broken { number, text, span });

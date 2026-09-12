@@ -1,5 +1,7 @@
 import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
 import type { OrdersTemplate } from "@atlantis/core-client";
+import { lexOrderLine } from "./orderLine";
+import type { OrderCommentSyntax } from "./rulesets";
 import { passwordIsSendable } from "./workspace/ordersUpload";
 
 /**
@@ -24,8 +26,32 @@ export type UnitBlock = {
   lastLine: number;
 };
 
-const UNIT_LINE = /^unit\s+(\S+)\s*$/iu;
-const DOCUMENT_END_LINE = /^#end$/iu;
+/**
+ * The `unit <id>` this line opens a block for, or `null` when it is not one.
+ *
+ * Read through the world's own lexer rather than a regex, because what counts as the id depends on
+ * where the comment starts: `unit 42;mine` names unit 42 in Trident and the word `42;mine` - which
+ * is no unit at all - under New Origins' middle-of-word rule.
+ */
+function unitHeaderId(line: string, syntax: OrderCommentSyntax): string | null {
+  const lexed = lexOrderLine(line, syntax);
+  const [command, id, ...rest] = lexed.tokens;
+  if (command?.toLowerCase() !== "unit" || id === undefined || rest.length > 0) {
+    return null;
+  }
+  return id;
+}
+
+/**
+ * Whether the line is the document's own `#end` terminator, comment or no.
+ *
+ * As strict as the `/^#end$/iu` it replaces, and as strict as {@link unitHeaderId}: the directive
+ * stands alone on its line, so `#end something else` is not it. Only the comment is new.
+ */
+function isDocumentEnd(line: string, syntax: OrderCommentSyntax): boolean {
+  const tokens = lexOrderLine(line, syntax).tokens;
+  return tokens.length === 1 && tokens[0]?.toLowerCase() === "#end";
+}
 /** `;*** mountain (7,53) in Inhead, contains Inholm [city] ***`, one before each region's units. */
 const REGION_BANNER = /^;\*\*\*/u;
 const ATLANTIS_HEADER_LINE = /^#atlantis\b/iu;
@@ -45,26 +71,29 @@ const ATLANTIS_HEADER_LINE = /^#atlantis\b/iu;
  * writes is always lowercase, which is easy to mistake for the only shape worth reading - a hand-
  * edited file, or one written by another client, is under no obligation to match it.
  */
-function belongsToDocument(line: string): boolean {
+function belongsToDocument(line: string, syntax: OrderCommentSyntax): boolean {
   const trimmed = line.trim();
   return (
     trimmed === "" ||
-    DOCUMENT_END_LINE.test(trimmed) ||
+    isDocumentEnd(trimmed, syntax) ||
     ATLANTIS_HEADER_LINE.test(trimmed) ||
     REGION_BANNER.test(trimmed)
   );
 }
 
 /** Finds every unit block in a document. */
-export function findUnitBlocks(document: string): UnitBlock[] {
+export function findUnitBlocks(
+  document: string,
+  syntax: OrderCommentSyntax = "origins"
+): UnitBlock[] {
   const lines = document.split("\n");
   const blocks: UnitBlock[] = [];
 
   lines.forEach((line, index) => {
-    const match = UNIT_LINE.exec(line.trim());
-    if (match?.[1]) {
+    const unitId = unitHeaderId(line, syntax);
+    if (unitId !== undefined && unitId !== null && unitId !== "") {
       blocks.push({
-        unitId: match[1],
+        unitId,
         headerLine: index,
         firstLine: index + 1,
         lastLine: index
@@ -79,7 +108,7 @@ export function findUnitBlocks(document: string): UnitBlock[] {
     // Wind back over everything between this unit's last order and the next unit's header: the
     // separating blank lines, the closing directive, and the banner announcing the next region.
     // None of them belong to the unit above them, and they arrive in no fixed order.
-    while (end >= block.firstLine && belongsToDocument(lines[end] ?? "")) {
+    while (end >= block.firstLine && belongsToDocument(lines[end] ?? "", syntax)) {
       end -= 1;
     }
 
@@ -105,27 +134,18 @@ export type FormBlock = {
 };
 
 /** The first non-blank token of a line, lowercased, with a leading `@` and comments accounted for. */
-function firstToken(line: string): string | null {
-  const trimmed = line.trim();
+function firstToken(line: string, syntax: OrderCommentSyntax): string | null {
   // "anything after a semicolon is treated as a comment" (rules/orders), so a line opening with
-  // one carries no order at all. `@;` is a repeating comment and is equally not a block keyword.
-  if (trimmed === "" || trimmed.startsWith(";")) {
-    return null;
-  }
+  // one carries no order at all - and where that comment starts is the selected world's answer.
   // "You may precede orders with the at sign (@)" (rules/orders), and "The parser is not case
   // sensitive" - so the keyword is read past an optional `@` and folded to lower case.
-  const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1).trim() : trimmed;
-  if (withoutAt === "" || withoutAt.startsWith(";")) {
-    return null;
-  }
-  return (withoutAt.split(/\s+/u)[0] ?? "").toLowerCase();
+  const command = lexOrderLine(line, syntax).tokens[0];
+  return command === undefined ? null : command.toLowerCase();
 }
 
 /** The arguments of a line, after its keyword. */
-function argumentsOf(line: string): string[] {
-  const trimmed = line.trim();
-  const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1).trim() : trimmed;
-  return withoutAt.split(/\s+/u).slice(1);
+function argumentsOf(line: string, syntax: OrderCommentSyntax): string[] {
+  return lexOrderLine(line, syntax).tokens.slice(1);
 }
 
 /** An alias the game accepts: a run of digits naming at least 1 (`rules/form`, `forms::read_alias`). */
@@ -150,7 +170,10 @@ type OpenBlock = { kind: "turn" | "form"; index: number | null; headerLine: numb
  * least one, outside any reported unit's block, or nested inside one of those - is still *opened*,
  * so its orders never fall through to whatever encloses it, but it is never returned.
  */
-export function findFormBlocks(document: string): FormBlock[] {
+export function findFormBlocks(
+  document: string,
+  syntax: OrderCommentSyntax = "origins"
+): FormBlock[] {
   const lines = document.split("\n");
   const blocks: FormBlock[] = [];
   const stack: OpenBlock[] = [];
@@ -166,7 +189,7 @@ export function findFormBlocks(document: string): FormBlock[] {
       return;
     }
     let end = endsBefore - 1;
-    while (end >= block.firstLine && belongsToDocument(lines[end] ?? "")) {
+    while (end >= block.firstLine && belongsToDocument(lines[end] ?? "", syntax)) {
       end -= 1;
     }
     block.lastLine = end;
@@ -179,7 +202,7 @@ export function findFormBlocks(document: string): FormBlock[] {
   };
 
   lines.forEach((line, index) => {
-    const command = firstToken(line);
+    const command = firstToken(line, syntax);
     if (command === null) {
       return;
     }
@@ -195,7 +218,7 @@ export function findFormBlocks(document: string): FormBlock[] {
       // The enclosing reported unit is the first argument only when it is all digits
       // (`intents.rs`, which filters on `TokenKind::Number`) - which is what makes a stale
       // `unit new-1` block enclose no reported unit and form nothing.
-      const first = argumentsOf(line)[0];
+      const first = argumentsOf(line, syntax)[0];
       currentUnit = first !== undefined && /^[0-9]+$/u.test(first) ? first : null;
       return;
     }
@@ -216,7 +239,7 @@ export function findFormBlocks(document: string): FormBlock[] {
 
     if (command === "form") {
       const insideTurn = stack.some((opened) => opened.kind === "turn");
-      const alias = readAlias(argumentsOf(line)[0]);
+      const alias = readAlias(argumentsOf(line, syntax)[0]);
       const parent = stack[stack.length - 1];
       const parentUsable = parent === undefined || parent.index !== null;
       if (insideTurn || alias === null || currentUnit === null || !parentUsable) {
@@ -303,7 +326,10 @@ function withoutBlockAt(lines: string[], headerLine: number, lastLine: number): 
  * or emptied block is gone and cannot be found again, an orphan is not. It counts rather than keys
  * on the id, because a document can hold two `unit new-1` blocks.
  */
-export function repairFormedUnitBlocks(document: string): FormedBlockRepair {
+export function repairFormedUnitBlocks(
+  document: string,
+  syntax: OrderCommentSyntax = "origins"
+): FormedBlockRepair {
   const moved: { alias: string; orderCount: number }[] = [];
   const emptied: string[] = [];
   const orphaned: string[] = [];
@@ -313,7 +339,7 @@ export function repairFormedUnitBlocks(document: string): FormedBlockRepair {
   for (;;) {
     const lines = current.split("\n");
     // The parser is not case sensitive (rules/orders), so a hand-edited file may say `unit NEW-1`.
-    const stale = findUnitBlocks(current).filter(
+    const stale = findUnitBlocks(current, syntax).filter(
       (block) => formedAlias(block.unitId.toLowerCase()) !== null
     )[skip];
     if (!stale) {
@@ -335,17 +361,17 @@ export function repairFormedUnitBlocks(document: string): FormedBlockRepair {
     // The region is read while the stale block is still in place - the banner it sits under is what
     // says where it stood - but the match is asked of the document actually written to, so the
     // guard cannot pass while `writeUnitOrders` silently declines and loses the orders with it.
-    const regionUnitIds = regionUnitIdsAt(current, stale.headerLine);
+    const regionUnitIds = regionUnitIdsAt(current, stale.headerLine, syntax);
     const without = withoutBlockAt(lines, stale.headerLine, stale.lastLine).join("\n");
-    if (!formBlockFor(without, alias, regionUnitIds)) {
+    if (!formBlockFor(without, alias, regionUnitIds, syntax)) {
       orphaned.push(`new-${alias}`);
       skip += 1;
       continue;
     }
 
-    const existing = readUnitOrders(without, `new-${alias}`, regionUnitIds) ?? "";
+    const existing = readUnitOrders(without, `new-${alias}`, regionUnitIds, syntax) ?? "";
     const next = existing === "" ? text : `${existing}\n${text}`;
-    current = writeUnitOrders(without, `new-${alias}`, next, regionUnitIds);
+    current = writeUnitOrders(without, `new-${alias}`, next, regionUnitIds, syntax);
     // What "2 orders" means to a player: a blank line inside the block is not an order.
     moved.push({ alias, orderCount: text.split("\n").filter((line) => line.trim() !== "").length });
   }
@@ -367,7 +393,11 @@ export function repairFormedUnitBlocks(document: string): FormedBlockRepair {
  * A document with no banners at all is one section holding every unit, which is the honest answer
  * for a hand-written file that carries nothing to scope by.
  */
-export function regionUnitIdsAt(document: string, line: number): ReadonlySet<string> {
+export function regionUnitIdsAt(
+  document: string,
+  line: number,
+  syntax: OrderCommentSyntax = "origins"
+): ReadonlySet<string> {
   const lines = document.split("\n");
 
   let start = 0;
@@ -387,7 +417,7 @@ export function regionUnitIdsAt(document: string, line: number): ReadonlySet<str
   }
 
   const ids = new Set<string>();
-  for (const block of findUnitBlocks(document)) {
+  for (const block of findUnitBlocks(document, syntax)) {
     if (block.headerLine >= start && block.headerLine < end && /^[0-9]+$/u.test(block.unitId)) {
       ids.add(block.unitId);
     }
@@ -406,9 +436,10 @@ export function regionUnitIdsAt(document: string, line: number): ReadonlySet<str
 export function formBlockFor(
   document: string,
   alias: string,
-  regionUnitIds: ReadonlySet<string>
+  regionUnitIds: ReadonlySet<string>,
+  syntax: OrderCommentSyntax = "origins"
 ): FormBlock | null {
-  const blocks = findFormBlocks(document);
+  const blocks = findFormBlocks(document, syntax);
   const taken = new Set<string>();
   const swallowed = new Set<number>();
 
@@ -443,16 +474,17 @@ export function formBlockFor(
 export function blockFor(
   document: string,
   unitId: string,
-  regionUnitIds?: ReadonlySet<string>
+  regionUnitIds?: ReadonlySet<string>,
+  syntax: OrderCommentSyntax = "origins"
 ): UnitBlock | null {
   const alias = formedAlias(unitId);
   if (alias === null) {
-    return findUnitBlocks(document).find((candidate) => candidate.unitId === unitId) ?? null;
+    return findUnitBlocks(document, syntax).find((candidate) => candidate.unitId === unitId) ?? null;
   }
   if (!regionUnitIds) {
     return null;
   }
-  const block = formBlockFor(document, alias, regionUnitIds);
+  const block = formBlockFor(document, alias, regionUnitIds, syntax);
   return block
     ? {
         unitId,
@@ -497,9 +529,10 @@ export function regionBannerLine(
 export function readUnitOrders(
   document: string,
   unitId: string,
-  regionUnitIds?: ReadonlySet<string>
+  regionUnitIds?: ReadonlySet<string>,
+  syntax: OrderCommentSyntax = "origins"
 ): string | null {
-  const block = blockFor(document, unitId, regionUnitIds);
+  const block = blockFor(document, unitId, regionUnitIds, syntax);
   if (!block) {
     return null;
   }
@@ -522,9 +555,10 @@ export function writeUnitOrders(
   document: string,
   unitId: string,
   orders: string,
-  regionUnitIds?: ReadonlySet<string>
+  regionUnitIds?: ReadonlySet<string>,
+  syntax: OrderCommentSyntax = "origins"
 ): string {
-  const block = blockFor(document, unitId, regionUnitIds);
+  const block = blockFor(document, unitId, regionUnitIds, syntax);
   if (!block) {
     return document;
   }
@@ -591,7 +625,12 @@ export function seedOrdersDocument(templateText: string, factionId: string | nul
  * the document carries no banner for the region at all - the banner is written too, before `#end`.
  * Unchanged when the unit already has a block.
  */
-export function ensureUnitBlock(document: string, unitId: string, banner: string): string {
+export function ensureUnitBlock(
+  document: string,
+  unitId: string,
+  banner: string,
+  syntax: OrderCommentSyntax = "origins"
+): string {
   // A unit this month's `FORM` orders create has no `unit` block and never gains one: its orders
   // live between its `form` line and its `end`, and a literal `unit new-1` block is a file the
   // server refuses. This is the guard, here rather than in each caller.
@@ -599,7 +638,7 @@ export function ensureUnitBlock(document: string, unitId: string, banner: string
     return document;
   }
 
-  const blocks = findUnitBlocks(document);
+  const blocks = findUnitBlocks(document, syntax);
   if (blocks.some((block) => block.unitId === unitId)) {
     return document;
   }
@@ -614,7 +653,7 @@ export function ensureUnitBlock(document: string, unitId: string, banner: string
       (line, index) => index > bannerIndex && REGION_BANNER.test(line.trim())
     );
     if (regionEnd === -1) {
-      regionEnd = lines.findIndex((line) => DOCUMENT_END_LINE.test(line.trim()));
+      regionEnd = lines.findIndex((line) => isDocumentEnd(line, syntax));
     }
     if (regionEnd === -1) {
       regionEnd = lines.length;
@@ -629,7 +668,7 @@ export function ensureUnitBlock(document: string, unitId: string, banner: string
     return lines.join("\n");
   }
 
-  let at = lines.findIndex((line) => DOCUMENT_END_LINE.test(line.trim()));
+  let at = lines.findIndex((line) => isDocumentEnd(line, syntax));
   if (at === -1) {
     at = lines.length;
   }
@@ -655,11 +694,14 @@ export function applyUnitOrders(
   unitId: string,
   orders: string,
   banner: string | null,
-  regionUnitIds?: ReadonlySet<string>
+  regionUnitIds?: ReadonlySet<string>,
+  syntax: OrderCommentSyntax = "origins"
 ): string {
   const base =
-    orders === "" || banner === null ? document : ensureUnitBlock(document, unitId, banner);
-  return writeUnitOrders(base, unitId, orders, regionUnitIds);
+    orders === "" || banner === null
+      ? document
+      : ensureUnitBlock(document, unitId, banner, syntax);
+  return writeUnitOrders(base, unitId, orders, regionUnitIds, syntax);
 }
 
 /**
@@ -690,11 +732,14 @@ function isServerCommentLine(line: string): boolean {
   return line.trim().startsWith(";");
 }
 
-export function stripUnitComments(document: string): string {
+export function stripUnitComments(
+  document: string,
+  syntax: OrderCommentSyntax = "origins"
+): string {
   const lines = document.split("\n");
   const descriptions = new Set<number>();
 
-  for (const block of findUnitBlocks(document)) {
+  for (const block of findUnitBlocks(document, syntax)) {
     for (let index = block.firstLine; index <= block.lastLine; index += 1) {
       if (isServerCommentLine(lines[index] ?? "")) {
         descriptions.add(index);
@@ -718,11 +763,15 @@ export function stripUnitComments(document: string): string {
  * The player's own lines are never touched - they simply end up below the restored description,
  * in the order they were already in.
  */
-export function withUnitComments(document: string, template: string): string {
+export function withUnitComments(
+  document: string,
+  template: string,
+  syntax: OrderCommentSyntax = "origins"
+): string {
   const templateLines = template.split("\n");
   const descriptionsByUnit = new Map<string, string[]>();
 
-  for (const block of findUnitBlocks(template)) {
+  for (const block of findUnitBlocks(template, syntax)) {
     const description = templateLines
       .slice(block.firstLine, block.lastLine + 1)
       .filter((line) => isServerCommentLine(line));
@@ -736,7 +785,7 @@ export function withUnitComments(document: string, template: string): string {
   }
 
   const lines = document.split("\n");
-  const blocks = findUnitBlocks(document);
+  const blocks = findUnitBlocks(document, syntax);
 
   // Inserted from the bottom up, so an earlier insertion never shifts the header line index a
   // later one was computed against.
@@ -851,17 +900,42 @@ export const LONG_ORDER_COMMANDS = [
   "WORK"
 ] as const;
 
-/** A line that is one of the eleven month-long orders, `@`-repeated or not. */
-const LONG_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${LONG_ORDER_COMMANDS.join("|")})\\b`, "iu");
+/**
+ * The keyword a line issues, uppercased, or `null` when it issues none.
+ *
+ * The world's own lexer rather than a `^\s*@?\s*KEYWORD\b` pattern, because `\b` cannot tell a
+ * Trident `END;done` - which closes a `FORM` - from a New Origins `END;done`, which is one word
+ * and closes nothing.
+ *
+ * Trailing `,` and `.` are stripped, as `orderCase.bareWords` strips them: those patterns matched
+ * `FORM, 1` and `MOVE, N`, and for its two callers failing to recognise the keyword is the unsafe
+ * direction - a block that does not open makes the formed unit's lines read as the outer unit's
+ * own, and `stripOwnOrderLines` then deletes them. Done here rather than in each caller so
+ * {@link atTopLevel} and {@link isCommand} cannot drift apart again.
+ *
+ * Not the only keyword reader in this file: `firstToken`, which `findFormBlocks` uses, compares
+ * exactly and so still reads `FORM, 1` as no block at all. That is the behaviour `main` had, and
+ * changing where a `FORM` block starts is outside this bead's semicolon scope - so it is stated
+ * here rather than quietly fixed.
+ */
+function commandOf(line: string, syntax: OrderCommentSyntax): string | null {
+  const token = lexOrderLine(line, syntax).tokens[0];
+  return token === undefined ? null : token.toUpperCase().replace(/[,.]+$/u, "");
+}
 
-/** `FORM [alias]` - the orders that follow belong to the new unit, until `END` (`rules/form`). */
-const FORM_LINE = /^\s*@?\s*FORM\b/iu;
-/** `TURN` / `@TURN` - the orders that follow are a later month's, until `ENDTURN` (`rules/turn`). */
-const TURN_LINE = /^\s*@?\s*TURN\b/iu;
-/** `ENDTURN`, tested before `END` because it starts with it. */
-const ENDTURN_LINE = /^\s*@?\s*ENDTURN\b/iu;
-/** `END`, which closes a `FORM`. Not `#end`, which is the document's own terminator. */
-const END_LINE = /^\s*@?\s*END\b/iu;
+/**
+ * Whether the line issues one of these keywords, `@`-repeated or not.
+ *
+ * The punctuation rule lives in {@link commandOf}, which this and {@link atTopLevel} share.
+ */
+function isCommand(
+  line: string,
+  keywords: readonly string[],
+  syntax: OrderCommentSyntax
+): boolean {
+  const command = commandOf(line, syntax);
+  return command !== null && keywords.includes(command);
+}
 
 /**
  * Which of a unit's lines are the unit's own, rather than a nested unit's or a later month's.
@@ -877,15 +951,17 @@ const END_LINE = /^\s*@?\s*END\b/iu;
  * the server would reject anyway, and counting keeps everything after it out of reach, which is
  * the safe direction for a function that deletes lines.
  */
-function atTopLevel(orders: string): boolean[] {
+function atTopLevel(orders: string, syntax: OrderCommentSyntax): boolean[] {
   let depth = 0;
   return orders.split("\n").map((line) => {
-    if (ENDTURN_LINE.test(line) || END_LINE.test(line)) {
+    const command = commandOf(line, syntax);
+    // `ENDTURN` before `END`: both close a block, and neither belongs to the unit above it.
+    if (command === "ENDTURN" || command === "END") {
       depth = Math.max(0, depth - 1);
       return false;
     }
     const own = depth === 0;
-    if (FORM_LINE.test(line) || TURN_LINE.test(line)) {
+    if (command === "FORM" || command === "TURN") {
       depth += 1;
     }
     return own;
@@ -900,16 +976,17 @@ function atTopLevel(orders: string): boolean[] {
  * order of some kind, so a newly written one replaces it" - and differ only in which commands count
  * and in whether the result is trimmed.
  */
-function stripOwnOrderLines(orders: string, command: RegExp): string {
-  const own = atTopLevel(orders);
+function stripOwnOrderLines(
+  orders: string,
+  keywords: readonly string[],
+  syntax: OrderCommentSyntax
+): string {
+  const own = atTopLevel(orders, syntax);
   return orders
     .split("\n")
-    .filter((line, index) => !(own[index] === true && command.test(line)))
+    .filter((line, index) => !(own[index] === true && isCommand(line, keywords, syntax)))
     .join("\n");
 }
-
-/** A line that is one of the core's movement orders, `@`-repeated or not. */
-const MOVEMENT_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${MOVEMENT_ORDER_COMMANDS.join("|")})\\b`, "iu");
 
 /**
  * A unit's orders with any existing movement order removed, so a newly planned route replaces
@@ -922,8 +999,11 @@ const MOVEMENT_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${MOVEMENT_ORDER_COMMANDS.jo
  * Only the unit's own lines are removed. A `MOVE` inside a `FORM ... END` block belongs to the unit
  * that block creates, and one inside `TURN ... ENDTURN` is a later month's - see {@link atTopLevel}.
  */
-export function stripMovementOrderLines(orders: string): string {
-  return stripOwnOrderLines(orders, MOVEMENT_ORDER_LINE).trim();
+export function stripMovementOrderLines(
+  orders: string,
+  syntax: OrderCommentSyntax = "origins"
+): string {
+  return stripOwnOrderLines(orders, MOVEMENT_ORDER_COMMANDS, syntax).trim();
 }
 
 /**
@@ -949,17 +1029,20 @@ export function writeRouteOrder(input: {
   regionUnitIds?: ReadonlySet<string>;
   /** The route line to write, e.g. `MOVE N NE`. */
   order: string;
+  /** How the game played reads an unquoted semicolon. */
+  syntax?: OrderCommentSyntax;
 }): string {
+  const syntax = input.syntax ?? "origins";
   const base =
     input.banner === null
       ? input.document
-      : ensureUnitBlock(input.document, input.unitId, input.banner);
-  const existing = readUnitOrders(base, input.unitId, input.regionUnitIds) ?? "";
-  const withoutMove = stripMovementOrderLines(existing);
+      : ensureUnitBlock(input.document, input.unitId, input.banner, syntax);
+  const existing = readUnitOrders(base, input.unitId, input.regionUnitIds, syntax) ?? "";
+  const withoutMove = stripMovementOrderLines(existing, syntax);
   // Truthy rather than `!== ""`: `stripMovementOrderLines` ends in `.trim()`, so a block that held
   // only a movement order leaves `""`, and joining that would write the route under a blank line.
   const next = withoutMove ? `${withoutMove}\n${input.order}` : input.order;
-  return writeUnitOrders(base, input.unitId, next, input.regionUnitIds);
+  return writeUnitOrders(base, input.unitId, next, input.regionUnitIds, syntax);
 }
 
 /**
@@ -971,8 +1054,11 @@ export function writeRouteOrder(input: {
  * to be rewritten whole; here the surviving lines are the player's own and the first one's
  * indentation is part of what they wrote.
  */
-export function stripLongOrderLines(orders: string): string {
-  return stripOwnOrderLines(orders, LONG_ORDER_LINE);
+export function stripLongOrderLines(
+  orders: string,
+  syntax: OrderCommentSyntax = "origins"
+): string {
+  return stripOwnOrderLines(orders, LONG_ORDER_COMMANDS, syntax);
 }
 
 /**
@@ -981,10 +1067,17 @@ export function stripLongOrderLines(orders: string): string {
  * blank lines are never it; if a document somehow holds two, the first is what the game will keep,
  * so the first is what is shown.
  */
-export function longOrderOf(orders: string): string | null {
-  const own = atTopLevel(orders);
+export function longOrderOf(
+  orders: string,
+  syntax: OrderCommentSyntax = "origins"
+): string | null {
+  const own = atTopLevel(orders, syntax);
   const mine = orders.split("\n").filter((_line, index) => own[index] === true);
-  return commandsOnly(mine.join("\n")).find((line) => LONG_ORDER_LINE.test(line)) ?? null;
+  return (
+    commandsOnly(mine.join("\n")).find((line) =>
+      isCommand(line, LONG_ORDER_COMMANDS, syntax)
+    ) ?? null
+  );
 }
 
 /**
@@ -1015,12 +1108,15 @@ export const NO_ORDERS_TEMPLATE: ReportedLongOrder = { kind: "no-template" };
  * table asks it a question per row per render.
  */
 export function reportedLongOrders(
-  template: OrdersTemplate | null | undefined
+  template: OrdersTemplate | null | undefined,
+  syntax: OrderCommentSyntax = "origins"
 ): ReadonlyMap<string, string | null> | null {
   if (!template) {
     return null;
   }
-  return new Map(template.units.map((unit) => [unit.unitId, longOrderOf(unit.lines.join("\n"))]));
+  return new Map(
+    template.units.map((unit) => [unit.unitId, longOrderOf(unit.lines.join("\n"), syntax)])
+  );
 }
 
 /** One unit's answer, out of {@link reportedLongOrders}' map. */

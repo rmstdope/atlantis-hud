@@ -1627,4 +1627,20 @@ mod tests {
         assert_eq!(answer.word, "");
         assert_eq!(answer.word_start, 0);
     }
+
+    #[test]
+    fn trident_comment_prefix_has_no_completion() {
+        let trident =
+            Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON).unwrap();
+        let origins = Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).unwrap();
+
+        let caret = completions_at_caret("GIVE 42 1 SILV;a ti", Some(&trident), None, None);
+        assert_eq!(caret.position, CaretPosition::Nowhere);
+        assert_eq!(caret.options, Vec::<OrderCompletion>::new());
+
+        // New Origins still reads the whole of it as a half-typed item word, so the caret is in
+        // the order rather than nowhere.
+        let origins_caret = completions_at_caret("GIVE 42 1 SILV;a ti", Some(&origins), None, None);
+        assert_eq!(origins_caret.position, CaretPosition::Argument);
+    }
 }
