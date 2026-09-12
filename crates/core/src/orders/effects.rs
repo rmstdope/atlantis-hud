@@ -2808,10 +2808,23 @@ impl Working {
     ///
     /// `AtMost(n)` with `n <= limit` is a shipment that is *certainly* in reach - an upper bound
     /// inside the limit settles the question - and is likewise no refusal.
+    ///
+    /// A sixth case, and the first one asked: the `transport-out-of-reach` warning turned off
+    /// (`ah-7ale.2.2.2`).
     fn out_of_reach(
         &self,
         pending: &PendingTransport,
     ) -> Option<(TransportTargetReason, TransportReach)> {
+        // A silenced warning is a check not made: the shipment is forecast as going through, goods
+        // and weight gone and the target credited, exactly as if the two hexes were next to each
+        // other. Gated here rather than at the call site so every reader of this decision gets one
+        // answer.
+        if !self
+            .options
+            .emits(super::semantics::codes::TRANSPORT_OUT_OF_REACH)
+        {
+            return None;
+        }
         let reach = self.transport_reach(pending)?;
         let from = self
             .hex_of_region
@@ -10067,6 +10080,64 @@ mod tests {
             .clone();
         assert_eq!(sender.unit.weight, reported.weight, "the weight stayed too");
         assert_eq!(sender.unit.capacity, reported.capacity);
+    }
+
+    /// `ah-7ale.2.2.2`: with `Settings > Warnings > Transport` off the reach check is not made at
+    /// all, so the shipment is forecast as going through - goods gone, the target credited, and
+    /// nothing left in the problem list.
+    #[test]
+    fn a_silenced_reach_warning_forecasts_the_shipment_as_going_through() {
+        let report = reach_report((0, 0), (0, 6), (0, 1));
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+
+        // The control, and `ah-7ale.2.1`'s own behaviour: with every check on, the goods stay.
+        let refused = reach_preview(&report, orders, FLAT_MAP);
+        assert_eq!(reach_held(&refused, "900", "STON"), 5, "the stone stayed");
+        assert_eq!(reach_held(&refused, "901", "STON"), 0, "and never arrived");
+        assert_eq!(
+            reach_unit(&refused, "900")
+                .transport_target_issues
+                .iter()
+                .map(|issue| issue.reason)
+                .collect::<Vec<_>>(),
+            vec![TransportTargetReason::TooFarToAccept],
+        );
+
+        let silenced = reach_preview_with_options(
+            &report,
+            orders,
+            FLAT_MAP,
+            super::super::semantics::CheckOptions {
+                disabled: ["transport-out-of-reach".to_string()].into_iter().collect(),
+                ..super::super::semantics::CheckOptions::default()
+            },
+        );
+
+        assert_eq!(
+            reach_held(&silenced, "900", "STON"),
+            0,
+            "a check that is not made cannot keep the goods with the sender"
+        );
+        assert_eq!(
+            reach_held(&silenced, "901", "STON"),
+            5,
+            "the target is credited"
+        );
+        let sender = reach_unit(&silenced, "900");
+        assert!(
+            sender.transport_target_issues.is_empty(),
+            "nothing is left to explain: {:?}",
+            sender.transport_target_issues
+        );
+        assert_eq!(
+            sender
+                .transport_sent
+                .iter()
+                .map(|sent| (sent.to.clone(), sent.amount, sent.tag.clone()))
+                .collect::<Vec<_>>(),
+            vec![("901".to_string(), 5, "STON".to_string())],
+            "the shipment is drawn as going through"
+        );
     }
 
     /// The control: without it the test above would pass on a build that refuses every shipment.
