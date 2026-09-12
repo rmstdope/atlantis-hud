@@ -174,6 +174,8 @@ describe("scanStoredTurns (ah-3u7c.2.1)", () => {
     const { unreadTurns } = await scanStoredTurns(client, game(), "{}");
 
     expect(unreadTurns).toBe(0);
+    // Both reports were read: the walk carried on rather than skipping the turn whose draft threw.
+    expect(client.parseReportFull).toHaveBeenCalledTimes(2);
   });
 
   it("makes no claims for a turn with no saved orders", async () => {

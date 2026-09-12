@@ -45,6 +45,10 @@ export type PassageMemoryState = {
   /**
    * The turn on screen answered against the turn before it, so a report imported this minute
    * counts at once without walking the whole game again.
+   *
+   * Writes only into a store `scan` has already opened for this game: `AppShell` declares the two
+   * effects in that order, and a call that finds another game - or none, the game having been
+   * closed while it was in flight - is silently inert rather than seeding one.
    */
   learnLatest: (
     client: PassageClient,
@@ -185,7 +189,8 @@ export async function scanStoredTurns(
         turn: key.turnNumber,
         claims: await claimsFor(
           client,
-          game,
+          game.databasePath,
+          gameId,
           key.factionId,
           key.turnNumber,
           record.rawReport,
@@ -225,7 +230,15 @@ async function claimsOfTurn(
     if (record === null) {
       return [];
     }
-    return await claimsFor(client, game, factionId, turnNumber, record.rawReport, rulesetJson);
+    return await claimsFor(
+      client,
+      game.databasePath,
+      gameId,
+      factionId,
+      turnNumber,
+      record.rawReport,
+      rulesetJson
+    );
   } catch (error) {
     console.warn(`could not read turn ${turnNumber}'s passage crossings`, error);
     return [];
@@ -239,19 +252,15 @@ async function claimsOfTurn(
  */
 async function claimsFor(
   client: PassageClient,
-  game: OpenedGame,
+  databasePath: string,
+  gameId: string,
   factionId: string,
   turnNumber: number,
   rawReport: string,
   rulesetJson: string
 ): Promise<PassageClaim[]> {
   try {
-    const draft = await client.loadOrderDraft(
-      game.databasePath,
-      game.manifest.metadata.gameId,
-      factionId,
-      turnNumber
-    );
+    const draft = await client.loadOrderDraft(databasePath, gameId, factionId, turnNumber);
     if (draft === null) {
       return [];
     }
