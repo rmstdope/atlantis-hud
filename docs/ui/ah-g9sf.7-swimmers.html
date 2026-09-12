@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Units that can swim &mdash; the agreed shape</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 20px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:102ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, footer code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:16px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:102ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:11px; }
+  .hexlab { font:10.5px/1.35 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:9px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"\00b7 "; color:var(--ink-dim); }
+  .side { display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:10px; }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:112ch; }
+  .settled b { color:var(--ink); font-weight:normal; }
+  .aside { background:var(--raised); border-left:3px solid var(--select); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:112ch; }
+  .aside b { color:var(--ink); font-weight:normal; }
+  .pane { width:352px; background:var(--panel); border:1px solid var(--edge); border-radius:6px;
+          font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; }
+  .pane .bar { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--edge); padding:5px 9px; }
+  .pane .bar .t { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-right:auto; }
+  .btn { border:1px solid var(--edge); background:var(--ground); color:var(--ink); border-radius:4px; padding:1px 7px; font-size:11px; }
+  .body { padding:9px 10px; }
+  .refuse { color:var(--danger); } .warnp { color:var(--warn); }
+  dl.f { display:grid; grid-template-columns:auto 1fr; gap:1px 12px; margin:0; }
+  dl.f dt { color:var(--ink-dim); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; }
+  dl.f dd { margin:0; color:var(--ink); }
+  .sec { margin-top:9px; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); border-bottom:1px solid var(--edge-soft); padding-bottom:2px; }
+  ol.steps { list-style:none; margin:5px 0 0; padding:0; color:var(--ink-soft); }
+  ol.steps li { display:flex; gap:10px; padding:1px 0; }
+  ol.steps li .k { color:var(--ink-dim); width:34px; flex:none; }
+  ol.steps li.wet { color:var(--select); }
+  .apply { border-top:1px solid var(--edge); padding:7px 10px; display:flex; gap:9px; align-items:center; }
+  .apply code { color:var(--brass-bright); font-size:11px; }
+  .prob { width:352px; background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:8px 10px;
+          font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; }
+  .prob .ttl { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .prob .who { color:var(--ink); } .prob .who .mk { color:var(--warn); font-size:9px; margin-right:5px; }
+  .prob .what { color:var(--ink-soft); padding-left:14px; }
+  .prob .none { color:var(--ink-dim); font-style:italic; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:112ch; line-height:1.7; }
+</style></head><body>
+<header>
+<header>
+<h1>Units that can swim &mdash; <span>the agreed shape</span></h1>
+<p>In New Age: Trident a unit may swim. A lizardman wades into the coastal sea beside it; a unit riding sea
+creatures strong enough to bear its whole weight rides out into the deep. Atlantis HUD knew none of it: every unit
+that was not flying and was not a fleet was stopped at the water's edge and told it needed a ship. Every panel below
+is what the player sees after the change. Nothing changes in New Origins, which has no swimming rule, and nothing
+changes for fleets, which the rule exempts.</p>
+<div class="settled"><b>Agreed, and this is the record.</b>
+A unit's detail gains a fourth capacity tile, <b>Swim</b>, and the sentence beneath it names Swim alongside Walk.
+In a game without swimming the tile is absent altogether, not zero.
+A refusal at the water's edge says which of three reasons it is, and each reason has two sentences &mdash; one for
+water in the way, one for water the player clicked on.
+A wet step is marked <span class="mono">&middot; swimming</span>.
+Where the map cannot tell whether water is shallow, the planner refuses and says the doubt out loud.
+A report silent about swimming still plans dry routes.</div>
+</header>
+<main>
+
+<h4 class="q"><em>1</em> The unit knows it can swim, and says so</h4>
+<p>Swimming is not a speed &mdash; a lizardman still walks two hexes &mdash; so the movement badge in the unit
+list is untouched. It is a fourth capacity, and it sits with the other three.</p>
+<div class="card"><div class="side">
+
+<div class="stage"><div class="hexlab">A unit that can swim &mdash; Trident</div>
+<div class="pane"><div class="bar"><span class="t">Scale Guard (1401)</span></div><div class="body">
+<div class="sec">Movement</div>
+<p style="margin:4px 0 2px"><b>Walking</b></p>
+<p style="color:#8a97a8;margin-bottom:6px">Fastest available movement</p>
+<dl class="f"><dt>Fly</dt><dd>0</dd><dt>Ride</dt><dd>0</dd><dt>Walk</dt><dd><b>60</b></dd><dt>Swim</dt><dd>60</dd></dl>
+<p style="margin-top:7px;color:#a3b0c0">The load is 40. Walk and Swim can carry it.</p>
+</div></div>
+<ul class="notes"><li>Walk stays emphasised: it is the fastest available movement, and Swim never competes for that.</li>
+<li>Carrying too much to swim: the tile still shows its number, and the sentence reads
+<span class="mono">The load is 40. Walk can carry it.</span> &mdash; Swim drops out of the list exactly as Fly and Ride already do.</li>
+<li>Nothing can carry it: <span class="mono">The load is 40. No movement capacity can carry it.</span> &mdash; unchanged.</li></ul>
+</div>
+
+<div class="stage"><div class="hexlab">The same unit in New Origins, and on the map</div>
+<div class="pane"><div class="bar"><span class="t">Roadwardens (1402)</span></div><div class="body">
+<div class="sec">Movement</div>
+<p style="margin:4px 0 2px"><b>Walking</b></p>
+<p style="color:#8a97a8;margin-bottom:6px">Fastest available movement</p>
+<dl class="f"><dt>Fly</dt><dd>0</dd><dt>Ride</dt><dd>0</dd><dt>Walk</dt><dd><b>30</b></dd></dl>
+<p style="margin-top:7px;color:#a3b0c0">The load is 20. Walk can carry it.</p>
+</div></div>
+<div class="pane" style="margin-top:10px"><div class="bar"><span class="t">Hovering Scale Guard (1401) on the map</span></div><div class="body">
+<dl class="f"><dt>move</dt><dd>Walking</dd><dt>weight</dt><dd>40</dd><dt>walk</dt><dd>60</dd><dt>swim</dt><dd>60</dd></dl>
+</div></div>
+<ul class="notes"><li>No Swim tile in a game without swimming &mdash; three tiles, identical to today, and no <span class="mono">swim</span> line in the popup either.</li>
+<li>The popup shows what the detail panel shows, so neither has to be trusted over the other.</li>
+<li>The unit list's movement badge &mdash; <span class="mono">W R F O</span> &mdash; is unchanged everywhere.</li></ul>
+</div>
+
+</div></div>
+
+<h4 class="q"><em>2</em> Coastal water: the swim succeeds</h4>
+<p>The route plans, the travel mode still names the speed, and the wet steps say they are wet.</p>
+<div class="card"><div class="side">
+
+<div class="stage"><div class="hexlab">Scale Guard (1401) sent across a strait</div>
+<div class="pane"><div class="bar"><span class="t">Movement</span><button class="btn">Plan move</button><button class="btn">Clear</button></div><div class="body">
+<dl class="f"><dt>To</dt><dd>(4,2)</dd><dt>Travel</dt><dd>walk</dd><dt>Cost</dt><dd>3 movement points</dd><dt>Arrives</dt><dd>this month</dd></dl>
+<div class="sec">Route &middot; 3</div>
+<ol class="steps">
+<li><span class="k">1. SE</span><span class="wet">ocean (2,2) &middot; 1 &middot; swimming</span></li>
+<li><span class="k">2. E</span><span class="wet">ocean (3,2) &middot; 1 &middot; swimming</span></li>
+<li><span class="k">3. NE</span><span>plain (4,2) &middot; 1</span></li>
+</ol>
+</div><div class="apply"><button class="btn">Apply to orders</button><code>MOVE SE E NE</code></div></div>
+<ul class="notes"><li><span class="mono">&middot; swimming</span> goes after the cost, and after <span class="mono">&middot; road</span> where both apply, in the panel's informational colour rather than a warning colour.</li>
+<li>Travel reads <span class="mono">walk</span>: the speed is the unit's walking speed and does not change in the water.</li>
+<li>A route that touches no water carries no mark at all, and is identical to today.</li>
+<li>A swimmer may end its month in the water. There is no drowning warning &mdash; that belongs to fliers alone.</li></ul>
+</div>
+
+<div class="stage"><div class="hexlab">The unchanged parts of the panel</div>
+<div class="pane"><div class="bar"><span class="t">Movement</span><button class="btn">Plan move</button><button class="btn">Clear</button></div><div class="body">
+<dl class="f"><dt>To</dt><dd>(4,1)</dd><dt>Travel</dt><dd>walk</dd><dt>Cost</dt><dd>3 movement points</dd><dt>Arrives</dt><dd>this month</dd></dl>
+<div class="sec">Route &middot; 3</div>
+<ol class="steps">
+<li><span class="k">1. E</span><span>plain (2,1) &middot; 1</span></li>
+<li><span class="k">2. E</span><span>plain (3,1) &middot; 1</span></li>
+<li><span class="k">3. E</span><span>forest (4,1) &middot; 1</span></li>
+</ol>
+</div><div class="apply"><button class="btn">Apply to orders</button><code>MOVE E E E</code></div></div>
+<ul class="notes"><li>Same fields in the same order, same buttons, and focus still lands on <b>Apply to orders</b> when a route arrives.</li>
+<li>Nothing new is painted on the map: no hex is greyed out or marked unreachable in advance.</li>
+<li>Nothing is added to the region's problem list &mdash; a hand-typed march into water has never been remarked on there, and still is not.</li></ul>
+</div>
+
+</div></div>
+
+<h4 class="q"><em>3</em> The three refusals, each in two halves</h4>
+<p>One sentence for water standing in the way, and a different one for water the player clicked on, because
+&ldquo;in the way&rdquo; is untrue when the water is the destination. The first pair is word for word what players
+read today.</p>
+<div class="card"><div class="side">
+
+<div class="stage"><div class="hexlab">This unit cannot swim at all</div>
+<div class="pane"><div class="bar"><span class="t">Movement</span></div><div class="body">
+<p class="refuse">The sea at (2,2) is in the way, and crossing it needs a ship.</p>
+<p class="refuse">(2,2) is ocean, and this unit would need a ship to be there.</p>
+</div></div>
+<ul class="notes"><li>Unchanged from today, and the sibling of the lake sentences already agreed.</li></ul>
+</div>
+
+<div class="stage"><div class="hexlab">It could swim, but is carrying too much</div>
+<div class="pane"><div class="bar"><span class="t">Movement</span></div><div class="body">
+<p class="refuse">The sea at (2,2) is in the way, and this unit cannot swim carrying 40 when it can bear 20.</p>
+<p class="refuse">(2,2) is ocean, and this unit cannot swim carrying 40 when it can bear 20.</p>
+</div></div>
+<ul class="notes"><li>The numbers are the point: they say how much to put down. A ship is never mentioned, because a ship is not what this unit needs.</li></ul>
+</div>
+
+<div class="stage"><div class="hexlab">It swims, but the water is deep</div>
+<div class="pane"><div class="bar"><span class="t">Movement</span></div><div class="body">
+<p class="refuse">The deep sea at (3,3) is in the way, and this unit can swim only in coastal water.</p>
+<p class="refuse">(3,3) is deep sea, and this unit can swim only in coastal water.</p>
+<div class="sec">Carried by sea creatures, but not enough of them</div>
+<p class="refuse">The deep sea at (3,3) is in the way, and this unit's sea creatures can bear 20 of its 40.</p>
+<p class="refuse">(3,3) is deep sea, and this unit's sea creatures can bear 20 of its 40.</p>
+</div></div>
+<ul class="notes"><li>The last pair appears only when the unit already has some sea-creature capacity, and names the gap.</li>
+<li>A unit whose sea creatures bear its whole weight is not refused at all: it gets an ordinary route, with
+<span class="mono">&middot; swimming</span> on the deep steps like any other wet step.</li></ul>
+</div>
+
+</div></div>
+
+<h4 class="q"><em>4</em> What is not known is refused, and said</h4>
+<p>Two things can be unknown: whether a sea hex is shallow, which depends on hexes the faction may never have
+seen, and what the unit can carry while swimming, which an older report may not state. Neither is guessed at.</p>
+<div class="card"><div class="side">
+
+<div class="stage"><div class="hexlab">The map cannot tell whether the water is shallow</div>
+<div class="pane"><div class="bar"><span class="t">Movement</span></div><div class="body">
+<p class="refuse">There is no telling whether the sea at (3,3) is deep, and this unit can swim only in coastal water.</p>
+</div></div>
+<ul class="notes"><li>It ends on the same clause as the plain deep-water refusal, so the two read as a family.</li>
+<li>No route is drawn through the doubtful hex, and no warning-coloured paragraph appears above one: doubt about
+whether a step is legal is refused, not annotated.</li>
+<li>The existing unexplored-hex warning is untouched and keeps its own job &mdash; the cost and terrain of hexes
+nobody has seen.</li></ul>
+</div>
+
+<div class="stage"><div class="hexlab">The report does not say what it can carry while swimming</div>
+<div class="pane"><div class="bar"><span class="t">Scale Guard (1401)</span></div><div class="body">
+<dl class="f"><dt>Fly</dt><dd>0</dd><dt>Ride</dt><dd>0</dd><dt>Walk</dt><dd><b>60</b></dd><dt>Swim</dt><dd class="warnp">not stated</dd></dl>
+<p style="margin-top:7px;color:#a3b0c0">The load is 40. Walk can carry it.</p>
+</div></div>
+<div class="pane" style="margin-top:10px"><div class="bar"><span class="t">Movement</span></div><div class="body">
+<div class="sec">A route over land</div>
+<dl class="f"><dt>To</dt><dd>(4,1)</dd><dt>Travel</dt><dd>walk</dd><dt>Cost</dt><dd>3 movement points</dd><dt>Arrives</dt><dd>this month</dd></dl>
+<div class="sec">The same unit, asked to cross water</div>
+<p class="refuse">The report does not say how much this unit can carry while swimming, so there is no telling whether it can enter the sea at (2,2).</p>
+</div></div>
+<ul class="notes"><li>The player sees the gap on the tile before they ever ask, so the refusal does not surprise them.</li>
+<li>Dry routes plan exactly as they always did: the missing figure has no bearing on them.</li>
+<li>A report silent about <i>every</i> capacity keeps today's answer &mdash;
+<span class="mono">The report does not say what this unit can carry, so there is nothing to plan with.</span></li></ul>
+</div>
+
+</div></div>
+
+<div class="aside"><b>What is left alone.</b>
+Fleets, which the rule exempts. New Origins, in every respect. The unit list and its movement badge. The map, which
+paints nothing new and hides nothing. The region's problem list, which has never remarked on a hand-typed march into
+water. The panel's fields, their order, its buttons, and where focus lands. What survives a reload, a switch of
+report and a new turn arriving &mdash; all unchanged.</div>
+</main>
+<footer>
+Rules this rests on, looked up rather than recalled: Trident <span class="mono">rules/movement_normal</span> &mdash;
+&ldquo;Swimming units are restricted to coastal ocean regions and lakes. Deep ocean regions cannot be entered by
+swimming units, with one exception: a unit carried by sea creatures able to bear its whole weight rides out into deep
+water safely. Ships are not affected by this restriction.&rdquo; Trident
+<span class="mono">data/lizardman</span> &mdash; weight 10, walking capacity 5, swimming capacity 5. Trident
+<span class="mono">data/giant turtle</span> &mdash; weight 50, swimming capacity 20. New Origins' movement section
+carries no swimming paragraph. Agreed over three rounds.
+</footer>
+</body></html>
