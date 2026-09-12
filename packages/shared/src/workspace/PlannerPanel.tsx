@@ -183,7 +183,7 @@ function indefiniteWater(terrain: string): string {
 }
 
 function capitalised(sentence: string): string {
-  return sentence[0].toUpperCase() + sentence.slice(1);
+  return sentence.slice(0, 1).toUpperCase() + sentence.slice(1);
 }
 
 /**
@@ -307,12 +307,6 @@ export function describeLoadCheck(plan: RoutePlan): string | null {
 }
 
 /**
- * One route step as the panel prints it.
- *
- * `· over water` is a flier's news and no news at all for a fleet, which is on water nearly all the
- * way - so the mode decides whether a wet step says so.
- */
-/**
  * What a wet step says it is. A flier is over the water, a fleet is on it and has nothing to
  * report, and anything else standing in water got there by swimming - there is no other way in.
  */
@@ -322,6 +316,7 @@ function waterMark(mode: RoutePlan["mode"]): string {
   return " · swimming";
 }
 
+/** One route step as the panel prints it. */
 export function describeStep(step: RouteStep, mode: RoutePlan["mode"]): string {
   if (step.estimated) {
     // An unexplored hex is named as such rather than by the terrain it was taken for: that terrain

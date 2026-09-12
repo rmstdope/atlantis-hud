@@ -600,7 +600,12 @@ fn new_origins_still_refuses_every_swimmer() {
 /// The sea and the shore: `(2,2)` coastal, `(3,3)` deep - its six neighbours are all water - and
 /// `(4,4)` water of a depth nothing can tell, named by `(3,3)` alone.
 fn sea_and_shore(items: &str, weight: i64, capacity: &str) -> ParsedReport {
-    parse_report_full(&format!(
+    parse_report_full(&sea_and_shore_text(items, weight, capacity))
+}
+
+/// The same report as text, so a test that needs another region can append one.
+fn sea_and_shore_text(items: &str, weight: i64, capacity: &str) -> String {
+    format!(
         "Foo (1) Report\n\n\
          plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : ocean (2,2) in Atlantis Ocean.\n\n\
@@ -620,8 +625,12 @@ fn sea_and_shore(items: &str, weight: i64, capacity: &str) -> ParsedReport {
          Southeast : ocean (4,4) in Atlantis Ocean.\n  \
          South : ocean (3,5) in Atlantis Ocean.\n  \
          Southwest : ocean (2,4) in Atlantis Ocean.\n  \
-         Northwest : ocean (2,2) in Atlantis Ocean.\n"
-    ))
+         Northwest : ocean (2,2) in Atlantis Ocean.\n\n\
+         ocean (4,4) in Atlantis Ocean.\n\n\
+         Exits:\n  \
+         Northwest : ocean (3,3) in Atlantis Ocean.\n  \
+         Southeast : ocean (5,5) in Atlantis Ocean.\n"
+    )
 }
 
 #[test]
@@ -682,6 +691,36 @@ fn sea_creatures_bearing_more_than_enough_ride_out() {
 
 /// `(4,4)` is named by one hex alone, so five of its six directions are unaccounted for and
 /// nothing can say whether it is deep. Refused rather than guessed at.
+/// Deep water *in the way* rather than clicked on: the destination is the unknown-depth hex beyond
+/// it, so the refusal arrives through the mid-route probe and carries `destination: false`. The
+/// deep hex is named, not the one the player asked for, because the deep hex is what stops it.
+#[test]
+fn deep_water_in_the_way_is_named_rather_than_the_hex_beyond_it() {
+    // (5,5) is coastal - its own exits name the plain at (6,6) - so the destination guard passes
+    // it, and the deep hex at (3,3) is met in the middle of the search instead.
+    let report = parse_report_full(&format!(
+        "{}\n\
+         ocean (5,5) in Atlantis Ocean.\n\n\
+         Exits:\n  \
+         Northwest : ocean (4,4) in Atlantis Ocean.\n  \
+         Southeast : plain (6,6) in Nowhere.\n",
+        sea_and_shore_text("lizardman [LIZA]", 10, "0/0/15/15")
+    ));
+    let problem = plan_in(&report, &trident_ruleset(), "900", at(5, 5))
+        .expect_err("the deep hex is in the way");
+
+    assert_eq!(
+        problem,
+        RouteProblem::DeepWaterNeedsSeaCreatures {
+            coordinate: at(3, 3),
+            terrain: "ocean".to_string(),
+            borne: 0,
+            load: 10,
+            destination: false,
+        }
+    );
+}
+
 #[test]
 fn water_of_unknown_depth_is_refused_rather_than_guessed() {
     let report = sea_and_shore("lizardman [LIZA]", 10, "0/0/15/15");

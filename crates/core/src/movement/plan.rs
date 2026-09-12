@@ -337,9 +337,8 @@ pub(crate) fn route_for_mode(
             // A water destination is the hex the player clicked on, and "in the way" is untrue of
             // it. Anything else blocked here - an inland hex a fleet cannot reach, say - keeps the
             // refusal it has always had, which is not about the destination being wet.
-            let verdict = water_verdict(ruleset, map, journey, destination, &target.terrain);
             return Err(
-                water_problem(verdict, destination, target.terrain.clone(), true).unwrap_or(
+                water_refusal(ruleset, map, journey, destination, &target.terrain, true).unwrap_or(
                     RouteProblem::OceanNeedsShip {
                         coordinate: destination,
                         terrain: water_named(ruleset, &target.terrain),
@@ -350,9 +349,8 @@ pub(crate) fn route_for_mode(
     }
     if let Some(here) = map.hex(origin) {
         if blocks(ruleset, map, journey, origin, &here.terrain) {
-            let verdict = water_verdict(ruleset, map, journey, origin, &here.terrain);
             return Err(
-                water_problem(verdict, origin, here.terrain.clone(), false).unwrap_or(
+                water_refusal(ruleset, map, journey, origin, &here.terrain, false).unwrap_or(
                     RouteProblem::OceanNeedsShip {
                         coordinate: origin,
                         terrain: water_named(ruleset, &here.terrain),
@@ -692,6 +690,27 @@ pub(crate) fn water_verdict(
     }
 }
 
+/// The refusal the water at `coordinate` is for this journey, or `None` where it is no obstacle.
+///
+/// The one way a refusal site may ask: it goes through [`blocks`], so a caller can never reach
+/// [`water_verdict`] by a route [`blocks`] would have short-circuited - a `Sail` journey, whose
+/// water question the sailing rule answers first and whose refusals are not about swimming at all.
+/// Three sites have been separately wrong about water; this is what stops there being a fourth.
+fn water_refusal(
+    ruleset: &Ruleset,
+    map: &MapKnowledge,
+    journey: Journey,
+    coordinate: Coordinate,
+    terrain: &str,
+    destination: bool,
+) -> Option<RouteProblem> {
+    if !blocks(ruleset, map, journey, coordinate, terrain) {
+        return None;
+    }
+    let verdict = water_verdict(ruleset, map, journey, coordinate, terrain);
+    water_problem(verdict, coordinate, terrain.to_string(), destination)
+}
+
 /// The refusal this verdict is, or `None` where the water is no obstacle.
 fn water_problem(
     verdict: WaterVerdict,
@@ -907,11 +926,12 @@ fn blocked_by_water(
     // nothing by water.
     swimming.iter().find_map(|step| {
         let hex = map.hex(step.to)?;
-        let verdict = water_verdict(ruleset, map, journey, step.to, &hex.terrain);
-        water_problem(
-            verdict,
+        water_refusal(
+            ruleset,
+            map,
+            journey,
             step.to,
-            hex.terrain.clone(),
+            &hex.terrain,
             step.to == destination,
         )
     })
@@ -1521,6 +1541,28 @@ mod tests {
             ),
             "dry land refuses nobody for want of a swimming capacity"
         );
+    }
+
+    /// The variant no report can reach - `parse_capacities` refuses anything but four numbers -
+    /// so the mapping from verdict to refusal is pinned directly. It carries no `destination` flag:
+    /// the agreed sentence is the same whichever hex it is.
+    #[test]
+    fn an_unstated_swim_capacity_refuses_the_hex_by_name() {
+        let coordinate = Coordinate { x: 2, y: 2, z: 1 };
+        for destination in [false, true] {
+            assert_eq!(
+                water_problem(
+                    WaterVerdict::SwimCapacityUnstated,
+                    coordinate,
+                    "ocean".to_string(),
+                    destination
+                ),
+                Some(RouteProblem::SwimCapacityUnstated {
+                    coordinate,
+                    terrain: "ocean".to_string(),
+                })
+            );
+        }
     }
 
     fn trident() -> Ruleset {
