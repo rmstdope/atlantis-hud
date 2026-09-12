@@ -613,11 +613,15 @@ export function projectAll(input: {
                 teacherFactionId
               })
             };
-      const doubled =
-        teacher !== null && (crossFaction === null || crossFaction.permission === "permitted");
+      // The teacher whose month actually doubles this one, or null: a cross-faction teacher the
+      // declaration rule refuses or cannot establish teaches without effect here.
+      const doubling =
+        teacher !== null && (crossFaction === null || crossFaction.permission === "permitted")
+          ? teacher
+          : null;
       const halved = unsheltered.has(mage.key);
       const worth =
-        (doubled ? (outcomes.get(teacher as string)?.worth ?? 1) : 1) * (halved ? 0.5 : 1);
+        (doubling === null ? 1 : (outcomes.get(doubling)?.worth ?? 1)) * (halved ? 0.5 : 1);
       // Points stay fractional and are never rounded: `taughtWorth(20)` is 1.5 and a halved month
       // is 0.5, so a month can be worth 22.5 points. The 30-points-a-month rate is itself an
       // inference (`studyProgress.ts:21`); rounding here would be a second guess on top of it.
@@ -642,7 +646,7 @@ export function projectAll(input: {
         // he is simply somewhere rather than going somewhere.
         leftBuilding: turn === 0 && halved && mage.leftBuilding !== null ? mage.leftBuilding : null,
         leftBy: turn === 0 && halved && mage.leftBuilding !== null ? mage.leftBy : null,
-        taughtBy: doubled ? teacher : null,
+        taughtBy: doubling,
         crossFaction
       });
     }

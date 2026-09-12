@@ -155,6 +155,30 @@ describe("studyOrders", () => {
     expect(section.text.split("\n")[2]).toBe("  STUDY FORC        ; force 3 -> 4, taught by Vess");
   });
 
+  // ah-g9sf.12: the comment describes the forecast, and a month the declaration rule refuses or
+  // cannot establish is not doubled - so naming a teacher there would claim a bonus the grid does
+  // not project. The cell itself says why, in the planner, where the player can act on it.
+  it("a_cross_faction_month_without_the_declaration_names_no_teacher", () => {
+    for (const permission of ["refused", "unknown"] as const) {
+      const rows = [
+        aRow({
+          cells: [
+            aStudyCell({
+              level: 3,
+              gained: false,
+              crossFaction: { teacherKey: "21/3012", permission }
+            })
+          ],
+          goals: [{ kind: "study", turn: 24, skill: "FORC" }],
+          standings: [standing({ FORC: 3 })]
+        }),
+        aRow({ unitId: "3012", name: "Uln", key: "21/3012", cells: [{ kind: "idle" }] })
+      ];
+      const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] }).sections;
+      expect(section.text.split("\n")[2]).toBe("  STUDY FORC        ; force 3");
+    }
+  });
+
   it("a_teacher_writes_one_teach_line_of_the_unit_numbers_taught", () => {
     const rows = [
       aRow({

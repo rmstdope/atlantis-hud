@@ -471,3 +471,85 @@ describe("the doubled month a declaration rule withholds", () => {
     expect(force(NO_TEACHING_RULE)?.taughtBy).toBe("Uln");
   });
 });
+
+describe("a student a cross-faction teacher has already claimed", () => {
+  /**
+   * Sable of our faction 12, studying force, claimed for this turn by Uln of faction 21 - whose
+   * teaching the declaration rule cannot confirm. Our own Ereb opens his teach list.
+   *
+   * The projection's own `taughtBy` map records Uln's claim whatever the declaration says, so
+   * `judge` would refuse Ereb's pupil as `taken`. The popover must read the same way: the cell's
+   * `taughtBy` is null on a month that is not doubled, so the claim is carried by `crossFaction`.
+   */
+  const standing = (level: number) => at({ FORC: [level, 0] });
+
+  const claimed = (permission: "refused" | "unknown") =>
+    [
+      {
+        key: "12/2431",
+        factionId: "12",
+        unitId: "2431",
+        name: "Ereb",
+        regionId: "1:7",
+        summary: "",
+        note: "",
+        hasNote: false,
+        goals: [],
+        cells: [],
+        standings: [standing(5), standing(5)],
+        monthsUnreported: 0,
+        sheetTurn: null
+      },
+      {
+        key: "12/2517",
+        factionId: "12",
+        unitId: "2517",
+        name: "Sable",
+        regionId: "1:7",
+        summary: "",
+        note: "",
+        hasNote: false,
+        goals: [],
+        cells: [
+          {
+            kind: "study" as const,
+            skill: "FORC",
+            name: "force",
+            level: 1,
+            points: 60,
+            gained: false,
+            blocked: null,
+            worth: 1,
+            unsheltered: false,
+            shelterUnknown: false,
+            leftBuilding: null,
+            leftBy: null,
+            taughtBy: null,
+            crossFaction: { teacherKey: "21/3012", permission }
+          }
+        ],
+        standings: [standing(1), standing(1)],
+        monthsUnreported: 0,
+        sheetTurn: null
+      }
+    ] as ScheduleRow[];
+
+  const sable = (permission: "refused" | "unknown") =>
+    cellMenu({
+      mageName: "Ereb",
+      turn: 24,
+      standing: standing(5),
+      tree,
+      rows: claimed(permission),
+      turnIndex: 0,
+      rowKey: "12/2431",
+      rule: NO_TEACHING_RULE
+    }).teach.find((one) => one.unitId === "2517");
+
+  it("is not offered as a free pupil, however the declaration reads", () => {
+    for (const permission of ["refused", "unknown"] as const) {
+      expect(sable(permission)?.detail).toBe("taught by 21/3012");
+      expect(sable(permission)?.blocked).toBe("taught by 21/3012");
+    }
+  });
+});

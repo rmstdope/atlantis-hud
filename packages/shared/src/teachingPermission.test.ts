@@ -133,3 +133,30 @@ describe("ownDeclarations", () => {
     ).toBe("permitted");
   });
 });
+
+describe("an orders document belonging to another faction", () => {
+  it("is not overlaid onto our own declarations", () => {
+    const mine = ownDeclarations({
+      attitudes: attitudes(null, { "21": "neutral" }),
+      ownFactionId: "12",
+      ordersDocument: ['#atlantis 12 "pass"', "DECLARE 21 FRIENDLY"].join("\n")
+    });
+    expect(mine.toward.get("21")).toBe("friendly");
+
+    // The same DECLARE under somebody else's `#atlantis` line states their attitude, not ours.
+    const theirs = ownDeclarations({
+      attitudes: attitudes(null, { "21": "neutral" }),
+      ownFactionId: "12",
+      ordersDocument: ['#atlantis 34 "pass"', "DECLARE 21 FRIENDLY"].join("\n")
+    });
+    expect(theirs.toward.get("21")).toBe("neutral");
+
+    // A document naming no faction is taken as ours: an unsaved or hand-started file looks like this.
+    const unnamed = ownDeclarations({
+      attitudes: attitudes(null, { "21": "neutral" }),
+      ownFactionId: "12",
+      ordersDocument: "DECLARE 21 FRIENDLY"
+    });
+    expect(unnamed.toward.get("21")).toBe("friendly");
+  });
+});

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   TEACHING_SLOTS,
+  claimedTeacher,
   doublingTeacher,
   noticeSummary,
   plannerNotices,
@@ -664,5 +665,101 @@ describe("who would double a month under a declaration rule", () => {
     expect(ask(rule({}))).toBeNull();
     // And with no rule at all, today's answer.
     expect(ask(NO_TEACHING_RULE)).toBe("Uln");
+  });
+});
+
+describe("who has claimed a student's month", () => {
+  const cell = (over: Partial<Extract<ScheduleCell, { kind: "study" }>>): ScheduleCell => ({
+    kind: "study",
+    skill: "FORC",
+    name: "force",
+    level: 1,
+    points: 60,
+    gained: false,
+    blocked: null,
+    worth: 1,
+    unsheltered: false,
+    shelterUnknown: false,
+    leftBuilding: null,
+    leftBy: null,
+    taughtBy: null,
+    crossFaction: null,
+    ...over
+  });
+
+  it("reads a cross-faction claim the declaration rule did not double", () => {
+    expect(claimedTeacher(cell({ taughtBy: "21/881", worth: 2 }))).toBe("21/881");
+    expect(
+      claimedTeacher(cell({ crossFaction: { teacherKey: "21/881", permission: "refused" } }))
+    ).toBe("21/881");
+    expect(
+      claimedTeacher(cell({ crossFaction: { teacherKey: "21/881", permission: "unknown" } }))
+    ).toBe("21/881");
+    expect(claimedTeacher(cell({}))).toBeNull();
+    expect(claimedTeacher(undefined)).toBeNull();
+  });
+
+  it("does not suggest a pupil a foreign teacher has already claimed", () => {
+    const standing = new Map([["FORC", { level: 1, points: 60 }]]) as ScheduleRow["standings"][number];
+    const senior = new Map([["FORC", { level: 5, points: 450 }]]) as ScheduleRow["standings"][number];
+    const rows: ScheduleRow[] = [
+      {
+        key: "12/2431",
+        factionId: "12",
+        unitId: "2431",
+        name: "Ereb",
+        regionId: "1:7",
+        summary: "",
+        note: "",
+        hasNote: false,
+        goals: [],
+        cells: [
+          {
+            kind: "teach",
+            students: ["2688"],
+            live: false,
+            outcome: { taught: ["12/2688"], refused: [], worth: 2 },
+            label: "TEACH Vess"
+          }
+        ],
+        standings: [senior, senior],
+        monthsUnreported: 0,
+        sheetTurn: null
+      },
+      {
+        key: "12/2688",
+        factionId: "12",
+        unitId: "2688",
+        name: "Vess",
+        regionId: "1:7",
+        summary: "",
+        note: "",
+        hasNote: false,
+        goals: [],
+        cells: [cell({ taughtBy: "12/2431", worth: 2 })],
+        standings: [standing, standing],
+        monthsUnreported: 0,
+        sheetTurn: null
+      },
+      {
+        key: "12/2517",
+        factionId: "12",
+        unitId: "2517",
+        name: "Sable",
+        regionId: "1:7",
+        summary: "",
+        note: "",
+        hasNote: false,
+        goals: [],
+        cells: [cell({ crossFaction: { teacherKey: "21/3012", permission: "unknown" } })],
+        standings: [standing, standing],
+        monthsUnreported: 0,
+        sheetTurn: null
+      }
+    ];
+
+    const notices = plannerNotices({ rows, turns: [24], label: (regionId) => regionId });
+
+    expect(notices.filter((one) => one.code === "teacher-has-free-slots")).toEqual([]);
   });
 });

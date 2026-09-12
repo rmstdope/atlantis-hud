@@ -5,7 +5,7 @@
  * pinned: a `.test.tsx` there renders with `renderToStaticMarkup` and can assert markup only.
  */
 
-import type { ScheduleRow } from "./studySchedule";
+import type { ScheduleCell, ScheduleRow } from "./studySchedule";
 import { joinNames } from "./workspace/standingChip";
 import { teachingPermission, type TeachingRule } from "./teachingPermission";
 
@@ -103,6 +103,25 @@ export function doublingTeacher(input: {
     return row.name;
   }
   return null;
+}
+
+/**
+ * The mage who has claimed this student's month, doubled or not - or null when nobody has.
+ *
+ * `ScheduleCell.taughtBy` is set only on a month that is actually doubled, so a cross-faction
+ * student whose declaration is refused or cannot be established reads as untaught there (ah-g9sf.12).
+ * `projectAll`'s own resolution still records that teacher, and refuses a second one with
+ * `TeachRefusal { kind: "taken" }` - so anything asking "is this mage's month already somebody's"
+ * must read this rather than `taughtBy`, or it offers a pupil the projection would drop.
+ *
+ * Conservative for `"unknown"` deliberately, as `doublingTeacher` is: we cannot establish that the
+ * engine refuses that teacher either, so nothing here promises the student is free.
+ */
+export function claimedTeacher(cell: ScheduleCell | undefined): string | null {
+  if (cell === undefined || cell.kind !== "study") {
+    return null;
+  }
+  return cell.taughtBy ?? cell.crossFaction?.teacherKey ?? null;
 }
 
 /** Why one named student cannot be taught this turn. */
@@ -293,7 +312,11 @@ export function plannerNotices(input: {
                 return false;
               }
               const theirs = one.cells[turnIndex];
-              if (theirs?.kind !== "study" || theirs.blocked !== null || theirs.taughtBy !== null) {
+              if (
+                theirs?.kind !== "study" ||
+                theirs.blocked !== null ||
+                claimedTeacher(theirs) !== null
+              ) {
                 return false;
               }
               const teacherLevel = held?.get(theirs.skill)?.level ?? 0;

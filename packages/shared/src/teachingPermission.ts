@@ -15,6 +15,7 @@
 
 import type { DeclaredAttitudes } from "@atlantis/core-client";
 import { readDeclareOrders } from "./orderDeclarations";
+import { ordersFileFaction } from "./ordersImport";
 import { newAgeWorldFor } from "./workspace/newAgeWorlds";
 
 // `attitudeToward` (`factionDossier.ts:86`) is deliberately **not** imported, although its doc says
@@ -74,7 +75,14 @@ export function teachingDeclarerFor(rulesetId: string | null | undefined): Teach
   return newAgeWorldFor(rulesetId)?.worldId === "trident" ? "student" : null;
 }
 
-/** The report's `Declared Attitudes:` block overlaid by this turn's own DECLARE orders. */
+/**
+ * The report's `Declared Attitudes:` block overlaid by this turn's own DECLARE orders.
+ *
+ * **Only when the document is our own faction's.** A document whose `#atlantis` line names another
+ * faction states that faction's declarations, not ours, and overlaying them would answer a question
+ * about our own attitudes with somebody else's; a document naming none is taken as ours, which is
+ * what an unsaved or hand-started file looks like.
+ */
 export function ownDeclarations(input: {
   attitudes: DeclaredAttitudes | null;
   ownFactionId: string | null;
@@ -87,6 +95,10 @@ export function ownDeclarations(input: {
     }
   }
   let fallback = input.attitudes?.defaultAttitude?.toLowerCase() ?? null;
+  const documentFactionId = ordersFileFaction(input.ordersDocument);
+  if (documentFactionId !== null && documentFactionId !== input.ownFactionId) {
+    return { factionId: input.ownFactionId, toward, fallback };
+  }
   // In document order, so the last word on a faction wins - which is what the engine does with two
   // DECLAREs naming the same one.
   for (const change of readDeclareOrders(input.ordersDocument)) {

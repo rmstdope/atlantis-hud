@@ -17,7 +17,7 @@ import { standingsFrom } from "./magicStanding";
 import { skillWords } from "./skillReading";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
-import { TEACHING_SLOTS, doublingTeacher } from "./studyTeaching";
+import { TEACHING_SLOTS, claimedTeacher, doublingTeacher } from "./studyTeaching";
 import type { TeachingRule } from "./teachingPermission";
 import type { CellPick } from "./workspace/studyCellState";
 
@@ -245,8 +245,12 @@ function teachChoices(input: {
       });
       continue;
     }
-    if (cell.taughtBy !== null && cell.taughtBy !== rowKey) {
-      const by = rows.find((one) => one.key === cell.taughtBy)?.name ?? cell.taughtBy;
+    // `claimedTeacher`, not `cell.taughtBy`: a cross-faction month the declaration rule refuses or
+    // cannot establish is not doubled, so `taughtBy` is null on it - but the projection has still
+    // given that student to that teacher and would refuse a second one as `taken`.
+    const claimed = claimedTeacher(cell);
+    if (claimed !== null && claimed !== rowKey) {
+      const by = rows.find((one) => one.key === claimed)?.name ?? claimed;
       choices.push({ unitId: row.unitId, label, detail: `taught by ${by}`, blocked: `taught by ${by}` });
       continue;
     }
