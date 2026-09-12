@@ -206,6 +206,14 @@ export function parseMovementRules(html: string): MovementRules {
     )
   );
 
+  // New Age: Trident widens the sailing rule's water: "Lakes count as water for this purpose, and a
+  // region bordering one counts as its shore, so fleets may also sail between a lake and the land
+  // around it." New Origins' sailing section has no such sentence, so a miss means this world's
+  // only water is the one the ocean sentence named - hence a bare match rather than requireMatch.
+  const alsoWater = text.match(
+    /(\w+?)s count as water for this purpose, and a region bordering one counts as its shore/i
+  );
+
   // "A coastal region is defined as a non-ocean region with at least one adjacent ocean region."
   const coastal = requireMatch(
     text,
@@ -290,7 +298,8 @@ export function parseMovementRules(html: string): MovementRules {
     ocean: {
       requiresShipUnlessFlying: true,
       flyingMustEndOnLand: true,
-      terrain: ocean[1].toLowerCase()
+      terrain: ocean[1].toLowerCase(),
+      alsoWater: alsoWater ? [alsoWater[1].toLowerCase()] : []
     },
     sailing: {
       flatCost,
@@ -301,7 +310,7 @@ export function parseMovementRules(html: string): MovementRules {
       movementPoints: sentence(points),
       terrainCosts: sentence(terrain.match),
       road: sentence(road),
-      ocean: sentence(ocean),
+      ocean: alsoWater ? `${sentence(ocean)}. ${sentence(alsoWater)}` : sentence(ocean),
       sailing: `${sentence(sailingCost)}. ${sentence(coastal)}`
     }
   };

@@ -121,6 +121,24 @@ describe("parseMovementRules", () => {
     expect(parseMovementRules(renamed).ocean.terrain).toBe("water");
   });
 
+  /**
+   * New Age: Trident widens the sailing rule's water - "Lakes count as water for this purpose, and
+   * a region bordering one counts as its shore, so fleets may also sail between a lake and the
+   * land around it." New Origins' sailing section has no such sentence, so its only water is the
+   * one the ocean sentence named.
+   */
+  it("reads the lake addition to the water rule", () => {
+    const trident = parseMovementRules(TRIDENT_RULES_HTML);
+
+    expect(trident.ocean.alsoWater).toEqual(["lake"]);
+    expect(trident.provenance.ocean).toContain("Lakes count as water for this purpose");
+
+    const origins = parseMovementRules(RULES_HTML);
+
+    expect(origins.ocean.alsoWater).toEqual([]);
+    expect(origins.provenance.ocean).not.toContain("count as water for this purpose");
+  });
+
   it("records the sentence every value came from", () => {
     const rules = parseMovementRules(RULES_HTML);
 

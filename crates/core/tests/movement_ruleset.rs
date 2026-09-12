@@ -367,6 +367,28 @@ fn rejects_a_water_terrain_that_is_also_difficult_going() {
     assert!(matches!(error, RulesetError::Unusable(_)));
 }
 
+/// The same tell-tale, for the world that adds a second water terrain: `alsoWater` is captured by
+/// the same kind of bare word match, so an extra name that also costs double is a mis-capture.
+#[test]
+fn rejects_a_water_terrain_that_is_also_difficult_going_in_the_extra_list() {
+    let broken = RULESET.replace("\"alsoWater\": []", "\"alsoWater\": [\"forest\"]");
+    assert_ne!(broken, RULESET, "the fixture should have been altered");
+
+    let error = Ruleset::from_json(&broken).expect_err("should refuse");
+    assert!(matches!(error, RulesetError::Unusable(_)));
+}
+
+/// A blank extra name would match no hex and silently model nothing, exactly as a blank
+/// `ocean.terrain` would.
+#[test]
+fn rejects_a_blank_extra_water_terrain() {
+    let broken = RULESET.replace("\"alsoWater\": []", "\"alsoWater\": [\" \"]");
+    assert_ne!(broken, RULESET, "the fixture should have been altered");
+
+    let error = Ruleset::from_json(&broken).expect_err("should refuse");
+    assert!(matches!(error, RulesetError::Unusable(_)));
+}
+
 /// Negative thresholds pass an ordering check and then make every hex maximally dangerous.
 #[test]
 fn rejects_negative_risk_thresholds() {
@@ -888,4 +910,27 @@ fn an_unknown_key_anywhere_in_the_file_is_refused() {
     }
     // And the file as committed still loads - the probes above must not have been the reason.
     Ruleset::from_json(RULESET).expect("the committed file loads");
+}
+
+/// New Age: Trident widens the sailing rule's water: "Lakes count as water for this purpose, and a
+/// region bordering one counts as its shore, so fleets may also sail between a lake and the land
+/// around it." (`newage trident rules/movement_sailing`.) New Origins' sailing section carries no
+/// such sentence, so a lake there is dry land — which is why both worlds are asserted here.
+#[test]
+fn knows_lakes_are_water_in_trident() {
+    let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+        .expect("the committed Trident ruleset parses and validates");
+
+    assert!(trident.is_water("lake"));
+    assert!(
+        trident.is_water("Lake"),
+        "case should not decide whether a unit drowns"
+    );
+    assert!(trident.is_water("ocean"), "the sea is still water");
+    assert!(!trident.is_water("plain"));
+
+    assert!(
+        !ruleset().is_water("lake"),
+        "New Origins has no lake sentence, so a lake there is dry land"
+    );
 }

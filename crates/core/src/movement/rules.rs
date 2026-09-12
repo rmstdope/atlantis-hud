@@ -116,6 +116,15 @@ pub struct OceanRule {
     pub flying_must_end_on_land: bool,
     /// Lower-cased, and taken from the rule's own sentence rather than assumed to be `ocean`.
     pub terrain: String,
+    /// Further terrains this world counts as water, lower-cased, beyond the one the ocean
+    /// sentence names. Empty in a world whose only water is the ocean.
+    ///
+    /// `newage trident rules/movement_sailing`: "Lakes count as water for this purpose, and a
+    /// region bordering one counts as its shore, so fleets may also sail between a lake and the
+    /// land around it." New Origins' sailing section says nothing of the kind, so its list is
+    /// empty and every behaviour there is unchanged.
+    #[serde(default)]
+    pub also_water: Vec<String>,
 }
 
 /// What a fleet pays to enter a region, and where it may go.
@@ -987,26 +996,31 @@ impl Ruleset {
             )));
         }
 
-        let water = self.movement.ocean.terrain.trim();
-        if water.is_empty() {
-            return Err(RulesetError::Unusable(
-                "the water rule names no terrain, so no hex could be recognised as water"
-                    .to_string(),
-            ));
-        }
-
-        // The scraper captures the water terrain with a bare word match, so a reworded page can put
-        // any word here. A terrain that also charges a walking premium is the tell-tale of a
-        // mis-capture: nothing walks into water, so no ruleset prices it as difficult going.
-        if terrain
-            .premiums
-            .keys()
-            .any(|listed| listed.eq_ignore_ascii_case(water))
+        for water in std::iter::once(&self.movement.ocean.terrain)
+            .chain(self.movement.ocean.also_water.iter())
         {
-            return Err(RulesetError::Unusable(format!(
-                "{water} is named as water and also as difficult going, so the water rule was \
-                 probably misread"
-            )));
+            let water = water.trim();
+            if water.is_empty() {
+                return Err(RulesetError::Unusable(
+                    "the water rule names no terrain, so no hex could be recognised as water"
+                        .to_string(),
+                ));
+            }
+
+            // The scraper captures each water terrain with a bare word match, so a reworded page
+            // can put any word here. A terrain that also charges a walking premium is the
+            // tell-tale of a mis-capture: nothing walks into water, so no ruleset prices it as
+            // difficult going.
+            if terrain
+                .premiums
+                .keys()
+                .any(|listed| listed.eq_ignore_ascii_case(water))
+            {
+                return Err(RulesetError::Unusable(format!(
+                    "{water} is named as water and also as difficult going, so the water rule was \
+                     probably misread"
+                )));
+            }
         }
 
         if self.movement.sailing.flat_cost == 0 {
@@ -1119,10 +1133,16 @@ impl Ruleset {
         (base_cost / road.divisor).max(road.minimum_cost)
     }
 
-    /// Whether this terrain is the water the ocean rule speaks of.
+    /// Whether this terrain is water in this world - the terrain the ocean rule names, or any
+    /// further one the world adds.
     #[must_use]
     pub fn is_water(&self, terrain: &str) -> bool {
-        self.movement.ocean.terrain.eq_ignore_ascii_case(terrain)
+        let ocean = &self.movement.ocean;
+        ocean.terrain.eq_ignore_ascii_case(terrain)
+            || ocean
+                .also_water
+                .iter()
+                .any(|extra| extra.eq_ignore_ascii_case(terrain))
     }
 
     /// Whether the ruleset describes movement completely.
