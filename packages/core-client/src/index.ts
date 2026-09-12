@@ -237,7 +237,9 @@ export type RouteProblem =
       to: Coordinate;
       toTerrain: string;
     }
-  | { kind: "isthmusNeedsCanal"; coordinate: Coordinate; terrain: string };
+  | { kind: "isthmusNeedsCanal"; coordinate: Coordinate; terrain: string }
+  | { kind: "fleetLandingInland"; coordinate: Coordinate; terrain: string }
+  | { kind: "fleetLandingCoastUnknown"; coordinate: Coordinate; terrain: string };
 
 export type RiskLevel = "low" | "medium" | "high";
 

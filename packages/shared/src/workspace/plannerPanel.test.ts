@@ -17,7 +17,8 @@ describe("explaining why there is no route", () => {
   });
 
   /**
-   * Core refuses a fleet an inland hex through the same variant, and that hex is dry - so the
+   * Core can still refuse a fleet standing on a land hex that is not coastal through this variant,
+   * and that hex is dry - so the
    * terrain it hands over is the world's own water rather than the hex's, and this is the sentence
    * that would read as a contradiction if it were not.
    */
@@ -29,6 +30,28 @@ describe("explaining why there is no route", () => {
         terrain: "ocean"
       })
     ).toBe("The sea at (3,3) is in the way, and crossing it needs a ship.");
+  });
+
+  it("tells a fleet a seen inland hex touches no sea", () => {
+    expect(
+      describeProblem({
+        kind: "fleetLandingInland",
+        coordinate: { x: 14, y: 6, z: 1 },
+        terrain: "plain"
+      })
+    ).toBe("A fleet may land only on a coast, and plain (14,6) touches no sea.");
+  });
+
+  it("tells a fleet there is no telling whether a named hex touches the sea", () => {
+    expect(
+      describeProblem({
+        kind: "fleetLandingCoastUnknown",
+        coordinate: { x: 15, y: 3, z: 1 },
+        terrain: "hills"
+      })
+    ).toBe(
+      "A fleet may land only on a coast, and there is no telling whether hills (15,3) touches the sea."
+    );
   });
 
   it("has something to say about every refusal the core can produce", () => {
@@ -53,7 +76,9 @@ describe("explaining why there is no route", () => {
       "oceanNeedsShip",
       "destinationNeedsShip",
       "flightWouldEndOverOcean",
-      "isthmusNeedsCanal"
+      "isthmusNeedsCanal",
+      "fleetLandingInland",
+      "fleetLandingCoastUnknown"
     ] as const) {
       const sentence = describeProblem({
         kind,
