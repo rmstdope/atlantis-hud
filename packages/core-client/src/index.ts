@@ -158,6 +158,8 @@ export type RouteStep = {
    * it. Nothing about such a step is knowledge, and the interface has to say so.
    */
   estimated: boolean;
+  /** Whether this hex is water in this world. Always false for an estimated step. */
+  overWater: boolean;
 };
 
 /** Where the unit stands when a month runs out. */
@@ -187,8 +189,9 @@ export type RouteProblem =
   | { kind: "alreadyThere" }
   | { kind: "noKnownRoute" }
   | { kind: "originUnknown" }
-  | { kind: "oceanNeedsShip"; coordinate: Coordinate }
-  | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate }
+  | { kind: "oceanNeedsShip"; coordinate: Coordinate; terrain: string }
+  | { kind: "destinationNeedsShip"; coordinate: Coordinate; terrain: string }
+  | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate; terrain: string }
   | { kind: "crewCannotSail"; required: number; available: number }
   | {
       kind: "sailNeedsOcean";

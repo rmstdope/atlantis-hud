@@ -7,4 +7,14 @@ export type OceanRule = { requiresShipUnlessFlying: boolean, flyingMustEndOnLand
 /**
  * Lower-cased, and taken from the rule's own sentence rather than assumed to be `ocean`.
  */
-terrain: string, };
+terrain: string, 
+/**
+ * Further terrains this world counts as water, lower-cased, beyond the one the ocean
+ * sentence names. Empty in a world whose only water is the ocean.
+ *
+ * `newage trident rules/movement_sailing`: "Lakes count as water for this purpose, and a
+ * region bordering one counts as its shore, so fleets may also sail between a lake and the
+ * land around it." New Origins' sailing section says nothing of the kind, so its list is
+ * empty and every behaviour there is unchanged.
+ */
+alsoWater: Array<string>, };

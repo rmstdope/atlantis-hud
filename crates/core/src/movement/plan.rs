@@ -58,8 +58,19 @@ pub enum RouteProblem {
     NoKnownRoute,
     /// The map does not know the hex the unit is standing in, so there is nothing to plan from.
     OriginUnknown,
-    /// The way lies across water, which needs a ship.
-    OceanNeedsShip { coordinate: Coordinate },
+    /// The way lies across water, which needs a ship. `terrain` is the water hex's own reported
+    /// terrain, so the refusal can name a lake a lake.
+    OceanNeedsShip {
+        coordinate: Coordinate,
+        terrain: String,
+    },
+    /// The destination is itself water. Separate from [`RouteProblem::OceanNeedsShip`] because "in
+    /// the way" is untrue of the hex the player asked for, and a small inland lake is easy to click
+    /// by accident.
+    DestinationNeedsShip {
+        coordinate: Coordinate,
+        terrain: String,
+    },
     /// A flying route would have a month end over water, and a unit that ends a turn over water
     /// drowns.
     ///
@@ -68,7 +79,10 @@ pub enum RouteProblem {
     /// carry over "if a MOVE command did not complete in the month" - so the unit cannot choose to
     /// stop on an island part-way. Reaching the far side may still be possible by ordering the
     /// crossing a month at a time, which this planner does not do.
-    FlightWouldEndOverOcean { coordinate: Coordinate },
+    FlightWouldEndOverOcean {
+        coordinate: Coordinate,
+        terrain: String,
+    },
     /// The unit is aboard a fleet whose crew does not hold enough sailing skill between them to
     /// sail it - "there must be enough sailors aboard ... to sail the fleet, or it will not go
     /// anywhere."
@@ -105,6 +119,9 @@ pub struct RouteStep {
     /// True for a step into unexplored country, which is costed as the terrain of the hex it was
     /// entered from. Nothing about such a step is knowledge, and a caller must say so.
     pub estimated: bool,
+    /// Whether this hex is water in this world. Never true for an estimated step: a guessed
+    /// terrain is not a sighting, and the panel's unexplored warning speaks for that case.
+    pub over_water: bool,
 }
 
 /// Where the unit stands when a month runs out.
@@ -229,19 +246,31 @@ pub(crate) fn route_for_mode(
     // Refuse the two cases whose reason is worth naming before searching, so the answer is
     // "that hex is water" rather than the far less useful "no route". An unexplored destination is
     // neither: nothing says it is water, so the route goes and the estimate says what it is worth.
-    if map
-        .hex(destination)
-        .is_some_and(|target| blocks(ruleset, map, journey, destination, &target.terrain))
-    {
-        return Err(RouteProblem::OceanNeedsShip {
-            coordinate: destination,
-        });
+    if let Some(target) = map.hex(destination) {
+        if blocks(ruleset, map, journey, destination, &target.terrain) {
+            // A water destination is the hex the player clicked on, and "in the way" is untrue of
+            // it. Anything else blocked here - an inland hex a fleet cannot reach, say - keeps the
+            // refusal it has always had, which is not about the destination being wet.
+            return Err(if ruleset.is_water(&target.terrain) {
+                RouteProblem::DestinationNeedsShip {
+                    coordinate: destination,
+                    terrain: target.terrain.clone(),
+                }
+            } else {
+                RouteProblem::OceanNeedsShip {
+                    coordinate: destination,
+                    terrain: water_named(ruleset, &target.terrain),
+                }
+            });
+        }
     }
-    if map
-        .hex(origin)
-        .is_some_and(|here| blocks(ruleset, map, journey, origin, &here.terrain))
-    {
-        return Err(RouteProblem::OceanNeedsShip { coordinate: origin });
+    if let Some(here) = map.hex(origin) {
+        if blocks(ruleset, map, journey, origin, &here.terrain) {
+            return Err(RouteProblem::OceanNeedsShip {
+                coordinate: origin,
+                terrain: water_named(ruleset, &here.terrain),
+            });
+        }
     }
 
     let steps = match cheapest_path(map, ruleset, journey, origin, destination) {
@@ -265,18 +294,33 @@ pub(crate) fn route_for_mode(
     // planning a stop the engine would not make would be planning a drowning.
     if flies(journey.mode) && ruleset.flight_must_end_on_land() {
         for leg in &months {
-            let over_water = map
+            let wet = map
                 .hex(leg.ends_at)
-                .is_some_and(|hex| ruleset.is_water(&hex.terrain));
-            if over_water {
+                .filter(|hex| ruleset.is_water(&hex.terrain));
+            if let Some(hex) = wet {
                 return Err(RouteProblem::FlightWouldEndOverOcean {
                     coordinate: leg.ends_at,
+                    terrain: hex.terrain.clone(),
                 });
             }
         }
     }
 
     Ok((steps, months))
+}
+
+/// The terrain [`RouteProblem::OceanNeedsShip`] should name for a hex the journey is blocked at.
+///
+/// Water names itself, so a lake is refused as a lake. A dry hex does not: `blocks` also refuses a
+/// fleet an inland land hex, which has nothing to do with water, and naming it would print "the
+/// plain is in the way, and crossing it needs a ship". That case keeps the world's own water word,
+/// which is the sentence it has always been refused with.
+fn water_named(ruleset: &Ruleset, terrain: &str) -> String {
+    if ruleset.is_water(terrain) {
+        terrain.to_string()
+    } else {
+        ruleset.movement.ocean.terrain.clone()
+    }
 }
 
 fn flies(mode: MovementMode) -> bool {
@@ -489,13 +533,23 @@ fn blocked_by_water(
         destination,
     )
     .ok()?;
-    let founders = swimming.iter().find(|step| {
-        map.hex(step.to)
-            .is_some_and(|hex| ruleset.is_water(&hex.terrain))
+    let (coordinate, terrain) = swimming.iter().find_map(|step| {
+        let hex = map.hex(step.to)?;
+        ruleset
+            .is_water(&hex.terrain)
+            .then(|| (step.to, hex.terrain.clone()))
     })?;
 
-    Some(RouteProblem::OceanNeedsShip {
-        coordinate: founders.to,
+    Some(if coordinate == destination {
+        RouteProblem::DestinationNeedsShip {
+            coordinate,
+            terrain,
+        }
+    } else {
+        RouteProblem::OceanNeedsShip {
+            coordinate,
+            terrain,
+        }
     })
 }
 
@@ -715,6 +769,7 @@ fn cheapest_path(
                     RouteStep {
                         direction,
                         to: neighbour,
+                        over_water: !step.estimated && ruleset.is_water(&step.terrain),
                         terrain: step.terrain,
                         cost: step.cost,
                         road: step.road,

@@ -125,14 +125,17 @@ pub fn trace_move(
             blocked_from = Some(route.len());
         }
 
+        // The trace guesses wherever the map runs out, exactly as the planner does.
+        let estimated = map.hex(next).is_none();
         route.push(RouteStep {
             direction: *direction,
             to: next,
             terrain: next_terrain.clone(),
             cost,
             road,
-            // The trace guesses wherever the map runs out, exactly as the planner does.
-            estimated: map.hex(next).is_none(),
+            estimated,
+            // A guessed terrain is not a sighting, so an estimated step is never marked as water.
+            over_water: !estimated && ruleset.is_water(&next_terrain),
         });
         position = next;
         terrain = next_terrain;

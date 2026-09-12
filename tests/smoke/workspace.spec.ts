@@ -2301,8 +2301,11 @@ test("an illegal move is refused with the reason", async ({ page }) => {
   await page.getByTestId("planner-arm").click();
   await selectHex(page, "1:8,52");
 
-  await expect(page.getByTestId("planner-problem")).toContainText("sea");
-  await expect(page.getByTestId("planner-problem")).toContainText("(8,52)");
+  // The hex the player clicked on is the destination, so it gets the destination refusal rather
+  // than "in the way" - which is untrue of the hex they asked for (ah-g9sf.6).
+  await expect(page.getByTestId("planner-problem")).toHaveText(
+    "(8,52) is ocean, and this unit would need a ship to be there."
+  );
   await expect(page.getByTestId("planner-route")).toHaveCount(0);
 });
 

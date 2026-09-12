@@ -34,7 +34,8 @@ const ROUTE: RoutePlanResponse = {
         terrain: "plain",
         cost: 1,
         road: false,
-        estimated: false
+        estimated: false,
+        overWater: false
       }
     ],
     totalCost: 1,
