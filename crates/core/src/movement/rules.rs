@@ -1137,6 +1137,25 @@ impl Ruleset {
                          swimming rule was probably misread"
                     )));
                 }
+
+                // And it must be water this world has actually heard of. `also_water` is the set
+                // of terrains beyond the ocean that this world treats as water, and Trident's is
+                // `["lake"]` - exactly what `unrestricted` holds. A name outside that set would
+                // match no hex and silently model nothing, which is the same failure the blank
+                // name above is refused for.
+                if !self
+                    .movement
+                    .ocean
+                    .also_water
+                    .iter()
+                    .any(|listed| listed.trim().eq_ignore_ascii_case(water))
+                {
+                    return Err(RulesetError::Unusable(format!(
+                        "the swimming rule names {water} as water a swimmer may enter, but the \
+                         water rule does not count it as water at all, so one of the two was \
+                         probably misread"
+                    )));
+                }
             }
         }
 

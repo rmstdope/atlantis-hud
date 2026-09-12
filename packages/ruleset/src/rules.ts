@@ -224,7 +224,8 @@ export function parseMovementRules(html: string): MovementRules {
     new RegExp(
       "Swimming units are restricted to coastal (\\w+) regions and (\\w+?)s\\. " +
         "Deep \\1 regions cannot be entered by swimming units, with one exception: " +
-        "a unit carried by sea creatures able to bear its whole weight",
+        "a unit carried by sea creatures able to bear its whole weight rides out into deep " +
+        "water safely\\. Ships are not affected by this restriction\\.",
       "i"
     )
   );

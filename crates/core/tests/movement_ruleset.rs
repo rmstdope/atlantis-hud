@@ -954,7 +954,9 @@ fn knows_new_origins_has_no_swimming() {
 /// the ocean, and a blank name would match no hex and silently model nothing.
 #[test]
 fn refuses_a_swimming_rule_that_contradicts_the_water_rule() {
-    for unrestricted in ["\"ocean\"", "\"\""] {
+    // "ocean" contradicts the coastal restriction; "" would match no hex; "banana" is water this
+    // world has never heard of - the water rule does not count it as water at all.
+    for unrestricted in ["\"ocean\"", "\"\"", "\"banana\""] {
         // New Origins has no swimming rule at all, so the committed ruleset carries
         // `"swimming": null`; the contradiction has to be spliced in over it.
         let with_swimming = RULESET.replacen(

@@ -9,7 +9,7 @@ import type {
   ReportUnit,
   StudyForecast,
   UnitMovement,
-  UnitSilver,
+  UnitSilver
 } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
@@ -18,13 +18,9 @@ import {
   allColumnsShown,
   unitRowKey,
   UNIT_COLUMNS,
-  type UnitColumn,
+  type UnitColumn
 } from "../unitTable";
-import {
-  renderWithStoreState,
-  restoreStoresForTest,
-  setStoreStateForTest,
-} from "../testing/storeState";
+import { renderWithStoreState, restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
 import { structuresByRegionOf } from "../structureLabel";
@@ -39,13 +35,7 @@ import { FOREIGN_SOURCE, OWN_SOURCE } from "./unitSource";
  * changed: a stale hex's empty list must not read as a genuinely empty hex.
  */
 const region = (overrides: Partial<ReportRegion> = {}): ReportRegion =>
-  aReportRegion({
-    regionId: "1:6,52",
-    coordinate: { x: 6, y: 52, z: 1 },
-    terrain: "tundra",
-    province: "Farside",
-    ...overrides,
-  });
+  aReportRegion({ regionId: "1:6,52", coordinate: { x: 6, y: 52, z: 1 }, terrain: "tundra", province: "Farside", ...overrides });
 
 function hex(overrides: Partial<HexNode> = {}): HexNode {
   return {
@@ -61,26 +51,16 @@ function hex(overrides: Partial<HexNode> = {}): HexNode {
     region: region(),
     ownUnitCount: 0,
     foreignUnitCount: 0,
-    ...overrides,
+    ...overrides
   };
 }
 
-function draw(
-  node: HexNode | null,
-  preview: RegionPreview | null = null,
-): string {
+function draw(node: HexNode | null, preview: RegionPreview | null = null): string {
   return renderToStaticMarkup(<UnitTableDock hex={node} preview={preview} />);
 }
 
 const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
-  aReportUnit({
-    unitId: "1",
-    name: "Scout",
-    regionId: "1:6,52",
-    factionId: "1",
-    factionName: "My Faction",
-    ...overrides,
-  });
+  aReportUnit({ unitId: "1", name: "Scout", regionId: "1:6,52", factionId: "1", factionName: "My Faction", ...overrides });
 
 const WALKING: UnitMovement = {
   status: "walk",
@@ -89,33 +69,19 @@ const WALKING: UnitMovement = {
   ride: 0,
   walk: 15,
   capacityMode: "walk",
-  swim: { kind: "absent" },
+  swim: { kind: "absent" }
 };
 
 describe("the units pane on an empty hex", () => {
   it("a stale hex explains its empty list instead of claiming an empty hex", () => {
-    const markup = draw(
-      hex({
-        knowledge: "stale",
-        lastSeenTurn: 21,
-        region: region({ units: [] }),
-      }),
-    );
+    const markup = draw(hex({ knowledge: "stale", lastSeenTurn: 21, region: region({ units: [] }) }));
 
-    expect(markup).toContain(
-      "Not seen since turn 21 — no current unit information.",
-    );
+    expect(markup).toContain("Not seen since turn 21 — no current unit information.");
     expect(markup).not.toContain("No units reported in this hex.");
   });
 
   it("a stale hex's header names the ground but counts nothing", () => {
-    const markup = draw(
-      hex({
-        knowledge: "stale",
-        lastSeenTurn: 21,
-        region: region({ units: [] }),
-      }),
-    );
+    const markup = draw(hex({ knowledge: "stale", lastSeenTurn: 21, region: region({ units: [] }) }));
 
     // The hint text itself, wherever the header happens to wrap it: everything from the em dash up
     // to the next tag boundary. Asserted this way rather than against a specific element's classes,
@@ -126,13 +92,7 @@ describe("the units pane on an empty hex", () => {
   });
 
   it("an empty current hex keeps today's line", () => {
-    const markup = draw(
-      hex({
-        knowledge: "current",
-        lastSeenTurn: 42,
-        region: region({ units: [] }),
-      }),
-    );
+    const markup = draw(hex({ knowledge: "current", lastSeenTurn: 42, region: region({ units: [] }) }));
 
     expect(markup).toContain("No units reported in this hex.");
     expect(markup).not.toContain("Not seen since turn");
@@ -145,19 +105,15 @@ describe("the dock stops sizing itself", () => {
       hex({
         knowledge: "current",
         lastSeenTurn: 42,
-        region: region({
-          units: [unit({ unitId: "1" }), unit({ unitId: "2" })],
-        }),
-      }),
+        region: region({ units: [unit({ unitId: "1" }), unit({ unitId: "2" })] })
+      })
     );
 
     // The scroller's own class carries no style attribute at all now - the slot around it owns
     // the height. Rows still carry their own fixed "height:22px", which is unrelated. Matched by
     // the classes it must carry rather than the whole attribute value, so a harmless class added
     // later cannot break this over behaviour that still holds.
-    const scroller = /<div[^>]*class="[^"]*overflow-y-scroll[^"]*"[^>]*>/.exec(
-      markup,
-    )?.[0];
+    const scroller = /<div[^>]*class="[^"]*overflow-y-scroll[^"]*"[^>]*>/.exec(markup)?.[0];
     expect(scroller).toBeDefined();
     expect(scroller).toContain("h-full");
     expect(scroller).toContain("overflow-x-hidden");
@@ -165,24 +121,16 @@ describe("the dock stops sizing itself", () => {
   });
 
   it("an empty hex is a message, not a reserved box", () => {
-    const markup = draw(
-      hex({
-        knowledge: "current",
-        lastSeenTurn: 42,
-        region: region({ units: [] }),
-      }),
-    );
+    const markup = draw(hex({ knowledge: "current", lastSeenTurn: 42, region: region({ units: [] }) }));
 
     expect(markup).toContain("No units reported in this hex.");
     expect(markup).not.toContain('style="height:');
   });
 });
 
+
 describe("a unit carried away by a sailing fleet", () => {
-  const carried = (
-    aboard: string | null,
-    departingTo: string | null,
-  ): RegionPreview => ({
+  const carried = (aboard: string | null, departingTo: string | null): RegionPreview => ({
     regionId: "1:6,52",
     units: [
       {
@@ -208,21 +156,15 @@ describe("a unit carried away by a sailing fleet", () => {
         reportedSkills: [],
         recruitsUnmerged: false,
         menOfUnknownSkill: [],
-        study: null,
-      },
-    ],
+        study: null
+      }
+    ]
   });
 
   it("names the fleet that takes it, beside where it is bound", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({ unitId: "901", name: "Passengers", structureId: "329" }),
-          ],
-        }),
-      }),
-      carried("Wavecrest [329]", "1:7,53"),
+      hex({ region: region({ units: [unit({ unitId: "901", name: "Passengers", structureId: "329" })] }) }),
+      carried("Wavecrest [329]", "1:7,53")
     );
 
     expect(markup).toContain("→ 1:7,53");
@@ -231,14 +173,8 @@ describe("a unit carried away by a sailing fleet", () => {
 
   it("still names the fleet when the ship's destination cannot be named", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({ unitId: "901", name: "Passengers", structureId: "329" }),
-          ],
-        }),
-      }),
-      carried("Wavecrest [329]", null),
+      hex({ region: region({ units: [unit({ unitId: "901", name: "Passengers", structureId: "329" })] }) }),
+      carried("Wavecrest [329]", null)
     );
 
     expect(markup).toContain("→ …");
@@ -250,48 +186,30 @@ describe("the structure column", () => {
   const WAVECREST = {
     structureId: "329",
     name: "Wavecrest",
-    kind: "Longship",
-    baseKind: "Longship",
-    qualifiers: [],
-    vessels: [],
+    kind: "Longship", baseKind: "Longship", qualifiers: [], vessels: [],
     description: null,
-    needs: null,
+    needs: null
   };
 
   const inStructures = (units: ReportUnit[]) =>
     hex({ region: region({ structures: [WAVECREST], units }) });
 
   it("names the structure a unit stands in, not just its number", () => {
-    const markup = draw(
-      inStructures([
-        unit({ unitId: "901", name: "Passengers", structureId: "329" }),
-      ]),
-    );
+    const markup = draw(inStructures([unit({ unitId: "901", name: "Passengers", structureId: "329" })]));
 
-    const structure =
-      /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
+    const structure = /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
     expect(structure).toContain("Wavecrest [329] · Longship");
   });
 
   it("keeps the bare number when the region never described the structure", () => {
-    const markup = draw(
-      inStructures([
-        unit({ unitId: "901", name: "Passengers", structureId: "77" }),
-      ]),
-    );
+    const markup = draw(inStructures([unit({ unitId: "901", name: "Passengers", structureId: "77" })]));
 
     expect(markup).toContain("[77]");
     expect(markup).not.toContain("Wavecrest [77]");
   });
 
   it("names each row's structure in the hex it stands in, not the selected hex's", () => {
-    const NORTHKEEP = {
-      ...WAVECREST,
-      structureId: "7",
-      name: "Northkeep",
-      kind: "Fort",
-      baseKind: "Fort",
-    };
+    const NORTHKEEP = { ...WAVECREST, structureId: "7", name: "Northkeep", kind: "Fort", baseKind: "Fort" };
     const SOUTHWATCH = { ...NORTHKEEP, name: "Southwatch" };
     const markup = renderWithStoreState(
       <UnitTableDock
@@ -302,7 +220,7 @@ describe("the structure column", () => {
         ]}
         structuresByRegion={structuresByRegionOf([
           { regionId: "1:6,52", structures: [NORTHKEEP] },
-          { regionId: "1:43,79", structures: [SOUTHWATCH] },
+          { regionId: "1:43,79", structures: [SOUTHWATCH] }
         ])}
         currentTurn={71}
         client={{} as never}
@@ -310,7 +228,7 @@ describe("the structure column", () => {
         initialSource={{ kind: "own" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
     expect(markup).toContain("Northkeep [7] · Fort");
@@ -318,29 +236,19 @@ describe("the structure column", () => {
   });
 
   it("keeps the bare number for a row whose hex the index does not describe", () => {
-    const NORTHKEEP = {
-      ...WAVECREST,
-      structureId: "7",
-      name: "Northkeep",
-      kind: "Fort",
-      baseKind: "Fort",
-    };
+    const NORTHKEEP = { ...WAVECREST, structureId: "7", name: "Northkeep", kind: "Fort", baseKind: "Fort" };
     const markup = renderWithStoreState(
       <UnitTableDock
         hex={inStructures([])}
-        ownUnits={[
-          unit({ unitId: "3", regionId: "1:99,99", structureId: "7" }),
-        ]}
-        structuresByRegion={structuresByRegionOf([
-          { regionId: "1:6,52", structures: [NORTHKEEP] },
-        ])}
+        ownUnits={[unit({ unitId: "3", regionId: "1:99,99", structureId: "7" })]}
+        structuresByRegion={structuresByRegionOf([{ regionId: "1:6,52", structures: [NORTHKEEP] }])}
         currentTurn={71}
         client={{} as never}
         game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
         initialSource={{ kind: "own" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
     expect(markup).toContain("[7]");
@@ -348,38 +256,25 @@ describe("the structure column", () => {
   });
 
   it("leaves the cell empty for a unit standing in the open", () => {
-    const markup = draw(
-      inStructures([unit({ unitId: "902", name: "Scout", structureId: null })]),
-    );
+    const markup = draw(inStructures([unit({ unitId: "902", name: "Scout", structureId: null })]));
 
     expect(markup).not.toContain("Wavecrest");
     // The structure cell shows nothing but the sentence a screen reader hears (`ah-rgkk.1`).
-    const structure =
-      /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
-    expect(structure).toMatch(
-      /^<td[^>]*><span class="sr-only"[^>]*>[^<]*<\/span><\/td>$/,
-    );
+    const structure = /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
+    expect(structure).toMatch(/^<td[^>]*><span class="sr-only"[^>]*>[^<]*<\/span><\/td>$/);
     expect(structure).toContain("In no structure.");
   });
 
   it("the cell's own sentence gives the whole label, and what the orders changed beneath it", () => {
     const markup = draw(
-      inStructures([
-        unit({ unitId: "901", name: "Passengers", structureId: "329" }),
-      ]),
+      inStructures([unit({ unitId: "901", name: "Passengers", structureId: "329" })]),
       {
         regionId: "1:6,52",
         units: [
           {
-            unit: unit({
-              unitId: "901",
-              name: "Passengers",
-              structureId: "329",
-            }),
+            unit: unit({ unitId: "901", name: "Passengers", structureId: "329" }),
             status: "present",
-            changes: [
-              { field: "structureId", original: "", cause: "ENTER 329" },
-            ],
+            changes: [{ field: "structureId", original: "", cause: "ENTER 329" }],
             arrivingFrom: null,
             departingTo: null,
             aboard: null,
@@ -399,14 +294,13 @@ describe("the structure column", () => {
             reportedSkills: [],
             recruitsUnmerged: false,
             menOfUnknownSkill: [],
-            study: null,
-          },
-        ],
-      },
+            study: null
+          }
+        ]
+      }
     );
 
-    const structure =
-      /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
+    const structure = /<td[^>]*data-column="structure"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
     expect(structure).toContain("Wavecrest [329] · Longship");
     // Both sides of the move, named the way the cell names them, and the order that did it
     // (`ah-rgkk.5.3`) - which is also the proof the dock threads `reportedStructureLabel`.
@@ -418,21 +312,7 @@ describe("the structure column", () => {
 
 describe("draws its header and its rows from the column list", () => {
   const withUnits = () =>
-    hex({
-      region: region({
-        units: [
-          unit({ unitId: "1", own: true }),
-          unit({
-            unitId: "2",
-            own: false,
-            factionId: "9",
-            factionName: "Them",
-          }),
-        ],
-      }),
-      ownUnitCount: 1,
-      foreignUnitCount: 1,
-    });
+    hex({ region: region({ units: [unit({ unitId: "1", own: true }), unit({ unitId: "2", own: false, factionId: "9", factionName: "Them" })] }), ownUnitCount: 1, foreignUnitCount: 1 });
 
   it("has one header cell and one column for every column in the list", () => {
     const markup = draw(withUnits());
@@ -443,8 +323,7 @@ describe("draws its header and its rows from the column list", () => {
 
   it("gives every row exactly one cell per column", () => {
     const markup = draw(withUnits());
-    const row =
-      /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
 
     expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
   });
@@ -465,31 +344,27 @@ describe("the Flags column (ah-5wbc)", () => {
                 "revealing faction",
                 "holding",
                 "sharing",
-                "sailing battle spoils",
-              ],
-            }),
-          ],
+                "sailing battle spoils"
+              ]
+            })
+          ]
         }),
         ownUnitCount: 1,
-        foreignUnitCount: 0,
-      }),
+        foreignUnitCount: 0
+      })
     );
 
     expect(markup).toContain(">ABHRS<");
-    expect(markup).toContain(
-      "avoiding · behind · revealing faction · holding · sharing",
-    );
+    expect(markup).toContain("avoiding · behind · revealing faction · holding · sharing");
   });
 
   it("draws a dim dash for a unit with no flags", () => {
     const markup = draw(
       hex({
-        region: region({
-          units: [unit({ unitId: "1", own: true, flags: [] })],
-        }),
+        region: region({ units: [unit({ unitId: "1", own: true, flags: [] })] }),
         ownUnitCount: 1,
-        foreignUnitCount: 0,
-      }),
+        foreignUnitCount: 0
+      })
     );
 
     expect(markup).toContain("No flags set");
@@ -499,11 +374,7 @@ describe("the Flags column (ah-5wbc)", () => {
 
 describe("column widths (ah-1owr.2)", () => {
   const withUnits = () =>
-    hex({
-      region: region({ units: [unit({ unitId: "1", own: true })] }),
-      ownUnitCount: 1,
-      foreignUnitCount: 0,
-    });
+    hex({ region: region({ units: [unit({ unitId: "1", own: true })] }), ownUnitCount: 1, foreignUnitCount: 0 });
 
   it("sizes every column from its share, as a percentage", () => {
     const markup = draw(withUnits());
@@ -532,12 +403,12 @@ describe("column widths (ah-1owr.2)", () => {
 
     for (let index = 1; index < UNIT_COLUMNS.length - 1; index += 1) {
       expect(markup).toContain(
-        `data-testid="column-splitter-${UNIT_COLUMNS[index]}-${UNIT_COLUMNS[index + 1]}"`,
+        `data-testid="column-splitter-${UNIT_COLUMNS[index]}-${UNIT_COLUMNS[index + 1]}"`
       );
     }
     expect(markup).not.toContain('data-testid="column-splitter-own-');
     expect((markup.match(/data-testid="column-splitter-/g) ?? []).length).toBe(
-      UNIT_COLUMNS.length - 2,
+      UNIT_COLUMNS.length - 2
     );
   });
 });
@@ -548,36 +419,22 @@ describe("the long order column", () => {
       region: region({
         units: [
           unit({ unitId: "1", own: true }),
-          unit({
-            unitId: "2",
-            own: false,
-            factionId: "9",
-            factionName: "Them",
-          }),
-        ],
+          unit({ unitId: "2", own: false, factionId: "9", factionName: "Them" })
+        ]
       }),
       ownUnitCount: 1,
-      foreignUnitCount: 1,
+      foreignUnitCount: 1
     });
 
   const drawWith = (getLongOrder: (unitId: string) => string | null): string =>
-    renderToStaticMarkup(
-      <UnitTableDock
-        hex={twoUnits()}
-        preview={null}
-        getLongOrder={getLongOrder}
-      />,
-    );
+    renderToStaticMarkup(<UnitTableDock hex={twoUnits()} preview={null} getLongOrder={getLongOrder} />);
+
 
   const rowOf = (markup: string, unitId: string): string =>
-    new RegExp(`<tr[^>]*data-testid="unit-row-${unitId}"[\\s\\S]*?</tr>`).exec(
-      markup,
-    )?.[0] ?? "";
+    new RegExp(`<tr[^>]*data-testid="unit-row-${unitId}"[\\s\\S]*?</tr>`).exec(markup)?.[0] ?? "";
 
   it("shows an own unit's month-long order, and nothing for anybody else's", () => {
-    const markup = drawWith((unitId) =>
-      unitId === "1" ? "@produce yew" : "work",
-    );
+    const markup = drawWith((unitId) => (unitId === "1" ? "@produce yew" : "work"));
 
     expect(markup).toContain("Long order");
     expect(rowOf(markup, "1")).toContain("@produce yew");
@@ -591,9 +448,9 @@ describe("the long order column", () => {
     const own = rowOf(markup, "1");
     const foreign = rowOf(markup, "2");
 
-    expect(own).toContain('text-danger">—');
+    expect(own).toContain("text-danger\">—");
     // A foreign unit's cell is blank rather than dashed - it is not a unit doing nothing.
-    expect(foreign).not.toContain('text-danger">—');
+    expect(foreign).not.toContain("text-danger\">—");
   });
 });
 
@@ -602,7 +459,7 @@ describe("column order (ah-1owr.3)", () => {
     hex({
       region: region({ units: [unit({ unitId: "1", own: true })] }),
       ownUnitCount: 1,
-      foreignUnitCount: 0,
+      foreignUnitCount: 0
     });
 
   afterEach(() => {
@@ -619,15 +476,14 @@ describe("column order (ah-1owr.3)", () => {
 
   it("draws its header, its columns and its cells from one order", () => {
     const markup = draw(withUnits());
-    const grips = [
-      ...markup.matchAll(/data-testid="column-reorder-(\w+)"/g),
-    ].map((match) => match[1]);
+    const grips = [...markup.matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+      (match) => match[1]
+    );
 
     expect(grips).toEqual(UNIT_COLUMNS.filter((column) => column !== "own"));
     expect((markup.match(/<col\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
 
-    const row =
-      /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
     expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
   });
 
@@ -637,24 +493,21 @@ describe("column order (ah-1owr.3)", () => {
     const markup = renderWithStoreState(
       <UnitTableDock hex={withUnits()} preview={null} />,
       useWorkspaceStore,
-      { unitColumnOrder: swapped() },
+      { unitColumnOrder: swapped() }
     );
 
-    const grips = [
-      ...markup.matchAll(/data-testid="column-reorder-(\w+)"/g),
-    ].map((match) => match[1]);
+    const grips = [...markup.matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+      (match) => match[1]
+    );
     expect(grips).toEqual(swapped().filter((column) => column !== "own"));
 
     const cols = markup.match(/<col\b[^>]*>/g) ?? [];
     cols.forEach((col, index) => {
-      expect(col).toContain(
-        `width:${DEFAULT_COLUMN_SHARES[swapped()[index]] * 100}%`,
-      );
+      expect(col).toContain(`width:${DEFAULT_COLUMN_SHARES[swapped()[index]] * 100}%`);
     });
 
     // The rows follow the header rather than keeping a sequence of their own.
-    const row =
-      /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
     expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
   });
 
@@ -664,11 +517,11 @@ describe("column order (ah-1owr.3)", () => {
     const markup = renderWithStoreState(
       <UnitTableDock hex={withUnits()} preview={null} />,
       useWorkspaceStore,
-      { unitColumnOrder: ["own", "name"] as UnitColumn[] },
+      { unitColumnOrder: ["own", "name"] as UnitColumn[] }
     );
-    const grips = [
-      ...markup.matchAll(/data-testid="column-reorder-(\w+)"/g),
-    ].map((match) => match[1]);
+    const grips = [...markup.matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+      (match) => match[1]
+    );
 
     expect(grips).toEqual(UNIT_COLUMNS.filter((column) => column !== "own"));
   });
@@ -678,21 +531,17 @@ describe("column order (ah-1owr.3)", () => {
 
     expect(markup).not.toContain('data-testid="column-reorder-own"');
     expect((markup.match(/data-testid="column-reorder-/g) ?? []).length).toBe(
-      UNIT_COLUMNS.length - 1,
+      UNIT_COLUMNS.length - 1
     );
   });
 
   it("names each grip after the column it moves, as a reader hears it", () => {
-    expect(draw(withUnits())).toContain(
-      'aria-label="Move the Long order column"',
-    );
+    expect(draw(withUnits())).toContain('aria-label="Move the Long order column"');
   });
 
   it("has an overlay for the drag feedback, outside the table and taking no pointer events", () => {
     const markup = draw(withUnits());
-    const overlay =
-      /<div[^>]*data-testid="column-drag-overlay"[^>]*>/.exec(markup)?.[0] ??
-      "";
+    const overlay = /<div[^>]*data-testid="column-drag-overlay"[^>]*>/.exec(markup)?.[0] ?? "";
 
     expect(overlay).not.toBe("");
     // Without this the drop line eats the `pointerup` that ends the drag.
@@ -700,7 +549,7 @@ describe("column order (ah-1owr.3)", () => {
     // Never inside the header: a positioned element in a `table-fixed` thead is at the mercy of
     // table layout, and the row height must not move.
     expect(markup.indexOf('data-testid="column-drag-overlay"')).toBeLessThan(
-      markup.indexOf("<thead"),
+      markup.indexOf("<thead")
     );
   });
 });
@@ -709,20 +558,14 @@ describe("a foreign faction's name in the faction column (ah-bu2c)", () => {
   it("renders it through renderFactionName, so the dossier can hang off the name clicked", () => {
     const markup = renderToStaticMarkup(
       <UnitTableDock
-        hex={hex({
-          region: region({
-            units: [
-              unit({ factionId: "2", factionName: "Creatures", own: false }),
-            ],
-          }),
-        })}
+        hex={hex({ region: region({ units: [unit({ factionId: "2", factionName: "Creatures", own: false })] }) })}
         preview={null}
         renderFactionName={(factionId, label) => (
           <button type="button" data-testid={`open-dossier-${factionId}`}>
             {label}
           </button>
         )}
-      />,
+      />
     );
 
     expect(markup).toContain('data-testid="open-dossier-2"');
@@ -731,31 +574,21 @@ describe("a foreign faction's name in the faction column (ah-bu2c)", () => {
 
   it("prints the plain name when nothing offers a dossier, and a dash for a concealed faction", () => {
     const plain = draw(
-      hex({
-        region: region({
-          units: [
-            unit({ factionId: "2", factionName: "Creatures", own: false }),
-          ],
-        }),
-      }),
+      hex({ region: region({ units: [unit({ factionId: "2", factionName: "Creatures", own: false })] }) })
     );
     expect(plain).toContain("Creatures (2)");
     expect(plain).not.toContain("open-dossier");
 
     const concealed = renderToStaticMarkup(
       <UnitTableDock
-        hex={hex({
-          region: region({
-            units: [unit({ factionId: null, factionName: null, own: false })],
-          }),
-        })}
+        hex={hex({ region: region({ units: [unit({ factionId: null, factionName: null, own: false })] }) })}
         preview={null}
         renderFactionName={(factionId, label) => (
           <button type="button" data-testid={`open-dossier-${factionId}`}>
             {label}
           </button>
         )}
-      />,
+      />
     );
     // A concealed unit belongs to no faction, so there is nothing to open a dossier for.
     expect(concealed).not.toContain("open-dossier");
@@ -769,20 +602,14 @@ describe("our own faction's name in the faction column (ah-bu2c)", () => {
     // `row.getByRole("button")`, and a second button in the row makes that ambiguous.
     const markup = renderToStaticMarkup(
       <UnitTableDock
-        hex={hex({
-          region: region({
-            units: [
-              unit({ factionId: "95", factionName: "Borg TNG", own: true }),
-            ],
-          }),
-        })}
+        hex={hex({ region: region({ units: [unit({ factionId: "95", factionName: "Borg TNG", own: true })] }) })}
         preview={null}
         renderFactionName={(factionId, label) => (
           <button type="button" data-testid={`open-dossier-${factionId}`}>
             {label}
           </button>
         )}
-      />,
+      />
     );
 
     expect(markup).toContain("Borg TNG (95)");
@@ -795,13 +622,9 @@ describe("a skill's study points in the units-in-hex list (ah-ded4)", () => {
     const markup = draw(
       hex({
         region: region({
-          units: [
-            unit({
-              skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }],
-            }),
-          ],
-        }),
-      }),
+          units: [unit({ skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }] })]
+        })
+      })
     );
 
     expect(markup).toContain("MINI 2 (90)");
@@ -812,19 +635,11 @@ describe("a skill's study points in the units-in-hex list (ah-ded4)", () => {
       hex({
         region: region({
           units: [
-            unit({
-              unitId: "1",
-              name: "Early",
-              skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }],
-            }),
-            unit({
-              unitId: "2",
-              name: "Later",
-              skills: [{ name: "mining", tag: "MINI", level: 2, points: 150 }],
-            }),
-          ],
-        }),
-      }),
+            unit({ unitId: "1", name: "Early", skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }] }),
+            unit({ unitId: "2", name: "Later", skills: [{ name: "mining", tag: "MINI", level: 2, points: 150 }] })
+          ]
+        })
+      })
     );
 
     expect(markup).toContain("MINI 2 (90)");
@@ -835,22 +650,16 @@ describe("a skill's study points in the units-in-hex list (ah-ded4)", () => {
     const markup = draw(
       hex({
         region: region({
-          units: [
-            unit({
-              skills: [{ name: "mining", tag: "MINI", level: 0, points: 0 }],
-            }),
-          ],
-        }),
-      }),
+          units: [unit({ skills: [{ name: "mining", tag: "MINI", level: 0, points: 0 }] })]
+        })
+      })
     );
 
     expect(markup).toContain("MINI 0 (0)");
   });
 
   it("says nothing odd for a unit with no skills at all", () => {
-    const markup = draw(
-      hex({ region: region({ units: [unit({ skills: [] })] }) }),
-    );
+    const markup = draw(hex({ region: region({ units: [unit({ skills: [] })] }) }));
 
     expect(markup).not.toContain("(undefined)");
     expect(markup).not.toContain("NaN");
@@ -871,7 +680,7 @@ describe("the Silver column", () => {
 
   function drawSilver(
     silver: UnitSilver | null,
-    warned: string[] = [],
+    warned: string[] = []
   ): string {
     const only = unit({ unitId: "1", own: true });
     return renderToStaticMarkup(
@@ -880,11 +689,9 @@ describe("the Silver column", () => {
         getSilver={() => silver}
         // Warned unit ids, keyed exactly as `unitsWarnedAboutSilver` keys them - by this fixture's
         // one hex and the id (`unitRowKey`, `ah-jw85`).
-        silverWarnings={
-          new Set(warned.map((unitId) => unitRowKey("1:6,52", unitId)))
-        }
+        silverWarnings={new Set(warned.map((unitId) => unitRowKey("1:6,52", unitId)))}
         onSelectUnit={() => {}}
-      />,
+      />
     );
   }
 
@@ -895,7 +702,7 @@ describe("the Silver column", () => {
    */
   const silverCell = (markup: string): string =>
     /<td[^>]*>((?:(?!<\/td>)[\s\S])*?)<span class="sr-only" data-explains="silver"/.exec(
-      markup,
+      markup
     )?.[1] ?? "";
 
   it("says not known in the Silver column when the money was never read", () => {
@@ -908,9 +715,9 @@ describe("the Silver column", () => {
           expense: null,
           upkeep: null,
           atMonthEnd: null,
-          doubt: "silver-never-read",
-        }),
-      ),
+          doubt: "silver-never-read"
+        })
+      )
     );
 
     expect(cell).toContain("not known");
@@ -930,9 +737,9 @@ describe("the Silver column", () => {
           expense: null,
           upkeep: null,
           atMonthEnd: null,
-          doubt: "unit-line-cut-short",
-        }),
-      ),
+          doubt: "unit-line-cut-short"
+        })
+      )
     );
 
     expect(cell).not.toContain("not known");
@@ -942,9 +749,7 @@ describe("the Silver column", () => {
 
   it("relabels the Silver figure as a ceiling beside an unread hex-mate (ah-0n2k.1)", () => {
     const cell = silverCell(
-      drawSilver(
-        forecast({ held: 522, atMonthEnd: 582, lateIncomeAtMost: true }),
-      ),
+      drawSilver(forecast({ held: 522, atMonthEnd: 582, lateIncomeAtMost: true }))
     );
 
     // The figure is kept and only its label changes: not `not known`, not `?`, not a dash.
@@ -954,9 +759,7 @@ describe("the Silver column", () => {
   });
 
   it("leaves a completely read row's Silver cell exactly as it was", () => {
-    const cell = silverCell(
-      drawSilver(forecast({ held: 800, atMonthEnd: 800 })),
-    );
+    const cell = silverCell(drawSilver(forecast({ held: 800, atMonthEnd: 800 })));
     expect(cell).toContain(">800<");
     expect(cell).not.toContain("not known");
   });
@@ -964,7 +767,7 @@ describe("the Silver column", () => {
   it("a_unit_in_credit_shows_its_figure_in_default_ink", () => {
     const markup = drawSilver(forecast({ atMonthEnd: 800 }));
     expect(markup).toContain(">800<");
-    expect(markup).not.toContain('text-danger">800');
+    expect(markup).not.toContain("text-danger\">800");
   });
 
   // A withdrawal is paid by the faction's fund, so the figure the core hands over is the unit's
@@ -972,9 +775,7 @@ describe("the Silver column", () => {
   // that `withdrawing` paints nothing here - the flag is the hover's business, not the column's
   // (`ah-tdsi`).
   it("a_withdrawing_unit_shows_its_silver_in_default_ink", () => {
-    const markup = drawSilver(
-      forecast({ held: 369, atMonthEnd: 369, withdrawing: true }),
-    );
+    const markup = drawSilver(forecast({ held: 369, atMonthEnd: 369, withdrawing: true }));
     expect(markup).toContain(">369<");
     expect(markup).not.toContain('text-danger">369');
   });
@@ -999,8 +800,8 @@ describe("the Silver column", () => {
         lateIncome: 120,
         expense: 60,
         atMonthEnd: 60,
-        shortForOrders: 60,
-      }),
+        shortForOrders: 60
+      })
     );
     expect(markup).toContain("text-right tabular-nums text-danger");
     expect(markup).toContain(">60<");
@@ -1013,8 +814,8 @@ describe("the Silver column", () => {
         lateIncome: 60,
         expense: 60,
         atMonthEnd: 0,
-        shortForOrders: 60,
-      }),
+        shortForOrders: 60
+      })
     );
     expect(markup).toContain("text-right tabular-nums text-danger");
     expect(markup).not.toContain('<span class="text-ink-dim">0</span>');
@@ -1029,7 +830,7 @@ describe("the Silver column", () => {
 
   it("a_month_that_cannot_be_priced_shows_a_question_mark", () => {
     const markup = drawSilver(
-      forecast({ income: null, atMonthEnd: null, doubt: "unknown-tax-base" }),
+      forecast({ income: null, atMonthEnd: null, doubt: "unknown-tax-base" })
     );
     expect(markup).toContain("?");
     expect(markup).not.toContain("unit-silver-1");
@@ -1042,12 +843,8 @@ describe("the Silver column", () => {
   });
 
   it("only_a_warned_cell_is_a_button", () => {
-    expect(drawSilver(forecast({ atMonthEnd: -140 }))).not.toContain(
-      "unit-silver-1",
-    );
-    expect(drawSilver(forecast({ atMonthEnd: -140 }), ["1"])).toContain(
-      "unit-silver-1",
-    );
+    expect(drawSilver(forecast({ atMonthEnd: -140 }))).not.toContain("unit-silver-1");
+    expect(drawSilver(forecast({ atMonthEnd: -140 }), ["1"])).toContain("unit-silver-1");
   });
 
   // `ah-jw85`: `new-1` is unique to a hex, not to a turn - two hexes can each hold a unit a
@@ -1055,29 +852,19 @@ describe("the Silver column", () => {
   // from the other.
   it("two_hexes_forming_the_same_alias_get_their_own_figures", () => {
     const formedIn = (regionId: string, atMonthEnd: number) => {
-      const forming = aReportUnit({
-        unitId: "new-1",
-        name: "Unit (new 1)",
-        regionId,
-        own: true,
-      });
+      const forming = aReportUnit({ unitId: "new-1", name: "Unit (new 1)", regionId, own: true });
       const byRowKey = new Map([
-        [
-          unitRowKey(regionId, "new-1"),
-          aUnitSilver({ unitId: "new-1", regionId, atMonthEnd }),
-        ],
+        [unitRowKey(regionId, "new-1"), aUnitSilver({ unitId: "new-1", regionId, atMonthEnd })]
       ]);
       return renderToStaticMarkup(
         <UnitTableDock
           hex={hex({
             regionId,
             region: region({ regionId, units: [forming] }),
-            ownUnitCount: 1,
+            ownUnitCount: 1
           })}
-          getSilver={(unitId, hexId) =>
-            byRowKey.get(unitRowKey(hexId, unitId)) ?? null
-          }
-        />,
+          getSilver={(unitId, hexId) => byRowKey.get(unitRowKey(hexId, unitId)) ?? null}
+        />
       );
     };
 
@@ -1095,17 +882,12 @@ describe("the Silver column", () => {
   // always selected `new-1`. `packages/shared` has no jsdom (`ah-nass`), so what is checkable here
   // is the markup a click would act on - the `aria-label`s both controls carry - not the click.
   it("a_formed_rows_id_cell_is_labelled_for_the_formed_unit_not_for_its_creator", () => {
-    const forming = aReportUnit({
-      unitId: "new-1",
-      name: "Unit (new 1)",
-      regionId: "1:6,52",
-      own: true,
-    });
+    const forming = aReportUnit({ unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52", own: true });
     const silver = aUnitSilver({
       unitId: "new-1",
       regionId: "1:6,52",
       atMonthEnd: -50,
-      formed: { alias: "1", formedBy: "1922" },
+      formed: { alias: "1", formedBy: "1922" }
     });
     const markup = renderToStaticMarkup(
       <UnitTableDock
@@ -1113,7 +895,7 @@ describe("the Silver column", () => {
         getSilver={() => silver}
         silverWarnings={new Set([unitRowKey("1:6,52", "new-1")])}
         onSelectUnit={() => {}}
-      />,
+      />
     );
 
     // The Id cell's own aria-label, and - separately, or the assertion above would carry it - the
@@ -1132,8 +914,8 @@ describe("the Silver column", () => {
         produced: 5,
         producedName: "sword",
         productionWanted: 8,
-        productionCappedBy: "materials",
-      }),
+        productionCappedBy: "materials"
+      })
     );
 
     expect(markup).toContain("not the 8 its skill and tools could make");
@@ -1145,7 +927,7 @@ describe("the items column", () => {
   // markup it could be matching by accident.
   const previewOf = (
     unitOverrides: Partial<ReportUnit>,
-    previewOverrides: Partial<RegionPreview["units"][number]>,
+    previewOverrides: Partial<RegionPreview["units"][number]>
   ): RegionPreview => ({
     regionId: "1:6,52",
     units: [
@@ -1173,27 +955,18 @@ describe("the items column", () => {
         recruitsUnmerged: false,
         menOfUnknownSkill: [],
         study: null,
-        ...previewOverrides,
-      },
-    ],
+        ...previewOverrides
+      }
+    ]
   });
 
   it("shows a projected item list in italic", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({
-              unitId: "1",
-              items: [{ amount: 5, name: "grain", tag: "GRAI" }],
-            }),
-          ],
-        }),
-      }),
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 5, name: "grain", tag: "GRAI" }] })] }) }),
       previewOf(
         { unitId: "1", items: [{ amount: 5, name: "grain", tag: "GRAI" }] },
-        { changes: [{ field: "items", original: "0 GRAI" }] },
-      ),
+        { changes: [{ field: "items", original: "0 GRAI" }] }
+      )
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -1203,20 +976,11 @@ describe("the items column", () => {
 
   it("marks a cell whose month could not be fully counted, upright when nothing was projected", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({
-              unitId: "1",
-              items: [{ amount: 3, name: "swords", tag: "SWOR" }],
-            }),
-          ],
-        }),
-      }),
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 3, name: "swords", tag: "SWOR" }] })] }) }),
       previewOf(
         { unitId: "1", items: [{ amount: 3, name: "swords", tag: "SWOR" }] },
-        { uncounted: ["buy all HORS"] },
-      ),
+        { uncounted: ["buy all HORS"] }
+      )
     );
 
     expect(markup).toContain(" + ?");
@@ -1230,29 +994,20 @@ describe("the items column", () => {
 
   it("shows produced goods in the projected item list", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({
-              unitId: "1",
-              items: [{ amount: 12, name: "iron", tag: "IRON" }],
-            }),
-          ],
-        }),
-      }),
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 12, name: "iron", tag: "IRON" }] })] }) }),
       previewOf(
         {
           unitId: "1",
           items: [
             { amount: 12, name: "iron", tag: "IRON" },
-            { amount: 8, name: "sword", tag: "SWOR" },
-          ],
+            { amount: 8, name: "sword", tag: "SWOR" }
+          ]
         },
         {
           changes: [{ field: "items", original: "20 IRON" }],
-          produced: [{ amount: 8, tag: "SWOR" }],
-        },
-      ),
+          produced: [{ amount: 8, tag: "SWOR" }]
+        }
+      )
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -1263,16 +1018,7 @@ describe("the items column", () => {
   // `ah-ofpb.2`.
   it("shows a builder's material draining in the projected item list", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({
-              unitId: "1",
-              items: [{ amount: 120, name: "wood", tag: "WOOD" }],
-            }),
-          ],
-        }),
-      }),
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 120, name: "wood", tag: "WOOD" }] })] }) }),
       previewOf(
         { unitId: "1", items: [{ amount: 90, name: "wood", tag: "WOOD" }] },
         {
@@ -1285,11 +1031,11 @@ describe("the items column", () => {
               founding: false,
               helping: null,
               couldDo: 30,
-              cappedBy: null,
-            },
-          ],
-        },
-      ),
+              cappedBy: null
+            }
+          ]
+        }
+      )
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -1299,20 +1045,11 @@ describe("the items column", () => {
 
   it("marks a build it could not count", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({
-              unitId: "1",
-              items: [{ amount: 3, name: "swords", tag: "SWOR" }],
-            }),
-          ],
-        }),
-      }),
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 3, name: "swords", tag: "SWOR" }] })] }) }),
       previewOf(
         { unitId: "1", items: [{ amount: 3, name: "swords", tag: "SWOR" }] },
-        { uncounted: ["BUILD Mine"] },
-      ),
+        { uncounted: ["BUILD Mine"] }
+      )
     );
 
     expect(markup).toContain(" + ?");
@@ -1324,36 +1061,21 @@ describe("the items column", () => {
   // uncounted, so the cell says so - and, since nothing moved, says it upright.
   it("marks a cell whose transport target the report cannot settle", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({
-              unitId: "1",
-              items: [{ amount: 40, name: "stone", tag: "STON" }],
-            }),
-          ],
-        }),
-      }),
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] })] }) }),
       previewOf(
         { unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] },
         {
           transportTargetIssues: [
-            {
-              to: "99999",
-              amount: 5,
-              tag: "STON",
-              reason: "eligibilityUnknown",
-              orderIndex: 0,
-            },
-          ],
-        },
-      ),
+            { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0 }
+          ]
+        }
+      )
     );
 
     expect(markup).toContain(" + ?");
     expect(markup).toContain("40 STON");
     expect(markup).toContain(
-      "does not show whether it is an eligible transport target",
+      "does not show whether it is an eligible transport target"
     );
     expect(markup).not.toContain("italic text-brass");
     expect(markup).not.toContain('data-predicted="true"');
@@ -1362,62 +1084,36 @@ describe("the items column", () => {
   // A refusal the report can prove is certain: the hover explains it, and the cell stays clean.
   it("leaves a cell unmarked when the target refusal is certain", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({
-              unitId: "1",
-              items: [{ amount: 40, name: "stone", tag: "STON" }],
-            }),
-          ],
-        }),
-      }),
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] })] }) }),
       previewOf(
         { unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] },
         {
           transportTargetIssues: [
-            {
-              to: "7001",
-              amount: 5,
-              tag: "STON",
-              reason: "notQuartermaster",
-              orderIndex: 0,
-            },
-          ],
-        },
-      ),
+            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0 }
+          ]
+        }
+      )
     );
 
     expect(markup).not.toContain(" + ?");
-    expect(markup).toContain(
-      "Unit 7001 is not a quartermaster, so 5 STON stay with this unit.",
-    );
+    expect(markup).toContain("Unit 7001 is not a quartermaster, so 5 STON stay with this unit.");
   });
 
   // `ah-ofpb.5`. A cast's creation is a projection like any other PREDICTED figure, and a range
   // gets no ` + ?` mark - `unit.uncounted` alone still drives that span.
   it("shows a cast creation in the projected item list", () => {
     const markup = draw(
-      hex({
-        region: region({
-          units: [
-            unit({
-              unitId: "1",
-              items: [{ amount: 3, name: "runesword", tag: "RUNE" }],
-            }),
-          ],
-        }),
-      }),
+      hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 3, name: "runesword", tag: "RUNE" }] })] }) }),
       previewOf(
         {
           unitId: "1",
-          items: [{ amount: 3, name: "runesword", tag: "RUNE" }],
+          items: [{ amount: 3, name: "runesword", tag: "RUNE" }]
         },
         {
           changes: [{ field: "items", original: "0 RUNE" }],
-          created: [{ fewest: 2, most: 3, tag: "RUNE", summoned: false }],
-        },
-      ),
+          created: [{ fewest: 2, most: 3, tag: "RUNE", summoned: false }]
+        }
+      )
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -1442,12 +1138,12 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     ceilingLevel: 5,
     limitingRaces: [],
     cannotRaiseTheLevel: false,
-    doubts: [],
+    doubts: []
   };
 
   const previewOf = (
     unitOverrides: Partial<ReportUnit>,
-    previewOverrides: Partial<RegionPreview["units"][number]>,
+    previewOverrides: Partial<RegionPreview["units"][number]>
   ): RegionPreview => ({
     regionId: "1:6,52",
     units: [
@@ -1475,37 +1171,25 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
         recruitsUnmerged: false,
         menOfUnknownSkill: [],
         study: null,
-        ...previewOverrides,
-      },
-    ],
+        ...previewOverrides
+      }
+    ]
   });
 
   it("marks the cell predicted and names what the report said when skills changed", () => {
     const markup = draw(
       hex({
         region: region({
-          units: [
-            unit({
-              unitId: "1",
-              skills: [
-                { name: "lumberjack", tag: "LUMB", level: 2, points: 80 },
-              ],
-            }),
-          ],
-        }),
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] })]
+        })
       }),
       previewOf(
-        {
-          unitId: "1",
-          skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }],
-        },
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] },
         {
           changes: [{ field: "skills", original: "LUMB 1 (30)" }],
-          reportedSkills: [
-            { name: "lumberjack", tag: "LUMB", level: 1, points: 30 },
-          ],
-        },
-      ),
+          reportedSkills: [{ name: "lumberjack", tag: "LUMB", level: 1, points: 30 }]
+        }
+      )
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -1520,29 +1204,17 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     const markup = draw(
       hex({
         region: region({
-          units: [
-            unit({
-              unitId: "1",
-              skills: [
-                { name: "lumberjack", tag: "LUMB", level: 2, points: 90 },
-              ],
-            }),
-          ],
-        }),
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }] })]
+        })
       }),
       previewOf(
-        {
-          unitId: "1",
-          skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }],
-        },
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }] },
         {
           changes: [],
-          reportedSkills: [
-            { name: "lumberjack", tag: "LUMB", level: 2, points: 90 },
-          ],
-          study: STUDYING_COMBAT,
-        },
-      ),
+          reportedSkills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }],
+          study: STUDYING_COMBAT
+        }
+      )
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -1558,34 +1230,24 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     ceilingLevel: 5,
     levelBefore: 5,
     levelAfter: 5,
-    pointsAfter: 480,
+    pointsAfter: 480
   };
 
   it("leaves the Skills cell unmarked for a study that cannot raise the level", () => {
     const markup = draw(
       hex({
         region: region({
-          units: [
-            unit({
-              unitId: "1",
-              skills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }],
-            }),
-          ],
-        }),
+          units: [unit({ unitId: "1", skills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }] })]
+        })
       }),
       previewOf(
-        {
-          unitId: "1",
-          skills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }],
-        },
+        { unitId: "1", skills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }] },
         {
           changes: [],
-          reportedSkills: [
-            { name: "combat", tag: "COMB", level: 5, points: 450 },
-          ],
-          study: CAPPED_STUDY,
-        },
-      ),
+          reportedSkills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }],
+          study: CAPPED_STUDY
+        }
+      )
     );
 
     expect(markup).not.toContain('data-predicted="true"');
@@ -1596,27 +1258,17 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     const markup = draw(
       hex({
         region: region({
-          units: [
-            unit({
-              unitId: "1",
-              skills: [{ name: "combat", tag: "COMB", level: 5, points: 400 }],
-            }),
-          ],
-        }),
+          units: [unit({ unitId: "1", skills: [{ name: "combat", tag: "COMB", level: 5, points: 400 }] })]
+        })
       }),
       previewOf(
-        {
-          unitId: "1",
-          skills: [{ name: "combat", tag: "COMB", level: 5, points: 400 }],
-        },
+        { unitId: "1", skills: [{ name: "combat", tag: "COMB", level: 5, points: 400 }] },
         {
           changes: [{ field: "skills", original: "COMB 5 (450)" }],
-          reportedSkills: [
-            { name: "combat", tag: "COMB", level: 5, points: 450 },
-          ],
-          study: CAPPED_STUDY,
-        },
-      ),
+          reportedSkills: [{ name: "combat", tag: "COMB", level: 5, points: 450 }],
+          study: CAPPED_STUDY
+        }
+      )
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -1626,34 +1278,20 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     const markup = draw(
       hex({
         region: region({
-          units: [
-            unit({
-              unitId: "1",
-              skills: [
-                { name: "lumberjack", tag: "LUMB", level: 2, points: 90 },
-              ],
-            }),
-          ],
-        }),
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }] })]
+        })
       }),
       previewOf(
-        {
-          unitId: "1",
-          skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }],
-        },
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }] },
         {
           changes: [],
-          reportedSkills: [
-            { name: "lumberjack", tag: "LUMB", level: 2, points: 90 },
-          ],
+          reportedSkills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 90 }],
           study: {
             ...STUDYING_COMBAT,
-            doubts: [
-              { reason: "feeShort", fee: 100, shortBy: 40, teacher: "" },
-            ],
-          },
-        },
-      ),
+            doubts: [{ reason: "feeShort", fee: 100, shortBy: 40, teacher: "" }]
+          }
+        }
+      )
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -1664,29 +1302,17 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     const markup = draw(
       hex({
         region: region({
-          units: [
-            unit({
-              unitId: "1",
-              skills: [
-                { name: "lumberjack", tag: "LUMB", level: 2, points: 80 },
-              ],
-            }),
-          ],
-        }),
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] })]
+        })
       }),
       previewOf(
-        {
-          unitId: "1",
-          skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }],
-        },
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 2, points: 80 }] },
         {
           changes: [{ field: "skills", original: "LUMB 1 (30)" }],
-          reportedSkills: [
-            { name: "lumberjack", tag: "LUMB", level: 1, points: 30 },
-          ],
-          study: STUDYING_COMBAT,
-        },
-      ),
+          reportedSkills: [{ name: "lumberjack", tag: "LUMB", level: 1, points: 30 }],
+          study: STUDYING_COMBAT
+        }
+      )
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -1699,29 +1325,16 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     const markup = draw(
       hex({
         region: region({
-          units: [
-            unit({
-              unitId: "1",
-              skills: [
-                { name: "lumberjack", tag: "LUMB", level: 5, points: 450 },
-              ],
-            }),
-          ],
-        }),
+          units: [unit({ unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 5, points: 450 }] })]
+        })
       }),
       previewOf(
-        {
-          unitId: "1",
-          skills: [{ name: "lumberjack", tag: "LUMB", level: 5, points: 450 }],
-        },
-        { changes: [{ field: "men", original: "10" }] },
-      ),
+        { unitId: "1", skills: [{ name: "lumberjack", tag: "LUMB", level: 5, points: 450 }] },
+        { changes: [{ field: "men", original: "10" }] }
+      )
     );
 
-    const skillsCell =
-      /<td[^>]*>LUMB 5 \(450\)<span class="sr-only"[^>]*>[^<]*<\/span><\/td>/.exec(
-        markup,
-      )?.[0];
+    const skillsCell = /<td[^>]*>LUMB 5 \(450\)<span class="sr-only"[^>]*>[^<]*<\/span><\/td>/.exec(markup)?.[0];
     expect(skillsCell).toBeTruthy();
     expect(skillsCell).not.toContain("italic");
     expect(skillsCell).not.toContain("data-predicted");
@@ -1738,13 +1351,10 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     members: [],
     createdAt: "2026-08-01T09:00:00Z",
     updatedAt: "2026-08-01T09:00:00Z",
-    ...overrides,
+    ...overrides
   });
 
-  const aMember = (
-    unitId: string,
-    overrides: Partial<ArmyMemberRecord> = {},
-  ): ArmyMemberRecord => ({
+  const aMember = (unitId: string, overrides: Partial<ArmyMemberRecord> = {}): ArmyMemberRecord => ({
     unitId,
     name: `Unit ${unitId}`,
     factionId: "1",
@@ -1758,14 +1368,11 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     men: 3,
     seenTurn: 71,
     seenAt: "2026-08-01T09:00:00Z",
-    ...overrides,
+    ...overrides
   });
 
   const withUnits = () =>
-    hex({
-      region: region({ units: [unit({ unitId: "1", own: true })] }),
-      ownUnitCount: 1,
-    });
+    hex({ region: region({ units: [unit({ unitId: "1", own: true })] }), ownUnitCount: 1 });
 
   it("draws the rail beside the table", () => {
     const markup = draw(withUnits());
@@ -1788,7 +1395,7 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     const markup = renderWithStoreState(
       <UnitTableDock hex={withUnits()} />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [armyRecord()] },
+      { gameId: "aug-2026", status: "ready", armies: [armyRecord()] }
     );
 
     // `client` and `game` are absent, so there is nothing to save into and nothing to offer.
@@ -1797,10 +1404,7 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
   });
 
   it("gives every row one cell per drawn column, extra columns included", () => {
-    const members = [
-      aMember("1"),
-      aMember("7", { name: "Outriders", regionId: "1:9,55", seenTurn: 68 }),
-    ];
+    const members = [aMember("1"), aMember("7", { name: "Outriders", regionId: "1:9,55", seenTurn: 68 })];
     const markup = renderWithStoreState(
       <UnitTableDock
         hex={withUnits()}
@@ -1812,26 +1416,15 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
         initialSource={{ kind: "army", armyId: "army-1" }}
       />,
       useArmiesStore,
-      {
-        gameId: "aug-2026",
-        status: "ready",
-        armies: [armyRecord({ members })],
-      },
+      { gameId: "aug-2026", status: "ready", armies: [armyRecord({ members })] }
     );
 
     const extras = 3;
-    expect((markup.match(/<th\b/g) ?? []).length).toBe(
-      UNIT_COLUMNS.length + extras,
-    );
-    expect((markup.match(/<col\b/g) ?? []).length).toBe(
-      UNIT_COLUMNS.length + extras,
-    );
+    expect((markup.match(/<th\b/g) ?? []).length).toBe(UNIT_COLUMNS.length + extras);
+    expect((markup.match(/<col\b/g) ?? []).length).toBe(UNIT_COLUMNS.length + extras);
 
-    const row =
-      /<tr[^>]*data-testid="unit-row-7"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
-    expect((row.match(/<td\b/g) ?? []).length).toBe(
-      UNIT_COLUMNS.length + extras,
-    );
+    const row = /<tr[^>]*data-testid="unit-row-7"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length + extras);
   });
 
   it("says what an Army is showing, and names its stale members", () => {
@@ -1846,11 +1439,7 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
         initialSource={{ kind: "army", armyId: "army-1" }}
       />,
       useArmiesStore,
-      {
-        gameId: "aug-2026",
-        status: "ready",
-        armies: [armyRecord({ members })],
-      },
+      { gameId: "aug-2026", status: "ready", armies: [armyRecord({ members })] }
     );
 
     expect(markup).toContain("— Northern Host, 2 units");
@@ -1863,10 +1452,7 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
   });
 
   it("the army strip offers an export", () => {
-    const strip = (
-      currentTurn: number | null,
-      onExportArmy?: (armyId: string) => void,
-    ) =>
+    const strip = (currentTurn: number | null, onExportArmy?: (armyId: string) => void) =>
       renderWithStoreState(
         <UnitTableDock
           hex={withUnits()}
@@ -1877,11 +1463,7 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
           onExportArmy={onExportArmy}
         />,
         useArmiesStore,
-        {
-          gameId: "aug-2026",
-          status: "ready",
-          armies: [armyRecord({ members: [aMember("1")] })],
-        },
+        { gameId: "aug-2026", status: "ready", armies: [armyRecord({ members: [aMember("1")] })] }
       );
 
     const offered = strip(71, () => {});
@@ -1910,13 +1492,13 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
         initialSource={{ kind: "army", armyId: "army-1" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [armyRecord()] },
+      { gameId: "aug-2026", status: "ready", armies: [armyRecord()] }
     );
 
     expect(markup).toContain("Northern Host has no units yet.");
     // `Add to army` is a brass span inside the sentence, so the tags come out before comparing.
     expect(markup.replace(/<[^>]*>/g, "")).toContain(
-      "Add units to it with Add to army, on any unit in any list.",
+      "Add units to it with Add to army, on any unit in any list."
     );
   });
 
@@ -1925,14 +1507,14 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     // so the cursor is the pair - one row is the cursor row, not two (`ah-bubf`).
     setStoreStateForTest(useWorkspaceStore, {
       selectedUnitId: "new-1",
-      selectedUnitRegionId: "1:8,53",
+      selectedUnitRegionId: "1:8,53"
     });
     const markup = renderWithStoreState(
       <UnitTableDock
         hex={withUnits()}
         ownUnits={[
           unit({ unitId: "new-1", regionId: "1:6,52" }),
-          unit({ unitId: "new-1", regionId: "1:8,53" }),
+          unit({ unitId: "new-1", regionId: "1:8,53" })
         ]}
         currentTurn={71}
         client={{} as never}
@@ -1940,12 +1522,11 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
         initialSource={{ kind: "own" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
     // `rowFor` keys on `data-testid` alone and would match both rows, so match on the pair.
-    const rows =
-      markup.match(/<tr[^>]*data-testid="unit-row-new-1"[^>]*>/g) ?? [];
+    const rows = markup.match(/<tr[^>]*data-testid="unit-row-new-1"[^>]*>/g) ?? [];
     expect(rows).toHaveLength(2);
     const selected = rows.filter((row) => row.includes('data-selected="true"'));
     expect(selected).toHaveLength(1);
@@ -1956,17 +1537,14 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     const markup = renderWithStoreState(
       <UnitTableDock
         hex={withUnits()}
-        ownUnits={[
-          unit({ unitId: "1" }),
-          unit({ unitId: "2", regionId: "1:9,55" }),
-        ]}
+        ownUnits={[unit({ unitId: "1" }), unit({ unitId: "2", regionId: "1:9,55" })]}
         currentTurn={71}
         client={{} as never}
         game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
         initialSource={{ kind: "own" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
     expect(markup).toContain("— all my units, 2 units");
@@ -1986,7 +1564,7 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
         initialSource={{ kind: "own" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
     expect(markup).toContain("No report loaded.");
@@ -2003,12 +1581,10 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
         initialSource={{ kind: "own" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
-    expect(markup).toContain(
-      "No units of your own in this turn&#x27;s report.",
-    );
+    expect(markup).toContain("No units of your own in this turn&#x27;s report.");
   });
 });
 
@@ -2018,7 +1594,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
   /** One previewed unit, with every field the wire carries defaulted. */
   const previewed = (
     unitOverrides: Partial<ReportUnit>,
-    overrides: Partial<RegionPreview["units"][number]> = {},
+    overrides: Partial<RegionPreview["units"][number]> = {}
   ): RegionPreview["units"][number] => ({
     unit: unit(unitOverrides),
     status: "present",
@@ -2047,10 +1623,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
   });
 
   /** The pane on `All my units`, as markup. `hex={null}`: this source never needed one. */
-  const drawOwn = (
-    ownUnits: ReportUnit[],
-    ordersPreview: OrdersPreviewResponse | null,
-  ): string =>
+  const drawOwn = (ownUnits: ReportUnit[], ordersPreview: OrdersPreviewResponse | null): string =>
     renderWithStoreState(
       <UnitTableDock
         hex={null}
@@ -2062,44 +1635,33 @@ describe("All my units shows the coming month (ah-tguk)", () => {
         initialSource={{ kind: "own" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
   /** The same rows on `This hex`, so the two sources can be compared directly. */
   const drawHex = (units: ReportUnit[], preview: RegionPreview): string =>
     renderToStaticMarkup(
-      <UnitTableDock
-        hex={hex({ region: region({ units }) })}
-        preview={preview}
-      />,
+      <UnitTableDock hex={hex({ region: region({ units }) })} preview={preview} />
     );
 
   const DEPARTING = previewed(
     { unitId: "5105", name: "MinersA", regionId: "1:6,52" },
-    { status: "departing", departingTo: "1:5,51" },
+    { status: "departing", departingTo: "1:5,51" }
   );
   const ARRIVING = previewed(
     { unitId: "5105", name: "MinersA", regionId: "1:5,51" },
-    { status: "arriving", arrivingFrom: "1:6,52" },
+    { status: "arriving", arrivingFrom: "1:6,52" }
   );
 
   it("renders movement as an accessible letter with prediction history", () => {
     const preview = previewed(
-      {
-        movement: {
-          ...WALKING,
-          status: "ride",
-          capacityMode: "ride",
-          ride: 70,
-        },
-      },
-      { changes: [{ field: "movement", original: "Walking" }] },
+      { movement: { ...WALKING, status: "ride", capacityMode: "ride", ride: 70 } },
+      { changes: [{ field: "movement", original: "Walking" }] }
     );
     const markup = drawOwn([unit({ movement: WALKING })], {
-      regions: [{ regionId: "1:6,52", units: [preview] }],
+      regions: [{ regionId: "1:6,52", units: [preview] }]
     });
-    const row =
-      /<tr data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    const row = /<tr data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
 
     expect(row).toContain(">R</span>");
     expect(row).toContain('<span class="sr-only">Riding</span>');
@@ -2116,17 +1678,13 @@ describe("All my units shows the coming month (ah-tguk)", () => {
             regionId: "1:9,55",
             units: [
               previewed(
-                {
-                  unitId: "2",
-                  regionId: "1:9,55",
-                  items: [{ amount: 1, tag: "PERF", name: "perfume" }],
-                },
-                { changes: [{ field: "items", original: "" }] },
-              ),
-            ],
-          },
-        ],
-      },
+                { unitId: "2", regionId: "1:9,55", items: [{ amount: 1, tag: "PERF", name: "perfume" }] },
+                { changes: [{ field: "items", original: "" }] }
+              )
+            ]
+          }
+        ]
+      }
     );
 
     expect(markup).toContain('data-predicted="true"');
@@ -2138,8 +1696,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
 
   it("every drawn cell names its column and no cell carries a title", () => {
     const markup = drawOwn([unit({ unitId: "1" })], null);
-    const row =
-      /<tr data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    const row = /<tr data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
 
     for (const column of [
       "own",
@@ -2153,7 +1710,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
       "items",
       "structure",
       "longOrder",
-      "silver",
+      "silver"
     ]) {
       expect(row).toContain(`data-column="${column}"`);
     }
@@ -2163,15 +1720,11 @@ describe("All my units shows the coming month (ah-tguk)", () => {
   });
 
   it("a cell carries its explanation for a screen reader", () => {
-    const markup = drawOwn(
-      [unit({ unitId: "1", men: 3, menEstimated: true })],
-      null,
-    );
-    const cell =
-      /<td[^>]*data-column="men"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
+    const markup = drawOwn([unit({ unitId: "1", men: 3, menEstimated: true })], null);
+    const cell = /<td[^>]*data-column="men"[\s\S]*?<\/td>/.exec(markup)?.[0] ?? "";
 
     expect(cell).toContain(
-      "Estimated: the report has not been matched against the item catalogue",
+      "Estimated: the report has not been matched against the item catalogue"
     );
     expect(cell).toContain("Nothing this month changes this.");
   });
@@ -2179,12 +1732,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
   it("draws a moving unit once, where it stands now", () => {
     const markup = drawOwn(
       [unit({ unitId: "5105", name: "MinersA", regionId: "1:6,52" })],
-      {
-        regions: [
-          { regionId: "1:6,52", units: [DEPARTING] },
-          { regionId: "1:5,51", units: [ARRIVING] },
-        ],
-      },
+      { regions: [{ regionId: "1:6,52", units: [DEPARTING] }, { regionId: "1:5,51", units: [ARRIVING] }] }
     );
 
     expect((markup.match(/unit-row-5105/g) ?? []).length).toBe(1);
@@ -2194,9 +1742,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
 
   it("leaves a departing row upright, unlike This hex", () => {
     const mover = unit({ unitId: "5105", name: "MinersA", regionId: "1:6,52" });
-    const own = drawOwn([mover], {
-      regions: [{ regionId: "1:6,52", units: [DEPARTING] }],
-    });
+    const own = drawOwn([mover], { regions: [{ regionId: "1:6,52", units: [DEPARTING] }] });
     const inHex = drawHex([mover], { regionId: "1:6,52", units: [DEPARTING] });
 
     expect(own).not.toContain("opacity-60");
@@ -2204,51 +1750,50 @@ describe("All my units shows the coming month (ah-tguk)", () => {
   });
 
   it("lists a unit formed this month", () => {
-    const markup = drawOwn([unit({ unitId: "1" })], {
-      regions: [
-        {
-          regionId: "1:6,52",
-          units: [
-            previewed(
-              { unitId: "new-1", name: "Unit (new 1)" },
-              { formed: true },
-            ),
-          ],
-        },
-      ],
-    });
+    const markup = drawOwn(
+      [unit({ unitId: "1" })],
+      {
+        regions: [
+          {
+            regionId: "1:6,52",
+            units: [previewed({ unitId: "new-1", name: "Unit (new 1)" }, { formed: true })]
+          }
+        ]
+      }
+    );
 
     expect(markup).toContain("unit-row-new-1");
     expect(markup).toContain(">new<");
   });
 
   it("draws a row for each hex when two hexes form the same alias", () => {
-    const markup = drawOwn([unit({ unitId: "1", regionId: "1:6,52" })], {
-      regions: [
-        {
-          regionId: "1:6,52",
-          units: [
-            previewed(
-              { unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" },
-              { formed: true },
-            ),
-          ],
-        },
-        {
-          regionId: "1:9,55",
-          units: [
-            previewed(
-              { unitId: "new-1", name: "Unit (new 1)", regionId: "1:9,55" },
-              { formed: true },
-            ),
-          ],
-        },
-      ],
-    });
-
-    expect((markup.match(/data-testid="unit-row-new-1"/g) ?? []).length).toBe(
-      2,
+    const markup = drawOwn(
+      [unit({ unitId: "1", regionId: "1:6,52" })],
+      {
+        regions: [
+          {
+            regionId: "1:6,52",
+            units: [
+              previewed(
+                { unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" },
+                { formed: true }
+              )
+            ]
+          },
+          {
+            regionId: "1:9,55",
+            units: [
+              previewed(
+                { unitId: "new-1", name: "Unit (new 1)", regionId: "1:9,55" },
+                { formed: true }
+              )
+            ]
+          }
+        ]
+      }
     );
+
+    expect((markup.match(/data-testid="unit-row-new-1"/g) ?? []).length).toBe(2);
     expect(markup).toContain('data-region-id="1:6,52"');
     expect(markup).toContain('data-region-id="1:9,55"');
     // The Hex column is what tells them apart on screen.
@@ -2268,20 +1813,20 @@ describe("All my units shows the coming month (ah-tguk)", () => {
               units: [
                 previewed(
                   { unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" },
-                  { formed: true },
-                ),
-              ],
+                  { formed: true }
+                )
+              ]
             },
             {
               regionId: "1:9,55",
               units: [
                 previewed(
                   { unitId: "new-1", name: "Unit (new 1)", regionId: "1:9,55" },
-                  { formed: true },
-                ),
-              ],
-            },
-          ],
+                  { formed: true }
+                )
+              ]
+            }
+          ]
         }}
         currentTurn={42}
         client={{} as never}
@@ -2289,11 +1834,11 @@ describe("All my units shows the coming month (ah-tguk)", () => {
         initialSource={{ kind: "own" }}
         initialPick={{
           ids: new Set([unitRowKey("1:9,55", "new-1")]),
-          anchor: unitRowKey("1:9,55", "new-1"),
+          anchor: unitRowKey("1:9,55", "new-1")
         }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
     const pickedRows = markup.match(/<tr[^>]*data-picked="true"[^>]*>/g) ?? [];
@@ -2306,31 +1851,18 @@ describe("the Other factions source (ah-1mpx.5)", () => {
   afterEach(restoreStoresForTest);
 
   const theirs = (unitId: string, over: Partial<ReportUnit> = {}) =>
-    unit({
-      unitId,
-      own: false,
-      factionId: "10",
-      factionName: "Thane's Ring",
-      ...over,
-    });
+    unit({ unitId, own: false, factionId: "10", factionName: "Thane's Ring", ...over });
   const concealed = (unitId: string) =>
     unit({ unitId, own: false, factionId: null, factionName: null });
 
-  const FOREIGN = [
-    theirs("2"),
-    theirs("4", { factionId: "11", factionName: "Fresh Meat" }),
-    concealed("3"),
-  ];
+  const FOREIGN = [theirs("2"), theirs("4", { factionId: "11", factionName: "Fresh Meat" }), concealed("3")];
 
   const withUnits = () =>
-    hex({
-      region: region({ units: [unit({ unitId: "1", own: true })] }),
-      ownUnitCount: 1,
-    });
+    hex({ region: region({ units: [unit({ unitId: "1", own: true })] }), ownUnitCount: 1 });
 
   const drawForeign = (
     props: Partial<Parameters<typeof UnitTableDock>[0]> = {},
-    foreignUnits: ReportUnit[] = FOREIGN,
+    foreignUnits: ReportUnit[] = FOREIGN
   ) =>
     renderWithStoreState(
       <UnitTableDock
@@ -2342,7 +1874,7 @@ describe("the Other factions source (ah-1mpx.5)", () => {
         {...props}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
   it("the Other factions source draws every foreign unit and no own one", () => {
@@ -2360,11 +1892,7 @@ describe("the Other factions source (ah-1mpx.5)", () => {
 
   it("an initialPin narrows the table to that faction and says so in the hint", () => {
     const markup = drawForeign({
-      initialPin: {
-        kind: "faction",
-        factionId: "10",
-        factionName: "Thane's Ring",
-      },
+      initialPin: { kind: "faction", factionId: "10", factionName: "Thane's Ring" }
     });
 
     expect(markup).toContain('data-testid="unit-row-2"');
@@ -2383,11 +1911,7 @@ describe("the Other factions source (ah-1mpx.5)", () => {
 
   it("draws the strip naming the pinned faction, and none when nothing is pinned", () => {
     const pinned = drawForeign({
-      initialPin: {
-        kind: "faction",
-        factionId: "10",
-        factionName: "Thane's Ring",
-      },
+      initialPin: { kind: "faction", factionId: "10", factionName: "Thane's Ring" }
     });
 
     expect(pinned).toContain('data-testid="foreign-strip"');
@@ -2398,26 +1922,20 @@ describe("the Other factions source (ah-1mpx.5)", () => {
 
   it("a pin that matches nothing offers a way back to every faction", () => {
     const markup = drawForeign({
-      initialPin: { kind: "faction", factionId: "77", factionName: "Gone" },
+      initialPin: { kind: "faction", factionId: "77", factionName: "Gone" }
     });
 
-    expect(markup).toContain(
-      "Gone (77) has no units in this turn&#x27;s report.",
-    );
+    expect(markup).toContain("Gone (77) has no units in this turn&#x27;s report.");
     expect(markup).toContain('data-testid="foreign-show-all"');
     expect(markup).toContain("Show all 3");
   });
 
   it("says so when the report holds no other faction's units at all", () => {
-    expect(drawForeign({}, [])).toContain(
-      "No other faction&#x27;s units in this turn&#x27;s report.",
-    );
+    expect(drawForeign({}, [])).toContain("No other faction&#x27;s units in this turn&#x27;s report.");
   });
 
   it("says so when no report is loaded", () => {
-    expect(drawForeign({ hex: null, currentTurn: null }, [])).toContain(
-      "No report loaded.",
-    );
+    expect(drawForeign({ hex: null, currentTurn: null }, [])).toContain("No report loaded.");
   });
 
   it("a foreign unit's Skills cell says its skills are not disclosed", () => {
@@ -2438,78 +1956,44 @@ describe("the Other factions source (ah-1mpx.5)", () => {
         initialSource={{ kind: "own" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
 
-    expect(markup).not.toContain(
-      '<span class="italic text-ink-dim">not disclosed</span>',
-    );
+    expect(markup).not.toContain('<span class="italic text-ink-dim">not disclosed</span>');
   });
 
   it("a foreign unit that discloses a skill prints it rather than the notice", () => {
     const markup = drawForeign({}, [
-      theirs("2", {
-        skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }],
-      }),
+      theirs("2", { skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }] })
     ]);
 
     expect(markup).toContain("COMB 3 (180)");
-    expect(markup).not.toContain(
-      '<span class="italic text-ink-dim">not disclosed</span>',
-    );
+    expect(markup).not.toContain('<span class="italic text-ink-dim">not disclosed</span>');
   });
 
   it("a foreign unit's recovered skills replace not disclosed", () => {
     // `ah-1mpx.6.3`: a unit with no report-native skills but a battle-recovered entry now draws
     // that recovered text instead of the notice - the notice is reserved for nothing recovered.
     const derived = new Map([
-      [
-        "2",
-        [
-          {
-            name: "riding",
-            tag: "RIDI",
-            level: 5,
-            turn: 71,
-            coordinate: null,
-            terrain: null,
-          },
-        ],
-      ],
+      ["2", [{ name: "riding", tag: "RIDI", level: 5, turn: 71, coordinate: null, terrain: null }]]
     ]);
 
     const markup = drawForeign({ derivedSkills: derived });
     const row2 = /<tr data-testid="unit-row-2"[\s\S]*?<\/tr>/.exec(markup)?.[0];
 
     expect(row2).toContain("RIDI 5 (turn 71)");
-    expect(row2).not.toContain(
-      '<span class="italic text-ink-dim">not disclosed</span>',
-    );
+    expect(row2).not.toContain('<span class="italic text-ink-dim">not disclosed</span>');
   });
 
   it("a real skill still wins over recovered skills", () => {
     // A derived-skill map is fed for every unit, including one that already discloses a skill of
     // its own - the ownership/real-skills guard in `derivedSkillsFor` must still refuse it.
     const derived = new Map([
-      [
-        "2",
-        [
-          {
-            name: "riding",
-            tag: "RIDI",
-            level: 5,
-            turn: 71,
-            coordinate: null,
-            terrain: null,
-          },
-        ],
-      ],
+      ["2", [{ name: "riding", tag: "RIDI", level: 5, turn: 71, coordinate: null, terrain: null }]]
     ]);
 
     const markup = drawForeign({ derivedSkills: derived }, [
-      theirs("2", {
-        skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }],
-      }),
+      theirs("2", { skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }] })
     ]);
 
     expect(markup).toContain("COMB 3 (180)");
@@ -2519,11 +2003,7 @@ describe("the Other factions source (ah-1mpx.5)", () => {
   it("the faction cell of a concealed unit is a button only in the Other factions source", () => {
     const inForeign = drawForeign();
     const inHex = draw(
-      hex({
-        region: region({ units: [concealed("3")] }),
-        ownUnitCount: 0,
-        foreignUnitCount: 1,
-      }),
+      hex({ region: region({ units: [concealed("3")] }), ownUnitCount: 0, foreignUnitCount: 1 })
     );
 
     expect(inForeign).toContain('data-testid="foreign-pin-hidden"');
@@ -2540,20 +2020,12 @@ describe("the Other factions source (ah-1mpx.5)", () => {
 describe("picking several rows (ah-1mpx.4)", () => {
   const twoRows = () =>
     hex({
-      region: region({
-        units: [
-          unit({ unitId: "1" }),
-          unit({ unitId: "2" }),
-          unit({ unitId: "3" }),
-        ],
-      }),
-      ownUnitCount: 3,
+      region: region({ units: [unit({ unitId: "1" }), unit({ unitId: "2" }), unit({ unitId: "3" })] }),
+      ownUnitCount: 3
     });
 
   const rowFor = (markup: string, unitId: string) =>
-    new RegExp(`<tr[^>]*data-testid="unit-row-${unitId}"[\\s\\S]*?</tr>`).exec(
-      markup,
-    )?.[0] ?? "";
+    new RegExp(`<tr[^>]*data-testid="unit-row-${unitId}"[\\s\\S]*?</tr>`).exec(markup)?.[0] ?? "";
 
   it("washes every picked row and the cursor row more strongly", () => {
     const markup = renderWithStoreState(
@@ -2562,11 +2034,11 @@ describe("picking several rows (ah-1mpx.4)", () => {
         preview={null}
         initialPick={{
           ids: new Set([unitRowKey("1:6,52", "1"), unitRowKey("1:6,52", "2")]),
-          anchor: unitRowKey("1:6,52", "1"),
+          anchor: unitRowKey("1:6,52", "1")
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" },
+      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
     );
 
     // Round 3's numbers exactly: the cursor keeps 25%, a merely picked row takes 15%.
@@ -2582,11 +2054,11 @@ describe("picking several rows (ah-1mpx.4)", () => {
         preview={null}
         initialPick={{
           ids: new Set([unitRowKey("1:6,52", "1"), unitRowKey("1:6,52", "2")]),
-          anchor: unitRowKey("1:6,52", "1"),
+          anchor: unitRowKey("1:6,52", "1")
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" },
+      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
     );
 
     // In a grid `aria-selected` is the selection and focus is the cursor, so both picked rows
@@ -2600,16 +2072,9 @@ describe("picking several rows (ah-1mpx.4)", () => {
 
   it("draws the bulk line only at two or more picked", () => {
     const one = renderWithStoreState(
-      <UnitTableDock
-        hex={twoRows()}
-        preview={null}
-        initialPick={{
-          ids: new Set([unitRowKey("1:6,52", "1")]),
-          anchor: unitRowKey("1:6,52", "1"),
-        }}
-      />,
+      <UnitTableDock hex={twoRows()} preview={null} initialPick={{ ids: new Set([unitRowKey("1:6,52", "1")]), anchor: unitRowKey("1:6,52", "1") }} />,
       useWorkspaceStore,
-      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" },
+      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
     );
     const two = renderWithStoreState(
       <UnitTableDock
@@ -2617,11 +2082,11 @@ describe("picking several rows (ah-1mpx.4)", () => {
         preview={null}
         initialPick={{
           ids: new Set([unitRowKey("1:6,52", "1"), unitRowKey("1:6,52", "2")]),
-          anchor: unitRowKey("1:6,52", "1"),
+          anchor: unitRowKey("1:6,52", "1")
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" },
+      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
     );
 
     expect(one).not.toContain('data-testid="unit-bulk-line"');
@@ -2637,24 +2102,21 @@ describe("hidden columns (ah-20di)", () => {
     hex({
       region: region({ units: [unit({ unitId: "1", own: true })] }),
       ownUnitCount: 1,
-      foreignUnitCount: 0,
+      foreignUnitCount: 0
     });
 
   it("a hidden column is absent from the header and from every row", () => {
     const markup = renderWithStoreState(
       <UnitTableDock hex={withUnits()} preview={null} />,
       useWorkspaceStore,
-      { unitColumnsShown: { ...allColumnsShown(), structure: false } },
+      { unitColumnsShown: { ...allColumnsShown(), structure: false } }
     );
 
     expect(markup).not.toContain(">Structure<");
     expect(markup).toContain(">Items<");
-    expect((markup.match(/<col\b/g) ?? []).length).toBe(
-      UNIT_COLUMNS.length - 1,
-    );
+    expect((markup.match(/<col\b/g) ?? []).length).toBe(UNIT_COLUMNS.length - 1);
 
-    const row =
-      /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
     expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length - 1);
     expect(markup).not.toContain('data-testid="column-reorder-structure"');
   });
@@ -2663,16 +2125,12 @@ describe("hidden columns (ah-20di)", () => {
     const markup = renderWithStoreState(
       <UnitTableDock hex={withUnits()} preview={null} />,
       useWorkspaceStore,
-      { unitColumnsShown: { ...allColumnsShown(), silver: false } },
+      { unitColumnsShown: { ...allColumnsShown(), silver: false } }
     );
 
-    expect(markup).not.toContain(
-      'data-testid="column-splitter-longOrder-silver"',
-    );
+    expect(markup).not.toContain('data-testid="column-splitter-longOrder-silver"');
     expect(markup).not.toContain('data-testid="column-splitter-silver-');
-    expect(markup).toContain(
-      'data-testid="column-splitter-structure-longOrder"',
-    );
+    expect(markup).toContain('data-testid="column-splitter-structure-longOrder"');
   });
 });
 
@@ -2686,7 +2144,7 @@ describe("a row the game dissolves", () => {
   const FORMER = unit({ unitId: "902", name: "Former", own: true });
 
   const dissolvingRow = (
-    overrides: Partial<RegionPreview["units"][number]> = {},
+    overrides: Partial<RegionPreview["units"][number]> = {}
   ): RegionPreview["units"][number] => ({
     unit: unit({ unitId: "new-1", name: "new 1", own: true }),
     status: "present",
@@ -2711,23 +2169,22 @@ describe("a row the game dissolves", () => {
     recruitsUnmerged: false,
     menOfUnknownSkill: [],
     study: null,
-    ...overrides,
+    ...overrides
   });
 
   const drawDissolving = (
-    props: Partial<React.ComponentProps<typeof UnitTableDock>> = {},
+    props: Partial<React.ComponentProps<typeof UnitTableDock>> = {}
   ): string =>
     renderToStaticMarkup(
       <UnitTableDock
         hex={hex({ region: region({ units: [FORMER] }), ownUnitCount: 1 })}
         preview={{ regionId: "1:6,52", units: [dissolvingRow()] }}
         {...props}
-      />,
+      />
     );
 
   const rowMarkup = (markup: string): string =>
-    /<tr[^>]*data-testid="unit-row-new-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ??
-    "";
+    /<tr[^>]*data-testid="unit-row-new-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
 
   /**
    * A formed unit that walks away reads `new` first and then its destination - the order the
@@ -2748,11 +2205,11 @@ describe("a row the game dissolves", () => {
               menOfUnknownSkill: [],
               status: "departing",
               departingTo: "1:7,51",
-              dissolvesInto: null,
-            }),
-          ],
-        },
-      }),
+              dissolvesInto: null
+            })
+          ]
+        }
+      })
     );
 
     expect(row).toContain('data-preview-status="departing"');
@@ -2771,9 +2228,9 @@ describe("a row the game dissolves", () => {
       drawDissolving({
         preview: {
           regionId: "1:6,52",
-          units: [dissolvingRow({ status: "departing", departingTo: null })],
-        },
-      }),
+          units: [dissolvingRow({ status: "departing", departingTo: null })]
+        }
+      })
     );
 
     const newAt = row.indexOf(">new<");
@@ -2817,11 +2274,11 @@ describe("a row the game dissolves", () => {
                   recruitsUnmerged: false,
                   menOfUnknownSkill: [],
                   departingTo: "1:7,53",
-                  dissolvesInto: null,
-                },
-              ],
-            },
-          ],
+                  dissolvesInto: null
+                }
+              ]
+            }
+          ]
         }}
         currentTurn={42}
         client={{} as never}
@@ -2829,7 +2286,7 @@ describe("a row the game dissolves", () => {
         initialSource={{ kind: "own" }}
       />,
       useArmiesStore,
-      { gameId: "aug-2026", status: "ready", armies: [] },
+      { gameId: "aug-2026", status: "ready", armies: [] }
     );
     const row = rowMarkup(markup);
 
@@ -2838,9 +2295,7 @@ describe("a row the game dissolves", () => {
     expect(row).toContain("opacity-60");
     // Decision A1: the dim is unconditional on the source, and `dimsDeparting` still governs
     // departures alone - a departing row in the same list is not dimmed here.
-    const departingRow =
-      /<tr[^>]*data-testid="unit-row-903"[\s\S]*?<\/tr>/.exec(markup)?.[0] ??
-      "";
+    const departingRow = /<tr[^>]*data-testid="unit-row-903"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
     expect(departingRow).toContain('data-preview-status="departing"');
     expect(departingRow).not.toContain("opacity-60");
   });
@@ -2848,8 +2303,8 @@ describe("a row the game dissolves", () => {
   it("shows no month end in its Silver cell", () => {
     const row = rowMarkup(
       drawDissolving({
-        getSilver: () => aUnitSilver({ regionId: "1:6,52", atMonthEnd: 200 }),
-      }),
+        getSilver: () => aUnitSilver({ regionId: "1:6,52", atMonthEnd: 200 })
+      })
     );
 
     const cell = /<td[^>]*tabular-nums[\s\S]*?<\/td>/.exec(row)?.[0] ?? "";
@@ -2864,8 +2319,8 @@ describe("a row the game dissolves", () => {
       drawDissolving({
         getSilver: () => aUnitSilver({ regionId: "1:6,52", atMonthEnd: -140 }),
         silverWarnings: new Set([unitRowKey("1:6,52", "new-1")]),
-        onSelectUnit: () => {},
-      }),
+        onSelectUnit: () => {}
+      })
     );
 
     expect(row).toContain('data-testid="unit-silver-new-1"');
@@ -2885,10 +2340,10 @@ describe("the skills cell's hidden sentence names where men came from (ah-rgkk.2
             unit({
               unitId: "1",
               name: "Braves",
-              skills: [{ name: "combat", tag: "COMB", level: 1, points: 53 }],
-            }),
-          ],
-        }),
+              skills: [{ name: "combat", tag: "COMB", level: 1, points: 53 }]
+            })
+          ]
+        })
       }),
       {
         regionId: "1:6,52",
@@ -2897,7 +2352,7 @@ describe("the skills cell's hidden sentence names where men came from (ah-rgkk.2
             unit: unit({
               unitId: "1",
               name: "Braves",
-              skills: [{ name: "combat", tag: "COMB", level: 1, points: 53 }],
+              skills: [{ name: "combat", tag: "COMB", level: 1, points: 53 }]
             }),
             status: "present",
             changes: [{ field: "skills", original: "COMB 2 (90)" }],
@@ -2924,19 +2379,17 @@ describe("the skills cell's hidden sentence names where men came from (ah-rgkk.2
                 menArriving: [],
                 countInferred: false,
                 arrivingSkills: [],
-                skills: [],
-              },
+                skills: []
+              }
             ],
-            reportedSkills: [
-              { name: "combat", tag: "COMB", level: 2, points: 90 },
-            ],
+            reportedSkills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }],
             itemChanges: [],
             recruitsUnmerged: false,
             menOfUnknownSkill: [],
-            study: null,
-          },
-        ],
-      },
+            study: null
+          }
+        ]
+      }
     );
 
     expect(markup).toContain("2 men joined from Scouts (1502).");
@@ -2945,43 +2398,29 @@ describe("the skills cell's hidden sentence names where men came from (ah-rgkk.2
 
 describe("a unit whose line was not fully read", () => {
   const rowOf = (markup: string, unitId: string): string =>
-    new RegExp(`<tr[^>]*data-testid="unit-row-${unitId}"[\\s\\S]*?</tr>`).exec(
-      markup,
-    )?.[0] ?? "";
+    new RegExp(`<tr[^>]*data-testid="unit-row-${unitId}"[\\s\\S]*?</tr>`).exec(markup)?.[0] ?? "";
 
   const oneUnit = (overrides: Partial<ReportUnit>) =>
     hex({
-      region: region({
-        units: [unit({ unitId: "1", own: true, ...overrides })],
-      }),
-      ownUnitCount: 1,
+      region: region({ units: [unit({ unitId: "1", own: true, ...overrides })] }),
+      ownUnitCount: 1
     });
 
   it("refuses Move, Flags and Skills for one of ours whose line was not read", () => {
     const markup = draw(
-      oneUnit({
-        read: "nothing",
-        movement: null,
-        flags: [],
-        skills: [],
-        items: [],
-      }),
+      oneUnit({ read: "nothing", movement: null, flags: [], skills: [], items: [] })
     );
     const row = rowOf(markup, "1");
 
     // Each refusing cell named. A bare count would not do: the `explain` sentence beside the Men
     // cell repeats the phrase, so a count is satisfiable by the wrong cells.
     for (const column of ["men", "movement", "flags", "skills"]) {
-      expect(row).toContain(
-        `data-column="${column}"><span class="text-warn">not known</span>`,
-      );
+      expect(row).toContain(`data-column="${column}"><span class="text-warn">not known</span>`);
     }
     // The cells' own screen-reader sentences are gone: where the message is words, a second copy
     // is a second place for the same fact to drift. The order-diff `explain` sentence beside them
     // is a separate surface and no part of this bead.
-    expect(row).not.toContain(
-      '<span class="sr-only">Movement not disclosed</span>',
-    );
+    expect(row).not.toContain('<span class="sr-only">Movement not disclosed</span>');
     expect(row).not.toContain("No flags set");
   });
 
@@ -2999,12 +2438,12 @@ describe("a unit whose line was not fully read", () => {
               movement: null,
               flags: [],
               skills: [],
-              items: [],
-            }),
-          ],
+              items: []
+            })
+          ]
         }),
-        foreignUnitCount: 1,
-      }),
+        foreignUnitCount: 1
+      })
     );
 
     expect(rowOf(markup, "2")).toContain("not disclosed");
@@ -3012,13 +2451,7 @@ describe("a unit whose line was not fully read", () => {
 
   it("leaves a completely read row exactly as it was", () => {
     const markup = draw(
-      oneUnit({
-        read: "complete",
-        movement: null,
-        flags: [],
-        skills: [],
-        items: [],
-      }),
+      oneUnit({ read: "complete", movement: null, flags: [], skills: [], items: [] })
     );
 
     expect(rowOf(markup, "1")).not.toContain("not known");
@@ -3026,19 +2459,14 @@ describe("a unit whose line was not fully read", () => {
 
   it("says an unread unit's items could not be read", () => {
     expect(rowOf(draw(oneUnit({ read: "nothing", items: [] })), "1")).toContain(
-      "could not be read",
+      "could not be read"
     );
   });
 
   it("keeps a part-read unit's items and says more is missing", () => {
     const row = rowOf(
-      draw(
-        oneUnit({
-          read: "partial",
-          items: [{ tag: "HORS", name: "horse", amount: 2 }],
-        }),
-      ),
-      "1",
+      draw(oneUnit({ read: "partial", items: [{ tag: "HORS", name: "horse", amount: 2 }] })),
+      "1"
     );
 
     expect(row).toContain("HORS");
@@ -3049,13 +2477,8 @@ describe("a unit whose line was not fully read", () => {
     // `formatItems` strips silver, so the cell is empty and a bare "· and more" would have nothing
     // in front of it.
     const row = rowOf(
-      draw(
-        oneUnit({
-          read: "partial",
-          items: [{ tag: "SILV", name: "silver", amount: 563 }],
-        }),
-      ),
-      "1",
+      draw(oneUnit({ read: "partial", items: [{ tag: "SILV", name: "silver", amount: 563 }] })),
+      "1"
     );
 
     expect(row).toContain("could not be read");
@@ -3070,14 +2493,13 @@ describe("the line above a units list that was not fully read", () => {
         units: [
           unit({ unitId: "1", own: true, read: "complete" }),
           unit({ unitId: "2", own: true, read: "partial" }),
-          unit({ unitId: "3", own: true, read: "nothing" }),
-        ],
+          unit({ unitId: "3", own: true, read: "nothing" })
+        ]
       }),
-      ownUnitCount: 3,
+      ownUnitCount: 3
     });
 
-  const SENTENCE =
-    "⚠ 2 of these 3 units could not be read. Anything counted here is a floor.";
+  const SENTENCE = "⚠ 2 of these 3 units could not be read. Anything counted here is a floor.";
 
   it("warns above a hex list holding units that were not read", () => {
     const markup = draw(threeUnits());
@@ -3090,16 +2512,10 @@ describe("the line above a units list that was not fully read", () => {
     const units = [
       unit({ unitId: "1", own: true, read: "complete" }),
       unit({ unitId: "2", own: true, read: "partial" }),
-      unit({ unitId: "3", own: true, read: "nothing" }),
+      unit({ unitId: "3", own: true, read: "nothing" })
     ];
     const foreign = units.map((each, index) =>
-      unit({
-        ...each,
-        unitId: `${index + 10}`,
-        own: false,
-        factionId: "9",
-        factionName: "Them",
-      }),
+      unit({ ...each, unitId: `${index + 10}`, own: false, factionId: "9", factionName: "Them" })
     );
 
     const own = renderToStaticMarkup(
@@ -3108,7 +2524,7 @@ describe("the line above a units list that was not fully read", () => {
         ownUnits={units}
         currentTurn={71}
         initialSource={OWN_SOURCE}
-      />,
+      />
     );
     const others = renderToStaticMarkup(
       <UnitTableDock
@@ -3116,7 +2532,7 @@ describe("the line above a units list that was not fully read", () => {
         foreignUnits={foreign}
         currentTurn={71}
         initialSource={FOREIGN_SOURCE}
-      />,
+      />
     );
 
     expect(own).toContain(SENTENCE);
@@ -3126,11 +2542,9 @@ describe("the line above a units list that was not fully read", () => {
   it("shows no line above a list that was read", () => {
     const markup = draw(
       hex({
-        region: region({
-          units: [unit({ unitId: "1", own: true, read: "complete" })],
-        }),
-        ownUnitCount: 1,
-      }),
+        region: region({ units: [unit({ unitId: "1", own: true, read: "complete" })] }),
+        ownUnitCount: 1
+      })
     );
 
     expect(markup).not.toContain('data-testid="units-unread-line"');

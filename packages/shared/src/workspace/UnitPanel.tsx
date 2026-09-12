@@ -1,8 +1,4 @@
-import type {
-  FieldChange,
-  ReportUnit,
-  UnitPreview,
-} from "@atlantis/core-client";
+import type { FieldChange, ReportUnit, UnitPreview } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { originalTooltip } from "../unitPreview";
 import { withoutSilver } from "../silverTag";
@@ -12,10 +8,7 @@ import { CollapsiblePanel } from "./CollapsiblePanel";
 import { skillEntryId, type GameDataIndex } from "../gameData";
 import { highestMagicSkill, type MagicTree } from "../magicTree";
 import type { MageStanding } from "../magicStanding";
-import {
-  battleSkillGroups,
-  battleSkillSource,
-} from "../battleSkillPresentation";
+import { battleSkillGroups, battleSkillSource } from "../battleSkillPresentation";
 import type { DerivedSkill } from "../battleSkills";
 import type { TurnMessage } from "../turnMessages";
 import { presentUnitMovement } from "../unitMovement";
@@ -27,7 +20,7 @@ import {
   Row,
   Section,
   StaleBanner,
-  UnreadBanner,
+  UnreadBanner
 } from "./primitives";
 
 const PREVIEW = 8;
@@ -53,7 +46,7 @@ export function UnitPanelBody({
   derivedSkills = [],
   events = [],
   totalEvents = 0,
-  onOpenEvents,
+  onOpenEvents
 }: {
   unit: ReportUnit | null;
   hex: HexNode | null;
@@ -89,13 +82,10 @@ export function UnitPanelBody({
   onOpenEvents?: () => void;
 }) {
   /** Both must be present: a link with nothing to open is worse than plain text. */
-  const linkable =
-    gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
+  const linkable = gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
   /** The same guard as `linkable`, for the same reason: a door with nothing behind it. */
   const magicLinkable =
-    magicTree !== null && onOpenMagicTree !== undefined
-      ? onOpenMagicTree
-      : null;
+    magicTree !== null && onOpenMagicTree !== undefined ? onOpenMagicTree : null;
   const stale = hex?.knowledge === "stale";
 
   if (!unit) {
@@ -111,17 +101,14 @@ export function UnitPanelBody({
   const floor = unread === null ? null : weightFloor(unit, gameData);
 
   const items = withoutSilver(unit.items).sort(
-    (left, right) => right.amount - left.amount,
+    (left, right) => right.amount - left.amount
   );
-  const mage =
-    magicTree === null ? null : highestMagicSkill(unit.skills, magicTree);
+  const mage = magicTree === null ? null : highestMagicSkill(unit.skills, magicTree);
   const movement = preview ? preview.unit.movement : unit.movement;
 
   // What the orders make of the unit, where they touch what this panel shows. The predicted *name*
   // belongs to the title bar rather than the body, so `unitPanelHint` derives it instead.
-  const flagsChange = preview?.changes.find(
-    (change) => change.field === "flags",
-  );
+  const flagsChange = preview?.changes.find((change) => change.field === "flags");
   const predictedFlags = flagsChange ? preview?.unit.flags : null;
 
   return (
@@ -129,16 +116,11 @@ export function UnitPanelBody({
       {/* Above the stale banner: "these are not figures at all" outranks "these figures are old". */}
       {unread === null ? null : <UnreadBanner text={unread} />}
       {stale && hex.lastSeenTurn !== null ? (
-        <StaleBanner
-          lastSeenTurn={hex.lastSeenTurn}
-          ageInTurns={hex.ageInTurns ?? 0}
-        />
+        <StaleBanner lastSeenTurn={hex.lastSeenTurn} ageInTurns={hex.ageInTurns ?? 0} />
       ) : null}
 
       <p className="m-0 mb-2">
-        <strong
-          className={`font-medium ${unit.own ? "text-brass" : "text-danger"}`}
-        >
+        <strong className={`font-medium ${unit.own ? "text-brass" : "text-danger"}`}>
           {unit.factionName ?? "Unknown faction"}
           {unit.factionId ? ` (${unit.factionId})` : ""}
         </strong>
@@ -160,9 +142,7 @@ export function UnitPanelBody({
               {unit.weight === null ? null : (
                 <Field label="Weight" value={unit.weight.toLocaleString()} />
               )}
-              {unit.capacity === null ? null : (
-                <Field label="Capacity" value={unit.capacity} />
-              )}
+              {unit.capacity === null ? null : <Field label="Capacity" value={unit.capacity} />}
             </>
           ) : (
             // A row that is not there reads as "nothing to say about weight", which is the same
@@ -172,9 +152,7 @@ export function UnitPanelBody({
                 label="Weight"
                 value={
                   unit.weight?.toLocaleString() ??
-                  (floor === null
-                    ? NOT_KNOWN
-                    : `${floor.toLocaleString()} or more`)
+                  (floor === null ? NOT_KNOWN : `${floor.toLocaleString()} or more`)
                 }
               />
               <Field label="Capacity" value={unit.capacity ?? NOT_KNOWN} />
@@ -183,9 +161,7 @@ export function UnitPanelBody({
         ) : (
           <Field label="Weight" value={movement.load.toLocaleString()} />
         )}
-        {unit.structureId === null ? null : (
-          <Field label="Structure" value={unit.structureId} />
-        )}
+        {unit.structureId === null ? null : <Field label="Structure" value={unit.structureId} />}
       </dl>
 
       {movement == null ? (
@@ -200,9 +176,7 @@ export function UnitPanelBody({
       ) : (
         <MovementSection
           movement={movement}
-          change={
-            preview?.changes.find((item) => item.field === "movement") ?? null
-          }
+          change={preview?.changes.find((item) => item.field === "movement") ?? null}
         />
       )}
 
@@ -233,9 +207,7 @@ export function UnitPanelBody({
           {standing === null ? (
             "Mage"
           ) : (
-            <span className="text-warn">
-              Mage — {standing.counts.open} magic skills open
-            </span>
+            <span className="text-warn">Mage — {standing.counts.open} magic skills open</span>
           )}{" "}
           <button
             type="button"
@@ -260,10 +232,7 @@ export function UnitPanelBody({
                   <>
                     {/* The name is the link; the tag beside it is an identifier the eye scans past. */}
                     {linkable ? (
-                      <GameDataLink
-                        entryId={skillEntryId(skill.tag)}
-                        onOpen={linkable}
-                      >
+                      <GameDataLink entryId={skillEntryId(skill.tag)} onOpen={linkable}>
                         {skill.name}
                       </GameDataLink>
                     ) : (
@@ -282,23 +251,15 @@ export function UnitPanelBody({
         <Section title="Skills from battle reports">
           {derivedSkills.length === 0 ? (
             <Absent>
-              {
-                "No battle we have seen involved this unit. A report never shows another faction's skills."
-              }
+              {"No battle we have seen involved this unit. A report never shows another faction's skills."}
             </Absent>
           ) : (
             battleSkillGroups(derivedSkills).map((group, index) => (
               <div key={index}>
                 <p className="m-0 text-ink-soft">
-                  {group.skills
-                    .map(
-                      (skill) => `${skill.name.toLowerCase()} ${skill.level}`,
-                    )
-                    .join(", ")}
+                  {group.skills.map((skill) => `${skill.name.toLowerCase()} ${skill.level}`).join(", ")}
                 </p>
-                <p className="m-0 text-ink-dim">
-                  {battleSkillSource(group, "seen")}
-                </p>
+                <p className="m-0 text-ink-dim">{battleSkillSource(group, "seen")}</p>
               </div>
             ))
           )}
@@ -319,11 +280,7 @@ export function UnitPanelBody({
                 key={item.tag}
                 label={
                   <>
-                    <GameDataItemName
-                      index={gameData}
-                      item={item}
-                      onOpen={linkable}
-                    />{" "}
+                    <GameDataItemName index={gameData} item={item} onOpen={linkable} />{" "}
                     {item.tag}
                   </>
                 }
@@ -339,9 +296,7 @@ export function UnitPanelBody({
           Driven off `read`, never off the rendered row count: `withoutSilver` is what this section
           iterates, so a part-read unit that read only silver has no rows and still needs the line.
         */}
-        {unit.read === "partial" ? (
-          <p className="m-0 text-warn">and more, not known</p>
-        ) : null}
+        {unit.read === "partial" ? <p className="m-0 text-warn">and more, not known</p> : null}
       </Section>
 
       <Section title="Events" count={events.length || undefined}>
@@ -351,9 +306,7 @@ export function UnitPanelBody({
           <ul data-testid="unit-events" className="m-0 list-none p-0">
             {events.map((message, index) => (
               <li key={index} className="py-0.5">
-                {message.verb ? (
-                  <span className="pr-2 text-ink-dim">{message.verb}</span>
-                ) : null}
+                {message.verb ? <span className="pr-2 text-ink-dim">{message.verb}</span> : null}
                 <span className="text-ink">{message.text}</span>
               </li>
             ))}
@@ -376,7 +329,7 @@ export function UnitPanelBody({
 
 function MovementSection({
   movement,
-  change,
+  change
 }: {
   movement: NonNullable<ReportUnit["movement"]>;
   change: FieldChange | null;
@@ -393,7 +346,7 @@ function MovementSection({
   const capacities = [
     ["Fly", "fly", movement.fly],
     ["Ride", "ride", movement.ride],
-    ["Walk", "walk", movement.walk],
+    ["Walk", "walk", movement.walk]
   ] as const;
   // Swim is not a mode - `capacityMode` is fly, ride or walk, and the emphasised tile is the
   // fastest available movement, which swimming never is. It is a fourth tile and nothing more.
@@ -426,9 +379,7 @@ function MovementSection({
           <span className="text-ink-soft">Fastest available movement</span>
         )}
       </div>
-      <div
-        className={`grid gap-2 ${swim.kind === "absent" ? "grid-cols-3" : "grid-cols-4"}`}
-      >
+      <div className={`grid gap-2 ${swim.kind === "absent" ? "grid-cols-3" : "grid-cols-4"}`}>
         {capacities.map(([label, mode, capacity]) => {
           const active = movement.capacityMode === mode;
           return (
@@ -467,13 +418,10 @@ function MovementSection({
 export function unitPanelHint(
   unit: ReportUnit | null,
   hex: HexNode | null,
-  preview: UnitPreview | null,
+  preview: UnitPreview | null
 ): { hint: string | undefined; asOf: string | null } {
   const stale = hex?.knowledge === "stale";
-  const asOf =
-    stale && hex.lastSeenTurn !== null
-      ? `as of turn ${hex.lastSeenTurn}`
-      : null;
+  const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
   if (!unit) {
     return { hint: undefined, asOf };
   }
@@ -490,11 +438,7 @@ export function unitPanelHint(
  * shared slot renders `UnitPanelBody` and `unitPanelHint` itself.
  */
 export function UnitPanel(props: Parameters<typeof UnitPanelBody>[0]) {
-  const { hint, asOf } = unitPanelHint(
-    props.unit,
-    props.hex,
-    props.preview ?? null,
-  );
+  const { hint, asOf } = unitPanelHint(props.unit, props.hex, props.preview ?? null);
 
   return (
     <CollapsiblePanel panel="unit" title="Unit" hint={hint} asOf={asOf}>
