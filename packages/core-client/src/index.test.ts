@@ -463,9 +463,10 @@ describe("createCoreClient", () => {
       null,
       null,
       ["hex-unguarded"],
+      null,
       null
     );
-    expect(fake.validateOrders).toHaveBeenNthCalledWith(2, "orders", null, null, null, null);
+    expect(fake.validateOrders).toHaveBeenNthCalledWith(2, "orders", null, null, null, null, null);
   });
 
   it("passes disabled codes through to the preview, and null when no options are given", async () => {
