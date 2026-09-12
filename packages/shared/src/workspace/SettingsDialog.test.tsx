@@ -36,6 +36,23 @@ describe("the warnings tab's coverage of the core's codes", () => {
    * than left to the next edit of this list: the entry sits in Orders, immediately after the
    * finding it is nearest in kind.
    */
+  /**
+   * The words and the position are the navigator's decision: a fourth row under Sailing, after the
+   * land-to-land check it is nearest in kind, so either can be silenced on its own.
+   */
+  it("offers the neck-of-land check under Sailing", () => {
+    const sailing = WARNING_GROUPS.find((group) => group.heading === "Sailing");
+    if (!sailing) {
+      throw new Error("the Sailing group is missing");
+    }
+    const at = sailing.entries.findIndex((entry) => entry.code === "sail-through-neck-of-land");
+    expect(sailing.entries[at - 1]?.code).toBe("sail-between-land-hexes");
+    expect(sailing.entries[at]?.title).toBe("Sailing through a neck of land");
+    expect(sailing.entries[at]?.description).toBe(
+      "A SAIL that crosses a land region in one month. A fleet may only leave by the side it entered or one beside it, unless there is a canal."
+    );
+  });
+
   it("offers the self-transfer advisory next to the faction rule", () => {
     const orders = WARNING_GROUPS.find((group) => group.heading === "Orders");
     if (!orders) {

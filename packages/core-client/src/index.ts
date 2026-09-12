@@ -161,6 +161,11 @@ export type RouteStep = {
   estimated: boolean;
   /** Whether this hex is water in this world. Always false for an estimated step. */
   overWater: boolean;
+  /**
+   * The canal this step passed through, by its own name, or null for every other step. Set on the
+   * step that entered the canal region, which is where its `cost` carries the pass price.
+   */
+  canal: string | null;
 };
 
 /** Where the unit stands when a month runs out. */
@@ -200,7 +205,8 @@ export type RouteProblem =
       fromTerrain: string;
       to: Coordinate;
       toTerrain: string;
-    };
+    }
+  | { kind: "isthmusNeedsCanal"; coordinate: Coordinate; terrain: string };
 
 export type RiskLevel = "low" | "medium" | "high";
 

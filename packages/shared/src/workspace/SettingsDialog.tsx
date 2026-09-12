@@ -746,6 +746,12 @@ export const WARNING_GROUPS: readonly {
         title: "Sailing from land to land",
         description:
           "A SAIL step from a land region into another land region, which the game never allows."
+      },
+      {
+        code: "sail-through-neck-of-land",
+        title: "Sailing through a neck of land",
+        description:
+          "A SAIL that crosses a land region in one month. A fleet may only leave by the side it entered or one beside it, unless there is a canal."
       }
     ]
   }

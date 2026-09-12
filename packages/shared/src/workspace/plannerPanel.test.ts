@@ -49,7 +49,12 @@ describe("explaining why there is no route", () => {
 
     // The water refusals carry a terrain, so they cannot be built from a bare kind - but they are
     // part of "every refusal the core can produce" and this test would overclaim without them.
-    for (const kind of ["oceanNeedsShip", "destinationNeedsShip", "flightWouldEndOverOcean"] as const) {
+    for (const kind of [
+      "oceanNeedsShip",
+      "destinationNeedsShip",
+      "flightWouldEndOverOcean",
+      "isthmusNeedsCanal"
+    ] as const) {
       const sentence = describeProblem({
         kind,
         coordinate: { x: 1, y: 1, z: 1 },
@@ -150,6 +155,23 @@ describe("explaining why there is no route", () => {
       "A fleet may only sail where one end of the step is water, so it cannot go from forest (2,2) straight to forest (3,3)."
     );
   });
+
+  /**
+   * `rules/movement_sailing`: "Ships may not sail through single hex land masses and must leave via
+   * the same side they entered or a side adjacent to that one." The sentence names the rule and the
+   * hex it stopped at, and says nothing about canals.
+   */
+  it("names the rule and the hex it stopped at", () => {
+    expect(
+      describeProblem({
+        kind: "isthmusNeedsCanal",
+        coordinate: { x: 2, y: 2, z: 1 },
+        terrain: "plain"
+      })
+    ).toBe(
+      "A fleet must leave a land hex by the side it entered or one beside it, so it cannot sail straight through plain (2,2)."
+    );
+  });
 });
 
 /**
@@ -164,7 +186,8 @@ describe("saying how much of a route is guesswork", () => {
     cost: 1,
     road: false,
     estimated,
-    overWater: false
+    overWater: false,
+    canal: null
   });
 
   it("says nothing at all about a route the reports describe in full", () => {
@@ -203,7 +226,8 @@ describe("printing one route step", () => {
     cost: 1,
     road: false,
     estimated: false,
-    overWater: true
+    overWater: true,
+    canal: null
   };
 
   it("marks a flier's water step and not a fleet's", () => {
@@ -222,5 +246,19 @@ describe("printing one route step", () => {
     expect(describeStep({ ...wet, estimated: true, overWater: false }, "fly")).toBe(
       "unexplored (3,3) · 1 · estimated"
     );
+  });
+
+  /**
+   * The building's own name carries its price - the suffix sits where `· road` sits. A step with no
+   * canal is unchanged from today.
+   */
+  it("names the canal on a step through it", () => {
+    const dry = { ...wet, terrain: "plain", to: { x: 2, y: 2, z: 1 }, overWater: false };
+
+    expect(describeStep({ ...dry, cost: 2, canal: "Canal" }, "sail")).toBe("plain (2,2) · 2 · Canal");
+    expect(describeStep({ ...dry, cost: 1, canal: "Mystic Canal" }, "sail")).toBe(
+      "plain (2,2) · 1 · Mystic Canal"
+    );
+    expect(describeStep(dry, "sail")).toBe("plain (2,2) · 1");
   });
 });
