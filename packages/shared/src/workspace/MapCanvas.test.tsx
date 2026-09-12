@@ -676,6 +676,11 @@ describe("the mark where a route ran into an inner passage", () => {
       "Where this passage comes out is not in any report yet, so the rest of the journey"
     );
     expect(svg).toContain("2 more steps");
+    // The accessible name carries both sentences, not just the first: a screen reader is told why
+    // the line stopped, not only that it did.
+    expect(svg).toContain(
+      'aria-label="Through the passage in Shaft [3] Where this passage comes out'
+    );
   });
 
   it("is not drawn on another level", () => {

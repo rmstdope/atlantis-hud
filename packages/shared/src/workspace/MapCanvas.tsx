@@ -1359,7 +1359,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             <g
               transform={translateAt(route.passage.coordinate)}
               role="img"
-              aria-label={passageTitle(route.passage).split("\n")[0]}
+              // The whole two-line string, not its first line: an `aria-label` overrides the
+              // child `<title>`, so naming only the first line would announce that the route ran
+              // into a passage and never say why the rest could not be drawn. A newline collapses
+              // to a space in the accessibility tree, so this is the same two sentences a sighted
+              // reader gets from the hover.
+              aria-label={passageTitle(route.passage).replace("\n", " ")}
               data-testid="map-passage-ring"
               style={GHOSTABLE_HIT}
             >
