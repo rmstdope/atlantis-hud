@@ -168,6 +168,21 @@ pub enum RouteProblem {
         coordinate: Coordinate,
         terrain: String,
     },
+    /// A bound fleet asked to land on a hex somebody in the faction has stood in, whose own report
+    /// lists no water beside it and which no other report places beside water.
+    /// `rules/movement_sailing`: "A coastal region is defined as a non-ocean region with at least
+    /// one adjacent ocean region." `terrain` is the hex's own reported terrain.
+    FleetLandingInland {
+        coordinate: Coordinate,
+        terrain: String,
+    },
+    /// A bound fleet asked to land on a hex known only by name, which no report places beside
+    /// water. Refused rather than allowed with a warning: doubt about whether a step is legal at
+    /// all is a refusal, the same line [`RouteProblem::WaterDepthUnknown`] takes for swimmers.
+    FleetLandingCoastUnknown {
+        coordinate: Coordinate,
+        terrain: String,
+    },
 }
 
 /// One hex entered.
@@ -347,15 +362,15 @@ pub(crate) fn route_for_mode(
     if let Some(target) = map.hex(destination) {
         if blocks(ruleset, map, journey, destination, &target.terrain) {
             // A water destination is the hex the player clicked on, and "in the way" is untrue of
-            // it. Anything else blocked here - an inland hex a fleet cannot reach, say - keeps the
-            // refusal it has always had, which is not about the destination being wet.
+            // it. A bound fleet refused a land hex gets its own sentence from
+            // `fleet_landing_refusal`; anything else keeps the refusal it has always had.
             return Err(
-                water_refusal(ruleset, map, journey, destination, &target.terrain, true).unwrap_or(
-                    RouteProblem::OceanNeedsShip {
+                water_refusal(ruleset, map, journey, destination, &target.terrain, true)
+                    .or_else(|| fleet_landing_refusal(ruleset, map, journey, destination, target))
+                    .unwrap_or(RouteProblem::OceanNeedsShip {
                         coordinate: destination,
                         terrain: water_named(ruleset, &target.terrain),
-                    },
-                ),
+                    }),
             );
         }
     }
@@ -411,10 +426,10 @@ pub(crate) fn route_for_mode(
 
 /// The terrain [`RouteProblem::OceanNeedsShip`] should name for a hex the journey is blocked at.
 ///
-/// Water names itself, so a lake is refused as a lake. A dry hex does not: `blocks` also refuses a
-/// fleet an inland land hex, which has nothing to do with water, and naming it would print "the
-/// plain is in the way, and crossing it needs a ship". That case keeps the world's own water word,
-/// which is the sentence it has always been refused with.
+/// Water names itself, so a lake is refused as a lake. A dry hex does not: the origin guard can
+/// still refuse a fleet standing on a land hex that is not coastal, and naming that hex would print
+/// "the plain is in the way, and crossing it needs a ship". That case keeps the world's own water
+/// word.
 fn water_named(ruleset: &Ruleset, terrain: &str) -> String {
     if ruleset.is_water(terrain) {
         terrain.to_string()
@@ -519,8 +534,9 @@ fn sail_mode(
 /// Reads the ruleset's own water rule rather than assuming it: a game that let anyone cross water
 /// would otherwise be quietly overruled by a hardcoded belief. A fleet is the water rule turned
 /// round: water never blocks it, and land blocks it unless the hex is coastal - "a non-ocean region
-/// with at least one adjacent ocean region" - which is asked of the map itself, an estimated
-/// neighbour (one the search only reached by geometric guess) never counting as confirming it.
+/// with at least one adjacent ocean region" - which is asked of the map itself in either direction,
+/// via `is_coastal`, an estimated neighbour (one the search only reached by geometric guess) never
+/// counting as confirming it.
 ///
 /// Shared with the order tracer, which draws the blocked step anyway and marks it as doubt.
 pub(crate) fn blocks(
@@ -744,6 +760,38 @@ fn water_refusal(
     water_problem(verdict, coordinate, terrain.to_string(), destination)
 }
 
+/// The refusal for a bound fleet whose land destination is not coastal, or `None` for every other
+/// case - water, a flying hull, a unit not sailing, a coastal hex, or a world whose ruleset does
+/// not make land need a coast. Which sentence depends only on whether anybody stood in the hex:
+/// a visited hex listed its own exits, so its lack of water is seen; a named one listed nothing.
+fn fleet_landing_refusal(
+    ruleset: &Ruleset,
+    map: &MapKnowledge,
+    journey: Journey,
+    coordinate: Coordinate,
+    hex: &KnownHex,
+) -> Option<RouteProblem> {
+    if journey.mode != MovementMode::Sail
+        || journey.hull != Hull::Bound
+        || ruleset.is_water(&hex.terrain)
+        || !blocks(ruleset, map, journey, coordinate, &hex.terrain)
+    {
+        return None;
+    }
+    let terrain = hex.terrain.clone();
+    Some(if hex.visited {
+        RouteProblem::FleetLandingInland {
+            coordinate,
+            terrain,
+        }
+    } else {
+        RouteProblem::FleetLandingCoastUnknown {
+            coordinate,
+            terrain,
+        }
+    })
+}
+
 /// The refusal this verdict is, or `None` where the water is no obstacle.
 fn water_problem(
     verdict: WaterVerdict,
@@ -814,9 +862,13 @@ pub(crate) fn refused_by_sailing_step(
         && !ruleset.is_water(into_terrain)
 }
 
-/// Whether a hex has at least one neighbour the map itself describes as water.
+/// Whether a hex has at least one hex the reports place beside it - in either direction - that the
+/// map describes as water. Reads `MapKnowledge::adjacent`, not `neighbours`: a land hex known only
+/// by name states no exits, and the ocean hex whose report named it is the only evidence it has a
+/// coast (`rules/movement_sailing`: "A coastal region is defined as a non-ocean region with at
+/// least one adjacent ocean region.").
 fn is_coastal(ruleset: &Ruleset, map: &MapKnowledge, coordinate: Coordinate) -> bool {
-    map.neighbours(coordinate).any(|(_, neighbour)| {
+    map.adjacent(coordinate).into_iter().any(|(_, neighbour)| {
         map.hex(neighbour)
             .is_some_and(|hex| ruleset.is_water(&hex.terrain))
     })

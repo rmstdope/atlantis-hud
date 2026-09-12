@@ -555,6 +555,35 @@ fn a_sail_out_to_sea_from_a_coastal_hex_is_still_undotted() {
     assert_eq!(path.blocked_from, None, "coastal to ocean is allowed");
 }
 
+/// A written SAIL onto a land hex known only from the sea's report is legal - the ocean hex beside
+/// it makes it coastal (`rules/movement_sailing`) - so the step is drawn solid.
+#[test]
+fn a_written_sail_onto_a_shore_only_the_sea_has_named_is_drawn_solid() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : forest (2,2) in Coast.\n\n");
+    text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \\
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    text.push_str(
+        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \\
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+
+    let path = trace_over(&text, "900", "SAIL SE")
+        .path
+        .expect("a traced path");
+
+    assert_eq!(path.steps.len(), 1);
+    assert_eq!(path.steps[0].to, at(2, 2));
+    assert_eq!(
+        path.blocked_from, None,
+        "ocean to a named coastal hex is allowed"
+    );
+}
+
 /// The tracer and the planner must mark the same hexes as water - they share `Ruleset::is_water`,
 /// and this is what pins that they share its answer too. Trident counts a lake as water
 /// (`newage trident rules/movement_sailing`), so a flight over one says so on the step itself.

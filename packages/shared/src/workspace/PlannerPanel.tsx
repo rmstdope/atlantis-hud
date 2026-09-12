@@ -266,6 +266,10 @@ export function describeProblem(problem: RouteProblem): string {
       return `A fleet may only sail where one end of the step is water, so it cannot go from ${problem.fromTerrain} (${problem.from.x},${problem.from.y}) straight to ${problem.toTerrain} (${problem.to.x},${problem.to.y}).`;
     case "isthmusNeedsCanal":
       return `A fleet must leave a land hex by the side it entered or one beside it, so it cannot sail straight through ${problem.terrain} (${problem.coordinate.x},${problem.coordinate.y}).`;
+    case "fleetLandingInland":
+      return `A fleet may land only on a coast, and ${problem.terrain.toLowerCase()} (${problem.coordinate.x},${problem.coordinate.y}) touches no sea.`;
+    case "fleetLandingCoastUnknown":
+      return `A fleet may land only on a coast, and there is no telling whether ${problem.terrain.toLowerCase()} (${problem.coordinate.x},${problem.coordinate.y}) touches the sea.`;
   }
 }
 

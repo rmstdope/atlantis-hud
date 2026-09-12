@@ -1282,16 +1282,76 @@ fn a_sea_route_can_end_on_a_coastal_land_hex_but_not_an_inland_one() {
     assert_eq!(coastal.mode, MovementMode::Sail);
 
     let inland = plan(&report, "900", at(3, 3)).expect_err("plain (3,3) has no water neighbour");
-    // The refusal names the world's water, not the dry hex: `blocks` refuses a fleet an inland hex
-    // for a reason that has nothing to do with water, and "the plain is in the way, and crossing it
-    // needs a ship" would be a contradiction in front of the player.
+    // plain (3,3) was stood in and lists only land, so the fleet is told it touches no sea.
     assert_eq!(
         inland,
-        RouteProblem::OceanNeedsShip {
+        RouteProblem::FleetLandingInland {
             coordinate: at(3, 3),
-            terrain: "ocean".to_string(),
+            terrain: "plain".to_string(),
         }
     );
+}
+
+/// A land hex known only by name, which no report places beside water, may or may not be coastal
+/// (`rules/movement_sailing`) - and doubt about whether a landing is legal at all is a refusal.
+#[test]
+fn a_fleet_is_refused_a_named_hex_nothing_puts_beside_the_sea() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
+    text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \\
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    text.push_str(
+        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \\
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n\n",
+    );
+    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : hills (3,3) in Inland.\n",
+    );
+    let report = parse_report_full(&text);
+
+    let problem = plan(&report, "900", at(3, 3)).expect_err("nothing puts the hills by the sea");
+    assert_eq!(
+        problem,
+        RouteProblem::FleetLandingCoastUnknown {
+            coordinate: at(3, 3),
+            terrain: "hills".to_string(),
+        }
+    );
+}
+
+/// A land hex nobody stood in is coastal when an ocean hex's report names it among its exits -
+/// `rules/movement_sailing`: "A coastal region is defined as a non-ocean region with at least one
+/// adjacent ocean region." The forest has no block of its own, so its only evidence of a shore is
+/// the sea's report.
+#[test]
+fn a_fleet_lands_on_a_shore_only_the_sea_has_named() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : forest (2,2) in Coast.\n\n");
+    text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \\
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    text.push_str(
+        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \\
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    let report = parse_report_full(&text);
+
+    let route = plan(&report, "900", at(2, 2)).expect("the sea names the forest as its shore");
+    assert_eq!(route.mode, MovementMode::Sail);
+    assert_eq!(route.steps.len(), 1);
+    assert_eq!(route.steps[0].to, at(2, 2));
+    assert_eq!(route.steps[0].terrain, "forest");
+    assert!(!route.steps[0].estimated);
+    assert_eq!(route.steps[0].cost, 1);
+    assert_eq!(route.order, "SAIL SE");
 }
 
 // ------------------------------------------------------- an overloaded fleet
@@ -1697,6 +1757,34 @@ fn the_sailing_refusal_serialises_the_names_the_typescript_expects() {
     let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
     keys.sort_unstable();
     assert_eq!(keys, ["from", "fromTerrain", "kind", "to", "toTerrain"]);
+}
+
+#[test]
+fn the_landing_refusals_serialise_the_names_the_typescript_expects() {
+    for (problem, kind) in [
+        (
+            RouteProblem::FleetLandingInland {
+                coordinate: at(2, 2),
+                terrain: "plain".to_string(),
+            },
+            "fleetLandingInland",
+        ),
+        (
+            RouteProblem::FleetLandingCoastUnknown {
+                coordinate: at(2, 2),
+                terrain: "plain".to_string(),
+            },
+            "fleetLandingCoastUnknown",
+        ),
+    ] {
+        let value = serde_json::to_value(problem).expect("the refusal serialises");
+        let object = value.as_object().expect("a JSON object");
+
+        assert_eq!(object["kind"], kind);
+        let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["coordinate", "kind", "terrain"]);
+    }
 }
 
 // ------------------------------------------------------- lakes, in New Age: Trident
