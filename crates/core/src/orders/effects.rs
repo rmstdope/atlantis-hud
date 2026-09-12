@@ -741,7 +741,42 @@ pub fn preview_orders_on_map(
         // the player wrote is still drawn (decision **Q3b'**) - and that row can never name a
         // destination, because a unit that gained nobody has no men and so no stated speed, which
         // is what `trace_move` needs to say where the month ends.
-        if let Some(steps) = &entry.move_steps {
+        // A `SAIL` written aboard a priceable hull is not the writer's own course: a fleet takes
+        // its course from its **owner** alone (`rules/movement_sailing`, stated once in
+        // `movement::fleet::fleet_course`, which the map trace reads too - `ah-ofra`). A `MOVE` is
+        // the unit walking off and is still its own business. `Some(None)` here is a hull whose
+        // owner named no course: it goes nowhere, so nobody aboard departs.
+        let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> = if entry
+            .move_command
+            .as_deref()
+            == Some("SAIL")
+        {
+            report
+                .regions
+                .iter()
+                .find(|region| region.region_id == entry.unit.region_id)
+                .and_then(|region| {
+                    crate::movement::fleet::priceable_fleet_of(
+                        region,
+                        &ruleset,
+                        &ordered,
+                        &entry.unit,
+                    )
+                    .map(|hull| {
+                        crate::movement::fleet::fleet_course(region, &ordered, &hull.structure_id)
+                            .steps
+                            .map(<[crate::movement::orders::MoveStep]>::to_vec)
+                    })
+                })
+        } else {
+            None
+        };
+        let traced_steps: Option<&[crate::movement::orders::MoveStep]> = match &hull_course {
+            Some(course) => course.as_deref(),
+            None => entry.move_steps.as_deref(),
+        };
+
+        if let Some(steps) = traced_steps {
             match trace_move(&map, &ruleset, &entry.unit, steps, Some(&ordered)) {
                 // The first month's end is where the unit stands when the next report is written;
                 // the rest of a longer journey is later months' business.
@@ -6816,6 +6851,78 @@ mod tests {
                 .iter()
                 .find(|unit| unit.unit.unit_id == unit_id)
         })
+    }
+
+    /// [`fleet_report`] with a third unit aboard the first hull. A new builder rather than an
+    /// edit to that one, whose two-unit shape several tests above assert positionally.
+    fn fleet_report_with_a_passenger(first_hull: &str) -> String {
+        let mut text = String::from("Foo (1) Report\n\n");
+        text.push_str("ocean (1,1) in Sea.\n\n");
+        text.push_str("Exits:\n  Southeast : ocean (2,2) in Sea.\n\n");
+        text.push_str("* Ashore (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n");
+        text.push_str(&format!("+ {first_hull}\n"));
+        text.push_str(
+            "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
+             Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+        );
+        text.push_str(
+            "  * Deckhands (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
+             Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+        );
+        text.push_str(
+            "  * Marines (902), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
+             Capacity: 0/70/70/0.\n",
+        );
+        text.push_str("\nocean (2,2) in Sea.\n\n");
+        text.push_str("Exits:\n  Northwest : ocean (1,1) in Sea.\n");
+        text
+    }
+
+    fn passenger_preview(orders: &str) -> OrdersPreviewResponse {
+        preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &fleet_report_with_a_passenger(WAVECREST),
+            "[]",
+            orders,
+        )
+        .expect("the ruleset loads")
+    }
+
+    /// A fleet takes its course from its owner alone, and the preview must say what the map says
+    /// (`ah-ofra`). `Deckhands (901)` is the second unit listed under Wavecrest [329], so its
+    /// `SAIL` lends a pair of hands and never a direction.
+    #[test]
+    fn a_course_from_a_unit_that_does_not_own_the_fleet_moves_nobody() {
+        let response = passenger_preview("unit 901\nSAIL SE\n");
+
+        for region in &response.regions {
+            for unit in &region.units {
+                assert_eq!(
+                    unit.status,
+                    UnitPreviewStatus::Present,
+                    "{} stays put",
+                    unit.unit.unit_id
+                );
+            }
+        }
+        assert!(
+            region_of(&response, "1:2,2").is_none(),
+            "nobody arrives, so the destination hex is not in the preview"
+        );
+    }
+
+    /// The owner's own course still departs everyone aboard, unchanged.
+    #[test]
+    fn the_owners_course_departs_everyone_aboard() {
+        let response = passenger_preview("unit 900\nSAIL SE\n");
+
+        for unit_id in ["900", "901", "902"] {
+            let departing =
+                row(&response, "1:1,1", unit_id).unwrap_or_else(|| panic!("{unit_id} departs"));
+            assert_eq!(departing.status, UnitPreviewStatus::Departing);
+            assert_eq!(departing.departing_to.as_deref(), Some("1:2,2"));
+        }
     }
 
     #[test]
