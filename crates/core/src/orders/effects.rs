@@ -2200,11 +2200,9 @@ impl Working {
         };
 
         // Chained by `movement::chain::RouteChain` (`rules/move`).
-        if let Some(intent) = super::intents::read_order_with_ruleset(
-            command,
-            written,
-            Some(self.ruleset.as_ref()),
-        ) {
+        if let Some(intent) =
+            super::intents::read_order_with_ruleset(command, written, Some(self.ruleset.as_ref()))
+        {
             let working = &mut self.units[active];
             working.movement.push(&command.text, &intent);
             working.move_steps = working.movement.route().map(|route| route.steps.clone());

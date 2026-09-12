@@ -91,13 +91,19 @@ mod tests {
     use MoveStep::Go;
 
     fn mv(steps: &[MoveStep]) -> Intent {
-        Intent::Move { steps: steps.to_vec() }
+        Intent::Move {
+            steps: steps.to_vec(),
+        }
     }
     fn sail(steps: &[MoveStep]) -> Intent {
-        Intent::Sail { steps: steps.to_vec() }
+        Intent::Sail {
+            steps: steps.to_vec(),
+        }
     }
     fn study() -> Intent {
-        Intent::Study { skill: "COMB".to_string() }
+        Intent::Study {
+            skill: "COMB".to_string(),
+        }
     }
 
     fn chained(orders: &[(&str, Intent)]) -> Option<ChainedRoute> {
@@ -123,15 +129,22 @@ mod tests {
 
     #[test]
     fn advance_continues_a_move_and_keeps_the_opening_word() {
-        let route =
-            chained(&[("MOVE", mv(&[Go(North)])), ("ADVANCE", mv(&[Go(Northeast)]))]).unwrap();
+        let route = chained(&[
+            ("MOVE", mv(&[Go(North)])),
+            ("ADVANCE", mv(&[Go(Northeast)])),
+        ])
+        .unwrap();
         assert_eq!(route.steps, vec![Go(North), Go(Northeast)]);
         assert_eq!(route.command, "MOVE");
     }
 
     #[test]
     fn two_sail_lines_are_one_course() {
-        let route = chained(&[("SAIL", sail(&[Go(North)])), ("SAIL", sail(&[Go(Northwest)]))]).unwrap();
+        let route = chained(&[
+            ("SAIL", sail(&[Go(North)])),
+            ("SAIL", sail(&[Go(Northwest)])),
+        ])
+        .unwrap();
         assert_eq!(route.steps, vec![Go(North), Go(Northwest)]);
         assert!(route.sail);
         assert_eq!(route.command, "SAIL");
@@ -139,7 +152,8 @@ mod tests {
 
     #[test]
     fn a_sail_replaces_a_move() {
-        let route = chained(&[("MOVE", mv(&[Go(North)])), ("SAIL", sail(&[Go(Northwest)]))]).unwrap();
+        let route =
+            chained(&[("MOVE", mv(&[Go(North)])), ("SAIL", sail(&[Go(Northwest)]))]).unwrap();
         assert_eq!(route.steps, vec![Go(Northwest)]);
         assert!(route.sail);
     }
@@ -147,7 +161,11 @@ mod tests {
     #[test]
     fn an_order_that_leaves_the_month_free_does_not_break_the_chain() {
         assert_eq!(
-            steps(&[("MOVE", mv(&[Go(North)])), ("LEAVE", Intent::Leave), ("MOVE", mv(&[Go(South)]))]),
+            steps(&[
+                ("MOVE", mv(&[Go(North)])),
+                ("LEAVE", Intent::Leave),
+                ("MOVE", mv(&[Go(South)]))
+            ]),
             vec![Go(North), Go(South)]
         );
     }
@@ -155,14 +173,21 @@ mod tests {
     #[test]
     fn another_month_long_order_breaks_the_chain() {
         assert_eq!(
-            steps(&[("MOVE", mv(&[Go(North)])), ("STUDY", study()), ("MOVE", mv(&[Go(South)]))]),
+            steps(&[
+                ("MOVE", mv(&[Go(North)])),
+                ("STUDY", study()),
+                ("MOVE", mv(&[Go(South)]))
+            ]),
             vec![Go(South)]
         );
     }
 
     #[test]
     fn a_trailing_month_long_order_leaves_the_route_standing() {
-        assert_eq!(steps(&[("MOVE", mv(&[Go(North)])), ("STUDY", study())]), vec![Go(North)]);
+        assert_eq!(
+            steps(&[("MOVE", mv(&[Go(North)])), ("STUDY", study())]),
+            vec![Go(North)]
+        );
     }
 
     #[test]
@@ -186,7 +211,11 @@ mod tests {
         assert!(route.sail);
 
         assert_eq!(
-            steps(&[("MOVE", mv(&[Go(North)])), ("SAIL", sail(&[])), ("MOVE", mv(&[Go(South)]))]),
+            steps(&[
+                ("MOVE", mv(&[Go(North)])),
+                ("SAIL", sail(&[])),
+                ("MOVE", mv(&[Go(South)]))
+            ]),
             vec![Go(South)]
         );
     }
