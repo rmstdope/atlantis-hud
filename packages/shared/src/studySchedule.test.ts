@@ -18,6 +18,7 @@ import {
   type SkillPoints
 } from "./studySchedule";
 import { taughtWorth } from "./studyTeaching";
+import { NO_TEACHING_RULE, type TeachingRule } from "./teachingPermission";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -43,6 +44,7 @@ function project(start: SkillPoints, goals: readonly StudyGoal[], turns: readonl
     mages: [
       {
         key: "21/2431",
+        factionId: "21",
         unitId: "2431",
         name: "Ereb",
         regionId: "1:7",
@@ -59,7 +61,8 @@ function project(start: SkillPoints, goals: readonly StudyGoal[], turns: readonl
     turns,
     // Sheltered, so these cases measure study arithmetic and nothing else; the shelter rule has
     // its own cases below.
-    seats: new Map([["1:7/1", 1]])
+    seats: new Map([["1:7/1", 1]]),
+    rule: NO_TEACHING_RULE
   });
   return projected.get("21/2431") as { cells: ScheduleCell[]; standings: SkillPoints[] };
 }
@@ -270,7 +273,8 @@ describe("scheduleRows", () => {
       tree,
       turns,
       seats: new Map(),
-      after: new Map()
+      after: new Map(),
+      rule: NO_TEACHING_RULE
     });
 
     expect(rows).toHaveLength(1);
@@ -301,7 +305,8 @@ describe("scheduleRows", () => {
         tree,
         turns,
         seats: new Map([["1:7,53/4", 1]]),
-        after
+        after,
+        rule: NO_TEACHING_RULE
       });
 
     const reported = call(new Map());
@@ -327,8 +332,10 @@ describe("scheduleRows", () => {
   });
 
   it("gives a mage with no plan an idle row and no pencil", () => {
-    const rows = scheduleRows({ groups: groupOf(), plans: [], tree, turns, seats: new Map() ,
-      after: new Map()});
+    const rows = scheduleRows({ groups: groupOf(), plans: [], tree, turns, seats: new Map(),
+      after: new Map(),
+      rule: NO_TEACHING_RULE
+      });
 
     expect(rows[0].hasNote).toBe(false);
     expect(rows[0].summary).toBe("force 3");
@@ -342,7 +349,8 @@ describe("scheduleRows", () => {
       tree,
       turns,
       seats: new Map(),
-      after: new Map()
+      after: new Map(),
+      rule: NO_TEACHING_RULE
     });
 
     expect(rows[0].standings[0].get("FORC")).toEqual({ level: 3, points: 270 });
@@ -367,7 +375,8 @@ describe("hoverCard", () => {
       tree,
       turns,
       seats: new Map(),
-      after: new Map()
+      after: new Map(),
+      rule: NO_TEACHING_RULE
     })[0];
   }
 
@@ -419,7 +428,8 @@ describe("hoverCard", () => {
       tree,
       turns,
       seats: new Map(),
-      after: new Map()
+      after: new Map(),
+      rule: NO_TEACHING_RULE
     })[0];
     const card = hoverCard(beginning, 0, turns, tree, "x");
 
@@ -436,7 +446,8 @@ describe("hoverCard", () => {
       tree,
       turns,
       seats: new Map(),
-      after: new Map()
+      after: new Map(),
+      rule: NO_TEACHING_RULE
     })[0];
     const card = hoverCard(maxed, 0, turns, tree, "x");
 
@@ -468,6 +479,7 @@ describe("projectAll across the whole fleet", () => {
   function fleet(
     mages: {
       key: string;
+      factionId?: string;
       unitId: string;
       name: string;
       regionId?: string;
@@ -484,6 +496,7 @@ describe("projectAll across the whole fleet", () => {
   ) {
     return projectAll({
       mages: mages.map((mage) => ({
+        factionId: "21",
         regionId: "1:7",
         structureId: null,
         offMap: false,
@@ -495,7 +508,8 @@ describe("projectAll across the whole fleet", () => {
       })),
       tree,
       turns,
-      seats
+      seats,
+      rule: NO_TEACHING_RULE
     });
   }
 
@@ -843,6 +857,7 @@ describe("cellLabel", () => {
       leftBuilding: null,
       leftBy: null,
       taughtBy: null,
+      crossFaction: null,
       ...over
     }) satisfies Extract<ScheduleCell, { kind: "study" }>;
 
@@ -900,5 +915,156 @@ describe("worthMark", () => {
     // A taught but unsheltered month: silence would hide that the two effects cancelled.
     expect(worthMark(1, true)).toBe("×1");
     expect(worthMark(1, false)).toBe("");
+  });
+});
+
+describe("cross-faction teaching under a declaration rule", () => {
+  const turns = scheduleTurns(23);
+
+  /**
+   * Sable of faction 12 studies force; Uln of faction 21 stands in the same hex at force 2 and
+   * teaches her. The only cross-faction teaching relationship there is.
+   *
+   * The New Origins tree this file already builds is deliberately reused rather than a Trident one:
+   * `teachingDeclarerFor` decides the rule from the ruleset **id**, not from the catalogue, and
+   * `force` exists in both. A Trident tree fixture here would prove nothing.
+   */
+  function rows(rule: TeachingRule, teacherFactionId = "21") {
+    return scheduleRows({
+      groups: [
+        {
+          factionId: "12",
+          factionLabel: "Wardens of the North (12)",
+          source: "report" as const,
+          heading: "Wardens of the North (12) — turn 23",
+          stale: false,
+          mages: [
+            {
+              key: "12/2517",
+              factionId: "12",
+              factionLabel: "Wardens of the North (12)",
+              unitId: "2517",
+              name: "Sable",
+              regionId: "1:7,53",
+              sheetTurn: null,
+              monthsUnreported: 0,
+              skills: [{ tag: "FORC", level: 1, points: 30 }]
+            }
+          ]
+        },
+        {
+          factionId: teacherFactionId,
+          factionLabel: "Circle of Uln (21)",
+          source: "sheet" as const,
+          heading: "Circle of Uln (21) — turn 22",
+          stale: false,
+          mages: [
+            {
+              key: `${teacherFactionId}/3012`,
+              factionId: teacherFactionId,
+              factionLabel: "Circle of Uln (21)",
+              unitId: "3012",
+              name: "Uln",
+              regionId: "1:7,53",
+              sheetTurn: null,
+              monthsUnreported: 0,
+              skills: [{ tag: "FORC", level: 2, points: 90 }]
+            }
+          ]
+        }
+      ] as unknown as Parameters<typeof scheduleRows>[0]["groups"],
+      plans: [
+        {
+          factionId: "12",
+          unitId: "2517",
+          goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        },
+        {
+          factionId: teacherFactionId,
+          unitId: "3012",
+          goals: turns.map((turn) => ({
+            kind: "teach" as const,
+            turn,
+            students: ["2517"],
+            live: false
+          })),
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      tree,
+      turns,
+      // Seated, so nothing is halved and these cases measure the declaration and nothing else.
+      seats: new Map([["1:7,53/null", 9]]),
+      after: new Map(),
+      rule
+    });
+  }
+
+  const declarations = (toward: Record<string, string>) => ({
+    factionId: "12",
+    toward: new Map(Object.entries(toward)),
+    fallback: null
+  });
+
+  /** The same two mages, both in our own faction 12. */
+  const ownFactionRows = (rule: TeachingRule) => rows(rule, "12");
+
+  const student = (rule: TeachingRule) =>
+    rows(rule).find((one) => one.key === "12/2517") as ScheduleRow;
+
+  it("reads an allied teacher's Trident month as a bonus, as ordinary study, or as uncertain", () => {
+    const confirmed = student({ declarer: "student", declarations: declarations({ "21": "friendly" }) });
+    expect(cellLabel(confirmed.cells[0])).toBe("force 2 - teaching bonus");
+    expect(confirmed.cells[0].kind === "study" && confirmed.cells[0].taughtBy).toBe("21/3012");
+    expect(hoverCard(confirmed, 0, turns, tree, "x", new Map([["21/3012", "Uln"]])).foot).toContain(
+      "Sable has declared Uln Friendly. Uln's teaching doubles Sable's study this turn."
+    );
+
+    const refused = student({ declarer: "student", declarations: declarations({ "21": "neutral" }) });
+    expect(cellLabel(refused.cells[0])).toBe("force 1 - studies normally");
+    expect(refused.cells[0].kind === "study" && refused.cells[0].taughtBy).toBeNull();
+    expect(hoverCard(refused, 0, turns, tree, "x", new Map([["21/3012", "Uln"]])).foot).toContain(
+      "Sable has not declared Uln Friendly. Uln's teaching will not add a bonus to Sable's study this turn."
+    );
+
+    const uncertain = student({ declarer: "student", declarations: declarations({}) });
+    expect(cellLabel(uncertain.cells[0])).toBe("teaching uncertain");
+    expect(uncertain.cells[0].kind === "study" && uncertain.cells[0].taughtBy).toBeNull();
+    // Nothing claims a level rose on a month nobody can forecast.
+    expect(uncertain.cells[0].kind === "study" && uncertain.cells[0].gained).toBe(false);
+    expect(hoverCard(uncertain, 0, turns, tree, "x", new Map([["21/3012", "Uln"]])).foot).toContain(
+      "Sable's Friendly declaration for Uln is not in the report. Sable's teaching bonus cannot be forecast."
+    );
+  });
+
+  it("still names a refused student in the teacher's own order", () => {
+    const teacher = rows({ declarer: "student", declarations: declarations({}) }).find(
+      (one) => one.key === "21/3012"
+    ) as ScheduleRow;
+    expect(cellLabel(teacher.cells[0])).toBe("TEACH Sable");
+  });
+
+  it("leaves a same-faction taught month and every non-Trident world exactly as they were", () => {
+    // No declaration rule at all: today's behaviour, doubled and marked, with the existing sentence.
+    const plain = student(NO_TEACHING_RULE);
+    expect(cellLabel(plain.cells[0])).toBe("FORC 2(90) ×2");
+    expect(hoverCard(plain, 0, turns, tree, "x", new Map([["21/3012", "Uln"]])).foot).toContain(
+      "Taught by Uln: this month is worth two."
+    );
+
+    // And a Trident rule with both mages in our own faction: `rules/skills_teaching` puts the
+    // declaration on the cross-faction case, so a faction needs none toward itself - and the cell is
+    // therefore unmarked by this rule, however hostile we have declared ourselves.
+    const own = ownFactionRows({
+      declarer: "student",
+      declarations: { factionId: "12", toward: new Map([["12", "hostile"]]), fallback: null }
+    }).find((one) => one.unitId === "2517") as ScheduleRow;
+    expect(cellLabel(own.cells[0])).toBe("FORC 2(90) ×2");
+    expect(hoverCard(own, 0, turns, tree, "x", new Map([["12/3012", "Uln"]])).foot).toContain(
+      "Taught by Uln: this month is worth two."
+    );
   });
 });

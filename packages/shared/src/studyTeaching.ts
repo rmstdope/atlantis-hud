@@ -5,8 +5,9 @@
  * pinned: a `.test.tsx` there renders with `renderToStaticMarkup` and can assert markup only.
  */
 
-import type { ScheduleRow } from "./studySchedule";
+import type { ScheduleCell, ScheduleRow } from "./studySchedule";
 import { joinNames } from "./workspace/standingChip";
+import { teachingPermission, type TeachingRule } from "./teachingPermission";
 
 /**
  * Student-months one teacher can support.
@@ -43,9 +44,11 @@ export function taughtWorth(students: number): number {
  * in the same hex, teaching that turn, strictly above him in that skill, with a slot spare - and
  * the name is the teacher's, so the dropdown can say whose month it is.
  *
- * Deliberately conservative in one case: a full live teacher whose mage order would in fact drop a
+ * Deliberately conservative in two cases. A full live teacher whose mage order would in fact drop a
  * current pupil for this student is reported as having no slot, so the row stays plain rather than
- * nudging the player into displacing somebody.
+ * nudging the player into displacing somebody - and a cross-faction teacher whose declaration rule
+ * answers anything but `"permitted"` is skipped, so a popover never offers a doubled month the
+ * schedule would withhold. Both `"refused"` and `"unknown"` suppress the offer.
  */
 export function doublingTeacher(input: {
   /** Every row the Schedule drew, in the order `projectAll` resolved the teachers in. */
@@ -57,6 +60,8 @@ export function doublingTeacher(input: {
   skill: string;
   /** The level he holds in it as that turn begins. */
   studentLevel: number;
+  /** The selected world's cross-faction teaching rule. `NO_TEACHING_RULE` applies none. */
+  rule: TeachingRule;
 }): string | null {
   const student = input.rows.find((one) => one.key === input.rowKey);
   if (student === undefined) {
@@ -79,6 +84,15 @@ export function doublingTeacher(input: {
     if ((row.standings[input.turnIndex]?.get(input.skill)?.level ?? 0) <= input.studentLevel) {
       continue;
     }
+    if (
+      teachingPermission({
+        rule: input.rule,
+        studentFactionId: student.factionId,
+        teacherFactionId: row.factionId
+      }) !== "permitted"
+    ) {
+      continue;
+    }
     // `outcome.taught` holds row keys; `cell.students` above holds unit ids.
     const after = cell.outcome.taught.includes(student.key)
       ? cell.outcome.taught.length
@@ -89,6 +103,25 @@ export function doublingTeacher(input: {
     return row.name;
   }
   return null;
+}
+
+/**
+ * The mage who has claimed this student's month, doubled or not - or null when nobody has.
+ *
+ * `ScheduleCell.taughtBy` is set only on a month that is actually doubled, so a cross-faction
+ * student whose declaration is refused or cannot be established reads as untaught there (ah-g9sf.12).
+ * `projectAll`'s own resolution still records that teacher, and refuses a second one with
+ * `TeachRefusal { kind: "taken" }` - so anything asking "is this mage's month already somebody's"
+ * must read this rather than `taughtBy`, or it offers a pupil the projection would drop.
+ *
+ * Conservative for `"unknown"` deliberately, as `doublingTeacher` is: we cannot establish that the
+ * engine refuses that teacher either, so nothing here promises the student is free.
+ */
+export function claimedTeacher(cell: ScheduleCell | undefined): string | null {
+  if (cell === undefined || cell.kind !== "study") {
+    return null;
+  }
+  return cell.taughtBy ?? cell.crossFaction?.teacherKey ?? null;
 }
 
 /** Why one named student cannot be taught this turn. */
@@ -279,7 +312,11 @@ export function plannerNotices(input: {
                 return false;
               }
               const theirs = one.cells[turnIndex];
-              if (theirs?.kind !== "study" || theirs.blocked !== null || theirs.taughtBy !== null) {
+              if (
+                theirs?.kind !== "study" ||
+                theirs.blocked !== null ||
+                claimedTeacher(theirs) !== null
+              ) {
                 return false;
               }
               const teacherLevel = held?.get(theirs.skill)?.level ?? 0;

@@ -186,6 +186,7 @@ import { NewAgeFetchDialog } from "./NewAgeFetchDialog";
 import { NewAgeSendDialog } from "./NewAgeSendDialog";
 import type { HttpTransport } from "./httpTransport";
 import { newAgeClient } from "./newAgeApi";
+import { ownDeclarations, teachingDeclarerFor } from "../teachingPermission";
 import { newAgeWorldFor } from "./newAgeWorlds";
 import {
   FETCH_CONTROL_LABEL,
@@ -3931,6 +3932,30 @@ export function AppShell({
   const sendFactionId = ordersFileFaction(ordersDocument);
   const uploadUrl = rulesetById(game?.manifest.metadata.rulesetId ?? "")?.ordersUploadUrl ?? null;
   const newAgeWorld = newAgeWorldFor(game?.manifest.metadata.rulesetId);
+  /**
+   * The Study planner's cross-faction teaching rule (ah-g9sf.12).
+   *
+   * Derived, never stored: the open game's ruleset, the parsed report's header and the orders
+   * document are all the rule needs, so loading a different report, switching game or the planner
+   * writing orders recomputes it, and reopening the dialog re-projects from whatever those say
+   * then. That is the whole of the agreed refresh loop - no cache, no update control.
+   */
+  const teachingRule = useMemo(
+    () => ({
+      declarer: teachingDeclarerFor(game?.manifest.metadata.rulesetId),
+      declarations: ownDeclarations({
+        attitudes: parsed?.header.attitudes ?? null,
+        ownFactionId: parsed?.header.factionId ?? null,
+        ordersDocument
+      })
+    }),
+    [
+      game?.manifest.metadata.rulesetId,
+      parsed?.header.attitudes,
+      parsed?.header.factionId,
+      ordersDocument
+    ]
+  );
   // A literal comparison rather than a table: there is one such ruleset (`rulesets.ts`), and a
   // one-row table would be ceremony.
   const isNewOrigins = game?.manifest.metadata.rulesetId === "neworigins";
@@ -4892,6 +4917,7 @@ export function AppShell({
             void saveStudyPlan(factionId, unitId, { comment }, "Could not save this note. It is still here — keep typing and it will try again.")
           }
           onScheduleChange={(change) => void reshapeStudySchedule(change)}
+          rule={teachingRule}
           onDismiss={() => setStudyPlannerOpen(false)}
         />
       ) : null}

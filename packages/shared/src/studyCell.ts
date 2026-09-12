@@ -17,7 +17,8 @@ import { standingsFrom } from "./magicStanding";
 import { skillWords } from "./skillReading";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
-import { TEACHING_SLOTS, doublingTeacher } from "./studyTeaching";
+import { TEACHING_SLOTS, claimedTeacher, doublingTeacher } from "./studyTeaching";
+import type { TeachingRule } from "./teachingPermission";
 import type { CellPick } from "./workspace/studyCellState";
 
 /** One skill the dropdown offers, and what a month of it buys. */
@@ -82,6 +83,12 @@ export function cellMenu(input: {
   rowKey?: string;
   /** How a region id reads to a player, for a student who is elsewhere. */
   label?: (regionId: string) => string;
+  /**
+   * The selected world's cross-faction teaching rule, so the dropdown never offers a doubled month
+   * the grid would withhold. Required rather than optional with a permissive default: a silently
+   * permitted default is exactly how the two paths would drift apart again.
+   */
+  rule: TeachingRule;
 }): CellMenu {
   const levels = new Map(
     [...input.standing].map(([tag, held]) => [tag, held.level] as const)
@@ -113,7 +120,8 @@ export function cellMenu(input: {
             turnIndex: input.turnIndex,
             rowKey: input.rowKey,
             skill: tag,
-            studentLevel: held.level
+            studentLevel: held.level,
+            rule: input.rule
           });
     // Two whole months, never `taughtWorth(...)`: `doublingTeacher` admits only a teacher still
     // within his ten slots, and a taught month is undiluted up to those (`rules/skills_teaching`).
@@ -237,8 +245,12 @@ function teachChoices(input: {
       });
       continue;
     }
-    if (cell.taughtBy !== null && cell.taughtBy !== rowKey) {
-      const by = rows.find((one) => one.key === cell.taughtBy)?.name ?? cell.taughtBy;
+    // `claimedTeacher`, not `cell.taughtBy`: a cross-faction month the declaration rule refuses or
+    // cannot establish is not doubled, so `taughtBy` is null on it - but the projection has still
+    // given that student to that teacher and would refuse a second one as `taken`.
+    const claimed = claimedTeacher(cell);
+    if (claimed !== null && claimed !== rowKey) {
+      const by = rows.find((one) => one.key === claimed)?.name ?? claimed;
       choices.push({ unitId: row.unitId, label, detail: `taught by ${by}`, blocked: `taught by ${by}` });
       continue;
     }
