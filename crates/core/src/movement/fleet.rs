@@ -307,10 +307,12 @@ pub fn reported_owner<'r>(
 /// the owner", `rules/world_structures` - and `rules/sequenceofevents` runs ENTER before movement);
 /// then each valid `PROMOTE` written by the owner to a unit aboard the same hull.
 ///
-/// Among several `PROMOTE`s from one owner the **first written** takes the hull, not the last: once
-/// it has run, that unit no longer owns the object, so its later `PROMOTE`s hand on nothing. The
-/// walk then continues from the new owner, so a hull promoted on twice in one month ends with the
-/// unit actually holding it. `None` when no unit can be named at all.
+/// Among several `PROMOTE`s from one owner the **first valid one written** takes the hull, not the
+/// last: `rules/promote` promotes a unit "to owner of the object of which you are currently the
+/// owner", so once one has run that unit owns the object no longer and its later `PROMOTE`s hand
+/// on nothing. One naming a unit that is not aboard promotes nobody and leaves the next to run.
+/// The walk then continues from the new owner, so a hull promoted on twice in one month ends with
+/// the unit actually holding it. `None` when no unit can be named at all.
 #[must_use]
 pub fn fleet_owner(
     region: &ReportRegion,
@@ -735,6 +737,11 @@ mod tests {
             scene_owner("unit 900\nPROMOTE 901\nunit 901\nPROMOTE 902\n", "329"),
             Some("902".to_string()),
             "the hull was handed on twice, and ends with the unit holding it"
+        );
+        assert_eq!(
+            scene_owner("unit 900\nPROMOTE 903\nPROMOTE 901\n", "329"),
+            Some("901".to_string()),
+            "903 is ashore, so that PROMOTE promotes nobody and leaves the next one to run"
         );
     }
 
