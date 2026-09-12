@@ -1655,9 +1655,7 @@ describe("Trident comment boundaries", () => {
     // unit's long order would then delete them.
     const orders = ["WORK", "FORM, 1", "MOVE N", "END,", "TAX"].join("\n");
     for (const syntax of ["origins", "trident"] as const) {
-      expect(stripLongOrderLines(orders, syntax)).toBe(
-        ["FORM, 1", "MOVE N", "END,"].join("\n"),
-        );
+      expect(stripLongOrderLines(orders, syntax)).toBe(["FORM, 1", "MOVE N", "END,"].join("\n"));
     }
   });
 

@@ -908,10 +908,15 @@ export const LONG_ORDER_COMMANDS = [
  * and closes nothing.
  *
  * Trailing `,` and `.` are stripped, as `orderCase.bareWords` strips them: those patterns matched
- * `FORM, 1` and `MOVE, N`, and every reader here is one where failing to recognise the keyword is
- * the unsafe direction - a block that does not open makes the formed unit's lines read as the
- * outer unit's own, and `stripOwnOrderLines` then deletes them. Done here rather than in each
- * caller so `atTopLevel` and `isCommand` cannot drift apart again.
+ * `FORM, 1` and `MOVE, N`, and for its two callers failing to recognise the keyword is the unsafe
+ * direction - a block that does not open makes the formed unit's lines read as the outer unit's
+ * own, and `stripOwnOrderLines` then deletes them. Done here rather than in each caller so
+ * {@link atTopLevel} and {@link isCommand} cannot drift apart again.
+ *
+ * Not the only keyword reader in this file: `firstToken`, which `findFormBlocks` uses, compares
+ * exactly and so still reads `FORM, 1` as no block at all. That is the behaviour `main` had, and
+ * changing where a `FORM` block starts is outside this bead's semicolon scope - so it is stated
+ * here rather than quietly fixed.
  */
 function commandOf(line: string, syntax: OrderCommentSyntax): string | null {
   const token = lexOrderLine(line, syntax).tokens[0];
@@ -921,7 +926,7 @@ function commandOf(line: string, syntax: OrderCommentSyntax): string | null {
 /**
  * Whether the line issues one of these keywords, `@`-repeated or not.
  *
- * The punctuation rule lives in {@link commandOf}, which every keyword reader here goes through.
+ * The punctuation rule lives in {@link commandOf}, which this and {@link atTopLevel} share.
  */
 function isCommand(
   line: string,
