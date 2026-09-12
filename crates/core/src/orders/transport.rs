@@ -23,7 +23,7 @@ impl Reach {
             // `rules/economy_transport`: "within 2 hexes distance".
             Self::Local => 2,
             Self::BetweenQuartermasters { level } => {
-                3 + i32::try_from((level + 1) / 3).unwrap_or(i32::MAX)
+                3 + i32::try_from(level.checked_add(1).unwrap_or(level) / 3).unwrap_or(i32::MAX)
             }
         }
     }

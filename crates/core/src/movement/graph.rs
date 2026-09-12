@@ -532,10 +532,22 @@ pub fn hex_distance(
     }
 
     // A separation, and whether the map's own shape settles it.
+    //
+    // The separation is brought onto the map with `rem_euclid` before the seam is considered,
+    // exactly as `MapGeometry::wrap` does: a map shape is player-entered, so a coordinate outside
+    // the width it states is ordinary input rather than a defect, and `span - raw` would otherwise
+    // go negative and be chosen as the shorter route.
+    //
+    // The `(dy - dx) / 2` below relies on `x + y` having the same parity in both hexes. Going
+    // round a seam of *odd* span flips that parity, and the division then truncates a step off;
+    // no committed world has an odd dimension, and a player-entered one cannot be asserted away.
     let separation = |a: i32, b: i32, wraps: bool, span: i32| {
         let raw = (a - b).abs();
         match geometry {
-            Some(_) if wraps && span > 0 => (raw.min(span - raw), true),
+            Some(_) if wraps && span > 0 => {
+                let raw = raw.rem_euclid(span);
+                (raw.min(span - raw), true)
+            }
             Some(_) if !wraps => (raw, true),
             // No geometry at all, or an axis that wraps over a span the game never recorded.
             _ => (raw, false),
@@ -564,6 +576,26 @@ pub fn hex_distance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A map shape is player-entered, so a coordinate beyond the stated width is ordinary input.
+    /// A negative distance would read as *in reach* to every caller in the `ah-7ale` family.
+    #[test]
+    fn a_hex_distance_beyond_a_stated_width_stays_a_real_distance() {
+        let map = MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        };
+
+        let measured = hex_distance(
+            Coordinate { x: 100, y: 0, z: 1 },
+            Coordinate { x: 0, y: 0, z: 1 },
+            Some(map),
+        );
+
+        assert_eq!(measured, Some(HexDistance::Exact(28)));
+    }
 
     /// `Direction::offset`: a vertical step moves two rows, a diagonal one row and one column.
     #[test]
