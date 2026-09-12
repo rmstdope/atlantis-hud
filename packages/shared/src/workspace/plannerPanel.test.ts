@@ -434,3 +434,17 @@ describe("marking a wet step", () => {
     expect(describeStep(wet, "sail")).toBe("ocean (2,2) · 1");
   });
 });
+describe("describeProblem for a passenger on a fleet", () => {
+  it("names the owner that can set the course", () => {
+    expect(
+      describeProblem({
+        kind: "notFleetOwner",
+        unit: "Marines (902)",
+        fleet: "Longship [329]",
+        owner: "Sea Rovers (900)"
+      })
+    ).toBe(
+      "Marines (902) is a passenger on Longship [329]. Only its owner, Sea Rovers (900), can set its course."
+    );
+  });
+});

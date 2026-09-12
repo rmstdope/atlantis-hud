@@ -119,6 +119,12 @@ pub fn render_sail(steps: &[MoveStep]) -> String {
     render_order("SAIL", steps)
 }
 
+/// The directions of a movement order without its command word, as a sentence names them: `NE SE`.
+#[must_use]
+pub fn render_directions(steps: &[MoveStep]) -> String {
+    render_order("", steps).trim_start().to_string()
+}
+
 /// Writes a movement order under `command` - the one writer of a movement order, so a clause in a
 /// popup and an order in the orders file can never spell the same steps two ways.
 #[must_use]
@@ -226,4 +232,24 @@ pub fn first_passage(standing_in: Option<&str>, steps: &[MoveStep]) -> Option<Or
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The one writer of a movement order also spells the bare directions a sentence names, so a
+    /// message and an order file cannot disagree (`ah-ofra`).
+    #[test]
+    fn render_directions_spells_the_steps_without_the_command_word() {
+        use crate::movement::graph::Direction;
+        assert_eq!(
+            render_directions(&[
+                MoveStep::Go(Direction::Northeast),
+                MoveStep::Go(Direction::Southeast)
+            ]),
+            "NE SE"
+        );
+        assert_eq!(render_directions(&[]), "");
+    }
 }

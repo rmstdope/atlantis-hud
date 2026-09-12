@@ -2663,6 +2663,35 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
 });
 
 /**
+ * The drawn route's `points`, once the line has settled to `steps` steps.
+ *
+ * A capture taken straight after `fillOrders` can read the route the unit's **previous** orders
+ * drew: `neworigins-3.0.0-g5-f21-t24.rep` carries its own orders template, which gives Drones
+ * (10575) `sail se ne` (fixture line 2357), so a test that writes a one-step course over it sees
+ * the two-step voyage until the edit lands and validation re-runs. On a fast machine the capture
+ * wins that race and on a loaded CI runner it does not, which is how two of the tests below came
+ * to fail on one smoke shard and pass in isolation (`ah-ofra`).
+ *
+ * A polyline of n steps has n + 1 vertices, so waiting on the vertex count is waiting for the
+ * edit. It is not fail-open: an edit that never lands times the assertion out rather than letting
+ * a wrong route be captured.
+ *
+ * It protects only a capture whose step count differs from the template's. A test that writes the
+ * same two steps 10575 already carries needs no protection, because the two routes are the one
+ * route - so passing `2` there is the honest step count rather than a guard.
+ */
+async function settledRoute(page: Page, steps: number): Promise<string | null> {
+  const line = page.getByTestId("route-line-solid");
+  await expect(line).toHaveCount(1);
+  const vertex = String.raw`[\d.]+,[\d.]+`;
+  await expect(line).toHaveAttribute(
+    "points",
+    new RegExp(`^${Array.from({ length: steps + 1 }, () => vertex).join(" ")}$`)
+  );
+  return line.getAttribute("points");
+}
+
+/**
  * ah-048: a unit standing aboard a sailing ship writes no order of its own, and the map used to
  * draw it nothing - though the units pane beside it already said "aboard Raft [235]", departing.
  *
@@ -2683,13 +2712,50 @@ test("selecting a passenger draws the fleet's voyage", async ({ page }) => {
   await fillOrders(page, "sail se");
 
   // The captain's own voyage first, so the passenger's can be compared against something drawn.
-  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
-  const captain = await page.getByTestId("route-line-solid").getAttribute("points");
+  const captain = await settledRoute(page, 1);
 
   // The passenger wrote nothing, so its own block is empty - and the map draws the hull's route.
   await selectUnit(page, "10594");
   await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
   await expect(page.getByTestId("route-line-solid")).toHaveAttribute("points", captain ?? "");
+});
+
+/**
+ * ah-ofra: a fleet takes its course from its **owner** - the first unit listed under it
+ * (`rules/world_structures`) - and nobody else (`rules/movement_sailing`). Raft [235] lists
+ * Drones (10575) first, so a `SAIL SE` written by Drones (10594) sets no direction: the map keeps
+ * drawing the owner's course, and the Problems pane says so.
+ */
+test("a course from a unit that does not own the fleet is overruled and reported", async ({
+  page
+}) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Wrong unit game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await choose(page, "turn-24.rep", F21_T24);
+  await expect(page.getByTestId("import-status")).toContainText("regions");
+
+  await selectHex(page, "1:36,44");
+
+  // The owner's own voyage first, so the second unit's can be compared against something drawn.
+  await selectUnit(page, "10575");
+  await fillOrders(page, "sail se ne");
+  const owners = await settledRoute(page, 2);
+
+  // Drones (10594) is the second unit listed under the raft, so its SE lends a pair of hands and
+  // sets no direction: the map keeps drawing the owner's SE NE.
+  await selectUnit(page, "10594");
+  await fillOrders(page, "sail se");
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveAttribute("points", owners ?? "");
+
+  const chip = page.getByTestId("turn-report-chip");
+  await chip.click();
+  await page.getByTestId("turn-report-tab-problems").click();
+  await expect(page.getByTestId("problems-panel")).toContainText(
+    "Only Raft [235]'s owner, Drones (10575), can set its course: Drones (10594) ordered SAIL SE, and the owner ordered SE NE, so the ship sails SE NE."
+  );
 });
 
 /**
@@ -2714,8 +2780,7 @@ test("selecting an arriving unit in its destination hex draws its route", async 
   await fillOrders(page, "sail se");
 
   // The voyage as its origin hex draws it, to compare the destination's drawing against.
-  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
-  const fromOrigin = await page.getByTestId("route-line-solid").getAttribute("points");
+  const fromOrigin = await settledRoute(page, 1);
 
   // Now the destination, where the unit is listed as arriving rather than standing.
   await selectHex(page, "1:37,45");

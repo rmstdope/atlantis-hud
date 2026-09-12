@@ -663,7 +663,7 @@ fn is_valid_destroy_order(command: &Token, arguments: &[Token], ruleset: Option<
 }
 
 /// The target of a syntactically valid `PROMOTE` order, if any.
-fn promoted_unit(
+pub(crate) fn promoted_unit(
     command: &Token,
     arguments: &[Token],
     ruleset: Option<&Ruleset>,

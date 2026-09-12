@@ -30,6 +30,7 @@ use super::intents::{
 use super::phases::{self, StatePhase};
 use super::standing::{self, standing_after, Boarding};
 use super::transfers;
+use crate::movement::fleet::OrderedUnits as FleetOrders;
 use crate::movement::graph::{may_leave_land, Direction};
 use crate::movement::mode::{
     best_allowance, capacities_from_items, cargo_capacity, fleet_flies, fleet_label,
@@ -129,6 +130,11 @@ pub mod codes {
     pub const FORM_ALIAS_REUSED: Code = Code("form-alias-reused");
     pub const FLEET_OVERLOADED: Code = Code("fleet-overloaded");
     pub const FLEET_UNDERCREWED: Code = Code("fleet-undercrewed");
+    /// A `SAIL` naming a course, written for a fleet by a unit that does not own it.
+    /// `rules/movement_sailing`: "the owner of a fleet must issue the SAIL order, and other units
+    /// wishing to help sail the fleet must also issue the SAIL order" - so a course from anyone
+    /// else lends a pair of hands and sets no direction (`ah-ofra`).
+    pub const SAIL_NOT_BY_OWNER: Code = Code("sail-not-by-owner");
     /// A `SAIL` step from a non-ocean region into another non-ocean region, which
     /// `rules/movement_sailing` never allows: "A fleet can move from an ocean region to another
     /// ocean region, or from a coastal region to an ocean region, or from an ocean region to a
@@ -204,7 +210,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 55] = [
+    pub const ALL: [Code; 56] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -260,6 +266,7 @@ pub mod codes {
         PASSAGE_WITH_NO_KNOWN_EXIT,
         SAIL_THROUGH_NECK_OF_LAND,
         TRANSPORT_OUT_OF_REACH,
+        SAIL_NOT_BY_OWNER,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -537,6 +544,18 @@ pub fn review_turn(
     options: CheckOptions,
 ) -> TurnReview {
     let ordered = OrderedUnits::read_with_ruleset(source, ruleset);
+    // The movement reader of the same name, aliased: `semantics`' own `OrderedUnits` above is a
+    // different type with different readers, and importing both unaliased fails in a way that
+    // reads like a missing method. This one states the fleet-owner rule (`ah-ofra`).
+    //
+    // Built only when its one consumer can emit, for the same reason `located` below is built
+    // lazily: this runs on every keystroke once typing settles, and it is a second full walk of
+    // the orders document.
+    let fleet_orders = if options.emits(codes::SAIL_NOT_BY_OWNER) {
+        FleetOrders::from_document_with_ruleset(source, ruleset)
+    } else {
+        FleetOrders::default()
+    };
     // `validate_turn` runs this on every keystroke once typing settles, so the lookup is built only
     // when the check that reads it is actually enabled - skipping a walk of every region and unit
     // in the report (the map insert per unit below, not a label - that is formatted only where a
@@ -754,6 +773,7 @@ pub fn review_turn(
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
+        check_fleet_course(hex, &fleet_orders, ruleset, &options, &mut findings);
         check_sail_route(hex, &by_coordinate, ruleset, &options, &mut findings);
         check_passages(hex, &by_coordinate, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
@@ -13146,6 +13166,103 @@ fn check_refused_transfers(
                 .find(|placed| placed.line == refused.line);
             findings.push(ordered.finding(hex, codes::ITEMS_CANNOT_BE_GIVEN, message, placed));
         }
+    }
+}
+
+/// A course written for a fleet by a unit that does not own it: it lends a pair of hands and sets
+/// no direction, so the ship goes where its owner said or nowhere at all (`ah-ofra`).
+///
+/// Deliberately not a branch inside [`check_sailing`], which abandons a whole fleet when a foreign
+/// unit is aboard or a MOVE touches it because its arithmetic cannot be trusted then. This check
+/// needs no arithmetic, and the commonest case of all is a fleet whose owner is foreign.
+fn check_fleet_course(
+    hex: &Hex<'_>,
+    fleet_orders: &FleetOrders,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::SAIL_NOT_BY_OWNER) {
+        return;
+    }
+    // Without a ruleset nothing here can say which structures are fleets, and guessing is what
+    // `hulls_named_in` does wrong.
+    let Some(ruleset) = ruleset else {
+        return;
+    };
+
+    for fleet in &hex.region.structures {
+        // The same predicate the map applies, so the pane can never warn about a hull the map
+        // still draws, nor stay silent about one it refuses.
+        if crate::movement::mode::fleet_speed(fleet, ruleset).is_none() {
+            continue;
+        }
+        // An owner that cannot be named says nothing: the player has made no mistake, and the
+        // line would fire every turn a half-seen fleet sits in a hex (the agreed record).
+        let course =
+            crate::movement::fleet::fleet_course(hex.region, fleet_orders, &fleet.structure_id);
+        let Some(owner_id) = course.owner_id else {
+            continue;
+        };
+
+        // One finding per fleet, on the lowest-line offending SAIL - the same selection
+        // `check_sailing` makes for its own captain. A bare `SAIL` names no course and overrules
+        // nothing.
+        let offender = hex
+            .units
+            .iter()
+            .filter(|ordered| {
+                could_captain(ordered, &fleet.structure_id) && ordered.unit.unit_id != owner_id
+            })
+            .filter_map(|ordered| {
+                ordered
+                    .intents
+                    .iter()
+                    .find_map(|placed| match &placed.intent {
+                        Intent::Sail { steps } if !steps.is_empty() => {
+                            Some((ordered, placed, steps.as_slice()))
+                        }
+                        _ => None,
+                    })
+            })
+            .min_by_key(|(_, placed, _)| placed.line);
+        let Some((offender, sail_placement, offending_steps)) = offender else {
+            continue;
+        };
+
+        // `fleet_course` answers an id; the name comes from the region's own list, which carries
+        // the entered or promoted owner as surely as the reported one.
+        let Some(owner) = hex
+            .region
+            .units
+            .iter()
+            .find(|unit| unit.unit_id == owner_id)
+        else {
+            continue;
+        };
+        let label = crate::movement::mode::fleet_label(fleet);
+        let opening = format!(
+            "Only {label}'s owner, {} ({}), can set its course: {} ({}) ordered {}, and the owner ordered ",
+            owner.name,
+            owner.unit_id,
+            offender.unit.name,
+            offender.unit.unit_id,
+            crate::movement::orders::render_sail(offending_steps),
+        );
+        let message = match course.steps {
+            None => format!("{opening}no course, so the ship will not sail."),
+            Some(steps) => {
+                let directions = crate::movement::orders::render_directions(steps);
+                format!("{opening}{directions}, so the ship sails {directions}.")
+            }
+        };
+
+        findings.push(offender.finding(
+            hex,
+            codes::SAIL_NOT_BY_OWNER,
+            message,
+            Some(sail_placement),
+        ));
     }
 }
 
@@ -37619,6 +37736,25 @@ BUILD
                 unclaimed: None,
             },
             Case {
+                code: codes::SAIL_NOT_BY_OWNER,
+                regions: vec![ReportRegion {
+                    structures: vec![longship("329")],
+                    ..region(vec![
+                        ReportUnit {
+                            name: "Sea Rovers".to_string(),
+                            ..aboard("900", "329", 50, 4)
+                        },
+                        ReportUnit {
+                            name: "Deckhands".to_string(),
+                            ..aboard("901", "329", 50, 4)
+                        },
+                    ])
+                }],
+                orders: "unit 901\nSAIL SE\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
                 code: codes::BUILD_WITHOUT_MATERIAL,
                 regions: vec![region(vec![with_skill(
                     with_men(unit("900"), 10),
@@ -38030,6 +38166,153 @@ BUILD
         )
     }
 
+    /// `aboard`, under the name the ah-ofra design was agreed against.
+    fn crew(id: &str, name: &str, fleet_id: &str, sail_level: u32) -> ReportUnit {
+        ReportUnit {
+            name: name.to_string(),
+            ..aboard(id, fleet_id, 50, sail_level)
+        }
+    }
+
+    /// The scene the ah-ofra wording was agreed against: `Sea Rovers (900)` listed first under
+    /// Longship [329] and so its owner, `Deckhands (901)` second, `Marines (902)` third.
+    fn owned_longship(extra: Vec<ReportUnit>) -> ReportRegion {
+        let mut units = vec![
+            crew("900", "Sea Rovers", "329", 4),
+            crew("901", "Deckhands", "329", 4),
+            crew("902", "Marines", "329", 0),
+        ];
+        units.extend(extra);
+        ReportRegion {
+            structures: vec![longship("329")],
+            ..region(units)
+        }
+    }
+
+    #[test]
+    fn a_course_from_a_unit_that_does_not_own_the_fleet_is_warned() {
+        let finding = only(check(vec![owned_longship(vec![])], "unit 901\nSAIL SE\n"));
+        assert_eq!(finding.code.as_str(), "sail-not-by-owner");
+        assert_eq!(finding.unit_id, Some("901".to_string()));
+        assert_eq!(
+            finding.message,
+            "Only Longship [329]'s owner, Sea Rovers (900), can set its course: Deckhands (901) \
+             ordered SAIL SE, and the owner ordered no course, so the ship will not sail."
+        );
+    }
+
+    #[test]
+    fn an_overruled_course_names_what_the_ship_does_instead() {
+        let finding = only(check(
+            vec![owned_longship(vec![])],
+            "unit 900\nSAIL NE\nunit 901\nSAIL SE\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Only Longship [329]'s owner, Sea Rovers (900), can set its course: Deckhands (901) \
+             ordered SAIL SE, and the owner ordered NE, so the ship sails NE."
+        );
+    }
+
+    #[test]
+    fn the_owners_own_course_is_not_warned_about() {
+        assert!(check(vec![owned_longship(vec![])], "unit 900\nSAIL SE\n")
+            .iter()
+            .all(|finding| finding.code != codes::SAIL_NOT_BY_OWNER));
+    }
+
+    #[test]
+    fn a_bare_sail_from_another_unit_is_not_a_course() {
+        // A bare SAIL lends a pair of hands and sets no course, so it overrules nothing.
+        assert!(check(
+            vec![owned_longship(vec![])],
+            "unit 900\nSAIL SE\nunit 901\nSAIL\n"
+        )
+        .iter()
+        .all(|finding| finding.code != codes::SAIL_NOT_BY_OWNER));
+    }
+
+    #[test]
+    fn two_units_that_are_not_the_owner_earn_one_line() {
+        let all = check(
+            vec![owned_longship(vec![])],
+            "unit 902\nSAIL NE\nunit 901\nSAIL SE\n",
+        );
+        let mine: Vec<&Finding> = all
+            .iter()
+            .filter(|finding| finding.code == codes::SAIL_NOT_BY_OWNER)
+            .collect();
+        assert_eq!(
+            mine.len(),
+            1,
+            "one finding per fleet, never one per offender: {all:?}"
+        );
+        assert_eq!(
+            mine[0].unit_id,
+            Some("902".to_string()),
+            "the offender on the lower line"
+        );
+    }
+
+    /// The accepted cost the agreed record names in as many words: "the line fires on the harmless
+    /// habit of writing a direction on every unit aboard, which is why it has a switch". A helper
+    /// writing the **same** course as the owner is the commonest way a player meets this check, so
+    /// it is pinned rather than left to the fixtures that happen to write one.
+    #[test]
+    fn a_helper_repeating_the_owners_own_course_is_still_warned() {
+        let all = check(
+            vec![owned_longship(vec![])],
+            "unit 900\nSAIL NE\nunit 901\nSAIL NE\n",
+        );
+        let mine: Vec<&Finding> = all
+            .iter()
+            .filter(|finding| finding.code == codes::SAIL_NOT_BY_OWNER)
+            .collect();
+        assert_eq!(mine.len(), 1, "{all:?}");
+        assert_eq!(
+            mine[0].message,
+            "Only Longship [329]'s owner, Sea Rovers (900), can set its course: Deckhands (901) \
+             ordered SAIL NE, and the owner ordered NE, so the ship sails NE."
+        );
+    }
+
+    /// The check asks `fleet_speed(...).is_some()` and never `hulls_named_in`, which reads any
+    /// non-empty kind - `Fort` included - as a one-hull fleet. A garrison's orders are nobody
+    /// else's course, and nothing in a building may earn this line.
+    #[test]
+    fn a_unit_in_a_building_is_not_warned_about_a_fleet_course() {
+        let fort = Structure {
+            structure_id: "329".to_string(),
+            name: "Fort".to_string(),
+            kind: "Fort".to_string(),
+            ..Default::default()
+        };
+        let region = ReportRegion {
+            structures: vec![fort],
+            ..region(vec![
+                crew("900", "Sea Rovers", "329", 4),
+                crew("901", "Deckhands", "329", 4),
+            ])
+        };
+
+        assert!(check(vec![region], "unit 901\nSAIL SE\n")
+            .iter()
+            .all(|finding| finding.code != codes::SAIL_NOT_BY_OWNER));
+    }
+
+    #[test]
+    fn a_hull_the_report_lists_nobody_under_is_not_warned_about() {
+        let region = ReportRegion {
+            structures: vec![longship("329"), longship("330")],
+            ..region(vec![crew("901", "Deckhands", "330", 4)])
+        };
+        // 901's own structure is 330, whose first listed occupant is 901 itself - so the owner is
+        // 901 and nothing is wrong. Nobody at all is listed under 329.
+        assert!(check(vec![region], "unit 901\nSAIL SE\n")
+            .iter()
+            .all(|finding| finding.code != codes::SAIL_NOT_BY_OWNER));
+    }
+
     #[test]
     fn a_gift_loaded_aboard_this_month_overloads_the_fleet() {
         let region = ReportRegion {
@@ -38396,10 +38679,13 @@ BUILD
             ])
         };
 
+        // The helper writes a **bare** `SAIL`: it lends a pair of hands and sets no course, which
+        // is what `rules/movement_sailing` asks of a unit that does not own the hull (`ah-ofra`).
+        // The crew arithmetic this test is about counts it exactly the same.
         assert_eq!(
             codes(&check(
                 vec![region],
-                "unit 11125\nSAIL N\nunit 12590\nSAIL N\n",
+                "unit 11125\nSAIL N\nunit 12590\nSAIL\n",
             )),
             Vec::<&str>::new()
         );
@@ -38415,9 +38701,11 @@ BUILD
             ])
         };
 
+        // A bare `SAIL` from the helper, for the reason `a_fleet_within_its_numbers_sails_in_silence`
+        // gives: only 11125, the first unit listed under the hull, may set its course (`ah-ofra`).
         let finding = only(check(
             vec![region],
-            "unit 11125\nSAIL N\nunit 12590\nSAIL N\n",
+            "unit 11125\nSAIL N\nunit 12590\nSAIL\n",
         ));
         assert_eq!(finding.code.as_str(), "fleet-overloaded");
         assert_eq!(finding.unit_id, Some("11125".to_string()));
@@ -41642,7 +41930,10 @@ BUILD
         sailor.skills.push(sail(4));
         let region = ReportRegion {
             structures: vec![longship("329")],
-            ..produces(vec![fisherman, sailor])
+            // The sailor is listed first, so it owns the hull and its `SAIL` is the fleet's course
+            // (`rules/world_structures`, `ah-ofra`). The fisherman is the passenger these tests are
+            // about, which is unchanged.
+            ..produces(vec![sailor, fisherman])
         };
         let orders = if sail_order {
             "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n".to_string()
