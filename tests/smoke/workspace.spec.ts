@@ -2663,14 +2663,6 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
 });
 
 /**
- * ah-048: a unit standing aboard a sailing ship writes no order of its own, and the map used to
- * draw it nothing - though the units pane beside it already said "aboard Raft [235]", departing.
- *
- * Raft [235] sits in the plain at (36,44) of faction 21's turn 24, with Drones (10575) able to sail
- * it and Drones (10594) simply aboard. The captain's SAIL SE is written, and then the passenger is
- * selected: the map draws the passenger the same voyage, because it is the same voyage.
- */
-/**
  * The drawn route's `points`, once the line has settled to `steps` steps.
  *
  * A capture taken straight after `fillOrders` can read the route the unit's **previous** orders
@@ -2683,6 +2675,10 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
  * A polyline of n steps has n + 1 vertices, so waiting on the vertex count is waiting for the
  * edit. It is not fail-open: an edit that never lands times the assertion out rather than letting
  * a wrong route be captured.
+ *
+ * It protects only a capture whose step count differs from the template's. A test that writes the
+ * same two steps 10575 already carries needs no protection, because the two routes are the one
+ * route - so passing `2` there is the honest step count rather than a guard.
  */
 async function settledRoute(page: Page, steps: number): Promise<string | null> {
   const line = page.getByTestId("route-line-solid");
@@ -2695,6 +2691,14 @@ async function settledRoute(page: Page, steps: number): Promise<string | null> {
   return line.getAttribute("points");
 }
 
+/**
+ * ah-048: a unit standing aboard a sailing ship writes no order of its own, and the map used to
+ * draw it nothing - though the units pane beside it already said "aboard Raft [235]", departing.
+ *
+ * Raft [235] sits in the plain at (36,44) of faction 21's turn 24, with Drones (10575) able to sail
+ * it and Drones (10594) simply aboard. The captain's SAIL SE is written, and then the passenger is
+ * selected: the map draws the passenger the same voyage, because it is the same voyage.
+ */
 test("selecting a passenger draws the fleet's voyage", async ({ page }) => {
   await clearGames(page);
   await expect(page.getByTestId("game-gate")).toBeVisible();
