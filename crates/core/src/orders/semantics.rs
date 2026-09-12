@@ -30,13 +30,13 @@ use super::intents::{
 use super::phases::{self, StatePhase};
 use super::standing::{self, standing_after, Boarding};
 use super::transfers;
-use crate::movement::graph::Direction;
+use crate::movement::graph::{may_leave_land, Direction};
 use crate::movement::mode::{
     best_allowance, capacities_from_items, cargo_capacity, fleet_flies, fleet_label,
     hulls_named_in, is_vessel, sailing_requirement, Capacities,
 };
 use crate::movement::orders::{first_passage, MoveStep};
-use crate::movement::plan::{refused_by_sailing_step, Hull, Journey};
+use crate::movement::plan::{constrains_departure, refused_by_sailing_step, Hull, Journey};
 use crate::movement::rules::{
     item_spellings, ItemEntry, ItemKind, MovementMode, Ruleset, SkillEntry,
 };
@@ -134,6 +134,10 @@ pub mod codes {
     /// ocean region, or from a coastal region to an ocean region, or from an ocean region to a
     /// coastal region."
     pub const SAIL_BETWEEN_LAND_HEXES: Code = Code("sail-between-land-hexes");
+    /// A `SAIL` that enters a land region and leaves it, in the same sailing sequence, by one of
+    /// the three sides `rules/movement_sailing` refuses: "Ships may not sail through single hex
+    /// land masses and must leave via the same side they entered or a side adjacent to that one."
+    pub const SAIL_THROUGH_NECK_OF_LAND: Code = Code("sail-through-neck-of-land");
     pub const GIVE_TARGET_NOT_HERE: Code = Code("give-target-not-here");
     pub const TAKE_FROM_ANOTHER_FACTION: Code = Code("take-from-another-faction");
     /// A `GIVE` or `TAKE` naming the unit that wrote it. The game refuses it, so the line moves
@@ -196,7 +200,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 53] = [
+    pub const ALL: [Code; 54] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -250,6 +254,7 @@ pub mod codes {
         BUILD_SITE_REFUSED,
         BUILD_WITHOUT_MATERIAL,
         PASSAGE_WITH_NO_KNOWN_EXIT,
+        SAIL_THROUGH_NECK_OF_LAND,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -545,6 +550,7 @@ pub fn review_turn(
         .emits(codes::PRODUCE_NOT_HERE)
         || options.emits(codes::SAIL_BETWEEN_LAND_HEXES)
         || options.emits(codes::PASSAGE_WITH_NO_KNOWN_EXIT)
+        || options.emits(codes::SAIL_THROUGH_NECK_OF_LAND)
     {
         report
             .regions
@@ -11134,6 +11140,69 @@ fn first_land_to_land_step<'a>(
     None
 }
 
+/// A canal that works in this region: the grade's pass cost, or `None`.
+///
+/// The region's own exits answer "does it touch water", which is what `is_coastal` answers from the
+/// map in the planner. Structures come from the current sighting, which is the only sighting these
+/// checks have - a canal in a hex this report does not describe ends the walk above rather than
+/// being guessed at.
+fn canal_in(region: &ReportRegion, ruleset: &Ruleset) -> Option<u32> {
+    if !region.exits.iter().any(|exit| ruleset.is_water(&exit.terrain)) {
+        return None;
+    }
+    region
+        .structures
+        .iter()
+        .filter_map(|standing| ruleset.canal_cost(&standing.base_kind))
+        .min()
+}
+
+/// The first `SAIL` step out of a land region by a side the rule refuses, with no canal to lift it.
+///
+/// Returns the direction that entered the region, the direction that would leave it, and the
+/// region's label. Stops at the first step the land-to-land rule already refuses: the fleet goes
+/// nowhere from there, and that step has its own sentence.
+fn first_refused_isthmus_step(
+    from: &ReportRegion,
+    steps: &[MoveStep],
+    regions: &HashMap<Coordinate, &ReportRegion>,
+    ruleset: &Ruleset,
+    journey: Journey,
+) -> Option<(Direction, Direction, String)> {
+    let mut here: Option<&ReportRegion> = Some(from);
+    let mut here_label = hex_label(&from.terrain, from.coordinate);
+    let mut here_terrain: String = from.terrain.clone();
+    // `None` for the fleet's own hex, which is where last month left it: "Ships ending their
+    // movement in a land hex may sail out along any side connecting to water." So a fleet is never
+    // accused of its first step.
+    let mut entered_by: Option<Direction> = None;
+
+    for step in steps {
+        let MoveStep::Go(direction) = step else {
+            continue;
+        };
+        let region = here?;
+        let exit = region
+            .exits
+            .iter()
+            .find(|exit| Direction::parse(&exit.direction) == Some(*direction))?;
+        // The land-to-land rule refuses this step whatever the sides, and has its own sentence.
+        if refused_by_sailing_step(ruleset, journey, &here_terrain, &exit.terrain) {
+            return None;
+        }
+        if let Some(entered) = entered_by {
+            if !may_leave_land(entered, *direction) && canal_in(region, ruleset).is_none() {
+                return Some((entered, *direction, here_label));
+            }
+        }
+        entered_by = constrains_departure(ruleset, journey, &exit.terrain).then_some(*direction);
+        here = regions.get(&exit.coordinate).copied();
+        here_terrain = exit.terrain.clone();
+        here_label = hex_label(&exit.terrain, exit.coordinate);
+    }
+    None
+}
+
 /// How this check names a hex: terrain and coordinate, and no province.
 ///
 /// Deliberately not [`crate::report::model::region_label`], which appends `in <province>` - two of
@@ -13173,7 +13242,9 @@ fn check_sail_route(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    if !options.emits(codes::SAIL_BETWEEN_LAND_HEXES) {
+    if !options.emits(codes::SAIL_BETWEEN_LAND_HEXES)
+        && !options.emits(codes::SAIL_THROUGH_NECK_OF_LAND)
+    {
         return;
     }
     let Some(ruleset) = ruleset else {
@@ -13210,19 +13281,41 @@ fn check_sail_route(
             };
             let journey = Journey::enforced(MovementMode::Sail, hull);
 
-            if let Some((direction, from, to)) =
-                first_land_to_land_step(hex.region, steps, by_coordinate, ruleset, journey)
-            {
-                findings.push(ordered.finding(
-                    hex,
-                    codes::SAIL_BETWEEN_LAND_HEXES,
-                    format!(
-                        "a fleet may only sail where one end of the step is water: {} leaves {from} \
-                         for {to}, so it will not move",
-                        direction.abbreviation()
-                    ),
-                    Some(placed),
-                ));
+            if options.emits(codes::SAIL_BETWEEN_LAND_HEXES) {
+                if let Some((direction, from, to)) =
+                    first_land_to_land_step(hex.region, steps, by_coordinate, ruleset, journey)
+                {
+                    findings.push(ordered.finding(
+                        hex,
+                        codes::SAIL_BETWEEN_LAND_HEXES,
+                        format!(
+                            "a fleet may only sail where one end of the step is water: {} leaves \
+                             {from} for {to}, so it will not move",
+                            direction.abbreviation()
+                        ),
+                        Some(placed),
+                    ));
+                }
+            }
+
+            if options.emits(codes::SAIL_THROUGH_NECK_OF_LAND) {
+                if let Some((entered, leaving, label)) =
+                    first_refused_isthmus_step(hex.region, steps, by_coordinate, ruleset, journey)
+                {
+                    findings.push(ordered.finding(
+                        hex,
+                        codes::SAIL_THROUGH_NECK_OF_LAND,
+                        format!(
+                            "a fleet must leave a land hex by the side it entered or one beside \
+                             it: {} enters {label} from the {} and {} is neither that side nor \
+                             beside it, so it will not move",
+                            entered.abbreviation(),
+                            entered.opposite().abbreviation(),
+                            leaving.abbreviation(),
+                        ),
+                        Some(placed),
+                    ));
+                }
             }
         }
     }
@@ -25629,6 +25722,178 @@ BUILD
         assert_eq!(sailing[0].unit_id, Some("3493".to_string()));
     }
 
+    /// The corridor every agreed sentence is written against: `ocean (7,53)` —SE→ `plain (8,54)`,
+    /// whose other exits are ocean. The fleet enters the plain through its NW side.
+    fn neck_regions(units: Vec<ReportUnit>, structures: Vec<Structure>) -> Vec<ReportRegion> {
+        vec![
+            ReportRegion {
+                terrain: "ocean".to_string(),
+                exits: vec![Exit {
+                    direction: "Southeast".to_string(),
+                    terrain: "plain".to_string(),
+                    coordinate: Coordinate { x: 8, y: 54, z: 1 },
+                    province: "Inhead".to_string(),
+                    settlement: None,
+                }],
+                ..region(units)
+            },
+            ReportRegion {
+                terrain: "plain".to_string(),
+                structures,
+                exits: ["Northwest", "North", "Southwest", "Southeast", "Northeast", "South"]
+                    .into_iter()
+                    .map(|direction| Exit {
+                        direction: direction.to_string(),
+                        terrain: "ocean".to_string(),
+                        coordinate: match direction {
+                            "Northwest" => Coordinate { x: 7, y: 53, z: 1 },
+                            "North" => Coordinate { x: 8, y: 52, z: 1 },
+                            "Southwest" => Coordinate { x: 7, y: 55, z: 1 },
+                            "Southeast" => Coordinate { x: 9, y: 55, z: 1 },
+                            "Northeast" => Coordinate { x: 9, y: 53, z: 1 },
+                            _ => Coordinate { x: 8, y: 56, z: 1 },
+                        },
+                        province: "Inhead".to_string(),
+                        settlement: None,
+                    })
+                    .collect(),
+                ..region_at("1:8,54", 8, 54, Vec::new())
+            },
+        ]
+    }
+
+    /// The three sides the rule refuses, with one wording serving all three - only the two side
+    /// names change. `rules/movement_sailing`: "Ships may not sail through single hex land masses
+    /// and must leave via the same side they entered or a side adjacent to that one."
+    #[test]
+    fn a_sail_out_of_a_neck_of_land_is_a_warning() {
+        for (order, leaving) in [("SAIL SE SE", "SE"), ("SAIL SE NE", "NE"), ("SAIL SE S", "S")] {
+            let findings = check(neck_regions(vec![unit("3493")], Vec::new()), &format!("unit 3493\n{order}\n"));
+            let necks: Vec<&Finding> = findings
+                .iter()
+                .filter(|finding| finding.code == codes::SAIL_THROUGH_NECK_OF_LAND)
+                .collect();
+
+            assert_eq!(necks.len(), 1, "{order}: {findings:?}");
+            assert_eq!(
+                necks[0].message,
+                format!(
+                    "a fleet must leave a land hex by the side it entered or one beside it: SE \
+                     enters plain (8,54) from the NW and {leaving} is neither that side nor beside \
+                     it, so it will not move"
+                )
+            );
+        }
+    }
+
+    /// The side it entered by and the two beside it are allowed, and say nothing.
+    #[test]
+    fn a_sail_turning_beside_the_entry_side_is_no_warning() {
+        for order in ["SAIL SE NW", "SAIL SE N", "SAIL SE SW"] {
+            let findings = check(neck_regions(vec![unit("3493")], Vec::new()), &format!("unit 3493\n{order}\n"));
+            assert!(
+                !findings
+                    .iter()
+                    .any(|finding| finding.code == codes::SAIL_THROUGH_NECK_OF_LAND),
+                "{order}: {findings:?}"
+            );
+        }
+    }
+
+    /// A canal lifts the restriction, so the crossing draws no warning. Trident, because `check`
+    /// above is hardwired to New Origins, which has no canals.
+    #[test]
+    fn a_sail_through_a_canal_is_no_warning() {
+        let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset parses");
+        let canal = Structure {
+            structure_id: "3".to_string(),
+            name: "The Cut".to_string(),
+            kind: "Canal".to_string(),
+            base_kind: "Canal".to_string(),
+            ..Default::default()
+        };
+
+        let findings = check_against(
+            &trident,
+            neck_regions(vec![unit("3493")], vec![canal]),
+            "unit 3493\nSAIL SE SE\n",
+        );
+
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_THROUGH_NECK_OF_LAND),
+            "{findings:?}"
+        );
+    }
+
+    /// Where both rules refuse one step the land-to-land sentence wins: that step is refused
+    /// whatever the sides, so naming the sides would be the lesser truth.
+    #[test]
+    fn a_step_refused_by_both_sailing_rules_gets_only_the_land_to_land_line() {
+        // The plain's SE neighbour is land, so the second step is land to land as well as out by a
+        // refused side.
+        let mut regions = neck_regions(vec![unit("3493")], Vec::new());
+        for exit in &mut regions[1].exits {
+            if exit.direction == "Southeast" {
+                exit.terrain = "plain".to_string();
+            }
+        }
+
+        let findings = check(regions, "unit 3493\nSAIL SE SE\n");
+
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES),
+            "{findings:?}"
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_THROUGH_NECK_OF_LAND),
+            "{findings:?}"
+        );
+    }
+
+    /// The two sailing checks are silenced separately, which is what the agreed Settings row is
+    /// for.
+    #[test]
+    fn the_neck_of_land_check_can_be_switched_off_on_its_own() {
+        let mut regions = neck_regions(vec![unit("3493")], Vec::new());
+        // A land neighbour to the north, so the land-to-land check has something to say too.
+        for exit in &mut regions[1].exits {
+            if exit.direction == "North" {
+                exit.terrain = "plain".to_string();
+            }
+        }
+
+        let findings = check_turn(
+            &report(regions),
+            "unit 3493\nSAIL SE SE\nSAIL SE N\n",
+            Some(&ruleset()),
+            disabling_all(&[
+                codes::UNIT_DOES_NOTHING,
+                codes::TWO_MONTH_LONG_ORDERS,
+                codes::SAIL_THROUGH_NECK_OF_LAND,
+            ]),
+        );
+
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES),
+            "the land-to-land check still speaks: {findings:?}"
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_THROUGH_NECK_OF_LAND),
+            "{findings:?}"
+        );
+    }
+
     /// New Age: Trident counts a lake as water - "Lakes count as water for this purpose, and a
     /// region bordering one counts as its shore, so fleets may also sail between a lake and the
     /// land around it" (`newage trident rules/movement_sailing`) - so this legal sailing must draw
@@ -36875,6 +37140,45 @@ BUILD
                     ..region(vec![unit("11125")])
                 }],
                 orders: "unit 11125\nSAIL N\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::SAIL_THROUGH_NECK_OF_LAND,
+                regions: vec![
+                    ReportRegion {
+                        terrain: "ocean".to_string(),
+                        exits: vec![Exit {
+                            direction: "Southeast".to_string(),
+                            terrain: "plain".to_string(),
+                            coordinate: Coordinate { x: 8, y: 54, z: 1 },
+                            province: "Inhead".to_string(),
+                            settlement: None,
+                        }],
+                        ..region(vec![unit("11125")])
+                    },
+                    ReportRegion {
+                        terrain: "plain".to_string(),
+                        exits: vec![
+                            Exit {
+                                direction: "Northwest".to_string(),
+                                terrain: "ocean".to_string(),
+                                coordinate: Coordinate { x: 7, y: 53, z: 1 },
+                                province: "Inhead".to_string(),
+                                settlement: None,
+                            },
+                            Exit {
+                                direction: "Southeast".to_string(),
+                                terrain: "ocean".to_string(),
+                                coordinate: Coordinate { x: 9, y: 55, z: 1 },
+                                province: "Inhead".to_string(),
+                                settlement: None,
+                            },
+                        ],
+                        ..region_at("1:8,54", 8, 54, Vec::new())
+                    },
+                ],
+                orders: "unit 11125\nSAIL SE SE\n",
                 allowance: None,
                 unclaimed: None,
             },
