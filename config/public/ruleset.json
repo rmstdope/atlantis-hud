@@ -8719,5 +8719,10 @@
       "ADMT",
       "IRON"
     ]
+  },
+  "maintenance": {
+    "perCharacter": 10,
+    "perLeader": 50,
+    "evidence": "This fee is generally 10 silver for a normal character, and 50 silver for a leader."
   }
 }

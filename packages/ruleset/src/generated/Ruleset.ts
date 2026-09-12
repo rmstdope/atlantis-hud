@@ -2,6 +2,7 @@
 import type { BuildingEntry } from "./BuildingEntry";
 import type { Gaps } from "./Gaps";
 import type { ItemEntry } from "./ItemEntry";
+import type { Maintenance } from "./Maintenance";
 import type { MovementRules } from "./MovementRules";
 import type { OrderLanguage } from "./OrderLanguage";
 import type { RiskThresholds } from "./RiskThresholds";
@@ -54,4 +55,12 @@ ungiveableItems: Array<string>,
  * cannot say what a terrain holds" - never as "this terrain holds nothing". A terrain the
  * table does not list (the Nexus) is absent for the same reason.
  */
-terrainResources: { [key in string]: Array<string> }, };
+terrainResources: { [key in string]: Array<string> }, 
+/**
+ * What a head of this world owes in monthly maintenance.
+ *
+ * Absent for a ruleset generated before the fee sentence was scraped, which reads as "this
+ * catalogue cannot say what a head costs" - never as "a head costs nothing". The core falls
+ * back to New Origins' published figures in that case; see `silver.rs`.
+ */
+maintenance: Maintenance | null, };

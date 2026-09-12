@@ -57,3 +57,26 @@ fn trident_settles_builds_before_production() {
         "Arcanum stays on the New Origins schedule until an Arcanum audit moves it"
     );
 }
+
+/// `ah-g9sf.9`. `rules/economy_maintenance` prices a leader at 50 on New Origins and New Age:
+/// Arcanum and at 90 on New Age: Trident, and an ordinary character at 10 on all three. Each
+/// committed file carries the block rather than falling back, so the figure the application
+/// charges is the one its own world states.
+#[test]
+fn charges_each_world_the_fee_its_rules_page_states() {
+    let origins = Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
+        .expect("the committed New Origins ruleset parses and validates");
+
+    for (world, ruleset, per_leader) in [
+        ("New Origins", &origins, 50),
+        ("New Age: Arcanum", &arcanum(), 50),
+        ("New Age: Trident", &trident(), 90),
+    ] {
+        assert!(
+            ruleset.maintenance.is_some(),
+            "{world} should carry a scraped maintenance block rather than falling back"
+        );
+        assert_eq!(ruleset.upkeep_per_leader(), per_leader, "{world}");
+        assert_eq!(ruleset.upkeep_per_character(), 10, "{world}");
+    }
+}

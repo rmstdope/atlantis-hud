@@ -22,6 +22,14 @@ New Origins says 50 silver where both New Age worlds say 30, so the number is sc
 chosen. Where the data page's own item descriptions state a different figure, the rules page wins,
 and a page naming a food the catalogue does not carry stops the run.
 
+The per-head maintenance fee is read off the same section of the rules page, from
+`rules/economy_maintenance`'s fee sentence - "This fee is generally 10 silver for a normal
+character, and 50 silver for a leader." New Origins and New Age: Arcanum charge 50 for a leader
+where New Age: Trident charges 90; all three charge 10 for an ordinary character, and the
+character figure is carried anyway rather than assumed. A page that never states the fee stops the
+run. A ruleset generated before this was scraped carries no `maintenance` block, and the core then
+charges New Origins' published figures rather than nothing.
+
 A world serving its catalogue as a JSON database rather than as an HTML data page is read with
 `--database`, which converts it to a data page before anything else happens.
 

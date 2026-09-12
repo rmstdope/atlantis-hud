@@ -29805,6 +29805,34 @@ BUILD
         );
     }
 
+    /// `ah-g9sf.9`, mockup panel two. New Age: Trident charges 90 a leader where New Origins
+    /// charges 50 (`rules/economy_maintenance`), and the hex's shortfall sentence already
+    /// interpolates its three figures - so the words do not move and only the arithmetic does.
+    #[test]
+    fn a_trident_hexs_shortfall_counts_ninety_a_leader() {
+        let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset should be usable");
+        // The hex's sentence is reached only when the silver is somewhere other than the unit
+        // owing the fee - maintenance pooling is what defers the shortfall to the hex. So the
+        // penniless leader owes the 90 and its manless neighbour holds the 50 the hex can have.
+        let regions = vec![region(vec![
+            with_race(with_silver(starving(unit("5")), 0), 1, "leader", "LEAD"),
+            with_men(with_silver(starving(unit("7")), 50), 0),
+        ])];
+
+        assert_eq!(
+            only(
+                check_against(&trident, regions, "")
+                    .into_iter()
+                    .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+                    .collect()
+            )
+            .message,
+            "the units in this hex are short $40 of upkeep between them: they can have $50 and \
+             their upkeep costs $90"
+        );
+    }
+
     /// A `SHARE` hex pools orders too, so it keeps the sentence it has always had.
     #[test]
     fn a_share_hex_keeps_its_orders_and_upkeep_wording() {

@@ -55,6 +55,23 @@ describe("the committed rulesets", () => {
     }
   });
 
+  it("exposes the per-head maintenance fee for each world", () => {
+    const expected: Record<string, { perCharacter: number; perLeader: number }> = {
+      neworigins: { perCharacter: 10, perLeader: 50 },
+      "newage-arcanum": { perCharacter: 10, perLeader: 50 },
+      "newage-trident": { perCharacter: 10, perLeader: 90 }
+    };
+
+    for (const world of WORLDS) {
+      const ruleset = JSON.parse(read(world.rulesetPath)) as Ruleset;
+      const fee = expected[world.id];
+      expect(fee, `no expected fee for ${world.id}`).toBeDefined();
+      expect(ruleset.maintenance?.perCharacter).toBe(fee.perCharacter);
+      expect(ruleset.maintenance?.perLeader).toBe(fee.perLeader);
+      expect(ruleset.maintenance?.evidence).toContain(`${fee.perLeader} silver for a leader`);
+    }
+  });
+
   it("prices New Age food at thirty and closes the weather gap", () => {
     for (const world of WORLDS.filter((candidate) => candidate.id.startsWith("newage-"))) {
       const ruleset = JSON.parse(read(world.rulesetPath)) as Ruleset;

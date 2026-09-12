@@ -23,6 +23,7 @@ import {
 } from "./data";
 import {
   parseFoodMaintenance,
+  parseMaintenanceFee,
   parseMovementRules,
   parseRegionResources,
   parseWeatherGap,
@@ -134,6 +135,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
   // for a ruleset we are going to refuse anyway.
   const movement = parseMovementRules(input.rulesHtml);
   const maintenance = parseFoodMaintenance(input.rulesHtml);
+  const fee = parseMaintenanceFee(input.rulesHtml);
   const weather = parseWeatherGap(input.rulesHtml);
   const regionResources = parseRegionResources(input.rulesHtml);
   const items = parseItemReference(input.dataHtml);
@@ -193,6 +195,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
     buildings,
     itemClasses: itemClassesOf(items),
     ungiveableItems: ungiveableItemsOf(items),
-    terrainResources: resolveRegionResources(regionResources, items)
+    terrainResources: resolveRegionResources(regionResources, items),
+    maintenance: { perCharacter: fee.perCharacter, perLeader: fee.perLeader, evidence: fee.evidence }
   };
 }

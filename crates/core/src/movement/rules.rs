@@ -368,6 +368,32 @@ pub struct RiskThresholds {
     pub high_ratio: f64,
 }
 
+/// New Origins' published figures - "This fee is generally 10 silver for a normal character, and
+/// 50 silver for a leader" - used when a ruleset carries no fee block of its own.
+pub(crate) const DEFAULT_UPKEEP_PER_CHARACTER: i64 = 10;
+/// See [`DEFAULT_UPKEEP_PER_CHARACTER`].
+pub(crate) const DEFAULT_UPKEEP_PER_LEADER: i64 = 50;
+
+/// What one month of maintenance costs per head in this world, from
+/// `rules/economy_maintenance`'s fee sentence.
+///
+/// New Origins and New Age: Arcanum charge 50 for a leader; New Age: Trident charges 90. The
+/// ordinary character is 10 in all three, and is carried anyway rather than assumed: the three
+/// worlds agreeing on a number today is not the same as the number being a constant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/Maintenance.ts")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Maintenance {
+    pub per_character: i64,
+    pub per_leader: i64,
+    /// The page's own words, so the two numbers can be checked rather than taken on trust.
+    pub evidence: String,
+}
+
 /// Where the ruleset came from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
@@ -819,6 +845,13 @@ pub struct Ruleset {
     /// table does not list (the Nexus) is absent for the same reason.
     #[serde(default)]
     pub terrain_resources: BTreeMap<String, Vec<String>>,
+    /// What a head of this world owes in monthly maintenance.
+    ///
+    /// Absent for a ruleset generated before the fee sentence was scraped, which reads as "this
+    /// catalogue cannot say what a head costs" - never as "a head costs nothing". The core falls
+    /// back to New Origins' published figures in that case; see `silver.rs`.
+    #[serde(default)]
+    pub maintenance: Option<Maintenance>,
 }
 
 /// One of the classes `GIVE [unit] ALL [item class]` accepts, as `rules/give` enumerates them.
@@ -973,6 +1006,27 @@ impl Ruleset {
             }
         }
 
+        if let Some(maintenance) = &self.maintenance {
+            for (name, value) in [
+                ("a leader's monthly maintenance", maintenance.per_leader),
+                (
+                    "an ordinary character's monthly maintenance",
+                    maintenance.per_character,
+                ),
+            ] {
+                if value <= 0 {
+                    let consequence = if value == 0 {
+                        "which would make upkeep free"
+                    } else {
+                        "which would pay a unit to exist"
+                    };
+                    return Err(RulesetError::Unusable(format!(
+                        "{name} is {value}, {consequence}"
+                    )));
+                }
+            }
+        }
+
         let road = &self.movement.road;
         if road.divisor == 0 {
             return Err(RulesetError::Unusable(
@@ -1071,6 +1125,28 @@ impl Ruleset {
             .iter()
             .find(|(listed, _)| listed.eq_ignore_ascii_case(terrain))
             .map_or(costs.normal, |(_, cost)| *cost)
+    }
+
+    /// Silver one ordinary character owes for the month.
+    ///
+    /// New Origins' published 10 when the ruleset carries no fee block of its own; see
+    /// [`Maintenance`].
+    #[must_use]
+    pub fn upkeep_per_character(&self) -> i64 {
+        self.maintenance
+            .as_ref()
+            .map_or(DEFAULT_UPKEEP_PER_CHARACTER, |fee| fee.per_character)
+    }
+
+    /// Silver one leader owes for the month.
+    ///
+    /// New Origins' published 50 when the ruleset carries no fee block of its own; see
+    /// [`Maintenance`].
+    #[must_use]
+    pub fn upkeep_per_leader(&self) -> i64 {
+        self.maintenance
+            .as_ref()
+            .map_or(DEFAULT_UPKEEP_PER_LEADER, |fee| fee.per_leader)
     }
 
     /// Whether crossing water needs a ship, for a unit that cannot fly.
@@ -1768,6 +1844,68 @@ mod tests {
         let entry: ItemEntry = serde_json::from_str(json)
             .expect("an entry missing maintenanceValue should still parse");
         assert_eq!(entry.maintenance_value, None);
+    }
+
+    /// A ruleset generated before `ah-g9sf.9` carries no `maintenance` block, and must still load
+    /// with the accessors answering New Origins' published figures rather than nothing.
+    #[test]
+    fn a_ruleset_with_no_fee_block_falls_back_to_new_origins() {
+        let json = serde_json::to_string(&ruleset()).expect("the committed ruleset re-serialises");
+        let mut value: serde_json::Value =
+            serde_json::from_str(&json).expect("its own JSON parses back");
+        value
+            .as_object_mut()
+            .expect("a ruleset is an object")
+            .remove("maintenance");
+        let without = Ruleset::from_json(&value.to_string())
+            .expect("a ruleset with no maintenance block should still load");
+
+        assert_eq!(without.maintenance, None);
+        assert_eq!(without.upkeep_per_character(), 10);
+        assert_eq!(without.upkeep_per_leader(), 50);
+    }
+
+    /// A free fee, or one that pays the unit, is a wrong answer presented confidently - which
+    /// this module refuses everywhere else, so it is refused here too, in the style of the
+    /// terrain checks beside it.
+    #[test]
+    fn a_zero_or_negative_fee_makes_a_ruleset_unusable() {
+        let mut broken = ruleset();
+        broken.maintenance = Some(Maintenance {
+            per_character: 10,
+            per_leader: 0,
+            evidence: "made up for this test".to_string(),
+        });
+        let json = serde_json::to_string(&broken).expect("it re-serialises");
+
+        match Ruleset::from_json(&json) {
+            Err(RulesetError::Unusable(message)) => {
+                assert!(
+                    message.contains("would make upkeep free"),
+                    "unexpected message: {message}"
+                );
+            }
+            other => panic!("a zero leader fee should be unusable, got {other:?}"),
+        }
+
+        // A negative fee is refused too, and says what it would actually do rather than borrowing
+        // the zero case's words.
+        broken.maintenance = Some(Maintenance {
+            per_character: -10,
+            per_leader: 50,
+            evidence: "made up for this test".to_string(),
+        });
+        let json = serde_json::to_string(&broken).expect("it re-serialises");
+
+        match Ruleset::from_json(&json) {
+            Err(RulesetError::Unusable(message)) => {
+                assert!(
+                    message.contains("would pay a unit to exist"),
+                    "unexpected message: {message}"
+                );
+            }
+            other => panic!("a negative character fee should be unusable, got {other:?}"),
+        }
     }
 
     /// The four committed foods carry 50 silver from rules/economy_maintenance, and an ordinary item none.

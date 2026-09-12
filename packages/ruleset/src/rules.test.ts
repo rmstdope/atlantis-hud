@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   parseFoodMaintenance,
+  parseMaintenanceFee,
   parseMovementRules,
   parseRegionResources,
   parseWeatherGap,
@@ -360,6 +361,35 @@ describe("parseFoodMaintenance", () => {
     expect(() =>
       parseFoodMaintenance("<html><body>a page about something else</body></html>")
     ).toThrowError(/foodMaintenance/);
+  });
+});
+
+describe("parseMaintenanceFee", () => {
+  it("reads the per-head maintenance fee from each world's rules page", () => {
+    expect(parseMaintenanceFee(RULES_HTML)).toEqual({
+      perCharacter: 10,
+      perLeader: 50,
+      evidence: "This fee is generally 10 silver for a normal character, and 50 silver for a leader."
+    });
+    expect(parseMaintenanceFee(ARCANUM_RULES_HTML)).toEqual({
+      perCharacter: 10,
+      perLeader: 50,
+      evidence: "This fee is generally 10 silver for a normal character, and 50 silver for a leader."
+    });
+    expect(parseMaintenanceFee(TRIDENT_RULES_HTML)).toEqual({
+      perCharacter: 10,
+      perLeader: 90,
+      evidence: "This fee is generally 10 silver for a normal character, and 90 silver for a leader."
+    });
+  });
+
+  it("refuses a rules page that never states the fee", () => {
+    expect(() =>
+      parseMaintenanceFee("<html><body>a page about something else</body></html>")
+    ).toThrowError(RulesetScrapeError);
+    expect(() =>
+      parseMaintenanceFee("<html><body>a page about something else</body></html>")
+    ).toThrowError(/maintenanceFee/);
   });
 });
 

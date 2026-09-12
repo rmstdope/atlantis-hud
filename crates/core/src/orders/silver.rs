@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::movement::rules::{
     CastCost, CastOutput, ItemEntry, ItemKind, Production, Ruleset, SkillEntry,
+    DEFAULT_UPKEEP_PER_CHARACTER, DEFAULT_UPKEEP_PER_LEADER,
 };
 use crate::orders::effects::LimitingRace;
 use crate::orders::forms::{Amount, Party, Selector};
@@ -64,9 +65,19 @@ const EARTH_LORE_TAG: &str = "EART";
 /// same number. Do not "fix" this by multiplying by `facts.men`.
 const EARTH_LORE_PER_LEVEL_PER_WAGE: i64 = 2;
 
-/// "This fee is generally 10 silver for a normal character, and 50 silver for a leader."
-const UPKEEP_PER_CHARACTER: i64 = 10;
-const UPKEEP_PER_LEADER: i64 = 50;
+/// What an ordinary character and a leader each owe this month, in [`Maintenance`]'s own field
+/// order so the pair cannot be read the wrong way round.
+///
+/// The fee is a fact about the world rather than about the game - `rules/economy_maintenance` says
+/// 50 silver for a leader on New Origins and New Age: Arcanum and 90 on New Age: Trident - so it
+/// is read off the ruleset. A ruleset carrying no fee block, and the no-ruleset path, fall back to
+/// New Origins' published figures; see [`Ruleset::upkeep_per_leader`].
+fn upkeep_rates(ruleset: Option<&Ruleset>) -> (i64, i64) {
+    ruleset.map_or(
+        (DEFAULT_UPKEEP_PER_CHARACTER, DEFAULT_UPKEEP_PER_LEADER),
+        |rules| (rules.upkeep_per_character(), rules.upkeep_per_leader()),
+    )
+}
 
 /// One kind of food a unit or hex holds, priced by the ruleset for maintenance.
 ///
@@ -3261,9 +3272,10 @@ fn own_food_pass(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Own
     let leaders = leaders.clamp(0, late.men);
     let characters = late.men - leaders;
 
+    let (per_character, per_leader) = upkeep_rates(ruleset);
     let owed = leaders
-        .saturating_mul(UPKEEP_PER_LEADER)
-        .saturating_add(characters.saturating_mul(UPKEEP_PER_CHARACTER))
+        .saturating_mul(per_leader)
+        .saturating_add(characters.saturating_mul(per_character))
         .max(0);
 
     let mut stock = food_stock(late.items, ruleset);
@@ -10934,7 +10946,9 @@ mod tests {
     }
 
     /// With no ruleset the catalogue cannot price any item as food, so nothing is eaten and the
-    /// full fee is charged - known, never doubted.
+    /// full fee is charged - known, never doubted. The 50 is New Origins' published figure serving
+    /// as the fallback (`ah-g9sf.9`) rather than the only leader fee there is; New Age: Trident
+    /// charges 90, and a ruleset saying so is what makes it charge 90.
     #[test]
     fn without_a_ruleset_no_item_is_food() {
         let men = [item(1, "LEAD")];
@@ -10985,6 +10999,62 @@ mod tests {
             SharedMarket::Adds(0),
             Some(&ruleset()),
         )
+    }
+
+    /// New Age: Trident's own catalogue, which `rules/economy_maintenance` prices at 90 silver a
+    /// leader against New Origins' 50, and one food at 30 against 50.
+    fn trident() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset should be usable")
+    }
+
+    fn forecast_with(facts: UnitFacts<'_>, ruleset: &Ruleset) -> UnitSilver {
+        forecast_unit(
+            facts,
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            no_market(),
+            SharedMarket::Adds(0),
+            Some(ruleset),
+        )
+    }
+
+    /// Mockup panel one: a Trident leader owes 90 where a New Origins leader owes 50.
+    #[test]
+    fn a_trident_leader_owes_ninety() {
+        let men = [item(1, "LEAD")];
+        let facts = made_of(1, &men, &[], &[]);
+        assert_eq!(unit_upkeep(&facts, Some(&trident())), Some(90));
+        assert_eq!(unit_upkeep(&facts, Some(&ruleset())), Some(50));
+    }
+
+    /// Mockup panel four: a mixed headcount is one figure - 90 for the leader and 10 a head for
+    /// the other five.
+    #[test]
+    fn a_trident_unit_of_a_leader_and_five_men_owes_a_hundred_and_forty() {
+        let men = [item(1, "LEAD"), item(5, "MAN")];
+        let facts = made_of(6, &men, &[], &[]);
+        assert_eq!(unit_upkeep(&facts, Some(&trident())), Some(140));
+        assert_eq!(unit_upkeep(&facts, Some(&ruleset())), Some(100));
+    }
+
+    /// Mockup panel three: two grain cover 60 of a Trident leader's 90 at 30 each, leaving 30
+    /// owing, where the same two grain cover the whole of a New Origins leader's 50.
+    #[test]
+    fn trident_food_covers_thirty_of_a_leaders_ninety() {
+        let men = [item(1, "LEAD")];
+        let food = [item(2, "GRAI")];
+        let flags = consuming();
+
+        let unit = forecast_with(made_of(1, &men, &food, &flags), &trident());
+        assert_eq!(unit.own_food_covered, 60);
+        assert_eq!(unit.upkeep, Some(30));
+
+        let origins = forecast_with(made_of(1, &men, &food, &flags), &ruleset());
+        assert_eq!(origins.own_food_covered, 50);
+        assert_eq!(origins.upkeep, Some(0));
     }
 
     #[test]
