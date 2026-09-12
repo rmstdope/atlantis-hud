@@ -160,6 +160,9 @@ pub mod codes {
     pub const BUILD_HELP_NOT_BUILDING: Code = Code("build-help-not-building");
     pub const UNIT_DOES_NOTHING: Code = Code("unit-does-nothing");
     pub const BUILD_WITHOUT_SKILL: Code = Code("build-without-skill");
+    /// A `BUILD` that spends nothing because the unit has none of the material the structure is
+    /// built from (`rules/build`).
+    pub const BUILD_WITHOUT_MATERIAL: Code = Code("build-without-material");
     pub const CLAIMS_EXCEED_UNCLAIMED: Code = Code("claims-exceed-unclaimed");
     pub const UPKEEP_EXCEEDS_UNCLAIMED: Code = Code("upkeep-exceeds-unclaimed");
     pub const TAXED_A_PILLAGED_HEX: Code = Code("taxed-a-pillaged-hex");
@@ -190,7 +193,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 51] = [
+    pub const ALL: [Code; 52] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -242,6 +245,7 @@ pub mod codes {
         CAST_CANNOT_MAKE_THIS,
         TRANSFER_TO_ITSELF,
         BUILD_SITE_REFUSED,
+        BUILD_WITHOUT_MATERIAL,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -699,6 +703,7 @@ pub fn review_turn(
         check_building_outside(hex, &options, &mut findings);
         check_build_help(hex, &options, &mut findings);
         check_build_skill(hex, ruleset, &options, &mut findings);
+        check_build_material(hex, ledger, &options, &mut findings);
         check_build_site(hex, ledger, &options, &mut findings);
         check_production(hex, &by_coordinate, ruleset, &options, &mut findings);
         check_studying(hex, ledger, ruleset, &plurals, &options, &mut findings);
@@ -4436,6 +4441,11 @@ struct Ledger<'a> {
     /// total already lives so `check_emptied_sales` need not compute the same fact a second time
     /// (`ah-vw8e`) - which is how this column and that warning drifted apart before (`ah-ycuj`).
     dead_sales: Vec<DeadSale>,
+    /// Every `BUILD` that spent nothing because the unit had none of the material for it, recorded
+    /// where the settlement already knows the recipe, the restriction and what the pool holds, so
+    /// `check_build_material` need not read the hex a second time (the reason
+    /// [`check_emptied_sales`] gives for [`Ledger::dead_sales`]).
+    build_material_refusals: Vec<BuildMaterialRefusal>,
     /// How many of one tag a unit's own `BUY` lines have already taken out of its settled share
     /// this month. A block may name the same goods twice, and the second line can only buy what
     /// the first left (`ah-lauy`). Keyed as `balance` is, which is sound because one unit number is
@@ -4706,6 +4716,7 @@ fn ledger_for_with_production<'a>(
         silver_moves: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
+        build_material_refusals: Vec::new(),
         bought: BTreeMap::new(),
         dead_buys: Vec::new(),
         claimed: BTreeMap::new(),
@@ -4917,13 +4928,20 @@ fn ledger_for_with_production<'a>(
                             },
                         );
                     }
-                    Intent::Build { founding, helping } if pass == StatePhase::Build => {
+                    Intent::Build {
+                        founding,
+                        helping,
+                        material,
+                    } if pass == StatePhase::Build => {
                         build(
                             &mut ledger,
                             ordered,
                             placed,
-                            founding,
-                            helping,
+                            BuildOrder {
+                                founding,
+                                helping,
+                                material: *material,
+                            },
                             &pool,
                             ruleset,
                         );
@@ -6342,13 +6360,20 @@ fn apply(
         | Intent::Form { .. } => {}
         // Not reached from `ledger_for_with_production`, which defers every BUILD to a pass of
         // its own; kept so `apply` stays exhaustive over `Intent`.
-        Intent::Build { founding, helping } => {
+        Intent::Build {
+            founding,
+            helping,
+            material,
+        } => {
             build(
                 ledger,
                 actor,
                 placed,
-                founding,
-                helping,
+                BuildOrder {
+                    founding,
+                    helping,
+                    material: *material,
+                },
                 &Pool {
                     hex,
                     sharing: &Sharing::read(hex),
@@ -7255,36 +7280,155 @@ fn produce(
     }
 }
 
+/// A `BUILD` that spends nothing because the unit has not the material for it.
+///
+/// Recorded by [`build`], which has already resolved the recipe, the spend order and what the pool
+/// holds; [`check_build_material`] only turns it into a sentence.
+struct BuildMaterialRefusal {
+    unit_id: String,
+    placed: PlacedIntent,
+    /// The structure, as the sentence names it: the kind a founding `BUILD` wrote, or the kind of
+    /// the structure being worked on.
+    kind: String,
+    /// The material the order restricted itself to, by its catalogue display name (`"wood"`).
+    /// `None` when the order named none and the unit holds none of any alternative.
+    asked: Option<String>,
+    /// Every alternative the recipe offers, in the recipe's own order, by display name.
+    alternatives: Vec<String>,
+    /// The single other alternative the unit does hold, and how much. `None` unless exactly one
+    /// other alternative is held.
+    instead: Option<(i64, String)>,
+}
+
 /// What one `BUILD` order does, once the structure and the recipe are known (`ah-ofpb.2`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct BuildPlan {
-    /// Units of work actually done, which is also the material consumed, one for one.
+///
+/// One material's share of a month's build, in the order it is spent.
+struct MaterialShare<'a> {
+    item: &'a crate::movement::rules::ItemEntry,
+    amount: i64,
+}
+
+struct BuildPlan<'a> {
+    /// Non-empty and in spend order; every entry has `amount > 0`.
+    shares: Vec<MaterialShare<'a>>,
+    /// Units of work actually done, which is also the material consumed in total, one for one.
     done: i64,
     /// What the unit's men alone could have done: `men * level`.
     could_do: i64,
     capped_by: Option<super::effects::BuildCap>,
 }
 
-/// `men * level`, capped by what the structure still wants and by the material the unit holds.
+/// `men * level`, capped by what the structure still wants and by the material the unit holds,
+/// spread over the materials in the order the rules spend them.
+///
+/// `held` is each material's availability, in that spend order: one entry is the ordinary month,
+/// two is a New Age build that exhausts its stone and falls back on wood (`rules/build`, New Age:
+/// Trident: "consuming stone before wood").
 ///
 /// `Needs` is named first when both bind exactly, because a structure about to be finished is the
 /// more actionable fact: "buy more stone" would be wasted advice.
-fn plan_build(men: i64, level: i64, remaining: i64, held: i64) -> BuildPlan {
+fn plan_build<'a>(
+    men: i64,
+    level: i64,
+    remaining: i64,
+    held: &[(&'a crate::movement::rules::ItemEntry, i64)],
+) -> BuildPlan<'a> {
     let could_do = men.saturating_mul(level).max(0);
     let remaining = remaining.max(0);
-    let held = held.max(0);
-    let done = could_do.min(remaining).min(held);
-    let capped_by = if done >= could_do {
+    let available: i64 = held.iter().map(|(_, amount)| (*amount).max(0)).sum();
+    let want = could_do.min(remaining);
+
+    let mut shares = Vec::new();
+    let mut taken = 0;
+    for (item, amount) in held {
+        if taken >= want {
+            break;
+        }
+        let share = (*amount).max(0).min(want - taken);
+        if share > 0 {
+            shares.push(MaterialShare {
+                item,
+                amount: share,
+            });
+            taken += share;
+        }
+    }
+
+    let capped_by = if taken >= could_do {
         None
-    } else if remaining <= held {
+    } else if remaining <= available {
         Some(super::effects::BuildCap::Needs)
     } else {
         Some(super::effects::BuildCap::Materials)
     };
     BuildPlan {
-        done,
+        shares,
+        done: taken,
         could_do,
         capped_by,
+    }
+}
+
+/// The materials of a New Age build, in the order the rules spend them.
+///
+/// `rules/build` (New Age: Trident and Arcanum): "By default the unit will use whatever is
+/// available, consuming stone before wood." The catalogue's own order is `["wood", "stone"]`
+/// (`Ruleset::build_recipe`), so reading the spend order off the data page would be silently wrong.
+fn spend_order<'a>(
+    resolved: &[&'a crate::movement::rules::ItemEntry],
+) -> Vec<&'a crate::movement::rules::ItemEntry> {
+    let mut ordered: Vec<&'a crate::movement::rules::ItemEntry> = resolved
+        .iter()
+        .copied()
+        .filter(|item| item.tag.eq_ignore_ascii_case("STON"))
+        .collect();
+    ordered.extend(
+        resolved
+            .iter()
+            .copied()
+            .filter(|item| !item.tag.eq_ignore_ascii_case("STON")),
+    );
+    ordered
+}
+
+/// The materials this `BUILD` may spend, in the order it spends them.
+///
+/// `None` when nothing here can settle which - the caller marks the line uncounted. An empty answer
+/// is settled and means the unit holds none of any alternative.
+fn build_candidates<'a>(
+    ruleset: &Ruleset,
+    resolved: &[&'a crate::movement::rules::ItemEntry],
+    asked: Option<super::intents::BuildMaterial>,
+    held_of: impl Fn(&str) -> i64,
+) -> Option<Vec<&'a crate::movement::rules::ItemEntry>> {
+    if let Some(asked) = asked {
+        // A restriction the recipe cannot meet - `BUILD Tower WOOD`. `rules/build` says the order
+        // fails, but not what the engine then does, so this declines to say.
+        let wanted = ruleset.find_item(asked.display_name())?;
+        let found = resolved
+            .iter()
+            .copied()
+            .find(|item| item.tag == wanted.tag)?;
+        return Some(vec![found]);
+    }
+    if let [only] = resolved {
+        return Some(vec![only]);
+    }
+    if ruleset.is_new_age() {
+        return Some(spend_order(resolved));
+    }
+    // New Origins states no default, so a unit holding one alternative settles it and a unit
+    // holding two does not. Holding none is settled too: no work is possible either way.
+    let holding: Vec<&'a crate::movement::rules::ItemEntry> = resolved
+        .iter()
+        .copied()
+        .filter(|item| held_of(&item.tag) > 0)
+        .collect();
+    match holding.len() {
+        0 => Some(resolved.to_vec()),
+        1 => Some(holding),
+        // Nothing in the rules says which the engine takes.
+        _ => None,
     }
 }
 
@@ -7400,12 +7544,24 @@ fn unit_is_in_structure(hex: &Hex<'_>, unit_id: &str, structure_id: &str) -> boo
 /// never tracked silver anyway. Nothing is credited because a structure is not an item; the
 /// material simply leaves. `ledger.doubted` is not touched either - that set is about sums of
 /// money, and a build puts no sum in question, the same reasoning the bare-`PRODUCE` arm records.
+/// What a `BUILD` order named, straight off [`Intent::Build`].
+#[derive(Debug, Clone, Copy)]
+struct BuildOrder<'a> {
+    /// `BUILD [name]`: the type being founded.
+    founding: &'a Option<String>,
+    /// `BUILD HELP [unit]`: whose structure is being worked on.
+    helping: &'a Option<Party>,
+    /// `BUILD [name] WOOD`/`STONE`: the material the order restricts itself to. Only the New Age
+    /// grammar consumes that word, so this is always `None` under New Origins.
+    material: Option<super::intents::BuildMaterial>,
+}
+
 fn build(
     ledger: &mut Ledger<'_>,
     actor: &Ordered<'_>,
     placed: &PlacedIntent,
-    founding: &Option<String>,
-    helping: &Option<Party>,
+    // What the order itself said, straight off the intent.
+    order: BuildOrder<'_>,
     // Where this unit sits in the hex, and what the hex shares: BUILD spends from the same pooled
     // stock manufacturing does, and debits the rows it actually took from (`ah-728m.2.2`).
     pool: &Pool<'_>,
@@ -7437,7 +7593,7 @@ fn build(
     // structure and ship holdings are being read, which is the helped unit for a `HELP` and this
     // unit otherwise; `helped_id` is `Some` only for a `HELP` that resolved.
     let (founding_kind, task_owner, helped_id): (Option<String>, &Ordered<'_>, Option<String>) =
-        match (founding, helping) {
+        match (order.founding, order.helping) {
             (Some(kind), _) => (Some(kind.clone()), actor, None),
             (None, Some(party)) => {
                 let Some((id, helped)) = party_in_hex(party, hex) else {
@@ -7447,7 +7603,9 @@ fn build(
                     .intents
                     .iter()
                     .find_map(|placed| match &placed.intent {
-                        Intent::Build { founding, helping } => Some((founding, helping)),
+                        Intent::Build {
+                            founding, helping, ..
+                        } => Some((founding, helping)),
                         _ => None,
                     });
                 match their_build {
@@ -7542,30 +7700,27 @@ fn build(
     {
         let material = if resolved.len() == 1 {
             Some(resolved[0].name.clone())
+        } else if resolved
+            .iter()
+            .any(|item| available_of(&item.tag).is_none())
+        {
+            // A doubted tag cannot answer "does this hex hold any of it" (`ah-66yi`), so which
+            // material this build would have spent cannot be settled either.
+            None
         } else {
-            let mut holding = None;
-            let mut ambiguous = false;
-            for item in &resolved {
-                match available_of(&item.tag) {
-                    Some(amount) if amount > 0 && holding.is_none() => holding = Some(item),
-                    Some(amount) if amount > 0 => {
-                        ambiguous = true;
-                        break;
-                    }
-                    Some(_) => {}
-                    None => {
-                        ambiguous = true;
-                        break;
-                    }
-                }
-            }
-            if ambiguous {
-                None
-            } else {
-                holding.map(|item| item.name.clone())
-            }
+            // The material the settlement below would have spent first: whichever of the
+            // candidates the unit actually holds, in the order the rules spend them.
+            build_candidates(ruleset, &resolved, order.material, |tag| {
+                available_of(tag).unwrap_or(0)
+            })
+            .and_then(|candidates| {
+                candidates
+                    .into_iter()
+                    .find(|item| available_of(&item.tag).unwrap_or(0) > 0)
+            })
+            .map(|item| item.name.clone())
         };
-        if founding.is_some() && helping.is_none() {
+        if order.founding.is_some() && order.helping.is_none() {
             ledger
                 .build_placement_refusals
                 .entry(who.clone())
@@ -7586,23 +7741,44 @@ fn build(
         mark_uncounted_and_return!();
     }
     let held_of = |tag: &str| available_of(tag).unwrap_or(0);
-    let material = if resolved.len() == 1 {
-        resolved[0]
-    } else {
-        let holding: Vec<&crate::movement::rules::ItemEntry> = resolved
-            .iter()
-            .copied()
-            .filter(|item| held_of(&item.tag) > 0)
-            .collect();
-        match holding.len() {
-            // No work is possible, and it is known to be none.
-            0 => return,
-            1 => holding[0],
-            // Nothing in the rules says which the engine takes.
-            _ => mark_uncounted_and_return!(),
-        }
+    let Some(candidates) = build_candidates(ruleset, &resolved, order.material, held_of) else {
+        mark_uncounted_and_return!();
     };
-    let held = held_of(&material.tag);
+    let held: Vec<(&crate::movement::rules::ItemEntry, i64)> = candidates
+        .iter()
+        .copied()
+        .map(|item| (item, held_of(&item.tag)))
+        .collect();
+    if held.iter().all(|(_, amount)| *amount <= 0) {
+        // No work is possible, and it is known to be none. A structure built from either of two
+        // materials says so (the agreed words cover that family only, so a single-material recipe
+        // stays silent), and a `BUILD HELP` is out of scope exactly as the placement refusal is.
+        if resolved.len() > 1 && helped_id.is_none() {
+            let asked = order
+                .material
+                .map(|material| material.display_name().to_string());
+            let instead = asked.as_ref().and_then(|asked| {
+                let mut others = resolved
+                    .iter()
+                    .filter(|item| !item.name.eq_ignore_ascii_case(asked))
+                    .filter_map(|item| {
+                        let amount = held_of(&item.tag);
+                        (amount > 0).then(|| (amount, item.name.clone()))
+                    });
+                let first = others.next();
+                others.next().is_none().then_some(first).flatten()
+            });
+            ledger.build_material_refusals.push(BuildMaterialRefusal {
+                unit_id: who.clone(),
+                placed: placed.clone(),
+                kind: kind.clone(),
+                asked,
+                alternatives: resolved.iter().map(|item| item.name.clone()).collect(),
+                instead,
+            });
+        }
+        return;
+    }
 
     // 8. The level. `Ordered::skill_level` cannot answer `None` on this path today (see the
     // module's known traps), but the branch costs one line and is cheaper than a surprise later.
@@ -7615,34 +7791,42 @@ fn build(
         mark_uncounted_and_return!();
     };
     let level = i64::from(level_in(skills, skill_tag));
-    let plan = plan_build(actor.men_after_orders, level, remaining, held);
+    let plan = plan_build(actor.men_after_orders, level, remaining, &held);
     if plan.done == 0 {
         // A zero movement would reorder the item list into a phantom "items changed" row.
         return;
     }
 
-    // 10. Record the movement and the spend. Every value has exactly one source.
-    let tag = material.tag.to_ascii_uppercase();
-    let name = item_name(&tag, hex, Some(ruleset));
-    // The spend and its movements: this unit's own stock first, then the hex's sharing units in
-    // report order, each debited on its own row (`ah-728m.2.2`).
-    charge_shared_material(
-        ledger,
-        StatePhase::Build,
-        pool,
-        &tag,
-        plan.done,
-        placed,
-        ItemChangeCause::BuildSpent,
-    );
+    // 10. Record the movements and the spend, one movement per material. Every value has exactly
+    // one source.
+    let mut materials = Vec::with_capacity(plan.shares.len());
+    for share in &plan.shares {
+        let tag = share.item.tag.to_ascii_uppercase();
+        let name = item_name(&tag, hex, Some(ruleset));
+        // The spend and its movements: this unit's own stock first, then the hex's sharing units
+        // in report order, each debited on its own row (`ah-728m.2.2`).
+        charge_shared_material(
+            ledger,
+            StatePhase::Build,
+            pool,
+            &tag,
+            share.amount,
+            placed,
+            ItemChangeCause::BuildSpent,
+        );
+        materials.push(super::effects::BuildMaterialShare {
+            amount: share.amount,
+            tag,
+            name,
+        });
+    }
     ledger
         .built
         .entry(who.clone())
         .or_default()
         .push(super::effects::BuildSpend {
+            materials,
             amount: plan.done,
-            tag,
-            name,
             place,
             founding: is_founding,
             helping: helped_id,
@@ -10224,7 +10408,10 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
         else {
             continue;
         };
-        let Intent::Build { founding, helping } = &placed.intent else {
+        let Intent::Build {
+            founding, helping, ..
+        } = &placed.intent
+        else {
             continue;
         };
         if founding.is_some() {
@@ -10294,7 +10481,10 @@ fn check_building_outside(hex: &Hex<'_>, options: &CheckOptions, findings: &mut 
         else {
             continue;
         };
-        let Intent::Build { founding, helping } = &placed.intent else {
+        let Intent::Build {
+            founding, helping, ..
+        } = &placed.intent
+        else {
             continue;
         };
         // `BUILD [name]` founds something that needs no structure to stand in, and the HELP forms
@@ -10508,7 +10698,10 @@ fn check_build_skill(
         else {
             continue;
         };
-        let Intent::Build { founding, helping } = &placed.intent else {
+        let Intent::Build {
+            founding, helping, ..
+        } = &placed.intent
+        else {
             continue;
         };
 
@@ -10526,7 +10719,9 @@ fn check_build_skill(
                     .intents
                     .iter()
                     .find_map(|placed| match &placed.intent {
-                        Intent::Build { founding, helping } => Some((founding, helping)),
+                        Intent::Build {
+                            founding, helping, ..
+                        } => Some((founding, helping)),
                         _ => None,
                     })
                 else {
@@ -10590,6 +10785,62 @@ fn check_build_skill(
             format!("{verb} {article} {kind}: needs {skill} {required}, {shortfall}"),
             Some(placed),
         ));
+    }
+}
+
+/// Every own unit whose `BUILD` finds none of the material it needs (`rules/build`).
+///
+/// Reads [`Ledger::build_material_refusals`] rather than walking the hex, for the reason
+/// [`check_emptied_sales`] gives: `build` has already resolved the recipe, the restriction and what
+/// the pool holds, and this is the one place left to turn that into a sentence.
+///
+/// The ledger spans the whole report and this check runs once per hex, so a refusal recorded for a
+/// unit standing somewhere else is skipped rather than repeated in every region.
+fn check_build_material(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::BUILD_WITHOUT_MATERIAL) {
+        return;
+    }
+
+    for refusal in &ledger.build_material_refusals {
+        let Some(ordered) = hex.find(&refusal.unit_id) else {
+            continue;
+        };
+        let article = article_for(&refusal.kind);
+        let message = match (&refusal.asked, &refusal.instead) {
+            (Some(asked), Some((amount, name))) => format!(
+                "cannot build {article} {} from {asked}: has no {asked}, but {amount} {name}",
+                refusal.kind
+            ),
+            (Some(asked), None) => format!(
+                "cannot build {article} {} from {asked}: has no {asked}",
+                refusal.kind
+            ),
+            (None, _) => format!(
+                "cannot build {article} {}: has neither {}",
+                refusal.kind,
+                nor_list(&refusal.alternatives)
+            ),
+        };
+        findings.push(ordered.finding(
+            hex,
+            codes::BUILD_WITHOUT_MATERIAL,
+            message,
+            Some(&refusal.placed),
+        ));
+    }
+}
+
+/// `"wood nor stone"`, and `"wood, stone nor iron"` for a recipe offering three.
+fn nor_list(names: &[String]) -> String {
+    match names {
+        [] => String::new(),
+        [only] => only.clone(),
+        [rest @ .., last] => format!("{} nor {last}", rest.join(", ")),
     }
 }
 
@@ -20350,69 +20601,126 @@ mod tests {
         }
     }
 
-    /// `ah-ofpb.2`. `plan_build` is pure arithmetic with no ledger or ruleset involved, so it is
+    /// `ah-ofpb.2`. `plan_build` is pure arithmetic over the materials it is handed, so it is
     /// tested directly rather than through a fixture.
     mod build_arithmetic {
         use super::effects::BuildCap;
         use super::*;
 
+        /// What the plan did, as `(spend order, total, could_do, cap)`.
+        fn plan(
+            men: i64,
+            level: i64,
+            remaining: i64,
+            held: &[(&str, i64)],
+        ) -> (Vec<(String, i64)>, i64, i64, Option<BuildCap>) {
+            let rules = ruleset();
+            let items: Vec<(&crate::movement::rules::ItemEntry, i64)> = held
+                .iter()
+                .map(|(tag, amount)| {
+                    (
+                        rules.find_item(tag).expect("the catalogue knows the tag"),
+                        *amount,
+                    )
+                })
+                .collect();
+            let plan = plan_build(men, level, remaining, &items);
+            (
+                plan.shares
+                    .iter()
+                    .map(|share| (share.item.tag.clone(), share.amount))
+                    .collect(),
+                plan.done,
+                plan.could_do,
+                plan.capped_by,
+            )
+        }
+
         #[test]
         fn a_build_does_what_its_men_and_its_level_allow() {
             assert_eq!(
-                plan_build(10, 3, 45, 120),
-                BuildPlan {
-                    done: 30,
-                    could_do: 30,
-                    capped_by: None,
-                }
+                plan(10, 3, 45, &[("STON", 120)]),
+                (vec![("STON".to_string(), 30)], 30, 30, None)
             );
         }
 
         #[test]
         fn a_build_short_of_material_does_less() {
             assert_eq!(
-                plan_build(10, 3, 45, 15),
-                BuildPlan {
-                    done: 15,
-                    could_do: 30,
-                    capped_by: Some(BuildCap::Materials),
-                }
+                plan(10, 3, 45, &[("STON", 15)]),
+                (
+                    vec![("STON".to_string(), 15)],
+                    15,
+                    30,
+                    Some(BuildCap::Materials)
+                )
             );
         }
 
         #[test]
         fn a_build_on_a_nearly_finished_structure_does_only_what_is_left() {
             assert_eq!(
-                plan_build(10, 3, 6, 120),
-                BuildPlan {
-                    done: 6,
-                    could_do: 30,
-                    capped_by: Some(BuildCap::Needs),
-                }
+                plan(10, 3, 6, &[("STON", 120)]),
+                (vec![("STON".to_string(), 6)], 6, 30, Some(BuildCap::Needs))
             );
         }
 
         #[test]
         fn a_build_stopped_by_both_names_the_structure() {
             assert_eq!(
-                plan_build(10, 3, 6, 6),
-                BuildPlan {
-                    done: 6,
-                    could_do: 30,
-                    capped_by: Some(BuildCap::Needs),
-                }
+                plan(10, 3, 6, &[("STON", 6)]),
+                (vec![("STON".to_string(), 6)], 6, 30, Some(BuildCap::Needs))
             );
         }
 
         #[test]
         fn a_unit_with_no_skill_does_no_work() {
+            assert_eq!(plan(10, 0, 45, &[("STON", 120)]), (Vec::new(), 0, 0, None));
+        }
+
+        /// `rules/build` (New Age: Trident) spends stone before wood, so a month that exhausts the
+        /// stone finishes on wood - one build, two shares.
+        #[test]
+        fn a_month_that_exhausts_one_material_finishes_on_the_next() {
             assert_eq!(
-                plan_build(10, 0, 45, 120),
-                BuildPlan {
-                    done: 0,
-                    could_do: 0,
-                    capped_by: None,
-                }
+                plan(10, 3, 10, &[("STON", 4), ("WOOD", 20)]),
+                (
+                    vec![("STON".to_string(), 4), ("WOOD".to_string(), 6)],
+                    10,
+                    30,
+                    // The Farm wants only 10 of the 30 this unit could do, exactly as a
+                    // single-material month of the same size already reports.
+                    Some(BuildCap::Needs)
+                )
+            );
+        }
+
+        /// Both together still fall short: the cap is the material, and it is named against the
+        /// totals rather than against the first share.
+        #[test]
+        fn two_materials_that_together_fall_short_are_capped_by_material() {
+            assert_eq!(
+                plan(10, 3, 45, &[("STON", 4), ("WOOD", 2)]),
+                (
+                    vec![("STON".to_string(), 4), ("WOOD".to_string(), 2)],
+                    6,
+                    30,
+                    Some(BuildCap::Materials)
+                )
+            );
+        }
+
+        /// A material the unit holds none of takes no share at all.
+        #[test]
+        fn an_empty_material_takes_no_share() {
+            assert_eq!(
+                plan(10, 3, 45, &[("STON", 0), ("WOOD", 20)]),
+                (
+                    vec![("WOOD".to_string(), 20)],
+                    20,
+                    30,
+                    Some(BuildCap::Materials)
+                )
             );
         }
     }
@@ -23323,9 +23631,12 @@ BUILD
                 assert_eq!(
                     ledger.built.get("900"),
                     Some(&vec![effects::BuildSpend {
+                        materials: vec![effects::BuildMaterialShare {
+                            amount: 30,
+                            tag: "WOOD".to_string(),
+                            name: "wood".to_string(),
+                        }],
                         amount: 30,
-                        tag: "WOOD".to_string(),
-                        name: "wood".to_string(),
                         place: "Building 4".to_string(),
                         founding: false,
                         helping: None,
@@ -23764,9 +24075,12 @@ BUILD
                 assert_eq!(
                     ledger.built.get("900"),
                     Some(&vec![effects::BuildSpend {
+                        materials: vec![effects::BuildMaterialShare {
+                            amount: 10,
+                            tag: "STON".to_string(),
+                            name: "stone".to_string(),
+                        }],
                         amount: 10,
-                        tag: "STON".to_string(),
-                        name: "stone".to_string(),
                         place: "Tower".to_string(),
                         founding: true,
                         helping: None,
@@ -25969,7 +26283,14 @@ BUILD
         .cloned()
         .unwrap_or_default();
         assert_eq!(winning.built.len(), 1, "{:?}", winning.built);
-        assert_eq!(winning.built[0].tag, "WOOD");
+        assert_eq!(
+            winning.built[0]
+                .materials
+                .iter()
+                .map(|share| share.tag.as_str())
+                .collect::<Vec<_>>(),
+            ["WOOD"]
+        );
         assert!(
             winning
                 .moved
@@ -31968,10 +32289,17 @@ BUILD
 
     #[test]
     fn a_ship_carrier_explicitly_building_a_mine_is_still_checked() {
-        let carrier = with_skill(
-            with_item(unit("4021"), 1, "unfinished Cog", "COG"),
-            "SHIP",
-            2,
+        // Carrying the stone a Mine is built from, so the only thing wrong with this order is
+        // the skill (`build-without-material` is the warning for the other).
+        let carrier = with_item(
+            with_skill(
+                with_item(unit("4021"), 1, "unfinished Cog", "COG"),
+                "SHIP",
+                2,
+            ),
+            120,
+            "stone",
+            "STON",
         );
         let finding = only(check(
             vec![region(vec![carrier])],
@@ -32440,9 +32768,12 @@ BUILD
         assert_eq!(
             helper.built,
             vec![effects::BuildSpend {
+                materials: vec![effects::BuildMaterialShare {
+                    amount: 10,
+                    tag: "STON".to_string(),
+                    name: "stone".to_string(),
+                }],
                 amount: 10,
-                tag: "STON".to_string(),
-                name: "stone".to_string(),
                 place: "Mine".to_string(),
                 founding: true,
                 helping: Some("new-1".to_string()),
@@ -32518,7 +32849,10 @@ BUILD
         let finding = only(check(
             vec![ReportRegion {
                 structures: vec![unfinished_mine("1")],
-                ..region(vec![in_structure(with_skill(unit("4021"), "MINI", 1), "1")])
+                ..region(vec![in_structure(
+                    with_item(with_skill(unit("4021"), "MINI", 1), 120, "stone", "STON"),
+                    "1",
+                )])
             }],
             "unit 4021\nBUILD\n",
         ));
@@ -32539,7 +32873,12 @@ BUILD
                     vec![ReportRegion {
                         structures: vec![unfinished_mine("1")],
                         ..region(vec![in_structure(
-                            with_skill(unit("4021"), "MINI", level),
+                            with_item(
+                                with_skill(unit("4021"), "MINI", level),
+                                120,
+                                "stone",
+                                "STON"
+                            ),
                             "1"
                         )])
                     }],
@@ -32572,7 +32911,12 @@ BUILD
     #[test]
     fn building_a_named_structure_checks_that_structure_s_requirement() {
         let finding = only(check(
-            vec![region(vec![with_skill(unit("4021"), "MINI", 1)])],
+            vec![region(vec![with_item(
+                with_skill(unit("4021"), "MINI", 1),
+                120,
+                "stone",
+                "STON",
+            )])],
             "unit 4021\nBUILD Mine\n",
         ));
 
@@ -32586,7 +32930,7 @@ BUILD
     #[test]
     fn a_kind_beginning_with_a_vowel_takes_an() {
         let finding = only(check(
-            vec![region(vec![unit("4021")])],
+            vec![region(vec![with_item(unit("4021"), 120, "stone", "STON")])],
             "unit 4021\nBUILD Inn\n",
         ));
 
@@ -32672,7 +33016,12 @@ BUILD
     fn the_build_skill_check_can_be_turned_off() {
         assert_eq!(
             check_turn(
-                &report(vec![region(vec![unit("4021")])]),
+                &report(vec![region(vec![with_item(
+                    unit("4021"),
+                    120,
+                    "stone",
+                    "STON"
+                )])]),
                 "unit 4021\nBUILD Mine\n",
                 Some(&ruleset()),
                 disabling_all(&[codes::BUILD_WITHOUT_SKILL, codes::UNIT_DOES_NOTHING]),
@@ -36000,6 +36349,17 @@ BUILD
                     "WOOD",
                 )])],
                 orders: "unit 900\nBUILD Caravanserai\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::BUILD_WITHOUT_MATERIAL,
+                regions: vec![region(vec![with_skill(
+                    with_men(unit("900"), 10),
+                    "MINI",
+                    3,
+                )])],
+                orders: "unit 900\nBUILD Mine\n",
                 allowance: None,
                 unclaimed: None,
             },
@@ -42242,31 +42602,153 @@ BUILD
 
     /// "Either material possible and the forecast cannot tell which: the sentence stops after the
     /// reason and does not claim a material" - the agreed experience's own words. A Caravanserai
-    /// takes wood or stone (`newage trident data/Caravanserai`), and a builder holding both leaves
-    /// the ledger unable to say which the engine would have taken.
+    /// takes wood or stone (`newage trident data/Caravanserai`), and a builder holding both is the
+    /// case that used to be unsayable.
+    ///
+    /// In a New Age world it no longer is: `rules/build` states the default outright - "consuming
+    /// stone before wood" - so the refusal names the stone this build would have taken (ah-g9sf.4).
+    /// New Origins' own `rules/build` states no such default, so there the sentence still stops
+    /// after the reason.
     #[test]
     fn an_ambiguous_material_leaves_the_sentence_after_the_reason() {
-        let builder = with_item(
+        let builder = || {
             with_item(
-                with_skill(with_men(unit("900"), 10), "BUIL", 3),
+                with_item(
+                    with_skill(with_men(unit("900"), 10), "BUIL", 3),
+                    120,
+                    "wood",
+                    "WOOD",
+                ),
                 120,
-                "wood",
-                "WOOD",
-            ),
-            120,
-            "stone",
-            "STON",
-        );
-        let findings = refusals(
-            vec![region(vec![builder])],
-            "unit 900\nBUILD Caravanserai\n",
+                "stone",
+                "STON",
+            )
+        };
+        let orders = "unit 900\nBUILD Caravanserai\n";
+
+        let trident = refusals(
+            vec![region(vec![builder()])],
+            orders,
             CheckOptions::default(),
         );
-
-        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(trident.len(), 1, "{trident:?}");
         assert_eq!(
-            findings[0].message,
-            "Cannot start a Caravanserai here: this region has no settlement."
+            trident[0].message,
+            "Cannot start a Caravanserai here: this region has no settlement. \
+             No stone will be used."
+        );
+
+        let origins: Vec<Finding> = check_turn(
+            &report(vec![region(vec![builder()])]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::BUILD_SITE_REFUSED)
+        .collect();
+        assert!(
+            origins
+                .iter()
+                .all(|finding| !finding.message.contains("will be used")),
+            "New Origins states no default, so it claims no material: {origins:?}"
+        );
+    }
+
+    /// `rules/build` (New Age: Trident): "If the preferred material is not available, the order
+    /// will fail with an error." A Farm takes wood or stone (`newage trident data/farming`).
+    #[test]
+    fn a_build_from_a_material_the_unit_has_not_got_is_a_warning() {
+        fn warnings(builder: ReportUnit, orders: &str, rules: &Ruleset) -> Vec<Finding> {
+            check_turn(
+                &report(vec![region(vec![builder])]),
+                orders,
+                Some(rules),
+                CheckOptions::default(),
+            )
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect()
+        }
+
+        let farmer = |stone: i64| {
+            with_item(
+                with_skill(with_men(unit("900"), 10), "FARM", 3),
+                stone,
+                "stone",
+                "STON",
+            )
+        };
+
+        let with_stone = warnings(farmer(20), "unit 900\nBUILD Farm WOOD\n", &trident());
+        assert_eq!(with_stone.len(), 1, "{with_stone:?}");
+        assert_eq!(
+            with_stone[0].message,
+            "cannot build a Farm from wood: has no wood, but 20 stone"
+        );
+
+        let with_nothing = warnings(farmer(0), "unit 900\nBUILD Farm WOOD\n", &trident());
+        assert_eq!(with_nothing.len(), 1, "{with_nothing:?}");
+        assert_eq!(
+            with_nothing[0].message,
+            "cannot build a Farm from wood: has no wood"
+        );
+
+        // The material it does hold is spent without a word.
+        assert!(
+            warnings(farmer(20), "unit 900\nBUILD Farm STONE\n", &trident()).is_empty(),
+            "a build from the material it holds is no warning"
+        );
+    }
+
+    /// Neither alternative needs no rule about which the engine takes, so both worlds say it.
+    #[test]
+    fn a_builder_carrying_neither_material_is_warned_in_both_worlds() {
+        for rules in [trident(), ruleset()] {
+            let findings: Vec<Finding> = check_turn(
+                &report(vec![region(vec![with_skill(
+                    with_men(unit("900"), 10),
+                    "FARM",
+                    3,
+                )])]),
+                "unit 900\nBUILD Farm\n",
+                Some(&rules),
+                CheckOptions::default(),
+            )
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect();
+
+            assert_eq!(findings.len(), 1, "{findings:?}");
+            assert_eq!(
+                findings[0].message,
+                "cannot build a Farm: has neither wood nor stone"
+            );
+        }
+    }
+
+    /// Switched off, it says nothing at all.
+    #[test]
+    fn a_disabled_build_without_material_emits_nothing() {
+        let findings = check_turn(
+            &report(vec![region(vec![with_skill(
+                with_men(unit("900"), 10),
+                "FARM",
+                3,
+            )])]),
+            "unit 900\nBUILD Farm\n",
+            Some(&trident()),
+            CheckOptions {
+                disabled: [codes::BUILD_WITHOUT_MATERIAL.as_str().to_string()]
+                    .into_iter()
+                    .collect(),
+            },
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.code != codes::BUILD_WITHOUT_MATERIAL),
+            "{findings:?}"
         );
     }
 

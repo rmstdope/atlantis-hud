@@ -127,7 +127,47 @@ pub enum Intent {
         founding: Option<String>,
         /// `BUILD HELP [unit]`: whose structure is being worked on, when it is not this unit's.
         helping: Option<Party>,
+        /// `BUILD [name] WOOD`/`STONE`: the material the order restricts itself to.
+        ///
+        /// Always `None` under New Origins, whose `rules/build` has no material form at all - the
+        /// word is then trailing text the grammar never consumes, so no reader here sees it.
+        material: Option<BuildMaterial>,
     },
+}
+
+/// The material a New Age `BUILD` restricts itself to.
+///
+/// `rules/build` (New Age: Trident and Arcanum): "You can specify WOOD or STONE after the object
+/// type to restrict which material is used."
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildMaterial {
+    Stone,
+    Wood,
+}
+
+impl BuildMaterial {
+    /// The word as the order writes it, matched case-insensitively as the game's parser does;
+    /// `None` for anything else.
+    #[must_use]
+    pub fn read(token: &Token) -> Option<Self> {
+        if token.is("STONE") {
+            Some(Self::Stone)
+        } else if token.is("WOOD") {
+            Some(Self::Wood)
+        } else {
+            None
+        }
+    }
+
+    /// The catalogue's own lower-case display name, which is also the recipe's spelling
+    /// ([`Ruleset::build_recipe`]).
+    #[must_use]
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Stone => "stone",
+            Self::Wood => "wood",
+        }
+    }
 }
 
 /// One intent, and where on the page it was written.
@@ -789,10 +829,12 @@ pub fn read_order_with_ruleset(
             [] => Some(Intent::Build {
                 founding: None,
                 helping: None,
+                material: None,
             }),
             [complete] if complete.is("COMPLETE") => Some(Intent::Build {
                 founding: None,
                 helping: None,
+                material: None,
             }),
             [help, rest @ ..] if help.is("HELP") => {
                 let (helping, rest) = forms::read_party(rest)?;
@@ -800,21 +842,42 @@ pub fn read_order_with_ruleset(
                     [] => Some(Intent::Build {
                         founding: None,
                         helping: Some(helping),
+                        material: None,
                     }),
                     [complete] if complete.is("COMPLETE") => Some(Intent::Build {
                         founding: None,
                         helping: Some(helping),
+                        material: None,
                     }),
                     _ => None,
                 }
             }
+            // The two material forms come first: only the New Age grammar consumes that word, so
+            // under New Origins the slice never reaches these arms (`grammar.rs`'s
+            // `consumed_arguments` seam).
+            [name, material] if BuildMaterial::read(material).is_some() => Some(Intent::Build {
+                founding: Some(name.text.clone()),
+                helping: None,
+                material: BuildMaterial::read(material),
+            }),
+            [name, material, complete]
+                if BuildMaterial::read(material).is_some() && complete.is("COMPLETE") =>
+            {
+                Some(Intent::Build {
+                    founding: Some(name.text.clone()),
+                    helping: None,
+                    material: BuildMaterial::read(material),
+                })
+            }
             [name] => Some(Intent::Build {
                 founding: Some(name.text.clone()),
                 helping: None,
+                material: None,
             }),
             [name, complete] if complete.is("COMPLETE") => Some(Intent::Build {
                 founding: Some(name.text.clone()),
                 helping: None,
+                material: None,
             }),
             _ => None,
         },
@@ -1058,6 +1121,42 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["EXPLORE", "CREATE"]
         );
+    }
+
+    /// `rules/build` (New Age: Trident) lets a BUILD name `WOOD` or `STONE`; New Origins' own
+    /// `rules/build` has no such form, so there the word is trailing text and the intent carries
+    /// no material.
+    #[test]
+    fn build_records_the_material_a_new_age_order_names() {
+        fn materials(unit: &UnitIntents) -> Vec<Option<BuildMaterial>> {
+            unit.intents
+                .iter()
+                .map(|placed| match &placed.intent {
+                    Intent::Build { material, .. } => *material,
+                    other => panic!("expected a BUILD: {other:?}"),
+                })
+                .collect()
+        }
+
+        let source = "unit 5\nBUILD Farm WOOD\nBUILD Mine STONE COMPLETE\nBUILD Farm\n";
+
+        let trident =
+            only_unit_with_ruleset(source, atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON);
+        assert_eq!(
+            materials(&trident),
+            vec![Some(BuildMaterial::Wood), Some(BuildMaterial::Stone), None]
+        );
+        assert!(matches!(
+            &trident.intents[0].intent,
+            Intent::Build { founding: Some(kind), .. } if kind == "Farm"
+        ));
+
+        let origins = only_unit_with_ruleset(source, atlantis_hud_fixtures::RULESET_JSON);
+        assert_eq!(materials(&origins), vec![None, None, None]);
+        assert!(matches!(
+            &origins.intents[0].intent,
+            Intent::Build { founding: Some(kind), .. } if kind == "Farm"
+        ));
     }
 
     #[test]
@@ -1638,7 +1737,8 @@ mod tests {
             intents("unit 5\nBUILD\n"),
             vec![Intent::Build {
                 founding: None,
-                helping: None
+                helping: None,
+                material: None
             }]
         );
     }
@@ -1650,7 +1750,8 @@ mod tests {
             intents("unit 5\nBUILD Tower\n"),
             vec![Intent::Build {
                 founding: Some("Tower".to_string()),
-                helping: None
+                helping: None,
+                material: None
             }]
         );
     }
@@ -1663,7 +1764,8 @@ mod tests {
             intents("unit 5\nBUILD COMPLETE\n"),
             vec![Intent::Build {
                 founding: None,
-                helping: None
+                helping: None,
+                material: None
             }]
         );
     }
@@ -1675,7 +1777,8 @@ mod tests {
             intents("unit 5\nBUILD HELP 4021\n"),
             vec![Intent::Build {
                 founding: None,
-                helping: Some(Party::Unit("4021".to_string()))
+                helping: Some(Party::Unit("4021".to_string())),
+                material: None
             }]
         );
     }
@@ -1687,7 +1790,8 @@ mod tests {
             intents("unit 5\nBUILD HELP 4021 COMPLETE\n"),
             vec![Intent::Build {
                 founding: None,
-                helping: Some(Party::Unit("4021".to_string()))
+                helping: Some(Party::Unit("4021".to_string())),
+                material: None
             }]
         );
     }
@@ -1700,7 +1804,8 @@ mod tests {
             intents("unit 5\nBUILD HELP NEW 2\n"),
             vec![Intent::Build {
                 founding: None,
-                helping: Some(Party::New("2".to_string()))
+                helping: Some(Party::New("2".to_string())),
+                material: None
             }]
         );
     }
@@ -1714,21 +1819,24 @@ mod tests {
             intents("unit 5\nBUILD COMPLETE foo\n"),
             vec![Intent::Build {
                 founding: None,
-                helping: None
+                helping: None,
+                material: None
             }]
         );
         assert_eq!(
             intents("unit 5\nBUILD HELP 4021 foo\n"),
             vec![Intent::Build {
                 founding: None,
-                helping: Some(Party::Unit("4021".to_string()))
+                helping: Some(Party::Unit("4021".to_string())),
+                material: None
             }]
         );
         assert_eq!(
             intents("unit 5\nBUILD Tower foo\n"),
             vec![Intent::Build {
                 founding: Some("Tower".to_string()),
-                helping: None
+                helping: None,
+                material: None
             }]
         );
     }

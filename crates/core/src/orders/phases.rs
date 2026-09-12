@@ -221,6 +221,7 @@ mod tests {
                 Intent::Build {
                     founding: None,
                     helping: None,
+                    material: None,
                 },
                 StatePhase::Build,
             ),

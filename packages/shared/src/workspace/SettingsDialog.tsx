@@ -691,6 +691,12 @@ export const WARNING_GROUPS: readonly {
         code: "build-site-refused",
         title: "Construction sites the game will refuse",
         description: "A BUILD order that cannot start a new building in this region."
+      },
+      {
+        code: "build-without-material",
+        title: "Building without the material",
+        description:
+          "A BUILD order by a unit that has none of the wood or stone the structure is built from."
       }
     ]
   },

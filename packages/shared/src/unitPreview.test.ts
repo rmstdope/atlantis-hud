@@ -994,9 +994,8 @@ describe("formatItems and itemsTooltip", () => {
       ],
       built: [
         {
+          materials: [{ amount: 15, tag: "WOOD", name: "wood" }],
           amount: 15,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: null,
@@ -1018,9 +1017,8 @@ describe("formatItems and itemsTooltip", () => {
       itemChanges: [],
       built: [
         {
+          materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
           amount: 30,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: null,
@@ -1050,9 +1048,8 @@ describe("formatItems and itemsTooltip", () => {
       ],
       built: [
         {
+          materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
           amount: 30,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: null,
@@ -1084,9 +1081,8 @@ describe("formatItems and itemsTooltip", () => {
       ],
       built: [
         {
+          materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
           amount: 30,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: null,
@@ -1118,9 +1114,8 @@ describe("formatItems and itemsTooltip", () => {
       ],
       built: [
         {
+          materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
           amount: 30,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: null,
@@ -1131,6 +1126,81 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row)).toBe("Spends 30 WOOD on Building 4 this month.");
+  });
+
+  it("says a mixed build in one sentence", () => {
+    // `rules/build` (New Age: Trident) spends stone before wood, so a month that exhausts the
+    // stone finishes on wood - one build, two debits, one sentence.
+    const row = previewedUnit({
+      items: [],
+      itemChanges: [],
+      built: [
+        {
+          materials: [
+            { amount: 4, tag: "STON", name: "stone" },
+            { amount: 6, tag: "WOOD", name: "wood" }
+          ],
+          amount: 10,
+          place: "Farm",
+          founding: true,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "Spends 4 STON and 6 WOOD on a new Farm this month — all the stone it has, then wood for the rest."
+    );
+  });
+
+  it("says a single-material build exactly as it always did", () => {
+    const row = previewedUnit({
+      items: [],
+      itemChanges: [],
+      built: [
+        {
+          materials: [{ amount: 10, tag: "STON", name: "stone" }],
+          amount: 10,
+          place: "Farm",
+          founding: true,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe("Spends 10 STON on a new Farm this month.");
+  });
+
+  it("drops the explaining clause from a mix that ran out of both", () => {
+    // There is no "rest" when the wood ran out too, so the cap sentence says what happened
+    // instead.
+    const row = previewedUnit({
+      items: [],
+      itemChanges: [],
+      built: [
+        {
+          materials: [
+            { amount: 4, tag: "STON", name: "stone" },
+            { amount: 2, tag: "WOOD", name: "wood" }
+          ],
+          amount: 6,
+          place: "Farm",
+          founding: true,
+          helping: null,
+          couldDo: 30,
+          cappedBy: "materials"
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "Spends 4 STON and 2 WOOD on a new Farm this month.\n" +
+        "This unit has stone and wood for 6 units of work, not the 30 its men could do."
+    );
   });
 
   it("still says what a transport that moved nothing was going to send", () => {
@@ -1358,9 +1428,8 @@ describe("formatItems and itemsTooltip", () => {
       ],
       built: [
         {
+          materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
           amount: 30,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: null,
@@ -1378,9 +1447,8 @@ describe("formatItems and itemsTooltip", () => {
       items: [{ amount: 15, name: "wood", tag: "WOOD" }],
       built: [
         {
+          materials: [{ amount: 15, tag: "WOOD", name: "wood" }],
           amount: 15,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: null,
@@ -1401,9 +1469,8 @@ describe("formatItems and itemsTooltip", () => {
       items: [{ amount: 120, name: "wood", tag: "WOOD" }],
       built: [
         {
+          materials: [{ amount: 6, tag: "WOOD", name: "wood" }],
           amount: 6,
-          tag: "WOOD",
-          name: "wood",
           place: "Guild Hall",
           founding: false,
           helping: null,
@@ -1424,9 +1491,8 @@ describe("formatItems and itemsTooltip", () => {
       items: [{ amount: 120, name: "wood", tag: "WOOD" }],
       built: [
         {
+          materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
           amount: 30,
-          tag: "WOOD",
-          name: "wood",
           place: "Stockade",
           founding: true,
           helping: null,
@@ -1444,9 +1510,8 @@ describe("formatItems and itemsTooltip", () => {
       items: [{ amount: 120, name: "stone", tag: "STON" }],
       built: [
         {
+          materials: [{ amount: 10, tag: "STON", name: "stone" }],
           amount: 10,
-          tag: "STON",
-          name: "stone",
           place: "Tower",
           founding: true,
           helping: null,
@@ -1467,9 +1532,8 @@ describe("formatItems and itemsTooltip", () => {
       items: [{ amount: 120, name: "wood", tag: "WOOD" }],
       built: [
         {
+          materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
           amount: 30,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: "5541",
@@ -1487,9 +1551,8 @@ describe("formatItems and itemsTooltip", () => {
       items: [{ amount: 120, name: "wood", tag: "WOOD" }],
       built: [
         {
+          materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
           amount: 30,
-          tag: "WOOD",
-          name: "wood",
           place: "Tower",
           founding: true,
           helping: "5541",
@@ -1507,9 +1570,8 @@ describe("formatItems and itemsTooltip", () => {
       items: [{ amount: 30, name: "stone", tag: "STON" }],
       built: [
         {
+          materials: [{ amount: 30, tag: "STON", name: "stone" }],
           amount: 30,
-          tag: "STON",
-          name: "stone",
           place: "Mine",
           founding: true,
           helping: "new-1",
@@ -1532,9 +1594,8 @@ describe("formatItems and itemsTooltip", () => {
       produced: [{ amount: 5, tag: "SWOR" }],
       built: [
         {
+          materials: [{ amount: 15, tag: "WOOD", name: "wood" }],
           amount: 15,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: null,
@@ -1663,9 +1724,8 @@ describe("formatItems and itemsTooltip", () => {
       produced: [{ amount: 5, tag: "SWOR" }],
       built: [
         {
+          materials: [{ amount: 15, tag: "WOOD", name: "wood" }],
           amount: 15,
-          tag: "WOOD",
-          name: "wood",
           place: "Building 4",
           founding: false,
           helping: null,

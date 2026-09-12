@@ -456,13 +456,33 @@ export function itemsTooltip(
   for (const spend of built) {
     // Kept for exactly what the clause cannot name: the whole figure, wherever the unit's own
     // debit falls short of it. No `cappedBy` fires when the material was there, so without this
-    // the amount the structure actually takes would appear nowhere at all.
-    if ((ownDebit.get(spend.tag) ?? 0) < spend.amount) {
-      lines.push(`Spends ${spend.amount} ${spend.tag} ${buildSpendTarget(spend)} this month.`);
+    // the amount the structure actually takes would appear nowhere at all. A New Age month that
+    // exhausted one material and finished on the next is several debits against one spend, so the
+    // comparison is against their total.
+    const ownTotal = spend.materials.reduce(
+      (total, material) => total + (ownDebit.get(material.tag) ?? 0),
+      0
+    );
+    if (ownTotal < spend.amount) {
+      const each = spend.materials.map((material) => `${material.amount} ${material.tag}`);
+      const spent =
+        each.length === 1 ? each[0]! : `${each.slice(0, -1).join(", ")} and ${each.at(-1)!}`;
+      // Only a mix that finished what the month wanted carries the explaining clause: when the
+      // material ran out there is no "rest", and the cap sentence below says what happened
+      // instead.
+      const mixed =
+        spend.materials.length > 1 && spend.cappedBy !== "materials"
+          ? ` — all the ${spend.materials[0]!.name} it has, then ${spend.materials
+              .slice(1)
+              .map((material) => material.name)
+              .join(" and ")} for the rest`
+          : "";
+      lines.push(`Spends ${spent} ${buildSpendTarget(spend)} this month${mixed}.`);
     }
     if (spend.cappedBy === "materials") {
+      const names = spend.materials.map((material) => material.name).join(" and ");
       lines.push(
-        `This unit has ${spend.name} for ${spend.amount} units of work, not the ${spend.couldDo} its men could do.`
+        `This unit has ${names} for ${spend.amount} units of work, not the ${spend.couldDo} its men could do.`
       );
     } else if (spend.cappedBy === "needs") {
       const needs = spend.founding

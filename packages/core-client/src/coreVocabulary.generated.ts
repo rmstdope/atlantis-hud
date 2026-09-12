@@ -53,7 +53,8 @@ export const ADVISORY_CHECK_CODES = [
   "sail-between-land-hexes",
   "cast-cannot-make-this",
   "transfer-to-itself",
-  "build-site-refused"
+  "build-site-refused",
+  "build-without-material"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
