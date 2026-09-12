@@ -2753,7 +2753,17 @@ test("selecting an arriving unit in its destination hex draws its route", async 
   await fillOrders(page, "sail se");
 
   // The voyage as its origin hex draws it, to compare the destination's drawing against.
+  //
+  // Waiting for the **one-step** route first, not merely for a line: this report's own orders
+  // template already gives 10575 `sail se ne` (line 2357 of the fixture), so the drawn route
+  // changes under the edit above, and a capture taken before the edit lands reads the two-step
+  // voyage the report came with. Two vertices is one step. Seen failing on a CI runner under
+  // `ah-ofra`, which re-sharded this spec onto a slower neighbour; it passes in isolation.
   await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveAttribute(
+    "points",
+    /^[\d.]+,[\d.]+ [\d.]+,[\d.]+$/
+  );
   const fromOrigin = await page.getByTestId("route-line-solid").getAttribute("points");
 
   // Now the destination, where the unit is listed as arriving rather than standing.
