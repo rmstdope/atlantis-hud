@@ -855,18 +855,17 @@ pub fn read_order_with_ruleset(
             // The two material forms come first: only the New Age grammar consumes that word, so
             // under New Origins the slice never reaches these arms (`grammar.rs`'s
             // `consumed_arguments` seam).
-            [name, material] if BuildMaterial::read(material).is_some() => Some(Intent::Build {
+            [name, word] if BuildMaterial::read(word).is_some() => Some(Intent::Build {
                 founding: Some(name.text.clone()),
                 helping: None,
-                material: BuildMaterial::read(material),
+                material: BuildMaterial::read(word),
             }),
-            [name, material, complete]
-                if BuildMaterial::read(material).is_some() && complete.is("COMPLETE") =>
-            {
+            [name, word, complete] if complete.is("COMPLETE") => {
+                let material = BuildMaterial::read(word)?;
                 Some(Intent::Build {
                     founding: Some(name.text.clone()),
                     helping: None,
-                    material: BuildMaterial::read(material),
+                    material: Some(material),
                 })
             }
             [name] => Some(Intent::Build {

@@ -42647,11 +42647,13 @@ BUILD
         .into_iter()
         .filter(|finding| finding.code == codes::BUILD_SITE_REFUSED)
         .collect();
+        // Not a sentence at all under New Origins: its own catalogue puts neither placement rule
+        // on a Caravanserai - on anything, in fact - so that world refuses no site and has no
+        // refusal to phrase. `build-site-refused` is a New Age warning by construction
+        // (`ah-g9sf.11`), and the Trident arm above is the whole of what this test can pin.
         assert!(
-            origins
-                .iter()
-                .all(|finding| !finding.message.contains("will be used")),
-            "New Origins states no default, so it claims no material: {origins:?}"
+            origins.is_empty(),
+            "New Origins states no placement rule to refuse: {origins:?}"
         );
     }
 
@@ -42701,6 +42703,34 @@ BUILD
         );
     }
 
+    /// Two things are wrong with this order and both are said. `build-without-skill` and
+    /// `build-without-material` are separate facts, separately actionable and separately
+    /// switchable, and neither sentence subsumes the other - so the order carries both, as
+    /// independent findings on one line do everywhere else in this checker.
+    #[test]
+    fn a_builder_short_of_both_the_skill_and_the_material_is_told_both() {
+        let findings = check_turn(
+            &report(vec![region(vec![with_men(unit("900"), 10)])]),
+            "unit 900\nBUILD Farm\n",
+            Some(&trident()),
+            CheckOptions::default(),
+        );
+        let mut found: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.code.as_str())
+            .filter(|code| {
+                *code == codes::BUILD_WITHOUT_SKILL.as_str()
+                    || *code == codes::BUILD_WITHOUT_MATERIAL.as_str()
+            })
+            .collect();
+        found.sort_unstable();
+        assert_eq!(
+            found,
+            ["build-without-material", "build-without-skill"],
+            "{findings:?}"
+        );
+    }
+
     /// Neither alternative needs no rule about which the engine takes, so both worlds say it.
     #[test]
     fn a_builder_carrying_neither_material_is_warned_in_both_worlds() {
@@ -42725,6 +42755,31 @@ BUILD
                 "cannot build a Farm: has neither wood nor stone"
             );
         }
+    }
+
+    /// `BUILD Tower WOOD`: a Tower is built from stone alone (`newage trident data/Tower`), so the
+    /// restriction is one the recipe cannot meet. `rules/build` says such an order fails but not
+    /// what the engine then does, so the forecast declines to say - no warning, which would need a
+    /// string nobody agreed.
+    #[test]
+    fn a_material_the_recipe_does_not_offer_raises_no_warning() {
+        let findings = check_turn(
+            &report(vec![region(vec![with_item(
+                with_skill(with_men(unit("900"), 10), "BUIL", 3),
+                120,
+                "stone",
+                "STON",
+            )])]),
+            "unit 900\nBUILD Tower WOOD\n",
+            Some(&trident()),
+            CheckOptions::default(),
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.code != codes::BUILD_WITHOUT_MATERIAL),
+            "no warning is owed for a restriction the rules do not settle: {findings:?}"
+        );
     }
 
     /// Switched off, it says nothing at all.

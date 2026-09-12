@@ -3742,6 +3742,17 @@ mod tests {
         assert_eq!(unit.built.len(), 1, "{:?}", unit.built);
     }
 
+    /// The other half of the same case: nothing is spent, and the line is marked uncounted rather
+    /// than forecast.
+    #[test]
+    fn trident_build_from_a_material_the_recipe_does_not_offer_is_uncounted() {
+        let response =
+            trident_preview_over(&trident_wilderness_report(), "unit 900\nBUILD Tower WOOD\n");
+        let unit = only_unit(&response);
+        assert!(unit.built.is_empty(), "{:?}", unit.built);
+        assert_eq!(unit.uncounted, vec!["BUILD Tower WOOD".to_string()]);
+    }
+
     /// `rules/build` (New Age: Trident): "By default the unit will use whatever is available,
     /// consuming stone before wood." New Origins' own `rules/build` states no such default, so a
     /// unit there holding both stays unknowable.
