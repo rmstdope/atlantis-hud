@@ -16,6 +16,7 @@
 
 import type { MagicTree } from "./magicTree";
 import { cellMenu } from "./studyCell";
+import type { TeachingRule } from "./teachingPermission";
 import { skillWords } from "./skillReading";
 import { hoverCard, type ScheduleRow } from "./studySchedule";
 
@@ -91,6 +92,8 @@ export function magePane(input: {
   teacherNames?: ReadonlyMap<string, string>;
   /** Every row the Schedule drew, so a month somebody would double is shown as doubled. */
   rows?: readonly ScheduleRow[];
+  /** The selected world's cross-faction teaching rule, forwarded to `cellMenu`. */
+  rule: TeachingRule;
 }): MagePane {
   const { row, turnIndex, turns, tree, factionLabel } = input;
   const standing = row.standings[turnIndex ?? 0] ?? new Map();
@@ -106,7 +109,8 @@ export function magePane(input: {
     tree,
     rows: input.rows,
     turnIndex: turnIndex ?? undefined,
-    rowKey: input.rows === undefined ? undefined : row.key
+    rowKey: input.rows === undefined ? undefined : row.key,
+    rule: input.rule
   }).choices;
   // The dropdown's own wording, verbatim: this list and that menu offer the same months, and a
   // player reading one before opening the other should not have to translate between them.

@@ -32,6 +32,7 @@ import { plannedGoals } from "./studyPlans";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
 import type { StandingAfterOrders } from "./studyStanding";
+import { teachingPermission, type TeachingPermission, type TeachingRule } from "./teachingPermission";
 import { joinNames } from "./workspace/standingChip";
 
 /** How many turns the Schedule draws. Six, chosen with the navigator. */
@@ -86,6 +87,12 @@ export type ScheduleCell =
       leftBy: "move" | "leave" | null;
       /** The key of the mage teaching him this turn, or null. */
       taughtBy: string | null;
+      /**
+       * The cross-faction teaching planned for this month under the selected world's declaration
+       * rule, or null when none is - including every same-faction teacher and every world this build
+       * states no direction for. `taughtBy` is set only when `permission` is `"permitted"`.
+       */
+      crossFaction: { teacherKey: string; permission: TeachingPermission } | null;
     }
   | {
       kind: "teach";
@@ -202,6 +209,8 @@ function copy(standing: SkillPoints): Map<string, { level: number; points: numbe
 export type ProjectedMage = {
   /** `${factionId}/${unitId}`. */
   key: string;
+  /** Whose mage he is. Read for the teaching-declaration rule; `key` embeds it but is not split. */
+  factionId: string;
   unitId: string;
   name: string;
   /**
@@ -266,6 +275,17 @@ export function cellLabel(cell: ScheduleCell | undefined): string {
   if (cell.kind === "teach") {
     return cell.label;
   }
+  if (cell.crossFaction !== null) {
+    // The agreed string is the whole label: no points and no worth mark (ah-g9sf.12). A
+    // same-faction taught month keeps today's `FORC 2(140) ×2` exactly, which is what leaves it
+    // unmarked.
+    if (cell.crossFaction.permission === "unknown") {
+      return "teaching uncertain";
+    }
+    return `${cell.name} ${cell.level} - ${
+      cell.crossFaction.permission === "permitted" ? "teaching bonus" : "studies normally"
+    }`;
+  }
   const mark = worthMark(cell.worth, cell.taughtBy !== null || cell.unsheltered);
   return `${cell.skill} ${skillWords({ level: cell.level, points: cell.points })}${
     mark === "" ? "" : ` ${mark}`
@@ -326,6 +346,8 @@ export function projectAll(input: {
   /** The turn numbers the columns carry, in order - `scheduleTurns(...)`. */
   turns: readonly number[];
   seats: ShelterSeats;
+  /** The selected world's cross-faction teaching rule. `NO_TEACHING_RULE` applies none. */
+  rule: TeachingRule;
 }): Map<string, { cells: ScheduleCell[]; standings: SkillPoints[] }> {
   const held = new Map<string, Map<string, { level: number; points: number }>>();
   const out = new Map<string, { cells: ScheduleCell[]; standings: SkillPoints[] }>();
@@ -376,6 +398,9 @@ export function projectAll(input: {
     }
 
     const byUnitId = new Map(input.mages.map((mage) => [mage.unitId, mage] as const));
+    // Keyed by row key, not by unit id: `byUnitId` above is keyed by bare unit id across every
+    // faction, and two factions can carry the same unit id.
+    const byMageKey = new Map(input.mages.map((mage) => [mage.key, mage] as const));
 
     // 3. Teaching, resolved in mage order so a student named twice goes to the first teacher.
     const outcomes = new Map<string, TeachOutcome>();
@@ -564,15 +589,35 @@ export function projectAll(input: {
           shelterUnknown: false,
           leftBuilding: null,
           leftBy: null,
-          taughtBy: null
+          taughtBy: null,
+          crossFaction: null
         });
         continue;
       }
 
       const teacher = taughtBy.get(mage.key) ?? null;
+      const teacherFactionId = teacher === null ? null : (byMageKey.get(teacher)?.factionId ?? null);
+      // Only a teacher from another faction is judged: a faction needs no declaration toward itself,
+      // and a world this build states no direction for answers `"permitted"` throughout.
+      const crossFaction =
+        input.rule.declarer === null ||
+        teacher === null ||
+        teacherFactionId === null ||
+        teacherFactionId === mage.factionId
+          ? null
+          : {
+              teacherKey: teacher,
+              permission: teachingPermission({
+                rule: input.rule,
+                studentFactionId: mage.factionId,
+                teacherFactionId
+              })
+            };
+      const doubled =
+        teacher !== null && (crossFaction === null || crossFaction.permission === "permitted");
       const halved = unsheltered.has(mage.key);
       const worth =
-        (teacher === null ? 1 : (outcomes.get(teacher)?.worth ?? 1)) * (halved ? 0.5 : 1);
+        (doubled ? (outcomes.get(teacher as string)?.worth ?? 1) : 1) * (halved ? 0.5 : 1);
       // Points stay fractional and are never rounded: `taughtWorth(20)` is 1.5 and a halved month
       // is 0.5, so a month can be worth 22.5 points. The 30-points-a-month rate is itself an
       // inference (`studyProgress.ts:21`); rounding here would be a second guess on top of it.
@@ -587,7 +632,8 @@ export function projectAll(input: {
         name: intent.name,
         level,
         points,
-        gained: level > intent.before.level,
+        // Nothing claims a level rose on a month nobody can forecast.
+        gained: crossFaction?.permission === "unknown" ? false : level > intent.before.level,
         blocked: null,
         worth,
         unsheltered: halved,
@@ -596,7 +642,8 @@ export function projectAll(input: {
         // he is simply somewhere rather than going somewhere.
         leftBuilding: turn === 0 && halved && mage.leftBuilding !== null ? mage.leftBuilding : null,
         leftBy: turn === 0 && halved && mage.leftBuilding !== null ? mage.leftBy : null,
-        taughtBy: teacher
+        taughtBy: doubled ? teacher : null,
+        crossFaction
       });
     }
   }
@@ -688,6 +735,8 @@ export function scheduleRows(input: {
    * An absent key, and an empty map, both mean the report's own answer.
    */
   after: ReadonlyMap<string, StandingAfterOrders>;
+  /** The selected world's cross-faction teaching rule. `NO_TEACHING_RULE` applies none. */
+  rule: TeachingRule;
 }): ScheduleRow[] {
   const byKey = new Map(input.plans.map((plan) => [`${plan.factionId}/${plan.unitId}`, plan]));
 
@@ -701,6 +750,7 @@ export function scheduleRows(input: {
       const stood = input.after.get(mage.key);
       mages.push({
         key: mage.key,
+        factionId: mage.factionId,
         unitId: mage.unitId,
         name: mage.name,
         regionId: mage.regionId,
@@ -720,7 +770,8 @@ export function scheduleRows(input: {
     mages,
     tree: input.tree,
     turns: input.turns,
-    seats: input.seats
+    seats: input.seats,
+    rule: input.rule
   });
 
   const rows: ScheduleRow[] = [];
@@ -804,7 +855,24 @@ export function hoverCard(
   // month is `worth` with the shelter half divided back out, so a taught but unsheltered month
   // still reports the doubling it got.
   const extra: string[] = [];
-  if (cell?.kind === "study" && cell.taughtBy !== null) {
+  if (cell?.kind === "study" && cell.crossFaction !== null) {
+    // The agreed sentences (ah-g9sf.12), in place of the same-faction `Taught by ...` one below.
+    // Every name is a slot: a fixed pronoun would assert a sex no report states.
+    const teacherName = teacherNames?.get(cell.crossFaction.teacherKey) ?? "another mage";
+    if (cell.crossFaction.permission === "permitted") {
+      extra.push(
+        `${row.name} has declared ${teacherName} Friendly. ${teacherName}'s teaching doubles ${row.name}'s study this turn.`
+      );
+    } else if (cell.crossFaction.permission === "refused") {
+      extra.push(
+        `${row.name} has not declared ${teacherName} Friendly. ${teacherName}'s teaching will not add a bonus to ${row.name}'s study this turn.`
+      );
+    } else {
+      extra.push(
+        `${row.name}'s Friendly declaration for ${teacherName} is not in the report. ${row.name}'s teaching bonus cannot be forecast.`
+      );
+    }
+  } else if (cell?.kind === "study" && cell.taughtBy !== null) {
     const taught = cell.worth / (cell.unsheltered ? 0.5 : 1);
     extra.push(
       `Taught by ${teacherNames?.get(cell.taughtBy) ?? "another mage"}: this month is worth ${

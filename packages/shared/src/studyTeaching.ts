@@ -7,6 +7,7 @@
 
 import type { ScheduleRow } from "./studySchedule";
 import { joinNames } from "./workspace/standingChip";
+import { teachingPermission, type TeachingRule } from "./teachingPermission";
 
 /**
  * Student-months one teacher can support.
@@ -43,9 +44,11 @@ export function taughtWorth(students: number): number {
  * in the same hex, teaching that turn, strictly above him in that skill, with a slot spare - and
  * the name is the teacher's, so the dropdown can say whose month it is.
  *
- * Deliberately conservative in one case: a full live teacher whose mage order would in fact drop a
+ * Deliberately conservative in two cases. A full live teacher whose mage order would in fact drop a
  * current pupil for this student is reported as having no slot, so the row stays plain rather than
- * nudging the player into displacing somebody.
+ * nudging the player into displacing somebody - and a cross-faction teacher whose declaration rule
+ * answers anything but `"permitted"` is skipped, so a popover never offers a doubled month the
+ * schedule would withhold. Both `"refused"` and `"unknown"` suppress the offer.
  */
 export function doublingTeacher(input: {
   /** Every row the Schedule drew, in the order `projectAll` resolved the teachers in. */
@@ -57,6 +60,8 @@ export function doublingTeacher(input: {
   skill: string;
   /** The level he holds in it as that turn begins. */
   studentLevel: number;
+  /** The selected world's cross-faction teaching rule. `NO_TEACHING_RULE` applies none. */
+  rule: TeachingRule;
 }): string | null {
   const student = input.rows.find((one) => one.key === input.rowKey);
   if (student === undefined) {
@@ -77,6 +82,15 @@ export function doublingTeacher(input: {
       continue;
     }
     if ((row.standings[input.turnIndex]?.get(input.skill)?.level ?? 0) <= input.studentLevel) {
+      continue;
+    }
+    if (
+      teachingPermission({
+        rule: input.rule,
+        studentFactionId: student.factionId,
+        teacherFactionId: row.factionId
+      }) !== "permitted"
+    ) {
       continue;
     }
     // `outcome.taught` holds row keys; `cell.students` above holds unit ids.

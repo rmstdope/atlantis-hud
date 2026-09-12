@@ -3,6 +3,7 @@ import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import { magePane } from "./studyMagePane";
+import { NO_TEACHING_RULE, type TeachingRule } from "./teachingPermission";
 import { scheduleRows, scheduleTurns, type ScheduleRow } from "./studySchedule";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
@@ -50,7 +51,8 @@ function row(skills?: { tag: string; level: number; points: number }[]): Schedul
     tree,
     turns,
     seats: new Map([["1:7,53/1", 1]]),
-    after: new Map()
+    after: new Map(),
+    rule: NO_TEACHING_RULE
   })[0];
 }
 
@@ -64,7 +66,8 @@ function pane(
     turnIndex,
     turns,
     tree,
-    factionLabel: "Wardens of the North (12)"
+    factionLabel: "Wardens of the North (12)",
+    rule: NO_TEACHING_RULE
   });
 }
 
@@ -186,7 +189,8 @@ describe("a month somebody would double", () => {
       turns,
       tree,
       factionLabel: "Wardens of the North (12)",
-      rows
+      rows,
+      rule: NO_TEACHING_RULE
     });
   }
 
@@ -202,5 +206,54 @@ describe("a month somebody would double", () => {
 
     expect(forc?.taughtBy).toBeNull();
     expect(forc?.detail).not.toContain("taught by");
+  });
+});
+
+describe("a month a declaration rule would not double", () => {
+  /** Ereb of our faction 21, and a teacher of faction 12 in his hex. */
+  function rowsWithForeignTeacher(): ScheduleRow[] {
+    const student = row();
+    const teacher: ScheduleRow = {
+      ...student,
+      key: "12/881",
+      factionId: "12",
+      unitId: "881",
+      name: "Wardweaver",
+      cells: student.cells.map(() => ({
+        kind: "teach" as const,
+        students: [],
+        live: true,
+        outcome: { taught: [], refused: [], worth: 2 },
+        label: "TEACH"
+      })),
+      standings: student.standings.map(
+        () => new Map([["FORC", { level: 5, points: 450 }]]) as ScheduleRow["standings"][number]
+      )
+    };
+    return [teacher, student];
+  }
+
+  const forc = (rule: TeachingRule) => {
+    const rows = rowsWithForeignTeacher();
+    return magePane({
+      row: rows[1],
+      turnIndex: 0,
+      turns,
+      tree,
+      factionLabel: "Wardens of the North (12)",
+      rows,
+      rule
+    }).canStudy.find((one) => one.skill === "FORC");
+  };
+
+  const rule = (toward: Record<string, string>): TeachingRule => ({
+    declarer: "student",
+    declarations: { factionId: "21", toward: new Map(Object.entries(toward)), fallback: null }
+  });
+
+  it("leaves the Can study row plain when the declaration does not allow the doubling", () => {
+    expect(forc(rule({ "12": "friendly" }))?.taughtBy).toBe("Wardweaver");
+    expect(forc(rule({ "12": "neutral" }))?.taughtBy).toBeNull();
+    expect(forc(rule({}))?.taughtBy).toBeNull();
   });
 });

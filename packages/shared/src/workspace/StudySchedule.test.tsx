@@ -6,6 +6,7 @@ import { parseGameData, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
 import { cellMenu, seededStudents } from "../studyCell";
 import { scheduleRows, scheduleTurns, type ScheduleRow } from "../studySchedule";
+import { NO_TEACHING_RULE, type TeachingRule } from "../teachingPermission";
 import { magePane } from "../studyMagePane";
 import type { PlannerGroup } from "../studyPlanner";
 import { plannerNotices } from "../studyTeaching";
@@ -67,7 +68,8 @@ const rows = scheduleRows({
   tree,
   turns,
   seats: new Map([["1:7,53/1", 1]]),
-  after: new Map()
+  after: new Map(),
+  rule: NO_TEACHING_RULE
 });
 
 function grid(
@@ -209,6 +211,7 @@ describe("StudySchedule", () => {
         onEvent={() => {}}
         onCommit={() => {}}
         saveError={null}
+        rule={NO_TEACHING_RULE}
       />
     );
   }
@@ -240,7 +243,8 @@ describe("MagePaneView", () => {
           turnIndex,
           turns,
           tree,
-          factionLabel: "Wardens of the North (12)"
+          factionLabel: "Wardens of the North (12)",
+          rule: NO_TEACHING_RULE
         })}
       />
     );
@@ -321,7 +325,8 @@ describe("CellPopover", () => {
     tree,
     turns,
     seats: new Map([["1:7,53/1", 1]]),
-    after: new Map()
+    after: new Map(),
+    rule: NO_TEACHING_RULE
   });
   const menu = cellMenu({
     mageName: "Ereb",
@@ -329,6 +334,7 @@ describe("CellPopover", () => {
     standing: (withStudent[0] as ScheduleRow).standings[2],
     tree,
     rows: withStudent,
+    rule: NO_TEACHING_RULE,
     turnIndex: 2,
     rowKey: "12/2431",
     label: (regionId: string) => regionId
@@ -358,6 +364,7 @@ describe("CellPopover", () => {
       standing: (rows[0] as ScheduleRow).standings[2],
       tree,
       rows,
+      rule: NO_TEACHING_RULE,
       turnIndex: 2,
       rowKey: "12/2431",
       label: (regionId: string) => regionId
@@ -591,7 +598,8 @@ describe("a teaching month in the grid", () => {
     tree,
     turns,
     seats: new Map(),
-    after: new Map()
+    after: new Map(),
+    rule: NO_TEACHING_RULE
   });
 
   function teachingGrid(notices: PlannerNotice[] = []) {
@@ -678,6 +686,7 @@ describe("the warnings strip", () => {
         onCommit={() => {}}
         saveError={null}
         notices={given}
+        rule={NO_TEACHING_RULE}
       />
     );
   }
@@ -715,7 +724,8 @@ describe("a month somebody would double is drawn green", () => {
       tree,
       turns,
       seats: new Map([["1:7,53/1", 1]]),
-      after: new Map()
+      after: new Map(),
+      rule: NO_TEACHING_RULE
     }) as ScheduleRow[];
   })();
 
@@ -745,6 +755,7 @@ describe("a month somebody would double is drawn green", () => {
       standing: taughtRows[1].standings[2],
       tree,
       rows,
+      rule: NO_TEACHING_RULE,
       turnIndex: 2,
       rowKey: "12/2432",
       label: (regionId: string) => regionId
@@ -788,6 +799,7 @@ describe("a month somebody would double is drawn green", () => {
           turnIndex: 2,
           turns,
           tree,
+          rule: NO_TEACHING_RULE,
           factionLabel: "Wardens of the North (12)",
           rows
         })}
@@ -829,7 +841,8 @@ describe("a mage whose orders take him into a building", () => {
       tree,
       turns,
       seats: new Map([["1:7,53/4", 1]]),
-      after
+      after,
+      rule: NO_TEACHING_RULE
     });
     return renderToStaticMarkup(
       <StudySchedule
@@ -843,6 +856,7 @@ describe("a mage whose orders take him into a building", () => {
         saveError={null}
         notices={plannerNotices({ rows: built, turns, label: (regionId) => regionId })}
         label={(regionId) => regionId}
+        rule={NO_TEACHING_RULE}
       />
     );
   }
@@ -950,5 +964,117 @@ describe("ScheduleConfirmDialog", () => {
 
     expect(markup).toContain('data-testid="study-schedule-confirm-cancel"');
     expect(markup).toContain(">Cancel</button>");
+  });
+});
+
+describe("a cross-faction teaching month in the grid", () => {
+  /**
+   * Our own Sable of faction 12 studying force, and Uln of faction 21 teaching her in the same hex.
+   *
+   * The cell's text is asserted here rather than through `StudyPlannerDialog`: the dialog opens on
+   * the All mages view and `renderToStaticMarkup` cannot press the Schedule tab, this package
+   * having no jsdom (ah-nass). The dialog's own threading is covered by the typecheck and by its
+   * existing renders.
+   */
+  const twoFactionGroups = [
+    {
+      factionId: "12",
+      factionLabel: "Wardens of the North (12)",
+      source: "report",
+      heading: "Wardens of the North (12) — turn 23",
+      stale: false,
+      mages: [
+        {
+          key: "12/2517",
+          factionId: "12",
+          factionLabel: "Wardens of the North (12)",
+          unitId: "2517",
+          name: "Sable",
+          regionId: "1:7,53",
+          structureId: "1",
+          sheetTurn: null,
+          monthsUnreported: 0,
+          skills: [{ tag: "FORC", level: 1, points: 30 }]
+        }
+      ]
+    },
+    {
+      factionId: "21",
+      factionLabel: "Circle of Uln (21)",
+      source: "sheet",
+      heading: "Circle of Uln (21) — turn 22",
+      stale: false,
+      mages: [
+        {
+          key: "21/3012",
+          factionId: "21",
+          factionLabel: "Circle of Uln (21)",
+          unitId: "3012",
+          name: "Uln",
+          regionId: "1:7,53",
+          structureId: "1",
+          sheetTurn: null,
+          monthsUnreported: 0,
+          skills: [{ tag: "FORC", level: 2, points: 90 }]
+        }
+      ]
+    }
+  ] as unknown as PlannerGroup[];
+
+  const plans = [
+    {
+      factionId: "12",
+      unitId: "2517",
+      goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+      comment: "",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    },
+    {
+      factionId: "21",
+      unitId: "3012",
+      goals: turns.map((turn) => ({ kind: "teach" as const, turn, students: ["2517"], live: false })),
+      comment: "",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    }
+  ];
+
+  function schedule(rule: TeachingRule) {
+    return renderToStaticMarkup(
+      <StudySchedule
+        rows={scheduleRows({
+          groups: twoFactionGroups,
+          plans,
+          tree,
+          turns,
+          seats: new Map([["1:7,53/1", 9]]),
+          after: new Map(),
+          rule
+        })}
+        groups={twoFactionGroups}
+        turns={turns}
+        tree={tree}
+        mode={{ kind: "idle" }}
+        onEvent={() => {}}
+        onCommit={() => {}}
+        saveError={null}
+        rule={rule}
+      />
+    );
+  }
+
+  const cellText = (markup: string) => {
+    const at = markup.indexOf('data-testid="study-schedule-cell-2517-24"');
+    return markup.slice(at, at + 400);
+  };
+
+  const rule = (toward: Record<string, string>): TeachingRule => ({
+    declarer: "student",
+    declarations: { factionId: "12", toward: new Map(Object.entries(toward)), fallback: null }
+  });
+
+  it("says the declaration cannot be established, and says the bonus once it can", () => {
+    expect(cellText(schedule(rule({})))).toContain("teaching uncertain");
+    expect(cellText(schedule(rule({ "21": "friendly" })))).toContain("force 2 - teaching bonus");
+    expect(cellText(schedule(rule({ "21": "neutral" })))).toContain("force 1 - studies normally");
   });
 });

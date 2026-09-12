@@ -16,6 +16,7 @@ import { plannedGoals, type ScheduleChange } from "../studyPlans";
 import { cellLabel, type ScheduleRow } from "../studySchedule";
 import { magePane, type MagePane } from "../studyMagePane";
 import { noticeSummary, type PlannerNotice } from "../studyTeaching";
+import type { TeachingRule } from "../teachingPermission";
 import type { PlannerGroup } from "../studyPlanner";
 import type { CellEvent, CellMode, CellPick } from "./studyCellState";
 import { keyToAction } from "./studyCellState";
@@ -55,7 +56,8 @@ export function StudySchedule({
   saveError,
   notices = [],
   label = (regionId: string) => regionId,
-  onScheduleChange
+  onScheduleChange,
+  rule
 }: {
   rows: readonly ScheduleRow[];
   /** For the faction headings, worded exactly as the All mages view words them. */
@@ -86,6 +88,8 @@ export function StudySchedule({
    * column moves before the player has confirmed.
    */
   onScheduleChange?: (change: ScheduleChange) => void;
+  /** The selected world's cross-faction teaching rule (ah-g9sf.12), for the pane and the menu. */
+  rule: TeachingRule;
 }) {
   // The pane follows the *focused* cell as well as the hovered one, or it would be unreachable
   // without a mouse - and the grid is walked with the arrow keys, which is what moves focus. A
@@ -120,7 +124,8 @@ export function StudySchedule({
           tree,
           factionLabel: factionLabelOf(groups, hovered.factionId),
           teacherNames: new Map(rows.map((row) => [row.key, row.name] as const)),
-          rows
+          rows,
+          rule
         });
 
   const editing = mode.kind === "choosing" || mode.kind === "teaching" ? mode : null;
@@ -136,7 +141,8 @@ export function StudySchedule({
           rows,
           turnIndex: editing.turnIndex,
           rowKey: editing.rowKey,
-          label
+          label,
+          rule
         });
 
   if (empty) {

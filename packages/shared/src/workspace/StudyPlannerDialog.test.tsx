@@ -7,6 +7,7 @@ import { parseGameData, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
 import { standingOf } from "../magicStanding";
 import { plannerGroups, type PlannerMage } from "../studyPlanner";
+import { NO_TEACHING_RULE } from "../teachingPermission";
 import { StudyPlannerDetail, StudyPlannerList, StudyPlannerDialog } from "./StudyPlannerDialog";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
@@ -290,6 +291,7 @@ describe("the Orders tab", () => {
         onSavePlan={() => {}}
         onSaveNote={() => {}}
         onScheduleChange={() => {}}
+        rule={NO_TEACHING_RULE}
         onDismiss={() => {}}
       />
     );

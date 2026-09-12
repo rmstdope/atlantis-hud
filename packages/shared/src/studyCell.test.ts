@@ -7,6 +7,7 @@ import { cellMenu, goalsAfterChoice, seededStudents, teachClick, teachWarning } 
 import type { TeachChoice } from "./studyCell";
 import { blockedBecause, projectAll, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import { standingsFrom } from "./magicStanding";
+import { NO_TEACHING_RULE, type TeachingRule } from "./teachingPermission";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -20,7 +21,7 @@ function at(held: Record<string, [number, number]>): SkillPoints {
 const STANDING = at({ FORC: [4, 300], PATT: [2, 100] });
 
 function menu(turn = 26, standing: SkillPoints = STANDING) {
-  return cellMenu({ mageName: "Ereb", turn, standing, tree });
+  return cellMenu({ mageName: "Ereb", turn, standing, tree, rule: NO_TEACHING_RULE });
 }
 
 describe("cellMenu", () => {
@@ -92,7 +93,7 @@ describe("cellMenu", () => {
     const maxed = new Map(
       [...tree.byTag].map(([tag, node]) => [tag, { level: node.maxLevel, points: 9999 }] as const)
     );
-    const nothing = cellMenu({ mageName: "Ereb", turn: 26, standing: maxed, tree });
+    const nothing = cellMenu({ mageName: "Ereb", turn: 26, standing: maxed, tree, rule: NO_TEACHING_RULE });
 
     expect(nothing.choices).toEqual([]);
     expect(nothing.empty).toBe("Nothing he can study this turn.");
@@ -109,6 +110,7 @@ function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
     mages: [
       {
         key: "21/2431",
+        factionId: "21",
         unitId: "2431",
         name: "Ereb",
         regionId: "1:7",
@@ -123,7 +125,8 @@ function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
     ],
     tree,
     turns: TURNS,
-    seats: new Map([["1:7/1", 1]])
+    seats: new Map([["1:7/1", 1]]),
+    rule: NO_TEACHING_RULE
   }).get("21/2431") as { cells: ScheduleRow["cells"]; standings: SkillPoints[] };
   return {
     key: "21/2431",
@@ -217,6 +220,7 @@ describe("the teach row of the dropdown", () => {
       rows,
       turnIndex: 0,
       rowKey: "21/2431",
+      rule: NO_TEACHING_RULE,
       label: (regionId) => (regionId === "2:8" ? "Dunmoor" : "Ereb's Hollow")
     });
   }
@@ -301,7 +305,8 @@ describe("a month somebody would double", () => {
       tree,
       rows,
       turnIndex: 0,
-      rowKey: "21/2517"
+      rowKey: "21/2517",
+      rule: NO_TEACHING_RULE
     });
   }
 
@@ -394,5 +399,75 @@ describe("teachClick", () => {
       students: ["2517", "2688"],
       live: false
     });
+  });
+});
+
+describe("the doubled month a declaration rule withholds", () => {
+  /** Our own Sable at force 3, and Uln of another faction teaching in her hex at force 5. */
+  const standing = (level: number) => at({ FORC: [level, 0] });
+
+  const rows: ScheduleRow[] = [
+    {
+      key: "21/881",
+      factionId: "21",
+      unitId: "881",
+      name: "Uln",
+      regionId: "1:7",
+      summary: "",
+      note: "",
+      hasNote: false,
+      goals: [],
+      cells: [
+        {
+          kind: "teach",
+          students: [],
+          live: true,
+          outcome: { taught: [], refused: [], worth: 2 },
+          label: "TEACH"
+        }
+      ],
+      standings: [standing(5), standing(5)],
+      monthsUnreported: 0,
+      sheetTurn: null
+    },
+    {
+      key: "12/2517",
+      factionId: "12",
+      unitId: "2517",
+      name: "Sable",
+      regionId: "1:7",
+      summary: "",
+      note: "",
+      hasNote: false,
+      goals: [],
+      cells: [],
+      standings: [standing(3), standing(3)],
+      monthsUnreported: 0,
+      sheetTurn: null
+    }
+  ];
+
+  const force = (rule: TeachingRule) =>
+    cellMenu({
+      mageName: "Sable",
+      turn: 24,
+      standing: standing(3),
+      tree,
+      rows,
+      turnIndex: 0,
+      rowKey: "12/2517",
+      rule
+    }).choices.find((choice) => choice.skill === "FORC");
+
+  const rule = (toward: Record<string, string>): TeachingRule => ({
+    declarer: "student",
+    declarations: { factionId: "12", toward: new Map(Object.entries(toward)), fallback: null }
+  });
+
+  it("drops the doubled month from the study choices when the declaration does not allow it", () => {
+    expect(force(rule({ "21": "friendly" }))?.taughtBy).toBe("Uln");
+    expect(force(rule({ "21": "neutral" }))?.taughtBy).toBeNull();
+    expect(force(rule({}))?.taughtBy).toBeNull();
+    expect(force(NO_TEACHING_RULE)?.taughtBy).toBe("Uln");
   });
 });

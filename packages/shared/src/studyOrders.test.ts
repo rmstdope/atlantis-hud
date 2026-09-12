@@ -46,6 +46,7 @@ const aStudyCell = (over: Partial<Extract<ScheduleCell, { kind: "study" }>> = {}
   leftBuilding: null,
   leftBy: null,
   taughtBy: null,
+  crossFaction: null,
   ...over
 });
 

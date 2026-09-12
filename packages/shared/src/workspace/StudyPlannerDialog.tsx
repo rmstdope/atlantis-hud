@@ -20,6 +20,7 @@ import { studyWritePlan } from "../studyOrdersWrite";
 import type { StandingAfterOrders } from "../studyStanding";
 import { mageShelters, type ShelterSeats } from "../studyShelter";
 import { planFor, plannedGoals, type ScheduleChange } from "../studyPlans";
+import type { TeachingRule } from "../teachingPermission";
 import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
 import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
 import { StudySchedule } from "./StudySchedule";
@@ -69,6 +70,7 @@ export function StudyPlannerDialog({
   onWriteOrdersDocument,
   onSaveNote,
   onScheduleChange,
+  rule,
   onDismiss
 }: {
   groups: readonly PlannerGroup[];
@@ -118,6 +120,12 @@ export function StudyPlannerDialog({
   /** Reshapes the schedule for every mage once its dialog is confirmed (`ah-j9wn`). */
   onScheduleChange: (change: ScheduleChange) => void;
   onSaveNote: (factionId: string, unitId: string, comment: string) => void;
+  /**
+   * The selected world's cross-faction teaching rule (ah-g9sf.12), derived in `AppShell` from the
+   * game's ruleset, the report's declared attitudes and this turn's own DECLARE orders. Not
+   * computed here: the dialog's `ordersDocument` prop is the Orders tab's.
+   */
+  rule: TeachingRule;
   onDismiss: () => void;
 }) {
   useEscapeToDismiss(onDismiss);
@@ -135,8 +143,8 @@ export function StudyPlannerDialog({
     [groups]
   );
   const rows = useMemo(
-    () => scheduleRows({ groups, plans, tree, turns, seats, after }),
-    [groups, plans, tree, turns, seats, after]
+    () => scheduleRows({ groups, plans, tree, turns, seats, after, rule }),
+    [groups, plans, tree, turns, seats, after, rule]
   );
   const shelters = useMemo(
     () => mageShelters({ groups, seats, names: structureNames, after }),
@@ -420,6 +428,7 @@ export function StudyPlannerDialog({
             notices={notices}
             label={label}
             onScheduleChange={onScheduleChange}
+            rule={rule}
           />
         ) : picked === null ? (
           <div data-testid="study-planner-empty" className="min-h-0 overflow-y-auto p-3">
