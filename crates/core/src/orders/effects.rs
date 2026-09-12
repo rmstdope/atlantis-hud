@@ -3652,6 +3652,26 @@ mod tests {
             "a refused founder keeps its material, so nothing changed: {:?}",
             response.regions
         );
+
+        // The control, so "nothing changed" is the refusal's doing rather than a preview that
+        // cannot see this fixture at all: a Fort carries neither placement rule
+        // (`newage trident data/Fort`), and the same builder in the same wilderness spends for it.
+        let allowed = trident_preview_over(&trident_wilderness_report(), "unit 900\nBUILD Fort\n");
+        let built = only_unit(&allowed);
+        assert!(
+            !built.built.is_empty(),
+            "an unrefused founder does spend: {built:?}"
+        );
+        assert_eq!(
+            built
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map(|item| item.amount),
+            Some(90),
+            "the refused case keeps the 120 stone this one spends 30 of"
+        );
     }
 
     fn only_unit(response: &OrdersPreviewResponse) -> &UnitPreview {

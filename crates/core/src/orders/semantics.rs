@@ -42240,6 +42240,36 @@ BUILD
         }
     }
 
+    /// "Either material possible and the forecast cannot tell which: the sentence stops after the
+    /// reason and does not claim a material" - the agreed experience's own words. A Caravanserai
+    /// takes wood or stone (`newage trident data/Caravanserai`), and a builder holding both leaves
+    /// the ledger unable to say which the engine would have taken.
+    #[test]
+    fn an_ambiguous_material_leaves_the_sentence_after_the_reason() {
+        let builder = with_item(
+            with_item(
+                with_skill(with_men(unit("900"), 10), "BUIL", 3),
+                120,
+                "wood",
+                "WOOD",
+            ),
+            120,
+            "stone",
+            "STON",
+        );
+        let findings = refusals(
+            vec![region(vec![builder])],
+            "unit 900\nBUILD Caravanserai\n",
+            CheckOptions::default(),
+        );
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(
+            findings[0].message,
+            "Cannot start a Caravanserai here: this region has no settlement."
+        );
+    }
+
     /// The kind the player typed is title-cased, so `build palace` reads "Palace".
     #[test]
     fn the_building_name_is_title_cased_whatever_the_player_typed() {

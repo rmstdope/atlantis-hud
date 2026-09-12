@@ -109,7 +109,6 @@ export type SettingsState = {
    * the player likes their turn to read.
    */
   orderOcd: boolean;
-  /** Whether the editor shows preview-only warnings for BUILD orders refused at their site. */
   /**
    * Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`).
    *

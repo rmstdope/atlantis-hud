@@ -699,9 +699,6 @@ export function AppShell({
   // What the whole orders document makes of the faction's units, so the units table and the unit
   // panel show the coming month. Follows the editor exactly as validation does.
   const [ordersPreview, setOrdersPreview] = useState<OrdersPreviewResponse | null>(null);
-  // Which game is open, and every game there is. Both live here because both change together:
-  // creating, switching and deleting all move the open game and the list in one step.
-  const [game, setGame] = useState<OpenedGame | null>(null);
   // Bumped by `enterGame` alone - open, create and every import mode, replace included. What the
   // ruleset-fetch, turn-restore and hex-notes effects below actually need to know is "did the
   // player just land in a (possibly different) database", not "did `game`'s reference change":
