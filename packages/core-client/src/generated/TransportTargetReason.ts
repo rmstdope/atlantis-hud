@@ -10,4 +10,4 @@
  * unit it shows; the third it cannot, because `rules/com_attitudes` prints our attitudes toward
  * other factions rather than theirs toward us.
  */
-export type TransportTargetReason = "notQuartermaster" | "notCaravanseraiOwner" | "eligibilityUnknown" | "acceptanceUnknown";
+export type TransportTargetReason = "notQuartermaster" | "notCaravanseraiOwner" | "eligibilityUnknown" | "acceptanceUnknown" | "tooFarToAccept" | "tooFarToShip";
