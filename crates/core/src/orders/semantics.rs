@@ -11150,9 +11150,11 @@ fn first_land_to_land_step<'a>(
 /// touches no water has no effect on ship movement".
 ///
 /// **That half has no test, because it cannot fire here.** The only caller reaches it after
-/// [`refused_by_sailing_step`] has declined the step, and that returns true for every exit which is
-/// not water - so by the time this is asked, the side being left by is water and the region is
-/// coastal. The guard is kept because it is the rule's own sentence and costs nothing, not because
+/// [`refused_by_sailing_step`] has declined the step, and that - for the `Sail`/`Bound` journey
+/// this is only reached under - reduces to `sailing_land_needs_coast() && !is_water(exit)`. The
+/// flag is hardcoded true by the scraper (`packages/ruleset/src/rules.ts`) for every world the
+/// application can load, so declining the step forces the exit to be water: by the time this is
+/// asked, the side being left by is water and the region is coastal. The guard is kept because it is the rule's own sentence and costs nothing, not because
 /// any input reaches it. `Ruleset::canal_cost` returning `None` for a region's structures is what
 /// actually decides this today.
 ///

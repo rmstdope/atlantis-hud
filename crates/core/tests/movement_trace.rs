@@ -587,51 +587,6 @@ fn trace_in_shaft(unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
         &mut ReportCache::new(),
         RULESET,
         &report_with_a_shaft(),
-// ------------------------------------------ the isthmus rule: which side a fleet may leave by
-
-/// The mockup's corridor as raw report text: `ocean (1,1)` —SE→ `plain (2,2)` —SE→ `ocean (3,3)`,
-/// with the Longship in the first ocean hex. `structure` is dropped into the plain's block.
-fn neck_report(structure: &str) -> String {
-    let mut text = String::from("Foo (1) Report\n\n");
-    text.push_str("ocean (1,1) in Sea.\n\n");
-    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
-    text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
-    text.push_str(
-        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
-         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
-    );
-    text.push_str(
-        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
-         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n\n",
-    );
-    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
-    text.push_str(
-        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  North : ocean (2,0) in Sea.\n  \
-         Southeast : ocean (3,3) in Sea.\n\n",
-    );
-    text.push_str(structure);
-    if !structure.is_empty() {
-        text.push('\n');
-    }
-    text.push_str("ocean (3,3) in Sea.\n\n");
-    text.push_str("Exits:\n  Northwest : plain (2,2) in Coast.\n\n");
-    text.push_str("ocean (2,0) in Sea.\n\n");
-    text.push_str("Exits:\n  South : plain (2,2) in Coast.\n");
-    text
-}
-
-/// Traces over a report with a ruleset of the caller's choosing - `trace_over` above is hardwired
-/// to New Origins, which has no canals.
-fn trace_over_with(
-    ruleset: &str,
-    text: &str,
-    unit_id: &str,
-    orders: &str,
-) -> MoveOrderTraceResponse {
-    trace_orders_for_remembered_report(
-        &mut ReportCache::new(),
-        ruleset,
-        text,
         "[]",
         unit_id,
         &document(unit_id, orders),
@@ -687,6 +642,60 @@ fn the_serde_shape_of_a_passage() {
 
     let plain = serde_json::to_value(trace("18642", "MOVE N")).expect("serializes");
     assert!(plain["path"]["passage"].is_null(), "no passage, null");
+}
+
+// ------------------------------------------ the isthmus rule: which side a fleet may leave by
+
+/// The mockup's corridor as raw report text: `ocean (1,1)` —SE→ `plain (2,2)` —SE→ `ocean (3,3)`,
+/// with the Longship in the first ocean hex. `structure` is dropped into the plain's block.
+fn neck_report(structure: &str) -> String {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
+    text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    text.push_str(
+        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n\n",
+    );
+    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  North : ocean (2,0) in Sea.\n  \
+         Southeast : ocean (3,3) in Sea.\n\n",
+    );
+    text.push_str(structure);
+    if !structure.is_empty() {
+        text.push('\n');
+    }
+    text.push_str("ocean (3,3) in Sea.\n\n");
+    text.push_str("Exits:\n  Northwest : plain (2,2) in Coast.\n\n");
+    text.push_str("ocean (2,0) in Sea.\n\n");
+    text.push_str("Exits:\n  South : plain (2,2) in Coast.\n");
+    text
+}
+
+/// Traces over a report with a ruleset of the caller's choosing - `trace_over` above is hardwired
+/// to New Origins, which has no canals.
+fn trace_over_with(
+    ruleset: &str,
+    text: &str,
+    unit_id: &str,
+    orders: &str,
+) -> MoveOrderTraceResponse {
+    trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        ruleset,
+        text,
+        "[]",
+        unit_id,
+        &document(unit_id, orders),
+    )
+    .expect("the ruleset loads")
+}
+
 /// In through the plain's NW side and out through its SE one: the line is solid as far as the land
 /// hex and dotted from the step that leaves it.
 #[test]
