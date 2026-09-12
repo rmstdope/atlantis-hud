@@ -1327,6 +1327,7 @@ mod tests {
             visited: true,
             roads: Vec::new(),
             structures: vec![structure],
+            structures_ever_seen: Vec::new(),
             units: Vec::new(),
             last_seen_turn: Some(40),
         };
@@ -1445,6 +1446,7 @@ mod tests {
             visited: true,
             roads: Vec::new(),
             structures: vec![structure],
+            structures_ever_seen: Vec::new(),
             units: Vec::new(),
             last_seen_turn: Some(40),
         };
