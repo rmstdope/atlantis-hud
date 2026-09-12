@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BinaryHeap};
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::graph::{Direction, KnownHex, MapKnowledge};
+use crate::movement::graph::{may_leave_land, Direction, KnownHex, MapKnowledge};
 use crate::movement::mode::{
     fleet_flies, fleet_of, fleet_sailing, mobility_with_ruleset, Mobility,
 };
@@ -102,6 +102,16 @@ pub enum RouteProblem {
         to: Coordinate,
         to_terrain: String,
     },
+    /// A fleet asked to sail through a land hex and out by one of the three sides the rule
+    /// refuses, with no canal to lift it.
+    ///
+    /// `rules/movement_sailing`: "Ships may not sail through single hex land masses and must leave
+    /// via the same side they entered or a side adjacent to that one." `coordinate` and `terrain`
+    /// are the land hex the fleet could not get through, which is the hex the sentence names.
+    IsthmusNeedsCanal {
+        coordinate: Coordinate,
+        terrain: String,
+    },
 }
 
 /// One hex entered.
@@ -122,6 +132,11 @@ pub struct RouteStep {
     /// Whether this hex is water in this world. Never true for an estimated step: a guessed
     /// terrain is not a sighting, and the panel's unexplored warning speaks for that case.
     pub over_water: bool,
+    /// The canal this step passed through, by its own name - `Canal`, `Mystic Canal` - and `None`
+    /// for every other step. Set on the step that *entered* the canal region, which is also where
+    /// its `cost` carries the through-pass price.
+    #[serde(default)]
+    pub canal: Option<String>,
 }
 
 /// Where the unit stands when a month runs out.
@@ -273,8 +288,8 @@ pub(crate) fn route_for_mode(
         }
     }
 
-    let steps = match cheapest_path(map, ruleset, journey, origin, destination) {
-        Ok(steps) => steps,
+    let (mut steps, passes) = match cheapest_path(map, ruleset, journey, origin, destination) {
+        Ok(found) => found,
         Err(RouteProblem::NoKnownRoute) => {
             // "No known route" is a poor answer when the only thing in the way is water. Ask again
             // as though the unit could swim: if that finds a path, the sea is the reason, and
@@ -287,7 +302,10 @@ pub(crate) fn route_for_mode(
         }
         Err(other) => return Err(other),
     };
+    // Split the months from the costs the game actually charges - the premium still sitting on the
+    // edge that leaves the canal region - before moving it to where the player agreed to see it.
     let months = split_into_months(points_per_month, origin, &steps);
+    shift_canal_premiums(&mut steps, passes);
 
     // A flying unit that ends a turn over water drowns, so a month may not run out mid-sea. The
     // months are cut greedily on purpose: that is how the engine executes a single MOVE order, so
@@ -494,6 +512,90 @@ fn is_coastal(ruleset: &Ruleset, map: &MapKnowledge, coordinate: Coordinate) -> 
     })
 }
 
+/// Whether the side a fleet entered this terrain by decides where it may go next.
+///
+/// The one gate, read by both the search's state and [`leaving_land`], so the state the search
+/// carries and the rule it applies can never disagree. False for every mode but `Sail`, for a
+/// flying hull, for water, for a world whose ruleset does not state the restriction, and under the
+/// probe's `SailRule::Lifted` - so every other search is the same Dijkstra over the same states it
+/// has always been.
+pub(crate) fn constrains_departure(ruleset: &Ruleset, journey: Journey, terrain: &str) -> bool {
+    journey.mode == MovementMode::Sail
+        && journey.hull == Hull::Bound
+        && journey.sail_rule == SailRule::Enforced
+        && ruleset.sailing_side_restricted()
+        && !ruleset.is_water(terrain)
+}
+
+/// A canal that actually works here: the building's own name, and what a pass through it costs.
+///
+/// `newage/trident rules/economy_canals`: "A canal built in a region that touches no water has no
+/// effect on ship movement", which is what the `is_coastal` guard is. Read from
+/// `structures_ever_seen` rather than `structures` because a canal cannot fall down or sail away.
+/// Where both grades stand in one region the cheaper wins - a fleet would use the faster canal -
+/// with the name breaking a tie so the answer never depends on report order.
+pub(crate) fn canal_here(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    coordinate: Coordinate,
+) -> Option<(String, u32)> {
+    if !is_coastal(ruleset, map, coordinate) {
+        return None;
+    }
+    map.hex(coordinate)?
+        .structures_ever_seen
+        .iter()
+        .filter_map(|standing| {
+            ruleset
+                .canal_cost(&standing.base_kind)
+                .map(|cost| (standing.base_kind.clone(), cost))
+        })
+        .min_by(|left, right| left.1.cmp(&right.1).then_with(|| left.0.cmp(&right.0)))
+}
+
+/// What the side restriction makes of leaving a land hex by one particular side.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Isthmus {
+    /// The rule does not bite, or the side is one of the three it allows.
+    Free,
+    /// Only a canal permits it. `cost` is what the pass costs in total, where an ordinary sailing
+    /// step costs [`Ruleset::sailing_flat_cost`].
+    ThroughCanal { name: String, cost: u32 },
+    /// The game refuses the step.
+    Refused,
+}
+
+/// Whether a fleet standing in `here` may leave it travelling `leaving_by`, having arrived
+/// travelling `entered_by`.
+///
+/// `entered_by` is `None` for the hex a journey starts in, and that is the rule's other half:
+/// "Ships ending their movement in a land hex may sail out along any side connecting to water."
+/// A fleet's origin is where last month left it, so its first step is always a departure and never
+/// a through-pass.
+pub(crate) fn leaving_land(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    journey: Journey,
+    here: Coordinate,
+    here_terrain: &str,
+    entered_by: Option<Direction>,
+    leaving_by: Direction,
+) -> Isthmus {
+    if !constrains_departure(ruleset, journey, here_terrain) {
+        return Isthmus::Free;
+    }
+    let Some(entered) = entered_by else {
+        return Isthmus::Free;
+    };
+    if may_leave_land(entered, leaving_by) {
+        return Isthmus::Free;
+    }
+    match canal_here(map, ruleset, here) {
+        Some((name, cost)) => Isthmus::ThroughCanal { name, cost },
+        None => Isthmus::Refused,
+    }
+}
+
 /// What entering this terrain costs, absent a road - the number [`step_cost`] uses wherever it does
 /// not refuse. A fleet's is the flat cost the sailing rule states, never the terrain premium.
 ///
@@ -532,7 +634,8 @@ fn blocked_by_water(
         origin,
         destination,
     )
-    .ok()?;
+    .ok()?
+    .0;
     let (coordinate, terrain) = swimming.iter().find_map(|step| {
         let hex = map.hex(step.to)?;
         ruleset
@@ -584,13 +687,17 @@ fn blocked_by_sailing_rule(
         origin,
         destination,
     )
-    .ok()?;
+    .ok()?
+    .0;
 
     // Walk it and name the first step the rule refuses. The origin's terrain comes from the map;
     // every later step carries the terrain it landed in.
     let mut from = origin;
     let mut from_terrain = map.hex(origin)?.terrain.clone();
+    let mut entered_by: Option<Direction> = None;
     for step in &relaxed {
+        // The land-to-land rule is asked first on purpose: a step with land at both ends is refused
+        // whatever the sides, so that is the sentence worth showing.
         if refused_by_sailing_step(ruleset, journey, &from_terrain, &step.terrain) {
             return Some(RouteProblem::SailNeedsOcean {
                 from,
@@ -599,10 +706,43 @@ fn blocked_by_sailing_rule(
                 to_terrain: step.terrain.clone(),
             });
         }
+        if leaving_land(
+            map,
+            ruleset,
+            journey,
+            from,
+            &from_terrain,
+            entered_by,
+            step.direction,
+        ) == Isthmus::Refused
+        {
+            return Some(RouteProblem::IsthmusNeedsCanal {
+                coordinate: from,
+                terrain: from_terrain,
+            });
+        }
+        entered_by = constrains_departure(ruleset, journey, &step.terrain).then_some(step.direction);
         from = step.to;
         from_terrain = step.terrain.clone();
     }
     None
+}
+
+/// Moves each through-pass premium from the edge that left the canal region onto the step that
+/// entered it, which is where the agreed display puts it: `plain (2,2) · 2 · Canal`, then
+/// `ocean (3,3) · 1`.
+///
+/// Changes no total and no month, both of which were settled from the search's own costs. `index`
+/// is never 0: the origin's entry side is `None`, so a journey's first step can never be a
+/// through-pass.
+fn shift_canal_premiums(steps: &mut [RouteStep], mut passes: Vec<Option<CanalPass>>) {
+    for index in 1..steps.len() {
+        if let Some(pass) = passes[index].take() {
+            steps[index].cost -= pass.premium;
+            steps[index - 1].cost += pass.premium;
+            steps[index - 1].canal = Some(pass.name);
+        }
+    }
 }
 
 /// What entering `into` costs from `from`, or `None` when the unit may not go there at all.
@@ -694,7 +834,28 @@ type Price = (usize, u32);
 /// after it depends on how it was reached. For a hex the map describes the terrain is always that
 /// hex's own, so everywhere outside the fog this collapses back to the hex and the search is the
 /// same Dijkstra it always was.
-type Standing = (String, String);
+///
+/// The third component is the side a fleet came in by where that decides where it may go next. It
+/// is `Some` only where [`constrains_departure`] is true - a bound fleet in a land hex under a
+/// world that states the restriction - so a walker's search, a flier's, and every search in a
+/// ruleset that does not state the rule keep exactly the states they had.
+type Standing = (String, String, Option<Direction>);
+
+/// A through-pass a canal permitted: the building's own name, and the points the pass costs beyond
+/// an ordinary sailing step. Search bookkeeping, never on the wire.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CanalPass {
+    name: String,
+    premium: u32,
+}
+
+/// Where the search stands before a step. One value rather than two arguments because [`step_into`]
+/// already carries the seven the gate's `clippy::too_many_arguments` allows.
+#[derive(Debug, Clone, Copy)]
+struct Arrival<'a> {
+    terrain: &'a str,
+    entered_by: Option<Direction>,
+}
 
 /// Dijkstra over the known hexes, and over the fog around them.
 fn cheapest_path(
@@ -703,7 +864,7 @@ fn cheapest_path(
     journey: Journey,
     origin: Coordinate,
     destination: Coordinate,
-) -> Result<Vec<RouteStep>, RouteProblem> {
+) -> Result<(Vec<RouteStep>, Vec<Option<CanalPass>>), RouteProblem> {
     // Guessing is for reaching a hex the map cannot describe. Where it can, the described ground is
     // the whole answer, and a detour through country nobody has seen is not an improvement on it.
     let may_guess = map.hex(destination).is_none();
@@ -717,12 +878,14 @@ fn cheapest_path(
     // on a stable ordering rather than on hash iteration order.
     let mut frontier: BinaryHeap<std::cmp::Reverse<(Price, Standing)>> = BinaryHeap::new();
     let mut best: BTreeMap<Standing, Price> = BTreeMap::new();
-    let mut came_from: BTreeMap<Standing, (Standing, RouteStep)> = BTreeMap::new();
+    let mut came_from: BTreeMap<Standing, (Standing, RouteStep, Option<CanalPass>)> =
+        BTreeMap::new();
     // Where each hex the search has reached actually is. A hex the map has never heard of cannot be
     // looked up, so the search remembers the coordinate it arrived at.
     let mut position: BTreeMap<String, Coordinate> = BTreeMap::new();
 
-    let start: Standing = (origin.id(), origin_terrain);
+    // `None`: a fleet's origin is where last month left it, so its first step is a departure.
+    let start: Standing = (origin.id(), origin_terrain, None);
     position.insert(origin.id(), origin);
     best.insert(start.clone(), (0, 0));
     frontier.push(std::cmp::Reverse(((0, 0), start.clone())));
@@ -748,14 +911,19 @@ fn cheapest_path(
                 ruleset,
                 journey,
                 here,
-                &standing.1,
+                Arrival {
+                    terrain: &standing.1,
+                    entered_by: standing.2,
+                },
                 direction,
                 neighbour,
             ) else {
                 continue;
             };
             let total: Price = (price.0 + usize::from(step.estimated), price.1 + step.cost);
-            let reached: Standing = (neighbour.id(), step.terrain.clone());
+            let entered_by =
+                constrains_departure(ruleset, journey, &step.terrain).then_some(direction);
+            let reached: Standing = (neighbour.id(), step.terrain.clone(), entered_by);
             if best.get(&reached).is_some_and(|known| total >= *known) {
                 continue;
             }
@@ -774,7 +942,9 @@ fn cheapest_path(
                         cost: step.cost,
                         road: step.road,
                         estimated: step.estimated,
+                        canal: None,
                     },
+                    step.canal,
                 ),
             );
             frontier.push(std::cmp::Reverse((total, reached)));
@@ -817,6 +987,9 @@ struct Step {
     road: bool,
     terrain: String,
     estimated: bool,
+    /// The through-pass this step's *departure* paid for, where a canal permitted a side the rule
+    /// would otherwise refuse.
+    canal: Option<CanalPass>,
 }
 
 /// Entering a hex, described or not.
@@ -829,7 +1002,7 @@ fn step_into(
     ruleset: &Ruleset,
     journey: Journey,
     from: Coordinate,
-    carried: &str,
+    arrival: Arrival<'_>,
     direction: Direction,
     into: Coordinate,
 ) -> Option<Step> {
@@ -838,18 +1011,43 @@ fn step_into(
         hull: _,
         sail_rule,
     } = journey;
+    let carried = arrival.terrain;
     if let Some(hex) = map.hex(into) {
-        let (cost, road) = step_cost(map, ruleset, journey, from, direction, into)?;
+        let (mut cost, road) = step_cost(map, ruleset, journey, from, direction, into)?;
         if sail_rule == SailRule::Enforced
             && refused_by_sailing_step(ruleset, journey, carried, &hex.terrain)
         {
             return None;
+        }
+        // The rules price the *pass*, not the entry: "the through-pass costs two movement points
+        // where ordinary sailing costs one." So the premium is charged on the edge that leaves the
+        // canal region, which is also the only place the search can know a pass is happening.
+        let mut canal = None;
+        match leaving_land(
+            map,
+            ruleset,
+            journey,
+            from,
+            carried,
+            arrival.entered_by,
+            direction,
+        ) {
+            Isthmus::Free => {}
+            Isthmus::Refused => return None,
+            Isthmus::ThroughCanal { name, cost: pass } => {
+                // `saturating_sub` because a Mystic Canal's 1 equals the flat cost: the premium is
+                // zero and the name is still carried.
+                let premium = pass.saturating_sub(ruleset.sailing_flat_cost());
+                cost += premium;
+                canal = Some(CanalPass { name, premium });
+            }
         }
         return Some(Step {
             cost,
             road,
             terrain: hex.terrain.clone(),
             estimated: false,
+            canal,
         });
     }
 
@@ -863,32 +1061,42 @@ fn step_into(
     {
         return None;
     }
+    // No isthmus arm is needed here: a fleet can never stand in a land fog hex, because
+    // `refused_by_sailing_step(ruleset, journey, carried, carried)` just refused it there, and a
+    // water hex is `Isthmus::Free`.
     Some(Step {
         cost: base_terrain_cost(ruleset, mode, carried),
         road: false,
         terrain: carried.to_string(),
         estimated: true,
+        canal: None,
     })
 }
 
+/// Rebuilds the path, keeping each through-pass premium where the search charged it. Moving it
+/// onto the step the player sees is [`route_for_mode`]'s job, and happens after the months are
+/// split from these costs.
 fn rebuild(
-    came_from: &BTreeMap<Standing, (Standing, RouteStep)>,
+    came_from: &BTreeMap<Standing, (Standing, RouteStep, Option<CanalPass>)>,
     start: &Standing,
     arrival: &Standing,
-) -> Vec<RouteStep> {
+) -> (Vec<RouteStep>, Vec<Option<CanalPass>>) {
     let mut steps = Vec::new();
+    let mut passes = Vec::new();
     let mut cursor = arrival.clone();
 
     while cursor != *start {
-        let Some((previous, step)) = came_from.get(&cursor) else {
+        let Some((previous, step, pass)) = came_from.get(&cursor) else {
             break;
         };
         steps.push(step.clone());
+        passes.push(pass.clone());
         cursor = previous.clone();
     }
 
     steps.reverse();
-    steps
+    passes.reverse();
+    (steps, passes)
 }
 
 /// Walks the route month by month, saving what a month cannot spend.

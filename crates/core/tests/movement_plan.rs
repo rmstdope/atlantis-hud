@@ -11,7 +11,7 @@
 //! own, until an earlier turn that stood in it is remembered alongside the current one. That case
 //! lives in its own section below, built from game 3's faction 42 across turns 40, 41 and 42.
 
-use atlantis_hud_core::movement::graph::{MapKnowledge, RememberedRegion};
+use atlantis_hud_core::movement::graph::{Direction, MapKnowledge, RememberedRegion};
 use atlantis_hud_core::movement::plan::{plan_route, RouteProblem};
 use atlantis_hud_core::movement::rules::MovementMode;
 use atlantis_hud_core::report::model::Coordinate;
@@ -1299,4 +1299,378 @@ fn a_fleet_sails_from_the_shore_onto_a_lake() {
         route.steps[0].over_water,
         "core states the fact for every mode; the panel decides who is shown it"
     );
+}
+
+// ------------------------------------------------- the isthmus rule: which side a fleet may leave by
+
+// `rules/movement_sailing`, in every committed world: "Ships may not sail through single hex land
+// masses and must leave via the same side they entered or a side adjacent to that one." A fleet
+// sailing SE out of `ocean (1,1)` into `plain (2,2)` entered through the plain's NW side, so it may
+// leave NW, N or SW - and SE, NE and S are all refused.
+
+/// The mockup's corridor: `ocean (1,1)` —SE→ `plain (2,2)` —`leaving`→ an ocean hex beyond, which
+/// touches nothing else. Every hex states the exits that name its neighbours, since a stated exit
+/// is the only adjacency the search reads between two described hexes - so the corridor is the
+/// whole map and there is no way round.
+///
+/// `structure` is dropped into the plain's own block: `""` for a bare neck, `"+ The Cut [3] :
+/// Canal.\n"` for one with a canal standing in it.
+fn neck(leaving: Direction, structure: &str) -> ParsedReport {
+    parse_report_full(&neck_text(leaving, structure))
+}
+
+/// [`neck`]'s report as text, so a test can rewrite the fleet's speed before parsing it.
+fn neck_text(leaving: Direction, structure: &str) -> String {
+    let (dx, dy) = leaving.offset();
+    let far = at(2 + dx, 2 + dy);
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
+    text.push_str(&longship());
+    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(&format!(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  {} : ocean ({},{}) in Sea.\n\n",
+        leaving.label(),
+        far.x,
+        far.y
+    ));
+    text.push_str(structure);
+    if !structure.is_empty() {
+        text.push('\n');
+    }
+    text.push_str(&format!("ocean ({},{}) in Sea.\n\n", far.x, far.y));
+    text.push_str(&format!(
+        "Exits:\n  {} : plain (2,2) in Coast.\n",
+        leaving.opposite().label()
+    ));
+    text
+}
+
+/// Where the corridor above puts the ocean beyond the neck, for a given leaving side.
+fn beyond(leaving: Direction) -> Coordinate {
+    let (dx, dy) = leaving.offset();
+    at(2 + dx, 2 + dy)
+}
+
+/// The straight-through case the whole bead is named for: in through the plain's NW side and out
+/// through its SE one, which is the side facing the way the fleet was already travelling.
+#[test]
+fn a_fleet_is_refused_sailing_straight_through_a_neck_of_land() {
+    let report = neck(Direction::Southeast, "");
+    let problem = plan(&report, "900", beyond(Direction::Southeast))
+        .expect_err("the rule refuses the crossing");
+
+    assert_eq!(
+        problem,
+        RouteProblem::IsthmusNeedsCanal {
+            coordinate: at(2, 2),
+            terrain: "plain".to_string(),
+        }
+    );
+}
+
+/// Three of the six sides are refused, not one, and only one of the three is the opposite side.
+/// Entering through NW, they are SE, NE and S.
+#[test]
+fn a_fleet_is_refused_both_of_the_other_two_sides_as_well() {
+    for leaving in [Direction::Northeast, Direction::South] {
+        let report = neck(leaving, "");
+        let problem = plan(&report, "900", beyond(leaving)).expect_err("the rule refuses it");
+
+        assert_eq!(
+            problem,
+            RouteProblem::IsthmusNeedsCanal {
+                coordinate: at(2, 2),
+                terrain: "plain".to_string(),
+            },
+            "leaving {leaving:?}"
+        );
+    }
+}
+
+/// The two sides beside the one it entered by are allowed, as is that side itself.
+#[test]
+fn a_fleet_may_turn_to_a_side_beside_the_one_it_entered() {
+    for leaving in [Direction::North, Direction::Southwest] {
+        let report = neck(leaving, "");
+        let route = plan(&report, "900", beyond(leaving))
+            .unwrap_or_else(|problem| panic!("leaving {leaving:?} should be legal: {problem:?}"));
+
+        assert_eq!(route.mode, MovementMode::Sail, "leaving {leaving:?}");
+        assert_eq!(route.steps.len(), 2, "leaving {leaving:?}");
+        assert_eq!(route.steps[1].to, beyond(leaving), "leaving {leaving:?}");
+    }
+}
+
+/// "Ships ending their movement in a land hex may sail out along any side connecting to water." A
+/// fleet's origin is where last month left it, so its first step is a departure and never a
+/// through-pass.
+#[test]
+fn a_fleet_may_leave_the_hex_it_started_in_by_any_water_side() {
+    // The same corridor with the fleet standing in the plain itself, so there is no entry side.
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
+    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : ocean (3,3) in Sea.\n\n",
+    );
+    text.push_str(&longship());
+    text.push_str("ocean (3,3) in Sea.\n\n");
+    text.push_str("Exits:\n  Northwest : plain (2,2) in Coast.\n");
+    let report = parse_report_full(&text);
+
+    let route = plan(&report, "900", at(3, 3)).expect("a departure is not a through-pass");
+    assert_eq!(route.steps.len(), 1);
+    assert_eq!(route.steps[0].to, at(3, 3));
+}
+
+/// Where a way round by water exists the planner simply gives it, with not one word about the
+/// shortcut it could not take.
+#[test]
+fn a_fleet_takes_the_long_way_round_rather_than_through_the_neck() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str(
+        "Exits:\n  Southeast : plain (2,2) in Coast.\n  South : ocean (1,3) in Sea.\n\n",
+    );
+    text.push_str(&longship());
+    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : ocean (3,3) in Sea.\n\n",
+    );
+    text.push_str("ocean (1,3) in Sea.\n\n");
+    text.push_str(
+        "Exits:\n  North : ocean (1,1) in Sea.\n  Southeast : ocean (2,4) in Sea.\n\n",
+    );
+    text.push_str("ocean (2,4) in Sea.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,3) in Sea.\n  Northeast : ocean (3,3) in Sea.\n\n",
+    );
+    text.push_str("ocean (3,3) in Sea.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : plain (2,2) in Coast.\n  Southwest : ocean (2,4) in Sea.\n",
+    );
+    let report = parse_report_full(&text);
+
+    let route = plan(&report, "900", at(3, 3)).expect("the water route is legal");
+    assert_eq!(route.steps.len(), 3, "round by water, not through the neck");
+    assert_eq!(route.total_cost, 3);
+    assert_eq!(route.order, "SAIL S SE NE");
+}
+
+/// The rule is the sailing rule's, so a walker crossing the same neck is unaffected.
+#[test]
+fn a_walker_crossing_the_same_neck_is_unaffected() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("plain (1,1) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
+    text.push_str("* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\n");
+    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : plain (1,1) in Coast.\n  Southeast : plain (3,3) in Coast.\n\n",
+    );
+    text.push_str("plain (3,3) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Northwest : plain (2,2) in Coast.\n");
+    let report = parse_report_full(&text);
+
+    let route = plan(&report, "900", at(3, 3)).expect("a walker is not a fleet");
+    assert_eq!(route.steps.len(), 2);
+}
+
+/// A flying hull is bound by none of the sailing rule, this restriction included.
+#[test]
+fn a_flying_fleet_is_not_bound_by_the_sides() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
+    text.push_str("+ Ship [329] : Fleet, 4 Galleons, 1 Balloon; Load: 0/100; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+    );
+    text.push_str(
+        "  * Sailors (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
+         Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n\n",
+    );
+    text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : ocean (3,3) in Sea.\n\n",
+    );
+    text.push_str("ocean (3,3) in Sea.\n\n");
+    text.push_str("Exits:\n  Northwest : plain (2,2) in Coast.\n");
+    let report = parse_report_full(&text);
+
+    let route = plan(&report, "900", at(3, 3)).expect("a flying hull is unbound");
+    assert_eq!(route.steps.len(), 2);
+}
+
+/// The restriction is in every world's sailing rules, New Origins' included - which `plan` above
+/// uses. This is also the test that catches the rule being wired to a New Age check.
+#[test]
+fn a_new_origins_fleet_is_refused_the_same_crossing() {
+    let report = neck(Direction::Southeast, "");
+    // `plan` is hardwired to New Origins, which is exactly the world under test here.
+    let problem = plan(&report, "900", at(3, 3)).expect_err("New Origins refuses it too");
+
+    assert_eq!(
+        problem,
+        RouteProblem::IsthmusNeedsCanal {
+            coordinate: at(2, 2),
+            terrain: "plain".to_string(),
+        }
+    );
+}
+
+// ------------------------------------------------- a canal opens the neck, at its grade's price
+
+// `newage/trident rules/economy_canals`: "When a Canal is present, ships may sail through the
+// region in any direction, bypassing the normal restriction that prevents sailing through an
+// isthmus. ... A Canal of cut stone slows ships passing through it: the through-pass costs two
+// movement points where ordinary sailing costs one. A Mystic Canal, engineered from rootstone, lets
+// ships pass at full speed."
+
+const STONE_CANAL: &str = "+ The Cut [3] : Canal.\n";
+const MYSTIC_CANAL: &str = "+ The Cut [3] : Mystic Canal.\n";
+
+#[test]
+fn a_stone_canal_opens_the_neck_and_prices_the_pass_at_two() {
+    let report = neck(Direction::Southeast, STONE_CANAL);
+    let route = plan_ruleset(&trident(), &report, "900", at(3, 3)).expect("a canal opens the neck");
+
+    assert_eq!(route.steps.len(), 2);
+    assert_eq!(route.steps[0].to, at(2, 2));
+    assert_eq!(route.steps[0].cost, 2, "the through-pass costs two");
+    assert_eq!(route.steps[0].canal, Some("Canal".to_string()));
+    assert_eq!(route.steps[1].cost, 1);
+    assert_eq!(route.steps[1].canal, None);
+    assert_eq!(route.total_cost, 3);
+    assert_eq!(route.months.len(), 1);
+    assert_eq!(route.order, "SAIL SE SE");
+}
+
+#[test]
+fn a_mystic_canal_passes_at_full_speed() {
+    let report = neck(Direction::Southeast, MYSTIC_CANAL);
+    let route = plan_ruleset(&trident(), &report, "900", at(3, 3)).expect("a canal opens the neck");
+
+    assert_eq!(route.steps[0].cost, 1, "a mystic canal passes at full speed");
+    assert_eq!(route.steps[0].canal, Some("Mystic Canal".to_string()));
+    assert_eq!(route.total_cost, 2);
+}
+
+/// A canal cannot fall down or sail away, so one seen months ago still opens the neck. The current
+/// report does not describe the plain at all - only its two neighbours name it - which is exactly
+/// the case `structures_ever_seen` exists for.
+#[test]
+fn a_remembered_canal_still_opens_the_neck() {
+    let plain = neck(Direction::Southeast, STONE_CANAL)
+        .regions
+        .iter()
+        .find(|region| region.coordinate == at(2, 2))
+        .expect("the corridor describes the plain")
+        .clone();
+
+    let mut text = String::from("Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n");
+    text.push_str("ocean (1,1) in Sea.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
+    text.push_str(&longship());
+    text.push_str("ocean (3,3) in Sea.\n\n");
+    text.push_str("Exits:\n  Northwest : plain (2,2) in Coast.\n");
+    let current = parse_report_full(&text);
+
+    let map = MapKnowledge::from_remembered(
+        &current,
+        &[RememberedRegion {
+            region: plain,
+            last_seen_turn: 1,
+        }],
+    );
+    let unit = current
+        .units()
+        .find(|unit| unit.unit_id == "900")
+        .expect("the fleet is aboard");
+    let route =
+        plan_route(&map, &trident(), unit, at(3, 3)).expect("a remembered canal still counts");
+
+    assert_eq!(route.steps[0].canal, Some("Canal".to_string()));
+    assert_eq!(route.steps[0].cost, 2);
+}
+
+/// Entering is not passing through: a fleet that stops in the canal region pays the ordinary cost.
+#[test]
+fn a_fleet_that_stops_in_a_canal_region_pays_the_ordinary_cost() {
+    let report = neck(Direction::Southeast, STONE_CANAL);
+    let route = plan_ruleset(&trident(), &report, "900", at(2, 2)).expect("the plain is coastal");
+
+    assert_eq!(route.steps.len(), 1);
+    assert_eq!(route.steps[0].cost, 1);
+    assert_eq!(route.steps[0].canal, None);
+}
+
+/// Nor has a fleet passed through when it turns out by a side the rule already allows.
+#[test]
+fn a_fleet_that_turns_out_of_a_canal_region_pays_the_ordinary_cost() {
+    let report = neck(Direction::North, STONE_CANAL);
+    let route =
+        plan_ruleset(&trident(), &report, "900", beyond(Direction::North)).expect("N is allowed");
+
+    assert_eq!(route.steps[0].cost, 1);
+    assert_eq!(route.steps[0].canal, None);
+}
+
+/// The premium is *moved* onto the step the player sees, never added: what the panel lists must
+/// still add up to what the panel totals.
+#[test]
+fn the_displayed_step_costs_still_sum_to_the_total() {
+    let report = neck(Direction::Southeast, STONE_CANAL);
+    let route = plan_ruleset(&trident(), &report, "900", at(3, 3)).expect("a canal opens the neck");
+
+    assert_eq!(
+        route.steps.iter().map(|step| step.cost).sum::<u32>(),
+        route.total_cost
+    );
+}
+
+/// The months are split from the costs the game charges, so a two-point fleet stops *in* the canal
+/// region rather than being refused the hex the game lets it reach. This is the test that fails if
+/// the premium is charged on entry instead of on the pass.
+#[test]
+fn a_month_that_cannot_afford_the_stone_pass_ends_in_the_canal_region() {
+    let report = parse_report_full(
+        &neck_text(Direction::Southeast, STONE_CANAL).replace("MaxSpeed: 4", "MaxSpeed: 2"),
+    );
+    let route = plan_ruleset(&trident(), &report, "900", at(3, 3)).expect("a canal opens the neck");
+
+    assert_eq!(route.months.len(), 2, "two points buy the entry and no more");
+    assert_eq!(route.months[0].ends_at, at(2, 2));
+}
+
+#[test]
+fn the_neck_refusal_serialises_the_names_the_typescript_expects() {
+    let value = serde_json::to_value(RouteProblem::IsthmusNeedsCanal {
+        coordinate: at(2, 2),
+        terrain: "plain".to_string(),
+    })
+    .expect("the refusal serialises");
+    let object = value.as_object().expect("a JSON object");
+
+    assert_eq!(object["kind"], "isthmusNeedsCanal");
+    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["coordinate", "kind", "terrain"]);
+}
+
+/// A fleet would use the faster canal. The name breaks a tie so the answer never depends on the
+/// order a report listed the two in.
+#[test]
+fn a_mystic_canal_and_a_stone_one_in_one_region_take_the_faster() {
+    let report = neck(
+        Direction::Southeast,
+        "+ The Cut [3] : Canal.\n+ The Deep Cut [4] : Mystic Canal.\n",
+    );
+    let route = plan_ruleset(&trident(), &report, "900", at(3, 3)).expect("a canal opens the neck");
+
+    assert_eq!(route.steps[0].cost, 1);
+    assert_eq!(route.steps[0].canal, Some("Mystic Canal".to_string()));
 }
