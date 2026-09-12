@@ -14,7 +14,8 @@ function step(x: number, y: number) {
     terrain: "plain",
     cost: 1,
     road: false,
-    estimated: false
+    estimated: false,
+    overWater: false
   };
 }
 

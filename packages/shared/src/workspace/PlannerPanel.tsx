@@ -155,6 +155,24 @@ export function PlannerBody({
   );
 }
 
+/**
+ * How a water terrain is named in a sentence: "the lake"/"a lake" for anything the report names,
+ * but the ocean is "the sea" and "ocean", because that is what players already read.
+ */
+const WATER_WORDS: Record<string, { definite: string; indefinite: string }> = {
+  ocean: { definite: "the sea", indefinite: "ocean" }
+};
+
+function definiteWater(terrain: string): string {
+  const word = terrain.toLowerCase();
+  return WATER_WORDS[word]?.definite ?? `the ${word}`;
+}
+
+function indefiniteWater(terrain: string): string {
+  const word = terrain.toLowerCase();
+  return WATER_WORDS[word]?.indefinite ?? `a ${word}`;
+}
+
 /** Turns a typed refusal into a sentence, because a reason is the whole point of refusing. */
 export function describeProblem(problem: RouteProblem): string {
   switch (problem.kind) {
@@ -170,14 +188,18 @@ export function describeProblem(problem: RouteProblem): string {
       return "Nothing the faction has seen joins those two hexes up.";
     case "originUnknown":
       return "The map does not know the hex this unit is standing in.";
-    case "oceanNeedsShip":
-      return `The sea at (${problem.coordinate.x},${problem.coordinate.y}) is in the way, and crossing it needs a ship.`;
+    case "oceanNeedsShip": {
+      const water = definiteWater(problem.terrain);
+      return `${water[0].toUpperCase() + water.slice(1)} at (${problem.coordinate.x},${problem.coordinate.y}) is in the way, and crossing it needs a ship.`;
+    }
+    case "destinationNeedsShip":
+      return `(${problem.coordinate.x},${problem.coordinate.y}) is ${indefiniteWater(problem.terrain)}, and this unit would need a ship to be there.`;
     case "flightWouldEndOverOcean":
-      return `A single MOVE order would leave the unit over water at (${problem.coordinate.x},${problem.coordinate.y}) when the month ran out, and a unit that ends a turn over water drowns.`;
+      return `A single MOVE order would leave this unit over ${definiteWater(problem.terrain)} at (${problem.coordinate.x},${problem.coordinate.y}) when the month ran out, and a unit that ends a turn over water drowns.`;
     case "crewCannotSail":
       return `The crew cannot sail this fleet: it needs ${problem.required} levels of sailing, and the units aboard have ${problem.available}.`;
     case "sailNeedsOcean":
-      return `A fleet may only sail where one end of the step is ocean, so it cannot go from ${problem.fromTerrain} (${problem.from.x},${problem.from.y}) straight to ${problem.toTerrain} (${problem.to.x},${problem.to.y}).`;
+      return `A fleet may only sail where one end of the step is water, so it cannot go from ${problem.fromTerrain} (${problem.from.x},${problem.from.y}) straight to ${problem.toTerrain} (${problem.to.x},${problem.to.y}).`;
   }
 }
 
@@ -203,7 +225,24 @@ export function describeEstimate(steps: RouteStep[]): string | null {
     return null;
   }
 
-  return `${guessed} of these hexes ${guessed === 1 ? "is" : "are"} unexplored: the terrain, the cost and whatever stands there are guesses, and one of them may be sea.`;
+  return `${guessed} of these hexes ${guessed === 1 ? "is" : "are"} unexplored: the terrain, the cost and whatever stands there are guesses, and one of them may be water.`;
+}
+
+/**
+ * One route step as the panel prints it.
+ *
+ * `· over water` is a flier's news and no news at all for a fleet, which is on water nearly all the
+ * way - so the mode decides whether a wet step says so.
+ */
+export function describeStep(step: RouteStep, mode: RoutePlan["mode"]): string {
+  if (step.estimated) {
+    // An unexplored hex is named as such rather than by the terrain it was taken for: that terrain
+    // is the guess, and printing it as though it were reported would be the panel inventing a
+    // sighting.
+    return `unexplored (${step.to.x},${step.to.y}) · ${step.cost} · estimated`;
+  }
+  const wet = step.overWater && mode === "fly" ? " · over water" : "";
+  return `${step.terrain} (${step.to.x},${step.to.y}) · ${step.cost}${step.road ? " · road" : ""}${wet}`;
 }
 
 function Route({ answer }: { answer: RoutePlanResponse }) {
@@ -235,18 +274,14 @@ function Route({ answer }: { answer: RoutePlanResponse }) {
       <Section title="Route" count={plan.steps.length}>
         <ol className="m-0 list-none p-0 text-ink-soft">
           {plan.steps.map((step, index) => (
-            <li key={`${step.to.x},${step.to.y},${index}`}>
+            <li
+              key={`${step.to.x},${step.to.y},${index}`}
+              className={step.overWater && plan.mode === "fly" ? "text-select" : undefined}
+            >
               <Row
                 // The same shorthand the exits list and the MOVE order itself use.
                 label={`${index + 1}. ${abbreviateDirection(step.direction)}`}
-                // An unexplored hex is named as such rather than by the terrain it was taken for:
-                // that terrain is the guess, and printing it as though it were reported would be
-                // the panel inventing a sighting.
-                value={
-                  step.estimated
-                    ? `unexplored (${step.to.x},${step.to.y}) · ${step.cost} · estimated`
-                    : `${step.terrain} (${step.to.x},${step.to.y}) · ${step.cost}${step.road ? " · road" : ""}`
-                }
+                value={describeStep(step, plan.mode)}
               />
             </li>
           ))}
