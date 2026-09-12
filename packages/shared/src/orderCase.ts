@@ -71,17 +71,23 @@ export function bareWords(
   while (index < line.length) {
     const char = line[index];
     if (char === ";") {
-      // Where the comment starts is the selected world's answer. Trident ends whatever word the
-      // semicolon lands in; New Origins keeps one that is in the middle of a word, so the word
-      // runs on and is no longer bare letters - which is exactly what stops it being shouted at.
+      // Where the comment starts is the selected world's answer, and only *inside* a word does
+      // the answer differ. A semicolon that opens a token - a whole comment line, the `;***`
+      // region banner - is not in the middle of anything, so it comments in both worlds; the
+      // check on `tokenStart` is what keeps a player's prose from being read as order text.
+      const insideAWord = tokenStart >= 0;
       const endsTheWord =
-        syntax === "trident" || index + 1 >= line.length || /\s/u.test(line[index + 1] as string);
+        !insideAWord ||
+        syntax === "trident" ||
+        index + 1 >= line.length ||
+        /\s/u.test(line[index + 1] as string);
       if (endsTheWord) {
         flush(index);
         return words;
       }
+      // New Origins keeps a mid-word semicolon, so the word runs on and is no longer bare
+      // letters - which is exactly what stops it being shouted at.
       index += 1;
-      if (tokenStart < 0) tokenStart = index - 1;
       continue;
     }
     if (char === '"') {

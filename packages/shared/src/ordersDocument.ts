@@ -42,9 +42,15 @@ function unitHeaderId(line: string, syntax: OrderCommentSyntax): string | null {
   return id;
 }
 
-/** Whether the line is the document's own `#end` terminator, comment or no. */
+/**
+ * Whether the line is the document's own `#end` terminator, comment or no.
+ *
+ * As strict as the `/^#end$/iu` it replaces, and as strict as {@link unitHeaderId}: the directive
+ * stands alone on its line, so `#end something else` is not it. Only the comment is new.
+ */
 function isDocumentEnd(line: string, syntax: OrderCommentSyntax): boolean {
-  return lexOrderLine(line, syntax).tokens[0]?.toLowerCase() === "#end";
+  const tokens = lexOrderLine(line, syntax).tokens;
+  return tokens.length === 1 && tokens[0]?.toLowerCase() === "#end";
 }
 /** `;*** mountain (7,53) in Inhead, contains Inholm [city] ***`, one before each region's units. */
 const REGION_BANNER = /^;\*\*\*/u;
@@ -905,14 +911,20 @@ function commandOf(line: string, syntax: OrderCommentSyntax): string | null {
   return lexOrderLine(line, syntax).tokens[0]?.toUpperCase() ?? null;
 }
 
-/** Whether the line issues one of these keywords, `@`-repeated or not. */
+/**
+ * Whether the line issues one of these keywords, `@`-repeated or not.
+ *
+ * Trailing `,` and `.` are stripped before the comparison, as `orderCase.bareWords` strips them:
+ * the `\b`-anchored patterns this replaced matched `MOVE, N`, and a writer that replaces a unit's
+ * old order must not leave a second one standing merely because the keyword had a comma on it.
+ */
 function isCommand(
   line: string,
   keywords: readonly string[],
   syntax: OrderCommentSyntax
 ): boolean {
-  const command = commandOf(line, syntax);
-  return command !== null && keywords.includes(command);
+  const command = commandOf(line, syntax)?.replace(/[,.]+$/u, "");
+  return command !== undefined && command !== null && keywords.includes(command);
 }
 
 /**

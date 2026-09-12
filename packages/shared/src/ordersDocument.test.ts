@@ -1633,6 +1633,22 @@ describe("Trident comment boundaries", () => {
     expect(longOrderOf(orders, "origins")).toBeNull();
   });
 
+  it("keeps #end a directive that stands alone on its line", () => {
+    // As strict as the pattern it replaced: only the comment is new.
+    const trailing = ["unit 42;m", "WORK", "#end and then some", ""].join("\n");
+    const block = findUnitBlocks(trailing, "trident")[0] as UnitBlock;
+    expect(trailing.split("\n")[block.lastLine]).toBe("#end and then some");
+  });
+
+  it("still strips an order whose keyword carries punctuation", () => {
+    // The `\\b` patterns this replaced matched `MOVE, N`; leaving it would write a second
+    // movement order beside the first.
+    for (const syntax of ["origins", "trident"] as const) {
+      expect(stripMovementOrderLines("MOVE, N", syntax)).toBe("");
+      expect(stripLongOrderLines("WORK.", syntax)).toBe("");
+    }
+  });
+
   it("replaces a commented movement order rather than writing a second one", () => {
     // The keyword itself carries the comment, which is the case the two worlds disagree about:
     // with `MOVE N;note` the keyword is bare either way and both strip it.

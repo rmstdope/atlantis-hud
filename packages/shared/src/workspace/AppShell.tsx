@@ -4771,8 +4771,8 @@ export function AppShell({
       { turn: workingTurn, value: ordersDocument },
       { turn: comparison.key.turnNumber, value: comparedOrders.text }
     );
-    return diffOrders(older, newer);
-  }, [turnDiff, comparison, comparedOrders, parsed, ordersDocument]);
+    return diffOrders(older, newer, orderCommentSyntax);
+  }, [turnDiff, comparison, comparedOrders, parsed, ordersDocument, orderCommentSyntax]);
 
   const ordersStillLoading = comparedOrdersLoading({
     dialogOpen: changesOpen,

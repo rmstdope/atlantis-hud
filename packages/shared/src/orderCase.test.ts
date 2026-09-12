@@ -191,6 +191,24 @@ describe("the selected world's comment boundary", () => {
     expect(uppercaseLine("work ;note", vocabulary, "origins")).toBe("WORK ;note");
   });
 
+  it("stops at a semicolon that opens the line, in both worlds", () => {
+    // The regression this pins: a comment line's prose is not order text, so nothing in it is a
+    // keyword to shout at - and the `;***` region banner is a comment line too.
+    for (const syntax of ["origins", "trident"] as const) {
+      expect(bareWords(";Scout heading north, work later", syntax)).toEqual([]);
+      expect(uppercaseLine(";Scout heading north, work later", vocabulary, syntax)).toBe(
+        ";Scout heading north, work later"
+      );
+      expect(uppercaseLine(";*** plain (1,1) move ***", vocabulary, syntax)).toBe(
+        ";*** plain (1,1) move ***"
+      );
+      // And one that opens a token mid-line, after a word that is already finished.
+      expect(uppercaseLine("work ;and move later", vocabulary, syntax)).toBe(
+        "WORK ;and move later"
+      );
+    }
+  });
+
   it("defaults to New Origins when no world is named", () => {
     expect(uppercaseLine("work;note", vocabulary)).toBe("work;note");
   });

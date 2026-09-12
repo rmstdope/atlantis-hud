@@ -18,6 +18,7 @@ import {
   writeUnitOrders
 } from "./ordersDocument";
 import { studyWritePlan } from "./studyOrdersWrite";
+import { diffOrders } from "./turnDiff";
 import { ordersExportText } from "./workspace/ordersExport";
 import { formedSelectionFor } from "./workspace/ordersLock";
 import { orderCommentSyntaxFor } from "./rulesets";
@@ -129,6 +130,23 @@ describe("the comment policy reaches every reader of the document", () => {
   it("strips and restores the server's descriptions around the right blocks", () => {
     expect(stripUnitComments(DOCUMENT, TRIDENT)).toBe(DOCUMENT);
     expect(ordersExportText(DOCUMENT, DOCUMENT, false, TRIDENT)).toBe(DOCUMENT);
+  });
+
+  it("compares two turns' drafts by unit", () => {
+    const older = DOCUMENT.replace("WORK;paying the guard", "TAX;paying the guard");
+    // `commandsOnly` keeps every line of the block that is not a whole-line comment, the nested
+    // FORM among them; only the first line differs between the two drafts.
+    const rest = ["FORM 1;the scout", "MOVE N;north", "END;done"];
+    expect(diffOrders(older, DOCUMENT, TRIDENT).changed).toEqual([
+      {
+        unitId: "42",
+        before: ["TAX;paying the guard", ...rest],
+        after: ["WORK;paying the guard", ...rest]
+      }
+    ]);
+    // Under the Origins default neither header parses, so every unit silently vanishes from the
+    // comparison - which is the failure this seam exists to prevent.
+    expect(diffOrders(older, DOCUMENT, ORIGINS).changed).toEqual([]);
   });
 
   it("indexes the template's long orders", () => {
