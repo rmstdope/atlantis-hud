@@ -10,6 +10,7 @@
 
 import type { OpenedGame, OrderDiagnostic, ParsedReport } from "@atlantis/core-client";
 import { commandsOnly, findUnitBlocks, readUnitOrders } from "./ordersDocument";
+import { orderCommentSyntaxFor, type OrderCommentSyntax } from "./rulesets";
 import { factionLabelOf } from "./reportLoad";
 
 const ATLANTIS_HEADER = /^#atlantis\b/iu;
@@ -123,7 +124,11 @@ export function routeOrdersImport(
     };
   }
 
-  const description = describeOrdersImport(text, ordersDocument);
+  const description = describeOrdersImport(
+    text,
+    ordersDocument,
+    orderCommentSyntaxFor(game.manifest.metadata.rulesetId)
+  );
   return {
     kind: "ask",
     pending: {
@@ -180,8 +185,12 @@ export type OrdersImportDescription = {
 };
 
 /** Whether a unit's block in `document` carries an actual order, rather than only comments. */
-function hasWrittenOrders(document: string, unitId: string): boolean {
-  const orders = readUnitOrders(document, unitId);
+function hasWrittenOrders(
+  document: string,
+  unitId: string,
+  syntax: OrderCommentSyntax
+): boolean {
+  const orders = readUnitOrders(document, unitId, undefined, syntax);
   return orders !== null && commandsOnly(orders).length > 0;
 }
 
@@ -194,14 +203,17 @@ function hasWrittenOrders(document: string, unitId: string): boolean {
  */
 export function describeOrdersImport(
   fileText: string,
-  currentDocument: string
+  currentDocument: string,
+  syntax: OrderCommentSyntax = "origins"
 ): OrdersImportDescription {
-  const fileUnitIds = findUnitBlocks(fileText).map((block) => block.unitId);
+  const fileUnitIds = findUnitBlocks(fileText, syntax).map((block) => block.unitId);
   const fileUnitSet = new Set(fileUnitIds);
 
-  const emptiedUnitIds = findUnitBlocks(currentDocument)
+  const emptiedUnitIds = findUnitBlocks(currentDocument, syntax)
     .map((block) => block.unitId)
-    .filter((unitId) => !fileUnitSet.has(unitId) && hasWrittenOrders(currentDocument, unitId));
+    .filter(
+      (unitId) => !fileUnitSet.has(unitId) && hasWrittenOrders(currentDocument, unitId, syntax)
+    );
 
   return { fileUnitIds, emptiedUnitIds };
 }
@@ -215,7 +227,11 @@ export function describeOrdersImport(
  * checking which unit's block that line falls inside. `null` for a hex-level finding, which names
  * neither.
  */
-export function unitIdForDiagnostic(document: string, diagnostic: OrderDiagnostic): string | null {
+export function unitIdForDiagnostic(
+  document: string,
+  diagnostic: OrderDiagnostic,
+  syntax: OrderCommentSyntax = "origins"
+): string | null {
   if (diagnostic.unitId !== null) {
     return diagnostic.unitId;
   }
@@ -227,7 +243,7 @@ export function unitIdForDiagnostic(document: string, diagnostic: OrderDiagnosti
   // Diagnostics count lines from one and blocks record them from zero, so the block's own lines are
   // `firstLine + 1` through `lastLine + 1` in a diagnostic's terms - exactly as `diagnosticsForUnit`
   // converts between the two.
-  const block = findUnitBlocks(document).find(
+  const block = findUnitBlocks(document, syntax).find(
     (candidate) => lineEnd >= candidate.firstLine + 1 && lineStart <= candidate.lastLine + 1
   );
   return block?.unitId ?? null;
@@ -242,9 +258,13 @@ export function unitIdForDiagnostic(document: string, diagnostic: OrderDiagnosti
  * same spelling `ProblemWho` uses (`workspace/primitives.tsx`), kept separately rather than shared
  * because that one returns markup and this one a string.
  */
-export function unitLabelForDiagnostic(document: string, diagnostic: OrderDiagnostic): string | null {
+export function unitLabelForDiagnostic(
+  document: string,
+  diagnostic: OrderDiagnostic,
+  syntax: OrderCommentSyntax = "origins"
+): string | null {
   if (diagnostic.formed !== null) {
     return `new ${diagnostic.formed.alias}`;
   }
-  return unitIdForDiagnostic(document, diagnostic);
+  return unitIdForDiagnostic(document, diagnostic, syntax);
 }

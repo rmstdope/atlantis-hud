@@ -4,6 +4,7 @@
  */
 
 import { withUnitComments } from "../ordersDocument";
+import type { OrderCommentSyntax } from "../rulesets";
 
 /**
  * The document as exported: unchanged unless the player asked for the server's long-format
@@ -13,10 +14,11 @@ import { withUnitComments } from "../ordersDocument";
 export function ordersExportText(
   document: string,
   templateText: string | null,
-  withDescriptions: boolean
+  withDescriptions: boolean,
+  syntax: OrderCommentSyntax = "origins"
 ): string {
   if (!withDescriptions || templateText === null) {
     return document;
   }
-  return withUnitComments(document, templateText);
+  return withUnitComments(document, templateText, syntax);
 }

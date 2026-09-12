@@ -1,6 +1,7 @@
 import type { ReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { formBlockFor, formedAlias } from "../ordersDocument";
+import type { OrderCommentSyntax } from "../rulesets";
 
 /**
  * Why the editor is refusing an edit, and the words it says about it.
@@ -35,7 +36,8 @@ export type FormedSelection = {
 export function formedSelectionFor(
   document: string,
   selectedUnitId: string | null,
-  regionUnitIds: ReadonlySet<string>
+  regionUnitIds: ReadonlySet<string>,
+  syntax: OrderCommentSyntax = "origins"
 ): FormedSelection | null {
   if (selectedUnitId === null) {
     return null;
@@ -44,7 +46,10 @@ export function formedSelectionFor(
   if (alias === null) {
     return null;
   }
-  return { alias, formedBy: formBlockFor(document, alias, regionUnitIds)?.unitId ?? null };
+  return {
+    alias,
+    formedBy: formBlockFor(document, alias, regionUnitIds, syntax)?.unitId ?? null
+  };
 }
 
 /**

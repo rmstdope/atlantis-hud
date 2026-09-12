@@ -26,6 +26,7 @@ import type {
 } from "@atlantis/core-client";
 import { documentFor, draftKeyFor } from "./orderDraft";
 import { seedOrdersDocument } from "./ordersDocument";
+import { orderCommentSyntaxFor } from "./rulesets";
 
 /**
  * What the shell holds about the world beyond the report: the remembered regions (for the planner
@@ -410,7 +411,13 @@ export async function restoreLatestTurn(
   const map = await knownMapFor(client, stored.rawReport, rulesetJson, remembered);
 
   const template = seedOrdersDocument(parsed.ordersTemplate?.text ?? "", parsed.header.factionId);
-  const chosen = await documentFor(client, game, draftKeyFor(parsed), template);
+  const chosen = await documentFor(
+    client,
+    game,
+    draftKeyFor(parsed),
+    template,
+    orderCommentSyntaxFor(game.manifest.metadata.rulesetId)
+  );
 
   return {
     parsed,
