@@ -262,6 +262,21 @@ pub enum UnitMovementStatus {
     Walk,
 }
 
+/// What a report says a unit can carry while swimming.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum SwimCapacity {
+    /// This world has no swimming rule, or no ruleset was in hand to say that it has one.
+    /// Nothing about swimming is shown, which is exactly how every surface read before this.
+    #[default]
+    Absent,
+    /// The world swims, but nothing in hand states what this unit can carry doing it.
+    Unstated,
+    /// What it can carry while swimming.
+    Stated { capacity: i64 },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
@@ -272,6 +287,13 @@ pub struct UnitMovement {
     pub ride: i64,
     pub walk: i64,
     pub capacity_mode: UnitMovementMode,
+    /// What this unit can carry while swimming.
+    ///
+    /// A tri-state rather than a number because "this world has no swimming", "nothing says how
+    /// much" and "nothing at all" are three different answers, and reading either of the first two
+    /// as a zero would be inventing a fact about the unit.
+    #[serde(default)]
+    pub swim: SwimCapacity,
 }
 
 /// A unit that has not been through classification carries an estimate, so that is the default a

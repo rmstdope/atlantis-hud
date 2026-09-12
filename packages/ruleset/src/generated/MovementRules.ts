@@ -4,6 +4,19 @@ import type { OceanRule } from "./OceanRule";
 import type { Provenance } from "./Provenance";
 import type { RoadRule } from "./RoadRule";
 import type { SailingRule } from "./SailingRule";
+import type { SwimmingRule } from "./SwimmingRule";
 import type { TerrainCosts } from "./TerrainCosts";
 
-export type MovementRules = { movementPoints: MovementPoints, terrainCosts: TerrainCosts, road: RoadRule, ocean: OceanRule, sailing: SailingRule, provenance: Provenance, };
+export type MovementRules = { movementPoints: MovementPoints, terrainCosts: TerrainCosts, road: RoadRule, ocean: OceanRule, sailing: SailingRule, 
+/**
+ * The swimming rule, or `None` in a world that has none.
+ *
+ * `#[serde(default)]` because this struct carries `deny_unknown_fields` and a reader may
+ * still hold a ruleset written before this field existed - a cached one in a player's
+ * browser, or a stale built ruleset artefact under a shell's `dist` directory.
+ *
+ * (Written without a `dist` glob on purpose: ts-rs copies a doc comment verbatim into a
+ * TypeScript block comment, so a `*` followed by a `/` in one closes that comment early and
+ * the generated file will not parse.)
+ */
+swimming: SwimmingRule | null, provenance: Provenance, };

@@ -1,4 +1,8 @@
-import type { ReportUnit, StudyDoubt, StudyForecast } from "@atlantis/core-client";
+import type {
+  ReportUnit,
+  StudyDoubt,
+  StudyForecast,
+} from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import type { PreviewedUnit } from "./unitPreview";
@@ -11,18 +15,21 @@ import {
   popupLabelInk,
   reportedFlags,
   reportedItems,
-  type PopupFacts
+  type PopupFacts,
 } from "./unitCellPopup";
 
 const unit = (overrides: Partial<PreviewedUnit> = {}): PreviewedUnit => ({
   ...(aReportUnit({ unitId: "1487", name: "Braves" }) as ReportUnit),
-  ...overrides
+  ...overrides,
 });
 
 /** The hex `unit()` and `own()` stand in, so a row key for a giver beside them reads right. */
 const HERE = aReportUnit().regionId;
 
-const reported = (order: string | null): ReportedLongOrder => ({ kind: "known", order });
+const reported = (order: string | null): ReportedLongOrder => ({
+  kind: "known",
+  order,
+});
 
 const facts = (overrides: Partial<PopupFacts> = {}): PopupFacts => ({
   structureLabel: null,
@@ -35,7 +42,7 @@ const facts = (overrides: Partial<PopupFacts> = {}): PopupFacts => ({
   derivedSkills: [],
   dissolving: false,
   unitNames: new Map(),
-  ...overrides
+  ...overrides,
 });
 
 describe("which columns open anything", () => {
@@ -71,19 +78,21 @@ describe("reportedFlags", () => {
 
 describe("the column popups", () => {
   it("heads every popup with the unit and the column", () => {
-    expect(columnPopup(popupForCell("men", unit(), facts())).title).toBe("Braves (1487) — men");
+    expect(columnPopup(popupForCell("men", unit(), facts())).title).toBe(
+      "Braves (1487) — men",
+    );
     expect(columnPopup(popupForCell("longOrder", unit(), facts())).title).toBe(
-      "Braves (1487) — long order"
+      "Braves (1487) — long order",
     );
   });
 
   it("the men popup says what the report counted and why a figure is a guess", () => {
     const popup = columnPopup(
-      popupForCell("men", unit({ men: 12, menEstimated: true }), facts())
+      popupForCell("men", unit({ men: 12, menEstimated: true }), facts()),
     );
     expect(popup.lines).toEqual([{ label: "men", value: "~12" }]);
     expect(popup.notes).toContain(
-      "Estimated: the report has not been matched against the item catalogue, so only the first group of people is counted."
+      "Estimated: the report has not been matched against the item catalogue, so only the first group of people is counted.",
     );
   });
 
@@ -92,11 +101,11 @@ describe("the column popups", () => {
       popupForCell(
         "men",
         unit({ men: 12, previewChanges: [{ field: "men", original: "8" }] }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
-      { label: "men", value: "12", change: { direction: "up", from: "8" } }
+      { label: "men", value: "12", change: { direction: "up", from: "8" } },
     ]);
   });
 
@@ -104,9 +113,12 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "men",
-        unit({ men: 42255, previewChanges: [{ field: "men", original: "42100" }] }),
-        facts()
-      )
+        unit({
+          men: 42255,
+          previewChanges: [{ field: "men", original: "42100" }],
+        }),
+        facts(),
+      ),
     );
     // Grouped through `toLocaleString`, which follows the runner's own locale - so the pinned
     // expectation is that both halves are grouped the same way, not that the separator is a comma.
@@ -117,8 +129,8 @@ describe("the column popups", () => {
       {
         label: "men",
         value: (42255).toLocaleString(),
-        change: { direction: "up", from: (42100).toLocaleString() }
-      }
+        change: { direction: "up", from: (42100).toLocaleString() },
+      },
     ]);
   });
 
@@ -127,8 +139,8 @@ describe("the column popups", () => {
       popupForCell(
         "men",
         unit({ men: 12, previewChanges: [{ field: "men", original: "" }] }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "men", value: "12", why: "was: —" }]);
   });
@@ -138,10 +150,12 @@ describe("the column popups", () => {
       popupForCell(
         "men",
         unit({ men: 12, previewChanges: [{ field: "men", original: "~8" }] }),
-        facts()
-      )
+        facts(),
+      ),
     );
-    expect(popup.lines).toEqual([{ label: "men", value: "12", why: "was: ~8" }]);
+    expect(popup.lines).toEqual([
+      { label: "men", value: "12", why: "was: ~8" },
+    ]);
   });
 
   it("the men popup draws a line for each race, paired against the report", () => {
@@ -152,20 +166,28 @@ describe("the column popups", () => {
           men: 15,
           menByRace: [
             { amount: 13, name: "humans", tag: "HUMN" },
-            { amount: 2, name: "orcs", tag: "ORC" }
+            { amount: 2, name: "orcs", tag: "ORC" },
           ],
           previewChanges: [
             { field: "men", original: "14" },
-            { field: "items", original: "10 HUMN, 4 ORC, 380 SILV" }
-          ]
+            { field: "items", original: "10 HUMN, 4 ORC, 380 SILV" },
+          ],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
       { label: "men", value: "15", change: { direction: "up", from: "14" } },
-      { label: "humans HUMN", value: "13", change: { direction: "up", from: "10" } },
-      { label: "orcs ORC", value: "2", change: { direction: "down", from: "4" } }
+      {
+        label: "humans HUMN",
+        value: "13",
+        change: { direction: "up", from: "10" },
+      },
+      {
+        label: "orcs ORC",
+        value: "2",
+        change: { direction: "down", from: "4" },
+      },
     ]);
   });
 
@@ -185,19 +207,27 @@ describe("the column popups", () => {
               line: null,
               unitPrice: null,
               other: null,
-              isMan: true
-            }
+              isMan: true,
+            },
           ],
-          previewChanges: [{ field: "items", original: "14 ORC" }]
+          previewChanges: [{ field: "items", original: "14 ORC" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
       { label: "men", value: "15" },
-      { label: "humans HUMN", value: "15", change: { direction: "up", from: "none" } },
+      {
+        label: "humans HUMN",
+        value: "15",
+        change: { direction: "up", from: "none" },
+      },
       // Its label comes from the `ItemChange`'s own name: `menByRace` no longer carries it.
-      { label: "orcs ORC", value: "gone", change: { direction: "down", from: "14" } }
+      {
+        label: "orcs ORC",
+        value: "gone",
+        change: { direction: "down", from: "14" },
+      },
     ]);
   });
 
@@ -208,14 +238,14 @@ describe("the column popups", () => {
         unit({
           men: 15,
           menByRace: [{ amount: 15, name: "humans", tag: "HUMN" }],
-          previewChanges: [{ field: "items", original: "was: 10 HUMN" }]
+          previewChanges: [{ field: "items", original: "was: 10 HUMN" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
       { label: "men", value: "15" },
-      { label: "humans HUMN", value: "15" }
+      { label: "humans HUMN", value: "15" },
     ]);
   });
 
@@ -227,16 +257,16 @@ describe("the column popups", () => {
           men: 50,
           menEstimated: true,
           menByRace: [{ amount: 50, name: "humans", tag: "HUMN" }],
-          previewChanges: [{ field: "items", original: "50 HUMN" }]
+          previewChanges: [{ field: "items", original: "50 HUMN" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "men", value: "~50" }]);
   });
 
   const manChange = (
-    overrides: Partial<NonNullable<PreviewedUnit["itemChanges"]>[number]>
+    overrides: Partial<NonNullable<PreviewedUnit["itemChanges"]>[number]>,
   ) =>
     ({
       tag: "HUMN",
@@ -247,7 +277,7 @@ describe("the column popups", () => {
       unitPrice: null,
       other: null,
       isMan: true,
-      ...overrides
+      ...overrides,
     }) as NonNullable<PreviewedUnit["itemChanges"]>[number];
 
   it("the men popup names every movement of one race in a single sentence", () => {
@@ -258,34 +288,34 @@ describe("the column popups", () => {
           men: 15,
           menByRace: [
             { amount: 13, name: "humans", tag: "HUMN" },
-            { amount: 2, name: "orcs", tag: "ORC" }
+            { amount: 2, name: "orcs", tag: "ORC" },
           ],
           previewChanges: [
             { field: "men", original: "14" },
-            { field: "items", original: "10 HUMN, 4 ORC, 380 SILV" }
+            { field: "items", original: "10 HUMN, 4 ORC, 380 SILV" },
           ],
           itemChanges: [
             manChange({ cause: "bought", delta: 6, unitPrice: 60 }),
             manChange({
               cause: "given-away",
               delta: -3,
-              other: { unitId: "1604", name: "Watch" }
+              other: { unitId: "1604", name: "Watch" },
             }),
             manChange({
               tag: "ORC",
               name: "orcs",
               cause: "was-taken-from",
               delta: -2,
-              other: { unitId: "1502", name: "Scouts" }
-            })
-          ]
+              other: { unitId: "1502", name: "Scouts" },
+            }),
+          ],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.notes).toEqual([
       "humans: recruited 6 at 60 silver each, gave 3 to Watch (1604).",
-      "orcs: 2 taken by Scouts (1502)."
+      "orcs: 2 taken by Scouts (1502).",
     ]);
   });
 
@@ -293,11 +323,16 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "men",
-        unit({ men: 15, menOfUnknownSkill: [{ amount: 4, tag: "HUMN", from: "1502" }] }),
-        facts()
-      )
+        unit({
+          men: 15,
+          menOfUnknownSkill: [{ amount: 4, tag: "HUMN", from: "1502" }],
+        }),
+        facts(),
+      ),
     );
-    expect(popup.notes).toContain("4 men taken from unit 1502, which your report does not show.");
+    expect(popup.notes).toContain(
+      "4 men taken from unit 1502, which your report does not show.",
+    );
   });
 
   it("the men popup does not claim nothing changed when only the races moved", () => {
@@ -310,18 +345,20 @@ describe("the column popups", () => {
           men: 3,
           menByRace: [{ amount: 3, name: "humans", tag: "HUMN" }],
           previewChanges: [{ field: "items", original: "3 ORC" }],
-          itemChanges: [manChange({ cause: "bought", delta: 3, unitPrice: 60 })]
+          itemChanges: [
+            manChange({ cause: "bought", delta: 3, unitPrice: 60 }),
+          ],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.notes).not.toContain("Nothing this month changes this.");
   });
 
   it("a unit whose men nothing touched still says so", () => {
-    expect(columnPopup(popupForCell("men", unit({ men: 3 }), facts())).notes).toContain(
-      "Nothing this month changes this."
-    );
+    expect(
+      columnPopup(popupForCell("men", unit({ men: 3 }), facts())).notes,
+    ).toContain("Nothing this month changes this.");
   });
 
   it("the men popup warns that an estimated headcount cannot be worked out", () => {
@@ -331,31 +368,35 @@ describe("the column popups", () => {
         unit({
           men: 50,
           menEstimated: true,
-          itemChanges: [manChange({ cause: "bought", delta: 6, unitPrice: 60 })]
+          itemChanges: [
+            manChange({ cause: "bought", delta: 6, unitPrice: 60 }),
+          ],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.warning).toBe(
-      "This unit's headcount is a guess, so what this month does to it cannot be worked out."
+      "This unit's headcount is a guess, so what this month does to it cannot be worked out.",
     );
     expect(popup.notes).toContain("humans: recruited 6 at 60 silver each.");
     expect(popup.notes).toContain(
-      "Estimated: the report has not been matched against the item catalogue, so only the first group of people is counted."
+      "Estimated: the report has not been matched against the item catalogue, so only the first group of people is counted.",
     );
   });
 
   it("a column with nothing to change says so", () => {
     expect(columnPopup(popupForCell("men", unit(), facts())).notes).toContain(
-      "Nothing this month changes this."
+      "Nothing this month changes this.",
     );
     expect(columnPopup(popupForCell("items", unit(), facts())).notes).toContain(
-      "Nothing this month changes these."
+      "Nothing this month changes these.",
     );
   });
 
   it("the movement popup says the movement is not disclosed when the report says nothing", () => {
-    const popup = columnPopup(popupForCell("movement", unit({ movement: null }), facts()));
+    const popup = columnPopup(
+      popupForCell("movement", unit({ movement: null }), facts()),
+    );
     expect(popup.lines).toEqual([]);
     expect(popup.notes).toContain("Movement not disclosed.");
   });
@@ -365,17 +406,25 @@ describe("the column popups", () => {
       popupForCell(
         "movement",
         unit({
-          movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" }
+          movement: {
+            status: "walk",
+            load: 10,
+            fly: 0,
+            ride: 0,
+            walk: 20,
+            capacityMode: "walk",
+            swim: { kind: "absent" },
+          },
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
       { label: "move", value: "Walking" },
       { label: "weight", value: "10" },
       { label: "can carry flying", value: "0", stress: "aside" },
       { label: "can carry riding", value: "0", stress: "aside" },
-      { label: "can carry walking", value: "20", stress: "deciding" }
+      { label: "can carry walking", value: "20", stress: "deciding" },
     ]);
   });
 
@@ -383,7 +432,7 @@ describe("the column popups", () => {
     columnPopup(popupForCell("movement", unit(overrides), facts()));
 
   const carried = (
-    overrides: Partial<NonNullable<PreviewedUnit["itemChanges"]>[number]> = {}
+    overrides: Partial<NonNullable<PreviewedUnit["itemChanges"]>[number]> = {},
   ) =>
     ({
       tag: "GRAI",
@@ -394,27 +443,106 @@ describe("the column popups", () => {
       unitPrice: null,
       other: { unitId: "1502", name: "Farmers" },
       isMan: false,
-      ...overrides
+      ...overrides,
     }) as NonNullable<PreviewedUnit["itemChanges"]>[number];
 
   it("the movement popup draws the load and each carrying capacity", () => {
     const popup = movementPopup({
-      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" }
+      movement: {
+        status: "ride",
+        load: 60,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "ride",
+        swim: { kind: "absent" },
+      },
     });
     expect(popup.lines).toEqual([
       { label: "move", value: "Riding" },
       { label: "weight", value: "60" },
       { label: "can carry flying", value: "0", stress: "aside" },
       { label: "can carry riding", value: "70", stress: "deciding" },
-      { label: "can carry walking", value: "85", stress: "aside" }
+      { label: "can carry walking", value: "85", stress: "aside" },
     ]);
+  });
+
+  /**
+   * The popup and the unit detail panel must say the same things, so neither has to be trusted
+   * over the other. The label matches its three siblings - `can carry flying`, `can carry riding`,
+   * `can carry walking` - and the line is never `deciding`, because swimming is not a speed.
+   */
+  it("draws the swimming capacity when the world has swimming", () => {
+    const stated = movementPopup({
+      movement: {
+        status: "ride",
+        load: 60,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "ride",
+        swim: { kind: "stated", capacity: 60 },
+      },
+    });
+    expect(stated.lines).toEqual([
+      { label: "move", value: "Riding" },
+      { label: "weight", value: "60" },
+      { label: "can carry flying", value: "0", stress: "aside" },
+      { label: "can carry riding", value: "70", stress: "deciding" },
+      { label: "can carry walking", value: "85", stress: "aside" },
+      { label: "can carry swimming", value: "60", stress: "aside" },
+    ]);
+
+    const unstated = movementPopup({
+      movement: {
+        status: "ride",
+        load: 60,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "ride",
+        swim: { kind: "unstated" },
+      },
+    });
+    expect(unstated.lines.at(-1)).toEqual({
+      label: "can carry swimming",
+      value: "not stated",
+      stress: "aside",
+    });
+
+    // A world with no swimming rule leaves the popup with exactly the five lines it has today.
+    const absent = movementPopup({
+      movement: {
+        status: "ride",
+        load: 60,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "ride",
+        swim: { kind: "absent" },
+      },
+    });
+    expect(absent.lines).toHaveLength(5);
+    expect(absent.lines.map((line) => line.label)).not.toContain(
+      "can carry swimming",
+    );
   });
 
   it("marks the largest capacity as the deciding one for an overloaded unit", () => {
     const popup = movementPopup({
-      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" }
+      movement: {
+        status: "overloaded",
+        load: 90,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
     });
-    const stress = Object.fromEntries(popup.lines.map((line) => [line.label, line.stress]));
+    const stress = Object.fromEntries(
+      popup.lines.map((line) => [line.label, line.stress]),
+    );
     expect(stress["can carry walking"]).toBe("deciding");
     expect(stress["can carry riding"]).toBe("aside");
     expect(stress["can carry flying"]).toBe("aside");
@@ -422,31 +550,55 @@ describe("the column popups", () => {
 
   it("draws the mode as a pair when it rose", () => {
     const popup = movementPopup({
-      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" },
-      previewChanges: [{ field: "movement", original: "Walking" }]
+      movement: {
+        status: "ride",
+        load: 60,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "ride",
+        swim: { kind: "absent" },
+      },
+      previewChanges: [{ field: "movement", original: "Walking" }],
     });
     expect(popup.lines[0]).toEqual({
       label: "move",
       value: "Riding",
-      change: { direction: "up", from: "Walking" }
+      change: { direction: "up", from: "Walking" },
     });
   });
 
   it("draws a lost mode as a fall", () => {
     const popup = movementPopup({
-      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" },
-      previewChanges: [{ field: "movement", original: "Riding" }]
+      movement: {
+        status: "overloaded",
+        load: 90,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
+      previewChanges: [{ field: "movement", original: "Riding" }],
     });
     expect(popup.lines[0]).toEqual({
       label: "move",
       value: "Overloaded",
-      change: { direction: "down", from: "Riding" }
+      change: { direction: "down", from: "Riding" },
     });
   });
 
   it("says nothing about silver in the movement popup", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      movement: {
+        status: "walk",
+        load: 10,
+        fly: 0,
+        ride: 0,
+        walk: 20,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
       items: [],
       itemChanges: [
         carried({
@@ -455,122 +607,225 @@ describe("the column popups", () => {
           delta: -100,
           cause: "given-away",
           line: 3,
-          other: { unitId: "901", name: "Ferry" }
-        })
-      ]
+          other: { unitId: "901", name: "Ferry" },
+        }),
+      ],
     });
     // The month said nothing about this unit's load, so the popup falls back to the shared
     // nothing-changed sentence rather than saying the load moved.
     expect(popup.notes).toEqual(["Nothing this month changes this."]);
-    expect(popup.notes.filter((note) => /silver|load changed/i.test(note))).toEqual([]);
+    expect(
+      popup.notes.filter((note) => /silver|load changed/i.test(note)),
+    ).toEqual([]);
   });
 
   it("quotes a mode word it does not know rather than ranking it", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
-      previewChanges: [{ field: "movement", original: "Swimming" }]
+      movement: {
+        status: "walk",
+        load: 10,
+        fly: 0,
+        ride: 0,
+        walk: 20,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
+      previewChanges: [{ field: "movement", original: "Swimming" }],
     });
-    expect(popup.lines[0]).toEqual({ label: "move", value: "Walking", why: "was: Swimming" });
+    expect(popup.lines[0]).toEqual({
+      label: "move",
+      value: "Walking",
+      why: "was: Swimming",
+    });
   });
 
   it("names every item the month moved, in the month's order", () => {
     const popup = movementPopup({
-      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" },
+      movement: {
+        status: "overloaded",
+        load: 90,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
       items: [
         { name: "grain", tag: "GRAI", amount: 6 },
-        { name: "horse", tag: "HORS", amount: 1 }
+        { name: "horse", tag: "HORS", amount: 1 },
       ],
       itemChanges: [
         carried({}),
-        carried({ tag: "HORS", name: "horse", delta: 1, cause: "bought", unitPrice: 65, other: null })
-      ]
+        carried({
+          tag: "HORS",
+          name: "horse",
+          delta: 1,
+          cause: "bought",
+          unitPrice: 65,
+          other: null,
+        }),
+      ],
     });
     expect(popup.notes.slice(-2)).toEqual([
       "Grain: given 6 by Farmers (1502).",
-      "Horse: bought 1 at 65 silver each."
+      "Horse: bought 1 at 65 silver each.",
     ]);
   });
 
   it("counts the items it does not have room to name", () => {
     const tags = Array.from({ length: 14 }, (_, index) => `T${index}`);
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      movement: {
+        status: "walk",
+        load: 10,
+        fly: 0,
+        ride: 0,
+        walk: 20,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
       items: tags.map((tag) => ({ name: tag.toLowerCase(), tag, amount: 1 })),
-      itemChanges: tags.map((tag) => carried({ tag, name: tag.toLowerCase(), other: null }))
+      itemChanges: tags.map((tag) =>
+        carried({ tag, name: tag.toLowerCase(), other: null }),
+      ),
     });
     // One N2 sentence, twelve named tags, and the counting line.
     expect(popup.notes).toHaveLength(14);
-    expect(popup.notes[13]).toBe("… and 2 more; the Items column has them all.");
+    expect(popup.notes[13]).toBe(
+      "… and 2 more; the Items column has them all.",
+    );
   });
 
   it("says the load moved when the mode did not", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      movement: {
+        status: "walk",
+        load: 10,
+        fly: 0,
+        ride: 0,
+        walk: 20,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
       items: [{ name: "grain", tag: "GRAI", amount: 6 }],
-      itemChanges: [carried({})]
+      itemChanges: [carried({})],
     });
-    expect(popup.notes[0]).toBe("Its load changed this month, but not the mode it travels in.");
+    expect(popup.notes[0]).toBe(
+      "Its load changed this month, but not the mode it travels in.",
+    );
     expect(popup.notes).not.toContain("Nothing this month changes this.");
   });
 
   it("names the causes and no N2 sentence when the mode moved too", () => {
     const popup = movementPopup({
-      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" },
+      movement: {
+        status: "overloaded",
+        load: 90,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
       items: [{ name: "grain", tag: "GRAI", amount: 6 }],
       itemChanges: [carried({})],
-      previewChanges: [{ field: "movement", original: "Riding" }]
+      previewChanges: [{ field: "movement", original: "Riding" }],
     });
     expect(popup.notes).toEqual(["Grain: given 6 by Farmers (1502)."]);
   });
 
   it("keeps the shared sentence for a month that moved nothing", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" }
+      movement: {
+        status: "walk",
+        load: 10,
+        fly: 0,
+        ride: 0,
+        walk: 20,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
     });
     expect(popup.notes).toContain("Nothing this month changes this.");
-    expect(popup.notes).not.toContain("Its load changed this month, but not the mode it travels in.");
+    expect(popup.notes).not.toContain(
+      "Its load changed this month, but not the mode it travels in.",
+    );
   });
 
   it("warns when an order this month could not be counted", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
-      uncounted: ["BUY 1 ZZZZ"]
+      movement: {
+        status: "walk",
+        load: 10,
+        fly: 0,
+        ride: 0,
+        walk: 20,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
+      uncounted: ["BUY 1 ZZZZ"],
     });
     expect(popup.warning).toBe(
-      "An order this month could not be counted, so these are the report\u2019s own figures, not this month\u2019s."
+      "An order this month could not be counted, so these are the report\u2019s own figures, not this month\u2019s.",
     );
   });
 
   it("warns when a cast's yield is still a range", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
-      created: [{ fewest: 1, most: 3, tag: "MITH", summoned: false }]
+      movement: {
+        status: "walk",
+        load: 10,
+        fly: 0,
+        ride: 0,
+        walk: 20,
+        capacityMode: "walk",
+        swim: { kind: "absent" },
+      },
+      created: [{ fewest: 1, most: 3, tag: "MITH", summoned: false }],
     });
     expect(popup.warning).toBe(
-      "An order this month could not be counted, so these are the report\u2019s own figures, not this month\u2019s."
+      "An order this month could not be counted, so these are the report\u2019s own figures, not this month\u2019s.",
     );
   });
 
   it("the hidden sentence names the capacity that decides", () => {
     const popup = movementPopup({
-      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" }
+      movement: {
+        status: "ride",
+        load: 60,
+        fly: 0,
+        ride: 70,
+        walk: 85,
+        capacityMode: "ride",
+        swim: { kind: "absent" },
+      },
     });
-    expect(popupAsText(popup)).toContain("can carry riding 70, which is the one that decides.");
+    expect(popupAsText(popup)).toContain(
+      "can carry riding 70, which is the one that decides.",
+    );
   });
 
   it("says how a line's label is drawn", () => {
-    expect(popupLabelInk({ label: "can carry riding", value: "70", stress: "deciding" })).toBe(
-      "text-brass"
-    );
-    expect(popupLabelInk({ label: "can carry flying", value: "0", stress: "aside" })).toBe(
-      "text-ink-dim"
-    );
+    expect(
+      popupLabelInk({
+        label: "can carry riding",
+        value: "70",
+        stress: "deciding",
+      }),
+    ).toBe("text-brass");
+    expect(
+      popupLabelInk({ label: "can carry flying", value: "0", stress: "aside" }),
+    ).toBe("text-ink-dim");
     expect(popupLabelInk({ label: "move", value: "Riding" })).toBe("");
   });
 
   it("the flags popup gives every flag a line, on or off", () => {
     const popup = columnPopup(
-      popupForCell("flags", unit({ flags: ["behind", "riding battle spoils"] }), facts())
+      popupForCell(
+        "flags",
+        unit({ flags: ["behind", "riding battle spoils"] }),
+        facts(),
+      ),
     );
     expect(popup.lines.map((line) => [line.label, line.value])).toEqual([
       ["avoiding", "off"],
@@ -583,12 +838,14 @@ describe("the column popups", () => {
       ["sharing", "off"],
       ["taxing", "off"],
       ["consuming", "silver first"],
-      ["battle spoils", "riding"]
+      ["battle spoils", "riding"],
     ]);
   });
 
   it("a flag the report printed that no setting covers gets its own line last", () => {
-    const popup = columnPopup(popupForCell("flags", unit({ flags: ["under strength"] }), facts()));
+    const popup = columnPopup(
+      popupForCell("flags", unit({ flags: ["under strength"] }), facts()),
+    );
     expect(popup.lines).toHaveLength(12);
     expect(popup.lines[11]).toEqual({ label: "under strength", value: "on" });
   });
@@ -599,29 +856,30 @@ describe("the column popups", () => {
         "flags",
         unit({
           flags: ["guarding", "sharing"],
-          previewChanges: [{ field: "flags", original: "behind" }]
+          previewChanges: [{ field: "flags", original: "behind" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
-    const line = (label: string) => popup.lines.find((entry) => entry.label === label);
+    const line = (label: string) =>
+      popup.lines.find((entry) => entry.label === label);
     expect(line("guarding")).toEqual({
       label: "guarding",
       value: "on",
       change: { direction: "up", from: "off" },
-      why: "GUARD 1"
+      why: "GUARD 1",
     });
     expect(line("sharing")).toEqual({
       label: "sharing",
       value: "on",
       change: { direction: "up", from: "off" },
-      why: "SHARE 1"
+      why: "SHARE 1",
     });
     expect(line("behind")).toEqual({
       label: "behind",
       value: "off",
       change: { direction: "down", from: "on" },
-      why: "BEHIND 0"
+      why: "BEHIND 0",
     });
   });
 
@@ -631,16 +889,16 @@ describe("the column popups", () => {
         "flags",
         unit({
           flags: ["guarding", "sharing"],
-          previewChanges: [{ field: "flags", original: "behind" }]
+          previewChanges: [{ field: "flags", original: "behind" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines.slice(0, 4).map((line) => line.label)).toEqual([
       "behind",
       "guarding",
       "sharing",
-      "avoiding"
+      "avoiding",
     ]);
   });
 
@@ -648,11 +906,15 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "flags",
-        unit({ flags: ["avoiding"], previewChanges: [{ field: "flags", original: "on guard" }] }),
-        facts()
-      )
+        unit({
+          flags: ["avoiding"],
+          previewChanges: [{ field: "flags", original: "on guard" }],
+        }),
+        facts(),
+      ),
     );
-    const line = (label: string) => popup.lines.find((entry) => entry.label === label);
+    const line = (label: string) =>
+      popup.lines.find((entry) => entry.label === label);
     expect(line("avoiding")?.why).toBe("AVOID 1");
     expect(line("guarding")?.why).toBe("AVOID 1");
   });
@@ -661,11 +923,15 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "flags",
-        unit({ flags: ["guarding"], previewChanges: [{ field: "flags", original: "avoiding" }] }),
-        facts()
-      )
+        unit({
+          flags: ["guarding"],
+          previewChanges: [{ field: "flags", original: "avoiding" }],
+        }),
+        facts(),
+      ),
     );
-    const line = (label: string) => popup.lines.find((entry) => entry.label === label);
+    const line = (label: string) =>
+      popup.lines.find((entry) => entry.label === label);
     expect(line("guarding")?.why).toBe("GUARD 1");
     expect(line("avoiding")?.why).toBe("GUARD 1");
   });
@@ -673,7 +939,11 @@ describe("the column popups", () => {
   it("every setting names the order that put it in its new state", () => {
     const cause = (flags: string[], original: string, label: string) =>
       columnPopup(
-        popupForCell("flags", unit({ flags, previewChanges: [{ field: "flags", original }] }), facts())
+        popupForCell(
+          "flags",
+          unit({ flags, previewChanges: [{ field: "flags", original }] }),
+          facts(),
+        ),
       ).lines.find((line) => line.label === label)?.why;
 
     expect(cause(["taxing"], "", "taxing")).toBe("AUTOTAX 1");
@@ -682,53 +952,85 @@ describe("the column popups", () => {
     expect(cause([], "holding", "holding")).toBe("HOLD 0");
     expect(cause(["receiving no aid"], "", "receiving no aid")).toBe("NOAID 1");
     expect(cause([], "receiving no aid", "receiving no aid")).toBe("NOAID 0");
-    expect(cause(["won't cross water"], "", "won't cross water")).toBe("NOCROSS 1");
-    expect(cause([], "won't cross water", "won't cross water")).toBe("NOCROSS 0");
+    expect(cause(["won't cross water"], "", "won't cross water")).toBe(
+      "NOCROSS 1",
+    );
+    expect(cause([], "won't cross water", "won't cross water")).toBe(
+      "NOCROSS 0",
+    );
 
     expect(cause(["revealing unit"], "", "revealing")).toBe("REVEAL UNIT");
-    expect(cause(["revealing faction"], "", "revealing")).toBe("REVEAL FACTION");
+    expect(cause(["revealing faction"], "", "revealing")).toBe(
+      "REVEAL FACTION",
+    );
     expect(cause([], "revealing faction", "revealing")).toBe("REVEAL");
 
-    expect(cause(["consuming unit's food"], "", "consuming")).toBe("CONSUME UNIT");
-    expect(cause(["consuming faction's food"], "", "consuming")).toBe("CONSUME FACTION");
+    expect(cause(["consuming unit's food"], "", "consuming")).toBe(
+      "CONSUME UNIT",
+    );
+    expect(cause(["consuming faction's food"], "", "consuming")).toBe(
+      "CONSUME FACTION",
+    );
     expect(cause([], "consuming unit's food", "consuming")).toBe("CONSUME");
 
-    expect(cause(["walking battle spoils"], "riding battle spoils", "battle spoils")).toBe(
-      "SPOILS WALK"
+    expect(
+      cause(["walking battle spoils"], "riding battle spoils", "battle spoils"),
+    ).toBe("SPOILS WALK");
+    expect(cause(["riding battle spoils"], "", "battle spoils")).toBe(
+      "SPOILS RIDE",
     );
-    expect(cause(["riding battle spoils"], "", "battle spoils")).toBe("SPOILS RIDE");
-    expect(cause(["flying battle spoils"], "", "battle spoils")).toBe("SPOILS FLY");
-    expect(cause(["swimming battle spoils"], "", "battle spoils")).toBe("SPOILS SWIM");
-    expect(cause(["sailing battle spoils"], "", "battle spoils")).toBe("SPOILS SAIL");
-    expect(cause(["weightless battle spoils"], "", "battle spoils")).toBe("SPOILS NONE");
-    expect(cause([], "riding battle spoils", "battle spoils")).toBe("SPOILS ALL");
+    expect(cause(["flying battle spoils"], "", "battle spoils")).toBe(
+      "SPOILS FLY",
+    );
+    expect(cause(["swimming battle spoils"], "", "battle spoils")).toBe(
+      "SPOILS SWIM",
+    );
+    expect(cause(["sailing battle spoils"], "", "battle spoils")).toBe(
+      "SPOILS SAIL",
+    );
+    expect(cause(["weightless battle spoils"], "", "battle spoils")).toBe(
+      "SPOILS NONE",
+    );
+    expect(cause([], "riding battle spoils", "battle spoils")).toBe(
+      "SPOILS ALL",
+    );
   });
 
   it("the flags popup no longer says any flag order is unsupported", () => {
-    const popup = columnPopup(popupForCell("flags", unit({ own: true, flags: [] }), facts()));
+    const popup = columnPopup(
+      popupForCell("flags", unit({ own: true, flags: [] }), facts()),
+    );
     expect(popup.notes).toEqual([]);
   });
 
   it("another faction's flags say nothing about your orders", () => {
-    const popup = columnPopup(popupForCell("flags", unit({ own: false, flags: [] }), facts()));
+    const popup = columnPopup(
+      popupForCell("flags", unit({ own: false, flags: [] }), facts()),
+    );
     expect(popup.notes).toEqual([
-      "Another faction's flags, as your report printed them. Nothing you order changes them."
+      "Another faction's flags, as your report printed them. Nothing you order changes them.",
     ]);
   });
 
   it("a unit formed this month says where its flags came from", () => {
     const popup = columnPopup(
-      popupForCell("flags", unit({ own: true, formed: true, flags: [] }), facts())
+      popupForCell(
+        "flags",
+        unit({ own: true, formed: true, flags: [] }),
+        facts(),
+      ),
     );
     expect(popup.notes).toEqual([
       "Formed this month, so it inherits its flags from the unit forming it — every one but " +
-        "guard and autotax, which have to be set in its own orders."
+        "guard and autotax, which have to be set in its own orders.",
     ]);
   });
 
   it("the flags popup does not add the family's no-change sentence", () => {
     for (const own of [true, false]) {
-      const popup = columnPopup(popupForCell("flags", unit({ own, flags: [] }), facts()));
+      const popup = columnPopup(
+        popupForCell("flags", unit({ own, flags: [] }), facts()),
+      );
       expect(popup.notes).not.toContain("Nothing this month changes this.");
     }
   });
@@ -741,44 +1043,58 @@ describe("the column popups", () => {
         "flags",
         unit({
           flags: ["riding battle spoils"],
-          previewChanges: [{ field: "flags", original: "flying battle spoils" }]
+          previewChanges: [
+            { field: "flags", original: "flying battle spoils" },
+          ],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
-    expect(spoils.lines.find((line) => line.label === "battle spoils")).toEqual({
-      label: "battle spoils",
-      value: "riding",
-      change: { direction: "up", from: "flying" },
-      why: "SPOILS RIDE"
-    });
+    expect(spoils.lines.find((line) => line.label === "battle spoils")).toEqual(
+      {
+        label: "battle spoils",
+        value: "riding",
+        change: { direction: "up", from: "flying" },
+        why: "SPOILS RIDE",
+      },
+    );
 
     const consuming = columnPopup(
       popupForCell(
         "flags",
-        unit({ flags: [], previewChanges: [{ field: "flags", original: "consuming unit's food" }] }),
-        facts()
-      )
+        unit({
+          flags: [],
+          previewChanges: [
+            { field: "flags", original: "consuming unit's food" },
+          ],
+        }),
+        facts(),
+      ),
     );
     expect(consuming.lines.find((line) => line.label === "consuming")).toEqual({
       label: "consuming",
       value: "silver first",
       change: { direction: "down", from: "unit's food" },
-      why: "CONSUME"
+      why: "CONSUME",
     });
 
     const toAll = columnPopup(
       popupForCell(
         "flags",
-        unit({ flags: [], previewChanges: [{ field: "flags", original: "riding battle spoils" }] }),
-        facts()
-      )
+        unit({
+          flags: [],
+          previewChanges: [
+            { field: "flags", original: "riding battle spoils" },
+          ],
+        }),
+        facts(),
+      ),
     );
     expect(toAll.lines.find((line) => line.label === "battle spoils")).toEqual({
       label: "battle spoils",
       value: "all",
       change: { direction: "up", from: "riding" },
-      why: "SPOILS ALL"
+      why: "SPOILS ALL",
     });
   });
 
@@ -788,29 +1104,37 @@ describe("the column popups", () => {
         "flags",
         unit({
           flags: ["behind", "under strength"],
-          previewChanges: [{ field: "flags", original: "under strength" }]
+          previewChanges: [{ field: "flags", original: "under strength" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines[0]?.label).toBe("behind");
     expect(popup.lines[popup.lines.length - 1]).toEqual({
       label: "under strength",
-      value: "on"
+      value: "on",
     });
   });
 
   it("an unchanged off line is drawn quietly", () => {
     const popup = columnPopup(
-      popupForCell("flags", unit({ flags: ["behind", "riding battle spoils"] }), facts())
+      popupForCell(
+        "flags",
+        unit({ flags: ["behind", "riding battle spoils"] }),
+        facts(),
+      ),
     );
-    const line = (label: string) => popup.lines.find((entry) => entry.label === label);
+    const line = (label: string) =>
+      popup.lines.find((entry) => entry.label === label);
     expect(line("avoiding")?.stress).toBe("aside");
     expect(line("battle spoils")?.stress).toBeUndefined();
     expect(line("behind")?.stress).toBeUndefined();
 
-    const unordered = columnPopup(popupForCell("flags", unit({ flags: ["behind"] }), facts()));
-    const quiet = (label: string) => unordered.lines.find((entry) => entry.label === label);
+    const unordered = columnPopup(
+      popupForCell("flags", unit({ flags: ["behind"] }), facts()),
+    );
+    const quiet = (label: string) =>
+      unordered.lines.find((entry) => entry.label === label);
     expect(quiet("battle spoils")?.value).toBe("all");
     expect(quiet("battle spoils")?.stress).toBeUndefined();
   });
@@ -819,19 +1143,24 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "skills",
-        unit({ own: true, skills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }] }),
-        facts()
-      )
+        unit({
+          own: true,
+          skills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }],
+        }),
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "combat COMB", value: "2 (90)" }]);
   });
 
   it("the skills popup says a report never shows another faction's skills", () => {
     const popup = columnPopup(
-      popupForCell("skills", unit({ own: false, skills: [] }), facts())
+      popupForCell("skills", unit({ own: false, skills: [] }), facts()),
     );
     expect(popup.lines).toEqual([]);
-    expect(popup.notes).toContain("A report never shows another faction's skills.");
+    expect(popup.notes).toContain(
+      "A report never shows another faction's skills.",
+    );
   });
 
   it("the skills popup names the battle a foreign unit's skills were read from", () => {
@@ -841,15 +1170,22 @@ describe("the column popups", () => {
         unit({ own: false, skills: [] }),
         facts({
           derivedSkills: [
-            { name: "combat", tag: "COMB", level: 3, turn: 71, coordinate: null, terrain: null }
-          ]
-        })
-      )
+            {
+              name: "combat",
+              tag: "COMB",
+              level: 3,
+              turn: 71,
+              coordinate: null,
+              terrain: null,
+            },
+          ],
+        }),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "combat COMB", value: "3" }]);
     expect(popup.notes.slice(0, 2)).toEqual([
       "Read from a battle on turn 71.",
-      "A report never shows another faction's skills."
+      "A report never shows another faction's skills.",
     ]);
   });
 
@@ -859,35 +1195,43 @@ describe("the column popups", () => {
         "items",
         unit({
           items: [{ name: "grain", tag: "GRAI", amount: 40 }],
-          uncounted: ["@TAX"]
+          uncounted: ["@TAX"],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "grain GRAI", value: "40" }]);
     expect(popup.notes).toContain("and more that cannot be counted: @TAX");
     expect(popup.warning).toBe(
-      "“+ ?” in the cell: this month is only partly counted, so this list may be short."
+      "“+ ?” in the cell: this month is only partly counted, so this list may be short.",
     );
   });
 
   it("the items popup says so when the unit holds nothing", () => {
-    const popup = columnPopup(popupForCell("items", unit({ items: [] }), facts()));
+    const popup = columnPopup(
+      popupForCell("items", unit({ items: [] }), facts()),
+    );
     expect(popup.notes).toContain("No items.");
     expect(popup.warning).toBeNull();
   });
 
   it("the structure popup says the unit is in no structure", () => {
-    expect(columnPopup(popupForCell("structure", unit(), facts())).notes).toContain(
-      "In no structure."
-    );
+    expect(
+      columnPopup(popupForCell("structure", unit(), facts())).notes,
+    ).toContain("In no structure.");
   });
 
   it("the structure popup names the structure the row drew", () => {
     const popup = columnPopup(
-      popupForCell("structure", unit(), facts({ structureLabel: "Shaft [1] (Mine)" }))
+      popupForCell(
+        "structure",
+        unit(),
+        facts({ structureLabel: "Shaft [1] (Mine)" }),
+      ),
     );
-    expect(popup.lines).toEqual([{ label: "structure", value: "Shaft [1] (Mine)" }]);
+    expect(popup.lines).toEqual([
+      { label: "structure", value: "Shaft [1] (Mine)" },
+    ]);
   });
 
   it("the structure popup reads its change off the report's own field name", () => {
@@ -896,10 +1240,12 @@ describe("the column popups", () => {
         "structure",
         unit({
           structureId: "329",
-          previewChanges: [{ field: "structureId", original: "", cause: "ENTER 329" }]
+          previewChanges: [
+            { field: "structureId", original: "", cause: "ENTER 329" },
+          ],
         }),
-        facts({ structureLabel: "Wavecrest [329] · Longship" })
-      )
+        facts({ structureLabel: "Wavecrest [329] · Longship" }),
+      ),
     );
     expect(popup.lines[0]).toEqual({ label: "was", value: "in the open" });
     expect(popup.lines[1]?.why).toBe("ENTER 329");
@@ -912,17 +1258,23 @@ describe("the column popups", () => {
         "structure",
         unit({
           structureId: "12",
-          previewChanges: [{ field: "structureId", original: "329", cause: "ENTER 12" }]
+          previewChanges: [
+            { field: "structureId", original: "329", cause: "ENTER 12" },
+          ],
         }),
         facts({
           structureLabel: "Odds and Ends [12] · Fort",
-          reportedStructureLabel: "Wavecrest [329] · Longship"
-        })
-      )
+          reportedStructureLabel: "Wavecrest [329] · Longship",
+        }),
+      ),
     );
     expect(popup.lines).toEqual([
       { label: "was", value: "Wavecrest [329] · Longship" },
-      { label: "structure", value: "Odds and Ends [12] · Fort", why: "ENTER 12" }
+      {
+        label: "structure",
+        value: "Odds and Ends [12] · Fort",
+        why: "ENTER 12",
+      },
     ]);
     expect(popup.notes).toEqual([]);
   });
@@ -933,10 +1285,15 @@ describe("the column popups", () => {
         "structure",
         unit({
           structureId: "12",
-          previewChanges: [{ field: "structureId", original: "", cause: "ENTER 12" }]
+          previewChanges: [
+            { field: "structureId", original: "", cause: "ENTER 12" },
+          ],
         }),
-        facts({ structureLabel: "Odds and Ends [12] · Fort", reportedStructureLabel: null })
-      )
+        facts({
+          structureLabel: "Odds and Ends [12] · Fort",
+          reportedStructureLabel: null,
+        }),
+      ),
     );
     expect(popup.lines[0]?.value).toBe("in the open");
     expect(popup.lines[1]?.why).toBe("ENTER 12");
@@ -948,14 +1305,19 @@ describe("the column popups", () => {
         "structure",
         unit({
           structureId: null,
-          previewChanges: [{ field: "structureId", original: "12", cause: "LEAVE" }]
+          previewChanges: [
+            { field: "structureId", original: "12", cause: "LEAVE" },
+          ],
         }),
-        facts({ structureLabel: null, reportedStructureLabel: "Odds and Ends [12] · Fort" })
-      )
+        facts({
+          structureLabel: null,
+          reportedStructureLabel: "Odds and Ends [12] · Fort",
+        }),
+      ),
     );
     expect(popup.lines).toEqual([
       { label: "was", value: "Odds and Ends [12] · Fort" },
-      { label: "structure", value: "in the open", why: "LEAVE" }
+      { label: "structure", value: "in the open", why: "LEAVE" },
     ]);
     expect(popup.notes).not.toContain("In no structure.");
     expect(popup.notes.some((note) => note.startsWith("Was: "))).toBe(false);
@@ -967,14 +1329,19 @@ describe("the column popups", () => {
         "structure",
         unit({
           structureId: null,
-          previewChanges: [{ field: "structureId", original: "12", cause: "MOVE OUT" }]
+          previewChanges: [
+            { field: "structureId", original: "12", cause: "MOVE OUT" },
+          ],
         }),
-        facts({ structureLabel: null, reportedStructureLabel: "Odds and Ends [12] · Fort" })
-      )
+        facts({
+          structureLabel: null,
+          reportedStructureLabel: "Odds and Ends [12] · Fort",
+        }),
+      ),
     );
     expect(popup.lines).toEqual([
       { label: "was", value: "Odds and Ends [12] · Fort" },
-      { label: "structure", value: "in the open", why: "MOVE OUT" }
+      { label: "structure", value: "in the open", why: "MOVE OUT" },
     ]);
   });
 
@@ -982,9 +1349,15 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "structure",
-        unit({ structureId: null, previewChanges: [{ field: "structureId", original: "12" }] }),
-        facts({ structureLabel: null, reportedStructureLabel: "Odds and Ends [12] · Fort" })
-      )
+        unit({
+          structureId: null,
+          previewChanges: [{ field: "structureId", original: "12" }],
+        }),
+        facts({
+          structureLabel: null,
+          reportedStructureLabel: "Odds and Ends [12] · Fort",
+        }),
+      ),
     );
     expect(popup.lines[1]?.why).toBeUndefined();
   });
@@ -993,20 +1366,30 @@ describe("the column popups", () => {
     const moved = columnPopup(
       popupForCell(
         "structure",
-        unit({ structureId: "12", previewChanges: [{ field: "structureId", original: "329" }] }),
-        facts({ structureLabel: "Odds and Ends [12] · Fort", reportedStructureLabel: "[329]" })
-      )
+        unit({
+          structureId: "12",
+          previewChanges: [{ field: "structureId", original: "329" }],
+        }),
+        facts({
+          structureLabel: "Odds and Ends [12] · Fort",
+          reportedStructureLabel: "[329]",
+        }),
+      ),
     );
     expect(moved.notes).toEqual([
-      "This region\u2019s report does not describe [329], so only its number is shown."
+      "This region\u2019s report does not describe [329], so only its number is shown.",
     ]);
 
     const still = columnPopup(
-      popupForCell("structure", unit({ structureId: "12" }), facts({ structureLabel: "[12]" }))
+      popupForCell(
+        "structure",
+        unit({ structureId: "12" }),
+        facts({ structureLabel: "[12]" }),
+      ),
     );
     expect(still.notes).toEqual([
       "This region\u2019s report does not describe [12], so only its number is shown.",
-      "Nothing this month changes this."
+      "Nothing this month changes this.",
     ]);
   });
 
@@ -1016,37 +1399,48 @@ describe("the column popups", () => {
         "structure",
         unit({
           structureId: null,
-          previewChanges: [{ field: "structureId", original: "329", cause: "LEAVE" }]
+          previewChanges: [
+            { field: "structureId", original: "329", cause: "LEAVE" },
+          ],
         }),
-        facts({ structureLabel: null, reportedStructureLabel: "Wavecrest [329] · Longship" })
-      )
+        facts({
+          structureLabel: null,
+          reportedStructureLabel: "Wavecrest [329] · Longship",
+        }),
+      ),
     );
     expect(moved.lines).toEqual([
       { label: "was", value: "Wavecrest [329] · Longship" },
-      { label: "structure", value: "in the open", why: "LEAVE" }
+      { label: "structure", value: "in the open", why: "LEAVE" },
     ]);
     expect(moved.notes).toEqual([]);
 
     const unflagged = columnPopup(
       popupForCell(
         "flags",
-        unit({ flags: [], previewChanges: [{ field: "flags", original: "behind" }] }),
-        facts()
-      )
+        unit({
+          flags: [],
+          previewChanges: [{ field: "flags", original: "behind" }],
+        }),
+        facts(),
+      ),
     );
     expect(unflagged.lines.find((line) => line.label === "behind")).toEqual({
       label: "behind",
       value: "off",
       change: { direction: "down", from: "on" },
-      why: "BEHIND 0"
+      why: "BEHIND 0",
     });
 
     const still = columnPopup(
       popupForCell(
         "movement",
-        unit({ movement: null, previewChanges: [{ field: "movement", original: "Walking" }] }),
-        facts()
-      )
+        unit({
+          movement: null,
+          previewChanges: [{ field: "movement", original: "Walking" }],
+        }),
+        facts(),
+      ),
     );
     expect(still.notes).toEqual(["Movement not disclosed.", "Was: Walking."]);
   });
@@ -1059,13 +1453,17 @@ describe("the column popups", () => {
         "items",
         unit({
           items: [{ name: "grain", tag: "GRAI", amount: 40 }],
-          previewChanges: [{ field: "items", original: "20 GRAI" }]
+          previewChanges: [{ field: "items", original: "20 GRAI" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
-      { label: "grain GRAI", value: "40", change: { direction: "up", from: "20" } }
+      {
+        label: "grain GRAI",
+        value: "40",
+        change: { direction: "up", from: "20" },
+      },
     ]);
     expect(popup.notes.filter((note) => /20 GRAI/.test(note))).toEqual([]);
   });
@@ -1074,12 +1472,19 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "items",
-        unit({ items: [], previewChanges: [{ field: "items", original: "20 GRAI" }] }),
-        facts()
-      )
+        unit({
+          items: [],
+          previewChanges: [{ field: "items", original: "20 GRAI" }],
+        }),
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
-      { label: "GRAI", value: "gone", change: { direction: "down", from: "20" } }
+      {
+        label: "GRAI",
+        value: "gone",
+        change: { direction: "down", from: "20" },
+      },
     ]);
     // It has lines, so the shared "Was: ..." sentence never fires and the list is not empty.
     expect(popup.notes).not.toContain("No items.");
@@ -1090,8 +1495,8 @@ describe("the column popups", () => {
       popupForCell(
         "men",
         unit({ men: 12, previewChanges: [{ field: "men", original: "12" }] }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "men", value: "12" }]);
     expect(popup.notes).toEqual([]);
@@ -1101,56 +1506,86 @@ describe("the column popups", () => {
     const popup = columnPopup(
       popupForCell(
         "skills",
-        unit({ own: false, skills: [], previewChanges: [{ field: "skills", original: "" }] }),
+        unit({
+          own: false,
+          skills: [],
+          previewChanges: [{ field: "skills", original: "" }],
+        }),
         facts({
           derivedSkills: [
-            { name: "combat", tag: "COMB", level: 3, turn: 71, coordinate: null, terrain: null }
-          ]
-        })
-      )
+            {
+              name: "combat",
+              tag: "COMB",
+              level: 3,
+              turn: 71,
+              coordinate: null,
+              terrain: null,
+            },
+          ],
+        }),
+      ),
     );
     expect(popup.lines[0]?.why).toBe("was: —");
   });
 
   it("the long order popup says another faction's orders are not in your report", () => {
     expect(
-      columnPopup(popupForCell("longOrder", unit({ own: false }), facts())).notes
+      columnPopup(popupForCell("longOrder", unit({ own: false }), facts()))
+        .notes,
     ).toContain("Another faction's orders are not in your report.");
   });
 
   it("the long order popup says when one of ours wrote none", () => {
     expect(
-      columnPopup(popupForCell("longOrder", unit({ own: true }), facts())).notes
+      columnPopup(popupForCell("longOrder", unit({ own: true }), facts()))
+        .notes,
     ).toContain("No long order this month.");
   });
 
   it("the long order popup quotes the order the unit wrote", () => {
     const popup = columnPopup(
-      popupForCell("longOrder", unit({ own: true }), facts({ longOrder: "STUDY COMB" }))
+      popupForCell(
+        "longOrder",
+        unit({ own: true }),
+        facts({ longOrder: "STUDY COMB" }),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "long order", value: "STUDY COMB" }]);
   });
 
   const longOrderPopup = (overrides: Partial<PopupFacts>) =>
-    columnPopup(popupForCell("longOrder", unit({ own: true }), facts(overrides)));
+    columnPopup(
+      popupForCell("longOrder", unit({ own: true }), facts(overrides)),
+    );
 
   it("the long order popup names both sides when this month's differs from the report's", () => {
-    const popup = longOrderPopup({ longOrder: "TAX", reportedLongOrder: reported("@study obse") });
+    const popup = longOrderPopup({
+      longOrder: "TAX",
+      reportedLongOrder: reported("@study obse"),
+    });
     expect(popup.lines).toEqual([
       { label: "was", value: "@study obse" },
-      { label: "long order", value: "TAX" }
+      { label: "long order", value: "TAX" },
     ]);
     expect(popup.notes).toEqual(["Changed since your report arrived."]);
   });
 
   it("the long order popup says the report arrived with none", () => {
-    const popup = longOrderPopup({ longOrder: "MOVE N NE", reportedLongOrder: reported(null) });
+    const popup = longOrderPopup({
+      longOrder: "MOVE N NE",
+      reportedLongOrder: reported(null),
+    });
     expect(popup.lines).toEqual([{ label: "long order", value: "MOVE N NE" }]);
-    expect(popup.notes).toEqual(["Your report arrived with no long order for this unit."]);
+    expect(popup.notes).toEqual([
+      "Your report arrived with no long order for this unit.",
+    ]);
   });
 
   it("the long order popup keeps the report's order when this month has none", () => {
-    const popup = longOrderPopup({ longOrder: null, reportedLongOrder: reported("@work") });
+    const popup = longOrderPopup({
+      longOrder: null,
+      reportedLongOrder: reported("@work"),
+    });
     expect(popup.lines).toEqual([{ label: "was", value: "@work" }]);
     expect(popup.notes).toEqual(["No long order this month."]);
   });
@@ -1158,62 +1593,78 @@ describe("the column popups", () => {
   it("the long order popup says nothing changed when it did not", () => {
     const popup = longOrderPopup({
       longOrder: "@study obse",
-      reportedLongOrder: reported("@study obse")
+      reportedLongOrder: reported("@study obse"),
     });
-    expect(popup.lines).toEqual([{ label: "long order", value: "@study obse" }]);
+    expect(popup.lines).toEqual([
+      { label: "long order", value: "@study obse" },
+    ]);
     expect(popup.notes).toEqual(["Nothing this month changes this."]);
   });
 
   it("the long order popup says when neither side has one", () => {
-    const popup = longOrderPopup({ longOrder: null, reportedLongOrder: reported(null) });
+    const popup = longOrderPopup({
+      longOrder: null,
+      reportedLongOrder: reported(null),
+    });
     expect(popup.lines).toEqual([]);
-    expect(popup.notes).toEqual(["No long order this month.", "Your report arrived with none either."]);
+    expect(popup.notes).toEqual([
+      "No long order this month.",
+      "Your report arrived with none either.",
+    ]);
   });
 
   it("the long order popup ignores capitalisation and spacing but not the repeat marker", () => {
     const typed = longOrderPopup({
       longOrder: "@STUDY  OBSE",
-      reportedLongOrder: reported("@study obse")
+      reportedLongOrder: reported("@study obse"),
     });
-    expect(typed.lines).toEqual([{ label: "long order", value: "@STUDY  OBSE" }]);
+    expect(typed.lines).toEqual([
+      { label: "long order", value: "@STUDY  OBSE" },
+    ]);
     expect(typed.notes).toEqual(["Nothing this month changes this."]);
 
     const marker = longOrderPopup({
       longOrder: "STUDY OBSE",
-      reportedLongOrder: reported("@study obse")
+      reportedLongOrder: reported("@study obse"),
     });
     expect(marker.lines).toEqual([
       { label: "was", value: "@study obse" },
-      { label: "long order", value: "STUDY OBSE" }
+      { label: "long order", value: "STUDY OBSE" },
     ]);
     expect(marker.notes).toEqual(["Changed since your report arrived."]);
   });
 
   it("the long order popup says when the report carried no orders template", () => {
-    const popup = longOrderPopup({ longOrder: "TAX", reportedLongOrder: NO_ORDERS_TEMPLATE });
+    const popup = longOrderPopup({
+      longOrder: "TAX",
+      reportedLongOrder: NO_ORDERS_TEMPLATE,
+    });
     expect(popup.lines).toEqual([{ label: "long order", value: "TAX" }]);
     expect(popup.notes).toEqual([
-      "Your report carries no orders template, so there is nothing to compare with."
+      "Your report carries no orders template, so there is nothing to compare with.",
     ]);
   });
 
   it("the long order popup says when the template never listed this unit", () => {
     const popup = longOrderPopup({
       longOrder: "MOVE N",
-      reportedLongOrder: { kind: "not-listed" }
+      reportedLongOrder: { kind: "not-listed" },
     });
     expect(popup.lines).toEqual([{ label: "long order", value: "MOVE N" }]);
     expect(popup.notes).toEqual([
-      "This unit is not in your report\u2019s orders template, so there is nothing to compare with."
+      "This unit is not in your report\u2019s orders template, so there is nothing to compare with.",
     ]);
   });
 
   it("a unit with neither a long order nor a baseline says both", () => {
-    const popup = longOrderPopup({ longOrder: null, reportedLongOrder: NO_ORDERS_TEMPLATE });
+    const popup = longOrderPopup({
+      longOrder: null,
+      reportedLongOrder: NO_ORDERS_TEMPLATE,
+    });
     expect(popup.lines).toEqual([]);
     expect(popup.notes).toEqual([
       "No long order this month.",
-      "Your report carries no orders template, so there is nothing to compare with."
+      "Your report carries no orders template, so there is nothing to compare with.",
     ]);
   });
 
@@ -1229,21 +1680,25 @@ describe("the column popups", () => {
               held: 900,
               atMonthEnd: 900,
               changes: [],
-              noStudyFee: { skillName: "combat", ceilingLevel: 5, limitingRaces }
-            })
-          })
-        )
+              noStudyFee: {
+                skillName: "combat",
+                ceilingLevel: 5,
+                limitingRaces,
+              },
+            }),
+          }),
+        ),
       );
 
     const byRace = capped([{ tag: "GNOL", name: "gnoll" }]);
     expect(byRace.lines.map((line) => line.label)).not.toContain("studied");
     expect(byRace.notes).toContain(
-      "No study fee: no gnoll may take combat past level 5, so this month costs nothing."
+      "No study fee: no gnoll may take combat past level 5, so this month costs nothing.",
     );
 
     const bySkill = capped([]);
     expect(bySkill.notes).toContain(
-      "No study fee: combat stops at level 5 for this unit, so this month costs nothing."
+      "No study fee: combat stops at level 5 for this unit, so this month costs nothing.",
     );
   });
 
@@ -1258,15 +1713,19 @@ describe("the column popups", () => {
             atMonthEnd: 1060,
             upkeep: 40,
             changes: [{ amount: 200, cause: "taxed", line: 2, other: null }],
-            noStudyFee: { skillName: "combat", ceilingLevel: 5, limitingRaces: [] }
-          })
-        })
-      )
+            noStudyFee: {
+              skillName: "combat",
+              ceilingLevel: 5,
+              limitingRaces: [],
+            },
+          }),
+        }),
+      ),
     );
 
     expect(popup.notes.length).toBeGreaterThan(0);
     expect(popup.notes[popup.notes.length - 1]).toBe(
-      "No study fee: combat stops at level 5 for this unit, so this month costs nothing."
+      "No study fee: combat stops at level 5 for this unit, so this month costs nothing.",
     );
   });
 
@@ -1283,22 +1742,46 @@ describe("the column popups", () => {
             atMonthEnd: 320,
             changes: [
               { amount: 200, cause: "taxed", line: 2, other: null },
-              { amount: 50, cause: "was-given", line: null, other: "Watch (1604)" },
+              {
+                amount: 50,
+                cause: "was-given",
+                line: null,
+                other: "Watch (1604)",
+              },
               { amount: -60, cause: "studied", line: 3, other: null },
               { amount: -90, cause: "bought", line: 4, other: null },
-              { amount: -40, cause: "gave-away", line: 5, other: "Scouts (1502)" }
-            ]
-          })
-        })
-      )
+              {
+                amount: -40,
+                cause: "gave-away",
+                line: 5,
+                other: "Scouts (1502)",
+              },
+            ],
+          }),
+        }),
+      ),
     );
     expect(popup.lines).toEqual([
-      { label: "silver", value: "320", change: { direction: "down", from: "340" } },
+      {
+        label: "silver",
+        value: "320",
+        change: { direction: "down", from: "340" },
+      },
       { label: "taxed", value: "+200", tone: "up" },
-      { label: "was given", value: "+50", tone: "up", why: "from Watch (1604)" },
+      {
+        label: "was given",
+        value: "+50",
+        tone: "up",
+        why: "from Watch (1604)",
+      },
       { label: "studied", value: "-60", tone: "down" },
       { label: "bought", value: "-90", tone: "down" },
-      { label: "gave away", value: "-40", tone: "down", why: "to Scouts (1502)" }
+      {
+        label: "gave away",
+        value: "-40",
+        tone: "down",
+        why: "to Scouts (1502)",
+      },
     ]);
   });
 
@@ -1314,10 +1797,12 @@ describe("the column popups", () => {
             lateIncome: 60,
             atMonthEnd: 582,
             lateIncomeAtMost: true,
-            changes: [{ amount: 60, cause: "entertained", line: 2, other: null }]
-          })
-        })
-      )
+            changes: [
+              { amount: 60, cause: "entertained", line: 2, other: null },
+            ],
+          }),
+        }),
+      ),
     );
 
     // The headline carries the ceiling and keeps its pair; the cause line stays plain, so the
@@ -1325,16 +1810,16 @@ describe("the column popups", () => {
     expect(popup.lines[0]).toEqual({
       label: "silver",
       value: "582 at most",
-      change: { direction: "up", from: "522" }
+      change: { direction: "up", from: "522" },
     });
     expect(popup.lines[1]).toEqual({
       label: "entertained",
       value: "+60",
       tone: "up",
-      why: "arrives too late"
+      why: "arrives too late",
     });
     expect(popup.notes).toContain(
-      "Another of your units here draws on the same pool and its line could not be read from the turn report, so this unit may be paid less than this."
+      "Another of your units here draws on the same pool and its line could not be read from the turn report, so this unit may be paid less than this.",
     );
   });
 
@@ -1343,8 +1828,8 @@ describe("the column popups", () => {
       popupForCell(
         "silver",
         unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 100 }) })
-      )
+        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 100 }) }),
+      ),
     );
     expect(still.lines[0]).toEqual({ label: "silver", value: "100" });
 
@@ -1352,8 +1837,14 @@ describe("the column popups", () => {
       popupForCell(
         "silver",
         unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: null, doubt: "unknown-tax-base" }) })
-      )
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: null,
+            doubt: "unknown-tax-base",
+          }),
+        }),
+      ),
     );
     expect(doubted.lines[0]).toEqual({ label: "silver", value: "?" });
   });
@@ -1371,17 +1862,17 @@ describe("the column popups", () => {
             expense: null,
             upkeep: null,
             atMonthEnd: null,
-            doubt: "silver-never-read"
-          })
-        })
-      )
+            doubt: "silver-never-read",
+          }),
+        }),
+      ),
     );
     expect(popup.lines).toEqual([
       { label: "silver", value: "not known" },
-      { label: "at month end", value: "not known" }
+      { label: "at month end", value: "not known" },
     ]);
     expect(popup.notes).toEqual([
-      "This unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read."
+      "This unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read.",
     ]);
   });
 
@@ -1392,7 +1883,7 @@ describe("the column popups", () => {
         unit({
           own: true,
           read: "partial",
-          items: [{ tag: "SILV", name: "silver", amount: 7500 }]
+          items: [{ tag: "SILV", name: "silver", amount: 7500 }],
         }),
         facts({
           silver: aUnitSilver({
@@ -1402,17 +1893,17 @@ describe("the column popups", () => {
             expense: null,
             upkeep: null,
             atMonthEnd: null,
-            doubt: "unit-line-cut-short"
-          })
-        })
-      )
+            doubt: "unit-line-cut-short",
+          }),
+        }),
+      ),
     );
     expect(popup.lines).toEqual([
       { label: "silver", value: "7500" },
-      { label: "at month end", value: "not known" }
+      { label: "at month end", value: "not known" },
     ]);
     expect(popup.notes).toEqual([
-      "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up."
+      "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up.",
     ]);
   });
 
@@ -1426,18 +1917,28 @@ describe("the column popups", () => {
             held: 0,
             atMonthEnd: 80,
             changes: [
-              { amount: 50, cause: "was-given", line: null, other: "Watch (1604)" },
-              { amount: 30, cause: "was-given", line: null, other: "unit 1901" }
-            ]
-          })
-        })
-      )
+              {
+                amount: 50,
+                cause: "was-given",
+                line: null,
+                other: "Watch (1604)",
+              },
+              {
+                amount: 30,
+                cause: "was-given",
+                line: null,
+                other: "unit 1901",
+              },
+            ],
+          }),
+        }),
+      ),
     );
     expect(popup.lines[1]).toEqual({
       label: "was given",
       value: "+80",
       tone: "up",
-      why: "from Watch (1604) and unit 1901"
+      why: "from Watch (1604) and unit 1901",
     });
     expect(popup.lines).toHaveLength(2);
   });
@@ -1454,13 +1955,22 @@ describe("the column popups", () => {
             held: 0,
             atMonthEnd: 25,
             changes: [
-              { amount: 25, cause: "found-treasure" as never, line: null, other: null }
-            ]
-          })
-        })
-      )
+              {
+                amount: 25,
+                cause: "found-treasure" as never,
+                line: null,
+                other: null,
+              },
+            ],
+          }),
+        }),
+      ),
     );
-    expect(popup.lines[1]).toEqual({ label: "found treasure", value: "+25", tone: "up" });
+    expect(popup.lines[1]).toEqual({
+      label: "found treasure",
+      value: "+25",
+      tone: "up",
+    });
   });
 
   it("the silver popup names who gave and who was taken from", () => {
@@ -1472,10 +1982,12 @@ describe("the column popups", () => {
           silver: aUnitSilver({
             held: 0,
             atMonthEnd: 30,
-            changes: [{ amount: 30, cause: "took", line: 2, other: "Watch (1604)" }]
-          })
-        })
-      )
+            changes: [
+              { amount: 30, cause: "took", line: 2, other: "Watch (1604)" },
+            ],
+          }),
+        }),
+      ),
     );
     expect(popup.lines[1]?.why).toBe("from Watch (1604)");
   });
@@ -1491,17 +2003,22 @@ describe("the column popups", () => {
             atMonthEnd: 70,
             changes: [
               { amount: 30, cause: "took", line: 2, other: "Watch (1604)" },
-              { amount: 40, cause: "took-unshown", line: 2, other: "unit 1901" }
-            ]
-          })
-        })
-      )
+              {
+                amount: 40,
+                cause: "took-unshown",
+                line: 2,
+                other: "unit 1901",
+              },
+            ],
+          }),
+        }),
+      ),
     );
     expect(popup.lines[1]).toEqual({
       label: "took",
       value: "+70",
       tone: "up",
-      why: "from Watch (1604), from unit 1901, which your report does not show"
+      why: "from Watch (1604), from unit 1901, which your report does not show",
     });
   });
 
@@ -1514,14 +2031,14 @@ describe("the column popups", () => {
           silver: aUnitSilver({
             held: 90,
             atMonthEnd: 0,
-            changes: [{ amount: -90, cause: "lent", line: null, other: null }]
-          })
-        })
-      )
+            changes: [{ amount: -90, cause: "lent", line: null, other: null }],
+          }),
+        }),
+      ),
     );
     expect(popup.lines.find((line) => line.label === "lent")).toMatchObject({
       value: "-90",
-      why: "to a faction-mate's orders in this hex"
+      why: "to a faction-mate's orders in this hex",
     });
   });
 
@@ -1534,14 +2051,23 @@ describe("the column popups", () => {
           silver: aUnitSilver({
             held: 60,
             atMonthEnd: 0,
-            changes: [{ amount: -60, cause: "was-taken", line: null, other: "Buyers (900)" }]
-          })
-        })
-      )
+            changes: [
+              {
+                amount: -60,
+                cause: "was-taken",
+                line: null,
+                other: "Buyers (900)",
+              },
+            ],
+          }),
+        }),
+      ),
     );
-    expect(popup.lines.find((line) => line.label === "was taken")).toMatchObject({
+    expect(
+      popup.lines.find((line) => line.label === "was taken"),
+    ).toMatchObject({
       value: "-60",
-      why: "by Buyers (900)"
+      why: "by Buyers (900)",
     });
   });
 
@@ -1554,17 +2080,21 @@ describe("the column popups", () => {
           silver: aUnitSilver({
             atMonthEnd: -1600,
             borrowedForOrders: 1600,
-            changes: [{ amount: 1600, cause: "was-lent", line: null, other: null }]
-          })
-        })
-      )
+            changes: [
+              { amount: 1600, cause: "was-lent", line: null, other: null },
+            ],
+          }),
+        }),
+      ),
     );
-    expect(popup.lines.find((line) => line.label === "was lent")).toMatchObject({
-      value: "+1600",
-      why: "by your units in this hex"
-    });
+    expect(popup.lines.find((line) => line.label === "was lent")).toMatchObject(
+      {
+        value: "+1600",
+        why: "by your units in this hex",
+      },
+    );
     expect(popup.notes).not.toContain(
-      "A faction-mate's silver in this hex pays for this unit's orders."
+      "A faction-mate's silver in this hex pays for this unit's orders.",
     );
   });
 
@@ -1577,13 +2107,13 @@ describe("the column popups", () => {
           silver: aUnitSilver({
             borrowedForOrders: 1600,
             sharedSilverForOrders: 1600,
-            changes: []
-          })
-        })
-      )
+            changes: [],
+          }),
+        }),
+      ),
     );
     expect(popup.notes).toContain(
-      "A faction-mate's silver in this hex pays for this unit's orders."
+      "A faction-mate's silver in this hex pays for this unit's orders.",
     );
   });
 
@@ -1597,16 +2127,28 @@ describe("the column popups", () => {
             held: 60,
             atMonthEnd: 0,
             changes: [
-              { amount: -40, cause: "was-taken", line: null, other: "Buyers (900)" },
-              { amount: -20, cause: "was-taken", line: null, other: "Scouts (901)" }
-            ]
-          })
-        })
-      )
+              {
+                amount: -40,
+                cause: "was-taken",
+                line: null,
+                other: "Buyers (900)",
+              },
+              {
+                amount: -20,
+                cause: "was-taken",
+                line: null,
+                other: "Scouts (901)",
+              },
+            ],
+          }),
+        }),
+      ),
     );
-    expect(popup.lines.find((line) => line.label === "was taken")).toMatchObject({
+    expect(
+      popup.lines.find((line) => line.label === "was taken"),
+    ).toMatchObject({
       value: "-60",
-      why: "by Buyers (900) and Scouts (901)"
+      why: "by Buyers (900) and Scouts (901)",
     });
   });
 
@@ -1625,18 +2167,18 @@ describe("the column popups", () => {
               line: 7,
               unitPrice: 45,
               other: null,
-              isMan: false
-            }
-          ]
+              isMan: false,
+            },
+          ],
         }),
         facts({
           silver: aUnitSilver({
             held: 100,
             atMonthEnd: 10,
-            changes: [{ amount: -90, cause: "bought", line: 7, other: null }]
-          })
-        })
-      )
+            changes: [{ amount: -90, cause: "bought", line: 7, other: null }],
+          }),
+        }),
+      ),
     );
     expect(popup.lines[1]?.why).toBe("2 horses at 45 each");
   });
@@ -1654,11 +2196,11 @@ describe("the column popups", () => {
             worksByDefault: true,
             changes: [
               { amount: 200, cause: "taxed", line: null, other: null },
-              { amount: 50, cause: "worked", line: null, other: null }
-            ]
-          })
-        })
-      )
+              { amount: 50, cause: "worked", line: null, other: null },
+            ],
+          }),
+        }),
+      ),
     );
     expect(popup.lines[1]?.why).toBe("set to tax every turn");
     expect(popup.lines[2]?.why).toBe("no month-long order, arrives too late");
@@ -1675,10 +2217,12 @@ describe("the column popups", () => {
           silver: aUnitSilver({
             held: 0,
             atMonthEnd: 20,
-            changes: [{ amount: 20, cause: "entertained", line: 2, other: null }]
-          })
-        })
-      )
+            changes: [
+              { amount: 20, cause: "entertained", line: 2, other: null },
+            ],
+          }),
+        }),
+      ),
     );
     expect(popup.lines[1]?.why).toBe("arrives too late");
   });
@@ -1688,25 +2232,37 @@ describe("the column popups", () => {
       held: 340,
       atMonthEnd: 400,
       upkeep: 80,
-      changes: [{ amount: 60, cause: "taxed", line: 2, other: null }]
+      changes: [{ amount: 60, cause: "taxed", line: 2, other: null }],
     });
     const counted = columnPopup(
-      popupForCell("silver", unit({ own: true }), facts({ silver, countUpkeep: true }))
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver, countUpkeep: true }),
+      ),
     );
     expect(counted.lines[0]).toEqual({
       label: "silver",
       value: "320",
-      change: { direction: "down", from: "340" }
+      change: { direction: "down", from: "340" },
     });
-    expect(counted.lines.at(-1)).toEqual({ label: "upkeep", value: "-80", tone: "down" });
+    expect(counted.lines.at(-1)).toEqual({
+      label: "upkeep",
+      value: "-80",
+      tone: "down",
+    });
 
     const uncounted = columnPopup(
-      popupForCell("silver", unit({ own: true }), facts({ silver, countUpkeep: false }))
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver, countUpkeep: false }),
+      ),
     );
     expect(uncounted.lines[0]).toEqual({
       label: "silver",
       value: "400",
-      change: { direction: "up", from: "340" }
+      change: { direction: "up", from: "340" },
     });
     expect(uncounted.lines.map((line) => line.label)).not.toContain("upkeep");
   });
@@ -1717,10 +2273,12 @@ describe("the column popups", () => {
       popupForCell(
         "silver",
         unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 0, atMonthEnd: -60 }) })
-      )
+        facts({ silver: aUnitSilver({ held: 0, atMonthEnd: -60 }) }),
+      ),
     );
-    expect(popup.warning).toBe("A red figure in the cell: this unit ends the month 60 short.");
+    expect(popup.warning).toBe(
+      "A red figure in the cell: this unit ends the month 60 short.",
+    );
   });
 
   it("the silver popup explains a red figure whose orders cannot be paid", () => {
@@ -1728,11 +2286,17 @@ describe("the column popups", () => {
       popupForCell(
         "silver",
         unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 40, shortForOrders: 95 }) })
-      )
+        facts({
+          silver: aUnitSilver({
+            held: 100,
+            atMonthEnd: 40,
+            shortForOrders: 95,
+          }),
+        }),
+      ),
     );
     expect(popup.warning).toBe(
-      "A red figure in the cell: this unit cannot pay for its own orders out of silver that reaches it in time."
+      "A red figure in the cell: this unit cannot pay for its own orders out of silver that reaches it in time.",
     );
   });
 
@@ -1741,11 +2305,14 @@ describe("the column popups", () => {
       popupForCell(
         "silver",
         unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 100 }), silverWarned: true })
-      )
+        facts({
+          silver: aUnitSilver({ held: 100, atMonthEnd: 100 }),
+          silverWarned: true,
+        }),
+      ),
     );
     expect(popup.warning).toBe(
-      "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel."
+      "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel.",
     );
   });
 
@@ -1754,11 +2321,14 @@ describe("the column popups", () => {
       popupForCell(
         "silver",
         unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 0, atMonthEnd: -60 }), silverWarned: true })
-      )
+        facts({
+          silver: aUnitSilver({ held: 0, atMonthEnd: -60 }),
+          silverWarned: true,
+        }),
+      ),
     );
     expect(popup.warning).toBe(
-      "A red figure in the cell: this unit ends the month 60 short. ⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel."
+      "A red figure in the cell: this unit ends the month 60 short. ⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel.",
     );
   });
 
@@ -1767,8 +2337,8 @@ describe("the column popups", () => {
       popupForCell(
         "silver",
         unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 100 }) })
-      )
+        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 100 }) }),
+      ),
     );
     expect(popup.warning).toBeNull();
   });
@@ -1799,18 +2369,28 @@ describe("the column popups", () => {
             worksByDefault: true,
             changes: [
               { amount: 200, cause: "taxed", line: null, other: null },
-              { amount: 50, cause: "was-given", line: null, other: "Watch (1604)" }
-            ]
-          })
-        })
-      )
+              {
+                amount: 50,
+                cause: "was-given",
+                line: null,
+                other: "Watch (1604)",
+              },
+            ],
+          }),
+        }),
+      ),
     );
     const said = popup.notes.join(" ");
-    for (const restated of ["was given", "took", "taxes every turn", "no month-long order"]) {
+    for (const restated of [
+      "was given",
+      "took",
+      "taxes every turn",
+      "no month-long order",
+    ]) {
       expect(said.toLowerCase()).not.toContain(restated.toLowerCase());
     }
     expect(popup.notes).toContain(
-      "There is not enough unclaimed silver to feed every unit that needs it."
+      "There is not enough unclaimed silver to feed every unit that needs it.",
     );
   });
 
@@ -1830,10 +2410,10 @@ describe("the column popups", () => {
             givers: ["Watch (1604)"],
             givenToNobody: 10,
             taxesByFlag: true,
-            changes: []
-          })
-        })
-      )
+            changes: [],
+          }),
+        }),
+      ),
     );
     const said = popup.notes.join(" ");
     expect(said).toContain("Includes 50");
@@ -1851,10 +2431,10 @@ describe("the column popups", () => {
             held: 100,
             atMonthEnd: 60,
             taxesByFlag: true,
-            changes: [{ amount: -40, cause: "studied", line: 2, other: null }]
-          })
-        })
-      )
+            changes: [{ amount: -40, cause: "studied", line: 2, other: null }],
+          }),
+        }),
+      ),
     );
     expect(popup.notes.join(" ")).toContain("set to tax every turn");
   });
@@ -1869,12 +2449,22 @@ describe("the column popups", () => {
             held: 100,
             atMonthEnd: 100,
             changes: [
-              { amount: 40, cause: "was-given", line: null, other: "Watch (1604)" },
-              { amount: -40, cause: "was-given", line: null, other: "Scouts (1502)" }
-            ]
-          })
-        })
-      )
+              {
+                amount: 40,
+                cause: "was-given",
+                line: null,
+                other: "Watch (1604)",
+              },
+              {
+                amount: -40,
+                cause: "was-given",
+                line: null,
+                other: "Scouts (1502)",
+              },
+            ],
+          }),
+        }),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "silver", value: "100" }]);
   });
@@ -1889,14 +2479,14 @@ describe("the column popups", () => {
             held: 100,
             atMonthEnd: null,
             doubt: "unknown-tax-base",
-            changes: []
-          })
-        })
-      )
+            changes: [],
+          }),
+        }),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "silver", value: "?" }]);
     expect(popup.notes[0]).toBe(
-      "This month cannot be added up, so what moved this unit's silver is not listed."
+      "This month cannot be added up, so what moved this unit's silver is not listed.",
     );
   });
 
@@ -1905,30 +2495,32 @@ describe("the column popups", () => {
       popupForCell(
         "silver",
         unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 100 }), dissolving: true })
-      )
+        facts({ silver: aUnitSilver({ held: 100 }), dissolving: true }),
+      ),
     );
     expect(popup.lines).toEqual([]);
     expect(popup.notes).toContain(
-      "The game dissolves this unit before the month ends, so it has no month end."
+      "The game dissolves this unit before the month ends, so it has no month end.",
     );
   });
 
   it("the silver popup says only our own units have a forecast", () => {
-    expect(columnPopup(popupForCell("silver", unit({ own: false }), facts())).notes).toContain(
-      "Only your own units have a silver forecast."
-    );
+    expect(
+      columnPopup(popupForCell("silver", unit({ own: false }), facts())).notes,
+    ).toContain("Only your own units have a silver forecast.");
   });
 
   it("a popup with more lines than it can show says how many were left out", () => {
     const items = Array.from({ length: 19 }, (_, index) => ({
       name: `thing${index}`,
       tag: `T${index}`,
-      amount: 20 - index
+      amount: 20 - index,
     }));
     const popup = columnPopup(popupForCell("items", unit({ items }), facts()));
     expect(popup.lines).toHaveLength(12);
-    expect(popup.notes).toContain("… and 7 more; select the unit to see them all.");
+    expect(popup.notes).toContain(
+      "… and 7 more; select the unit to see them all.",
+    );
   });
 });
 
@@ -1937,25 +2529,34 @@ describe("popupAsText", () => {
     const text = popupAsText({
       title: "Braves (1487) — items",
       lines: [
-        { label: "silver SILV", value: "40", change: { direction: "up", from: "36" } },
+        {
+          label: "silver SILV",
+          value: "40",
+          change: { direction: "up", from: "36" },
+        },
         {
           label: "grain GRAI",
           value: "2",
           change: { direction: "down", from: "3" },
-          why: "1 eaten"
-        }
+          why: "1 eaten",
+        },
       ],
       notes: ["was: 36 SILV, 3 GRAI."],
-      warning: "This month is only partly counted."
+      warning: "This month is only partly counted.",
     });
     expect(text).toBe(
-      "silver SILV 40, up from 36. grain GRAI 2, down from 3, 1 eaten. was: 36 SILV, 3 GRAI. This month is only partly counted."
+      "silver SILV 40, up from 36. grain GRAI 2, down from 3, 1 eaten. was: 36 SILV, 3 GRAI. This month is only partly counted.",
     );
   });
 
   it("says nothing about a change a line does not carry", () => {
     expect(
-      popupAsText({ title: "x", lines: [{ label: "men", value: "12" }], notes: [], warning: null })
+      popupAsText({
+        title: "x",
+        lines: [{ label: "men", value: "12" }],
+        notes: [],
+        warning: null,
+      }),
     ).toBe("men 12.");
   });
 });
@@ -1965,11 +2566,15 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
     name,
     tag,
     level,
-    points
+    points,
   });
 
   const own = (overrides: Partial<PreviewedUnit> = {}) =>
-    unit({ own: true, previewChanges: [{ field: "skills", original: "COMB 2 (90)" }], ...overrides });
+    unit({
+      own: true,
+      previewChanges: [{ field: "skills", original: "COMB 2 (90)" }],
+      ...overrides,
+    });
 
   const skillsPopup = (u: PreviewedUnit, f = facts()) =>
     columnPopup(popupForCell("skills", u, f));
@@ -1989,15 +2594,15 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
     limitingRaces: [],
     cannotRaiseTheLevel: false,
     doubts: [],
-    ...overrides
+    ...overrides,
   });
 
   it("the skills popup draws what the report said and what the market left", () => {
     const popup = skillsPopup(
       own({
         reportedSkills: [skill("combat", "COMB", 2, 90)],
-        skills: [skill("combat", "COMB", 1, 53)]
-      })
+        skills: [skill("combat", "COMB", 1, 53)],
+      }),
     );
     expect(popup.lines).toEqual([
       {
@@ -2005,9 +2610,9 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         value: "1 (53)",
         steps: [
           { value: "2 (90)", mark: "reported" },
-          { value: "1 (53)", mark: "down" }
-        ]
-      }
+          { value: "1 (53)", mark: "down" },
+        ],
+      },
     ]);
   });
 
@@ -2015,15 +2620,15 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
     const popup = skillsPopup(
       own({
         reportedSkills: [skill("combat", "COMB", 2, 90)],
-        skills: [skill("combat", "COMB", 2, 90)]
-      })
+        skills: [skill("combat", "COMB", 2, 90)],
+      }),
     );
     expect(popup.lines).toEqual([{ label: "combat COMB", value: "2 (90)" }]);
   });
 
   it("the skills popup draws one figure for a unit the orders left alone", () => {
     const popup = skillsPopup(
-      unit({ own: true, skills: [skill("combat", "COMB", 2, 90)] })
+      unit({ own: true, skills: [skill("combat", "COMB", 2, 90)] }),
     );
     expect(popup.lines).toEqual([{ label: "combat COMB", value: "2 (90)" }]);
   });
@@ -2031,42 +2636,59 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
   it("a skill diluted out of the list ends its chain at gone", () => {
     const popup = skillsPopup(
       own({
-        reportedSkills: [skill("combat", "COMB", 1, 30), skill("riding", "RIDI", 1, 30)],
-        skills: [skill("combat", "COMB", 0, 6)]
-      })
+        reportedSkills: [
+          skill("combat", "COMB", 1, 30),
+          skill("riding", "RIDI", 1, 30),
+        ],
+        skills: [skill("combat", "COMB", 0, 6)],
+      }),
     );
     expect(popup.lines[1]).toEqual({
       label: "riding RIDI",
       value: "gone",
       steps: [
         { value: "1 (30)", mark: "reported" },
-        { value: "gone", mark: "down" }
-      ]
+        { value: "gone", mark: "down" },
+      ],
     });
-    expect(popup.notes).toContain("Riding drops below one point per man, so the unit loses it.");
+    expect(popup.notes).toContain(
+      "Riding drops below one point per man, so the unit loses it.",
+    );
   });
 
   it("a skill the arriving men brought starts its chain at none", () => {
     const popup = skillsPopup(
       own({
         reportedSkills: [skill("combat", "COMB", 2, 90)],
-        skills: [skill("combat", "COMB", 1, 53), skill("observation", "OBSE", 0, 25)]
-      })
+        skills: [
+          skill("combat", "COMB", 1, 53),
+          skill("observation", "OBSE", 0, 25),
+        ],
+      }),
     );
     expect(popup.lines[1]!.steps).toEqual([
       { value: "none", mark: "reported" },
-      { value: "0 (25)", mark: "up" }
+      { value: "0 (25)", mark: "up" },
     ]);
   });
 
   it("the skills popup keeps the report's order, not the core's tag order", () => {
     const popup = skillsPopup(
       own({
-        reportedSkills: [skill("lumberjack", "LUMB", 2, 90), skill("combat", "COMB", 2, 90)],
-        skills: [skill("combat", "COMB", 1, 53), skill("lumberjack", "LUMB", 1, 53)]
-      })
+        reportedSkills: [
+          skill("lumberjack", "LUMB", 2, 90),
+          skill("combat", "COMB", 2, 90),
+        ],
+        skills: [
+          skill("combat", "COMB", 1, 53),
+          skill("lumberjack", "LUMB", 1, 53),
+        ],
+      }),
     );
-    expect(popup.lines.map((line) => line.label)).toEqual(["lumberjack LUMB", "combat COMB"]);
+    expect(popup.lines.map((line) => line.label)).toEqual([
+      "lumberjack LUMB",
+      "combat COMB",
+    ]);
   });
 
   it("the skills popup says who joined and what they brought", () => {
@@ -2083,13 +2705,15 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
             menArriving: [],
             countInferred: false,
             arrivingSkills: [skill("observation", "OBSE", 3, 180)],
-            skills: []
-          }
-        ]
+            skills: [],
+          },
+        ],
       }),
-      facts({ unitNames: new Map([[unitRowKey(HERE, "1502"), "Scouts"]]) })
+      facts({ unitNames: new Map([[unitRowKey(HERE, "1502"), "Scouts"]]) }),
     );
-    expect(popup.notes).toContain("2 men joined from Scouts (1502), bringing observation 3.");
+    expect(popup.notes).toContain(
+      "2 men joined from Scouts (1502), bringing observation 3.",
+    );
   });
 
   it("the skills popup names the giver in this row's own hex", () => {
@@ -2107,16 +2731,16 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
             menArriving: [],
             countInferred: false,
             arrivingSkills: [],
-            skills: []
-          }
-        ]
+            skills: [],
+          },
+        ],
       }),
       facts({
         unitNames: unitNamesByRow([
           { regionId: "1:7,53", unitId: "new-1", name: "North Scouts" },
-          { regionId: "1:8,54", unitId: "new-1", name: "South Scouts" }
-        ])
-      })
+          { regionId: "1:8,54", unitId: "new-1", name: "South Scouts" },
+        ]),
+      }),
     );
 
     expect(popup.notes).toContain("2 men joined from South Scouts (new-1).");
@@ -2136,10 +2760,10 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
             menArriving: [],
             countInferred: false,
             arrivingSkills: [],
-            skills: []
-          }
-        ]
-      })
+            skills: [],
+          },
+        ],
+      }),
     );
     expect(popup.notes).toContain("2 men joined from unit 1502.");
   });
@@ -2154,19 +2778,21 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
       countInferred: false,
       arrivingSkills: [],
       skills: [],
-      ...overrides
+      ...overrides,
     });
     expect(
-      skillsPopup(own({ reportedSkills: [], skills: [], skillMerges: [merge()] })).notes
+      skillsPopup(
+        own({ reportedSkills: [], skills: [], skillMerges: [merge()] }),
+      ).notes,
     ).toContain("6 humans recruited, and recruits bring no skills.");
     expect(
       skillsPopup(
         own({
           reportedSkills: [],
           skills: [],
-          skillMerges: [merge({ menArriving: [], countInferred: true })]
-        })
-      ).notes
+          skillMerges: [merge({ menArriving: [], countInferred: true })],
+        }),
+      ).notes,
     ).toContain("6 men recruited, and recruits bring no skills.");
   });
 
@@ -2175,12 +2801,12 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
       own({
         reportedSkills: [skill("combat", "COMB", 2, 90)],
         skills: [skill("combat", "COMB", 1, 53)],
-        menOfUnknownSkill: [{ amount: 3, tag: "HUMN", from: "1502" }]
+        menOfUnknownSkill: [{ amount: 3, tag: "HUMN", from: "1502" }],
       }),
-      facts({ unitNames: new Map([[unitRowKey(HERE, "1502"), "Scouts"]]) })
+      facts({ unitNames: new Map([[unitRowKey(HERE, "1502"), "Scouts"]]) }),
     );
     expect(popup.notes).toContain(
-      "3 men came from Scouts (1502), whose skills the report does not show, so these figures do not count them."
+      "3 men came from Scouts (1502), whose skills the report does not show, so these figures do not count them.",
     );
   });
 
@@ -2189,11 +2815,11 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
       own({
         reportedSkills: [skill("combat", "COMB", 2, 90)],
         skills: [skill("combat", "COMB", 2, 90)],
-        recruitsUnmerged: true
-      })
+        recruitsUnmerged: true,
+      }),
     );
     expect(popup.warning).toBe(
-      "This unit's headcount is a guess, so what recruiting does to these cannot be worked out."
+      "This unit's headcount is a guess, so what recruiting does to these cannot be worked out.",
     );
   });
 
@@ -2205,13 +2831,18 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         study: forecast({
           monthsNumerator: 3,
           monthsDenominator: 2,
-          teachers: [{ unitId: "1774", name: "Elders", slots: 10, students: 5 }]
-        })
-      })
+          teachers: [
+            { unitId: "1774", name: "Elders", slots: 10, students: 5 },
+          ],
+        }),
+      }),
     );
-    expect(popup.lines[0]!.steps![2]).toEqual({ value: "2 (98)", mark: "projected" });
+    expect(popup.lines[0]!.steps![2]).toEqual({
+      value: "2 (98)",
+      mark: "projected",
+    });
     expect(popup.notes).toContain(
-      "Studying combat, taught by Elders (1774): worth one and a half months. The blue figure is next turn's report; everything before it is this month."
+      "Studying combat, taught by Elders (1774): worth one and a half months. The blue figure is next turn's report; everything before it is this month.",
     );
   });
 
@@ -2220,13 +2851,18 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
       own({
         reportedSkills: [],
         skills: [],
-        study: forecast({ tag: "RIDI", name: "riding", levelAfter: 1, pointsAfter: 30 })
-      })
+        study: forecast({
+          tag: "RIDI",
+          name: "riding",
+          levelAfter: 1,
+          pointsAfter: 30,
+        }),
+      }),
     );
     expect(popup.lines[0]!.label).toBe("riding RIDI");
     expect(popup.lines[0]!.steps).toEqual([
       { value: "none", mark: "reported" },
-      { value: "1 (30)", mark: "projected" }
+      { value: "1 (30)", mark: "projected" },
     ]);
   });
 
@@ -2239,12 +2875,12 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
           cannotRaiseTheLevel: true,
           ceilingLevel: 2,
           levelBefore: 2,
-          limitingRaces: [{ tag: "HDWA", name: "hill dwarf" }]
-        })
-      })
+          limitingRaces: [{ tag: "HDWA", name: "hill dwarf" }],
+        }),
+      }),
     );
     expect(popup.warning).toBe(
-      "No hill dwarf may take combat past level 2, and this unit is already there, so studying it this month changes nothing."
+      "No hill dwarf may take combat past level 2, and this unit is already there, so studying it this month changes nothing.",
     );
   });
 
@@ -2261,8 +2897,8 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         pointsBefore: 450,
         levelAfter: 5,
         pointsAfter: 480,
-        ...overrides
-      })
+        ...overrides,
+      }),
     });
 
   it("the skills popup draws no next-turn figure for a study that cannot raise the level", () => {
@@ -2274,7 +2910,7 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
   it("the skills popup says why a study at the skill's own maximum changes nothing", () => {
     const popup = skillsPopup(cappedLeader());
     expect(popup.warning).toBe(
-      "Combat stops at level 5 and this unit is already there, so studying it this month changes nothing."
+      "Combat stops at level 5 and this unit is already there, so studying it this month changes nothing.",
     );
   });
 
@@ -2287,18 +2923,20 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
           cannotRaiseTheLevel: true,
           ceilingLevel: 2,
           levelBefore: 3,
-          limitingRaces: [{ tag: "HDWA", name: "hill dwarf" }]
-        })
-      })
+          limitingRaces: [{ tag: "HDWA", name: "hill dwarf" }],
+        }),
+      }),
     );
     expect(popup.warning).toBe(
-      "No hill dwarf may take combat past level 2, and this unit is already at level 3, so studying it this month changes nothing."
+      "No hill dwarf may take combat past level 2, and this unit is already at level 3, so studying it this month changes nothing.",
     );
   });
 
   it("the skills popup keeps the ceiling sentence before a doubt", () => {
     const popup = skillsPopup(
-      cappedLeader({ doubts: [{ reason: "feeShort", fee: 100, shortBy: 40, teacher: "" }] })
+      cappedLeader({
+        doubts: [{ reason: "feeShort", fee: 100, shortBy: 40, teacher: "" }],
+      }),
     );
     expect(popup.warning).toMatch(/^Combat stops at level 5/);
     expect(popup.warning).toContain("is 40 short");
@@ -2315,13 +2953,13 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
           levelBefore: 5,
           pointsBefore: 450,
           levelAfter: 5,
-          pointsAfter: 480
-        })
-      })
+          pointsAfter: 480,
+        }),
+      }),
     );
     expect(popup.lines[0]!.steps).toEqual([
       { value: "5 (450)", mark: "reported" },
-      { value: "5 (400)", mark: "down" }
+      { value: "5 (400)", mark: "down" },
     ]);
   });
 
@@ -2335,12 +2973,12 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
           name: "force",
           halvedOutsideABuilding: true,
           monthsNumerator: 1,
-          monthsDenominator: 2
-        })
-      })
+          monthsDenominator: 2,
+        }),
+      }),
     );
     expect(popup.notes.join(" ")).toContain(
-      "Studying force: worth half a month. Studying a magic skill past level 2 outside a building that houses mages, so half the month is lost."
+      "Studying force: worth half a month. Studying a magic skill past level 2 outside a building that houses mages, so half the month is lost.",
     );
   });
 
@@ -2349,8 +2987,8 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
       own({
         reportedSkills: [skill("combat", "COMB", 1, 53)],
         skills: [skill("combat", "COMB", 1, 53)],
-        study: forecast({ monthsNumerator: 10, monthsDenominator: 13 })
-      })
+        study: forecast({ monthsNumerator: 10, monthsDenominator: 13 }),
+      }),
     );
     expect(popup.notes.join(" ")).toContain("worth 0.77 months.");
   });
@@ -2361,17 +2999,17 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         reportedSkills: [skill("combat", "COMB", 1, 53)],
         skills: [skill("combat", "COMB", 1, 53)],
         study: forecast({
-          doubts: [{ reason: "feeShort", fee: 200, shortBy: 160, teacher: "" }]
-        })
-      })
+          doubts: [{ reason: "feeShort", fee: 200, shortBy: 160, teacher: "" }],
+        }),
+      }),
     );
     expect(popup.lines[0]!.steps![1]).toEqual({
       value: "2 (98)",
       mark: "projected",
-      uncertain: true
+      uncertain: true,
     });
     expect(popup.warning).toBe(
-      "Studying combat costs 200 silver and this unit is 160 short, so the study may not happen at all."
+      "Studying combat costs 200 silver and this unit is 160 short, so the study may not happen at all.",
     );
   });
 
@@ -2381,35 +3019,43 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         own({
           reportedSkills: [skill("combat", "COMB", 1, 53)],
           skills: [skill("combat", "COMB", 1, 53)],
-          study: forecast({ doubts: [doubt] })
-        })
+          study: forecast({ doubts: [doubt] }),
+        }),
       ).warning;
     const doubt = (overrides: Partial<StudyDoubt>): StudyDoubt => ({
       reason: "feeShort",
       fee: 0,
       shortBy: 0,
       teacher: "",
-      ...overrides
+      ...overrides,
     });
-    expect(warningFor(doubt({ reason: "feeShort", fee: 200, shortBy: 160 }))).toBe(
-      "Studying combat costs 200 silver and this unit is 160 short, so the study may not happen at all."
+    expect(
+      warningFor(doubt({ reason: "feeShort", fee: 200, shortBy: 160 })),
+    ).toBe(
+      "Studying combat costs 200 silver and this unit is 160 short, so the study may not happen at all.",
     );
     expect(warningFor(doubt({ reason: "feeUnpriced" }))).toBe(
-      "The data page prices combat nowhere, so what studying it costs cannot be said."
+      "The data page prices combat nowhere, so what studying it costs cannot be said.",
     );
     expect(warningFor(doubt({ reason: "headcountEstimated" }))).toBe(
-      "This unit's headcount is a guess, so recruiting may pull these back below what is shown."
-    );
-    expect(warningFor(doubt({ reason: "teacherUnsettled", teacher: "Elders (1774)" }))).toBe(
-      "Whether Elders (1774) may teach cannot be settled from this report, so its month is not counted here."
+      "This unit's headcount is a guess, so recruiting may pull these back below what is shown.",
     );
     expect(
-      warningFor(doubt({ reason: "teacherStudentsUnknown", teacher: "Elders (1774)" }))
+      warningFor(
+        doubt({ reason: "teacherUnsettled", teacher: "Elders (1774)" }),
+      ),
     ).toBe(
-      "Elders (1774) also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said."
+      "Whether Elders (1774) may teach cannot be settled from this report, so its month is not counted here.",
+    );
+    expect(
+      warningFor(
+        doubt({ reason: "teacherStudentsUnknown", teacher: "Elders (1774)" }),
+      ),
+    ).toBe(
+      "Elders (1774) also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said.",
     );
     expect(warningFor(doubt({ reason: "shelterUnknown" }))).toBe(
-      "This unit ends the month in a structure this region's report does not list, so whether it shelters a mage cannot be said."
+      "This unit ends the month in a structure this region's report does not list, so whether it shelters a mage cannot be said.",
     );
   });
 
@@ -2420,12 +3066,14 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         skills: [skill("combat", "COMB", 1, 53)],
         recruitsUnmerged: true,
         study: forecast({
-          doubts: [{ reason: "headcountEstimated", fee: 0, shortBy: 0, teacher: "" }]
-        })
-      })
+          doubts: [
+            { reason: "headcountEstimated", fee: 0, shortBy: 0, teacher: "" },
+          ],
+        }),
+      }),
     );
     expect(popup.warning).toBe(
-      "This unit's headcount is a guess, so what recruiting does to these cannot be worked out."
+      "This unit's headcount is a guess, so what recruiting does to these cannot be worked out.",
     );
   });
 
@@ -2440,13 +3088,13 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
             steps: [
               { value: "2 (90)", mark: "reported" },
               { value: "1 (53)", mark: "down" },
-              { value: "2 (98)", mark: "projected" }
-            ]
-          }
+              { value: "2 (98)", mark: "projected" },
+            ],
+          },
         ],
         notes: [],
-        warning: null
-      })
+        warning: null,
+      }),
     ).toBe("combat COMB 2 (90), down to 1 (53), 2 (98) next turn.");
     expect(
       popupAsText({
@@ -2457,13 +3105,13 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
             value: "1 (53)",
             steps: [
               { value: "1 (53)", mark: "reported" },
-              { value: "2 (98)", mark: "projected", uncertain: true }
-            ]
-          }
+              { value: "2 (98)", mark: "projected", uncertain: true },
+            ],
+          },
         ],
         notes: [],
-        warning: null
-      })
+        warning: null,
+      }),
     ).toBe("combat COMB 1 (53), 2 (98) next turn if it happens.");
   });
 
@@ -2478,8 +3126,13 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
       own({
         reportedSkills: [],
         skills: [],
-        study: forecast({ tag: "RIDI", name: "riding", levelAfter: 1, pointsAfter: 30 })
-      })
+        study: forecast({
+          tag: "RIDI",
+          name: "riding",
+          levelAfter: 1,
+          pointsAfter: 30,
+        }),
+      }),
     );
     expect(popup.lines[0]!.label).toBe("riding RIDI");
     expect(popup.notes).not.toContain("No skills.");
@@ -2490,17 +3143,24 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
       name: `skill${index}`,
       tag: `SK${index}`,
       level: 1,
-      points: 30
+      points: 30,
     }));
     const popup = skillsPopup(
       own({
         reportedSkills: many,
         skills: many,
-        study: forecast({ tag: "RIDI", name: "riding", levelAfter: 1, pointsAfter: 30 })
-      })
+        study: forecast({
+          tag: "RIDI",
+          name: "riding",
+          levelAfter: 1,
+          pointsAfter: 30,
+        }),
+      }),
     );
     expect(popup.lines).toHaveLength(12);
-    expect(popup.notes.join(" ")).not.toContain("The blue figure is next turn's report");
+    expect(popup.notes.join(" ")).not.toContain(
+      "The blue figure is next turn's report",
+    );
   });
 });
 
@@ -2509,8 +3169,8 @@ describe("reportedItems", () => {
     expect(reportedItems("20 SILV, 3 GRAI")).toEqual(
       new Map([
         ["SILV", 20],
-        ["GRAI", 3]
-      ])
+        ["GRAI", 3],
+      ]),
     );
   });
 
@@ -2531,13 +3191,17 @@ describe("the items popup's pairs", () => {
         "items",
         unit({
           items: [{ name: "sword", tag: "SWOR", amount: 12 }],
-          previewChanges: [{ field: "items", original: "8 SWOR" }]
+          previewChanges: [{ field: "items", original: "8 SWOR" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
-      { label: "sword SWOR", value: "12", change: { direction: "up", from: "8" } }
+      {
+        label: "sword SWOR",
+        value: "12",
+        change: { direction: "up", from: "8" },
+      },
     ]);
   });
 
@@ -2557,15 +3221,19 @@ describe("the items popup's pairs", () => {
               line: 3,
               unitPrice: null,
               other: { unitId: "1502", name: "Scouts" },
-              isMan: false
-            }
-          ]
+              isMan: false,
+            },
+          ],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
-      { label: "grain GRAI", value: "gone", change: { direction: "down", from: "20" } }
+      {
+        label: "grain GRAI",
+        value: "gone",
+        change: { direction: "down", from: "20" },
+      },
     ]);
     expect(popup.notes).not.toContain("No items.");
   });
@@ -2577,11 +3245,11 @@ describe("the items popup's pairs", () => {
         unit({
           items: [
             { name: "silver", tag: "SILV", amount: 900 },
-            { name: "grain", tag: "GRAI", amount: 12 }
-          ]
+            { name: "grain", tag: "GRAI", amount: 12 },
+          ],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "grain GRAI", value: "12" }]);
   });
@@ -2590,9 +3258,12 @@ describe("the items popup's pairs", () => {
     const popup = columnPopup(
       popupForCell(
         "items",
-        unit({ items: [], previewChanges: [{ field: "items", original: "20 SILV" }] }),
-        facts()
-      )
+        unit({
+          items: [],
+          previewChanges: [{ field: "items", original: "20 SILV" }],
+        }),
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([]);
     expect(popup.notes).toContain("No items.");
@@ -2613,12 +3284,12 @@ describe("the items popup's pairs", () => {
               line: 3,
               unitPrice: null,
               other: { unitId: "901", name: "Ferry" },
-              isMan: false
-            }
-          ]
+              isMan: false,
+            },
+          ],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.notes.filter((note) => /silver/i.test(note))).toEqual([]);
   });
@@ -2629,19 +3300,27 @@ describe("the items popup's pairs", () => {
         "items",
         unit({
           items: [{ name: "sword", tag: "SWOR", amount: 4 }],
-          previewChanges: [{ field: "items", original: "" }]
+          previewChanges: [{ field: "items", original: "" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([
-      { label: "sword SWOR", value: "4", change: { direction: "up", from: "none" } }
+      {
+        label: "sword SWOR",
+        value: "4",
+        change: { direction: "up", from: "none" },
+      },
     ]);
   });
 
   it("doubles a tag that is its own display name, as it always did", () => {
     const popup = columnPopup(
-      popupForCell("items", unit({ items: [{ name: "WOOD", tag: "WOOD", amount: 4 }] }), facts())
+      popupForCell(
+        "items",
+        unit({ items: [{ name: "WOOD", tag: "WOOD", amount: 4 }] }),
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "WOOD WOOD", value: "4" }]);
   });
@@ -2652,10 +3331,10 @@ describe("the items popup's pairs", () => {
         "items",
         unit({
           items: [{ name: "iron", tag: "IRON", amount: 5 }],
-          created: [{ fewest: 2, most: 5, tag: "IRON", summoned: false }]
+          created: [{ fewest: 2, most: 5, tag: "IRON", summoned: false }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toEqual([{ label: "iron IRON", value: "2-5" }]);
   });
@@ -2666,12 +3345,14 @@ describe("the items popup's pairs", () => {
         "items",
         unit({
           items: [{ name: "sword", tag: "SWOR", amount: 12 }],
-          previewChanges: [{ field: "items", original: "~8 SWOR" }]
+          previewChanges: [{ field: "items", original: "~8 SWOR" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
-    expect(popup.lines).toEqual([{ label: "sword SWOR", value: "12", why: "was: ~8 SWOR" }]);
+    expect(popup.lines).toEqual([
+      { label: "sword SWOR", value: "12", why: "was: ~8 SWOR" },
+    ]);
   });
 });
 
@@ -2684,27 +3365,37 @@ describe("the items popup's order", () => {
     line: null,
     unitPrice: null,
     other: null,
-    isMan: false
+    isMan: false,
   });
 
   it("draws every item this month moved before the ones it did not", () => {
     // Fifteen tags, of which the two smallest moved: without the moved-first rule both would fall
     // outside the twelve lines the popup draws.
-    const tags = Array.from({ length: 15 }, (_, i) => `T${String(i).padStart(2, "0")}`);
+    const tags = Array.from(
+      { length: 15 },
+      (_, i) => `T${String(i).padStart(2, "0")}`,
+    );
     const popup = columnPopup(
       popupForCell(
         "items",
         unit({
-          items: tags.map((tag, i) => ({ name: tag.toLowerCase(), tag, amount: 100 - i })),
-          itemChanges: [change("T13", 1), change("T14", 1)]
+          items: tags.map((tag, i) => ({
+            name: tag.toLowerCase(),
+            tag,
+            amount: 100 - i,
+          })),
+          itemChanges: [change("T13", 1), change("T14", 1)],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
-    expect(popup.lines.slice(0, 2).map((line) => line.label)).toEqual(["t13 T13", "t14 T14"]);
+    expect(popup.lines.slice(0, 2).map((line) => line.label)).toEqual([
+      "t13 T13",
+      "t14 T14",
+    ]);
     // The rest keep the cell's own amount-descending order.
     expect(popup.lines.slice(2).map((line) => line.label)).toEqual(
-      tags.slice(0, 10).map((tag) => `${tag.toLowerCase()} ${tag}`)
+      tags.slice(0, 10).map((tag) => `${tag.toLowerCase()} ${tag}`),
     );
   });
 
@@ -2715,14 +3406,17 @@ describe("the items popup's order", () => {
         unit({
           items: [
             { name: "grain", tag: "GRAI", amount: 40 },
-            { name: "wood", tag: "WOOD", amount: 2 }
+            { name: "wood", tag: "WOOD", amount: 2 },
           ],
-          itemChanges: [change("WOOD", 2), change("GRAI", 1)]
+          itemChanges: [change("WOOD", 2), change("GRAI", 1)],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
-    expect(popup.lines.map((line) => line.label)).toEqual(["wood WOOD", "grain GRAI"]);
+    expect(popup.lines.map((line) => line.label)).toEqual([
+      "wood WOOD",
+      "grain GRAI",
+    ]);
   });
 
   it("keeps an unmoved item behind a moved one when a tag moved more than once", () => {
@@ -2736,22 +3430,22 @@ describe("the items popup's order", () => {
           items: [
             { name: "zinc", tag: "ZINC", amount: 90 },
             { name: "grain", tag: "GRAI", amount: 3 },
-            { name: "bread", tag: "BREA", amount: 1 }
+            { name: "bread", tag: "BREA", amount: 1 },
           ],
           itemChanges: [
             change("GRAI", 1),
             change("GRAI", 1),
             change("GRAI", 1),
-            change("BREA", 1)
-          ]
+            change("BREA", 1),
+          ],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines.map((line) => line.label)).toEqual([
       "grain GRAI",
       "bread BREA",
-      "zinc ZINC"
+      "zinc ZINC",
     ]);
   });
 
@@ -2762,14 +3456,17 @@ describe("the items popup's order", () => {
         unit({
           items: [
             { name: "grain", tag: "GRAI", amount: 40 },
-            { name: "wood", tag: "WOOD", amount: 5 }
+            { name: "wood", tag: "WOOD", amount: 5 },
           ],
-          previewChanges: [{ field: "items", original: "40 GRAI, 2 WOOD" }]
+          previewChanges: [{ field: "items", original: "40 GRAI, 2 WOOD" }],
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
-    expect(popup.lines.map((line) => line.label)).toEqual(["wood WOOD", "grain GRAI"]);
+    expect(popup.lines.map((line) => line.label)).toEqual([
+      "wood WOOD",
+      "grain GRAI",
+    ]);
   });
 });
 
@@ -2784,7 +3481,7 @@ describe("the items popup's cause sentences", () => {
       unitPrice: number | null;
       other: { unitId: string; name: string | null } | null;
       isMan: boolean;
-    }> = {}
+    }> = {},
   ) =>
     ({
       tag: "GRAI",
@@ -2795,7 +3492,7 @@ describe("the items popup's cause sentences", () => {
       unitPrice: null,
       other: null,
       isMan: false,
-      ...overrides
+      ...overrides,
     }) as NonNullable<PreviewedUnit["itemChanges"]>[number];
 
   const notesFor = (overrides: Partial<PreviewedUnit>) =>
@@ -2806,9 +3503,16 @@ describe("the items popup's cause sentences", () => {
       notesFor({
         items: [{ name: "humans", tag: "HUMN", amount: 16 }],
         itemChanges: [
-          moved({ tag: "HUMN", name: "humans", isMan: true, cause: "bought", delta: 6, unitPrice: 60 })
-        ]
-      })[0]
+          moved({
+            tag: "HUMN",
+            name: "humans",
+            isMan: true,
+            cause: "bought",
+            delta: 6,
+            unitPrice: 60,
+          }),
+        ],
+      })[0],
     ).toBe("humans: recruited 6 at 60 silver each.");
   });
 
@@ -2817,16 +3521,23 @@ describe("the items popup's cause sentences", () => {
       notesFor({
         items: [{ name: "horse", tag: "HORS", amount: 5 }],
         itemChanges: [
-          moved({ tag: "HORS", name: "horse", isMan: false, cause: "bought", delta: 1, unitPrice: 65 })
-        ]
-      })[0]
+          moved({
+            tag: "HORS",
+            name: "horse",
+            isMan: false,
+            cause: "bought",
+            delta: 1,
+            unitPrice: 65,
+          }),
+        ],
+      })[0],
     ).toBe("horse: bought 1 at 65 silver each.");
   });
 
   it("says nothing about a changed item the core recorded no movement for", () => {
     const notes = notesFor({
       items: [{ name: "grain", tag: "GRAI", amount: 8 }],
-      previewChanges: [{ field: "items", original: "12 GRAI" }]
+      previewChanges: [{ field: "items", original: "12 GRAI" }],
     });
     expect(notes.some((note) => note.startsWith("grain:"))).toBe(false);
   });
@@ -2840,75 +3551,131 @@ describe("the items popup's cause sentences", () => {
           moved({
             cause: "transported-out",
             delta: -20,
-            other: { unitId: "4102", name: "Ferry" }
-          })
-        ]
-      })[0]
+            other: { unitId: "4102", name: "Ferry" },
+          }),
+        ],
+      })[0],
     ).toBe("grain: sold 12 at 12 silver each, sent 20 to Ferry (4102).");
   });
 
   const cases: Array<[string, Parameters<typeof moved>[0], string]> = [
-    ["bought with a price", { cause: "bought", delta: 4, unitPrice: 60 }, "bought 4 at 60 silver each"],
+    [
+      "bought with a price",
+      { cause: "bought", delta: 4, unitPrice: 60 },
+      "bought 4 at 60 silver each",
+    ],
     ["bought without one", { cause: "bought", delta: 4 }, "bought 4"],
     ["sold without a price", { cause: "sold", delta: -12 }, "sold 12"],
-    ["withdrawn", { cause: "withdrawn", delta: 10 }, "withdrew 10 from the faction's stores"],
+    [
+      "withdrawn",
+      { cause: "withdrawn", delta: 10 },
+      "withdrew 10 from the faction's stores",
+    ],
     ["produced", { cause: "produced", delta: 5 }, "produced 5"],
     [
       "spent on another unit's production",
-      { cause: "production-spent", delta: -3, other: { unitId: "1487", name: "Braves" } },
-      "used 3 for Braves (1487) to produce"
+      {
+        cause: "production-spent",
+        delta: -3,
+        other: { unitId: "1487", name: "Braves" },
+      },
+      "used 3 for Braves (1487) to produce",
     ],
-    ["spent as material", { cause: "production-spent", delta: -3 }, "used 3 as material"],
+    [
+      "spent as material",
+      { cause: "production-spent", delta: -3 },
+      "used 3 as material",
+    ],
     [
       "spent on another unit's build",
-      { cause: "build-spent", delta: -10, other: { unitId: "1487", name: "Braves" } },
-      "spent 10 for Braves (1487) to build"
+      {
+        cause: "build-spent",
+        delta: -10,
+        other: { unitId: "1487", name: "Braves" },
+      },
+      "spent 10 for Braves (1487) to build",
     ],
-    ["consumed by a spell", { cause: "cast-spent", delta: -2 }, "consumed 2 by a spell"],
+    [
+      "consumed by a spell",
+      { cause: "cast-spent", delta: -2 },
+      "consumed 2 by a spell",
+    ],
     [
       "transported to a unit the report does not show",
-      { cause: "transported-out", delta: -20, other: { unitId: "4102", name: null } },
-      "sent 20 to unit 4102, which your report does not show"
+      {
+        cause: "transported-out",
+        delta: -20,
+        other: { unitId: "4102", name: null },
+      },
+      "sent 20 to unit 4102, which your report does not show",
     ],
     [
       "transported in",
-      { cause: "transported-in", delta: 20, other: { unitId: "1913", name: "Porters" } },
-      "received 20 from Porters (1913)"
+      {
+        cause: "transported-in",
+        delta: 20,
+        other: { unitId: "1913", name: "Porters" },
+      },
+      "received 20 from Porters (1913)",
     ],
     [
       "abandoned",
       { cause: "abandoned", delta: -4 },
-      "left behind, unfinished, when the unit leaves the hex"
+      "left behind, unfinished, when the unit leaves the hex",
     ],
     [
       "given away",
-      { cause: "given-away", delta: -2, other: { unitId: "1502", name: "Scouts" } },
-      "gave 2 to Scouts (1502)"
+      {
+        cause: "given-away",
+        delta: -2,
+        other: { unitId: "1502", name: "Scouts" },
+      },
+      "gave 2 to Scouts (1502)",
     ],
-    ["given to a foreign faction", { cause: "given-away", delta: -2 }, "gave 2 to another faction"],
+    [
+      "given to a foreign faction",
+      { cause: "given-away", delta: -2 },
+      "gave 2 to another faction",
+    ],
     [
       "given to it",
-      { cause: "was-given", delta: 30, other: { unitId: "1774", name: "Elders" } },
-      "given 30 by Elders (1774)"
+      {
+        cause: "was-given",
+        delta: 30,
+        other: { unitId: "1774", name: "Elders" },
+      },
+      "given 30 by Elders (1774)",
     ],
     [
       "taken",
       { cause: "took", delta: 3, other: { unitId: "1604", name: "Watch" } },
-      "took 3 from Watch (1604)"
+      "took 3 from Watch (1604)",
     ],
     [
       "taken from it",
-      { cause: "was-taken-from", delta: -3, other: { unitId: "1604", name: "Watch" } },
-      "3 taken by Watch (1604)"
+      {
+        cause: "was-taken-from",
+        delta: -3,
+        other: { unitId: "1604", name: "Watch" },
+      },
+      "3 taken by Watch (1604)",
     ],
     ["discarded", { cause: "discarded", delta: -5 }, "discarded 5"],
     [
       "reverted",
       { cause: "gift-reverted", delta: -2 },
-      "2 reverted from a unit that formed with nobody"
+      "2 reverted from a unit that formed with nobody",
     ],
-    ["a cause it has not been taught", { cause: "unheard-of", delta: 4 }, "gained 4"],
-    ["a loss it has not been taught", { cause: "unheard-of", delta: -4 }, "lost 4"]
+    [
+      "a cause it has not been taught",
+      { cause: "unheard-of", delta: 4 },
+      "gained 4",
+    ],
+    [
+      "a loss it has not been taught",
+      { cause: "unheard-of", delta: -4 },
+      "lost 4",
+    ],
   ];
 
   for (const [name, change, clause] of cases) {
@@ -2916,8 +3683,8 @@ describe("the items popup's cause sentences", () => {
       expect(
         notesFor({
           items: [{ name: "grain", tag: "GRAI", amount: 8 }],
-          itemChanges: [moved(change)]
-        })[0]
+          itemChanges: [moved(change)],
+        })[0],
       ).toBe(`grain: ${clause}.`);
     });
   }
@@ -2926,7 +3693,14 @@ describe("the items popup's cause sentences", () => {
     expect(
       notesFor({
         items: [{ name: "wood", tag: "WOOD", amount: 2 }],
-        itemChanges: [moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -10 })],
+        itemChanges: [
+          moved({
+            tag: "WOOD",
+            name: "wood",
+            cause: "build-spent",
+            delta: -10,
+          }),
+        ],
         built: [
           {
             materials: [{ amount: 10, tag: "WOOD", name: "wood" }],
@@ -2935,10 +3709,10 @@ describe("the items popup's cause sentences", () => {
             founding: false,
             helping: null,
             couldDo: 10,
-            cappedBy: null
-          }
-        ]
-      })[0]
+            cappedBy: null,
+          },
+        ],
+      })[0],
     ).toBe("wood: spent 10 on Fort.");
   });
 
@@ -2948,26 +3722,26 @@ describe("the items popup's cause sentences", () => {
     const notes = notesFor({
       items: [
         { name: "wood", tag: "WOOD", amount: 14 },
-        { name: "stone", tag: "STON", amount: 0 }
+        { name: "stone", tag: "STON", amount: 0 },
       ],
       itemChanges: [
         moved({ tag: "STON", name: "stone", cause: "build-spent", delta: -4 }),
-        moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -6 })
+        moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -6 }),
       ],
       built: [
         {
           materials: [
             { amount: 4, tag: "STON", name: "stone" },
-            { amount: 6, tag: "WOOD", name: "wood" }
+            { amount: 6, tag: "WOOD", name: "wood" },
           ],
           amount: 10,
           place: "Farm",
           founding: true,
           helping: null,
           couldDo: 30,
-          cappedBy: null
-        }
-      ]
+          cappedBy: null,
+        },
+      ],
     });
 
     expect(notes).toContain("stone: spent 4 on a new Farm.");
@@ -2978,8 +3752,15 @@ describe("the items popup's cause sentences", () => {
     expect(
       notesFor({
         items: [{ name: "wood", tag: "WOOD", amount: 2 }],
-        itemChanges: [moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -10 })]
-      })[0]
+        itemChanges: [
+          moved({
+            tag: "WOOD",
+            name: "wood",
+            cause: "build-spent",
+            delta: -10,
+          }),
+        ],
+      })[0],
     ).toBe("wood: spent 10 on a build.");
   });
 
@@ -2988,8 +3769,10 @@ describe("the items popup's cause sentences", () => {
       notesFor({
         items: [{ name: "imp", tag: "IMP", amount: 3 }],
         created: [{ fewest: 1, most: 3, tag: "IMP", summoned: true }],
-        itemChanges: [moved({ tag: "IMP", name: "imp", cause: "cast-created", delta: 3 })]
-      })[0]
+        itemChanges: [
+          moved({ tag: "IMP", name: "imp", cause: "cast-created", delta: 3 }),
+        ],
+      })[0],
     ).toBe("imp: summoned 1-3.");
   });
 
@@ -2998,8 +3781,10 @@ describe("the items popup's cause sentences", () => {
       notesFor({
         items: [{ name: "iron", tag: "IRON", amount: 3 }],
         created: [{ fewest: 3, most: 3, tag: "IRON", summoned: false }],
-        itemChanges: [moved({ tag: "IRON", name: "iron", cause: "cast-created", delta: 3 })]
-      })[0]
+        itemChanges: [
+          moved({ tag: "IRON", name: "iron", cause: "cast-created", delta: 3 }),
+        ],
+      })[0],
     ).toBe("iron: created 3 by casting.");
   });
 
@@ -3007,8 +3792,8 @@ describe("the items popup's cause sentences", () => {
     expect(
       notesFor({
         items: [{ name: "grain", tag: "GRAI", amount: 8 }],
-        itemChanges: [moved({ cause: "transported-out", delta: -20 })]
-      })[0]
+        itemChanges: [moved({ cause: "transported-out", delta: -20 })],
+      })[0],
     ).toBe("grain: sent 20.");
   });
 
@@ -3016,8 +3801,8 @@ describe("the items popup's cause sentences", () => {
     expect(
       notesFor({
         items: [{ name: "grain", tag: "GRAI", amount: 28 }],
-        itemChanges: [moved({ cause: "transported-in", delta: 20 })]
-      })[0]
+        itemChanges: [moved({ cause: "transported-in", delta: 20 })],
+      })[0],
     ).toBe("grain: received 20.");
   });
 
@@ -3027,10 +3812,12 @@ describe("the items popup's cause sentences", () => {
         items: [{ name: "wolf", tag: "WOLF", amount: 8 }],
         created: [
           { fewest: 1, most: 4, tag: "WOLF", summoned: true },
-          { fewest: 2, most: 4, tag: "WOLF", summoned: true }
+          { fewest: 2, most: 4, tag: "WOLF", summoned: true },
         ],
-        itemChanges: [moved({ tag: "WOLF", name: "wolf", cause: "cast-created", delta: 8 })]
-      })[0]
+        itemChanges: [
+          moved({ tag: "WOLF", name: "wolf", cause: "cast-created", delta: 8 }),
+        ],
+      })[0],
     ).toBe("wolf: summoned 3-8.");
   });
 
@@ -3044,14 +3831,19 @@ describe("the items popup's cause sentences", () => {
           items: Array.from({ length: 14 }, (_, i) => ({
             name: `t${i}`,
             tag: `T${String(i).padStart(2, "0")}`,
-            amount: 100 - i
+            amount: 100 - i,
           })),
           itemChanges: Array.from({ length: 14 }, (_, i) =>
-            moved({ tag: `T${String(i).padStart(2, "0")}`, name: `t${i}`, cause: "produced", delta: 1 })
-          )
+            moved({
+              tag: `T${String(i).padStart(2, "0")}`,
+              name: `t${i}`,
+              cause: "produced",
+              delta: 1,
+            }),
+          ),
         }),
-        facts()
-      )
+        facts(),
+      ),
     );
     expect(popup.lines).toHaveLength(12);
     expect(popup.notes.filter((note) => /^t\d+:/.test(note))).toHaveLength(12);
@@ -3061,7 +3853,7 @@ describe("the items popup's cause sentences", () => {
   it("an item whose movement the core did not record gets no sentence", () => {
     const notes = notesFor({
       items: [{ name: "grain", tag: "GRAI", amount: 12 }],
-      previewChanges: [{ field: "items", original: "8 GRAI" }]
+      previewChanges: [{ field: "items", original: "8 GRAI" }],
     });
     expect(notes.filter((note) => note.startsWith("grain:"))).toEqual([]);
   });

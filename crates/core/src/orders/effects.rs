@@ -1535,6 +1535,14 @@ impl WorkingUnit {
         }
         self.unit.movement = crate::movement::mode::unit_movement_from_items(&self.unit, ruleset)
             .or_else(|| self.original.as_ref().and_then(|unit| unit.movement));
+        // The other half of the clear in `report::composition::classify_units`: only the ruleset
+        // can say whether a fourth capacity figure means anything, and this is the preview path's
+        // own rebuild of it.
+        if ruleset.swimming().is_none() {
+            if let Some(movement) = self.unit.movement.as_mut() {
+                movement.swim = crate::report::model::SwimCapacity::Absent;
+            }
+        }
     }
 }
 

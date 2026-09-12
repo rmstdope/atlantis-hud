@@ -26,6 +26,7 @@ export type { ReportUnit } from "./generated/ReportUnit";
 export type { UnitMovement } from "./generated/UnitMovement";
 export type { UnitMovementMode } from "./generated/UnitMovementMode";
 export type { UnitMovementStatus } from "./generated/UnitMovementStatus";
+export type { SwimCapacity } from "./generated/SwimCapacity";
 export type { ReportRegion } from "./generated/ReportRegion";
 export type { ReportHeaderInfo } from "./generated/ReportHeaderInfo";
 export type { FactionStatus } from "./generated/FactionStatus";

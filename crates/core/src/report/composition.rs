@@ -11,7 +11,7 @@
 use std::collections::BTreeSet;
 
 use crate::movement::rules::Ruleset;
-use crate::report::model::{ItemAmount, ReportUnit};
+use crate::report::model::{ItemAmount, ReportUnit, SwimCapacity};
 use crate::report::ParsedReport;
 
 /// What classifying a report turned up.
@@ -34,6 +34,19 @@ pub fn classify_units(report: &mut ParsedReport, ruleset: &Ruleset) -> Classific
     for region in &mut report.regions {
         for unit in &mut region.units {
             classify_unit(unit, ruleset, &mut unknown);
+            // Swimming is a rule some worlds have and others do not, and the report prints a
+            // fourth capacity number either way - `neworigins-3.0.0-g3-f42-t42.rep` prints
+            // `Capacity: 0/70/85/70` for a New Origins unit holding a giant turtle. Only the
+            // ruleset can say whether that number means anything here.
+            //
+            // Outside `classify_unit` on purpose: that function returns early for a unit holding
+            // an item the catalogue does not recognise, and whether this world swims has nothing
+            // to do with whether an item tag was recognised.
+            if ruleset.swimming().is_none() {
+                if let Some(movement) = unit.movement.as_mut() {
+                    movement.swim = SwimCapacity::Absent;
+                }
+            }
         }
     }
 

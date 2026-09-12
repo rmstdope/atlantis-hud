@@ -8,7 +8,8 @@ const movement = (status: UnitMovement["status"]): UnitMovement => ({
   fly: 0,
   ride: 70,
   walk: 85,
-  capacityMode: "ride"
+  capacityMode: "ride",
+  swim: { kind: "absent" },
 });
 
 describe("presentUnitMovement", () => {
@@ -16,13 +17,16 @@ describe("presentUnitMovement", () => {
     ["overloaded", "O", "Overloaded", "danger"],
     ["walk", "W", "Walking", "neutral"],
     ["ride", "R", "Riding", "brass"],
-    ["fly", "F", "Flying", "select"]
-  ] as const)("%s maps to its fixed presentation", (status, code, label, tone) => {
-    expect(presentUnitMovement(movement(status))).toEqual({
-      code,
-      label,
-      tone,
-      active: "ride"
-    });
-  });
+    ["fly", "F", "Flying", "select"],
+  ] as const)(
+    "%s maps to its fixed presentation",
+    (status, code, label, tone) => {
+      expect(presentUnitMovement(movement(status))).toEqual({
+        code,
+        label,
+        tone,
+        active: "ride",
+      });
+    },
+  );
 });

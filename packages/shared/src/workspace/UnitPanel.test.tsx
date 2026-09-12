@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import { aReportUnit } from "@atlantis/core-client";
 import type { UnitMovement, UnitPreview } from "@atlantis/core-client";
 import { readRuleset } from "@atlantis/fixtures";
-import { parseGameData, type GameDataEntry, type GameDataIndex } from "../gameData";
+import {
+  parseGameData,
+  type GameDataEntry,
+  type GameDataIndex,
+} from "../gameData";
 import { buildMagicTree } from "../magicTree";
 import { standingOf } from "../magicStanding";
 import { findByTestId } from "../testing/elementTree";
@@ -23,7 +27,7 @@ const HEX: HexNode = {
   settlementName: "Inholm",
   ownUnitCount: 1,
   foreignUnitCount: 0,
-  region: null
+  region: null,
 };
 
 /** Only `byId` matters here: it is what decides an item tag's category. */
@@ -32,15 +36,15 @@ const indexWith = (ids: string[]): GameDataIndex => ({
   byId: new Map(ids.map((id) => [id, { id } as GameDataEntry])),
   detailOf: () => null,
   revealedBy: new Map(),
-  terrainResources: new Map()
+  terrainResources: new Map(),
 });
 
 const UNIT = aReportUnit({
   skills: [{ name: "lumberjack", tag: "LUMB", level: 1, points: 30 }],
   items: [
     { amount: 2, name: "wood", tag: "WOOD" },
-    { amount: 1, name: "widget", tag: "ZZZZ" }
-  ]
+    { amount: 1, name: "widget", tag: "ZZZZ" },
+  ],
 });
 
 const draw = (props: Partial<Parameters<typeof UnitPanel>[0]> = {}) =>
@@ -53,11 +57,11 @@ describe("the panel's item list", () => {
         unit={aReportUnit({
           items: [
             { amount: 12, name: "grain", tag: "GRAI" },
-            { amount: 1000, name: "silver", tag: "SILV" }
-          ]
+            { amount: 1000, name: "silver", tag: "SILV" },
+          ],
         })}
         hex={HEX}
-      />
+      />,
     );
 
     expect(markup).toContain("GRAI");
@@ -71,7 +75,8 @@ const RIDING: UnitMovement = {
   fly: 0,
   ride: 70,
   walk: 85,
-  capacityMode: "ride"
+  capacityMode: "ride",
+  swim: { kind: "absent" },
 };
 
 describe("naming game data in the unit pane", () => {
@@ -87,12 +92,18 @@ describe("naming game data in the unit pane", () => {
   });
 
   it("opens an item's game data entry from its name", () => {
-    const html = draw({ gameData: indexWith(["equipment:WOOD"]), onOpenGameData: () => {} });
+    const html = draw({
+      gameData: indexWith(["equipment:WOOD"]),
+      onOpenGameData: () => {},
+    });
     expect(html).toContain('data-game-data-entry="equipment:WOOD"');
   });
 
   it("leaves an item whose category cannot be resolved as plain text", () => {
-    const html = draw({ gameData: indexWith(["equipment:WOOD"]), onOpenGameData: () => {} });
+    const html = draw({
+      gameData: indexWith(["equipment:WOOD"]),
+      onOpenGameData: () => {},
+    });
     expect(html).toContain("widget");
     expect(html).not.toContain('data-game-data-entry="equipment:ZZZZ"');
     expect(html).not.toContain(">widget</button>");
@@ -100,7 +111,9 @@ describe("naming game data in the unit pane", () => {
 
   it("links nothing while the ruleset has not loaded", () => {
     expect(draw()).not.toContain("data-game-data-entry");
-    expect(draw({ gameData: null, onOpenGameData: () => {} })).not.toContain("data-game-data-entry");
+    expect(draw({ gameData: null, onOpenGameData: () => {} })).not.toContain(
+      "data-game-data-entry",
+    );
   });
 });
 
@@ -108,9 +121,12 @@ describe("a skill's study points in the unit pane (ah-ded4)", () => {
   it("renders level (points), the notation the report and the rest of the app use", () => {
     const html = renderToStaticMarkup(
       <UnitPanel
-        unit={aReportUnit({ skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }], items: [] })}
+        unit={aReportUnit({
+          skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }],
+          items: [],
+        })}
         hex={HEX}
-      />
+      />,
     );
 
     expect(html).toContain("2 (90)");
@@ -120,9 +136,12 @@ describe("a skill's study points in the unit pane (ah-ded4)", () => {
   it("renders (0) for a skill with no points yet", () => {
     const html = renderToStaticMarkup(
       <UnitPanel
-        unit={aReportUnit({ skills: [{ name: "mining", tag: "MINI", level: 0, points: 0 }], items: [] })}
+        unit={aReportUnit({
+          skills: [{ name: "mining", tag: "MINI", level: 0, points: 0 }],
+          items: [],
+        })}
         hex={HEX}
-      />
+      />,
     );
 
     expect(html).toContain("0 (0)");
@@ -135,9 +154,9 @@ describe("the study tree door in the unit pane (ah-gjbs.1)", () => {
   const mage = aReportUnit({
     skills: [
       { name: "pattern", tag: "PATT", level: 1, points: 30 },
-      { name: "force", tag: "FORC", level: 3, points: 450 }
+      { name: "force", tag: "FORC", level: 3, points: 450 },
     ],
-    items: []
+    items: [],
   });
 
   it("offers the study tree once for a mage, on their highest magic skill", () => {
@@ -162,7 +181,12 @@ describe("the study tree door in the unit pane (ah-gjbs.1)", () => {
 
   it("offers nothing for a unit holding no magic skill", () => {
     const html = renderToStaticMarkup(
-      <UnitPanel unit={UNIT} hex={HEX} magicTree={tree} onOpenMagicTree={() => {}} />
+      <UnitPanel
+        unit={UNIT}
+        hex={HEX}
+        magicTree={tree}
+        onOpenMagicTree={() => {}}
+      />,
     );
     expect(html).not.toContain('data-testid="unit-magic-tree"');
   });
@@ -183,7 +207,7 @@ describe("the study tree door in the unit pane (ah-gjbs.1)", () => {
         magicTree={tree}
         onOpenMagicTree={() => {}}
         standing={standing}
-      />
+      />,
     );
 
     expect(html).toContain(`Mage — ${standing.counts.open} magic skills open`);
@@ -192,7 +216,12 @@ describe("the study tree door in the unit pane (ah-gjbs.1)", () => {
 
   it("says only Mage without a standing", () => {
     const html = renderToStaticMarkup(
-      <UnitPanel unit={mage} hex={HEX} magicTree={tree} onOpenMagicTree={() => {}} />
+      <UnitPanel
+        unit={mage}
+        hex={HEX}
+        magicTree={tree}
+        onOpenMagicTree={() => {}}
+      />,
     );
 
     expect(html).toContain("Mage");
@@ -209,10 +238,24 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
         unit={foreignUnit}
         hex={HEX}
         derivedSkills={[
-          { name: "riding", tag: "RIDI", level: 5, turn: 71, coordinate: { x: 25, y: 55, z: 1 }, terrain: "ocean" },
-          { name: "combat", tag: "COMB", level: 2, turn: 71, coordinate: { x: 25, y: 55, z: 1 }, terrain: "ocean" }
+          {
+            name: "riding",
+            tag: "RIDI",
+            level: 5,
+            turn: 71,
+            coordinate: { x: 25, y: 55, z: 1 },
+            terrain: "ocean",
+          },
+          {
+            name: "combat",
+            tag: "COMB",
+            level: 2,
+            turn: 71,
+            coordinate: { x: 25, y: 55, z: 1 },
+            terrain: "ocean",
+          },
         ]}
-      />
+      />,
     );
 
     expect(html).toContain("Skills from battle reports");
@@ -221,23 +264,35 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
   });
 
   it("a foreign unit with no recovered skills explains the empty battle section", () => {
-    const html = renderToStaticMarkup(<UnitPanel unit={foreignUnit} hex={HEX} derivedSkills={[]} />);
+    const html = renderToStaticMarkup(
+      <UnitPanel unit={foreignUnit} hex={HEX} derivedSkills={[]} />,
+    );
 
     expect(html).toContain("Skills from battle reports");
     expect(html).toContain(
-      "No battle we have seen involved this unit. A report never shows another faction&#x27;s skills."
+      "No battle we have seen involved this unit. A report never shows another faction&#x27;s skills.",
     );
   });
 
   it("a real skill keeps the native Skills section even with derived skills supplied", () => {
     const html = renderToStaticMarkup(
       <UnitPanel
-        unit={aReportUnit({ own: false, skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }] })}
+        unit={aReportUnit({
+          own: false,
+          skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }],
+        })}
         hex={HEX}
         derivedSkills={[
-          { name: "riding", tag: "RIDI", level: 5, turn: 71, coordinate: null, terrain: null }
+          {
+            name: "riding",
+            tag: "RIDI",
+            level: 5,
+            turn: 71,
+            coordinate: null,
+            terrain: null,
+          },
         ]}
-      />
+      />,
     );
 
     expect(html).not.toContain("Skills from battle reports");
@@ -246,7 +301,7 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
 
   it("an own unit with no skills keeps the native empty Skills section, not the battle one", () => {
     const html = renderToStaticMarkup(
-      <UnitPanel unit={aReportUnit({ own: true, skills: [] })} hex={HEX} />
+      <UnitPanel unit={aReportUnit({ own: true, skills: [] })} hex={HEX} />,
     );
 
     expect(html).not.toContain("Skills from battle reports");
@@ -263,10 +318,84 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
     expect(html).toContain("The load is 60. Ride and Walk can carry it.");
   });
 
+  /**
+   * `newage trident rules/movement_normal` lets a unit swim, so a swimming world gets a fourth
+   * capacity tile. Swim is never the emphasised tile: the emphasis names the fastest available
+   * movement, and swimming is not a speed.
+   */
+  it("shows a Swim tile and names Swim in the sentence", () => {
+    const enough = draw({
+      unit: aReportUnit({
+        movement: {
+          ...RIDING,
+          status: "walk",
+          capacityMode: "walk",
+          load: 40,
+          fly: 0,
+          ride: 0,
+          walk: 60,
+          swim: { kind: "stated", capacity: 60 },
+        },
+      }),
+    });
+
+    expect(enough).toContain("Swim");
+    expect(enough).toContain("60");
+    expect(enough).toContain("The load is 40. Walk and Swim can carry it.");
+
+    // A swimming capacity below the load drops out of the sentence, exactly as Fly and Ride do,
+    // while the tile still reports the figure.
+    const notEnough = draw({
+      unit: aReportUnit({
+        movement: {
+          ...RIDING,
+          status: "walk",
+          capacityMode: "walk",
+          load: 40,
+          fly: 0,
+          ride: 0,
+          walk: 60,
+          swim: { kind: "stated", capacity: 20 },
+        },
+      }),
+    });
+
+    expect(notEnough).toContain("Swim");
+    expect(notEnough).toContain("20");
+    expect(notEnough).toContain("The load is 40. Walk can carry it.");
+
+    // A world with no swimming rule shows no Swim at all - absent, not zero.
+    const absent = draw({
+      unit: aReportUnit({
+        movement: { ...RIDING, swim: { kind: "absent" } },
+      }),
+    });
+
+    expect(absent).not.toContain("Swim");
+    expect(absent).toContain("The load is 60. Ride and Walk can carry it.");
+  });
+
+  /**
+   * "This world has no swimming" and "nothing says how much this unit can carry doing it" are two
+   * different answers, and only the second is a gap in the report worth marking.
+   */
+  it("reads not stated when the report does not say", () => {
+    const html = draw({
+      unit: aReportUnit({
+        movement: { ...RIDING, swim: { kind: "unstated" } },
+      }),
+    });
+
+    expect(html).toContain("Swim");
+    expect(html).toContain("not stated");
+    expect(html).toContain("text-warn");
+    expect(html).toContain("The load is 60. Ride and Walk can carry it.");
+  });
+
   it("uses the preview movement rather than the reported movement", () => {
     const preview: UnitPreview = {
       unit: aReportUnit({
-        movement: { ...RIDING, status: "walk", capacityMode: "walk" }
+        movement: { ...RIDING, status: "walk", capacityMode: "walk" },
       }),
       status: "present",
       changes: [{ field: "movement", original: "Riding" }],
@@ -289,7 +418,7 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
       reportedSkills: [],
       recruitsUnmerged: false,
       menOfUnknownSkill: [],
-      study: null
+      study: null,
     };
     const html = draw({ unit: aReportUnit({ movement: RIDING }), preview });
 
@@ -301,23 +430,31 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
 describe("the Events section", () => {
   const EVENTS = splitTurnMessages([
     "Unit (1): Claims $50.",
-    "Unit (1): STUDY: Studies observation at a cost of 50 silver [SILV]."
+    "Unit (1): STUDY: Studies observation at a cost of 50 silver [SILV].",
   ]);
 
   it("lists the selected unit's own events", () => {
-    const markup = draw({ events: EVENTS, totalEvents: 452, onOpenEvents: () => {} });
+    const markup = draw({
+      events: EVENTS,
+      totalEvents: 452,
+      onOpenEvents: () => {},
+    });
 
     expect(markup).toContain('data-testid="unit-events"');
     expect(markup).toContain("Claims $50.");
-    expect(markup).toContain("Studies observation at a cost of 50 silver [SILV].");
+    expect(markup).toContain(
+      "Studies observation at a cost of 50 silver [SILV].",
+    );
     expect(markup).toContain("STUDY");
   });
 
   it("lists a single event, with a count of one", () => {
     const markup = draw({
-      events: splitTurnMessages(["Unit (1): Claims 50 silver for maintenance."]),
+      events: splitTurnMessages([
+        "Unit (1): Claims 50 silver for maintenance.",
+      ]),
       totalEvents: 452,
-      onOpenEvents: () => {}
+      onOpenEvents: () => {},
     });
 
     expect(markup).toContain('data-testid="unit-events"');
@@ -332,20 +469,31 @@ describe("the Events section", () => {
   });
 
   it("offers the whole turn's events, and only when the turn has any", () => {
-    const withEvents = draw({ events: EVENTS, totalEvents: 452, onOpenEvents: () => {} });
+    const withEvents = draw({
+      events: EVENTS,
+      totalEvents: 452,
+      onOpenEvents: () => {},
+    });
     expect(withEvents).toContain("All 452 events this turn");
     expect(withEvents).toContain('data-testid="unit-events-all"');
 
     // The real zero case: a turn with no events at all, which is the only way `totalEvents` can be
     // 0 - `AppShell` derives both from the same array.
-    const without = draw({ events: [], totalEvents: 0, onOpenEvents: () => {} });
+    const without = draw({
+      events: [],
+      totalEvents: 0,
+      onOpenEvents: () => {},
+    });
     expect(without).not.toContain('data-testid="unit-events-all"');
   });
 });
 
 describe("a unit whose line the report did not fully carry", () => {
   const CATALOGUE = indexWith(["mount:HORS"]);
-  const WEIGHING: GameDataIndex = { ...CATALOGUE, detailOf: () => ({ kind: "item", weight: 50 }) as never };
+  const WEIGHING: GameDataIndex = {
+    ...CATALOGUE,
+    detailOf: () => ({ kind: "item", weight: 50 }) as never,
+  };
 
   it("banners a unit whose line was not read, and refuses its figures", () => {
     const markup = renderToStaticMarkup(
@@ -358,10 +506,10 @@ describe("a unit whose line the report did not fully carry", () => {
           men: 0,
           weight: null,
           capacity: null,
-          movement: null
+          movement: null,
         })}
         hex={HEX}
-      />
+      />,
     );
 
     expect(markup).toContain('data-testid="unit-unread-banner"');
@@ -381,11 +529,11 @@ describe("a unit whose line the report did not fully carry", () => {
           items: [{ amount: 2, name: "horse", tag: "HORS" }],
           weight: null,
           capacity: null,
-          movement: null
+          movement: null,
         })}
         hex={HEX}
         gameData={WEIGHING}
-      />
+      />,
     );
 
     expect(markup).toContain("Part of this unit was not read.");
@@ -414,11 +562,14 @@ describe("a part-read unit whose own figures did reach the model", () => {
           items: [{ amount: 2, name: "horse", tag: "HORS" }],
           weight: 40,
           capacity: null,
-          movement: null
+          movement: null,
         })}
         hex={HEX}
-        gameData={{ ...indexWith(["mount:HORS"]), detailOf: () => ({ kind: "item", weight: 50 }) as never }}
-      />
+        gameData={{
+          ...indexWith(["mount:HORS"]),
+          detailOf: () => ({ kind: "item", weight: 50 }) as never,
+        }}
+      />,
     );
 
     expect(markup).toContain("40");
@@ -431,7 +582,7 @@ describe("a part-read unit whose own figures did reach the model", () => {
     const heavy = { weight: 4200, capacity: null, movement: null };
     for (const read of ["complete", "partial"] as const) {
       const markup = renderToStaticMarkup(
-        <UnitPanel unit={aReportUnit({ ...heavy, read })} hex={HEX} />
+        <UnitPanel unit={aReportUnit({ ...heavy, read })} hex={HEX} />,
       );
       expect(markup, `read: ${read}`).toContain("4,200");
       expect(markup, `read: ${read}`).not.toContain(">4200<");
@@ -446,10 +597,10 @@ describe("a part-read unit whose own figures did reach the model", () => {
         unit={aReportUnit({
           read: "partial",
           items: [{ amount: 30, name: "silver", tag: "SILV" }],
-          movement: null
+          movement: null,
         })}
         hex={HEX}
-      />
+      />,
     );
 
     // Not a count over the whole pane - Men, Weight, Capacity and the rest all say `not known`
@@ -457,8 +608,13 @@ describe("a part-read unit whose own figures did reach the model", () => {
     // between its heading and the next rather than matched on `Absent`'s class string, which a
     // Tailwind reorder in `primitives.tsx` would let pass vacuously.
     expect(markup).toContain("and more, not known");
-    const itemsSection = markup.slice(markup.indexOf("Items"), markup.indexOf("Events"));
+    const itemsSection = markup.slice(
+      markup.indexOf("Items"),
+      markup.indexOf("Events"),
+    );
     expect(itemsSection).toContain("and more, not known");
-    expect(itemsSection.replace("and more, not known", "")).not.toContain("not known");
+    expect(itemsSection.replace("and more, not known", "")).not.toContain(
+      "not known",
+    );
   });
 });

@@ -12,7 +12,7 @@ use crate::movement::fleet::OrderedUnits;
 use crate::movement::graph::KnownHex;
 use crate::movement::rules::{ItemKind, MovementMode, Ruleset};
 use crate::report::model::{
-    ReportUnit, Structure, UnitMovement, UnitMovementMode, UnitMovementStatus,
+    ReportUnit, Structure, SwimCapacity, UnitMovement, UnitMovementMode, UnitMovementStatus,
 };
 
 /// The four capacities a report prints, in the order it prints them.
@@ -121,6 +121,9 @@ fn movement_for_capacities(weight: i64, capacity: Capacities) -> UnitMovement {
         ride: capacity.ride,
         walk: capacity.walk,
         capacity_mode,
+        swim: SwimCapacity::Stated {
+            capacity: capacity.swim,
+        },
     }
 }
 
@@ -750,6 +753,43 @@ mod tests {
         assert!(unit_movement_from_items(&unit, &ruleset()).is_none());
     }
 
+    /// The fourth capacity number used to be dropped on the floor. It travels with the same
+    /// `Capacities` value the other three come from, so the four figures can never disagree about
+    /// which source they were read from.
+    #[test]
+    fn swim_capacity_is_read_from_the_same_line_as_the_other_three() {
+        let movement = unit_movement(&ReportUnit {
+            weight: Some(100),
+            capacity: Some("0/0/15/15".to_string()),
+            ..Default::default()
+        })
+        .expect("stated movement");
+        assert_eq!(movement.swim, SwimCapacity::Stated { capacity: 15 });
+
+        // Fifty lizardmen - `newage trident data/lizardman`: weight 10, walking capacity 5,
+        // swimming capacity 5. The same case `packages/ruleset/src/capacity.test.ts` pins on the
+        // TypeScript side: `Capacity: 0/0/750/750` for fifty of them and 7500 silver.
+        let unit = ReportUnit {
+            men: 50,
+            items: vec![
+                crate::report::model::ItemAmount {
+                    amount: 50,
+                    name: "lizardmen".to_string(),
+                    tag: "LIZA".to_string(),
+                },
+                crate::report::model::ItemAmount {
+                    amount: 7500,
+                    name: "silver".to_string(),
+                    tag: "SILV".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+        let movement =
+            unit_movement_from_items(&unit, &trident()).expect("a priced inventory classifies");
+        assert_eq!(movement.swim, SwimCapacity::Stated { capacity: 750 });
+    }
+
     // ------------------------------------------------------------ capacities_from_items
 
     /// The rule against the server's own printed line, the reporter's figures, and an item the
@@ -787,6 +827,11 @@ mod tests {
     fn ruleset() -> Ruleset {
         Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
             .expect("the committed ruleset loads")
+    }
+
+    fn trident() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset loads")
     }
 
     /// "+ Ship [329] : Longship; Load: 110/150; Sailors: 4/4; MaxSpeed: 4." - a bare hull, one pair.

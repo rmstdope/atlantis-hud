@@ -3,4 +3,10 @@
 /**
  * The sentence each scraped value came from, kept so a reader can check the scraper's work.
  */
-export type Provenance = { movementPoints: string, terrainCosts: string, road: string, ocean: string, sailing: string, };
+export type Provenance = { movementPoints: string, terrainCosts: string, road: string, ocean: string, sailing: string, 
+/**
+ * The swimming paragraph, or `""` in a world that has no swimming rule - which is the honest
+ * provenance for a rule that is not there. `#[serde(default)]` for the same reason as
+ * [`MovementRules::swimming`].
+ */
+swimming: string, };
