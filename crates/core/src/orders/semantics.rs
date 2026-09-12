@@ -178,6 +178,10 @@ pub mod codes {
     pub const TAX_WITHOUT_COMBAT_READY_MEN: Code = Code("tax-without-combat-ready-men");
     pub const WITHDRAW_NOT_A_BASIC_ITEM: Code = Code("withdraw-not-a-basic-item");
     pub const CAST_CANNOT_MAKE_THIS: Code = Code("cast-cannot-make-this");
+
+    /// A founding `BUILD` whose site the selected ruleset refuses outright - a settlement-only
+    /// building in the wilderness, or a second one of a kind the ruleset allows once per region.
+    pub const BUILD_SITE_REFUSED: Code = Code("build-site-refused");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -186,7 +190,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 50] = [
+    pub const ALL: [Code; 51] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -237,6 +241,7 @@ pub mod codes {
         SAIL_BETWEEN_LAND_HEXES,
         CAST_CANNOT_MAKE_THIS,
         TRANSFER_TO_ITSELF,
+        BUILD_SITE_REFUSED,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -694,6 +699,7 @@ pub fn review_turn(
         check_building_outside(hex, &options, &mut findings);
         check_build_help(hex, &options, &mut findings);
         check_build_skill(hex, ruleset, &options, &mut findings);
+        check_build_site(hex, ledger, &options, &mut findings);
         check_production(hex, &by_coordinate, ruleset, &options, &mut findings);
         check_studying(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_magic_study(hex, ruleset, &options, &mut findings);
@@ -10386,6 +10392,87 @@ fn article_for(kind: &str) -> &'static str {
         Some(first) if "aeiouAEIOU".contains(first) => "an",
         _ => "a",
     }
+}
+
+// --- founding sites the ruleset refuses --------------------------------------------------------
+
+/// Every direct founding `BUILD` whose site the ledger has already found the selected ruleset
+/// refuses (`ah-g9sf.11`).
+///
+/// A reader of work already done, not a second decision: `build()` settles the site before it
+/// charges any material, records a [`BuildPlacementRefusal`] per refused founder on the ledger and
+/// withholds both the `BuildSpent` movement and the item change. This turns each of those into an
+/// ordinary advisory finding, so the two problem lists, the counts, the editor's lint margin and
+/// the F8 walk carry it with no surface of its own.
+///
+/// The gate covers the finding alone. The ledger keeps deciding, and keeps the material back,
+/// whatever the settings say - `emits` decides what is said, never what the forecast does.
+fn check_build_site(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::BUILD_SITE_REFUSED) {
+        return;
+    }
+
+    for (unit_id, refusals) in &ledger.build_placement_refusals {
+        let Some(ordered) = hex
+            .units
+            .iter()
+            .find(|ordered| &ordered.unit.unit_id == unit_id)
+        else {
+            continue;
+        };
+        for refusal in refusals {
+            // Anchored on the BUILD keyword's own span, as `check_building` and
+            // `check_build_skill` are: it is what draws the quoted token in the list, and what
+            // `selectProblem` puts the caret on.
+            let Some(placed) = ordered
+                .intents
+                .iter()
+                .find(|placed| placed.line == refusal.line)
+            else {
+                continue;
+            };
+
+            let building = title_cased(&refusal.building);
+            let article = article_for(&building);
+            let mut message = match refusal.reason {
+                super::effects::BuildPlacementRefusalReason::MissingSettlement => {
+                    format!("Cannot start {article} {building} here: this region has no settlement.")
+                }
+                super::effects::BuildPlacementRefusalReason::DuplicateInRegion => format!(
+                    "Cannot start {article} {building} here: this region already has {article} \
+                     {building}."
+                ),
+            };
+            if let Some(material) = &refusal.material {
+                message.push_str(&format!(" No {material} will be used."));
+            }
+
+            findings.push(ordered.finding(hex, codes::BUILD_SITE_REFUSED, message, Some(placed)));
+        }
+    }
+}
+
+/// `MYSTIC CANAL` and `mystic canal` alike read "Mystic Canal".
+///
+/// The ruleset's buildings map is keyed in upper case and carries no display name, so the kind the
+/// player typed is the most canonical spelling there is.
+fn title_cased(kind: &str) -> String {
+    kind.split_whitespace()
+        .map(|word| {
+            let lower = word.to_lowercase();
+            let mut characters = lower.chars();
+            match characters.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + characters.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Every own unit whose BUILD names - or stands in - a structure it has not the skill, or not the
@@ -35910,6 +35997,18 @@ BUILD
                 allowance: None,
                 unclaimed: None,
             },
+            Case {
+                code: codes::BUILD_SITE_REFUSED,
+                regions: vec![region(vec![with_item(
+                    with_skill(with_men(unit("900"), 10), "BUIL", 3),
+                    120,
+                    "wood",
+                    "WOOD",
+                )])],
+                orders: "unit 900\nBUILD Caravanserai\n",
+                allowance: None,
+                unclaimed: None,
+            },
         ];
 
         assert_eq!(
@@ -35944,10 +36043,18 @@ BUILD
 
             // Fully enabled (rather than the runtime default) so `hex-unguarded`'s own case, which
             // the default itself disables, still gets to prove its fixture fires at all.
+            // The committed New Origins ruleset expresses no settlement or uniqueness rule at
+            // all, so `build-site-refused` is the one code whose fixture cannot fire under it.
+            let rules = if *code == codes::BUILD_SITE_REFUSED {
+                trident()
+            } else {
+                ruleset()
+            };
+
             let enabled = check_turn(
                 &built,
                 orders,
-                Some(&ruleset()),
+                Some(&rules),
                 CheckOptions {
                     disabled: BTreeSet::new(),
                 },
@@ -35957,7 +36064,7 @@ BUILD
                 "{code}'s own fixture should emit it when nothing is disabled: {enabled:?}"
             );
 
-            let silenced = check_turn(&built, orders, Some(&ruleset()), disabling(*code));
+            let silenced = check_turn(&built, orders, Some(&rules), disabling(*code));
             assert!(
                 !codes(&silenced).contains(&code.as_str()),
                 "{code} should be silenced once disabled: {silenced:?}"
@@ -42026,5 +42133,260 @@ BUILD
             "900"
         )
         .is_none());
+    }
+
+    // --- refused founding sites (`ah-g9sf.11`) ---------------------------------------------
+
+    fn trident() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset should be usable")
+    }
+
+    fn settled(mut region: ReportRegion) -> ReportRegion {
+        region.settlement = Some(crate::report::model::Settlement {
+            name: "Inholm".to_string(),
+            size: "city".to_string(),
+        });
+        region
+    }
+
+    fn founder(unit_id: &str, amount: i64, name: &str, tag: &str) -> ReportUnit {
+        with_item(
+            with_skill(with_men(unit(unit_id), 10), "BUIL", 3),
+            amount,
+            name,
+            tag,
+        )
+    }
+
+    fn finished_structure(structure_id: &str, kind: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: kind.to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn refusals(regions: Vec<ReportRegion>, orders: &str, options: CheckOptions) -> Vec<Finding> {
+        check_turn(&report(regions), orders, Some(&trident()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_SITE_REFUSED)
+            .collect()
+    }
+
+    #[test]
+    fn a_refused_trident_building_site_is_an_ordinary_warning() {
+        let findings = refusals(
+            vec![region(vec![founder("900", 120, "stone", "STON")])],
+            "unit 900\nBUILD Palace\n",
+            CheckOptions::default(),
+        );
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].code, codes::BUILD_SITE_REFUSED);
+        assert_eq!(
+            findings[0].message,
+            "Cannot start a Palace here: this region has no settlement. No stone will be used."
+        );
+        assert_eq!(findings[0].unit_id, Some("900".to_string()));
+        assert_eq!(findings[0].region_id, "1:7,53".to_string());
+        assert_eq!(findings[0].line, Some(2));
+        assert!(
+            findings[0].column_start.is_some() && findings[0].column_end.is_some(),
+            "the walk selects the order by its columns: {:?}",
+            findings[0]
+        );
+    }
+
+    /// The four sentences the navigator approved, word for word.
+    #[test]
+    fn the_agreed_sentences_come_out_of_the_core_verbatim() {
+        let caravanserai = refusals(
+            vec![region(vec![founder("900", 120, "wood", "WOOD")])],
+            "unit 900\nBUILD Caravanserai\n",
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            caravanserai[0].message,
+            "Cannot start a Caravanserai here: this region has no settlement. No wood will be used."
+        );
+
+        // Multi-word kinds are quoted, which is the only form the BUILD grammar reads as one
+        // name. The Mystic Canal's material is `newage trident data/Mystic Canal`'s own rootstone.
+        for (kind, order, material, tag) in [
+            ("Palace", "BUILD Palace", "stone", "STON"),
+            ("Town Hall", "BUILD \"Town Hall\"", "wood", "WOOD"),
+            ("Mystic Canal", "BUILD \"Mystic Canal\"", "rootstone", "ROOT"),
+        ] {
+            let mut duplicate = settled(region(vec![founder("900", 120, material, tag)]));
+            duplicate.structures.push(finished_structure("4", kind));
+            let findings = refusals(
+                vec![duplicate],
+                &format!("unit 900\n{order}\n"),
+                CheckOptions::default(),
+            );
+            assert_eq!(
+                findings.len(),
+                1,
+                "a duplicate {kind} should be refused: {findings:?}"
+            );
+            assert_eq!(
+                findings[0].message,
+                format!(
+                    "Cannot start a {kind} here: this region already has a {kind}. \
+                     No {material} will be used."
+                )
+            );
+        }
+    }
+
+    /// The kind the player typed is title-cased, so `build palace` reads "Palace".
+    #[test]
+    fn the_building_name_is_title_cased_whatever_the_player_typed() {
+        let findings = refusals(
+            vec![region(vec![founder("900", 120, "wood", "WOOD")])],
+            "unit 900\nbuild caravanserai\n",
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            findings[0].message,
+            "Cannot start a Caravanserai here: this region has no settlement. No wood will be used."
+        );
+    }
+
+    /// Both rules fail at once in a wilderness that already holds one: the settlement sentence is
+    /// the one the player is shown, because it is the one the ledger settles on first.
+    #[test]
+    fn the_settlement_rule_takes_precedence_over_the_duplicate_rule() {
+        let mut wilderness = region(vec![founder("900", 120, "stone", "STON")]);
+        wilderness.structures.push(finished_structure("4", "Palace"));
+        let findings = refusals(
+            vec![wilderness],
+            "unit 900\nBUILD Palace\n",
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            findings[0].message,
+            "Cannot start a Palace here: this region has no settlement. No stone will be used."
+        );
+    }
+
+    /// One entry per refused founder, which is what the region panel's list draws.
+    #[test]
+    fn two_refused_founders_in_one_region_produce_two_findings() {
+        let findings = refusals(
+            vec![region(vec![
+                founder("900", 120, "wood", "WOOD"),
+                founder("901", 120, "wood", "WOOD"),
+            ])],
+            "unit 900\nBUILD Caravanserai\nunit 901\nBUILD Caravanserai\n",
+            CheckOptions::default(),
+        );
+
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert_eq!(
+            findings
+                .iter()
+                .map(|finding| finding.unit_id.clone())
+                .collect::<Vec<_>>(),
+            vec![Some("900".to_string()), Some("901".to_string())]
+        );
+        assert!(findings
+            .iter()
+            .all(|finding| finding.message.starts_with("Cannot start a Caravanserai here:")));
+    }
+
+    /// A helper is not a founder, and a bare continuation inside a finished unique building is not
+    /// starting anything.
+    #[test]
+    fn helpers_and_continuations_are_not_refused() {
+        assert_eq!(
+            refusals(
+                vec![region(vec![
+                    founder("900", 120, "wood", "WOOD"),
+                    with_skill(with_men(unit("901"), 10), "BUIL", 3),
+                ])],
+                "unit 900\nBUILD Caravanserai\nunit 901\nBUILD HELP 900\n",
+                CheckOptions::default(),
+            )
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("901"))
+            .count(),
+            0
+        );
+
+        let mut inside = settled(region(vec![in_structure(
+            founder("900", 120, "stone", "STON"),
+            "4",
+        )]));
+        inside.structures.push(Structure {
+            needs: Some(20),
+            ..finished_structure("4", "Palace")
+        });
+        assert_eq!(
+            refusals(vec![inside], "unit 900\nBUILD\n", CheckOptions::default()),
+            vec![]
+        );
+    }
+
+    /// An allowed first construction in a settlement says nothing at all.
+    #[test]
+    fn an_allowed_trident_construction_is_silent() {
+        assert_eq!(
+            refusals(
+                vec![settled(region(vec![founder("900", 120, "stone", "STON")]))],
+                "unit 900\nBUILD Palace\n",
+                CheckOptions::default(),
+            ),
+            vec![]
+        );
+    }
+
+    /// New Origins imposes neither rule, so the same order there is silent.
+    #[test]
+    fn a_new_origins_wilderness_caravanserai_is_silent() {
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![founder("900", 120, "wood", "WOOD")])]),
+                "unit 900\nBUILD Caravanserai\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_SITE_REFUSED)
+            .count(),
+            0
+        );
+    }
+
+    /// Turning the check off says nothing - and still keeps the material back, because the ledger
+    /// decides the site whatever the settings say.
+    #[test]
+    fn switching_off_the_refused_site_check_keeps_the_material_back() {
+        let regions = vec![region(vec![founder("900", 120, "stone", "STON")])];
+        let orders = "unit 900\nBUILD Palace\n";
+
+        assert_eq!(
+            refusals(
+                regions.clone(),
+                orders,
+                disabling(codes::BUILD_SITE_REFUSED)
+            ),
+            vec![]
+        );
+
+        let effects = item_effects(&report(regions), orders, Some(&trident()));
+        let unit = effects_for(&effects, "900").expect("the builder should have item effects");
+        assert!(
+            unit.built.is_empty(),
+            "a refused site spends nothing: {unit:?}"
+        );
+        assert!(
+            unit.moved
+                .iter()
+                .all(|movement| movement.cause != ItemChangeCause::BuildSpent),
+            "a refused site moves no material: {unit:?}"
+        );
     }
 }

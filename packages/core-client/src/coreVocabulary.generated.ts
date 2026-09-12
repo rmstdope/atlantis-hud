@@ -52,7 +52,8 @@ export const ADVISORY_CHECK_CODES = [
   "withdraw-not-a-basic-item",
   "sail-between-land-hexes",
   "cast-cannot-make-this",
-  "transfer-to-itself"
+  "transfer-to-itself",
+  "build-site-refused"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
