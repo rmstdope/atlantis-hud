@@ -28,6 +28,17 @@ size?: number,
  */
 cost?: number, 
 /**
+ * Movement points a fleet spends passing through this structure, where an ordinary sailing
+ * step costs [`SailingRule::flat_cost`]. `None` for everything that is not a canal, which is
+ * every structure in New Origins.
+ *
+ * `newage/trident data/Canal`: "Passage through a stone canal costs 2 movement points";
+ * `newage/trident data/Mystic Canal`: "Passage through a mystic canal costs 1 movement
+ * point." `u32` rather than the `i64` its neighbours use because it is a movement cost and is
+ * compared against `u32` costs everywhere; a negative one is not a number the page can state.
+ */
+canalCost?: number, 
+/**
  * What it is built from, in the page's own order - a list because a structure can offer
  * alternatives (`an Inn from 10 wood or stone`). `None` for anything no skill can build, and
  * for a ruleset cached before ah-9js, which wrote a single `material` string this no longer

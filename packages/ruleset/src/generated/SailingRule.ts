@@ -20,4 +20,13 @@ landNeedsCoast: boolean,
 /**
  * The terrain a fleet sails freely across, lower-cased. Mirrors [`OceanRule::terrain`].
  */
-terrain: string, };
+terrain: string, 
+/**
+ * Whether this world restricts which side of a land region a fleet may leave by.
+ *
+ * `rules/movement_sailing`, in every committed world: "Ships may not sail through single hex
+ * land masses and must leave via the same side they entered or a side adjacent to that one."
+ * False only for a ruleset written before this was scraped, where the old behaviour stands
+ * rather than a rule the file never stated.
+ */
+sideRestricted: boolean, };

@@ -108,6 +108,23 @@ describe("parseMovementRules", () => {
   });
 
   /**
+   * Every world's sailing section carries the isthmus restriction - "Ships may not sail through
+   * single hex land masses and must leave via the same side they entered or a side adjacent to
+   * that one" - so the flag is scraped from the sentence and the sentence kept in the provenance,
+   * exactly as `landNeedsCoast` already is.
+   */
+  it("reads the side restriction into the sailing rule", () => {
+    for (const html of [RULES_HTML, ARCANUM_RULES_HTML, TRIDENT_RULES_HTML]) {
+      const rules = parseMovementRules(html);
+
+      expect(rules.sailing.sideRestricted).toBe(true);
+      expect(rules.provenance.sailing).toContain(
+        "must leave via the same side they entered"
+      );
+    }
+  });
+
+  /**
    * Asserting "ocean" against a page that says "ocean" proves nothing - a hardcoded constant
    * passes it identically. Renaming the terrain in the page is what separates reading it from
    * assuming it.

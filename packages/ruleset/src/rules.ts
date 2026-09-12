@@ -253,6 +253,15 @@ export function parseMovementRules(html: string): MovementRules {
     );
   }
 
+  // "Ships may not sail through single hex land masses and must leave via the same side they
+  //  entered or a side adjacent to that one." Every committed world carries it, so a miss is a
+  //  reworded page rather than a world that lacks the rule.
+  const sides = requireMatch(
+    text,
+    "sailing",
+    /Ships may not sail through single hex land masses and must leave via the same side they entered or a side adjacent to that one/i
+  );
+
   const walk = toNumber(points[1]);
   const ride = toNumber(points[2]);
   const fly = toNumber(points[3]);
@@ -336,6 +345,7 @@ export function parseMovementRules(html: string): MovementRules {
     sailing: {
       flatCost,
       landNeedsCoast: true,
+      sideRestricted: true,
       terrain: ocean[1].toLowerCase()
     },
     swimming: swimming
@@ -346,7 +356,7 @@ export function parseMovementRules(html: string): MovementRules {
       terrainCosts: sentence(terrain.match),
       road: sentence(road),
       ocean: alsoWater ? `${sentence(ocean)}. ${sentence(alsoWater)}` : sentence(ocean),
-      sailing: `${sentence(sailingCost)}. ${sentence(coastal)}`,
+      sailing: `${sentence(sailingCost)}. ${sentence(coastal)}. ${sentence(sides)}`,
       swimming: swimming ? sentence(swimming) : ""
     }
   };

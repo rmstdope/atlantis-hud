@@ -984,4 +984,40 @@ fn refuses_a_swimming_rule_that_contradicts_the_water_rule() {
         1,
     );
     assert!(Ruleset::from_json(&lake).is_ok());
+
+/// `rules/movement_sailing`, in every committed world: "Ships may not sail through single hex land
+/// masses and must leave via the same side they entered or a side adjacent to that one." The
+/// restriction is not a New Age addition, so New Origins must state it too.
+#[test]
+fn knows_the_sailing_side_restriction() {
+    assert!(ruleset().sailing_side_restricted());
+
+    for json in [
+        atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+    ] {
+        let world = Ruleset::from_json(json).expect("a committed New Age ruleset parses");
+        assert!(world.sailing_side_restricted());
+    }
+}
+
+/// `newage/trident data/Canal`: "Passage through a stone canal costs 2 movement points";
+/// `newage/trident data/Mystic Canal`: "Passage through a mystic canal costs 1 movement point."
+/// New Origins has neither grade, so it prices neither.
+#[test]
+fn knows_what_a_pass_through_each_canal_costs() {
+    let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+        .expect("the committed Trident ruleset parses");
+
+    assert_eq!(trident.canal_cost("Canal"), Some(2));
+    assert_eq!(
+        trident.canal_cost("mystic canal"),
+        Some(1),
+        "a report's case should not decide what a pass costs"
+    );
+    assert_eq!(trident.canal_cost("Fort"), None);
+
+    let new_origins = ruleset();
+    assert_eq!(new_origins.canal_cost("Canal"), None);
+    assert_eq!(new_origins.canal_cost("Mystic Canal"), None);
 }
