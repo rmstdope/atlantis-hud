@@ -176,3 +176,54 @@ pub fn follow_move(map: &MapKnowledge, from: Coordinate, steps: &[MoveStep]) -> 
         left_the_map: false,
     }
 }
+
+/// The first `IN` in a movement order, and the structure the unit would pass through.
+///
+/// `rules/move`, direction 4: "IN, which will move through an inner passage in the structure that
+/// the unit is currently in." Which structure that is depends on the `ENTER`, `OUT` and directional
+/// steps before it, folded here exactly as [`crate::orders::standing::standing_through_move`] folds
+/// them: a structure number enters it, `OUT` leaves it, and a direction leaves the hex and so leaves
+/// whatever the unit was standing in.
+///
+/// Pure, and names no hex: the caller resolves `structure_id` against whatever map it has.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedPassage {
+    /// How many steps precede the passage, so `steps[..before]` is everything ordered before it.
+    pub before: usize,
+    /// The structure the unit stands in when the passage is ordered, or `None` when it stands in
+    /// none - an order the game cannot honour, and nothing this crate will claim anything about.
+    pub structure_id: Option<String>,
+    /// Ordered steps after the passage that would put the unit somewhere: `Go` and a second `In`.
+    /// `ENTER` and `OUT` are not counted - they place nothing on a map.
+    pub steps_after: usize,
+}
+
+/// The first inner passage in `steps`, given the structure the unit stands in before the order.
+///
+/// `None` when the order holds no `IN` at all, which is almost every order.
+#[must_use]
+pub fn first_passage(standing_in: Option<&str>, steps: &[MoveStep]) -> Option<OrderedPassage> {
+    let mut current = standing_in.map(str::to_string);
+
+    for (before, step) in steps.iter().enumerate() {
+        match step {
+            MoveStep::In => {
+                let steps_after = steps[before + 1..]
+                    .iter()
+                    .filter(|step| matches!(step, MoveStep::Go(_) | MoveStep::In))
+                    .count();
+
+                return Some(OrderedPassage {
+                    before,
+                    structure_id: current,
+                    steps_after,
+                });
+            }
+            MoveStep::Enter(id) => current = Some(id.clone()),
+            // OUT leaves the structure, and a direction leaves the hex and so leaves it too.
+            MoveStep::Out | MoveStep::Go(_) => current = None,
+        }
+    }
+
+    None
+}

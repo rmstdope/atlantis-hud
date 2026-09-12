@@ -35,7 +35,7 @@ use crate::movement::mode::{
     best_allowance, capacities_from_items, cargo_capacity, fleet_flies, fleet_label,
     hulls_named_in, is_vessel, sailing_requirement, Capacities,
 };
-use crate::movement::orders::MoveStep;
+use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{refused_by_sailing_step, Hull, Journey};
 use crate::movement::rules::{
     item_spellings, ItemEntry, ItemKind, MovementMode, Ruleset, SkillEntry,
@@ -185,6 +185,9 @@ pub mod codes {
     /// A founding `BUILD` whose site the selected ruleset refuses outright - a settlement-only
     /// building in the wilderness, or a second one of a kind the ruleset allows once per region.
     pub const BUILD_SITE_REFUSED: Code = Code("build-site-refused");
+    /// A route goes through an inner passage, and no report says where the passage comes out
+    /// (`rules/move`, 4), so the steps ordered after it cannot be placed on any map.
+    pub const PASSAGE_WITH_NO_KNOWN_EXIT: Code = Code("passage-with-no-known-exit");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -193,7 +196,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 52] = [
+    pub const ALL: [Code; 53] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -246,6 +249,7 @@ pub mod codes {
         TRANSFER_TO_ITSELF,
         BUILD_SITE_REFUSED,
         BUILD_WITHOUT_MATERIAL,
+        PASSAGE_WITH_NO_KNOWN_EXIT,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -540,6 +544,7 @@ pub fn review_turn(
     let by_coordinate: HashMap<Coordinate, &ReportRegion> = if options
         .emits(codes::PRODUCE_NOT_HERE)
         || options.emits(codes::SAIL_BETWEEN_LAND_HEXES)
+        || options.emits(codes::PASSAGE_WITH_NO_KNOWN_EXIT)
     {
         report
             .regions
@@ -724,6 +729,7 @@ pub fn review_turn(
         check_cast_material(hex, ruleset, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
         check_sail_route(hex, &by_coordinate, ruleset, &options, &mut findings);
+        check_passages(hex, &by_coordinate, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
@@ -13222,6 +13228,111 @@ fn check_sail_route(
     }
 }
 
+/// A route through an inner passage, which no report says the far side of.
+///
+/// `rules/move`, direction 4: "IN, which will move through an inner passage in the structure that
+/// the unit is currently in", and `rules/tableitemweights`: the passage leads to another region.
+/// Nothing in a report, and nothing in the game data, names which region that is - so the steps
+/// ordered after the passage cannot be placed on any map the faction has.
+///
+/// Geography, not load, exactly as [`check_sail_route`] is: who else stands in the hex cannot make
+/// this doubtful.
+fn check_passages(
+    hex: &Hex<'_>,
+    by_coordinate: &HashMap<Coordinate, &ReportRegion>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::PASSAGE_WITH_NO_KNOWN_EXIT) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // The *last* movement line, because that is the one the map draws and the dock previews
+        // (`effects.rs`: "The last movement order wins"). `rules/move` says movement orders chain,
+        // and this module models that elsewhere - but warning about an earlier line here would put
+        // a passage warning beside a solid route drawn from a different order, a contradiction the
+        // player cannot resolve. The warning describes what is on the map.
+        let last_move = ordered
+            .intents
+            .iter()
+            .rev()
+            .find(|placed| matches!(placed.intent, Intent::Move { .. }));
+
+        if let Some(placed) = last_move {
+            let Intent::Move { steps } = &placed.intent else {
+                continue;
+            };
+            let Some(passage) = first_passage(ordered.unit.structure_id.as_deref(), steps) else {
+                continue;
+            };
+            let Some(structure_id) = passage.structure_id else {
+                continue; // the unit stands in no structure: accept on doubt
+            };
+
+            // Where the unit is standing when the passage is ordered, walked through stated exits
+            // exactly as `first_land_to_land_step` walks them - `?` on a region the report does
+            // not carry, so an unresolvable hex yields nothing rather than a guess.
+            let Some(standing) = region_after(hex.region, &steps[..passage.before], by_coordinate)
+            else {
+                continue;
+            };
+            let Some(structure) = standing
+                .structures
+                .iter()
+                .find(|structure| structure.structure_id == structure_id)
+            else {
+                continue; // no structure of that number here: accept on doubt
+            };
+
+            let label = crate::report::model::numbered_structure_label(structure);
+            let message = if passage.steps_after > 0 {
+                let count = passage.steps_after;
+                let step_or_steps = if count == 1 { "step" } else { "steps" };
+                format!(
+                    "goes through the passage in {label}, and no report says where that passage \
+                     comes out, so the {count} {step_or_steps} after it cannot be placed on the map"
+                )
+            } else {
+                format!(
+                    "goes through the passage in {label}, and no report says where that passage \
+                     comes out, so where this unit ends the month is unknown"
+                )
+            };
+
+            findings.push(ordered.finding(
+                hex,
+                codes::PASSAGE_WITH_NO_KNOWN_EXIT,
+                message,
+                Some(placed),
+            ));
+        }
+    }
+}
+
+/// The region the directional steps of `steps` leave a unit standing in, through stated exits
+/// alone - `None` wherever the report cannot say, which is what makes the caller accept on doubt.
+fn region_after<'a>(
+    from: &'a ReportRegion,
+    steps: &[MoveStep],
+    regions: &HashMap<Coordinate, &'a ReportRegion>,
+) -> Option<&'a ReportRegion> {
+    let mut here = from;
+
+    for step in steps {
+        let MoveStep::Go(direction) = step else {
+            continue;
+        };
+        let exit = here
+            .exits
+            .iter()
+            .find(|exit| Direction::parse(&exit.direction) == Some(*direction))?;
+        here = regions.get(&exit.coordinate).copied()?;
+    }
+
+    Some(here)
+}
+
 /// This unit's known load and allowance, the moment `check_movement` renders as `unit-overloaded`.
 /// Shared so guard and teaching can ask the same question about a MOVE that will not happen
 /// (`ah-0wpn`), without rebuilding load and capacity a second time or searching the findings
@@ -25388,6 +25499,106 @@ BUILD
         }
     }
 
+    /// A structure the unit can stand in and pass through, in the region `region` builds.
+    fn with_shaft(mut hex: ReportRegion) -> ReportRegion {
+        hex.structures.push(Structure {
+            structure_id: "1".to_string(),
+            name: "Shaft".to_string(),
+            kind: "Shaft, contains an inner location".to_string(),
+            base_kind: "Shaft".to_string(),
+            qualifiers: vec!["contains an inner location".to_string()],
+            ..Default::default()
+        });
+        hex
+    }
+
+    fn passages(findings: &[Finding]) -> Vec<&Finding> {
+        findings
+            .iter()
+            .filter(|finding| finding.code == codes::PASSAGE_WITH_NO_KNOWN_EXIT)
+            .collect()
+    }
+
+    /// A passage with steps ordered after it, in the words the design stage agreed.
+    #[test]
+    fn a_passage_with_no_known_exit_is_warned_about() {
+        let regions = vec![ReportRegion {
+            exits: vec![Exit {
+                direction: "Southeast".to_string(),
+                terrain: "mountain".to_string(),
+                coordinate: Coordinate { x: 8, y: 54, z: 1 },
+                province: "Inhead".to_string(),
+                settlement: None,
+            }],
+            ..with_shaft(region(vec![unit("5")]))
+        }];
+
+        let findings = check(regions, "unit 5\nMOVE 1 IN SE\n");
+        let passages = passages(&findings);
+
+        assert_eq!(passages.len(), 1, "{findings:?}");
+        assert_eq!(
+            passages[0].message,
+            "goes through the passage in Shaft [1], and no report says where that passage comes \
+             out, so the 1 step after it cannot be placed on the map"
+        );
+    }
+
+    /// A passage with nothing ordered after it says the month ends somewhere unknown instead.
+    #[test]
+    fn a_passage_that_ends_the_order_says_the_month_ends_somewhere_unknown() {
+        let regions = vec![with_shaft(region(vec![unit("5")]))];
+
+        let findings = check(regions, "unit 5\nMOVE 1 IN\n");
+        let passages = passages(&findings);
+
+        assert_eq!(passages.len(), 1, "{findings:?}");
+        assert_eq!(
+            passages[0].message,
+            "goes through the passage in Shaft [1], and no report says where that passage comes \
+             out, so where this unit ends the month is unknown"
+        );
+    }
+
+    /// The warning describes the order the map draws, which is the *last* movement line.
+    ///
+    /// `rules/move` says "Multiple MOVE orders given by one unit will chain together", and this
+    /// module models that elsewhere - but the trace and the preview keep only the last line
+    /// (`effects.rs`, a divergence `ah-ehgy` left alone on purpose). Warning about an earlier one
+    /// would put a passage warning beside a solid route drawn from a different order, which is a
+    /// contradiction the player cannot resolve.
+    #[test]
+    fn a_later_move_is_the_one_the_passage_warning_describes() {
+        let regions = vec![ReportRegion {
+            exits: vec![Exit {
+                direction: "Southeast".to_string(),
+                terrain: "mountain".to_string(),
+                coordinate: Coordinate { x: 8, y: 54, z: 1 },
+                province: "Inhead".to_string(),
+                settlement: None,
+            }],
+            ..with_shaft(region(vec![unit("5")]))
+        }];
+
+        // The map traces `MOVE SE` and draws it: no passage, so nothing to warn about.
+        let findings = check(regions.clone(), "unit 5\nMOVE 1 IN\nMOVE SE\n");
+        assert!(passages(&findings).is_empty(), "{findings:?}");
+
+        // And the other way round: the last line is the passage, so that is what is warned about.
+        let findings = check(regions, "unit 5\nMOVE SE\nMOVE 1 IN\n");
+        assert_eq!(passages(&findings).len(), 1, "{findings:?}");
+    }
+
+    /// State 6: entering a structure by its number is not a passage and is never warned about.
+    #[test]
+    fn a_structure_entered_by_number_alone_is_not_a_passage() {
+        let regions = vec![with_shaft(region(vec![unit("5")]))];
+
+        let findings = check(regions, "unit 5\nMOVE 1\n");
+
+        assert!(passages(&findings).is_empty(), "{findings:?}");
+    }
+
     /// A `SAIL` whose step leaves land for land is warned about, in the words that ship.
     #[test]
     fn a_sail_from_land_to_land_is_a_warning() {
@@ -36641,6 +36852,13 @@ BUILD
                 code: codes::CAST_CANNOT_MAKE_THIS,
                 regions: vec![region(vec![with_skill(unit("5"), "TRNS", 1)])],
                 orders: "unit 5\nCAST Transmutation 2 wood\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::PASSAGE_WITH_NO_KNOWN_EXIT,
+                regions: vec![with_shaft(region(vec![unit("5")]))],
+                orders: "unit 5\nMOVE 1 IN\n",
                 allowance: None,
                 unclaimed: None,
             },

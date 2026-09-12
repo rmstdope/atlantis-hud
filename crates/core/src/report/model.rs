@@ -377,6 +377,16 @@ pub fn region_label(terrain: &str, x: i32, y: i32, province: &str) -> String {
     format!("{terrain} ({x},{y}) in {province}")
 }
 
+/// How a structure is pointed at where a sentence has to be unambiguous about which one:
+/// `Shaft [3]`.
+///
+/// Distinct from `orders::semantics::structure_label`, which writes the bare name because its
+/// sentences already say which hex they are about.
+#[must_use]
+pub fn numbered_structure_label(structure: &Structure) -> String {
+    format!("{} [{}]", structure.name, structure.structure_id)
+}
+
 /// How much of a unit's line the parser actually read.
 ///
 /// A report is a fixed-width wrapped document, and a fragment carries no marker saying it is one

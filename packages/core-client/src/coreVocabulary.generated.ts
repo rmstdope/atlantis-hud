@@ -54,7 +54,8 @@ export const ADVISORY_CHECK_CODES = [
   "cast-cannot-make-this",
   "transfer-to-itself",
   "build-site-refused",
-  "build-without-material"
+  "build-without-material",
+  "passage-with-no-known-exit"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

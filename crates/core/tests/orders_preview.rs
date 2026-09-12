@@ -371,3 +371,82 @@ fn a_unit_formed_aboard_a_sailing_fleet_is_carried_with_it() {
         carried.aboard
     );
 }
+
+/// State 9: a unit ordered through an inner passage ends the month somewhere no report names, so
+/// the dock shows a departure with no destination — `→ …` — rather than a hex it never reaches.
+///
+/// Unit 666 of the committed turn-zero nexus report stands in `nexus (0,0,nexus)` beside seven
+/// `Gateway to <terrain> [n]` structures; a gate is a structure like any other here, which is why
+/// it needs no code of its own.
+#[test]
+fn a_unit_ordered_through_a_passage_departs_to_nowhere_nameable() {
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        atlantis_hud_fixtures::G4_F17_T0.text,
+        "[]",
+        "unit 666\nMOVE 1 IN\n",
+    )
+    .expect("the ruleset loads");
+
+    let nexus = response
+        .regions
+        .iter()
+        .find(|region| region.region_id == "0:0,0")
+        .expect("the nexus the unit stands in");
+    let unit = nexus
+        .units
+        .iter()
+        .find(|unit| unit.unit.unit_id == "666")
+        .expect("the unit that got the orders");
+
+    assert_eq!(unit.status, UnitPreviewStatus::Departing);
+    assert_eq!(unit.departing_to, None, "no hex can be named");
+    assert!(
+        !response
+            .regions
+            .iter()
+            .flat_map(|region| &region.units)
+            .any(|unit| unit.unit.unit_id == "666" && unit.status == UnitPreviewStatus::Arriving),
+        "and it arrives nowhere either"
+    );
+}
+
+/// The same state, in the case where the months *can* name a hex and must not be believed: a unit
+/// that walks a hex and then goes through a passage there ends the month beyond it, not in the hex
+/// the first month's leg happens to end in.
+#[test]
+fn a_passage_after_a_step_still_departs_to_nowhere_nameable() {
+    let mut report = String::from("Foo (1) Report\n\n");
+    report.push_str("plain (1,1) in Inland, 10 peasants (orcs), $5.\n\n");
+    report.push_str("Exits:\n  Southeast : plain (2,2) in Inland.\n\n");
+    report.push_str(
+        "  * Walker (900), Foo (1), sharing, man [MAN]. Weight: 10. \
+         Capacity: 0/0/15/0. Skills: none.\n\n",
+    );
+    report.push_str("plain (2,2) in Inland, 10 peasants (orcs), $5.\n\n");
+    report.push_str("Exits:\n  Northwest : plain (1,1) in Inland.\n\n");
+    report.push_str("+ Shaft [3] : Shaft, contains an inner location.\n");
+
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        &report,
+        "[]",
+        "unit 900\nMOVE SE 3 IN\n",
+    )
+    .expect("the ruleset loads");
+
+    let unit = response
+        .regions
+        .iter()
+        .flat_map(|region| &region.units)
+        .find(|unit| unit.unit.unit_id == "900")
+        .expect("the unit that got the orders");
+
+    assert_eq!(unit.status, UnitPreviewStatus::Departing);
+    assert_eq!(
+        unit.departing_to, None,
+        "the month ends beyond the passage, which no report names"
+    );
+}

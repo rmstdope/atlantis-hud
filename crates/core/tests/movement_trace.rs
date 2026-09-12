@@ -564,3 +564,82 @@ fn a_traced_flight_marks_its_water_steps() {
     assert!(path.steps[0].over_water, "the lake is water in Trident");
     assert!(!path.steps[1].over_water, "the far plain is dry");
 }
+
+/// A synthetic report whose own unit 900 stands inside a shaft with a stated SE exit out of the
+/// hex, which is the audit's own reproduction of the defect.
+fn report_with_a_shaft() -> String {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("plain (1,1) in Inland, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Inland.\n\n");
+    text.push_str("+ Shaft [3] : Shaft, contains an inner location.\n");
+    text.push_str(
+        "  * Walker (900), Foo (1), sharing, man [MAN]. Weight: 10. \
+         Capacity: 0/0/15/0. Skills: none.\n\n",
+    );
+    text.push_str("plain (2,2) in Inland, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Northwest : plain (1,1) in Inland.\n");
+    text
+}
+
+/// Traces one unit's orders over the shaft report.
+fn trace_in_shaft(unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
+    trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        &report_with_a_shaft(),
+        "[]",
+        unit_id,
+        &document(unit_id, orders),
+    )
+    .expect("the ruleset loads")
+}
+
+/// The defect itself. `rules/move`, direction 4: `IN` moves through an inner passage to another
+/// region, and no report anywhere says which one - so the route stops at the structure's hex rather
+/// than drawing the SE after it from the hex the unit never leaves.
+///
+/// A nexus gate needs no test of its own: a Gateway is a structure like any other and reaches this
+/// same code path, which is why a gate holds without an exception being written for it.
+#[test]
+fn a_passage_ends_the_route_and_nothing_after_it_is_placed() {
+    let path = trace_in_shaft("900", "MOVE IN SE")
+        .path
+        .expect("a traced path");
+
+    assert_eq!(path.from, at(1, 1));
+    assert!(path.steps.is_empty(), "nothing is drawn past the passage");
+
+    let passage = path.passage.expect("the passage the route stopped at");
+    assert_eq!(passage.coordinate, at(1, 1));
+    assert_eq!(passage.structure, "Shaft [3]");
+    assert_eq!(passage.steps_after, 1);
+}
+
+/// State 6: entering a structure by its number, and leaving one, are free and invisible as they
+/// always were - only an `IN` stops a route.
+#[test]
+fn a_move_into_a_structure_by_its_number_is_still_free_and_invisible() {
+    for orders in ["MOVE 3 SE", "MOVE OUT SE"] {
+        let path = trace_in_shaft("900", orders).path.expect("a traced path");
+
+        assert_eq!(path.steps.len(), 1, "{orders} still draws its SE");
+        assert_eq!(path.steps[0].to, at(2, 2), "{orders}");
+        assert_eq!(path.passage, None, "{orders} runs into no passage");
+    }
+}
+
+/// The wire contract for the new field: TypeScript reads `passage.stepsAfter`, the way it reads
+/// `blockedFrom`.
+#[test]
+fn the_serde_shape_of_a_passage() {
+    let answer = trace_in_shaft("900", "MOVE IN SE");
+    let json = serde_json::to_value(&answer).expect("serializes");
+
+    let passage = &json["path"]["passage"];
+    assert_eq!(passage["structure"], "Shaft [3]");
+    assert_eq!(passage["stepsAfter"], 1, "camelCase, not steps_after");
+    assert!(passage["coordinate"]["x"].is_number());
+
+    let plain = serde_json::to_value(trace("18642", "MOVE N")).expect("serializes");
+    assert!(plain["path"]["passage"].is_null(), "no passage, null");
+}

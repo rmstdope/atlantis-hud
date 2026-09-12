@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::MapKnowledge;
 use crate::movement::mode::{fleet_flies, fleet_of, fleet_sailing, mobility, Mobility};
-use crate::movement::orders::MoveStep;
+use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{
     base_terrain_cost, blocks, refused_by_sailing_step, split_into_months, step_cost, Hull,
     Journey, MonthLeg, RouteStep,
@@ -39,6 +39,24 @@ pub struct TracedPath {
     /// nothing when the whole path is passable or no mode is known to rule with. Everything from
     /// this step onward is doubt rather than plan, whatever month it falls in.
     pub blocked_from: Option<usize>,
+    /// The inner passage the route ran into, when it ran into one. [`steps`](Self::steps) ends
+    /// where it begins.
+    pub passage: Option<TracedPassage>,
+}
+
+/// Where a traced route ran into an inner passage, and what could not be drawn past it.
+///
+/// No report names where a passage comes out, so the route stops here rather than drawing the rest
+/// of the journey in the hex the unit has just left.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TracedPassage {
+    /// The hex the passage was entered from, which is where the mark belongs.
+    pub coordinate: crate::report::model::Coordinate,
+    /// The structure as a sentence points at one: `Shaft [3]`.
+    pub structure: String,
+    /// Ordered steps after the passage that could not be placed.
+    pub steps_after: usize,
 }
 
 /// Walks a MOVE order from where the unit stands.
@@ -82,6 +100,14 @@ pub fn trace_move(
     let mut terrain = origin.terrain.clone();
     let mut route = Vec::new();
     let mut blocked_from = None;
+
+    // `IN` is travel through an inner passage to another region (`rules/move`, 4), and no report
+    // anywhere says which region that is - so everything ordered after it is drawn nowhere rather
+    // than drawn from the hex the unit has just left.
+    let ordered_passage = first_passage(unit.structure_id.as_deref(), steps);
+    let steps = ordered_passage
+        .as_ref()
+        .map_or(steps, |passage| &steps[..passage.before]);
 
     for step in steps {
         let MoveStep::Go(direction) = step else {
@@ -145,12 +171,31 @@ pub fn trace_move(
         split_into_months(points_per_month, from, &route)
     });
 
+    // The structure is resolved against the hex the loop finished in. Where the order named none,
+    // the hex was never visited, or no structure there carries that id, nothing is claimed about
+    // why the route is short - `accept on doubt`.
+    let passage = ordered_passage.and_then(|passage| {
+        let structure_id = passage.structure_id?;
+        let structure = map
+            .hex(position)?
+            .structures
+            .iter()
+            .find(|structure| structure.structure_id == structure_id)?;
+
+        Some(TracedPassage {
+            coordinate: position,
+            structure: crate::report::model::numbered_structure_label(structure),
+            steps_after: passage.steps_after,
+        })
+    });
+
     Some(TracedPath {
         from,
         steps: route,
         months,
         mode,
         blocked_from,
+        passage,
     })
 }
 
@@ -316,12 +361,18 @@ mod tests {
         assert!(!path.steps[1].road, "roads are never guessed");
     }
 
+    /// `ENTER` and `OUT` move a unit within its hex, so they cross no hexside.
+    ///
+    /// The order used to read `MOVE IN 4 OUT SE`, and its `IN` was incidental to what it names.
+    /// An `IN` is travel through an inner passage to another region (`rules/move`, 4) and now ends
+    /// the route, which is what `a_passage_ends_the_route_and_nothing_after_it_is_placed` pins.
     #[test]
     fn entering_and_leaving_structures_crosses_no_hexside() {
-        let path = trace(&corridor(&["plain", "plain"]), "MOVE IN 4 OUT SE").expect("an origin");
+        let path = trace(&corridor(&["plain", "plain"]), "MOVE 4 OUT SE").expect("an origin");
 
         assert_eq!(path.steps.len(), 1, "only the SE step crosses a hexside");
         assert_eq!(path.steps[0].to, at(2, 2));
+        assert_eq!(path.passage, None, "no passage was ordered");
     }
 
     /// The month split must agree with the planner's: points carry over, so costs of 1, 2 and 1

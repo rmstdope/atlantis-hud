@@ -5432,3 +5432,41 @@ test("a hex where a battle was fought carries a badge, and the badge switches it
   await badges.getByRole("button", { name: "All", exact: true }).click();
   await expect(battles).not.toHaveCount(0);
 });
+
+/**
+ * ah-3u7c.1: `MOVE ... IN` travels through an inner passage to another region (`rules/move`, 4),
+ * and no report anywhere names which region that is. The route used to carry on drawing from the
+ * hex the unit never left - a solid brass line through country it never enters.
+ *
+ * The turn-zero nexus report's own unit 666 stands in `nexus (0,0,nexus)` beside seven
+ * `Gateway to <terrain> [n]` structures. One browser test, because the three surfaces agreeing -
+ * the line stopping, the ring appearing, the problem line counting the steps - is the thing no
+ * unit test can see.
+ */
+test("a route through a passage stops at the structure and says why", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Passage game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await importReport(page, "turn-0.rep", readReport("g4f17t0"));
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await selectHex(page, "0:0,0");
+  await selectUnit(page, "666");
+  await fillOrders(page, "MOVE 1 IN S S");
+
+  // Nothing is drawn past the passage, in either weight.
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
+
+  // The hex the passage was entered from carries the mark instead.
+  await expect(page.getByTestId("map-passage-ring")).toHaveCount(1);
+
+  // And the count of what could not be placed is said in words.
+  const problem = page
+    .getByTestId("region-problems")
+    .locator('[data-code="passage-with-no-known-exit"]');
+  await expect(problem).toContainText(
+    "no report says where that passage comes out, so the 2 steps after it cannot be placed on the map"
+  );
+});

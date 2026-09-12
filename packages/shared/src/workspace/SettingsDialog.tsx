@@ -718,6 +718,17 @@ export const WARNING_GROUPS: readonly {
     ]
   },
   {
+    heading: "Movement",
+    entries: [
+      {
+        code: "passage-with-no-known-exit",
+        title: "Passages with no known exit",
+        description:
+          "A route goes through a passage inside a structure, and no report says where it leads."
+      }
+    ]
+  },
+  {
     heading: "Sailing",
     entries: [
       {

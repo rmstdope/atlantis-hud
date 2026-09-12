@@ -734,6 +734,14 @@ pub fn preview_orders_on_map(
                         // where the month ends: a departure to nowhere nameable.
                         None => status = UnitPreviewStatus::Departing,
                     }
+
+                    // Through a passage: where the month ends is not on any map we have, so this
+                    // is a departure with no destination to name. The dock draws `→ …` for exactly
+                    // this, the same way it does for a passenger of an untraceable ship.
+                    if path.passage.is_some() {
+                        status = UnitPreviewStatus::Departing;
+                        arrival = None;
+                    }
                 }
                 None => status = UnitPreviewStatus::Departing,
             }
@@ -1190,7 +1198,7 @@ fn aboard_label(
         .structures
         .iter()
         .find(|structure| structure.structure_id == structure_id)?;
-    Some(format!("{} [{}]", structure.name, structure.structure_id))
+    Some(crate::report::model::numbered_structure_label(structure))
 }
 
 /// The flags a `FORM`ed unit inherits from the unit that formed it.

@@ -160,7 +160,12 @@ function drawWithRoute(): string {
       showStaleness
       showTextures={false}
       badges={allBadges(true)}
-      route={{ origin: { x: 7, y: 53, z: 1 }, hexes: [{ x: 7, y: 51, z: 1 }], solidSteps: 1 }}
+      route={{
+        origin: { x: 7, y: 53, z: 1 },
+        hexes: [{ x: 7, y: 51, z: 1 }],
+        solidSteps: 1,
+        passage: null
+      }}
       routeRisk={[
         {
           coordinate: { x: 7, y: 51, z: 1 },
@@ -629,5 +634,56 @@ describe("the battles of the turn on screen", () => {
 
   it("marks nothing when no battles reached it at all", () => {
     expect(draw(battleProbe())).not.toContain("data-battle");
+  });
+});
+
+/** The same map with a route that stopped at a passage, drawn at `level`. */
+function drawWithPassage(level: number, passageLevel: number): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={model}
+      theme={probe()}
+      level={level}
+      selectedRegionId={null}
+      selectionEpoch={0}
+      pickEpoch={0}
+      onSelectRegion={() => {}}
+      showStaleness
+      showTextures={false}
+      badges={allBadges(true)}
+      route={{
+        origin: { x: 7, y: 53, z: 1 },
+        hexes: [],
+        solidSteps: 0,
+        passage: {
+          coordinate: { x: 7, y: 53, z: passageLevel },
+          structure: "Shaft [3]",
+          stepsAfter: 2
+        }
+      }}
+    />
+  );
+}
+
+describe("the mark where a route ran into an inner passage", () => {
+  it("is drawn on the passage's own level, and says why the line stopped", () => {
+    const svg = drawWithPassage(1, 1);
+
+    expect(svg).toContain('data-testid="map-passage-ring"');
+    expect(svg).toContain("Through the passage in Shaft [3]");
+    expect(svg).toContain(
+      "Where this passage comes out is not in any report yet, so the rest of the journey"
+    );
+    expect(svg).toContain("2 more steps");
+    // The accessible name carries both sentences, not just the first: a screen reader is told why
+    // the line stopped, not only that it did.
+    expect(svg).toContain(
+      'aria-label="Through the passage in Shaft [3] Where this passage comes out'
+    );
+  });
+
+  it("is not drawn on another level", () => {
+    expect(drawWithPassage(1, 2)).not.toContain('data-testid="map-passage-ring"');
   });
 });

@@ -319,6 +319,16 @@ describe("the Warnings settings tab", () => {
     expect(tag(html, "settings-warning-not-enough-silver")).not.toContain('checked=""');
   });
 
+  it("starts the passage check on, in its own Movement group", () => {
+    resetSettingsStore();
+    const html = renderToStaticMarkup(<WarningSettings />);
+
+    expect(html).toContain("Passages with no known exit");
+    expect(tag(html, "settings-warning-passage-with-no-known-exit")).toContain(
+      'checked=""'
+    );
+  });
+
   it("reflects a toggled refused-site check", () => {
     resetSettingsStore();
     useSettingsStore.getState().setAdvisoryCheck("build-site-refused", false);
