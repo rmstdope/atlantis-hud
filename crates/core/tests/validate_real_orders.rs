@@ -368,6 +368,7 @@ fn the_broad_guard_check_is_the_noisy_one_the_setting_holds_back() {
         Some(&ruleset()),
         CheckOptions {
             disabled: std::collections::BTreeSet::new(),
+            geometry: None,
         },
     );
 

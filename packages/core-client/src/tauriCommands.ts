@@ -48,7 +48,14 @@ export const TAURI_COMMANDS = {
     "allow_overwrite",
     "imported_at"
   ],
-  validateOrders: ["validate_orders", "raw_orders", "ruleset_json", "raw_report", "disabled_codes"],
+  validateOrders: [
+    "validate_orders",
+    "raw_orders",
+    "ruleset_json",
+    "raw_report",
+    "disabled_codes",
+    "map_json"
+  ],
   orderCommands: ["order_commands", "ruleset_json"],
   orderVocabulary: ["order_vocabulary", "ruleset_json"],
   completionsAtCaret: [

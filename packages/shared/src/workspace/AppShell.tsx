@@ -3223,8 +3223,11 @@ export function AppShell({
         // The report is what the checks beyond syntax read - who holds what, who guards where.
         // It goes across as text, which is what the core keys its cached parse on, so the
         // whole-map pass this runs costs one walk of the orders and no re-parse of the turn.
+        // `mapJson` is what the reach check measures a distance across: without it every distance
+        // is an upper bound and nothing is refused (`ah-7ale.2.2.1`).
         .validateOrders(ordersDocument, rulesetText, rawReport || null, {
-          disabledCodes: ADVISORY_CHECK_CODES.filter((code) => !advisoryChecks[code])
+          disabledCodes: ADVISORY_CHECK_CODES.filter((code) => !advisoryChecks[code]),
+          mapJson
         })
         .then((result) => {
           if (!cancelled) {
@@ -3247,7 +3250,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument, rulesetText, rawReport, advisoryChecks]);
+  }, [client, ordersDocument, rulesetText, rawReport, advisoryChecks, mapJson]);
 
   /**
    * What the checks found, hex by hex, for the header chip and the list it opens.
@@ -3687,7 +3690,8 @@ export function AppShell({
         writer.markDirty(game, draftKey, pending.text);
 
         const result = await client.validateOrders(pending.text, rulesetText, rawReport || null, {
-          disabledCodes: ADVISORY_CHECK_CODES.filter((code) => !advisoryChecks[code])
+          disabledCodes: ADVISORY_CHECK_CODES.filter((code) => !advisoryChecks[code]),
+          mapJson
         });
 
         if (result.diagnostics.length > 0) {
@@ -3715,6 +3719,7 @@ export function AppShell({
     rulesetText,
     rawReport,
     advisoryChecks,
+    mapJson,
     writeOrdersDocument
   ]);
 

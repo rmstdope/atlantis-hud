@@ -277,6 +277,10 @@ pub mod codes {
 pub struct CheckOptions {
     /// Advisory codes not to emit. Unknown codes are ignored.
     pub disabled: BTreeSet<String>,
+    /// The map's own shape, as `geometry_from_json` read it, for the one check that measures a
+    /// distance. `None` - a game that never recorded it - leaves every distance unsettled, and
+    /// `transport::out_of_reach` then refuses nothing (`ah-7ale.2.2.1`).
+    pub geometry: Option<crate::movement::graph::MapGeometry>,
 }
 
 impl CheckOptions {
@@ -297,6 +301,7 @@ impl Default for CheckOptions {
     fn default() -> Self {
         Self {
             disabled: std::iter::once(codes::HEX_UNGUARDED.as_str().to_string()).collect(),
+            geometry: None,
         }
     }
 }
@@ -31965,6 +31970,7 @@ BUILD
     fn avoid_after_guard_one_does_not_report_an_unguarded_hex() {
         let options = CheckOptions {
             disabled: BTreeSet::new(),
+            geometry: None,
         };
 
         assert!(!codes(&check_turn(
@@ -32121,6 +32127,7 @@ BUILD
         let regions = vec![region(vec![unit("5")])];
         let options = CheckOptions {
             disabled: BTreeSet::new(),
+            geometry: None,
         };
 
         let finding = only(check_turn(
@@ -32139,6 +32146,7 @@ BUILD
         guarding.on_guard = true;
         let options = CheckOptions {
             disabled: BTreeSet::new(),
+            geometry: None,
         };
 
         assert_eq!(
@@ -36658,12 +36666,37 @@ BUILD
         assert_eq!(findings[1].line, Some(3));
     }
 
+    /// A plain, non-wrapping map of the size the shipped worlds use, for the checks that measure a
+    /// distance: without a shape every distance is an upper bound only (`ah-7ale.2.2.1`).
+    const FIXTURE_MAP: crate::movement::graph::MapGeometry = crate::movement::graph::MapGeometry {
+        width: 72,
+        height: 72,
+        wrap_x: false,
+        wrap_y: false,
+    };
+
     // --- disabling advisory checks -------------------------------------------------------------
+    /// `ah-7ale.2.2.1` increment 3: the map's own shape reaches the checks, for the one check that
+    /// measures a distance. A game that never recorded one leaves every distance unsettled.
+    #[test]
+    fn the_map_shape_reaches_the_checks_it_is_given_to() {
+        assert_eq!(CheckOptions::default().geometry, None);
+
+        let options = CheckOptions {
+            geometry: Some(FIXTURE_MAP),
+            ..CheckOptions::default()
+        };
+
+        assert_eq!(options.geometry, Some(FIXTURE_MAP));
+    }
 
     /// The runtime default (`hex-unguarded` off, everything else on) plus one more code disabled.
     fn disabling(code: Code) -> CheckOptions {
         let mut options = CheckOptions::default();
         options.disabled.insert(code.as_str().to_string());
+        // The reach fixture measures a distance, and without a shape every distance is an upper
+        // bound that refuses nothing (`ah-7ale.2.2.1`). No other check reads it.
+        options.geometry = Some(FIXTURE_MAP);
         options
     }
 
@@ -36674,6 +36707,7 @@ BUILD
         options
             .disabled
             .extend(codes.iter().map(|code| code.as_str().to_string()));
+        options.geometry = Some(FIXTURE_MAP);
         options
     }
 
@@ -37288,6 +37322,7 @@ BUILD
                 Some(&rules),
                 CheckOptions {
                     disabled: BTreeSet::new(),
+                    geometry: Some(FIXTURE_MAP),
                 },
             );
             assert!(
@@ -43674,6 +43709,7 @@ BUILD
                 disabled: [codes::BUILD_WITHOUT_MATERIAL.as_str().to_string()]
                     .into_iter()
                     .collect(),
+                geometry: None,
             },
         );
         assert!(

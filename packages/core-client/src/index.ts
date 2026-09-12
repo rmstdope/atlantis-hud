@@ -496,6 +496,8 @@ export type OrderCheckOptions = {
    * not have meant.
    */
   disabledCodes?: readonly AdvisoryCheckCode[];
+  /** The map's shape as JSON, or `null` for a game that never recorded one. */
+  mapJson?: string | null;
 };
 
 export type OrderDraftKey = {
@@ -575,7 +577,8 @@ export interface CoreAdapter {
     rawOrders: string,
     rulesetJson: string | null,
     rawReport: string | null,
-    disabledCodes: readonly string[] | null
+    disabledCodes: readonly string[] | null,
+    mapJson: string | null
   ): Promise<OrderValidationResult>;
   orderCommands(rulesetJson: string | null): Promise<string[]>;
   /**
@@ -875,7 +878,13 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     validateOrders(rawOrders, rulesetJson, rawReport = null, options = {}) {
       // `null` is "use the core's own default" (`OrderCheckOptions::default()`), so the default
       // lives in Rust once instead of being copied here as a literal.
-      return adapter.validateOrders(rawOrders, rulesetJson, rawReport, options.disabledCodes ?? null);
+      return adapter.validateOrders(
+        rawOrders,
+        rulesetJson,
+        rawReport,
+        options.disabledCodes ?? null,
+        options.mapJson ?? null
+      );
     },
     exportMap(rawReport, rememberedJson, request) {
       return adapter.exportMap(rawReport, rememberedJson, JSON.stringify(request));
