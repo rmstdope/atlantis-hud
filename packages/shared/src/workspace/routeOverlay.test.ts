@@ -231,6 +231,25 @@ describe("a passage the faction has proved the far side of", () => {
     expect(longer?.beyond?.solidSteps).toBe(1);
   });
 
+  it("counts a refused step beyond the crossing past the near steps and the crossing", () => {
+    // Near step 0, crossing 1, far steps 2 and 3: a refusal at 3 leaves the first far step solid.
+    const overlay = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: {
+        ...trace,
+        steps: [step(7, 51)],
+        months: [{ month: 1, steps: 4, endsAt: at(32, 32, 3) }],
+        blockedFrom: 3,
+        passage: followed
+      }
+    });
+
+    expect(overlay?.solidSteps).toBe(1);
+    expect(overlay?.beyond?.solidSteps).toBe(1);
+  });
+
   it("has no far half for a passage nobody has proved", () => {
     const overlay = chooseRouteOverlay({
       movementLayerOn: true,

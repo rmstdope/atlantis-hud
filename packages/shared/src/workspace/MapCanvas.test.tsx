@@ -723,7 +723,7 @@ function drawWithKnownPassage(level: number): string {
             steps: []
           }
         },
-        beyond: { origin: { x: 12, y: 34, z: 2 }, hexes: [], solidSteps: 0 }
+        beyond: { origin: { x: 12, y: 34, z: 2 }, hexes: [{ x: 13, y: 34, z: 2 }], solidSteps: 0 }
       }}
     />
   );
@@ -746,6 +746,11 @@ describe("the matched pair of rings on a passage the faction has proved", () => 
     expect(underworld).not.toContain('data-testid="map-passage-entry-ring"');
     expect(underworld).toContain("Out of the passage from Shaft [3]");
     expect(underworld).toContain("On the surface, in mountain (7,53).");
+  });
+
+  it("draws the far half on the level it comes out on, and not on the entry level", () => {
+    expect(drawWithKnownPassage(2)).toContain('data-testid="route-line-beyond-dotted"');
+    expect(drawWithKnownPassage(1)).not.toContain("route-line-beyond");
   });
 
   it("draws neither end on a level holding neither", () => {

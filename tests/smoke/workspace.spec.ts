@@ -5621,6 +5621,13 @@ test("a route through a known passage carries on where it comes out", async ({ p
   await expect(page.getByTestId("route-line-beyond-dotted")).not.toHaveCount(0);
   await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
 
+  // The rings prove only that the trace answered. A line the checker refuses outright proves the
+  // checks have answered for this document too, so the missing warning is an answer, not a race.
+  await fillOrders(page, "MOVE 1 IN NW\nFLY");
+  await expect(page.getByTestId("orders-diagnostics")).toContainText("unknown order command: FLY");
+  await expect(
+    page.getByTestId("orders-diagnostics").locator('[data-code="passage-with-no-known-exit"]')
+  ).toHaveCount(0);
   await expect(
     page.getByTestId("region-problems").locator('[data-code="passage-with-no-known-exit"]')
   ).toHaveCount(0);
