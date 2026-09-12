@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wood or stone &mdash; round 1</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 20px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code, footer code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:36px 0 6px; font-size:16px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:100ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:11px; }
+  .hexlab { font:10.5px/1.35 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:9px; }
+  .rec { color:var(--ok); font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.g { width:100%; border-collapse:separate; border-spacing:0; font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.g th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); font-weight:400; padding:3px 10px 6px 0; border-bottom:1px solid var(--edge); }
+  table.g td { padding:5px 10px 5px 0; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  td.k { color:var(--ink-dim); white-space:nowrap; font-size:11.5px; }
+  td.ord { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink-soft); }
+  .pred { font-style:italic; color:var(--brass); }
+  .unk { color:var(--brass); }
+  .hover { margin-top:9px; background:#0c1016; border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+           font:12px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); max-width:88ch; }
+  .hover b { color:var(--ink-dim); font-weight:400; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; display:block; margin-bottom:5px; }
+  .hover .new { color:var(--brass-bright); }
+  .hover .none { color:var(--ink-dim); font-style:italic; }
+  .side { display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:10px; }
+  .found { background:var(--raised); border-left:3px solid var(--danger); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+  .aside { background:var(--raised); border-left:3px solid var(--select); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:110ch; }
+  .ed { width:292px; background:var(--panel); border:1px solid var(--edge); border-radius:4px;
+        font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; padding:5px 0; position:relative; }
+  .ln { display:flex; height:19px; align-items:center; white-space:pre; padding-left:6px; }
+  .caret { display:inline-block; width:0; border-left:1px solid var(--ink); height:12px; vertical-align:-2px; }
+  .pop { margin-left:6px; margin-top:2px; width:230px; background:var(--raised); border:1px solid var(--edge);
+         font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink); }
+  .pop ul { list-style:none; margin:0; padding:0; }
+  .pop li { display:flex; align-items:baseline; gap:6px; padding:1px 6px; white-space:pre; }
+  .pop li.on { background:var(--select); color:var(--ground); }
+  .pop li .det { margin-left:auto; padding-left:14px; color:var(--ink-dim); font-style:italic; font-size:10.5px; }
+  .pop li.on .det { color:var(--ground); }
+  .refuse { margin:0 0 0 0; background:#1a1116; border-left:2px solid var(--danger); color:var(--ink-soft);
+            font:11px/1.5 'Helvetica Neue',Arial,sans-serif; padding:4px 8px; width:292px; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:110ch; line-height:1.7; }
+</style></head><body>
+<header>
+<h1>A Farm of wood, a Farm of stone &mdash; <span>round 1</span></h1>
+<p>Ten structures in the game can be built out of <i>either</i> wood or stone &mdash; Farm, Mine, Quarry, Ranch, Timber&nbsp;Yard,
+Inn, Trapping&nbsp;Hut, Stables, Oasis, Caravanserai. In the newer game world a player can say which they want
+(<code>BUILD Farm WOOD</code>), and if they don't say, the game spends <b>stone before wood</b>. That is written down in the
+rules, so the application can work it out exactly.</p>
+<p>Today it does neither. The material word is thrown away, and a unit holding both is shown with a
+<span class="unk">+&nbsp;?</span> mark &mdash; the application's way of saying <i>something here could not be worked out</i>.</p>
+
+<div class="found"><b>The same unit, four ways, all of it run rather than remembered.</b>
+One builder &mdash; <span class="mono">10 humans, farming&nbsp;3</span>, so its men could do 30 units of work in the month.
+A new Farm wants 10 units of work and one stick or block per unit. Whatever it is carrying, the answer is arithmetic:
+<b>10 of something, and then it stops, because the Farm is finished.</b>
+<table class="g" style="margin-top:10px"><thead><tr><th>Carrying</th><th>Order</th><th>What the game will really do</th><th>What the application shows today</th></tr></thead><tbody>
+<tr><td class="k">20 stone</td><td class="ord">BUILD Farm WOOD</td><td>refuses the order &mdash; no wood</td><td class="pred">spends 10 stone and builds it</td></tr>
+<tr><td class="k">20 stone, 20 wood</td><td class="ord">BUILD Farm</td><td>spends 10 stone</td><td>nothing, marked <span class="unk">+&nbsp;?</span></td></tr>
+<tr><td class="k">20 stone, 20 wood</td><td class="ord">BUILD Farm WOOD</td><td>spends 10 wood</td><td>nothing, marked <span class="unk">+&nbsp;?</span></td></tr>
+<tr><td class="k">4 stone, 20 wood</td><td class="ord">BUILD Farm</td><td>spends 4 stone, then 6 wood</td><td>nothing, marked <span class="unk">+&nbsp;?</span></td></tr>
+</tbody></table></div>
+</header>
+<main>
+<div class="settled" style="margin-bottom:8px;background:var(--raised);border-left:3px solid var(--ok);padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;color:var(--ink-soft);max-width:112ch">
+<b style="color:var(--ink);font-weight:normal">Chosen, and this is the record.</b>
+<b style="color:var(--ink);font-weight:normal">Q1</b> &mdash; neither A nor B as drawn: a build the game will refuse is
+reported where every other trouble with an order line is reported &mdash; the editor's own margin, count and problem list,
+and the region's <span class="mono">Problems</span> pane. Round 2 draws it.
+<b style="color:var(--ink);font-weight:normal">Q2&nbsp;A</b> &mdash; just the numbers.
+<b style="color:var(--ink);font-weight:normal">Q3&nbsp;B</b> &mdash; one sentence for one build.
+<b style="color:var(--ink);font-weight:normal">Q4&nbsp;A</b> &mdash; bare words.</div>
+
+<h4 class="q"><em>Q1</em> The player asks for wood and has none of it</h4>
+<p>This is the case that actively misleads today: the application shows a Farm going up and the stone leaving, and the
+game will simply refuse the line. Under all three options the stone stops moving and nothing is built &mdash; the question
+is <b>where the player is told</b>, and in whose words.</p>
+<div class="aside"><b>There is already a home for this.</b> When a player tries to build something that cannot be built
+where they are standing, a line appears in the order editor directly under the offending order:
+<span class="mono">&ldquo;Cannot start a Tower here: this region already has a Tower. No stone will be used.&rdquo;</span>
+A build that cannot happen is exactly what that line is for. Separately, the ITEMS column's hover states flat refusals
+in its own voice &mdash; <span class="mono">&ldquo;Unit 901 is not a quartermaster, so this TRANSPORT moves
+nothing.&rdquo;</span> Both surfaces could carry this; neither has to.</div>
+<div class="card"><div class="side">
+
+<div class="stage">
+  <div class="hexlab">Q1&middot;A &mdash; in the order editor, under the line itself <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="ed"><div class="ln">unit 5541</div><div class="ln">  BUILD Farm WOOD</div></div>
+  <div class="refuse">Cannot build a Farm from wood: this unit has no wood. No material will be used.</div>
+  <div class="ed" style="margin-top:2px"><div class="ln">  WORK</div></div>
+  <table class="g" style="margin-top:12px"><colgroup><col style="width:34px"><col style="width:58px"><col style="width:100px"><col style="width:140px"><col></colgroup>
+  <thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th>ITEMS</th></tr></thead><tbody>
+  <tr><td>*</td><td class="k">5541</td><td>Builder</td><td class="ord">build Farm WOOD</td><td>10 HUMN, 20 STON</td></tr>
+  </tbody></table>
+  <div class="hover"><b>hover on the ITEMS cell</b><span class="none">nothing new &mdash; the cell is upright and unchanged</span></div>
+  <ul class="notes">
+    <li>Told at the moment and in the place the mistake was made, where it can be corrected in one keystroke.</li>
+    <li>Reuses a line that already exists for exactly this &mdash; a build the application knows cannot happen &mdash; so
+      there is one rule rather than two, and the sentence is already in the player's vocabulary.</li>
+    <li>The ITEMS column stays simple: nothing moved, so it says nothing, as it does for any build that does no work.</li>
+    <li class="con">A player reading the unit table without the editor open sees no trace of the refused line.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q1&middot;B &mdash; in the ITEMS hover only</div>
+  <div class="ed"><div class="ln">unit 5541</div><div class="ln">  BUILD Farm WOOD</div><div class="ln">  WORK</div></div>
+  <table class="g" style="margin-top:12px"><colgroup><col style="width:34px"><col style="width:58px"><col style="width:100px"><col style="width:140px"><col></colgroup>
+  <thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th>ITEMS</th></tr></thead><tbody>
+  <tr><td>*</td><td class="k">5541</td><td>Builder</td><td class="ord">build Farm WOOD</td><td>10 HUMN, 20 STON</td></tr>
+  </tbody></table>
+  <div class="hover"><b>hover on the ITEMS cell</b>
+    <span class="new">This unit has no WOOD, so this BUILD does nothing.</span></div>
+  <ul class="notes">
+    <li>Found while reading the table, which is where a player reviews a whole hex before sending orders.</li>
+    <li class="con">Only found by hovering. The editor, where the line was typed, stays silent about it.</li>
+    <li class="con">Leaves the existing refusal line looking arbitrary: one kind of impossible build is announced, another
+      is not.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q1&middot;C &mdash; both surfaces say it</div>
+  <div class="ed"><div class="ln">unit 5541</div><div class="ln">  BUILD Farm WOOD</div></div>
+  <div class="refuse">Cannot build a Farm from wood: this unit has no wood. No material will be used.</div>
+  <div class="ed" style="margin-top:2px"><div class="ln">  WORK</div></div>
+  <div class="hover"><b>hover on the ITEMS cell</b>
+    <span class="new">This unit has no WOOD, so this BUILD does nothing.</span></div>
+  <ul class="notes">
+    <li>Impossible to miss, whichever half of the screen the player is reading.</li>
+    <li class="con">The same fact twice, in two wordings, to be kept in step for ever.</li>
+    <li class="con">Neither existing surface says the same thing twice today, so this would be new behaviour in itself.</li>
+  </ul>
+</div>
+
+</div></div>
+
+<h4 class="q"><em>Q2</em> The unit holds both, and the rule picks stone</h4>
+<p>The <span class="unk">+&nbsp;?</span> mark goes in all three of these &mdash; the answer is no longer unknown. What is left is
+whether the player is told <i>why</i> their stone went and their wood stayed. The sentence naming the spend already ships;
+the amber line is the only thing in question.</p>
+<div class="card"><div class="side">
+
+<div class="stage">
+  <div class="hexlab">Q2&middot;A &mdash; just the numbers, as every other build</div>
+  <table class="g"><colgroup><col style="width:34px"><col style="width:58px"><col style="width:108px"><col style="width:150px"><col></colgroup>
+  <thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th>ITEMS</th></tr></thead><tbody>
+  <tr><td>*</td><td class="k">5541</td><td>Builder</td><td class="ord">build Farm</td><td class="pred">10 HUMN, 10 STON, 20 WOOD</td></tr>
+  </tbody></table>
+  <div class="hover"><b>hover on the ITEMS cell</b>was: 10 HUMN, 20 STON, 20 WOOD<br>
+    Spends 10 STON on a new Farm this month.<br>
+    A new Farm needs 10 units of work, not the 30 its men could do.</div>
+  <ul class="notes">
+    <li>Nothing new to word at all. The two sentences are the ones a single-material build already shows.</li>
+    <li>The figure is there, the material is named in it, and a player can see which pile moved.</li>
+    <li class="con">Doesn't answer the question the player actually has, which is &ldquo;why not my wood?&rdquo; &mdash;
+      and this is a fork they have never had to think about before.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q2&middot;B &mdash; one sentence naming the rule, only when both are held <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <table class="g"><colgroup><col style="width:34px"><col style="width:58px"><col style="width:108px"><col style="width:150px"><col></colgroup>
+  <thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th>ITEMS</th></tr></thead><tbody>
+  <tr><td>*</td><td class="k">5541</td><td>Builder</td><td class="ord">build Farm</td><td class="pred">10 HUMN, 10 STON, 20 WOOD</td></tr>
+  </tbody></table>
+  <div class="hover"><b>hover on the ITEMS cell</b>was: 10 HUMN, 20 STON, 20 WOOD<br>
+    Spends 10 STON on a new Farm this month.<br>
+    <span class="new">A Farm can be built from either material, and stone is spent first. Write BUILD Farm WOOD to use wood instead.</span><br>
+    A new Farm needs 10 units of work, not the 30 its men could do.</div>
+  <ul class="notes">
+    <li>Explains the surprise and hands the player the fix in the same breath.</li>
+    <li>Appears only where it is a genuine fork &mdash; a unit carrying one material never sees it.</li>
+    <li class="con">Two sentences' worth of words on a routine order, repeated on every such builder in the hex.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q2&middot;C &mdash; the same sentence, and on the restricted order too</div>
+  <table class="g"><colgroup><col style="width:34px"><col style="width:58px"><col style="width:108px"><col style="width:150px"><col></colgroup>
+  <thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th>ITEMS</th></tr></thead><tbody>
+  <tr><td>*</td><td class="k">5541</td><td>Builder</td><td class="ord">build Farm</td><td class="pred">10 HUMN, 10 STON, 20 WOOD</td></tr>
+  <tr><td>*</td><td class="k">5542</td><td>Sawyers</td><td class="ord">build Farm WOOD</td><td class="pred">10 HUMN, 20 STON, 10 WOOD</td></tr>
+  </tbody></table>
+  <div class="hover"><b>hover on unit 5542's ITEMS cell</b>was: 10 HUMN, 20 STON, 20 WOOD<br>
+    Spends 10 WOOD on a new Farm this month.<br>
+    <span class="new">A Farm can be built from either material; this order restricts it to wood.</span><br>
+    A new Farm needs 10 units of work, not the 30 its men could do.</div>
+  <ul class="notes">
+    <li>One rule with no exception: any either-material build explains itself.</li>
+    <li class="con">Tells a player who typed <code>WOOD</code> that their order says wood. Nobody is surprised here.</li>
+  </ul>
+</div>
+
+</div></div>
+
+<h4 class="q"><em>Q3</em> The stone runs out halfway and wood finishes the job</h4>
+<p>Four stone and plenty of wood: the rule spends the stone, then carries on in wood &mdash; 4&nbsp;stone and 6&nbsp;wood on one
+Farm. Both piles drop in the cell either way; the question is how the hover says it. The application's existing
+sentence is written per material, so A is what falls out of the machinery and B is a deliberate choice.</p>
+<div class="aside"><b>Unchanged either way.</b> Clicking the cell opens the fuller list, which already speaks one line per
+item &mdash; <span class="mono">&ldquo;stone: spent 4 on a build.&rdquo;</span> and
+<span class="mono">&ldquo;wood: spent 6 on a build.&rdquo;</span> Those stay per material under both options; this question
+is only about the one-glance hover.</div>
+<div class="card"><div class="side">
+
+<div class="stage">
+  <div class="hexlab">Q3&middot;A &mdash; one sentence per material</div>
+  <table class="g"><colgroup><col style="width:34px"><col style="width:58px"><col style="width:108px"><col style="width:150px"><col></colgroup>
+  <thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th>ITEMS</th></tr></thead><tbody>
+  <tr><td>*</td><td class="k">5541</td><td>Builder</td><td class="ord">build Farm</td><td class="pred">10 HUMN, 14 WOOD</td></tr>
+  </tbody></table>
+  <div class="hover"><b>hover on the ITEMS cell</b>was: 10 HUMN, 4 STON, 20 WOOD<br>
+    Spends 4 STON on a new Farm this month.<br>
+    Spends 6 WOOD on a new Farm this month.<br>
+    A new Farm needs 10 units of work, not the 30 its men could do.</div>
+  <ul class="notes">
+    <li>Exactly the sentence that ships now, said twice. Nothing new to word.</li>
+    <li class="con">Reads as two builds. A player scanning it can easily take away &ldquo;10 units of work, and it spent
+      4&nbsp;+&nbsp;6 = 10&rdquo; only by doing the sum themselves.</li>
+    <li class="con">Stone has vanished from the cell with no hint that running out of it is what pulled the wood in.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q3&middot;B &mdash; one sentence for one build <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <table class="g"><colgroup><col style="width:34px"><col style="width:58px"><col style="width:108px"><col style="width:150px"><col></colgroup>
+  <thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th>ITEMS</th></tr></thead><tbody>
+  <tr><td>*</td><td class="k">5541</td><td>Builder</td><td class="ord">build Farm</td><td class="pred">10 HUMN, 14 WOOD</td></tr>
+  </tbody></table>
+  <div class="hover"><b>hover on the ITEMS cell</b>was: 10 HUMN, 4 STON, 20 WOOD<br>
+    <span class="new">Spends 4 STON and 6 WOOD on a new Farm this month &mdash; all the stone it has, then wood for the rest.</span><br>
+    A new Farm needs 10 units of work, not the 30 its men could do.</div>
+  <ul class="notes">
+    <li>One build, one sentence, and the clause at the end is the whole explanation of the mixture.</li>
+    <li>Makes the arithmetic readable without the player doing it: 4 and 6 against 10 units of work.</li>
+    <li class="con">A different sentence from the one every other build shows, so there are now two shapes.</li>
+  </ul>
+</div>
+
+</div></div>
+
+<h4 class="q"><em>Q4</em> The suggestions while the line is being typed</h4>
+<p>The editor suggests words as you type. After a building name it offers only <code>COMPLETE</code> today, and after
+<code>WOOD</code> it offers nothing at all &mdash; so a player has no way to discover that the material words exist. Both
+options below fix that. The list wakes only once a letter is typed, as it does everywhere.</p>
+<div class="card"><div class="side">
+
+<div class="stage">
+  <div class="hexlab">Q4&middot;A &mdash; bare words, as every other suggestion <span class="rec">&nbsp;&nbsp;recommended</span></div>
+  <div class="ed"><div class="ln">unit 5541</div><div class="ln">  BUILD Farm <span class="caret"></span></div></div>
+  <div class="pop"><ul>
+    <li class="on">COMPLETE</li><li>STONE</li><li>WOOD</li>
+  </ul></div>
+  <div class="hexlab" style="margin-top:12px">and after the material, <code style="font-size:11px">COMPLETE</code> is still offered</div>
+  <div class="ed"><div class="ln">  BUILD Farm WOOD <span class="caret"></span></div></div>
+  <div class="pop"><ul><li class="on">COMPLETE</li></ul></div>
+  <ul class="notes">
+    <li>Identical in kind to every other suggestion in the editor &mdash; a plain word, nothing appended.</li>
+    <li>Three legal words where there was one, which is the whole of the discoverability problem.</li>
+    <li class="con">The list alone never reveals that stone is what you get by saying nothing.</li>
+  </ul>
+</div>
+
+<div class="stage">
+  <div class="hexlab">Q4&middot;B &mdash; stone is marked as the one you get anyway</div>
+  <div class="ed"><div class="ln">unit 5541</div><div class="ln">  BUILD Farm <span class="caret"></span></div></div>
+  <div class="pop"><ul>
+    <li class="on">COMPLETE</li><li>STONE<span class="det">the default</span></li><li>WOOD</li>
+  </ul></div>
+  <ul class="notes">
+    <li>Teaches the rule at the moment the player is choosing, rather than after they have chosen.</li>
+    <li class="con">No other suggestion in the editor carries a note, so this one reads as a special case.</li>
+    <li class="con">Slightly untrue: stone is the default only while the unit has some.</li>
+  </ul>
+</div>
+
+</div></div>
+
+</main>
+<footer>
+Rules looked up rather than recalled &mdash; <code>rules/build</code> (Trident): <i>&ldquo;By default the unit will use whatever is
+available, consuming stone before wood. You can specify WOOD or STONE after the object type to restrict which material is
+used. If the preferred material is not available, the order will fail with an error.&rdquo;</i>
+<code>data/farming</code>: FARM&nbsp;3 builds a Farm from 10 WOOD or STON. <code>rules/economy_buildings</code>: each unit of
+work consumes one unit of the resource.<br>
+Out of scope here: helping another unit build, unfinished ships, and anything about buildings in the older game world,
+all of which keep behaving exactly as they do now.
+</footer>
+</body></html>
