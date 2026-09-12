@@ -324,9 +324,10 @@ fn an_overloaded_unit_is_refused_before_any_route_is_sought() {
 /// occupant - and so its owner, per `rules/world_structures` - is the foreign `A Tomb's Crew
 /// (6311)`.
 ///
-/// Ownership is tested before the crew shortfall this test used to assert, deliberately: which
-/// unit may give the order at all is a more basic refusal than how many sailors are aboard. The
-/// crew figure that fact rested on is carried by
+/// Ownership is tested before the weight and the crew, deliberately: which unit may give the order
+/// at all is a more basic refusal than what the hull carries or how many sailors are aboard, and
+/// neither figure is worth naming to a unit that cannot give the order. The crew figure this test
+/// used to assert is carried by
 /// [`the_crew_a_galley_of_forty_galleons_needs_is_ruleset_arithmetic`] instead.
 #[test]
 fn a_passenger_cannot_be_planned_for_the_fleet_it_rides() {
