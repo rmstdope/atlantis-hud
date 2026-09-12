@@ -54,8 +54,8 @@ use crate::orders::silver::{
     LateFoodRelief, Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver,
     Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove,
     Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket,
-    ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt, TransferShape, Transmuting, UnitFacts,
-    UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt, TransferShape, Transmuting,
+    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -574,10 +574,10 @@ pub fn review_turn(
     // when the reach check is enabled: the shipping price reads them too, and the agreed record
     // says the switch takes sentences away and leaves every figure honest (`ah-7ale.3`).
     let shipping = ruleset.map(|ruleset| {
-            let quartermasters = super::transport::Quartermasters::read(report, ruleset);
-            let targets = super::transport::target_facts(report, &quartermasters);
-            (quartermasters, targets)
-        });
+        let quartermasters = super::transport::Quartermasters::read(report, ruleset);
+        let targets = super::transport::target_facts(report, &quartermasters);
+        (quartermasters, targets)
+    });
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
@@ -12915,13 +12915,18 @@ fn shipping_bills(
             };
             // A shipment the game refuses for distance keeps its goods (`ah-7ale.2.1`), and a
             // shipment that moves nothing is charged nothing.
-            if super::transport::out_of_reach(reach, hex.region.coordinate, facts.coordinate, geometry)
-                .is_some()
+            if super::transport::out_of_reach(
+                reach,
+                hex.region.coordinate,
+                facts.coordinate,
+                geometry,
+            )
+            .is_some()
             {
                 continue;
             }
-            let Some(entry) = resolve_item(text, hex, ordered, ruleset)
-                .and_then(|tag| rules.find_item(&tag))
+            let Some(entry) =
+                resolve_item(text, hex, ordered, ruleset).and_then(|tag| rules.find_item(&tag))
             else {
                 continue;
             };
@@ -12932,7 +12937,10 @@ fn shipping_bills(
             // The last phase's stock: every TRANSPORT runs immediately before maintenance
             // (`rules/sequenceofevents`), and the ledger carries every earlier delta into it.
             let already = shipped.get(&tag).copied().unwrap_or_default();
-            let held = (ledger.state.balance_at(StatePhase::Maintenance, sender, &tag) - already)
+            let held = (ledger
+                .state
+                .balance_at(StatePhase::Maintenance, sender, &tag)
+                - already)
                 .max(0);
             let quantity = super::transfers::quantity_moved(amount, held);
             if quantity <= 0 {
@@ -37315,7 +37323,11 @@ BUILD
         regions
     }
 
-    fn sender_silver(regions: Vec<ReportRegion>, orders: &str, options: CheckOptions) -> UnitSilver {
+    fn sender_silver(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        options: CheckOptions,
+    ) -> UnitSilver {
         sender_silver_in(&ruleset(), regions, orders, options)
     }
 
@@ -37345,12 +37357,20 @@ BUILD
     #[test]
     fn a_priced_shipment_is_charged_to_the_senders_silver() {
         let silver = sender_silver(
-            priced_shipping(5, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 6)]),
+            priced_shipping(
+                5,
+                &[(9, "fur", "FUR")],
+                vec![caravanserai_owner("901", 1, 0, 6)],
+            ),
             "unit 900\nTRANSPORT 901 9 FUR\n",
             with_map(),
         );
         let baseline = sender_silver(
-            priced_shipping(5, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 6)]),
+            priced_shipping(
+                5,
+                &[(9, "fur", "FUR")],
+                vec![caravanserai_owner("901", 1, 0, 6)],
+            ),
             "unit 900\n",
             with_map(),
         );
@@ -37360,7 +37380,10 @@ BUILD
             baseline.expense.map(|spent| spent + 45),
             "the bill is the only new expense"
         );
-        assert_eq!(silver.at_month_end, baseline.at_month_end.map(|end| end - 45));
+        assert_eq!(
+            silver.at_month_end,
+            baseline.at_month_end.map(|end| end - 45)
+        );
         assert_eq!(
             shipped(&silver),
             vec![&SilverChange {
@@ -37386,7 +37409,11 @@ BUILD
             (
                 "two hexes",
                 &trident,
-                priced_shipping(5, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 4)]),
+                priced_shipping(
+                    5,
+                    &[(9, "fur", "FUR")],
+                    vec![caravanserai_owner("901", 1, 0, 4)],
+                ),
                 with_map(),
             ),
             (
@@ -37407,20 +37434,33 @@ BUILD
                 priced_shipping(
                     5,
                     &[(9, "fur", "FUR")],
-                    vec![region_at("1:0,6", 0, 6, vec![with_skill(unit("901"), "QUAM", 1)])],
+                    vec![region_at(
+                        "1:0,6",
+                        0,
+                        6,
+                        vec![with_skill(unit("901"), "QUAM", 1)],
+                    )],
                 ),
                 with_map(),
             ),
             (
                 "out of reach, so the goods stay",
                 &default,
-                priced_shipping(1, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 8)]),
+                priced_shipping(
+                    1,
+                    &[(9, "fur", "FUR")],
+                    vec![caravanserai_owner("901", 1, 0, 8)],
+                ),
                 with_map(),
             ),
             (
                 "no map shape",
                 &trident,
-                priced_shipping(5, &[(9, "fur", "FUR")], vec![caravanserai_owner("901", 1, 0, 8)]),
+                priced_shipping(
+                    5,
+                    &[(9, "fur", "FUR")],
+                    vec![caravanserai_owner("901", 1, 0, 8)],
+                ),
                 CheckOptions::default(),
             ),
         ];
@@ -37514,7 +37554,10 @@ BUILD
             with_map(),
         );
         assert_eq!(except.shipping.len(), 1);
-        assert_eq!((except.shipping[0].weight, except.shipping[0].cost), (5, 25));
+        assert_eq!(
+            (except.shipping[0].weight, except.shipping[0].cost),
+            (5, 25)
+        );
     }
 
     /// The two transport readers agree about what was shipped: every priced shipment weighs exactly

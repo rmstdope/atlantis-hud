@@ -630,7 +630,14 @@ mod tests {
             Priced::Free
         );
         assert_eq!(
-            priced(qm, hex(0, 0), hex(0, 4), map, OrderLanguage::NewAgeTrident, 9),
+            priced(
+                qm,
+                hex(0, 0),
+                hex(0, 4),
+                map,
+                OrderLanguage::NewAgeTrident,
+                9
+            ),
             Priced::Free
         );
         assert!(matches!(
@@ -638,7 +645,14 @@ mod tests {
             Priced::Charged { rate: 5, .. }
         ));
         assert_eq!(
-            priced(qm, hex(0, 0), hex(0, 8), None, OrderLanguage::NewAgeTrident, 9),
+            priced(
+                qm,
+                hex(0, 0),
+                hex(0, 8),
+                None,
+                OrderLanguage::NewAgeTrident,
+                9
+            ),
             Priced::Unknown
         );
         assert!(matches!(
