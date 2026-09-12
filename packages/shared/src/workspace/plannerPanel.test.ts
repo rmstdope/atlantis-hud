@@ -18,9 +18,8 @@ describe("explaining why there is no route", () => {
 
   /**
    * Core can still refuse a fleet standing on a land hex that is not coastal through this variant,
-   * and that hex is dry - so the
-   * terrain it hands over is the world's own water rather than the hex's, and this is the sentence
-   * that would read as a contradiction if it were not.
+   * and that hex is dry - so the terrain it hands over is the world's own water rather than the
+   * hex's, and this is the sentence that would read as a contradiction if it were not.
    */
   it("never calls a dry hex the water in the way", () => {
     expect(

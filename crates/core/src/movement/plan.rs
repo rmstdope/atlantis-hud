@@ -534,8 +534,9 @@ fn sail_mode(
 /// Reads the ruleset's own water rule rather than assuming it: a game that let anyone cross water
 /// would otherwise be quietly overruled by a hardcoded belief. A fleet is the water rule turned
 /// round: water never blocks it, and land blocks it unless the hex is coastal - "a non-ocean region
-/// with at least one adjacent ocean region" - which is asked of the map itself in either direction, via `is_coastal`, an estimated
-/// neighbour (one the search only reached by geometric guess) never counting as confirming it.
+/// with at least one adjacent ocean region" - which is asked of the map itself in either direction,
+/// via `is_coastal`, an estimated neighbour (one the search only reached by geometric guess) never
+/// counting as confirming it.
 ///
 /// Shared with the order tracer, which draws the blocked step anyway and marks it as doubt.
 pub(crate) fn blocks(
