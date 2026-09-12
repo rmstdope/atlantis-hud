@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-ofra — who decides where a ship is going</title>
+<style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c2531;--edge:#26303d;--edge-soft:#1e2733;
+--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;
+--ok:#4fb783;--warn:#d9a441;--danger:#d97070;--sea:#1d3a4d;--land:#2a3524;--select:#4d8fd6}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif;padding:30px 22px 70px}
+header,main,footer{max-width:1400px;margin-left:auto;margin-right:auto}
+h1{font-size:26px}h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);max-width:100ch;margin-top:10px;font-size:14px}
+code,.mono{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:.92em;color:var(--brass-bright)}
+h2.sec{margin-top:40px;font-size:19px;color:var(--brass);border-top:1px solid var(--edge);padding-top:20px}
+h2.sec small{color:var(--ink-dim);font-size:13px;margin-left:10px;font-family:Georgia,serif}
+h2.sec + p{color:var(--ink-soft);font-size:13.5px;max-width:100ch;margin-top:8px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:18px;align-items:start}
+.cards.two{grid-template-columns:repeat(2,1fr)}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:11px}
+.card.rec{border-color:var(--brass)}
+.card h3{font-size:16px}.card h3 em{color:var(--brass);font-style:normal;font-size:11.5px;letter-spacing:1.6px;margin-right:8px}
+.card h3 em.today{color:var(--danger)}
+.concept{color:var(--ink-soft);font-size:13px}
+.stage{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;padding:12px;display:grid;gap:10px}
+.cap{font:italic 11.5px Georgia,serif;color:var(--ink-dim)}
+.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px;padding:0}
+.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+.notes li.con::before{content:"\2212 ";color:var(--danger)}
+.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+.orders{background:#0d1218;border:1px solid var(--edge);border-radius:6px;padding:9px 11px;
+font:11.5px/1.7 ui-monospace,'SF Mono',Menlo,monospace;color:var(--ink-soft);white-space:pre}
+.orders b{color:var(--brass);font-weight:normal}
+.orders .who{color:var(--ink-dim)}
+.pane{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11.5px;line-height:1.45;
+border:1px solid var(--edge);border-radius:6px;background:var(--panel);overflow:hidden}
+.pane .bar{display:flex;align-items:center;height:25px;padding:0 9px;border-bottom:1px solid var(--edge)}
+.bar .name{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--brass)}
+.pane .body{padding:7px 9px 9px;display:grid;gap:6px}
+.prob{display:flex;gap:6px}.prob .sev{color:var(--warn)}.prob .sev.e{color:var(--danger)}
+.prob .msg{color:var(--ink)}
+.body .none{color:var(--ink-dim);font-style:italic}
+/* map */
+.map{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.hex{border-radius:6px;padding:7px 6px;min-height:56px;font:11px/1.35 'Helvetica Neue',Arial,sans-serif;
+border:1px solid var(--edge);position:relative}
+.hex.sea{background:var(--sea)}.hex.land{background:var(--land)}
+.hex .co{color:#cfe0ea;opacity:.7;font-size:10px}
+.hex .tag{display:block;margin-top:3px;color:#eaf2f8}
+.hex.here{outline:2px solid var(--select);outline-offset:-2px}
+.arrow{font-size:17px;position:absolute;right:6px;bottom:4px}
+.arrow.solid{color:var(--brass-bright)}
+.arrow.ghost{color:var(--ink-dim);opacity:.55}
+.arrow.unsure{color:var(--warn)}
+.legend{font-size:11.5px;color:var(--ink-dim);margin-top:6px}
+table{border-collapse:collapse;font-size:12.5px;width:100%;margin-top:14px}
+th,td{text-align:left;padding:6px 9px;border-bottom:1px solid var(--edge-soft);vertical-align:top}
+th{color:var(--brass);font-weight:normal;font-size:11px;letter-spacing:1px;text-transform:uppercase}
+td.y{color:var(--ok)}td.n{color:var(--danger)}td.d{color:var(--ink-dim)}
+footer{color:var(--ink-dim);font-size:12.5px;margin-top:44px}
+.q{background:var(--raised);border-left:3px solid var(--brass);padding:10px 14px;margin-top:14px;
+color:var(--ink);font-size:14px;max-width:100ch}
+@media(max-width:900px){.cards,.cards.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+<h1>ah-ofra — <span>who decides where a ship is going</span></h1>
+<p>Pick a unit that is riding on a ship and the map draws the journey that ship is about to make.
+Today Atlantis HUD draws whichever sailing order it happens to find among the people aboard — in
+practice the <em>last</em> one listed. In the game only the ship's owner's <code>SAIL</code> moves it;
+everyone else's <code>SAIL</code> is an offer of hands, not a steering wheel. So the line on your map can
+point somewhere the ship will never go, and you can plan a whole month around it.</p>
+<p>The owner is simply <em>the first unit listed under the ship</em>. That is the only thing that makes
+someone the owner, and it is visible in your own report.</p>
+</header>
+
+<main>
+
+<h2 class="sec">The scene <small>one ship, three units aboard, used by every question below</small></h2>
+<p>The <b>Longship [329]</b> sits in open ocean. Two ways out of that water: north-east and south-east.
+Three of our units are aboard, in this order.</p>
+
+<div class="cards">
+  <div class="card">
+    <h3>Who is aboard</h3>
+    <div class="orders"><span class="who">Longship [329]</span>
+  Sea Rovers (900)   <b>first listed — the owner</b>
+  Deckhands (901)
+  Marines (902)      <b>the unit we have picked</b></div>
+    <p class="concept">Marines wrote no order of its own. It goes wherever the Longship goes — that
+    part is not in question and does not change.</p>
+  </div>
+  <div class="card">
+    <h3>The water around it</h3>
+    <div class="map">
+      <div class="hex sea"><span class="co">ocean</span><span class="tag">north-east</span></div>
+      <div class="hex sea here"><span class="co">ocean</span><span class="tag">Longship [329]</span></div>
+      <div class="hex land"><span class="co">forest</span></div>
+      <div class="hex land"><span class="co">mountain</span></div>
+      <div class="hex land"><span class="co">plain</span></div>
+      <div class="hex sea"><span class="co">ocean</span><span class="tag">south-east</span></div>
+    </div>
+    <p class="cap">Simplified. The ship can leave to the north-east or the south-east, and nowhere else.</p>
+  </div>
+  <div class="card">
+    <h3>What the map draws today</h3>
+    <p class="concept">A line from the ship's hex to wherever the journey ends, drawn solid, with the
+    picked unit shown travelling along it. Everyone aboard gets the same line.</p>
+    <ul class="notes">
+      <li class="n">Solid line = the app is confident this is the journey</li>
+      <li class="n">The units-in-hex list also dims the row and marks it <b>&rarr; leaving</b></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ================= Q1 ================= -->
+<h2 class="sec">Question 1 <small>a crewman ordered a course, the owner ordered nothing</small></h2>
+<p>Deckhands (901) writes <code>SAIL SE</code>. The owner, Sea Rovers (900), writes nothing at all.
+In the game the ship does not move: nobody who can steer it has said to. Today the map cheerfully
+draws the south-east journey anyway.</p>
+
+<div class="orders"><span class="who">Sea Rovers (900)</span>   <i>— no order</i>
+<span class="who">Deckhands (901)</span>   <b>SAIL SE</b>
+<span class="who">Marines (902)</span>     <i>— no order</i></div>
+
+<div class="cards">
+
+  <div class="card">
+    <h3><em class="today">TODAY</em> the crewman's course is drawn</h3>
+    <div class="stage">
+      <div class="map">
+        <div class="hex sea"><span class="co">ocean</span></div>
+        <div class="hex sea here"><span class="co">ocean</span><span class="tag">Longship [329]</span><span class="arrow solid">&#8600;</span></div>
+        <div class="hex land"><span class="co">forest</span></div>
+        <div class="hex land"><span class="co">mountain</span></div>
+        <div class="hex land"><span class="co">plain</span></div>
+        <div class="hex sea"><span class="co">ocean</span><span class="tag">Longship [329] arrives</span></div>
+      </div>
+      <p class="cap">Solid, confident, and wrong — the ship will still be where it started.</p>
+    </div>
+  </div>
+
+  <div class="card rec">
+    <h3><em>A</em> nothing is drawn, and nothing is said</h3>
+    <div class="stage">
+      <div class="map">
+        <div class="hex sea"><span class="co">ocean</span></div>
+        <div class="hex sea here"><span class="co">ocean</span><span class="tag">Longship [329]</span></div>
+        <div class="hex land"><span class="co">forest</span></div>
+        <div class="hex land"><span class="co">mountain</span></div>
+        <div class="hex land"><span class="co">plain</span></div>
+        <div class="hex sea"><span class="co">ocean</span></div>
+      </div>
+      <div class="pane"><div class="bar"><span class="name">Problems</span></div>
+        <div class="body"><span class="none">nothing about this ship</span></div></div>
+      <p class="cap">The ship stays put, everyone aboard stays put, the map is silent.</p>
+    </div>
+    <ul class="notes">
+      <li>Matches every other unit with no order: no order, no line.</li>
+      <li class="con">A crewman who wrote <code>SAIL SE</code> gets no hint why nothing happened.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><em>B</em> nothing is drawn, and Problems says why</h3>
+    <div class="stage">
+      <div class="map">
+        <div class="hex sea"><span class="co">ocean</span></div>
+        <div class="hex sea here"><span class="co">ocean</span><span class="tag">Longship [329]</span></div>
+        <div class="hex land"><span class="co">forest</span></div>
+        <div class="hex land"><span class="co">mountain</span></div>
+        <div class="hex land"><span class="co">plain</span></div>
+        <div class="hex sea"><span class="co">ocean</span></div>
+      </div>
+      <div class="pane"><div class="bar"><span class="name">Problems</span></div>
+        <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">Longship [329]
+        will not sail: Deckhands (901) set its course, but only its owner, Sea Rovers (900), can.</span></div></div></div>
+      <p class="cap">Same silent map — one amber line explains it.</p>
+    </div>
+    <ul class="notes">
+      <li>The one case where a player has genuinely made a mistake is named.</li>
+      <li class="con">A new warning to word, test and keep true.</li>
+    </ul>
+  </div>
+
+</div>
+
+<div class="q"><b>Q1.</b> A crewman sets a course the owner never gave. Silence, or an amber line
+naming it?</div>
+
+<!-- ================= Q2 ================= -->
+<h2 class="sec">Question 2 <small>the owner and a crewman disagree</small></h2>
+<p>Sea Rovers (900) writes <code>SAIL NE</code>. Deckhands (901) writes <code>SAIL SE</code>. The ship
+goes north-east — the owner decides. Today the map draws south-east, because the crewman is listed
+later. Either way the picked unit, Marines (902), is carried along.</p>
+
+<div class="orders"><span class="who">Sea Rovers (900)</span>   <b>SAIL NE</b>   <i>— the owner</i>
+<span class="who">Deckhands (901)</span>   <b>SAIL SE</b>
+<span class="who">Marines (902)</span>     <i>— no order</i></div>
+
+<div class="cards">
+
+  <div class="card">
+    <h3><em class="today">TODAY</em> the crewman wins</h3>
+    <div class="stage">
+      <div class="map">
+        <div class="hex sea"><span class="co">ocean</span><span class="tag">north-east</span></div>
+        <div class="hex sea here"><span class="co">ocean</span><span class="tag">Longship [329]</span><span class="arrow solid">&#8600;</span></div>
+        <div class="hex land"><span class="co">forest</span></div>
+        <div class="hex land"><span class="co">mountain</span></div>
+        <div class="hex land"><span class="co">plain</span></div>
+        <div class="hex sea"><span class="co">ocean</span><span class="tag">Longship [329] arrives</span></div>
+      </div>
+      <p class="cap">The wrong course, drawn with full confidence.</p>
+    </div>
+  </div>
+
+  <div class="card rec">
+    <h3><em>A</em> the owner's course, and nothing said</h3>
+    <div class="stage">
+      <div class="map">
+        <div class="hex sea"><span class="co">ocean</span><span class="tag">Longship [329] arrives</span></div>
+        <div class="hex sea here"><span class="co">ocean</span><span class="tag">Longship [329]</span><span class="arrow solid">&#8599;</span></div>
+        <div class="hex land"><span class="co">forest</span></div>
+        <div class="hex land"><span class="co">mountain</span></div>
+        <div class="hex land"><span class="co">plain</span></div>
+        <div class="hex sea"><span class="co">ocean</span></div>
+      </div>
+      <div class="pane"><div class="bar"><span class="name">Problems</span></div>
+        <div class="body"><span class="none">nothing about this ship</span></div></div>
+      <p class="cap">North-east, solid. The crewman's <code>SAIL SE</code> is simply a pair of hands.</p>
+    </div>
+    <ul class="notes">
+      <li>The map tells the truth, which is the whole point of the change.</li>
+      <li>A bare <code>SAIL</code> and a <code>SAIL SE</code> from a crewman do the same job, so
+      nothing is really wrong here.</li>
+      <li class="con">A player who meant the ship to go south-east learns nothing.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><em>B</em> the owner's course, and the disagreement named</h3>
+    <div class="stage">
+      <div class="map">
+        <div class="hex sea"><span class="co">ocean</span><span class="tag">Longship [329] arrives</span></div>
+        <div class="hex sea here"><span class="co">ocean</span><span class="tag">Longship [329]</span><span class="arrow solid">&#8599;</span></div>
+        <div class="hex land"><span class="co">forest</span></div>
+        <div class="hex land"><span class="co">mountain</span></div>
+        <div class="hex land"><span class="co">plain</span></div>
+        <div class="hex sea"><span class="co">ocean</span></div>
+      </div>
+      <div class="pane"><div class="bar"><span class="name">Problems</span></div>
+        <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">Deckhands (901)
+        sets a course for Longship [329], but only its owner, Sea Rovers (900), can — the ship sails NE.</span></div></div></div>
+      <p class="cap">Same north-east line, with the contradiction spelled out.</p>
+    </div>
+    <ul class="notes">
+      <li>Catches a player who thinks they changed the ship's course and did not.</li>
+      <li class="con">Fires on perfectly harmless orders too — many players write a direction on
+      every crewman out of habit.</li>
+    </ul>
+  </div>
+
+</div>
+
+<div class="q"><b>Q2.</b> Owner and crewman name different directions. The owner's line is drawn
+either way — does the app also say the crewman was overruled?</div>
+
+<!-- ================= Q3 ================= -->
+<h2 class="sec">Question 3 <small>when the app cannot tell who the owner is</small></h2>
+<p>Sometimes the first unit under the ship is not one of ours and is not described — a foreign ship
+we are merely standing next to, or a hull whose contents our report only partly lists. Then the app
+cannot say who the owner is, so it cannot say whose <code>SAIL</code> counts. It knows a course was
+written; it does not know whether it will be obeyed.</p>
+
+<div class="orders"><span class="who">Longship [329]</span>
+  <i>(a unit we cannot see)</i>   <b>first listed — owner unknown</b>
+  Deckhands (901)   <b>SAIL SE</b>
+  Marines (902)     <i>— no order</i></div>
+
+<div class="cards two">
+
+  <div class="card">
+    <h3><em>A</em> draw nothing until the app is sure</h3>
+    <div class="stage">
+      <div class="map">
+        <div class="hex sea"><span class="co">ocean</span></div>
+        <div class="hex sea here"><span class="co">ocean</span><span class="tag">Longship [329]</span></div>
+        <div class="hex land"><span class="co">forest</span></div>
+        <div class="hex land"><span class="co">mountain</span></div>
+        <div class="hex land"><span class="co">plain</span></div>
+        <div class="hex sea"><span class="co">ocean</span></div>
+      </div>
+      <p class="cap">No line. The app draws a journey only when it knows the owner ordered it.</p>
+    </div>
+    <ul class="notes">
+      <li>The map never shows a journey that will not happen.</li>
+      <li>Only one kind of line on the map — solid means it is happening.</li>
+      <li class="con">Our own units vanish from the map's plans whenever a stranger is aboard first.</li>
+    </ul>
+  </div>
+
+  <div class="card rec">
+    <h3><em>B</em> draw it, marked as a guess</h3>
+    <div class="stage">
+      <div class="map">
+        <div class="hex sea"><span class="co">ocean</span></div>
+        <div class="hex sea here"><span class="co">ocean</span><span class="tag">Longship [329]</span><span class="arrow unsure">&#8600;</span></div>
+        <div class="hex land"><span class="co">forest</span></div>
+        <div class="hex land"><span class="co">mountain</span></div>
+        <div class="hex land"><span class="co">plain</span></div>
+        <div class="hex sea"><span class="co">ocean</span><span class="tag">Longship [329] may arrive</span></div>
+      </div>
+      <p class="cap">Dashed and amber, with <b>may arrive</b> instead of <b>arrives</b>.</p>
+    </div>
+    <ul class="notes">
+      <li>A player standing on a half-seen ship still sees where it is likely headed.</li>
+      <li>Honest about the difference between what is known and what is guessed.</li>
+      <li class="con">A second kind of line on the map to learn and to explain.</li>
+    </ul>
+  </div>
+
+</div>
+
+<div class="q"><b>Q3.</b> The owner cannot be identified. Draw nothing, or draw the likely course in
+amber as an explicit guess?</div>
+
+<!-- ================= Q4 ================= -->
+<h2 class="sec">Question 4 <small>you pick a passenger and click where you want to go</small></h2>
+<p>Marines (902) is picked, and you click an ocean hex three to the south-east. Today the app plans
+the sea route and writes <code>SAIL SE SE SE</code> — onto Marines, who cannot steer anything. Those
+orders would do nothing.</p>
+
+<div class="cards">
+
+  <div class="card">
+    <h3><em class="today">TODAY</em> the order goes to the passenger</h3>
+    <div class="stage">
+      <div class="pane"><div class="bar"><span class="name">Planner</span></div>
+        <div class="body"><span class="msg">3 steps &middot; 3 movement points &middot; 1 month</span>
+        <span class="mono">SAIL SE SE SE</span>
+        <span class="none">written to Marines (902)</span></div></div>
+      <p class="cap">Plausible, accepted, and silently useless.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3><em>A</em> the planner declines</h3>
+    <div class="stage">
+      <div class="pane"><div class="bar"><span class="name">Planner</span></div>
+        <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">Marines (902)
+        is a passenger on Longship [329]. Only its owner, Sea Rovers (900), can set its course.</span></div></div></div>
+      <p class="cap">No route offered, no orders written.</p>
+    </div>
+    <ul class="notes">
+      <li>Nothing useless is ever written.</li>
+      <li class="con">You now have to find and pick Sea Rovers yourself and click the hex again.</li>
+    </ul>
+  </div>
+
+  <div class="card rec">
+    <h3><em>B</em> the planner offers to write it to the owner</h3>
+    <div class="stage">
+      <div class="pane"><div class="bar"><span class="name">Planner</span></div>
+        <div class="body"><span class="msg">3 steps &middot; 3 movement points &middot; 1 month</span>
+        <span class="mono">SAIL SE SE SE</span>
+        <div class="prob"><span class="sev">&#9888;</span><span class="msg">Marines (902) is a
+        passenger — this course will be written to the ship's owner, Sea Rovers (900).</span></div></div></div>
+      <p class="cap">The route is still planned; the order lands where it works.</p>
+    </div>
+    <ul class="notes">
+      <li>Clicking a destination does what you meant, in one step.</li>
+      <li class="con">Orders appear on a unit you did not pick, which nothing else in the app does.</li>
+      <li class="con">If the owner is not one of ours, this option cannot help either — it falls back to A.</li>
+    </ul>
+  </div>
+
+</div>
+
+<div class="q"><b>Q4.</b> You pick a passenger and click a destination. Does the planner decline, or
+plan the route and write it to the ship's owner?</div>
+
+<h2 class="sec">Not in question</h2>
+<table>
+  <tr><th>Settled</th><th>Why it is not re-opened</th></tr>
+  <tr><td>A passenger goes where the ship goes</td><td class="d">Agreed already; only <em>which</em> course the ship takes is wrong.</td></tr>
+  <tr><td>The owner is the first unit listed under the ship</td><td class="d">The game's own rule, not a choice.</td></tr>
+  <tr><td>A crewman's <code>SAIL</code> still counts as a pair of hands</td><td class="d">It always did; the short-of-sailors warning is unchanged.</td></tr>
+  <tr><td>Solid line = confident, row dims and reads <b>&rarr; leaving</b></td><td class="d">Existing drawing, reused as-is.</td></tr>
+</table>
+
+</main>
+
+<footer>ah-ofra — drawings for the design conversation. Nothing here is built yet.</footer>
+</body>
+</html>

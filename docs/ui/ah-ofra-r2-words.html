@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-ofra round 2 — the exact words</title>
+<style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c2531;--edge:#26303d;--edge-soft:#1e2733;
+--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;
+--ok:#4fb783;--warn:#d9a441;--danger:#d97070;--select:#4d8fd6}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif;padding:30px 22px 70px}
+header,main,footer{max-width:1300px;margin-left:auto;margin-right:auto}
+h1{font-size:25px}h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);max-width:100ch;margin-top:10px;font-size:14px}
+code,.mono{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:.92em;color:var(--brass-bright)}
+h2.sec{margin-top:38px;font-size:19px;color:var(--brass);border-top:1px solid var(--edge);padding-top:20px}
+h2.sec small{color:var(--ink-dim);font-size:13px;margin-left:10px;font-family:Georgia,serif}
+h2.sec + p{color:var(--ink-soft);font-size:13.5px;max-width:100ch;margin-top:8px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:18px;align-items:start}
+.cards.two{grid-template-columns:repeat(2,1fr)}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:11px}
+.card.rec{border-color:var(--brass)}
+.card h3{font-size:16px}.card h3 em{color:var(--brass);font-style:normal;font-size:11.5px;letter-spacing:1.6px;margin-right:8px}
+.concept{color:var(--ink-soft);font-size:13px}
+.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px;padding:0}
+.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+.notes li.con::before{content:"\2212 ";color:var(--danger)}
+.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+.orders{background:#0d1218;border:1px solid var(--edge);border-radius:6px;padding:9px 11px;
+font:11.5px/1.7 ui-monospace,'SF Mono',Menlo,monospace;color:var(--ink-soft);white-space:pre}
+.orders b{color:var(--brass);font-weight:normal}.orders .who{color:var(--ink-dim)}
+.pane{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11.5px;line-height:1.45;
+border:1px solid var(--edge);border-radius:6px;background:var(--panel);overflow:hidden}
+.pane .bar{display:flex;align-items:center;height:25px;padding:0 9px;border-bottom:1px solid var(--edge)}
+.bar .name{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--brass)}
+.pane .body{padding:8px 9px 9px;display:grid;gap:7px}
+.prob{display:flex;gap:6px}.prob .sev{color:var(--warn);flex:0 0 auto}
+.prob .msg{color:var(--ink)}
+.body .none{color:var(--ink-dim);font-style:italic}
+.cap{font:italic 11.5px Georgia,serif;color:var(--ink-dim)}
+/* settings */
+.set{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;border:1px solid var(--edge);
+border-radius:6px;background:var(--panel);overflow:hidden}
+.set .grp{padding:6px 10px;border-bottom:1px solid var(--edge-soft);color:var(--brass);
+font-size:10px;letter-spacing:1.3px;text-transform:uppercase}
+.set .it{display:flex;gap:9px;padding:8px 10px;border-bottom:1px solid var(--edge-soft);align-items:flex-start}
+.set .it:last-child{border-bottom:none}
+.set .box{width:13px;height:13px;border:1px solid var(--brass);border-radius:3px;background:var(--brass);
+flex:0 0 auto;margin-top:2px;position:relative}
+.set .box::after{content:"\2713";color:#10151c;font-size:10px;position:absolute;left:1.5px;top:-2px}
+.set .t{color:var(--ink)}.set .d{color:var(--ink-dim);display:block;margin-top:2px}
+.set .it.new{background:rgba(217,164,65,.08)}
+table{border-collapse:collapse;font-size:12.5px;width:100%;margin-top:14px}
+th,td{text-align:left;padding:6px 9px;border-bottom:1px solid var(--edge-soft);vertical-align:top}
+th{color:var(--brass);font-weight:normal;font-size:11px;letter-spacing:1px;text-transform:uppercase}
+td.d{color:var(--ink-dim)}
+.q{background:var(--raised);border-left:3px solid var(--brass);padding:10px 14px;margin-top:16px;
+color:var(--ink);font-size:14px;max-width:100ch}
+footer{color:var(--ink-dim);font-size:12.5px;margin-top:44px}
+@media(max-width:900px){.cards,.cards.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+<h1>ah-ofra round 2 — <span>the exact words</span></h1>
+<p>Settled in round 1: the map draws the <b>owner's</b> course and nothing else; when the owner gave
+no course the map is silent; when the app cannot tell who the owner is the map is silent too; and
+clicking a destination while a passenger is picked is declined rather than written to somebody else.
+Two amber lines and one refusal now need their wording.</p>
+<p>The house pattern for these lines is <i>subject, then evidence, then consequence</i> — as in the
+one that already ships: <span class="mono">Longship [329] is short of sailors: 4 sailing levels
+aboard, but 0 are helping with SAIL; it needs 4, so it will not sail</span>.</p>
+</header>
+
+<main>
+
+<h2 class="sec">The two situations, side by side <small>same ship, same three units</small></h2>
+<div class="cards two">
+  <div class="card">
+    <h3>Situation 1 — nobody who can steer said so</h3>
+    <div class="orders"><span class="who">Sea Rovers (900)</span>   <i>— no order</i>   <b>the owner</b>
+<span class="who">Deckhands (901)</span>   <b>SAIL SE</b>
+<span class="who">Marines (902)</span>     <i>— no order</i></div>
+    <p class="concept">The ship does not move. Map silent.</p>
+  </div>
+  <div class="card">
+    <h3>Situation 2 — the owner was overruled by nobody</h3>
+    <div class="orders"><span class="who">Sea Rovers (900)</span>   <b>SAIL NE</b>   <b>the owner</b>
+<span class="who">Deckhands (901)</span>   <b>SAIL SE</b>
+<span class="who">Marines (902)</span>     <i>— no order</i></div>
+    <p class="concept">The ship sails north-east. Map draws north-east.</p>
+  </div>
+</div>
+
+<h2 class="sec">Question 5 <small>one message or two</small></h2>
+<p>Both situations have the same cause — somebody who does not own the ship wrote a course — and
+differ only in what happens next. They can be one sentence with a changing tail, or two sentences
+written for their own case.</p>
+
+<div class="cards two">
+  <div class="card rec">
+    <h3><em>A</em> one line, two tails</h3>
+    <div class="pane"><div class="bar"><span class="name">Problems — situation 1</span></div>
+      <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">Only
+      Sea Rovers (900) can set the course of Longship [329]: Deckhands (901) ordered <span class="mono">SAIL SE</span>,
+      and the owner ordered no course, so the ship will not sail.</span></div></div></div>
+    <div class="pane"><div class="bar"><span class="name">Problems — situation 2</span></div>
+      <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">Only
+      Sea Rovers (900) can set the course of Longship [329]: Deckhands (901) ordered <span class="mono">SAIL SE</span>,
+      and the owner ordered NE, so the ship sails NE.</span></div></div></div>
+    <ul class="notes">
+      <li>One shape to learn: who can steer, who tried, what happens.</li>
+      <li>The two cases read as the same mistake, because they are.</li>
+      <li class="con">Long. Both tails carry a clause the other case does not need.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3><em>B</em> two lines, each written for its case</h3>
+    <div class="pane"><div class="bar"><span class="name">Problems — situation 1</span></div>
+      <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">Longship [329]
+      will not sail: only its owner, Sea Rovers (900), can set its course, and it ordered none.</span></div></div></div>
+    <div class="pane"><div class="bar"><span class="name">Problems — situation 2</span></div>
+      <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">Deckhands (901)
+      cannot set the course of Longship [329] — only its owner, Sea Rovers (900), can. The ship sails NE.</span></div></div></div>
+    <ul class="notes">
+      <li>Each line is shorter and leads with what matters in that case.</li>
+      <li class="con">Two messages to keep true, and situation 1 never names the crewman who tried.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="q"><b>Q5.</b> One sentence with a changing tail, or two sentences written for their own
+situations?</div>
+
+<h2 class="sec">Question 6 <small>how the owner is named</small></h2>
+<p>A player who has never met this rule will ask <i>why is Sea Rovers the owner?</i> The answer is
+that it is listed first under the ship. The line can say so, or leave it.</p>
+
+<div class="cards">
+  <div class="card">
+    <h3><em>A</em> just "its owner"</h3>
+    <div class="pane"><div class="bar"><span class="name">Problems</span></div>
+      <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">…only its
+      owner, <b>Sea Rovers (900)</b>, can set its course…</span></div></div></div>
+    <ul class="notes">
+      <li>Short, and "owner" is the game's own word for it.</li>
+      <li class="con">Leaves a new player guessing how ownership was decided.</li>
+    </ul>
+  </div>
+  <div class="card rec">
+    <h3><em>B</em> "its owner — the first unit aboard"</h3>
+    <div class="pane"><div class="bar"><span class="name">Problems</span></div>
+      <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">…only its
+      owner, <b>Sea Rovers (900)</b>, the first unit listed aboard, can set its course…</span></div></div></div>
+    <ul class="notes">
+      <li>Teaches the rule at the exact moment it bites.</li>
+      <li class="con">Six extra words on every occurrence, for ever.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3><em>C</em> "the first unit aboard", no "owner" at all</h3>
+    <div class="pane"><div class="bar"><span class="name">Problems</span></div>
+      <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">…only the
+      first unit aboard, <b>Sea Rovers (900)</b>, can set its course…</span></div></div></div>
+    <ul class="notes">
+      <li>Says the testable thing and nothing else.</li>
+      <li class="con">Drops the word the rules themselves use, so it reads as our invention.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="q"><b>Q6.</b> "its owner", "its owner, the first unit listed aboard", or "the first unit
+aboard"?</div>
+
+<h2 class="sec">Question 7 <small>the owner cannot be identified</small></h2>
+<p>Round 1 settled that the map draws nothing here. The question left over is whether Problems says
+anything. Nobody has made a mistake — we simply cannot see who is aboard first — but a course was
+written and no line appears, which is exactly the silence a player would want explained.</p>
+
+<div class="cards two">
+  <div class="card">
+    <h3><em>A</em> silence</h3>
+    <div class="pane"><div class="bar"><span class="name">Problems</span></div>
+      <div class="body"><span class="none">nothing about this ship</span></div></div>
+    <p class="cap">Problems is for things the player got wrong. This is not one.</p>
+    <ul class="notes">
+      <li>No warning fires on a perfectly correct set of orders.</li>
+      <li class="con">A course written and no line drawn, with nothing to explain it.</li>
+    </ul>
+  </div>
+  <div class="card rec">
+    <h3><em>B</em> a line saying the app cannot tell</h3>
+    <div class="pane"><div class="bar"><span class="name">Problems</span></div>
+      <div class="body"><div class="prob"><span class="sev">&#9888;</span><span class="msg">Where
+      Longship [329] sails cannot be worked out: the first unit aboard it is not one your report
+      describes, so there is no telling whether <span class="mono">SAIL SE</span> will be obeyed.</span></div></div></div>
+    <p class="cap">Amber, like every other "the app cannot be sure" line.</p>
+    <ul class="notes">
+      <li>The missing line on the map is accounted for.</li>
+      <li class="con">Fires when nothing is wrong, on every turn the ship stays half-seen.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="q"><b>Q7.</b> Owner unknown: silence, or an amber line saying the course cannot be worked
+out?</div>
+
+<h2 class="sec">Question 8 <small>the switch in Settings</small></h2>
+<p>Every order check in Atlantis HUD can be turned off, grouped under <b>Order checks &rsaquo;
+Sailing</b>. Two entries already live there. The new warnings need to join them — as one switch or
+two.</p>
+
+<div class="cards two">
+  <div class="card rec">
+    <h3><em>A</em> one new switch</h3>
+    <div class="set">
+      <div class="grp">Order checks &rsaquo; Sailing</div>
+      <div class="it"><span class="box"></span><span><span class="t">Overloaded fleets</span>
+        <span class="d">A fleet ordered to sail with more weight aboard than it can carry.</span></span></div>
+      <div class="it"><span class="box"></span><span><span class="t">Undercrewed fleets</span>
+        <span class="d">A fleet ordered to sail without enough sailing skill aboard.</span></span></div>
+      <div class="it new"><span class="box"></span><span><span class="t">Courses set by the wrong unit</span>
+        <span class="d">A fleet given a course by a unit that does not own it.</span></span></div>
+    </div>
+    <ul class="notes">
+      <li>One rule, one switch — both situations come from the same mistake.</li>
+      <li class="con">Cannot keep the "will not sail" warning and drop the noisier one.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3><em>B</em> two new switches</h3>
+    <div class="set">
+      <div class="grp">Order checks &rsaquo; Sailing</div>
+      <div class="it"><span class="box"></span><span><span class="t">Overloaded fleets</span>
+        <span class="d">A fleet ordered to sail with more weight aboard than it can carry.</span></span></div>
+      <div class="it"><span class="box"></span><span><span class="t">Undercrewed fleets</span>
+        <span class="d">A fleet ordered to sail without enough sailing skill aboard.</span></span></div>
+      <div class="it new"><span class="box"></span><span><span class="t">Fleets left with no course</span>
+        <span class="d">A fleet whose owner set no course, so it will not sail.</span></span></div>
+      <div class="it new"><span class="box"></span><span><span class="t">Courses that are overruled</span>
+        <span class="d">A unit sets a course for a fleet it does not own, and the owner's course wins.</span></span></div>
+    </div>
+    <ul class="notes">
+      <li>The noisier one — a habit many players have — can be silenced on its own.</li>
+      <li class="con">Four switches in one group, two of them near-identical to read.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="q"><b>Q8.</b> One new switch for the whole rule, or two so the habitual case can be
+silenced separately?</div>
+
+<h2 class="sec">Settled by these answers, and drawn nowhere else</h2>
+<table>
+  <tr><th>What</th><th>Where it shows</th></tr>
+  <tr><td>A passenger's row in the hex list</td><td class="d">Follows the ship as it always has. When the ship does not sail, the row simply stops saying <b>&rarr; leaving</b> — no new wording.</td></tr>
+  <tr><td>The refusal when you click a destination with a passenger picked</td><td class="d">In the planner, where every other refusal already appears: <span class="mono">Marines (902) is a passenger on Longship [329]. Only its owner, Sea Rovers (900), can set its course.</span> Wording follows Q6.</td></tr>
+  <tr><td>Short-of-sailors warning</td><td class="d">Unchanged. A crewman's <code>SAIL</code> still counts as a pair of hands whoever wrote it.</td></tr>
+</table>
+
+</main>
+<footer>ah-ofra round 2 — drawings for the design conversation. Nothing here is built yet.</footer>
+</body>
+</html>
