@@ -906,25 +906,30 @@ export const LONG_ORDER_COMMANDS = [
  * The world's own lexer rather than a `^\s*@?\s*KEYWORD\b` pattern, because `\b` cannot tell a
  * Trident `END;done` - which closes a `FORM` - from a New Origins `END;done`, which is one word
  * and closes nothing.
+ *
+ * Trailing `,` and `.` are stripped, as `orderCase.bareWords` strips them: those patterns matched
+ * `FORM, 1` and `MOVE, N`, and every reader here is one where failing to recognise the keyword is
+ * the unsafe direction - a block that does not open makes the formed unit's lines read as the
+ * outer unit's own, and `stripOwnOrderLines` then deletes them. Done here rather than in each
+ * caller so `atTopLevel` and `isCommand` cannot drift apart again.
  */
 function commandOf(line: string, syntax: OrderCommentSyntax): string | null {
-  return lexOrderLine(line, syntax).tokens[0]?.toUpperCase() ?? null;
+  const token = lexOrderLine(line, syntax).tokens[0];
+  return token === undefined ? null : token.toUpperCase().replace(/[,.]+$/u, "");
 }
 
 /**
  * Whether the line issues one of these keywords, `@`-repeated or not.
  *
- * Trailing `,` and `.` are stripped before the comparison, as `orderCase.bareWords` strips them:
- * the `\b`-anchored patterns this replaced matched `MOVE, N`, and a writer that replaces a unit's
- * old order must not leave a second one standing merely because the keyword had a comma on it.
+ * The punctuation rule lives in {@link commandOf}, which every keyword reader here goes through.
  */
 function isCommand(
   line: string,
   keywords: readonly string[],
   syntax: OrderCommentSyntax
 ): boolean {
-  const command = commandOf(line, syntax)?.replace(/[,.]+$/u, "");
-  return command !== undefined && command !== null && keywords.includes(command);
+  const command = commandOf(line, syntax);
+  return command !== null && keywords.includes(command);
 }
 
 /**

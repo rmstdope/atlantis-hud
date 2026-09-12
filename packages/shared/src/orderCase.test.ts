@@ -209,6 +209,16 @@ describe("the selected world's comment boundary", () => {
     }
   });
 
+  it("comments after a closed quote, in both worlds", () => {
+    // A semicolon following a finished quoted name is not in the middle of a word, so it starts a
+    // comment under both rules - `NAME UNIT "Scouts";north` carries a comment, not an argument.
+    for (const syntax of ["origins", "trident"] as const) {
+      expect(uppercaseLine('NAME UNIT "Scouts";work later', vocabulary, syntax)).toBe(
+        'NAME UNIT "Scouts";work later'
+      );
+    }
+  });
+
   it("defaults to New Origins when no world is named", () => {
     expect(uppercaseLine("work;note", vocabulary)).toBe("work;note");
   });

@@ -1649,6 +1649,18 @@ describe("Trident comment boundaries", () => {
     }
   });
 
+  it("opens and closes a block whose keyword carries punctuation", () => {
+    // The same unsafe direction as the keyword test above, one layer up: a `FORM, 1` that opened
+    // nothing would mark the formed unit's lines as the outer unit's own, and rewriting the outer
+    // unit's long order would then delete them.
+    const orders = ["WORK", "FORM, 1", "MOVE N", "END,", "TAX"].join("\n");
+    for (const syntax of ["origins", "trident"] as const) {
+      expect(stripLongOrderLines(orders, syntax)).toBe(
+        ["FORM, 1", "MOVE N", "END,"].join("\n"),
+        );
+    }
+  });
+
   it("replaces a commented movement order rather than writing a second one", () => {
     // The keyword itself carries the comment, which is the case the two worlds disagree about:
     // with `MOVE N;note` the keyword is bare either way and both strip it.
