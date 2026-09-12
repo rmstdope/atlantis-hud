@@ -1100,6 +1100,37 @@ pub fn preview_orders_on_map(
     })
 }
 
+/// What every own unit's `TRANSPORT`/`DISTRIBUTE` orders actually moved, by unit number, as
+/// `(tag, moved)` - for `semantics`' test that holds the shipping price to the goods (`ah-7ale.3`).
+#[cfg(test)]
+pub(super) fn transported_out(
+    report: &crate::report::ParsedReport,
+    ruleset: &crate::movement::rules::Ruleset,
+    orders_document: &str,
+    geometry: Option<crate::movement::graph::MapGeometry>,
+) -> BTreeMap<String, Vec<(String, i64)>> {
+    let ruleset = std::sync::Arc::new(ruleset.clone());
+    let (units, _) = settle(
+        report,
+        &ruleset,
+        orders_document,
+        geometry,
+        super::semantics::CheckOptions::default(),
+    );
+    units
+        .iter()
+        .map(|working| {
+            let moved = working
+                .item_changes
+                .iter()
+                .filter(|change| change.cause == ItemChangeCause::TransportedOut)
+                .map(|change| (change.tag.to_ascii_uppercase(), -change.delta))
+                .collect();
+            (working.unit.unit_id.clone(), moved)
+        })
+        .collect()
+}
+
 /// Every own unit as this month's orders leave it, before movement is resolved, with the rows
 /// `rules/form` dissolves and what each one's goods revert to.
 ///

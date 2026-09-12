@@ -1254,6 +1254,31 @@ describe("formatItems and itemsTooltip", () => {
     expect(itemsTooltip(row)).toBeUndefined();
   });
 
+  it("says what a priced shipment cost, before any refused one (ah-7ale.3)", () => {
+    const priced = aUnitSilver({
+      shipping: [{ line: 2, to: "901", sent: "9 FUR", weight: 9, rate: 5, cost: 45 }]
+    });
+    const shipping = previewedUnit({
+      items: [{ amount: 9, name: "fur", tag: "FUR" }],
+      previewChanges: [{ field: "items", original: "9 FUR" }]
+    });
+
+    expect(itemsTooltip(shipping, priced)).toContain("Sends 9 FUR to unit 901 for 45 silver.");
+    expect(itemsTooltip(shipping, aUnitSilver()) ?? "").not.toContain("for 45 silver");
+
+    const withRefusal = previewedUnit({
+      items: [{ amount: 9, name: "fur", tag: "FUR" }],
+      previewChanges: [{ field: "items", original: "9 FUR" }],
+      transportSent: [
+        { amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 0 }
+      ]
+    });
+    expect(itemsTooltip(withRefusal, priced)?.split("\n")).toEqual([
+      "Sends 9 FUR to unit 901 for 45 silver.",
+      "The game will not transport HORS, so they stay with this unit."
+    ]);
+  });
+
   it("says nothing for no unit at all", () => {
     expect(itemsTooltip(undefined)).toBeUndefined();
   });

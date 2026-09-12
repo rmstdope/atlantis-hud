@@ -1629,7 +1629,8 @@ const SILVER_CAUSE_LABELS: Record<string, string> = {
   discarded: "given to nobody",
   lent: "lent",
   "was-taken": "was taken",
-  "was-lent": "was lent"
+  "was-lent": "was lent",
+  shipped: "shipped"
 };
 
 /**
@@ -1700,6 +1701,28 @@ function marketClause(group: CauseGroup, itemChanges: readonly ItemChange[]): st
 }
 
 /**
+ * The aside on the `shipped` line: what was shipped and at what rate, grouped by rate (`ah-7ale.3`).
+ *
+ * Grouped rather than one clause per shipment because a unit's paid shipments almost always share
+ * a rate - it falls out of the sending quartermaster's own skill - so `9 weight at 5 silver` is one
+ * clause however many orders it took. Lowest rate first, for a stable order.
+ */
+function shippingClause(shipping: UnitSilver["shipping"]): string | undefined {
+  const weightByRate = new Map<number, number>();
+  for (const shipment of shipping) {
+    weightByRate.set(shipment.rate, (weightByRate.get(shipment.rate) ?? 0) + shipment.weight);
+  }
+  if (weightByRate.size === 0) {
+    return undefined;
+  }
+  return andList(
+    [...weightByRate.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([rate, weight]) => `${weight} weight at ${rate} silver`)
+  );
+}
+
+/**
  * The dim clause beside one cause's amount: the other unit, what the market settled, why there was
  * no order, and whether the money arrives too late - joined with `", "`, no full stop.
  *
@@ -1749,6 +1772,12 @@ function silverCauseWhy(
     const settled = marketClause(group, itemChanges);
     if (settled !== undefined) {
       parts.push(settled);
+    }
+  }
+  if (group.cause === "shipped") {
+    const aside = shippingClause(silver.shipping ?? []);
+    if (aside !== undefined) {
+      parts.push(aside);
     }
   }
 

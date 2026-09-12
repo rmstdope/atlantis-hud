@@ -1335,6 +1335,44 @@ describe("the column popups", () => {
     ]);
   });
 
+  it("draws priced shipments as one shipped line with their rate (ah-7ale.3)", () => {
+    const shipment = (line: number, to: string, sent: string, weight: number, rate: number) => ({
+      line,
+      to,
+      sent,
+      weight,
+      rate,
+      cost: weight * rate
+    });
+    const shippedLine = (shipping: ReturnType<typeof shipment>[]) =>
+      columnPopup(
+        popupForCell(
+          "silver",
+          unit({ own: true }),
+          facts({
+            silver: aUnitSilver({
+              held: 1000,
+              atMonthEnd: 1000 - shipping.reduce((sum, one) => sum + one.cost, 0),
+              changes: shipping.map((one) => ({
+                amount: -one.cost,
+                cause: "shipped" as const,
+                line: one.line,
+                other: null
+              })),
+              shipping
+            })
+          })
+        )
+      ).lines.find((line) => line.label === "shipped");
+
+    expect(
+      shippedLine([shipment(2, "901", "9 FUR", 9, 5), shipment(3, "902", "20 GRAI", 100, 5)])
+    ).toEqual({ label: "shipped", value: "-545", tone: "down", why: "109 weight at 5 silver" });
+    expect(
+      shippedLine([shipment(2, "901", "9 FUR", 9, 15), shipment(3, "902", "9 FUR", 9, 5)])?.why
+    ).toBe("9 weight at 5 silver and 9 weight at 15 silver");
+  });
+
   it("bounds the headline when a hex-mate's line could not be read (ah-0n2k.1)", () => {
     const popup = columnPopup(
       popupForCell(

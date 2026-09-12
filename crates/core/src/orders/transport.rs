@@ -45,7 +45,9 @@ pub fn shipping_rate(reach: Reach, distance: i32, language: OrderLanguage) -> Op
     // `rules/economy_transport`, New Age: Trident and New Age: Arcanum only: "Sending items to a
     // quartermaster no more than 2 hexes away is free". New Origins has no such sentence.
     match language {
-        OrderLanguage::NewAgeTrident | OrderLanguage::NewAgeArcanum if distance <= 2 => {
+        OrderLanguage::NewAgeTrident | OrderLanguage::NewAgeArcanum
+            if distance <= FREE_SHORT_RANGE_HEXES =>
+        {
             return None;
         }
         OrderLanguage::NewAgeTrident | OrderLanguage::NewAgeArcanum | OrderLanguage::NewOrigins => {
@@ -56,6 +58,80 @@ pub fn shipping_rate(reach: Reach, distance: i32, language: OrderLanguage) -> Op
     // world whose catalogue carries a quartermaster above level 5. `(level + 1) / 2` on an
     // unsigned level is exactly `level.div_ceil(2)`, which is the form clippy insists on.
     Some(((4 - i64::from(level.div_ceil(2))) * 5).max(5))
+}
+
+/// The reach `rules/economy_transport`'s New Age free-shipping sentence names: "Sending items to a
+/// quartermaster no more than 2 hexes away is free".
+///
+/// Shared with [`priced`], whose upper bound inside this range settles the price without settling
+/// the distance.
+const FREE_SHORT_RANGE_HEXES: i32 = 2;
+
+/// What one shipment costs, or why it cannot be said (`ah-7ale.3`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Priced {
+    /// The rules carry it for nothing. Nothing is charged and nothing is said about it anywhere -
+    /// never "for 0 silver".
+    Free,
+    /// What it costs, and the two numbers the SILVER hover's aside names.
+    Charged { rate: i64, weight: i64, cost: i64 },
+    /// The map cannot settle the one thing the price still turns on, so the price cannot be worked
+    /// out. Nothing is charged here and nothing is said; `ah-7ale.5` is what marks such a month.
+    Unknown,
+}
+
+/// What this shipment costs.
+///
+/// `weight` is the total weight the order sends, which is what `data/quartermaster`'s rate is
+/// charged on. Zero weight is [`Priced::Free`]: a shipment that carries nothing owes nothing, and
+/// `SilverChange::amount` is documented as never zero.
+pub(crate) fn priced(
+    reach: Reach,
+    from: crate::report::model::Coordinate,
+    to: crate::report::model::Coordinate,
+    geometry: Option<crate::movement::graph::MapGeometry>,
+    language: OrderLanguage,
+    weight: i64,
+) -> Priced {
+    use crate::movement::graph::{hex_distance, HexDistance};
+
+    if weight <= 0 {
+        return Priced::Free;
+    }
+    // `shipping_rate` answers `None` for `Local` at every distance in every world, so the common
+    // case never reads the map at all.
+    if reach == Reach::Local {
+        return Priced::Free;
+    }
+    let rate = match hex_distance(from, to, geometry) {
+        Some(HexDistance::Exact(hexes)) => shipping_rate(reach, hexes, language),
+        // An upper bound inside the free short range settles the question outright.
+        Some(HexDistance::AtMost(hexes)) if hexes <= FREE_SHORT_RANGE_HEXES => {
+            shipping_rate(reach, hexes, language)
+        }
+        Some(HexDistance::AtMost(_)) => {
+            // Whether this world charges differently inside the short range at all. Where it does
+            // not, an unsettled distance settles nothing and the rate stands; where it does, the
+            // bound leaves the price genuinely unknown. Asking `shipping_rate` keeps every world's
+            // rule inside it, so a new `OrderLanguage` needs no edit here.
+            let inside = shipping_rate(reach, FREE_SHORT_RANGE_HEXES, language);
+            let outside = shipping_rate(reach, FREE_SHORT_RANGE_HEXES + 1, language);
+            if inside != outside {
+                return Priced::Unknown;
+            }
+            outside
+        }
+        // The two ends are on different levels of the map (`ah-e07g`).
+        None => return Priced::Unknown,
+    };
+    match rate {
+        None => Priced::Free,
+        Some(rate) => Priced::Charged {
+            rate,
+            weight,
+            cost: rate.saturating_mul(weight),
+        },
+    }
 }
 
 /// Every unit the report shows holding the quartermaster skill, and at what level.
@@ -482,6 +558,114 @@ mod tests {
             OrderLanguage::NewOrigins,
         ] {
             assert_eq!(shipping_rate(reach, 3, language), Some(5), "{language:?}");
+        }
+    }
+
+    fn tall_map() -> crate::movement::graph::MapGeometry {
+        crate::movement::graph::MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: false,
+            wrap_y: false,
+        }
+    }
+
+    /// `data/quartermaster`: "The cost of shipping one weight unit ... is `4-((level+1)/2) * 5`
+    /// silver", charged on the weight the order sends (`ah-7ale.3`).
+    #[test]
+    fn a_long_shipment_costs_its_weight_at_the_skills_rate() {
+        let map = Some(tall_map());
+        assert_eq!(
+            priced(
+                Reach::BetweenQuartermasters { level: 5 },
+                hex(0, 0),
+                hex(0, 6),
+                map,
+                OrderLanguage::NewAgeTrident,
+                9
+            ),
+            Priced::Charged {
+                rate: 5,
+                weight: 9,
+                cost: 45
+            }
+        );
+        assert_eq!(
+            priced(
+                Reach::BetweenQuartermasters { level: 1 },
+                hex(0, 0),
+                hex(0, 6),
+                map,
+                OrderLanguage::NewAgeTrident,
+                9
+            ),
+            Priced::Charged {
+                rate: 15,
+                weight: 9,
+                cost: 135
+            }
+        );
+    }
+
+    /// `rules/economy_transport`: a local shipment is free everywhere, and New Age carries two
+    /// hexes or less free; a distance the map cannot settle leaves the price unknown only where the
+    /// short range would change it (`ah-7ale.3`).
+    #[test]
+    fn a_price_that_is_free_or_cannot_be_worked_out_charges_nothing() {
+        let map = Some(tall_map());
+        let qm = Reach::BetweenQuartermasters { level: 5 };
+        for language in [
+            OrderLanguage::NewAgeTrident,
+            OrderLanguage::NewAgeArcanum,
+            OrderLanguage::NewOrigins,
+        ] {
+            assert_eq!(
+                priced(Reach::Local, hex(0, 0), hex(0, 6), map, language, 9),
+                Priced::Free,
+                "{language:?}"
+            );
+        }
+        assert_eq!(
+            priced(qm, hex(0, 0), hex(0, 6), map, OrderLanguage::NewOrigins, 0),
+            Priced::Free
+        );
+        assert_eq!(
+            priced(
+                qm,
+                hex(0, 0),
+                hex(0, 4),
+                map,
+                OrderLanguage::NewAgeTrident,
+                9
+            ),
+            Priced::Free
+        );
+        assert!(matches!(
+            priced(qm, hex(0, 0), hex(0, 4), map, OrderLanguage::NewOrigins, 9),
+            Priced::Charged { rate: 5, .. }
+        ));
+        assert_eq!(
+            priced(
+                qm,
+                hex(0, 0),
+                hex(0, 8),
+                None,
+                OrderLanguage::NewAgeTrident,
+                9
+            ),
+            Priced::Unknown
+        );
+        assert!(matches!(
+            priced(qm, hex(0, 0), hex(0, 8), None, OrderLanguage::NewOrigins, 9),
+            Priced::Charged { rate: 5, .. }
+        ));
+        let upstairs = crate::report::model::Coordinate { x: 0, y: 0, z: 2 };
+        for language in [OrderLanguage::NewAgeTrident, OrderLanguage::NewOrigins] {
+            assert_eq!(
+                priced(qm, hex(0, 0), upstairs, map, language, 9),
+                Priced::Unknown,
+                "{language:?}"
+            );
         }
     }
 
