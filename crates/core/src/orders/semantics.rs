@@ -11140,25 +11140,33 @@ fn first_land_to_land_step<'a>(
     None
 }
 
-/// A canal that works in this region: the grade's pass cost, or `None`.
+/// Whether a canal that works stands in this region.
+///
+/// Only whether, not what it costs: a typed order has no list of steps anywhere in the application,
+/// so nothing here would print a price.
 ///
 /// The region's own exits answer "does it touch water", which is what `is_coastal` answers from the
-/// map in the planner. Structures come from the current sighting, which is the only sighting these
-/// checks have - a canal in a hex this report does not describe ends the walk above rather than
-/// being guessed at.
-fn canal_in(region: &ReportRegion, ruleset: &Ruleset) -> Option<u32> {
-    if !region
+/// map in the planner - `newage/trident rules/economy_canals`, "A canal built in a region that
+/// touches no water has no effect on ship movement".
+///
+/// **That half has no test, because it cannot fire here.** The only caller reaches it after
+/// [`refused_by_sailing_step`] has declined the step, and that returns true for every exit which is
+/// not water - so by the time this is asked, the side being left by is water and the region is
+/// coastal. The guard is kept because it is the rule's own sentence and costs nothing, not because
+/// any input reaches it. `Ruleset::canal_cost` returning `None` for a region's structures is what
+/// actually decides this today.
+///
+/// Structures come from the current sighting, which is the only sighting these checks have - a
+/// canal in a hex this report does not describe ends the walk above rather than being guessed at.
+fn canal_in(region: &ReportRegion, ruleset: &Ruleset) -> bool {
+    region
         .exits
         .iter()
         .any(|exit| ruleset.is_water(&exit.terrain))
-    {
-        return None;
-    }
-    region
-        .structures
-        .iter()
-        .filter_map(|standing| ruleset.canal_cost(&standing.base_kind))
-        .min()
+        && region
+            .structures
+            .iter()
+            .any(|standing| ruleset.canal_cost(&standing.base_kind).is_some())
 }
 
 /// The first `SAIL` step out of a land region by a side the rule refuses, with no canal to lift it.
@@ -11195,7 +11203,7 @@ fn first_refused_isthmus_step(
             return None;
         }
         if let Some(entered) = entered_by {
-            if !may_leave_land(entered, *direction) && canal_in(region, ruleset).is_none() {
+            if !may_leave_land(entered, *direction) && !canal_in(region, ruleset) {
                 return Some((entered, *direction, here_label));
             }
         }

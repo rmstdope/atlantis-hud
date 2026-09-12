@@ -984,6 +984,7 @@ fn refuses_a_swimming_rule_that_contradicts_the_water_rule() {
         1,
     );
     assert!(Ruleset::from_json(&lake).is_ok());
+}
 
 /// `rules/movement_sailing`, in every committed world: "Ships may not sail through single hex land
 /// masses and must leave via the same side they entered or a side adjacent to that one." The

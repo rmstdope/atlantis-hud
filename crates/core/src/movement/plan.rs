@@ -530,7 +530,10 @@ pub(crate) fn constrains_departure(ruleset: &Ruleset, journey: Journey, terrain:
 /// A canal that actually works here: the building's own name, and what a pass through it costs.
 ///
 /// `newage/trident rules/economy_canals`: "A canal built in a region that touches no water has no
-/// effect on ship movement", which is what the `is_coastal` guard is. Read from
+/// effect on ship movement", which is what the `is_coastal` guard is. It has no test of its own and
+/// cannot fire: `blocks` already refuses a bound fleet every non-coastal land hex, under the same
+/// `sailing_land_needs_coast` flag every committed world sets, so a canal region on a fleet's route
+/// is always coastal. Kept because it is the rule's own sentence and costs nothing. Read from
 /// `structures_ever_seen` rather than `structures` because a canal cannot fall down or sail away.
 /// Where both grades stand in one region the cheaper wins - a fleet would use the faster canal -
 /// with the name breaking a tie so the answer never depends on report order.

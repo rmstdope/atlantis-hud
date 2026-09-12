@@ -36,6 +36,20 @@ describe("the warnings tab's coverage of the core's codes", () => {
    * than left to the next edit of this list: the entry sits in Orders, immediately after the
    * finding it is nearest in kind.
    */
+  it("offers the self-transfer advisory next to the faction rule", () => {
+    const orders = WARNING_GROUPS.find((group) => group.heading === "Orders");
+    if (!orders) {
+      throw new Error("the Orders group is missing");
+    }
+    const at = orders.entries.findIndex((entry) => entry.code === "transfer-to-itself");
+    expect(orders.entries[at - 1]?.title).toBe("Taking from another faction");
+    expect(orders.entries[at]).toEqual({
+      code: "transfer-to-itself",
+      title: "Transfers a unit writes to itself",
+      description: "A GIVE or TAKE naming the unit that wrote it, which the game will refuse."
+    });
+  });
+
   /**
    * The words and the position are the navigator's decision: a fourth row under Sailing, after the
    * land-to-land check it is nearest in kind, so either can be silenced on its own.
@@ -51,20 +65,6 @@ describe("the warnings tab's coverage of the core's codes", () => {
     expect(sailing.entries[at]?.description).toBe(
       "A SAIL that crosses a land region in one month. A fleet may only leave by the side it entered or one beside it, unless there is a canal."
     );
-  });
-
-  it("offers the self-transfer advisory next to the faction rule", () => {
-    const orders = WARNING_GROUPS.find((group) => group.heading === "Orders");
-    if (!orders) {
-      throw new Error("the Orders group is missing");
-    }
-    const at = orders.entries.findIndex((entry) => entry.code === "transfer-to-itself");
-    expect(orders.entries[at - 1]?.title).toBe("Taking from another faction");
-    expect(orders.entries[at]).toEqual({
-      code: "transfer-to-itself",
-      title: "Transfers a unit writes to itself",
-      description: "A GIVE or TAKE naming the unit that wrote it, which the game will refuse."
-    });
   });
 });
 
