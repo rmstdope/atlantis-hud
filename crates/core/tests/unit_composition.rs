@@ -13,6 +13,7 @@ use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport}
 
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
+const TURN_42: &str = atlantis_hud_fixtures::G3_F42_T42.text;
 
 mod common;
 use common::ruleset;
@@ -258,4 +259,48 @@ fn an_unknown_tag_is_equipment_and_is_reported() {
     let unit = unit_of(&report, "900");
     assert_eq!(unit.men, 3, "only the orcs are people");
     assert_eq!(classification.unknown_tags, vec!["WDGT".to_string()]);
+}
+
+/// A report prints a fourth capacity number in every world, swimming or not:
+/// `neworigins-3.0.0-g3-f42-t42.rep` prints `* Unit (11960) ... hill dwarf [HDWA], giant turtle
+/// [TURT]. Weight: 60. Capacity: 0/70/85/70.` for a New Origins unit, in a world whose
+/// `rules/movement_normal` carries no swimming paragraph at all. So the number alone can never
+/// decide whether to show anything; only the ruleset can.
+#[test]
+fn a_world_without_swimming_states_no_swim_capacity() {
+    use atlantis_hud_core::report::model::SwimCapacity;
+
+    let mut report = parse_report_full(TURN_42);
+    classify_units(&mut report, &ruleset());
+
+    let unit = unit_of(&report, "11960");
+    assert_eq!(
+        unit.capacity.as_deref(),
+        Some("0/70/85/70"),
+        "the fixture unit should still print a fourth number"
+    );
+    assert_eq!(
+        unit.movement.expect("a stated capacity classifies").swim,
+        SwimCapacity::Absent,
+        "New Origins has no swimming rule, so its fourth number means nothing"
+    );
+
+    // And the other half: a world that does swim keeps the figure the report printed.
+    let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+        .expect("the committed Trident ruleset loads");
+    let mut swimming = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         plain (9,9) in Nowhere, 10 peasants (humans), $5.\n\n\
+         Exits:\n  North : plain (9,7) in Nowhere.\n\n\
+         * Swimmers (700), Foo (1), 50 lizardmen [LIZA]. Weight: 500. Capacity: 0/0/750/750.\n",
+    );
+    classify_units(&mut swimming, &trident);
+
+    assert_eq!(
+        unit_of(&swimming, "700")
+            .movement
+            .expect("a stated capacity classifies")
+            .swim,
+        SwimCapacity::Stated { capacity: 750 }
+    );
 }

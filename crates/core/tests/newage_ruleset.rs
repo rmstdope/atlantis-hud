@@ -80,3 +80,24 @@ fn charges_each_world_the_fee_its_rules_page_states() {
         assert_eq!(ruleset.upkeep_per_character(), 10, "{world}");
     }
 }
+
+/// `newage trident rules/movement_normal` and `newage arcanum rules/movement_normal` both carry,
+/// word for word: "Swimming units are restricted to coastal ocean regions and lakes. Deep ocean
+/// regions cannot be entered by swimming units, with one exception: a unit carried by sea
+/// creatures able to bear its whole weight rides out into deep water safely. Ships are not
+/// affected by this restriction." So both New Age worlds swim, and the lake is the water a swimmer
+/// may enter whatever its depth.
+#[test]
+fn knows_new_age_units_can_swim() {
+    for ruleset in [arcanum(), trident()] {
+        let swimming = ruleset
+            .swimming()
+            .expect("a New Age ruleset states a swimming rule");
+
+        assert_eq!(swimming.unrestricted, vec!["lake".to_string()]);
+        assert!(
+            swimming.deep_needs_sea_creatures,
+            "deep water is closed except to a unit its sea creatures can bear entire"
+        );
+    }
+}

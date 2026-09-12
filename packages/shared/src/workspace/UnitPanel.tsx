@@ -348,9 +348,18 @@ function MovementSection({
     ["Ride", "ride", movement.ride],
     ["Walk", "walk", movement.walk]
   ] as const;
-  const usable = capacities
+  // Swim is not a mode - `capacityMode` is fly, ride or walk, and the emphasised tile is the
+  // fastest available movement, which swimming never is. It is a fourth tile and nothing more.
+  const swim = movement.swim;
+  const swimNumber = swim.kind === "stated" ? swim.capacity : null;
+  // Typed wider than the `as const` tuple's labels, because Swim joins this list without being
+  // one of the three modes.
+  const usable: string[] = capacities
     .filter(([, , capacity]) => capacity >= movement.load)
     .map(([label]) => label);
+  if (swimNumber !== null && swimNumber >= movement.load) {
+    usable.push("Swim");
+  }
   const explanation =
     movement.status === "overloaded"
       ? `The load is ${movement.load.toLocaleString()}. No movement capacity can carry it.`
@@ -370,7 +379,7 @@ function MovementSection({
           <span className="text-ink-soft">Fastest available movement</span>
         )}
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className={`grid gap-2 ${swim.kind === "absent" ? "grid-cols-3" : "grid-cols-4"}`}>
         {capacities.map(([label, mode, capacity]) => {
           const active = movement.capacityMode === mode;
           return (
@@ -385,6 +394,14 @@ function MovementSection({
             </div>
           );
         })}
+        {swim.kind === "absent" ? null : (
+          <div className="rounded border border-edge px-2 py-1 text-ink-soft">
+            <div>Swim</div>
+            <div className={swimNumber === null ? "text-warn" : "tabular-nums"}>
+              {swimNumber === null ? "not stated" : swimNumber.toLocaleString()}
+            </div>
+          </div>
+        )}
       </div>
       <p className="m-0 mt-2 text-ink-soft">{explanation}</p>
     </Section>

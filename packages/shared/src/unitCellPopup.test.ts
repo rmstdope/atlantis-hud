@@ -365,7 +365,7 @@ describe("the column popups", () => {
       popupForCell(
         "movement",
         unit({
-          movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" }
+          movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } }
         }),
         facts()
       )
@@ -399,7 +399,7 @@ describe("the column popups", () => {
 
   it("the movement popup draws the load and each carrying capacity", () => {
     const popup = movementPopup({
-      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" }
+      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride", swim: { kind: "absent" } }
     });
     expect(popup.lines).toEqual([
       { label: "move", value: "Riding" },
@@ -410,9 +410,42 @@ describe("the column popups", () => {
     ]);
   });
 
+  /**
+   * The popup and the unit detail panel must say the same things, so neither has to be trusted
+   * over the other. The label matches its three siblings - `can carry flying`, `can carry riding`,
+   * `can carry walking` - and the line is never `deciding`, because swimming is not a speed.
+   */
+  it("draws the swimming capacity when the world has swimming", () => {
+    const rider = { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" } as const;
+
+    const stated = movementPopup({
+      movement: { ...rider, swim: { kind: "stated", capacity: 60 } }
+    });
+    expect(stated.lines).toEqual([
+      { label: "move", value: "Riding" },
+      { label: "weight", value: "60" },
+      { label: "can carry flying", value: "0", stress: "aside" },
+      { label: "can carry riding", value: "70", stress: "deciding" },
+      { label: "can carry walking", value: "85", stress: "aside" },
+      { label: "can carry swimming", value: "60", stress: "aside" }
+    ]);
+
+    const unstated = movementPopup({ movement: { ...rider, swim: { kind: "unstated" } } });
+    expect(unstated.lines.at(-1)).toEqual({
+      label: "can carry swimming",
+      value: "not stated",
+      stress: "aside"
+    });
+
+    // A world with no swimming rule leaves the popup with exactly the five lines it has today.
+    const absent = movementPopup({ movement: { ...rider, swim: { kind: "absent" } } });
+    expect(absent.lines).toHaveLength(5);
+    expect(absent.lines.map((line) => line.label)).not.toContain("can carry swimming");
+  });
+
   it("marks the largest capacity as the deciding one for an overloaded unit", () => {
     const popup = movementPopup({
-      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" }
+      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk", swim: { kind: "absent" } }
     });
     const stress = Object.fromEntries(popup.lines.map((line) => [line.label, line.stress]));
     expect(stress["can carry walking"]).toBe("deciding");
@@ -422,7 +455,7 @@ describe("the column popups", () => {
 
   it("draws the mode as a pair when it rose", () => {
     const popup = movementPopup({
-      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" },
+      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride", swim: { kind: "absent" } },
       previewChanges: [{ field: "movement", original: "Walking" }]
     });
     expect(popup.lines[0]).toEqual({
@@ -434,7 +467,7 @@ describe("the column popups", () => {
 
   it("draws a lost mode as a fall", () => {
     const popup = movementPopup({
-      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" },
+      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk", swim: { kind: "absent" } },
       previewChanges: [{ field: "movement", original: "Riding" }]
     });
     expect(popup.lines[0]).toEqual({
@@ -446,7 +479,7 @@ describe("the column popups", () => {
 
   it("says nothing about silver in the movement popup", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } },
       items: [],
       itemChanges: [
         carried({
@@ -467,7 +500,7 @@ describe("the column popups", () => {
 
   it("quotes a mode word it does not know rather than ranking it", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } },
       previewChanges: [{ field: "movement", original: "Swimming" }]
     });
     expect(popup.lines[0]).toEqual({ label: "move", value: "Walking", why: "was: Swimming" });
@@ -475,7 +508,7 @@ describe("the column popups", () => {
 
   it("names every item the month moved, in the month's order", () => {
     const popup = movementPopup({
-      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" },
+      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk", swim: { kind: "absent" } },
       items: [
         { name: "grain", tag: "GRAI", amount: 6 },
         { name: "horse", tag: "HORS", amount: 1 }
@@ -494,7 +527,7 @@ describe("the column popups", () => {
   it("counts the items it does not have room to name", () => {
     const tags = Array.from({ length: 14 }, (_, index) => `T${index}`);
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } },
       items: tags.map((tag) => ({ name: tag.toLowerCase(), tag, amount: 1 })),
       itemChanges: tags.map((tag) => carried({ tag, name: tag.toLowerCase(), other: null }))
     });
@@ -505,7 +538,7 @@ describe("the column popups", () => {
 
   it("says the load moved when the mode did not", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } },
       items: [{ name: "grain", tag: "GRAI", amount: 6 }],
       itemChanges: [carried({})]
     });
@@ -515,7 +548,7 @@ describe("the column popups", () => {
 
   it("names the causes and no N2 sentence when the mode moved too", () => {
     const popup = movementPopup({
-      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk" },
+      movement: { status: "overloaded", load: 90, fly: 0, ride: 70, walk: 85, capacityMode: "walk", swim: { kind: "absent" } },
       items: [{ name: "grain", tag: "GRAI", amount: 6 }],
       itemChanges: [carried({})],
       previewChanges: [{ field: "movement", original: "Riding" }]
@@ -525,7 +558,7 @@ describe("the column popups", () => {
 
   it("keeps the shared sentence for a month that moved nothing", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" }
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } }
     });
     expect(popup.notes).toContain("Nothing this month changes this.");
     expect(popup.notes).not.toContain("Its load changed this month, but not the mode it travels in.");
@@ -533,7 +566,7 @@ describe("the column popups", () => {
 
   it("warns when an order this month could not be counted", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } },
       uncounted: ["BUY 1 ZZZZ"]
     });
     expect(popup.warning).toBe(
@@ -543,7 +576,7 @@ describe("the column popups", () => {
 
   it("warns when a cast's yield is still a range", () => {
     const popup = movementPopup({
-      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk" },
+      movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } },
       created: [{ fewest: 1, most: 3, tag: "MITH", summoned: false }]
     });
     expect(popup.warning).toBe(
@@ -553,7 +586,7 @@ describe("the column popups", () => {
 
   it("the hidden sentence names the capacity that decides", () => {
     const popup = movementPopup({
-      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride" }
+      movement: { status: "ride", load: 60, fly: 0, ride: 70, walk: 85, capacityMode: "ride", swim: { kind: "absent" } }
     });
     expect(popupAsText(popup)).toContain("can carry riding 70, which is the one that decides.");
   });

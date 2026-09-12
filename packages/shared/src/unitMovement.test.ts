@@ -8,7 +8,8 @@ const movement = (status: UnitMovement["status"]): UnitMovement => ({
   fly: 0,
   ride: 70,
   walk: 85,
-  capacityMode: "ride"
+  capacityMode: "ride",
+  swim: { kind: "absent" }
 });
 
 describe("presentUnitMovement", () => {

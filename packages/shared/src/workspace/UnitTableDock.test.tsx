@@ -68,7 +68,8 @@ const WALKING: UnitMovement = {
   fly: 0,
   ride: 0,
   walk: 15,
-  capacityMode: "walk"
+  capacityMode: "walk",
+  swim: { kind: "absent" }
 };
 
 describe("the units pane on an empty hex", () => {

@@ -214,12 +214,44 @@ export function parseMovementRules(html: string): MovementRules {
     /(\w+?)s count as water for this purpose, and a region bordering one counts as its shore/i
   );
 
+  // New Age lets units swim; New Origins has no such paragraph. `newage trident
+  // rules/movement_normal`: "Swimming units are restricted to coastal ocean regions and lakes.
+  // Deep ocean regions cannot be entered by swimming units, with one exception: a unit carried by
+  // sea creatures able to bear its whole weight rides out into deep water safely." A miss means
+  // this world has no swimming at all, which is not the same as a world whose swimmers can carry
+  // nothing - hence a bare match rather than requireMatch.
+  const swimming = text.match(
+    new RegExp(
+      "Swimming units are restricted to coastal (\\w+) regions and (\\w+?)s\\. " +
+        "Deep \\1 regions cannot be entered by swimming units, with one exception: " +
+        "a unit carried by sea creatures able to bear its whole weight" +
+        // The tail is optional on purpose. The rule itself is in the first two sentences, and a
+        // miss here is silent - it would read as "this world has no swimming at all" - so
+        // requiring the fleet exemption would turn a reworded last sentence into a non-swimming
+        // world. Captured when present so `provenance.swimming` carries the whole paragraph,
+        // including the exemption; `committed.test.ts` and `rules.test.ts` assert it is there.
+        "(?: rides out into deep water safely\\. Ships are not affected by this restriction\\.)?",
+      "i"
+    )
+  );
+
   // "A coastal region is defined as a non-ocean region with at least one adjacent ocean region."
   const coastal = requireMatch(
     text,
     "sailing",
     /A coastal region is defined as a non-ocean region with at least one adjacent ocean region/i
   );
+
+  // A bare-word capture that disagrees with the terrain the water rule itself named is the
+  // tell-tale of a mis-capture, the same one `Ruleset::validate` already refuses for the water
+  // terrains. Refuse it rather than half-believing it.
+  if (swimming && swimming[1].toLowerCase() !== ocean[1].toLowerCase()) {
+    throw new RulesetScrapeError(
+      `could not read swimming: the swimming rule restricts ${swimming[1].toLowerCase()} ` +
+        `regions, which the water rule does not name - it names ${ocean[1].toLowerCase()}. ` +
+        `The page has probably been reworded; update the pattern rather than guessing a value.`
+    );
+  }
 
   const walk = toNumber(points[1]);
   const ride = toNumber(points[2]);
@@ -306,12 +338,16 @@ export function parseMovementRules(html: string): MovementRules {
       landNeedsCoast: true,
       terrain: ocean[1].toLowerCase()
     },
+    swimming: swimming
+      ? { unrestricted: [swimming[2].toLowerCase()], deepNeedsSeaCreatures: true }
+      : null,
     provenance: {
       movementPoints: sentence(points),
       terrainCosts: sentence(terrain.match),
       road: sentence(road),
       ocean: alsoWater ? `${sentence(ocean)}. ${sentence(alsoWater)}` : sentence(ocean),
-      sailing: `${sentence(sailingCost)}. ${sentence(coastal)}`
+      sailing: `${sentence(sailingCost)}. ${sentence(coastal)}`,
+      swimming: swimming ? sentence(swimming) : ""
     }
   };
 }

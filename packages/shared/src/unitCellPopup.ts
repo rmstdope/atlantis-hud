@@ -818,7 +818,24 @@ function movementBody(unit: PreviewedUnit): Body {
       label,
       value: movement[mode].toLocaleString(),
       stress: mode === present.active ? ("deciding" as const) : ("aside" as const)
-    }))
+    })),
+    // `CAPACITY_LINES` is keyed by `UnitMovementMode`, which has no `swim` member, so the fourth
+    // capacity is appended separately - and omitted entirely, not blanked, in a world with no
+    // swimming rule.
+    ...(movement.swim.kind === "absent"
+      ? []
+      : [
+          {
+            label: "can carry swimming",
+            value:
+              movement.swim.kind === "stated"
+                ? movement.swim.capacity.toLocaleString()
+                : "not stated",
+            // Never `deciding`: `capacityMode` is the mode the unit's speed rests on, and
+            // swimming is not a speed.
+            stress: "aside" as const
+          }
+        ])
   ];
   const causes = movementCauses(unit);
   const notes: string[] = [];

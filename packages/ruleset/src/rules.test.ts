@@ -140,6 +140,50 @@ describe("parseMovementRules", () => {
     expect(origins.provenance.ocean).not.toContain("count as water for this purpose");
   });
 
+  /**
+   * `newage trident rules/movement_normal`: "Swimming units are restricted to coastal ocean
+   * regions and lakes. Deep ocean regions cannot be entered by swimming units, with one
+   * exception: a unit carried by sea creatures able to bear its whole weight rides out into deep
+   * water safely. Ships are not affected by this restriction." New Origins' movement section
+   * carries no such paragraph, so that world has no swimming at all - which is not the same as a
+   * world whose swimmers can carry nothing, hence `null` rather than an empty rule.
+   */
+  it("reads New Age's swimming rule", () => {
+    const trident = parseMovementRules(TRIDENT_RULES_HTML);
+
+    expect(trident.swimming).toEqual({ unrestricted: ["lake"], deepNeedsSeaCreatures: true });
+    // The whole paragraph, including the fleet exemption `ah-g9sf.7.2` has to get right.
+    expect(trident.provenance.swimming).toContain(
+      "Swimming units are restricted to coastal ocean regions and lakes"
+    );
+    expect(trident.provenance.swimming).toContain("Ships are not affected by this restriction");
+
+    const origins = parseMovementRules(RULES_HTML);
+
+    expect(origins.swimming).toBeNull();
+    expect(origins.provenance.swimming).toBe("");
+  });
+
+  /**
+   * The restricted terrain is captured with a bare-word match, so a reworded page can put any word
+   * there. Disagreeing with the terrain the water rule itself named is the tell-tale of a
+   * mis-capture, and the pattern is to be updated rather than the value guessed.
+   */
+  it("refuses a swimming rule restricting a terrain the water rule does not name", () => {
+    // The fixture is the page verbatim and wraps mid-sentence, so the two halves of the terrain
+    // name are reworded separately.
+    const reworded = TRIDENT_RULES_HTML.replace(
+      "restricted to coastal ocean regions and lakes. Deep",
+      "restricted to coastal marsh regions and lakes. Deep"
+    ).replace(
+      "ocean regions cannot be entered by swimming",
+      "marsh regions cannot be entered by swimming"
+    );
+    expect(reworded).not.toBe(TRIDENT_RULES_HTML);
+
+    expect(() => parseMovementRules(reworded)).toThrow(RulesetScrapeError);
+  });
+
   it("records the sentence every value came from", () => {
     const rules = parseMovementRules(RULES_HTML);
 

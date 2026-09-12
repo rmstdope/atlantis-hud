@@ -127,6 +127,29 @@ pub struct OceanRule {
     pub also_water: Vec<String>,
 }
 
+/// What a world lets a unit do in the water under its own power.
+///
+/// `newage trident rules/movement_normal`: "Swimming units are restricted to coastal ocean
+/// regions and lakes. Deep ocean regions cannot be entered by swimming units, with one
+/// exception: a unit carried by sea creatures able to bear its whole weight rides out into deep
+/// water safely. Ships are not affected by this restriction." New Origins' movement section
+/// carries no such paragraph, so its ruleset has no swimming rule at all - which is not the
+/// same as a world whose swimmers can carry nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SwimmingRule.ts")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SwimmingRule {
+    /// Water a swimmer may enter whatever its depth, lower-cased. The rule names lakes. The
+    /// ocean is deliberately absent: it is open to a swimmer only where it is coastal.
+    pub unrestricted: Vec<String>,
+    /// Whether deep water is closed except to a unit its sea creatures can bear entire.
+    pub deep_needs_sea_creatures: bool,
+}
+
 /// What a fleet pays to enter a region, and where it may go.
 ///
 /// A fleet's own rule rather than another entry on the terrain premium: "For a fleet to enter any
@@ -163,6 +186,11 @@ pub struct Provenance {
     pub road: String,
     pub ocean: String,
     pub sailing: String,
+    /// The swimming paragraph, or `""` in a world that has no swimming rule - which is the honest
+    /// provenance for a rule that is not there. `#[serde(default)]` for the same reason as
+    /// [`MovementRules::swimming`].
+    #[serde(default)]
+    pub swimming: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -178,6 +206,17 @@ pub struct MovementRules {
     pub road: RoadRule,
     pub ocean: OceanRule,
     pub sailing: SailingRule,
+    /// The swimming rule, or `None` in a world that has none.
+    ///
+    /// `#[serde(default)]` because this struct carries `deny_unknown_fields` and a reader may
+    /// still hold a ruleset written before this field existed - a cached one in a player's
+    /// browser, or a stale built ruleset artefact under a shell's `dist` directory.
+    ///
+    /// (Written without a `dist` glob on purpose: ts-rs copies a doc comment verbatim into a
+    /// TypeScript block comment, so a `*` followed by a `/` in one closes that comment early and
+    /// the generated file will not parse.)
+    #[serde(default)]
+    pub swimming: Option<SwimmingRule>,
     pub provenance: Provenance,
 }
 
@@ -1077,6 +1116,30 @@ impl Ruleset {
             }
         }
 
+        if let Some(swimming) = &self.movement.swimming {
+            for water in &swimming.unrestricted {
+                let water = water.trim();
+                if water.is_empty() {
+                    return Err(RulesetError::Unusable(
+                        "the swimming rule names a blank terrain, so no hex could be recognised \
+                         as water a swimmer may enter"
+                            .to_string(),
+                    ));
+                }
+
+                // The scraper captures these names with bare-word matches too. A swimmer
+                // restricted to *coastal* ocean cannot also be unrestricted in the ocean, so that
+                // combination is a mis-capture rather than a rule.
+                if water.eq_ignore_ascii_case(self.movement.ocean.terrain.trim()) {
+                    return Err(RulesetError::Unusable(format!(
+                        "{water} is named as water a swimmer may enter whatever its depth and \
+                         also as the terrain swimmers are restricted to the coast of, so the \
+                         swimming rule was probably misread"
+                    )));
+                }
+            }
+        }
+
         if self.movement.sailing.flat_cost == 0 {
             return Err(RulesetError::Unusable(
                 "the fleet entry cost is zero, which would make a sea route free".to_string(),
@@ -1153,6 +1216,12 @@ impl Ruleset {
     #[must_use]
     pub fn water_needs_a_ship(&self) -> bool {
         self.movement.ocean.requires_ship_unless_flying
+    }
+
+    /// The swimming rule this world plays by, or `None` where units cannot swim at all.
+    #[must_use]
+    pub fn swimming(&self) -> Option<&SwimmingRule> {
+        self.movement.swimming.as_ref()
     }
 
     /// Whether a flier that ends a month over water drowns.

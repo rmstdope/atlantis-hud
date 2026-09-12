@@ -71,7 +71,8 @@ const RIDING: UnitMovement = {
   fly: 0,
   ride: 70,
   walk: 85,
-  capacityMode: "ride"
+  capacityMode: "ride",
+  swim: { kind: "absent" }
 };
 
 describe("naming game data in the unit pane", () => {
@@ -260,6 +261,52 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
     expect(html).toContain("Fly");
     expect(html).toContain("70");
     expect(html).toContain("85");
+    expect(html).toContain("The load is 60. Ride and Walk can carry it.");
+  });
+
+  /**
+   * `newage trident rules/movement_normal` lets a unit swim, so a swimming world gets a fourth
+   * capacity tile. Swim is never the emphasised tile: the emphasis names the fastest available
+   * movement, and swimming is not a speed.
+   */
+  it("shows a Swim tile and names Swim in the sentence", () => {
+    const walker = { ...RIDING, status: "walk", capacityMode: "walk", load: 40, ride: 0, walk: 60 } as const;
+
+    const enough = draw({
+      unit: aReportUnit({ movement: { ...walker, swim: { kind: "stated", capacity: 60 } } })
+    });
+
+    expect(enough).toContain("Swim");
+    expect(enough).toContain("60");
+    expect(enough).toContain("The load is 40. Walk and Swim can carry it.");
+
+    // A swimming capacity below the load drops out of the sentence, exactly as Fly and Ride do,
+    // while the tile still reports the figure.
+    const notEnough = draw({
+      unit: aReportUnit({ movement: { ...walker, swim: { kind: "stated", capacity: 20 } } })
+    });
+
+    expect(notEnough).toContain("Swim");
+    expect(notEnough).toContain("20");
+    expect(notEnough).toContain("The load is 40. Walk can carry it.");
+
+    // A world with no swimming rule shows no Swim at all - absent, not zero.
+    const absent = draw({ unit: aReportUnit({ movement: { ...RIDING, swim: { kind: "absent" } } }) });
+
+    expect(absent).not.toContain("Swim");
+    expect(absent).toContain("The load is 60. Ride and Walk can carry it.");
+  });
+
+  /**
+   * "This world has no swimming" and "nothing says how much this unit can carry doing it" are two
+   * different answers, and only the second is a gap in the report worth marking.
+   */
+  it("reads not stated when the report does not say", () => {
+    const html = draw({ unit: aReportUnit({ movement: { ...RIDING, swim: { kind: "unstated" } } }) });
+
+    expect(html).toContain("Swim");
+    expect(html).toContain("not stated");
+    expect(html).toContain("text-warn");
     expect(html).toContain("The load is 60. Ride and Walk can carry it.");
   });
 
