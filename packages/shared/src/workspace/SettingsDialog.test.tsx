@@ -51,6 +51,24 @@ describe("the warnings tab's coverage of the core's codes", () => {
   });
 
   /**
+   * `ah-7ale.2.2.1`. The words, the heading and the position are the navigator's decision, recorded
+   * in the family's agreed experience: a Transport group of its own, last, because no existing
+   * group fits a shipment the game will not carry.
+   */
+  it("offers the transport advisory in a Transport group", () => {
+    const transport = WARNING_GROUPS[WARNING_GROUPS.length - 1];
+
+    expect(transport?.heading).toBe("Transport");
+    expect(transport?.entries).toEqual([
+      {
+        code: "transport-out-of-reach",
+        title: "Shipments the game will not carry",
+        description: "A TRANSPORT order whose target is too far away, or too far to measure."
+      }
+    ]);
+  });
+
+  /**
    * The words and the position are the navigator's decision: a fourth row under Sailing, after the
    * land-to-land check it is nearest in kind, so either can be silenced on its own.
    */

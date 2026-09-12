@@ -469,6 +469,7 @@ pub mod commands {
         ruleset_json: Option<&str>,
         raw_report: Option<&str>,
         disabled_codes: Option<Vec<String>>,
+        map_json: Option<&str>,
     ) -> OrderValidationResult {
         // Absent means the conservative default: `hex-unguarded` off, same as the bool this
         // replaced defaulted to `false` (do not warn). Reuses `OrderCheckOptions::default()`
@@ -477,7 +478,12 @@ pub mod commands {
         let disabled = disabled_codes
             .map(|codes| codes.into_iter().collect())
             .unwrap_or_else(|| OrderCheckOptions::default().disabled);
-        let options = OrderCheckOptions { disabled };
+        // A shape that cannot be read is treated as no shape at all: bad config, not bad orders,
+        // exactly as an unusable ruleset already is (`ah-7ale.2.2.1`).
+        let geometry = map_json
+            .and_then(|json| atlantis_hud_core::movement::graph::geometry_from_json(json).ok())
+            .flatten();
+        let options = OrderCheckOptions { disabled, geometry };
         let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
             let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
             let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
@@ -2393,7 +2399,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let validation = command_validate_orders("FLY 1 2", None, None, Some(Vec::new()));
+        let validation = command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None);
         assert_eq!(
             validation.diagnostics,
             vec![atlantis_hud_core::OrderDiagnostic {
@@ -2439,8 +2445,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .collect();
 
         assert_eq!(
-            command_validate_orders(orders, None, None, None),
-            command_validate_orders(orders, None, None, Some(default_disabled))
+            command_validate_orders(orders, None, None, None, None),
+            command_validate_orders(orders, None, None, Some(default_disabled), None)
         );
     }
 

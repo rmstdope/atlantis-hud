@@ -702,11 +702,20 @@ pub fn validate_orders_state(
     ruleset_json: Option<String>,
     raw_report: Option<String>,
     disabled_codes: Option<Vec<String>>,
+    map_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    // A shape that cannot be read is treated as no shape at all, which silences the one check that
+    // measures a distance rather than failing the whole validation: bad config, not bad orders -
+    // exactly how an unusable ruleset is already treated here (`ah-7ale.2.2.1`).
+    let geometry = map_json
+        .as_deref()
+        .and_then(|json| atlantis_hud_core::movement::graph::geometry_from_json(json).ok())
+        .flatten();
     let options = OrderCheckOptions {
         disabled: disabled_codes
             .map(|codes| codes.into_iter().collect())
             .unwrap_or_else(|| OrderCheckOptions::default().disabled),
+        geometry,
     };
 
     // Both the ruleset and the report come from the cache. This runs every time the player stops

@@ -770,6 +770,7 @@ mod tests {
     fn a_finding_that_belongs_to_no_line_carries_none_rather_than_a_pretend_one() {
         let options = OrderCheckOptions {
             disabled: std::collections::BTreeSet::new(),
+            geometry: None,
         };
         let parsed = report::parse_report_full(MINI_ORDERS_REPORT);
         let result = validate_turn("unit 100\n@work\n", None, Some(&parsed), options);

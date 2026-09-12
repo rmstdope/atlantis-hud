@@ -90,8 +90,17 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rawOrders: string,
       rulesetJson: string | null,
       rawReport: string | null,
-      disabledCodes: readonly string[]
-    ) => ({ diagnostics: [], silver: [], rawOrders, rulesetJson, rawReport, disabledCodes }),
+      disabledCodes: readonly string[],
+      mapJson: string | null
+    ) => ({
+      diagnostics: [],
+      silver: [],
+      rawOrders,
+      rulesetJson,
+      rawReport,
+      disabledCodes,
+      mapJson
+    }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
     order_vocabulary_state: () => ["ALL", "MOVE", "SILV"],
     order_argument_completions_state: () => [],
@@ -487,14 +496,15 @@ describe("web core adapter", () => {
     // checks that read the turn depend on, and an adapter that dropped them would still return a
     // perfectly well-shaped answer with half the checks silently not run.
     expect(
-      await adapter.validateOrders("MOVE R1 R2", null, "the report", ["hex-unguarded"])
+      await adapter.validateOrders("MOVE R1 R2", null, "the report", ["hex-unguarded"], "{}")
     ).toEqual({
       diagnostics: [],
       silver: [],
       rawOrders: "MOVE R1 R2",
       rulesetJson: null,
       rawReport: "the report",
-      disabledCodes: ["hex-unguarded"]
+      disabledCodes: ["hex-unguarded"],
+      mapJson: "{}"
     });
     expect(await adapter.orderCommands(null)).toEqual(["GIVE", "MOVE", "WORK"]);
   });

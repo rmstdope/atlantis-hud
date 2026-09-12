@@ -250,7 +250,8 @@ describe("merging an allied report", () => {
         raw_orders: "@work",
         ruleset_json: null,
         raw_report: null,
-        disabled_codes: null
+        disabled_codes: null,
+        map_json: null
       }
     ]);
   });
@@ -455,8 +456,15 @@ describe("createCoreClient", () => {
     await client.validateOrders("orders", null, null, { disabledCodes: ["hex-unguarded"] });
     await client.validateOrders("orders", null);
 
-    expect(fake.validateOrders).toHaveBeenNthCalledWith(1, "orders", null, null, ["hex-unguarded"]);
-    expect(fake.validateOrders).toHaveBeenNthCalledWith(2, "orders", null, null, null);
+    expect(fake.validateOrders).toHaveBeenNthCalledWith(
+      1,
+      "orders",
+      null,
+      null,
+      ["hex-unguarded"],
+      null
+    );
+    expect(fake.validateOrders).toHaveBeenNthCalledWith(2, "orders", null, null, null, null);
   });
 
   it("resolves with exactly what the adapter resolved", async () => {
