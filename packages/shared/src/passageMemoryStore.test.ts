@@ -150,6 +150,32 @@ describe("scanStoredTurns (ah-3u7c.2.1)", () => {
     expect(knownPassagesOf(memory)).toEqual([]);
   });
 
+  it("does not walk the game at all while the ruleset is still fetching", async () => {
+    const client = fakeClient([
+      { factionId: "1", turn: 55, report: standingIn(SHAFT_HEX, "plain"), draft: "unit 5\nMOVE IN\n" },
+      { factionId: "1", turn: 56, report: standingIn(UNDERWORLD, "cavern"), draft: null }
+    ]);
+
+    const { memory, unreadTurns } = await scanStoredTurns(client, game(), null);
+
+    expect(knownPassagesOf(memory)).toEqual([]);
+    expect(unreadTurns).toBe(0);
+    expect(client.listImportedTurns).not.toHaveBeenCalled();
+    expect(client.passageClaims).not.toHaveBeenCalled();
+  });
+
+  it("counts only the report as unread when the saved orders will not load", async () => {
+    const client = fakeClient([
+      { factionId: "1", turn: 55, report: standingIn(SHAFT_HEX, "plain"), draft: "unit 5\nMOVE IN\n" },
+      { factionId: "1", turn: 56, report: standingIn(UNDERWORLD, "cavern"), draft: null }
+    ]);
+    (client.loadOrderDraft as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("nope"));
+
+    const { unreadTurns } = await scanStoredTurns(client, game(), "{}");
+
+    expect(unreadTurns).toBe(0);
+  });
+
   it("makes no claims for a turn with no saved orders", async () => {
     const client = fakeClient([
       { factionId: "1", turn: 55, report: standingIn(SHAFT_HEX, "plain"), draft: null },
@@ -170,6 +196,7 @@ describe("learnLatest (ah-3u7c.2.1)", () => {
     const client = fakeClient([
       { factionId: "1", turn: 55, report: standingIn(SHAFT_HEX, "plain"), draft: "unit 5\nMOVE IN\n" }
     ]);
+    usePassageMemoryStore.setState({ gameId: "aug-2026", status: "ready" });
 
     await usePassageMemoryStore
       .getState()
@@ -180,6 +207,20 @@ describe("learnLatest (ah-3u7c.2.1)", () => {
     expect(knownPassagesOf(usePassageMemoryStore.getState().memory)).toEqual([
       expect.objectContaining({ destination: UNDERWORLD, learnedInTurn: 56 })
     ]);
+  });
+
+  it("writes nothing into a store the game was closed on", async () => {
+    const client = fakeClient([
+      { factionId: "1", turn: 55, report: standingIn(SHAFT_HEX, "plain"), draft: "unit 5\nMOVE IN\n" }
+    ]);
+
+    // `clear()` has run: the workspace holds no game, and a call still in flight must not set one.
+    await usePassageMemoryStore
+      .getState()
+      .learnLatest(client as CoreClient, game(), standingIn(UNDERWORLD, "cavern"), 56, "{}");
+
+    expect(usePassageMemoryStore.getState().gameId).toBeNull();
+    expect(knownPassagesOf(usePassageMemoryStore.getState().memory)).toEqual([]);
   });
 
   it("learns nothing for the first turn of a game", async () => {

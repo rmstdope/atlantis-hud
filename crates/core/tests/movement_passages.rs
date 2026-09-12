@@ -20,6 +20,8 @@ fn report_with_a_shaft() -> String {
     text.push_str("+ Shaft [1] : Shaft, contains an inner location.\n");
     text.push_str("  * Digger (5), Foo (1), leader [LEAD]. Weight: 10.\n");
     text.push_str("  - Stranger (9), Bar (2), leader [LEAD]. Weight: 10.\n");
+    text.push_str("+ Ship [2] : Galley; Load: 0/100; Sailors: 0/4; MaxSpeed: 4.\n");
+    text.push_str("  * Passenger (7), Foo (1), leader [LEAD]. Weight: 10.\n");
     text
 }
 
@@ -49,6 +51,22 @@ fn an_enter_by_number_before_the_passage_is_still_claimed() {
 
     assert_eq!(claimed.len(), 1);
     assert_eq!(claimed[0].structure_id, "1");
+}
+
+/// A direction followed by a structure number in one route names a structure again, so
+/// `first_passage` hands back a `structure_id` even though the unit has left the hex the report
+/// found it in - and only the check on the steps *before* the passage rejects it.
+#[test]
+fn a_step_before_an_entered_structure_is_not_claimed() {
+    assert_eq!(claims("unit 5\nMOVE N 1 IN\n"), vec![]);
+}
+
+/// A fleet holds no inner passage, and a passenger writes no `SAIL` of its own - so without the
+/// report's own `contains an inner location` clause, an `IN` aboard a hull that sails away would
+/// write the hull's next hex down as the far side of the fleet.
+#[test]
+fn a_structure_with_no_inner_location_is_not_claimed() {
+    assert_eq!(claims("unit 7\nMOVE IN\n"), vec![]);
 }
 
 /// A direction before the `IN` leaves the hex, so the passage is entered somewhere this report

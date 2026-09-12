@@ -105,13 +105,15 @@ export const usePassageMemoryStore = create<PassageMemoryState>()((set, get) => 
       return;
     }
 
-    set((state) => ({
-      gameId: state.gameId ?? gameId,
-      memory:
-        state.gameId === null || state.gameId === gameId
-          ? withCrossings(state.memory, claims, after, afterTurn)
-          : state.memory
-    }));
+    // Only into the store this game already owns. `clear()` leaves `gameId` null, so accepting
+    // null here would let a call still in flight when the game closed set it back and write that
+    // game's memory into an empty workspace - the very thing the module header says persistence
+    // was avoided to prevent.
+    set((state) =>
+      state.gameId === gameId
+        ? { memory: withCrossings(state.memory, claims, after, afterTurn) }
+        : state
+    );
   },
 
   clear: () => {
@@ -176,19 +178,22 @@ export async function scanStoredTurns(
         memory = withCrossings(memory, held.claims, after, key.turnNumber);
       }
 
-      const draft = await client.loadOrderDraft(
-        game.databasePath,
-        gameId,
-        key.factionId,
-        key.turnNumber
-      );
-      const claims =
-        draft === null
-          ? []
-          : await client.passageClaims(record.rawReport, draft.orderText, rulesetJson);
-      pending.set(key.factionId, { turn: key.turnNumber, claims });
+      // The orders half is its own failure: the turn itself was read, so a draft that will not
+      // load leaves this turn answering the one before it and simply claiming nothing of its own.
+      // Counting it as unread would say the report could not be read, which is not what happened.
+      pending.set(key.factionId, {
+        turn: key.turnNumber,
+        claims: await claimsFor(
+          client,
+          game,
+          key.factionId,
+          key.turnNumber,
+          record.rawReport,
+          rulesetJson
+        )
+      });
     } catch (error) {
-      console.warn(`could not read turn ${key.turnNumber}'s passage crossings`, error);
+      console.warn(`could not read turn ${key.turnNumber}'s report`, error);
       unreadTurns += 1;
       pending.delete(key.factionId);
     }
@@ -220,13 +225,39 @@ async function claimsOfTurn(
     if (record === null) {
       return [];
     }
-    const draft = await client.loadOrderDraft(game.databasePath, gameId, factionId, turnNumber);
+    return await claimsFor(client, game, factionId, turnNumber, record.rawReport, rulesetJson);
+  } catch (error) {
+    console.warn(`could not read turn ${turnNumber}'s passage crossings`, error);
+    return [];
+  }
+}
+
+/**
+ * One turn's claims, given its report text already in hand. Never rejects.
+ *
+ * A turn with no saved orders claims nothing, and asks the core nothing.
+ */
+async function claimsFor(
+  client: PassageClient,
+  game: OpenedGame,
+  factionId: string,
+  turnNumber: number,
+  rawReport: string,
+  rulesetJson: string
+): Promise<PassageClaim[]> {
+  try {
+    const draft = await client.loadOrderDraft(
+      game.databasePath,
+      game.manifest.metadata.gameId,
+      factionId,
+      turnNumber
+    );
     if (draft === null) {
       return [];
     }
-    return await client.passageClaims(record.rawReport, draft.orderText, rulesetJson);
+    return await client.passageClaims(rawReport, draft.orderText, rulesetJson);
   } catch (error) {
-    console.warn(`could not read turn ${turnNumber}'s passage crossings`, error);
+    console.warn(`could not read turn ${turnNumber}'s ordered passage crossings`, error);
     return [];
   }
 }
