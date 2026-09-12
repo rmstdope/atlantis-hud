@@ -12,11 +12,29 @@ import {
   ungiveableItemsOf
 } from "./data";
 import { preformattedText } from "./html";
+import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
 
 const DATA_HTML = readFileSync(
   fileURLToPath(new URL("../../../tests/fixtures/ruleset/neworigins-data.html", import.meta.url)),
   "utf8"
 );
+
+/** The New Age worlds serve a JSON database rather than a data page; the scraper renders one. */
+function newAgeDataPageFor(world: string): string {
+  return newAgeDataPage(
+    parseNewAgeDatabase(
+      readFileSync(
+        fileURLToPath(
+          new URL(`../../../tests/fixtures/ruleset/newage-${world}-database.json`, import.meta.url)
+        ),
+        "utf8"
+      )
+    )
+  );
+}
+
+const TRIDENT_DATA_HTML = newAgeDataPageFor("trident");
+const ARCANUM_DATA_HTML = newAgeDataPageFor("arcanum");
 
 /**
  * The item reference is what finally lets a unit line be split into men and equipment, and what
@@ -1478,6 +1496,38 @@ describe("parseSkillReference", () => {
  * Every expected value below is quoted from the fixture's own entry.
  */
 describe("parseBuildingReference", () => {
+  /**
+   * The two New Age worlds price a canal's through-pass in each grade's own entry -
+   * `newage/trident data/Canal` "Passage through a stone canal costs 2 movement points",
+   * `newage/trident data/Mystic Canal` "Passage through a mystic canal costs 1 movement point".
+   * New Origins has no canal at all, in its rules or its catalogue.
+   */
+  it("prices a pass through each grade of canal", () => {
+    for (const page of [TRIDENT_DATA_HTML, ARCANUM_DATA_HTML]) {
+      const buildings = parseBuildingReference(page);
+
+      expect(buildings.CANAL.canalCost).toBe(2);
+      expect(buildings["MYSTIC CANAL"].canalCost).toBe(1);
+      expect(buildings.TOWER.canalCost).toBeUndefined();
+    }
+
+    expect(parseBuildingReference(DATA_HTML).CANAL).toBeUndefined();
+  });
+
+  /**
+   * A structure claiming to bypass the isthmus restriction and never pricing the pass would reach
+   * the core as a canal of unknown cost, which is a rule modelled by guesswork.
+   */
+  it("refuses a canal whose pass has no price", () => {
+    const html =
+      "<pre>Object reports:\n\n" +
+      "Ditch: This is a building. Units may enter this structure. This canal allows ships to " +
+      "sail through this coastal land region in any direction, bypassing the isthmus " +
+      "restriction.\n</pre>";
+
+    expect(() => parseBuildingReference(html)).toThrow(RulesetScrapeError);
+  });
+
   it("reads a building's size from the men it protects", () => {
     const buildings = parseBuildingReference(DATA_HTML);
 

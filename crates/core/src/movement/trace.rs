@@ -12,12 +12,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::graph::MapKnowledge;
+use crate::movement::graph::{Direction, MapKnowledge};
 use crate::movement::mode::{fleet_flies, fleet_of, fleet_sailing, mobility, Mobility};
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{
-    base_terrain_cost, blocks, refused_by_sailing_step, split_into_months, step_cost, Hull,
-    Journey, MonthLeg, RouteStep,
+    base_terrain_cost, blocks, constrains_departure, leaving_land, refused_by_sailing_step,
+    split_into_months, step_cost, Hull, Isthmus, Journey, MonthLeg, RouteStep,
 };
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::ReportUnit;
@@ -100,6 +100,10 @@ pub fn trace_move(
     let mut terrain = origin.terrain.clone();
     let mut route = Vec::new();
     let mut blocked_from = None;
+    // `None` for the hex the order starts in: "Ships ending their movement in a land hex may sail
+    // out along any side connecting to water", so the first step is a departure, never a
+    // through-pass.
+    let mut entered_by: Option<Direction> = None;
 
     // `IN` is travel through an inner passage to another region (`rules/move`, 4), and no report
     // anywhere says which region that is - so everything ordered after it is drawn nowhere rather
@@ -131,7 +135,7 @@ pub fn trace_move(
         // empty months say the timing is unknowable. `step_cost` refuses both undescribed hexes
         // and terrain the unit may not cross; either way the trace costs the terrain at face
         // value instead, because the order is drawn as written, not as permitted.
-        let (cost, road) = journey.map_or((0, false), |journey| {
+        let (mut cost, road) = journey.map_or((0, false), |journey| {
             step_cost(map, ruleset, journey, position, *direction, next).unwrap_or_else(|| {
                 (
                     base_terrain_cost(ruleset, journey.mode, &next_terrain),
@@ -151,6 +155,21 @@ pub fn trace_move(
             blocked_from = Some(route.len());
         }
 
+        // The side restriction, judged by the planner's own rule for the same reason. The premium
+        // is left where the rules charge it - on the edge that leaves the canal region - because
+        // nothing displays a traced step's cost; only `split_into_months` reads it.
+        let isthmus = journey.map_or(Isthmus::Free, |journey| {
+            leaving_land(
+                map, ruleset, journey, position, &terrain, entered_by, *direction,
+            )
+        });
+        if blocked_from.is_none() && isthmus == Isthmus::Refused {
+            blocked_from = Some(route.len());
+        }
+        if let Isthmus::ThroughCanal { cost: pass, .. } = &isthmus {
+            cost += pass.saturating_sub(ruleset.sailing_flat_cost());
+        }
+
         // The trace guesses wherever the map runs out, exactly as the planner does.
         let estimated = map.hex(next).is_none();
         route.push(RouteStep {
@@ -162,6 +181,12 @@ pub fn trace_move(
             estimated,
             // A guessed terrain is not a sighting, so an estimated step is never marked as water.
             over_water: !estimated && ruleset.is_water(&next_terrain),
+            // A typed order has no list of steps anywhere in the application, so a traced step
+            // never names a canal.
+            canal: None,
+        });
+        entered_by = journey.and_then(|journey| {
+            constrains_departure(ruleset, journey, &next_terrain).then_some(*direction)
         });
         position = next;
         terrain = next_terrain;

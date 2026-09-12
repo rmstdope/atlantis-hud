@@ -3,7 +3,7 @@
 //! Both are read out of the committed turn 71 report by hand, so a failure here is a disagreement
 //! with the report rather than with an earlier run.
 
-use atlantis_hud_core::movement::graph::{Direction, MapKnowledge};
+use atlantis_hud_core::movement::graph::{may_leave_land, Direction, MapKnowledge};
 use atlantis_hud_core::movement::mode::{mobility, unit_movement, Mobility};
 use atlantis_hud_core::movement::rules::MovementMode;
 use atlantis_hud_core::report::model::{
@@ -511,6 +511,63 @@ fn a_stale_sighting_contributes_roads_but_no_structures_to_planning() {
     );
 }
 
+/// A canal can be neither destroyed nor sailed away, so a stale sighting of one still counts -
+/// unlike the fort beside it. `structures` keeps its `Current`-only gate; `structures_ever_seen`
+/// is the superset the canal rule reads.
+#[test]
+fn a_stale_sighting_still_remembers_what_cannot_be_destroyed() {
+    use atlantis_hud_core::movement::graph::RememberedRegion;
+
+    let region = |tail: &str| {
+        parse_report_full(&format!(
+            "Foo (1) Report\n\n\
+             plain (11,11) in Nowhere, 10 peasants (orcs), $5.\n\n\
+             Exits:\n  North : plain (11,9) in Nowhere.\n\n\
+             + Northbound [1] : Road N.\n\
+             + Cartographers HQ [2] : Fort.\n{tail}"
+        ))
+        .regions[0]
+            .clone()
+    };
+
+    let current = parse_report_full("Atlantis Report For:\nFoo (1)\nDecember, Year 6\n");
+    let map = MapKnowledge::from_remembered(
+        &current,
+        &[RememberedRegion {
+            region: region("+ The Cut [3] : Canal.\n"),
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = map.hex(at(11, 11)).expect("known");
+    assert!(
+        hex.structures.is_empty(),
+        "only a current sighting may claim a fort is still standing"
+    );
+    assert!(
+        hex.structures_ever_seen
+            .iter()
+            .any(|standing| standing.base_kind == "Canal"),
+        "a canal seen once counts for ever"
+    );
+
+    // A current sighting fills both lists.
+    let seen_now = parse_report_full(&format!(
+        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n{}",
+        "plain (11,11) in Nowhere, 10 peasants (orcs), $5.\n\n         Exits:\n  North : plain (11,9) in Nowhere.\n\n         + The Cut [3] : Canal.\n"
+    ));
+    let fresh = MapKnowledge::from_remembered(&seen_now, &[]);
+    let hex = fresh.hex(at(11, 11)).expect("known");
+    assert!(hex
+        .structures
+        .iter()
+        .any(|standing| standing.base_kind == "Canal"));
+    assert!(hex
+        .structures_ever_seen
+        .iter()
+        .any(|standing| standing.base_kind == "Canal"));
+}
+
 /// `from_report` is the no-memory path, and resolving with an empty `remembered` slice describes
 /// exactly the same map - pinning that equivalence is what justifies `from_report` delegating to
 /// `from_remembered` rather than carrying its own copy of the same rules.
@@ -522,4 +579,57 @@ fn from_report_agrees_with_from_remembered_given_nothing_remembered() {
         MapKnowledge::from_report(&report),
         MapKnowledge::from_remembered(&report, &[])
     );
+}
+
+/// `rules/movement_sailing`: "Ships may not sail through single hex land masses and must leave via
+/// the same side they entered or a side adjacent to that one." Entering travelling `entered` means
+/// coming in through the side facing back the way it came, so the three sides refused are the
+/// direction of travel itself and the two beside it - and only one of those three is `opposite`.
+#[test]
+fn three_of_the_six_sides_are_refused_whichever_way_a_fleet_came_in() {
+    for entered in Direction::ALL {
+        let refused: Vec<Direction> = Direction::ALL
+            .into_iter()
+            .filter(|leaving| !may_leave_land(entered, *leaving))
+            .collect();
+        let allowed: Vec<Direction> = Direction::ALL
+            .into_iter()
+            .filter(|leaving| may_leave_land(entered, *leaving))
+            .collect();
+
+        assert_eq!(refused.len(), 3, "entering {entered:?}");
+        assert_eq!(allowed.len(), 3, "entering {entered:?}");
+
+        let mut expected_refused = vec![entered];
+        expected_refused.extend(entered.beside());
+        expected_refused.sort();
+        let mut got = refused.clone();
+        got.sort();
+        assert_eq!(got, expected_refused, "entering {entered:?}");
+
+        let mut expected_allowed = vec![entered.opposite()];
+        expected_allowed.extend(entered.opposite().beside());
+        expected_allowed.sort();
+        let mut got_allowed = allowed.clone();
+        got_allowed.sort();
+        assert_eq!(got_allowed, expected_allowed, "entering {entered:?}");
+    }
+}
+
+/// The case every agreed sentence is written against: a fleet sailing SE into a plain entered
+/// through the plain's NW side, so it may leave NW, N or SW and not SE, NE or S.
+#[test]
+fn the_refused_sides_after_sailing_southeast_are_the_mockups_three() {
+    for leaving in [Direction::Southeast, Direction::Northeast, Direction::South] {
+        assert!(
+            !may_leave_land(Direction::Southeast, leaving),
+            "{leaving:?} should be refused"
+        );
+    }
+    for leaving in [Direction::Northwest, Direction::North, Direction::Southwest] {
+        assert!(
+            may_leave_land(Direction::Southeast, leaving),
+            "{leaving:?} should be allowed"
+        );
+    }
 }

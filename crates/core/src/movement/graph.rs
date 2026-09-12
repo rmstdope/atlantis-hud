@@ -16,6 +16,19 @@ use serde::{Deserialize, Serialize};
 use crate::report::model::{Coordinate, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
 
+/// Whether a fleet that entered a land hex travelling `entered` may leave it travelling `leaving`.
+///
+/// `newage/trident rules/movement_sailing`: "Ships may not sail through single hex land masses and
+/// must leave via the same side they entered or a side adjacent to that one." Entering travelling
+/// `entered` means coming in through the side facing back the way it came, so the sides it may
+/// leave by are that one and the two beside it - which is every direction except `entered` itself
+/// and the two beside `entered`. Three of the six are refused, and only one of those three is the
+/// opposite side.
+#[must_use]
+pub fn may_leave_land(entered: Direction, leaving: Direction) -> bool {
+    leaving != entered && !entered.beside().contains(&leaving)
+}
+
 /// One of the six ways out of a hex.
 ///
 /// Ordered as a report writes them, which is also clockwise from north.
@@ -40,6 +53,23 @@ impl Direction {
         Self::Southwest,
         Self::Northwest,
     ];
+
+    /// The two sides either side of this one.
+    ///
+    /// Written out rather than computed from [`Direction::ALL`]'s clockwise order, as
+    /// [`Direction::opposite`] already is: the arithmetic would be one modulus away from silently
+    /// wrong, and a match cannot be.
+    #[must_use]
+    pub fn beside(self) -> [Self; 2] {
+        match self {
+            Self::North => [Self::Northwest, Self::Northeast],
+            Self::Northeast => [Self::North, Self::Southeast],
+            Self::Southeast => [Self::Northeast, Self::South],
+            Self::South => [Self::Southeast, Self::Southwest],
+            Self::Southwest => [Self::South, Self::Northwest],
+            Self::Northwest => [Self::Southwest, Self::North],
+        }
+    }
 
     /// The way back.
     #[must_use]
@@ -228,6 +258,14 @@ pub struct KnownHex {
     /// Every structure standing here, fleets included. Empty unless visited, for the same reason
     /// roads are: a report only lists structures for a hex the faction stood in.
     pub structures: Vec<Structure>,
+    /// Every structure any sighting described, however stale - the superset of `structures`, which
+    /// only a `Current` sighting fills.
+    ///
+    /// Named for its only legitimate use: something that can be neither destroyed nor sailed away,
+    /// which today means a canal. `structures` is what planning may count on being there *now*,
+    /// and a fort in a stale sighting may well have fallen; a canal in one has not.
+    #[serde(default)]
+    pub structures_ever_seen: Vec<Structure>,
     /// Units standing here, which is what the risk heuristic weighs. Empty unless visited.
     pub units: Vec<ReportUnit>,
     /// The turn this hex was last seen in, once sightings are carried across turns.
@@ -334,7 +372,7 @@ impl MapKnowledge {
         let mut map = Self::default();
 
         for hex in &known.hexes {
-            let (roads, structures, units) = match &hex.region {
+            let (roads, structures, structures_ever_seen, units) = match &hex.region {
                 Some(region) => {
                     let roads = region
                         .structures
@@ -347,9 +385,12 @@ impl MapKnowledge {
                     } else {
                         Vec::new()
                     };
-                    (roads, structures, region.units.clone())
+                    // Extracted before the `Current` gate, exactly as `roads` is: a canal in a
+                    // stale sighting is still there.
+                    let ever_seen = region.structures.clone();
+                    (roads, structures, ever_seen, region.units.clone())
                 }
-                None => (Vec::new(), Vec::new(), Vec::new()),
+                None => (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
             };
 
             map.hexes.insert(
@@ -361,6 +402,7 @@ impl MapKnowledge {
                     visited: hex.knowledge != HexKnowledge::Named,
                     roads,
                     structures,
+                    structures_ever_seen,
                     units,
                     last_seen_turn: hex.last_seen_turn,
                 },
@@ -402,6 +444,9 @@ impl MapKnowledge {
                         visited: false,
                         roads: Vec::new(),
                         structures: Vec::new(),
+                        // No region to read here, so a hex known only by an exit has no canal -
+                        // which is the agreed reading of an unexplored neck of land.
+                        structures_ever_seen: Vec::new(),
                         units: Vec::new(),
                         last_seen_turn: None,
                     });

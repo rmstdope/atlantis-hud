@@ -200,6 +200,8 @@ export function describeProblem(problem: RouteProblem): string {
       return `The crew cannot sail this fleet: it needs ${problem.required} levels of sailing, and the units aboard have ${problem.available}.`;
     case "sailNeedsOcean":
       return `A fleet may only sail where one end of the step is water, so it cannot go from ${problem.fromTerrain} (${problem.from.x},${problem.from.y}) straight to ${problem.toTerrain} (${problem.to.x},${problem.to.y}).`;
+    case "isthmusNeedsCanal":
+      return `A fleet must leave a land hex by the side it entered or one beside it, so it cannot sail straight through ${problem.terrain} (${problem.coordinate.x},${problem.coordinate.y}).`;
   }
 }
 
@@ -242,7 +244,11 @@ export function describeStep(step: RouteStep, mode: RoutePlan["mode"]): string {
     return `unexplored (${step.to.x},${step.to.y}) · ${step.cost} · estimated`;
   }
   const wet = step.overWater && mode === "fly" ? " · over water" : "";
-  return `${step.terrain} (${step.to.x},${step.to.y}) · ${step.cost}${step.road ? " · road" : ""}${wet}`;
+  // The suffix sits where `· road` sits. No sailing step is ever both - a fleet's step is never on
+  // a road and a canal region is land, so `overWater` is false - so the order is settled rather
+  // than load-bearing.
+  const through = step.canal ? ` · ${step.canal}` : "";
+  return `${step.terrain} (${step.to.x},${step.to.y}) · ${step.cost}${step.road ? " · road" : ""}${through}${wet}`;
 }
 
 function Route({ answer }: { answer: RoutePlanResponse }) {

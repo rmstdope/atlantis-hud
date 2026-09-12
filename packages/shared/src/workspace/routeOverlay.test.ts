@@ -15,7 +15,8 @@ function step(x: number, y: number) {
     cost: 1,
     road: false,
     estimated: false,
-    overWater: false
+    overWater: false,
+    canal: null
   };
 }
 

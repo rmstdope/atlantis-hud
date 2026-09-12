@@ -170,6 +170,14 @@ pub struct SailingRule {
     pub land_needs_coast: bool,
     /// The terrain a fleet sails freely across, lower-cased. Mirrors [`OceanRule::terrain`].
     pub terrain: String,
+    /// Whether this world restricts which side of a land region a fleet may leave by.
+    ///
+    /// `rules/movement_sailing`, in every committed world: "Ships may not sail through single hex
+    /// land masses and must leave via the same side they entered or a side adjacent to that one."
+    /// False only for a ruleset written before this was scraped, where the old behaviour stands
+    /// rather than a rule the file never stated.
+    #[serde(default)]
+    pub side_restricted: bool,
 }
 
 /// The sentence each scraped value came from, kept so a reader can check the scraper's work.
@@ -801,6 +809,17 @@ pub struct BuildingEntry {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub cost: Option<i64>,
+    /// Movement points a fleet spends passing through this structure, where an ordinary sailing
+    /// step costs [`SailingRule::flat_cost`]. `None` for everything that is not a canal, which is
+    /// every structure in New Origins.
+    ///
+    /// `newage/trident data/Canal`: "Passage through a stone canal costs 2 movement points";
+    /// `newage/trident data/Mystic Canal`: "Passage through a mystic canal costs 1 movement
+    /// point." `u32` rather than the `i64` its neighbours use because it is a movement cost and is
+    /// compared against `u32` costs everywhere; a negative one is not a number the page can state.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub canal_cost: Option<u32>,
     /// What it is built from, in the page's own order - a list because a structure can offer
     /// alternatives (`an Inn from 10 wood or stone`). `None` for anything no skill can build, and
     /// for a ruleset cached before ah-9js, which wrote a single `material` string this no longer
@@ -1146,6 +1165,15 @@ impl Ruleset {
             ));
         }
 
+        for (kind, building) in &self.buildings {
+            if building.canal_cost == Some(0) {
+                return Err(RulesetError::Unusable(format!(
+                    "{kind} is priced at zero movement points to pass, which would make a canal \
+                     free"
+                )));
+            }
+        }
+
         if self.risk.medium_ratio < 0.0 || self.risk.high_ratio < 0.0 {
             return Err(RulesetError::Unusable(
                 "a risk threshold is negative, which would make every hex dangerous".to_string(),
@@ -1240,6 +1268,12 @@ impl Ruleset {
     #[must_use]
     pub fn sailing_land_needs_coast(&self) -> bool {
         self.movement.sailing.land_needs_coast
+    }
+
+    /// Whether this world restricts which side of a land region a fleet may leave by.
+    #[must_use]
+    pub fn sailing_side_restricted(&self) -> bool {
+        self.movement.sailing.side_restricted
     }
 
     /// Movement points per month for a mode.
@@ -1464,6 +1498,16 @@ impl Ruleset {
             .as_deref()
             .filter(|list| !list.is_empty())?;
         Some((building.cost?, materials))
+    }
+
+    /// What a fleet spends passing through a structure of this kind, or `None` for anything that
+    /// is not a canal.
+    ///
+    /// Keyed upper-cased, as [`Ruleset::build_recipe`] and [`Ruleset::build_requirement`] already
+    /// are: a report writes `Mystic Canal`, the catalogue holds `MYSTIC CANAL`.
+    #[must_use]
+    pub fn canal_cost(&self, kind: &str) -> Option<u32> {
+        self.buildings.get(&kind.to_ascii_uppercase())?.canal_cost
     }
 
     /// Whether this ruleset carries the buildings table at all.
@@ -1838,6 +1882,26 @@ mod tests {
     fn a_zero_fleet_entry_cost_is_refused() {
         let mut json: serde_json::Value = serde_json::from_str(RULESET).unwrap();
         json["movement"]["sailing"]["flatCost"] = serde_json::json!(0);
+        let text = serde_json::to_string(&json).unwrap();
+
+        assert!(matches!(
+            Ruleset::from_json(&text),
+            Err(RulesetError::Unusable(_))
+        ));
+    }
+
+    /// A pass costing nothing would make a canal free, which is the same fault as a zero fleet
+    /// entry cost and is refused beside it.
+    #[test]
+    fn rejects_a_canal_that_costs_nothing_to_pass() {
+        let mut json: serde_json::Value = serde_json::from_str(RULESET).unwrap();
+        json["buildings"]["CANAL"] = serde_json::json!({
+            "description": "a canal",
+            "requiresSettlement": false,
+            "uniquePerRegion": true,
+            "mages": 0,
+            "canalCost": 0
+        });
         let text = serde_json::to_string(&json).unwrap();
 
         assert!(matches!(

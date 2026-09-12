@@ -1032,6 +1032,12 @@ const SETTLEMENT_REQUIREMENT =
   /This structure can only be built in settlements \(villages, towns or cities\)\./i;
 const REGION_UNIQUENESS = /Only one such structure can exist in any region\./i;
 
+/** What identifies a canal: the permission, which both grades state in the same words. */
+const CANAL_BYPASS =
+  /This canal allows ships to sail through this coastal land region in any direction, bypassing the isthmus restriction\./i;
+/** What the pass costs, which each grade states in its own words - `stone`, `mystic`. */
+const CANAL_COST = /Passage through a [a-z ]*canal costs (\d+) movement points?\./i;
+
 /**
  * Reads the buildings out of the data page: the object entries say what a structure is and how
  * many mages it seats, and the skill entries say what building it costs.
@@ -1067,6 +1073,18 @@ export function parseBuildingReference(html: string): BuildingReference {
     const size = readNumber(paragraph, /provides defense to the first (\d+) men/i);
     const product = produces(paragraph);
 
+    // Both sentences or neither. A structure that says it bypasses the isthmus restriction and
+    // never prices the pass would reach the core as a canal of unknown cost, which is a rule
+    // modelled by guesswork.
+    const canalCost = readNumber(paragraph, CANAL_COST);
+    if (CANAL_BYPASS.test(paragraph) && canalCost === null) {
+      throw new RulesetScrapeError(
+        `the data page says ${opening[1].trim()} bypasses the isthmus restriction but never prices ` +
+          `the pass. The page has probably been reworded; update the pattern rather than guessing ` +
+          `a value.`
+      );
+    }
+
     // Only the fields the page actually states. `cost` and `materials` are left for pass two to
     // write, rather than initialised to `0` and `[]`: a lair claiming to cost nothing is exactly
     // the absence-turned-into-a-claim this bead exists to stop.
@@ -1074,6 +1092,7 @@ export function parseBuildingReference(html: string): BuildingReference {
       description: paragraph.slice(opening[0].length - "This is a building.".length).trim(),
       ...(product === null ? {} : { produces: product }),
       ...(size === null ? {} : { size }),
+      ...(canalCost === null ? {} : { canalCost }),
       requiresSettlement: SETTLEMENT_REQUIREMENT.test(paragraph),
       uniquePerRegion: REGION_UNIQUENESS.test(paragraph),
       mages: mageCount(paragraph)
