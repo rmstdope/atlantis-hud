@@ -1,0 +1,233 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ah-co6w — planning a voyage the ship is too heavy to make</title>
+<style>
+:root{--ground:#10151c;--panel:#171d26;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;--ok:#4fb783;--warn:#d9a441;--danger:#d97070;--select:#4d8fd6}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif;padding:32px 24px 72px}
+header,main,footer{max-width:1320px;margin-left:auto;margin-right:auto}
+h1{font-size:26px}h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);max-width:96ch;margin-top:10px;font-size:14px}
+h2.sec{margin-top:42px;font-size:18px;color:var(--brass);border-top:1px solid var(--edge);padding-top:22px}
+h2.sec small{color:var(--ink-dim);font-size:13px;margin-left:10px;font-style:italic}
+h2.sec + p{color:var(--ink-soft);font-size:13.5px;max-width:96ch;margin-top:8px}
+code,.mono{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:.92em;color:var(--brass-bright)}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:16px;align-items:start}
+.cards.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:11px}
+.card.rec{border-color:var(--brass)}
+.card h3{font-size:16px}.card h3 em{color:var(--brass);font-style:normal;font-size:11px;letter-spacing:1.6px;margin-right:8px}
+.concept{color:var(--ink-soft);font-size:12.5px}
+.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px;padding:0}
+.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+.notes li.con::before{content:"\2212 ";color:var(--danger)}
+.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+/* the panel itself */
+.pane{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11.5px;line-height:1.5;border:1px solid var(--edge);border-radius:7px;background:var(--panel);overflow:hidden}
+.pane .bar{display:flex;align-items:center;justify-content:space-between;height:30px;padding:0 9px;border-bottom:1px solid var(--edge)}
+.bar .name{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--brass)}
+.bar .btns{display:flex;gap:5px}
+.btn{border:1px solid var(--edge);background:var(--ground);color:var(--ink);border-radius:4px;padding:1px 7px;font-size:10.5px}
+.btn.dim{opacity:.4}
+.btn.brass{color:var(--brass)}
+.pbody{padding:9px;display:grid;gap:7px}
+.refuse{color:var(--danger)}
+.caution{color:var(--warn)}
+dl.fields{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;margin:0}
+dl.fields dt{color:var(--ink-dim)}
+dl.fields dd{margin:0;color:var(--ink)}
+.sectitle{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--brass);border-top:1px solid var(--edge-soft);padding-top:6px;margin-top:3px}
+ol.steps{margin:0;padding:0;list-style:none;color:var(--ink-soft);display:grid;gap:1px}
+ol.steps b{color:var(--ink-dim);font-weight:normal;display:inline-block;min-width:44px}
+.applybar{border-top:1px solid var(--edge);padding:7px 9px;display:flex;gap:8px;align-items:center}
+.applybar code{color:var(--ink-soft)}
+.ghost{opacity:.42}
+.cap{font:italic 11.5px Georgia,serif;color:var(--ink-dim)}
+.report{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11.5px;color:var(--ink-soft);background:#0d1218;border:1px solid var(--edge);border-radius:6px;padding:9px;white-space:pre-wrap}
+footer{margin-top:44px;color:var(--ink-dim);font-size:12.5px;border-top:1px solid var(--edge);padding-top:18px}
+@media(max-width:900px){.cards,.cards.two{grid-template-columns:1fr}}
+</style>
+
+<header>
+<h1>Planning a voyage <span>the ship is too heavy to make</span></h1>
+<p>The panel on the right of the map is where a player asks <em>“how do I get this there?”</em> — they press
+<strong>Plan move</strong>, pick a hex, and the panel answers with a route, a cost and a
+month, or with one red sentence saying why there is none. It already refuses a great many
+things. It does not refuse this one.</p>
+
+<h2 class="sec">The situation <small>everything below uses this one ship</small></h2>
+<p>A Longship sitting in open sea. The report states what it holds and what it can hold; the rules say a
+fleet cannot move at all while it is over capacity. The player asks for a one-hex hop south-east.</p>
+<div class="cards two" style="margin-top:14px">
+  <div>
+    <div class="report">+ Ship [329] : Longship; Load: 210/150; Sailors: 4/4; MaxSpeed: 4.
+  - Harbourmaster [1471], 1 leader, sailing 4 [SAIL]
+  - Quarry gang [1508], carrying 4 stone</div>
+    <p class="cap" style="margin-top:8px">210 aboard on a hull that carries 150. Sixty too heavy. It will not move an inch.</p>
+  </div>
+  <div>
+    <div class="pane">
+      <div class="bar"><span class="name">Movement</span><span class="btns"><span class="btn">Plan move</span><span class="btn">Clear</span></span></div>
+      <div class="pbody">
+        <dl class="fields">
+          <dt>To</dt><dd>(49,33)</dd>
+          <dt>Travel</dt><dd>sail</dd>
+          <dt>Cost</dt><dd>1 movement point</dd>
+          <dt>Arrives</dt><dd>this month</dd>
+        </dl>
+        <div class="sectitle">Route · 1</div>
+        <ol class="steps"><li><b>1. SE</b> ocean (49,33) · 1</li></ol>
+      </div>
+      <div class="applybar"><span class="btn brass">Apply to orders</span><code>SAIL SE</code></div>
+    </div>
+    <p class="cap" style="margin-top:8px"><strong style="color:var(--danger)">Today.</strong> A clean answer, an
+    Apply button, and a voyage that never happens. The player sends the turn believing the ship sails.</p>
+  </div>
+</div>
+
+<h2 class="sec">Question 1 — what stands where the route was <small>pick one</small></h2>
+<p>The panel has one existing habit for a fleet that cannot go: a short crew already gets a red sentence and
+nothing else. The question is whether being too heavy is the same kind of “no”, or a
+“no, but here is what you’d get if you lightened it”.</p>
+<div class="cards two">
+  <div class="card rec">
+    <h3><em>OPTION A</em> A flat refusal</h3>
+    <p class="concept">Exactly what a short crew gets today: one red sentence, no route, no Apply button.
+    Being too heavy is not a route problem — the ship isn’t going anywhere, so there is no route to show.</p>
+    <div class="pane">
+      <div class="bar"><span class="name">Movement</span><span class="btns"><span class="btn">Plan move</span><span class="btn">Clear</span></span></div>
+      <div class="pbody"><p class="refuse">This fleet is carrying more than it can hold: 210 aboard on a capacity of 150, so it will not sail.</p></div>
+    </div>
+    <ul class="notes">
+      <li>Reads identically to the short-crew refusal already there.</li>
+      <li>No Apply button, so no order can be written by accident.</li>
+      <li class="con">Doesn’t tell the player whether the trip was even worth unloading for.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3><em>OPTION B</em> The refusal, and the voyage it blocks</h3>
+    <p class="concept">The same red sentence, and beneath it the route the ship would have taken — dimmed,
+    with no Apply button. A player deciding whether to spend a month shifting cargo can see what it buys.</p>
+    <div class="pane">
+      <div class="bar"><span class="name">Movement</span><span class="btns"><span class="btn">Plan move</span><span class="btn">Clear</span></span></div>
+      <div class="pbody">
+        <p class="refuse">This fleet is carrying more than it can hold: 210 aboard on a capacity of 150, so it will not sail.</p>
+        <div class="ghost">
+          <div class="sectitle">If it were light enough</div>
+          <dl class="fields"><dt>To</dt><dd>(49,33)</dd><dt>Cost</dt><dd>1 movement point</dd><dt>Arrives</dt><dd>this month</dd></dl>
+          <ol class="steps"><li><b>1. SE</b> ocean (49,33) · 1</li></ol>
+        </div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Answers “is it worth unloading?” in the same breath.</li>
+      <li class="con">A dimmed route is still a route on screen; some players will read it as a yes.</li>
+      <li class="con">Two answers in one panel where every other refusal gives one.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 class="sec">Question 2 — the words <small>pick one; all three are the same red line</small></h2>
+<p>The panel’s existing refusals are full sentences that name the numbers — <em>“The crew cannot sail this
+fleet: it needs 4 levels of sailing, and the units aboard have 2.”</em> These three differ in how much
+work they do for the player.</p>
+<div class="cards">
+  <div class="card">
+    <h3><em>WORDS 1</em> Matches the crew line</h3>
+    <div class="pane"><div class="pbody"><p class="refuse">This fleet is carrying more than it can hold: 210 aboard on a capacity of 150, so it will not sail.</p></div></div>
+    <ul class="notes">
+      <li>Same skeleton as the crew refusal: problem, the two numbers, consequence.</li>
+      <li class="n">The player does the subtraction.</li>
+    </ul>
+  </div>
+  <div class="card rec">
+    <h3><em>WORDS 2</em> Names the number to fix</h3>
+    <div class="pane"><div class="pbody"><p class="refuse">This fleet is 60 too heavy to sail: 210 aboard on a capacity of 150. Put 60 ashore and it will go.</p></div></div>
+    <ul class="notes">
+      <li>The one number the player actually needs is the difference, and it is stated.</li>
+      <li>Turns a dead end into an instruction.</li>
+      <li class="con">Longer, and the second sentence is a promise the panel can’t fully keep if the crew is short too.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3><em>WORDS 3</em> Short</h3>
+    <div class="pane"><div class="pbody"><p class="refuse">Overloaded: 210 aboard, capacity 150.</p></div></div>
+    <ul class="notes">
+      <li>Scans in one glance; fits a narrow panel on one line.</li>
+      <li class="con">Doesn’t say it stops the voyage — the whole point.</li>
+      <li class="con">Reads like a label, not like the panel’s other sentences.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 class="sec">Question 3 — when nobody knows how heavy it is <small>pick one</small></h2>
+<p>The load isn’t always known. A ship you can see but don’t own, a report that doesn’t state the line, or
+an item aboard whose weight the ruleset can’t give — in all three the honest answer is “we can’t tell”.
+The panel must not invent a refusal <em>or</em> a clean yes.</p>
+<div class="cards">
+  <div class="card">
+    <h3><em>OPTION A</em> Plan it, say nothing</h3>
+    <div class="pane"><div class="pbody">
+      <dl class="fields"><dt>To</dt><dd>(49,33)</dd><dt>Travel</dt><dd>sail</dd><dt>Cost</dt><dd>1 movement point</dd><dt>Arrives</dt><dd>this month</dd></dl>
+      <div class="sectitle">Route · 1</div><ol class="steps"><li><b>1. SE</b> ocean (49,33) · 1</li></ol>
+    </div><div class="applybar"><span class="btn brass">Apply to orders</span><code>SAIL SE</code></div></div>
+    <ul class="notes">
+      <li>Never blocks a voyage that might be perfectly fine.</li>
+      <li class="con">Identical to a route we’re sure about. Silently confident.</li>
+    </ul>
+  </div>
+  <div class="card rec">
+    <h3><em>OPTION B</em> Plan it, with a caution above</h3>
+    <p class="concept">The amber line the panel already uses when part of a route runs through unexplored
+    country — same colour, same place, same voice.</p>
+    <div class="pane"><div class="pbody">
+      <p class="caution">The report doesn’t say how much this fleet is carrying, so whether it is light enough to sail has not been checked.</p>
+      <dl class="fields"><dt>To</dt><dd>(49,33)</dd><dt>Travel</dt><dd>sail</dd><dt>Cost</dt><dd>1 movement point</dd><dt>Arrives</dt><dd>this month</dd></dl>
+      <div class="sectitle">Route · 1</div><ol class="steps"><li><b>1. SE</b> ocean (49,33) · 1</li></ol>
+    </div><div class="applybar"><span class="btn brass">Apply to orders</span><code>SAIL SE</code></div></div>
+    <ul class="notes">
+      <li>Honest without being obstructive; the player still gets their order.</li>
+      <li>Reuses a warning shape already on this screen.</li>
+      <li class="con">One more amber line on a panel that can already carry one.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3><em>OPTION C</em> Refuse</h3>
+    <div class="pane"><div class="pbody"><p class="refuse">The report does not say how much this fleet is carrying, so there is nothing to plan with.</p></div></div>
+    <ul class="notes">
+      <li>Matches an existing refusal word for word — the panel already says this about a unit’s carrying.</li>
+      <li class="con">Refuses a voyage that is very likely fine, and gives the player no way through.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 class="sec">Question 4 — too heavy <em>and</em> too few sailors <small>pick one</small></h2>
+<p>Both can be true at once, and the panel shows one red sentence. The ship in our example with only 2
+sailing levels aboard instead of 4 is over on both counts.</p>
+<div class="cards two">
+  <div class="card rec">
+    <h3><em>OPTION A</em> One sentence, both reasons</h3>
+    <div class="pane"><div class="pbody"><p class="refuse">This fleet will not sail: it is carrying 210 on a capacity of 150, and the units aboard have 2 levels of sailing where it needs 4.</p></div></div>
+    <ul class="notes">
+      <li>The player fixes both before re-planning, instead of fixing one and being refused again.</li>
+      <li class="con">A longer sentence, and a new shape alongside the two single-reason ones.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3><em>OPTION B</em> Whichever is found first</h3>
+    <div class="pane"><div class="pbody"><p class="refuse">This fleet is carrying more than it can hold: 210 aboard on a capacity of 150, so it will not sail.</p></div>
+    <div class="pbody" style="border-top:1px solid var(--edge-soft)"><p class="cap" style="margin:0">…and after the cargo is shifted, on the next plan:</p><p class="refuse">The crew cannot sail this fleet: it needs 4 levels of sailing, and the units aboard have 2.</p></div></div>
+    <ul class="notes">
+      <li>Every refusal keeps exactly one shape. Nothing new to build.</li>
+      <li class="con">The player unloads a ship, re-plans, and is refused again for a second reason nobody mentioned.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+The rule: a fleet can move only if the total weight of everything aboard does not exceed the fleet’s capacity
+(<code>rules/movement_sailing</code>). A Longship carries 150 and needs 4 levels of sailing
+(<code>data/Longship</code>). Nothing here changes sailing speed, capacity, or any other route rule —
+only what the panel says before it offers you an order.
+</footer>
+</header>
