@@ -40,6 +40,7 @@ export type { Combatant } from "./generated/Combatant";
 export type { BattleUnit } from "./generated/BattleUnit";
 export type { BattleSkill } from "./generated/BattleSkill";
 export type { RosterSkills } from "./generated/RosterSkills";
+export type { PassageClaim } from "./generated/PassageClaim";
 export type { Casualty } from "./generated/Casualty";
 export type { BattleRound } from "./generated/BattleRound";
 export type { Battle } from "./generated/Battle";
@@ -119,6 +120,7 @@ import type { GameManifest } from "./generated/GameManifest";
 import type { EngineInfo } from "./generated/EngineInfo";
 import type { ParsedReport } from "./generated/ParsedReport";
 import type { RosterSkills } from "./generated/RosterSkills";
+import type { PassageClaim } from "./generated/PassageClaim";
 import type { AlliedMageRecord } from "./generated/AlliedMageRecord";
 import type { AlliedMageKey } from "./generated/AlliedMageKey";
 import type { StudyPlanRecord } from "./generated/StudyPlanRecord";
@@ -547,6 +549,16 @@ export interface CoreAdapter {
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<ParsedReport>;
   /** Every combat skill the report's battle rosters disclosed, in report order. */
   rosterSkills(rawReport: string): Promise<RosterSkills[]>;
+  /**
+   * Every crossing of an inner passage this turn's own orders claim.
+   *
+   * A claim, not a fact: only the next turn's report can say where the unit came out.
+   */
+  passageClaims(
+    rawReport: string,
+    ordersDocument: string,
+    rulesetJson: string
+  ): Promise<PassageClaim[]>;
   previewReportImport(
     databasePath: string,
     gameId: string,

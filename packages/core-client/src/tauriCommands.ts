@@ -36,6 +36,7 @@ export const TAURI_COMMANDS = {
   parseReport: ["parse_report", "raw_report"],
   parseReportFull: ["parse_report_full", "raw_report"],
   rosterSkills: ["roster_skills", "raw_report"],
+  passageClaims: ["passage_claims", "raw_report", "orders_document", "ruleset_json"],
   parseReportClassified: ["parse_report_classified", "raw_report", "ruleset_json"],
   previewReportImport: ["preview_report_import", "database_path", "game_id", "confirmed_faction_id", "raw_report"],
   commitReportImport: [
