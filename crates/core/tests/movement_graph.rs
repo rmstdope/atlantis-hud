@@ -558,16 +558,14 @@ fn a_stale_sighting_still_remembers_what_cannot_be_destroyed() {
     ));
     let fresh = MapKnowledge::from_remembered(&seen_now, &[]);
     let hex = fresh.hex(at(11, 11)).expect("known");
-    assert!(
-        hex.structures
-            .iter()
-            .any(|standing| standing.base_kind == "Canal")
-    );
-    assert!(
-        hex.structures_ever_seen
-            .iter()
-            .any(|standing| standing.base_kind == "Canal")
-    );
+    assert!(hex
+        .structures
+        .iter()
+        .any(|standing| standing.base_kind == "Canal"));
+    assert!(hex
+        .structures_ever_seen
+        .iter()
+        .any(|standing| standing.base_kind == "Canal"));
 }
 
 /// `from_report` is the no-memory path, and resolving with an empty `remembered` slice describes

@@ -160,13 +160,7 @@ pub fn trace_move(
         // nothing displays a traced step's cost; only `split_into_months` reads it.
         let isthmus = journey.map_or(Isthmus::Free, |journey| {
             leaving_land(
-                map,
-                ruleset,
-                journey,
-                position,
-                &terrain,
-                entered_by,
-                *direction,
+                map, ruleset, journey, position, &terrain, entered_by, *direction,
             )
         });
         if blocked_from.is_none() && isthmus == Isthmus::Refused {

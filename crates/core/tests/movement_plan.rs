@@ -1431,18 +1431,14 @@ fn a_fleet_may_leave_the_hex_it_started_in_by_any_water_side() {
 fn a_fleet_takes_the_long_way_round_rather_than_through_the_neck() {
     let mut text = String::from("Foo (1) Report\n\n");
     text.push_str("ocean (1,1) in Sea.\n\n");
-    text.push_str(
-        "Exits:\n  Southeast : plain (2,2) in Coast.\n  South : ocean (1,3) in Sea.\n\n",
-    );
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n  South : ocean (1,3) in Sea.\n\n");
     text.push_str(&longship());
     text.push_str("plain (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
     text.push_str(
         "Exits:\n  Northwest : ocean (1,1) in Sea.\n  Southeast : ocean (3,3) in Sea.\n\n",
     );
     text.push_str("ocean (1,3) in Sea.\n\n");
-    text.push_str(
-        "Exits:\n  North : ocean (1,1) in Sea.\n  Southeast : ocean (2,4) in Sea.\n\n",
-    );
+    text.push_str("Exits:\n  North : ocean (1,1) in Sea.\n  Southeast : ocean (2,4) in Sea.\n\n");
     text.push_str("ocean (2,4) in Sea.\n\n");
     text.push_str(
         "Exits:\n  Northwest : ocean (1,3) in Sea.\n  Northeast : ocean (3,3) in Sea.\n\n",
@@ -1484,7 +1480,9 @@ fn a_flying_fleet_is_not_bound_by_the_sides() {
     let mut text = String::from("Foo (1) Report\n\n");
     text.push_str("ocean (1,1) in Sea.\n\n");
     text.push_str("Exits:\n  Southeast : plain (2,2) in Coast.\n\n");
-    text.push_str("+ Ship [329] : Fleet, 4 Galleons, 1 Balloon; Load: 0/100; Sailors: 4/4; MaxSpeed: 4.\n");
+    text.push_str(
+        "+ Ship [329] : Fleet, 4 Galleons, 1 Balloon; Load: 0/100; Sailors: 4/4; MaxSpeed: 4.\n",
+    );
     text.push_str(
         "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
          Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
@@ -1554,7 +1552,10 @@ fn a_mystic_canal_passes_at_full_speed() {
     let report = neck(Direction::Southeast, MYSTIC_CANAL);
     let route = plan_ruleset(&trident(), &report, "900", at(3, 3)).expect("a canal opens the neck");
 
-    assert_eq!(route.steps[0].cost, 1, "a mystic canal passes at full speed");
+    assert_eq!(
+        route.steps[0].cost, 1,
+        "a mystic canal passes at full speed"
+    );
     assert_eq!(route.steps[0].canal, Some("Mystic Canal".to_string()));
     assert_eq!(route.total_cost, 2);
 }
@@ -1642,7 +1643,11 @@ fn a_month_that_cannot_afford_the_stone_pass_ends_in_the_canal_region() {
     );
     let route = plan_ruleset(&trident(), &report, "900", at(3, 3)).expect("a canal opens the neck");
 
-    assert_eq!(route.months.len(), 2, "two points buy the entry and no more");
+    assert_eq!(
+        route.months.len(),
+        2,
+        "two points buy the entry and no more"
+    );
     assert_eq!(route.months[0].ends_at, at(2, 2));
 }
 

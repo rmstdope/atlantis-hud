@@ -622,7 +622,12 @@ fn neck_report(structure: &str) -> String {
 
 /// Traces over a report with a ruleset of the caller's choosing - `trace_over` above is hardwired
 /// to New Origins, which has no canals.
-fn trace_over_with(ruleset: &str, text: &str, unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
+fn trace_over_with(
+    ruleset: &str,
+    text: &str,
+    unit_id: &str,
+    orders: &str,
+) -> MoveOrderTraceResponse {
     trace_orders_for_remembered_report(
         &mut ReportCache::new(),
         ruleset,
@@ -691,7 +696,11 @@ fn a_traced_sail_through_a_neck_is_blocked_at_the_step_that_leaves() {
         .expect("a traced path");
 
     assert_eq!(path.steps.len(), 2);
-    assert_eq!(path.blocked_from, Some(1), "the step that leaves is refused");
+    assert_eq!(
+        path.blocked_from,
+        Some(1),
+        "the step that leaves is refused"
+    );
 }
 
 /// A canal lifts the restriction, so nothing is dotted.
@@ -723,7 +732,10 @@ fn a_month_ends_inside_a_stone_canal() {
     .expect("a traced path");
 
     assert_eq!(path.months.len(), 2);
-    assert_eq!(path.months[0].steps, 1, "two points buy the entry and no more");
+    assert_eq!(
+        path.months[0].steps, 1,
+        "two points buy the entry and no more"
+    );
 }
 
 /// Turning out by a side beside the one it entered is legal, and drawn solid.
@@ -734,5 +746,8 @@ fn a_traced_turn_beside_the_entry_side_is_not_blocked() {
         .expect("a traced path");
 
     assert_eq!(path.steps.len(), 2);
-    assert_eq!(path.blocked_from, None, "N is beside the side it entered by");
+    assert_eq!(
+        path.blocked_from, None,
+        "N is beside the side it entered by"
+    );
 }

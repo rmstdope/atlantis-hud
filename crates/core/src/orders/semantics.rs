@@ -11147,7 +11147,11 @@ fn first_land_to_land_step<'a>(
 /// checks have - a canal in a hex this report does not describe ends the walk above rather than
 /// being guessed at.
 fn canal_in(region: &ReportRegion, ruleset: &Ruleset) -> Option<u32> {
-    if !region.exits.iter().any(|exit| ruleset.is_water(&exit.terrain)) {
+    if !region
+        .exits
+        .iter()
+        .any(|exit| ruleset.is_water(&exit.terrain))
+    {
         return None;
     }
     region
@@ -25740,23 +25744,30 @@ BUILD
             ReportRegion {
                 terrain: "plain".to_string(),
                 structures,
-                exits: ["Northwest", "North", "Southwest", "Southeast", "Northeast", "South"]
-                    .into_iter()
-                    .map(|direction| Exit {
-                        direction: direction.to_string(),
-                        terrain: "ocean".to_string(),
-                        coordinate: match direction {
-                            "Northwest" => Coordinate { x: 7, y: 53, z: 1 },
-                            "North" => Coordinate { x: 8, y: 52, z: 1 },
-                            "Southwest" => Coordinate { x: 7, y: 55, z: 1 },
-                            "Southeast" => Coordinate { x: 9, y: 55, z: 1 },
-                            "Northeast" => Coordinate { x: 9, y: 53, z: 1 },
-                            _ => Coordinate { x: 8, y: 56, z: 1 },
-                        },
-                        province: "Inhead".to_string(),
-                        settlement: None,
-                    })
-                    .collect(),
+                exits: [
+                    "Northwest",
+                    "North",
+                    "Southwest",
+                    "Southeast",
+                    "Northeast",
+                    "South",
+                ]
+                .into_iter()
+                .map(|direction| Exit {
+                    direction: direction.to_string(),
+                    terrain: "ocean".to_string(),
+                    coordinate: match direction {
+                        "Northwest" => Coordinate { x: 7, y: 53, z: 1 },
+                        "North" => Coordinate { x: 8, y: 52, z: 1 },
+                        "Southwest" => Coordinate { x: 7, y: 55, z: 1 },
+                        "Southeast" => Coordinate { x: 9, y: 55, z: 1 },
+                        "Northeast" => Coordinate { x: 9, y: 53, z: 1 },
+                        _ => Coordinate { x: 8, y: 56, z: 1 },
+                    },
+                    province: "Inhead".to_string(),
+                    settlement: None,
+                })
+                .collect(),
                 ..region_at("1:8,54", 8, 54, Vec::new())
             },
         ]
@@ -25767,8 +25778,15 @@ BUILD
     /// and must leave via the same side they entered or a side adjacent to that one."
     #[test]
     fn a_sail_out_of_a_neck_of_land_is_a_warning() {
-        for (order, leaving) in [("SAIL SE SE", "SE"), ("SAIL SE NE", "NE"), ("SAIL SE S", "S")] {
-            let findings = check(neck_regions(vec![unit("3493")], Vec::new()), &format!("unit 3493\n{order}\n"));
+        for (order, leaving) in [
+            ("SAIL SE SE", "SE"),
+            ("SAIL SE NE", "NE"),
+            ("SAIL SE S", "S"),
+        ] {
+            let findings = check(
+                neck_regions(vec![unit("3493")], Vec::new()),
+                &format!("unit 3493\n{order}\n"),
+            );
             let necks: Vec<&Finding> = findings
                 .iter()
                 .filter(|finding| finding.code == codes::SAIL_THROUGH_NECK_OF_LAND)
@@ -25790,7 +25808,10 @@ BUILD
     #[test]
     fn a_sail_turning_beside_the_entry_side_is_no_warning() {
         for order in ["SAIL SE NW", "SAIL SE N", "SAIL SE SW"] {
-            let findings = check(neck_regions(vec![unit("3493")], Vec::new()), &format!("unit 3493\n{order}\n"));
+            let findings = check(
+                neck_regions(vec![unit("3493")], Vec::new()),
+                &format!("unit 3493\n{order}\n"),
+            );
             assert!(
                 !findings
                     .iter()

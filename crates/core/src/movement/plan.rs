@@ -721,7 +721,8 @@ fn blocked_by_sailing_rule(
                 terrain: from_terrain,
             });
         }
-        entered_by = constrains_departure(ruleset, journey, &step.terrain).then_some(step.direction);
+        entered_by =
+            constrains_departure(ruleset, journey, &step.terrain).then_some(step.direction);
         from = step.to;
         from_terrain = step.terrain.clone();
     }
