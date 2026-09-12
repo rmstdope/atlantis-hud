@@ -174,3 +174,23 @@ fn an_absent_passage_document_is_nothing_known_and_a_broken_one_is_an_error() {
 
     assert!(known_passages_from_json("{oh no").is_err());
 }
+
+/// The bead's reproduction (`ah-vmxn`): `rules/move` - "Multiple MOVE orders given by one unit will
+/// chain together" - so `MOVE N` / `MOVE IN` is `MOVE N IN`, and the passage is not in this hex.
+#[test]
+fn a_passage_on_a_second_move_line_after_a_step_is_not_claimed() {
+    assert_eq!(claims("unit 5\nMOVE N\nMOVE IN\n"), vec![]);
+}
+
+#[test]
+fn a_passage_chained_after_an_enter_is_still_claimed() {
+    let claimed = claims("unit 5\nMOVE 1\nMOVE IN\n");
+
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].structure_id, "1");
+}
+
+#[test]
+fn a_step_on_a_later_line_after_the_passage_is_not_claimed() {
+    assert_eq!(claims("unit 5\nMOVE IN\nMOVE SE\n"), vec![]);
+}

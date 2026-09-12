@@ -986,3 +986,13 @@ fn a_traced_turn_beside_the_entry_side_is_not_blocked() {
         "N is beside the side it entered by"
     );
 }
+
+/// `rules/move`: "Multiple MOVE orders given by one unit will chain together."
+#[test]
+fn two_move_lines_are_traced_as_one_route() {
+    let path = trace("18642", "MOVE N\nMOVE N\n")
+        .path
+        .expect("a traced path");
+    assert_eq!(path.steps.len(), 2);
+    assert_eq!(path.steps[0].to, at(7, 51));
+}

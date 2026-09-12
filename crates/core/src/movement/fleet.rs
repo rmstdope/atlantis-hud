@@ -25,12 +25,14 @@ struct UnitCourse {
     sail: bool,
 }
 
-/// The last top-level movement order each unit wrote, read once from the whole orders document.
+/// Each unit's movement lines, chained into one route and read once from the whole orders document.
 ///
 /// Only lines that are a unit's own for this turn count: a `TURN` block holds orders for the turn
 /// after this one and a `FORM` block's orders belong to the unit being formed, so movement inside
-/// either says nothing about where the unit whose block it is goes next. The last readable
-/// movement line wins, because a later order replaces an earlier one when the game executes them.
+/// either says nothing about where the unit whose block it is goes next. A unit's movement lines
+/// are chained by `movement::chain::RouteChain` (`rules/move`: "Multiple MOVE orders given by one
+/// unit will chain together."); a different month-long order replaces the chain, as
+/// `orders::semantics::month_segments` states.
 #[derive(Debug, Default, Clone)]
 pub struct OrderedUnits {
     by_unit: BTreeMap<String, UnitCourse>,
@@ -56,7 +58,7 @@ impl OrderedUnits {
     pub fn from_document_with_ruleset(orders_document: &str, ruleset: Option<&Ruleset>) -> Self {
         use crate::orders::walk::{walk, BlockKind, Event};
 
-        let mut by_unit: BTreeMap<String, UnitCourse> = BTreeMap::new();
+        let mut chains: BTreeMap<String, crate::movement::chain::RouteChain> = BTreeMap::new();
         let mut promotes_by_unit: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
         let mut sailers = BTreeSet::new();
@@ -154,23 +156,13 @@ impl OrderedUnits {
                     crate::orders::blocks::Owner::Formed(id) => Some((*id).clone()),
                     crate::orders::blocks::Owner::Nobody => None,
                 };
-                if let (Some(unit_id), Intent::Move { steps } | Intent::Sail { steps }) =
-                    (moving, &intent)
-                {
-                    // An order that goes nowhere is not a movement order: `parse_move` already
-                    // refuses an empty route, and a bare `SAIL` reaches here with no steps. Without
-                    // this guard `steps_for` starts answering `Some(&[])` for a bare SAIL, and
-                    // `steps_followed_by` returns that empty route instead of looking for the
-                    // hull's.
-                    if !steps.is_empty() {
-                        by_unit.insert(
-                            unit_id,
-                            UnitCourse {
-                                steps: steps.clone(),
-                                sail: matches!(intent, Intent::Sail { .. }),
-                            },
-                        );
-                    }
+                // Every readable order goes in, not only movement: a month-long order between two
+                // movement lines breaks their chain (`movement::chain::RouteChain`).
+                if let Some(unit_id) = moving {
+                    chains
+                        .entry(unit_id)
+                        .or_default()
+                        .push(&line.command.text, &intent);
                 }
                 // Skipped inside a FORM block for the reason above: those orders are applied by
                 // `Working` to the formed unit's own row already.
@@ -202,6 +194,21 @@ impl OrderedUnits {
             }
             _ => {}
         });
+
+        let by_unit = chains
+            .into_iter()
+            .filter_map(|(unit_id, chain)| {
+                chain.into_route().map(|route| {
+                    (
+                        unit_id,
+                        UnitCourse {
+                            steps: route.steps,
+                            sail: route.sail,
+                        },
+                    )
+                })
+            })
+            .collect();
 
         Self {
             by_unit,
@@ -978,6 +985,52 @@ mod tests {
             Some(vec![MoveStep::Go(
                 crate::movement::graph::Direction::Southeast
             )])
+        );
+    }
+
+    /// `rules/move`: "Multiple MOVE orders given by one unit will chain together."
+    #[test]
+    fn chained_move_lines_are_one_route() {
+        use crate::movement::graph::Direction::{North, Northeast};
+        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\nMOVE NE\n");
+        assert_eq!(
+            ordered.steps_for("900"),
+            Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
+        );
+    }
+
+    /// `rules/sail`: `SAIL N` / `SAIL NW` is the same as `SAIL N NW`.
+    #[test]
+    fn chained_sail_lines_are_one_course() {
+        use crate::movement::graph::Direction::{North, Northwest};
+        let ordered = OrderedUnits::from_document("unit 10575\nSAIL N\nSAIL NW\n");
+        assert_eq!(
+            ordered.steps_for("10575"),
+            Some(&[MoveStep::Go(North), MoveStep::Go(Northwest)][..])
+        );
+        assert!(ordered.sails_a_course("10575"));
+    }
+
+    #[test]
+    fn a_work_between_two_moves_leaves_only_the_second() {
+        use crate::movement::graph::Direction::South;
+        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\nWORK\nMOVE S\n");
+        assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(South)][..]));
+    }
+
+    #[test]
+    fn a_formed_units_move_lines_chain_on_the_formed_unit() {
+        use crate::movement::graph::Direction::{North, Northeast, South, Southeast};
+        let ordered = OrderedUnits::from_document(
+            "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
+        );
+        assert_eq!(
+            ordered.steps_for("new-1"),
+            Some(&[MoveStep::Go(South), MoveStep::Go(Southeast)][..])
+        );
+        assert_eq!(
+            ordered.steps_for("900"),
+            Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
         );
     }
 }
