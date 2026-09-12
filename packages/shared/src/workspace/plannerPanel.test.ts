@@ -418,7 +418,8 @@ describe("marking a wet step", () => {
     cost: 1,
     road: false,
     estimated: false,
-    overWater: true
+    overWater: true,
+    canal: null
   };
 
   it("says a walker in the water is swimming", () => {
