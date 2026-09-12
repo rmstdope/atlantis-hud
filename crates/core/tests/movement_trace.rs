@@ -642,6 +642,8 @@ fn the_serde_shape_of_a_passage() {
 
     let plain = serde_json::to_value(trace("18642", "MOVE N")).expect("serializes");
     assert!(plain["path"]["passage"].is_null(), "no passage, null");
+}
+
 // ---------------------------------------------------------------- swimming (New Age: Trident)
 
 /// The sea and the shore, with a Trident unit on the beach: `(2,2)` is coastal, `(3,3)` is deep -
