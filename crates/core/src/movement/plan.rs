@@ -131,6 +131,18 @@ pub enum RouteProblem {
         capacity: i64,
         crew: Option<CrewShortfall>,
     },
+    /// The unit is aboard a fleet it does not own, and only the owner sets a fleet's course -
+    /// "the owner of a fleet must issue the SAIL order" (`rules/movement_sailing`). Orders are only
+    /// ever written to the unit the player picked, so there is nothing to plan for this one.
+    #[serde(rename_all = "camelCase")]
+    NotFleetOwner {
+        /// `Marines (902)`, the unit the player picked.
+        unit: String,
+        /// `Longship [329]`, as `fleet_label` spells it.
+        fleet: String,
+        /// `Sea Rovers (900)`, the unit that can set the course.
+        owner: String,
+    },
     /// A fleet asked to step from one land hex straight into another, which the sailing rule
     /// allows in none of its three forms: "A fleet can move from an ocean region to another ocean
     /// region, or from a coastal region to an ocean region, or from an ocean region to a coastal
@@ -440,6 +452,27 @@ fn sail_mode(
     let Some((required, available, speed)) = fleet_sailing(ruleset, origin_hex, fleet, None) else {
         return Ok(None);
     };
+    // Only the owner sets a fleet's course, so a passenger has nothing to plan (`ah-ofra`). Raised
+    // after `fleet_sailing` has priced the hull, never before: `fleet_of` uses the syntactic
+    // `hulls_named_in`, which reads `Fort` as a hull, and it is `fleet_sailing` answering `None`
+    // that sends a unit in a fort down the land path. `reported_owner` and not `fleet_owner`
+    // because the planner is handed no orders document at all (the `ah-ssd` decision above), so
+    // the report's own listing is the whole of what it can know.
+    //
+    // Tested before the weight and the crew below, deliberately: which unit may give the order at
+    // all is a more basic refusal than what the hull carries or how many sailors are aboard, and
+    // neither figure is worth naming to a unit that cannot give the order.
+    if let Some(owner) =
+        crate::movement::fleet::reported_owner(&origin_hex.units, &fleet.structure_id)
+    {
+        if owner.unit_id != unit.unit_id {
+            return Err(RouteProblem::NotFleetOwner {
+                unit: format!("{} ({})", unit.name, unit.unit_id),
+                fleet: crate::movement::mode::fleet_label(fleet),
+                owner: format!("{} ({})", owner.name, owner.unit_id),
+            });
+        }
+    }
 
     let short = (available < required).then_some(CrewShortfall {
         required,

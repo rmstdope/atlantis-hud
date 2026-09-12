@@ -318,19 +318,45 @@ fn an_overloaded_unit_is_refused_before_any_route_is_sought() {
     assert!(matches!(problem, RouteProblem::Overloaded), "{problem:?}");
 }
 
-/// Frozen Tomb [194] is written `Galley, 40 Galleons, 11 Galleys, 10 Balloons` and states no
-/// `Sailors:` line, so its crew requirement is ruleset arithmetic over those hulls - 762 levels,
-/// against the nothing this faction has aboard. A unit standing in it goes where the fleet goes or
-/// nowhere, which is the answer the planner owes even for a passenger that is also overloaded
-/// (`ah-8myf`).
+/// A unit standing in a fleet it does not own cannot give that fleet its course, so there is
+/// nothing to plan for it: "the owner of a fleet must issue the SAIL order"
+/// (`rules/movement_sailing`, `ah-ofra`). `13972` stands in Frozen Tomb [194], whose first listed
+/// occupant - and so its owner, per `rules/world_structures` - is the foreign `A Tomb's Crew
+/// (6311)`.
+///
+/// Ownership is tested before the crew shortfall this test used to assert, deliberately: which
+/// unit may give the order at all is a more basic refusal than how many sailors are aboard. The
+/// crew figure that fact rested on is carried by
+/// [`the_crew_a_galley_of_forty_galleons_needs_is_ruleset_arithmetic`] instead.
 #[test]
-fn a_passenger_on_an_unsailable_fleet_is_refused_for_the_fleet() {
+fn a_passenger_cannot_be_planned_for_the_fleet_it_rides() {
     let report = turn_71();
-    let problem = plan(&report, "13972", at(7, 51)).expect_err("the fleet cannot sail");
+    let problem = plan(&report, "13972", at(7, 51)).expect_err("13972 does not own the fleet");
 
-    assert!(
-        matches!(problem, RouteProblem::CrewCannotSail { required: 762, .. }),
-        "{problem:?}"
+    let RouteProblem::NotFleetOwner { owner, .. } = &problem else {
+        panic!("{problem:?}");
+    };
+    assert_eq!(owner, "A Tomb's Crew (6311)");
+}
+
+/// **`ah-8myf`.** Frozen Tomb [194] is written `Galley, 40 Galleons, 11 Galleys, 10 Balloons` and
+/// states no `Sailors:` line, so its crew requirement is ruleset arithmetic over those hulls - 762
+/// levels, against the nothing this faction has aboard. This is the fact
+/// `a_passenger_on_an_unsailable_fleet_is_refused_for_the_fleet` carried before ownership came to
+/// be tested first, and it needs no map and no planner.
+#[test]
+fn the_crew_a_galley_of_forty_galleons_needs_is_ruleset_arithmetic() {
+    let report = turn_71();
+    let fleet = report
+        .regions
+        .iter()
+        .flat_map(|region| &region.structures)
+        .find(|structure| structure.structure_id == "194")
+        .expect("Frozen Tomb [194] is in the fixture");
+
+    assert_eq!(
+        atlantis_hud_core::movement::mode::sailing_requirement(fleet, Some(&ruleset())),
+        Some(762)
     );
 }
 

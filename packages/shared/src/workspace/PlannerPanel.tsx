@@ -253,6 +253,8 @@ export function describeProblem(problem: RouteProblem): string {
       return `A single MOVE order would leave this unit over ${definiteWater(problem.terrain)} at (${problem.coordinate.x},${problem.coordinate.y}) when the month ran out, and a unit that ends a turn over water drowns.`;
     case "crewCannotSail":
       return `The crew cannot sail this fleet: it needs ${problem.required} levels of sailing, and the units aboard have ${problem.available}.`;
+    case "notFleetOwner":
+      return `${problem.unit} is a passenger on ${problem.fleet}. Only its owner, ${problem.owner}, can set its course.`;
     case "fleetOverloaded":
       // The weight aboard first, then the hull's capacity, then what follows from it - the
       // skeleton the crew refusal beside this one uses. Naming the shortfall ("put 60 ashore")

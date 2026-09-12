@@ -447,6 +447,30 @@ fn a_unit_that_boards_a_fleet_this_month_is_traced_as_sailing_with_it() {
     assert_eq!(ashore.path, None, "a unit ashore follows nobody");
 }
 
+/// A fleet takes its course from its **owner** - the first unit listed under it
+/// (`rules/world_structures`) - and "the owner of a fleet must issue the SAIL order"
+/// (`rules/movement_sailing`). Raft [235] lists Drones (10575) first, so a `SAIL` written by
+/// Drones (10594) lends a pair of hands and sets no course: the map draws nothing at all, for the
+/// writer and for every passenger alike (`ah-ofra`).
+#[test]
+fn a_course_from_the_wrong_unit_draws_no_route() {
+    for unit_id in ["10575", "10594"] {
+        let response = trace_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            G5_F21_T24,
+            "[]",
+            unit_id,
+            "unit 10594\nSAIL SE\n",
+        )
+        .expect("the ruleset loads");
+        assert_eq!(
+            response.path, None,
+            "{unit_id} has no course to draw: 10575 owns the raft and ordered nothing"
+        );
+    }
+}
+
 // ------------------------------------------------------- the sailing rule's step test
 
 /// Fixture A of `ah-g6gn.1`: `forest (2,2)` and `forest (3,3)` are neighbours and both coastal,

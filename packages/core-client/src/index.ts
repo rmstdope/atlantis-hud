@@ -222,6 +222,7 @@ export type RouteProblem =
   | { kind: "swimCapacityUnstated"; coordinate: Coordinate; terrain: string }
   | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate; terrain: string }
   | { kind: "crewCannotSail"; required: number; available: number }
+  | { kind: "notFleetOwner"; unit: string; fleet: string; owner: string }
   | {
       kind: "fleetOverloaded";
       load: number;
