@@ -679,6 +679,7 @@ pub fn preview_orders_for_remembered_report(
         remembered_json,
         orders_document,
         "",
+        super::semantics::CheckOptions::default(),
     )
 }
 
@@ -686,6 +687,9 @@ pub fn preview_orders_for_remembered_report(
 ///
 /// `map_json` as [`crate::movement::request::plan_on_map`]: the game's own dimensions, or empty
 /// for a game that never recorded any, which leaves every preview exactly as it was.
+///
+/// `options` says which advisory checks are on. The forecast reads only the codes whose refusal it
+/// makes itself; every other code is the order checks' business alone.
 ///
 /// # Errors
 ///
@@ -697,6 +701,7 @@ pub fn preview_orders_on_map(
     remembered_json: &str,
     orders_document: &str,
     map_json: &str,
+    options: super::semantics::CheckOptions,
 ) -> Result<OrdersPreviewResponse, String> {
     use crate::movement::graph::MapKnowledge;
     use crate::movement::trace::trace_move;
@@ -711,7 +716,7 @@ pub fn preview_orders_on_map(
     let report = cache.classified(raw_report, ruleset_json);
 
     let geometry = crate::movement::graph::geometry_from_json(map_json)?;
-    let (units, dissolved) = settle(&report, &ruleset, orders_document, geometry);
+    let (units, dissolved) = settle(&report, &ruleset, orders_document, geometry, options);
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
@@ -1073,8 +1078,9 @@ fn settle(
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
     orders_document: &str,
     geometry: Option<crate::movement::graph::MapGeometry>,
+    options: super::semantics::CheckOptions,
 ) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
-    let mut working = Working::over_own_units(report, ruleset.clone(), geometry);
+    let mut working = Working::over_own_units(report, ruleset.clone(), geometry, options);
     super::walk::walk_with_ruleset(orders_document, Some(ruleset.as_ref()), |event| {
         working.visit(event);
     });
@@ -1176,7 +1182,13 @@ pub(crate) fn formed_unit_as_ordered(
     }
     // A `FORM`ed row is looked up on its own; no transport is applied here, so the map's shape
     // is not needed (`ah-7ale.2.1`).
-    let (units, _) = settle(report, ruleset, orders_document, None);
+    let (units, _) = settle(
+        report,
+        ruleset,
+        orders_document,
+        None,
+        super::semantics::CheckOptions::default(),
+    );
     units
         .into_iter()
         .find(|entry| entry.formed && entry.unit.unit_id == unit_id)
@@ -1646,6 +1658,8 @@ struct Working {
     /// across (`ah-7ale.2.1`). `None` is a game that never recorded one, which leaves every
     /// shipment forecast exactly as it was.
     geometry: Option<crate::movement::graph::MapGeometry>,
+    /// Which advisory checks are on, for the refusals the forecast makes itself (`ah-7ale.2.2.2`).
+    options: super::semantics::CheckOptions,
 }
 
 /// What the report can say about a named `TRANSPORT`/`DISTRIBUTE` target (`ah-64wm`).
@@ -1691,6 +1705,7 @@ impl Working {
         report: &crate::report::ParsedReport,
         ruleset: std::sync::Arc<crate::movement::rules::Ruleset>,
         geometry: Option<crate::movement::graph::MapGeometry>,
+        options: super::semantics::CheckOptions,
     ) -> Self {
         let mut units = Vec::new();
         let mut by_id = BTreeMap::new();
@@ -1762,6 +1777,7 @@ impl Working {
             transport_targets,
             hex_of_region,
             geometry,
+            options,
         }
     }
 
@@ -3407,6 +3423,47 @@ mod tests {
                 "NAME {synonym} must preview as NAME {canonical}"
             );
         }
+    }
+
+    #[test]
+    fn the_preview_carries_the_checks_it_is_given() {
+        let orders = "unit 900\nNAME UNIT \"Dawn Treader\"\n";
+
+        let with_default =
+            preview_with_options(orders, super::super::semantics::CheckOptions::default());
+        let with_transport_silenced = preview_with_options(
+            orders,
+            super::super::semantics::CheckOptions {
+                disabled: ["transport-out-of-reach".to_string()].into_iter().collect(),
+                ..super::super::semantics::CheckOptions::default()
+            },
+        );
+
+        assert_eq!(
+            with_default,
+            preview(orders),
+            "the options the forecast is handed must not change a preview with no refusal in it"
+        );
+        assert_eq!(
+            with_transport_silenced, with_default,
+            "silencing an unrelated refusal must leave this preview alone"
+        );
+    }
+
+    fn preview_with_options(
+        orders: &str,
+        options: super::super::semantics::CheckOptions,
+    ) -> OrdersPreviewResponse {
+        preview_orders_on_map(
+            &mut ReportCache::new(),
+            RULESET,
+            &report(),
+            "[]",
+            orders,
+            "",
+            options,
+        )
+        .expect("the ruleset loads")
     }
 
     fn preview(orders: &str) -> OrdersPreviewResponse {
@@ -9783,7 +9840,12 @@ mod tests {
             wrap_y: false,
         };
 
-        let working = Working::over_own_units(&parsed, ruleset, Some(geometry));
+        let working = Working::over_own_units(
+            &parsed,
+            ruleset,
+            Some(geometry),
+            super::super::semantics::CheckOptions::default(),
+        );
 
         assert_eq!(working.geometry, Some(geometry));
     }
@@ -9797,7 +9859,12 @@ mod tests {
             .expect("the ruleset loads")
             .clone();
 
-        let working = Working::over_own_units(&parsed, ruleset, None);
+        let working = Working::over_own_units(
+            &parsed,
+            ruleset,
+            None,
+            super::super::semantics::CheckOptions::default(),
+        );
 
         let hex = |unit_id: &str| {
             working
@@ -9839,7 +9906,12 @@ mod tests {
             .expect("the ruleset loads")
             .clone();
 
-        let working = Working::over_own_units(&parsed, ruleset, None);
+        let working = Working::over_own_units(
+            &parsed,
+            ruleset,
+            None,
+            super::super::semantics::CheckOptions::default(),
+        );
 
         assert_eq!(working.quartermasters.level("5531"), 3);
         assert_eq!(working.quartermasters.level("6857"), 5);
@@ -9908,6 +9980,26 @@ mod tests {
             "[]",
             orders,
             map_json,
+            super::super::semantics::CheckOptions::default(),
+        )
+        .expect("the ruleset loads")
+    }
+
+    /// The same, with the advisory checks the caller names - increment 2's silenced case.
+    fn reach_preview_with_options(
+        report: &str,
+        orders: &str,
+        map_json: &str,
+        options: super::super::semantics::CheckOptions,
+    ) -> OrdersPreviewResponse {
+        preview_orders_on_map(
+            &mut ReportCache::new(),
+            RULESET,
+            report,
+            "[]",
+            orders,
+            map_json,
+            options,
         )
         .expect("the ruleset loads")
     }
