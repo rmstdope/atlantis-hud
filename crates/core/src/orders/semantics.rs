@@ -12751,10 +12751,12 @@ fn check_transport_reach(
                 continue;
             }
             // Every other answer is one of `ah-64wm`'s four refusals, which the unit preview
-            // explains and which this check says nothing about.
-            if super::transport::acceptance(targets.get(id.as_str()))
-                != super::transport::Acceptance::Eligible
-            {
+            // explains and which this check says nothing about. The facts are bound once: an
+            // `Eligible` answer implies they exist, so the hex below needs no second lookup.
+            let Some(facts) = targets.get(id.as_str()) else {
+                continue;
+            };
+            if super::transport::acceptance(Some(facts)) != super::transport::Acceptance::Eligible {
                 continue;
             }
             let Some(reach) = super::transport::reach_for(
@@ -12766,13 +12768,10 @@ fn check_transport_reach(
             };
             // The target's hex comes from the same facts the forecast measures from, so the two
             // cannot disagree about where the far end stands.
-            let Some(to_hex) = targets.get(id.as_str()).map(|facts| facts.coordinate) else {
-                continue;
-            };
             let Some(refused) = super::transport::out_of_reach(
                 reach,
                 hex.region.coordinate,
-                to_hex,
+                facts.coordinate,
                 options.geometry,
             ) else {
                 continue;
@@ -37009,6 +37008,9 @@ BUILD
         for orders in [
             "unit 900\nTRANSPORT 901 ALL STON\n",
             "unit 900\nTRANSPORT 901 5 HORS\n",
+            // The synonym reaches the sentence too: the grammar treats `DISTRIBUTE` as `TRANSPORT`
+            // under another name, and the tail says `TRANSPORT` either way (`ah-7ale.2.2.1`).
+            "unit 900\nDISTRIBUTE 901 ALL STON\n",
         ] {
             let finding = only(reach_findings(regions(), orders, with_map()));
             assert_eq!(
