@@ -9,7 +9,13 @@ import {
   useState
 } from "react";
 import type { CSSProperties } from "react";
-import type { Coordinate, HexNoteRecord, HexRisk, MapShape } from "@atlantis/core-client";
+import type {
+  Coordinate,
+  HexNoteRecord,
+  HexRisk,
+  MapShape,
+  TracedPassage
+} from "@atlantis/core-client";
 import { parseRegionId, regionIdOf, type HexMapModel, type HexNode } from "../hexMapModel";
 import { isMacPlatform } from "../shortcuts";
 import {
@@ -129,6 +135,24 @@ const GHOSTABLE_HIT: CSSProperties = { pointerEvents: "var(--map-hit, all)" as C
 const ROUTE_CASING = radii(0.278);
 const ROUTE_LINE = radii(0.167);
 const RISK_OUTLINE = radii(0.111);
+
+/** The disc the passage mark is drawn on, and the ring round it. */
+const PASSAGE_RADIUS = radii(0.36);
+
+/**
+ * The two lines the passage mark's hover reads, as the design stage agreed them.
+ *
+ * An SVG `<title>` rather than an HTML layer, which is how every hover on this map works - the hex
+ * itself and the note pins both - so the first line is a line rather than bold type.
+ */
+function passageTitle(passage: TracedPassage): string {
+  return [
+    `Through the passage in ${passage.structure}`,
+    passage.stepsAfter === 0
+      ? "Where this passage comes out is not in any report yet, so where this unit ends the month is unknown."
+      : `Where this passage comes out is not in any report yet, so the rest of the journey — ${passage.stepsAfter} more ${passage.stepsAfter === 1 ? "step" : "steps"} — cannot be drawn.`
+  ].join("\n");
+}
 
 type MapCanvasProps = {
   /** The open game's identifier, used to save and restore the map position across sessions. */
@@ -1321,6 +1345,39 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                   />
                 );
               })}
+            </g>
+          )}
+
+          {/*
+            Where the route ran into an inner passage. `rules/move`, direction 4: `IN` travels
+            through the structure to another region, and no report names which - so the line
+            stops here and this says so rather than leaving it unexplained. Drawn after the
+            line so it caps it, and with pointer events on: a `<title>` under a
+            `pointer-events: none` element never shows, which is why it cannot be a theme mark.
+          */}
+          {route?.passage && route.passage.coordinate.z === level && (
+            <g
+              transform={translateAt(route.passage.coordinate)}
+              role="img"
+              aria-label={passageTitle(route.passage).split("\n")[0]}
+              data-testid="map-passage-ring"
+              style={GHOSTABLE_HIT}
+            >
+              <title>{passageTitle(route.passage)}</title>
+              <circle
+                r={PASSAGE_RADIUS}
+                className="fill-ground stroke-brass"
+                strokeWidth={ROUTE_LINE}
+                vectorEffect="non-scaling-stroke"
+              />
+              <text
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={radii(0.34)}
+                className="fill-brass-bright"
+              >
+                ?
+              </text>
             </g>
           )}
 

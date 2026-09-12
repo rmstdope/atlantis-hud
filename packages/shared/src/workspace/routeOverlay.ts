@@ -1,4 +1,9 @@
-import type { Coordinate, RoutePlan, TracedPath } from "@atlantis/core-client";
+import type {
+  Coordinate,
+  RoutePlan,
+  TracedPassage,
+  TracedPath
+} from "@atlantis/core-client";
 
 /**
  * One movement line for the map, whatever its source.
@@ -12,6 +17,11 @@ export type RouteOverlay = {
   hexes: Coordinate[];
   /** How many of them the coming month covers; null when the unit's speed is unknown. */
   solidSteps: number | null;
+  /**
+   * The passage the drawn line stopped at, or null. Always null for a planner preview: the planner
+   * routes over country the faction has seen and never proposes a passage.
+   */
+  passage: TracedPassage | null;
 };
 
 /**
@@ -41,7 +51,8 @@ export function chooseRouteOverlay(input: {
       hexes: input.plan.steps.map((step) => step.to),
       // The planner only ever proposes what it can stand behind, so its preview stays one solid
       // line exactly as it always was; the month split belongs to written orders.
-      solidSteps: input.plan.steps.length
+      solidSteps: input.plan.steps.length,
+      passage: null
     };
   }
 
@@ -58,6 +69,7 @@ export function chooseRouteOverlay(input: {
     solidSteps:
       input.trace.mode === null
         ? null
-        : Math.min(monthReach, input.trace.blockedFrom ?? monthReach)
+        : Math.min(monthReach, input.trace.blockedFrom ?? monthReach),
+    passage: input.trace.passage
   };
 }

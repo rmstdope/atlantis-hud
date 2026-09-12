@@ -376,6 +376,26 @@ export type TracedPath = {
    * doubt rather than plan, whatever month it falls in.
    */
   blockedFrom: number | null;
+  /**
+   * The inner passage the route ran into, or null. `steps` ends where it begins: no report says
+   * where a passage comes out, so nothing beyond it can be placed on the map.
+   */
+  passage: TracedPassage | null;
+};
+
+/**
+ * Where a drawn route ran into an inner passage.
+ *
+ * Mirrors `TracedPassage` in crates/core/src/movement/trace.rs by hand - this type is not a ts-rs
+ * export, so a field added in Rust has to be added here too.
+ */
+export type TracedPassage = {
+  /** The hex the passage was entered from. */
+  coordinate: Coordinate;
+  /** The structure as the report writes it: `Shaft [3]`. */
+  structure: string;
+  /** Ordered steps after the passage that could not be placed. */
+  stepsAfter: number;
 };
 
 /** The traced order, or nothing when the unit has no readable movement order to draw. */

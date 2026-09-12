@@ -5,8 +5,8 @@
 
 use atlantis_hud_core::movement::graph::{Direction, MapKnowledge};
 use atlantis_hud_core::movement::orders::{
-    follow_move, is_movement_command, parse_move, render_move, render_sail, MoveStep,
-    MOVEMENT_ORDER_COMMANDS,
+    first_passage, follow_move, is_movement_command, parse_move, render_move, render_sail,
+    MoveStep, OrderedPassage, MOVEMENT_ORDER_COMMANDS,
 };
 use atlantis_hud_core::report::{parse_report_full, ParsedReport};
 
@@ -259,4 +259,45 @@ fn the_rules_example_order_reads_every_step() {
 
     assert_eq!(parse_move("MOVE N NE 1 IN"), Some(steps.clone()));
     assert_eq!(render_move(&steps), "MOVE N NE 1 IN");
+}
+
+/// The fold both the tracer and the order checker read: which step is the passage, which structure
+/// the unit stands in when it is ordered, and how many placing steps come after it.
+///
+/// `rules/move`, direction 4: "IN, which will move through an inner passage in the structure that
+/// the unit is currently in."
+#[test]
+fn a_move_in_is_the_passage_of_the_structure_the_unit_is_standing_in() {
+    // Already inside structure 3, so a bare IN is its passage, and the SE after it is unplaceable.
+    assert_eq!(
+        first_passage(Some("3"), &parse_move("MOVE IN SE").unwrap()),
+        Some(OrderedPassage {
+            before: 0,
+            structure_id: Some("3".to_string()),
+            steps_after: 1,
+        })
+    );
+
+    // Standing in nothing, but the order enters structure 1 first.
+    assert_eq!(
+        first_passage(None, &parse_move("MOVE 1 IN").unwrap()),
+        Some(OrderedPassage {
+            before: 1,
+            structure_id: Some("1".to_string()),
+            steps_after: 0,
+        })
+    );
+
+    // OUT leaves the structure, so the IN that follows is a passage in nothing at all.
+    assert_eq!(
+        first_passage(Some("3"), &parse_move("MOVE OUT IN").unwrap())
+            .map(|passage| passage.structure_id),
+        Some(None)
+    );
+
+    // No IN at all - almost every order.
+    assert_eq!(
+        first_passage(Some("3"), &parse_move("MOVE N SE").unwrap()),
+        None
+    );
 }

@@ -37,7 +37,14 @@ const trace: TracedPath = {
     { month: 2, steps: 2, endsAt: at(7, 47) }
   ],
   mode: "walk",
-  blockedFrom: null
+  blockedFrom: null,
+  passage: null
+};
+
+const passage = {
+  coordinate: at(7, 53),
+  structure: "Shaft [3]",
+  stepsAfter: 2
 };
 
 describe("which movement line the map draws", () => {
@@ -58,7 +65,8 @@ describe("which movement line the map draws", () => {
     expect(overlay).toEqual({
       origin: at(7, 53),
       hexes: [at(7, 51), at(7, 49)],
-      solidSteps: 2
+      solidSteps: 2,
+      passage: null
     });
   });
 
@@ -81,7 +89,8 @@ describe("which movement line the map draws", () => {
     expect(overlay).toEqual({
       origin: at(7, 53),
       hexes: [at(7, 51), at(7, 49), at(7, 47)],
-      solidSteps: 1
+      solidSteps: 1,
+      passage: null
     });
   });
 
@@ -121,5 +130,30 @@ describe("which movement line the map draws", () => {
     expect(
       chooseRouteOverlay({ movementLayerOn: true, plannerArmed: false, plan: null, trace: null })
     ).toBeNull();
+  });
+});
+
+describe("a route that ran into an inner passage", () => {
+  it("a trace that stopped at a passage carries it", () => {
+    const overlay = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: { ...trace, steps: [], months: [], passage }
+    });
+
+    expect(overlay?.passage).toEqual(passage);
+    expect(overlay?.hexes).toEqual([]);
+  });
+
+  it("a planner preview never carries a passage", () => {
+    const overlay = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan,
+      trace: { ...trace, passage }
+    });
+
+    expect(overlay?.passage).toBeNull();
   });
 });
