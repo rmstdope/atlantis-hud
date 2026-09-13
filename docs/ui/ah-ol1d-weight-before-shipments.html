@@ -1,0 +1,83 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>A quartermaster that walks before the goods arrive</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441; --blue:#4a9fd8; --green:#4fb783; --red:#e2705f; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1060px; margin:auto; } h1 { font-size:27px; } h1 span,h2 { color:var(--brass); }
+  header p { color:var(--soft); margin-top:10px; max-width:84ch; } h2 { font-size:15px; letter-spacing:1.3px; margin:35px 0 8px; text-transform:uppercase; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:9px; padding:15px; margin-bottom:14px; }
+  .cols { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .cols3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+  .lbl { color:var(--dim); font:10px system-ui,sans-serif; letter-spacing:.1em; margin-bottom:6px; text-transform:uppercase; }
+  .pane { background:var(--raised); border:1px solid var(--edge); border-radius:6px; font:12.5px/1.5 system-ui,sans-serif; }
+  .pane .hd { align-items:center; border-bottom:1px solid var(--edge); display:flex; gap:6px; padding:6px 9px; }
+  .pane .hd .t { color:var(--brass); } .pane .hd .h { color:var(--dim); font-size:11.5px; }
+  .pane .bd { padding:8px 9px; }
+  .ed2 { background:#0b0f14; border:1px solid var(--edge); border-radius:4px; color:#c7d2de; font:11.5px/1.75 "SF Mono",Menlo,Consolas,monospace; padding:7px 6px; }
+  .ed2 .bar { border-left:3px solid transparent; padding-left:4px; } .ed2 .bar.w { border-left-color:#f0c36a; }
+  .unit { color:var(--blue); }
+  .row { align-items:baseline; display:flex; gap:7px; font:11.9px/1.5 system-ui,sans-serif; padding:4px 0; }
+  .m { color:#f0c36a; flex:none; width:1.2ch; } .ln { color:var(--dim); flex:none; } .tx { color:var(--ink); }
+  .stat { border-top:1px solid var(--edge); color:var(--soft); display:flex; font-size:11.5px; gap:12px; margin-top:7px; padding-top:6px; }
+  .stat .k { color:#f0c36a; } .stat .o { color:var(--green); }
+  .quiet { color:var(--dim); font-size:12.5px; margin-top:6px; }
+  .map { font:12px/1.7 "SF Mono",Menlo,monospace; color:var(--soft); } .map b { color:var(--brass); font-weight:normal; }
+  .mv { font:600 13px system-ui,sans-serif; } .mv.bad { color:var(--red); } .mv.ok { color:var(--green); }
+  .pred { color:var(--brass); font-style:italic; }
+  .sub { color:var(--soft); font:11.5px system-ui,sans-serif; margin-top:2px; }
+  svg text { font:11px system-ui,sans-serif; fill:var(--soft); }
+  .note { color:var(--soft); font-size:13px; margin-top:8px; }
+  .clash { background:rgba(226,112,95,.1); border-left:3px solid var(--red); border-radius:0 6px 6px 0; color:var(--soft); font-size:13px; margin-top:10px; padding:8px 11px; }
+  .fine { background:rgba(79,183,131,.08); border-left:3px solid var(--green); border-radius:0 6px 6px 0; color:var(--soft); font-size:13px; margin-top:10px; padding:8px 11px; }
+  .tag { background:rgba(217,164,65,.15); border-radius:3px; color:var(--brass); font:11px system-ui,sans-serif; letter-spacing:.08em; padding:2px 7px; text-transform:uppercase; }
+  footer { color:var(--dim); font-size:12px; margin-top:40px; max-width:84ch; }
+  @media (max-width:880px) { .cols,.cols3 { grid-template-columns:1fr; } body { padding:20px 16px 48px; } }
+</style></head><body>
+<header><h1>Shipping to a quartermaster that walks away &mdash; <span>which load decides the walk?</span></h1>
+<p>Every unit moves before any goods are shipped. So goods shipped to a quartermaster this month cannot stop it walking this month &mdash; they arrive after it has gone. Today the map and the unit&rsquo;s Movement box count those goods as if they were already on its back, decide it is too heavy to move, and so forecast the shipment as delivered from where it stands. Nothing is said.</p></header>
+<main>
+<div class="fine" style="margin-top:18px">Agreed: <b>A</b> &mdash; the map, the Movement box and the shipment all weigh a unit as it steps off, before any goods shipped this month reach it; the refusal keeps the sentence already agreed. <b>C1</b> &mdash; when the goods that arrive after the walk make the quartermaster too heavy for next month, nothing is said.</div>
+<h2>The situation</h2>
+<div class="card"><div class="map">
+<b>unit 900</b> in plain (10,20) &nbsp; TRANSPORT 901 60 STON<br>
+<b>unit 901</b> quartermaster in town (10,18) &mdash; <b>2 hexes</b> from unit 900<br>
+&nbsp;&nbsp;carries 40, can walk with 50 &nbsp;&middot;&nbsp; MOVE N &rarr; forest (10,17), <b>3 hexes</b> from unit 900<br>
+&nbsp;&nbsp;the 60 STON would weigh 3,000 &mdash; far more than it can walk with
+</div></div>
+
+<h2>Today &mdash; what a player sees</h2>
+<div class="cols3">
+<section class="card"><div class="lbl">Map</div>
+<svg viewBox="0 0 220 120" width="100%"><circle cx="60" cy="90" r="9" fill="#4a9fd8"/><text x="45" y="112">900</text><circle cx="140" cy="45" r="9" fill="#d9a441"/><text x="155" y="49">901 &mdash; no path</text><line x1="69" y1="85" x2="130" y2="50" stroke="#4fb783" stroke-dasharray="4 3"/><text x="60" y="60">goods</text></svg></section>
+<section class="card"><div class="lbl">Unit 901 &middot; Movement</div><div class="mv pred">Overloaded</div><div class="sub">The load is 3,040. No movement capacity can carry it.</div></section>
+<section class="card"><div class="lbl">Beneath the orders editor &mdash; unit 900</div><div class="stat" style="border:0;margin:0;padding:0"><span class="o">0 errors</span><span class="k">0 warnings</span></div><div class="quiet">Nothing to report.</div></section>
+</div>
+<div class="clash">Wrong by the rules: 901 walks off with its 40, and the shipment is then 3 hexes away and refused. The player is told the goods arrive.</div>
+
+<h2>A &middot; The map and the Movement box follow the rules too</h2>
+<div class="cols3">
+<section class="card"><div class="lbl">Map</div>
+<svg viewBox="0 0 220 120" width="100%"><circle cx="60" cy="90" r="9" fill="#4a9fd8"/><text x="45" y="112">900</text><circle cx="140" cy="45" r="9" fill="#d9a441"/><text x="100" y="40">901</text><line x1="140" y1="45" x2="175" y2="18" stroke="#d9a441" stroke-width="2" marker-end="url(#a)"/><defs><marker id="a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#d9a441"/></marker></defs><text x="178" y="20">N</text></svg>
+<div class="note">901&rsquo;s path is drawn, as for any unit that can walk.</div></section>
+<section class="card"><div class="lbl">Unit 901 &middot; Movement</div><div class="mv pred">Walking</div><div class="sub">The load is 40. Walk can carry it.</div><div class="note">Weighed as it steps off &mdash; before the shipment could reach it.</div></section>
+<section class="card"><div class="lbl">Beneath the orders editor &mdash; unit 900</div><div class="ed2"><div class="bar"><span class="unit">unit 900</span></div><div class="bar w">&nbsp;&nbsp;TRANSPORT 901 60 STON</div></div><div class="stat"><span class="o">0 errors</span><span class="k">1 warning</span></div><div class="row"><span class="m">&#9888;</span><span class="ln">line 2</span><span class="tx">Unit 901 is 3 hexes away and takes goods from 2 hexes, so 60 STON stay with this unit.</span></div></section>
+</div>
+<div class="fine">Everything agrees: the path, the Movement box and the refusal all say 901 walks away. The sentence is the one already agreed, word for word.</div>
+
+<h2>B &middot; Only the shipment changes</h2>
+<div class="cols3">
+<section class="card"><div class="lbl">Map</div>
+<svg viewBox="0 0 220 120" width="100%"><circle cx="60" cy="90" r="9" fill="#4a9fd8"/><text x="45" y="112">900</text><circle cx="140" cy="45" r="9" fill="#d9a441"/><text x="155" y="49">901 &mdash; no path</text></svg><div class="note">Unchanged from today.</div></section>
+<section class="card"><div class="lbl">Unit 901 &middot; Movement</div><div class="mv pred">Overloaded</div><div class="sub">The load is 40. No movement capacity can carry it.</div><div class="note">Or 3,040 &mdash; either way it says 901 stays put.</div></section>
+<section class="card"><div class="lbl">Beneath the orders editor &mdash; unit 900</div><div class="ed2"><div class="bar"><span class="unit">unit 900</span></div><div class="bar w">&nbsp;&nbsp;TRANSPORT 901 60 STON</div></div><div class="stat"><span class="o">0 errors</span><span class="k">1 warning</span></div><div class="row"><span class="m">&#9888;</span><span class="ln">line 2</span><span class="tx">Unit 901 is 3 hexes away and takes goods from 2 hexes, so 60 STON stay with this unit.</span></div></section>
+</div>
+<div class="clash">The refusal is right, but the map and the Movement box say 901 never leaves &mdash; so &ldquo;3 hexes away&rdquo; contradicts what is drawn beside it.</div>
+
+<h2>C &middot; The walk is still in reach &mdash; the goods arrive and it is too heavy next month</h2>
+<div class="card"><div class="map"><b>unit 901</b> walks 1 hex, still 2 hexes from unit 900 &mdash; the 60 STON arrive after its walk. Next month it carries 3,040 and cannot move.</div></div>
+<div class="cols">
+<section class="card"><div class="lbl">C1 &middot; Say nothing</div><div class="mv pred">Walking</div><div class="sub">The load is 40. Walk can carry it.</div><div class="stat"><span class="o">0 errors</span><span class="k">0 warnings</span></div><div class="quiet">Nothing to report. The goods show up in 901&rsquo;s items at month end, as any delivery does.</div></section>
+<section class="card"><div class="lbl">C2 &middot; Warn beside the shipment</div><div class="mv pred">Walking</div><div class="sub">The load is 40. Walk can carry it.</div><div class="stat"><span class="o">0 errors</span><span class="k">1 warning</span></div><div class="row"><span class="m">&#9888;</span><span class="ln">line 2</span><span class="tx">Unit 901 will carry 3,040 once these goods arrive and can move with 50, so it will not move next month.</span></div></section>
+</div>
+</main>
+<footer>This is a drawing, not a running screen. Trident&rsquo;s <code>rules/sequenceofevents</code> processes &ldquo;ADVANCE, MOVE and SAIL orders&rdquo; under Movement orders, and only afterwards &ldquo;TRANSPORT orders are processed in multiple phases&rdquo;. The refusal sentence is the one already agreed for an out-of-reach shipment.</footer>
+</body></html>
