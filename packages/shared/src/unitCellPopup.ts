@@ -1802,7 +1802,29 @@ function silverCauseWhy(
  * The headline: `silver`, the cell's own figure, and the pair from the report's `held` when the
  * figure is a number and has moved. Never a pair on a `?`.
  */
-function silverTotalLine(silver: UnitSilver, shown: number | null): PopupLine {
+function silverTotalLine(silver: UnitSilver, shown: number | null | any): PopupLine {
+  // Accept both legacy numeric shown and new ShownSilver UI shape.
+  const shownObj: any = shown && typeof shown === 'object' ? shown : (shown === null ? null : { kind: 'single', value: shown });
+  const formatShown = (s: any): string => {
+    if (!s) return '?';
+    if (s.kind === 'single') return String(s.value);
+    if (s.kind === 'pair') return `${s.high} or ${s.low}`; // plan: refused first (higher), accepted second (lower)
+    if (s.kind === 'range') return `${s.low} to ${s.high}`;
+    return '?';
+  };
+  const bounded = shareBoundedByAnUnreadUnit(silver);
+  const displayValue = shownObj == null || shownObj.value == null ? '?' : bounded ? atMost(String(shownObj.value ?? shownObj.low ?? shownObj.high)) : formatShown(shownObj);
+
+  if (shown === null || (typeof shown === 'number' && shown === silver.held)) {
+    return { label: 'silver', value: displayValue };
+  }
+
+  return {
+    label: 'silver',
+    value: displayValue,
+    change: { direction: (typeof shown === 'number' ? (shown > silver.held ? 'up' : 'down') : ((shownObj && (shownObj.value ?? shownObj.low ?? shownObj.high)) > silver.held ? 'up' : 'down')), from: String(silver.held) }
+  };
+}
   // Extended for ah-cddb: support a UI-local ShownSilver by detecting an object in place of
   // `shown` and rendering a conditional clause for priced-but-acceptance-unknown shipments.
   const bounded = shareBoundedByAnUnreadUnit(silver);
