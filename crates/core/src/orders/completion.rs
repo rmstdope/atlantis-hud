@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use super::grammar::{self, arguments_at_caret, caret_at, Arg, CaretShape, Order};
 use super::lexer::utf16_column;
 use super::study;
-use crate::movement::rules::{Ruleset, SkillEntry};
+use crate::movement::rules::{ItemKind, Ruleset, SkillEntry};
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
 use crate::report::ParsedReport;
 
@@ -25,11 +25,15 @@ use crate::report::ParsedReport;
 #[serde(rename_all = "camelCase")]
 pub struct OrderCompletion {
     /// What is written into the line when the entry is accepted, and the first thing the typed
-    /// word is matched against. Always the canonical spelling: a keyword, or an item or skill tag.
+    /// word is matched against. Always the canonical spelling: a keyword, an item or skill tag, or
+    /// a structure's name - quoted when it contains a space, `"Timber Yard"`.
     pub value: String,
     /// The other thing the typed word may match: an item's or skill's name, so `cross` finds
     /// `XBOW`. Empty for a keyword, which has no second name.
     pub name: String,
+    /// What the popup shows for the entry. Empty for everything but a building or ship name, which
+    /// is shown as the game spells it while `value` is what the order needs (`"Timber Yard"`).
+    pub label: String,
     /// What the entry shows beside its value. Empty for a keyword, which is its own explanation.
     pub detail: String,
 }
@@ -39,6 +43,7 @@ impl OrderCompletion {
         Self {
             value: keyword.word.to_string(),
             name: String::new(),
+            label: String::new(),
             detail: match keyword.same_as {
                 Some(canonical) => format!("same as {canonical}"),
                 None => String::new(),
@@ -147,11 +152,12 @@ fn completions_for(
     report: Option<&ParsedReport>,
     unit_id: Option<&str>,
 ) -> Vec<OrderCompletion> {
-    // The three families answer in a fixed order regardless of which form of the order found
-    // them: keywords first, then the item catalogue, then skills. That is what puts the 22 item
+    // The four families answer in a fixed order regardless of which form of the order found
+    // them: keywords first, then what BUILD can name, then the item catalogue, then skills. That is what puts the 22 item
     // classes before the items at `GIVE 4573 ALL ` even though the EXCEPT form (which offers the
     // item) is earlier in the grammar table than the ALL-class form.
     let mut keywords: Vec<OrderCompletion> = Vec::new();
+    let mut structures: Vec<OrderCompletion> = Vec::new();
     let mut items: Vec<OrderCompletion> = Vec::new();
     let mut skills: Vec<OrderCompletion> = Vec::new();
 
@@ -166,6 +172,9 @@ fn completions_for(
                         keywords.push(OrderCompletion::keyword_entry(&entry));
                     }
                 }
+            }
+            Arg::Name if order.name == "BUILD" && structures.is_empty() => {
+                structures = ruleset.map(structure_completions).unwrap_or_default();
             }
             Arg::Item if items.is_empty() => {
                 items = item_completions(order, ruleset, report, unit_id);
@@ -185,7 +194,12 @@ fn completions_for(
         }
     }
 
-    keywords.into_iter().chain(items).chain(skills).collect()
+    keywords
+        .into_iter()
+        .chain(structures)
+        .chain(items)
+        .chain(skills)
+        .collect()
 }
 
 /// What an `Arg::Item` position offers, by the order it belongs to.
@@ -244,6 +258,7 @@ fn market_completions(items: &[MarketItem], side: MarketSide) -> Vec<OrderComple
         .map(|item| OrderCompletion {
             value: item.tag.clone(),
             name: item.name.clone(),
+            label: String::new(),
             detail: match side {
                 MarketSide::Sale => {
                     format!("{} · ${}, {} left", item.name, item.price, item.amount)
@@ -270,6 +285,7 @@ fn holdings_completions(unit: &ReportUnit) -> Vec<OrderCompletion> {
         .map(|item| OrderCompletion {
             value: item.tag.clone(),
             name: item.name.clone(),
+            label: String::new(),
             detail: format!("{} · {} held", item.name, item.amount),
         })
         .collect()
@@ -297,6 +313,7 @@ fn produce_completions(
         entries.push(OrderCompletion {
             value: product.tag.clone(),
             name: name.clone(),
+            label: String::new(),
             detail: format!("{name} · {} here", product.amount),
         });
     }
@@ -332,11 +349,65 @@ fn produce_completions(
             entries.push(OrderCompletion {
                 value: tag,
                 name: item_name.clone(),
+                label: String::new(),
                 detail: format!("{item_name} · {skill_name}"),
             });
         }
     }
 
+    entries
+}
+
+/// `data/objects`: what a structure players cannot build says of itself.
+const CANNOT_BE_BUILT: &str = "This structure cannot be built by players";
+/// `data/items`: how a ship's entry opens. A flying 'ship' (Balloon) opens differently, and is not
+/// one BUILD is offered for.
+const SHIP_OPENING: &str = "This is a ship";
+
+/// Every structure and ship a player can build in this world, alphabetically by the game's own
+/// spelling, case-insensitively. `data/objects`: a structure the page says "This structure cannot
+/// be built by players" is left out. `data/items`: a ship is an item whose entry opens "This is a
+/// ship" - a flying 'ship' (Balloon) is not one.
+fn structure_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
+    fn entry(name: &str, detail: &str) -> OrderCompletion {
+        OrderCompletion {
+            value: if name.contains(char::is_whitespace) {
+                format!("\"{name}\"")
+            } else {
+                name.to_string()
+            },
+            name: name.to_string(),
+            label: name.to_string(),
+            detail: detail.to_string(),
+        }
+    }
+
+    let buildings = ruleset
+        .buildings
+        .iter()
+        .filter(|(_, building)| !building.description.contains(CANNOT_BE_BUILT))
+        .map(|(key, building)| {
+            let name = if building.name.is_empty() {
+                key
+            } else {
+                &building.name
+            };
+            entry(name, "building")
+        });
+    let ships = ruleset
+        .items
+        .values()
+        .filter(|item| {
+            item.kind == ItemKind::Ship
+                && item
+                    .description
+                    .as_deref()
+                    .is_some_and(|description| description.starts_with(SHIP_OPENING))
+        })
+        .map(|item| entry(&item.name, "ship"));
+
+    let mut entries: Vec<OrderCompletion> = buildings.chain(ships).collect();
+    entries.sort_by_cached_key(|entry| entry.name.to_uppercase());
     entries
 }
 
@@ -349,6 +420,7 @@ fn catalogue_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
         .map(|item| OrderCompletion {
             value: item.tag.clone(),
             name: item.name.clone(),
+            label: String::new(),
             detail: item.name.clone(),
         })
         .collect()
@@ -403,6 +475,7 @@ fn skill_completions(
         .map(|skill| OrderCompletion {
             value: skill.tag.clone(),
             name: skill.name.clone(),
+            label: String::new(),
             detail: detail_for(skill, level_of(unit, &skill.tag)),
         })
         .collect()
@@ -483,6 +556,7 @@ mod tests {
         OrderCompletion {
             value: value.to_string(),
             name: String::new(),
+            label: String::new(),
             detail: String::new(),
         }
     }
@@ -491,12 +565,111 @@ mod tests {
         OrderCompletion {
             value: value.to_string(),
             name: String::new(),
+            label: String::new(),
             detail: format!("same as {canonical}"),
         }
     }
 
     fn no_ruleset(prefix: &str) -> Vec<OrderCompletion> {
         order_argument_completions(prefix, None, None, None)
+    }
+
+    fn built(label: &str, detail: &str) -> OrderCompletion {
+        OrderCompletion {
+            value: if label.contains(char::is_whitespace) {
+                format!("\"{label}\"")
+            } else {
+                label.to_string()
+            },
+            name: label.to_string(),
+            label: label.to_string(),
+            detail: detail.to_string(),
+        }
+    }
+
+    fn labels(entries: &[OrderCompletion]) -> Vec<&str> {
+        entries.iter().map(|entry| entry.label.as_str()).collect()
+    }
+
+    // --- what BUILD names (ah-1tyi) -------------------------------------------------------------
+
+    #[test]
+    fn build_offers_the_keywords_then_every_buildable_structure_and_ship() {
+        let offered = order_argument_completions("BUILD ", Some(&ruleset()), None, None);
+
+        assert_eq!(offered[..2], [kw("HELP"), kw("COMPLETE")]);
+        assert_eq!(offered.len(), 44, "2 keywords, 36 structures, 6 ships");
+        let names = labels(&offered[2..]);
+        let mut sorted = names.clone();
+        sorted.sort_by_key(|name| name.to_uppercase());
+        assert_eq!(names, sorted);
+        assert!(offered.contains(&built("Caravanserai", "building")));
+        assert!(offered.contains(&OrderCompletion {
+            value: "\"Timber Yard\"".to_string(),
+            name: "Timber Yard".to_string(),
+            label: "Timber Yard".to_string(),
+            detail: "building".to_string(),
+        }));
+        assert!(offered.contains(&built("Cog", "ship")));
+    }
+
+    #[test]
+    fn build_leaves_out_what_players_cannot_build() {
+        let offered = order_argument_completions("BUILD ", Some(&ruleset()), None, None);
+        let names = labels(&offered);
+        for excluded in [
+            "Lair",
+            "Cave",
+            "Bog",
+            "Gateway",
+            "Balloon",
+            "Airship",
+            "Cloudship",
+        ] {
+            assert!(
+                !names.contains(&excluded),
+                "{excluded} should not be offered"
+            );
+        }
+    }
+
+    #[test]
+    fn build_names_follow_the_selected_world() {
+        let arcanum =
+            Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON).unwrap();
+        let newage = order_argument_completions("BUILD ", Some(&arcanum), None, None);
+        let origins = order_argument_completions("BUILD ", Some(&ruleset()), None, None);
+        for name in ["Palace", "Town Hall"] {
+            assert!(labels(&newage).contains(&name), "New Age offers {name}");
+            assert!(
+                !labels(&origins).contains(&name),
+                "New Origins has no {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn build_help_offers_no_names() {
+        let offered = order_argument_completions("BUILD HELP ", Some(&ruleset()), None, None);
+        assert!(offered
+            .iter()
+            .all(|entry| entry.detail != "building" && entry.detail != "ship"));
+    }
+
+    #[test]
+    fn a_building_name_is_followed_by_complete() {
+        for prefix in ["BUILD Caravanserai ", "BUILD \"Timber Yard\" "] {
+            assert_eq!(
+                order_argument_completions(prefix, Some(&ruleset()), None, None),
+                vec![kw("COMPLETE")],
+                "{prefix}"
+            );
+        }
+    }
+
+    #[test]
+    fn build_without_a_ruleset_offers_only_its_keywords() {
+        assert_eq!(no_ruleset("BUILD "), vec![kw("HELP"), kw("COMPLETE")]);
     }
 
     // --- moved from grammar.rs: the grammar answers did not change when the type did -----------
@@ -572,10 +745,14 @@ mod tests {
             order_argument_completions("BUILD Farm ", Some(&origins), None, None),
             vec![kw("COMPLETE")]
         );
-        assert_eq!(
-            order_argument_completions("BUILD ", Some(&trident), None, None),
-            order_argument_completions("BUILD ", Some(&origins), None, None)
-        );
+        // The names differ by world (ah-1tyi); the keywords at the name position do not.
+        let keywords = |ruleset: &Ruleset| -> Vec<OrderCompletion> {
+            order_argument_completions("BUILD ", Some(ruleset), None, None)
+                .into_iter()
+                .filter(|entry| entry.label.is_empty())
+                .collect()
+        };
+        assert_eq!(keywords(&trident), keywords(&origins));
     }
 
     #[test]

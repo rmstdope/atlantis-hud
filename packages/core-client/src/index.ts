@@ -481,10 +481,15 @@ export type RoutePlanResponse = {
 /** One entry in the orders editor's completion popup, mirroring the core's `OrderCompletion`. */
 export type OrderCompletion = {
   /** What is written into the line when the entry is accepted, and the first thing the typed word
-   * is matched against. Always the canonical spelling: a keyword, or an item or skill tag. */
+   * is matched against. Always the canonical spelling: a keyword, an item or skill tag, or a
+   * structure's name - quoted when it contains a space, `"Timber Yard"`. */
   value: string;
-  /** The other thing the typed word may match: an item's or skill's name. Empty for a keyword. */
+  /** The other thing the typed word may match: an item's, skill's or structure's name. Empty for a
+   * keyword. */
   name: string;
+  /** What the popup shows for the entry. Empty for everything but a building or ship name, which is
+   * shown as the game spells it while `value` is what the order needs (`"Timber Yard"`). */
+  label: string;
   /** What the entry shows beside its value. Empty for a keyword, which is its own explanation. */
   detail: string;
 };
