@@ -617,9 +617,25 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
   // The two reach refusals are the only reasons that name a distance, and the agreed record
   // writes "1 IRON stays" against "5 STON stay", so the verb agrees with the count. The four
   // reasons below keep their unconditional "stay": they were agreed as they stand (`ah-7ale.2.1`).
-  const away = issue.reach?.away ?? 0;
-  const limit = issue.reach?.limit ?? 0;
   const verb = issue.amount === 1 ? "stays" : "stay";
+
+  // Helpers for level wording. Mirror crates/core/src/report/level.rs::level_name
+  const levelName = (z: number): string => {
+    switch (z) {
+      case 0:
+        return "nexus";
+      case 1:
+        return "surface";
+      case 2:
+        return "underworld";
+      case 3:
+        return "underdeep";
+      case 4:
+        return "abyss";
+      default:
+        return `level ${z}`;
+    }
+  };
   switch (issue.reason) {
     case "notQuartermaster":
       return goods === null
@@ -634,13 +650,49 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
     case "acceptanceUnknown":
       return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether its faction accepts transports from yours.`;
     case "tooFarToAccept":
+      if (issue.reach !== null) {
+        const reach = issue.reach;
+        if (reach.away != null && reach.limit != null) {
+          const away = reach.away;
+          const limit = reach.limit;
+          return goods === null
+            ? `Unit ${issue.to} is ${away} hexes away and takes goods from ${limit} hexes, so this TRANSPORT moves nothing.`
+            : `Unit ${issue.to} is ${away} hexes away and takes goods from ${limit} hexes, so ${goods} ${verb} with this unit.`;
+        }
+        if (reach.fromLevel !== null && reach.toLevel !== null) {
+          const toName = levelName(reach.toLevel);
+          const fromName = levelName(reach.fromLevel);
+          return goods === null
+            ? `Unit ${issue.to} is in the ${toName} and this unit is on the ${fromName}, so this TRANSPORT moves nothing.`
+            : `Unit ${issue.to} is in the ${toName} and this unit is on the ${fromName}, so ${goods} ${verb} with this unit.`;
+        }
+      }
+      // Fallback: keep old numeric wording with zeroes.
       return goods === null
-        ? `Unit ${issue.to} is ${away} hexes away and takes goods from ${limit} hexes, so this TRANSPORT moves nothing.`
-        : `Unit ${issue.to} is ${away} hexes away and takes goods from ${limit} hexes, so ${goods} ${verb} with this unit.`;
+        ? `Unit ${issue.to} is 0 hexes away and takes goods from 0 hexes, so this TRANSPORT moves nothing.`
+        : `Unit ${issue.to} is 0 hexes away and takes goods from 0 hexes, so ${goods} ${verb} with this unit.`;
     case "tooFarToShip":
+      if (issue.reach !== null) {
+        const reach = issue.reach;
+        if (reach.away != null && reach.limit != null) {
+          const away = reach.away;
+          const limit = reach.limit;
+          return goods === null
+            ? `Unit ${issue.to} is ${away} hexes away and this unit can ship ${limit} hexes, so this TRANSPORT moves nothing.`
+            : `Unit ${issue.to} is ${away} hexes away and this unit can ship ${limit} hexes, so ${goods} ${verb} with this unit.`;
+        }
+        if (reach.fromLevel !== null && reach.toLevel !== null) {
+          const toName = levelName(reach.toLevel);
+          const fromName = levelName(reach.fromLevel);
+          return goods === null
+            ? `Unit ${issue.to} is in the ${toName} and this unit is on the ${fromName}, so this TRANSPORT moves nothing.`
+            : `Unit ${issue.to} is in the ${toName} and this unit is on the ${fromName}, so ${goods} ${verb} with this unit.`;
+        }
+      }
+      // Fallback: keep old numeric wording with zeroes.
       return goods === null
-        ? `Unit ${issue.to} is ${away} hexes away and this unit can ship ${limit} hexes, so this TRANSPORT moves nothing.`
-        : `Unit ${issue.to} is ${away} hexes away and this unit can ship ${limit} hexes, so ${goods} ${verb} with this unit.`;
+        ? `Unit ${issue.to} is 0 hexes away and this unit can ship 0 hexes, so this TRANSPORT moves nothing.`
+        : `Unit ${issue.to} is 0 hexes away and this unit can ship 0 hexes, so ${goods} ${verb} with this unit.`;
   }
 }
 

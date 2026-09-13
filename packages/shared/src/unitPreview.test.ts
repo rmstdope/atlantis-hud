@@ -1866,7 +1866,7 @@ describe("a transport target the report cannot show receiving", () => {
         tag: "STON",
         reason: "tooFarToAccept",
         orderIndex: 0,
-        reach: { away: 3, limit: 2 }
+        reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
       })
     ).toBe("Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.");
   });
@@ -1879,9 +1879,22 @@ describe("a transport target the report cannot show receiving", () => {
         tag: "IRON",
         reason: "tooFarToShip",
         orderIndex: 0,
-        reach: { away: 4, limit: 3 }
+        reach: { away: 4, limit: 3, fromLevel: null, toLevel: null }
       })
     ).toBe("Unit 901 is 4 hexes away and this unit can ship 3 hexes, so 1 IRON stays with this unit.");
+  });
+
+  it("a shipment across levels is refused and names the levels", () => {
+    expect(
+      transportTargetSentence({
+        to: "901",
+        amount: 9,
+        tag: "FUR",
+        reason: "tooFarToAccept",
+        orderIndex: 0,
+        reach: { away: null, limit: null, fromLevel: 1, toLevel: 2 }
+      })
+    ).toBe("Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit.");
   });
 
   it("a refused shipment of goods the game would not carry names no goods", () => {
@@ -1892,7 +1905,7 @@ describe("a transport target the report cannot show receiving", () => {
         tag: "",
         reason: "tooFarToAccept",
         orderIndex: 0,
-        reach: { away: 3, limit: 2 }
+        reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
       })
     ).toBe("Unit 901 is 3 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing.");
     expect(
@@ -1902,7 +1915,7 @@ describe("a transport target the report cannot show receiving", () => {
         tag: "",
         reason: "tooFarToShip",
         orderIndex: 0,
-        reach: { away: 4, limit: 3 }
+        reach: { away: 4, limit: 3, fromLevel: null, toLevel: null }
       })
     ).toBe("Unit 901 is 4 hexes away and this unit can ship 3 hexes, so this TRANSPORT moves nothing.");
   });
@@ -1916,7 +1929,7 @@ describe("a transport target the report cannot show receiving", () => {
       tag: "STON",
       reason,
       orderIndex: 0,
-      reach: { away: 3, limit: 2 }
+      reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
     });
 
     expect(transportTargetUncertain(far("tooFarToAccept"))).toBe(false);
