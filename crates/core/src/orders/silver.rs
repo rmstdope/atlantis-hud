@@ -625,6 +625,10 @@ pub struct ShipmentPriced {
     pub rate: i64,
     /// `weight * rate` - what this one shipment costs.
     pub cost: i64,
+    /// True when this shipment's target eligibility is known but acceptance is not, so the price
+    /// is conditional rather than charged.
+    #[serde(default)]
+    pub conditional: bool,
 }
 
 /// One `BUY ALL` on one unit, as the ITEMS and SILVER hovers say it.

@@ -33,4 +33,9 @@ rate: number,
 /**
  * `weight * rate` - what this one shipment costs.
  */
-cost: number, };
+cost: number, 
+/**
+ * True when this shipment's target eligibility is known but acceptance is not, so the price
+ * is conditional rather than charged.
+ */
+conditional: boolean, };
