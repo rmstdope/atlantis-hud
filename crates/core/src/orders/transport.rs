@@ -198,7 +198,12 @@ pub(crate) fn priced(
     if reach == Reach::Local {
         return Priced::Free;
     }
-    let rate = match hex_distance(from, to, geometry) {
+    let rate = match hex_distance(
+        from,
+        to,
+        geometry,
+        &crate::movement::graph::ShownExtent::default(),
+    ) {
         Some(HexDistance::Exact(hexes)) => shipping_rate(reach, hexes, language),
         // An upper bound inside the free short range settles the question outright.
         Some(HexDistance::AtMost(hexes)) if hexes <= FREE_SHORT_RANGE_HEXES => {
@@ -499,7 +504,12 @@ pub(crate) fn arrival(
 
     let limit = reach.hexes();
     let between_quartermasters = matches!(reach, Reach::BetweenQuartermasters { .. });
-    match hex_distance(from, to, geometry) {
+    match hex_distance(
+        from,
+        to,
+        geometry,
+        &crate::movement::graph::ShownExtent::default(),
+    ) {
         Some(HexDistance::Exact(hexes)) if hexes > limit => Arrival::TooFar(OutOfReach::Distance {
             away: hexes,
             limit,

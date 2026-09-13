@@ -622,14 +622,61 @@ impl MapKnowledge {
     }
 }
 
+/// How far across each level of the map the loaded reports have already shown, which is a floor
+/// under the world's real size on that level: a map `width` wide runs `x` from 0 to `width - 1`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ShownExtent {
+    /// `(columns, rows)` by level: the largest `x + 1` and `y + 1` seen on it.
+    by_level: BTreeMap<u32, (i32, i32)>,
+}
+
+impl ShownExtent {
+    /// The floor every one of these coordinates proves. A negative coordinate proves nothing and
+    /// is skipped, so a malformed row can never widen the world.
+    #[must_use]
+    pub fn from_coordinates(coordinates: impl IntoIterator<Item = Coordinate>) -> Self {
+        let mut by_level = BTreeMap::new();
+        for coordinate in coordinates {
+            if coordinate.x < 0 || coordinate.y < 0 {
+                continue;
+            }
+            let entry = by_level.entry(coordinate.z).or_insert((0, 0));
+            entry.0 = entry.0.max(coordinate.x.saturating_add(1));
+            entry.1 = entry.1.max(coordinate.y.saturating_add(1));
+        }
+        Self { by_level }
+    }
+
+    /// Columns shown on this level; 0 when none are.
+    #[must_use]
+    pub fn columns(&self, level: u32) -> i32 {
+        self.by_level.get(&level).map_or(0, |&(columns, _)| columns)
+    }
+
+    /// Rows shown on this level; 0 when none are.
+    #[must_use]
+    pub fn rows(&self, level: u32) -> i32 {
+        self.by_level.get(&level).map_or(0, |&(_, rows)| rows)
+    }
+}
+
+impl MapKnowledge {
+    /// What this map has shown of each level (see [`ShownExtent`]).
+    #[must_use]
+    pub fn shown_extent(&self) -> ShownExtent {
+        ShownExtent::from_coordinates(self.coordinates())
+    }
+}
+
 /// How far apart two hexes are, and how sure the map's own shape lets us be.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HexDistance {
     /// The map settles it: exactly this many hexes.
     Exact(i32),
     /// A route round the far edge cannot be measured, because the game never recorded the width
-    /// (or, on a map that wraps north to south, the height). The real distance is this or less,
-    /// and may be anything down to zero.
+    /// (or, on a map that wraps north to south, the height), unless the reports have already shown
+    /// enough of the map to rule a shorter way out. The real distance is this or less, and may be
+    /// anything down to zero.
     AtMost(i32),
 }
 
@@ -637,12 +684,14 @@ pub enum HexDistance {
 ///
 /// `geometry` is what `geometry_from_json` read: `None` is a game that never recorded its map's
 /// shape, which is the ordinary state for every game created before the app asked, and is why the
-/// answer is `AtMost` rather than a number.
+/// answer is `AtMost` rather than a number - unless the reports have already shown enough of the
+/// map to rule a shorter way out, which `shown` carries.
 #[must_use]
 pub fn hex_distance(
     from: Coordinate,
     to: Coordinate,
     geometry: Option<MapGeometry>,
+    shown: &ShownExtent,
 ) -> Option<HexDistance> {
     if from.z != to.z {
         return None;
@@ -658,7 +707,7 @@ pub fn hex_distance(
     // The `(dy - dx) / 2` below relies on `x + y` having the same parity in both hexes. Going
     // round a seam of *odd* span flips that parity, and the division then truncates a step off;
     // no committed world has an odd dimension, and a player-entered one cannot be asserted away.
-    let separation = |a: i32, b: i32, wraps: bool, span: i32| {
+    let separation = |a: i32, b: i32, wraps: bool, span: i32, shown_span: i32| {
         let raw = (a - b).abs();
         match geometry {
             Some(_) if wraps && span > 0 => {
@@ -667,7 +716,8 @@ pub fn hex_distance(
             }
             Some(_) if !wraps => (raw, true),
             // No geometry at all, or an axis that wraps over a span the game never recorded.
-            _ => (raw, false),
+            // A way round the far edge is span - raw long, shorter than raw only when span < 2 * raw; the reports have shown span is at least shown_span.
+            _ => (raw, raw.saturating_mul(2) <= shown_span),
         }
     };
 
@@ -675,8 +725,8 @@ pub fn hex_distance(
         Some(map) => (map.wrap_x, map.width, map.wrap_y, map.height),
         None => (false, 0, false, 0),
     };
-    let (dx, x_settled) = separation(from.x, to.x, wrap_x, width);
-    let (dy, y_settled) = separation(from.y, to.y, wrap_y, height);
+    let (dx, x_settled) = separation(from.x, to.x, wrap_x, width, shown.columns(from.z));
+    let (dy, y_settled) = separation(from.y, to.y, wrap_y, height, shown.rows(from.z));
 
     // A step east or west also moves one row, so `dx` steps cover `dx` columns and up to `dx`
     // rows; every further row costs half a North/South step. `x + y` has the same parity in every
@@ -709,6 +759,7 @@ mod tests {
             Coordinate { x: 100, y: 0, z: 1 },
             Coordinate { x: 0, y: 0, z: 1 },
             Some(map),
+            &ShownExtent::default(),
         );
 
         assert_eq!(measured, Some(HexDistance::Exact(28)));
@@ -724,7 +775,14 @@ mod tests {
             wrap_y: false,
         };
         let origin = Coordinate { x: 0, y: 0, z: 1 };
-        let steps = |x: i32, y: i32| hex_distance(origin, Coordinate { x, y, z: 1 }, Some(map));
+        let steps = |x: i32, y: i32| {
+            hex_distance(
+                origin,
+                Coordinate { x, y, z: 1 },
+                Some(map),
+                &ShownExtent::default(),
+            )
+        };
 
         assert_eq!(steps(0, 6), Some(HexDistance::Exact(3)));
         assert_eq!(steps(0, 4), Some(HexDistance::Exact(2)));
@@ -747,7 +805,8 @@ mod tests {
             hex_distance(
                 Coordinate { x: 71, y: 1, z: 1 },
                 Coordinate { x: 0, y: 0, z: 1 },
-                Some(wrapping_east)
+                Some(wrapping_east),
+                &ShownExtent::default()
             ),
             Some(HexDistance::Exact(1))
         );
@@ -760,7 +819,8 @@ mod tests {
             hex_distance(
                 Coordinate { x: 0, y: 94, z: 1 },
                 Coordinate { x: 0, y: 0, z: 1 },
-                Some(wrapping_both)
+                Some(wrapping_both),
+                &ShownExtent::default()
             ),
             Some(HexDistance::Exact(1))
         );
@@ -772,7 +832,10 @@ mod tests {
         let from = Coordinate { x: 71, y: 1, z: 1 };
         let to = Coordinate { x: 0, y: 0, z: 1 };
 
-        assert_eq!(hex_distance(from, to, None), Some(HexDistance::AtMost(71)));
+        assert_eq!(
+            hex_distance(from, to, None, &ShownExtent::default()),
+            Some(HexDistance::AtMost(71))
+        );
         assert_eq!(
             hex_distance(
                 from,
@@ -782,7 +845,8 @@ mod tests {
                     height: 0,
                     wrap_x: true,
                     wrap_y: true,
-                })
+                }),
+                &ShownExtent::default()
             ),
             Some(HexDistance::AtMost(71))
         );
@@ -796,9 +860,88 @@ mod tests {
                     height: 96,
                     wrap_x: false,
                     wrap_y: false,
-                })
+                }),
+                &ShownExtent::default()
             ),
             Some(HexDistance::Exact(71))
+        );
+    }
+
+    fn shown(coordinates: &[(i32, i32, u32)]) -> ShownExtent {
+        ShownExtent::from_coordinates(coordinates.iter().map(|&(x, y, z)| Coordinate { x, y, z }))
+    }
+
+    /// `ah-hc7z`: a way round the far edge is `span - raw` long, so a span the reports have shown
+    /// to be at least `2 * raw` settles the direct distance.
+    #[test]
+    fn a_hex_distance_the_reports_settle_is_exact_with_no_map_shape() {
+        let at = |x, y| Coordinate { x, y, z: 1 };
+
+        assert_eq!(
+            hex_distance(at(44, 36), at(41, 35), None, &shown(&[(51, 40, 1)])),
+            Some(HexDistance::Exact(3))
+        );
+        assert_eq!(
+            hex_distance(at(0, 0), at(8, 0), None, &shown(&[(15, 0, 1)])),
+            Some(HexDistance::Exact(8))
+        );
+        assert_eq!(
+            hex_distance(at(0, 0), at(8, 0), None, &shown(&[(14, 0, 1)])),
+            Some(HexDistance::AtMost(8))
+        );
+        assert_eq!(
+            hex_distance(at(0, 0), at(0, 8), None, &shown(&[(0, 15, 1)])),
+            Some(HexDistance::Exact(4))
+        );
+        assert_eq!(
+            hex_distance(at(0, 0), at(0, 8), None, &shown(&[(0, 14, 1)])),
+            Some(HexDistance::AtMost(4))
+        );
+        assert_eq!(
+            hex_distance(at(0, 0), at(8, 8), None, &shown(&[(15, 14, 1)])),
+            Some(HexDistance::AtMost(8))
+        );
+        assert_eq!(
+            hex_distance(at(44, 36), at(41, 35), None, &shown(&[(51, 40, 2)])),
+            Some(HexDistance::AtMost(3))
+        );
+        assert_eq!(
+            hex_distance(
+                at(44, 36),
+                at(41, 35),
+                Some(MapGeometry {
+                    width: 0,
+                    height: 0,
+                    wrap_x: true,
+                    wrap_y: true,
+                }),
+                &shown(&[(51, 40, 1)])
+            ),
+            Some(HexDistance::Exact(3))
+        );
+    }
+
+    #[test]
+    fn shown_extent_is_a_floor_per_level() {
+        let extent = shown(&[(3, 7, 1), (10, 2, 1), (4, 4, 2), (-5, 90, 1)]);
+
+        assert_eq!(extent.columns(1), 11);
+        assert_eq!(extent.rows(1), 8);
+        assert_eq!(extent.columns(2), 5);
+        assert_eq!(extent.rows(2), 5);
+        assert_eq!(extent.columns(3), 0);
+
+        // A hex named only as an exit was printed by a report too.
+        let report = crate::report::parse_report_full(
+            "Foo (1) Report\n\nplain (0,0) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n  \
+             Southeast : plain (5,9) in Nowhere.\n",
+        );
+        let level = report.regions[0].coordinate.z;
+        assert_eq!(
+            MapKnowledge::from_report(&report)
+                .shown_extent()
+                .columns(level),
+            6
         );
     }
 
@@ -807,7 +950,7 @@ mod tests {
         let from = Coordinate { x: 0, y: 0, z: 1 };
         let to = Coordinate { x: 0, y: 0, z: 2 };
 
-        assert_eq!(hex_distance(from, to, None), None);
+        assert_eq!(hex_distance(from, to, None, &ShownExtent::default()), None);
         assert_eq!(
             hex_distance(
                 from,
@@ -817,7 +960,8 @@ mod tests {
                     height: 96,
                     wrap_x: true,
                     wrap_y: true,
-                })
+                }),
+                &ShownExtent::default()
             ),
             None
         );
