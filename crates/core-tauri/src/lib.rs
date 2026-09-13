@@ -2470,6 +2470,69 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert!(duplicate_error.contains("requires explicit overwrite confirmation"));
     }
 
+    /// `ah-b6fz`: validation given the remembered map measures a shipment from where the
+    /// quartermaster ends the month (`rules/sequenceofevents`), end to end through the command.
+    #[test]
+    fn validation_measures_a_shipment_after_the_quartermasters_move() {
+        let mut lines = vec!["Foo (1) Report".to_string(), String::new()];
+        for y in (0..=10).step_by(2) {
+            lines.push(format!("plain (0,{y}) in Nowhere, 10 peasants (orcs), $5."));
+            lines.push(String::new());
+            lines.push("Exits:".to_string());
+            if y > 0 {
+                lines.push(format!("  North : plain (0,{}) in Nowhere.", y - 2));
+            }
+            if y < 10 {
+                lines.push(format!("  South : plain (0,{}) in Nowhere.", y + 2));
+            }
+            lines.push(String::new());
+            if y == 0 {
+                lines.push(
+                    "* Source (900), Foo (1), leader [LEAD], 5 stone [STON]. Weight: 60. \
+                     Capacity: 0/0/70/0."
+                        .to_string(),
+                );
+                lines.push(String::new());
+            }
+            if y == 4 {
+                lines.push("+ Post One [1] : Caravanserai.".to_string());
+                lines.push(
+                    "  * Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. \
+                     Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (450)."
+                        .to_string(),
+                );
+                lines.push(String::new());
+            }
+        }
+        let report = lines.join("\n");
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";
+        let map = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
+        let ruleset = atlantis_hud_fixtures::RULESET_JSON;
+        let reach = |remembered: Option<&str>| -> Vec<String> {
+            command_validate_orders(
+                orders,
+                Some(ruleset),
+                Some(&report),
+                None,
+                Some(map),
+                None,
+                remembered,
+            )
+            .diagnostics
+            .into_iter()
+            .filter(|diagnostic| diagnostic.code == "transport-out-of-reach")
+            .map(|diagnostic| diagnostic.message)
+            .collect()
+        };
+
+        assert_eq!(
+            reach(Some("[]")),
+            vec!["Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.".to_string()]
+        );
+        // Without the remembered map the shipment is measured from the report, as before.
+        assert_eq!(reach(None), Vec::<String>::new());
+    }
+
     #[test]
     fn tauri_adapter_validates_and_loads_order_drafts() {
         let dir = tempdir().expect("tempdir");
