@@ -532,6 +532,7 @@ describe("web core adapter", () => {
     const nameables = ["UNIT", "FACTION", "OBJECT", "CITY"].map((value) => ({
       value,
       name: "",
+      label: "",
       detail: ""
     }));
     const adapter = createWebCoreAdapter(

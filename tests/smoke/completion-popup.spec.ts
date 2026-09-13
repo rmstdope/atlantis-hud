@@ -114,7 +114,11 @@ test("BUILD completes a structure's name as the game spells it", async ({ page }
   const popup = page.locator(".cm-tooltip-autocomplete");
   await expect(popup).toContainText("Timber Yard");
   await expect(popup).toContainText("building");
+  // Enter accepts the selection only once there is one, and not within acceptCompletion's 75ms
+  // interactionDelay - the same race orders-editor.spec.ts documents.
+  await expect(popup.locator("li[aria-selected]")).toContainText("Timber Yard");
+  await page.waitForTimeout(150);
 
   await page.keyboard.press("Enter");
-  expect(await ordersText(page)).toContain('BUILD "Timber Yard" ');
+  await expect.poll(() => ordersText(page)).toContain('BUILD "Timber Yard" ');
 });
