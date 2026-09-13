@@ -647,8 +647,7 @@ pub fn find_order_with_ruleset(command: &str, ruleset: Option<&Ruleset>) -> Opti
 /// half-typed word is what the shell filters the answer by.
 ///
 /// `None` in the command position, inside a comment or an unclosed quote (except where BUILD names
-/// a structure), or for an order the table
-/// does not have. The `Arg`s are de-duplicated in form order: several forms often agree on what may
+/// a structure), or for an order the table does not have. The `Arg`s are de-duplicated in form order: several forms often agree on what may
 /// stand next, and each is worth answering only once.
 pub(super) fn arguments_at_caret(
     line_prefix: &str,

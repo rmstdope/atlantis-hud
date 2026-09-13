@@ -153,9 +153,9 @@ fn completions_for(
     unit_id: Option<&str>,
 ) -> Vec<OrderCompletion> {
     // The four families answer in a fixed order regardless of which form of the order found
-    // them: keywords first, then what BUILD can name, then the item catalogue, then skills. That is what puts the 22 item
-    // classes before the items at `GIVE 4573 ALL ` even though the EXCEPT form (which offers the
-    // item) is earlier in the grammar table than the ALL-class form.
+    // them: keywords first, then what BUILD can name, then the item catalogue, then skills. That
+    // is what puts the 22 item classes before the items at `GIVE 4573 ALL ` even though the
+    // EXCEPT form (which offers the item) is earlier in the grammar table than the ALL-class form.
     let mut keywords: Vec<OrderCompletion> = Vec::new();
     let mut structures: Vec<OrderCompletion> = Vec::new();
     let mut items: Vec<OrderCompletion> = Vec::new();
@@ -1825,7 +1825,10 @@ mod tests {
         assert_eq!(answer.position, CaretPosition::Argument);
         assert_eq!(answer.word, "\"Tim");
         assert_eq!(answer.word_start, 6);
-        assert!(!answer.options.is_empty());
+        assert!(answer
+            .options
+            .iter()
+            .any(|entry| entry.label == "Timber Yard" && entry.detail == "building"));
     }
 
     #[test]
