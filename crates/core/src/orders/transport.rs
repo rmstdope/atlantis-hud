@@ -481,6 +481,10 @@ mod tests {
         crate::report::model::Coordinate { x, y, z: 1 }
     }
 
+    fn hex_at_level(x: i32, y: i32, z: u32) -> crate::report::model::Coordinate {
+        crate::report::model::Coordinate { x, y, z }
+    }
+
     fn facts(
         own: bool,
         quartermaster: bool,
@@ -569,6 +573,23 @@ mod tests {
         // A quartermaster distributing to a unit that is not one: no reach rule applies, because
         // since `ah-64wm` the target gate has already refused every such order.
         assert_eq!(reach_for(true, false, 1), None);
+    }
+
+    #[test]
+    fn a_shipment_to_another_map_level_is_a_definite_refusal() {
+        assert_eq!(
+            out_of_reach(
+                Reach::Local,
+                hex_at_level(0, 0, 1),
+                hex_at_level(0, 6, 2),
+                Some(fixture_map())
+            ),
+            Some(OutOfReach::DifferentLevel {
+                from_level: 1,
+                to_level: 2,
+                between_quartermasters: false,
+            })
+        );
     }
 
     /// `data/quartermaster`: "up to 3 plus (level+1)/3 hexes distant"; `rules/economy_transport`:
