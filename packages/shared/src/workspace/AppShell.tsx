@@ -3219,6 +3219,7 @@ export function AppShell({
           rawReport,
           rememberedJson,
           unit.unitId,
+          unit.regionId,
           ordersDocument,
           mapJson,
           passagesJson

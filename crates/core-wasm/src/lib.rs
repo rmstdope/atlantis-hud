@@ -575,12 +575,16 @@ pub fn known_map_state(
 /// The browser twin of the desktop command, calling the same core entry so the two shells cannot
 /// drift into tracing differently. An order that cannot be traced resolves to an answer carrying
 /// no path; only an unusable ruleset or unreadable memory rejects.
+// Eight, as the core's `trace_orders_on_map` less its cache: each document crosses as its own text,
+// and the hex is the cursor's (`ah-5nqc`).
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn trace_move_orders_state(
     ruleset_json: String,
     raw_report: String,
     remembered_json: String,
     unit_id: String,
+    region_id: String,
     orders_document: String,
     map_json: String,
     passages_json: String,
@@ -592,6 +596,7 @@ pub fn trace_move_orders_state(
             &raw_report,
             &remembered_json,
             &unit_id,
+            &region_id,
             &orders_document,
             &map_json,
             &passages_json,

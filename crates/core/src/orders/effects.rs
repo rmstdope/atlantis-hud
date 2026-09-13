@@ -1164,17 +1164,34 @@ fn apply_movement_boardings(units: &mut [WorkingUnit]) {
     }
 }
 
+/// One unit this month's `FORM` creates, as the whole month's orders leave it, with the movement
+/// its own block wrote.
+pub(crate) struct FormedAsOrdered {
+    pub(crate) unit: ReportUnit,
+    /// `WorkingUnit::move_steps` of the settled row: region-scoped, because `Working` resolves an
+    /// alias by `(region, alias)`.
+    pub(crate) move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
+    /// `WorkingUnit::move_command == Some("SAIL")`.
+    pub(crate) sails: bool,
+}
+
 /// One unit this month's `FORM` creates, as the whole month's orders leave it.
 ///
 /// `None` for an id no `FORM` in this document creates, which includes every real unit number and
 /// a `new-<alias>` whose block is not in this document. A dissolving unit **is** returned: the
 /// order it was written is still drawn (decision **Q3b'** of `ah-4hux`).
+///
+/// `region_id` scopes the lookup: `rules/form` scopes an alias to its region, so two hexes may
+/// each form a `new-1` (`ah-5nqc`). When no unit with that id is formed in `region_id` - it is
+/// empty, or it is the hex a selected arrival row arrives in - the first formed row with that id in
+/// settle order answers.
 pub(crate) fn formed_unit_as_ordered(
     report: &crate::report::ParsedReport,
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
     orders_document: &str,
+    region_id: &str,
     unit_id: &str,
-) -> Option<ReportUnit> {
+) -> Option<FormedAsOrdered> {
     // Not an optimisation to skip: without it every trace of an id the report does not carry would
     // run the whole settling pipeline to find nothing.
     if !unit_id.starts_with(FORMED_ID_PREFIX) {
@@ -1189,10 +1206,24 @@ pub(crate) fn formed_unit_as_ordered(
         None,
         super::semantics::CheckOptions::default(),
     );
-    units
-        .into_iter()
-        .find(|entry| entry.formed && entry.unit.unit_id == unit_id)
-        .map(|entry| entry.unit)
+    // A selected arrival row carries the hex it arrives in, not the one it was formed in, so a hex
+    // that forms no such unit falls back to the number alone rather than drawing nothing.
+    let formed_here = units
+        .iter()
+        .position(|entry| {
+            entry.formed && entry.unit.unit_id == unit_id && entry.unit.region_id == region_id
+        })
+        .or_else(|| {
+            units
+                .iter()
+                .position(|entry| entry.formed && entry.unit.unit_id == unit_id)
+        })?;
+    let entry = units.into_iter().nth(formed_here)?;
+    Some(FormedAsOrdered {
+        sails: entry.move_command.as_deref() == Some("SAIL"),
+        move_steps: entry.move_steps,
+        unit: entry.unit,
+    })
 }
 
 /// Where each unit ends the month, for a caller that checks orders but draws no map (`ah-b6fz`).
@@ -5638,6 +5669,66 @@ mod tests {
                 "the formed unit in {region_id} buys only its own hex's HUMN: {:?}",
                 formed[0].unit.items
             );
+        }
+    }
+
+    #[test]
+    fn two_hexes_forming_the_same_alias_each_depart_by_their_own_orders() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  South : plain (1,3) in Nowhere.",
+            "",
+            "* North (900), Foo (1), 2 leaders [LEAD]. Weight: 20. Capacity: 0/0/30/0.",
+            "",
+            "plain (1,3) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  North : plain (1,1) in Nowhere.",
+            "  South : plain (1,5) in Nowhere.",
+            "",
+            "* Middle (901), Foo (1), 2 leaders [LEAD]. Weight: 20. Capacity: 0/0/30/0.",
+            "",
+            "plain (1,5) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  North : plain (1,3) in Nowhere.",
+            "",
+            "* South (902), Foo (1), 2 leaders [LEAD]. Weight: 20. Capacity: 0/0/30/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n\
+             unit 901\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n\
+             unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n",
+        );
+        let own_formed = |region_id: &str| {
+            let region = response
+                .regions
+                .iter()
+                .find(|region| region.region_id == region_id)
+                .unwrap_or_else(|| panic!("no preview for {region_id}"));
+            let formed: Vec<_> = region
+                .units
+                .iter()
+                .filter(|unit| unit.formed && unit.arriving_from.is_none())
+                .cloned()
+                .collect();
+            assert_eq!(formed.len(), 1, "one own formed unit in {region_id}");
+            formed.into_iter().next().expect("checked above")
+        };
+        let south = own_formed("1:1,5");
+        assert_eq!(south.status, UnitPreviewStatus::Departing);
+        assert_eq!(south.departing_to, Some("1:1,1".to_string()));
+        for region_id in ["1:1,1", "1:1,3"] {
+            let unit = own_formed(region_id);
+            assert_eq!(unit.status, UnitPreviewStatus::Present, "{region_id}");
+            assert_eq!(unit.departing_to, None, "{region_id}");
         }
     }
 
