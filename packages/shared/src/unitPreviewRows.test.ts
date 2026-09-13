@@ -26,6 +26,7 @@ const previewedRow = (
   transportSent: [],
   transportReceived: [],
   transportTargetIssues: [],
+  shipmentUnmeasured: false,
   itemChanges: [],
   dissolvesInto: null,
   formed: false,

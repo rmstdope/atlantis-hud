@@ -299,7 +299,7 @@ pub struct CheckOptions {
     pub disabled: BTreeSet<String>,
     /// The map's own shape, as `geometry_from_json` read it, for the one check that measures a
     /// distance. `None` - a game that never recorded it - leaves every distance unsettled, and
-    /// `transport::out_of_reach` then refuses nothing (`ah-7ale.2.2.1`).
+    /// `transport::arrival` then settles nothing past the reach (`ah-7ale.5`).
     pub geometry: Option<crate::movement::graph::MapGeometry>,
     /// Every inner passage the faction has proved the far side of. Empty by default: a caller that
     /// knows nothing is the ordinary case, and it is also every test that says nothing about one.
@@ -765,6 +765,7 @@ pub fn review_turn(
             &mut silver,
             &mut overruns,
             &claim_allowances,
+            options.emits(codes::TRANSPORT_OUT_OF_REACH),
         );
         if hex.units.is_empty() {
             continue;
@@ -1666,6 +1667,10 @@ fn forecast_hex(
     into: &mut Vec<UnitSilver>,
     overruns: &mut Vec<PoolOverrun>,
     claim_allowances: &ClaimAllowances,
+    // Whether `Settings › Warnings › Transport` is on. It decides only whether the hover may say
+    // *which* cause left the month unpriced; that the month is unpriced is not switchable
+    // (`ah-7ale.5`).
+    transport_warning: bool,
 ) {
     let Relief {
         shared_silver,
@@ -1848,7 +1853,7 @@ fn forecast_hex(
         // ledger's own `PILLAGE` arm build a unit's facts in exactly one place (`ah-jo6b.5`). The
         // two things this caller has that the ledger-less ones do not - a real `Receipts` and the
         // late, phase-aware picture - are the two arguments below.
-        let facts = unit_facts(
+        let mut facts = unit_facts(
             hex,
             ordered,
             receipts
@@ -1864,6 +1869,12 @@ fn forecast_hex(
             )),
             ruleset,
         );
+        facts.shipping_unmeasured = ledger
+            .shipping_unmeasured
+            .get(&ordered.unit.unit_id)
+            .copied()
+            .unwrap_or_default();
+        facts.transport_warning = transport_warning;
         claims.push(food_claim(&facts, ruleset));
 
         into.push(forecast_unit(
@@ -4596,6 +4607,10 @@ struct Ledger<'a> {
     /// Every shipment a sender's month could not pay for, in settlement order. Always accompanied
     /// by a `not-enough-silver` finding on the same unit: the charge is the whole ask.
     pub(crate) refused_shipments: Vec<super::transport::RefusedShipment>,
+    /// Which of the two unmeasurable causes each of this hex's units met, by unit number
+    /// (`ah-7ale.5`). Not gated on the Transport warning: it is what makes the month read `?`, and
+    /// no figure may claim to be certain when it is not.
+    pub(crate) shipping_unmeasured: BTreeMap<String, super::transport::UnmeasuredShipments>,
     /// How many of one tag a unit's own `SELL` lines have already moved this month, and how many of
     /// those lines moved any. A block may name the same goods twice, and the second line can only
     /// draw on what the first left of the unit's settled share of the market line (`ah-vw8e`). Keyed
@@ -4881,6 +4896,7 @@ fn ledger_for_with_production<'a>(
         silver_moves: BTreeMap::new(),
         shipping_paid: BTreeMap::new(),
         refused_shipments: Vec::new(),
+        shipping_unmeasured: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
         build_material_refusals: Vec::new(),
@@ -5636,6 +5652,9 @@ fn unit_facts<'a>(
         formed: ordered.formed.as_ref(),
         after_gifts_unknown: ordered.holdings_unknown(),
         food_uncertain: food_uncertain_after_gifts(ordered, ruleset),
+        // Filled by `forecast_hex`, the one caller that holds a settled ledger (`ah-7ale.5`).
+        shipping_unmeasured: super::transport::UnmeasuredShipments::default(),
+        transport_warning: true,
         phases,
     }
 }
@@ -12848,7 +12867,7 @@ fn check_transfer_targets(
 /// too far apart, reported against the unit that wrote it (`ah-7ale.2.2.1`).
 ///
 /// A reader of the same decision the forecast makes, not a second one: `transport::acceptance`
-/// settles whether the target would take the goods and `transport::out_of_reach` settles the
+/// settles whether the target would take the goods and `transport::arrival` settles the
 /// distance, both shared with `effects.rs`. What is this check's own is the sentence and where it is
 /// anchored.
 fn check_transport_reach(
@@ -12903,7 +12922,9 @@ fn check_transport_reach(
             };
             // The target's hex comes from the same facts the forecast measures from, so the two
             // cannot disagree about where the far end stands.
-            let Some(refused) = super::transport::out_of_reach(
+            // Only a settled refusal is a problem: an unmeasured distance may well be in reach, and
+            // the unit preview marks it instead (`ah-7ale.5`).
+            let super::transport::Arrival::TooFar(refused) = super::transport::arrival(
                 reach,
                 hex.region.coordinate,
                 facts.coordinate,
@@ -12971,6 +12992,7 @@ fn shipping_bills(
         let mut shipped: BTreeMap<String, i64> = BTreeMap::new();
         let mut priced_here: Vec<ShipmentPriced> = Vec::new();
         let mut priced_and_refused: Vec<(i64, super::transport::RefusedShipment)> = Vec::new();
+        let mut unmeasured = super::transport::UnmeasuredShipments::default();
         for placed in &ordered.intents {
             let Intent::Transport { to, what, amount } = &placed.intent else {
                 continue;
@@ -12987,7 +13009,37 @@ fn shipping_bills(
             let Selector::Item(text) = what else {
                 continue;
             };
+            // `target_facts` has an entry for every unit in every region of the report, so an
+            // absent entry is exactly "the report does not show this unit at all" - narrower than
+            // `Acceptance::EligibilityUnknown`, whose other cause is a foreign unit the report does
+            // show (`ah-cddb`). Only a quartermaster sender's month turns on it: every other sender
+            // ships under `Reach::Local`, free at every distance in every world, so nothing about
+            // its month is unknown (`ah-7ale.5`).
             let Some(facts) = targets.get(id.as_str()) else {
+                if quartermaster_senders
+                    && quartermasters.contains(sender)
+                    && resolve_item(text, hex, ordered, ruleset)
+                        .and_then(|tag| rules.find_item(&tag))
+                        .is_some_and(|entry| {
+                            let tag = entry.tag.to_ascii_uppercase();
+                            let held =
+                                (ledger
+                                    .state
+                                    .balance_at(StatePhase::Maintenance, sender, &tag)
+                                    + received_earlier
+                                        .get(&(sender.to_string(), tag.clone()))
+                                        .copied()
+                                        .unwrap_or_default()
+                                    - shipped.get(&tag).copied().unwrap_or_default())
+                                .max(0);
+                            rules.can_be_transported(&tag)
+                                && super::transfers::quantity_moved(amount, held)
+                                    .saturating_mul(entry.weight)
+                                    > 0
+                        })
+                {
+                    unmeasured.target_unshown = true;
+                }
                 continue;
             };
             let acceptance = super::transport::acceptance(Some(facts));
@@ -13014,16 +13066,22 @@ fn shipping_bills(
                 continue;
             }
             // A shipment the game refuses for distance keeps its goods (`ah-7ale.2.1`), and a
-            // shipment that moves nothing is charged nothing.
-            if super::transport::out_of_reach(
+            // shipment that moves nothing is charged nothing. The same function the preview asks,
+            // so the two surfaces cannot disagree about whether one shipment arrives (`ah-7ale.5`).
+            match super::transport::arrival(
                 reach,
                 hex.region.coordinate,
                 facts.coordinate,
                 geometry,
-            )
-            .is_some()
-            {
-                continue;
+            ) {
+                super::transport::Arrival::TooFar(_) => continue,
+                super::transport::Arrival::Unmeasured => {
+                    // Nothing is charged for goods that may never leave, and the month says so: the
+                    // plan and the agreed record put a `?` on it for every unmeasured shipment.
+                    unmeasured.world_wrap = true;
+                    continue;
+                }
+                super::transport::Arrival::Certain => {}
             }
             let Some(entry) =
                 resolve_item(text, hex, ordered, ruleset).and_then(|tag| rules.find_item(&tag))
@@ -13062,7 +13120,18 @@ fn shipping_bills(
                 rules.order_language,
                 weight,
             ) {
-                super::transport::Priced::Free | super::transport::Priced::Unknown => {
+                super::transport::Priced::Unknown(super::transport::Unpriceable::WorldWrap) => {
+                    // The goods certainly arrive; only what they cost is unsaid (`ah-7ale.5`).
+                    unmeasured.world_wrap = true;
+                    if !conditional {
+                        *shipped.entry(tag.clone()).or_default() += quantity;
+                        delivered.push(((id.clone(), tag.clone()), quantity));
+                    }
+                }
+                super::transport::Priced::Free
+                | super::transport::Priced::Unknown(
+                    super::transport::Unpriceable::DifferentLevels,
+                ) => {
                     if !conditional {
                         *shipped.entry(tag.clone()).or_default() += quantity;
                         delivered.push(((id.clone(), tag.clone()), quantity));
@@ -13120,6 +13189,14 @@ fn shipping_bills(
                     }
                 }
             }
+        }
+        if unmeasured.any() {
+            let recorded = ledger
+                .shipping_unmeasured
+                .entry(sender.to_string())
+                .or_default();
+            recorded.world_wrap |= unmeasured.world_wrap;
+            recorded.target_unshown |= unmeasured.target_unshown;
         }
         if !priced_here.is_empty() {
             ledger
@@ -37389,6 +37466,157 @@ BUILD
             geometry: Some(FIXTURE_MAP),
             ..CheckOptions::default()
         }
+    }
+
+    /// `rules/economy_transport`'s free short range is New Age's, so the price turns on it only
+    /// in a Trident game.
+    fn trident_rules() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the Trident ruleset loads")
+    }
+
+    fn shipment_silver(review: &TurnReview, id: &str) -> UnitSilver {
+        review
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == id)
+            .cloned()
+            .unwrap_or_else(|| panic!("no forecast for {id}: {:?}", review.silver))
+    }
+
+    /// A Quartermaster 5 owning its own Caravanserai, holding silver and iron to ship.
+    fn shipping_quartermaster() -> ReportRegion {
+        let mut region = caravanserai_owner("900", 5, 0, 0);
+        let owner = region.units.remove(0);
+        region
+            .units
+            .push(with_item(with_silver(owner, 1000), 5, "iron", "IRON"));
+        region
+    }
+
+    fn silencing_transport() -> CheckOptions {
+        CheckOptions {
+            disabled: ["transport-out-of-reach".to_string()].into_iter().collect(),
+            ..CheckOptions::default()
+        }
+    }
+
+    /// `ah-7ale.5`: with no map shape four hexes is an upper bound - certainly within a Quartermaster
+    /// 5's reach, but astride `rules/economy_transport`'s free short range, so no price is honest.
+    #[test]
+    fn a_shipment_whose_price_cannot_be_worked_out_doubts_the_month() {
+        let orders = "unit 900\nTRANSPORT 901 1 IRON\n";
+        let regions = || vec![shipping_quartermaster(), caravanserai_owner("901", 1, 0, 8)];
+        let review = review_turn(
+            &report(regions()),
+            orders,
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let silver = shipment_silver(&review, "900");
+        assert_eq!(silver.doubt, Some(SilverDoubt::UnpricedShipment));
+        assert_eq!(silver.expense, None);
+        assert_eq!(silver.at_month_end, None);
+        assert!(silver.changes.is_empty());
+        assert!(silver.shipping.is_empty());
+        assert!(silver.shipping_distance_unknown);
+        assert!(!silver.shipping_target_unshown);
+
+        let mapped = review_turn(
+            &report(regions()),
+            orders,
+            Some(&trident_rules()),
+            with_map(),
+        );
+        assert_eq!(shipment_silver(&mapped, "900").doubt, None);
+    }
+
+    /// `ah-7ale.5`: a target the report shows nowhere leaves a quartermaster's price unsaid, and
+    /// leaves an ordinary sender's month alone - `Reach::Local` is free whether it goes or not.
+    #[test]
+    fn a_shipment_to_a_unit_the_report_does_not_show_doubts_a_quartermasters_month() {
+        let review = review_turn(
+            &report(vec![shipping_quartermaster()]),
+            "unit 900\nTRANSPORT 99999 1 IRON\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let silver = shipment_silver(&review, "900");
+        assert_eq!(silver.doubt, Some(SilverDoubt::UnpricedShipment));
+        assert!(silver.shipping_target_unshown);
+        assert!(!silver.shipping_distance_unknown);
+
+        let plain = review_turn(
+            &report(vec![shipping_from(vec![with_item(
+                with_silver(unit("900"), 100),
+                5,
+                "stone",
+                "STON",
+            )])]),
+            "unit 900\nTRANSPORT 99999 5 STON\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let silver = shipment_silver(&plain, "900");
+        assert_eq!(silver.doubt, None);
+        assert!(!silver.shipping_target_unshown);
+        assert!(!silver.shipping_distance_unknown);
+
+        let both = review_turn(
+            &report(vec![
+                shipping_quartermaster(),
+                caravanserai_owner("901", 1, 0, 8),
+            ]),
+            "unit 900\nTRANSPORT 99999 1 IRON\nTRANSPORT 901 1 IRON\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let silver = shipment_silver(&both, "900");
+        assert_eq!(silver.doubt, Some(SilverDoubt::UnpricedShipment));
+        assert!(silver.shipping_target_unshown);
+        assert!(silver.shipping_distance_unknown);
+    }
+
+    /// `ah-7ale.5`: the agreed "world's width never reported" state puts a `?` on the month for an
+    /// ordinary sender too - its goods may or may not leave.
+    #[test]
+    fn an_ordinary_senders_unmeasured_shipment_doubts_its_month() {
+        let review = review_turn(
+            &report(vec![
+                shipping_from(vec![with_item(
+                    with_silver(unit("900"), 100),
+                    5,
+                    "stone",
+                    "STON",
+                )]),
+                caravanserai_owner("901", 1, 0, 10),
+            ]),
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let silver = shipment_silver(&review, "900");
+        assert_eq!(silver.doubt, Some(SilverDoubt::UnpricedShipment));
+        assert!(silver.shipping_distance_unknown);
+    }
+
+    /// `ah-7ale.5`: the switch takes the notes and leaves the `?`.
+    #[test]
+    fn silencing_the_transport_warning_leaves_the_month_unpriced() {
+        let review = review_turn(
+            &report(vec![
+                shipping_quartermaster(),
+                caravanserai_owner("901", 1, 0, 8),
+            ]),
+            "unit 900\nTRANSPORT 901 1 IRON\n",
+            Some(&trident_rules()),
+            silencing_transport(),
+        );
+        let silver = shipment_silver(&review, "900");
+        assert_eq!(silver.doubt, Some(SilverDoubt::UnpricedShipment));
+        assert_eq!(silver.at_month_end, None);
+        assert!(!silver.shipping_distance_unknown);
+        assert!(!silver.shipping_target_unshown);
     }
 
     fn reach_findings(

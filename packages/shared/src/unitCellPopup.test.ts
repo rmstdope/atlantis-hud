@@ -2011,6 +2011,37 @@ describe("the column popups", () => {
     );
   });
 
+  it("an_unpriced_shipment_reads_as_a_question_mark_with_a_note_for_each_cause", () => {
+    const shipped = (flags: boolean) =>
+      columnPopup(
+        popupForCell(
+          "silver",
+          unit({ own: true }),
+          facts({
+            silver: aUnitSilver({
+              held: 100,
+              doubt: "unpriced-shipment",
+              expense: null,
+              atMonthEnd: null,
+              changes: [],
+              shippingDistanceUnknown: flags,
+              shippingTargetUnshown: flags
+            })
+          })
+        )
+      );
+    const both = shipped(true);
+    expect(both.lines).toEqual([{ label: "silver", value: "?" }]);
+    expect(both.notes).toEqual([
+      "This month cannot be added up, so what moved this unit's silver is not listed.",
+      "The distance a shipment must travel is not known, so what it costs cannot be said.",
+      "A shipment's target is not in your report, so what it costs cannot be said."
+    ]);
+    expect(shipped(false).notes).toEqual([
+      "This month cannot be added up, so what moved this unit's silver is not listed."
+    ]);
+  });
+
   it("the silver popup shows no working for a row the game dissolves", () => {
     const popup = columnPopup(
       popupForCell(

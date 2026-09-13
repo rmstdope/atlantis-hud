@@ -122,8 +122,39 @@ pub(crate) enum Priced {
     /// What it costs, and the two numbers the SILVER hover's aside names.
     Charged { rate: i64, weight: i64, cost: i64 },
     /// The map cannot settle the one thing the price still turns on, so the price cannot be worked
-    /// out. Nothing is charged here and nothing is said; `ah-7ale.5` is what marks such a month.
-    Unknown,
+    /// out. Nothing is charged here; `ah-7ale.5` marks the month, by cause.
+    Unknown(Unpriceable),
+}
+
+/// Why one shipment's price could not be worked out (`ah-7ale.5`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unpriceable {
+    /// The world's width (or, on a map that wraps north to south, its height) was never recorded,
+    /// so the distance is an upper bound and the free short range can be neither ruled in nor out.
+    WorldWrap,
+    /// The two ends are on different levels of the map, where no hex distance exists at all.
+    /// Nothing acts on this: such a shipment is refused before it is priced (`ah-e07g`).
+    DifferentLevels,
+}
+
+/// Which of the two unmeasurable causes one unit's shipments met this month (`ah-7ale.5`).
+///
+/// Two flags rather than a list of lines: the month's notes name one cause once, however many
+/// shipments hit it, and the sentence that names a shipment is the ITEMS hover's, which is built
+/// from `TransportTargetIssue` and not from this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UnmeasuredShipments {
+    /// A shipment whose price, or whose arrival, turns on a distance the world's shape cannot settle.
+    pub world_wrap: bool,
+    /// A shipment to a unit the report does not show anywhere, so there is nowhere to measure to.
+    pub target_unshown: bool,
+}
+
+impl UnmeasuredShipments {
+    /// Whether anything at all left this unit's month unpriceable.
+    pub fn any(self) -> bool {
+        self.world_wrap || self.target_unshown
+    }
 }
 
 /// What this shipment costs.
@@ -163,12 +194,12 @@ pub(crate) fn priced(
             let inside = shipping_rate(reach, FREE_SHORT_RANGE_HEXES, language);
             let outside = shipping_rate(reach, FREE_SHORT_RANGE_HEXES + 1, language);
             if inside != outside {
-                return Priced::Unknown;
+                return Priced::Unknown(Unpriceable::WorldWrap);
             }
             outside
         }
         // The two ends are on different levels of the map (`ah-e07g`).
-        None => return Priced::Unknown,
+        None => return Priced::Unknown(Unpriceable::DifferentLevels),
     };
     match rate {
         None => Priced::Free,
@@ -420,46 +451,52 @@ pub(crate) enum OutOfReach {
     },
 }
 
-/// Whether the game will refuse this shipment for distance alone, and the two numbers its sentence
-/// names (`ah-7ale.2.1`).
+/// Whether the map settles that one shipment arrives (`ah-7ale.5`).
 ///
-/// `None` - the shipment is not refused for distance - covers "near enough", a distance the map's
-/// shape leaves unsettled (`HexDistance::AtMost`, whose real distance may be anything down to
-/// zero, so refusing would state a guess as a fact). `ah-7ale.5` is what marks the unsettled case
-/// as uncertain.
+/// Replaces `ah-7ale.2.1`'s `out_of_reach`, whose `None` meant both "near enough" and "no answer" -
+/// two things the forecast must treat differently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Arrival {
+    /// Nothing here refuses it: it is near enough, or an upper bound on the distance already sits
+    /// inside the limit.
+    Certain,
+    /// Certainly refused: too far (`ah-7ale.2.1`), or on another level of the map (`ah-e07g`).
+    TooFar(OutOfReach),
+    /// The game never recorded how far the world reaches around, so the distance is an upper bound
+    /// only: the shipment may be inside the reach or outside it, and nothing may claim either.
+    Unmeasured,
+}
+
+/// What the map says about whether this shipment arrives.
 ///
-/// `AtMost(n)` with `n <= limit` is a shipment that is *certainly* in reach - an upper bound inside
-/// the limit settles the question - and is likewise no refusal.
-///
-/// When the ends lie on different z-levels the map cannot supply a numeric distance; previous code
-/// treated that as `None` and made the price unknown. The agreed UX, however, wants a definite
-/// refusal in that case: the sentence names the two levels instead of a distance number.
-pub(crate) fn out_of_reach(
+/// When the ends lie on different z-levels the map cannot supply a numeric distance, and the agreed
+/// UX wants a definite refusal naming the two levels (`ah-e07g`).
+pub(crate) fn arrival(
     reach: Reach,
     from: crate::report::model::Coordinate,
     to: crate::report::model::Coordinate,
     geometry: Option<crate::movement::graph::MapGeometry>,
-) -> Option<OutOfReach> {
+) -> Arrival {
     use crate::movement::graph::{hex_distance, HexDistance};
 
     let limit = reach.hexes();
+    let between_quartermasters = matches!(reach, Reach::BetweenQuartermasters { .. });
     match hex_distance(from, to, geometry) {
-        Some(HexDistance::Exact(hexes)) => {
-            if hexes <= limit {
-                return None;
-            }
-            Some(OutOfReach::Distance {
-                away: hexes,
-                limit,
-                between_quartermasters: matches!(reach, Reach::BetweenQuartermasters { .. }),
-            })
-        }
-        // An upper bound only refuses nothing: see this function's own note.
-        Some(HexDistance::AtMost(_)) => None,
-        None => Some(OutOfReach::DifferentLevel {
+        Some(HexDistance::Exact(hexes)) if hexes > limit => Arrival::TooFar(OutOfReach::Distance {
+            away: hexes,
+            limit,
+            between_quartermasters,
+        }),
+        Some(HexDistance::Exact(_)) => Arrival::Certain,
+        // An upper bound inside the limit settles the question.
+        Some(HexDistance::AtMost(hexes)) if hexes <= limit => Arrival::Certain,
+        // Past it, the real distance may be anything down to zero: refusing would state a guess
+        // as a fact, and delivering would too.
+        Some(HexDistance::AtMost(_)) => Arrival::Unmeasured,
+        None => Arrival::TooFar(OutOfReach::DifferentLevel {
             from_level: from.z,
             to_level: to.z,
-            between_quartermasters: matches!(reach, Reach::BetweenQuartermasters { .. }),
+            between_quartermasters,
         }),
     }
 }
@@ -552,17 +589,23 @@ mod tests {
         let map = Some(fixture_map());
 
         assert_eq!(
-            out_of_reach(Reach::Local, hex(0, 0), hex(0, 6), map),
-            Some(OutOfReach::Distance {
+            arrival(Reach::Local, hex(0, 0), hex(0, 6), map),
+            Arrival::TooFar(OutOfReach::Distance {
                 away: 3,
                 limit: 2,
                 between_quartermasters: false,
             })
         );
         // Two hexes away is inside the limit, so nothing is refused.
-        assert_eq!(out_of_reach(Reach::Local, hex(0, 0), hex(0, 4), map), None);
-        // No map shape: the distance is an upper bound only, which refuses nothing.
-        assert_eq!(out_of_reach(Reach::Local, hex(0, 0), hex(0, 6), None), None);
+        assert_eq!(
+            arrival(Reach::Local, hex(0, 0), hex(0, 4), map),
+            Arrival::Certain
+        );
+        // No map shape: the distance is an upper bound only, which settles nothing (`ah-7ale.5`).
+        assert_eq!(
+            arrival(Reach::Local, hex(0, 0), hex(0, 6), None),
+            Arrival::Unmeasured
+        );
 
         // Which reach a shipment is measured against, by what each end is.
         assert_eq!(reach_for(false, true, 0), Some(Reach::Local));
@@ -578,18 +621,81 @@ mod tests {
     #[test]
     fn a_shipment_to_another_map_level_is_a_definite_refusal() {
         assert_eq!(
-            out_of_reach(
+            arrival(
                 Reach::Local,
                 hex_at_level(0, 0, 1),
                 hex_at_level(0, 6, 2),
                 Some(fixture_map())
             ),
-            Some(OutOfReach::DifferentLevel {
+            Arrival::TooFar(OutOfReach::DifferentLevel {
                 from_level: 1,
                 to_level: 2,
                 between_quartermasters: false,
             })
         );
+    }
+
+    /// `ah-7ale.5`: an upper bound past the limit settles neither answer, while a settled distance
+    /// and a bound inside the limit both do. A cross-level shipment keeps `ah-e07g`'s refusal.
+    #[test]
+    fn a_distance_the_map_cannot_settle_is_neither_in_reach_nor_out() {
+        let reach = Reach::BetweenQuartermasters { level: 0 };
+        let map = Some(crate::movement::graph::MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: false,
+            wrap_y: false,
+        });
+        assert_eq!(
+            arrival(reach, hex(0, 0), hex(0, 8), None),
+            Arrival::Unmeasured
+        );
+        assert_eq!(
+            arrival(reach, hex(0, 0), hex(0, 8), map),
+            Arrival::TooFar(OutOfReach::Distance {
+                away: 4,
+                limit: 3,
+                between_quartermasters: true,
+            })
+        );
+        assert_eq!(arrival(reach, hex(0, 0), hex(0, 4), None), Arrival::Certain);
+        for geometry in [None, map] {
+            assert!(matches!(
+                arrival(reach, hex(0, 0), hex_at_level(0, 8, 2), geometry),
+                Arrival::TooFar(OutOfReach::DifferentLevel { .. })
+            ));
+        }
+    }
+
+    /// `ah-7ale.5`: which of the two causes left a price unsaid.
+    #[test]
+    fn an_unpriceable_shipment_names_the_cause_that_left_it_unpriced() {
+        let qm = Reach::BetweenQuartermasters { level: 5 };
+        assert_eq!(
+            priced(
+                qm,
+                hex(0, 0),
+                hex(0, 8),
+                None,
+                OrderLanguage::NewAgeTrident,
+                9
+            ),
+            Priced::Unknown(Unpriceable::WorldWrap)
+        );
+        assert_eq!(
+            priced(qm, hex(0, 0), hex(0, 8), None, OrderLanguage::NewOrigins, 9),
+            Priced::Charged {
+                rate: 5,
+                weight: 9,
+                cost: 45
+            }
+        );
+        for language in [OrderLanguage::NewAgeTrident, OrderLanguage::NewOrigins] {
+            assert_eq!(
+                priced(qm, hex(0, 0), hex_at_level(0, 8, 2), None, language, 9),
+                Priced::Unknown(Unpriceable::DifferentLevels)
+            );
+        }
     }
 
     /// `data/quartermaster`: "up to 3 plus (level+1)/3 hexes distant"; `rules/economy_transport`:
@@ -740,7 +846,7 @@ mod tests {
                 OrderLanguage::NewAgeTrident,
                 9
             ),
-            Priced::Unknown
+            Priced::Unknown(Unpriceable::WorldWrap)
         );
         assert!(matches!(
             priced(qm, hex(0, 0), hex(0, 8), None, OrderLanguage::NewOrigins, 9),
@@ -750,7 +856,7 @@ mod tests {
         for language in [OrderLanguage::NewAgeTrident, OrderLanguage::NewOrigins] {
             assert_eq!(
                 priced(qm, hex(0, 0), upstairs, map, language, 9),
-                Priced::Unknown,
+                Priced::Unknown(Unpriceable::DifferentLevels),
                 "{language:?}"
             );
         }

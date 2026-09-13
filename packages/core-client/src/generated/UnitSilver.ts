@@ -387,6 +387,17 @@ buyAll: Array<BuyAllShown>,
  */
 shipping: Array<ShipmentPriced>, 
 /**
+ * Say, beneath the month, that a shipment's distance is not known - one note however many
+ * shipments hit it (`ah-7ale.5`). Already gated on the Transport warning by `forecast_hex`:
+ * false with the switch off, while [`UnitSilver::doubt`] stays `UnpricedShipment`.
+ */
+shippingDistanceUnknown: boolean, 
+/**
+ * Say, beneath the month, that a shipment's target is not in the report. Gated exactly as
+ * `shipping_distance_unknown` is.
+ */
+shippingTargetUnshown: boolean, 
+/**
  * Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
  * the turn, ties broken by document line.
  *

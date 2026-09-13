@@ -539,6 +539,13 @@ pub struct UnitSilver {
     /// Every shipment this unit pays for this month, in document order. Empty for a unit that
     /// ships nothing, ships only free, or whose price could not be worked out (`ah-7ale.3`).
     pub shipping: Vec<ShipmentPriced>,
+    /// Say, beneath the month, that a shipment's distance is not known - one note however many
+    /// shipments hit it (`ah-7ale.5`). Already gated on the Transport warning by `forecast_hex`:
+    /// false with the switch off, while [`UnitSilver::doubt`] stays `UnpricedShipment`.
+    pub shipping_distance_unknown: bool,
+    /// Say, beneath the month, that a shipment's target is not in the report. Gated exactly as
+    /// `shipping_distance_unknown` is.
+    pub shipping_target_unshown: bool,
     /// Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
     /// the turn, ties broken by document line.
     ///
@@ -876,6 +883,10 @@ pub enum SilverDoubt {
     /// month is not, because the men, flags and skills that price income and maintenance went with
     /// the tail (`ah-l09a.4`).
     UnitLineCutShort,
+    /// A `TRANSPORT`/`DISTRIBUTE` whose cost could not be worked out - the world's width was never
+    /// reported, or the target is a unit the report does not show - so the month has no total. The
+    /// shipment may well happen, which is why it is not a refusal and not a problem (`ah-7ale.5`).
+    UnpricedShipment,
 }
 
 /// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
@@ -1277,6 +1288,11 @@ pub struct UnitFacts<'a> {
     /// this unit's maintenance exactly as it was; every other term asks
     /// [`Lookups::uncertain_after_gifts`] about the tag it actually reads (`ah-66yi`).
     pub food_uncertain: bool,
+    /// What this unit's shipments left unpriceable, from `Ledger::shipping_unmeasured`
+    /// (`ah-7ale.5`). Raises the month's doubt whatever the Transport warning says.
+    pub shipping_unmeasured: super::transport::UnmeasuredShipments,
+    /// Whether the hover may name the cause - `Settings › Warnings › Transport` is on.
+    pub transport_warning: bool,
     /// The unit's skills once this month's gifts and recruits have merged in.
     ///
     /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, and by the STUDY arm's
@@ -1930,6 +1946,8 @@ pub fn forecast_unit(
     // `None` where they cannot be counted at all, which `price_pillage` doubts rather than reading
     // as a zero. Taken before the destructure below, which does not name every field.
     let mine = readiness(&facts, ruleset).map(|read| read.ready);
+    let shipping_unmeasured = facts.shipping_unmeasured;
+    let transport_warning = facts.transport_warning;
     let UnitFacts {
         unit_id,
         region_id,
@@ -2006,6 +2024,9 @@ pub fn forecast_unit(
             formed,
             buy_all: Vec::new(),
             shipping: Vec::new(),
+            // The notes are flags beside the doubt, not the doubt, so they survive it (`ah-7ale.5`).
+            shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
+            shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
             changes: Vec::new(),
         };
     }
@@ -2069,6 +2090,9 @@ pub fn forecast_unit(
             formed,
             buy_all: Vec::new(),
             shipping: Vec::new(),
+            // The notes are flags beside the doubt, not the doubt, so they survive it (`ah-7ale.5`).
+            shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
+            shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
             changes: Vec::new(),
         };
     }
@@ -3086,6 +3110,9 @@ pub fn forecast_unit(
         // `None` wherever `income` is, so it can never be read on this path.
         if income_doubt == Some(SilverDoubt::ContestedRegionPool)
             && expense_doubt.is_none()
+            // A month an unpriced shipment leaves without a total reports no purchase either
+            // (`ah-7ale.5`); its doubt is raised below, after every other expense doubt.
+            && !shipping_unmeasured.any()
             && matches!(shared_market, SharedMarket::HeldOnly(_))
         {
             for settled in facts.settled_buy_all() {
@@ -3105,6 +3132,12 @@ pub fn forecast_unit(
     // The totals are the movement list summed. Nothing keeps a running `income` or `expense` any
     // more: a term is recorded where it is priced, and both halves are read off the record here
     // (`ah-6m7b.4`).
+    // Last, so a doubt one of this unit's own orders raised is still the one reported: shipping is
+    // the month's final spending (`rules/sequenceofevents`) and the least specific thing in it that
+    // can go unpriced (`ah-7ale.5`).
+    expense_doubt = expense_doubt.or(shipping_unmeasured
+        .any()
+        .then_some(SilverDoubt::UnpricedShipment));
     let (income, expense) = totals_of(&moves);
 
     // What the orders asked for, before the bounded `BUY` cap: `expense` with the demand put back
@@ -3249,6 +3282,8 @@ pub fn forecast_unit(
         formed,
         buy_all,
         shipping: Vec::new(),
+        shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
+        shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
         changes: if doubt.is_some() {
             Vec::new()
         } else {
@@ -7367,6 +7402,8 @@ mod tests {
             formed: None,
             after_gifts_unknown: false,
             food_uncertain: false,
+            shipping_unmeasured: Default::default(),
+            transport_warning: true,
             skills_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
@@ -10864,6 +10901,8 @@ mod tests {
             formed: None,
             after_gifts_unknown: false,
             food_uncertain: false,
+            shipping_unmeasured: Default::default(),
+            transport_warning: true,
             skills_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
@@ -12205,6 +12244,8 @@ mod combat_ready_tests {
             formed: None,
             after_gifts_unknown: false,
             food_uncertain: false,
+            shipping_unmeasured: Default::default(),
+            transport_warning: true,
             skills_unknown: false,
             skills_after_arrivals: skills,
             skills_after_arrivals_unknown: false,

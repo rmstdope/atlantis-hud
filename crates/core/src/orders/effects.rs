@@ -126,6 +126,11 @@ pub struct UnitPreview {
     /// document order. Empty for a unit whose every transport reached an eligible target
     /// (`ah-64wm`).
     pub transport_target_issues: Vec<TransportTargetIssue>,
+    /// This unit wrote a `TRANSPORT`/`DISTRIBUTE` whose distance the map cannot measure, so its
+    /// goods are listed where the report left them and the list may be wrong (`ah-7ale.5`). What
+    /// the ITEMS cell's ` + ?` is drawn from, and **never silenced by the Transport warning**: a
+    /// mark on a figure is not a warning about an order.
+    pub shipment_unmeasured: bool,
     /// Every item this month's orders move into or out of this unit, each with its cause, **in the
     /// month's order** (`ah-rgkk.3.1`). Empty for a unit whose month moves nothing.
     ///
@@ -247,6 +252,10 @@ pub enum TransportTargetReason {
     /// Quartermaster to quartermaster, beyond the reach the *sender's* own skill gives it
     /// (`data/quartermaster`: "up to 3 plus (level+1)/3 hexes distant from each other").
     TooFarToShip,
+    /// The goods are welcome, and the world's own width was never reported, so whether they are
+    /// within the reach cannot be worked out (`ah-7ale.5`). `reach` is `None`: there is no distance
+    /// to name.
+    DistanceUnmeasured,
 }
 
 /// How far apart the two ends of a refused shipment are, and how far it was allowed to travel.
@@ -970,6 +979,7 @@ pub fn preview_orders_on_map(
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
         let transport_target_issues = entry.transport_target_issues.clone();
+        let shipment_unmeasured = entry.shipment_unmeasured;
 
         let departed = status == UnitPreviewStatus::Departing;
         if changes.is_empty()
@@ -979,6 +989,7 @@ pub fn preview_orders_on_map(
             && transport_sent.is_empty()
             && transport_received.is_empty()
             && transport_target_issues.is_empty()
+            && !shipment_unmeasured
             && study.is_none()
             // A unit that buys five of a tag and sells five of the same tag ends the month holding
             // what it started with, so `changes()` records nothing - and the row would be dropped
@@ -1046,6 +1057,7 @@ pub fn preview_orders_on_map(
                     transport_sent: transport_sent.clone(),
                     transport_received: transport_received.clone(),
                     transport_target_issues: transport_target_issues.clone(),
+                    shipment_unmeasured,
                     study: study.clone(),
                     // An arriving row is never dissolving, but the field is set from the same
                     // source on all three pushes rather than relying on that.
@@ -1076,6 +1088,7 @@ pub fn preview_orders_on_map(
                     transport_sent,
                     transport_received,
                     transport_target_issues,
+                    shipment_unmeasured,
                     study,
                     dissolves_into: dissolves_into.clone(),
                     formed,
@@ -1105,6 +1118,7 @@ pub fn preview_orders_on_map(
                     transport_sent,
                     transport_received,
                     transport_target_issues,
+                    shipment_unmeasured,
                     study,
                     dissolves_into,
                     formed,
@@ -1496,6 +1510,9 @@ struct WorkingUnit {
     /// This unit's `TRANSPORT`/`DISTRIBUTE` orders whose target the report cannot show as able to
     /// receive. Written once by `apply_transports` (`ah-64wm`).
     transport_target_issues: Vec<TransportTargetIssue>,
+    /// A shipment of this unit's whose distance the map cannot measure. Written by
+    /// `apply_transport_phase`, never gated on the Transport warning (`ah-7ale.5`).
+    shipment_unmeasured: bool,
     /// Why this unit's skills moved this month, one record per merge of arriving men, in the order
     /// the merges ran. Written by `move_between` and by `settle_headcounts` (`ah-rgkk.2.1`).
     skill_merges: Vec<SkillMerge>,
@@ -1829,6 +1846,7 @@ impl Working {
                 transport_received: Vec::new(),
                 recruited: Vec::new(),
                 transport_target_issues: Vec::new(),
+                shipment_unmeasured: false,
                 skill_merges: Vec::new(),
                 men_of_unknown_skill: Vec::new(),
                 recruits_unmerged: false,
@@ -2181,6 +2199,7 @@ impl Working {
             transport_received: Vec::new(),
             recruited: Vec::new(),
             transport_target_issues: Vec::new(),
+            shipment_unmeasured: false,
             skill_merges: Vec::new(),
             men_of_unknown_skill: Vec::new(),
             recruits_unmerged: false,
@@ -2888,43 +2907,51 @@ impl Working {
         )
     }
 
-    /// Whether the game will refuse this shipment for distance alone, and the two numbers its
-    /// sentence names (`ah-7ale.2.1`).
+    /// What the map says about whether this shipment arrives, and whether the player asked
+    /// (`ah-7ale.5`).
     ///
-    /// `None` - the shipment goes - covers four cases as well as "near enough": no reach rule
-    /// applies (see `transport_reach`); either end's hex is not in the report; the two ends are on
-    /// different levels of the map (`hex_distance` answers `None`); and a distance the map's own
-    /// shape leaves unsettled that is *not* provably too far. That last one is
-    /// `HexDistance::AtMost(n)` with `n > limit`: the real distance may be anything down to zero,
-    /// so refusing would state a guess as a fact. `ah-7ale.5` is what marks that case as
-    /// uncertain; until it lands such a shipment is forecast exactly as it is today.
-    ///
-    /// `AtMost(n)` with `n <= limit` is a shipment that is *certainly* in reach - an upper bound
-    /// inside the limit settles the question - and is likewise no refusal.
-    ///
-    /// A sixth case, and the first one asked: the `transport-out-of-reach` warning turned off
-    /// (`ah-7ale.2.2.2`).
-    fn out_of_reach(
-        &self,
-        pending: &PendingTransport,
-    ) -> Option<(TransportTargetReason, Option<TransportReach>)> {
-        // A silenced warning is a check not made: the shipment is forecast as going through, goods
-        // and weight gone and the target credited, exactly as if the two hexes were next to each
-        // other. Gated here rather than at the call site so every reader of this decision gets one
-        // answer.
-        if !self
-            .options
-            .emits(super::semantics::codes::TRANSPORT_OUT_OF_REACH)
-        {
-            return None;
-        }
-        let reach = self.transport_reach(pending)?;
-        let from = self
+    /// `Arrival::Certain` also covers the cases `ah-7ale.2.1` documented as no refusal besides
+    /// "near enough": no reach rule applies (see `transport_reach`), and either end's hex is not in
+    /// the report.
+    fn arrival(&self, pending: &PendingTransport) -> super::transport::Arrival {
+        use super::transport::Arrival;
+        let Some(reach) = self.transport_reach(pending) else {
+            return Arrival::Certain;
+        };
+        let Some(from) = self
             .hex_of_region
             .get(&self.units[pending.sender].unit.region_id)
-            .copied()?;
-        let to = self.transport_targets.get(&pending.to)?.coordinate;
-        let refused = super::transport::out_of_reach(reach, from, to, self.geometry)?;
+            .copied()
+        else {
+            return Arrival::Certain;
+        };
+        let Some(to) = self
+            .transport_targets
+            .get(&pending.to)
+            .map(|facts| facts.coordinate)
+        else {
+            return Arrival::Certain;
+        };
+        match super::transport::arrival(reach, from, to, self.geometry) {
+            // A silenced warning is a check not made, so a shipment the map proves too far is
+            // forecast as going through (`ah-7ale.2.2.2`). An *unmeasured* distance is not that
+            // case and is not gated: nothing here claims the goods left, and the switch may not
+            // make a figure certain when it is not (`ah-7ale.5`).
+            Arrival::TooFar(_)
+                if !self
+                    .options
+                    .emits(super::semantics::codes::TRANSPORT_OUT_OF_REACH) =>
+            {
+                Arrival::Certain
+            }
+            settled => settled,
+        }
+    }
+
+    /// The reason and the reach a refusal's sentence names (`ah-7ale.2.1`, `ah-e07g`).
+    fn refusal(
+        refused: super::transport::OutOfReach,
+    ) -> (TransportTargetReason, Option<TransportReach>) {
         match refused {
             super::transport::OutOfReach::Distance {
                 away,
@@ -2936,7 +2963,7 @@ impl Working {
                 } else {
                     TransportTargetReason::TooFarToAccept
                 };
-                Some((
+                (
                     reason,
                     Some(TransportReach {
                         away: Some(i64::from(away)),
@@ -2944,7 +2971,7 @@ impl Working {
                         from_level: None,
                         to_level: None,
                     }),
-                ))
+                )
             }
             super::transport::OutOfReach::DifferentLevel {
                 from_level,
@@ -2956,7 +2983,7 @@ impl Working {
                 } else {
                     TransportTargetReason::TooFarToAccept
                 };
-                Some((
+                (
                     reason,
                     Some(TransportReach {
                         away: None,
@@ -2964,7 +2991,7 @@ impl Working {
                         from_level: Some(from_level),
                         to_level: Some(to_level),
                     }),
-                ))
+                )
             }
         }
     }
@@ -3045,7 +3072,9 @@ impl Working {
             }
             // The goods are welcome, but the hexes are too far apart: `rules/economy_transport`
             // moves nothing, so they and their weight stay with the sender (`ah-7ale.2.1`).
-            if let Some((reason, reach_opt)) = self.out_of_reach(pending) {
+            let arrival = self.arrival(pending);
+            if let super::transport::Arrival::TooFar(refused) = arrival {
+                let (reason, reach_opt) = Self::refusal(refused);
                 let (amount, tag) = self.goods_claimed(&moving);
                 issues[pending.sender].push((
                     pending.sequence,
@@ -3058,6 +3087,33 @@ impl Working {
                         reach: reach_opt,
                     },
                 ));
+                continue;
+            }
+            // The goods are welcome and the map cannot say whether they get there, so nothing
+            // moves them and nothing claims they moved: the list keeps them and carries the ` + ?`
+            // that says it may be wrong (`ah-7ale.5`).
+            if arrival == super::transport::Arrival::Unmeasured {
+                // Never gated: this is what the ` + ?` is drawn from, and a mark on a figure is not
+                // a warning about an order.
+                self.units[pending.sender].shipment_unmeasured = true;
+                // The sentence that names *which* shipment did it is the switch's.
+                if self
+                    .options
+                    .emits(super::semantics::codes::TRANSPORT_OUT_OF_REACH)
+                {
+                    let (amount, tag) = self.goods_claimed(&moving);
+                    issues[pending.sender].push((
+                        pending.sequence,
+                        TransportTargetIssue {
+                            to: pending.to.clone(),
+                            amount,
+                            tag,
+                            reason: TransportTargetReason::DistanceUnmeasured,
+                            order_index: index,
+                            reach: None,
+                        },
+                    ));
+                }
                 continue;
             }
             for (name, tag, moved) in moving {
@@ -10342,6 +10398,69 @@ mod tests {
         assert_eq!(sender.unit.capacity, reported.capacity);
     }
 
+    /// `ah-7ale.5`: with no map shape five hexes is only an upper bound, which the two-hex reach
+    /// can neither accept nor refuse - so the goods stay listed and the list is marked.
+    #[test]
+    fn a_shipment_too_far_to_measure_keeps_its_goods_and_marks_the_list() {
+        let report = reach_report((0, 0), (0, 10), (0, 1));
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+        let response = reach_preview(&report, orders, "");
+
+        assert_eq!(
+            reach_held(&response, "900", "STON"),
+            5,
+            "the stone is still listed"
+        );
+        assert_eq!(reach_held(&response, "901", "STON"), 0, "and not credited");
+        let sender = reach_unit(&response, "900");
+        assert!(sender.shipment_unmeasured);
+        assert!(sender.transport_sent.is_empty());
+        assert_eq!(
+            sender.transport_target_issues,
+            vec![TransportTargetIssue {
+                to: "901".to_string(),
+                amount: 5,
+                tag: "STON".to_string(),
+                reason: TransportTargetReason::DistanceUnmeasured,
+                order_index: 0,
+                reach: None,
+            }]
+        );
+
+        // The same hexes on a map whose shape is known: a settled refusal, and no mark.
+        let settled = reach_preview(&report, orders, FLAT_MAP);
+        let sender = reach_unit(&settled, "900");
+        assert!(!sender.shipment_unmeasured);
+        assert_eq!(
+            sender
+                .transport_target_issues
+                .iter()
+                .map(|issue| (issue.reason, issue.reach.is_some()))
+                .collect::<Vec<_>>(),
+            vec![(TransportTargetReason::TooFarToAccept, true)]
+        );
+    }
+
+    /// `ah-7ale.5`: the switch takes the sentence away and leaves the mark and the goods.
+    #[test]
+    fn silencing_the_transport_warning_leaves_an_unmeasured_shipment_marked() {
+        let report = reach_report((0, 0), (0, 10), (0, 1));
+        let response = reach_preview_with_options(
+            &report,
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            "",
+            super::super::semantics::CheckOptions {
+                disabled: ["transport-out-of-reach".to_string()].into_iter().collect(),
+                ..super::super::semantics::CheckOptions::default()
+            },
+        );
+
+        assert_eq!(reach_held(&response, "900", "STON"), 5);
+        let sender = reach_unit(&response, "900");
+        assert!(sender.shipment_unmeasured);
+        assert!(sender.transport_target_issues.is_empty());
+    }
+
     /// `ah-7ale.2.2.2`: with `Settings > Warnings > Transport` off the reach check is not made at
     /// all, so the shipment is forecast as going through - goods gone, the target credited, and
     /// nothing left in the problem list.
@@ -10463,31 +10582,37 @@ mod tests {
             .is_empty());
     }
 
-    /// A distance the map's own shape leaves unsettled refuses nothing: the real distance may be
-    /// anything down to zero, and stating a guess as a fact is the defect this family removes.
-    /// `ah-7ale.5` is what marks such a shipment as uncertain.
+    /// A distance the map's own shape leaves unsettled refuses nothing and delivers nothing: the real
+    /// distance may be anything down to zero, so the goods stay listed and the list is marked
+    /// (`ah-7ale.5`). No map at all and a wrapping axis of unrecorded span are the same case.
     #[test]
-    fn a_shipment_whose_distance_cannot_be_worked_out_is_left_as_it_is() {
+    fn a_shipment_whose_distance_cannot_be_worked_out_is_marked_rather_than_guessed() {
         let orders = "unit 900\nTRANSPORT 901 5 STON\n";
         let far = reach_report((0, 0), (0, 6), (0, 1));
 
         for map_json in ["", r#"{"width":0,"height":96,"wrapX":true,"wrapY":false}"#] {
             let response = reach_preview(&far, orders, map_json);
+            assert_eq!(reach_held(&response, "900", "STON"), 5, "kept: {map_json}");
+            assert_eq!(reach_held(&response, "901", "STON"), 0, "not credited");
+            let sender = reach_unit(&response, "900");
+            assert!(sender.shipment_unmeasured, "marked: {map_json}");
             assert_eq!(
-                reach_held(&response, "901", "STON"),
-                5,
-                "delivered as today"
+                sender
+                    .transport_target_issues
+                    .iter()
+                    .map(|issue| issue.reason)
+                    .collect::<Vec<_>>(),
+                vec![TransportTargetReason::DistanceUnmeasured]
             );
-            assert!(reach_unit(&response, "900")
-                .transport_target_issues
-                .is_empty());
         }
 
-        // An `AtMost` bound *inside* the limit settles the question the other way, and is likewise
-        // no refusal and no issue.
+        // An `AtMost` bound *inside* the limit settles the question the other way: delivered, no
+        // issue and no mark.
         let near = reach_preview(&reach_report((0, 0), (0, 4), (0, 1)), orders, "");
         assert_eq!(reach_held(&near, "901", "STON"), 5);
-        assert!(reach_unit(&near, "900").transport_target_issues.is_empty());
+        let sender = reach_unit(&near, "900");
+        assert!(sender.transport_target_issues.is_empty());
+        assert!(!sender.shipment_unmeasured);
     }
 
     /// A `FORM`ed sender is why the sending end is looked up by region rather than by unit: its

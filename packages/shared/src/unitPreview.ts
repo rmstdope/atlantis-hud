@@ -82,6 +82,8 @@ export type PreviewedUnit = ReportUnit & {
    * receive. Those orders move nothing (`ah-64wm`).
    */
   transportTargetIssues?: TransportTargetIssue[];
+  /** A shipment whose distance the map cannot measure; draws the ITEMS ` + ?` (`ah-7ale.5`). */
+  shipmentUnmeasured?: boolean;
   /**
    * Every item this month's orders move into or out of this unit, each with its cause, in the
    * month's order (`ah-rgkk.3.1`).
@@ -307,6 +309,7 @@ function rowFor(previewed: FoldedPreview): PreviewedUnit {
     transportSent: previewed.transportSent,
     transportReceived: previewed.transportReceived,
     transportTargetIssues: previewed.transportTargetIssues,
+    shipmentUnmeasured: previewed.shipmentUnmeasured,
     itemChanges: previewed.itemChanges,
     dissolvesInto: previewed.dissolvesInto,
     skillMerges: previewed.skillMerges,
@@ -600,9 +603,16 @@ export function transportTargetUncertain(issue: TransportTargetIssue): boolean {
   return issue.reason === "eligibilityUnknown" || issue.reason === "acceptanceUnknown";
 }
 
-/** Whether any of this row's transports was aimed at a target the report cannot settle. */
-export function hasUncertainTransportTarget(unit: PreviewedUnit | undefined): boolean {
-  return (unit?.transportTargetIssues ?? []).some(transportTargetUncertain);
+/**
+ * Whether this row's item list may be wrong because of a transport: a target the report cannot settle
+ * (`ah-64wm`), or a distance the map cannot measure (`ah-7ale.5`). What the ITEMS cell's ` + ?` is
+ * drawn from.
+ */
+export function hasUncertainTransport(unit: PreviewedUnit | undefined): boolean {
+  return (
+    (unit?.transportTargetIssues ?? []).some(transportTargetUncertain) ||
+    (unit?.shipmentUnmeasured ?? false)
+  );
 }
 
 /**
@@ -647,6 +657,8 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
         : `Unit ${issue.to} does not own a Caravanserai, so ${goods} stay with this unit.`;
     case "eligibilityUnknown":
       return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether it is an eligible transport target.`;
+    case "distanceUnmeasured":
+      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show how far the world reaches around, so the distance cannot be worked out.`;
     case "acceptanceUnknown":
       return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether its faction accepts transports from yours.`;
     case "tooFarToAccept":
