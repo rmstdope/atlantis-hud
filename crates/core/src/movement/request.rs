@@ -198,6 +198,7 @@ pub fn trace_orders_for_remembered_report(
         raw_report,
         remembered_json,
         unit_id,
+        "",
         orders_document,
         "",
         "",
@@ -213,7 +214,12 @@ pub fn trace_orders_for_remembered_report(
 ///
 /// As [`trace_orders_for_remembered_report`], plus an error when the map shape or the passages the
 /// faction has proved cannot be read.
-// Eight, because each of the three documents the screen holds - the remembered map, the game's own
+///
+/// `region_id` is the hex the selected unit stands in. A unit this month's `FORM` creates is known
+/// only by `new-<alias>`, which is unique inside a hex and not across a report, so it is found by
+/// both. A unit the report prints is found by number alone. Empty means the hex is unknown, and the
+/// first hex forming that alias answers (`ah-5nqc`).
+// Nine, with the hex as the extra, cursor-supplied argument; eight before it because each of the three documents the screen holds - the remembered map, the game's own
 // shape, and the passages it has proved - crosses as its own text rather than being bundled into a
 // struct that every caller would then have to build (`ah-3u7c.2.2`).
 #[allow(clippy::too_many_arguments)]
@@ -223,11 +229,12 @@ pub fn trace_orders_on_map(
     raw_report: &str,
     remembered_json: &str,
     unit_id: &str,
+    region_id: &str,
     orders_document: &str,
     map_json: &str,
     passages_json: &str,
 ) -> Result<MoveOrderTraceResponse, String> {
-    use crate::movement::fleet::{steps_followed_by, OrderedUnits};
+    use crate::movement::fleet::{course_followed, OrderedUnits};
     use crate::movement::graph::MapKnowledge;
     use crate::movement::trace::trace_move;
 
@@ -241,23 +248,40 @@ pub fn trace_orders_on_map(
     let report = cache.classified(raw_report, ruleset_json);
 
     let ordered = OrderedUnits::from_document(orders_document);
-    let unit = match report.units().find(|unit| unit.unit_id == unit_id).cloned() {
-        Some(unit) => unit,
-        // A unit the report does not carry is either a `FORM`ed unit's synthetic id or a number
-        // that names nothing. The first can still be traced, from the row this month's orders make
-        // of it - and it must be the settled row, not `formed_unit`'s empty shell, because the men
-        // and goods its block is given are what give it a speed to time the journey by (`ah-4hux`).
-        None => match crate::orders::effects::formed_unit_as_ordered(
-            &report,
-            &ruleset,
-            orders_document,
-            unit_id,
-        ) {
-            Some(unit) => unit,
-            None => return Ok(MoveOrderTraceResponse { path: None }),
-        },
-    };
-    let Some(steps) = steps_followed_by(&report, &ruleset, &ordered, &unit) else {
+    let formed;
+    let (unit, own, own_is_sail) =
+        match report.units().find(|unit| unit.unit_id == unit_id).cloned() {
+            Some(unit) => (
+                unit,
+                ordered.steps_for(unit_id),
+                ordered.sails_a_course(unit_id),
+            ),
+            // A unit the report does not carry is either a `FORM`ed unit's synthetic id or a
+            // number that names nothing. The first can still be traced, from the row this month's
+            // orders make of it - and it must be the settled row, not `formed_unit`'s empty shell,
+            // because the men and goods its block is given are what give it a speed to time the
+            // journey by (`ah-4hux`). It is found by its hex as well as its number, and its own
+            // movement is the settled row's, since `new-<alias>` is unique only inside a hex
+            // (`ah-5nqc`).
+            None => match crate::orders::effects::formed_unit_as_ordered(
+                &report,
+                &ruleset,
+                orders_document,
+                region_id,
+                unit_id,
+            ) {
+                Some(found) => {
+                    formed = found;
+                    (
+                        formed.unit.clone(),
+                        formed.move_steps.as_deref(),
+                        formed.sails,
+                    )
+                }
+                None => return Ok(MoveOrderTraceResponse { path: None }),
+            },
+        };
+    let Some(steps) = course_followed(&report, &ruleset, &ordered, &unit, own, own_is_sail) else {
         return Ok(MoveOrderTraceResponse { path: None });
     };
 

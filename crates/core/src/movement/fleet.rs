@@ -28,8 +28,9 @@ struct UnitCourse {
 /// Each unit's movement lines, chained into one route and read once from the whole orders document.
 ///
 /// Only lines that are a unit's own for this turn count: a `TURN` block holds orders for the turn
-/// after this one and a `FORM` block's orders belong to the unit being formed, so movement inside
-/// either says nothing about where the unit whose block it is goes next. A unit's movement lines
+/// after this one and a `FORM` block's orders are not read here at all - `effects::Working`
+/// owns a formed unit's orders, region by region - so movement inside either says nothing about
+/// where the unit whose block it is goes next. A unit's movement lines
 /// are chained by `movement::chain::RouteChain` (`rules/move`: "Multiple MOVE orders given by one
 /// unit will chain together."); a different month-long order replaces the chain, as
 /// `orders::semantics::month_segments` states.
@@ -141,20 +142,16 @@ impl OrderedUnits {
                 // than falling the order through to the block's own unit. `Working::active`
                 // answers `None` there too, and these two readers must agree or the parent draws a
                 // line for a MOVE it did not write (`ah-4hux`).
-                //
-                // A formed unit's id is global here and not in `Working`, which keys its aliases
-                // on `(region_id, alias)` - so two units in *different* hexes each writing
-                // `FORM 1` are two legitimate formed units there - `effects.rs` pins that case -
-                // and one `new-1` in this map, last write winning. The trace then picks
-                // arbitrarily between them. Not modelled rather than overlooked: giving these ids
-                // a region would mean deciding what a formed unit is called everywhere the
-                // synthetic id is read, which is the planner's call and not this bead's. What the
-                // match below does guarantee is that the divergence stays on the formed unit
-                // instead of leaking onto the parent (`ah-4hux`).
+
+                // A `FORM` block's movement is recorded for nobody here. A formed unit's id,
+                // `new-<alias>`, is unique only inside its hex (`rules/form`), and this reader sees
+                // no regions - so a map keyed on it would merge two hexes' units. `effects::Working`
+                // resolves aliases by `(region, alias)` and holds each formed unit's route; the
+                // preview and the map trace both read it from there (`ah-5nqc`).
                 let moving = match &owner {
                     crate::orders::blocks::Owner::Block => current.clone(),
-                    crate::orders::blocks::Owner::Formed(id) => Some((*id).clone()),
-                    crate::orders::blocks::Owner::Nobody => None,
+                    crate::orders::blocks::Owner::Formed(_)
+                    | crate::orders::blocks::Owner::Nobody => None,
                 };
                 // Every readable order goes in, not only movement: a month-long order between two
                 // movement lines breaks their chain (`movement::chain::RouteChain`).
@@ -438,10 +435,32 @@ pub fn steps_followed_by<'a>(
     ordered: &'a OrderedUnits,
     unit: &ReportUnit,
 ) -> Option<&'a [MoveStep]> {
-    let own = ordered.steps_for(&unit.unit_id);
+    course_followed(
+        report,
+        ruleset,
+        ordered,
+        unit,
+        ordered.steps_for(&unit.unit_id),
+        ordered.sails_a_course(&unit.unit_id),
+    )
+}
+
+/// The steps `unit` travels by, given its own movement: its own `MOVE` wins, and otherwise it
+/// goes where a priceable hull it stands in is sailed. `own` and `own_is_sail` are the unit's
+/// own order, however the caller found it - a formed unit's come from its settled row
+/// (`ah-5nqc`).
+#[must_use]
+pub fn course_followed<'a>(
+    report: &ParsedReport,
+    ruleset: &crate::movement::rules::Ruleset,
+    ordered: &'a OrderedUnits,
+    unit: &ReportUnit,
+    own: Option<&'a [MoveStep]>,
+    own_is_sail: bool,
+) -> Option<&'a [MoveStep]> {
     // A unit's own MOVE still wins: standing in a fleet does not stop it walking off, and the map
     // draws what the player typed. Only its own SAIL is the hull's business.
-    if own.is_some() && !ordered.sails_a_course(&unit.unit_id) {
+    if own.is_some() && !own_is_sail {
         return own;
     }
     let Some(region) = report
@@ -1019,15 +1038,12 @@ mod tests {
     }
 
     #[test]
-    fn a_formed_units_move_lines_chain_on_the_formed_unit() {
-        use crate::movement::graph::Direction::{North, Northeast, South, Southeast};
+    fn a_formed_units_move_lines_are_recorded_for_nobody() {
+        use crate::movement::graph::Direction::{North, Northeast};
         let ordered = OrderedUnits::from_document(
             "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
         );
-        assert_eq!(
-            ordered.steps_for("new-1"),
-            Some(&[MoveStep::Go(South), MoveStep::Go(Southeast)][..])
-        );
+        assert_eq!(ordered.steps_for("new-1"), None);
         assert_eq!(
             ordered.steps_for("900"),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])

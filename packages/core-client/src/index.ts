@@ -712,6 +712,8 @@ export interface CoreAdapter {
     rawReport: string,
     rememberedJson: string,
     unitId: string,
+    /** The hex the unit stands in. A new unit's number is unique only inside its hex. */
+    regionId: string,
     ordersDocument: string,
     mapJson: string,
     /** Every inner passage the faction has proved the far side of, as JSON. `""` for none. */

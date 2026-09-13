@@ -1175,11 +1175,14 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "trace_move_orders")
     )]
+    // Eight, as the core's `trace_orders_on_map` less its cache; the hex is the cursor's (`ah-5nqc`).
+    #[allow(clippy::too_many_arguments)]
     pub fn command_trace_move_orders(
         ruleset_json: &str,
         raw_report: &str,
         remembered_json: &str,
         unit_id: &str,
+        region_id: &str,
         orders_document: &str,
         map_json: &str,
         passages_json: &str,
@@ -1191,6 +1194,7 @@ pub mod commands {
                 raw_report,
                 remembered_json,
                 unit_id,
+                region_id,
                 orders_document,
                 map_json,
                 passages_json,
@@ -1583,6 +1587,7 @@ mod trace_move_orders_command_tests {
             &current,
             &remembered,
             "900",
+            "1:1,1",
             "unit 900\nMOVE SE SE",
             "",
             "",
@@ -1604,9 +1609,17 @@ mod trace_move_orders_command_tests {
             corridor("plain", 1, 1, "  Southeast : plain (2,2) in Nowhere.")
         );
 
-        let answer =
-            command_trace_move_orders(RULESET, &current, "[]", "900", "unit 900\nwork", "", "")
-                .expect("the ruleset loads");
+        let answer = command_trace_move_orders(
+            RULESET,
+            &current,
+            "[]",
+            "900",
+            "1:1,1",
+            "unit 900\nwork",
+            "",
+            "",
+        )
+        .expect("the ruleset loads");
         assert_eq!(answer.path, None);
     }
 }
@@ -2631,6 +2644,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             &report,
             "[]",
             "900",
+            "1:1,1",
             "unit 900\nMOVE 3 IN\n",
             "",
             passages,

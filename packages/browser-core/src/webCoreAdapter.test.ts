@@ -140,10 +140,22 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rawReport: string,
       rememberedJson: string,
       unitId: string,
-      ordersDocument: string
+      regionId: string,
+      ordersDocument: string,
+      mapJson: string,
+      passagesJson: string
     ) => ({
       path: null,
-      echoed: { rulesetJson, rawReport, rememberedJson, unitId, ordersDocument }
+      echoed: {
+        rulesetJson,
+        rawReport,
+        rememberedJson,
+        unitId,
+        regionId,
+        ordersDocument,
+        mapJson,
+        passagesJson
+      }
     }),
     preview_orders_state: (
       rulesetJson: string,
@@ -1614,6 +1626,32 @@ describe("exporting and importing games", () => {
     });
 
     await expect(adapter.importGame(backup, NOW)).rejects.toThrow(/already exists/u);
+  });
+});
+
+describe("tracing written movement", () => {
+  it("passes the trace request straight to the core, unshuffled, with the unit's hex", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm());
+    const answer = (await adapter.traceMoveOrders(
+      "{ruleset}",
+      "{report}",
+      "[remembered]",
+      "new-1",
+      "1:1,5",
+      "unit 902",
+      "{map}",
+      "[passages]"
+    )) as unknown as { echoed: unknown };
+    expect(answer.echoed).toEqual({
+      rulesetJson: "{ruleset}",
+      rawReport: "{report}",
+      rememberedJson: "[remembered]",
+      unitId: "new-1",
+      regionId: "1:1,5",
+      ordersDocument: "unit 902",
+      mapJson: "{map}",
+      passagesJson: "[passages]"
+    });
   });
 });
 

@@ -57,11 +57,11 @@ fn a_formed_units_move_belongs_to_the_formed_unit_in_both_readers() {
         "the preview puts the MOVE on the formed unit and nothing on its parent"
     );
 
+    // The document reader records a formed unit's movement for nobody: `new-<alias>` is unique only
+    // inside a hex, so the settled row in `effects::Working` is its one owner (`ah-5nqc`). What
+    // both readers still agree on is that the parent does not take the MOVE.
     let ordered = OrderedUnits::from_document(orders);
-    assert_eq!(
-        ordered.steps_for("new-1"),
-        Some(&[MoveStep::Go(Direction::North)][..])
-    );
+    assert_eq!(ordered.steps_for("new-1"), None);
     assert_eq!(ordered.steps_for("900"), None);
 }
 
@@ -81,11 +81,11 @@ fn an_order_after_a_form_block_belongs_to_the_block_it_is_in_again() {
         "the formed unit departs on the MOVE inside its block: {rows:?}"
     );
 
+    // The document reader records a formed unit's movement for nobody: `new-<alias>` is unique only
+    // inside a hex, so the settled row in `effects::Working` is its one owner (`ah-5nqc`). What
+    // both readers still agree on is that the parent does not take the MOVE.
     let ordered = OrderedUnits::from_document(orders);
-    assert_eq!(
-        ordered.steps_for("new-1"),
-        Some(&[MoveStep::Go(Direction::North)][..])
-    );
+    assert_eq!(ordered.steps_for("new-1"), None);
     assert_eq!(
         ordered.steps_for("900"),
         Some(&[MoveStep::Go(Direction::South)][..])

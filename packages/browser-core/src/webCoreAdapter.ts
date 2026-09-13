@@ -91,6 +91,7 @@ export type CoreWasmModule = {
     rawReport: string,
     rememberedJson: string,
     unitId: string,
+    regionId: string,
     ordersDocument: string,
     mapJson: string,
     passagesJson: string
@@ -550,6 +551,7 @@ export function createWebCoreAdapter(
       rawReport: string,
       rememberedJson: string,
       unitId: string,
+      regionId: string,
       ordersDocument: string,
       mapJson: string,
       passagesJson: string
@@ -561,6 +563,7 @@ export function createWebCoreAdapter(
         rawReport,
         rememberedJson,
         unitId,
+        regionId,
         ordersDocument,
         mapJson,
         passagesJson
