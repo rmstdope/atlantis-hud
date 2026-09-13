@@ -624,6 +624,8 @@ pub fn preview_orders_state(
             .map(|codes| codes.into_iter().collect())
             .unwrap_or_else(|| OrderCheckOptions::default().disabled),
         geometry: None,
+        // The preview works out its own from the map it draws.
+        shown: Default::default(),
         known_passages: Vec::new(),
         // The preview builds its own from the trace it draws (`ah-b6fz`).
         month_end: Default::default(),
@@ -737,6 +739,7 @@ pub fn validate_orders_state(
             .map(|codes| codes.into_iter().collect())
             .unwrap_or_else(|| OrderCheckOptions::default().disabled),
         geometry,
+        shown: Default::default(),
         // Validation has no error channel, so a list that will not read is nothing known and the
         // warning simply stays: an advisory pane that answers conservatively beats one that
         // refuses to answer (`ah-3u7c.2.2`).

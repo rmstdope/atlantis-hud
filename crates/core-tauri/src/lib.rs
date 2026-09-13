@@ -496,6 +496,7 @@ pub mod commands {
         let mut options = OrderCheckOptions {
             disabled,
             geometry,
+            shown: Default::default(),
             known_passages,
             month_end: Default::default(),
         };
@@ -1211,6 +1212,8 @@ pub mod commands {
                 .map(|codes| codes.into_iter().collect())
                 .unwrap_or_else(|| OrderCheckOptions::default().disabled),
             geometry: None,
+            // The preview works out its own from the map it draws.
+            shown: Default::default(),
             known_passages: Vec::new(),
             // The preview builds its own from the trace it draws (`ah-b6fz`).
             month_end: Default::default(),

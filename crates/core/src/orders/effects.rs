@@ -739,14 +739,6 @@ pub fn preview_orders_on_map(
     let report = cache.classified(raw_report, ruleset_json);
 
     let geometry = crate::movement::graph::geometry_from_json(map_json)?;
-    let (units, dissolved, measured) = settle(
-        &report,
-        &ruleset,
-        orders_document,
-        geometry,
-        options.clone(),
-    );
-
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
     let map = MapKnowledge::from_remembered(&report, &remembered)
@@ -754,6 +746,19 @@ pub fn preview_orders_on_map(
         .with_passages(crate::movement::passages::known_passages_from_json(
             passages_json,
         )?);
+    // What the reports have shown of the world settles a distance the map's shape leaves open
+    // (`ah-hc7z`).
+    let options = super::semantics::CheckOptions {
+        shown: map.shown_extent(),
+        ..options
+    };
+    let (units, dissolved, measured) = settle(
+        &report,
+        &ruleset,
+        orders_document,
+        geometry,
+        options.clone(),
+    );
     // Where each unit stands once its own ENTER/LEAVE have run: `entry.unit` is already corrected
     // (see `Working::visit`), but the map and the aboard set it is compared against are the
     // report's, so the correction was thrown away one call later. `Working` applies the same
@@ -1207,7 +1212,6 @@ pub fn month_end_hexes(
     map_json: &str,
     options: super::semantics::CheckOptions,
 ) -> Result<super::transport::MonthEndHexes, String> {
-    use super::intents::{read_intents_with_ruleset, Intent};
     use crate::movement::graph::MapKnowledge;
 
     let ruleset = cache
@@ -1216,26 +1220,37 @@ pub fn month_end_hexes(
     let remembered: Vec<crate::movement::graph::RememberedRegion> =
         serde_json::from_str(remembered_json)
             .map_err(|error| format!("remembered regions could not be read: {error}"))?;
-    let ships_anything = read_intents_with_ruleset(orders_document, Some(&ruleset))
-        .iter()
-        .any(|unit| {
-            unit.intents
-                .iter()
-                .any(|placed| matches!(placed.intent, Intent::Transport { .. }))
-        });
-    if !ships_anything {
+    if !ships_anything(orders_document, &ruleset) {
         return Ok(super::transport::MonthEndHexes::new());
     }
 
     let report = cache.classified(raw_report, ruleset_json);
     let geometry = crate::movement::graph::geometry_from_json(map_json)?;
-    let (units, dissolved, _) = settle(&report, &ruleset, orders_document, geometry, options);
     // Passages are not read: a crossing the faction has not proved names no month end, and one it
     // has is not needed to measure a walk in the same hexes. As the preview does otherwise.
     let map = MapKnowledge::from_remembered(&report, &remembered).with_geometry(geometry);
+    let options = super::semantics::CheckOptions {
+        shown: map.shown_extent(),
+        ..options
+    };
+    let (units, dissolved, _) = settle(&report, &ruleset, orders_document, geometry, options);
     let ordered = crate::movement::fleet::OrderedUnits::from_document(orders_document);
     let (decided, _) = decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
     Ok(month_end_of(&decided))
+}
+
+/// Whether the document writes any `TRANSPORT`/`DISTRIBUTE`, which is what the keystroke-path
+/// entries check before building the known map.
+fn ships_anything(orders_document: &str, ruleset: &Ruleset) -> bool {
+    use super::intents::{read_intents_with_ruleset, Intent};
+
+    read_intents_with_ruleset(orders_document, Some(ruleset))
+        .iter()
+        .any(|unit| {
+            unit.intents
+                .iter()
+                .any(|placed| matches!(placed.intent, Intent::Transport { .. }))
+        })
 }
 
 /// Pass one and pass two of the preview: where every settled unit ends the month, how it leaves,
@@ -3082,7 +3097,7 @@ impl Working {
         else {
             return Arrival::Certain;
         };
-        match super::transport::arrival(reach, from, to, self.geometry) {
+        match super::transport::arrival(reach, from, to, self.geometry, &self.options.shown) {
             // A silenced warning is a check not made, so a shipment the map proves too far is
             // forecast as going through (`ah-7ale.2.2.2`). An *unmeasured* distance is not that
             // case and is not gated: nothing here claims the goods left, and the switch may not
@@ -10863,6 +10878,34 @@ mod tests {
         );
     }
 
+    /// `ah-hc7z`: with no map shape, a report that shows rows well past twice the gap settles the
+    /// distance, and the shipment is answered exactly as on a map whose shape is known.
+    #[test]
+    fn a_shipment_the_reports_settle_is_measured_with_no_map_shape() {
+        let report = reach_report((0, 0), (0, 6), (0, 1))
+            + "\nplain (0,20) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n  Southeast : plain (1,21) in Nowhere.\n";
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+
+        let response = reach_preview(&report, orders, "");
+        let sender = reach_unit(&response, "900");
+        assert!(!sender.shipment_unmeasured);
+        assert_eq!(reach_held(&response, "900", "STON"), 5);
+        assert_eq!(
+            sender
+                .transport_target_issues
+                .iter()
+                .map(|issue| (issue.reason, issue.reach.is_some()))
+                .collect::<Vec<_>>(),
+            vec![(TransportTargetReason::TooFarToAccept, true)]
+        );
+
+        let flat = reach_preview(&report, orders, FLAT_MAP);
+        assert_eq!(
+            sender.transport_target_issues,
+            reach_unit(&flat, "900").transport_target_issues
+        );
+    }
+
     /// `ah-7ale.5`: the switch takes the sentence away and leaves the mark and the goods.
     #[test]
     fn silencing_the_transport_warning_leaves_an_unmeasured_shipment_marked() {
@@ -11012,7 +11055,9 @@ mod tests {
         let orders = "unit 900\nTRANSPORT 901 5 STON\n";
         let far = reach_report((0, 0), (0, 6), (0, 1));
 
-        for map_json in ["", r#"{"width":0,"height":96,"wrapX":true,"wrapY":false}"#] {
+        // The wrapping axis is the one the shipment crosses: a gap of zero on the other axis could
+        // never be shortened by a seam, so wrapping there would settle nothing open (`ah-hc7z`).
+        for map_json in ["", r#"{"width":72,"height":0,"wrapX":false,"wrapY":true}"#] {
             let response = reach_preview(&far, orders, map_json);
             assert_eq!(reach_held(&response, "900", "STON"), 5, "kept: {map_json}");
             assert_eq!(reach_held(&response, "901", "STON"), 0, "not credited");

@@ -301,6 +301,8 @@ pub struct CheckOptions {
     /// distance. `None` - a game that never recorded it - leaves every distance unsettled, and
     /// `transport::arrival` then settles nothing past the reach (`ah-7ale.5`).
     pub geometry: Option<crate::movement::graph::MapGeometry>,
+    /// How far across each level the loaded reports have shown, which settles a distance the map's shape does not when a way round the far edge could not be shorter. Empty - the default - settles nothing.
+    pub shown: crate::movement::graph::ShownExtent,
     /// Every inner passage the faction has proved the far side of. Empty by default: a caller that
     /// knows nothing is the ordinary case, and it is also every test that says nothing about one.
     pub known_passages: Vec<crate::movement::passages::KnownPassage>,
@@ -340,6 +342,7 @@ impl Default for CheckOptions {
         Self {
             disabled: std::iter::once(codes::HEX_UNGUARDED.as_str().to_string()).collect(),
             geometry: None,
+            shown: crate::movement::graph::ShownExtent::default(),
             known_passages: Vec::new(),
             month_end: super::transport::MonthEndHexes::new(),
         }
@@ -12936,6 +12939,7 @@ fn check_transport_reach(
                 super::transport::standing_at(&options.month_end, sender, hex.region.coordinate),
                 super::transport::standing_at(&options.month_end, id, facts.coordinate),
                 options.geometry,
+                &options.shown,
             ) else {
                 continue;
             };
@@ -12987,6 +12991,7 @@ fn shipping_bills(
     received_earlier: &BTreeMap<(String, String), i64>,
 ) -> Vec<((String, String), i64)> {
     let geometry = options.geometry;
+    let shown = &options.shown;
     let month_end = &options.month_end;
     let mut delivered = Vec::new();
     let (Some((quartermasters, targets)), Some(rules)) = (shipping, ruleset) else {
@@ -13082,6 +13087,7 @@ fn shipping_bills(
                 super::transport::standing_at(month_end, sender, hex.region.coordinate),
                 super::transport::standing_at(month_end, id, facts.coordinate),
                 geometry,
+                shown,
             ) {
                 super::transport::Arrival::TooFar(_) => continue,
                 super::transport::Arrival::Unmeasured => {
@@ -13126,6 +13132,7 @@ fn shipping_bills(
                 super::transport::standing_at(month_end, sender, hex.region.coordinate),
                 super::transport::standing_at(month_end, id, facts.coordinate),
                 geometry,
+                shown,
                 rules.order_language,
                 weight,
             ) {
@@ -37603,6 +37610,46 @@ BUILD
             "unit 900\nTRANSPORT 901 5 STON\n",
             Some(&trident_rules()),
             CheckOptions::default(),
+        );
+        let silver = shipment_silver(&review, "900");
+        assert_eq!(silver.doubt, Some(SilverDoubt::UnpricedShipment));
+        assert!(silver.shipping_distance_unknown);
+    }
+
+    /// `ah-hc7z`: with no map shape, a shipment whose gap is no more than half of what the reports
+    /// have shown is measured, and the month is priced; one row fewer shown leaves it doubted.
+    #[test]
+    fn a_shipment_the_reports_settle_prices_the_month_with_no_map_shape() {
+        let built = report(vec![
+            shipping_quartermaster(),
+            caravanserai_owner("901", 1, 0, 8),
+        ]);
+        let z = built.regions[0].coordinate.z;
+        let shown = |y| CheckOptions {
+            shown: crate::movement::graph::ShownExtent::from_coordinates([Coordinate {
+                x: 0,
+                y,
+                z,
+            }]),
+            ..CheckOptions::default()
+        };
+
+        let review = review_turn(
+            &built,
+            "unit 900\nTRANSPORT 901 1 IRON\n",
+            Some(&trident_rules()),
+            shown(15),
+        );
+        let silver = shipment_silver(&review, "900");
+        assert_eq!(silver.doubt, None);
+        assert!(!silver.shipping_distance_unknown);
+        assert!(silver.expense.is_some());
+
+        let review = review_turn(
+            &built,
+            "unit 900\nTRANSPORT 901 1 IRON\n",
+            Some(&trident_rules()),
+            shown(14),
         );
         let silver = shipment_silver(&review, "900");
         assert_eq!(silver.doubt, Some(SilverDoubt::UnpricedShipment));
