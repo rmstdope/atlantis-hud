@@ -1815,7 +1815,24 @@ mod tests {
 
     #[test]
     fn an_unterminated_quote_is_nowhere() {
-        assert_eq!(caret("BUILD \"Big").position, CaretPosition::Nowhere);
+        assert_eq!(caret("NAME UNIT \"Big").position, CaretPosition::Nowhere);
+        assert_eq!(caret("BUILD HELP \"12").position, CaretPosition::Nowhere);
+    }
+
+    #[test]
+    fn a_quote_opened_structure_name_is_still_being_typed() {
+        let answer = completions_at_caret("BUILD \"Tim", Some(&ruleset()), None, None);
+        assert_eq!(answer.position, CaretPosition::Argument);
+        assert_eq!(answer.word, "\"Tim");
+        assert_eq!(answer.word_start, 6);
+        assert!(!answer.options.is_empty());
+    }
+
+    #[test]
+    fn a_quote_opened_name_counts_utf16_code_units() {
+        let answer = caret("BUILD \"Mö");
+        assert_eq!(answer.word_start, 6);
+        assert_eq!(answer.word, "\"Mö");
     }
 
     #[test]
