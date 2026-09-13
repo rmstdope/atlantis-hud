@@ -274,7 +274,6 @@ pub struct TransportReach {
     pub to_level: Option<u32>,
 }
 
-
 /// One `TRANSPORT`/`DISTRIBUTE` the target gate stopped, in document order (`ah-64wm`).
 ///
 /// Separate from [`TransportSent`], which stays the item-class contract: this one is about who
@@ -2927,7 +2926,11 @@ impl Working {
         let to = self.transport_targets.get(&pending.to)?.coordinate;
         let refused = super::transport::out_of_reach(reach, from, to, self.geometry)?;
         match refused {
-            super::transport::OutOfReach::Distance { away, limit, between_quartermasters } => {
+            super::transport::OutOfReach::Distance {
+                away,
+                limit,
+                between_quartermasters,
+            } => {
                 let reason = if between_quartermasters {
                     TransportTargetReason::TooFarToShip
                 } else {
@@ -2943,13 +2946,25 @@ impl Working {
                     }),
                 ))
             }
-            super::transport::OutOfReach::DifferentLevel { from_level: _, to_level: _, between_quartermasters } => {
+            super::transport::OutOfReach::DifferentLevel {
+                from_level,
+                to_level,
+                between_quartermasters,
+            } => {
                 let reason = if between_quartermasters {
                     TransportTargetReason::TooFarToShip
                 } else {
                     TransportTargetReason::TooFarToAccept
                 };
-                Some((reason, None))
+                Some((
+                    reason,
+                    Some(TransportReach {
+                        away: None,
+                        limit: None,
+                        from_level: Some(from_level),
+                        to_level: Some(to_level),
+                    }),
+                ))
             }
         }
     }
@@ -10170,6 +10185,56 @@ mod tests {
         .join("\n")
     }
 
+    fn reach_report_to_underworld(
+        source_hex: (i32, i32),
+        target_hex: (i32, i32),
+        levels: (u32, u32),
+    ) -> String {
+        let (sx, sy) = source_hex;
+        let (tx, ty) = target_hex;
+        let (source_level, target_level) = levels;
+        let (source_skills, source_post, source_indent) = if source_level == 0 {
+            (String::new(), String::new(), "")
+        } else {
+            (
+                format!(" Skills: quartermaster [QUAM] {source_level} (450)."),
+                "+ Post Zero [9] : Caravanserai.".to_string(),
+                "  ",
+            )
+        };
+        [
+            "Foo (1) Report".to_string(),
+            String::new(),
+            format!("plain ({sx},{sy}) in Nowhere, 10 peasants (orcs), $5."),
+            String::new(),
+            "Exits:".to_string(),
+            format!("  Southeast : plain ({},{}) in Nowhere.", sx + 1, sy + 1),
+            String::new(),
+            source_post,
+            format!(
+                "{source_indent}* Source (900), Foo (1), leader [LEAD], 9 fur [FUR]. \
+                 Weight: 45. Capacity: 0/0/15/0.{source_skills}"
+            ),
+            String::new(),
+            format!("cavern ({tx},{ty},underworld) in Nowhere, 10 peasants (orcs), $5."),
+            String::new(),
+            "Exits:".to_string(),
+            format!(
+                "  Southeast : cavern ({},{},underworld) in Nowhere.",
+                tx + 1,
+                ty + 1
+            ),
+            String::new(),
+            "+ Post One [1] : Caravanserai.".to_string(),
+            format!(
+                "  * Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                 Skills: quartermaster [QUAM] {target_level} (450)."
+            ),
+            String::new(),
+        ]
+        .join("\n")
+    }
+
     /// A map that never wraps, so every distance in these tests is settled exactly.
     const FLAT_MAP: &str = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
 
@@ -10254,7 +10319,12 @@ mod tests {
                 tag: "STON".to_string(),
                 reason: TransportTargetReason::TooFarToAccept,
                 order_index: 0,
-                reach: Some(TransportReach { away: Some(3), limit: Some(2), from_level: None, to_level: None }),
+                reach: Some(TransportReach {
+                    away: Some(3),
+                    limit: Some(2),
+                    from_level: None,
+                    to_level: None
+                }),
             }]
         );
         // The agreed record: "the forecast keeps the goods *and their weight*", so what the sender
@@ -10362,7 +10432,12 @@ mod tests {
                 tag: "IRON".to_string(),
                 reason: TransportTargetReason::TooFarToShip,
                 order_index: 0,
-                reach: Some(TransportReach { away: Some(4), limit: Some(3), from_level: None, to_level: None }),
+                reach: Some(TransportReach {
+                    away: Some(4),
+                    limit: Some(3),
+                    from_level: None,
+                    to_level: None
+                }),
             }]
         );
 
@@ -10442,8 +10517,42 @@ mod tests {
                 tag: "STON".to_string(),
                 reason: TransportTargetReason::TooFarToAccept,
                 order_index: 0,
-                reach: Some(TransportReach { away: Some(3), limit: Some(2), from_level: None, to_level: None }),
+                reach: Some(TransportReach {
+                    away: Some(3),
+                    limit: Some(2),
+                    from_level: None,
+                    to_level: None
+                }),
             }]
         );
+    }
+
+    #[test]
+    fn a_shipment_to_a_target_on_another_level_records_level_reach() {
+        let response = reach_preview(
+            &reach_report_to_underworld((0, 0), (0, 6), (0, 1)),
+            "unit 900\nTRANSPORT 901 9 FUR\n",
+            FLAT_MAP,
+        );
+
+        let sender = reach_unit(&response, "900");
+        assert_eq!(
+            sender.transport_target_issues,
+            vec![TransportTargetIssue {
+                to: "901".to_string(),
+                amount: 9,
+                tag: "FUR".to_string(),
+                reason: TransportTargetReason::TooFarToAccept,
+                order_index: 0,
+                reach: Some(TransportReach {
+                    away: None,
+                    limit: None,
+                    from_level: Some(1),
+                    to_level: Some(2),
+                }),
+            }]
+        );
+        assert_eq!(reach_held(&response, "900", "FUR"), 9);
+        assert_eq!(reach_held(&response, "901", "FUR"), 0);
     }
 }

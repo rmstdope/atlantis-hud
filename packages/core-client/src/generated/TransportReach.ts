@@ -3,16 +3,23 @@
 /**
  * How far apart the two ends of a refused shipment are, and how far it was allowed to travel.
  *
- * Beside the reason rather than inside it: the reason is a plain string on the wire, which every
- * TypeScript reader already switches on, and the two numbers belong to exactly the two reach
- * refusals (`ah-7ale.2.1`).
+ * Beside the reason rather than inside it: the reason is a plain string on the wire, and the reach
+ * is carried as one object which uses either the numeric-distance shape (`away`, `limit`) or the
+ * levels-shaped one (`fromLevel`, `toLevel`). Keeping both shapes in one object keeps the wire
+ * compact and the TypeScript readers easy to switch on both cases.
  */
 export type TransportReach = { 
 /**
  * Hexes between the sender's hex and the target's, settled by the map's own shape.
  */
-away: number, 
+away: number | null, 
 /**
  * The most this shipment was allowed to travel, in hexes.
  */
-limit: number, };
+limit: number | null, 
+/**
+ * When the map reports the two ends are on different levels, the reach is expressed as the
+ * levels instead of a numeric distance: `fromLevel` is the sender's z and `toLevel` the
+ * target's z. Both present together indicate the levels-shaped reach.
+ */
+fromLevel: number | null, toLevel: number | null, };

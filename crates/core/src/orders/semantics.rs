@@ -718,8 +718,8 @@ pub fn review_turn(
     // prices goods a quartermaster forwards (`rules/sequenceofevents`, `ah-7ale.3`).
     let nothing_received = BTreeMap::new();
     let mut received_early: BTreeMap<(String, String), i64> = BTreeMap::new();
-    for (hex, ledger) in &hexes {
-        let (_, delivered) = shipping_bills(
+    for (hex, ledger) in &mut hexes {
+        let delivered = shipping_bills(
             hex,
             ledger,
             shipping.as_ref(),
@@ -733,12 +733,8 @@ pub fn review_turn(
         }
     }
 
-    for priced in &hexes {
-        let (hex, ledger) = priced;
-        // Per hex, because the pools are: what one region's units ask of its tax base says nothing
-        // about the next region's.
-        let mut overruns: Vec<PoolOverrun> = Vec::new();
-        let (bills, _) = shipping_bills(
+    for (hex, ledger) in &mut hexes {
+        shipping_bills(
             hex,
             ledger,
             shipping.as_ref(),
@@ -747,6 +743,13 @@ pub fn review_turn(
             true,
             &received_early,
         );
+    }
+
+    for priced in &hexes {
+        let (hex, ledger) = priced;
+        // Per hex, because the pools are: what one region's units ask of its tax base says nothing
+        // about the next region's.
+        let mut overruns: Vec<PoolOverrun> = Vec::new();
         forecast_hex(
             priced,
             &receipts,
@@ -762,7 +765,6 @@ pub fn review_turn(
             &mut silver,
             &mut overruns,
             &claim_allowances,
-            &bills,
         );
         if hex.units.is_empty() {
             continue;
@@ -1664,8 +1666,6 @@ fn forecast_hex(
     into: &mut Vec<UnitSilver>,
     overruns: &mut Vec<PoolOverrun>,
     claim_allowances: &ClaimAllowances,
-    // What each unit in this hex pays to ship goods, from `shipping_bills` (`ah-7ale.3`).
-    bills: &BTreeMap<String, Vec<ShipmentPriced>>,
 ) {
     let Relief {
         shared_silver,
@@ -2060,28 +2060,52 @@ fn forecast_hex(
         forecast.upkeep = Some((owed - covered).max(0));
     }
 
-    // What each unit pays to ship goods, booked onto the column the way `Lent` is: the price is
-    // settled against the report's quartermasters and the map, which `forecast_unit` never sees.
-    // One change per shipment, so each keeps its own document line; the hover merges them into
-    // one `shipped` line. `wanted_for_orders` rises with `expense` because nothing here cuts a
-    // shipment down to what the sender can afford - that is `ah-7ale.4` (`ah-7ale.3`).
+    // What each unit pays to ship goods, booked from the ledger's own settlement rather than
+    // repriced here. `shipping_paid` is what moved; `silver_moves` is what was charged, including
+    // a refused shipment whose goods stayed.
     for forecast in into[start..].iter_mut() {
-        let Some(priced) = bills.get(&forecast.unit_id) else {
+        let shipped = ledger
+            .shipping_paid
+            .get(&forecast.unit_id)
+            .cloned()
+            .unwrap_or_default();
+        let shipped_moves = ledger
+            .silver_moves
+            .get(&forecast.unit_id)
+            .map(|moves| {
+                moves
+                    .iter()
+                    .filter(|moved| moved.cause == SilverChangeCause::Shipped)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let bill: i64 = ledger
+            .silver_moves
+            .get(&forecast.unit_id)
+            .map(|moves| {
+                moves
+                    .iter()
+                    .filter(|moved| moved.cause == SilverChangeCause::Shipped)
+                    .map(|moved| -moved.amount.min(0))
+                    .sum()
+            })
+            .unwrap_or_default();
+        if bill == 0 && shipped.is_empty() {
             continue;
-        };
-        let bill: i64 = priced.iter().map(|shipment| shipment.cost).sum();
-        forecast.shipping.clone_from(priced);
+        }
+        forecast.shipping = shipped;
         forecast.expense = forecast.expense.map(|spent| spent.saturating_add(bill));
         forecast.wanted_for_orders = forecast
             .wanted_for_orders
             .map(|wanted| wanted.saturating_add(bill));
         forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(bill));
         if forecast.doubt.is_none() {
-            for shipment in priced {
+            for moved in &shipped_moves {
                 forecast.changes.push(SilverChange {
-                    amount: -shipment.cost,
+                    amount: moved.amount,
                     cause: SilverChangeCause::Shipped,
-                    line: Some(shipment.line),
+                    line: moved.line,
                     other: None,
                 });
             }
@@ -12924,7 +12948,7 @@ fn check_transport_reach(
 #[allow(clippy::type_complexity)]
 fn shipping_bills(
     hex: &Hex<'_>,
-    ledger: &Ledger<'_>,
+    ledger: &mut Ledger<'_>,
     shipping: Option<&(
         super::transport::Quartermasters,
         BTreeMap<String, super::transport::TargetFacts>,
@@ -12933,26 +12957,20 @@ fn shipping_bills(
     ruleset: Option<&Ruleset>,
     quartermaster_senders: bool,
     received_earlier: &BTreeMap<(String, String), i64>,
-) -> (
-    BTreeMap<String, Vec<ShipmentPriced>>,
-    Vec<((String, String), i64)>,
-) {
-    let mut bills = BTreeMap::new();
+) -> Vec<((String, String), i64)> {
     let mut delivered = Vec::new();
     let (Some((quartermasters, targets)), Some(rules)) = (shipping, ruleset) else {
-        return (bills, delivered);
+        return delivered;
     };
 
     for ordered in &hex.units {
         let sender = ordered.unit.unit_id.as_str();
-        if quartermasters.contains(sender) != quartermaster_senders {
-            continue;
-        }
         // What this unit's own earlier shipments already took, by tag: `rules/sequenceofevents`
         // moves each item "only once in each phase", which `apply_transport_phase`'s allowance
         // snapshot enforces on the preview's side.
         let mut shipped: BTreeMap<String, i64> = BTreeMap::new();
-        let mut priced_here = Vec::new();
+        let mut priced_here: Vec<ShipmentPriced> = Vec::new();
+        let mut priced_and_refused: Vec<(i64, super::transport::RefusedShipment)> = Vec::new();
         for placed in &ordered.intents {
             let Intent::Transport { to, what, amount } = &placed.intent else {
                 continue;
@@ -12982,6 +13000,14 @@ fn shipping_bills(
             ) else {
                 continue;
             };
+            let phase = super::transport::shipment_phase(
+                quartermasters.contains(sender),
+                quartermasters.contains(id),
+            );
+            if (phase == super::transport::ShipmentPhase::ToQuartermaster) != !quartermaster_senders
+            {
+                continue;
+            }
             // A shipment the game refuses for distance keeps its goods (`ah-7ale.2.1`), and a
             // shipment that moves nothing is charged nothing.
             if super::transport::out_of_reach(
@@ -13021,34 +13047,74 @@ fn shipping_bills(
             if quantity <= 0 {
                 continue;
             }
-            *shipped.entry(tag.clone()).or_default() += quantity;
-            delivered.push(((id.clone(), tag.clone()), quantity));
             let weight = quantity.saturating_mul(entry.weight);
-            if let super::transport::Priced::Charged { rate, weight, cost } =
-                super::transport::priced(
-                    reach,
-                    hex.region.coordinate,
-                    facts.coordinate,
-                    geometry,
-                    rules.order_language,
-                    weight,
-                )
-            {
-                priced_here.push(ShipmentPriced {
-                    line: i64::try_from(placed.line).unwrap_or(i64::MAX),
-                    to: id.clone(),
-                    sent: format!("{quantity} {tag}"),
-                    weight,
-                    rate,
-                    cost,
-                });
+            match super::transport::priced(
+                reach,
+                hex.region.coordinate,
+                facts.coordinate,
+                geometry,
+                rules.order_language,
+                weight,
+            ) {
+                super::transport::Priced::Free | super::transport::Priced::Unknown => {
+                    *shipped.entry(tag.clone()).or_default() += quantity;
+                    delivered.push(((id.clone(), tag.clone()), quantity));
+                }
+                super::transport::Priced::Charged { rate, weight, cost } => {
+                    move_silver(
+                        ledger,
+                        StatePhase::Transport,
+                        sender,
+                        -cost,
+                        SilverChangeCause::Shipped,
+                        Some(placed),
+                    );
+                    let can_pay = ledger
+                        .state
+                        .balance_at(StatePhase::Maintenance, sender, SILVER)
+                        >= 0;
+                    if can_pay {
+                        *shipped.entry(tag.clone()).or_default() += quantity;
+                        delivered.push(((id.clone(), tag.clone()), quantity));
+                        priced_here.push(ShipmentPriced {
+                            line: i64::try_from(placed.line).unwrap_or(i64::MAX),
+                            to: id.clone(),
+                            sent: format!("{quantity} {tag}"),
+                            weight,
+                            rate,
+                            cost,
+                        });
+                    } else {
+                        priced_and_refused.push((
+                            i64::try_from(placed.line).unwrap_or(i64::MAX),
+                            super::transport::RefusedShipment {
+                                unit_id: sender.to_string(),
+                                line: i64::try_from(placed.line).unwrap_or(i64::MAX),
+                                to: id.clone(),
+                                tag: tag.clone(),
+                                ordered: quantity,
+                                cost,
+                            },
+                        ));
+                    }
+                }
             }
         }
         if !priced_here.is_empty() {
-            bills.insert(sender.to_string(), priced_here);
+            ledger
+                .shipping_paid
+                .entry(sender.to_string())
+                .or_default()
+                .extend(priced_here);
+        }
+        if !priced_and_refused.is_empty() {
+            priced_and_refused.sort_by_key(|(line, _)| *line);
+            ledger
+                .refused_shipments
+                .extend(priced_and_refused.into_iter().map(|(_, refused)| refused));
         }
     }
-    (bills, delivered)
+    delivered
 }
 
 /// The refusal sentence the agreed experience quotes, word for word.
@@ -13073,31 +13139,27 @@ fn transport_reach_sentence(
     };
 
     match refusal {
-        super::transport::OutOfReach::Distance { away, limit, between_quartermasters } => {
+        super::transport::OutOfReach::Distance {
+            away,
+            limit,
+            between_quartermasters,
+        } => {
             if between_quartermasters {
                 format!("Unit {to} is {away} hexes away and this unit can ship {limit} hexes, so {tail}.")
             } else {
-                format!("Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}.")
+                format!(
+                    "Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}."
+                )
             }
         }
-        super::transport::OutOfReach::DifferentLevel { from_level, to_level, .. } => {
+        super::transport::OutOfReach::DifferentLevel {
+            from_level,
+            to_level,
+            ..
+        } => {
             let to_name = crate::report::level::level_name(to_level);
             let from_name = crate::report::level::level_name(from_level);
-            let to_phrase = if to_level == crate::report::level::SURFACE {
-                format!("on the {to_name}")
-            } else if to_name.starts_with("level ") {
-                format!("on {to_name}")
-            } else {
-                format!("in the {to_name}")
-            };
-            let from_phrase = if from_level == crate::report::level::SURFACE {
-                format!("on the {from_name}")
-            } else if from_name.starts_with("level ") {
-                format!("on {from_name}")
-            } else {
-                format!("in the {from_name}")
-            };
-            format!("Unit {to} is {to_phrase} and this unit is {from_phrase}, so {tail}.")
+            format!("Unit {to} is in the {to_name} and this unit is on the {from_name}, so {tail}.")
         }
     }
 }
@@ -37366,6 +37428,30 @@ BUILD
         );
     }
 
+    #[test]
+    fn a_shipment_to_a_quartermaster_on_another_level_is_a_definite_refusal() {
+        let mut target = caravanserai_owner("901", 1, 0, 6);
+        target.region_id = "2:0,6".to_string();
+        target.coordinate.z = 2;
+        for unit in &mut target.units {
+            unit.region_id = target.region_id.clone();
+        }
+
+        let finding = only(reach_findings(
+            vec![
+                shipping_from(vec![with_item(unit("900"), 9, "fur", "FUR")]),
+                target,
+            ],
+            "unit 900\nTRANSPORT 901 9 FUR\n",
+            with_map(),
+        ));
+
+        assert_eq!(
+            finding.message,
+            "Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit."
+        );
+    }
+
     /// A shipment that is in reach says nothing at all - and neither does one whose distance the
     /// map's own shape leaves unsettled, whose target the game would refuse anyway, or whose switch
     /// the player has turned off.
@@ -37577,6 +37663,47 @@ BUILD
                 line: Some(2),
                 other: None,
             }]
+        );
+    }
+
+    /// `ah-7ale.4`: a shipment the sender cannot pay for is refused (so it is not listed as
+    /// shipped), but its full ask is still charged and therefore contributes to shortfall.
+    #[test]
+    fn an_unaffordable_shipment_is_refused_but_still_charged() {
+        let regions = || {
+            let mut sender = with_silver(with_skill(unit("900"), "QUAM", 5), 40);
+            sender = with_item(sender, 9, "fur", "FUR");
+            sender.structure_id = Some("400".to_string());
+            let mut region = shipping_from(vec![sender]);
+            region.structures = vec![Structure {
+                structure_id: "400".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }];
+            vec![region, caravanserai_owner("901", 1, 0, 6)]
+        };
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\n";
+        let silver = sender_silver(regions(), orders, with_map());
+        assert!(
+            silver.shipping.is_empty(),
+            "the refused shipment moves nothing"
+        );
+        assert_eq!(
+            shipped(&silver),
+            vec![&SilverChange {
+                amount: -45,
+                cause: SilverChangeCause::Shipped,
+                line: Some(2),
+                other: None,
+            }]
+        );
+
+        let findings =
+            review_turn(&report(regions()), orders, Some(&ruleset()), with_map()).findings;
+        assert!(
+            codes(&findings).contains(&"not-enough-silver"),
+            "the charged refusal still contributes to shortfall: {findings:?}"
         );
     }
 
