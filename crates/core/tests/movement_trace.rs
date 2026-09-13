@@ -1133,7 +1133,8 @@ fn a_new_units_number_alone_still_traces_when_only_one_hex_forms_it() {
     assert_eq!(path.from, at(1, 1));
 }
 
-const SOUTH_FORMS_NEW_1_AND_MOVES_NORTH: &str = "unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n";
+const SOUTH_FORMS_NEW_1_AND_MOVES_NORTH: &str =
+    "unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n";
 
 /// A named hex answers from that hex alone: no fallback to the number (`ah-jxrw`).
 #[test]

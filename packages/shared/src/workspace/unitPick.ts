@@ -10,8 +10,7 @@
  * the Unit panel and the map. This sits beside it.
  */
 
-import type { ReportUnit } from "@atlantis/core-client";
-import { rowKeyOf, unitRowKey, type KeyedRow, type UnitRowKey } from "../unitTable";
+import { rowKeyOf, type KeyedRow, type UnitRowKey } from "../unitTable";
 
 /**
  * Which rows are picked, and where a Shift range extends from.
