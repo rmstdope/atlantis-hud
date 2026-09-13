@@ -1089,9 +1089,6 @@ fn settle(
     // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
     // applied and the headcounts derived from it (`ah-dhga`).
     let dissolved = working.dissolve_empty_forms();
-    // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
-    // after the market, after movement, after production. A sale takes its goods first, and
-    // whatever a PRODUCE made this month is there to be sent.
     // `rules/sequenceofevents` processes ADVANCE, MOVE and SAIL before any TRANSPORT, so a unit that
     // moves steps off with what it holds now; goods shipped to it arrive after it has gone, and goods
     // it ships out are still on its back (`ah-ol1d`).
@@ -1100,6 +1097,9 @@ fn settle(
         .iter()
         .map(|working_unit| working_unit.movement_now(ruleset))
         .collect();
+    // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
+    // after the market, after movement, after production. A sale takes its goods first, and
+    // whatever a PRODUCE made this month is there to be sent.
     working.apply_transports(&dissolved);
     // A dissolving row is drawn now (`ah-ty3s.3`), so its weight, capacity and movement are
     // settled exactly like any other formed row's rather than left at `formed_unit`'s defaults.
