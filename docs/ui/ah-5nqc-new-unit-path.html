@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A new unit's path starts where it was formed</title><style>
+  :root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;
+        --ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;
+        --select:#4a9fd8;--ok:#4fb783;--danger:#d97070;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:32px 16px 72px}
+  header,main{max-width:1200px;margin:0 auto}
+  h1{font-size:24px} h1 span{color:var(--brass)}
+  header p{color:var(--ink-soft);max-width:92ch;margin-top:10px;font-size:14px}
+  code{font-family:'SF Mono',Menlo,monospace;color:var(--brass-bright);font-size:12.5px}
+  h3.sec{margin:36px 0 6px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+  h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:14px;max-width:92ch}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;margin-bottom:18px}
+  .card h2{font-size:16px;margin-bottom:6px} .card h2 em{color:var(--brass);font-style:normal;font-size:12px;letter-spacing:1.5px;margin-right:8px}
+  .concept{color:var(--ink-soft);font-size:13px;margin-bottom:12px;max-width:92ch}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px}
+  .pane{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;overflow:hidden}
+  .pane-head{padding:5px 10px;border-bottom:1px solid var(--edge-soft);font:12px 'Helvetica Neue',Arial,sans-serif}
+  .pane-head .bad{color:var(--danger)} .pane-head .good{color:var(--ok)}
+  .scroll{overflow-x:auto}
+  table.t{width:100%;border-collapse:collapse;font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif}
+  table.t th{text-align:left;color:var(--ink-dim);font-weight:normal;padding:4px 8px;border-bottom:1px solid var(--edge-soft);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
+  table.t td{padding:3px 8px;border-bottom:1px solid var(--edge-soft);white-space:nowrap}
+  table.t td.id{color:var(--brass-bright);font-family:'SF Mono',Menlo,monospace}
+  table.t tr.sel td{background:#1b2836}
+  .mk{margin-left:6px;font-size:10.5px;font-style:italic;color:var(--brass)}
+  .hint{margin-left:6px;font-size:10.5px;color:var(--ink-dim)}
+  ul.notes{list-style:none;font-size:13px;color:var(--ink-soft);display:grid;gap:5px;margin-top:12px}
+  ul.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+  ul.notes li.con::before{content:"\2212 ";color:var(--danger)}
+  ul.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+  svg text{font:10px 'Helvetica Neue',Arial,sans-serif}
+</style></head><body>
+<header>
+<h1>A new unit's path <span>starts where it was formed</span></h1>
+<p>A player forms <code>NEW 1</code> in several hexes &mdash; one <code>FORM 1</code> per hex is a common habit &mdash;
+and gives just one of them a <code>MOVE</code>. Select that unit and the map draws its path from the
+<b>northernmost</b> hex with a New 1 in it, not from the hex it was formed in.</p>
+<p>Why: movement tells new units apart by their number only, so every New 1 on the map becomes one unit, and
+whichever hex it happens to land on wins. When two New 1s both move, their moves can even run together into one
+strange path.</p>
+<p><b>The example throughout.</b> Three hexes, each with a unit that writes <code>FORM 1</code>: <code>forest (4,20)</code>
+in the north, <code>plain (5,23)</code>, and <code>hills (6,26)</code> in the south. Only the New 1 in
+<b>hills (6,26)</b> is told <code>MOVE N N</code>.</p>
+</header>
+<main>
+
+<h3 class="sec">Today, and after the fix</h3>
+<p>What the player sees with the hills New 1 selected.</p>
+<div class="grid2">
+ <div class="pane"><div class="pane-head"><span class="bad">Today</span> &mdash; the path starts in the forest</div>
+ <svg viewBox="0 0 300 260" width="100%" role="img" aria-label="Path drawn from the northern forest hex">
+  <defs><marker id="a1" markerWidth="8" markerHeight="8" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#eebe63"/></marker></defs>
+  <g stroke="#2a3542" fill="#141b24">
+   <polygon points="110,20 140,20 155,46 140,72 110,72 95,46"/>
+   <polygon points="150,90 180,90 195,116 180,142 150,142 135,116"/>
+   <polygon points="190,160 220,160 235,186 220,212 190,212 175,186"/>
+  </g>
+  <text x="104" y="16" fill="#8a97a8">forest (4,20) &middot; New 1</text>
+  <text x="200" y="116" fill="#8a97a8">plain (5,23) &middot; New 1</text>
+  <text x="150" y="232" fill="#dbe3ec">hills (6,26) &middot; New 1 &#9664; selected</text>
+  <path d="M125,46 L90,10 L60,-20" stroke="#eebe63" stroke-width="2.4" fill="none" marker-end="url(#a1)"/>
+  <circle cx="125" cy="46" r="4" fill="#eebe63"/>
+  <text x="14" y="70" fill="#d97070">path starts here &mdash; wrong hex</text>
+ </svg></div>
+ <div class="pane"><div class="pane-head"><span class="good">After</span> &mdash; the path starts in the hills</div>
+ <svg viewBox="0 0 300 260" width="100%" role="img" aria-label="Path drawn from the southern hills hex, two hexes north">
+  <defs><marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#eebe63"/></marker></defs>
+  <g stroke="#2a3542" fill="#141b24">
+   <polygon points="110,20 140,20 155,46 140,72 110,72 95,46"/>
+   <polygon points="150,90 180,90 195,116 180,142 150,142 135,116"/>
+   <polygon points="190,160 220,160 235,186 220,212 190,212 175,186"/>
+  </g>
+  <text x="104" y="16" fill="#8a97a8">forest (4,20) &middot; New 1</text>
+  <text x="200" y="116" fill="#8a97a8">plain (5,23) &middot; New 1</text>
+  <text x="150" y="232" fill="#dbe3ec">hills (6,26) &middot; New 1 &#9664; selected</text>
+  <path d="M205,186 L205,140 L205,96" stroke="#eebe63" stroke-width="2.4" fill="none" marker-end="url(#a2)"/>
+  <circle cx="205" cy="186" r="4" fill="#eebe63"/>
+ </svg></div>
+</div>
+
+<h3 class="sec">Question &mdash; does anything else change? <span style="color:var(--ok)">Chosen: A, just the fix</span></h3>
+<p>The fix itself is not in doubt. What is open is whether the player is also told that the same number is in use elsewhere.</p>
+<div class="grid2">
+ <div class="card"><h2><em>A</em> Just the fix</h2>
+  <p class="concept">Each New 1 draws its own path from its own hex, and nothing new appears anywhere. Units table unchanged.</p>
+  <div class="pane scroll"><table class="t">
+   <tr><th>Unit</th><th>Hex</th><th>Destination</th></tr>
+   <tr><td class="id">new 1</td><td>forest (4,20)</td><td><span class="mk">new</span></td></tr>
+   <tr><td class="id">new 1</td><td>plain (5,23)</td><td><span class="mk">new</span></td></tr>
+   <tr class="sel"><td class="id">new 1</td><td>hills (6,26)</td><td><span class="mk">new</span> &rarr; swamp (6,24)</td></tr>
+  </table></div>
+  <ul class="notes"><li>Nothing to learn; using one number per hex is legal and common.</li>
+   <li class="con">Rows still look identical apart from the hex.</li></ul>
+ </div>
+ <div class="card"><h2><em>B</em> The fix, plus a quiet note on the row</h2>
+  <p class="concept">Same fix; each new unit whose number is also used in another hex says so beside its name.</p>
+  <div class="pane scroll"><table class="t">
+   <tr><th>Unit</th><th>Hex</th><th>Destination</th></tr>
+   <tr><td class="id">new 1<span class="hint">also in 2 other hexes</span></td><td>forest (4,20)</td><td><span class="mk">new</span></td></tr>
+   <tr><td class="id">new 1<span class="hint">also in 2 other hexes</span></td><td>plain (5,23)</td><td><span class="mk">new</span></td></tr>
+   <tr class="sel"><td class="id">new 1<span class="hint">also in 2 other hexes</span></td><td>hills (6,26)</td><td><span class="mk">new</span> &rarr; swamp (6,24)</td></tr>
+  </table></div>
+  <ul class="notes"><li>Makes the repeated number visible.</li>
+   <li class="con">New words on every such row, for something that is not a mistake; the table gets wider.</li></ul>
+ </div>
+</div>
+
+<h3 class="sec">The states behind the example</h3>
+<div class="card"><ul class="notes">
+ <li class="n"><b>Two New 1s both move</b> &mdash; forest's goes <code>MOVE S</code>, hills' goes <code>MOVE N N</code>. Each selected on its own shows only its own path, from its own hex. The moves never run together.</li>
+ <li class="n"><b>A New 1 with no MOVE</b> (the plain one), selected &mdash; no path, as today for a new unit that stays put, even though another New 1 elsewhere moves.</li>
+ <li class="n"><b>The units table</b> &mdash; each moving New 1's destination is worked out from its own hex too, so hills' row reads <code>&rarr; swamp (6,24)</code>, not a hex two north of the forest.</li>
+ <li class="n"><b>Only one hex uses New 1</b> &mdash; nothing changes from today.</li>
+</ul></div>
+</main></body></html>
