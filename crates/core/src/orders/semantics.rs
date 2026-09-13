@@ -728,11 +728,10 @@ pub fn review_turn(
             hex,
             ledger,
             shipping.as_ref(),
-            options.geometry,
+            &options,
             ruleset,
             false,
             &nothing_received,
-            &options.month_end,
         );
         for (key, quantity) in delivered {
             *received_early.entry(key).or_default() += quantity;
@@ -744,11 +743,10 @@ pub fn review_turn(
             hex,
             ledger,
             shipping.as_ref(),
-            options.geometry,
+            &options,
             ruleset,
             true,
             &received_early,
-            &options.month_end,
         );
     }
 
@@ -12983,12 +12981,13 @@ fn shipping_bills(
         super::transport::Quartermasters,
         BTreeMap<String, super::transport::TargetFacts>,
     )>,
-    geometry: Option<crate::movement::graph::MapGeometry>,
+    options: &CheckOptions,
     ruleset: Option<&Ruleset>,
     quartermaster_senders: bool,
     received_earlier: &BTreeMap<(String, String), i64>,
-    month_end: &super::transport::MonthEndHexes,
 ) -> Vec<((String, String), i64)> {
+    let geometry = options.geometry;
+    let month_end = &options.month_end;
     let mut delivered = Vec::new();
     let (Some((quartermasters, targets)), Some(rules)) = (shipping, ruleset) else {
         return delivered;

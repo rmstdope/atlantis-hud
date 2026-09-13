@@ -3785,6 +3785,7 @@ export function AppShell({
     advisoryChecks,
     mapJson,
     knownPassages,
+    rememberedJson,
     writeOrdersDocument
   ]);
 
