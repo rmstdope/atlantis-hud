@@ -8,6 +8,7 @@ import {
   hexNodeOf,
   hexToPixel,
   isValidCoordinate,
+  latestTurnUnitsById,
   levelClause,
   levelFieldOf,
   levelNameOf,
@@ -303,5 +304,23 @@ describe("abbreviateDirection", () => {
 
   it("passes through a direction it does not know rather than guessing", () => {
     expect(abbreviateDirection("Portal")).toBe("Portal");
+  });
+});
+
+describe("the units a report of this turn names", () => {
+  it("names every current hex's units and none of a stale hex's", () => {
+    const model = buildHexMapModel(
+      knownMap([
+        knownHex({ region: region(at(7, 53), { units: [unit("1", true), unit("500", false)] }) }),
+        knownHex({
+          coordinate: at(9, 55),
+          knowledge: "stale",
+          lastSeenTurn: 68,
+          region: region(at(9, 55), { units: [unit("7", true)] })
+        })
+      ])
+    );
+
+    expect([...latestTurnUnitsById(model).keys()].sort()).toEqual(["1", "500"]);
   });
 });

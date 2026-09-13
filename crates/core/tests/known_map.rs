@@ -698,3 +698,61 @@ fn a_units_region_id_is_repaired_along_with_its_regions() {
         .expect("the unit survives on a same-turn sighting");
     assert_eq!(unit.region_id, "0:0,0");
 }
+
+/// The stored text both own-unit tests read: one unit of ours that is gone, and a stranger.
+const STORED_WITH_A_UNIT_OF_OURS: &str =
+    "* Gone (300), Foo (1), 1 man [MAN].\n- Someone (500), Bar (2), 3 orcs [ORC].\n";
+
+fn stored_with_a_unit_of_ours() -> RememberedRegion {
+    let region =
+        report_at_turn("plain", "February", 1, STORED_WITH_A_UNIT_OF_OURS).regions[0].clone();
+    let gone = region
+        .units
+        .iter()
+        .find(|unit| unit.unit_id == "300")
+        .expect("unit 300 parses");
+    assert!(
+        gone.own,
+        "the fixture is worthless unless the * line parses as ours"
+    );
+    RememberedRegion {
+        region,
+        last_seen_turn: 1,
+    }
+}
+
+fn unit_ids_at(known: &atlantis_hud_core::known_map::KnownMap, x: i32, y: i32) -> Vec<String> {
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(x, y))
+        .expect("known");
+    assert_eq!(hex.knowledge, HexKnowledge::Current);
+    hex.region
+        .as_ref()
+        .unwrap()
+        .units
+        .iter()
+        .map(|unit| unit.unit_id.clone())
+        .collect()
+}
+
+/// The latest report is the whole truth about our own units, so a stored sighting - even one of
+/// this very turn, which an older merge may have restamped - never brings one of ours back.
+#[test]
+fn a_same_turn_sighting_never_brings_back_a_unit_of_ours() {
+    let known = resolve_known_map(
+        &empty_report("February", 1),
+        &[stored_with_a_unit_of_ours()],
+    );
+
+    assert_eq!(unit_ids_at(&known, 1, 1), ["500"]);
+}
+
+#[test]
+fn a_unit_of_ours_in_a_same_turn_sighting_does_not_join_the_reports_hex() {
+    let current = report_at_turn("plain", "February", 1, "* Us (100), 1 man [MAN].\n");
+    let known = resolve_known_map(&current, &[stored_with_a_unit_of_ours()]);
+
+    assert_eq!(unit_ids_at(&known, 1, 1), ["100", "500"]);
+}

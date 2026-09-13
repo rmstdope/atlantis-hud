@@ -193,8 +193,24 @@ fn merge_into_sightings(
 
         // A payload written by an older build may not parse. Rebuilding the hex from the ally's
         // account beats losing it, which is the same trade the read path already makes.
-        let merged = match previous.and_then(stored_region) {
-            Some(stored_region) => merge_regions(&stored_region, &contribution),
+        //
+        // A stored sighting from an earlier turn contributes its geography and economy to the
+        // merge but none of its units: the merged row is stamped with the later turn, and would
+        // otherwise vouch for units nobody has seen since - a dead unit of ours included.
+        let merged = match previous
+            .and_then(|sighting| stored_region(sighting).map(|region| (sighting, region)))
+        {
+            Some((sighting, stored_region)) => {
+                let base = if sighting.last_seen_turn < turn_number {
+                    ReportRegion {
+                        units: Vec::new(),
+                        ..stored_region
+                    }
+                } else {
+                    stored_region
+                };
+                merge_regions(&base, &contribution)
+            }
             None => contribution,
         };
 
@@ -744,5 +760,47 @@ mod tests {
             "the viewer already had the hex"
         );
         assert_eq!(outcome.sightings[0].last_seen_turn, 40);
+    }
+
+    #[test]
+    fn a_later_turns_merge_carries_none_of_the_units_an_earlier_sighting_held() {
+        let mut mine = region();
+        mine.units = vec![unit("13432", true), unit("3000", false)];
+        mine.exits = vec![exit("north", "plain")];
+        mine.structures = vec![structure("s-1", "Tower")];
+        let stored = vec![sighting_of(&mine, 70)];
+        let mut theirs = region();
+        theirs.units = vec![unit("2001", true)];
+
+        let outcome = merge_report_into_sightings(&stored, &report_of(vec![theirs]), 71);
+
+        let written = &outcome.sightings[0];
+        assert_eq!(written.last_seen_turn, 71);
+        let payload: ReportRegion = serde_json::from_str(&written.payload_json).unwrap();
+        let ids: Vec<&str> = payload.units.iter().map(|u| u.unit_id.as_str()).collect();
+        assert_eq!(ids, ["2001"]);
+        assert!(payload.units.iter().all(|u| !u.own));
+        assert_eq!(payload.exits.len(), 1, "geography survives the merge");
+        assert_eq!(payload.structures.len(), 1, "structures survive the merge");
+    }
+
+    #[test]
+    fn a_borrowed_hex_seen_after_the_stored_one_carries_none_of_its_units() {
+        let mut mine = region();
+        mine.units = vec![unit("13432", true), unit("3000", false)];
+        let existing = vec![sighting_of(&mine, 40)];
+        let mut theirs = region();
+        theirs.units = vec![unit("2001", true)];
+        let mut ages = BTreeMap::new();
+        ages.insert(theirs.region_id.clone(), 45);
+
+        let outcome =
+            merge_map_export_into_sightings(&existing, &report_of(vec![theirs]), 71, &ages);
+
+        let written = &outcome.sightings[0];
+        assert_eq!(written.last_seen_turn, 45);
+        let payload: ReportRegion = serde_json::from_str(&written.payload_json).unwrap();
+        let ids: Vec<&str> = payload.units.iter().map(|u| u.unit_id.as_str()).collect();
+        assert_eq!(ids, ["2001"]);
     }
 }

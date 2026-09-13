@@ -28,6 +28,7 @@ function draw(
     dropOver?: { kind: "army"; armyId: string } | { kind: "new" } | null;
     dropFull?: ReadonlySet<string>;
     dragging?: boolean;
+    armyCount?: (army: ArmyRecord) => number;
   } = {}
 ): string {
   return renderToStaticMarkup(
@@ -35,6 +36,7 @@ function draw(
       source={overrides.source ?? HEX_SOURCE}
       onSource={() => {}}
       armies={overrides.armies ?? ARMIES}
+      armyCount={overrides.armyCount ?? ((army) => army.members.length)}
       hexCount={overrides.hexCount === undefined ? 6 : overrides.hexCount}
       ownCount={overrides.ownCount ?? 38}
       foreignCount={overrides.foreignCount ?? 254}
@@ -52,6 +54,14 @@ const entryFor = (markup: string, id: string) =>
   new RegExp(`<button[^>]*data-testid="unit-source-${id}"[\\s\\S]*?</button>`).exec(markup)?.[0] ?? "";
 
 describe("the units dock's source rail", () => {
+  it("prints the count it is given for an Army, not the stored membership", () => {
+    const three = { ...army("a", "Coastal Watch"), members: [1, 2, 3].map((n) => ({ unitId: String(n) })) } as ArmyRecord;
+    const entry = entryFor(draw({ armies: [three], armyCount: () => 1 }), "army-a");
+
+    expect(entry).toMatch(/>1<\/span>/);
+    expect(entry).not.toMatch(/>3<\/span>/);
+  });
+
   it("lists every Army under the heading, with This hex and All my units above it", () => {
     const markup = draw();
 

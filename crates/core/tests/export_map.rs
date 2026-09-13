@@ -229,3 +229,63 @@ fn every_fixture_exports_a_header_that_reads_back() {
         }
     }
 }
+
+/// A foreign unit from the real report, moved into the remembered `forest (99,99)` hex.
+fn remembered_with_a_foreign_unit(
+    report: &atlantis_hud_core::report::ParsedReport,
+    last_seen_turn: u32,
+) -> (RememberedRegion, String) {
+    let mut stranger = report
+        .regions
+        .iter()
+        .flat_map(|region| &region.units)
+        .find(|unit| !unit.own)
+        .expect("the fixture has a foreign unit")
+        .clone();
+    stranger.region_id = "1:99,99".to_owned();
+    let mut region = parse_report_full("forest (99,99) in Elsewhere.\n")
+        .regions
+        .into_iter()
+        .next()
+        .expect("fixture region");
+    let id = stranger.unit_id.clone();
+    region.units = vec![stranger];
+    (
+        RememberedRegion {
+            region,
+            last_seen_turn,
+        },
+        id,
+    )
+}
+
+fn exported_unit_ids(text: &str) -> Vec<String> {
+    by_id(parse_report_full(text).regions)
+        .remove("1:99,99")
+        .expect("the remembered hex is exported")
+        .units
+        .into_iter()
+        .map(|unit| unit.unit_id)
+        .collect()
+}
+
+#[test]
+fn a_remembered_hex_from_an_earlier_turn_is_exported_without_its_units() {
+    let report = parse_report_full(TURN_71);
+    let (remembered, _) = remembered_with_a_foreign_unit(&report, 60);
+
+    let text = export_map(&report, &[remembered], &whole_map(ExportContent::default()));
+
+    assert!(exported_unit_ids(&text).is_empty());
+    assert!(text.contains("; last seen turn 60, 11 turns before this export"));
+}
+
+#[test]
+fn a_same_turn_remembered_hex_keeps_other_factions_units() {
+    let report = parse_report_full(TURN_71);
+    let (remembered, id) = remembered_with_a_foreign_unit(&report, 71);
+
+    let text = export_map(&report, &[remembered], &whole_map(ExportContent::default()));
+
+    assert_eq!(exported_unit_ids(&text), [id]);
+}

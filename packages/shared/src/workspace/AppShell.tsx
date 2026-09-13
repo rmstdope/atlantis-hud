@@ -12,7 +12,6 @@ import type {
   MoveOrderTraceResponse,
   OrdersPreviewResponse,
   RegionPreview,
-  ReportUnit,
   RoutePlanResponse,
   TradeRoute
 } from "@atlantis/core-client";
@@ -21,6 +20,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   buildHexMapModel,
+  latestTurnUnitsById,
   levelClause,
   parseRegionId,
   levelFieldOf,
@@ -154,7 +154,6 @@ import { useResourceMemoryStore } from "../resourceMemoryStore";
 import { usePassageMemoryStore } from "../passageMemoryStore";
 import { knownPassagesOf } from "../passageMemory";
 import { derivedSkillsFor } from "../battleSkills";
-import { unitsByIdIn } from "../armies";
 import { disabledAdvisoryCodes, useSettingsStore } from "../settingsStore";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
@@ -1341,15 +1340,10 @@ export function AppShell({
   /** Its exact complement, for the dock's `Other factions` source (`ah-1mpx.5`). */
   const foreignUnits = useMemo(() => (parsed ? foreignUnitsIn(parsed) : []), [parsed]);
   /**
-   * This turn's units by unit number, for resolving an Army's members against the report.
-   *
-   * `unitsByIdIn` is `armies.ts`' own export, already written for `refreshFor`: one index, read by
-   * both, rather than a second walk over every region saying the same thing.
+   * Every unit on a report of this turn by unit number - own and same-turn allies' - for resolving
+   * an Army's members. A member none of them shows is gone from every Army listing and count.
    */
-  const unitsById = useMemo(
-    () => (parsed ? unitsByIdIn(parsed) : new Map<string, ReportUnit>()),
-    [parsed]
-  );
+  const unitsById = useMemo(() => latestTurnUnitsById(model), [model]);
 
   /**
    * Goes to the unit a turn message names.

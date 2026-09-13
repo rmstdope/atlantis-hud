@@ -237,6 +237,26 @@ export function buildHexMapModel(known: KnownMap): HexMapModel {
   };
 }
 
+/**
+ * Every unit a report of the current turn names, by unit number: the units of every `current` hex,
+ * which the core resolves from the player's own report plus any same-turn ally's. A stale or named
+ * hex contributes nothing. The first hex to name a unit keeps it.
+ */
+export function latestTurnUnitsById(model: HexMapModel): Map<string, ReportUnit> {
+  const byId = new Map<string, ReportUnit>();
+  for (const hex of model.hexes) {
+    if (hex.knowledge !== "current" || hex.region === null) {
+      continue;
+    }
+    for (const unit of hex.region.units) {
+      if (!byId.has(unit.unitId)) {
+        byId.set(unit.unitId, unit);
+      }
+    }
+  }
+  return byId;
+}
+
 /** Own units first, then by id — one of 92 being yours should not be buried. */
 export function sortUnitsForDisplay(units: ReportUnit[]): ReportUnit[] {
   return [...units].sort((left, right) => {
