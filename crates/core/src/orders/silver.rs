@@ -3385,6 +3385,10 @@ pub struct FoodClaim {
     pub spare_food: Vec<FoodAmount>,
     /// Upkeep still owed after step 1, in silver.
     pub owed_after_own_food: i64,
+    /// What the unit's own food paid off at step 1, in silver - `OwnFoodPass::own_food_covered`,
+    /// carried so the shortage warning can count the food that paid part of a fee without
+    /// re-deriving it (`ah-pyiy`).
+    pub own_food_covered: i64,
     /// Whether the unit carries the `consuming faction's food` flag.
     pub draws_on_pool: bool,
     /// Whether a `GIVE` this month may or may not have taken the food this unit would have brought
@@ -3408,6 +3412,7 @@ pub fn food_claim(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> FoodClaim
         unit_id: facts.unit_id.to_string(),
         spare_food_uncertain: facts.food_uncertain,
         owed_after_own_food: pass.as_ref().map_or(0, |pass| pass.owed_after_own_food),
+        own_food_covered: pass.as_ref().map_or(0, |pass| pass.own_food_covered),
         spare_food: pass.map_or_else(Vec::new, |pass| pass.spare_food),
         draws_on_pool: facts
             .flags
@@ -11853,6 +11858,7 @@ mod faction_food_tests {
             unit_id: id.to_string(),
             spare_food: spare,
             owed_after_own_food: owed,
+            own_food_covered: 0,
             draws_on_pool: draws,
         }
     }
@@ -11983,6 +11989,7 @@ mod faction_food_tests {
             unit_id: "quartermaster".to_string(),
             spare_food: vec![food("MEAL", 1, 20), food("GRAI", 2, 40)],
             owed_after_own_food: 0,
+            own_food_covered: 0,
             draws_on_pool: false,
         };
         let claims = [quartermaster, claim("a", 0, 40, true)];
