@@ -39,7 +39,7 @@ travels as raw text, which is the key the core's parse cache remembers it under.
   resolves with a named `problem`; only an unusable ruleset or unreadable memory rejects.
 - `trace_move_orders` (Tauri) / `trace_move_orders_state` (WASM) / `CoreClient.traceMoveOrders`:
   `(ruleset_json, raw_report, remembered_json, unit_id, region_id, orders_document, map_json, passages_json)` →
-  `MoveOrderTraceResponse { path }`. `region_id` is the unit's hex; a new unit's `new-<n>` is unique
+  `MoveOrderTraceResponse { path }`. `region_id` is the hex the unit set out from this month (for an arrival row, the hex it arrives from, not the hex it is listed in); a new unit's `new-<n>` is unique
   only inside it. Traces the last readable MOVE/ADVANCE line in the unit's
   written orders across the remembered map, extrapolating geometrically past everything known and
   guessing unknown terrain from the previous hex. `path` is `null` when there is nothing to draw

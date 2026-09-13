@@ -215,11 +215,12 @@ pub fn trace_orders_for_remembered_report(
 /// As [`trace_orders_for_remembered_report`], plus an error when the map shape or the passages the
 /// faction has proved cannot be read.
 ///
-/// `region_id` is the hex of the selected unit's row. A unit this month's `FORM` creates is known
-/// only by `new-<alias>`, which is unique inside a hex and not across a report, so it is found by
-/// both. A unit the report prints is found by number alone. When no unit with that alias is formed
-/// in `region_id` - it is empty, or it is the hex a selected arrival row arrives in - the first hex
-/// forming that alias answers (`ah-5nqc`).
+/// `region_id` is the hex the selected unit set out from this month: the hex it stands in, or, for a
+/// row that only arrives in the hex on screen, the hex it arrives from. A unit this month's `FORM`
+/// creates is known only by `new-<alias>`, which is unique inside the hex it was formed in and not
+/// across a report (`rules/form`), so it is found by both, and a hex that forms no such unit traces
+/// nothing. A unit the report prints is found by number alone. Empty means the hex is unknown, and
+/// the first hex forming that alias answers.
 // Nine. Each of the three documents the screen holds - the remembered map, the game's own shape,
 // and the passages it has proved - crosses as its own text rather than in a struct every caller
 // would have to build (`ah-3u7c.2.2`), and the selected unit's hex crosses beside its id

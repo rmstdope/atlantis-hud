@@ -1175,7 +1175,7 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "trace_move_orders")
     )]
-    // Eight, as the core's `trace_orders_on_map` less its cache; the hex is the cursor's (`ah-5nqc`).
+    // Eight, as the core's `trace_orders_on_map` less its cache; the hex is the one the selected unit set out from (`ah-jxrw`).
     #[allow(clippy::too_many_arguments)]
     pub fn command_trace_move_orders(
         ruleset_json: &str,

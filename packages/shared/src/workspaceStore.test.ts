@@ -69,6 +69,22 @@ describe("renaming the open game", () => {
 describe("workspace selection", () => {
   beforeEach(resetWorkspaceStore);
 
+  it("keeps the hex an arrival row set out from with the cursor, and drops it on the next selection", () => {
+    store().selectUnit("new-1", "1:7,51", { arrivingFrom: "1:7,53" });
+    expect(store().selectedUnitArrivingFrom).toBe("1:7,53");
+
+    store().selectUnit("new-1", "1:7,51");
+    expect(store().selectedUnitArrivingFrom).toBeNull();
+
+    store().selectUnit("new-1", "1:7,51", { arrivingFrom: "1:7,53" });
+    store().selectRegion("1:9,55");
+    expect(store().selectedUnitArrivingFrom).toBeNull();
+
+    store().selectUnit("new-1", "1:7,51", { arrivingFrom: "1:7,53" });
+    store().selectUnit(null, null, { arrivingFrom: "1:7,53" });
+    expect(store().selectedUnitArrivingFrom).toBeNull();
+  });
+
   it("remembers which hex the selected unit stands in", () => {
     // A unit number is not unique across a report: two hexes may each write FORM 1 and both formed
     // units are called `new-1` (`rules/form`), so the cursor is the pair (`ah-bubf`).

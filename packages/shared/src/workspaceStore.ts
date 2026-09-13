@@ -139,6 +139,11 @@ export type WorkspaceState = {
    */
   selectedUnitRegionId: string | null;
   /**
+   * The hex the selected row arrives from, when the cursor is on an arrival row; null otherwise and
+   * whenever `selectedUnitId` is null (`ah-jxrw`). Never persisted.
+   */
+  selectedUnitArrivingFrom: string | null;
+  /**
    * Which unit was last chosen in each hex, so returning to a hex returns to that unit rather than
    * to the first one in it (`ah-17t5`). Session-only: never persisted, and cleared whenever a game
    * is opened or closed, since a region id like `1:7,53` exists in every game.
@@ -271,7 +276,7 @@ export type WorkspaceState = {
   selectUnit: (
     unitId: string | null,
     regionId: string | null,
-    options?: { remember?: boolean }
+    options?: { remember?: boolean; arrivingFrom?: string | null }
   ) => void;
   setLevel: (level: number) => void;
   /** Records that the map committed a viewport for the open game on this level. */
@@ -422,6 +427,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       selectedRegionId: null,
       selectedUnitId: null,
       selectedUnitRegionId: null,
+      selectedUnitArrivingFrom: null,
       hexUnits: NO_HEX_UNITS,
       selectionEpoch: 0,
       pickEpoch: 0,
@@ -448,6 +454,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           selectedRegionId: saved?.regionId ?? null,
           selectedUnitId: null,
           selectedUnitRegionId: null,
+          selectedUnitArrivingFrom: null,
           hexUnits: NO_HEX_UNITS,
           selectionEpoch: 0,
           mapView: mapViewOpened(game.gameId, saved)
@@ -459,6 +466,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           selectedRegionId: null,
           selectedUnitId: null,
           selectedUnitRegionId: null,
+          selectedUnitArrivingFrom: null,
           hexUnits: NO_HEX_UNITS,
           selectionEpoch: 0,
           mapView: NO_MAP_VIEW
@@ -507,6 +515,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             selectedRegionId: regionId,
             selectedUnitId: defaultUnitId,
             selectedUnitRegionId: defaultUnitId === null ? null : regionId,
+            selectedUnitArrivingFrom: null,
             selectionEpoch: state.selectionEpoch + 1,
             pickEpoch: options?.picked ? state.pickEpoch + 1 : state.pickEpoch,
             mapView: mapViewSelectionChanged(state.mapView, regionId)
@@ -518,6 +527,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           selectedRegionId: regionId,
           selectedUnitId: null,
           selectedUnitRegionId: null,
+          selectedUnitArrivingFrom: null,
           mapView: mapViewSelectionChanged(state.mapView, regionId)
         })),
 
@@ -528,6 +538,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set((state) => ({
           selectedUnitId: unitId,
           selectedUnitRegionId: unitId === null ? null : regionId,
+          selectedUnitArrivingFrom: unitId === null ? null : (options?.arrivingFrom ?? null),
           hexUnits:
             unitId === null || regionId === null || options?.remember === false
               ? state.hexUnits
@@ -544,6 +555,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 selectedRegionId: null,
                 selectedUnitId: null,
                 selectedUnitRegionId: null,
+                selectedUnitArrivingFrom: null,
                 selectionEpoch: 0,
                 mapView: mapViewSelectionChanged(state.mapView, null)
               }
@@ -682,6 +694,7 @@ export function resetWorkspaceStore() {
     selectedRegionId: null,
     selectedUnitId: null,
     selectedUnitRegionId: null,
+    selectedUnitArrivingFrom: null,
     hexUnits: NO_HEX_UNITS,
     selectionEpoch: 0,
     pickEpoch: 0,

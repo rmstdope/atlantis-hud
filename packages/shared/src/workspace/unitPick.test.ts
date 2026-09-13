@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aReportUnit } from "@atlantis/core-client";
 import { NO_PICK, afterGesture, narrowedTo, onPress, pickedIn, type UnitPick } from "./unitPick";
-import { unitRowKey, type UnitRowKey } from "../unitTable";
+import { rowKeyOf, unitRowKey, type UnitRowKey } from "../unitTable";
 
 /** A row key for a test that cares only that keys are distinct. */
 const k = (id: string): UnitRowKey => unitRowKey("1:6,52", id);
@@ -161,6 +161,15 @@ describe("pickedIn", () => {
     );
 
     expect(picked).toEqual([there]);
+  });
+
+  it("picks an arrival row apart from the same-numbered row formed in its hex", () => {
+    const formedHere = aReportUnit({ unitId: "new-1", regionId: "1:7,51" });
+    const arrival = { ...formedHere, arrivingFrom: "1:7,53" };
+
+    expect(pickedIn({ ids: new Set([rowKeyOf(arrival)]), anchor: null }, [formedHere, arrival])).toEqual([
+      arrival
+    ]);
   });
 });
 

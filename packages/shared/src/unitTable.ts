@@ -144,12 +144,12 @@ export function windowRange(
  * unit's own report-native skill text, so a unit whose caller passes nothing is still searchable by
  * its skills exactly as it always was.
  */
-export function filterUnits(
-  units: ReportUnit[],
+export function filterUnits<T extends ReportUnit>(
+  units: T[],
   needle: string,
   structures: StructuresByRegion = new Map(),
   skillsText: (unit: ReportUnit) => string = defaultSkillsText
-): ReportUnit[] {
+): T[] {
   const wanted = needle.trim().toLowerCase();
   if (!wanted) {
     return units;
@@ -286,8 +286,8 @@ function structureKey(row: StructureBearingRow, byRegion: StructuresByRegion): s
  * are broken apart by unit id, ascending whichever way the column runs, so the same hex reads the
  * same way every turn rather than in whatever order the report listed them.
  */
-export function sortUnits(
-  units: ReportUnit[],
+export function sortUnits<T extends ReportUnit>(
+  units: T[],
   sort: SortState,
   structures: StructuresByRegion = new Map(),
   /** Each own unit's month-long order, for the column that sorts on it. */
@@ -302,7 +302,7 @@ export function sortUnits(
    * built from this turn's hex.
    */
   seen: ReadonlyMap<string, number> = new Map()
-): ReportUnit[] {
+): T[] {
   const direction = sort.direction === "asc" ? 1 : -1;
 
   return [...units].sort((left, right) => {
@@ -447,9 +447,30 @@ export type UnitRowKey = string & { readonly [unitRowKeyBrand]: "UnitRowKey" };
  *
  * The separator is a NUL, which no region id or unit id can contain, so no pair of inputs can
  * produce the same key as a different pair.
+ *
+ * An arriving row stands in a hex it does not set out from, and a unit this month's `FORM` creates is
+ * numbered only inside the hex it was formed in, so an arrival and a unit formed where it arrives can
+ * share the hex and the number. The hex it set out from is then part of the row's identity. A lookup
+ * that describes the unit where it stands - a forecast, a warning, a name - keeps the two-part key.
+ *
+ * `arrivingFrom` null or absent: exactly the two-part key. Otherwise `${regionId}\0${unitId}\0${arrivingFrom}`.
  */
-export function unitRowKey(regionId: string, unitId: string): UnitRowKey {
-  return `${regionId}\0${unitId}` as UnitRowKey;
+export function unitRowKey(
+  regionId: string,
+  unitId: string,
+  arrivingFrom?: string | null
+): UnitRowKey {
+  return (
+    arrivingFrom == null ? `${regionId}\0${unitId}` : `${regionId}\0${unitId}\0${arrivingFrom}`
+  ) as UnitRowKey;
+}
+
+/** The parts of a row its identity is made of. `ReportUnit`, `PreviewedUnit` and `UnitCursor` all satisfy it. */
+export type KeyedRow = { regionId: string; unitId: string; arrivingFrom?: string | null };
+
+/** The key of a table row: `unitRowKey(row.regionId, row.unitId, row.arrivingFrom)`. */
+export function rowKeyOf(row: KeyedRow): UnitRowKey {
+  return unitRowKey(row.regionId, row.unitId, row.arrivingFrom);
 }
 
 /** The parts of a row `unitNamesByRow` reads. `ReportUnit` and `PreviewedUnit` both satisfy it. */

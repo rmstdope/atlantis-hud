@@ -576,7 +576,7 @@ pub fn known_map_state(
 /// drift into tracing differently. An order that cannot be traced resolves to an answer carrying
 /// no path; only an unusable ruleset or unreadable memory rejects.
 // Eight, as the core's `trace_orders_on_map` less its cache: each document crosses as its own text,
-// and the hex is the cursor's (`ah-5nqc`).
+// and the hex is the one the selected unit set out from (`ah-jxrw`).
 #[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn trace_move_orders_state(

@@ -73,6 +73,7 @@ import {
   columnWidthStyle,
   orderOf,
   unitNamesByRow,
+  rowKeyOf,
   unitRowKey,
   unitRowSelector,
   silverIsRed,
@@ -322,13 +323,14 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   ) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectedUnitRegionId = useWorkspaceStore((state) => state.selectedUnitRegionId);
+  const selectedUnitArrivingFrom = useWorkspaceStore((state) => state.selectedUnitArrivingFrom);
   /**
    * The cursor as a pair. Memoised rather than selected: a zustand selector building a fresh object
    * re-renders for ever under `useSyncExternalStore` (`ah-bubf`).
    */
   const cursor = useMemo(
-    () => unitCursor({ selectedUnitId, selectedUnitRegionId }),
-    [selectedUnitId, selectedUnitRegionId]
+    () => unitCursor({ selectedUnitId, selectedUnitRegionId, selectedUnitArrivingFrom }),
+    [selectedUnitId, selectedUnitRegionId, selectedUnitArrivingFrom]
   );
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const columnShares = useWorkspaceStore((state) => state.unitColumnShares);
@@ -490,7 +492,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     return army ? armyRows(army, unitsById ?? EMPTY_UNITS_BY_ID, currentTurn) : NO_ARMY_ROWS;
   }, [source, hex, preview, ownRows, foreignUnits, pin, army, unitsById, currentTurn]);
 
-  const units = sourced.rows;
+  // Typed as table rows, so an arrival's origin is readable where the row is chosen (`ah-jxrw`).
+  const units: PreviewedUnit[] = sourced.rows;
   const extras = useMemo(() => extraColumnsFor(source), [source]);
   // Every known region's structures, so a row is labelled in the region that numbered its
   // structure: a structure number is scoped to its region (`rules/move`), and the numbers are
@@ -565,11 +568,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   );
   /** The unit numbers the table is drawing, in the order it is drawing them. */
   const rowKeys = useMemo(
-    () => visible.map((unit) => unitRowKey(unit.regionId, unit.unitId)),
+    () => visible.map((unit) => rowKeyOf(unit)),
     [visible]
   );
   const selectedIndex = useMemo(
-    () => visible.findIndex((unit) => isCursorRow(cursor, unit.regionId, unit.unitId)),
+    () => visible.findIndex((unit) => isCursorRow(cursor, unit)),
     [visible, cursor]
   );
 
@@ -598,7 +601,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     if (first) {
       // Not the player choosing: opening a foreign faction's list lands on its first row, and
       // recording that would make the hex reopen on a foreign unit (`ah-17t5`).
-      selectUnit(first.unitId, first.regionId, { remember: false });
+      selectUnit(first.unitId, first.regionId, {
+        remember: false,
+        arrivingFrom: first.arrivingFrom ?? null
+      });
       // The existing scroll-into-view-then-focus machinery, not a second focus effect.
       refocusWanted.current = true;
     } else {
@@ -733,7 +739,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     if (!hovered) {
       return null;
     }
-    const unit = visible.find((one) => unitRowKey(one.regionId, one.unitId) === hovered.key);
+    const unit = visible.find((one) => rowKeyOf(one) === hovered.key);
     return unit ? { unit, column: hovered.column, at: hovered.at } : null;
   }, [hovered, visible]);
   const pointerAt = useRef<Point>({ x: 0, y: 0 });
@@ -744,7 +750,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * Without it a hand that is not perfectly still never sees a popup at all: every `pointermove`
    * inside one cell would clear the timer and start it again.
    */
-  const pending = useRef<{ unitId: string; regionId: string; column: DrawnColumnId } | null>(null);
+  const pending = useRef<{ key: UnitRowKey; column: DrawnColumnId } | null>(null);
 
   const forgetHover = () => {
     if (hoverTimer.current !== null) {
@@ -766,7 +772,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // Already open on this cell's own row: the popup becomes the new column at once and moves to
     // it, with no second wait (`ah-rgkk.1`, decision **C1**). Reading a row column by column costs
     // one wait, not one per cell.
-    const key = unitRowKey(unit.regionId, unit.unitId);
+    const key = rowKeyOf(unit);
     if (hovered && hovered.key === key) {
       if (hovered.column !== column) {
         setHovered({ key, column, at: pointerAt.current });
@@ -776,15 +782,14 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
 
     if (
       pending.current !== null &&
-      pending.current.unitId === unit.unitId &&
-      pending.current.regionId === unit.regionId &&
+      pending.current.key === key &&
       pending.current.column === column
     ) {
       return;
     }
 
     forgetHover();
-    pending.current = { unitId: unit.unitId, regionId: unit.regionId, column };
+    pending.current = { key, column };
     hoverTimer.current = setTimeout(() => {
       hoverTimer.current = null;
       pending.current = null;
@@ -847,7 +852,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         current,
         {
           kind: options.extend ? "extend" : "plain",
-          rowKey: unitRowKey(target.regionId, target.unitId)
+          rowKey: rowKeyOf(target)
         },
         rowKeys
       )
@@ -855,19 +860,25 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // Arrowing past either end lands on the row already selected. Asking for it again re-renders
     // nothing, so the effect above would never run to spend the focus this arms — it would be left
     // owing, and go to whichever row was selected next, including one chosen with the mouse.
-    if (!isCursorRow(cursor, target.regionId, target.unitId)) {
+    if (!isCursorRow(cursor, target)) {
       refocusWanted.current = true;
-      selectUnit(target.unitId, target.regionId);
+      selectUnit(target.unitId, target.regionId, { arrivingFrom: target.arrivingFrom ?? null });
     }
   };
 
   /** Picks a row alone and puts the cursor on it - what a click, Enter and Space all mean. */
-  const settleOn = (pickNext: UnitPick, rowUnitId: string, rowRegionId: string) => {
+  const settleOn = (
+    pickNext: UnitPick,
+    rowUnitId: string,
+    rowRegionId: string,
+    rowArrivingFrom: string | null
+  ) => {
     setPick(pickNext);
     // The row's own unit and the row's own hex. Since `ah-ty3s.1` a formed row selects itself
     // rather than the unit that wrote its `FORM`, and the hex is what tells two `new-1`s apart -
     // `rules/form` puts a formed unit "in the same region as the unit which formed it".
-    selectUnit(rowUnitId, rowRegionId);
+    // An arrival row also carries the hex it set out from (`ah-jxrw`).
+    selectUnit(rowUnitId, rowRegionId, { arrivingFrom: rowArrivingFrom });
   };
 
   /**
@@ -906,13 +917,13 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // The pick is keyed on the row, the cursor on the unit: two hexes may hold the same number.
     const hereRow = visible[index] ?? null;
     const here = hereRow?.unitId ?? null;
-    const hereKey = hereRow ? unitRowKey(hereRow.regionId, hereRow.unitId) : null;
+    const hereKey = hereRow ? rowKeyOf(hereRow) : null;
     const chose = (travel: boolean) => {
       if (hereRow === null || here === null || hereKey === null) {
         return;
       }
       // Choosing a row from the keyboard collapses a pick exactly as a plain click does.
-      settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys), here, hereRow.regionId);
+      settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys), here, hereRow.regionId, hereRow.arrivingFrom ?? null);
       if (travel) {
         travelTo(here, hereRow.regionId);
       }
@@ -990,7 +1001,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   });
 
   const selectedUnit = useMemo(
-    () => visible.find((entry) => isCursorRow(cursor, entry.regionId, entry.unitId)) ?? null,
+    () => visible.find((entry) => isCursorRow(cursor, entry)) ?? null,
     [visible, cursor]
   );
   /**
@@ -1015,7 +1026,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    */
   const pressRow = (
     event: PointerEvent<HTMLTableRowElement>,
-    unit: ReportUnit,
+    unit: PreviewedUnit,
     rowUnitId: string
   ) => {
     if (event.button !== 0) {
@@ -1026,10 +1037,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // (`ah-y9hx` P1): a five-unit pick across four hexes would otherwise throw the map four times,
     // and one Shift+click adding ten rows would send it to the last of them.
     const plain = !modifiers.shift && !modifiers.mod;
-    const outcome = onPress(pick, unitRowKey(unit.regionId, unit.unitId), modifiers, rowKeys);
+    const outcome = onPress(pick, rowKeyOf(unit), modifiers, rowKeys);
     if (outcome.now) {
       if (plain) {
-        settleOn(outcome.now, rowUnitId, unit.regionId);
+        settleOn(outcome.now, rowUnitId, unit.regionId, unit.arrivingFrom ?? null);
         travelTo(rowUnitId, unit.regionId);
       } else {
         setPick(outcome.now);
@@ -1050,7 +1061,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       unit,
       deferred
         ? () => {
-            settleOn(deferred, rowUnitId, unit.regionId);
+            settleOn(deferred, rowUnitId, unit.regionId, unit.arrivingFrom ?? null);
             travelTo(rowUnitId, unit.regionId);
           }
         : undefined
@@ -1089,7 +1100,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         // Resolved once, as the drag begins: a press on a row outside the pick carries that row
         // alone, and a press on one inside it carries the whole pick (E2).
         carried =
-          pick.ids.has(unitRowKey(unit.regionId, unit.unitId)) && pick.ids.size >= 2
+          pick.ids.has(rowKeyOf(unit)) && pick.ids.size >= 2
             ? pickedIn(pick, visible)
             : [unit];
         const carriedIds = carried.map((one) => one.unitId);
@@ -1175,18 +1186,18 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    */
   const contextRow = (
     event: ReactMouseEvent<HTMLTableRowElement>,
-    unit: ReportUnit,
+    unit: PreviewedUnit,
     rowUnitId: string
   ) => {
     event.preventDefault();
     const outcome = onPress(
       pick,
-      unitRowKey(unit.regionId, unit.unitId),
+      rowKeyOf(unit),
       { shift: false, mod: false },
       rowKeys
     );
     if (outcome.now) {
-      settleOn(outcome.now, rowUnitId, unit.regionId);
+      settleOn(outcome.now, rowUnitId, unit.regionId, unit.arrivingFrom ?? null);
     }
     setMenu({ at: "pointer", point: { x: event.clientX, y: event.clientY } });
   };
@@ -1533,15 +1544,15 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
               <Spacer rows={start} rowHeight={rowHeight} columns={drawn.length} />
               {visible.slice(start, end).map((unit, offset) => (
                 <UnitRow
-                  key={unitRowKey(unit.regionId, unit.unitId)}
+                  key={rowKeyOf(unit)}
                   unit={unit}
                   structureLabel={unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures)}
                   reportedStructureLabel={reportedStructureLabelFor(unit, structures)}
                   drawn={drawn}
                   index={start + offset}
                   rowHeight={rowHeight}
-                  selected={isCursorRow(cursor, unit.regionId, unit.unitId)}
-                  picked={pick.ids.has(unitRowKey(unit.regionId, unit.unitId))}
+                  selected={isCursorRow(cursor, unit)}
+                  picked={pick.ids.has(rowKeyOf(unit))}
                   onSelect={selectUnit}
                   onPress={pressRow}
                   onContextMenu={contextRow}
@@ -2145,7 +2156,7 @@ function UnitRow({
    * and it is the row's hex even for a formed row: `rules/form` puts a formed unit "in the same
    * region as the unit which formed it".
    */
-  onSelect: (unitId: string, regionId: string) => void;
+  onSelect: (unitId: string, regionId: string, options: { arrivingFrom: string | null }) => void;
   /**
    * A press on the row, which is where selection now happens - `onClick` would be too late for a
    * press that may become a drag. Handed the row's own unit and the id the cursor should land on -
@@ -2154,13 +2165,13 @@ function UnitRow({
    */
   onPress: (
     event: PointerEvent<HTMLTableRowElement>,
-    unit: ReportUnit,
+    unit: PreviewedUnit,
     rowUnitId: string
   ) => void;
   /** A right-click on the row: the Army menu, at the pointer. */
   onContextMenu: (
     event: ReactMouseEvent<HTMLTableRowElement>,
-    unit: ReportUnit,
+    unit: PreviewedUnit,
     rowUnitId: string
   ) => void;
   /** The hex this row stands in, so its silver forecast is looked up by the right key. */
@@ -2339,7 +2350,7 @@ function UnitRow({
       <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
         <button
           type="button"
-          onClick={() => onSelect(unit.unitId, regionId)}
+          onClick={() => onSelect(unit.unitId, regionId, { arrivingFrom: unit.arrivingFrom ?? null })}
           aria-label={`unit ${unit.unitId}`}
           tabIndex={-1}
           className="focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
