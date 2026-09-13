@@ -658,7 +658,7 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
     case "eligibilityUnknown":
       return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether it is an eligible transport target.`;
     case "distanceUnmeasured":
-      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show how far the world reaches around, so the distance cannot be worked out.`;
+      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it.`;
     case "acceptanceUnknown":
       return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether its faction accepts transports from yours.`;
     case "tooFarToAccept":
