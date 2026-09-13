@@ -1239,6 +1239,36 @@ pub fn month_end_hexes(
     Ok(month_end_of(&decided))
 }
 
+/// How far across each level the loaded reports have shown, for a caller that checks orders but
+/// draws no map. Empty when the document ships nothing, which keeps the known map off the
+/// keystroke path, exactly as [`month_end_hexes`] does.
+///
+/// # Errors
+///
+/// As [`month_end_hexes`].
+pub fn shown_extent(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    orders_document: &str,
+) -> Result<crate::movement::graph::ShownExtent, String> {
+    use crate::movement::graph::MapKnowledge;
+
+    let ruleset = cache
+        .ruleset(ruleset_json)
+        .map_err(|error| error.to_string())?;
+    let remembered: Vec<crate::movement::graph::RememberedRegion> =
+        serde_json::from_str(remembered_json)
+            .map_err(|error| format!("remembered regions could not be read: {error}"))?;
+    if !ships_anything(orders_document, &ruleset) {
+        return Ok(crate::movement::graph::ShownExtent::default());
+    }
+
+    let report = cache.classified(raw_report, ruleset_json);
+    Ok(MapKnowledge::from_remembered(&report, &remembered).shown_extent())
+}
+
 /// Whether the document writes any `TRANSPORT`/`DISTRIBUTE`, which is what the keystroke-path
 /// entries check before building the known map.
 fn ships_anything(orders_document: &str, ruleset: &Ruleset) -> bool {
@@ -10904,6 +10934,38 @@ mod tests {
             sender.transport_target_issues,
             reach_unit(&flat, "900").transport_target_issues
         );
+    }
+
+    /// `ah-hc7z`: the validation path's bound builds the known map only when something ships.
+    #[test]
+    fn shown_extent_reads_the_map_only_when_something_ships() {
+        let report = reach_report((0, 0), (0, 10), (0, 1));
+        let z = crate::report::parse_report_full(&report).regions[0]
+            .coordinate
+            .z;
+
+        assert_eq!(
+            shown_extent(
+                &mut ReportCache::new(),
+                RULESET,
+                &report,
+                "[]",
+                "unit 900\nWORK\n"
+            ),
+            Ok(crate::movement::graph::ShownExtent::default())
+        );
+        let shipping = "unit 900\nTRANSPORT 901 5 STON\n";
+        let extent = shown_extent(&mut ReportCache::new(), RULESET, &report, "[]", shipping)
+            .expect("readable");
+        assert_eq!(extent.rows(z), 12, "(1,11) is the furthest hex named");
+        assert!(shown_extent(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "not json",
+            shipping
+        )
+        .is_err());
     }
 
     /// `ah-7ale.5`: the switch takes the sentence away and leaves the mark and the goods.
