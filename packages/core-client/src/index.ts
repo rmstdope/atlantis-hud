@@ -550,6 +550,8 @@ export type OrderCheckOptions = {
    * is a contradiction the player cannot resolve (`ah-3u7c.2.2`).
    */
   knownPassages?: readonly KnownPassage[];
+  /** The remembered map as JSON, so a shipment is measured from where each unit ends the month. */
+  rememberedJson?: string | null;
 };
 
 export type OrderDraftKey = {
@@ -641,7 +643,8 @@ export interface CoreAdapter {
     rawReport: string | null,
     disabledCodes: readonly string[] | null,
     mapJson: string | null,
-    knownPassagesJson: string | null
+    knownPassagesJson: string | null,
+    rememberedJson: string | null
   ): Promise<OrderValidationResult>;
   orderCommands(rulesetJson: string | null): Promise<string[]>;
   /**
@@ -972,7 +975,8 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         rawReport,
         options.disabledCodes ?? null,
         options.mapJson ?? null,
-options.knownPassages ? JSON.stringify(options.knownPassages) : null
+        options.knownPassages ? JSON.stringify(options.knownPassages) : null,
+        options.rememberedJson ?? null
       );
     },
     previewOrders(rulesetJson, rawReport, rememberedJson, ordersDocument, mapJson, passagesJson, options = {}) {

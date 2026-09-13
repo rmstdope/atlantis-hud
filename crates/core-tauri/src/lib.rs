@@ -471,6 +471,7 @@ pub mod commands {
         disabled_codes: Option<Vec<String>>,
         map_json: Option<&str>,
         known_passages_json: Option<&str>,
+        remembered_json: Option<&str>,
     ) -> OrderValidationResult {
         // Absent means the conservative default: `hex-unguarded` off, same as the bool this
         // replaced defaulted to `false` (do not warn). Reuses `OrderCheckOptions::default()`
@@ -492,14 +493,33 @@ pub mod commands {
         let geometry = map_json
             .and_then(|json| atlantis_hud_core::movement::graph::geometry_from_json(json).ok())
             .flatten();
-        let options = OrderCheckOptions {
+        let mut options = OrderCheckOptions {
             disabled,
             geometry,
             known_passages,
+            month_end: Default::default(),
         };
         let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
             let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
             let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
+            // Where each unit ends the month, so a shipment is measured after the moves
+            // (`rules/sequenceofevents`, `ah-b6fz`). An error is nothing known - bad config, not
+            // bad orders - and every shipment is measured from the report, as before.
+            options.month_end = match (ruleset_json, raw_report, remembered_json) {
+                (Some(rules), Some(raw), Some(remembered)) => {
+                    atlantis_hud_core::orders::effects::month_end_hexes(
+                        cache,
+                        rules,
+                        raw,
+                        remembered,
+                        raw_orders,
+                        map_json.unwrap_or(""),
+                        options.clone(),
+                    )
+                    .unwrap_or_default()
+                }
+                _ => Default::default(),
+            };
             (ruleset, report)
         });
 
@@ -1192,6 +1212,8 @@ pub mod commands {
                 .unwrap_or_else(|| OrderCheckOptions::default().disabled),
             geometry: None,
             known_passages: Vec::new(),
+            // The preview builds its own from the trace it draws (`ah-b6fz`).
+            month_end: Default::default(),
         };
 
         atlantis_hud_core::cache::with_global(|cache| {
@@ -2458,7 +2480,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         .expect("create game");
 
         let validation =
-            command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None, None);
+            command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None, None, None);
         assert_eq!(
             validation.diagnostics,
             vec![atlantis_hud_core::OrderDiagnostic {
@@ -2504,8 +2526,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .collect();
 
         assert_eq!(
-            command_validate_orders(orders, None, None, None, None, None),
-            command_validate_orders(orders, None, None, Some(default_disabled), None, None)
+            command_validate_orders(orders, None, None, None, None, None, None),
+            command_validate_orders(orders, None, None, Some(default_disabled), None, None, None)
         );
     }
 

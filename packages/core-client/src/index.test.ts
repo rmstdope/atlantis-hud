@@ -252,7 +252,8 @@ describe("merging an allied report", () => {
         raw_report: null,
         disabled_codes: null,
         map_json: null,
-        known_passages_json: null
+        known_passages_json: null,
+        remembered_json: null
       }
     ]);
   });
@@ -464,9 +465,19 @@ describe("createCoreClient", () => {
       null,
       ["hex-unguarded"],
       null,
+      null,
       null
     );
-    expect(fake.validateOrders).toHaveBeenNthCalledWith(2, "orders", null, null, null, null, null);
+    expect(fake.validateOrders).toHaveBeenNthCalledWith(2, "orders", null, null, null, null, null, null);
+  });
+
+  it("passes the remembered map through to validation, so shipments are measured after the moves", async () => {
+    const fake = fakeAdapter();
+    const client = createCoreClient(fake);
+
+    await client.validateOrders("orders", null, null, { rememberedJson: "[]" });
+
+    expect(fake.validateOrders).toHaveBeenCalledWith("orders", null, null, null, null, null, "[]");
   });
 
   it("passes disabled codes through to the preview, and null when no options are given", async () => {

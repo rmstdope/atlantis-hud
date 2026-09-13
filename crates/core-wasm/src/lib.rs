@@ -625,6 +625,8 @@ pub fn preview_orders_state(
             .unwrap_or_else(|| OrderCheckOptions::default().disabled),
         geometry: None,
         known_passages: Vec::new(),
+        // The preview builds its own from the trace it draws (`ah-b6fz`).
+        month_end: Default::default(),
     };
 
     let response = atlantis_hud_core::cache::with_global(|cache| {
@@ -721,6 +723,7 @@ pub fn validate_orders_state(
     disabled_codes: Option<Vec<String>>,
     map_json: Option<String>,
     known_passages_json: Option<String>,
+    remembered_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     // A shape that cannot be read is treated as no shape at all, which silences the one check that
     // measures a distance rather than failing the whole validation: bad config, not bad orders -
@@ -729,7 +732,7 @@ pub fn validate_orders_state(
         .as_deref()
         .and_then(|json| atlantis_hud_core::movement::graph::geometry_from_json(json).ok())
         .flatten();
-    let options = OrderCheckOptions {
+    let mut options = OrderCheckOptions {
         disabled: disabled_codes
             .map(|codes| codes.into_iter().collect())
             .unwrap_or_else(|| OrderCheckOptions::default().disabled),
@@ -743,6 +746,7 @@ pub fn validate_orders_state(
                 atlantis_hud_core::movement::passages::known_passages_from_json(json).ok()
             })
             .unwrap_or_default(),
+        month_end: Default::default(),
     };
 
     // Both the ruleset and the report come from the cache. This runs every time the player stops
@@ -759,6 +763,28 @@ pub fn validate_orders_state(
         let report = raw_report
             .as_deref()
             .map(|raw| cache.classified_when_possible(raw, ruleset_json.as_deref()));
+        // Where each unit ends the month, so a shipment is measured after the moves
+        // (`rules/sequenceofevents`, `ah-b6fz`). An error is nothing known - bad config, not bad
+        // orders - and every shipment is measured from the report, as before.
+        options.month_end = match (
+            ruleset_json.as_deref(),
+            raw_report.as_deref(),
+            remembered_json.as_deref(),
+        ) {
+            (Some(rules), Some(raw), Some(remembered)) => {
+                atlantis_hud_core::orders::effects::month_end_hexes(
+                    cache,
+                    rules,
+                    raw,
+                    remembered,
+                    &raw_orders,
+                    map_json.as_deref().unwrap_or(""),
+                    options.clone(),
+                )
+                .unwrap_or_default()
+            }
+            _ => Default::default(),
+        };
         (ruleset, report)
     });
 

@@ -61,7 +61,8 @@ export type CoreWasmModule = {
     rawReport: string | null,
     disabledCodes: readonly string[] | null,
     mapJson: string | null,
-    knownPassagesJson: string | null
+    knownPassagesJson: string | null,
+    rememberedJson: string | null
   ): OrderValidationResult;
   order_commands_state(rulesetJson: string | null): string[];
   order_vocabulary_state(rulesetJson: string | null): string[];
@@ -614,7 +615,8 @@ export function createWebCoreAdapter(
       rawReport: string | null,
       disabledCodes: readonly string[] | null,
       mapJson: string | null,
-      knownPassagesJson: string | null
+      knownPassagesJson: string | null,
+      rememberedJson: string | null
     ) {
       // As with planning, the report goes across as text: the core keys its last parse on it, so
       // validating against the turn already on screen re-parses nothing.
@@ -624,7 +626,8 @@ export function createWebCoreAdapter(
         rawReport,
         disabledCodes,
         mapJson,
-        knownPassagesJson
+        knownPassagesJson,
+        rememberedJson
       );
     },
     async orderCommands(rulesetJson: string | null) {

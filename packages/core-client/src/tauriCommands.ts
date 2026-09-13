@@ -56,7 +56,8 @@ export const TAURI_COMMANDS = {
     "raw_report",
     "disabled_codes",
     "map_json",
-    "known_passages_json"
+    "known_passages_json",
+    "remembered_json"
   ],
   orderCommands: ["order_commands", "ruleset_json"],
   orderVocabulary: ["order_vocabulary", "ruleset_json"],
