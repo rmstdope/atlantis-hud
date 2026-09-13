@@ -47,7 +47,9 @@ here on purpose — nothing in this repository states one, only that it is slowe
 Three steps, in order.
 
 1. **Pick.** Read `tests/fixtures/reports/README.md` — its "good for" column is written for exactly
-   this — and choose the committed report closest to the case the bead changed.
+   this — and choose the committed report closest to the case the bead changed. A bead about a New
+   Age game picks from the Arcanum corpus instead, Trident included — see *A New Age: Trident change
+   is verified on the Arcanum reports* below.
 
 2. **Prove it, before the navigator is asked for anything.** Write a throwaway Rust integration
    test into your own verification worktree and run it — never commit it:
@@ -65,6 +67,8 @@ Three steps, in order.
 
    #[test]
    fn the_fixture_reaches_the_case() {
+       // The ruleset of the game the bead is about: ruleset.json for New Origins,
+       // ruleset-newage-arcanum.json or ruleset-newage-trident.json for a New Age world.
        let ruleset: Ruleset =
            serde_json::from_str(&std::fs::read_to_string("/abs/path/config/public/ruleset.json").unwrap())
                .unwrap();
@@ -143,6 +147,36 @@ Three steps, in order.
 
 When a fixture was made rather than picked, the page must say so — see Q7 under *The script the
 navigator reads*.
+
+## A New Age: Trident change is verified on the Arcanum reports
+
+**New Age: Arcanum** and **New Age: Trident** are near-identical games (the navigator, 2026-09-13),
+and the repository commits real reports for only one of them:
+`tests/fixtures/reports/newage-arcanum/` — six reports for factions 3 and 5 at turns 2, 83 and 84,
+each described in that directory's `README.md`. **Verify a Trident bead on those reports.** There is
+no Trident corpus to pick from, and a report hand-built to look like Trident is worse than a real
+Arcanum one. An Arcanum bead uses the same reports, and the same corpus's README applies to both.
+
+Near identical is not identical, so four things keep it honest:
+
+- **Play the report under the world the bead is about.** Create the game with the ruleset labelled
+  `New Age: Trident` (`packages/shared/src/rulesets.ts`) and import the Arcanum report into it, and
+  classify the probe against `config/public/ruleset-newage-trident.json` rather than
+  `ruleset.json`. The report brings the map and the units; the ruleset is what the change is
+  about. Anything in the report that only Arcanum's catalogue knows shows up in the probe's
+  `unknown_tags` — no unit the script names may hold one.
+- **Look the rule up in both worlds before writing an expected figure.** Run
+  `pnpm run atlantis newage arcanum rules <anchor>` and `pnpm run atlantis newage trident rules
+  <anchor>` for the rule a step turns on (and `data <term>` for an item or skill). They do differ:
+  `rules/economy_maintenance` gives a leader's fee as 50 silver in Arcanum and 90 in Trident, and
+  the two pages are NewAge 1.2 and 1.1 respectively. Where the rule differs, the expected figure
+  comes from Trident's page. Anything the report itself printed under Arcanum's rule — last month's
+  spending, say — is then not evidence for or against the change, so leave such steps out.
+- **Use turns 83 and 84 for New Age mechanics.** The turn-2 reports are branded NewOrigins 8.1.0 and
+  are import and history cases only, as the corpus README says.
+- **Say so on the page.** One line in the facts block names the report as an Arcanum report played
+  under the Trident ruleset. That is a line in the facts, not the Q7 made-data block — the report is
+  real and unedited — but it stops a number that looks Arcanum-shaped being read as the app's fault.
 
 ## One sitting, several beads
 
