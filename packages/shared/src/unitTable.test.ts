@@ -25,6 +25,7 @@ import {
   REORDERABLE_COLUMNS,
   sharesFor,
   unitNamesByRow,
+  rowKeyOf,
   unitRowKey,
   unitRowSelector,
   EXTRA_COLUMN_SHARES,
@@ -545,6 +546,21 @@ describe("unitRowKey", () => {
   it("a row key is still a string at runtime", () => {
     expectTypeOf<UnitRowKey>().toExtend<string>();
     expect(typeof unitRowKey("1:7,53", "new-1")).toBe("string");
+  });
+});
+
+describe("rowKeyOf", () => {
+  it("keys a row the orders left alone exactly as unitRowKey does", () => {
+    expect(rowKeyOf({ regionId: "1:7,51", unitId: "new-1" })).toBe(unitRowKey("1:7,51", "new-1"));
+    expect(rowKeyOf({ regionId: "1:7,51", unitId: "new-1", arrivingFrom: null })).toBe(
+      unitRowKey("1:7,51", "new-1")
+    );
+  });
+
+  it("tells an arrival from the same-numbered unit formed where it arrives", () => {
+    const arrival = rowKeyOf({ regionId: "1:7,51", unitId: "new-1", arrivingFrom: "1:7,53" });
+    expect(arrival).not.toBe(unitRowKey("1:7,51", "new-1"));
+    expect(arrival).not.toBe(rowKeyOf({ regionId: "1:7,51", unitId: "new-1", arrivingFrom: "1:5,51" }));
   });
 });
 

@@ -151,6 +151,23 @@ describe("itemChanges", () => {
 });
 
 describe("mergePreview", () => {
+  it("lists a new unit arriving in a hex beside the same-numbered unit that hex forms", () => {
+    const rows = mergePreview([], {
+      regionId: "1:7,51",
+      units: [
+        previewedRow(
+          { unitId: "new-1", name: "Unit (new 1)", regionId: "1:7,51" },
+          { formed: true, status: "arriving", arrivingFrom: "1:7,53" }
+        ),
+        previewedRow({ unitId: "new-1", name: "Unit (new 1)", regionId: "1:7,51" }, { formed: true })
+      ]
+    });
+
+    const newOnes = rows.filter((row) => row.unitId === "new-1");
+    expect(newOnes).toHaveLength(2);
+    expect(newOnes.map((row) => row.arrivingFrom ?? null)).toEqual(["1:7,53", null]);
+  });
+
   it("leaves the structure's hex unsaid when nothing was folded", () => {
     const rows = mergePreview(
       [unit({ structureId: "7" })],

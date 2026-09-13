@@ -25,7 +25,7 @@ import {
   productionStatusSentence,
   productionMenSentence
 } from "./unitTooltip";
-import { unitRowKey } from "./unitTable";
+import { rowKeyOf } from "./unitTable";
 import { withoutSilver } from "./silverTag";
 import { previewPairs, type PreviewPair } from "./unitPreviewRows";
 
@@ -269,10 +269,17 @@ function foldIn(units: ReportUnit[], previewed: readonly FoldedPreview[]): Previ
   }
 
   const changed = new Map(
-    previewed.map((unit) => [unitRowKey(unit.unit.regionId, unit.unit.unitId), unit])
+    previewed.map((unit) => [
+      rowKeyOf({
+        regionId: unit.unit.regionId,
+        unitId: unit.unit.unitId,
+        arrivingFrom: unit.arrivingFrom
+      }),
+      unit
+    ])
   );
   const rows: PreviewedUnit[] = units.map((unit) => {
-    const key = unitRowKey(unit.regionId, unit.unitId);
+    const key = rowKeyOf(unit);
     const found = changed.get(key);
     if (!found) {
       return unit;

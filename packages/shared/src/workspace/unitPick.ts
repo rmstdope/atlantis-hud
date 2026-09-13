@@ -11,7 +11,7 @@
  */
 
 import type { ReportUnit } from "@atlantis/core-client";
-import { unitRowKey, type UnitRowKey } from "../unitTable";
+import { rowKeyOf, unitRowKey, type KeyedRow, type UnitRowKey } from "../unitTable";
 
 /**
  * Which rows are picked, and where a Shift range extends from.
@@ -105,8 +105,8 @@ export function narrowedTo(pick: UnitPick, rows: readonly UnitRowKey[]): UnitPic
 }
 
 /** The picked rows, in the order the table is drawing them. */
-export function pickedIn(pick: UnitPick, rows: readonly ReportUnit[]): ReportUnit[] {
-  return rows.filter((unit) => pick.ids.has(unitRowKey(unit.regionId, unit.unitId)));
+export function pickedIn<T extends KeyedRow>(pick: UnitPick, rows: readonly T[]): T[] {
+  return rows.filter((unit) => pick.ids.has(rowKeyOf(unit)));
 }
 
 /** What one press means, before anything is known about whether it becomes a drag. */
