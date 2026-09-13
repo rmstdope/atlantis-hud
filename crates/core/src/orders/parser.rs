@@ -154,6 +154,7 @@ impl Document {
 
         match match_order(order, line.arguments, ruleset) {
             Ok(matched) => {
+                let consumed = matched.consumed;
                 for item in matched.unknown_items {
                     self.warning(
                         line.number,
@@ -162,6 +163,24 @@ impl Document {
                         "unknown-item",
                         format!("no item \"{}\" in the catalogue", item.text),
                     );
+                }
+                // A BUILD naming nothing this world lets a player build wastes the month, so it is
+                // an error like an unknown order word, marked under the name only (ah-jyqk).
+                if order.name == "BUILD" {
+                    if let Some((token, problem)) = ruleset.and_then(|ruleset| {
+                        super::build_object::build_object_problem(
+                            &line.arguments[..consumed],
+                            ruleset,
+                        )
+                    }) {
+                        self.error(
+                            line.number,
+                            token.column_start,
+                            token.column_end,
+                            problem.code(),
+                            problem.message(),
+                        );
+                    }
                 }
             }
             Err(mismatch) => self.report_mismatch(
@@ -1026,5 +1045,141 @@ mod tests {
             origins_codes.contains(&"unknown-command".to_string()),
             "New Origins still reads WORK;note as one word: {origins_codes:?}"
         );
+    }
+
+    // A BUILD naming an object type this world does not let a player build (`rules/build`, ah-jyqk).
+
+    fn build_object_diagnostics(source: &str, ruleset_json: &str) -> Vec<OrderDiagnostic> {
+        diagnose_with_ruleset(source, ruleset_json)
+            .into_iter()
+            .filter(|d| d.code == "unknown-object" || d.code == "unbuildable-object")
+            .collect()
+    }
+
+    fn build_message(source: &str, ruleset_json: &str) -> String {
+        let mut found = build_object_diagnostics(source, ruleset_json);
+        assert_eq!(found.len(), 1, "{source}: {found:?}");
+        found.remove(0).message
+    }
+
+    #[test]
+    fn a_build_naming_nothing_the_game_has_is_an_error_under_the_name() {
+        let diagnostics = diagnose_with_ruleset("BUILD CAxxxRAVANSERAI", RULESET);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic.code, "unknown-object");
+        assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Error);
+        assert!(validate_orders("BUILD CAxxxRAVANSERAI", Some(RULESET)).is_blocking());
+        assert_eq!(
+            (diagnostic.column_start, diagnostic.column_end),
+            (Some(6), Some(21))
+        );
+        assert_eq!(
+            diagnostic.message,
+            "BUILD: there is no building or ship called CAxxxRAVANSERAI — did you mean Caravanserai?"
+        );
+    }
+
+    #[test]
+    fn a_misspelled_ship_is_suggested_in_the_games_spelling() {
+        assert_eq!(
+            build_message("BUILD Galeon COMPLETE", RULESET),
+            "BUILD: there is no building or ship called Galeon — did you mean Galleon?"
+        );
+    }
+
+    #[test]
+    fn a_name_with_no_clear_closest_buildable_name_gets_no_suggestion() {
+        assert_eq!(
+            build_message("BUILD Palace", RULESET),
+            "BUILD: there is no building or ship called Palace"
+        );
+        assert_eq!(
+            build_message("BUILD Rin", RULESET),
+            "BUILD: there is no building or ship called Rin"
+        );
+    }
+
+    #[test]
+    fn a_structure_players_cannot_build_is_named_in_the_games_spelling() {
+        let found = build_object_diagnostics("BUILD \"ice cave\"", RULESET);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].code, "unbuildable-object");
+        assert_eq!(found[0].severity, OrderDiagnosticSeverity::Error);
+        assert_eq!(
+            (found[0].column_start, found[0].column_end),
+            (Some(6), Some(16))
+        );
+        assert_eq!(
+            found[0].message,
+            "BUILD: an Ice Cave cannot be built by players"
+        );
+        assert_eq!(
+            build_message("BUILD RUIN", RULESET),
+            "BUILD: a Ruin cannot be built by players"
+        );
+    }
+
+    #[test]
+    fn names_the_game_lets_a_player_build_are_not_marked() {
+        let source = "BUILD Caravanserai\nBUILD Tower\nBUILD Galleon COMPLETE\nBUILD \"Magical Tower\"\nBUILD Magical_Tower\nBUILD GALL\n";
+        assert_eq!(
+            diagnose_with_ruleset(source, RULESET),
+            Vec::<OrderDiagnostic>::new()
+        );
+    }
+
+    #[test]
+    fn build_forms_that_name_no_object_are_unchanged() {
+        for source in [
+            "BUILD",
+            "BUILD COMPLETE",
+            "BUILD HELP 7227",
+            "BUILD HELP 7227 COMPLETE",
+        ] {
+            assert_eq!(
+                build_object_diagnostics(source, RULESET),
+                Vec::<OrderDiagnostic>::new(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn without_a_ruleset_no_build_object_is_doubted() {
+        assert_eq!(
+            validate_orders("BUILD CAxxxRAVANSERAI", None).diagnostics,
+            Vec::<OrderDiagnostic>::new()
+        );
+    }
+
+    #[test]
+    fn each_world_checks_its_own_list() {
+        let trident = atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON;
+        for source in ["BUILD Palace", "BUILD Tower WOOD COMPLETE"] {
+            assert_eq!(
+                build_object_diagnostics(source, trident),
+                Vec::<OrderDiagnostic>::new(),
+                "{source}"
+            );
+        }
+        assert_eq!(
+            build_message("BUILD Towr STONE", trident),
+            "BUILD: there is no building or ship called Towr — did you mean Tower?"
+        );
+        assert_eq!(
+            build_object_diagnostics("BUILD Palace", RULESET)[0].code,
+            "unknown-object"
+        );
+    }
+
+    #[test]
+    fn several_bad_build_lines_each_get_their_own_error() {
+        let source = "unit 7227\nBUILD CAxxxRAVANSERAI\nunit 7675\nBUILD Galeon COMPLETE\nunit 8810\nBUILD Palace\nunit 9812\nBUILD \"ice cave\"\nunit 9900\nBUILD \"Magical Tower\"\n";
+        let lines: Vec<Option<usize>> = build_object_diagnostics(source, RULESET)
+            .iter()
+            .map(|d| d.line_start)
+            .collect();
+        assert_eq!(lines, vec![Some(2), Some(4), Some(6), Some(8)]);
     }
 }

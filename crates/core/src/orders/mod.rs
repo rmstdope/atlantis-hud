@@ -20,6 +20,7 @@ pub mod intents;
 pub mod items;
 pub mod lexer;
 /// Core-internal: who may become a mage, and who already is one.
+mod build_object;
 mod magic;
 pub mod parser;
 /// Core-internal: the one `rules/sequenceofevents` phase order both `semantics` and `silver` read.
