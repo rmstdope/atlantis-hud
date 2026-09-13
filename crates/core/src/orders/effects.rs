@@ -728,7 +728,6 @@ pub fn preview_orders_on_map(
     options: super::semantics::CheckOptions,
 ) -> Result<OrdersPreviewResponse, String> {
     use crate::movement::graph::MapKnowledge;
-    use crate::movement::trace::trace_move;
 
     let ruleset = cache
         .ruleset(ruleset_json)
@@ -740,7 +739,13 @@ pub fn preview_orders_on_map(
     let report = cache.classified(raw_report, ruleset_json);
 
     let geometry = crate::movement::graph::geometry_from_json(map_json)?;
-    let (units, dissolved) = settle(&report, &ruleset, orders_document, geometry, options);
+    let (units, dissolved, measured) = settle(
+        &report,
+        &ruleset,
+        orders_document,
+        geometry,
+        options.clone(),
+    );
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
@@ -755,157 +760,23 @@ pub fn preview_orders_on_map(
     // ENTER/LEAVE rule to the unit row, so the two halves of one preview cannot disagree.
     let ordered = crate::movement::fleet::OrderedUnits::from_document(orders_document);
 
-    // Two passes, because a passenger's status depends on another unit's trace: the first decides
-    // every unit on its own orders and notes which fleets leave, the second carries the units
-    // standing in those fleets.
-    let mut decided: Vec<Decided> = Vec::new();
-    let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
-
-    for (index, entry) in units.into_iter().enumerate() {
-        let mut arrival = None;
-        let mut mode = None;
-
-        let dissolving = dissolved.contains_key(&index);
-        let mut status = UnitPreviewStatus::Present;
-
-        // The trace runs for a formed unit exactly as for any other: `rules/form` creates it in
-        // its parent's hex and `rules/sequenceofevents` does so before movement, so it can walk
-        // the same month it is formed (`ah-4hux`). It runs for a dissolving one too - the order
-        // the player wrote is still drawn (decision **Q3b'**) - and that row can never name a
-        // destination, because a unit that gained nobody has no men and so no stated speed, which
-        // is what `trace_move` needs to say where the month ends.
-        // A `SAIL` written aboard a priceable hull is not the writer's own course: a fleet takes
-        // its course from its **owner** alone (`rules/movement_sailing`, stated once in
-        // `movement::fleet::fleet_course`, which the map trace reads too - `ah-ofra`). A `MOVE` is
-        // the unit walking off and is still its own business. `Some(None)` here is a hull whose
-        // owner named no course: it goes nowhere, so nobody aboard departs.
-        let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> = if entry
-            .move_command
-            .as_deref()
-            == Some("SAIL")
-        {
-            report
-                .regions
-                .iter()
-                .find(|region| region.region_id == entry.unit.region_id)
-                .and_then(|region| {
-                    crate::movement::fleet::priceable_fleet_of(
-                        region,
-                        &ruleset,
-                        &ordered,
-                        &entry.unit,
-                    )
-                    .map(|hull| {
-                        crate::movement::fleet::fleet_course(region, &ordered, &hull.structure_id)
-                            .steps
-                            .map(<[crate::movement::orders::MoveStep]>::to_vec)
-                    })
-                })
-        } else {
-            None
+    let (mut decided, sailing) =
+        decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
+    // `rules/sequenceofevents` moves every unit before any TRANSPORT, so a shipment one of whose
+    // ends moves is settled again from where the units end the month. The map, statuses and
+    // arrivals stay the first settle's: moving transports ahead of the trace would change which
+    // units are overloaded, and this work changes nothing drawn (`ah-b6fz`).
+    let month_end = month_end_of(&decided);
+    if measured.iter().any(|id| month_end.contains_key(id)) {
+        let again = super::semantics::CheckOptions {
+            month_end,
+            ..options
         };
-        let traced_steps: Option<&[crate::movement::orders::MoveStep]> = match &hull_course {
-            Some(course) => course.as_deref(),
-            None => entry.move_steps.as_deref(),
-        };
-
-        if let Some(steps) = traced_steps {
-            match trace_move(&map, &ruleset, &entry.unit, steps, Some(&ordered)) {
-                // The first month's end is where the unit stands when the next report is written;
-                // the rest of a longer journey is later months' business.
-                Some(path) => {
-                    mode = path.mode;
-                    match path.months.first() {
-                        Some(month) if month.ends_at.id() != entry.unit.region_id => {
-                            arrival = Some(month.ends_at.id());
-                            status = UnitPreviewStatus::Departing;
-                        }
-                        // A round trip is not a departure, so only the other changes count.
-                        Some(_) => {}
-                        // The report never said how the unit travels, so the trace cannot say
-                        // where the month ends: a departure to nowhere nameable.
-                        None => status = UnitPreviewStatus::Departing,
-                    }
-
-                    // Through a passage nobody has proved the far side of: where the month ends is
-                    // not on any map we have, so this is a departure with no destination to name.
-                    // The dock draws `→ …` for exactly this, the same way it does for a passenger
-                    // of an untraceable ship. A passage the faction *has* proved is named like any
-                    // other journey - the months already run across the crossing (`ah-3u7c.2.2`).
-                    if path
-                        .passage
-                        .as_ref()
-                        .is_some_and(|passage| passage.exit.is_none())
-                    {
-                        status = UnitPreviewStatus::Departing;
-                        arrival = None;
-                    }
-                }
-                None => status = UnitPreviewStatus::Departing,
-            }
+        let (units, _, _) = settle(&report, &ruleset, orders_document, geometry, again);
+        for (decided, entry) in decided.iter_mut().zip(units) {
+            debug_assert_eq!(decided.entry.unit.unit_id, entry.unit.unit_id);
+            decided.entry = entry;
         }
-
-        // A dissolving row is not standing anywhere next month, so it gets no arrival row however
-        // the trace read - it keeps its `departing_to`, which is what draws the arrow. Today the
-        // trace can never name a destination for one anyway; this says the intent rather than
-        // relying on that.
-        if dissolving {
-            arrival = None;
-        }
-
-        // `TracedPath::mode` is the sail test rather than the order word: it is Sail exactly when
-        // the unit is aboard a priceable fleet, which is what the map already draws.
-        if status == UnitPreviewStatus::Departing
-            && mode == Some(crate::movement::rules::MovementMode::Sail)
-        {
-            if let Some(structure_id) = entry.unit.structure_id.clone() {
-                if let Some(label) = aboard_label(&report, &entry.unit.region_id, &structure_id) {
-                    sailing.insert(
-                        (entry.unit.region_id.clone(), structure_id),
-                        SailingFleet {
-                            // `None` is a value here, not a miss: a fleet whose destination cannot
-                            // be named carries its passengers to nowhere nameable.
-                            destination: arrival.clone(),
-                            label,
-                        },
-                    );
-                }
-            }
-        }
-
-        decided.push(Decided {
-            formed: entry.formed,
-            dissolving,
-            entry,
-            status,
-            arrival,
-            aboard: None,
-            dissolves_into: dissolved.get(&index).cloned().flatten(),
-        });
-    }
-
-    for decided in &mut decided {
-        // A unit with its own movement order keeps its own destination and gets no marker. A row
-        // already departing or arriving has been decided by its own orders; a dissolving one is
-        // never carried anywhere, because it never exists. A `Present` row that is *formed* is
-        // carried like any other passenger: `rules/form` puts the new unit in its parent's
-        // structure, so if that structure sails, it sails (`ah-4hux`, decision **Q4b**).
-        if decided.entry.move_steps.is_some()
-            || decided.status != UnitPreviewStatus::Present
-            || decided.dissolving
-        {
-            continue;
-        }
-        let Some(structure_id) = decided.entry.unit.structure_id.clone() else {
-            continue;
-        };
-        let Some(fleet) = sailing.get(&(decided.entry.unit.region_id.clone(), structure_id)) else {
-            continue;
-        };
-
-        decided.status = UnitPreviewStatus::Departing;
-        decided.arrival = fleet.destination.clone();
-        decided.aboard = Some(fleet.label.clone());
     }
 
     let mut regions: BTreeMap<String, Vec<UnitPreview>> = BTreeMap::new();
@@ -913,6 +784,7 @@ pub fn preview_orders_on_map(
         entry,
         status,
         arrival,
+        ends_at: _,
         aboard,
         dissolves_into,
         formed,
@@ -1149,7 +1021,7 @@ pub(super) fn transported_out(
     geometry: Option<crate::movement::graph::MapGeometry>,
 ) -> BTreeMap<String, Vec<(String, i64)>> {
     let ruleset = std::sync::Arc::new(ruleset.clone());
-    let (units, _) = settle(
+    let (units, _, _) = settle(
         report,
         &ruleset,
         orders_document,
@@ -1184,7 +1056,11 @@ fn settle(
     orders_document: &str,
     geometry: Option<crate::movement::graph::MapGeometry>,
     options: super::semantics::CheckOptions,
-) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
+) -> (
+    Vec<WorkingUnit>,
+    BTreeMap<usize, Option<String>>,
+    std::collections::BTreeSet<String>,
+) {
     let mut working = Working::over_own_units(report, ruleset.clone(), geometry, options);
     super::walk::walk_with_ruleset(orders_document, Some(ruleset.as_ref()), |event| {
         working.visit(event);
@@ -1222,7 +1098,8 @@ fn settle(
         working_unit.refresh_movement(ruleset);
     }
 
-    (working.units, dissolved)
+    let measured = working.measured_ends.take();
+    (working.units, dissolved, measured)
 }
 
 /// Folds each unit's movement order over the answer its ENTER and LEAVE orders gave, recording
@@ -1287,7 +1164,7 @@ pub(crate) fn formed_unit_as_ordered(
     }
     // A `FORM`ed row is looked up on its own; no transport is applied here, so the map's shape
     // is not needed (`ah-7ale.2.1`).
-    let (units, _) = settle(
+    let (units, _, _) = settle(
         report,
         ruleset,
         orders_document,
@@ -1300,12 +1177,248 @@ pub(crate) fn formed_unit_as_ordered(
         .map(|entry| entry.unit)
 }
 
+/// Where each unit ends the month, for a caller that checks orders but draws no map (`ah-b6fz`).
+///
+/// Empty - measure from the report - when the document writes no `TRANSPORT`/`DISTRIBUTE`, which
+/// skips the settle and the trace on the keystroke path.
+///
+/// # Errors
+///
+/// As [`preview_orders_on_map`].
+pub fn month_end_hexes(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    orders_document: &str,
+    map_json: &str,
+    options: super::semantics::CheckOptions,
+) -> Result<super::transport::MonthEndHexes, String> {
+    use super::intents::{read_intents_with_ruleset, Intent};
+    use crate::movement::graph::MapKnowledge;
+
+    let ruleset = cache
+        .ruleset(ruleset_json)
+        .map_err(|error| error.to_string())?;
+    let remembered: Vec<crate::movement::graph::RememberedRegion> =
+        serde_json::from_str(remembered_json)
+            .map_err(|error| format!("remembered regions could not be read: {error}"))?;
+    let ships_anything = read_intents_with_ruleset(orders_document, Some(&ruleset))
+        .iter()
+        .any(|unit| {
+            unit.intents
+                .iter()
+                .any(|placed| matches!(placed.intent, Intent::Transport { .. }))
+        });
+    if !ships_anything {
+        return Ok(super::transport::MonthEndHexes::new());
+    }
+
+    let report = cache.classified(raw_report, ruleset_json);
+    let geometry = crate::movement::graph::geometry_from_json(map_json)?;
+    let (units, dissolved, _) = settle(&report, &ruleset, orders_document, geometry, options);
+    // Passages are not read: a crossing the faction has not proved names no month end, and one it
+    // has is not needed to measure a walk in the same hexes. As the preview does otherwise.
+    let map = MapKnowledge::from_remembered(&report, &remembered).with_geometry(geometry);
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(orders_document);
+    let (decided, _) = decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
+    Ok(month_end_of(&decided))
+}
+
+/// Pass one and pass two of the preview: where every settled unit ends the month, how it leaves,
+/// and which fleets sail. Extracted so the forecast and `month_end_hexes` read one decision
+/// (`ah-b6fz`).
+fn decide_movement(
+    report: &crate::report::ParsedReport,
+    ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
+    map: &crate::movement::graph::MapKnowledge,
+    ordered: &crate::movement::fleet::OrderedUnits,
+    units: Vec<WorkingUnit>,
+    dissolved: &BTreeMap<usize, Option<String>>,
+) -> (Vec<Decided>, BTreeMap<(String, String), SailingFleet>) {
+    use crate::movement::trace::trace_move;
+
+    // Two passes, because a passenger's status depends on another unit's trace: the first decides
+    // every unit on its own orders and notes which fleets leave, the second carries the units
+    // standing in those fleets.
+    let mut decided: Vec<Decided> = Vec::new();
+    let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
+
+    for (index, entry) in units.into_iter().enumerate() {
+        let mut arrival = None;
+        let mut ends_at = None;
+        let mut mode = None;
+
+        let dissolving = dissolved.contains_key(&index);
+        let mut status = UnitPreviewStatus::Present;
+
+        // The trace runs for a formed unit exactly as for any other: `rules/form` creates it in
+        // its parent's hex and `rules/sequenceofevents` does so before movement, so it can walk
+        // the same month it is formed (`ah-4hux`). It runs for a dissolving one too - the order
+        // the player wrote is still drawn (decision **Q3b'**) - and that row can never name a
+        // destination, because a unit that gained nobody has no men and so no stated speed, which
+        // is what `trace_move` needs to say where the month ends.
+        // A `SAIL` written aboard a priceable hull is not the writer's own course: a fleet takes
+        // its course from its **owner** alone (`rules/movement_sailing`, stated once in
+        // `movement::fleet::fleet_course`, which the map trace reads too - `ah-ofra`). A `MOVE` is
+        // the unit walking off and is still its own business. `Some(None)` here is a hull whose
+        // owner named no course: it goes nowhere, so nobody aboard departs.
+        let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> = if entry
+            .move_command
+            .as_deref()
+            == Some("SAIL")
+        {
+            report
+                .regions
+                .iter()
+                .find(|region| region.region_id == entry.unit.region_id)
+                .and_then(|region| {
+                    crate::movement::fleet::priceable_fleet_of(
+                        region,
+                        ruleset,
+                        ordered,
+                        &entry.unit,
+                    )
+                    .map(|hull| {
+                        crate::movement::fleet::fleet_course(region, ordered, &hull.structure_id)
+                            .steps
+                            .map(<[crate::movement::orders::MoveStep]>::to_vec)
+                    })
+                })
+        } else {
+            None
+        };
+        let traced_steps: Option<&[crate::movement::orders::MoveStep]> = match &hull_course {
+            Some(course) => course.as_deref(),
+            None => entry.move_steps.as_deref(),
+        };
+
+        if let Some(steps) = traced_steps {
+            match trace_move(map, ruleset, &entry.unit, steps, Some(ordered)) {
+                // The first month's end is where the unit stands when the next report is written;
+                // the rest of a longer journey is later months' business.
+                Some(path) => {
+                    mode = path.mode;
+                    match path.months.first() {
+                        Some(month) if month.ends_at.id() != entry.unit.region_id => {
+                            arrival = Some(month.ends_at.id());
+                            ends_at = Some(month.ends_at);
+                            status = UnitPreviewStatus::Departing;
+                        }
+                        // A round trip is not a departure, so only the other changes count.
+                        Some(_) => {}
+                        // The report never said how the unit travels, so the trace cannot say
+                        // where the month ends: a departure to nowhere nameable.
+                        None => status = UnitPreviewStatus::Departing,
+                    }
+
+                    // Through a passage nobody has proved the far side of: where the month ends is
+                    // not on any map we have, so this is a departure with no destination to name.
+                    // The dock draws `→ …` for exactly this, the same way it does for a passenger
+                    // of an untraceable ship. A passage the faction *has* proved is named like any
+                    // other journey - the months already run across the crossing (`ah-3u7c.2.2`).
+                    if path
+                        .passage
+                        .as_ref()
+                        .is_some_and(|passage| passage.exit.is_none())
+                    {
+                        status = UnitPreviewStatus::Departing;
+                        arrival = None;
+                        ends_at = None;
+                    }
+                }
+                None => status = UnitPreviewStatus::Departing,
+            }
+        }
+
+        // A dissolving row is not standing anywhere next month, so it gets no arrival row however
+        // the trace read - it keeps its `departing_to`, which is what draws the arrow. Today the
+        // trace can never name a destination for one anyway; this says the intent rather than
+        // relying on that.
+        if dissolving {
+            arrival = None;
+            ends_at = None;
+        }
+
+        // `TracedPath::mode` is the sail test rather than the order word: it is Sail exactly when
+        // the unit is aboard a priceable fleet, which is what the map already draws.
+        if status == UnitPreviewStatus::Departing
+            && mode == Some(crate::movement::rules::MovementMode::Sail)
+        {
+            if let Some(structure_id) = entry.unit.structure_id.clone() {
+                if let Some(label) = aboard_label(report, &entry.unit.region_id, &structure_id) {
+                    sailing.insert(
+                        (entry.unit.region_id.clone(), structure_id),
+                        SailingFleet {
+                            // `None` is a value here, not a miss: a fleet whose destination cannot
+                            // be named carries its passengers to nowhere nameable.
+                            destination: arrival.clone(),
+                            destination_at: ends_at,
+                            label,
+                        },
+                    );
+                }
+            }
+        }
+
+        decided.push(Decided {
+            formed: entry.formed,
+            dissolving,
+            entry,
+            status,
+            arrival,
+            ends_at,
+            aboard: None,
+            dissolves_into: dissolved.get(&index).cloned().flatten(),
+        });
+    }
+
+    for decided in &mut decided {
+        // A unit with its own movement order keeps its own destination and gets no marker. A row
+        // already departing or arriving has been decided by its own orders; a dissolving one is
+        // never carried anywhere, because it never exists. A `Present` row that is *formed* is
+        // carried like any other passenger: `rules/form` puts the new unit in its parent's
+        // structure, so if that structure sails, it sails (`ah-4hux`, decision **Q4b**).
+        if decided.entry.move_steps.is_some()
+            || decided.status != UnitPreviewStatus::Present
+            || decided.dissolving
+        {
+            continue;
+        }
+        let Some(structure_id) = decided.entry.unit.structure_id.clone() else {
+            continue;
+        };
+        let Some(fleet) = sailing.get(&(decided.entry.unit.region_id.clone(), structure_id)) else {
+            continue;
+        };
+
+        decided.status = UnitPreviewStatus::Departing;
+        decided.arrival = fleet.destination.clone();
+        decided.ends_at = fleet.destination_at;
+        decided.aboard = Some(fleet.label.clone());
+    }
+
+    (decided, sailing)
+}
+
+/// Where each unit the report shows ends the month, from the passes the map is drawn from.
+/// Formed units are left out: the check side knows them by a different id (`ah-b6fz`).
+fn month_end_of(decided: &[Decided]) -> super::transport::MonthEndHexes {
+    decided
+        .iter()
+        .filter(|d| !d.formed)
+        .filter_map(|d| Some((d.entry.unit.unit_id.clone(), d.ends_at?)))
+        .collect()
+}
+
 /// One unit's verdict, held between the two passes of the preview.
 struct Decided {
     entry: WorkingUnit,
     status: UnitPreviewStatus,
     /// Where the unit ends the month, when the trace could say.
     arrival: Option<String>,
+    /// The same hex as a coordinate, for the distance a shipment is measured across (`ah-b6fz`).
+    ends_at: Option<crate::report::model::Coordinate>,
     /// Set on the departing row of a unit carried by a fleet: `<name> [<id>]`.
     aboard: Option<String>,
     /// Set on a dissolving row alone: the unit its goods revert to (`ah-ty3s.3`).
@@ -1320,6 +1433,8 @@ struct Decided {
 struct SailingFleet {
     /// Where the fleet ends the month, or nothing when the trace could not say.
     destination: Option<String>,
+    /// The same hex as a coordinate (`ah-b6fz`).
+    destination_at: Option<crate::report::model::Coordinate>,
     /// `<name> [<id>]`, for the carried unit's row.
     label: String,
 }
@@ -1771,6 +1886,10 @@ struct Working {
     geometry: Option<crate::movement::graph::MapGeometry>,
     /// Which advisory checks are on, for the refusals the forecast makes itself (`ah-7ale.2.2.2`).
     options: super::semantics::CheckOptions,
+    /// Every unit id a reach measurement read a position for this settle - senders and targets
+    /// alike. What tells `preview_orders_on_map` whether a second settle can change anything
+    /// (`ah-b6fz`). A cell because `arrival` is a reader over `&self`.
+    measured_ends: std::cell::RefCell<std::collections::BTreeSet<String>>,
 }
 
 /// What the report can say about a named `TRANSPORT`/`DISTRIBUTE` target (`ah-64wm`).
@@ -1891,6 +2010,7 @@ impl Working {
             hex_of_region,
             geometry,
             options,
+            measured_ends: std::cell::RefCell::default(),
         }
     }
 
@@ -2918,17 +3038,27 @@ impl Working {
         let Some(reach) = self.transport_reach(pending) else {
             return Arrival::Certain;
         };
+        let sender = &self.units[pending.sender].unit.unit_id;
+        {
+            let mut measured = self.measured_ends.borrow_mut();
+            measured.insert(sender.clone());
+            measured.insert(pending.to.clone());
+        }
+        // Measured once the month's moves are made: `rules/sequenceofevents` moves every unit
+        // before any TRANSPORT (`ah-b6fz`).
+        let month_end = &self.options.month_end;
         let Some(from) = self
             .hex_of_region
             .get(&self.units[pending.sender].unit.region_id)
             .copied()
+            .map(|reported| super::transport::standing_at(month_end, sender, reported))
         else {
             return Arrival::Certain;
         };
         let Some(to) = self
             .transport_targets
             .get(&pending.to)
-            .map(|facts| facts.coordinate)
+            .map(|facts| super::transport::standing_at(month_end, &pending.to, facts.coordinate))
         else {
             return Arrival::Certain;
         };
@@ -10354,6 +10484,210 @@ mod tests {
                 .find(|item| item.tag == tag)
                 .map_or(0, |item| item.amount)
         })
+    }
+
+    /// `reach_report` with every hex from `(0, 0)` to `(0, 10)` described, both units able to
+    /// walk, so a MOVE ends its month where the order says (`ah-b6fz`). `target_speed: false`
+    /// leaves the quartermaster's weight and capacity unstated, so its month end cannot be named.
+    fn moving_reach_report(
+        source_hex: (i32, i32),
+        target_hex: (i32, i32),
+        target_speed: bool,
+    ) -> String {
+        let mut lines = vec!["Foo (1) Report".to_string(), String::new()];
+        for y in (0..=10).step_by(2) {
+            lines.push(format!("plain (0,{y}) in Nowhere, 10 peasants (orcs), $5."));
+            lines.push(String::new());
+            lines.push("Exits:".to_string());
+            if y > 0 {
+                lines.push(format!("  North : plain (0,{}) in Nowhere.", y - 2));
+            }
+            if y < 10 {
+                lines.push(format!("  South : plain (0,{}) in Nowhere.", y + 2));
+            }
+            lines.push(String::new());
+            if (0, y) == source_hex {
+                lines.push(
+                    "* Source (900), Foo (1), leader [LEAD], 5 stone [STON], 1 iron [IRON]. \
+                     Weight: 61. Capacity: 0/0/70/0."
+                        .to_string(),
+                );
+                lines.push(String::new());
+            }
+            if (0, y) == target_hex {
+                lines.push("+ Post One [1] : Caravanserai.".to_string());
+                let speed = if target_speed {
+                    " Weight: 10. Capacity: 0/0/15/0."
+                } else {
+                    ""
+                };
+                lines.push(format!(
+                    "  * Quarterone (901), Foo (1), leader [LEAD].{speed} \
+                     Skills: quartermaster [QUAM] 1 (450)."
+                ));
+                lines.push(String::new());
+            }
+        }
+        lines.join("\n")
+    }
+
+    /// The level the reach fixtures are written on, read rather than assumed.
+    fn reach_z(report: &str) -> u32 {
+        ReportCache::new()
+            .classified(report, RULESET)
+            .regions
+            .first()
+            .expect("the report has a region")
+            .coordinate
+            .z
+    }
+
+    fn departing_to(response: &OrdersPreviewResponse, unit_id: &str) -> Option<String> {
+        response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| {
+                unit.unit.unit_id == unit_id && unit.status == UnitPreviewStatus::Departing
+            })
+            .unwrap_or_else(|| panic!("{unit_id} departs: {response:?}"))
+            .departing_to
+            .clone()
+    }
+
+    fn too_far(away: i64, limit: i64) -> Option<TransportReach> {
+        Some(TransportReach {
+            away: Some(away),
+            limit: Some(limit),
+            from_level: None,
+            to_level: None,
+        })
+    }
+
+    /// `ah-b6fz`: the reader measures from the month-end hexes it is handed.
+    #[test]
+    fn a_shipment_is_forecast_from_the_month_end_hexes_it_is_given() {
+        let report = reach_report((0, 0), (0, 4), (0, 1));
+        let z = reach_z(&report);
+        let options = super::super::semantics::CheckOptions {
+            month_end: std::iter::once((
+                "901".to_string(),
+                crate::report::model::Coordinate { x: 0, y: 6, z },
+            ))
+            .collect(),
+            ..super::super::semantics::CheckOptions::default()
+        };
+        let response = reach_preview_with_options(
+            &report,
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            FLAT_MAP,
+            options,
+        );
+
+        assert_eq!(reach_held(&response, "900", "STON"), 5);
+        let issues = &reach_unit(&response, "900").transport_target_issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].reach, too_far(3, 2));
+    }
+
+    /// `rules/sequenceofevents`: movement before TRANSPORT, so a quartermaster walking out of reach
+    /// leaves the goods with the sender.
+    #[test]
+    fn a_quartermaster_walking_away_leaves_the_goods_with_the_sender() {
+        let report = moving_reach_report((0, 0), (0, 4), true);
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+        let z = reach_z(&report);
+
+        assert_eq!(departing_to(&response, "901"), Some(format!("{z}:0,6")));
+        assert_eq!(reach_held(&response, "900", "STON"), 5);
+        let issues = &reach_unit(&response, "900").transport_target_issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].reason, TransportTargetReason::TooFarToAccept);
+        assert_eq!(issues[0].reach, too_far(3, 2));
+    }
+
+    #[test]
+    fn a_sender_walking_closer_delivers_the_goods() {
+        let report = moving_reach_report((0, 0), (0, 6), true);
+        let orders = "unit 900\nMOVE S\nTRANSPORT 901 5 STON\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+        let z = reach_z(&report);
+
+        assert_eq!(departing_to(&response, "900"), Some(format!("{z}:0,2")));
+        assert_eq!(reach_held(&response, "901", "STON"), 5);
+        assert_eq!(reach_held(&response, "900", "STON"), 0);
+        assert!(reach_unit(&response, "900")
+            .transport_target_issues
+            .is_empty());
+    }
+
+    /// The agreed record: a unit whose month end the forecast cannot name (`→ …`) is measured from
+    /// where the report shows it, and nothing extra is said.
+    #[test]
+    fn a_mover_whose_month_end_cannot_be_named_is_measured_from_the_report() {
+        let report = moving_reach_report((0, 0), (0, 4), false);
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+
+        assert_eq!(departing_to(&response, "901"), None);
+        assert_eq!(reach_held(&response, "900", "STON"), 0);
+        assert!(reach_unit(&response, "900")
+            .transport_target_issues
+            .is_empty());
+    }
+
+    #[test]
+    fn the_map_is_drawn_from_the_first_settle() {
+        let report = moving_reach_report((0, 0), (0, 4), true);
+        let shipping = reach_preview(
+            &report,
+            "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n",
+            FLAT_MAP,
+        );
+        let walking = reach_preview(&report, "unit 901\nMOVE S\n", FLAT_MAP);
+
+        assert_eq!(
+            departing_to(&shipping, "901"),
+            departing_to(&walking, "901")
+        );
+    }
+
+    fn month_end_for(report: &str, orders: &str) -> super::super::transport::MonthEndHexes {
+        month_end_hexes(
+            &mut ReportCache::new(),
+            RULESET,
+            report,
+            "[]",
+            orders,
+            FLAT_MAP,
+            super::super::semantics::CheckOptions::default(),
+        )
+        .expect("the ruleset loads")
+    }
+
+    #[test]
+    fn month_end_hexes_is_empty_for_orders_that_ship_nothing() {
+        let report = moving_reach_report((0, 0), (0, 4), true);
+        assert!(month_end_for(&report, "unit 901\nMOVE S\n").is_empty());
+    }
+
+    #[test]
+    fn month_end_hexes_names_a_quartermaster_that_walks_away() {
+        let report = moving_reach_report((0, 0), (0, 4), true);
+        let z = reach_z(&report);
+        let month_end = month_end_for(
+            &report,
+            "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n",
+        );
+        assert_eq!(
+            month_end,
+            std::iter::once((
+                "901".to_string(),
+                crate::report::model::Coordinate { x: 0, y: 6, z }
+            ))
+            .collect()
+        );
     }
 
     /// `rules/economy_transport`: "A Quartermaster unit may accept TRANSPORTed items from any unit

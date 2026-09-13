@@ -2,6 +2,24 @@
 
 use crate::movement::rules::OrderLanguage;
 
+/// Where each unit the report shows ends this month, for the units whose month-end hex differs from
+/// the one the report prints and can be named. `rules/sequenceofevents` moves every unit before any
+/// TRANSPORT, so a shipment is measured from here (`ah-b6fz`).
+///
+/// A unit absent from the map is measured from where the report shows it: it does not move, or the
+/// forecast cannot name where its month ends (`→ …`), or this month's orders form it.
+pub type MonthEndHexes = std::collections::BTreeMap<String, crate::report::model::Coordinate>;
+
+/// The hex one end of a shipment is measured from: its month-end hex when the map names one,
+/// otherwise `reported`.
+pub(crate) fn standing_at(
+    month_end: &MonthEndHexes,
+    unit_id: &str,
+    reported: crate::report::model::Coordinate,
+) -> crate::report::model::Coordinate {
+    month_end.get(unit_id).copied().unwrap_or(reported)
+}
+
 /// Which of the two reaches in `rules/economy_transport` a shipment is measured against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reach {

@@ -471,6 +471,7 @@ pub mod commands {
         disabled_codes: Option<Vec<String>>,
         map_json: Option<&str>,
         known_passages_json: Option<&str>,
+        remembered_json: Option<&str>,
     ) -> OrderValidationResult {
         // Absent means the conservative default: `hex-unguarded` off, same as the bool this
         // replaced defaulted to `false` (do not warn). Reuses `OrderCheckOptions::default()`
@@ -492,14 +493,33 @@ pub mod commands {
         let geometry = map_json
             .and_then(|json| atlantis_hud_core::movement::graph::geometry_from_json(json).ok())
             .flatten();
-        let options = OrderCheckOptions {
+        let mut options = OrderCheckOptions {
             disabled,
             geometry,
             known_passages,
+            month_end: Default::default(),
         };
         let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
             let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
             let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
+            // Where each unit ends the month, so a shipment is measured after the moves
+            // (`rules/sequenceofevents`, `ah-b6fz`). An error is nothing known - bad config, not
+            // bad orders - and every shipment is measured from the report, as before.
+            options.month_end = match (ruleset_json, raw_report, remembered_json) {
+                (Some(rules), Some(raw), Some(remembered)) => {
+                    atlantis_hud_core::orders::effects::month_end_hexes(
+                        cache,
+                        rules,
+                        raw,
+                        remembered,
+                        raw_orders,
+                        map_json.unwrap_or(""),
+                        options.clone(),
+                    )
+                    .unwrap_or_default()
+                }
+                _ => Default::default(),
+            };
             (ruleset, report)
         });
 
@@ -1192,6 +1212,8 @@ pub mod commands {
                 .unwrap_or_else(|| OrderCheckOptions::default().disabled),
             geometry: None,
             known_passages: Vec::new(),
+            // The preview builds its own from the trace it draws (`ah-b6fz`).
+            month_end: Default::default(),
         };
 
         atlantis_hud_core::cache::with_global(|cache| {
@@ -2448,6 +2470,69 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert!(duplicate_error.contains("requires explicit overwrite confirmation"));
     }
 
+    /// `ah-b6fz`: validation given the remembered map measures a shipment from where the
+    /// quartermaster ends the month (`rules/sequenceofevents`), end to end through the command.
+    #[test]
+    fn validation_measures_a_shipment_after_the_quartermasters_move() {
+        let mut lines = vec!["Foo (1) Report".to_string(), String::new()];
+        for y in (0..=10).step_by(2) {
+            lines.push(format!("plain (0,{y}) in Nowhere, 10 peasants (orcs), $5."));
+            lines.push(String::new());
+            lines.push("Exits:".to_string());
+            if y > 0 {
+                lines.push(format!("  North : plain (0,{}) in Nowhere.", y - 2));
+            }
+            if y < 10 {
+                lines.push(format!("  South : plain (0,{}) in Nowhere.", y + 2));
+            }
+            lines.push(String::new());
+            if y == 0 {
+                lines.push(
+                    "* Source (900), Foo (1), leader [LEAD], 5 stone [STON]. Weight: 60. \
+                     Capacity: 0/0/70/0."
+                        .to_string(),
+                );
+                lines.push(String::new());
+            }
+            if y == 4 {
+                lines.push("+ Post One [1] : Caravanserai.".to_string());
+                lines.push(
+                    "  * Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. \
+                     Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (450)."
+                        .to_string(),
+                );
+                lines.push(String::new());
+            }
+        }
+        let report = lines.join("\n");
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";
+        let map = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
+        let ruleset = atlantis_hud_fixtures::RULESET_JSON;
+        let reach = |remembered: Option<&str>| -> Vec<String> {
+            command_validate_orders(
+                orders,
+                Some(ruleset),
+                Some(&report),
+                None,
+                Some(map),
+                None,
+                remembered,
+            )
+            .diagnostics
+            .into_iter()
+            .filter(|diagnostic| diagnostic.code == "transport-out-of-reach")
+            .map(|diagnostic| diagnostic.message)
+            .collect()
+        };
+
+        assert_eq!(
+            reach(Some("[]")),
+            vec!["Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.".to_string()]
+        );
+        // Without the remembered map the shipment is measured from the report, as before.
+        assert_eq!(reach(None), Vec::<String>::new());
+    }
+
     #[test]
     fn tauri_adapter_validates_and_loads_order_drafts() {
         let dir = tempdir().expect("tempdir");
@@ -2458,7 +2543,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         .expect("create game");
 
         let validation =
-            command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None, None);
+            command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None, None, None);
         assert_eq!(
             validation.diagnostics,
             vec![atlantis_hud_core::OrderDiagnostic {
@@ -2504,8 +2589,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .collect();
 
         assert_eq!(
-            command_validate_orders(orders, None, None, None, None, None),
-            command_validate_orders(orders, None, None, Some(default_disabled), None, None)
+            command_validate_orders(orders, None, None, None, None, None, None),
+            command_validate_orders(orders, None, None, Some(default_disabled), None, None, None)
         );
     }
 

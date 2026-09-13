@@ -3280,7 +3280,9 @@ export function AppShell({
         .validateOrders(ordersDocument, rulesetText, rawReport || null, {
           disabledCodes: disabledAdvisoryCodes(advisoryChecks),
           mapJson,
-          knownPassages
+          knownPassages,
+          // Where each unit ends the month, so a shipment is measured after the moves (`ah-b6fz`).
+          rememberedJson
         })
         .then((result) => {
           if (!cancelled) {
@@ -3303,7 +3305,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument, rulesetText, rawReport, advisoryChecks, mapJson, knownPassages]);
+  }, [client, ordersDocument, rulesetText, rawReport, advisoryChecks, mapJson, knownPassages, rememberedJson]);
 
   /**
    * What the checks found, hex by hex, for the header chip and the list it opens.
@@ -3752,7 +3754,8 @@ export function AppShell({
         const result = await client.validateOrders(pending.text, rulesetText, rawReport || null, {
           disabledCodes: disabledAdvisoryCodes(advisoryChecks),
           mapJson,
-          knownPassages
+          knownPassages,
+          rememberedJson
         });
 
         if (result.diagnostics.length > 0) {
@@ -3782,6 +3785,7 @@ export function AppShell({
     advisoryChecks,
     mapJson,
     knownPassages,
+    rememberedJson,
     writeOrdersDocument
   ]);
 

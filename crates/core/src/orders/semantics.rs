@@ -304,6 +304,10 @@ pub struct CheckOptions {
     /// Every inner passage the faction has proved the far side of. Empty by default: a caller that
     /// knows nothing is the ordinary case, and it is also every test that says nothing about one.
     pub known_passages: Vec<crate::movement::passages::KnownPassage>,
+    /// Where each unit ends the month, for the distance a `TRANSPORT` is measured across
+    /// (`ah-b6fz`). Empty measures every shipment from where the report shows its ends, which is
+    /// what a caller without the remembered map gets.
+    pub month_end: super::transport::MonthEndHexes,
 }
 
 impl CheckOptions {
@@ -337,6 +341,7 @@ impl Default for CheckOptions {
             disabled: std::iter::once(codes::HEX_UNGUARDED.as_str().to_string()).collect(),
             geometry: None,
             known_passages: Vec::new(),
+            month_end: super::transport::MonthEndHexes::new(),
         }
     }
 }
@@ -723,7 +728,7 @@ pub fn review_turn(
             hex,
             ledger,
             shipping.as_ref(),
-            options.geometry,
+            &options,
             ruleset,
             false,
             &nothing_received,
@@ -738,7 +743,7 @@ pub fn review_turn(
             hex,
             ledger,
             shipping.as_ref(),
-            options.geometry,
+            &options,
             ruleset,
             true,
             &received_early,
@@ -12924,10 +12929,12 @@ fn check_transport_reach(
             // cannot disagree about where the far end stands.
             // Only a settled refusal is a problem: an unmeasured distance may well be in reach, and
             // the unit preview marks it instead (`ah-7ale.5`).
+            // Measured once the month's moves are made (`rules/sequenceofevents`, `ah-b6fz`); the
+            // finding still anchors on the hex the report lists the sender in.
             let super::transport::Arrival::TooFar(refused) = super::transport::arrival(
                 reach,
-                hex.region.coordinate,
-                facts.coordinate,
+                super::transport::standing_at(&options.month_end, sender, hex.region.coordinate),
+                super::transport::standing_at(&options.month_end, id, facts.coordinate),
                 options.geometry,
             ) else {
                 continue;
@@ -12974,11 +12981,13 @@ fn shipping_bills(
         super::transport::Quartermasters,
         BTreeMap<String, super::transport::TargetFacts>,
     )>,
-    geometry: Option<crate::movement::graph::MapGeometry>,
+    options: &CheckOptions,
     ruleset: Option<&Ruleset>,
     quartermaster_senders: bool,
     received_earlier: &BTreeMap<(String, String), i64>,
 ) -> Vec<((String, String), i64)> {
+    let geometry = options.geometry;
+    let month_end = &options.month_end;
     let mut delivered = Vec::new();
     let (Some((quartermasters, targets)), Some(rules)) = (shipping, ruleset) else {
         return delivered;
@@ -13070,8 +13079,8 @@ fn shipping_bills(
             // so the two surfaces cannot disagree about whether one shipment arrives (`ah-7ale.5`).
             match super::transport::arrival(
                 reach,
-                hex.region.coordinate,
-                facts.coordinate,
+                super::transport::standing_at(month_end, sender, hex.region.coordinate),
+                super::transport::standing_at(month_end, id, facts.coordinate),
                 geometry,
             ) {
                 super::transport::Arrival::TooFar(_) => continue,
@@ -13114,8 +13123,8 @@ fn shipping_bills(
             let weight = quantity.saturating_mul(entry.weight);
             match super::transport::priced(
                 reach,
-                hex.region.coordinate,
-                facts.coordinate,
+                super::transport::standing_at(month_end, sender, hex.region.coordinate),
+                super::transport::standing_at(month_end, id, facts.coordinate),
                 geometry,
                 rules.order_language,
                 weight,
@@ -37661,6 +37670,94 @@ BUILD
         );
     }
 
+    /// `ah-b6fz`: `rules/sequenceofevents` moves every unit before any TRANSPORT, so a
+    /// quartermaster walking away takes the shipment out of reach - and the sentence names the
+    /// distance after the move.
+    #[test]
+    fn a_shipment_is_measured_from_where_both_units_end_the_month() {
+        let sender = with_item(unit("900"), 5, "stone", "STON");
+        let mut options = with_map();
+        options.month_end =
+            std::iter::once(("901".to_string(), Coordinate { x: 0, y: 6, z: 1 })).collect();
+        let finding = only(reach_findings(
+            vec![
+                shipping_from(vec![sender]),
+                caravanserai_owner("901", 1, 0, 4),
+            ],
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            options,
+        ));
+
+        assert_eq!(
+            finding.message,
+            "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit."
+        );
+        assert_eq!(finding.region_id, "1:0,0");
+    }
+
+    #[test]
+    fn a_sender_moving_closer_brings_its_shipment_into_reach() {
+        let sender = with_item(unit("900"), 5, "stone", "STON");
+        let mut options = with_map();
+        options.month_end =
+            std::iter::once(("900".to_string(), Coordinate { x: 0, y: 2, z: 1 })).collect();
+        assert_eq!(
+            reach_findings(
+                vec![
+                    shipping_from(vec![sender]),
+                    caravanserai_owner("901", 1, 0, 6),
+                ],
+                "unit 900\nTRANSPORT 901 5 STON\n",
+                options,
+            ),
+            Vec::new()
+        );
+    }
+
+    /// The agreed record: a refusal is listed in the hex the report shows the sender in, even when
+    /// the sender walks away.
+    #[test]
+    fn a_refusal_after_a_move_is_listed_where_the_sender_wrote_it() {
+        let sender = with_item(unit("900"), 5, "stone", "STON");
+        let mut options = with_map();
+        options.month_end =
+            std::iter::once(("900".to_string(), Coordinate { x: 0, y: -2, z: 1 })).collect();
+        let finding = only(reach_findings(
+            vec![
+                shipping_from(vec![sender]),
+                caravanserai_owner("901", 1, 0, 4),
+            ],
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            options,
+        ));
+
+        assert_eq!(finding.region_id, "1:0,0");
+        assert!(
+            finding.message.starts_with("Unit 901 is 3 hexes away"),
+            "{}",
+            finding.message
+        );
+    }
+
+    #[test]
+    fn a_silenced_reach_warning_says_nothing_about_a_moved_shipment() {
+        let sender = with_item(unit("900"), 5, "stone", "STON");
+        let mut options = disabling(codes::TRANSPORT_OUT_OF_REACH);
+        options.month_end =
+            std::iter::once(("901".to_string(), Coordinate { x: 0, y: 6, z: 1 })).collect();
+        assert_eq!(
+            reach_findings(
+                vec![
+                    shipping_from(vec![sender]),
+                    caravanserai_owner("901", 1, 0, 4),
+                ],
+                "unit 900\nTRANSPORT 901 5 STON\n",
+                options,
+            ),
+            Vec::new()
+        );
+    }
+
     /// `data/quartermaster`: between two quartermasters the reach is "3 plus (level+1)/3 hexes", so
     /// the sentence names the sender's own limit - and never the skill that set it.
     #[test]
@@ -37931,6 +38028,28 @@ BUILD
                 other: None,
             }]
         );
+    }
+
+    /// `ah-b6fz`: `rules/economy_transport` ships free within 2 hexes, measured once the month's
+    /// moves are made - so a quartermaster walking closer makes a paid shipment free.
+    #[test]
+    fn a_move_that_brings_a_shipment_within_two_hexes_makes_it_free() {
+        let regions = || {
+            priced_shipping(
+                1,
+                &[(9, "fur", "FUR")],
+                vec![caravanserai_owner("901", 1, 0, 6)],
+            )
+        };
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\n";
+        let control = sender_silver_in(&trident_rules(), regions(), orders, with_map());
+        assert_eq!(shipped(&control).len(), 1, "three hexes is priced");
+
+        let mut options = with_map();
+        options.month_end =
+            std::iter::once(("901".to_string(), Coordinate { x: 0, y: 4, z: 1 })).collect();
+        let moved = sender_silver_in(&trident_rules(), regions(), orders, options);
+        assert_eq!(shipped(&moved), Vec::<&SilverChange>::new());
     }
 
     /// `ah-7ale.4`: a shipment the sender cannot pay for is refused (so it is not listed as

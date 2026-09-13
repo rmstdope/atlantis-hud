@@ -91,7 +91,9 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rulesetJson: string | null,
       rawReport: string | null,
       disabledCodes: readonly string[],
-      mapJson: string | null
+      mapJson: string | null,
+      _knownPassagesJson: string | null,
+      rememberedJson: string | null
     ) => ({
       diagnostics: [],
       silver: [],
@@ -99,7 +101,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rulesetJson,
       rawReport,
       disabledCodes,
-      mapJson
+      mapJson,
+      rememberedJson
     }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
     order_vocabulary_state: () => ["ALL", "MOVE", "SILV"],
@@ -496,7 +499,7 @@ describe("web core adapter", () => {
     // checks that read the turn depend on, and an adapter that dropped them would still return a
     // perfectly well-shaped answer with half the checks silently not run.
     expect(
-      await adapter.validateOrders("MOVE R1 R2", null, "the report", ["hex-unguarded"], "{}", null)
+      await adapter.validateOrders("MOVE R1 R2", null, "the report", ["hex-unguarded"], "{}", null, "[]")
     ).toEqual({
       diagnostics: [],
       silver: [],
@@ -504,7 +507,8 @@ describe("web core adapter", () => {
       rulesetJson: null,
       rawReport: "the report",
       disabledCodes: ["hex-unguarded"],
-      mapJson: "{}"
+      mapJson: "{}",
+      rememberedJson: "[]"
     });
     expect(await adapter.orderCommands(null)).toEqual(["GIVE", "MOVE", "WORK"]);
   });
