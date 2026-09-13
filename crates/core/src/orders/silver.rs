@@ -2024,8 +2024,9 @@ pub fn forecast_unit(
             formed,
             buy_all: Vec::new(),
             shipping: Vec::new(),
-            shipping_distance_unknown: false,
-            shipping_target_unshown: false,
+            // The notes are flags beside the doubt, not the doubt, so they survive it (`ah-7ale.5`).
+            shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
+            shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
             changes: Vec::new(),
         };
     }
@@ -2089,8 +2090,9 @@ pub fn forecast_unit(
             formed,
             buy_all: Vec::new(),
             shipping: Vec::new(),
-            shipping_distance_unknown: false,
-            shipping_target_unshown: false,
+            // The notes are flags beside the doubt, not the doubt, so they survive it (`ah-7ale.5`).
+            shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
+            shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
             changes: Vec::new(),
         };
     }
@@ -3108,6 +3110,9 @@ pub fn forecast_unit(
         // `None` wherever `income` is, so it can never be read on this path.
         if income_doubt == Some(SilverDoubt::ContestedRegionPool)
             && expense_doubt.is_none()
+            // A month an unpriced shipment leaves without a total reports no purchase either
+            // (`ah-7ale.5`); its doubt is raised below, after every other expense doubt.
+            && !shipping_unmeasured.any()
             && matches!(shared_market, SharedMarket::HeldOnly(_))
         {
             for settled in facts.settled_buy_all() {

@@ -13076,12 +13076,9 @@ fn shipping_bills(
             ) {
                 super::transport::Arrival::TooFar(_) => continue,
                 super::transport::Arrival::Unmeasured => {
-                    // Nothing is charged for goods that may never leave. A `Local` shipment is
-                    // free whether it goes or not, so only a quartermaster's leaves the month
-                    // unpriced.
-                    if reach != super::transport::Reach::Local {
-                        unmeasured.world_wrap = true;
-                    }
+                    // Nothing is charged for goods that may never leave, and the month says so: the
+                    // plan and the agreed record put a `?` on it for every unmeasured shipment.
+                    unmeasured.world_wrap = true;
                     continue;
                 }
                 super::transport::Arrival::Certain => {}
@@ -37577,6 +37574,29 @@ BUILD
         let silver = shipment_silver(&both, "900");
         assert_eq!(silver.doubt, Some(SilverDoubt::UnpricedShipment));
         assert!(silver.shipping_target_unshown);
+        assert!(silver.shipping_distance_unknown);
+    }
+
+    /// `ah-7ale.5`: the agreed "world's width never reported" state puts a `?` on the month for an
+    /// ordinary sender too - its goods may or may not leave.
+    #[test]
+    fn an_ordinary_senders_unmeasured_shipment_doubts_its_month() {
+        let review = review_turn(
+            &report(vec![
+                shipping_from(vec![with_item(
+                    with_silver(unit("900"), 100),
+                    5,
+                    "stone",
+                    "STON",
+                )]),
+                caravanserai_owner("901", 1, 0, 10),
+            ]),
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let silver = shipment_silver(&review, "900");
+        assert_eq!(silver.doubt, Some(SilverDoubt::UnpricedShipment));
         assert!(silver.shipping_distance_unknown);
     }
 
