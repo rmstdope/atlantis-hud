@@ -12,7 +12,7 @@ import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import {
   changeFor,
   formatItems,
-  hasUncertainTransportTarget,
+  hasUncertainTransport,
   itemsTooltip,
   mergePreview,
   dissolves,
@@ -53,6 +53,7 @@ const previewedRow = (
   transportSent: [],
   transportReceived: [],
   transportTargetIssues: [],
+  shipmentUnmeasured: false,
   itemChanges: [],
   dissolvesInto: null,
   formed: false,
@@ -183,6 +184,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          shipmentUnmeasured: false,
           itemChanges: [],
           dissolvesInto: null,
           formed: false,
@@ -228,6 +230,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          shipmentUnmeasured: false,
           itemChanges: [],
           dissolvesInto: null,
           formed: false,
@@ -253,6 +256,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          shipmentUnmeasured: false,
           itemChanges: [],
           dissolvesInto: null,
           formed: true,
@@ -292,6 +296,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          shipmentUnmeasured: false,
           itemChanges: [],
           dissolvesInto: null,
           formed: false,
@@ -317,6 +322,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          shipmentUnmeasured: false,
           itemChanges: [],
           dissolvesInto: null,
           formed: false,
@@ -353,6 +359,7 @@ describe("mergePreview", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          shipmentUnmeasured: false,
           itemChanges: [],
           dissolvesInto: null,
           formed: false,
@@ -854,6 +861,7 @@ describe("changeFor and originalTooltip", () => {
           transportSent: [],
           transportReceived: [],
           transportTargetIssues: [],
+          shipmentUnmeasured: false,
           itemChanges: [],
           dissolvesInto: null,
           formed: false,
@@ -1934,7 +1942,7 @@ describe("a transport target the report cannot show receiving", () => {
 
     expect(transportTargetUncertain(far("tooFarToAccept"))).toBe(false);
     expect(transportTargetUncertain(far("tooFarToShip"))).toBe(false);
-    expect(hasUncertainTransportTarget(previewedUnit({ transportTargetIssues: [far("tooFarToAccept")] }))).toBe(
+    expect(hasUncertainTransport(previewedUnit({ transportTargetIssues: [far("tooFarToAccept")] }))).toBe(
       false
     );
   });
@@ -1957,7 +1965,7 @@ describe("a transport target the report cannot show receiving", () => {
 
   it("marks a row uncertain only when one of its transports could not be settled", () => {
     expect(
-      hasUncertainTransportTarget(
+      hasUncertainTransport(
         previewedUnit({
           transportTargetIssues: [
             { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, reach: null }
@@ -1966,7 +1974,7 @@ describe("a transport target the report cannot show receiving", () => {
       )
     ).toBe(false);
     expect(
-      hasUncertainTransportTarget(
+      hasUncertainTransport(
         previewedUnit({
           transportTargetIssues: [
             { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, reach: null },
@@ -1975,8 +1983,24 @@ describe("a transport target the report cannot show receiving", () => {
         })
       )
     ).toBe(true);
-    expect(hasUncertainTransportTarget(previewedUnit({}))).toBe(false);
-    expect(hasUncertainTransportTarget(undefined)).toBe(false);
+    expect(hasUncertainTransport(previewedUnit({}))).toBe(false);
+    expect(hasUncertainTransport(undefined)).toBe(false);
+  });
+
+  it("a_distance_that_cannot_be_measured_says_so_and_marks_the_list", () => {
+    expect(
+      transportTargetSentence({ to: "902", amount: 9, tag: "FUR", reason: "distanceUnmeasured", orderIndex: 0, reach: null })
+    ).toBe(
+      "Could not count 9 FUR for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out."
+    );
+    expect(
+      transportTargetSentence({ to: "902", amount: 0, tag: "", reason: "distanceUnmeasured", orderIndex: 0, reach: null })
+    ).toBe(
+      "Could not count this TRANSPORT for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out."
+    );
+    // The mark reads the flag, which the Transport warning never silences.
+    expect(hasUncertainTransport(previewedUnit({ transportTargetIssues: [], shipmentUnmeasured: true }))).toBe(true);
+    expect(hasUncertainTransport(previewedUnit({}))).toBe(false);
   });
 
   // The mockup's mixed card: the block reads in the order it was written.

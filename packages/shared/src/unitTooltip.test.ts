@@ -1768,6 +1768,9 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
     "doubt-unknown-skills-after-arrivals":
       "This unit's skills after this month's arrivals cannot be worked out, so what it produces cannot be said.",
     "doubt-unpriced-skill": "The ruleset does not say what studying this skill costs.",
+    "shipping-distance-unknown":
+      "The distance a shipment must travel is not known, so what it costs cannot be said.",
+    "shipping-target-unshown": "A shipment's target is not in your report, so what it costs cannot be said.",
     "doubt-unknown-goods":
       "The report does not say what widgets are, so what this sale earns cannot be said.",
     "doubt-estimated-men": "This unit's headcount is an estimate, so its month cannot be priced.",
@@ -2126,7 +2129,8 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "unknown-skills-after-arrivals",
     "give-consequences-uncertain",
     "silver-never-read",
-    "unit-line-cut-short"
+    "unit-line-cut-short",
+    "unpriced-shipment"
   ];
 
   // Built with `aUnitSilver` (`ah-uhnd`) so a field added to `UnitSilver` later does not silently
@@ -2179,6 +2183,9 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
       castMadeNamed: "2 amulets of protection",
       castWanted: 3,
       castCappedBy: "silver",
+      // `ah-7ale.5`: both shipping causes at once, tested against every other note.
+      shippingDistanceUnknown: true,
+      shippingTargetUnshown: true,
       buyAll: [
         {
           boughtNamed: "19 grain",

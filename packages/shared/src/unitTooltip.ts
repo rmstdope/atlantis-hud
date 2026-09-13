@@ -636,6 +636,31 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
+  // Both fire from a flag rather than from `doubt`, because a month may meet both causes and
+  // `doubt` holds one value. `forecast_hex` has already applied the Transport warning to them
+  // (`ah-7ale.5`).
+  {
+    id: "shipping-distance-unknown",
+    when: ({ silver }) => silver.shippingDistanceUnknown,
+    say: () => "The distance a shipment must travel is not known, so what it costs cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "unpriced-shipment", shippingDistanceUnknown: true }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  {
+    id: "shipping-target-unshown",
+    when: ({ silver }) => silver.shippingTargetUnshown,
+    say: () => "A shipment's target is not in your report, so what it costs cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "unpriced-shipment", shippingTargetUnshown: true }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
   // The goods as the order wrote them: nothing resolved them to a catalogue name, so there is no
   // other way to say which ones are meant.
   {

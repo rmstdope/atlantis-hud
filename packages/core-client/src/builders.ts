@@ -274,6 +274,8 @@ export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
     castSummons: false,
     formed: null,
     shipping: [],
+    shippingDistanceUnknown: false,
+    shippingTargetUnshown: false,
     buyAll: [],
     changes: [],
     ...overrides

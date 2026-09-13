@@ -20,7 +20,7 @@ import { presentUnitMovement } from "./unitMovement";
 import {
   buildSpendTarget,
   changeFor,
-  hasUncertainTransportTarget,
+  hasUncertainTransport,
   itemsTooltip,
   originalTooltip,
   type PreviewedUnit
@@ -1417,7 +1417,7 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const told = itemsTooltip(unit, facts.silver);
   const partlyCounted =
-    (unit.uncounted?.length ?? 0) > 0 || hasUncertainTransportTarget(unit);
+    (unit.uncounted?.length ?? 0) > 0 || hasUncertainTransport(unit);
 
   const change = changeFor(unit, CHANGE_FIELD.items!);
   const reported = change ? reportedItems(change.original) : undefined;

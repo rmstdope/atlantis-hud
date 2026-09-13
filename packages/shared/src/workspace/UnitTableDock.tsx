@@ -92,7 +92,7 @@ import {
   originalTooltip,
   dissolves,
   formatItems,
-  hasUncertainTransportTarget,
+  hasUncertainTransport,
   mergePreview,
   mergePreviewAcross,
   type PreviewedUnit
@@ -2597,7 +2597,7 @@ function UnitRow({
           as an unreadable order does, so it earns the same mark. A target refusal the report can
           prove does not: it is certain, and the hover says so (`ah-64wm`).
         */}
-        {(unit.uncounted && unit.uncounted.length > 0) || hasUncertainTransportTarget(unit) ? (
+        {(unit.uncounted && unit.uncounted.length > 0) || hasUncertainTransport(unit) ? (
           <span className="text-ink-dim"> + ?</span>
         ) : null}
         {explain("items")}

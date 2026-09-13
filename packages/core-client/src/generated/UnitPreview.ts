@@ -79,6 +79,13 @@ transportReceived: Array<TransportReceived>,
  */
 transportTargetIssues: Array<TransportTargetIssue>, 
 /**
+ * This unit wrote a `TRANSPORT`/`DISTRIBUTE` whose distance the map cannot measure, so its
+ * goods are listed where the report left them and the list may be wrong (`ah-7ale.5`). What
+ * the ITEMS cell's ` + ?` is drawn from, and **never silenced by the Transport warning**: a
+ * mark on a figure is not a warning about an order.
+ */
+shipmentUnmeasured: boolean, 
+/**
  * Every item this month's orders move into or out of this unit, each with its cause, **in the
  * month's order** (`ah-rgkk.3.1`). Empty for a unit whose month moves nothing.
  *
