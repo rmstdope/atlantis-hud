@@ -361,16 +361,35 @@ export type ShownSilver =
   | { kind: "range"; low: number; high: number }
   | { kind: "unknown" };
 
-export function silverShownUI(
-  silver: UnitSilver | null,
-  countUpkeep: boolean,
-  transportTargetIssues?: readonly any[] | undefined,
-  shipping?: readonly any[] | undefined
-): ShownSilver | null {
-  // Minimal stub mapping existing numeric shown to single; full logic added later.
-  const numeric = silverShown(silver, countUpkeep);
-  if (numeric === null) return { kind: "unknown" };
-  return { kind: "single", value: numeric };
+/** UI-local mapping of the numeric silver shown into a ShownSilver shape. */
+export function silverShownUI(silver: UnitSilver | null, countUpkeep: boolean): ShownSilver | null {
+  const shown = silverShown(silver, countUpkeep);
+  if (silver === null) {
+    return null;
+  }
+  if (shown === null) {
+    return { kind: "unknown" };
+  }
+
+  const byFlag = silver.shipping.some((shipment) => shipment.conditional);
+  const conditionalCost = byFlag
+    ? silver.shipping
+        .filter((shipment) => shipment.conditional)
+        .reduce((sum, shipment) => sum + shipment.cost, 0)
+    : (() => {
+        const chargedLines = new Set(
+          silver.changes
+            .filter((change) => change.cause === "shipped" && change.line !== null)
+            .map((change) => change.line!)
+        );
+        return silver.shipping
+          .filter((shipment) => !chargedLines.has(shipment.line))
+          .reduce((sum, shipment) => sum + shipment.cost, 0);
+      })();
+  if (conditionalCost > 0) {
+    return { kind: "pair", low: shown - conditionalCost, high: shown };
+  }
+  return { kind: "single", value: shown };
 }
 
 export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): number | null {
@@ -382,6 +401,7 @@ export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): nu
   }
   return silver.upkeep === null ? null : silver.atMonthEnd - silver.upkeep;
 }
+
 
 /**
  * Whether something is wrong with this unit's money: it ends below zero, or its orders spend more

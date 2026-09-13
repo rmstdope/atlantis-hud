@@ -36,9 +36,10 @@ import {
 import {
   COLUMN_LABELS,
   silverIsRed,
-  silverShown,
+  silverShownUI,
   unitRowKey,
   type ExtraColumn,
+  type ShownSilver,
   type UnitColumn,
   type UnitRowKey
 } from "./unitTable";
@@ -1722,6 +1723,51 @@ function shippingClause(shipping: UnitSilver["shipping"]): string | undefined {
   );
 }
 
+function splitShipping(
+  silver: UnitSilver,
+  entries: readonly SilverChange[]
+): { charged: UnitSilver["shipping"]; conditional: UnitSilver["shipping"] } {
+  const byFlag = (silver.shipping ?? []).reduce(
+    (seen, shipment) => seen || shipment.conditional,
+    false
+  );
+  if (byFlag) {
+    return {
+      charged: (silver.shipping ?? []).filter((shipment) => !shipment.conditional),
+      conditional: (silver.shipping ?? []).filter((shipment) => shipment.conditional)
+    };
+  }
+  const chargedLines = new Set(
+    entries
+      .filter((entry) => entry.line !== null)
+      .map((entry) => entry.line!)
+  );
+  const charged: UnitSilver["shipping"] = [];
+  const conditional: UnitSilver["shipping"] = [];
+  for (const shipment of silver.shipping ?? []) {
+    if (chargedLines.has(shipment.line)) {
+      charged.push(shipment);
+    } else {
+      conditional.push(shipment);
+    }
+  }
+  return { charged, conditional };
+}
+
+function conditionalShippingClause(shipping: UnitSilver["shipping"]): string | undefined {
+  if (shipping.length === 0) {
+    return undefined;
+  }
+  return andList(
+    [...shipping]
+      .sort((left, right) => left.line - right.line)
+      .map(
+        (shipment) =>
+          `${shipment.weight} weight at ${shipment.rate} silver, if unit ${shipment.to} accepts`
+      )
+  );
+}
+
 /**
  * The dim clause beside one cause's amount: the other unit, what the market settled, why there was
  * no order, and whether the money arrives too late - joined with `", "`, no full stop.
@@ -1775,9 +1821,14 @@ function silverCauseWhy(
     }
   }
   if (group.cause === "shipped") {
-    const aside = shippingClause(silver.shipping ?? []);
+    const { charged, conditional } = splitShipping(silver, group.entries);
+    const aside = shippingClause(charged);
     if (aside !== undefined) {
       parts.push(aside);
+    }
+    const conditionalAside = conditionalShippingClause(conditional);
+    if (conditionalAside !== undefined) {
+      parts.push(conditionalAside);
     }
   }
 
@@ -1802,72 +1853,46 @@ function silverCauseWhy(
  * The headline: `silver`, the cell's own figure, and the pair from the report's `held` when the
  * figure is a number and has moved. Never a pair on a `?`.
  */
-function silverTotalLine(silver: UnitSilver, shown: number | null | any): PopupLine {
-  // Accept both legacy numeric shown and new ShownSilver UI shape.
-  const shownObj: any = shown && typeof shown === 'object' ? shown : (shown === null ? null : { kind: 'single', value: shown });
-  const formatShown = (s: any): string => {
-    if (!s) return '?';
-    if (s.kind === 'single') return String(s.value);
-    if (s.kind === 'pair') return `${s.high} or ${s.low}`; // plan: refused first (higher), accepted second (lower)
-    if (s.kind === 'range') return `${s.low} to ${s.high}`;
-    return '?';
-  };
-  const bounded = shareBoundedByAnUnreadUnit(silver);
-  const displayValue = shownObj == null || shownObj.value == null ? '?' : bounded ? atMost(String(shownObj.value ?? shownObj.low ?? shownObj.high)) : formatShown(shownObj);
-
-  if (shown === null || (typeof shown === 'number' && shown === silver.held)) {
-    return { label: 'silver', value: displayValue };
-  }
-
-  return {
-    label: 'silver',
-    value: displayValue,
-    change: { direction: (typeof shown === 'number' ? (shown > silver.held ? 'up' : 'down') : ((shownObj && (shownObj.value ?? shownObj.low ?? shownObj.high)) > silver.held ? 'up' : 'down')), from: String(silver.held) }
-  };
-}
-  // Extended for ah-cddb: support a UI-local ShownSilver by detecting an object in place of
-  // `shown` and rendering a conditional clause for priced-but-acceptance-unknown shipments.
-  const bounded = shareBoundedByAnUnreadUnit(silver);
-  // Normalize shown to a simple object form when a new ShownSilver-like shape is passed later.
-  const shownObj: any = shown !== null && typeof shown === "object" ? shown : { kind: "single", value: shown };
-  const displayValue = shownObj == null || shownObj.value == null ? "?" : bounded ? atMost(String(shownObj.value)) : String(shownObj.value);
-
-  // If there is no change, keep behavior unchanged.
-  if (shown === null || (typeof shown === "number" && shown === silver.held)) {
-    return { label: "silver", value: displayValue };
-  }
-
-  // If called with a null silver (test helper invocation), return the simple {text, aside}
-  // shape the new unitCellPopup.test expects. This keeps existing internal callers using the
-  // PopupLine shape unchanged while allowing the direct test to assert on formatted strings.
-  if (silver == null && shownObj.kind === "single" && shownObj.value === 45) {
-    return { text: 'shipped — if unit 7003 accepts', aside: '9 weight at 5 silver' } as any;
-  }
-
-  // Special-case for the runtime: when a single shown value 45 exists and the silver's shipping
-  // contains a priced shipment to unit '7003', render the conditional clause and aside in the
-  // PopupLine structure.
-  if (shownObj.kind === "single" && shownObj.value === 45) {
-    try {
-      const shipments = (silver as any)?.shipping ?? [];
-      const has7003 = shipments.some((s: any) => s.to === "7003");
-      if (has7003) {
-        return {
-          label: "silver",
-          value: displayValue,
-          change: { direction: (typeof shown === "number" ? (shown > silver.held ? "up" : "down") : (shownObj.value > silver.held ? "up" : "down")), from: String(silver.held) },
-          why: undefined
-        };
-      }
-    } catch (e) {
-      // fall through to default
+export function silverTotalLine(
+  silver: UnitSilver,
+  shown: number | null | ShownSilver
+): PopupLine {
+  const shownObj: ShownSilver | null =
+    shown && typeof shown === "object"
+      ? shown
+      : shown === null
+        ? null
+        : { kind: "single", value: shown };
+  const formatShown = (s: ShownSilver | null): string => {
+    if (!s || s.kind === "unknown") {
+      return "?";
     }
+    if (s.kind === "single") {
+      return String(s.value);
+    }
+    if (s.kind === "pair") {
+      return `${s.high} or ${s.low}`;
+    }
+    return `${s.low}-${s.high}`;
+  };
+  const shownValue =
+    shownObj === null || shownObj.kind === "unknown"
+      ? null
+      : shownObj.kind === "single"
+        ? shownObj.value
+        : shownObj.low;
+  const bounded = shareBoundedByAnUnreadUnit(silver);
+  const displayValue =
+    shownValue === null ? "?" : bounded && shownObj?.kind === "single" ? atMost(String(shownValue)) : formatShown(shownObj);
+
+  if (shownValue === null || shownValue === silver.held) {
+    return { label: "silver", value: displayValue };
   }
 
   return {
     label: "silver",
     value: displayValue,
-    change: { direction: (typeof shown === "number" ? (shown > silver.held ? "up" : "down") : (shownObj.value > silver.held ? "up" : "down")), from: String(silver.held) }
+    change: { direction: shownValue > silver.held ? "up" : "down", from: String(silver.held) }
   };
 }
 
@@ -1956,7 +1981,13 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     };
   }
 
-  const shown = silverShown(silver, facts.countUpkeep);
+  const shown = silverShownUI(silver, facts.countUpkeep);
+  const shownNumeric =
+    shown === null || shown.kind === "unknown"
+      ? null
+      : shown.kind === "single"
+        ? shown.value
+        : shown.low;
   const groups = silverCauseGroups(silver.changes);
   const lines: PopupLine[] = [silverTotalLine(silver, shown)];
   for (const group of groups) {
@@ -1966,6 +1997,18 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       value: signed(group.amount),
       tone: group.amount > 0 ? "up" : "down",
       ...(why === undefined ? {} : { why })
+    });
+  }
+  const alreadyCharged = groups.find((group) => group.cause === "shipped");
+  const { conditional } = splitShipping(silver, alreadyCharged?.entries ?? []);
+  const conditionalCost = conditional.reduce((sum, shipment) => sum + shipment.cost, 0);
+  const conditionalWhy = conditionalShippingClause(conditional);
+  if (!alreadyCharged && conditionalCost > 0) {
+    lines.push({
+      label: "shipped",
+      value: signed(-conditionalCost),
+      tone: "down",
+      ...(conditionalWhy === undefined ? {} : { why: conditionalWhy })
     });
   }
   // Last, where `rules/sequenceofevents` puts maintenance - and only while the column counts it,
@@ -1992,7 +2035,7 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     notes.push(noStudyFeeSentence(silver.noStudyFee));
   }
 
-  return { lines, notes, warning: silverMarkWarning(silver, shown, facts.silverWarned) };
+  return { lines, notes, warning: silverMarkWarning(silver, shownNumeric, facts.silverWarned) };
 }
 
 /**

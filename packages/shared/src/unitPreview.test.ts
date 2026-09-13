@@ -1256,7 +1256,9 @@ describe("formatItems and itemsTooltip", () => {
 
   it("says what a priced shipment cost, before any refused one (ah-7ale.3)", () => {
     const priced = aUnitSilver({
-      shipping: [{ line: 2, to: "901", sent: "9 FUR", weight: 9, rate: 5, cost: 45 }]
+      shipping: [
+        { line: 2, to: "901", sent: "9 FUR", weight: 9, rate: 5, cost: 45, conditional: false }
+      ]
     });
     const shipping = previewedUnit({
       items: [{ amount: 9, name: "fur", tag: "FUR" }],
@@ -1277,6 +1279,22 @@ describe("formatItems and itemsTooltip", () => {
       "Sends 9 FUR to unit 901 for 45 silver.",
       "The game will not transport HORS, so they stay with this unit."
     ]);
+  });
+
+  it("names a conditional priced shipment as conditional", () => {
+    const priced = aUnitSilver({
+      shipping: [
+        { line: 2, to: "7003", sent: "9 FUR", weight: 9, rate: 5, cost: 45, conditional: true }
+      ]
+    });
+    const shipping = previewedUnit({
+      items: [{ amount: 9, name: "fur", tag: "FUR" }],
+      previewChanges: [{ field: "items", original: "9 FUR" }]
+    });
+
+    expect(itemsTooltip(shipping, priced)).toContain(
+      "Sends 9 FUR to unit 7003 for 45 silver, if unit 7003 accepts."
+    );
   });
 
   it("says nothing for no unit at all", () => {

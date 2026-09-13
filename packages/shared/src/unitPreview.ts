@@ -546,7 +546,11 @@ export function buildSpendTarget(spend: BuildSpend): string {
 export function shippingSentences(silver: UnitSilver | null | undefined): string[] {
   return [...(silver?.shipping ?? [])]
     .sort((left, right) => left.line - right.line)
-    .map((shipment) => `Sends ${shipment.sent} to unit ${shipment.to} for ${shipment.cost} silver.`);
+    .map((shipment) =>
+      shipment.conditional
+        ? `Sends ${shipment.sent} to unit ${shipment.to} for ${shipment.cost} silver, if unit ${shipment.to} accepts.`
+        : `Sends ${shipment.sent} to unit ${shipment.to} for ${shipment.cost} silver.`
+    );
 }
 
 /** One transported line as the hover states it. */
