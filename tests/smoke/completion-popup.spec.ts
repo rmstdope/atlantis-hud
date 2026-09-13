@@ -5,6 +5,7 @@ import {
   fillOrders,
   loadReport,
   ordersInput,
+  ordersText,
   selectHex,
   selectUnit
 } from "./gameSetup";
@@ -101,4 +102,19 @@ test("the completion popup stays inside the window", async ({ page }) => {
   // navigator's R1).
   expect(popupBox!.x).toBeGreaterThanOrEqual(0);
   expect(popupBox!.x + popupBox!.width).toBeLessThanOrEqual(viewportWidth);
+});
+
+test("BUILD completes a structure's name as the game spells it", async ({ page }) => {
+  await openEditor(page);
+  await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("BUILD Tim");
+
+  const popup = page.locator(".cm-tooltip-autocomplete");
+  await expect(popup).toContainText("Timber Yard");
+  await expect(popup).toContainText("building");
+
+  await page.keyboard.press("Enter");
+  expect(await ordersText(page)).toContain('BUILD "Timber Yard" ');
 });

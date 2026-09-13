@@ -55,16 +55,21 @@ export function orderCommandCompletions(
 
 /**
  * Whether a completion candidate matches the word being typed - on its `value` (the tag or
- * keyword) or its `name` (an item's or skill's name), case-insensitively, so `cross` finds `XBOW`
- * and `chain` finds `CARM`. Both are prefix matches: the core's own ordering, not this side's, is
- * what stands.
+ * keyword) or its `name` (an item's, skill's or structure's name), case-insensitively, so `cross`
+ * finds `XBOW` and `chain` finds `CARM`. Both are prefix matches: the core's own ordering, not this
+ * side's, is what stands. One leading `"` is ignored on both the word and the value, so `"Tim` and
+ * `tim` both find `"Timber Yard"`.
  */
 export function matchesArgument(word: string, entry: OrderCompletion): boolean {
-  const normalized = word.toUpperCase();
+  const normalized = withoutOpeningQuote(word).toUpperCase();
   return (
-    entry.value.toUpperCase().startsWith(normalized) ||
+    withoutOpeningQuote(entry.value).toUpperCase().startsWith(normalized) ||
     (entry.name !== "" && entry.name.toUpperCase().startsWith(normalized))
   );
+}
+
+function withoutOpeningQuote(text: string): string {
+  return text.startsWith('"') ? text.slice(1) : text;
 }
 
 /**
@@ -81,6 +86,11 @@ export function matchesArgument(word: string, entry: OrderCompletion): boolean {
  * ordering (classes before items, market before catalogue, and so on) stands untouched. The
  * consequence is a core call per keystroke rather than per word, which tag-or-name matching
  * requires and which the cache on both shells makes affordable.
+ *
+ * A building or ship name shows its `label` and writes its `value`, quoted or bare as the core
+ * decided. The replaced range starts at `wordStart`, which is the opening quote of a quote-opened
+ * word, so `BUILD "Tim` becomes `BUILD "Timber Yard" ` with one pair of quotes, and `BUILD "Cara`
+ * becomes `BUILD Caravanserai `.
  */
 export function orderArgumentCompletions(lookUp: CaretLookup): CompletionSource {
   return async (context) => {
@@ -95,7 +105,8 @@ export function orderArgumentCompletions(lookUp: CaretLookup): CompletionSource 
     // Nothing typed of this word yet - the caret sits after whitespace or a closing quote (`BUILD
     // "Big Boat"` should still offer COMPLETE). Only an explicit invocation (Ctrl+Space) asks for
     // that; a keystroke that lands here on its own stays quiet, same as any other empty position.
-    if (caret.word === "" && !context.explicit) {
+    // A lone opening quote (`BUILD "`) is no more typed than nothing.
+    if (withoutOpeningQuote(caret.word) === "" && !context.explicit) {
       return null;
     }
 
@@ -116,7 +127,7 @@ export function orderArgumentCompletions(lookUp: CaretLookup): CompletionSource 
     return {
       from: line.from + caret.wordStart,
       options: options.map((entry) => ({
-        label: entry.value,
+        label: entry.label || entry.value,
         detail: entry.detail || undefined,
         type: "keyword",
         apply: `${lead}${entry.value} `
