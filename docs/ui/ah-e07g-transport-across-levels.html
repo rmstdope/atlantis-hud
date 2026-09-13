@@ -1,0 +1,98 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shipping to another level — B: refused</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441; --blue:#4a9fd8; --green:#4fb783; --red:#e2705f; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1060px; margin:auto; } h1 { font-size:27px; } h1 span,h2 { color:var(--brass); }
+  header p { color:var(--soft); margin-top:10px; max-width:84ch; } h2 { font-size:15px; letter-spacing:1.3px; margin:35px 0 8px; text-transform:uppercase; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:9px; padding:15px; margin-bottom:14px; }
+  .card.pick { border-color:#3d5063; }
+  .cols { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .cols3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+  .label { color:var(--dim); font:10px system-ui,sans-serif; letter-spacing:.1em; text-transform:uppercase; }
+  .pill { background:rgba(217,164,65,.15); border-radius:3px; color:var(--brass); font:10.5px system-ui,sans-serif; letter-spacing:.09em; padding:2px 6px; text-transform:uppercase; }
+  .editor { background:#0c1016; border:1px solid var(--edge); border-radius:6px; color:var(--ink); font:12.5px/1.65 "SF Mono",Menlo,Consolas,monospace; margin-top:8px; padding:10px 12px; }
+  .unit { color:var(--blue); } .muted,.quiet { color:var(--dim); } .quiet { font-size:12.5px; margin-top:9px; }
+  .warning { color:#f0c36a; display:block; padding-left:2ch; } .warning::before { content:"\26A0 "; }
+  .notice { background:var(--raised); border-left:3px solid var(--green); border-radius:0 6px 6px 0; color:var(--soft); margin-top:14px; padding:10px 13px; font-size:13.5px; }
+  footer { color:var(--dim); font-size:12px; margin-top:40px; max-width:84ch; }
+  @media (max-width:880px) { .cols,.cols3 { grid-template-columns:1fr; } body { padding:20px 12px 48px; } }
+  .pane { background:var(--raised); border:1px solid var(--edge); border-radius:6px; font:12.5px/1.5 system-ui,sans-serif; }
+  .pane .hd { align-items:center; border-bottom:1px solid var(--edge); display:flex; gap:6px; padding:6px 9px; }
+  .pane .hd .t { color:var(--brass); } .pane .hd .h { color:var(--dim); font-size:11.5px; } .pane .hd .sp { flex:1; } .pane .hd .w { color:var(--dim); }
+  .pos { background:rgba(217,164,65,.15); border-radius:3px; color:var(--brass); font:11px "SF Mono",Menlo,monospace; padding:0 4px; }
+  .pane .bd { padding:8px 9px; }
+  .ed2 { background:#0b0f14; border:1px solid var(--edge); border-radius:4px; color:#c7d2de; font:11.5px/1.75 "SF Mono",Menlo,Consolas,monospace; padding:7px 6px; }
+  .ed2 .bar { border-left:3px solid transparent; padding-left:4px; } .ed2 .bar.w { border-left-color:#f0c36a; }
+  .row { align-items:baseline; display:flex; gap:7px; font:11.9px/1.5 system-ui,sans-serif; padding:4px 0; }
+  .row + .row { border-top:1px solid #222b36; }
+  .m { color:#f0c36a; flex:none; width:1.2ch; } .ln { color:var(--dim); flex:none; font-variant-numeric:tabular-nums; }
+  .who { color:var(--brass); flex:none; } .who.hex { color:var(--dim); font-style:italic; }
+  .tx { color:var(--ink); } .tx.dimmer { color:var(--soft); }
+  .stat { border-top:1px solid var(--edge); color:var(--soft); display:flex; font-size:11.5px; gap:12px; margin-top:7px; padding-top:6px; }
+  .stat .k { color:#f0c36a; } .stat .o { color:var(--green); }
+  .sec { color:var(--brass); font:10.5px system-ui,sans-serif; letter-spacing:.14em; margin-bottom:5px; text-transform:uppercase; }
+  .sec b { color:var(--dim); font-weight:normal; margin-left:5px; }
+  .lbl { color:var(--dim); font:10px system-ui,sans-serif; letter-spacing:.1em; margin-bottom:4px; text-transform:uppercase; }
+  table.pop { border-collapse:collapse; font:11.9px/1.5 system-ui,sans-serif; width:100%; }
+  table.pop td { padding:3px 0; } table.pop td.k { color:var(--dim); padding-right:12px; white-space:nowrap; }
+  table.pop td.v { color:var(--ink); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+  table.pop td.v.down { color:var(--red); } table.pop td.v.up { color:var(--green); }
+  table.pop tr.hl td { border-top:1px solid #2b3643; border-bottom:1px solid #2b3643; background:rgba(217,164,65,.07); }
+  table.pop td.why { color:var(--dim); font-size:11px; padding-left:10px; }
+  .note2 { color:var(--soft); font-size:11.5px; margin-top:7px; }
+  .amber { color:#f0c36a; } .qmark { color:#f0c36a; font-weight:650; }
+  .cell { background:#0b0f14; border:1px solid var(--edge); border-radius:4px; display:inline-block; font:12px "SF Mono",Menlo,monospace; padding:4px 8px; }
+  .setting { align-items:flex-start; display:flex; gap:10px; font:13px system-ui,sans-serif; }
+  .toggle { background:#b38b31; border-radius:20px; flex:none; height:20px; position:relative; width:36px; }
+  .toggle::after { background:#fff7e7; border-radius:50%; content:""; height:14px; position:absolute; right:3px; top:3px; width:14px; }
+  .title { font-weight:650; } .desc { color:var(--soft); font-size:12px; margin-top:2px; }
+  .grp { color:var(--brass); font:10.5px system-ui,sans-serif; letter-spacing:.14em; margin:0 0 8px; text-transform:uppercase; }
+  .settled { background:var(--raised); border-left:3px solid var(--green); border-radius:0 6px 6px 0; color:var(--soft); margin-top:16px; padding:11px 14px; font-size:13.5px; }
+</style></head><body>
+<header>
+  <h1>Shipping to a quartermaster on another level &mdash; <span>B &middot; treated as out of reach</span></h1>
+  <p>Unit 900 stands on the surface. Unit 901, the quartermaster it ships to, stands in the underworld.
+  In this variant the application assumes the game will not carry goods between levels, and reports it
+  exactly like a shipment that is too far away: <b>an ordinary problem</b>, the goods stay with the
+  sender, nothing is charged. <span class="amber">Chosen knowing</span> the game&rsquo;s rules do not say this either
+  way &mdash; this variant is a bet that they refuse it.</p>
+  <p class="muted" style="font:12.5px/1.6 'SF Mono',Menlo,monospace;margin-top:14px;color:var(--brass)">unit 900 &nbsp;<span style="color:var(--dim)">; surface (12,34), owns a Caravanserai, Quartermaster 5</span><br>&nbsp;&nbsp;TRANSPORT 901 9 FUR &nbsp;<span style="color:var(--dim)">; unit 901 is in the underworld (12,34)</span></p>
+</header>
+<main>
+<h2>1 &middot; The orders editor and the hex</h2>
+<div class="cols">
+  <section class="card"><div class="label">Orders editor &mdash; counted, amber bar, F8 stops here</div>
+    <div class="pane"><div class="hd"><span class="t">Orders</span><span class="h">&mdash; unit 900</span></div><div class="bd">
+      <div class="ed2"><div class="bar"><span class="unit">unit 900</span></div><div class="bar w">&nbsp;&nbsp;TRANSPORT 901 9 FUR</div></div>
+      <div class="stat"><span class="o">0 errors</span><span class="k">1 warning</span></div>
+      <div class="row"><span class="m">&#9888;</span><span class="ln">2</span><span class="tx">Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit.</span></div>
+    </div></div>
+    <p class="quiet">Same shape as the agreed out-of-reach sentences: where the target is, then what stays.</p>
+  </section>
+  <section class="card"><div class="label">The hex's Problems section, and the goods</div>
+    <div class="pane"><div class="hd"><span class="t">surface (12,34)</span><span class="sp"></span><span class="pill">1 problem</span></div><div class="bd">
+      <div class="sec">Problems <b>1</b></div>
+      <div class="row"><span class="m">&#9888;</span><span class="who">unit 900</span><span class="tx">Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit.</span></div>
+      <div class="editor">Items&nbsp;&nbsp;<span class="cell">9 FUR</span>&nbsp;&nbsp;<span class="muted">; kept, no mark</span></div>
+      <table class="pop" style="margin-top:8px"><tr><td class="k">at month end</td><td class="v">1,240</td></tr></table>
+    </div></div>
+    <p class="quiet">Reported against the sender in its own hex, never against the quartermaster. The goods are kept with confidence and the silver is untouched.</p>
+  </section>
+</div>
+
+<h2>2 &middot; The states</h2>
+<div class="cols3">
+  <section class="card"><div class="label">Quartermaster at the far end</div><p class="quiet">Unit 901 gains nothing and says nothing.</p></section>
+  <section class="card"><div class="label">Same level, measurable</div><p class="quiet">Unchanged: in reach says nothing, out of reach is the agreed problem, a price is named.</p></section>
+  <section class="card"><div class="label">Nexus to anywhere</div><div class="editor">Unit 901 is on the surface and this unit is in the nexus, so 9 FUR stay with this unit.</div></section>
+</div>
+<div class="cols">
+  <section class="card"><div class="label">Settings &rsaquo; Warnings &rsaquo; Transport &mdash; turned off</div>
+    <div class="setting"><span class="toggle" style="background:#3a4452"></span><div><div class="title">Shipments the game will not carry</div><div class="desc">A TRANSPORT order whose target is too far away, on another level, or too far to measure.</div></div></div>
+    <p class="quiet">The check is not made: the shipment is forecast as delivered, with no count, no bar, no stop &mdash; like every other warning.</p></section>
+  <section class="card"><div class="label">A narrow window</div><div class="pane" style="max-width:260px"><div class="bd"><div class="row"><span class="m">&#9888;</span><span class="tx">Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit.</span></div></div></div></section>
+</div>
+<div class="notice" style="border-left-color:var(--red)"><b>The risk.</b> If the game does carry goods between levels, the player is told a working order is broken, and may rewrite it for nothing.</div>
+</main>
+<footer>A drawing, not a running screen. Sources: <code>rules/economy_transport</code> (New Origins, Trident) gives reaches in hexes and says nothing about levels; <code>rules/world</code> and <code>rules/world_nexus</code> say nothing about distance between levels. Level names are the ones the map's level control already shows: nexus, surface, underworld, underdeep, abyss.</footer>
+</body></html>
