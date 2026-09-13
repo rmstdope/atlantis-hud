@@ -10794,7 +10794,7 @@ fn check_build_help(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
 /// Letter-wise rather than clever: every kind the data page names is an ordinary English noun, and
 /// none of them is one of the exceptions (`a unicorn`, `an hour`) that a rule reading the sound
 /// would be needed for.
-fn article_for(kind: &str) -> &'static str {
+pub(super) fn article_for(kind: &str) -> &'static str {
     match kind.chars().next() {
         Some(first) if "aeiouAEIOU".contains(first) => "an",
         _ => "a",

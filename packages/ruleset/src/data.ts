@@ -1089,6 +1089,7 @@ export function parseBuildingReference(html: string): BuildingReference {
     // write, rather than initialised to `0` and `[]`: a lair claiming to cost nothing is exactly
     // the absence-turned-into-a-claim this bead exists to stop.
     buildings[opening[1].trim().toUpperCase()] = {
+      name: opening[1].trim(),
       description: paragraph.slice(opening[0].length - "This is a building.".length).trim(),
       ...(product === null ? {} : { produces: product }),
       ...(size === null ? {} : { size }),

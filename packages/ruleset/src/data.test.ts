@@ -1497,6 +1497,20 @@ describe("parseSkillReference", () => {
  */
 describe("parseBuildingReference", () => {
   /**
+   * The game's own spelling exists only on the data page (`data/Hermits hut`), and a BUILD message
+   * naming a structure uses it (ah-jyqk).
+   */
+  it("keeps each building's name in the page's own spelling", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    expect(buildings["HERMITS HUT"].name).toBe("Hermits hut");
+    expect(buildings["MAGICIAN'S TOWER"].name).toBe("Magician's Tower");
+    expect(buildings["WORLD-BREAKER MONOLITH"].name).toBe("World-breaker Monolith");
+    expect(buildings.RUIN.name).toBe("Ruin");
+    expect(parseBuildingReference(TRIDENT_DATA_HTML)["MYSTIC CANAL"].name).toBe("Mystic Canal");
+  });
+
+  /**
    * The two New Age worlds price a canal's through-pass in each grade's own entry -
    * `newage/trident data/Canal` "Passage through a stone canal costs 2 movement points",
    * `newage/trident data/Mystic Canal` "Passage through a mystic canal costs 1 movement point".
@@ -1711,6 +1725,7 @@ describe("parseBuildingReference", () => {
 
     expect(Object.keys(buildings)).toEqual(["TOWER"]);
     expect(buildings.TOWER).toEqual({
+      name: "Tower",
       description: "This is a building. This structure provides defense to the first 10 men inside it.",
       size: 10,
       cost: 10,

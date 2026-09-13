@@ -10,6 +10,8 @@
 //! `atlantis_hud_fixtures::G7_F95_T71` must validate with nothing to say.
 
 pub mod blocks;
+/// Core-internal: whether a BUILD names an object this world lets a player build.
+mod build_object;
 pub mod completion;
 pub mod effects;
 #[cfg(test)]
@@ -49,7 +51,7 @@ pub use completion::{
 pub use grammar::{order_commands, order_commands_with_ruleset};
 pub use vocabulary::order_vocabulary;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::movement::rules::Ruleset;
 use crate::report::model::UnitRead;
@@ -116,6 +118,10 @@ pub fn validate_turn(
         }
     }
 
+    if let Some(report) = report {
+        place_build_object_errors(&mut diagnostics, source, ruleset, report);
+    }
+
     // Line order across the whole document, as the panel has always shown them. What belongs to a
     // hex rather than to a line goes last, where it cannot push a line diagnostic out of place.
     diagnostics.sort_by_key(|diagnostic| (diagnostic.line_start.is_none(), diagnostic.line_start));
@@ -123,6 +129,64 @@ pub fn validate_turn(
     OrderValidationResult {
         diagnostics,
         silver,
+    }
+}
+
+/// Gives each `unknown-object` / `unbuildable-object` diagnostic the report unit whose block the
+/// line sits in, and that unit's hex, so the region panel lists it against the unit. Only a line
+/// directly in a `unit NNNN` block counts: inside a `FORM` block, before any unit line, or under a
+/// unit number the report does not show, the diagnostic stays unplaced, as every other syntax
+/// diagnostic is.
+///
+/// Runs after the unread-unit `retain`, so that cannot drop them: the fault is in the orders.
+fn place_build_object_errors(
+    diagnostics: &mut [OrderDiagnostic],
+    source: &str,
+    ruleset: Option<&Ruleset>,
+    report: &ParsedReport,
+) {
+    let is_build_object = |diagnostic: &OrderDiagnostic| {
+        diagnostic.unit_id.is_none()
+            && (diagnostic.code == build_object::UNKNOWN_OBJECT
+                || diagnostic.code == build_object::UNBUILDABLE_OBJECT)
+    };
+    // Almost every validation has nothing to place; skip the second walk then.
+    if !diagnostics.iter().any(is_build_object) {
+        return;
+    }
+    let mut owner_by_line: HashMap<usize, String> = HashMap::new();
+    let mut current: Option<String> = None;
+    walk::walk_with_ruleset(source, ruleset, |event| match event {
+        walk::Event::Unit(line) => {
+            current = line.arguments.first().map(|token| token.text.clone());
+        }
+        walk::Event::Order { line, depth } if depth.form == 0 => {
+            if let Some(unit) = &current {
+                owner_by_line.insert(line.number, unit.clone());
+            }
+        }
+        _ => {}
+    });
+
+    for diagnostic in diagnostics
+        .iter_mut()
+        .filter(|diagnostic| is_build_object(diagnostic))
+    {
+        let Some(unit_id) = diagnostic
+            .line_start
+            .and_then(|line| owner_by_line.get(&line))
+        else {
+            continue;
+        };
+        let Some(region) = report
+            .regions
+            .iter()
+            .find(|region| region.units.iter().any(|unit| &unit.unit_id == unit_id))
+        else {
+            continue;
+        };
+        diagnostic.region_id = Some(region.region_id.clone());
+        diagnostic.unit_id = Some(unit_id.clone());
     }
 }
 
@@ -230,5 +294,96 @@ mod tests {
             syntax_before,
             "the player's own typo is still theirs to fix, wherever it sits"
         );
+    }
+
+    // A BUILD naming an object no player can build is placed on its unit and hex, so the region
+    // panel lists it against the unit (ah-jyqk).
+
+    fn first_unit_and_hex(base: &ParsedReport) -> (String, String) {
+        let region = base
+            .regions
+            .iter()
+            .find(|region| !region.units.is_empty())
+            .expect("the fixture shows a unit");
+        (region.units[0].unit_id.clone(), region.region_id.clone())
+    }
+
+    fn build_object_fixture() -> (ParsedReport, Ruleset) {
+        (
+            crate::report::parse_report_full(atlantis_hud_fixtures::G7_F95_T71.text),
+            Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).expect("committed ruleset"),
+        )
+    }
+
+    fn only_code<'r>(result: &'r OrderValidationResult, code: &str) -> &'r OrderDiagnostic {
+        let found: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == code)
+            .collect();
+        assert_eq!(found.len(), 1, "{:?}", result.diagnostics);
+        found[0]
+    }
+
+    #[test]
+    fn a_build_object_error_is_placed_on_its_unit_and_hex() {
+        let (base, ruleset) = build_object_fixture();
+        let (id, region) = first_unit_and_hex(&base);
+        let result = validate_turn(
+            &format!("unit {id}\nBUILD CAxxxRAVANSERAI\n"),
+            Some(&ruleset),
+            Some(&base),
+            semantics::CheckOptions::default(),
+        );
+        let diagnostic = only_code(&result, "unknown-object");
+        assert_eq!(diagnostic.unit_id.as_deref(), Some(id.as_str()));
+        assert_eq!(diagnostic.region_id.as_deref(), Some(region.as_str()));
+        assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Error);
+    }
+
+    #[test]
+    fn a_build_object_error_inside_a_form_block_is_not_placed() {
+        let (base, ruleset) = build_object_fixture();
+        let (id, _) = first_unit_and_hex(&base);
+        let result = validate_turn(
+            &format!("unit {id}\nFORM 1\nBUILD Palace\nEND\n"),
+            Some(&ruleset),
+            Some(&base),
+            semantics::CheckOptions::default(),
+        );
+        let diagnostic = only_code(&result, "unknown-object");
+        assert_eq!(
+            (
+                diagnostic.unit_id.as_deref(),
+                diagnostic.region_id.as_deref()
+            ),
+            (None, None)
+        );
+    }
+
+    #[test]
+    fn an_unknown_order_word_is_still_not_placed() {
+        let (base, ruleset) = build_object_fixture();
+        let (id, _) = first_unit_and_hex(&base);
+        let result = validate_turn(
+            &format!("unit {id}\nWROK\n"),
+            Some(&ruleset),
+            Some(&base),
+            semantics::CheckOptions::default(),
+        );
+        assert_eq!(only_code(&result, "unknown-command").region_id, None);
+    }
+
+    #[test]
+    fn without_a_report_a_build_object_error_is_not_placed() {
+        let (base, ruleset) = build_object_fixture();
+        let (id, _) = first_unit_and_hex(&base);
+        let result = validate_turn(
+            &format!("unit {id}\nBUILD CAxxxRAVANSERAI\n"),
+            Some(&ruleset),
+            None,
+            semantics::CheckOptions::default(),
+        );
+        assert_eq!(only_code(&result, "unknown-object").region_id, None);
     }
 }
