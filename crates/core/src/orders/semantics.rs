@@ -4545,13 +4545,13 @@ struct Ledger<'a> {
     /// Deliberately not debited from `balance`, for the reason `upkeep_relieved` gives:
     /// `check_sailing` and `check_movement` read this ledger and must go on seeing the silver the
     /// unit actually holds.
+    upkeep_lent: BTreeMap<String, i64>,
     /// The food that paid part of each unit's fee before silver did - steps 1 and 2 of the payment
     /// order (`rules/economy_maintenance`) - in silver. Present only for a unit `upkeep` also holds,
     /// i.e. one the food did not wholly feed. Read only to word `not-enough-silver`, which states the
     /// whole fee and counts this food toward what the unit can have (`ah-pyiy`). Kept apart from
     /// `upkeep` so `unpaid_upkeep`, `unpayable_upkeep` and the step-4 lending do not move.
     upkeep_food: BTreeMap<String, i64>,
-    upkeep_lent: BTreeMap<String, i64>,
     /// Whether this hex's maintenance sharing fell short, so its silver shortfall belongs to the
     /// hex rather than to any unit in it. Turns the per-unit `not-enough-silver` findings into the
     /// single hex-level one, exactly as a `SHARE` flag already does for every tag (`ah-e66j`).
