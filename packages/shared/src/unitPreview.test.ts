@@ -1866,6 +1866,19 @@ describe("a transport target the report cannot show receiving", () => {
     ).toBe("Unit 901 is 4 hexes away and this unit can ship 3 hexes, so 1 IRON stays with this unit.");
   });
 
+  it("a shipment across levels is refused and names the levels", () => {
+    expect(
+      transportTargetSentence({
+        to: "901",
+        amount: 9,
+        tag: "FUR",
+        reason: "tooFarToAccept",
+        orderIndex: 0,
+        reach: { fromLevel: 1, toLevel: 2 }
+      })
+    ).toBe("Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit.");
+  });
+
   it("a refused shipment of goods the game would not carry names no goods", () => {
     expect(
       transportTargetSentence({

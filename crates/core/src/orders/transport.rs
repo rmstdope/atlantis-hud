@@ -29,6 +29,52 @@ impl Reach {
     }
 }
 
+/// Which of `rules/sequenceofevents`' three TRANSPORT phases a shipment runs in: to quartermaster,
+/// between quartermasters, or from quartermaster. Declaration order is the turn's order, so `Ord`
+/// sorts a hex's shipments into it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ShipmentPhase {
+    ToQuartermaster,
+    BetweenQuartermasters,
+    FromQuartermaster,
+}
+
+/// Which phase this shipment runs in, from what the two ends are.
+pub(crate) fn shipment_phase(
+    sender_is_quartermaster: bool,
+    target_is_quartermaster: bool,
+) -> ShipmentPhase {
+    match (sender_is_quartermaster, target_is_quartermaster) {
+        (false, true) => ShipmentPhase::ToQuartermaster,
+        (true, true) => ShipmentPhase::BetweenQuartermasters,
+        (true, false) => ShipmentPhase::FromQuartermaster,
+        // A non-quartermaster sending to a non-quartermaster is not a valid shipment under the
+        // rules this function classifies; treat it as ToQuartermaster for stability.
+        (false, false) => ShipmentPhase::ToQuartermaster,
+    }
+}
+
+/// A shipment the sender's month could not pay for, so the goods stay where they are.
+/// Travels from the ledger to both other surfaces: `Ledger::refused_shipments` feeds the shortfall
+/// sentence's tail clause, and `UnitItemEffects::refused_shipments` feeds the item preview, which
+/// has no silver of its own to judge with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RefusedShipment {
+    pub unit_id: String,
+    /// The 1-based document line of the order — the key all three surfaces join on, the same key
+    /// `ShipmentPriced::line` and `SilverChange::line` already carry.
+    pub line: i64,
+    /// The unit number the order named.
+    pub to: String,
+    /// The catalogue tag of the goods, for the sentence's `counted_item`.
+    pub tag: String,
+    /// How many the order would have sent — what the tail clause counts. Never used as a partial
+    /// figure: a shipment is all or nothing, so the clause always says `none of the N …`.
+    pub ordered: i64,
+    /// What it would have cost, which is what the sender's month is short by on account of it.
+    pub cost: i64,
+}
+
 /// What shipping one weight unit costs in silver, or `None` when the shipment is free.
 ///
 /// `distance` is a distance the caller has settled: `shipping_rate` answers what the rules charge
@@ -356,12 +402,22 @@ pub(crate) fn reach_for(
 /// How far apart the two ends are and how far the shipment was allowed to travel, when the map
 /// settles that it is certainly too far.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OutOfReach {
-    pub away: i32,
-    pub limit: i32,
-    /// Which sentence this refusal takes: the sender's own skill-dependent reach, or the flat two
-    /// hexes a quartermaster accepts from anyone.
-    pub between_quartermasters: bool,
+pub(crate) enum OutOfReach {
+    /// A numeric refusal: the map settled an exact distance and it exceeds the limit.
+    Distance {
+        away: i32,
+        limit: i32,
+        /// Which sentence this refusal takes: the sender's own skill-dependent reach, or the flat two
+        /// hexes a quartermaster accepts from anyone.
+        between_quartermasters: bool,
+    },
+    /// The ends are on different levels of the map, which the old `hex_distance` API reported as
+    /// `None`. This is a definite refusal that names both levels rather than a numeric distance.
+    DifferentLevel {
+        from_level: u32,
+        to_level: u32,
+        between_quartermasters: bool,
+    },
 }
 
 /// Whether the game will refuse this shipment for distance alone, and the two numbers its sentence
@@ -369,11 +425,15 @@ pub(crate) struct OutOfReach {
 ///
 /// `None` - the shipment is not refused for distance - covers "near enough", a distance the map's
 /// shape leaves unsettled (`HexDistance::AtMost`, whose real distance may be anything down to
-/// zero, so refusing would state a guess as a fact), and two ends on different levels of the map
-/// (`hex_distance` answers `None`). `ah-7ale.5` is what marks the unsettled case as uncertain.
+/// zero, so refusing would state a guess as a fact). `ah-7ale.5` is what marks the unsettled case
+/// as uncertain.
 ///
 /// `AtMost(n)` with `n <= limit` is a shipment that is *certainly* in reach - an upper bound inside
 /// the limit settles the question - and is likewise no refusal.
+///
+/// When the ends lie on different z-levels the map cannot supply a numeric distance; previous code
+/// treated that as `None` and made the price unknown. The agreed UX, however, wants a definite
+/// refusal in that case: the sentence names the two levels instead of a distance number.
 pub(crate) fn out_of_reach(
     reach: Reach,
     from: crate::report::model::Coordinate,
@@ -383,19 +443,25 @@ pub(crate) fn out_of_reach(
     use crate::movement::graph::{hex_distance, HexDistance};
 
     let limit = reach.hexes();
-    let away = match hex_distance(from, to, geometry)? {
-        HexDistance::Exact(hexes) => hexes,
+    match hex_distance(from, to, geometry) {
+        Some(HexDistance::Exact(hexes)) => {
+            if hexes <= limit {
+                return None;
+            }
+            Some(OutOfReach::Distance {
+                away: hexes,
+                limit,
+                between_quartermasters: matches!(reach, Reach::BetweenQuartermasters { .. }),
+            })
+        }
         // An upper bound only refuses nothing: see this function's own note.
-        HexDistance::AtMost(_) => return None,
-    };
-    if away <= limit {
-        return None;
+        Some(HexDistance::AtMost(_)) => None,
+        None => Some(OutOfReach::DifferentLevel {
+            from_level: from.z,
+            to_level: to.z,
+            between_quartermasters: matches!(reach, Reach::BetweenQuartermasters { .. }),
+        }),
     }
-    Some(OutOfReach {
-        away,
-        limit,
-        between_quartermasters: matches!(reach, Reach::BetweenQuartermasters { .. }),
-    })
 }
 
 #[cfg(test)]
@@ -483,7 +549,7 @@ mod tests {
 
         assert_eq!(
             out_of_reach(Reach::Local, hex(0, 0), hex(0, 6), map),
-            Some(OutOfReach {
+            Some(OutOfReach::Distance {
                 away: 3,
                 limit: 2,
                 between_quartermasters: false,

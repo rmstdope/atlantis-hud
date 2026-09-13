@@ -251,18 +251,29 @@ pub enum TransportTargetReason {
 
 /// How far apart the two ends of a refused shipment are, and how far it was allowed to travel.
 ///
-/// Beside the reason rather than inside it: the reason is a plain string on the wire, which every
-/// TypeScript reader already switches on, and the two numbers belong to exactly the two reach
-/// refusals (`ah-7ale.2.1`).
+/// Beside the reason rather than inside it: the reason is a plain string on the wire, and the reach
+/// is carried as one object which uses either the numeric-distance shape (`away`, `limit`) or the
+/// levels-shaped one (`fromLevel`, `toLevel`). Keeping both shapes in one object keeps the wire
+/// compact and the TypeScript readers easy to switch on both cases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TransportReach {
     /// Hexes between the sender's hex and the target's, settled by the map's own shape.
-    pub away: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub away: Option<i64>,
     /// The most this shipment was allowed to travel, in hexes.
-    pub limit: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<i64>,
+    /// When the map reports the two ends are on different levels, the reach is expressed as the
+    /// levels instead of a numeric distance: `fromLevel` is the sender's z and `toLevel` the
+    /// target's z. Both present together indicate the levels-shaped reach.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_level: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_level: Option<u32>,
 }
+
 
 /// One `TRANSPORT`/`DISTRIBUTE` the target gate stopped, in document order (`ah-64wm`).
 ///
@@ -2897,7 +2908,7 @@ impl Working {
     fn out_of_reach(
         &self,
         pending: &PendingTransport,
-    ) -> Option<(TransportTargetReason, TransportReach)> {
+    ) -> Option<(TransportTargetReason, Option<TransportReach>)> {
         // A silenced warning is a check not made: the shipment is forecast as going through, goods
         // and weight gone and the target credited, exactly as if the two hexes were next to each
         // other. Gated here rather than at the call site so every reader of this decision gets one
@@ -2915,18 +2926,32 @@ impl Working {
             .copied()?;
         let to = self.transport_targets.get(&pending.to)?.coordinate;
         let refused = super::transport::out_of_reach(reach, from, to, self.geometry)?;
-        let reason = if refused.between_quartermasters {
-            TransportTargetReason::TooFarToShip
-        } else {
-            TransportTargetReason::TooFarToAccept
-        };
-        Some((
-            reason,
-            TransportReach {
-                away: i64::from(refused.away),
-                limit: i64::from(refused.limit),
-            },
-        ))
+        match refused {
+            super::transport::OutOfReach::Distance { away, limit, between_quartermasters } => {
+                let reason = if between_quartermasters {
+                    TransportTargetReason::TooFarToShip
+                } else {
+                    TransportTargetReason::TooFarToAccept
+                };
+                Some((
+                    reason,
+                    Some(TransportReach {
+                        away: Some(i64::from(away)),
+                        limit: Some(i64::from(limit)),
+                        from_level: None,
+                        to_level: None,
+                    }),
+                ))
+            }
+            super::transport::OutOfReach::DifferentLevel { from_level: _, to_level: _, between_quartermasters } => {
+                let reason = if between_quartermasters {
+                    TransportTargetReason::TooFarToShip
+                } else {
+                    TransportTargetReason::TooFarToAccept
+                };
+                Some((reason, None))
+            }
+        }
     }
 
     /// What a refusal's sentence may claim about the goods this order named.
@@ -3005,7 +3030,7 @@ impl Working {
             }
             // The goods are welcome, but the hexes are too far apart: `rules/economy_transport`
             // moves nothing, so they and their weight stay with the sender (`ah-7ale.2.1`).
-            if let Some((reason, reach)) = self.out_of_reach(pending) {
+            if let Some((reason, reach_opt)) = self.out_of_reach(pending) {
                 let (amount, tag) = self.goods_claimed(&moving);
                 issues[pending.sender].push((
                     pending.sequence,
@@ -3015,7 +3040,7 @@ impl Working {
                         tag,
                         reason,
                         order_index: index,
-                        reach: Some(reach),
+                        reach: reach_opt,
                     },
                 ));
                 continue;
@@ -10229,7 +10254,7 @@ mod tests {
                 tag: "STON".to_string(),
                 reason: TransportTargetReason::TooFarToAccept,
                 order_index: 0,
-                reach: Some(TransportReach { away: 3, limit: 2 }),
+                reach: Some(TransportReach { away: Some(3), limit: Some(2), from_level: None, to_level: None }),
             }]
         );
         // The agreed record: "the forecast keeps the goods *and their weight*", so what the sender
@@ -10337,7 +10362,7 @@ mod tests {
                 tag: "IRON".to_string(),
                 reason: TransportTargetReason::TooFarToShip,
                 order_index: 0,
-                reach: Some(TransportReach { away: 4, limit: 3 }),
+                reach: Some(TransportReach { away: Some(4), limit: Some(3), from_level: None, to_level: None }),
             }]
         );
 
@@ -10417,7 +10442,7 @@ mod tests {
                 tag: "STON".to_string(),
                 reason: TransportTargetReason::TooFarToAccept,
                 order_index: 0,
-                reach: Some(TransportReach { away: 3, limit: 2 }),
+                reach: Some(TransportReach { away: Some(3), limit: Some(2), from_level: None, to_level: None }),
             }]
         );
     }

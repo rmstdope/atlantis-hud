@@ -4567,6 +4567,11 @@ struct Ledger<'a> {
     /// keeps it exhaustive meanwhile is the `debug_assert` in `charge` and `credit`, not a reader.
     /// Nothing a player's figures pass through reads it (`ah-6m7b.5.2`).
     pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
+    /// What each unit this hex pays for shipments, keyed by unit id. Written by `settle_shipping`.
+    pub(crate) shipping_paid: BTreeMap<String, Vec<ShipmentPriced>>,
+    /// Every shipment a sender's month could not pay for, in settlement order. Always accompanied
+    /// by a `not-enough-silver` finding on the same unit: the charge is the whole ask.
+    pub(crate) refused_shipments: Vec<super::transport::RefusedShipment>,
     /// How many of one tag a unit's own `SELL` lines have already moved this month, and how many of
     /// those lines moved any. A block may name the same goods twice, and the second line can only
     /// draw on what the first left of the unit's settled share of the market line (`ah-vw8e`). Keyed
@@ -4850,6 +4855,8 @@ fn ledger_for_with_production<'a>(
         settled_buy_all: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
         silver_moves: BTreeMap::new(),
+        shipping_paid: BTreeMap::new(),
+        refused_shipments: Vec::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
         build_material_refusals: Vec::new(),
@@ -13055,11 +13062,6 @@ fn transport_reach_sentence(
     refusal: super::transport::OutOfReach,
     goods: Option<&(i64, String)>,
 ) -> String {
-    let super::transport::OutOfReach {
-        away,
-        limit,
-        between_quartermasters,
-    } = refusal;
     // `ALL`, a whole class, or an item transport refuses anyway: the sentence speaks of the order
     // alone, in the words the unit preview already uses for the same case.
     let tail = match goods {
@@ -13069,10 +13071,34 @@ fn transport_reach_sentence(
         }
         None => "this TRANSPORT moves nothing".to_string(),
     };
-    if between_quartermasters {
-        format!("Unit {to} is {away} hexes away and this unit can ship {limit} hexes, so {tail}.")
-    } else {
-        format!("Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}.")
+
+    match refusal {
+        super::transport::OutOfReach::Distance { away, limit, between_quartermasters } => {
+            if between_quartermasters {
+                format!("Unit {to} is {away} hexes away and this unit can ship {limit} hexes, so {tail}.")
+            } else {
+                format!("Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}.")
+            }
+        }
+        super::transport::OutOfReach::DifferentLevel { from_level, to_level, .. } => {
+            let to_name = crate::report::level::level_name(to_level);
+            let from_name = crate::report::level::level_name(from_level);
+            let to_phrase = if to_level == crate::report::level::SURFACE {
+                format!("on the {to_name}")
+            } else if to_name.starts_with("level ") {
+                format!("on {to_name}")
+            } else {
+                format!("in the {to_name}")
+            };
+            let from_phrase = if from_level == crate::report::level::SURFACE {
+                format!("on the {from_name}")
+            } else if from_name.starts_with("level ") {
+                format!("on {from_name}")
+            } else {
+                format!("in the {from_name}")
+            };
+            format!("Unit {to} is {to_phrase} and this unit is {from_phrase}, so {tail}.")
+        }
     }
 }
 
