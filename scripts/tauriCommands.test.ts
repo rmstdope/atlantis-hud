@@ -412,7 +412,8 @@ describe("the live Tauri command lockstep", () => {
       { name: "raw_report", required: false },
       { name: "disabled_codes", required: false },
       { name: "map_json", required: false },
-      { name: "known_passages_json", required: false }
+      { name: "known_passages_json", required: false },
+      { name: "remembered_json", required: false }
     ]);
 
     // The wasm boundary: same exports, same arity, both ways.
