@@ -1342,7 +1342,8 @@ describe("the column popups", () => {
       sent,
       weight,
       rate,
-      cost: weight * rate
+      cost: weight * rate,
+      conditional: false
     });
     const shippedLine = (shipping: ReturnType<typeof shipment>[]) =>
       columnPopup(
@@ -1371,6 +1372,45 @@ describe("the column popups", () => {
     expect(
       shippedLine([shipment(2, "901", "9 FUR", 9, 15), shipment(3, "902", "9 FUR", 9, 5)])?.why
     ).toBe("9 weight at 5 silver and 9 weight at 15 silver");
+  });
+
+  it("shows an acceptance-unknown shipment as conditional and keeps the headline as a pair", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 1000,
+            atMonthEnd: 1000,
+            // acceptance is unknown: priced but not charged
+            shipping: [
+              {
+                line: 2,
+                to: "7003",
+                sent: "9 FUR",
+                weight: 9,
+                rate: 5,
+                cost: 45,
+                conditional: true
+              }
+            ],
+            changes: []
+          })
+        })
+      )
+    );
+    expect(popup.lines[0]).toEqual({
+      label: "silver",
+      value: "1000 or 955",
+      change: { direction: "down", from: "1000" }
+    });
+    expect(popup.lines.find((line) => line.label === "shipped")).toEqual({
+      label: "shipped",
+      value: "-45",
+      tone: "down",
+      why: "9 weight at 5 silver, if unit 7003 accepts"
+    });
   });
 
   it("bounds the headline when a hex-mate's line could not be read (ah-0n2k.1)", () => {

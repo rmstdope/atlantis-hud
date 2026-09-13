@@ -76,7 +76,8 @@ import {
   unitRowKey,
   unitRowSelector,
   silverIsRed,
-  silverShown,
+  silverShownUI,
+  type ShownSilver,
   type ColumnShares,
   type ExtraColumn,
   type SortColumn,
@@ -531,10 +532,18 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         // A dissolving row prints no month end, so it sorts as having none: a column that
         // printed a dash and sorted on a figure is the defect the dash exists to avoid
         // (`ah-ty3s.3`, decision **S1**).
-        .map((entry) => [
-          unitRowKey(entry.regionId, entry.unitId),
-          dissolves(entry) ? null : silverShown(getSilver(entry.unitId, entry.regionId), countUpkeep)
-        ])
+        .map((entry) => {
+          const shown = dissolves(entry)
+            ? null
+            : silverShownUI(getSilver(entry.unitId, entry.regionId), countUpkeep);
+          const numeric =
+            shown === null || shown.kind === "unknown"
+              ? null
+              : shown.kind === "single"
+                ? shown.value
+                : shown.low;
+          return [unitRowKey(entry.regionId, entry.unitId), numeric];
+        })
     );
   }, [units, effectiveSort.column, getSilver, countUpkeep]);
   const visible = useMemo(
@@ -2264,7 +2273,13 @@ function UnitRow({
   const warned = silver !== null && (silverWarnings?.has(unitRowKey(regionId, unit.unitId)) ?? false);
   // The setting decides whether maintenance comes off the figure (`ah-1wcw.4`); the core computes
   // both answers, so switching it costs no round trip through the checks.
-  const shownSilver = silverShown(silver, countUpkeep);
+  const shownSilver = silverShownUI(silver, countUpkeep);
+  const shownNumeric =
+    shownSilver === null || shownSilver.kind === "unknown"
+      ? null
+      : shownSilver.kind === "single"
+        ? shownSilver.value
+        : shownSilver.low;
   // A dissolving unit will not exist at month end, so the column shows no figure for it - the dash
   // is written explicitly rather than taken from `silverFigure(null)`, whose `?` means "could not
   // be priced", a different sentence (`ah-ty3s.3`, decision **S1**).
@@ -2611,7 +2626,7 @@ function UnitRow({
     silver: (
       <Td
         className={`text-right tabular-nums${
-          !dissolving && silverIsRed(shownSilver, silver) ? " text-danger" : ""
+          !dissolving && silverIsRed(shownNumeric, silver) ? " text-danger" : ""
         }`}
       >
         {silver === null ? (
@@ -2633,7 +2648,7 @@ function UnitRow({
             className={
               // `silverIsDim(null)` is true, so without the first term the amber words would sit
               // inside a dim wrapper.
-              !moneyNotKnown && !silverIsRed(shownSilver, silver) && silverIsDim(shownSilver)
+              !moneyNotKnown && !silverIsRed(shownNumeric, silver) && silverIsDim(shownSilver)
                 ? "text-ink-dim"
                 : undefined
             }
@@ -2813,8 +2828,17 @@ function Td({ children, className = "", column, predicted }: TdProps) {
  * Never a number that might be wrong - see `orders::silver` in the core, which is where the
  * decision that a doubted term poisons the whole side is made.
  */
-function silverFigure(shown: number | null, bounded: boolean): string {
-  return shown === null ? "?" : bounded ? atMost(String(shown)) : String(shown);
+function silverFigure(shown: ShownSilver | null, bounded: boolean): string {
+  if (shown === null || shown.kind === "unknown") {
+    return "?";
+  }
+  if (shown.kind === "single") {
+    return bounded ? atMost(String(shown.value)) : String(shown.value);
+  }
+  if (shown.kind === "pair") {
+    return `${shown.high} or ${shown.low}`;
+  }
+  return `${shown.low}-${shown.high}`;
 }
 
 /**
@@ -2823,6 +2847,11 @@ function silverFigure(shown: number | null, bounded: boolean): string {
  * Only reached for a figure that is not red - a `0` whose orders cannot be paid is a number to act
  * on, so red wins over dim at the one call site (`ah-uwa3`).
  */
-function silverIsDim(shown: number | null): boolean {
-  return shown === null || shown === 0;
+function silverIsDim(shown: ShownSilver | null): boolean {
+  return (
+    shown === null ||
+    shown.kind === "unknown" ||
+    (shown.kind === "single" && shown.value === 0) ||
+    ((shown.kind === "pair" || shown.kind === "range") && shown.high === 0 && shown.low === 0)
+  );
 }
