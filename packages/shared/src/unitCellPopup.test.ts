@@ -3137,3 +3137,39 @@ describe("the items popup's cause sentences", () => {
     expect(notes.filter((note) => note.startsWith("grain:"))).toEqual([]);
   });
 });
+
+describe('unitCellPopup shipped conditional (new)', () => {
+  it('shipped line appends conditional clause when target acceptance is unknown', () => {
+    // Minimal smoke test for the new conditional clause formatting
+    const shown = { kind: 'single' as const, value: 45 }
+    // Call the internal helper directly; it may not exist yet and will throw, which is OK for TDD
+    try {
+      // @ts-ignore
+      const line = (require('./unitCellPopup') as any).silverTotalLine(null, shown)
+      expect(line.text).toMatch(/7003/)
+      expect(line.text).toMatch(/if unit 7003 accepts/)
+      expect(line.aside).toMatch(/9 weight at 5 silver/)
+    } catch (e) {
+      // If helper missing, consider the test as pending failure to be implemented
+      throw e
+    }
+  })
+})
+
+describe('unitCellPopup shipped conditional (new)', () => {
+  it('shipped line appends conditional clause when target acceptance is unknown', () => {
+    // Minimal smoke test for the new conditional clause formatting
+    const shown = { kind: 'single' as const, value: 45 }
+    // Call the internal helper directly; it may not exist yet and will throw, which is OK for TDD
+    try {
+      // @ts-ignore
+      const line = (require('./unitCellPopup') as any).silverTotalLine(null, shown)
+      expect(line.text).toMatch(/7003/)
+      expect(line.text).toMatch(/if unit 7003 accepts/)
+      expect(line.aside).toMatch(/9 weight at 5 silver/)
+    } catch (e) {
+      // If helper missing, consider the test as pending failure to be implemented
+      throw e
+    }
+  })
+})
