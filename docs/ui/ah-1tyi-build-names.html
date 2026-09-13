@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-1tyi — completing what BUILD can name</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --select:#4a9fd8; --ground:#10151c; --good:#7fb069; --danger:#d97070; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif; margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 34px 0 6px; border-top: 1px solid var(--edge); padding-top: 18px; }
+  p.note { color: var(--dim); max-width: 88ch; }
+  p.lead { color: var(--soft); max-width: 88ch; }
+  .row { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; margin: 10px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 4px; }
+  .cap b { color: var(--ink); font-weight: 600; }
+  .ed { width: 290px; background: var(--panel); border: 1px solid var(--edge); border-radius: 4px;
+        font: 11.5px/1.5 ui-monospace, Menlo, monospace; padding: 4px 0; position: relative; }
+  .ed.narrow { width: 160px; }
+  .ln { display: flex; height: 17px; align-items: center; white-space: pre; }
+  .gut { flex: none; width: 3px; } .txt { padding-left: 2px; }
+  .caret { display: inline-block; width: 0; border-left: 1px solid var(--ink); height: 12px; vertical-align: -2px; }
+  .sp { background: #4a9fd833; border-bottom: 1px solid var(--select); }
+  .pop { position: absolute; background: var(--raised); border: 1px solid var(--edge);
+         font: 11.5px/1.5 ui-monospace, Menlo, monospace; color: var(--ink); z-index: 3; min-width: 180px; box-shadow: 0 4px 14px #0009; }
+  .pop ul { list-style: none; margin: 0; padding: 0; }
+  .pop li { display: flex; align-items: baseline; gap: 6px; padding: 1px 6px 1px 4px; white-space: pre; }
+  .pop li.on { background: var(--select); color: var(--ground); }
+  .pop li .ic { color: var(--dim); width: 9px; flex: none; text-align: center; font-size: 10px; }
+  .pop li.on .ic, .pop li.on .det { color: var(--ground); }
+  .pop li b { font-weight: 700; }
+  .pop li .det { margin-left: auto; padding-left: 14px; color: var(--dim); font-style: italic; }
+  .pop .more { color: var(--dim); padding: 1px 6px; border-top: 1px solid var(--edge); font-size: 10.5px; }
+  kbd { font: 11px ui-monospace, Menlo, monospace; border: 1px solid var(--edge); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--raised); color: var(--ink); }
+  code { font-family: ui-monospace, Menlo, monospace; color: var(--ink); background: var(--raised); padding: 0 4px; border-radius: 3px; }
+  table.m { border-collapse: collapse; font-size: 12.5px; color: var(--soft); margin: 10px 0 4px; }
+  table.m td, table.m th { border: 1px solid var(--edge); padding: 4px 10px; text-align: left; vertical-align: top; }
+  table.m th { color: var(--ink); font-weight: 600; }
+  .chosen { background: var(--raised); border: 1px solid var(--edge); border-left: 3px solid var(--good);
+            padding: 10px 14px; border-radius: 4px; max-width: 94ch; margin: 14px 0; color: var(--soft); }
+</style>
+</head>
+<body>
+
+<h1>ah-1tyi — completing what BUILD can name</h1>
+<p class="lead">Until now, after <code>BUILD </code> the popup offered only <code>HELP</code> and
+<code>COMPLETE</code>; the building or ship name was the player's to remember and spell, which is how
+<code>CAxxxRAVANSERAI</code> reaches an orders file. Agreed with the navigator on 2026-09-13 over two
+rounds of drawings.</p>
+
+<div class="chosen"><strong>Chosen.</strong> After <code>BUILD</code> the popup offers every building
+and ship a player can build in the game world being played (structures the game data marks "cannot be
+built by players" are left out). One list: <code>HELP</code> and <code>COMPLETE</code> first, then the
+names alphabetically, each with a quiet <em>building</em> or <em>ship</em> on its right. Names read in
+the list as the game data spells them, without quotes. Picking one writes it in the game data's
+spelling — in double quotes if it contains a space (<code>BUILD "Timber Yard"</code>), bare otherwise
+(<code>BUILD Caravanserai</code>) — followed by a space. Typed letters match the start of the name
+only, in any capitals.</div>
+
+<h2 class="sec">The reported case</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>typing</b> — <code>BUILD Ca</code></p>
+    <div class="ed" style="height:80px">
+      <div class="ln"><span class="gut"></span><span class="txt">BUILD Ca<span class="caret"></span></span></div>
+      <div class="pop" style="left:48px; top:21px;"><ul>
+        <li class="on"><span class="ic">k</span><span><b>Ca</b>ravanserai</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span><b>Ca</b>stle</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span><b>Ca</b>ve</span><span class="det">building</span></li>
+      </ul></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>accepted</b> — the game's spelling and a space</p>
+    <div class="ed" style="height:80px">
+      <div class="ln"><span class="gut"></span><span class="txt">BUILD Caravanserai<span class="sp"> </span><span class="caret"></span></span></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>a name with a space</b> — plain in the list, quoted once picked</p>
+    <div class="ed" style="height:80px">
+      <div class="ln"><span class="gut"></span><span class="txt">BUILD "Timber Yard"<span class="sp"> </span><span class="caret"></span></span></div>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">The whole list, and ships</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b><kbd>Ctrl</kbd>+<kbd>Space</kbd> after <code>BUILD </code></b> — HELP and COMPLETE first</p>
+    <div class="ed" style="height:170px">
+      <div class="ln"><span class="gut"></span><span class="txt">BUILD <span class="caret"></span></span></div>
+      <div class="pop" style="left:48px; top:21px;"><ul>
+        <li class="on"><span class="ic">k</span><span>HELP</span></li>
+        <li><span class="ic">k</span><span>COMPLETE</span></li>
+        <li><span class="ic">k</span><span>Alchemist Lab</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span>Arcane Mine</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span>Black Keep</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span>Bog</span><span class="det">building</span></li>
+      </ul><div class="more">…and the rest, alphabetically</div></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>COMPLETE still first</b> — <code>BUILD C</code></p>
+    <div class="ed" style="height:170px">
+      <div class="ln"><span class="gut"></span><span class="txt">BUILD C<span class="caret"></span></span></div>
+      <div class="pop" style="left:48px; top:21px;"><ul>
+        <li class="on"><span class="ic">k</span><span><b>C</b>OMPLETE</span></li>
+        <li><span class="ic">k</span><span><b>C</b>aravanserai</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span><b>C</b>astle</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span><b>C</b>ave</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span><b>C</b>itadel</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span><b>C</b>og</span><span class="det">ship</span></li>
+      </ul><div class="more">…1 more</div></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>ships</b> — <code>BUILD G</code></p>
+    <div class="ed" style="height:170px">
+      <div class="ln"><span class="gut"></span><span class="txt">BUILD G<span class="caret"></span></span></div>
+      <div class="pop" style="left:48px; top:21px;"><ul>
+        <li class="on"><span class="ic">k</span><span><b>G</b>alleon</span><span class="det">ship</span></li>
+        <li><span class="ic">k</span><span><b>G</b>alley</span><span class="det">ship</span></li>
+      </ul></div>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">The quiet states</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>nothing matches</b> — silence; the line is left as typed</p>
+    <div class="ed"><div class="ln"><span class="gut"></span><span class="txt">BUILD CAxxx<span class="caret"></span></span></div></div>
+  </div>
+  <div>
+    <p class="cap"><b>start of the name only</b> — <code>yard</code> finds nothing</p>
+    <div class="ed"><div class="ln"><span class="gut"></span><span class="txt">BUILD yard<span class="caret"></span></span></div></div>
+  </div>
+  <div>
+    <p class="cap"><b>after <code>BUILD HELP</code></b> — a unit number, so no names</p>
+    <div class="ed"><div class="ln"><span class="gut"></span><span class="txt">BUILD HELP <span class="caret"></span></span></div></div>
+  </div>
+  <div>
+    <p class="cap"><b>after a name</b> — <code>COMPLETE</code> next, as before</p>
+    <div class="ed" style="height:48px">
+      <div class="ln"><span class="gut"></span><span class="txt">BUILD Caravanserai C<span class="caret"></span></span></div>
+      <div class="pop" style="left:153px; top:21px; min-width:90px"><ul><li class="on"><span class="ic">k</span><span><b>C</b>OMPLETE</span></li></ul></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>narrow editor</b> — the popup may overhang the editor's edge</p>
+    <div class="ed narrow" style="height:70px">
+      <div class="ln"><span class="gut"></span><span class="txt">BUILD Ma<span class="caret"></span></span></div>
+      <div class="pop" style="left:48px; top:21px;"><ul>
+        <li class="on"><span class="ic">k</span><span><b>Ma</b>gical Castle</span><span class="det">building</span></li>
+        <li><span class="ic">k</span><span><b>Ma</b>gical Citadel</span><span class="det">building</span></li>
+      </ul></div>
+    </div>
+  </div>
+</div>
+<table class="m">
+<tr><th>Behaviour</th><th>Agreed — the same as every other suggestion</th></tr>
+<tr><td>When it opens</td><td>once a letter is typed; <kbd>Ctrl</kbd>+<kbd>Space</kbd> on an empty position</td></tr>
+<tr><td>Accept / dismiss</td><td><kbd>Enter</kbd> or <kbd>Tab</kbd> accepts and leaves a space; <kbd>Esc</kbd> closes, nothing written</td></tr>
+<tr><td>A name begun with a quote</td><td><code>BUILD "Tim</code> finds Timber Yard; picking it closes the quote rather than adding a second</td></tr>
+<tr><td>A different game world</td><td>that world's own buildable structures and ships</td></tr>
+</table>
+
+<h2 class="sec">The decisions, and what was rejected</h2>
+<table class="m">
+<tr><th>Question</th><th>Chosen</th><th>Rejected</th></tr>
+<tr><td>Which names</td><td>only what a player can build</td><td>everything the game data knows, including Lair, Cavern and Gateway, which the game refuses</td></tr>
+<tr><td>A name with a space, once written</td><td><code>"Timber Yard"</code> in quotes, the game's spelling</td><td><code>TIMBER_YARD</code> in capitals with underscores</td></tr>
+<tr><td>Buildings and ships together</td><td>one list, <em>building</em> / <em>ship</em> on the right</td><td>ships first, then buildings, unlabelled</td></tr>
+<tr><td>Order</td><td>alphabetical</td><td>the game data's own order (families together)</td></tr>
+<tr><td>Names in the list</td><td>no quotes</td><td>shown exactly as written, quotes included</td></tr>
+<tr><td>HELP and COMPLETE</td><td>above the names</td><td>below them</td></tr>
+<tr><td>What typing finds</td><td>the start of the name only</td><td>the start of any word in the name</td></tr>
+<tr><td>Words on the right</td><td><em>building</em> / <em>ship</em></td><td>ships also showing capacity and speed</td></tr>
+</table>
+</body>
+</html>
