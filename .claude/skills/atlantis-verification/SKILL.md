@@ -52,15 +52,30 @@ Three steps, in order.
 2. **Prove it, before the navigator is asked for anything.** Write a throwaway Rust integration
    test into your own verification worktree and run it — never commit it:
 
+   **Classify, do not merely parse.** A report that parses cleanly can still have lost every one of
+   a unit's items, and `parse_report_full` alone will not tell you: `men` is only an estimate until
+   `classify_units` has run against a ruleset, so a probe that stops at parsing reports healthy
+   numbers for a corrupt fixture. Assert on **men and items after classification**, and compare them
+   against the committed report the fixture came from.
+
    ```rust
    // <verification worktree>/crates/core/tests/verify_fixture.rs — throwaway, never committed
-   use atlantis_hud_core::report::parse_report_full;
+   use atlantis_hud_core::report::{classify_units, parse_report_full};
+   use atlantis_hud_core::movement::rules::Ruleset;
 
    #[test]
    fn the_fixture_reaches_the_case() {
+       let ruleset: Ruleset =
+           serde_json::from_str(&std::fs::read_to_string("/abs/path/config/public/ruleset.json").unwrap())
+               .unwrap();
        let text = std::fs::read_to_string("/absolute/path/to/the.rep").unwrap();
-       let parsed = parse_report_full(&text);
-       // assert the precondition the first decisive script step depends on
+       let mut parsed = parse_report_full(&text);
+       let classification = classify_units(&mut parsed, &ruleset);
+       // Assert the precondition the first decisive script step depends on — and, for a made
+       // fixture, that every unit the script names still has the men and items the committed
+       // report gives it. `unreadable_lines` being empty is not enough on its own.
+       assert!(parsed.unreadable_lines.is_empty());
+       assert!(classification.unknown_tags.is_empty());
    }
    ```
 
@@ -91,7 +106,36 @@ Three steps, in order.
    committed report down to the smallest thing that reaches it, write it to
    `.cerebro/scratch/<bead>-<slug>.rep`, and prove it with the same probe above. Trim rather than
    write from the grammar: a trimmed report is real syntax throughout, so whole classes of
-   hand-written syntax error simply cannot occur. **Never commit it** — no `crates/fixtures` entry,
+   hand-written syntax error simply cannot occur.
+
+   **Edit by whole lines and whole blocks. Never delete text from inside a unit line.** The parser
+   reads a report's wrapping, so shortening a line silently destroys the unit — measured on
+   `g5-f21-t39.rep` unit 9498 at c2a8855e (`ah-l09a`):
+
+   | what was done to the line | items the parser found |
+   |---|---|
+   | nothing — committed report | `GNOL 100, SWOR 170` |
+   | `sharing, ` → nine spaces, width kept | `GNOL 100, SWOR 170` |
+   | `sharing` → `holding`, same length | `GNOL 100, SWOR 170` |
+   | `sharing, ` deleted, then hand-rewrapped | `GNOL 100` — one item lost |
+   | `sharing, ` deleted, wrapping untouched | `[]` — **every item lost** |
+
+   An emptied item list means `men == 0`, and nothing complains: no unreadable line, no unknown tag.
+   The navigator opens a shell in which every unit has no people, and the sitting is wasted. This
+   happened on 2026-09-09, and the session's first diagnosis — a ruleset that had failed to load —
+   was wrong.
+
+   **So: to neutralise something inside a line, overwrite it with spaces of exactly the same
+   length rather than removing it**, and check afterwards that every line still has its original
+   width:
+
+   ```bash
+   awk 'NR==FNR{a[FNR]=$0;next}{ if (length(a[FNR])!=length($0)) print "WIDTH DIFF line " FNR }' \
+     "$SRC" "$OUT"   # silence means every line kept its width
+   ```
+
+   Removing whole units, whole structures or whole region blocks is safe; it is editing *within* a
+   line that is not. **Never commit it** — no `crates/fixtures` entry,
    no `packages/fixtures` entry, no README row, no PR. The navigator decided this: it is what keeps
    the verifying role a role that commits no code, and a made fixture lives only in
    `.cerebro/scratch/`, which `.gitignore` already ignores and which `prepare-worktree` resets away
