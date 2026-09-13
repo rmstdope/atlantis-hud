@@ -4,6 +4,10 @@ Real NewOrigins 3.0.0 turn reports, used by `crates/core/tests/*.rs`,
 `packages/browser-core/src/parseReportFull.test.ts`, `packages/ruleset/src/capacity.test.ts` and the
 Playwright suites under `tests/smoke/` and `tests/native/`.
 
+The separate [New Age Arcanum corpus](newage-arcanum/README.md) lives in a subdirectory and has
+opt-in Rust/TypeScript registries. The root `ALL`/`REPORTS` groups remain New Origins-only; do not
+run Arcanum reports through a corpus test that assumes the default Origins ruleset.
+
 Every fixture here is named once per language rather than by string literal at each use site:
 `crates/fixtures/src/lib.rs` for Rust, `packages/fixtures/src/index.ts` for TypeScript. Both carry a
 test that fails when this directory and the names in that module disagree, so adding or renaming a
