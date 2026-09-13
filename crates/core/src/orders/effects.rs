@@ -764,8 +764,9 @@ pub fn preview_orders_on_map(
         decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
     // `rules/sequenceofevents` moves every unit before any TRANSPORT, so a shipment one of whose
     // ends moves is settled again from where the units end the month. The map, statuses and
-    // arrivals stay the first settle's: moving transports ahead of the trace would change which
-    // units are overloaded, and this work changes nothing drawn (`ah-b6fz`).
+    // arrivals stay the first settle's, because both settles weigh a moving unit before its
+    // shipments and the trace reads the report's printed weight where it has one, so the second
+    // settle can change only what the shipments deliver (`ah-b6fz`, `ah-ol1d`).
     let month_end = month_end_of(&decided);
     if measured.iter().any(|id| month_end.contains_key(id)) {
         let again = super::semantics::CheckOptions {
@@ -1091,11 +1092,23 @@ fn settle(
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
+    // `rules/sequenceofevents` processes ADVANCE, MOVE and SAIL before any TRANSPORT, so a unit that
+    // moves steps off with what it holds now; goods shipped to it arrive after it has gone, and goods
+    // it ships out are still on its back (`ah-ol1d`).
+    let stepping_off: Vec<_> = working
+        .units
+        .iter()
+        .map(|working_unit| working_unit.movement_now(ruleset))
+        .collect();
     working.apply_transports(&dissolved);
     // A dissolving row is drawn now (`ah-ty3s.3`), so its weight, capacity and movement are
     // settled exactly like any other formed row's rather than left at `formed_unit`'s defaults.
-    for working_unit in working.units.iter_mut() {
-        working_unit.refresh_movement(ruleset);
+    for (working_unit, stepping_off) in working.units.iter_mut().zip(stepping_off) {
+        if working_unit.move_steps.is_some() {
+            working_unit.unit.movement = stepping_off;
+        } else {
+            working_unit.refresh_movement(ruleset);
+        }
     }
 
     let measured = working.measured_ends.take();
@@ -1788,14 +1801,17 @@ impl WorkingUnit {
         super::magic::is_mage(ruleset, skills)
     }
 
-    fn refresh_movement(&mut self, ruleset: &Ruleset) {
+    /// This unit's movement as its items stand right now: the report's own answer while its items
+    /// are unchanged, the report's answer again when an order's effect could not be counted, and
+    /// otherwise rebuilt from the items (`rules/sequenceofevents` weighs a unit as it holds them).
+    fn movement_now(&self, ruleset: &Ruleset) -> Option<crate::report::model::UnitMovement> {
         if !self.formed
             && self
                 .original
                 .as_ref()
                 .is_some_and(|original| self.unit.items == original.items)
         {
-            return;
+            return self.unit.movement;
         }
         if !self.uncounted.is_empty()
             || self
@@ -1803,19 +1819,23 @@ impl WorkingUnit {
                 .iter()
                 .any(|created| created.fewest != created.most)
         {
-            self.unit.movement = self.original.as_ref().and_then(|unit| unit.movement);
-            return;
+            return self.original.as_ref().and_then(|unit| unit.movement);
         }
-        self.unit.movement = crate::movement::mode::unit_movement_from_items(&self.unit, ruleset)
+        let mut movement = crate::movement::mode::unit_movement_from_items(&self.unit, ruleset)
             .or_else(|| self.original.as_ref().and_then(|unit| unit.movement));
         // The other half of the clear in `report::composition::classify_units`: only the ruleset
         // can say whether a fourth capacity figure means anything, and this is the preview path's
         // own rebuild of it.
         if ruleset.swimming().is_none() {
-            if let Some(movement) = self.unit.movement.as_mut() {
+            if let Some(movement) = movement.as_mut() {
                 movement.swim = crate::report::model::SwimCapacity::Absent;
             }
         }
+        movement
+    }
+
+    fn refresh_movement(&mut self, ruleset: &Ruleset) {
+        self.unit.movement = self.movement_now(ruleset);
     }
 }
 
@@ -10620,6 +10640,74 @@ mod tests {
         assert!(reach_unit(&response, "900")
             .transport_target_issues
             .is_empty());
+    }
+
+    /// The report's own row for a unit, which a unit weighed as it steps off still matches.
+    fn reported_unit(report: &str, unit_id: &str) -> ReportUnit {
+        ReportCache::new()
+            .classified(report, RULESET)
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit_id == unit_id)
+            .expect("the report shows the unit")
+            .clone()
+    }
+
+    /// `rules/sequenceofevents` moves every unit before TRANSPORT, so a quartermaster that walks
+    /// and stays in reach is weighed without the goods that reach it after it has gone (`ah-ol1d`).
+    #[test]
+    fn a_quartermaster_in_reach_walks_off_before_the_goods_arrive() {
+        let report = moving_reach_report((0, 0), (0, 2), true);
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+        let z = reach_z(&report);
+
+        assert_eq!(departing_to(&response, "901"), Some(format!("{z}:0,4")));
+        assert_eq!(reach_held(&response, "901", "STON"), 5);
+        assert!(reach_unit(&response, "900")
+            .transport_target_issues
+            .is_empty());
+        let quartermaster = reach_unit(&response, "901");
+        assert_eq!(
+            quartermaster.unit.movement,
+            reported_unit(&report, "901").movement
+        );
+        assert!(!quartermaster
+            .changes
+            .iter()
+            .any(|change| change.field == "movement"));
+    }
+
+    /// The same rule the other way: a sender that walks carries the goods it ships on its walk.
+    #[test]
+    fn a_sender_walking_while_shipping_carries_the_goods_on_its_walk() {
+        let report = moving_reach_report((0, 0), (0, 6), true);
+        let orders = "unit 900\nMOVE S\nTRANSPORT 901 5 STON\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+
+        assert_eq!(reach_held(&response, "900", "STON"), 0);
+        assert_eq!(
+            reach_unit(&response, "900").unit.movement,
+            reported_unit(&report, "900").movement
+        );
+    }
+
+    /// Neither end moves: the receiver is weighed with its delivery, exactly as before.
+    #[test]
+    fn a_receiver_that_does_not_move_is_weighed_at_month_end() {
+        let report = moving_reach_report((0, 0), (0, 4), true);
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+
+        assert_eq!(reach_held(&response, "901", "STON"), 5);
+        assert_eq!(
+            reach_unit(&response, "901")
+                .unit
+                .movement
+                .map(|movement| movement.status),
+            Some(UnitMovementStatus::Overloaded)
+        );
     }
 
     /// The agreed record: a unit whose month end the forecast cannot name (`→ …`) is measured from
