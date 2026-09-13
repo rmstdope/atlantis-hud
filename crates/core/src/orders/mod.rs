@@ -10,7 +10,7 @@
 //! `atlantis_hud_fixtures::G7_F95_T71` must validate with nothing to say.
 
 pub mod blocks;
-/// Core-internal: who may become a mage, and who already is one.
+/// Core-internal: whether a BUILD names an object this world lets a player build.
 mod build_object;
 pub mod completion;
 pub mod effects;
@@ -21,6 +21,7 @@ pub mod grammar;
 pub mod intents;
 pub mod items;
 pub mod lexer;
+/// Core-internal: who may become a mage, and who already is one.
 mod magic;
 pub mod parser;
 /// Core-internal: the one `rules/sequenceofevents` phase order both `semantics` and `silver` read.
@@ -144,6 +145,15 @@ fn place_build_object_errors(
     ruleset: Option<&Ruleset>,
     report: &ParsedReport,
 ) {
+    let is_build_object = |diagnostic: &OrderDiagnostic| {
+        diagnostic.unit_id.is_none()
+            && (diagnostic.code == build_object::UNKNOWN_OBJECT
+                || diagnostic.code == build_object::UNBUILDABLE_OBJECT)
+    };
+    // Almost every validation has nothing to place; skip the second walk then.
+    if !diagnostics.iter().any(is_build_object) {
+        return;
+    }
     let mut owner_by_line: HashMap<usize, String> = HashMap::new();
     let mut current: Option<String> = None;
     walk::walk_with_ruleset(source, ruleset, |event| match event {
@@ -158,11 +168,10 @@ fn place_build_object_errors(
         _ => {}
     });
 
-    for diagnostic in diagnostics.iter_mut().filter(|diagnostic| {
-        diagnostic.unit_id.is_none()
-            && (diagnostic.code == build_object::UNKNOWN_OBJECT
-                || diagnostic.code == build_object::UNBUILDABLE_OBJECT)
-    }) {
+    for diagnostic in diagnostics
+        .iter_mut()
+        .filter(|diagnostic| is_build_object(diagnostic))
+    {
         let Some(unit_id) = diagnostic
             .line_start
             .and_then(|line| owner_by_line.get(&line))
