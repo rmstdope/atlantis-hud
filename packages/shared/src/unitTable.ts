@@ -355,6 +355,24 @@ const NOMINAL_TABLE_PX = 1504;
  * off the upkeep is not consulted at all, so a unit nobody could price a fee for still shows the
  * figure `ah-1wcw.1` shipped.
  */
+export type ShownSilver =
+  | { kind: "single"; value: number }
+  | { kind: "pair"; low: number; high: number }
+  | { kind: "range"; low: number; high: number }
+  | { kind: "unknown" };
+
+export function silverShownUI(
+  silver: UnitSilver | null,
+  countUpkeep: boolean,
+  transportTargetIssues?: readonly any[] | undefined,
+  shipping?: readonly any[] | undefined
+): ShownSilver | null {
+  // Minimal stub mapping existing numeric shown to single; full logic added later.
+  const numeric = silverShown(silver, countUpkeep);
+  if (numeric === null) return { kind: "unknown" };
+  return { kind: "single", value: numeric };
+}
+
 export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): number | null {
   if (silver === null || silver.atMonthEnd === null) {
     return null;
