@@ -648,7 +648,7 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
     case "tooFarToAccept":
       if (issue.reach !== null) {
         const reach = issue.reach;
-        if (reach.away !== null && reach.limit !== null) {
+        if (reach.away != null && reach.limit != null) {
           const away = reach.away;
           const limit = reach.limit;
           return goods === null
@@ -670,7 +670,7 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
     case "tooFarToShip":
       if (issue.reach !== null) {
         const reach = issue.reach;
-        if (reach.away !== null && reach.limit !== null) {
+        if (reach.away != null && reach.limit != null) {
           const away = reach.away;
           const limit = reach.limit;
           return goods === null
