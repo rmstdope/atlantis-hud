@@ -358,8 +358,6 @@ fn produce_completions(
     entries
 }
 
-/// `data/objects`: what a structure players cannot build says of itself.
-const CANNOT_BE_BUILT: &str = "This structure cannot be built by players";
 /// `data/items`: how a ship's entry opens. A flying 'ship' (Balloon) opens differently, and is not
 /// one BUILD is offered for.
 const SHIP_OPENING: &str = "This is a ship";
@@ -385,15 +383,8 @@ fn structure_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
     let buildings = ruleset
         .buildings
         .iter()
-        .filter(|(_, building)| !building.description.contains(CANNOT_BE_BUILT))
-        .map(|(key, building)| {
-            let name = if building.name.is_empty() {
-                key
-            } else {
-                &building.name
-            };
-            entry(name, "building")
-        });
+        .filter(|(_, building)| building.is_player_buildable())
+        .map(|(key, building)| entry(&Ruleset::building_name(key, building), "building"));
     let ships = ruleset
         .items
         .values()
