@@ -29,52 +29,6 @@ impl Reach {
     }
 }
 
-/// Which of `rules/sequenceofevents`' three TRANSPORT phases a shipment runs in: to quartermaster,
-/// between quartermasters, or from quartermaster. Declaration order is the turn's order, so `Ord`
-/// sorts a hex's shipments into it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum ShipmentPhase {
-    ToQuartermaster,
-    BetweenQuartermasters,
-    FromQuartermaster,
-}
-
-/// Which phase this shipment runs in, from what the two ends are.
-pub(crate) fn shipment_phase(
-    sender_is_quartermaster: bool,
-    target_is_quartermaster: bool,
-) -> ShipmentPhase {
-    match (sender_is_quartermaster, target_is_quartermaster) {
-        (false, true) => ShipmentPhase::ToQuartermaster,
-        (true, true) => ShipmentPhase::BetweenQuartermasters,
-        (true, false) => ShipmentPhase::FromQuartermaster,
-        // A non-quartermaster sending to a non-quartermaster is not a valid shipment under the
-        // rules this function classifies; treat it as ToQuartermaster for stability.
-        (false, false) => ShipmentPhase::ToQuartermaster,
-    }
-}
-
-/// A shipment the sender's month could not pay for, so the goods stay where they are.
-/// Travels from the ledger to both other surfaces: `Ledger::refused_shipments` feeds the shortfall
-/// sentence's tail clause, and `UnitItemEffects::refused_shipments` feeds the item preview, which
-/// has no silver of its own to judge with.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RefusedShipment {
-    pub unit_id: String,
-    /// The 1-based document line of the order — the key all three surfaces join on, the same key
-    /// `ShipmentPriced::line` and `SilverChange::line` already carry.
-    pub line: i64,
-    /// The unit number the order named.
-    pub to: String,
-    /// The catalogue tag of the goods, for the sentence's `counted_item`.
-    pub tag: String,
-    /// How many the order would have sent — what the tail clause counts. Never used as a partial
-    /// figure: a shipment is all or nothing, so the clause always says `none of the N …`.
-    pub ordered: i64,
-    /// What it would have cost, which is what the sender's month is short by on account of it.
-    pub cost: i64,
-}
-
 /// What shipping one weight unit costs in silver, or `None` when the shipment is free.
 ///
 /// `distance` is a distance the caller has settled: `shipping_rate` answers what the rules charge
@@ -481,6 +435,10 @@ mod tests {
         crate::report::model::Coordinate { x, y, z: 1 }
     }
 
+    fn hex_at_level(x: i32, y: i32, z: u32) -> crate::report::model::Coordinate {
+        crate::report::model::Coordinate { x, y, z }
+    }
+
     fn facts(
         own: bool,
         quartermaster: bool,
@@ -569,6 +527,23 @@ mod tests {
         // A quartermaster distributing to a unit that is not one: no reach rule applies, because
         // since `ah-64wm` the target gate has already refused every such order.
         assert_eq!(reach_for(true, false, 1), None);
+    }
+
+    #[test]
+    fn a_shipment_to_another_map_level_is_a_definite_refusal() {
+        assert_eq!(
+            out_of_reach(
+                Reach::Local,
+                hex_at_level(0, 0, 1),
+                hex_at_level(0, 6, 2),
+                Some(fixture_map())
+            ),
+            Some(OutOfReach::DifferentLevel {
+                from_level: 1,
+                to_level: 2,
+                between_quartermasters: false,
+            })
+        );
     }
 
     /// `data/quartermaster`: "up to 3 plus (level+1)/3 hexes distant"; `rules/economy_transport`:

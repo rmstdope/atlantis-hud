@@ -13071,11 +13071,6 @@ fn transport_reach_sentence(
     refusal: super::transport::OutOfReach,
     goods: Option<&(i64, String)>,
 ) -> String {
-    let super::transport::OutOfReach {
-        away,
-        limit,
-        between_quartermasters,
-    } = refusal;
     // `ALL`, a whole class, or an item transport refuses anyway: the sentence speaks of the order
     // alone, in the words the unit preview already uses for the same case.
     let tail = match goods {
@@ -13085,10 +13080,32 @@ fn transport_reach_sentence(
         }
         None => "this TRANSPORT moves nothing".to_string(),
     };
-    if between_quartermasters {
-        format!("Unit {to} is {away} hexes away and this unit can ship {limit} hexes, so {tail}.")
-    } else {
-        format!("Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}.")
+
+    match refusal {
+        super::transport::OutOfReach::Distance {
+            away,
+            limit,
+            between_quartermasters,
+        } => {
+            if between_quartermasters {
+                format!(
+                    "Unit {to} is {away} hexes away and this unit can ship {limit} hexes, so {tail}."
+                )
+            } else {
+                format!(
+                    "Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}."
+                )
+            }
+        }
+        super::transport::OutOfReach::DifferentLevel {
+            from_level,
+            to_level,
+            ..
+        } => {
+            let to_name = crate::report::level::level_name(to_level);
+            let from_name = crate::report::level::level_name(from_level);
+            format!("Unit {to} is in the {to_name} and this unit is on the {from_name}, so {tail}.")
+        }
     }
 }
 
@@ -37371,6 +37388,30 @@ BUILD
         assert_eq!(
             reach_findings(shipper(5), "unit 900\nTRANSPORT 901 1 IRON\n", with_map()),
             Vec::new()
+        );
+    }
+
+    #[test]
+    fn a_shipment_to_a_quartermaster_on_another_level_is_a_definite_refusal() {
+        let mut target = caravanserai_owner("901", 1, 0, 6);
+        target.region_id = "2:0,6".to_string();
+        target.coordinate.z = 2;
+        for unit in &mut target.units {
+            unit.region_id = target.region_id.clone();
+        }
+
+        let finding = only(reach_findings(
+            vec![
+                shipping_from(vec![with_item(unit("900"), 9, "fur", "FUR")]),
+                target,
+            ],
+            "unit 900\nTRANSPORT 901 9 FUR\n",
+            with_map(),
+        ));
+
+        assert_eq!(
+            finding.message,
+            "Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit."
         );
     }
 
