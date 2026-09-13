@@ -1,0 +1,93 @@
+<title>BUILD naming something the game does not know — round 2</title>
+<style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--sel:#4a9fd8;--ok:#4fb783;--danger:#d97070}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:32px 20px 64px}
+main{max-width:1240px;margin:0 auto}
+h1{font-size:25px} h1 span{color:var(--brass)}
+p.lead{color:var(--soft);max-width:92ch;margin-top:10px;font-size:14px}
+h3.sec{margin:38px 0 4px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+h3.sec+p{color:var(--soft);font-size:13px;margin-bottom:14px;max-width:92ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px}
+.card h2{font-size:16px;margin-bottom:5px} .card h2 em{color:var(--brass);font-style:normal;font-size:12px;letter-spacing:1.5px;margin-right:8px}
+.lbl{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);margin:10px 0 5px}
+.ed{background:#0c1117;border:1px solid var(--edge);border-radius:6px;font:13px/1.7 'SF Mono',Menlo,monospace;padding:6px 0;overflow-x:auto}
+.ln{display:flex;white-space:pre;padding-right:10px} .ln .g{width:3px;margin-right:6px;flex:0 0 auto} .ln.err .g{background:var(--danger)}
+.u{text-decoration:underline wavy var(--danger);text-underline-offset:3px}
+.strip{font:12px/1.5 'Helvetica Neue',Arial,sans-serif;padding:5px 9px;border-top:1px solid var(--edge);margin-top:6px;color:var(--danger)}
+.prob{display:flex;gap:8px;border:1px solid var(--edge);border-radius:5px;background:var(--raised);padding:7px 9px;font:13px/1.5 'Helvetica Neue',Arial,sans-serif;margin-bottom:6px}
+.x{color:var(--danger);font-weight:bold} .who{color:var(--sel)}
+ul.notes{list-style:none;font-size:12.5px;color:var(--soft);display:grid;gap:4px;margin-top:11px}
+ul.notes li::before{content:"+ ";color:var(--ok);font-weight:bold} ul.notes li.con::before{content:"− ";color:var(--danger)} ul.notes li.n::before{content:"· ";color:var(--dim)}
+code{font-family:'SF Mono',Menlo,monospace;color:#eebe63;font-size:12.5px}
+.narrow{max-width:264px}
+</style>
+<main>
+<h1>A BUILD order naming <span>something the game does not know</span> — round 2</h1>
+<p class="lead">Agreed so far: an <b>error</b>, red, always on, no switch (1A); it <b>suggests the closest name</b> when there is a clear one (2); a structure players cannot build gets <b>its own words</b> (3X), and is an error too. What is left is the exact wording.</p>
+
+<h3 class="sec">As agreed — every case in one editor</h3>
+<div class="grid">
+<div class="card"><h2>Order editor, and the region panel beside it</h2>
+<div class="ed">
+<div class="ln"><span class="g"></span>UNIT 7227</div>
+<div class="ln err"><span class="g"></span>BUILD <span class="u">CAxxxRAVANSERAI</span></div>
+<div class="ln"><span class="g"></span>UNIT 7675</div>
+<div class="ln err"><span class="g"></span>BUILD <span class="u">Galeon</span> COMPLETE</div>
+<div class="ln"><span class="g"></span>UNIT 8810</div>
+<div class="ln err"><span class="g"></span>BUILD <span class="u">Palace</span></div>
+<div class="ln"><span class="g"></span>UNIT 9812</div>
+<div class="ln err"><span class="g"></span>BUILD <span class="u">"ice cave"</span></div>
+<div class="ln"><span class="g"></span>UNIT 9900</div>
+<div class="ln"><span class="g"></span>BUILD "Magical Tower"</div>
+<div class="strip">line 2: BUILD: there is no building or ship called CAxxxRAVANSERAI — did you mean Caravanserai?</div>
+</div>
+<ul class="notes"><li class="n">The red underline sits under the name only; hovering it shows the same sentence</li><li class="n">"Magical Tower" is right, so it has no mark</li></ul>
+</div>
+<div class="card narrow"><h2>Region panel, 264px wide</h2>
+<div class="prob"><span class="x">✕</span><span class="who">7227</span><span>BUILD: there is no building or ship called CAxxxRAVANSERAI — did you mean Caravanserai?</span></div>
+<div class="prob"><span class="x">✕</span><span class="who">7675</span><span>BUILD: there is no building or ship called Galeon — did you mean Galleon?</span></div>
+<div class="prob"><span class="x">✕</span><span class="who">8810</span><span>BUILD: there is no building or ship called Palace</span></div>
+<div class="prob"><span class="x">✕</span><span class="who">9812</span><span>BUILD: an Ice Cave cannot be built by players</span></div>
+<ul class="notes"><li class="n">Long lines wrap, as every problem already does</li></ul>
+</div>
+</div>
+
+<h3 class="sec">1 · The wording of the unknown-name error</h3>
+<div class="grid">
+<div class="card"><h2><em>P</em>"there is no building or ship called …"</h2>
+<div class="prob"><span class="x">✕</span><span class="who">7675</span><span>BUILD: there is no building or ship called Galeon — did you mean Galleon?</span></div>
+<ul class="notes"><li>A full sentence, reads aloud</li><li class="con">The longest</li></ul></div>
+<div class="card"><h2><em>Q</em>"unknown building or ship …"</h2>
+<div class="prob"><span class="x">✕</span><span class="who">7675</span><span>BUILD: unknown building or ship Galeon — did you mean Galleon?</span></div>
+<ul class="notes"><li>Same shape as today's "unknown order WROK"</li><li class="con">Terser; the name floats at the end without quotes</li></ul></div>
+<div class="card"><h2><em>R</em>"no such building or ship '…'"</h2>
+<div class="prob"><span class="x">✕</span><span class="who">7675</span><span>BUILD: no such building or ship 'Galeon' — did you mean Galleon?</span></div>
+<ul class="notes"><li>Short, and the typed name is set off in quotes</li><li class="n">Same shape as today's "no such direction 'nw2'"</li></ul></div>
+</div>
+
+<h3 class="sec">2 · How the name is spelled back to you</h3>
+<p>Typed <code>BUILD "ice cave"</code> or <code>BUILD RUIN</code>. For an unknown name there is nothing to correct it to, so it is always shown as typed.</p>
+<div class="grid">
+<div class="card"><h2><em>S</em>The game's own spelling</h2>
+<div class="prob"><span class="x">✕</span><span class="who">9812</span><span>BUILD: an Ice Cave cannot be built by players</span></div>
+<div class="prob"><span class="x">✕</span><span class="who">7227</span><span>BUILD: a Ruin cannot be built by players</span></div>
+<ul class="notes"><li>Matches how the other BUILD warnings name structures ("cannot build a Mine")</li></ul></div>
+<div class="card"><h2><em>T</em>Exactly as typed</h2>
+<div class="prob"><span class="x">✕</span><span class="who">9812</span><span>BUILD: an ice cave cannot be built by players</span></div>
+<div class="prob"><span class="x">✕</span><span class="who">7227</span><span>BUILD: a RUIN cannot be built by players</span></div>
+<ul class="notes"><li>You see your own line echoed</li><li class="con">Shouting capitals mid-sentence</li></ul></div>
+</div>
+
+<h3 class="sec">3 · What a suggestion can point at</h3>
+<p>Typed <code>BUILD Rin</code>. The closest real name is Ruin, which players cannot build.</p>
+<div class="grid">
+<div class="card"><h2><em>U</em>Only things you could build</h2>
+<div class="prob"><span class="x">✕</span><span class="who">7227</span><span>BUILD: there is no building or ship called Rin</span></div>
+<ul class="notes"><li>Never suggests a fix that is itself an error</li><li class="con">A real typo of Ruin gets no hint</li></ul></div>
+<div class="card"><h2><em>V</em>Any name the game has</h2>
+<div class="prob"><span class="x">✕</span><span class="who">7227</span><span>BUILD: there is no building or ship called Rin — did you mean Ruin?</span></div>
+<ul class="notes"><li>Always the nearest spelling</li><li class="con">Following the hint swaps one error for another</li></ul></div>
+</div>
+</main>
