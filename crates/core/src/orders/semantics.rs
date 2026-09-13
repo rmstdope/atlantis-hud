@@ -2061,8 +2061,8 @@ fn forecast_hex(
     }
 
     // What each unit pays to ship goods, booked from the ledger's own settlement rather than
-    // repriced here. `shipping_paid` is what moved; `silver_moves` is what was charged, including
-    // a refused shipment whose goods stayed.
+    // repriced here. `shipping_paid` is what moved (and what was only conditionally priced);
+    // `silver_moves` is what was actually charged, including a refused shipment whose goods stayed.
     for forecast in into[start..].iter_mut() {
         let shipped = ledger
             .shipping_paid
@@ -12990,7 +12990,12 @@ fn shipping_bills(
             let Some(facts) = targets.get(id.as_str()) else {
                 continue;
             };
-            if super::transport::acceptance(Some(facts)) != super::transport::Acceptance::Eligible {
+            let acceptance = super::transport::acceptance(Some(facts));
+            if !matches!(
+                acceptance,
+                super::transport::Acceptance::Eligible
+                    | super::transport::Acceptance::AcceptanceUnknown
+            ) {
                 continue;
             }
             let Some(reach) = super::transport::reach_for(
@@ -13047,6 +13052,7 @@ fn shipping_bills(
             if quantity <= 0 {
                 continue;
             }
+            let conditional = acceptance == super::transport::Acceptance::AcceptanceUnknown;
             let weight = quantity.saturating_mul(entry.weight);
             match super::transport::priced(
                 reach,
@@ -13057,10 +13063,24 @@ fn shipping_bills(
                 weight,
             ) {
                 super::transport::Priced::Free | super::transport::Priced::Unknown => {
-                    *shipped.entry(tag.clone()).or_default() += quantity;
-                    delivered.push(((id.clone(), tag.clone()), quantity));
+                    if !conditional {
+                        *shipped.entry(tag.clone()).or_default() += quantity;
+                        delivered.push(((id.clone(), tag.clone()), quantity));
+                    }
                 }
                 super::transport::Priced::Charged { rate, weight, cost } => {
+                    if conditional {
+                        priced_here.push(ShipmentPriced {
+                            line: i64::try_from(placed.line).unwrap_or(i64::MAX),
+                            to: id.clone(),
+                            sent: format!("{quantity} {tag}"),
+                            weight,
+                            rate,
+                            cost,
+                            conditional: true,
+                        });
+                        continue;
+                    }
                     move_silver(
                         ledger,
                         StatePhase::Transport,
@@ -13083,6 +13103,7 @@ fn shipping_bills(
                             weight,
                             rate,
                             cost,
+                            conditional: false,
                         });
                     } else {
                         priced_and_refused.push((
@@ -37340,6 +37361,24 @@ BUILD
         region
     }
 
+    /// The same shape, but another faction's unit: quartermaster and owner are known, acceptance
+    /// is not (`rules/com_attitudes`).
+    fn foreign_caravanserai_owner(id: &str, level: u32, x: i32, y: i32) -> ReportRegion {
+        let mut owner = with_skill(unit(id), "QUAM", level);
+        owner.own = false;
+        owner.faction_id = Some("2".to_string());
+        owner.faction_name = Some("Theirs".to_string());
+        owner.structure_id = Some("500".to_string());
+        let mut region = region_at(&format!("1:{x},{y}"), x, y, vec![owner]);
+        region.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+        region
+    }
+
     /// The sender's hex, `x`/`y` hexes from the quartermaster's.
     fn shipping_from(units: Vec<ReportUnit>) -> ReportRegion {
         region_at("1:0,0", 0, 0, units)
@@ -37783,6 +37822,37 @@ BUILD
         }
     }
 
+    /// A target whose eligibility is known but acceptance is not still yields a priced shipment
+    /// row, but its price is conditional and does not move silver.
+    #[test]
+    fn a_shipment_with_unknown_acceptance_is_priced_but_not_charged() {
+        let regions = || {
+            priced_shipping(
+                5,
+                &[(9, "fur", "FUR")],
+                vec![foreign_caravanserai_owner("901", 1, 0, 6)],
+            )
+        };
+        let silver = sender_silver(regions(), "unit 900\nTRANSPORT 901 9 FUR\n", with_map());
+        let baseline = sender_silver(regions(), "unit 900\n", with_map());
+
+        assert_eq!(
+            silver.shipping,
+            vec![ShipmentPriced {
+                line: 2,
+                to: "901".to_string(),
+                sent: "9 FUR".to_string(),
+                weight: 9,
+                rate: 5,
+                cost: 45,
+                conditional: true,
+            }]
+        );
+        assert!(shipped(&silver).is_empty());
+        assert_eq!(silver.expense, baseline.expense);
+        assert_eq!(silver.at_month_end, baseline.at_month_end);
+    }
+
     /// Two paid shipments add into one `shipped` line in the hover, and each keeps its own row
     /// here; `data/items` weighs grain at 5.
     #[test]
@@ -37814,6 +37884,7 @@ BUILD
                     weight: 9,
                     rate: 5,
                     cost: 45,
+                    conditional: false,
                 },
                 ShipmentPriced {
                     line: 3,
@@ -37822,6 +37893,7 @@ BUILD
                     weight: 100,
                     rate: 5,
                     cost: 500,
+                    conditional: false,
                 },
             ]
         );
@@ -37857,6 +37929,7 @@ BUILD
                 weight: 9,
                 rate: 5,
                 cost: 45,
+                conditional: false,
             }]
         );
 
@@ -37897,6 +37970,7 @@ BUILD
                 weight: 9,
                 rate: 5,
                 cost: 45,
+                conditional: false,
             }]
         );
 
