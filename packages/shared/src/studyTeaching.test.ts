@@ -657,12 +657,13 @@ describe("who would double a month under a declaration rule", () => {
     declarations: { factionId: "12", toward: new Map(Object.entries(toward)), fallback: null }
   });
 
-  it("offers no doubling from a teacher the student's faction has not declared Friendly", () => {
+  it("offers no doubling from a teacher the student's faction is known not to have declared Friendly", () => {
     expect(ask(rule({ "21": "friendly" }))).toBe("Uln");
-    // Refused, and unknown too: a popover promising a doubling the schedule withholds would be the
-    // same defect one screen over.
+    // Refused suppresses the offer: a popover promising a doubling the schedule withholds would be
+    // the same defect one screen over. Unknown is assumed Friendly and offered, as the schedule
+    // doubles it.
     expect(ask(rule({ "21": "neutral" }))).toBeNull();
-    expect(ask(rule({}))).toBeNull();
+    expect(ask(rule({}))).toBe("Uln");
     // And with no rule at all, today's answer.
     expect(ask(NO_TEACHING_RULE)).toBe("Uln");
   });

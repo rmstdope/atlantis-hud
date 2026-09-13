@@ -4,6 +4,7 @@ import {
   NO_TEACHING_RULE,
   ownDeclarations,
   teachingDeclarerFor,
+  teachingDoubles,
   teachingPermission,
   type TeachingRule
 } from "./teachingPermission";
@@ -158,5 +159,13 @@ describe("an orders document belonging to another faction", () => {
       ordersDocument: "DECLARE 21 FRIENDLY"
     });
     expect(unnamed.toward.get("21")).toBe("friendly");
+  });
+});
+
+describe("teachingDoubles", () => {
+  it("forecasts the bonus for a permitted or unknown declaration and withholds it only for a refused one", () => {
+    expect(teachingDoubles("permitted")).toBe(true);
+    expect(teachingDoubles("unknown")).toBe(true);
+    expect(teachingDoubles("refused")).toBe(false);
   });
 });

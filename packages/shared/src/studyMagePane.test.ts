@@ -251,9 +251,10 @@ describe("a month a declaration rule would not double", () => {
     declarations: { factionId: "21", toward: new Map(Object.entries(toward)), fallback: null }
   });
 
-  it("leaves the Can study row plain when the declaration does not allow the doubling", () => {
+  it("leaves the Can study row plain only when the declaration refuses the doubling", () => {
     expect(forc(rule({ "12": "friendly" }))?.taughtBy).toBe("Wardweaver");
     expect(forc(rule({ "12": "neutral" }))?.taughtBy).toBeNull();
-    expect(forc(rule({}))?.taughtBy).toBeNull();
+    // An unknown declaration is assumed Friendly (ah-sooy), as the schedule doubles it.
+    expect(forc(rule({}))?.taughtBy).toBe("Wardweaver");
   });
 });

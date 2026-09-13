@@ -1072,8 +1072,9 @@ describe("a cross-faction teaching month in the grid", () => {
     declarations: { factionId: "12", toward: new Map(Object.entries(toward)), fallback: null }
   });
 
-  it("says the declaration cannot be established, and says the bonus once it can", () => {
-    expect(cellText(schedule(rule({})))).toContain("teaching uncertain");
+  it("reads an unknown declaration as the teaching bonus, and ordinary study only once it is refused", () => {
+    expect(cellText(schedule(rule({})))).toContain("force 2 - teaching bonus");
+    expect(schedule(rule({}))).not.toContain("teaching uncertain");
     expect(cellText(schedule(rule({ "21": "friendly" })))).toContain("force 2 - teaching bonus");
     expect(cellText(schedule(rule({ "21": "neutral" })))).toContain("force 1 - studies normally");
   });
