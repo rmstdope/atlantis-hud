@@ -43,8 +43,8 @@ import {
 import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { orderCommentSyntaxFor, rulesetById } from "../rulesets";
-import { unitRowKey } from "../unitTable";
-import { unitAtCursor, unitCursor } from "./unitCursor";
+import { rowKeyOf, unitRowKey } from "../unitTable";
+import { previewAtCursor, setOutHex, unitAtCursor, unitCursor } from "./unitCursor";
 import type { MapShape } from "@atlantis/core-client";
 import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import { ordersExportText } from "./ordersExport";
@@ -971,13 +971,14 @@ export function AppShell({
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectedUnitRegionId = useWorkspaceStore((state) => state.selectedUnitRegionId);
+  const selectedUnitArrivingFrom = useWorkspaceStore((state) => state.selectedUnitArrivingFrom);
   /**
    * The cursor as a pair. Memoised rather than selected: a zustand selector building a fresh object
    * re-renders for ever under `useSyncExternalStore` (`ah-bubf`).
    */
   const cursor = useMemo(
-    () => unitCursor({ selectedUnitId, selectedUnitRegionId }),
-    [selectedUnitId, selectedUnitRegionId]
+    () => unitCursor({ selectedUnitId, selectedUnitRegionId, selectedUnitArrivingFrom }),
+    [selectedUnitId, selectedUnitRegionId, selectedUnitArrivingFrom]
   );
   const selectionEpoch = useWorkspaceStore((state) => state.selectionEpoch);
   const pickEpoch = useWorkspaceStore((state) => state.pickEpoch);
@@ -1222,7 +1223,7 @@ export function AppShell({
         cursor,
         hex?.regionId ?? null,
         hex?.region?.units ?? [],
-        hexPreview?.units.map((previewed) => previewed.unit) ?? []
+        hexPreview?.units ?? []
       ),
     [cursor, hex, hexPreview]
   );
@@ -3186,7 +3187,7 @@ export function AppShell({
   // A trace answers a question about one unit, so it must not outlive the selection that asked
   // it: without this, unit A's path stays on the map for the debounce-plus-round-trip it takes
   // unit B's own trace to arrive - or forever, when that trace fails.
-  const selectedForTrace = unit?.own ? unit.unitId : null;
+  const selectedForTrace = unit?.own && cursor !== null ? rowKeyOf(cursor) : null;
   useEffect(() => {
     setOrderTrace(null);
   }, [selectedForTrace]);
@@ -3201,6 +3202,7 @@ export function AppShell({
     // writes no order of its own and goes where the hull goes, so the order it travels by may be
     // another unit's (ah-048). The core settles which, once, for the map and the units pane alike.
     if (
+      cursor === null ||
       !layers.movement ||
       !unit?.own ||
       !ordersDocument.trim() ||
@@ -3219,7 +3221,8 @@ export function AppShell({
           rawReport,
           rememberedJson,
           unit.unitId,
-          unit.regionId,
+          // The hex the unit set out from, not the one on screen: an arrival row is listed where it arrives (ah-jxrw).
+          setOutHex(cursor),
           ordersDocument,
           mapJson,
           passagesJson
@@ -3239,6 +3242,7 @@ export function AppShell({
   }, [
     client,
     unit,
+    cursor,
     ordersDocument,
     ruleset,
     rawReport,
@@ -3586,8 +3590,8 @@ export function AppShell({
     if (!unit || !hexPreview) {
       return null;
     }
-    return hexPreview.units.find((previewed) => previewed.unit.unitId === unit.unitId) ?? null;
-  }, [unit, hexPreview]);
+    return previewAtCursor(cursor, hexPreview.regionId, hexPreview.units);
+  }, [unit, cursor, hexPreview]);
 
   /** The faction and turn the document in front of the player belongs to. */
   const draftKey = useMemo(() => draftKeyFor(parsed), [parsed]);

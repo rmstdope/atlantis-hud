@@ -144,12 +144,12 @@ export function windowRange(
  * unit's own report-native skill text, so a unit whose caller passes nothing is still searchable by
  * its skills exactly as it always was.
  */
-export function filterUnits(
-  units: ReportUnit[],
+export function filterUnits<T extends ReportUnit>(
+  units: T[],
   needle: string,
   structures: StructuresByRegion = new Map(),
   skillsText: (unit: ReportUnit) => string = defaultSkillsText
-): ReportUnit[] {
+): T[] {
   const wanted = needle.trim().toLowerCase();
   if (!wanted) {
     return units;
@@ -286,8 +286,8 @@ function structureKey(row: StructureBearingRow, byRegion: StructuresByRegion): s
  * are broken apart by unit id, ascending whichever way the column runs, so the same hex reads the
  * same way every turn rather than in whatever order the report listed them.
  */
-export function sortUnits(
-  units: ReportUnit[],
+export function sortUnits<T extends ReportUnit>(
+  units: T[],
   sort: SortState,
   structures: StructuresByRegion = new Map(),
   /** Each own unit's month-long order, for the column that sorts on it. */
@@ -302,7 +302,7 @@ export function sortUnits(
    * built from this turn's hex.
    */
   seen: ReadonlyMap<string, number> = new Map()
-): ReportUnit[] {
+): T[] {
   const direction = sort.direction === "asc" ? 1 : -1;
 
   return [...units].sort((left, right) => {

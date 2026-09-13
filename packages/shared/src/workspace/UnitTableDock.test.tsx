@@ -1665,6 +1665,32 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     { status: "arriving", arrivingFrom: "1:6,52" }
   );
 
+  it("marks only the arrival row as the cursor when its hex forms a unit of the same number", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [] }) })}
+        preview={{
+          regionId: "1:6,52",
+          units: [
+            previewed(
+              { unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" },
+              { formed: true, status: "arriving", arrivingFrom: "1:7,53" }
+            ),
+            previewed({ unitId: "new-1", name: "Unit (new 1)", regionId: "1:6,52" }, { formed: true })
+          ]
+        }}
+      />,
+      useWorkspaceStore,
+      { selectedUnitId: "new-1", selectedUnitRegionId: "1:6,52", selectedUnitArrivingFrom: "1:7,53" }
+    );
+
+    const rows = markup.match(/<tr data-testid="unit-row-new-1"[\s\S]*?<\/tr>/g) ?? [];
+    expect(rows).toHaveLength(2);
+    const selected = rows.filter((row) => row.includes('data-selected="true"'));
+    expect(selected).toHaveLength(1);
+    expect(selected[0]).toContain("← 1:7,53");
+  });
+
   it("renders movement as an accessible letter with prediction history", () => {
     const preview = previewed(
       { movement: { ...WALKING, status: "ride", capacityMode: "ride", ride: 70 } },
