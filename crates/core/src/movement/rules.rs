@@ -782,7 +782,10 @@ pub struct SkillLevel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildObject {
     /// A structure the data page lists as a building, in the page's spelling.
-    Building { name: String, player_buildable: bool },
+    Building {
+        name: String,
+        player_buildable: bool,
+    },
     /// An item of kind `Ship`, by its catalogue name (`Galleon`).
     Ship { name: String },
 }
@@ -1544,7 +1547,10 @@ impl Ruleset {
             .map(|word| {
                 let mut chars = word.chars();
                 chars.next().map_or_else(String::new, |first| {
-                    first.to_uppercase().chain(chars.flat_map(char::to_lowercase)).collect()
+                    first
+                        .to_uppercase()
+                        .chain(chars.flat_map(char::to_lowercase))
+                        .collect()
                 })
             })
             .collect::<Vec<_>>()

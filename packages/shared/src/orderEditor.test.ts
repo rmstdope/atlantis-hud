@@ -471,6 +471,20 @@ describe("findings that belong to a hex", () => {
     ]);
   });
 
+  /**
+   * A BUILD naming an object no player can build is a syntax error the core places on its unit's
+   * hex, so the region panel lists it against the unit (ah-jyqk).
+   */
+  it("lists a syntax error the core placed in a hex", () => {
+    const placed = {
+      ...unitFinding("7227", 2, "1:2,3"),
+      code: "unknown-object",
+      severity: "error" as const
+    };
+
+    expect(findingsByHex([placed])).toEqual([{ regionId: "1:2,3", findings: [placed] }]);
+  });
+
   it("has no groups when nothing is wrong anywhere", () => {
     expect(findingsByHex([])).toEqual([]);
   });

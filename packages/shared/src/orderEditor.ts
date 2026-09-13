@@ -261,7 +261,9 @@ export type HexFindings = { regionId: string; findings: OrderDiagnostic[] };
  * only the hex on screen: a unit that cannot pay for its orders in a hex nobody has clicked on
  * would otherwise go out with the turn unnoticed.
  *
- * Syntax diagnostics belong to no hex and are left out. They are already counted by the orders
+ * Syntax diagnostics belong to no hex and are left out, except a BUILD naming an object the game
+ * does not have or players cannot build, which the core places on its unit's hex. The rest are
+ * already counted by the orders
  * panel, against the unit whose line they sit on.
  *
  * Hexes come back in the order their first finding appeared, which is the order the core produced
