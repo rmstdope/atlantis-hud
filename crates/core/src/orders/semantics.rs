@@ -301,7 +301,7 @@ pub struct CheckOptions {
     /// distance. `None` - a game that never recorded it - leaves every distance unsettled, and
     /// `transport::arrival` then settles nothing past the reach (`ah-7ale.5`).
     pub geometry: Option<crate::movement::graph::MapGeometry>,
-    /// How far across each level the loaded reports have shown, which settles a distance the map's shape does not when a way round the far edge could not be shorter. Empty - the default - settles nothing.
+    /// How far across each level the loaded reports have shown, which settles a distance the map's shape does not when a way round the far edge could not be shorter. Empty - the default - settles only an axis the shipment does not cross, since no way round can shorten a gap of zero.
     pub shown: crate::movement::graph::ShownExtent,
     /// Every inner passage the faction has proved the far side of. Empty by default: a caller that
     /// knows nothing is the ordinary case, and it is also every test that says nothing about one.

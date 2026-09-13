@@ -921,6 +921,17 @@ mod tests {
         );
     }
 
+    /// An axis the shipment does not cross is settled with nothing shown: no way round the far
+    /// edge can shorten a gap of zero.
+    #[test]
+    fn a_gap_of_zero_is_settled_with_nothing_shown() {
+        let here = Coordinate { x: 0, y: 0, z: 1 };
+        assert_eq!(
+            hex_distance(here, here, None, &ShownExtent::default()),
+            Some(HexDistance::Exact(0))
+        );
+    }
+
     #[test]
     fn shown_extent_is_a_floor_per_level() {
         let extent = shown(&[(3, 7, 1), (10, 2, 1), (4, 4, 2), (-5, 90, 1)]);
