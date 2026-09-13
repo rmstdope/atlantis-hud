@@ -439,8 +439,9 @@ describe("the upkeep setting (ah-1wcw.4)", () => {
 
     expect(html).toContain("Count upkeep in the Silver column");
     expect(html).toContain(
-      "Charge each unit its monthly maintenance - 10 silver a character, 50 a leader - paid with food first where the unit is set to consume it."
+      "Charge each unit its monthly maintenance at the rates of the world its game is played in, paid with food first where the unit is set to consume it."
     );
+    expect(html).not.toContain("50 a leader");
     expect(tag(html, "settings-count-upkeep")).toContain('type="checkbox"');
     // On by default: upkeep is a real cost every month.
     expect(tag(html, "settings-count-upkeep")).toContain("checked");

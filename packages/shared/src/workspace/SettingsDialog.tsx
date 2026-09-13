@@ -394,7 +394,7 @@ export function GlobalSettings() {
 
       <SettingToggle
         title="Count upkeep in the Silver column"
-        description="Charge each unit its monthly maintenance - 10 silver a character, 50 a leader - paid with food first where the unit is set to consume it."
+        description="Charge each unit its monthly maintenance at the rates of the world its game is played in, paid with food first where the unit is set to consume it."
         testId="settings-count-upkeep"
         checked={countUpkeep}
         onChange={setCountUpkeep}
