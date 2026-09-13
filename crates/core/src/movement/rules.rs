@@ -778,11 +778,31 @@ pub struct SkillLevel {
     pub description: String,
 }
 
+/// What a `BUILD [object type]` names, as this world's catalogue knows it (`rules/build`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuildObject {
+    /// A structure the data page lists as a building, in the page's spelling.
+    Building { name: String, player_buildable: bool },
+    /// An item of kind `Ship`, by its catalogue name (`Galleon`).
+    Ship { name: String },
+}
+
+impl BuildingEntry {
+    /// False exactly when the entry's description contains "This structure cannot be built by
+    /// players" - the page's own sentence (data/Ruin, data/Shaft), in every committed world.
+    #[must_use]
+    pub fn is_player_buildable(&self) -> bool {
+        !self
+            .description
+            .contains("This structure cannot be built by players")
+    }
+}
+
 /// A building the game's data page describes, and how many mages may study in it.
 ///
 /// Unlike its neighbours this does not `deny_unknown_fields`: a ruleset cached before ah-9js
-/// carries a `name` and a single `material` string, and refusing those would turn an old cache
-/// into a failed load rather than a ruleset that knows a little less.
+/// carries a single `material` string, and refusing that would turn an old cache into a failed
+/// load rather than a ruleset that knows a little less.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     test,
@@ -791,6 +811,10 @@ pub struct SkillLevel {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct BuildingEntry {
+    /// The name as the data page spells it - `Hermits hut`, `Magician's Tower`. Empty for a ruleset
+    /// cached before this field was scraped; read it through `Ruleset::building_name`.
+    #[serde(default)]
+    pub name: String,
     /// The description the data page gives it, verbatim and whitespace-collapsed. Empty for a
     /// ruleset cached before ah-3cj4.1, which carried no prose at all.
     #[serde(default)]
@@ -1467,6 +1491,66 @@ impl Ruleset {
         Some((building.build_skill.as_deref()?, building.build_level?))
     }
 
+    /// The object a `BUILD` order names, or `None` when this catalogue has no such building or ship.
+    ///
+    /// Buildings are matched on their key, case-insensitively, with `_` read as a space, because the
+    /// lexer leaves an underscored name underscored. Ships go through [`Ruleset::find_item`] (tag,
+    /// name or plural) and must be [`ItemKind::Ship`]. Buildings are tried first.
+    #[must_use]
+    pub fn build_object(&self, text: &str) -> Option<BuildObject> {
+        let key = text.replace('_', " ").to_uppercase();
+        if let Some(entry) = self.buildings.get(&key) {
+            return Some(BuildObject::Building {
+                name: Self::building_name(&key, entry),
+                player_buildable: entry.is_player_buildable(),
+            });
+        }
+        self.find_item(text)
+            .filter(|item| item.kind == ItemKind::Ship)
+            .map(|item| BuildObject::Ship {
+                name: item.name.clone(),
+            })
+    }
+
+    /// Every name a player can BUILD in this world, in the game's spelling: each building whose
+    /// `is_player_buildable()` is true, then each [`ItemKind::Ship`] item's `name`, in the maps'
+    /// own order. Empty when `!knows_buildings()`.
+    #[must_use]
+    pub fn buildable_object_names(&self) -> Vec<String> {
+        if !self.knows_buildings() {
+            return Vec::new();
+        }
+        self.buildings
+            .iter()
+            .filter(|(_, entry)| entry.is_player_buildable())
+            .map(|(key, entry)| Self::building_name(key, entry))
+            .chain(
+                self.items
+                    .values()
+                    .filter(|item| item.kind == ItemKind::Ship)
+                    .map(|item| item.name.clone()),
+            )
+            .collect()
+    }
+
+    /// A building's display name: `entry.name` when non-empty; otherwise the key with each
+    /// space-separated word capitalised and the rest lower-cased (`ICE CAVE` -> `Ice Cave`).
+    #[must_use]
+    pub fn building_name(key: &str, entry: &BuildingEntry) -> String {
+        if !entry.name.is_empty() {
+            return entry.name.clone();
+        }
+        key.split(' ')
+            .map(|word| {
+                let mut chars = word.chars();
+                chars.next().map_or_else(String::new, |first| {
+                    first.to_uppercase().chain(chars.flat_map(char::to_lowercase)).collect()
+                })
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     /// Whether this world's `rules/build` states the `WOOD`/`STONE` forms and the default order.
     ///
     /// Both New Age worlds do - "By default the unit will use whatever is available, consuming
@@ -1787,6 +1871,79 @@ mod tests {
         assert_eq!(ruleset.build_recipe("Shaft"), None);
         // Nor does a kind the catalogue has never heard of.
         assert_eq!(ruleset.build_recipe("Barn"), None);
+    }
+
+    // What a `BUILD [object type]` names (`rules/build`, ah-jyqk). "This structure cannot be built
+    // by players" is the data page's own sentence (data/Ruin).
+    #[test]
+    fn a_structure_players_cannot_build_is_found_but_not_buildable() {
+        let ruleset = ruleset();
+        assert_eq!(
+            ruleset.build_object("ruin"),
+            Some(BuildObject::Building {
+                name: "Ruin".to_string(),
+                player_buildable: false
+            })
+        );
+        assert_eq!(
+            ruleset.build_object("ice cave"),
+            Some(BuildObject::Building {
+                name: "Ice Cave".to_string(),
+                player_buildable: false
+            })
+        );
+    }
+
+    #[test]
+    fn a_building_is_found_whatever_the_case_and_with_underscores_for_spaces() {
+        let ruleset = ruleset();
+        for text in ["magical_tower", "MAGICAL TOWER"] {
+            assert_eq!(
+                ruleset.build_object(text),
+                Some(BuildObject::Building {
+                    name: "Magical Tower".to_string(),
+                    player_buildable: true
+                }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_ship_is_found_by_name_tag_or_plural() {
+        let ruleset = ruleset();
+        for text in ["Galleon", "GALL", "galleons"] {
+            assert_eq!(
+                ruleset.build_object(text),
+                Some(BuildObject::Ship {
+                    name: "Galleon".to_string()
+                }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_item_that_is_not_a_ship_is_not_a_build_object() {
+        assert_eq!(ruleset().build_object("wood"), None);
+    }
+
+    #[test]
+    fn buildable_object_names_are_spelled_as_the_game_spells_them() {
+        let names = ruleset().buildable_object_names();
+        for present in ["Caravanserai", "Hermits hut", "Galleon", "Longship"] {
+            assert!(names.iter().any(|name| name == present), "{present}");
+        }
+        for absent in ["Ruin", "Ice Cave"] {
+            assert!(!names.iter().any(|name| name == absent), "{absent}");
+        }
+    }
+
+    #[test]
+    fn a_building_cached_without_a_name_is_named_from_its_key() {
+        let mut entry = ruleset().buildings["ICE CAVE"].clone();
+        entry.name = String::new();
+        assert_eq!(Ruleset::building_name("ICE CAVE", &entry), "Ice Cave");
     }
 
     /// Half an entry is not a state ah-bwly.1 can produce, but reading it as "no requirement" is

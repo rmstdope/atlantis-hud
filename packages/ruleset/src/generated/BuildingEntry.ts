@@ -4,10 +4,15 @@
  * A building the game's data page describes, and how many mages may study in it.
  *
  * Unlike its neighbours this does not `deny_unknown_fields`: a ruleset cached before ah-9js
- * carries a `name` and a single `material` string, and refusing those would turn an old cache
- * into a failed load rather than a ruleset that knows a little less.
+ * carries a single `material` string, and refusing that would turn an old cache into a failed
+ * load rather than a ruleset that knows a little less.
  */
 export type BuildingEntry = { 
+/**
+ * The name as the data page spells it - `Hermits hut`, `Magician's Tower`. Empty for a ruleset
+ * cached before this field was scraped; read it through `Ruleset::building_name`.
+ */
+name: string, 
 /**
  * The description the data page gives it, verbatim and whitespace-collapsed. Empty for a
  * ruleset cached before ah-3cj4.1, which carried no prose at all.
