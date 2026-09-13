@@ -1133,15 +1133,41 @@ fn a_new_units_number_alone_still_traces_when_only_one_hex_forms_it() {
     assert_eq!(path.from, at(1, 1));
 }
 
-/// Selected on its arrival row, a new unit's hex is where it arrives, not where it was formed.
+const SOUTH_FORMS_NEW_1_AND_MOVES_NORTH: &str = "unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n";
+
+/// A named hex answers from that hex alone: no fallback to the number (`ah-jxrw`).
 #[test]
-fn a_new_unit_selected_where_it_arrives_still_draws_its_path() {
-    let path = trace_in_column(
-        "1:1,1",
-        "new-1",
-        "unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n",
-    )
-    .path
-    .expect("the only New 1 moves");
+fn a_hex_that_forms_no_such_new_unit_traces_nothing() {
+    assert_eq!(
+        trace_in_column("1:1,1", "new-1", SOUTH_FORMS_NEW_1_AND_MOVES_NORTH).path,
+        None
+    );
+}
+
+/// The shell hands the trace the hex a row set out from, whichever row selects it (`ah-jxrw`).
+#[test]
+fn a_new_unit_is_traced_from_the_hex_it_was_formed_in_whatever_row_selects_it() {
+    let path = trace_in_column("1:1,5", "new-1", SOUTH_FORMS_NEW_1_AND_MOVES_NORTH)
+        .path
+        .expect("the only New 1 moves");
     assert_eq!(path.from, at(1, 5));
+    assert_eq!(path.steps.len(), 2);
+    assert_eq!(path.steps[1].to, at(1, 1));
+}
+
+#[test]
+fn a_new_unit_arriving_where_a_same_numbered_one_stays_is_traced_from_its_own_hex() {
+    let orders = "unit 900\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n\
+unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n";
+    let path = trace_in_column("1:1,5", "new-1", orders)
+        .path
+        .expect("the southern New 1 moves");
+    assert_eq!(path.from, at(1, 5));
+    assert_eq!(path.steps.len(), 2);
+    assert_eq!(path.steps[1].to, at(1, 1));
+    assert_eq!(
+        trace_in_column("1:1,1", "new-1", orders).path,
+        None,
+        "the northern New 1 writes no MOVE"
+    );
 }
