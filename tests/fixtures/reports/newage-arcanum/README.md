@@ -61,11 +61,18 @@ New Origins. The fixture-package tests keep each language's registry in step wit
 The TypeScript guard also requires every report to be documented and scans every credential-bearing
 line, not merely the first orders envelope.
 
-Arcanum is not Trident. Load Arcanum's catalogue for the mature reports; do not relabel them as
-Trident reports or use their outcomes as proof of Trident-specific rules. For example, Arcanum's
-leader maintenance is 50 silver (`newage arcanum rules/economy_maintenance`), so these reports
-cannot establish Trident's different leader-maintenance behavior. The current Arcanum catalogue
-is not a historical catalogue for the turn-2 NewOrigins-branded reports.
+Arcanum and Trident are near-identical New Age worlds (the navigator, 2026-09-13), and these are the
+reports to use for a Trident case too — there is no Trident corpus. Near identical is not identical,
+though: look a rule up in both worlds before relying on it, and where the two differ, take the
+expected behaviour from Trident's page and not from what these reports printed. For example, a
+leader's maintenance is 50 silver in Arcanum and 90 in Trident
+(`newage arcanum rules/economy_maintenance`, `newage trident rules/economy_maintenance`), so the
+upkeep these reports show cannot establish Trident's. Load the catalogue of the world under test —
+`readNewAgeArcanumRuleset()` / `NEWAGE_ARCANUM_RULESET_JSON` for Arcanum,
+`config/public/ruleset-newage-trident.json` (`NEWAGE_TRIDENT_RULESET_JSON` in Rust) for Trident.
+The `atlantis-verification` skill carries how a manual verification uses these reports for Trident.
+The current Arcanum catalogue is not a historical catalogue for the turn-2 NewOrigins-branded
+reports.
 
 ## Sanitization
 
