@@ -151,7 +151,14 @@ fn gather(
         chosen.insert(
             entry.region.region_id.clone(),
             SharedRegion {
-                region: entry.region.clone(),
+                // Only a sighting of the exported report's own turn can vouch for who stands there.
+                region: ReportRegion {
+                    units: crate::known_map::units_a_sighting_vouches_for(
+                        entry,
+                        report.header.turn_number,
+                    ),
+                    ..entry.region.clone()
+                },
                 last_seen_turn: Some(entry.last_seen_turn),
             },
         );

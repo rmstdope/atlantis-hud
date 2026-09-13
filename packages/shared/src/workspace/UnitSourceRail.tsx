@@ -23,6 +23,7 @@ export function UnitSourceRail({
   source,
   onSource,
   armies,
+  armyCount,
   hexCount,
   ownCount,
   foreignCount,
@@ -36,6 +37,8 @@ export function UnitSourceRail({
   source: UnitSource;
   onSource: (source: UnitSource) => void;
   armies: readonly ArmyRecord[];
+  /** How many of the Army's members a report of this turn shows. */
+  armyCount: (army: ArmyRecord) => number;
   /** The selected hex's unit count, or null when no hex is selected - the count is then omitted. */
   hexCount: number | null;
   ownCount: number;
@@ -98,7 +101,7 @@ export function UnitSourceRail({
                 key={army.id}
                 testId={`unit-source-army-${army.id}`}
                 label={army.name}
-                count={army.members.length}
+                count={armyCount(army)}
                 selected={sameSource(source, { kind: "army", armyId: army.id })}
                 onSelect={() => onSource({ kind: "army", armyId: army.id })}
                 // How the drag finds its target: `document.elementFromPoint` at the pointer, then

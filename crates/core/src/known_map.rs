@@ -15,13 +15,15 @@
 //!    coordinate currently resolves to, so two direct sightings of the same hex - storage is
 //!    expected to hand back at most one, but nothing enforces it - settle on the more recent one
 //!    rather than an unspecified iteration order. A sighting from the current turn (a same-turn
-//!    ally sighting) is `Current` and keeps its units; an older one is `Stale` and has its units
-//!    dropped - a fleet can sail away, and only a sighting this fresh can vouch for who is still
-//!    there. Terrain, province and exits always come from the region as stored.
+//!    ally sighting) is `Current` and keeps other factions' units; an older one is `Stale` and has
+//!    its units dropped - a fleet can sail away, and only a sighting this fresh can vouch for who
+//!    is still there. No stored sighting ever contributes a unit of ours: the current report is
+//!    the whole truth about those (`units_a_sighting_vouches_for`). Terrain, province and exits
+//!    always come from the region as stored.
 //! 4. **The current report's own regions**: `Current`, `last_seen_turn` set to the current turn,
-//!    the region as reported, plus any unit a same-turn stored sighting names that the report does
-//!    not - appended and marked foreign, additive only, and only for a sighting of this same turn
-//!    (`with_allies_units`).
+//!    the region as reported, plus any other faction's unit a same-turn stored sighting names that
+//!    the report does not - appended and marked foreign, additive only, and only for a sighting of
+//!    this same turn (`with_allies_units`).
 //!
 //! Everything else - adjacency, and the planning-only rule that only a `Current` hex may contribute
 //! structures - is [`crate::movement::graph::MapKnowledge`]'s to decide, derived from this
@@ -34,7 +36,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::ReportCache;
 use crate::movement::graph::RememberedRegion;
 use crate::report::level;
-use crate::report::model::{Coordinate, ReportRegion, Settlement};
+use crate::report::model::{Coordinate, ReportRegion, ReportUnit, Settlement};
 use crate::report::ParsedReport;
 
 /// How much can be trusted about a hex on the accumulated map.
@@ -98,6 +100,29 @@ fn key(coordinate: Coordinate) -> String {
     coordinate.id()
 }
 
+/// The units a stored sighting can still vouch for, read against the report of `current_turn`.
+///
+/// None unless the sighting is from that very turn: a unit standing there when last seen may have
+/// moved, disbanded or died since. And never one of ours: the current report is the whole truth
+/// about the player's own units, so a stored unit marked `own` that the report does not name is one
+/// that is gone - only a row an older merge restamped can hold one.
+#[must_use]
+pub fn units_a_sighting_vouches_for(
+    stored: &RememberedRegion,
+    current_turn: Option<u32>,
+) -> Vec<ReportUnit> {
+    if current_turn != Some(stored.last_seen_turn) {
+        return Vec::new();
+    }
+    stored
+        .region
+        .units
+        .iter()
+        .filter(|unit| !unit.own)
+        .cloned()
+        .collect()
+}
+
 /// Applies a same-turn ally's extra units to the current report's own account of a hex.
 ///
 /// Additive only: nothing the current report already names is replaced, and every unit
@@ -124,12 +149,9 @@ fn with_allies_units(
         .iter()
         .map(|unit| unit.unit_id.as_str())
         .collect();
-    let extra: Vec<_> = stored
-        .region
-        .units
-        .iter()
+    let extra: Vec<_> = units_a_sighting_vouches_for(stored, Some(current_turn))
+        .into_iter()
         .filter(|unit| !named.contains(unit.unit_id.as_str()))
-        .cloned()
         .collect();
     if extra.is_empty() {
         return region.clone();
@@ -252,13 +274,9 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
     for entry in &ordered {
         let entry_key = key(entry.region.coordinate);
         let is_current_turn = current_turn == Some(entry.last_seen_turn);
-        let region = if is_current_turn {
-            entry.region.clone()
-        } else {
-            ReportRegion {
-                units: Vec::new(),
-                ..entry.region.clone()
-            }
+        let region = ReportRegion {
+            units: units_a_sighting_vouches_for(entry, current_turn),
+            ..entry.region.clone()
         };
         by_key.insert(
             entry_key,

@@ -106,7 +106,7 @@ import { alreadyIn } from "../armies";
 import { isTopDismissLayer, pushDismissLayer } from "../dismissStack";
 import { isMacPlatform } from "../shortcuts";
 import { AddToArmyMenu } from "./AddToArmyMenu";
-import { armyRows, seenLabel, staleLine, type ArmyRows } from "./armyRows";
+import { armyRows, seenLabel, shownMemberCount, type ArmyRows } from "./armyRows";
 import { ChipPopover } from "./popover";
 import { ForeignStrip } from "./ForeignStrip";
 import { foreignEmptyLine, pinForRow, pinnedRows, pinStillApplies } from "./foreignUnits";
@@ -155,7 +155,9 @@ const OVERSCAN = 6;
 const EXTRA_COLUMN_LABELS: Record<ExtraColumn, string> = { hex: "Hex", seen: "Seen", remove: "" };
 
 /** Nothing to show for the two sources that are not an Army. */
-const NO_ARMY_ROWS: ArmyRows = { rows: [], seen: new Map(), missing: 0 };
+const NO_ARMY_ROWS: ArmyRows = { rows: [], seen: new Map() };
+/** One frozen empty index, for a dock handed no `unitsById`. */
+const EMPTY_UNITS_BY_ID: ReadonlyMap<string, ReportUnit> = new Map();
 
 /** Stands in for an absent `onFailure`, so the actions need no null check of their own. */
 const noop = () => {};
@@ -228,7 +230,10 @@ type UnitTableDockProps = {
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
   /** Every own unit in this turn's report, for the `All my units` source (`ah-1mpx.2`). */
   ownUnits?: ReportUnit[];
-  /** This turn's units by unit number, for resolving an Army's members. `armies.ts`' `unitsByIdIn`. */
+  /**
+   * Every unit on a report of this turn by unit number, own and same-turn allies', for resolving an
+   * Army's members (`hexMapModel.ts`' `latestTurnUnitsById`). A member it lacks is not shown.
+   */
   unitsById?: ReadonlyMap<string, ReportUnit>;
   /** `parsed.header.turnNumber`. Null when no report is loaded, or it names no turn. */
   currentTurn?: number | null;
@@ -482,7 +487,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       // The spread is `ArmyRows.rows` being `ReportUnit[]` where `pinnedRows` answers readonly.
       return { ...NO_ARMY_ROWS, rows: [...pinnedRows(foreignUnits ?? [], pin)] };
     }
-    return army ? armyRows(army, unitsById ?? new Map(), currentTurn) : NO_ARMY_ROWS;
+    return army ? armyRows(army, unitsById ?? EMPTY_UNITS_BY_ID, currentTurn) : NO_ARMY_ROWS;
   }, [source, hex, preview, ownRows, foreignUnits, pin, army, unitsById, currentTurn]);
 
   const units = sourced.rows;
@@ -1186,7 +1191,6 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     setMenu({ at: "pointer", point: { x: event.clientX, y: event.clientY } });
   };
 
-  const missing = staleLine(sourced.missing);
   // The source's whole list, not `visible`: the line warns about the list, so a filter that hides
   // every affected row leaves it up and unchanged.
   const unreadWarning = unreadLine(unreadCount(units), units.length);
@@ -1274,6 +1278,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           source={source}
           onSource={setSource}
           armies={armies}
+          armyCount={(army) => shownMemberCount(army, unitsById ?? EMPTY_UNITS_BY_ID)}
           hexCount={hex ? unitsForHex(hex).length : null}
           ownCount={ownUnits?.length ?? 0}
           foreignCount={foreignUnits?.length ?? 0}
@@ -1293,7 +1298,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           {army ? (
             <ArmyStrip
               name={army.name}
-              memberCount={army.members.length}
+              memberCount={shownMemberCount(army, unitsById ?? EMPTY_UNITS_BY_ID)}
               confirming={mode.kind === "deleting" && mode.armyId === army.id}
               canExport={currentTurn !== null && onExportArmy !== undefined}
               onExport={() => onExportArmy?.(army.id)}
@@ -1313,32 +1318,6 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
               onClear={() => setPin(null)}
               buttonRef={unpinRef}
             />
-          ) : null}
-          {army && missing ? (
-            <p
-              data-testid="army-stale-line"
-              className="flex items-center border-y border-edge-soft px-2 py-1.5 text-pane text-warn"
-            >
-              {missing.text}
-              {/* No confirmation: the rows are on screen and named, and removing a unit from an
-                  Army destroys nothing - the unit is untouched and can be added back from any
-                  list (`ah-1mpx.2` S5). */}
-              <button
-                type="button"
-                data-testid="army-remove-stale"
-                onClick={() =>
-                  void actions.removeUnits(
-                    army.id,
-                    army.members
-                      .filter((member) => !(unitsById ?? new Map()).has(member.unitId))
-                      .map((member) => member.unitId)
-                  )
-                }
-                className="ml-2 rounded border border-edge px-2 py-0.5 text-pane text-ink hover:bg-panel focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
-              >
-                {missing.button}
-              </button>
-            </p>
           ) : null}
           {unreadWarning ? (
             <p

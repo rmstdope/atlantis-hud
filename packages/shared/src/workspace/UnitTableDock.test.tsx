@@ -1413,7 +1413,12 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
       <UnitTableDock
         hex={withUnits()}
         ownUnits={[unit({ unitId: "1", own: true })]}
-        unitsById={new Map([["1", unit({ unitId: "1", own: true })]])}
+        unitsById={
+          new Map([
+            ["1", unit({ unitId: "1", own: true })],
+            ["7", unit({ unitId: "7", own: true, name: "Outriders", regionId: "1:9,55" })]
+          ])
+        }
         currentTurn={71}
         client={{} as never}
         game={{ manifest: { metadata: { gameId: "aug-2026" } } } as never}
@@ -1431,7 +1436,7 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length + extras);
   });
 
-  it("says what an Army is showing, and names its stale members", () => {
+  it("says what an Army is showing, counting only this turn's members", () => {
     const members = [aMember("1"), aMember("7", { seenTurn: 68 })];
     const markup = renderWithStoreState(
       <UnitTableDock
@@ -1446,11 +1451,13 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
       { gameId: "aug-2026", status: "ready", armies: [armyRecord({ members })] }
     );
 
-    expect(markup).toContain("— Northern Host, 2 units");
-    expect(markup).toContain("1 unit was not in this turn&#x27;s report.");
-    expect(markup).toContain("Remove it");
-    // The Seen column, per member.
-    expect(markup).toContain("turn 68");
+    expect(markup).toContain("— Northern Host, 1");
+    expect(markup).not.toContain("— Northern Host, 2 units");
+    // A member no report of this turn shows is simply not there: no row, no line, no turn.
+    expect(markup).not.toContain("army-stale-line");
+    expect(markup).not.toContain("was not in this turn");
+    expect(markup).not.toContain("unit-row-7");
+    expect(markup).not.toContain("turn 68");
     expect(markup).toContain(">Rename<");
     expect(markup).toContain(">Delete<");
   });
