@@ -4546,6 +4546,12 @@ struct Ledger<'a> {
     /// `check_sailing` and `check_movement` read this ledger and must go on seeing the silver the
     /// unit actually holds.
     upkeep_lent: BTreeMap<String, i64>,
+    /// The food that paid part of each unit's fee before silver did - steps 1 and 2 of the payment
+    /// order (`rules/economy_maintenance`) - in silver. Present only for a unit `upkeep` also holds,
+    /// i.e. one the food did not wholly feed. Read only to word `not-enough-silver`, which states the
+    /// whole fee and counts this food toward what the unit can have (`ah-pyiy`). Kept apart from
+    /// `upkeep` so `unpaid_upkeep`, `unpayable_upkeep` and the step-4 lending do not move.
+    upkeep_food: BTreeMap<String, i64>,
     /// Whether this hex's maintenance sharing fell short, so its silver shortfall belongs to the
     /// hex rather than to any unit in it. Turns the per-unit `not-enough-silver` findings into the
     /// single hex-level one, exactly as a `SHARE` flag already does for every tag (`ah-e66j`).
@@ -4891,6 +4897,7 @@ fn ledger_for_with_production<'a>(
         upkeep_drawn: BTreeMap::new(),
         upkeep_relieved: BTreeMap::new(),
         upkeep_lent: BTreeMap::new(),
+        upkeep_food: BTreeMap::new(),
         maintenance_pooled: false,
         faction_food: FactionFoodPass::default(),
         movements: Vec::new(),
@@ -5708,7 +5715,9 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let settled = pass.settled.clone();
     ledger.faction_food = pass;
 
-    for ((ordered, facts), shares) in hex.units.iter().zip(&facts).zip(&shares) {
+    for (((ordered, facts), shares), claim) in
+        hex.units.iter().zip(&facts).zip(&shares).zip(&claims)
+    {
         let owed = match settled.get(&ordered.unit.unit_id) {
             // The pool fed this unit: it owes what step 2 left it, not what step 1 did.
             Some(Some(left)) => *left,
@@ -5741,6 +5750,16 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             );
         }
         ledger.upkeep.insert(ordered.unit.unit_id.clone(), owed);
+        // Steps 1 and 2 paid this much of the fee before silver was asked for anything - the same
+        // rule `forecast_hex` names the column's food by, so the warning and the column agree.
+        let faction_fed = match settled.get(&ordered.unit.unit_id) {
+            Some(Some(left)) => claim.owed_after_own_food - left,
+            _ => 0,
+        };
+        ledger.upkeep_food.insert(
+            ordered.unit.unit_id.clone(),
+            claim.own_food_covered + faction_fed,
+        );
         ledger
             .upkeep_drawn
             .insert(ordered.unit.unit_id.clone(), charged);
@@ -9813,14 +9832,17 @@ fn report_shortfalls(
             } else {
                 format!(", so it buys {}", cut.join(" and "))
             };
+            // The food that paid part of the fee is counted in on both sides, so the sentence
+            // states the whole fee (`ah-pyiy`).
+            let food = food_counted_in(ledger, unit_id);
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
                     "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
-                    ordered.holding(SILVER) + received,
+                    ordered.holding(SILVER) + received + food,
                     spenders(upkeep_still_drawn(ledger, unit_id)),
-                    ordered.holding(SILVER) + received + short,
+                    ordered.holding(SILVER) + received + short + food,
                 ),
                 at,
             )
@@ -9970,20 +9992,19 @@ fn report_shortfalls(
     // player their orders spend it sends them looking through orders that spend nothing
     // (`ah-1wcw.4`).
     //
-    // The fees are every non-doubted unit's, and what the hex "can have" is the part of them it
-    // covered - so the arithmetic holds whatever else the hex's orders spent, which a figure taken
-    // from holdings does not.
+    // The fees are every non-doubted unit's whole fee, with the food that paid part of one before
+    // silver (steps 1 and 2) counted as covered (`ah-pyiy`), and what the hex "can have" is the part
+    // of them it covered - so the arithmetic holds whatever else the hex's orders spent, which a
+    // figure taken from holdings does not.
     if maintenance_short > 0 && options.emits(codes::NOT_ENOUGH_SILVER) {
         let owed: i64 = hex
             .units
             .iter()
             .filter(|o| !ledger.doubted.contains(&o.unit.unit_id))
             .map(|o| {
-                ledger
-                    .upkeep
-                    .get(&o.unit.unit_id)
-                    .copied()
-                    .unwrap_or_default()
+                let id = &o.unit.unit_id;
+                ledger.upkeep.get(id).copied().unwrap_or_default()
+                    + ledger.upkeep_food.get(id).copied().unwrap_or_default()
             })
             .sum();
         findings.push(hex.finding(
@@ -10023,6 +10044,17 @@ fn upkeep_still_drawn(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
         .copied()
         .unwrap_or_default();
     (drawn - relieved).max(0)
+}
+
+/// The food a shortage message counts in for this unit: what paid part of its fee before silver,
+/// but only while the message still names upkeep. A unit whose wages or the unclaimed fund took the
+/// rest of the fee off its silver is told its *orders* spend, and a fee that is not in the sentence
+/// must not be in its figures either (`ah-1wcw.4`, `ah-fjty`, `ah-pyiy`).
+fn food_counted_in(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    if upkeep_still_drawn(ledger, unit_id) <= 0 {
+        return 0;
+    }
+    ledger.upkeep_food.get(unit_id).copied().unwrap_or_default()
 }
 
 fn unpaid_upkeep(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
@@ -31117,6 +31149,257 @@ BUILD
             .message,
             "the units in this hex are short $40 of upkeep between them: they can have $50 and \
              their upkeep costs $90"
+        );
+    }
+
+    /// `ah-pyiy`: the silver warnings among these findings, and nothing else.
+    fn silver_warnings(findings: Vec<Finding>) -> Vec<Finding> {
+        findings
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect()
+    }
+
+    /// `ah-pyiy`: a Trident leader set to eat its own food, holding this much grain and silver.
+    fn trident_leader(id: &str, grain: i64, silver: i64) -> ReportUnit {
+        with_flag(
+            with_item(
+                with_race(with_silver(starving(unit(id)), silver), 1, "leader", "LEAD"),
+                grain,
+                "grain",
+                "GRAI",
+            ),
+            "consuming unit's food",
+        )
+    }
+
+    /// `ah-pyiy`: a New Origins unit of one leader and five humans (fee 100), eating its own food.
+    fn mixed_new_origins_unit(id: &str, grain: i64, silver: i64) -> ReportUnit {
+        with_flag(
+            with_item(
+                with_people(
+                    with_silver(starving(unit(id)), silver),
+                    vec![
+                        ItemAmount {
+                            amount: 1,
+                            name: "leader".to_string(),
+                            tag: "LEAD".to_string(),
+                        },
+                        ItemAmount {
+                            amount: 5,
+                            name: "human".to_string(),
+                            tag: "HUMN".to_string(),
+                        },
+                    ],
+                ),
+                grain,
+                "grain",
+                "GRAI",
+            ),
+            "consuming unit's food",
+        )
+    }
+
+    /// `ah-pyiy`: the food that paid part of the fee counts toward what the unit can have, and the
+    /// whole fee toward what it spends (`newage/trident rules/economy_maintenance`: fee 90, a grain 30).
+    #[test]
+    fn a_trident_leader_alone_counts_its_own_food_in_its_warning() {
+        let findings = silver_warnings(check_against(
+            &trident_rules(),
+            vec![region(vec![trident_leader("5", 2, 0)])],
+            "",
+        ));
+        assert_eq!(
+            only(findings).message,
+            "short $30: this unit can have $60 and its orders and upkeep spend $90"
+        );
+    }
+
+    #[test]
+    fn a_trident_leader_with_some_silver_counts_its_food_too() {
+        let findings = silver_warnings(check_against(
+            &trident_rules(),
+            vec![region(vec![trident_leader("5", 1, 40)])],
+            "",
+        ));
+        assert_eq!(
+            only(findings).message,
+            "short $20: this unit can have $70 and its orders and upkeep spend $90"
+        );
+    }
+
+    #[test]
+    fn a_leader_that_also_buys_counts_its_food_toward_what_it_can_have() {
+        let mut hex_region = region(vec![trident_leader("5", 2, 50)]);
+        hex_region.for_sale.push(MarketItem {
+            amount: 10,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 80,
+        });
+        let findings = silver_warnings(check_against(
+            &trident_rules(),
+            vec![hex_region],
+            "unit 5\nBUY 1 horse\n",
+        ));
+        let message = only(findings).message;
+        assert!(
+            message.starts_with(
+                "short $60: this unit can have $110 and its orders and upkeep spend $170"
+            ),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn a_new_origins_mixed_unit_counts_its_food_in_its_warning() {
+        let findings = silver_warnings(check(
+            vec![region(vec![mixed_new_origins_unit("5", 1, 20)])],
+            "",
+        ));
+        assert_eq!(
+            only(findings).message,
+            "short $30: this unit can have $70 and its orders and upkeep spend $100"
+        );
+    }
+
+    /// Step 2 of the payment order pays before silver just as step 1 does, so faction food counts
+    /// the same way (`newage/trident rules/economy_maintenance`).
+    #[test]
+    fn a_unit_fed_partly_by_faction_food_counts_it_in_its_warning() {
+        let findings = silver_warnings(check_against(
+            &trident_rules(),
+            vec![region(vec![
+                with_flag(
+                    with_race(with_silver(starving(unit("5")), 0), 1, "leader", "LEAD"),
+                    "consuming faction's food",
+                ),
+                with_item(
+                    with_men(with_silver(starving(unit("7")), 0), 0),
+                    2,
+                    "grain",
+                    "GRAI",
+                ),
+            ])],
+            "",
+        ));
+        assert_eq!(
+            only(findings).message,
+            "short $30: this unit can have $60 and its orders and upkeep spend $90"
+        );
+    }
+
+    #[test]
+    fn a_unit_not_set_to_consume_counts_no_food_in_its_warning() {
+        let leader = with_item(
+            with_race(with_silver(starving(unit("5")), 0), 1, "leader", "LEAD"),
+            1,
+            "grain",
+            "GRAI",
+        );
+        let findings = silver_warnings(check_against(
+            &trident_rules(),
+            vec![region(vec![leader])],
+            "unit 5\nIDLE\n",
+        ));
+        let message = only(findings).message;
+        assert!(message.contains("can have $0"), "{message}");
+    }
+
+    #[test]
+    fn a_unit_whose_food_pays_its_whole_fee_counts_no_food_when_orders_overspend() {
+        let fed = with_flag(
+            with_item(
+                with_men(with_silver(starving(unit("5")), 10), 6),
+                2,
+                "grain",
+                "GRAI",
+            ),
+            "consuming unit's food",
+        );
+        let findings = silver_warnings(check(vec![region(vec![fed])], "unit 5\nSTUDY combat\n"));
+        let message = only(findings).message;
+        assert!(!message.contains("upkeep"), "{message}");
+        assert!(message.contains("can have $10"), "{message}");
+    }
+
+    #[test]
+    fn a_trident_hex_warning_counts_the_food_that_paid_part_of_a_fee() {
+        let findings = silver_warnings(check_against(
+            &trident_rules(),
+            vec![region(vec![
+                trident_leader("5", 2, 0),
+                with_men(with_silver(starving(unit("7")), 20), 0),
+            ])],
+            "",
+        ));
+        assert_eq!(
+            only(findings).message,
+            "the units in this hex are short $10 of upkeep between them: they can have $80 and \
+             their upkeep costs $90"
+        );
+    }
+
+    #[test]
+    fn a_trident_hex_warning_counts_one_grain_and_forty_silver() {
+        let findings = silver_warnings(check_against(
+            &trident_rules(),
+            vec![region(vec![
+                trident_leader("5", 1, 40),
+                with_men(with_silver(starving(unit("7")), 10), 0),
+            ])],
+            "",
+        ));
+        assert_eq!(
+            only(findings).message,
+            "the units in this hex are short $10 of upkeep between them: they can have $80 and \
+             their upkeep costs $90"
+        );
+    }
+
+    #[test]
+    fn a_new_origins_hex_warning_counts_the_food_too() {
+        let findings = silver_warnings(check(
+            vec![region(vec![
+                mixed_new_origins_unit("5", 1, 20),
+                with_men(with_silver(starving(unit("7")), 10), 0),
+            ])],
+            "",
+        ));
+        assert_eq!(
+            only(findings).message,
+            "the units in this hex are short $20 of upkeep between them: they can have $80 and \
+             their upkeep costs $100"
+        );
+    }
+
+    #[test]
+    fn a_hex_warning_counts_no_food_for_a_unit_not_set_to_consume() {
+        let leader = with_item(
+            with_race(with_silver(starving(unit("5")), 0), 1, "leader", "LEAD"),
+            1,
+            "grain",
+            "GRAI",
+        );
+        let findings = silver_warnings(check_against(
+            &trident_rules(),
+            vec![region(vec![
+                leader,
+                with_men(with_silver(starving(unit("7")), 10), 0),
+            ])],
+            "unit 5\nIDLE\n",
+        ));
+        let message = only(findings).message;
+        assert!(message.ends_with("their upkeep costs $90"), "{message}");
+        let short: i64 = message
+            .split("short $")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .and_then(|figure| figure.parse().ok())
+            .expect("a shortfall figure");
+        assert!(
+            message.contains(&format!("they can have ${} ", 90 - short)),
+            "{message}"
         );
     }
 
