@@ -47,7 +47,7 @@ pub const G8_F73_T1: Report = report!(G8_F73_T1, "neworigins-3.0.0-g8-f73-t1.rep
 pub const G8_F73_T2: Report = report!(G8_F73_T2, "neworigins-3.0.0-g8-f73-t2.rep");
 pub const G8_F73_T71: Report = report!(G8_F73_T71, "neworigins-3.0.0-g8-f73-t71.rep");
 
-/// Every fixture, for the lockstep test and for anything that walks them all
+/// Every New Origins fixture, for the lockstep test and for anything that walks them all
 /// (`parse_real_reports`).
 pub const ALL: &[&Report] = &[
     &G2_F42_T0,
@@ -76,6 +76,42 @@ pub const ALL: &[&Report] = &[
     &G8_F73_T1,
     &G8_F73_T2,
     &G8_F73_T71,
+];
+
+pub const NEWAGE_ARCANUM_F3_T2: Report = report!(
+    NEWAGE_ARCANUM_F3_T2,
+    "newage-arcanum/newage-arcanum-f3-t2.rep"
+);
+pub const NEWAGE_ARCANUM_F3_T83: Report = report!(
+    NEWAGE_ARCANUM_F3_T83,
+    "newage-arcanum/newage-arcanum-f3-t83.rep"
+);
+pub const NEWAGE_ARCANUM_F3_T84: Report = report!(
+    NEWAGE_ARCANUM_F3_T84,
+    "newage-arcanum/newage-arcanum-f3-t84.rep"
+);
+pub const NEWAGE_ARCANUM_F5_T2: Report = report!(
+    NEWAGE_ARCANUM_F5_T2,
+    "newage-arcanum/newage-arcanum-f5-t2.rep"
+);
+pub const NEWAGE_ARCANUM_F5_T83: Report = report!(
+    NEWAGE_ARCANUM_F5_T83,
+    "newage-arcanum/newage-arcanum-f5-t83.rep"
+);
+pub const NEWAGE_ARCANUM_F5_T84: Report = report!(
+    NEWAGE_ARCANUM_F5_T84,
+    "newage-arcanum/newage-arcanum-f5-t84.rep"
+);
+
+/// Opt-in Arcanum corpus, kept out of the Origins/default-ruleset sweeps.
+/// Names use server API turns, not HUD's date-derived turns; see the fixture README.
+pub const ALL_NEWAGE_ARCANUM_REPORTS: &[&Report] = &[
+    &NEWAGE_ARCANUM_F3_T2,
+    &NEWAGE_ARCANUM_F3_T83,
+    &NEWAGE_ARCANUM_F3_T84,
+    &NEWAGE_ARCANUM_F5_T2,
+    &NEWAGE_ARCANUM_F5_T83,
+    &NEWAGE_ARCANUM_F5_T84,
 ];
 
 /// One committed mage sheet: the report it was exported from, the unit ids it was exported with,
@@ -219,6 +255,51 @@ mod tests {
             on_disk_only.is_empty() && named_only.is_empty(),
             "fixtures on disk but not named: {on_disk_only:?}; named but missing from disk: {named_only:?}"
         );
+    }
+
+    #[test]
+    fn every_arcanum_report_on_disk_is_named_here() {
+        let on_disk: BTreeSet<String> = fs::read_dir(fixtures_dir().join("newage-arcanum"))
+            .expect("Arcanum report directory should exist")
+            .map(|entry| {
+                entry
+                    .expect("Arcanum report entry should be readable")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .filter(|name| name.ends_with(".rep"))
+            .map(|name| format!("newage-arcanum/{name}"))
+            .collect();
+        let named: BTreeSet<String> = ALL_NEWAGE_ARCANUM_REPORTS
+            .iter()
+            .map(|report| report.file.to_string())
+            .collect();
+        assert_eq!(on_disk, named);
+        assert!(!named.is_empty());
+    }
+
+    #[test]
+    fn arcanum_names_follow_the_file_and_embed_reports() {
+        for report in ALL_NEWAGE_ARCANUM_REPORTS {
+            let tail = report
+                .file
+                .strip_prefix("newage-arcanum/newage-arcanum-")
+                .and_then(|name| name.strip_suffix(".rep"))
+                .expect("Arcanum fixture filename should identify faction and server turn");
+            assert_eq!(
+                report.name,
+                format!("NEWAGE_ARCANUM_{}", tail.to_uppercase().replace('-', "_"))
+            );
+            assert!(
+                report
+                    .text
+                    .lines()
+                    .any(|line| line == "Atlantis Report For:"),
+                "{} should contain a report header",
+                report.file
+            );
+        }
     }
 
     #[test]

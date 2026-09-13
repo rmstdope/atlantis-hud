@@ -13,7 +13,7 @@ import { join } from "node:path";
  * Node-environment tests too, so this works unchanged on both sides.
  */
 
-/** The committed report fixtures by key, mapping to their file name under tests/fixtures/reports/. */
+/** The New Origins report fixtures by key, mapping to their file name under tests/fixtures/reports/. */
 export const REPORTS = {
   g2f42t0: "neworigins-3.0.0-g2-f42-t0.rep",
   g3f42t1: "neworigins-3.0.0-g3-f42-t1.rep",
@@ -53,6 +53,28 @@ export function reportPath(key: ReportKey): string {
 /** A fixture's text. */
 export function readReport(key: ReportKey): string {
   return readFileSync(reportPath(key), "utf8");
+}
+
+/** Arcanum reports are opt-in: the Origins corpus must not classify them with its default ruleset.
+ * Keys use server API turns, not HUD's date-derived turns; see the README beside the reports.
+ */
+export const NEWAGE_ARCANUM_REPORTS = {
+  f3t2: "newage-arcanum-f3-t2.rep",
+  f3t83: "newage-arcanum-f3-t83.rep",
+  f3t84: "newage-arcanum-f3-t84.rep",
+  f5t2: "newage-arcanum-f5-t2.rep",
+  f5t83: "newage-arcanum-f5-t83.rep",
+  f5t84: "newage-arcanum-f5-t84.rep"
+} as const;
+
+export type NewAgeArcanumReportKey = keyof typeof NEWAGE_ARCANUM_REPORTS;
+
+export function newAgeArcanumReportPath(key: NewAgeArcanumReportKey): string {
+  return join(__dirname, "..", "..", "..", "tests", "fixtures", "reports", "newage-arcanum", NEWAGE_ARCANUM_REPORTS[key]);
+}
+
+export function readNewAgeArcanumReport(key: NewAgeArcanumReportKey): string {
+  return readFileSync(newAgeArcanumReportPath(key), "utf8");
 }
 
 /**
@@ -124,4 +146,10 @@ export function readRuleset(): string {
 /** The committed Trident ruleset used by new-age magic tests. */
 export function readTridentRuleset(): string {
   return readFileSync(TRIDENT_RULESET_PATH, "utf8");
+}
+
+export const NEWAGE_ARCANUM_RULESET_PATH = join(__dirname, "..", "..", "..", "config", "public", "ruleset-newage-arcanum.json");
+
+export function readNewAgeArcanumRuleset(): string {
+  return readFileSync(NEWAGE_ARCANUM_RULESET_PATH, "utf8");
 }

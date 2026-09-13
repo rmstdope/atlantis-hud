@@ -1,15 +1,18 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ATLACLIENT_MAPS,
   MAGE_SHEETS,
+  NEWAGE_ARCANUM_REPORTS,
   REPORTS,
   readAtlaClientMap,
   readMageSheet,
+  readNewAgeArcanumReport,
   readReport,
   type AtlaClientMapKey,
   type MageSheetKey,
+  type NewAgeArcanumReportKey,
   type ReportKey
 } from "./index";
 
@@ -38,6 +41,41 @@ describe("the committed report fixtures", () => {
       const [, g, f, t] = match as RegExpMatchArray;
       expect(key).toBe(`g${g}f${f}t${t}`);
     }
+  });
+});
+
+const arcanumDir = join(fixturesDir, "newage-arcanum");
+
+describe("the New Age Arcanum report fixtures", () => {
+  it("names every downloaded report separately from the Origins corpus", () => {
+    const onDisk = readdirSync(arcanumDir).filter((name) => name.endsWith(".rep")).sort();
+    expect(Object.values(NEWAGE_ARCANUM_REPORTS).slice().sort()).toEqual(onDisk);
+    expect(onDisk.length).toBeGreaterThan(0);
+  });
+
+  it("reads each named faction and keeps the server-turn identity in its key", () => {
+    for (const [key, file] of Object.entries(NEWAGE_ARCANUM_REPORTS)) {
+      const match = /^newage-arcanum-f(\d+)-t(\d+)\.rep$/.exec(file);
+      expect(match, file).not.toBeNull();
+      const [, faction, turn] = match as RegExpMatchArray;
+      expect(key).toBe(`f${faction}t${turn}`);
+      const text = readNewAgeArcanumReport(key as NewAgeArcanumReportKey);
+      expect(new RegExp(`^Atlantis Report For:\\r?\\n[^\\r\\n]+ \\(${faction}\\)`, "m").test(text), file).toBe(true);
+    }
+  });
+
+  it("documents every fixture and preserves only redacted credential fields", () => {
+    const readme = readFileSync(join(arcanumDir, "README.md"), "utf8");
+    const unsafe: string[] = [];
+    for (const file of readdirSync(arcanumDir).filter((name) => name.endsWith(".rep"))) {
+      expect(readme.includes(file), file).toBe(true);
+      const text = readFileSync(join(arcanumDir, file), "utf8");
+      const sensitiveLines = text.split(/\r?\n/).filter((line) => /#atlantis\b|\bpassword\b/i.test(line));
+      if (sensitiveLines.some((line) => !/^[ \t]*#atlantis\s+\d+\s+"<password>"[ \t]*$/i.test(line))) {
+        unsafe.push(file);
+      }
+    }
+    expect(unsafe).toEqual([]);
   });
 });
 

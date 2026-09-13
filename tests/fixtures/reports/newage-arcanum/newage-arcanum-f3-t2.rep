@@ -1,0 +1,90 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;leader [LEAD]                             1     1          4
+
+Atlantis Report For:
+Martiniks (3) (Martial 3, Magic 2)
+February, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 8.1.0
+
+Faction Status:
+Regions: 0 (40)
+Quartermasters: 0 (9)
+Mages: 1 (3)
+Apprentices: 0 (5)
+
+Errors during turn:
+Unit (1693): MOVE: Can only swim in coastal waters and lakes.
+
+Events during turn:
+Unit (1693): Enters Gateway to mountain [3].
+Unit (1693): Claims 50 silver for maintenance.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : Creatures (2).
+Neutral : none.
+Friendly : none.
+Ally : none.
+
+Unclaimed silver: 20200.
+
+nexus (0,0,0 <nexus>) in The Void.
+------------------------------------------------------------
+  
+  Atlantis Nexus is a magical place: the entryway to the world of
+    Atlantis. Enjoy your stay; the city guards should keep you safe as
+    long as you should choose to stay. However, rumor has it that once
+    you have left the Nexus, you can never return.
+  
+  Wages: $0.
+  Wanted: none.
+  For Sale: none.
+  Products: none.
+
+Exits:
+  none
+
+- City Guard (1), on guard, The Guardsmen (1), 500 leaders [LEAD], 500
+  swords [SWOR], 500 plate armor [PARM], 500 iron shields [ISHD].
+- Arcane Warder (2), on guard, The Guardsmen (1), behind, leader
+  [LEAD].
+- Shieldmaster (3), on guard, The Guardsmen (1), behind, leader
+  [LEAD].
+- Court Battlemage (4), on guard, The Guardsmen (1), behind, leader
+  [LEAD].
+
++ Gateway to plain [1] : Gateway, contains an inner location.
+
++ Gateway to forest [2] : Gateway, contains an inner location.
+
++ Gateway to mountain [3] : Gateway, contains an inner location.
+  * Unit (1693), Martiniks (3), behind, revealing faction, leader
+    [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE]
+    1 (30), force [FORC] 1 (30), pattern [PATT] 1 (30), spirit [SPIR]
+    1 (30), gate lore [GATE] 1 (30), fire [FIRE] 1 (30), combat [COMB]
+    3 (180). Can Study: earthquake [EQUA], force shield [FSHI], energy
+    shield [ESHI], spirit shield [SSHI], magical healing [MHEA],
+    farsight [FARS], mind reading [MIND], weather lore [WEAT], earth
+    lore [EART], necromancy [NECR], demon lore [DEMO], illusion
+    [ILLU], artifact lore [ARTI].
+  - Unit (1696), Moon Prism (6), avoiding, behind, leader [LEAD].
+
++ Gateway to hill [4] : Gateway, contains an inner location.
+  - Unit (1694), HapKoMaH (4), behind, leader [LEAD].
+  - Unit (1695), Martiniks1 (5), behind, leader [LEAD].
+
++ Gateway to swamp [5] : Gateway, contains an inner location.
+
++ Gateway to jungle [6] : Gateway, contains an inner location.
+
++ Gateway to desert [7] : Gateway, contains an inner location.
+
++ Gateway to tundra [8] : Gateway, contains an inner location.
+
+
+
