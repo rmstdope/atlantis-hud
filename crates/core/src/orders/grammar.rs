@@ -11,7 +11,7 @@
 //! say", and it accepts anything, including nothing. That is the accept-on-doubt policy made
 //! concrete: a `CAST` whose arguments depend on the spell must not be guessed at.
 
-use super::lexer::{lex_line_with_ruleset, Token, TokenKind};
+use super::lexer::{lex_line_with_ruleset, utf16_column, Token, TokenKind};
 use crate::movement::graph::Direction;
 use crate::movement::rules::{OrderLanguage, Ruleset};
 
@@ -646,9 +646,9 @@ pub fn find_order_with_ruleset(command: &str, ruleset: Option<&Ruleset>) -> Opti
 /// half-typed word included: the position is worked out from the complete words before it, and the
 /// half-typed word is what the shell filters the answer by.
 ///
-/// `None` in the command position, inside a comment or an unclosed quote, or for an order the table
-/// does not have. The `Arg`s are de-duplicated in form order: several forms often agree on what may
-/// stand next, and each is worth answering only once.
+/// `None` in the command position, inside a comment or an unclosed quote (except where BUILD names
+/// a structure), or for an order the table does not have. The `Arg`s are de-duplicated in form
+/// order: several forms often agree on what may stand next, and each is worth answering only once.
 pub(super) fn arguments_at_caret(
     line_prefix: &str,
     ruleset: Option<&Ruleset>,
@@ -661,7 +661,8 @@ pub(super) fn arguments_at_caret(
 
 /// Which position one order line's caret is in.
 pub(super) enum CaretShape {
-    /// Inside a comment or an unterminated quote, or after a command the table does not have.
+    /// Inside a comment or an unterminated quote (except where BUILD names a structure), or after a
+    /// command the table does not have.
     Nowhere,
     /// The first word of the line, behind any indentation and an optional `@`.
     Command,
@@ -686,7 +687,33 @@ pub(super) struct Caret {
 /// half-typed word is what the shell filters the answer by.
 pub(super) fn caret_at(line_prefix: &str, ruleset: Option<&Ruleset>) -> Caret {
     let lexed = lex_line_with_ruleset(line_prefix, ruleset);
-    if lexed.comment.is_some() || lexed.unterminated_quote.is_some() {
+    if lexed.comment.is_some() {
+        return Caret {
+            shape: CaretShape::Nowhere,
+            word: None,
+        };
+    }
+
+    if lexed.unterminated_quote.is_some() {
+        // The lexer stops at the quote, so every token it kept is a complete word, and the word
+        // being typed is everything from the quote on - an unterminated quote is necessarily the
+        // last `"` on the line.
+        let shape = shape_of(&lexed.tokens, ruleset);
+        if let CaretShape::InOrder(order, offered) = &shape {
+            if quote_opens_a_structure_name(order, offered) {
+                let quote_at = line_prefix.rfind('"').unwrap_or(0);
+                let word = Token {
+                    kind: TokenKind::Quoted,
+                    text: line_prefix[quote_at..].to_string(),
+                    column_start: utf16_column(line_prefix, quote_at),
+                    column_end: utf16_column(line_prefix, line_prefix.len()),
+                };
+                return Caret {
+                    shape,
+                    word: Some(word),
+                };
+            }
+        }
         return Caret {
             shape: CaretShape::Nowhere,
             word: None,
@@ -700,18 +727,21 @@ pub(super) fn caret_at(line_prefix: &str, ruleset: Option<&Ruleset>) -> Caret {
     let typing = !line_prefix.ends_with(char::is_whitespace) && !line_prefix.ends_with('"');
     let word = if typing { tokens.pop() } else { None };
 
+    Caret {
+        shape: shape_of(&tokens, ruleset),
+        word,
+    }
+}
+
+/// Which position follows these complete words: the command position when there are none, and
+/// otherwise every argument the order's forms allow next.
+fn shape_of(tokens: &[Token], ruleset: Option<&Ruleset>) -> CaretShape {
     // Nothing typed yet: the caret is in the command position, which `order_commands` answers.
     let Some((command, arguments)) = tokens.split_first() else {
-        return Caret {
-            shape: CaretShape::Command,
-            word,
-        };
+        return CaretShape::Command;
     };
     let Some(order) = find_order_with_ruleset(&command.text, ruleset) else {
-        return Caret {
-            shape: CaretShape::Nowhere,
-            word,
-        };
+        return CaretShape::Nowhere;
     };
 
     let mut offered: Vec<&'static Arg> = Vec::new();
@@ -723,10 +753,13 @@ pub(super) fn caret_at(line_prefix: &str, ruleset: Option<&Ruleset>) -> Caret {
         }
     }
 
-    Caret {
-        shape: CaretShape::InOrder(order, offered),
-        word,
-    }
+    CaretShape::InOrder(order, offered)
+}
+
+/// Whether a word opened with `"` is one being typed rather than a quote that swallows the
+/// position: only where BUILD names what it builds, the one place a quoted name is offered.
+fn quote_opens_a_structure_name(order: &Order, offered: &[&'static Arg]) -> bool {
+    order.name == "BUILD" && offered.contains(&&Arg::Name)
 }
 
 /// The argument that may stand where the caret is, for one form; `None` when the typed words do not

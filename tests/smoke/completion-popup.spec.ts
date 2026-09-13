@@ -5,6 +5,7 @@ import {
   fillOrders,
   loadReport,
   ordersInput,
+  ordersText,
   selectHex,
   selectUnit
 } from "./gameSetup";
@@ -101,4 +102,40 @@ test("the completion popup stays inside the window", async ({ page }) => {
   // navigator's R1).
   expect(popupBox!.x).toBeGreaterThanOrEqual(0);
   expect(popupBox!.x + popupBox!.width).toBeLessThanOrEqual(viewportWidth);
+});
+
+test("BUILD completes a structure's name as the game spells it", async ({ page }) => {
+  await openEditor(page);
+  await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("BUILD Tim");
+
+  const popup = page.locator(".cm-tooltip-autocomplete");
+  await expect(popup).toContainText("Timber Yard");
+  await expect(popup).toContainText("building");
+  // Enter accepts the selection only once there is one, and not within acceptCompletion's 75ms
+  // interactionDelay - the same race orders-editor.spec.ts documents.
+  await expect(popup.locator("li[aria-selected]")).toContainText("Timber Yard");
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press("Enter");
+  await expect.poll(() => ordersText(page)).toContain('BUILD "Timber Yard" ');
+});
+
+test("a quote-opened BUILD name is closed by the one it picks", async ({ page }) => {
+  await openEditor(page);
+  await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type('BUILD "Tim');
+
+  const popup = page.locator(".cm-tooltip-autocomplete");
+  await expect(popup.locator("li[aria-selected]")).toContainText("Timber Yard");
+  // acceptCompletion's 75ms interactionDelay, as above.
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press("Enter");
+  await expect.poll(() => ordersText(page)).toContain('BUILD "Timber Yard" ');
+  expect(await ordersText(page)).not.toContain('""');
 });

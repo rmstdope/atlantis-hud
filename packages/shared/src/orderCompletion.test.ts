@@ -25,7 +25,7 @@ function caret(position: CaretPosition, options: readonly OrderCompletion[] = []
 
 /** A bare keyword entry, as the core answers a closed-vocabulary position. */
 function kw(value: string): OrderCompletion {
-  return { value, name: "", detail: "" };
+  return { value, name: "", label: "", detail: "" };
 }
 
 const COMMANDS = ["MOVE", "STUDY", "TAX", "TEACH", "WORK", "END"] as const;
@@ -207,6 +207,58 @@ describe("orderArgumentCompletions", () => {
     expect(result?.options.map((option) => option.apply)).toEqual([" COMPLETE "]);
   });
 
+  const TIMBER_YARD: OrderCompletion = {
+    value: '"Timber Yard"',
+    name: "Timber Yard",
+    label: "Timber Yard",
+    detail: "building"
+  };
+  const CARAVANSERAI: OrderCompletion = {
+    value: "Caravanserai",
+    name: "Caravanserai",
+    label: "Caravanserai",
+    detail: "building"
+  };
+
+  /** A hand-written answer: the file's `caret()` treats `"` as a boundary, which the core does not. */
+  function typing(word: string, entry: OrderCompletion): CaretLookup {
+    return async (linePrefix) => ({
+      position: "argument",
+      wordStart: linePrefix.length - word.length,
+      word,
+      options: [entry]
+    });
+  }
+
+  it("shows a building by its label and writes its value", async () => {
+    const result = await completeArgument(typing("tim", TIMBER_YARD), "BUILD tim");
+    expect(labels(result)).toEqual(["Timber Yard"]);
+    expect(result?.options.map((option) => option.apply)).toEqual(['"Timber Yard" ']);
+    expect(result?.options[0]?.detail).toBe("building");
+  });
+
+  it("matches a name from its start only", async () => {
+    expect(await completeArgument(typing("yard", TIMBER_YARD), "BUILD yard")).toBeNull();
+  });
+
+  it("matches a quote-opened word as though the quote were not there", async () => {
+    const result = await completeArgument(typing('"Tim', TIMBER_YARD), 'BUILD "Tim');
+    expect(labels(result)).toEqual(["Timber Yard"]);
+    expect(result?.from).toBe(6);
+    expect(result?.options.map((option) => option.apply)).toEqual(['"Timber Yard" ']);
+  });
+
+  it("writes a one-word name bare even when a quote opened it", async () => {
+    const result = await completeArgument(typing('"Cara', CARAVANSERAI), 'BUILD "Cara');
+    expect(result?.options.map((option) => option.apply)).toEqual(["Caravanserai "]);
+  });
+
+  it("stays quiet on a lone opening quote unless asked", async () => {
+    expect(await completeArgument(typing('"', TIMBER_YARD), 'BUILD "')).toBeNull();
+    const explicit = await completeArgument(typing('"', TIMBER_YARD), 'BUILD "', 'BUILD "'.length, true);
+    expect(labels(explicit)).toEqual(["Timber Yard"]);
+  });
+
   it("stays quiet right after a closing quote unless asked explicitly", async () => {
     const lookUp = caret("argument", [kw("COMPLETE")]);
     const text = 'BUILD "Big Boat"';
@@ -223,8 +275,8 @@ describe("orderArgumentCompletions", () => {
 
   it("matches an item by its name as well as its tag", async () => {
     const lookUp = caret("argument", [
-      { value: "XBOW", name: "crossbow", detail: "crossbow" },
-      { value: "SWOR", name: "sword", detail: "sword" }
+      { value: "XBOW", name: "crossbow", label: "", detail: "crossbow" },
+      { value: "SWOR", name: "sword", label: "", detail: "sword" }
     ]);
     const result = await completeArgument(lookUp, "BUY 2 cross");
     expect(labels(result)).toEqual(["XBOW"]);
@@ -233,7 +285,7 @@ describe("orderArgumentCompletions", () => {
 
   it("carries the core's detail onto the option, dimmed beside the label", async () => {
     const lookUp = caret("argument", [
-      { value: "PERF", name: "perfume", detail: "perfume · $204, 63 left" }
+      { value: "PERF", name: "perfume", label: "", detail: "perfume · $204, 63 left" }
     ]);
     const result = await completeArgument(lookUp, "BUY 5 PER");
     expect(result?.options[0]?.detail).toBe("perfume · $204, 63 left");
@@ -247,9 +299,9 @@ describe("orderArgumentCompletions", () => {
 
   it("the order the core gave is the order shown", async () => {
     const lookUp = caret("argument", [
-      { value: "ADVANCED", name: "", detail: "" },
-      { value: "AXE", name: "axe", detail: "axe" },
-      { value: "ARMOR", name: "", detail: "" }
+      { value: "ADVANCED", name: "", label: "", detail: "" },
+      { value: "AXE", name: "axe", label: "", detail: "axe" },
+      { value: "ARMOR", name: "", label: "", detail: "" }
     ]);
     const result = await completeArgument(lookUp, "GIVE 4573 ALL A", "GIVE 4573 ALL A".length, true);
     expect(labels(result)).toEqual(["ADVANCED", "AXE", "ARMOR"]);
