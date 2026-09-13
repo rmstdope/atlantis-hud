@@ -32,7 +32,7 @@ import { plannedGoals } from "./studyPlans";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
 import type { StandingAfterOrders } from "./studyStanding";
-import { teachingPermission, type TeachingPermission, type TeachingRule } from "./teachingPermission";
+import { teachingDoubles, teachingPermission, type TeachingPermission, type TeachingRule } from "./teachingPermission";
 import { joinNames } from "./workspace/standingChip";
 
 /** How many turns the Schedule draws. Six, chosen with the navigator. */
@@ -90,7 +90,7 @@ export type ScheduleCell =
       /**
        * The cross-faction teaching planned for this month under the selected world's declaration
        * rule, or null when none is - including every same-faction teacher and every world this build
-       * states no direction for. `taughtBy` is set only when `permission` is `"permitted"`.
+       * states no direction for. `taughtBy` is set when `teachingDoubles(permission)`, i.e. `"permitted"` or `"unknown"`.
        */
       crossFaction: { teacherKey: string; permission: TeachingPermission } | null;
     }
@@ -279,11 +279,8 @@ export function cellLabel(cell: ScheduleCell | undefined): string {
     // The agreed string is the whole label: no points and no worth mark (ah-g9sf.12). A
     // same-faction taught month keeps today's `FORC 2(140) ×2` exactly, which is what leaves it
     // unmarked.
-    if (cell.crossFaction.permission === "unknown") {
-      return "teaching uncertain";
-    }
     return `${cell.name} ${cell.level} - ${
-      cell.crossFaction.permission === "permitted" ? "teaching bonus" : "studies normally"
+      cell.crossFaction.permission === "refused" ? "studies normally" : "teaching bonus"
     }`;
   }
   const mark = worthMark(cell.worth, cell.taughtBy !== null || cell.unsheltered);
@@ -614,9 +611,10 @@ export function projectAll(input: {
               })
             };
       // The teacher whose month actually doubles this one, or null: a cross-faction teacher the
-      // declaration rule refuses or cannot establish teaches without effect here.
+      // declaration rule refuses teaches without effect here, and an unknown declaration is
+      // assumed Friendly (`teachingDoubles`).
       const doubling =
-        teacher !== null && (crossFaction === null || crossFaction.permission === "permitted")
+        teacher !== null && (crossFaction === null || teachingDoubles(crossFaction.permission))
           ? teacher
           : null;
       const halved = unsheltered.has(mage.key);
@@ -636,8 +634,7 @@ export function projectAll(input: {
         name: intent.name,
         level,
         points,
-        // Nothing claims a level rose on a month nobody can forecast.
-        gained: crossFaction?.permission === "unknown" ? false : level > intent.before.level,
+        gained: level > intent.before.level,
         blocked: null,
         worth,
         unsheltered: halved,
@@ -873,7 +870,7 @@ export function hoverCard(
       );
     } else {
       extra.push(
-        `${row.name}'s Friendly declaration for ${teacherName} is not in the report. ${row.name}'s teaching bonus cannot be forecast.`
+        `${teacherName}'s teaching doubles ${row.name}'s study this turn, as long as ${row.name} has declared ${teacherName} Friendly.`
       );
     }
   } else if (cell?.kind === "study" && cell.taughtBy !== null) {

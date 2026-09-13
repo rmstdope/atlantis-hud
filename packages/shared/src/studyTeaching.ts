@@ -7,7 +7,7 @@
 
 import type { ScheduleCell, ScheduleRow } from "./studySchedule";
 import { joinNames } from "./workspace/standingChip";
-import { teachingPermission, type TeachingRule } from "./teachingPermission";
+import { teachingDoubles, teachingPermission, type TeachingRule } from "./teachingPermission";
 
 /**
  * Student-months one teacher can support.
@@ -47,8 +47,8 @@ export function taughtWorth(students: number): number {
  * Deliberately conservative in two cases. A full live teacher whose mage order would in fact drop a
  * current pupil for this student is reported as having no slot, so the row stays plain rather than
  * nudging the player into displacing somebody - and a cross-faction teacher whose declaration rule
- * answers anything but `"permitted"` is skipped, so a popover never offers a doubled month the
- * schedule would withhold. Both `"refused"` and `"unknown"` suppress the offer.
+ * answers `"refused"` is skipped, so a popover never offers a doubled month the schedule withholds.
+ * An `"unknown"` declaration is assumed Friendly and offered, exactly as the schedule doubles it.
  */
 export function doublingTeacher(input: {
   /** Every row the Schedule drew, in the order `projectAll` resolved the teachers in. */
@@ -85,11 +85,13 @@ export function doublingTeacher(input: {
       continue;
     }
     if (
-      teachingPermission({
-        rule: input.rule,
-        studentFactionId: student.factionId,
-        teacherFactionId: row.factionId
-      }) !== "permitted"
+      !teachingDoubles(
+        teachingPermission({
+          rule: input.rule,
+          studentFactionId: student.factionId,
+          teacherFactionId: row.factionId
+        })
+      )
     ) {
       continue;
     }
@@ -109,13 +111,10 @@ export function doublingTeacher(input: {
  * The mage who has claimed this student's month, doubled or not - or null when nobody has.
  *
  * `ScheduleCell.taughtBy` is set only on a month that is actually doubled, so a cross-faction
- * student whose declaration is refused or cannot be established reads as untaught there (ah-g9sf.12).
+ * student whose declaration is refused reads as untaught there (ah-g9sf.12, ah-sooy).
  * `projectAll`'s own resolution still records that teacher, and refuses a second one with
  * `TeachRefusal { kind: "taken" }` - so anything asking "is this mage's month already somebody's"
  * must read this rather than `taughtBy`, or it offers a pupil the projection would drop.
- *
- * Conservative for `"unknown"` deliberately, as `doublingTeacher` is: we cannot establish that the
- * engine refuses that teacher either, so nothing here promises the student is free.
  */
 export function claimedTeacher(cell: ScheduleCell | undefined): string | null {
   if (cell === undefined || cell.kind !== "study") {

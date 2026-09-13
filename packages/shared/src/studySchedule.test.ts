@@ -1015,7 +1015,7 @@ describe("cross-faction teaching under a declaration rule", () => {
   const student = (rule: TeachingRule) =>
     rows(rule).find((one) => one.key === "12/2517") as ScheduleRow;
 
-  it("reads an allied teacher's Trident month as a bonus, as ordinary study, or as uncertain", () => {
+  it("reads an allied teacher's Trident month as a bonus when the declaration is confirmed or unknown, and as ordinary study when refused", () => {
     const confirmed = student({ declarer: "student", declarations: declarations({ "21": "friendly" }) });
     expect(cellLabel(confirmed.cells[0])).toBe("force 2 - teaching bonus");
     expect(confirmed.cells[0].kind === "study" && confirmed.cells[0].taughtBy).toBe("21/3012");
@@ -1030,14 +1030,20 @@ describe("cross-faction teaching under a declaration rule", () => {
       "Sable has not declared Uln Friendly. Uln's teaching will not add a bonus to Sable's study this turn."
     );
 
-    const uncertain = student({ declarer: "student", declarations: declarations({}) });
-    expect(cellLabel(uncertain.cells[0])).toBe("teaching uncertain");
-    expect(uncertain.cells[0].kind === "study" && uncertain.cells[0].taughtBy).toBeNull();
-    // Nothing claims a level rose on a month nobody can forecast.
-    expect(uncertain.cells[0].kind === "study" && uncertain.cells[0].gained).toBe(false);
-    expect(hoverCard(uncertain, 0, turns, tree, "x", new Map([["21/3012", "Uln"]])).foot).toContain(
-      "Sable's Friendly declaration for Uln is not in the report. Sable's teaching bonus cannot be forecast."
+    const assumed = student({ declarer: "student", declarations: declarations({}) });
+    const cell = assumed.cells[0];
+    const known = confirmed.cells[0];
+    expect(cellLabel(cell)).toBe("force 2 - teaching bonus");
+    expect(cell.kind === "study" && cell.taughtBy).toBe("21/3012");
+    expect(cell.kind === "study" && cell.gained).toBe(true);
+    expect(cell.kind === "study" && cell.crossFaction?.permission).toBe("unknown");
+    expect(cellLabel(cell)).toBe(cellLabel(known));
+    expect(cell.kind === "study" && cell.worth).toBe(known.kind === "study" && known.worth);
+    const foot = hoverCard(assumed, 0, turns, tree, "x", new Map([["21/3012", "Uln"]])).foot;
+    expect(foot).toContain(
+      "Uln's teaching doubles Sable's study this turn, as long as Sable has declared Uln Friendly."
     );
+    expect(foot).not.toContain("not in the report");
   });
 
   it("still names a refused student in the teacher's own order", () => {

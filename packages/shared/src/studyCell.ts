@@ -245,8 +245,8 @@ function teachChoices(input: {
       });
       continue;
     }
-    // `claimedTeacher`, not `cell.taughtBy`: a cross-faction month the declaration rule refuses or
-    // cannot establish is not doubled, so `taughtBy` is null on it - but the projection has still
+    // `claimedTeacher`, not `cell.taughtBy`: a cross-faction month the declaration rule refuses is
+    // not doubled, so `taughtBy` is null on it - but the projection has still
     // given that student to that teacher and would refuse a second one as `taken`.
     const claimed = claimedTeacher(cell);
     if (claimed !== null && claimed !== rowKey) {

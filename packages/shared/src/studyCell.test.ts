@@ -464,10 +464,10 @@ describe("the doubled month a declaration rule withholds", () => {
     declarations: { factionId: "12", toward: new Map(Object.entries(toward)), fallback: null }
   });
 
-  it("drops the doubled month from the study choices when the declaration does not allow it", () => {
+  it("drops the doubled month from the study choices only when the declaration refuses it", () => {
     expect(force(rule({ "21": "friendly" }))?.taughtBy).toBe("Uln");
     expect(force(rule({ "21": "neutral" }))?.taughtBy).toBeNull();
-    expect(force(rule({}))?.taughtBy).toBeNull();
+    expect(force(rule({}))?.taughtBy).toBe("Uln");
     expect(force(NO_TEACHING_RULE)?.taughtBy).toBe("Uln");
   });
 });

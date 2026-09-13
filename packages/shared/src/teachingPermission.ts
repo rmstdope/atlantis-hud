@@ -32,7 +32,25 @@ import { newAgeWorldFor } from "./workspace/newAgeWorlds";
 export type TeachingDeclarer = "student" | "teacher";
 
 /** What the declaring faction's attitude says about one teaching relationship. */
-export type TeachingPermission = "permitted" | "refused" | "unknown";
+export type TeachingPermission =
+  /** The declaring faction is known to have declared the other Friendly or better. */
+  | "permitted"
+  /** The declaring faction is known to have declared the other Neutral or worse. */
+  | "refused"
+  /** No declaration by the declaring faction is known; the planner assumes Friendly (see `teachingDoubles`). */
+  | "unknown";
+
+/**
+ * Whether the planner forecasts the teaching bonus for a verdict.
+ *
+ * True for "permitted" and for "unknown": a declaration we cannot see is assumed Friendly (or
+ * better), because under Trident the student's side is never in our own report. False only for
+ * "refused" - a declaration known to be Neutral or worse - which is the one case the planner warns
+ * about.
+ */
+export function teachingDoubles(permission: TeachingPermission): boolean {
+  return permission !== "refused";
+}
 
 /** Our own faction's declarations, once this turn's own orders have run. */
 export type OwnDeclarations = {
