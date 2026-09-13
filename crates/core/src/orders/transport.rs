@@ -185,6 +185,7 @@ pub(crate) fn priced(
     from: crate::report::model::Coordinate,
     to: crate::report::model::Coordinate,
     geometry: Option<crate::movement::graph::MapGeometry>,
+    shown: &crate::movement::graph::ShownExtent,
     language: OrderLanguage,
     weight: i64,
 ) -> Priced {
@@ -198,7 +199,7 @@ pub(crate) fn priced(
     if reach == Reach::Local {
         return Priced::Free;
     }
-    let rate = match hex_distance(from, to, geometry) {
+    let rate = match hex_distance(from, to, geometry, shown) {
         Some(HexDistance::Exact(hexes)) => shipping_rate(reach, hexes, language),
         // An upper bound inside the free short range settles the question outright.
         Some(HexDistance::AtMost(hexes)) if hexes <= FREE_SHORT_RANGE_HEXES => {
@@ -494,12 +495,13 @@ pub(crate) fn arrival(
     from: crate::report::model::Coordinate,
     to: crate::report::model::Coordinate,
     geometry: Option<crate::movement::graph::MapGeometry>,
+    shown: &crate::movement::graph::ShownExtent,
 ) -> Arrival {
     use crate::movement::graph::{hex_distance, HexDistance};
 
     let limit = reach.hexes();
     let between_quartermasters = matches!(reach, Reach::BetweenQuartermasters { .. });
-    match hex_distance(from, to, geometry) {
+    match hex_distance(from, to, geometry, shown) {
         Some(HexDistance::Exact(hexes)) if hexes > limit => Arrival::TooFar(OutOfReach::Distance {
             away: hexes,
             limit,
@@ -607,7 +609,13 @@ mod tests {
         let map = Some(fixture_map());
 
         assert_eq!(
-            arrival(Reach::Local, hex(0, 0), hex(0, 6), map),
+            arrival(
+                Reach::Local,
+                hex(0, 0),
+                hex(0, 6),
+                map,
+                &crate::movement::graph::ShownExtent::default()
+            ),
             Arrival::TooFar(OutOfReach::Distance {
                 away: 3,
                 limit: 2,
@@ -616,12 +624,24 @@ mod tests {
         );
         // Two hexes away is inside the limit, so nothing is refused.
         assert_eq!(
-            arrival(Reach::Local, hex(0, 0), hex(0, 4), map),
+            arrival(
+                Reach::Local,
+                hex(0, 0),
+                hex(0, 4),
+                map,
+                &crate::movement::graph::ShownExtent::default()
+            ),
             Arrival::Certain
         );
         // No map shape: the distance is an upper bound only, which settles nothing (`ah-7ale.5`).
         assert_eq!(
-            arrival(Reach::Local, hex(0, 0), hex(0, 6), None),
+            arrival(
+                Reach::Local,
+                hex(0, 0),
+                hex(0, 6),
+                None,
+                &crate::movement::graph::ShownExtent::default()
+            ),
             Arrival::Unmeasured
         );
 
@@ -643,7 +663,8 @@ mod tests {
                 Reach::Local,
                 hex_at_level(0, 0, 1),
                 hex_at_level(0, 6, 2),
-                Some(fixture_map())
+                Some(fixture_map()),
+                &crate::movement::graph::ShownExtent::default()
             ),
             Arrival::TooFar(OutOfReach::DifferentLevel {
                 from_level: 1,
@@ -665,21 +686,48 @@ mod tests {
             wrap_y: false,
         });
         assert_eq!(
-            arrival(reach, hex(0, 0), hex(0, 8), None),
+            arrival(
+                reach,
+                hex(0, 0),
+                hex(0, 8),
+                None,
+                &crate::movement::graph::ShownExtent::default()
+            ),
             Arrival::Unmeasured
         );
         assert_eq!(
-            arrival(reach, hex(0, 0), hex(0, 8), map),
+            arrival(
+                reach,
+                hex(0, 0),
+                hex(0, 8),
+                map,
+                &crate::movement::graph::ShownExtent::default()
+            ),
             Arrival::TooFar(OutOfReach::Distance {
                 away: 4,
                 limit: 3,
                 between_quartermasters: true,
             })
         );
-        assert_eq!(arrival(reach, hex(0, 0), hex(0, 4), None), Arrival::Certain);
+        assert_eq!(
+            arrival(
+                reach,
+                hex(0, 0),
+                hex(0, 4),
+                None,
+                &crate::movement::graph::ShownExtent::default()
+            ),
+            Arrival::Certain
+        );
         for geometry in [None, map] {
             assert!(matches!(
-                arrival(reach, hex(0, 0), hex_at_level(0, 8, 2), geometry),
+                arrival(
+                    reach,
+                    hex(0, 0),
+                    hex_at_level(0, 8, 2),
+                    geometry,
+                    &crate::movement::graph::ShownExtent::default()
+                ),
                 Arrival::TooFar(OutOfReach::DifferentLevel { .. })
             ));
         }
@@ -695,13 +743,22 @@ mod tests {
                 hex(0, 0),
                 hex(0, 8),
                 None,
+                &crate::movement::graph::ShownExtent::default(),
                 OrderLanguage::NewAgeTrident,
                 9
             ),
             Priced::Unknown(Unpriceable::WorldWrap)
         );
         assert_eq!(
-            priced(qm, hex(0, 0), hex(0, 8), None, OrderLanguage::NewOrigins, 9),
+            priced(
+                qm,
+                hex(0, 0),
+                hex(0, 8),
+                None,
+                &crate::movement::graph::ShownExtent::default(),
+                OrderLanguage::NewOrigins,
+                9
+            ),
             Priced::Charged {
                 rate: 5,
                 weight: 9,
@@ -710,7 +767,15 @@ mod tests {
         );
         for language in [OrderLanguage::NewAgeTrident, OrderLanguage::NewOrigins] {
             assert_eq!(
-                priced(qm, hex(0, 0), hex_at_level(0, 8, 2), None, language, 9),
+                priced(
+                    qm,
+                    hex(0, 0),
+                    hex_at_level(0, 8, 2),
+                    None,
+                    &crate::movement::graph::ShownExtent::default(),
+                    language,
+                    9
+                ),
                 Priced::Unknown(Unpriceable::DifferentLevels)
             );
         }
@@ -792,6 +857,7 @@ mod tests {
                 hex(0, 0),
                 hex(0, 6),
                 map,
+                &crate::movement::graph::ShownExtent::default(),
                 OrderLanguage::NewAgeTrident,
                 9
             ),
@@ -807,6 +873,7 @@ mod tests {
                 hex(0, 0),
                 hex(0, 6),
                 map,
+                &crate::movement::graph::ShownExtent::default(),
                 OrderLanguage::NewAgeTrident,
                 9
             ),
@@ -831,13 +898,29 @@ mod tests {
             OrderLanguage::NewOrigins,
         ] {
             assert_eq!(
-                priced(Reach::Local, hex(0, 0), hex(0, 6), map, language, 9),
+                priced(
+                    Reach::Local,
+                    hex(0, 0),
+                    hex(0, 6),
+                    map,
+                    &crate::movement::graph::ShownExtent::default(),
+                    language,
+                    9
+                ),
                 Priced::Free,
                 "{language:?}"
             );
         }
         assert_eq!(
-            priced(qm, hex(0, 0), hex(0, 6), map, OrderLanguage::NewOrigins, 0),
+            priced(
+                qm,
+                hex(0, 0),
+                hex(0, 6),
+                map,
+                &crate::movement::graph::ShownExtent::default(),
+                OrderLanguage::NewOrigins,
+                0
+            ),
             Priced::Free
         );
         assert_eq!(
@@ -846,13 +929,22 @@ mod tests {
                 hex(0, 0),
                 hex(0, 4),
                 map,
+                &crate::movement::graph::ShownExtent::default(),
                 OrderLanguage::NewAgeTrident,
                 9
             ),
             Priced::Free
         );
         assert!(matches!(
-            priced(qm, hex(0, 0), hex(0, 4), map, OrderLanguage::NewOrigins, 9),
+            priced(
+                qm,
+                hex(0, 0),
+                hex(0, 4),
+                map,
+                &crate::movement::graph::ShownExtent::default(),
+                OrderLanguage::NewOrigins,
+                9
+            ),
             Priced::Charged { rate: 5, .. }
         ));
         assert_eq!(
@@ -861,19 +953,36 @@ mod tests {
                 hex(0, 0),
                 hex(0, 8),
                 None,
+                &crate::movement::graph::ShownExtent::default(),
                 OrderLanguage::NewAgeTrident,
                 9
             ),
             Priced::Unknown(Unpriceable::WorldWrap)
         );
         assert!(matches!(
-            priced(qm, hex(0, 0), hex(0, 8), None, OrderLanguage::NewOrigins, 9),
+            priced(
+                qm,
+                hex(0, 0),
+                hex(0, 8),
+                None,
+                &crate::movement::graph::ShownExtent::default(),
+                OrderLanguage::NewOrigins,
+                9
+            ),
             Priced::Charged { rate: 5, .. }
         ));
         let upstairs = crate::report::model::Coordinate { x: 0, y: 0, z: 2 };
         for language in [OrderLanguage::NewAgeTrident, OrderLanguage::NewOrigins] {
             assert_eq!(
-                priced(qm, hex(0, 0), upstairs, map, language, 9),
+                priced(
+                    qm,
+                    hex(0, 0),
+                    upstairs,
+                    map,
+                    &crate::movement::graph::ShownExtent::default(),
+                    language,
+                    9
+                ),
                 Priced::Unknown(Unpriceable::DifferentLevels),
                 "{language:?}"
             );

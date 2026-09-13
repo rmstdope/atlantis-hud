@@ -496,6 +496,7 @@ pub mod commands {
         let mut options = OrderCheckOptions {
             disabled,
             geometry,
+            shown: Default::default(),
             known_passages,
             month_end: Default::default(),
         };
@@ -505,6 +506,17 @@ pub mod commands {
             // Where each unit ends the month, so a shipment is measured after the moves
             // (`rules/sequenceofevents`, `ah-b6fz`). An error is nothing known - bad config, not
             // bad orders - and every shipment is measured from the report, as before.
+            if let (Some(rules), Some(raw), Some(remembered)) =
+                (ruleset_json, raw_report, remembered_json)
+            {
+                // An error is nothing known - bad config, not bad orders - and a distance the
+                // map's shape leaves open stays open, as before (`ah-hc7z`). Set before
+                // `month_end`, whose settle takes a copy of these options.
+                options.shown = atlantis_hud_core::orders::effects::shown_extent(
+                    cache, rules, raw, remembered, raw_orders,
+                )
+                .unwrap_or_default();
+            }
             options.month_end = match (ruleset_json, raw_report, remembered_json) {
                 (Some(rules), Some(raw), Some(remembered)) => {
                     atlantis_hud_core::orders::effects::month_end_hexes(
@@ -1211,6 +1223,8 @@ pub mod commands {
                 .map(|codes| codes.into_iter().collect())
                 .unwrap_or_else(|| OrderCheckOptions::default().disabled),
             geometry: None,
+            // The preview works out its own from the map it draws.
+            shown: Default::default(),
             known_passages: Vec::new(),
             // The preview builds its own from the trace it draws (`ah-b6fz`).
             month_end: Default::default(),

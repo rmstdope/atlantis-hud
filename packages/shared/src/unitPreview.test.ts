@@ -1991,12 +1991,12 @@ describe("a transport target the report cannot show receiving", () => {
     expect(
       transportTargetSentence({ to: "902", amount: 9, tag: "FUR", reason: "distanceUnmeasured", orderIndex: 0, reach: null })
     ).toBe(
-      "Could not count 9 FUR for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out."
+      "Could not count 9 FUR for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it."
     );
     expect(
       transportTargetSentence({ to: "902", amount: 0, tag: "", reason: "distanceUnmeasured", orderIndex: 0, reach: null })
     ).toBe(
-      "Could not count this TRANSPORT for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out."
+      "Could not count this TRANSPORT for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it."
     );
     // The mark reads the flag, which the Transport warning never silences.
     expect(hasUncertainTransport(previewedUnit({ transportTargetIssues: [], shipmentUnmeasured: true }))).toBe(true);
