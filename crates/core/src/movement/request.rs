@@ -215,13 +215,15 @@ pub fn trace_orders_for_remembered_report(
 /// As [`trace_orders_for_remembered_report`], plus an error when the map shape or the passages the
 /// faction has proved cannot be read.
 ///
-/// `region_id` is the hex the selected unit stands in. A unit this month's `FORM` creates is known
+/// `region_id` is the hex of the selected unit's row. A unit this month's `FORM` creates is known
 /// only by `new-<alias>`, which is unique inside a hex and not across a report, so it is found by
-/// both. A unit the report prints is found by number alone. Empty means the hex is unknown, and the
-/// first hex forming that alias answers (`ah-5nqc`).
-// Nine, with the hex as the extra, cursor-supplied argument; eight before it because each of the three documents the screen holds - the remembered map, the game's own
-// shape, and the passages it has proved - crosses as its own text rather than being bundled into a
-// struct that every caller would then have to build (`ah-3u7c.2.2`).
+/// both. A unit the report prints is found by number alone. When no unit with that alias is formed
+/// in `region_id` - it is empty, or it is the hex a selected arrival row arrives in - the first hex
+/// forming that alias answers (`ah-5nqc`).
+// Nine. Each of the three documents the screen holds - the remembered map, the game's own shape,
+// and the passages it has proved - crosses as its own text rather than in a struct every caller
+// would have to build (`ah-3u7c.2.2`), and the selected unit's hex crosses beside its id
+// (`ah-5nqc`).
 #[allow(clippy::too_many_arguments)]
 pub fn trace_orders_on_map(
     cache: &mut ReportCache,

@@ -1182,8 +1182,9 @@ pub(crate) struct FormedAsOrdered {
 /// order it was written is still drawn (decision **Q3b'** of `ah-4hux`).
 ///
 /// `region_id` scopes the lookup: `rules/form` scopes an alias to its region, so two hexes may
-/// each form a `new-1` (`ah-5nqc`). An empty `region_id` means the caller does not know the hex,
-/// and the first formed row with that id in settle order answers.
+/// each form a `new-1` (`ah-5nqc`). When no unit with that id is formed in `region_id` - it is
+/// empty, or it is the hex a selected arrival row arrives in - the first formed row with that id in
+/// settle order answers.
 pub(crate) fn formed_unit_as_ordered(
     report: &crate::report::ParsedReport,
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
@@ -1205,18 +1206,24 @@ pub(crate) fn formed_unit_as_ordered(
         None,
         super::semantics::CheckOptions::default(),
     );
-    units
-        .into_iter()
-        .find(|entry| {
-            entry.formed
-                && entry.unit.unit_id == unit_id
-                && (region_id.is_empty() || entry.unit.region_id == region_id)
+    // A selected arrival row carries the hex it arrives in, not the one it was formed in, so a hex
+    // that forms no such unit falls back to the number alone rather than drawing nothing.
+    let formed_here = units
+        .iter()
+        .position(|entry| {
+            entry.formed && entry.unit.unit_id == unit_id && entry.unit.region_id == region_id
         })
-        .map(|entry| FormedAsOrdered {
-            sails: entry.move_command.as_deref() == Some("SAIL"),
-            move_steps: entry.move_steps,
-            unit: entry.unit,
-        })
+        .or_else(|| {
+            units
+                .iter()
+                .position(|entry| entry.formed && entry.unit.unit_id == unit_id)
+        })?;
+    let entry = units.into_iter().nth(formed_here)?;
+    Some(FormedAsOrdered {
+        sails: entry.move_command.as_deref() == Some("SAIL"),
+        move_steps: entry.move_steps,
+        unit: entry.unit,
+    })
 }
 
 /// Where each unit ends the month, for a caller that checks orders but draws no map (`ah-b6fz`).

@@ -1132,3 +1132,16 @@ fn a_new_units_number_alone_still_traces_when_only_one_hex_forms_it() {
     .expect("the only New 1 moves");
     assert_eq!(path.from, at(1, 1));
 }
+
+/// Selected on its arrival row, a new unit's hex is where it arrives, not where it was formed.
+#[test]
+fn a_new_unit_selected_where_it_arrives_still_draws_its_path() {
+    let path = trace_in_column(
+        "1:1,1",
+        "new-1",
+        "unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n",
+    )
+    .path
+    .expect("the only New 1 moves");
+    assert_eq!(path.from, at(1, 5));
+}
