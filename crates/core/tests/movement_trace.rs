@@ -720,18 +720,20 @@ fn trace_in_shaft_knowing(
 ) -> MoveOrderTraceResponse {
     atlantis_hud_core::movement::request::trace_orders_on_map(
         &mut ReportCache::new(),
-        RULESET,
-        &report_with_a_shaft(),
-        "[]",
-        &UnitRef {
-            // Walker (900) stands in plain (1,1).
-            region_id: "1:1,1".into(),
-            unit_id: unit_id.into(),
-            arriving_from: None,
+        &atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
+            ruleset_json: RULESET.into(),
+            raw_report: report_with_a_shaft(),
+            remembered_json: "[]".into(),
+            unit: UnitRef {
+                // Walker (900) stands in plain (1,1).
+                region_id: "1:1,1".into(),
+                unit_id: unit_id.into(),
+                arriving_from: None,
+            },
+            orders_document: document(unit_id, orders),
+            map_json: String::new(),
+            passages_json: passages_json.into(),
         },
-        &document(unit_id, orders),
-        "",
-        passages_json,
     )
     .expect("the ruleset loads")
 }
@@ -1089,17 +1091,19 @@ fn three_hexes_in_a_column() -> String {
 fn trace_in_column(region_id: &str, unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
     atlantis_hud_core::movement::request::trace_orders_on_map(
         &mut ReportCache::new(),
-        RULESET,
-        &three_hexes_in_a_column(),
-        "[]",
-        &UnitRef {
-            region_id: region_id.into(),
-            unit_id: unit_id.into(),
-            arriving_from: None,
+        &atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
+            ruleset_json: RULESET.into(),
+            raw_report: three_hexes_in_a_column(),
+            remembered_json: "[]".into(),
+            unit: UnitRef {
+                region_id: region_id.into(),
+                unit_id: unit_id.into(),
+                arriving_from: None,
+            },
+            orders_document: orders.into(),
+            map_json: String::new(),
+            passages_json: String::new(),
         },
-        orders,
-        "",
-        "",
     )
     .expect("the ruleset loads")
 }
@@ -1113,17 +1117,19 @@ fn trace_arrival_in_column(
 ) -> MoveOrderTraceResponse {
     atlantis_hud_core::movement::request::trace_orders_on_map(
         &mut ReportCache::new(),
-        RULESET,
-        &three_hexes_in_a_column(),
-        "[]",
-        &UnitRef {
-            region_id: listed_in.into(),
-            unit_id: unit_id.into(),
-            arriving_from: Some(arriving_from.into()),
+        &atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
+            ruleset_json: RULESET.into(),
+            raw_report: three_hexes_in_a_column(),
+            remembered_json: "[]".into(),
+            unit: UnitRef {
+                region_id: listed_in.into(),
+                unit_id: unit_id.into(),
+                arriving_from: Some(arriving_from.into()),
+            },
+            orders_document: orders.into(),
+            map_json: String::new(),
+            passages_json: String::new(),
         },
-        orders,
-        "",
-        "",
     )
     .expect("the ruleset loads")
 }

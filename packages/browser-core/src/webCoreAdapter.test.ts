@@ -13,7 +13,10 @@ import {
   type ParsedReport,
   type ReportParseResult,
   type ReportRegion,
-  type TradeRoute
+  type PreviewOrdersRequest,
+  type TraceMoveOrdersRequest,
+  type TradeRoute,
+  type ValidateOrdersRequest
 } from "@atlantis/core-client";
 import {
   createMemoryWebStore,
@@ -21,7 +24,6 @@ import {
   type StoredTurnSnapshot
 } from "./webStore";
 import { createCoreWasmModuleDouble } from "./testing/coreWasmModuleDouble";
-import type { UnitRef } from "@atlantis/core-client";
 
 /** A minimal, complete `ReportParseResult` - every fake below merges its own fields over this. */
 const EMPTY_PARSE_RESULT: ReportParseResult = {
@@ -87,23 +89,10 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     parse_report_full_state: (_raw: string) => EMPTY_PARSED_REPORT,
     roster_skills_state: (_raw: string) => [],
     parse_report_classified_state: (_raw: string, _ruleset: string) => EMPTY_PARSED_REPORT,
-    validate_orders_state: (
-      rawOrders: string,
-      rulesetJson: string | null,
-      rawReport: string | null,
-      disabledCodes: readonly string[],
-      mapJson: string | null,
-      _knownPassagesJson: string | null,
-      rememberedJson: string | null
-    ) => ({
+    validate_orders_state: (request: ValidateOrdersRequest) => ({
       diagnostics: [],
       silver: [],
-      rawOrders,
-      rulesetJson,
-      rawReport,
-      disabledCodes,
-      mapJson,
-      rememberedJson
+      echoed: request
     }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
     order_vocabulary_state: () => ["ALL", "MOVE", "SILV"],
@@ -137,35 +126,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       fullyModelled: false,
       echoed: { rulesetJson, rawReport, rememberedJson, unitId, destination, mapJson }
     }),
-    trace_move_orders_state: (
-      rulesetJson: string,
-      rawReport: string,
-      rememberedJson: string,
-      unit: UnitRef,
-      ordersDocument: string,
-      mapJson: string,
-      passagesJson: string
-    ) => ({
-      path: null,
-      echoed: {
-        rulesetJson,
-        rawReport,
-        rememberedJson,
-        unit,
-        ordersDocument,
-        mapJson,
-        passagesJson
-      }
-    }),
-    preview_orders_state: (
-      rulesetJson: string,
-      rawReport: string,
-      rememberedJson: string,
-      ordersDocument: string
-    ) => ({
-      regions: [],
-      echoed: { rulesetJson, rawReport, rememberedJson, ordersDocument }
-    }),
+    trace_move_orders_state: (request: TraceMoveOrdersRequest) => ({ path: null, echoed: request }),
+    preview_orders_state: (request: PreviewOrdersRequest) => ({ regions: [], echoed: request }),
     trade_routes_state: () => FAKE_TRADE_ROUTES,
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");
@@ -510,17 +472,19 @@ describe("web core adapter", () => {
     // Every argument is asserted, not just the orders: the report and the option are what the
     // checks that read the turn depend on, and an adapter that dropped them would still return a
     // perfectly well-shaped answer with half the checks silently not run.
-    expect(
-      await adapter.validateOrders("MOVE R1 R2", null, "the report", ["hex-unguarded"], "{}", null, "[]")
-    ).toEqual({
-      diagnostics: [],
-      silver: [],
+    const validation: ValidateOrdersRequest = {
       rawOrders: "MOVE R1 R2",
       rulesetJson: null,
       rawReport: "the report",
       disabledCodes: ["hex-unguarded"],
       mapJson: "{}",
+      knownPassagesJson: "[passages]",
       rememberedJson: "[]"
+    };
+    expect(await adapter.validateOrders(validation)).toEqual({
+      diagnostics: [],
+      silver: [],
+      echoed: validation
     });
     expect(await adapter.orderCommands(null)).toEqual(["GIVE", "MOVE", "WORK"]);
   });
@@ -1632,16 +1596,7 @@ describe("exporting and importing games", () => {
 describe("tracing written movement", () => {
   it("passes the trace request straight to the core, unshuffled, with the unit whole", async () => {
     const adapter = createWebCoreAdapter(fakeWasm());
-    const answer = (await adapter.traceMoveOrders(
-      "{ruleset}",
-      "{report}",
-      "[remembered]",
-      { regionId: "1:1,5", unitId: "new-1", arrivingFrom: null },
-      "unit 902",
-      "{map}",
-      "[passages]"
-    )) as unknown as { echoed: unknown };
-    expect(answer.echoed).toEqual({
+    const request: TraceMoveOrdersRequest = {
       rulesetJson: "{ruleset}",
       rawReport: "{report}",
       rememberedJson: "[remembered]",
@@ -1649,7 +1604,9 @@ describe("tracing written movement", () => {
       ordersDocument: "unit 902",
       mapJson: "{map}",
       passagesJson: "[passages]"
-    });
+    };
+    const answer = (await adapter.traceMoveOrders(request)) as unknown as { echoed: unknown };
+    expect(answer.echoed).toEqual(request);
   });
 });
 

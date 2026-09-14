@@ -30,16 +30,17 @@ describe("TAURI_COMMANDS", () => {
     const invoke = vi.fn().mockResolvedValue(null);
     const adapter = createTauriAdapter(invoke) as unknown as CoreAdapter;
 
-    await adapter.validateOrders("raw orders", null, null, null, null, null, null);
+    const request = {
+      rawOrders: "raw orders",
+      rulesetJson: null,
+      rawReport: null,
+      disabledCodes: null,
+      mapJson: null,
+      knownPassagesJson: null,
+      rememberedJson: null
+    };
+    await adapter.validateOrders(request);
 
-    expect(invoke).toHaveBeenCalledWith("validate_orders", {
-      raw_orders: "raw orders",
-      ruleset_json: null,
-      raw_report: null,
-      disabled_codes: null,
-      map_json: null,
-      known_passages_json: null,
-      remembered_json: null
-    });
+    expect(invoke).toHaveBeenCalledWith("validate_orders", { request });
   });
 });

@@ -28,6 +28,7 @@ mod magic;
 pub mod parser;
 /// Core-internal: the one `rules/sequenceofevents` phase order both `semantics` and `silver` read.
 mod phases;
+pub mod request;
 pub mod semantics;
 pub mod silver;
 pub mod standing;

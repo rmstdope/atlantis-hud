@@ -65,7 +65,15 @@ async function silverOf(report: string): Promise<Map<string, UnitSilverRow>> {
   const adapter = createWebCoreAdapter(await realCore(), createMemoryWebStore());
   const parsed = await adapter.parseReportClassified(report, RULESET);
   const orders = parsed.ordersTemplate?.text ?? "";
-  const result = await adapter.validateOrders(orders, RULESET, report, null, null, null, null);
+  const result = await adapter.validateOrders({
+    rawOrders: orders,
+    rulesetJson: RULESET,
+    rawReport: report,
+    disabledCodes: null,
+    mapJson: null,
+    knownPassagesJson: null,
+    rememberedJson: null
+  });
   return new Map(result.silver.map((entry) => [entry.unitId, entry]));
 }
 

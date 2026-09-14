@@ -168,6 +168,24 @@ pub struct MoveOrderTraceResponse {
     pub path: Option<crate::movement::trace::TracedPath>,
 }
 
+/// Everything one trace of a unit's written movement reads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct TraceMoveOrdersRequest {
+    pub ruleset_json: String,
+    pub raw_report: String,
+    pub remembered_json: String,
+    /// The unit whose movement is traced, as its row names it (`ah-0ial`).
+    pub unit: crate::unit_ref::UnitRef,
+    /// The whole document, not one unit's block: a passenger's route is the hull's.
+    pub orders_document: String,
+    /// The map's shape, or `""` for a game that never recorded one.
+    pub map_json: String,
+    /// Every inner passage the faction has proved the far side of, as JSON. `""` for none.
+    pub passages_json: String,
+}
+
 /// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
 ///
 /// `orders_document` is the **whole** orders document as the editor holds it, not one unit's block:
@@ -219,31 +237,20 @@ pub fn trace_orders_for_remembered_report(
 /// month's `FORM` creates is known only by `new-<alias>`, which is unique inside the hex it was
 /// formed in and not across a report (`rules/form`), so it is found by that hex and its number, and
 /// a hex that forms no such unit traces nothing. A unit the report prints is found by number alone.
-// Eight. Each of the three documents the screen holds - the remembered map, the game's own shape,
-// and the passages it has proved - crosses as its own text rather than in a struct every caller
-// would have to build (`ah-3u7c.2.2`), and the selected unit crosses whole as a `UnitRef`
-// (`ah-0ial`).
-#[allow(clippy::too_many_arguments)]
 pub fn trace_orders_on_map(
     cache: &mut ReportCache,
-    ruleset_json: &str,
-    raw_report: &str,
-    remembered_json: &str,
-    unit: &crate::unit_ref::UnitRef,
-    orders_document: &str,
-    map_json: &str,
-    passages_json: &str,
+    request: &TraceMoveOrdersRequest,
 ) -> Result<MoveOrderTraceResponse, String> {
     trace_orders(
         cache,
-        ruleset_json,
-        raw_report,
-        remembered_json,
-        &unit.unit_id,
-        Some(unit.set_out_hex()),
-        orders_document,
-        map_json,
-        passages_json,
+        &request.ruleset_json,
+        &request.raw_report,
+        &request.remembered_json,
+        &request.unit.unit_id,
+        Some(request.unit.set_out_hex()),
+        &request.orders_document,
+        &request.map_json,
+        &request.passages_json,
     )
 }
 
@@ -357,6 +364,32 @@ fn parse_hex_id(text: &str) -> Option<crate::report::model::Coordinate> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_trace_request_reads_the_keys_typescript_writes() {
+        let request: TraceMoveOrdersRequest = serde_json::from_str(
+            r#"{"rulesetJson":"r","rawReport":"p","rememberedJson":"[]",
+                "unit":{"regionId":"1:1,1","unitId":"900","arrivingFrom":null},
+                "ordersDocument":"o","mapJson":"m","passagesJson":"s"}"#,
+        )
+        .expect("reads");
+        assert_eq!(
+            request,
+            TraceMoveOrdersRequest {
+                ruleset_json: "r".into(),
+                raw_report: "p".into(),
+                remembered_json: "[]".into(),
+                unit: crate::unit_ref::UnitRef {
+                    region_id: "1:1,1".into(),
+                    unit_id: "900".into(),
+                    arriving_from: None,
+                },
+                orders_document: "o".into(),
+                map_json: "m".into(),
+                passages_json: "s".into(),
+            }
+        );
+    }
 
     const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;

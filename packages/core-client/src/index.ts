@@ -1,6 +1,3 @@
-import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
-import type { UnitRef } from "./generated/UnitRef";
-
 // The report model and the parse family are generated from the Rust core by ts-rs
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
 export type { EngineInfo } from "./generated/EngineInfo";
@@ -100,6 +97,9 @@ export type { ItemChange } from "./generated/ItemChange";
 export type { CreatedItem } from "./generated/CreatedItem";
 export type { RegionPreview } from "./generated/RegionPreview";
 export type { OrdersPreviewResponse } from "./generated/OrdersPreviewResponse";
+export type { ValidateOrdersRequest } from "./generated/ValidateOrdersRequest";
+export type { PreviewOrdersRequest } from "./generated/PreviewOrdersRequest";
+export type { TraceMoveOrdersRequest } from "./generated/TraceMoveOrdersRequest";
 
 export {
   aBattle,
@@ -124,7 +124,6 @@ import type { EngineInfo } from "./generated/EngineInfo";
 import type { ParsedReport } from "./generated/ParsedReport";
 import type { RosterSkills } from "./generated/RosterSkills";
 import type { PassageClaim } from "./generated/PassageClaim";
-import type { KnownPassage } from "./generated/KnownPassage";
 import type { AlliedMageRecord } from "./generated/AlliedMageRecord";
 import type { AlliedMageKey } from "./generated/AlliedMageKey";
 import type { StudyPlanRecord } from "./generated/StudyPlanRecord";
@@ -132,6 +131,9 @@ import type { StudyPlanKey } from "./generated/StudyPlanKey";
 import type { HexNoteRecord } from "./generated/HexNoteRecord";
 import type { ArmyRecord } from "./generated/ArmyRecord";
 import type { OrdersPreviewResponse } from "./generated/OrdersPreviewResponse";
+import type { ValidateOrdersRequest } from "./generated/ValidateOrdersRequest";
+import type { PreviewOrdersRequest } from "./generated/PreviewOrdersRequest";
+import type { TraceMoveOrdersRequest } from "./generated/TraceMoveOrdersRequest";
 
 export type OpenedGame = {
   gameFilePath: string;
@@ -574,30 +576,6 @@ export {
   type MovementOrderCommand
 } from "./coreVocabulary.generated";
 
-/** Which of the checks that read the report to run. */
-export type OrderCheckOptions = {
-  /**
-   * Advisory codes not to produce. Omitted = the core's own default
-   * (`OrderCheckOptions::default()` in Rust), which leaves out one code that would otherwise
-   * speak about nearly every hex.
-   *
-   * Most hexes are deliberately unguarded, so warning about every one of them speaks about hex
-   * after hex; dropping a guard you had is reported either way, because that is a change you may
-   * not have meant.
-   */
-  disabledCodes?: readonly AdvisoryCheckCode[];
-  /** The map's shape as JSON, or `null` for a game that never recorded one. */
-  mapJson?: string | null;
-  /**
-   * Every inner passage the faction has proved the far side of. A passage in this list raises no
-   * `passage-with-no-known-exit`: the map draws the crossing, and a warning beside a drawn route
-   * is a contradiction the player cannot resolve (`ah-3u7c.2.2`).
-   */
-  knownPassages?: readonly KnownPassage[];
-  /** The remembered map as JSON, so a shipment is measured from where each unit ends the month. */
-  rememberedJson?: string | null;
-};
-
 export type OrderDraftKey = {
   gameId: string;
   factionId: string;
@@ -681,15 +659,8 @@ export interface CoreAdapter {
     allowOverwrite: boolean,
     importedAt: string
   ): Promise<ImportedTurnPreview>;
-  validateOrders(
-    rawOrders: string,
-    rulesetJson: string | null,
-    rawReport: string | null,
-    disabledCodes: readonly string[] | null,
-    mapJson: string | null,
-    knownPassagesJson: string | null,
-    rememberedJson: string | null
-  ): Promise<OrderValidationResult>;
+  /** Checks one orders document, and the turn it was written for, when one is loaded. */
+  validateOrders(request: ValidateOrdersRequest): Promise<OrderValidationResult>;
   orderCommands(rulesetJson: string | null): Promise<string[]>;
   /**
    * Every word the rules know, uppercase and sorted: the order names, the grammar's own fixed
@@ -746,17 +717,7 @@ export interface CoreAdapter {
    * may be another unit's (ah-048). The core settles which, once, for this reader and the
    * units-in-hex preview alike.
    */
-  traceMoveOrders(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    /** The row's unit. The core traces it from the hex it set out from. */
-    unit: UnitRef,
-    ordersDocument: string,
-    mapJson: string,
-    /** Every inner passage the faction has proved the far side of, as JSON. `""` for none. */
-    passagesJson: string
-  ): Promise<MoveOrderTraceResponse>;
+  traceMoveOrders(request: TraceMoveOrdersRequest): Promise<MoveOrderTraceResponse>;
   exportMap(rawReport: string, rememberedJson: string, requestJson: string): Promise<string>;
   /**
    * Every named unit written out as a report fragment an ally can read back. `unitIdsJson` is a
@@ -764,16 +725,8 @@ export interface CoreAdapter {
    */
   exportMageSheet(rawReport: string, unitIdsJson: string): Promise<string>;
   knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string): Promise<KnownMap>;
-  previewOrders(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    ordersDocument: string,
-    mapJson: string,
-    /** Every inner passage the faction has proved the far side of, as JSON. `""` for none. */
-    passagesJson: string,
-    disabledCodes: readonly string[] | null
-  ): Promise<OrdersPreviewResponse>;
+  /** What the orders document makes of the faction's units, region by region. */
+  previewOrders(request: PreviewOrdersRequest): Promise<OrdersPreviewResponse>;
   /** Every trade worth making in the map the faction has seen, best first. */
   tradeRoutes(
     rulesetJson: string,
@@ -932,48 +885,14 @@ export function sortStudyPlans(plans: readonly StudyPlanRecord[]): StudyPlanReco
 }
 
 /**
- * `CoreAdapter` with three ergonomic signatures: an object where the wire takes JSON text, and
- * options where the wire takes a list of disabled codes. Everything else is the adapter as it is —
+ * `CoreAdapter` with two ergonomic signatures, `exportMap` and `knownMap`: an object where the wire
+ * takes JSON text. Everything else is the adapter as it is —
  * `createCoreClient` is the whole of the difference.
  */
 export type CoreClient = Omit<
   CoreAdapter,
-  "validateOrders" | "previewOrders" | "exportMap" | "knownMap"
+  "exportMap" | "knownMap"
 > & {
-  /**
-   * Checks one orders document, and the turn it was written for.
-   *
-   * `rulesetJson` is the served ruleset when the shell has it. Without it the shape of every order
-   * is still checked; only item names go unexamined, and an unrecognised one is a warning anyway.
-   *
-   * `rawReport` is the imported turn. With it the answer also covers what no amount of reading the
-   * text could settle - whether the silver goes round the hex, whether anyone is left guarding it,
-   * whether a teacher's students are studying. Without it the answer is the syntax check alone,
-   * which is what the pane needs before any report has been imported.
-   */
-  validateOrders(
-    rawOrders: string,
-    rulesetJson: string | null,
-    rawReport?: string | null,
-    options?: OrderCheckOptions
-  ): Promise<OrderValidationResult>;
-  /**
-   * What the orders document makes of the faction's units, region by region.
-   *
-   * `options.disabledCodes` names the advisory checks that are off. A check that is off is not
-   * made, so a refusal it would have produced does not shape the forecast either - the same
-   * meaning the order checks give it. Omitted = the core's own default.
-   */
-  previewOrders(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    ordersDocument: string,
-    mapJson: string,
-    /** Every inner passage the faction has proved the far side of, as JSON. `""` for none. */
-    passagesJson: string,
-    options?: OrderCheckOptions
-  ): Promise<OrdersPreviewResponse>;
   /**
    * The known map inside one rectangle, written as report-shaped text for an ally to read.
    *
@@ -1003,7 +922,8 @@ export type CoreClient = Omit<
 };
 
 /**
- * The adapter's methods, spread through unchanged, plus the three ergonomic conversions
+ * The adapter's methods, spread through unchanged, plus the two ergonomic conversions (`exportMap`,
+ * `knownMap`)
  * `CoreClient` adds over `CoreAdapter`. Nothing here re-validates what the adapter returns — the
  * Tauri wire is Rust's own serde output and the web adapter is our own code, so both are typed at
  * compile time instead of re-checked per call (ah-wxk.2).
@@ -1011,31 +931,6 @@ export type CoreClient = Omit<
 export function createCoreClient(adapter: CoreAdapter): CoreClient {
   return {
     ...adapter,
-    validateOrders(rawOrders, rulesetJson, rawReport = null, options = {}) {
-      // `null` is "use the core's own default" (`OrderCheckOptions::default()`), so the default
-      // lives in Rust once instead of being copied here as a literal.
-      return adapter.validateOrders(
-        rawOrders,
-        rulesetJson,
-        rawReport,
-        options.disabledCodes ?? null,
-        options.mapJson ?? null,
-        options.knownPassages ? JSON.stringify(options.knownPassages) : null,
-        options.rememberedJson ?? null
-      );
-    },
-    previewOrders(rulesetJson, rawReport, rememberedJson, ordersDocument, mapJson, passagesJson, options = {}) {
-      // As `validateOrders` above: `null` is "use the core's own default", written in Rust once.
-      return adapter.previewOrders(
-        rulesetJson,
-        rawReport,
-        rememberedJson,
-        ordersDocument,
-        mapJson,
-        passagesJson,
-        options.disabledCodes ?? null
-      );
-    },
     exportMap(rawReport, rememberedJson, request) {
       return adapter.exportMap(rawReport, rememberedJson, JSON.stringify(request));
     },

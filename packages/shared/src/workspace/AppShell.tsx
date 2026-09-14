@@ -3213,15 +3213,15 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .traceMoveOrders(
-          ruleset.text,
+        .traceMoveOrders({
+          rulesetJson: ruleset.text,
           rawReport,
           rememberedJson,
-          cursor,
+          unit: cursor,
           ordersDocument,
           mapJson,
           passagesJson
-        )
+        })
         .then((answer) => {
           if (!cancelled) {
             setOrderTrace(answer);
@@ -3271,10 +3271,13 @@ export function AppShell({
         // whole-map pass this runs costs one walk of the orders and no re-parse of the turn.
         // `mapJson` is what the reach check measures a distance across: without it every distance
         // is an upper bound and nothing is refused (`ah-7ale.2.2.1`).
-        .validateOrders(ordersDocument, rulesetText, rawReport || null, {
+        .validateOrders({
+          rawOrders: ordersDocument,
+          rulesetJson: rulesetText,
+          rawReport: rawReport || null,
           disabledCodes: disabledAdvisoryCodes(advisoryChecks),
           mapJson,
-          knownPassages,
+          knownPassagesJson: passagesJson,
           // Where each unit ends the month, so a shipment is measured after the moves (`ah-b6fz`).
           rememberedJson
         })
@@ -3299,7 +3302,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument, rulesetText, rawReport, advisoryChecks, mapJson, knownPassages, rememberedJson]);
+  }, [client, ordersDocument, rulesetText, rawReport, advisoryChecks, mapJson, passagesJson, rememberedJson]);
 
   /**
    * What the checks found, hex by hex, for the header chip and the list it opens.
@@ -3557,7 +3560,13 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument, mapJson, passagesJson, {
+        .previewOrders({
+          rulesetJson: ruleset.text,
+          rawReport,
+          rememberedJson,
+          ordersDocument,
+          mapJson,
+          passagesJson,
           disabledCodes: disabledAdvisoryCodes(advisoryChecks)
         })
         .then((answer) => {
@@ -3745,10 +3754,13 @@ export function AppShell({
 
         // The import summary counts with the same knowledge the pane shows, so a count that
         // disagreed with the pane is impossible (`ah-3u7c.2.2`).
-        const result = await client.validateOrders(pending.text, rulesetText, rawReport || null, {
+        const result = await client.validateOrders({
+          rawOrders: pending.text,
+          rulesetJson: rulesetText,
+          rawReport: rawReport || null,
           disabledCodes: disabledAdvisoryCodes(advisoryChecks),
           mapJson,
-          knownPassages,
+          knownPassagesJson: passagesJson,
           rememberedJson
         });
 
@@ -3778,7 +3790,7 @@ export function AppShell({
     rawReport,
     advisoryChecks,
     mapJson,
-    knownPassages,
+    passagesJson,
     rememberedJson,
     writeOrdersDocument
   ]);

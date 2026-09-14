@@ -16,7 +16,7 @@ use atlantis_hud_core::report::merge::{
 use atlantis_hud_core::report::sighting::RegionSighting;
 use atlantis_hud_core::{
     diff_imported_turn, engine_info, plan_merge, reject_import, reserved_merge_identity,
-    ImportedTurnSnapshot, MergePlan, OrderCheckOptions, ReportParseResult, ReportParseResultWire,
+    ImportedTurnSnapshot, MergePlan, ReportParseResult, ReportParseResultWire,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -36,6 +36,11 @@ fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
     value
         .serialize(&serializer)
         .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// Reads a request object the TypeScript side built from a ts-rs type. The counterpart of [`to_js`].
+fn from_js<T: serde::de::DeserializeOwned>(value: JsValue) -> Result<T, JsValue> {
+    serde_wasm_bindgen::from_value(value).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 /// Everything the browser storage adapter needs to persist one import.
@@ -575,32 +580,11 @@ pub fn known_map_state(
 /// The browser twin of the desktop command, calling the same core entry so the two shells cannot
 /// drift into tracing differently. An order that cannot be traced resolves to an answer carrying
 /// no path; only an unusable ruleset or unreadable memory rejects.
-// Seven, as the core's `trace_orders_on_map` less its cache: each document crosses as its own text,
-// and the unit crosses whole as a `UnitRef`.
-#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
-pub fn trace_move_orders_state(
-    ruleset_json: String,
-    raw_report: String,
-    remembered_json: String,
-    unit: JsValue,
-    orders_document: String,
-    map_json: String,
-    passages_json: String,
-) -> Result<JsValue, JsValue> {
-    let unit: atlantis_hud_core::unit_ref::UnitRef = serde_wasm_bindgen::from_value(unit)
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+pub fn trace_move_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: atlantis_hud_core::movement::request::TraceMoveOrdersRequest = from_js(request)?;
     let response = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::movement::request::trace_orders_on_map(
-            cache,
-            &ruleset_json,
-            &raw_report,
-            &remembered_json,
-            &unit,
-            &orders_document,
-            &map_json,
-            &passages_json,
-        )
+        atlantis_hud_core::movement::request::trace_orders_on_map(cache, &request)
     })
     .map_err(|error| JsValue::from_str(&error))?;
     to_js(&response)
@@ -612,43 +596,10 @@ pub fn trace_move_orders_state(
 /// browser must preview the same coming month. An order that changes nothing resolves to an empty
 /// answer; only an unusable ruleset or unreadable memory rejects.
 #[wasm_bindgen]
-pub fn preview_orders_state(
-    ruleset_json: String,
-    raw_report: String,
-    remembered_json: String,
-    orders_document: String,
-    map_json: String,
-    passages_json: String,
-    disabled_codes: Option<Vec<String>>,
-) -> Result<JsValue, JsValue> {
-    // `geometry` stays `None`: the forecast takes the map's shape from `map_json` above, which it
-    // needs for the movement trace anyway, and reads this field not at all. Only the `disabled` set
-    // crosses into the preview (`ah-7ale.2.2.2`).
-    let options = OrderCheckOptions {
-        disabled: disabled_codes
-            .map(|codes| codes.into_iter().collect())
-            .unwrap_or_else(|| OrderCheckOptions::default().disabled),
-        geometry: None,
-        // The preview works out its own from the map it draws.
-        shown: Default::default(),
-        known_passages: Vec::new(),
-        // The preview builds its own from the trace it draws (`ah-b6fz`).
-        month_end: Default::default(),
-        // The preview draws the wall itself; this is the Problems check's input.
-        walled_moves: Default::default(),
-    };
-
+pub fn preview_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: atlantis_hud_core::orders::request::PreviewOrdersRequest = from_js(request)?;
     let response = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::orders::effects::preview_orders_on_map(
-            cache,
-            &ruleset_json,
-            &raw_report,
-            &remembered_json,
-            &orders_document,
-            &map_json,
-            &passages_json,
-            options,
-        )
+        atlantis_hud_core::orders::request::preview_orders_request(cache, &request)
     })
     .map_err(|error| JsValue::from_str(&error))?;
     to_js(&response)
@@ -725,124 +676,11 @@ pub fn passage_claims_state(
 /// goes through the same cache every other entry point uses, so the whole-map pass this runs on
 /// each keystroke re-parses nothing.
 #[wasm_bindgen]
-pub fn validate_orders_state(
-    raw_orders: String,
-    ruleset_json: Option<String>,
-    raw_report: Option<String>,
-    disabled_codes: Option<Vec<String>>,
-    map_json: Option<String>,
-    known_passages_json: Option<String>,
-    remembered_json: Option<String>,
-) -> Result<JsValue, JsValue> {
-    // A shape that cannot be read is treated as no shape at all, which silences the one check that
-    // measures a distance rather than failing the whole validation: bad config, not bad orders -
-    // exactly how an unusable ruleset is already treated here (`ah-7ale.2.2.1`).
-    let geometry = map_json
-        .as_deref()
-        .and_then(|json| atlantis_hud_core::movement::graph::geometry_from_json(json).ok())
-        .flatten();
-    let mut options = OrderCheckOptions {
-        disabled: disabled_codes
-            .map(|codes| codes.into_iter().collect())
-            .unwrap_or_else(|| OrderCheckOptions::default().disabled),
-        geometry,
-        shown: Default::default(),
-        // Validation has no error channel, so a list that will not read is nothing known and the
-        // warning simply stays: an advisory pane that answers conservatively beats one that
-        // refuses to answer (`ah-3u7c.2.2`).
-        known_passages: known_passages_json
-            .as_deref()
-            .and_then(|json| {
-                atlantis_hud_core::movement::passages::known_passages_from_json(json).ok()
-            })
-            .unwrap_or_default(),
-        month_end: Default::default(),
-        walled_moves: Default::default(),
-    };
-
-    // Both the ruleset and the report come from the cache. This runs every time the player stops
-    // typing, and re-reading a seventy-kilobyte ruleset and re-parsing four hundred units to reach
-    // the same two objects would be the whole cost of the feature. A ruleset that cannot be used is
-    // treated as no ruleset at all, as everywhere else: bad config, not bad orders.
-    //
-    // The report is classified where a ruleset allows it. A headcount that is a guess prices no
-    // study, so the unclassified parse would silence every studying unit in the turn.
-    let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
-        let ruleset = ruleset_json
-            .as_deref()
-            .and_then(|json| cache.ruleset(json).ok());
-        let report = raw_report
-            .as_deref()
-            .map(|raw| cache.classified_when_possible(raw, ruleset_json.as_deref()));
-        // Where each unit ends the month, so a shipment is measured after the moves
-        // (`rules/sequenceofevents`, `ah-b6fz`). An error is nothing known - bad config, not bad
-        // orders - and every shipment is measured from the report, as before.
-        if let (Some(rules), Some(raw), Some(remembered)) = (
-            ruleset_json.as_deref(),
-            raw_report.as_deref(),
-            remembered_json.as_deref(),
-        ) {
-            // An error is nothing known - bad config, not bad orders - and a distance the map's
-            // shape leaves open stays open, as before (`ah-hc7z`). Set before `month_end`, whose
-            // settle takes a copy of these options.
-            options.shown = atlantis_hud_core::orders::effects::shown_extent(
-                cache,
-                rules,
-                raw,
-                remembered,
-                &raw_orders,
-            )
-            .unwrap_or_default();
-        }
-        options.month_end = match (
-            ruleset_json.as_deref(),
-            raw_report.as_deref(),
-            remembered_json.as_deref(),
-        ) {
-            (Some(rules), Some(raw), Some(remembered)) => {
-                atlantis_hud_core::orders::effects::month_end_hexes(
-                    cache,
-                    rules,
-                    raw,
-                    remembered,
-                    &raw_orders,
-                    map_json.as_deref().unwrap_or(""),
-                    options.clone(),
-                )
-                .unwrap_or_default()
-            }
-            _ => Default::default(),
-        };
-        // Every own unit whose MOVE crosses a wall a report proves, including one only an old
-        // sighting shows. An error is nothing known - bad config, not bad orders - and no wall is
-        // warned about.
-        options.walled_moves = match (
-            ruleset_json.as_deref(),
-            raw_report.as_deref(),
-            remembered_json.as_deref(),
-        ) {
-            (Some(rules), Some(raw), Some(remembered)) => {
-                atlantis_hud_core::orders::effects::walled_moves(
-                    cache,
-                    rules,
-                    raw,
-                    remembered,
-                    &raw_orders,
-                    options.geometry,
-                )
-                .unwrap_or_default()
-            }
-            _ => Default::default(),
-        };
-        (ruleset, report)
+pub fn validate_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: atlantis_hud_core::orders::request::ValidateOrdersRequest = from_js(request)?;
+    let result = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::orders::request::validate_orders_request(cache, &request)
     });
-
-    let result = atlantis_hud_core::validate_turn(
-        &raw_orders,
-        ruleset.as_deref(),
-        report.as_deref(),
-        options,
-    );
     to_js(&result)
 }
 

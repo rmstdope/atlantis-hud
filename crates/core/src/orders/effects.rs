@@ -715,8 +715,8 @@ pub fn preview_orders_for_remembered_report(
 /// # Errors
 ///
 /// As [`preview_orders_for_remembered_report`], plus an error when the map shape cannot be read.
-// Eight, for the same reason as `trace_orders_on_map`: each document the screen holds crosses as
-// its own text, beside the options the forecast reads (`ah-3u7c.2.2`).
+// Eight: each document the screen holds crosses as its own text, beside the options the forecast
+// reads (`ah-3u7c.2.2`). The shells reach it through `orders::request::preview_orders_request`.
 #[allow(clippy::too_many_arguments)]
 pub fn preview_orders_on_map(
     cache: &mut ReportCache,
@@ -1240,15 +1240,25 @@ pub(crate) fn formed_unit_as_ordered(
     })
 }
 
-/// Where each unit ends the month, for a caller that checks orders but draws no map (`ah-b6fz`).
+/// What validation measures a shipment with: how far the reports have shown the world, and where
+/// each unit ends the month. Both come from one build of the known map (`ah-hc7z`, `ah-b6fz`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ShipmentMeasures {
+    pub shown: crate::movement::graph::ShownExtent,
+    pub month_end: super::transport::MonthEndHexes,
+}
+
+/// The shipment measures, for a caller that checks orders but draws no map.
 ///
 /// Empty - measure from the report - when the document writes no `TRANSPORT`/`DISTRIBUTE`, which
-/// skips the settle and the trace on the keystroke path.
+/// keeps the known map, the settle and the trace off the keystroke path.
 ///
 /// # Errors
 ///
-/// As [`preview_orders_on_map`].
-pub fn month_end_hexes(
+/// An unusable ruleset or unreadable remembered regions. An unreadable map shape is not an error:
+/// the shown extent is still measured and `month_end` is empty, exactly as the two functions this
+/// replaced behaved when the shells called them one after the other.
+pub fn shipment_measures(
     cache: &mut ReportCache,
     ruleset_json: &str,
     raw_report: &str,
@@ -1256,7 +1266,7 @@ pub fn month_end_hexes(
     orders_document: &str,
     map_json: &str,
     options: super::semantics::CheckOptions,
-) -> Result<super::transport::MonthEndHexes, String> {
+) -> Result<ShipmentMeasures, String> {
     use crate::movement::graph::MapKnowledge;
 
     let ruleset = cache
@@ -1266,16 +1276,24 @@ pub fn month_end_hexes(
         serde_json::from_str(remembered_json)
             .map_err(|error| format!("remembered regions could not be read: {error}"))?;
     if !ships_anything(orders_document, &ruleset) {
-        return Ok(super::transport::MonthEndHexes::new());
+        return Ok(ShipmentMeasures::default());
     }
 
     let report = cache.classified(raw_report, ruleset_json);
-    let geometry = crate::movement::graph::geometry_from_json(map_json)?;
     // Passages are not read: a crossing the faction has not proved names no month end, and one it
     // has is not needed to measure a walk in the same hexes. As the preview does otherwise.
-    let map = MapKnowledge::from_remembered(&report, &remembered).with_geometry(geometry);
+    let map = MapKnowledge::from_remembered(&report, &remembered);
+    // The shown extent reads coordinates only, so it is measured before the shape is.
+    let shown = map.shown_extent();
+    let Ok(geometry) = crate::movement::graph::geometry_from_json(map_json) else {
+        return Ok(ShipmentMeasures {
+            shown,
+            month_end: Default::default(),
+        });
+    };
+    let map = map.with_geometry(geometry);
     let options = super::semantics::CheckOptions {
-        shown: map.shown_extent(),
+        shown: shown.clone(),
         ..options
     };
     let ordered = crate::movement::fleet::OrderedUnits::from_document(
@@ -1291,46 +1309,19 @@ pub fn month_end_hexes(
         options,
     );
     let (decided, _) = decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
-    Ok(month_end_of(&decided))
-}
-
-/// How far across each level the loaded reports have shown, for a caller that checks orders but
-/// draws no map. Empty when the document ships nothing, which keeps the known map off the
-/// keystroke path, exactly as [`month_end_hexes`] does.
-///
-/// # Errors
-///
-/// As [`month_end_hexes`].
-pub fn shown_extent(
-    cache: &mut ReportCache,
-    ruleset_json: &str,
-    raw_report: &str,
-    remembered_json: &str,
-    orders_document: &str,
-) -> Result<crate::movement::graph::ShownExtent, String> {
-    use crate::movement::graph::MapKnowledge;
-
-    let ruleset = cache
-        .ruleset(ruleset_json)
-        .map_err(|error| error.to_string())?;
-    let remembered: Vec<crate::movement::graph::RememberedRegion> =
-        serde_json::from_str(remembered_json)
-            .map_err(|error| format!("remembered regions could not be read: {error}"))?;
-    if !ships_anything(orders_document, &ruleset) {
-        return Ok(crate::movement::graph::ShownExtent::default());
-    }
-
-    let report = cache.classified(raw_report, ruleset_json);
-    Ok(MapKnowledge::from_remembered(&report, &remembered).shown_extent())
+    Ok(ShipmentMeasures {
+        shown,
+        month_end: month_end_of(&decided),
+    })
 }
 
 /// Every own unit whose MOVE would cross a wall a report proves, for a caller that checks orders
 /// but draws no map. Empty when the document writes no directional MOVE/ADVANCE step, which keeps
-/// the known map off the keystroke path, exactly as [`month_end_hexes`] does for shipments.
+/// the known map off the keystroke path, exactly as [`shipment_measures`] does for shipments.
 ///
 /// # Errors
 ///
-/// As [`month_end_hexes`].
+/// As [`shipment_measures`].
 pub fn walled_moves(
     cache: &mut ReportCache,
     ruleset_json: &str,
@@ -1397,7 +1388,7 @@ fn ships_anything(orders_document: &str, ruleset: &Ruleset) -> bool {
 }
 
 /// Pass one and pass two of the preview: where every settled unit ends the month, how it leaves,
-/// and which fleets sail. Extracted so the forecast and `month_end_hexes` read one decision
+/// and which fleets sail. Extracted so the forecast and `shipment_measures` read one decision
 /// (`ah-b6fz`).
 fn decide_movement(
     report: &crate::report::ParsedReport,
@@ -11150,7 +11141,7 @@ mod tests {
     }
 
     fn month_end_for(report: &str, orders: &str) -> super::super::transport::MonthEndHexes {
-        month_end_hexes(
+        shipment_measures(
             &mut ReportCache::new(),
             RULESET,
             report,
@@ -11160,6 +11151,7 @@ mod tests {
             super::super::semantics::CheckOptions::default(),
         )
         .expect("the ruleset loads")
+        .month_end
     }
 
     /// Three plains on a diagonal, each listing exactly the exits the wall tests rely on: by the
@@ -11261,13 +11253,24 @@ mod tests {
     }
 
     #[test]
-    fn month_end_hexes_is_empty_for_orders_that_ship_nothing() {
+    fn shipment_measures_are_empty_for_orders_that_ship_nothing() {
         let report = moving_reach_report((0, 0), (0, 4), true);
-        assert!(month_end_for(&report, "unit 901\nMOVE S\n").is_empty());
+        assert_eq!(
+            shipment_measures(
+                &mut ReportCache::new(),
+                RULESET,
+                &report,
+                "[]",
+                "unit 901\nMOVE S\n",
+                FLAT_MAP,
+                super::super::semantics::CheckOptions::default(),
+            ),
+            Ok(ShipmentMeasures::default())
+        );
     }
 
     #[test]
-    fn month_end_hexes_names_a_quartermaster_that_walks_away() {
+    fn shipment_measures_name_a_quartermaster_that_walks_away() {
         let report = moving_reach_report((0, 0), (0, 4), true);
         let z = reach_z(&report);
         let month_end = month_end_for(
@@ -11397,36 +11400,54 @@ mod tests {
         );
     }
 
-    /// `ah-hc7z`: the validation path's bound builds the known map only when something ships.
+    /// Merging the two measures must not lose the shown extent when only the map's shape is bad.
     #[test]
-    fn shown_extent_reads_the_map_only_when_something_ships() {
+    fn an_unreadable_map_shape_still_measures_what_the_reports_have_shown() {
         let report = reach_report((0, 0), (0, 10), (0, 1));
         let z = crate::report::parse_report_full(&report).regions[0]
             .coordinate
             .z;
-
-        assert_eq!(
-            shown_extent(
-                &mut ReportCache::new(),
-                RULESET,
-                &report,
-                "[]",
-                "unit 900\nWORK\n"
-            ),
-            Ok(crate::movement::graph::ShownExtent::default())
-        );
-        let shipping = "unit 900\nTRANSPORT 901 5 STON\n";
-        let extent = shown_extent(&mut ReportCache::new(), RULESET, &report, "[]", shipping)
-            .expect("readable");
-        assert_eq!(extent.rows(z), 12, "(1,11) is the furthest hex named");
-        assert!(shown_extent(
+        let measures = shipment_measures(
             &mut ReportCache::new(),
             RULESET,
             &report,
+            "[]",
+            "unit 900\nTRANSPORT 901 5 STON\n",
             "not json",
-            shipping
+            super::super::semantics::CheckOptions::default(),
         )
-        .is_err());
+        .expect("an unreadable shape is not an error");
+        assert_eq!(measures.shown.rows(z), 12);
+        assert!(measures.month_end.is_empty());
+    }
+
+    /// `ah-hc7z`: the validation path's bound builds the known map only when something ships.
+    #[test]
+    fn shipment_measures_read_the_map_only_when_something_ships() {
+        let report = reach_report((0, 0), (0, 10), (0, 1));
+        let z = crate::report::parse_report_full(&report).regions[0]
+            .coordinate
+            .z;
+        let measure = |remembered: &str, orders: &str| {
+            shipment_measures(
+                &mut ReportCache::new(),
+                RULESET,
+                &report,
+                remembered,
+                orders,
+                FLAT_MAP,
+                super::super::semantics::CheckOptions::default(),
+            )
+        };
+
+        assert_eq!(
+            measure("[]", "unit 900\nWORK\n").map(|measures| measures.shown),
+            Ok(crate::movement::graph::ShownExtent::default())
+        );
+        let shipping = "unit 900\nTRANSPORT 901 5 STON\n";
+        let extent = measure("[]", shipping).expect("readable").shown;
+        assert_eq!(extent.rows(z), 12, "(1,11) is the furthest hex named");
+        assert!(measure("not json", shipping).is_err());
     }
 
     /// `ah-7ale.5`: the switch takes the sentence away and leaves the mark and the goods.

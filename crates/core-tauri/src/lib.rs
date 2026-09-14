@@ -18,8 +18,8 @@ pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
     completions_at_caret, engine_info, order_argument_completions, order_commands,
     order_vocabulary, parse_report, plan_merge, reject_import, reserved_merge_identity,
-    CaretCompletions, EngineInfo, MergePlan, OrderCheckOptions, OrderCompletion,
-    OrderValidationResult, ReportParseResult, ReportParseResultWire,
+    CaretCompletions, EngineInfo, MergePlan, OrderCompletion, OrderValidationResult,
+    ReportParseResult, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_army, delete_game, delete_hex_note, export_game, import_game,
@@ -465,95 +465,11 @@ pub mod commands {
         tauri::command(rename_all = "snake_case", rename = "validate_orders")
     )]
     pub fn command_validate_orders(
-        raw_orders: &str,
-        ruleset_json: Option<&str>,
-        raw_report: Option<&str>,
-        disabled_codes: Option<Vec<String>>,
-        map_json: Option<&str>,
-        known_passages_json: Option<&str>,
-        remembered_json: Option<&str>,
+        request: atlantis_hud_core::orders::request::ValidateOrdersRequest,
     ) -> OrderValidationResult {
-        // Absent means the conservative default: `hex-unguarded` off, same as the bool this
-        // replaced defaulted to `false` (do not warn). Reuses `OrderCheckOptions::default()`
-        // rather than a hard-coded literal, so a renamed code cannot drift the two out of step.
-        // (Moved here from main.rs's wrapper, ah-wxk.1.)
-        let disabled = disabled_codes
-            .map(|codes| codes.into_iter().collect())
-            .unwrap_or_else(|| OrderCheckOptions::default().disabled);
-        // Validation has no error channel, so a list that will not read is nothing known and the
-        // passage warning simply stays: an advisory pane that answers conservatively beats one
-        // that refuses to answer (`ah-3u7c.2.2`).
-        let known_passages = known_passages_json
-            .and_then(|json| {
-                atlantis_hud_core::movement::passages::known_passages_from_json(json).ok()
-            })
-            .unwrap_or_default();
-        // A shape that cannot be read is treated as no shape at all: bad config, not bad orders,
-        // exactly as an unusable ruleset already is (`ah-7ale.2.2.1`).
-        let geometry = map_json
-            .and_then(|json| atlantis_hud_core::movement::graph::geometry_from_json(json).ok())
-            .flatten();
-        let mut options = OrderCheckOptions {
-            disabled,
-            geometry,
-            shown: Default::default(),
-            known_passages,
-            month_end: Default::default(),
-            walled_moves: Default::default(),
-        };
-        let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
-            let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
-            let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
-            // Where each unit ends the month, so a shipment is measured after the moves
-            // (`rules/sequenceofevents`, `ah-b6fz`). An error is nothing known - bad config, not
-            // bad orders - and every shipment is measured from the report, as before.
-            if let (Some(rules), Some(raw), Some(remembered)) =
-                (ruleset_json, raw_report, remembered_json)
-            {
-                // An error is nothing known - bad config, not bad orders - and a distance the
-                // map's shape leaves open stays open, as before (`ah-hc7z`). Set before
-                // `month_end`, whose settle takes a copy of these options.
-                options.shown = atlantis_hud_core::orders::effects::shown_extent(
-                    cache, rules, raw, remembered, raw_orders,
-                )
-                .unwrap_or_default();
-            }
-            options.month_end = match (ruleset_json, raw_report, remembered_json) {
-                (Some(rules), Some(raw), Some(remembered)) => {
-                    atlantis_hud_core::orders::effects::month_end_hexes(
-                        cache,
-                        rules,
-                        raw,
-                        remembered,
-                        raw_orders,
-                        map_json.unwrap_or(""),
-                        options.clone(),
-                    )
-                    .unwrap_or_default()
-                }
-                _ => Default::default(),
-            };
-            // Every own unit whose MOVE crosses a wall a report proves, including one only an old
-            // sighting shows. An error is nothing known - bad config, not bad orders - and no wall
-            // is warned about.
-            options.walled_moves = match (ruleset_json, raw_report, remembered_json) {
-                (Some(rules), Some(raw), Some(remembered)) => {
-                    atlantis_hud_core::orders::effects::walled_moves(
-                        cache,
-                        rules,
-                        raw,
-                        remembered,
-                        raw_orders,
-                        options.geometry,
-                    )
-                    .unwrap_or_default()
-                }
-                _ => Default::default(),
-            };
-            (ruleset, report)
-        });
-
-        atlantis_hud_core::validate_turn(raw_orders, ruleset.as_deref(), report.as_deref(), options)
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::orders::request::validate_orders_request(cache, &request)
+        })
     }
 
     /// Persists one order draft for the Tauri command surface.
@@ -1193,28 +1109,11 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "trace_move_orders")
     )]
-    // Seven, as the core's `trace_orders_on_map` less its cache; the unit crosses whole as a `UnitRef`.
-    #[allow(clippy::too_many_arguments)]
     pub fn command_trace_move_orders(
-        ruleset_json: &str,
-        raw_report: &str,
-        remembered_json: &str,
-        unit: atlantis_hud_core::unit_ref::UnitRef,
-        orders_document: &str,
-        map_json: &str,
-        passages_json: &str,
+        request: atlantis_hud_core::movement::request::TraceMoveOrdersRequest,
     ) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::movement::request::trace_orders_on_map(
-                cache,
-                ruleset_json,
-                raw_report,
-                remembered_json,
-                &unit,
-                orders_document,
-                map_json,
-                passages_json,
-            )
+            atlantis_hud_core::movement::request::trace_orders_on_map(cache, &request)
         })
     }
 
@@ -1227,42 +1126,10 @@ pub mod commands {
         tauri::command(rename_all = "snake_case", rename = "preview_orders")
     )]
     pub fn command_preview_orders(
-        ruleset_json: &str,
-        raw_report: &str,
-        remembered_json: &str,
-        orders_document: &str,
-        map_json: &str,
-        passages_json: &str,
-        disabled_codes: Option<Vec<String>>,
+        request: atlantis_hud_core::orders::request::PreviewOrdersRequest,
     ) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
-        // `geometry` stays `None`: the forecast takes the map's shape from `map_json` above, which
-        // it needs for the movement trace anyway, and reads this field not at all. Only the
-        // `disabled` set crosses into the preview (`ah-7ale.2.2.2`).
-        let options = OrderCheckOptions {
-            disabled: disabled_codes
-                .map(|codes| codes.into_iter().collect())
-                .unwrap_or_else(|| OrderCheckOptions::default().disabled),
-            geometry: None,
-            // The preview works out its own from the map it draws.
-            shown: Default::default(),
-            known_passages: Vec::new(),
-            // The preview builds its own from the trace it draws (`ah-b6fz`).
-            month_end: Default::default(),
-            // The preview draws the wall itself; this is the Problems check's input.
-            walled_moves: Default::default(),
-        };
-
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::orders::effects::preview_orders_on_map(
-                cache,
-                ruleset_json,
-                raw_report,
-                remembered_json,
-                orders_document,
-                map_json,
-                passages_json,
-                options,
-            )
+            atlantis_hud_core::orders::request::preview_orders_request(cache, &request)
         })
     }
 
@@ -1521,45 +1388,22 @@ mod preview_orders_command_tests {
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
-    /// `ah-7ale.2.2.2`: a caller that omits the list forecasts the same month as one that spells
-    /// the core's own default out, so the default lives in Rust once.
-    #[test]
-    fn absent_disabled_codes_preview_the_same_month_as_the_conservative_default() {
-        let report = "Foo (1) Report\n\nplain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n";
-        let orders = "unit 900\nNAME UNIT \"Renamed\"\n";
-        let default_disabled: Vec<String> = atlantis_hud_core::OrderCheckOptions::default()
-            .disabled
-            .into_iter()
-            .collect();
-
-        assert_eq!(
-            command_preview_orders(RULESET, report, "[]", orders, "", "", None),
-            command_preview_orders(
-                RULESET,
-                report,
-                "[]",
-                orders,
-                "",
-                "",
-                Some(default_disabled)
-            )
-        );
-    }
-
     #[test]
     fn previews_the_orders_it_is_handed() {
         let report = "Foo (1) Report\n\nplain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n";
 
-        let answer = command_preview_orders(
-            RULESET,
-            report,
-            "[]",
-            "unit 900\nNAME UNIT \"Renamed\"\n",
-            "",
-            "",
-            None,
-        )
-        .expect("the ruleset loads");
+        let answer =
+            command_preview_orders(atlantis_hud_core::orders::request::PreviewOrdersRequest {
+                ruleset_json: RULESET.into(),
+                raw_report: report.into(),
+                remembered_json: "[]".into(),
+                orders_document: "unit 900
+NAME UNIT \"Renamed\"
+"
+                .into(),
+                ..Default::default()
+            })
+            .expect("the ruleset loads");
 
         assert_eq!(answer.regions.len(), 1);
         assert_eq!(answer.regions[0].units[0].unit.name, "Renamed");
@@ -1601,17 +1445,19 @@ mod trace_move_orders_command_tests {
         // The whole orders document, not one unit's block: a passenger's route is the hull's, so
         // the core is given every unit's orders and finds the one this unit follows (ah-048).
         let answer = command_trace_move_orders(
-            RULESET,
-            &current,
-            &remembered,
-            atlantis_hud_core::unit_ref::UnitRef {
-                region_id: "1:1,1".into(),
-                unit_id: "900".into(),
-                arriving_from: None,
+            atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
+                ruleset_json: RULESET.into(),
+                raw_report: current.clone(),
+                remembered_json: remembered.clone(),
+                unit: atlantis_hud_core::unit_ref::UnitRef {
+                    region_id: "1:1,1".into(),
+                    unit_id: "900".into(),
+                    arriving_from: None,
+                },
+                orders_document: "unit 900\nMOVE SE SE".into(),
+                map_json: String::new(),
+                passages_json: String::new(),
             },
-            "unit 900\nMOVE SE SE",
-            "",
-            "",
         )
         .expect("the ruleset loads");
         let path = answer.path.expect("a traced path");
@@ -1631,17 +1477,19 @@ mod trace_move_orders_command_tests {
         );
 
         let answer = command_trace_move_orders(
-            RULESET,
-            &current,
-            "[]",
-            atlantis_hud_core::unit_ref::UnitRef {
-                region_id: "1:1,1".into(),
-                unit_id: "900".into(),
-                arriving_from: None,
+            atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
+                ruleset_json: RULESET.into(),
+                raw_report: current.clone(),
+                remembered_json: "[]".into(),
+                unit: atlantis_hud_core::unit_ref::UnitRef {
+                    region_id: "1:1,1".into(),
+                    unit_id: "900".into(),
+                    arriving_from: None,
+                },
+                orders_document: "unit 900\nwork".into(),
+                map_json: String::new(),
+                passages_json: String::new(),
             },
-            "unit 900\nwork",
-            "",
-            "",
         )
         .expect("the ruleset loads");
         assert_eq!(answer.path, None);
@@ -2521,114 +2369,6 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert!(duplicate_error.contains("requires explicit overwrite confirmation"));
     }
 
-    /// `ah-b6fz`: validation given the remembered map measures a shipment from where the
-    /// quartermaster ends the month (`rules/sequenceofevents`), end to end through the command.
-    #[test]
-    fn validation_measures_a_shipment_after_the_quartermasters_move() {
-        let mut lines = vec!["Foo (1) Report".to_string(), String::new()];
-        for y in (0..=10).step_by(2) {
-            lines.push(format!("plain (0,{y}) in Nowhere, 10 peasants (orcs), $5."));
-            lines.push(String::new());
-            lines.push("Exits:".to_string());
-            if y > 0 {
-                lines.push(format!("  North : plain (0,{}) in Nowhere.", y - 2));
-            }
-            if y < 10 {
-                lines.push(format!("  South : plain (0,{}) in Nowhere.", y + 2));
-            }
-            lines.push(String::new());
-            if y == 0 {
-                lines.push(
-                    "* Source (900), Foo (1), leader [LEAD], 5 stone [STON]. Weight: 60. \
-                     Capacity: 0/0/70/0."
-                        .to_string(),
-                );
-                lines.push(String::new());
-            }
-            if y == 4 {
-                lines.push("+ Post One [1] : Caravanserai.".to_string());
-                lines.push(
-                    "  * Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. \
-                     Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (450)."
-                        .to_string(),
-                );
-                lines.push(String::new());
-            }
-        }
-        let report = lines.join("\n");
-        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";
-        let map = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
-        let ruleset = atlantis_hud_fixtures::RULESET_JSON;
-        let reach = |remembered: Option<&str>| -> Vec<String> {
-            command_validate_orders(
-                orders,
-                Some(ruleset),
-                Some(&report),
-                None,
-                Some(map),
-                None,
-                remembered,
-            )
-            .diagnostics
-            .into_iter()
-            .filter(|diagnostic| diagnostic.code == "transport-out-of-reach")
-            .map(|diagnostic| diagnostic.message)
-            .collect()
-        };
-
-        assert_eq!(
-            reach(Some("[]")),
-            vec!["Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.".to_string()]
-        );
-        // Without the remembered map the shipment is measured from the report, as before.
-        assert_eq!(reach(None), Vec::<String>::new());
-    }
-
-    /// The wall a report proves reaches the Problems check only through the remembered map the
-    /// shell hands over (`ah-wq2e.4`).
-    #[test]
-    fn validate_orders_warns_about_a_move_into_a_wall_with_the_remembered_map() {
-        let report = "Foo (1) Report\n\
-                      \n\
-                      plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\
-                      \n\
-                      Exits:\n  \
-                        Southeast : plain (2,2) in Nowhere.\n\
-                      \n\
-                      * Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
-                      \n\
-                      plain (2,2) in Nowhere, contains Harrowby [village], 10 peasants (orcs), $5.\n\
-                      \n\
-                      Exits:\n  \
-                        Northwest : plain (1,1) in Nowhere.\n  \
-                        Southeast : plain (3,3) in Nowhere.\n\
-                      \n\
-                      plain (3,3) in Nowhere, 10 peasants (orcs), $5.\n\
-                      \n\
-                      Exits:\n  \
-                        Northwest : plain (2,2) in Nowhere.\n\
-                      \n";
-        let ruleset = atlantis_hud_fixtures::RULESET_JSON;
-        let walls = |remembered: Option<&str>| -> usize {
-            command_validate_orders(
-                "unit 900\nMOVE NE\n",
-                Some(ruleset),
-                Some(report),
-                None,
-                None,
-                None,
-                remembered,
-            )
-            .diagnostics
-            .into_iter()
-            .filter(|diagnostic| diagnostic.code == "move-into-a-wall")
-            .count()
-        };
-
-        assert_eq!(walls(Some("[]")), 1);
-        assert_eq!(walls(None), 0);
-    }
-
     #[test]
     fn tauri_adapter_validates_and_loads_order_drafts() {
         let dir = tempdir().expect("tempdir");
@@ -2639,7 +2379,11 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         .expect("create game");
 
         let validation =
-            command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None, None, None);
+            command_validate_orders(atlantis_hud_core::orders::request::ValidateOrdersRequest {
+                raw_orders: "FLY 1 2".into(),
+                disabled_codes: Some(Vec::new()),
+                ..Default::default()
+            });
         assert_eq!(
             validation.diagnostics,
             vec![atlantis_hud_core::OrderDiagnostic {
@@ -2672,24 +2416,6 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert_eq!(loaded, Some(saved));
     }
 
-    /// `disabled_codes: None` and the explicit conservative default must agree, or a caller that
-    /// omits the argument would silently see different checks than one that spells the default
-    /// out. `"unit 5\nWORK\n"` is the orders text `hex-unguarded` fires on when it is enabled
-    /// (`crates/core/src/orders/semantics.rs`'s `the_broad_guard_check_reports_an_unguarded_hex_when_it_is_asked_to`).
-    #[test]
-    fn absent_disabled_codes_use_the_conservative_default() {
-        let orders = "unit 5\nWORK\n";
-        let default_disabled: Vec<String> = atlantis_hud_core::OrderCheckOptions::default()
-            .disabled
-            .into_iter()
-            .collect();
-
-        assert_eq!(
-            command_validate_orders(orders, None, None, None, None, None, None),
-            command_validate_orders(orders, None, None, Some(default_disabled), None, None, None)
-        );
-    }
-
     /// The far side reaches the shell over real IPC types, not only in the core's own tests
     /// (`ah-3u7c.2.2`).
     #[test]
@@ -2709,17 +2435,19 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             "destination":{"x":12,"y":34,"z":2},"destinationTerrain":"cavern","learnedInTurn":40}]"#;
 
         let answer = command_trace_move_orders(
-            atlantis_hud_fixtures::RULESET_JSON,
-            &report,
-            "[]",
-            atlantis_hud_core::unit_ref::UnitRef {
-                region_id: "1:1,1".into(),
-                unit_id: "900".into(),
-                arriving_from: None,
+            atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
+                ruleset_json: atlantis_hud_fixtures::RULESET_JSON.into(),
+                raw_report: report.clone(),
+                remembered_json: "[]".into(),
+                unit: atlantis_hud_core::unit_ref::UnitRef {
+                    region_id: "1:1,1".into(),
+                    unit_id: "900".into(),
+                    arriving_from: None,
+                },
+                orders_document: "unit 900\nMOVE 3 IN\n".into(),
+                map_json: String::new(),
+                passages_json: passages.into(),
             },
-            "unit 900\nMOVE 3 IN\n",
-            "",
-            passages,
         )
         .expect("the ruleset loads");
 
