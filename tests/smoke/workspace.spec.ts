@@ -57,7 +57,7 @@ const OWN_OLDER_REPORT = readReport("g7f95t70");
  * Three real, consecutive turns of one faction (game 3, faction 42), used to prove a route can
  * cross ground only an earlier turn described. Faction 95's fixtures cannot show this: its land
  * holdings are ocean-separated islands, so every route over them stays one step regardless of what
- * is remembered - see `crates/core/tests/movement_plan.rs` for the reading that ruled it out.
+ * is remembered - see `crates/core/tests/movement/plan/memory.rs` for the reading that ruled it out.
  */
 const F42_T40 = readReport("g3f42t40");
 const F42_T41 = readReport("g3f42t41");
@@ -2475,7 +2475,7 @@ test("a tab click opens the folded slot on that tab", async ({ page }) => {
  * `tundra (41,3)` is a region t40 visited and neither t41 nor t42 describes; t42 knows it only as
  * an exit of `forest (40,2)`, which has no exits of its own until t40 is remembered alongside it.
  * `Woodsmen (10293)` rides two tundra steps to `(42,2)` at four movement points, all in one month -
- * see `crates/core/tests/movement_plan.rs` for the same route pinned against the core directly.
+ * see `crates/core/tests/movement/plan/memory.rs` for the same route pinned against the core directly.
  */
 test("a route crosses ground only an earlier turn described", async ({ page }) => {
   await clearGames(page);

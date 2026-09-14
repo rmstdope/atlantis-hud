@@ -311,7 +311,7 @@ fn the_newer_of_two_memories_wins() {
 
 /// A same-turn ally sighting is as fresh as anything the current report itself describes, so the
 /// planner should see its units - the disagreement ah-u4e.1 fixes (the risk heuristic used to read
-/// "Nobody else is here" for exactly this hex; see `movement_risk.rs`).
+/// "Nobody else is here" for exactly this hex; see `risk.rs`).
 #[test]
 fn the_planner_sees_a_same_turn_allys_units() {
     use atlantis_hud_core::movement::graph::RememberedRegion;

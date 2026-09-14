@@ -14,5 +14,7 @@ mod common;
 mod graph;
 mod orders;
 mod passages;
+mod plan;
 mod risk;
 mod ruleset;
+mod trace;

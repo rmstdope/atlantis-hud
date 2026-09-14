@@ -22,7 +22,7 @@ use common::{ruleset, trident_ruleset};
 
 const ORDERS: &str = "unit 900\nSAIL SE SE\n";
 
-/// A fleet at sea NW of a one-hex plain, with ocean beyond it. A copy of `movement_trace.rs`'s
+/// A fleet at sea NW of a one-hex plain, with ocean beyond it. A copy of `movement/trace/isthmus.rs`'s
 /// `neck_report`: integration test files share no private helpers.
 fn neck_report(structure: &str) -> String {
     let mut text = String::from("Foo (1) Report\n\n");
