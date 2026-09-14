@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TracedPassage } from "@atlantis/core-client";
 
-import { passageExitTitle, passageTitle } from "./passageMarks";
+import { passageExitTitle, passageTitle, ringAccessibleName, ringHover } from "./passageMarks";
 
 const unknown: TracedPassage = {
   coordinate: { x: 7, y: 53, z: 1 },
@@ -68,5 +68,22 @@ describe("the words on a passage's rings", () => {
     );
 
     expect(passageTitle({ ...unknown, stepsAfter: 2 })).toContain("— 2 more steps — cannot be drawn.");
+  });
+});
+
+describe("the whole hover on a passage ring", () => {
+  it("puts the hex's own line first, then an empty line, then the passage", () => {
+    expect(ringHover("mountain (36,4) in Inhead", "Through the passage in Shaft [3]\nComes out in …")).toBe(
+      "mountain (36,4) in Inhead\n\nThrough the passage in Shaft [3]\nComes out in …"
+    );
+  });
+
+  it("says the passage words alone where the map holds no hex", () => {
+    const words = "Through the passage in Shaft [3]\nComes out in …";
+    expect(ringHover(null, words)).toBe(words);
+  });
+
+  it("tells a screen reader every line, in order, with no gap for the empty one", () => {
+    expect(ringAccessibleName("a\n\nb\nc")).toBe("a b c");
   });
 });

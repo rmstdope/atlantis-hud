@@ -7,6 +7,9 @@
  *
  * SVG `<title>` text, which is how every hover on this map works - the hex itself and the note pins
  * both - so the first line is a line rather than bold type.
+ *
+ * On the map a ring's whole hover is the hex's own line, an empty line, then these words
+ * (`ah-g1jk`), composed by `ringHover`.
  */
 
 import type { TracedPassage } from "@atlantis/core-client";
@@ -75,4 +78,23 @@ export function passageExitTitle(passage: TracedPassage): string {
     `Out of the passage from ${passage.structure}`,
     `${levelPhraseOf(from.z)}, in ${passage.terrain} (${from.x},${from.y}). The journey carries on from here.`
   ].join("\n");
+}
+
+/**
+ * The whole hover on a passage ring: the hex's own line, an empty line, then the passage's words.
+ *
+ * `hexLine` is the hex's existing hover text (`HexNode.label`), or `null` when the map holds no hex
+ * at that coordinate - then the hex has no hover of its own today, and the ring says the passage
+ * words alone.
+ */
+export function ringHover(hexLine: string | null, passageWords: string): string {
+  return hexLine === null ? passageWords : `${hexLine}\n\n${passageWords}`;
+}
+
+/**
+ * What a screen reader is told for a ring: every non-empty line of the hover, in order, joined by a
+ * space. An `aria-label` overrides the child `<title>`, so this must carry the hex line too.
+ */
+export function ringAccessibleName(hover: string): string {
+  return hover.split("\n").filter((line) => line !== "").join(" ");
 }

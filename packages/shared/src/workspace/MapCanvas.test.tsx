@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
 import type { HexNoteRecord, MapShape } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
-import { CONGESTED_HEXES } from "./mapThemes/congestedFixture";
+import { CONGESTED_CENTRE, CONGESTED_HEXES } from "./mapThemes/congestedFixture";
 import { allBadges } from "./mapThemes/hexView";
 import { terrainTextureBrightness, terrainTextureRotation } from "./mapHexView";
 import { COLUMN_PITCH, ROW_PITCH, worldOf } from "./mapViewport";
@@ -683,8 +683,15 @@ describe("the mark where a route ran into an inner passage", () => {
     // The accessible name carries both sentences, not just the first: a screen reader is told why
     // the line stopped, not only that it did.
     expect(svg).toContain(
-      'aria-label="Through the passage in Shaft [3] Where this passage comes out'
+      `aria-label="${CONGESTED_CENTRE.label} Through the passage in Shaft [3] Where this passage comes out`
     );
+    expect(svg).toContain(`<title>${CONGESTED_CENTRE.label}\n\nThrough the passage in Shaft [3]\n`);
+  });
+
+  it("is drawn over the hex hit layer, so the ring and not the hex takes the pointer", () => {
+    const svg = drawWithPassage(1, 1);
+
+    expect(svg.indexOf('data-testid="map-passage-ring"')).toBeGreaterThan(svg.lastIndexOf('aria-label="hex '));
   });
 
   it("is not drawn on another level", () => {
@@ -751,6 +758,21 @@ describe("the matched pair of rings on a passage the faction has proved", () => 
   it("draws the far half on the level it comes out on, and not on the entry level", () => {
     expect(drawWithKnownPassage(2)).toContain('data-testid="route-line-beyond-dotted"');
     expect(drawWithKnownPassage(1)).not.toContain("route-line-beyond");
+  });
+
+  it("puts the entry hex's line above the entry ring's words", () => {
+    const svg = drawWithKnownPassage(1);
+
+    expect(svg).toContain(
+      `<title>${CONGESTED_CENTRE.label}\n\nThrough the passage in Shaft [3]\nComes out in cavern (12,34), in the underworld.`
+    );
+    expect(svg.indexOf('data-testid="map-passage-entry-ring"')).toBeGreaterThan(
+      svg.lastIndexOf('aria-label="hex ')
+    );
+  });
+
+  it("says the exit ring's words alone where the map holds no hex there", () => {
+    expect(drawWithKnownPassage(2)).toContain("<title>Out of the passage from Shaft [3]\n");
   });
 
   it("draws neither end on a level holding neither", () => {

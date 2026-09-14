@@ -50,7 +50,7 @@ import {
 import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
-import { passageExitTitle, passageTitle } from "./passageMarks";
+import { passageExitTitle, passageTitle, ringAccessibleName, ringHover } from "./passageMarks";
 import { viewportForArrow, type TradeArrow } from "./tradeArrow";
 import { peekStep, type KeepClear, type PeekMode } from "./dossierPeek";
 import { HOVER_DELAY_MS } from "../unitTooltip";
@@ -191,18 +191,22 @@ const PASSAGE_PAIR = "\u26AD";
  * One end of an inner passage, marked on the map and explained by its hover.
  *
  * Pointer events are on deliberately: an SVG `<title>` under a `pointer-events: none` element never
- * appears, which is why this is drawn here rather than as a theme mark.
+ * appears, which is why this is drawn here rather than as a theme mark. It is drawn after the hit
+ * layer, so it is the hit target under the pointer, and it answers a click the way the hex beneath
+ * it does (`ah-g1jk`).
  */
 function PassageRing({
   at,
   glyph,
-  title,
+  hover,
+  onClick,
   testId,
   translateAt
 }: {
   at: Coordinate;
   glyph: string;
-  title: string;
+  hover: string;
+  onClick: (event: React.MouseEvent<SVGGElement>) => void;
   testId: string;
   translateAt: (coordinate: Coordinate) => string;
 }) {
@@ -213,12 +217,15 @@ function PassageRing({
       // The whole two-line string, not its first line: an `aria-label` overrides the child
       // `<title>`, so naming only the first line would announce that the route met a passage and
       // never say what happened at it. A newline collapses to a space in the accessibility tree,
-      // so this is the same two sentences a sighted reader gets from the hover.
-      aria-label={title.split("\n").join(" ")}
+      // so this is the same two sentences a sighted reader gets from the hover. The hex's own line
+      // is carried too, since the label overrides the `<title>` that leads with it.
+      aria-label={ringAccessibleName(hover)}
       data-testid={testId}
       style={GHOSTABLE_HIT}
+      className="cursor-pointer"
+      onClick={onClick}
     >
-      <title>{title}</title>
+      <title>{hover}</title>
       <circle
         r={PASSAGE_RADIUS}
         className="fill-ground stroke-brass"
@@ -939,6 +946,31 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
 
   useImperativeHandle(ref, () => ({ zoomBy, frameAll }), [zoomBy, frameAll]);
 
+  /**
+   * A click on a passage ring does exactly what a click on the hex beneath it does: the ring is drawn
+   * over the hit layer, so the hex polygon never receives this click itself.
+   */
+  const clickRingAt = (event: React.MouseEvent<SVGGElement>, at: Coordinate) => {
+    if (draggedRef.current) {
+      return;
+    }
+    if (isRecentreGesture({ button: event.button, ctrlKey: event.ctrlKey }, isMacPlatform())) {
+      commit(centreOn(at, viewRef.current, size.width, size.height, insets ?? NO_INSETS));
+      return;
+    }
+    const hex = hexAt(onLevel, at);
+    if (hex) {
+      worldRef.current
+        ?.querySelector<SVGPolygonElement>(`polygon[data-region-id="${hex.regionId}"]`)
+        ?.focus();
+      selectRef.current(hex.regionId);
+      return;
+    }
+    setCursor(at);
+    pendingFocusRef.current = cursorKeyOf(at);
+    selectRef.current(regionIdOf(at));
+  };
+
   const onMapKeyDown = (event: React.KeyboardEvent<SVGPolygonElement>, from: Coordinate) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -1415,43 +1447,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             </g>
           )}
 
-          {/*
-            Where the route ran into an inner passage. `rules/move`, direction 4: `IN` travels
-            through the structure to another region. Where no report names which, the line stops
-            here and a `?` says so rather than leaving it unexplained; where one does, a matched
-            pair of interlocked rings marks the two ends and each hover names the other
-            (`ah-3u7c.2.2`). Drawn after the line so they cap it, and with pointer events on: a
-            `<title>` under a `pointer-events: none` element never shows, which is why these cannot
-            be theme marks.
-          */}
-          {route?.passage && route.passage.exit === null && route.passage.coordinate.z === level && (
-            <PassageRing
-              at={route.passage.coordinate}
-              glyph="?"
-              title={passageTitle(route.passage)}
-              testId="map-passage-ring"
-              translateAt={translateAt}
-            />
-          )}
-          {route?.passage?.exit && route.passage.coordinate.z === level && (
-            <PassageRing
-              at={route.passage.coordinate}
-              glyph={PASSAGE_PAIR}
-              title={passageTitle(route.passage)}
-              testId="map-passage-entry-ring"
-              translateAt={translateAt}
-            />
-          )}
-          {route?.passage?.exit && route.passage.exit.coordinate.z === level && (
-            <PassageRing
-              at={route.passage.exit.coordinate}
-              glyph={PASSAGE_PAIR}
-              title={passageExitTitle(route.passage)}
-              testId="map-passage-exit-ring"
-              translateAt={translateAt}
-            />
-          )}
-
           <theme.MarkLayer views={allViews} />
 
           {/*
@@ -1663,6 +1658,51 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               />
             )}
           </g>
+
+          {/*
+            Where the route ran into an inner passage. `rules/move`, direction 4: `IN` travels
+            through the structure to another region. Where no report names which, the line stops
+            here and a `?` says so rather than leaving it unexplained; where one does, a matched
+            pair of interlocked rings marks the two ends and each hover names the other
+            (`ah-3u7c.2.2`). Drawn after the line so they cap it, and with pointer events on: a
+            `<title>` under a `pointer-events: none` element never shows, which is why these cannot
+            be theme marks. Drawn after the hit layer, as the note pins are, because a hex polygon's
+            `pointer-events: all` covers its whole interior and would otherwise take the hover
+            (`ah-g1jk`).
+          */}
+          {route?.passage && route.passage.exit === null && route.passage.coordinate.z === level && (
+            <PassageRing
+              at={route.passage.coordinate}
+              glyph="?"
+              hover={ringHover(hexAt(onLevel, route.passage.coordinate)?.label ?? null, passageTitle(route.passage))}
+              onClick={(event) => clickRingAt(event, route.passage!.coordinate)}
+              testId="map-passage-ring"
+              translateAt={translateAt}
+            />
+          )}
+          {route?.passage?.exit && route.passage.coordinate.z === level && (
+            <PassageRing
+              at={route.passage.coordinate}
+              glyph={PASSAGE_PAIR}
+              hover={ringHover(hexAt(onLevel, route.passage.coordinate)?.label ?? null, passageTitle(route.passage))}
+              onClick={(event) => clickRingAt(event, route.passage!.coordinate)}
+              testId="map-passage-entry-ring"
+              translateAt={translateAt}
+            />
+          )}
+          {route?.passage?.exit && route.passage.exit.coordinate.z === level && (
+            <PassageRing
+              at={route.passage.exit.coordinate}
+              glyph={PASSAGE_PAIR}
+              hover={ringHover(
+                hexAt(onLevel, route.passage.exit.coordinate)?.label ?? null,
+                passageExitTitle(route.passage)
+              )}
+              onClick={(event) => clickRingAt(event, route.passage!.exit!.coordinate)}
+              testId="map-passage-exit-ring"
+              translateAt={translateAt}
+            />
+          )}
 
           {/*
             Manual hex notes (ah-o1t.3): map-owned rather than a theme's, so it draws once for
