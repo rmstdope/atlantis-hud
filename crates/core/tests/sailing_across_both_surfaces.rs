@@ -56,7 +56,10 @@ fn neck_report(structure: &str) -> String {
 /// The same neck, but the hex SE of the plain is a plain too: the second step is land to land.
 fn land_to_land_report() -> String {
     neck_report("")
-        .replace("Southeast : ocean (3,3) in Sea.", "Southeast : plain (3,3) in Coast.")
+        .replace(
+            "Southeast : ocean (3,3) in Sea.",
+            "Southeast : plain (3,3) in Coast.",
+        )
         .replace("ocean (3,3) in Sea.\n", "plain (3,3) in Coast.\n")
 }
 
@@ -112,7 +115,11 @@ fn a_neck_is_refused_by_the_panel_on_the_step_the_trace_dots() {
 fn a_canal_silences_the_panel_and_leaves_the_trace_solid() {
     let text = neck_report("+ The Cut [3] : Canal.\n");
 
-    assert!(messages(&review(&text, &trident_ruleset()), "sail-through-neck-of-land").is_empty());
+    assert!(messages(
+        &review(&text, &trident_ruleset()),
+        "sail-through-neck-of-land"
+    )
+    .is_empty());
     let path = trace(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON, &text)
         .path
         .expect("a traced path");

@@ -41,6 +41,7 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::{render_move, render_sail, MoveStep};
 use crate::movement::rules::{MovementMode, Ruleset};
+use crate::movement::sailing::{self, SailStep};
 use crate::report::model::{Coordinate, ReportUnit};
 
 /// Why a route could not be planned.
@@ -1064,7 +1065,19 @@ fn blocked_by_sailing_rule(
     for step in &relaxed {
         // The land-to-land rule is asked first on purpose: a step with land at both ends is refused
         // whatever the sides, so that is the sentence worth showing.
-        if refused_by_sailing_step(ruleset, journey, &from_terrain, &step.terrain) {
+        let judgement = sailing::judge_sail_step(
+            map,
+            ruleset,
+            journey,
+            SailStep {
+                here: from,
+                here_terrain: &from_terrain,
+                entered_by,
+                leaving_by: step.direction,
+                into_terrain: &step.terrain,
+            },
+        );
+        if judgement.land_to_land {
             return Some(RouteProblem::SailNeedsOcean {
                 from,
                 from_terrain,
@@ -1072,23 +1085,13 @@ fn blocked_by_sailing_rule(
                 to_terrain: step.terrain.clone(),
             });
         }
-        if leaving_land(
-            map,
-            ruleset,
-            journey,
-            from,
-            &from_terrain,
-            entered_by,
-            step.direction,
-        ) == Isthmus::Refused
-        {
+        if judgement.isthmus == Isthmus::Refused {
             return Some(RouteProblem::IsthmusNeedsCanal {
                 coordinate: from,
                 terrain: from_terrain,
             });
         }
-        entered_by =
-            constrains_departure(ruleset, journey, &step.terrain).then_some(step.direction);
+        entered_by = sailing::entered_by(ruleset, journey, &step.terrain, step.direction);
         from = step.to;
         from_terrain = step.terrain.clone();
     }
@@ -1288,8 +1291,7 @@ fn cheapest_path(
                 continue;
             };
             let total: Price = (price.0 + usize::from(step.estimated), price.1 + step.cost);
-            let entered_by =
-                constrains_departure(ruleset, journey, &step.terrain).then_some(direction);
+            let entered_by = sailing::entered_by(ruleset, journey, &step.terrain, direction);
             let reached: Standing = (neighbour.id(), step.terrain.clone(), entered_by);
             if best.get(&reached).is_some_and(|known| total >= *known) {
                 continue;
@@ -1385,26 +1387,27 @@ fn step_into(
     let carried = arrival.terrain;
     if let Some(hex) = map.hex(into) {
         let (mut cost, road) = step_cost(map, ruleset, journey, from, direction, into)?;
-        if sail_rule == SailRule::Enforced
-            && refused_by_sailing_step(ruleset, journey, carried, &hex.terrain)
-        {
+        let judgement = sailing::judge_sail_step(
+            map,
+            ruleset,
+            journey,
+            SailStep {
+                here: from,
+                here_terrain: carried,
+                entered_by: arrival.entered_by,
+                leaving_by: direction,
+                into_terrain: &hex.terrain,
+            },
+        );
+        if judgement.refused() {
             return None;
         }
         // The rules price the *pass*, not the entry: "the through-pass costs two movement points
         // where ordinary sailing costs one." So the premium is charged on the edge that leaves the
         // canal region, which is also the only place the search can know a pass is happening.
         let mut canal = None;
-        match leaving_land(
-            map,
-            ruleset,
-            journey,
-            from,
-            carried,
-            arrival.entered_by,
-            direction,
-        ) {
-            Isthmus::Free => {}
-            Isthmus::Refused => return None,
+        match judgement.isthmus {
+            Isthmus::Free | Isthmus::Refused => {}
             Isthmus::ThroughCanal { name, cost: pass } => {
                 // `saturating_sub` because a Mystic Canal's 1 equals the flat cost: the premium is
                 // zero and the name is still carried.

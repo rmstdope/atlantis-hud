@@ -18,10 +18,12 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{
-    base_terrain_cost, blocks, constrains_departure, leaving_land, refused_by_sailing_step,
-    split_costs, step_cost, Hull, Isthmus, Journey, MonthLeg, RouteStep,
+    base_terrain_cost, blocks, split_costs, step_cost, Hull, Isthmus, Journey, MonthLeg, RouteStep,
 };
 use crate::movement::rules::{MovementMode, Ruleset};
+use crate::movement::sailing::{
+    entered_by as entered_by_side, judge_sail_step, SailStep, SailStepJudgement,
+};
 use crate::report::model::ReportUnit;
 
 /// Where an order takes a unit, hex by hex and month by month.
@@ -330,27 +332,34 @@ fn walk(
 
         // The first step the game would refuse marks everything after it as doubt. Judged by the
         // planner's own rule, so the two never disagree about what the sea stops.
+        // The side restriction is judged in the same call. Its premium is left where the rules
+        // charge it - on the edge that leaves the canal region - because nothing displays a traced
+        // step's cost; only `split_into_months` reads it.
+        let judgement = journey.map(|journey| {
+            judge_sail_step(
+                map,
+                ruleset,
+                journey,
+                SailStep {
+                    here: position,
+                    here_terrain: &terrain,
+                    entered_by,
+                    leaving_by: *direction,
+                    into_terrain: &next_terrain,
+                },
+            )
+        });
         if blocked_from.is_none()
-            && journey.is_some_and(|journey| {
-                blocks(ruleset, map, journey, next, &next_terrain)
-                    || refused_by_sailing_step(ruleset, journey, &terrain, &next_terrain)
-            })
+            && (journey.is_some_and(|journey| blocks(ruleset, map, journey, next, &next_terrain))
+                || judgement.as_ref().is_some_and(SailStepJudgement::refused))
         {
             blocked_from = Some(route.len());
         }
-
-        // The side restriction, judged by the planner's own rule for the same reason. The premium
-        // is left where the rules charge it - on the edge that leaves the canal region - because
-        // nothing displays a traced step's cost; only `split_into_months` reads it.
-        let isthmus = journey.map_or(Isthmus::Free, |journey| {
-            leaving_land(
-                map, ruleset, journey, position, &terrain, entered_by, *direction,
-            )
-        });
-        if blocked_from.is_none() && isthmus == Isthmus::Refused {
-            blocked_from = Some(route.len());
-        }
-        if let Isthmus::ThroughCanal { cost: pass, .. } = &isthmus {
+        if let Some(SailStepJudgement {
+            isthmus: Isthmus::ThroughCanal { cost: pass, .. },
+            ..
+        }) = &judgement
+        {
             cost += pass.saturating_sub(ruleset.sailing_flat_cost());
         }
 
@@ -369,9 +378,8 @@ fn walk(
             // never names a canal.
             canal: None,
         });
-        entered_by = journey.and_then(|journey| {
-            constrains_departure(ruleset, journey, &next_terrain).then_some(*direction)
-        });
+        entered_by = journey
+            .and_then(|journey| entered_by_side(ruleset, journey, &next_terrain, *direction));
         position = next;
         terrain = next_terrain;
     }
