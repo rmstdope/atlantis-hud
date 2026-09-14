@@ -37,7 +37,11 @@ import type {
 } from "@atlantis/core-client";
 import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
-import type { UnitRef } from "@atlantis/core-client";
+import type {
+  PreviewOrdersRequest,
+  TraceMoveOrdersRequest,
+  ValidateOrdersRequest
+} from "@atlantis/core-client";
 
 /**
  * The subset of the generated wasm module this adapter needs, typed against what each function
@@ -56,15 +60,7 @@ export type CoreWasmModule = {
     rulesetJson: string
   ): PassageClaim[];
   parse_report_classified_state(rawReport: string, rulesetJson: string): ParsedReport;
-  validate_orders_state(
-    rawOrders: string,
-    rulesetJson: string | null,
-    rawReport: string | null,
-    disabledCodes: readonly string[] | null,
-    mapJson: string | null,
-    knownPassagesJson: string | null,
-    rememberedJson: string | null
-  ): OrderValidationResult;
+  validate_orders_state(request: ValidateOrdersRequest): OrderValidationResult;
   order_commands_state(rulesetJson: string | null): string[];
   order_vocabulary_state(rulesetJson: string | null): string[];
   order_argument_completions_state(
@@ -87,15 +83,7 @@ export type CoreWasmModule = {
     destination: string,
     mapJson: string
   ): RoutePlanResponse;
-  trace_move_orders_state(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    unit: UnitRef,
-    ordersDocument: string,
-    mapJson: string,
-    passagesJson: string
-  ): MoveOrderTraceResponse;
+  trace_move_orders_state(request: TraceMoveOrdersRequest): MoveOrderTraceResponse;
   export_map_state(rawReport: string, rememberedJson: string, requestJson: string): string;
   export_mage_sheet_state(rawReport: string, unitIdsJson: string): string;
   known_map_state(
@@ -103,15 +91,7 @@ export type CoreWasmModule = {
     rulesetJson: string | null,
     rememberedJson: string
   ): KnownMap;
-  preview_orders_state(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    ordersDocument: string,
-    mapJson: string,
-    passagesJson: string,
-    disabledCodes: readonly string[] | null
-  ): OrdersPreviewResponse;
+  preview_orders_state(request: PreviewOrdersRequest): OrdersPreviewResponse;
   trade_routes_state(
     rulesetJson: string,
     rawReport: string,
@@ -546,26 +526,10 @@ export function createWebCoreAdapter(
         mapJson
       );
     },
-    async traceMoveOrders(
-      rulesetJson: string,
-      rawReport: string,
-      rememberedJson: string,
-      unit: UnitRef,
-      ordersDocument: string,
-      mapJson: string,
-      passagesJson: string
-    ) {
+    async traceMoveOrders(request: TraceMoveOrdersRequest) {
       // Straight through for the same reason planRoute is: no browser storage stands in. The whole
       // document goes, not one unit's block: a passenger's route is the hull's (ah-048).
-      return wasm.trace_move_orders_state(
-        rulesetJson,
-        rawReport,
-        rememberedJson,
-        unit,
-        ordersDocument,
-        mapJson,
-        passagesJson
-      );
+      return wasm.trace_move_orders_state(request);
     },
     async exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
       // Straight through as well: the export is pure computation over the arguments, and the file
@@ -581,25 +545,9 @@ export function createWebCoreAdapter(
       // Straight through as well: the resolution is pure computation over the arguments.
       return wasm.known_map_state(rawReport, rulesetJson, rememberedJson);
     },
-    async previewOrders(
-      rulesetJson: string,
-      rawReport: string,
-      rememberedJson: string,
-      ordersDocument: string,
-      mapJson: string,
-      passagesJson: string,
-      disabledCodes: readonly string[] | null
-    ) {
-      // Straight through as well: the preview is pure computation over the arguments.
-      return wasm.preview_orders_state(
-        rulesetJson,
-        rawReport,
-        rememberedJson,
-        ordersDocument,
-        mapJson,
-        passagesJson,
-        disabledCodes
-      );
+    async previewOrders(request: PreviewOrdersRequest) {
+      // Straight through as well: the preview is pure computation over the request.
+      return wasm.preview_orders_state(request);
     },
     async tradeRoutes(
       rulesetJson: string,
@@ -610,26 +558,10 @@ export function createWebCoreAdapter(
       // Straight through as well: finding routes is pure computation over the arguments.
       return wasm.trade_routes_state(rulesetJson, rawReport, rememberedJson, mapJson);
     },
-    async validateOrders(
-      rawOrders: string,
-      rulesetJson: string | null,
-      rawReport: string | null,
-      disabledCodes: readonly string[] | null,
-      mapJson: string | null,
-      knownPassagesJson: string | null,
-      rememberedJson: string | null
-    ) {
+    async validateOrders(request: ValidateOrdersRequest) {
       // As with planning, the report goes across as text: the core keys its last parse on it, so
       // validating against the turn already on screen re-parses nothing.
-      return wasm.validate_orders_state(
-        rawOrders,
-        rulesetJson,
-        rawReport,
-        disabledCodes,
-        mapJson,
-        knownPassagesJson,
-        rememberedJson
-      );
+      return wasm.validate_orders_state(request);
     },
     async orderCommands(rulesetJson: string | null) {
       return wasm.order_commands_state(rulesetJson);

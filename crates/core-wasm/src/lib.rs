@@ -38,6 +38,11 @@ fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
         .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
+/// Reads a request object the TypeScript side built from a ts-rs type. The counterpart of [`to_js`].
+fn from_js<T: serde::de::DeserializeOwned>(value: JsValue) -> Result<T, JsValue> {
+    serde_wasm_bindgen::from_value(value).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
 /// Everything the browser storage adapter needs to persist one import.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -575,30 +580,9 @@ pub fn known_map_state(
 /// The browser twin of the desktop command, calling the same core entry so the two shells cannot
 /// drift into tracing differently. An order that cannot be traced resolves to an answer carrying
 /// no path; only an unusable ruleset or unreadable memory rejects.
-// Seven, as the core's `trace_orders_on_map` less its cache: each document crosses as its own text,
-// and the unit crosses whole as a `UnitRef`.
-#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
-pub fn trace_move_orders_state(
-    ruleset_json: String,
-    raw_report: String,
-    remembered_json: String,
-    unit: JsValue,
-    orders_document: String,
-    map_json: String,
-    passages_json: String,
-) -> Result<JsValue, JsValue> {
-    let unit: atlantis_hud_core::unit_ref::UnitRef = serde_wasm_bindgen::from_value(unit)
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
-    let request = atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
-        ruleset_json,
-        raw_report,
-        remembered_json,
-        unit,
-        orders_document,
-        map_json,
-        passages_json,
-    };
+pub fn trace_move_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: atlantis_hud_core::movement::request::TraceMoveOrdersRequest = from_js(request)?;
     let response = atlantis_hud_core::cache::with_global(|cache| {
         atlantis_hud_core::movement::request::trace_orders_on_map(cache, &request)
     })
@@ -612,24 +596,8 @@ pub fn trace_move_orders_state(
 /// browser must preview the same coming month. An order that changes nothing resolves to an empty
 /// answer; only an unusable ruleset or unreadable memory rejects.
 #[wasm_bindgen]
-pub fn preview_orders_state(
-    ruleset_json: String,
-    raw_report: String,
-    remembered_json: String,
-    orders_document: String,
-    map_json: String,
-    passages_json: String,
-    disabled_codes: Option<Vec<String>>,
-) -> Result<JsValue, JsValue> {
-    let request = atlantis_hud_core::orders::request::PreviewOrdersRequest {
-        ruleset_json,
-        raw_report,
-        remembered_json,
-        orders_document,
-        map_json,
-        passages_json,
-        disabled_codes,
-    };
+pub fn preview_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: atlantis_hud_core::orders::request::PreviewOrdersRequest = from_js(request)?;
     let response = atlantis_hud_core::cache::with_global(|cache| {
         atlantis_hud_core::orders::request::preview_orders_request(cache, &request)
     })
@@ -708,24 +676,8 @@ pub fn passage_claims_state(
 /// goes through the same cache every other entry point uses, so the whole-map pass this runs on
 /// each keystroke re-parses nothing.
 #[wasm_bindgen]
-pub fn validate_orders_state(
-    raw_orders: String,
-    ruleset_json: Option<String>,
-    raw_report: Option<String>,
-    disabled_codes: Option<Vec<String>>,
-    map_json: Option<String>,
-    known_passages_json: Option<String>,
-    remembered_json: Option<String>,
-) -> Result<JsValue, JsValue> {
-    let request = atlantis_hud_core::orders::request::ValidateOrdersRequest {
-        raw_orders,
-        ruleset_json,
-        raw_report,
-        disabled_codes,
-        map_json,
-        known_passages_json,
-        remembered_json,
-    };
+pub fn validate_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: atlantis_hud_core::orders::request::ValidateOrdersRequest = from_js(request)?;
     let result = atlantis_hud_core::cache::with_global(|cache| {
         atlantis_hud_core::orders::request::validate_orders_request(cache, &request)
     });

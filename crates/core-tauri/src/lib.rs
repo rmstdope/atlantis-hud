@@ -465,23 +465,8 @@ pub mod commands {
         tauri::command(rename_all = "snake_case", rename = "validate_orders")
     )]
     pub fn command_validate_orders(
-        raw_orders: &str,
-        ruleset_json: Option<&str>,
-        raw_report: Option<&str>,
-        disabled_codes: Option<Vec<String>>,
-        map_json: Option<&str>,
-        known_passages_json: Option<&str>,
-        remembered_json: Option<&str>,
+        request: atlantis_hud_core::orders::request::ValidateOrdersRequest,
     ) -> OrderValidationResult {
-        let request = atlantis_hud_core::orders::request::ValidateOrdersRequest {
-            raw_orders: raw_orders.to_string(),
-            ruleset_json: ruleset_json.map(str::to_string),
-            raw_report: raw_report.map(str::to_string),
-            disabled_codes,
-            map_json: map_json.map(str::to_string),
-            known_passages_json: known_passages_json.map(str::to_string),
-            remembered_json: remembered_json.map(str::to_string),
-        };
         atlantis_hud_core::cache::with_global(|cache| {
             atlantis_hud_core::orders::request::validate_orders_request(cache, &request)
         })
@@ -1124,26 +1109,9 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "trace_move_orders")
     )]
-    // Seven, as the core's `trace_orders_on_map` less its cache; the unit crosses whole as a `UnitRef`.
-    #[allow(clippy::too_many_arguments)]
     pub fn command_trace_move_orders(
-        ruleset_json: &str,
-        raw_report: &str,
-        remembered_json: &str,
-        unit: atlantis_hud_core::unit_ref::UnitRef,
-        orders_document: &str,
-        map_json: &str,
-        passages_json: &str,
+        request: atlantis_hud_core::movement::request::TraceMoveOrdersRequest,
     ) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
-        let request = atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
-            ruleset_json: ruleset_json.to_string(),
-            raw_report: raw_report.to_string(),
-            remembered_json: remembered_json.to_string(),
-            unit,
-            orders_document: orders_document.to_string(),
-            map_json: map_json.to_string(),
-            passages_json: passages_json.to_string(),
-        };
         atlantis_hud_core::cache::with_global(|cache| {
             atlantis_hud_core::movement::request::trace_orders_on_map(cache, &request)
         })
@@ -1158,23 +1126,8 @@ pub mod commands {
         tauri::command(rename_all = "snake_case", rename = "preview_orders")
     )]
     pub fn command_preview_orders(
-        ruleset_json: &str,
-        raw_report: &str,
-        remembered_json: &str,
-        orders_document: &str,
-        map_json: &str,
-        passages_json: &str,
-        disabled_codes: Option<Vec<String>>,
+        request: atlantis_hud_core::orders::request::PreviewOrdersRequest,
     ) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
-        let request = atlantis_hud_core::orders::request::PreviewOrdersRequest {
-            ruleset_json: ruleset_json.to_string(),
-            raw_report: raw_report.to_string(),
-            remembered_json: remembered_json.to_string(),
-            orders_document: orders_document.to_string(),
-            map_json: map_json.to_string(),
-            passages_json: passages_json.to_string(),
-            disabled_codes,
-        };
         atlantis_hud_core::cache::with_global(|cache| {
             atlantis_hud_core::orders::request::preview_orders_request(cache, &request)
         })
@@ -1439,16 +1392,18 @@ mod preview_orders_command_tests {
     fn previews_the_orders_it_is_handed() {
         let report = "Foo (1) Report\n\nplain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n";
 
-        let answer = command_preview_orders(
-            RULESET,
-            report,
-            "[]",
-            "unit 900\nNAME UNIT \"Renamed\"\n",
-            "",
-            "",
-            None,
-        )
-        .expect("the ruleset loads");
+        let answer =
+            command_preview_orders(atlantis_hud_core::orders::request::PreviewOrdersRequest {
+                ruleset_json: RULESET.into(),
+                raw_report: report.into(),
+                remembered_json: "[]".into(),
+                orders_document: "unit 900
+NAME UNIT \"Renamed\"
+"
+                .into(),
+                ..Default::default()
+            })
+            .expect("the ruleset loads");
 
         assert_eq!(answer.regions.len(), 1);
         assert_eq!(answer.regions[0].units[0].unit.name, "Renamed");
@@ -1490,17 +1445,19 @@ mod trace_move_orders_command_tests {
         // The whole orders document, not one unit's block: a passenger's route is the hull's, so
         // the core is given every unit's orders and finds the one this unit follows (ah-048).
         let answer = command_trace_move_orders(
-            RULESET,
-            &current,
-            &remembered,
-            atlantis_hud_core::unit_ref::UnitRef {
-                region_id: "1:1,1".into(),
-                unit_id: "900".into(),
-                arriving_from: None,
+            atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
+                ruleset_json: RULESET.into(),
+                raw_report: current.clone(),
+                remembered_json: remembered.clone(),
+                unit: atlantis_hud_core::unit_ref::UnitRef {
+                    region_id: "1:1,1".into(),
+                    unit_id: "900".into(),
+                    arriving_from: None,
+                },
+                orders_document: "unit 900\nMOVE SE SE".into(),
+                map_json: String::new(),
+                passages_json: String::new(),
             },
-            "unit 900\nMOVE SE SE",
-            "",
-            "",
         )
         .expect("the ruleset loads");
         let path = answer.path.expect("a traced path");
@@ -1520,17 +1477,19 @@ mod trace_move_orders_command_tests {
         );
 
         let answer = command_trace_move_orders(
-            RULESET,
-            &current,
-            "[]",
-            atlantis_hud_core::unit_ref::UnitRef {
-                region_id: "1:1,1".into(),
-                unit_id: "900".into(),
-                arriving_from: None,
+            atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
+                ruleset_json: RULESET.into(),
+                raw_report: current.clone(),
+                remembered_json: "[]".into(),
+                unit: atlantis_hud_core::unit_ref::UnitRef {
+                    region_id: "1:1,1".into(),
+                    unit_id: "900".into(),
+                    arriving_from: None,
+                },
+                orders_document: "unit 900\nwork".into(),
+                map_json: String::new(),
+                passages_json: String::new(),
             },
-            "unit 900\nwork",
-            "",
-            "",
         )
         .expect("the ruleset loads");
         assert_eq!(answer.path, None);
@@ -2420,7 +2379,11 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         .expect("create game");
 
         let validation =
-            command_validate_orders("FLY 1 2", None, None, Some(Vec::new()), None, None, None);
+            command_validate_orders(atlantis_hud_core::orders::request::ValidateOrdersRequest {
+                raw_orders: "FLY 1 2".into(),
+                disabled_codes: Some(Vec::new()),
+                ..Default::default()
+            });
         assert_eq!(
             validation.diagnostics,
             vec![atlantis_hud_core::OrderDiagnostic {
@@ -2472,17 +2435,19 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             "destination":{"x":12,"y":34,"z":2},"destinationTerrain":"cavern","learnedInTurn":40}]"#;
 
         let answer = command_trace_move_orders(
-            atlantis_hud_fixtures::RULESET_JSON,
-            &report,
-            "[]",
-            atlantis_hud_core::unit_ref::UnitRef {
-                region_id: "1:1,1".into(),
-                unit_id: "900".into(),
-                arriving_from: None,
+            atlantis_hud_core::movement::request::TraceMoveOrdersRequest {
+                ruleset_json: atlantis_hud_fixtures::RULESET_JSON.into(),
+                raw_report: report.clone(),
+                remembered_json: "[]".into(),
+                unit: atlantis_hud_core::unit_ref::UnitRef {
+                    region_id: "1:1,1".into(),
+                    unit_id: "900".into(),
+                    arriving_from: None,
+                },
+                orders_document: "unit 900\nMOVE 3 IN\n".into(),
+                map_json: String::new(),
+                passages_json: passages.into(),
             },
-            "unit 900\nMOVE 3 IN\n",
-            "",
-            passages,
         )
         .expect("the ruleset loads");
 

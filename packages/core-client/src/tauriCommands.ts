@@ -49,16 +49,7 @@ export const TAURI_COMMANDS = {
     "allow_overwrite",
     "imported_at"
   ],
-  validateOrders: [
-    "validate_orders",
-    "raw_orders",
-    "ruleset_json",
-    "raw_report",
-    "disabled_codes",
-    "map_json",
-    "known_passages_json",
-    "remembered_json"
-  ],
+  validateOrders: ["validate_orders", "request"],
   orderCommands: ["order_commands", "ruleset_json"],
   orderVocabulary: ["order_vocabulary", "ruleset_json"],
   completionsAtCaret: [
@@ -84,29 +75,11 @@ export const TAURI_COMMANDS = {
     "destination",
     "map_json"
   ],
-  traceMoveOrders: [
-    "trace_move_orders",
-    "ruleset_json",
-    "raw_report",
-    "remembered_json",
-    "unit",
-    "orders_document",
-    "map_json",
-    "passages_json"
-  ],
+  traceMoveOrders: ["trace_move_orders", "request"],
   exportMap: ["export_map", "raw_report", "remembered_json", "request_json"],
   exportMageSheet: ["export_mage_sheet", "raw_report", "unit_ids_json"],
   knownMap: ["known_map", "raw_report", "ruleset_json", "remembered_json"],
-  previewOrders: [
-    "preview_orders",
-    "ruleset_json",
-    "raw_report",
-    "remembered_json",
-    "orders_document",
-    "map_json",
-    "passages_json",
-    "disabled_codes"
-  ],
+  previewOrders: ["preview_orders", "request"],
   tradeRoutes: ["trade_routes", "ruleset_json", "raw_report", "remembered_json", "map_json"],
   loadRegionSightings: ["load_region_sightings", "database_path", "game_id", "faction_id"],
   mergeReport: [

@@ -406,15 +406,16 @@ describe("the live Tauri command lockstep", () => {
     const allParameters = Object.values(parameters).flat();
     expect(allParameters.filter((parameter) => parameter.required).length).toBeGreaterThan(80);
     expect(allParameters.filter((parameter) => !parameter.required).length).toBeGreaterThan(10);
-    expect(parameters["validate_orders"], "validate_orders is declared").toEqual([
-      { name: "raw_orders", required: true },
+    expect(parameters["known_map"], "known_map is declared").toEqual([
+      { name: "raw_report", required: true },
       { name: "ruleset_json", required: false },
-      { name: "raw_report", required: false },
-      { name: "disabled_codes", required: false },
-      { name: "map_json", required: false },
-      { name: "known_passages_json", required: false },
-      { name: "remembered_json", required: false }
+      { name: "remembered_json", required: true }
     ]);
+    // The three order checks cross as one request object each (ah-t8c4): adding an input is a
+    // field on the Rust struct, not a new argument in every file between the core and the screen.
+    for (const command of ["validate_orders", "preview_orders", "trace_move_orders"]) {
+      expect(parameters[command], command).toEqual([{ name: "request", required: true }]);
+    }
 
     // The wasm boundary: same exports, same arity, both ways.
     expect(wasmModuleMembers(webCoreAdapterTs)).toEqual(wasmExports(coreWasmLibRs));

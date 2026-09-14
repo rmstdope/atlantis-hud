@@ -16,8 +16,20 @@ import {
   type ImportedTurnSummary,
   type MapExportRequest,
   type RememberedRegion,
-  type TauriInvoke
+  type TauriInvoke,
+  type ValidateOrdersRequest
 } from "./index";
+
+/** A validation with nothing but the orders: no ruleset, no report, the core's own defaults. */
+const bareValidation = (rawOrders: string): ValidateOrdersRequest => ({
+  rawOrders,
+  rulesetJson: null,
+  rawReport: null,
+  disabledCodes: null,
+  mapJson: null,
+  knownPassagesJson: null,
+  rememberedJson: null
+});
 
 // `CoreAdapter` is the one typed declaration of the boundary: checked here at compile time, not by
 // a runtime normalizer. `vitest run` cannot fail these - they are caught only by `tsc --noEmit`
@@ -243,19 +255,9 @@ describe("merging an allied report", () => {
       return Promise.resolve({ diagnostics: [] } as T);
     };
 
-    await createCoreClient(createTauriAdapter(invoke)).validateOrders("@work", null);
+    await createCoreClient(createTauriAdapter(invoke)).validateOrders(bareValidation("@work"));
 
-    expect(calls).toEqual([
-      {
-        raw_orders: "@work",
-        ruleset_json: null,
-        raw_report: null,
-        disabled_codes: null,
-        map_json: null,
-        known_passages_json: null,
-        remembered_json: null
-      }
-    ]);
+    expect(calls).toEqual([{ request: bareValidation("@work") }]);
   });
 
   it("carries the column span a diagnostic points at", async () => {
@@ -276,7 +278,7 @@ describe("merging an allied report", () => {
         ]
       } as T);
 
-    const result = await createCoreClient(createTauriAdapter(camel)).validateOrders("x", null);
+    const result = await createCoreClient(createTauriAdapter(camel)).validateOrders(bareValidation("x"));
 
     expect(result.diagnostics[0].columnStart).toBe(10);
     expect(result.diagnostics[0].columnEnd).toBe(16);
@@ -318,7 +320,7 @@ describe("merging an allied report", () => {
         ]
       } as T);
 
-    const result = await createCoreClient(createTauriAdapter(wire)).validateOrders("x", null);
+    const result = await createCoreClient(createTauriAdapter(wire)).validateOrders(bareValidation("x"));
 
     expect(result.diagnostics[0]).toEqual({
       code: "hex-unguarded",
@@ -451,64 +453,25 @@ describe("createCoreClient", () => {
     expect(fake.knownMap).toHaveBeenCalledWith("raw", "{}", JSON.stringify(remembered));
   });
 
-  it("passes disabled codes through, and null when no options are given", async () => {
+  it("passes the validation and preview requests to the adapter unchanged", async () => {
     const fake = fakeAdapter();
     const client = createCoreClient(fake);
-
-    await client.validateOrders("orders", null, null, { disabledCodes: ["hex-unguarded"] });
-    await client.validateOrders("orders", null);
-
-    expect(fake.validateOrders).toHaveBeenNthCalledWith(
-      1,
-      "orders",
-      null,
-      null,
-      ["hex-unguarded"],
-      null,
-      null,
-      null
-    );
-    expect(fake.validateOrders).toHaveBeenNthCalledWith(2, "orders", null, null, null, null, null, null);
-  });
-
-  it("passes the remembered map through to validation, so shipments are measured after the moves", async () => {
-    const fake = fakeAdapter();
-    const client = createCoreClient(fake);
-
-    await client.validateOrders("orders", null, null, { rememberedJson: "[]" });
-
-    expect(fake.validateOrders).toHaveBeenCalledWith("orders", null, null, null, null, null, "[]");
-  });
-
-  it("passes disabled codes through to the preview, and null when no options are given", async () => {
-    const fake = fakeAdapter();
-    const client = createCoreClient(fake);
-
-    await client.previewOrders("ruleset", "raw", "[]", "orders", "", "", {
+    const validation = { ...bareValidation("orders"), disabledCodes: ["hex-unguarded"], rememberedJson: "[]" };
+    const preview = {
+      rulesetJson: "ruleset",
+      rawReport: "raw",
+      rememberedJson: "[]",
+      ordersDocument: "orders",
+      mapJson: "",
+      passagesJson: "",
       disabledCodes: ["transport-out-of-reach"]
-    });
-    await client.previewOrders("ruleset", "raw", "[]", "orders", "", "");
+    };
 
-    expect(fake.previewOrders).toHaveBeenNthCalledWith(
-      1,
-      "ruleset",
-      "raw",
-      "[]",
-      "orders",
-      "",
-      "",
-      ["transport-out-of-reach"]
-    );
-    expect(fake.previewOrders).toHaveBeenNthCalledWith(
-      2,
-      "ruleset",
-      "raw",
-      "[]",
-      "orders",
-      "",
-      "",
-      null
-    );
+    await client.validateOrders(validation);
+    await client.previewOrders(preview);
+
+    expect(fake.validateOrders).toHaveBeenCalledWith(validation);
+    expect(fake.previewOrders).toHaveBeenCalledWith(preview);
   });
 
   it("resolves with exactly what the adapter resolved", async () => {

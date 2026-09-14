@@ -94,7 +94,17 @@ export const SWEEP: SweepEntry[] = [
     // The ruleset is what lets an item name be checked against the catalogue, and it crosses as its
     // own argument: a name this side does not match deserializes to `None` over there without an
     // error, and every item would silently go unchecked.
-    args: () => ({ raw_orders: "unit 18642\n@work", ruleset_json: RULESET })
+    args: () => ({
+      request: {
+        rawOrders: "unit 18642\n@work",
+        rulesetJson: RULESET,
+        rawReport: null,
+        disabledCodes: null,
+        mapJson: null,
+        knownPassagesJson: null,
+        rememberedJson: null
+      }
+    })
   },
   { command: "order_commands", args: () => ({}) },
   { command: "order_vocabulary", args: () => ({ ruleset_json: RULESET }) },
@@ -129,15 +139,18 @@ export const SWEEP: SweepEntry[] = [
   },
   {
     command: "trace_move_orders",
+    // The request's own keys are camelCase: Tauri renames only the top-level argument (ah-t8c4).
     args: () => ({
-      ruleset_json: RULESET,
-      raw_report: REPORT,
-      remembered_json: "[]",
-      unit: { regionId: "1:7,53", unitId: "18642", arrivingFrom: null },
-      // The whole document, not one unit's block: a passenger's route is the hull's (ah-048).
-      orders_document: "unit 18642\nMOVE N",
-      map_json: MAP,
-      passages_json: "[]"
+      request: {
+        rulesetJson: RULESET,
+        rawReport: REPORT,
+        rememberedJson: "[]",
+        unit: { regionId: "1:7,53", unitId: "18642", arrivingFrom: null },
+        // The whole document, not one unit's block: a passenger's route is the hull's (ah-048).
+        ordersDocument: "unit 18642\nMOVE N",
+        mapJson: MAP,
+        passagesJson: "[]"
+      }
     })
   },
   {
@@ -178,13 +191,15 @@ export const SWEEP: SweepEntry[] = [
   {
     command: "preview_orders",
     args: () => ({
-      ruleset_json: RULESET,
-      raw_report: REPORT,
-      remembered_json: "[]",
-      orders_document: "unit 18642\nGUARD 1",
-      map_json: MAP,
-      passages_json: "[]",
-      disabled_codes: []
+      request: {
+        rulesetJson: RULESET,
+        rawReport: REPORT,
+        rememberedJson: "[]",
+        ordersDocument: "unit 18642\nGUARD 1",
+        mapJson: MAP,
+        passagesJson: "[]",
+        disabledCodes: []
+      }
     })
   },
   {
