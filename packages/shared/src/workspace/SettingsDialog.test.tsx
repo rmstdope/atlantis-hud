@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { resetSettingsStore, useSettingsStore } from "../settingsStore";
+import { BOOLEAN_SETTINGS, BOOLEAN_SETTING_KEYS } from "../booleanSettings";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { RULESETS } from "../rulesets";
 import { COLUMN_LABELS, HIDEABLE_COLUMNS, allColumnsShown } from "../unitTable";
@@ -565,5 +566,17 @@ describe("the Columns tab (ah-20di)", () => {
     const global = renderToStaticMarkup(<GlobalSettings />);
     expect(global).not.toContain('data-testid="settings-reset-column-widths"');
     expect(global).not.toContain('data-testid="settings-reset-column-order"');
+  });
+});
+
+describe("the global tab's coverage of the boolean settings", () => {
+  it("offers every boolean setting exactly once in the Global tab", () => {
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    for (const key of BOOLEAN_SETTING_KEYS) {
+      const spec = BOOLEAN_SETTINGS[key];
+      expect(html.split(`data-testid="${spec.testId}"`).length - 1, key).toBe(1);
+      expect(html, key).toContain(spec.title);
+    }
   });
 });
