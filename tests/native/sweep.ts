@@ -133,8 +133,7 @@ export const SWEEP: SweepEntry[] = [
       ruleset_json: RULESET,
       raw_report: REPORT,
       remembered_json: "[]",
-      unit_id: "18642",
-      region_id: "1:7,53",
+      unit: { regionId: "1:7,53", unitId: "18642", arrivingFrom: null },
       // The whole document, not one unit's block: a passenger's route is the hull's (ah-048).
       orders_document: "unit 18642\nMOVE N",
       map_json: MAP,

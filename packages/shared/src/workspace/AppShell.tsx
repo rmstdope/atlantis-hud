@@ -44,7 +44,7 @@ import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImpor
 import { ordersFileFaction } from "../ordersImport";
 import { orderCommentSyntaxFor, rulesetById } from "../rulesets";
 import { rowKeyOf, unitRowKey } from "../unitTable";
-import { previewAtCursor, setOutHex, unitAtCursor, unitCursor } from "./unitCursor";
+import { previewAtCursor, unitAtCursor, unitCursor } from "./unitCursor";
 import type { MapShape } from "@atlantis/core-client";
 import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import { ordersExportText } from "./ordersExport";
@@ -3220,9 +3220,7 @@ export function AppShell({
           ruleset.text,
           rawReport,
           rememberedJson,
-          unit.unitId,
-          // The hex the unit set out from, not the one on screen: an arrival row is listed where it arrives (ah-jxrw).
-          setOutHex(cursor),
+          cursor,
           ordersDocument,
           mapJson,
           passagesJson

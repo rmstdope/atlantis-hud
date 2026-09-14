@@ -1,6 +1,6 @@
 import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { isCursorRow, previewAtCursor, setOutHex, unitAtCursor, unitCursor } from "./unitCursor";
+import { isCursorRow, previewAtCursor, unitAtCursor, unitCursor } from "./unitCursor";
 
 const here = { regionId: "1:6,52", unitId: "new-1", arrivingFrom: null };
 const there = { regionId: "1:8,53", unitId: "new-1", arrivingFrom: null };
@@ -72,12 +72,5 @@ describe("unitAtCursor", () => {
     expect(unitAtCursor(arriving, "1:6,52", [], [b, a])).toBe(a.unit);
     expect(unitAtCursor(here, "1:6,52", [], [b, a])).toBe(b.unit);
     expect(previewAtCursor(arriving, "1:6,52", [b, a])).toBe(a);
-  });
-});
-
-describe("setOutHex", () => {
-  it("says which hex the unit set out from", () => {
-    expect(setOutHex({ ...here, arrivingFrom: "1:7,53" })).toBe("1:7,53");
-    expect(setOutHex(here)).toBe("1:6,52");
   });
 });

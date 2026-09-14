@@ -91,8 +91,3 @@ export function unitAtCursor(
       : undefined;
   return fromReport ?? previewAtCursor(cursor, hexRegionId, previewed)?.unit ?? null;
 }
-
-/** The hex the unit at the cursor set out from this month: `cursor.arrivingFrom ?? cursor.regionId`. */
-export function setOutHex(cursor: UnitCursor): string {
-  return cursor.arrivingFrom ?? cursor.regionId;
-}

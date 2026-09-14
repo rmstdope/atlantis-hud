@@ -1,4 +1,5 @@
 import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
+import type { UnitRef } from "./generated/UnitRef";
 
 // The report model and the parse family are generated from the Rust core by ts-rs
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
@@ -712,9 +713,8 @@ export interface CoreAdapter {
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
-    unitId: string,
-    /** The hex the unit stands in. A new unit's number is unique only inside its hex. */
-    regionId: string,
+    /** The row's unit. The core traces it from the hex it set out from. */
+    unit: UnitRef,
     ordersDocument: string,
     mapJson: string,
     /** Every inner passage the faction has proved the far side of, as JSON. `""` for none. */

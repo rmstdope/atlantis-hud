@@ -1214,15 +1214,16 @@ pub(crate) struct FormedAsOrdered {
 /// a `new-<alias>` whose block is not in this document. A dissolving unit **is** returned: the
 /// order it was written is still drawn (decision **Q3b'** of `ah-4hux`).
 ///
-/// `region_id` is the hex the unit was formed in, which `rules/form` makes the only hex its alias
-/// names. A non-empty `region_id` that forms no unit with that id answers `None`: falling back to the
-/// number alone is how an arrival row came to draw another hex's unit. Empty means the caller does
-/// not know the hex, and the first formed row with that id in settle order answers.
+/// `formed_in` is the hex the unit was formed in, which `rules/form` makes the only hex its alias
+/// names. `Some` hex that forms no unit with that id answers `None`: falling back to the number
+/// alone is how an arrival row came to draw another hex's unit. `None` - only
+/// `trace_orders_for_remembered_report` passes it - answers the first formed row with that id in
+/// settle order.
 pub(crate) fn formed_unit_as_ordered(
     report: &crate::report::ParsedReport,
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
     orders_document: &str,
-    region_id: &str,
+    formed_in: Option<&str>,
     unit_id: &str,
 ) -> Option<FormedAsOrdered> {
     // Not an optimisation to skip: without it every trace of an id the report does not carry would
@@ -1247,7 +1248,10 @@ pub(crate) fn formed_unit_as_ordered(
     let entry = units.into_iter().find(|entry| {
         entry.formed
             && entry.unit.unit_id == unit_id
-            && (region_id.is_empty() || entry.unit.region_id == region_id)
+            && match formed_in {
+                None => true,
+                Some(hex) => entry.unit.region_id == hex,
+            }
     })?;
     Some(FormedAsOrdered {
         sails: entry.move_command.as_deref() == Some("SAIL"),

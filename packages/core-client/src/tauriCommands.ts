@@ -89,8 +89,7 @@ export const TAURI_COMMANDS = {
     "ruleset_json",
     "raw_report",
     "remembered_json",
-    "unit_id",
-    "region_id",
+    "unit",
     "orders_document",
     "map_json",
     "passages_json"

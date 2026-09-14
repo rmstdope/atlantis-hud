@@ -575,28 +575,28 @@ pub fn known_map_state(
 /// The browser twin of the desktop command, calling the same core entry so the two shells cannot
 /// drift into tracing differently. An order that cannot be traced resolves to an answer carrying
 /// no path; only an unusable ruleset or unreadable memory rejects.
-// Eight, as the core's `trace_orders_on_map` less its cache: each document crosses as its own text,
-// and the hex is the one the selected unit set out from (`ah-jxrw`).
+// Seven, as the core's `trace_orders_on_map` less its cache: each document crosses as its own text,
+// and the unit crosses whole as a `UnitRef`.
 #[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn trace_move_orders_state(
     ruleset_json: String,
     raw_report: String,
     remembered_json: String,
-    unit_id: String,
-    region_id: String,
+    unit: JsValue,
     orders_document: String,
     map_json: String,
     passages_json: String,
 ) -> Result<JsValue, JsValue> {
+    let unit: atlantis_hud_core::unit_ref::UnitRef = serde_wasm_bindgen::from_value(unit)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
     let response = atlantis_hud_core::cache::with_global(|cache| {
         atlantis_hud_core::movement::request::trace_orders_on_map(
             cache,
             &ruleset_json,
             &raw_report,
             &remembered_json,
-            &unit_id,
-            &region_id,
+            &unit,
             &orders_document,
             &map_json,
             &passages_json,
