@@ -46,12 +46,12 @@ use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named
 use crate::orders::magic;
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
-    forecast_unit, late_income, parse_wage_centis, pillage_threshold, plan_production, pool_wants,
-    price_buy_all, price_cast, price_claim, price_pillage, price_production, price_purchase,
-    price_sale_line, price_study, price_tax, producing_skill, quantity_bought, readiness,
-    readiness_reason, settle_unclaimed, split_pool, tax_overstated_by, taxes, taxing_men,
-    transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster,
-    ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
+    forecast_unit, late_income, late_income_terms, parse_wage_centis, pillage_threshold,
+    plan_production, pool_wants, price_buy_all, price_cast, price_claim, price_pillage,
+    price_production, price_purchase, price_sale_line, price_study, price_tax, producing_skill,
+    quantity_bought, readiness, readiness_reason, settle_unclaimed, split_pool, tax_overstated_by,
+    taxes, taxing_men, transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap,
+    Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
     LateFoodRelief, Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver,
     Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove,
     Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket,
@@ -2304,18 +2304,10 @@ fn compared_silver_rows(
         .filter(|(cause, _, _)| {
             !matches!(
                 cause,
-                // These three are outside `ah-1x2h`, which owns the cases where the two walks
-                // price one event two ways: here only one walk books the event at all, by
-                // decision, so there is nothing to reconcile. The ledger records no wage -
-                // `Intent::Work | Intent::Entertain => {}`, because wages are paid in the last
-                // phase and fund nothing this month - and `Lent` is booked by the hex pass onto
-                // the column alone.
-                SilverChangeCause::Worked
-                    | SilverChangeCause::Entertained
-                    | SilverChangeCause::Lent
-                    // Booked by the hex pass onto the column alone, exactly as `Lent` is - the
-                    // ledger has no borrowing to record, because no silver moves (`ah-3c2t.2`).
-                    | SilverChangeCause::WasLent
+                // Booked by the hex pass onto the column alone, after the unit's own walk: the draw
+                // is settled between units, and the ledger has no borrowing to record
+                // (`ah-6m7b.4`, `ah-3c2t.2`).
+                SilverChangeCause::Lent | SilverChangeCause::WasLent
             )
             // `Shipped` is compared like any other cause: the ledger books a paid shipment, and
             // the column books it from the ledger's own moves (`ah-7ale.4`).
@@ -4715,12 +4707,11 @@ struct Ledger<'a> {
     /// Every movement of every unit's silver this month, in the order the walk settled them,
     /// keyed by unit id.
     ///
-    /// Read by `mod silver_record` in this file's tests and by nothing else yet: `ah-6m7b.5.2`
-    /// built the check that would have read it in production - the SILVER column's change list
-    /// held to this record term for term - measured that the two lists disagree in five distinct
-    /// classes, and filed that as `ah-6m7b.5.3`, which is this field's intended consumer. What
-    /// keeps it exhaustive meanwhile is the `debug_assert` in `charge` and `credit`, not a reader.
-    /// Nothing a player's figures pass through reads it (`ah-6m7b.5.2`).
+    /// Read by `forecast_hex`, for the `Shipped` rows and for `silver_records_agree`. Carries every
+    /// cause the SILVER column's list does except `Lent` and `WasLent`, which the hex pass books
+    /// between units. The wage terms are recorded by `charge_upkeep` without being applied, because
+    /// the balance already carries them netted against the fee. What keeps the record exhaustive is
+    /// that `charge` and `credit` `debug_assert` they are never handed silver.
     pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
     /// What each unit this hex pays for shipments, keyed by unit id. Written by
     /// `settle_report_wide`'s shipping steps.
@@ -5859,6 +5850,20 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     for (((ordered, facts), shares), claim) in
         hex.units.iter().zip(&facts).zip(&shares).zip(&claims)
     {
+        // What the unit earns in the Wages phase, recorded and not applied: the balance already
+        // carries these terms netted against the fee below, so applying them as well would pay
+        // each wage twice. Recorded for every unit, before the `continue`s below skip a unit whose
+        // fee is contended or nothing, because a worker with no fee still earns its wage.
+        for term in late_income_terms(facts, region, *shares, ledger.ruleset) {
+            record_silver(
+                ledger,
+                StatePhase::Wages,
+                &ordered.unit.unit_id,
+                term.amount,
+                term.cause,
+                term.line,
+            );
+        }
         let owed = match settled.get(&ordered.unit.unit_id) {
             // The pool fed this unit: it owes what step 2 left it, not what step 1 did.
             Some(Some(left)) => *left,
@@ -5882,7 +5887,9 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             // A direct apply, and deliberately not a `move_silver`: upkeep is not one of the
             // column's `SilverChangeCause`s either - `UnitSilver::upkeep` is its own field, kept
             // out of `changes` - so recording it here would put a term in the ledger's account
-            // that the column's list can never carry (`ah-6m7b.5.2`).
+            // that the column's list can never carry (`ah-6m7b.5.2`). The wages this fee was
+            // netted against are recorded, above, for the opposite reason: they are movements the
+            // column's list does carry.
             ledger.state.apply(
                 StatePhase::Maintenance,
                 &ordered.unit.unit_id,
@@ -25611,15 +25618,27 @@ BUILD
             assert_eq!(
                 compared_silver_rows(
                     [
-                        (SilverChangeCause::Worked, None, 190),
                         (SilverChangeCause::Lent, None, -50),
-                        (SilverChangeCause::Entertained, None, 20),
+                        (SilverChangeCause::WasLent, None, 50),
                     ]
                     .into_iter()
                 ),
                 vec![],
-                "the ledger books none of these, so the column's rows cannot be held to it"
+                "the hex pass books these onto the column alone, so the ledger cannot be held to them"
             );
+        }
+
+        /// `ah-xryu.1`: `charge_upkeep` records the wage terms, so both are compared like any
+        /// other cause.
+        #[test]
+        fn a_wage_is_compared_on_both_sides() {
+            for cause in [SilverChangeCause::Worked, SilverChangeCause::Entertained] {
+                assert_eq!(
+                    compared_silver_rows([(cause, None, 190)].into_iter()),
+                    vec![(cause, None, Some(190))],
+                    "{cause:?} is kept, with its amount"
+                );
+            }
         }
 
         /// `ah-1x2h.3`: the four transfer causes are compared like any other, because both sides
@@ -25798,6 +25817,83 @@ BUILD
             );
             let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
+        }
+
+        fn rows_of(ledger: &Ledger<'_>, who: &str, cause: SilverChangeCause) -> Vec<SilverMove> {
+            moves(ledger, who)
+                .iter()
+                .filter(|one| one.cause == cause)
+                .cloned()
+                .collect()
+        }
+
+        fn working_region(units: Vec<ReportUnit>) -> ReportRegion {
+            ReportRegion {
+                wages: Some("$10".to_string()),
+                max_wages: Some(300),
+                ..region(units)
+            }
+        }
+
+        /// `rules/sequenceofevents` processes WORK orders immediately before maintenance, the
+        /// ledger's `StatePhase::Wages`: ten men at $10, under the region's $300 (`ah-xryu.1`).
+        #[test]
+        fn a_workers_wage_is_recorded_when_wages_are_paid() {
+            with_ledger(
+                working_region(vec![with_men(unit("1"), 10)]),
+                "unit 1\nWORK\n",
+                |ledger| {
+                    assert_eq!(
+                        rows_of(ledger, "1", SilverChangeCause::Worked),
+                        vec![SilverMove {
+                            phase: StatePhase::Wages,
+                            amount: 100,
+                            cause: SilverChangeCause::Worked,
+                            line: Some(2),
+                        }]
+                    );
+                },
+            );
+        }
+
+        /// A unit with no month-long order is set to work by default, so no line is responsible.
+        #[test]
+        fn a_unit_set_to_work_by_default_records_its_wage_with_no_line() {
+            with_ledger(
+                working_region(vec![with_men(unit("1"), 10)]),
+                "unit 1\n",
+                |ledger| {
+                    assert_eq!(
+                        rows_of(ledger, "1", SilverChangeCause::Worked),
+                        vec![SilverMove {
+                            phase: StatePhase::Wages,
+                            amount: 100,
+                            cause: SilverChangeCause::Worked,
+                            line: None,
+                        }]
+                    );
+                },
+            );
+        }
+
+        /// One man at Entertainment 1 (`rules/economy_entertainment`), under the region's $50.
+        #[test]
+        fn an_entertainers_takings_are_recorded_when_wages_are_paid() {
+            let hex_region = ReportRegion {
+                entertainment: Some(50),
+                ..region(vec![with_skill(with_men(unit("1"), 1), "ENTE", 1)])
+            };
+            with_ledger(hex_region, "unit 1\nENTERTAIN\n", |ledger| {
+                assert_eq!(
+                    rows_of(ledger, "1", SilverChangeCause::Entertained),
+                    vec![SilverMove {
+                        phase: StatePhase::Wages,
+                        amount: 30,
+                        cause: SilverChangeCause::Entertained,
+                        line: Some(2),
+                    }]
+                );
+            });
         }
 
         /// `rules/sequenceofevents` settles GIVE before STUDY, and `rules/skills_studying` charges
