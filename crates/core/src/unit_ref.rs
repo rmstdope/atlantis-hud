@@ -16,7 +16,7 @@ pub struct UnitRef {
     /// The hex the row is listed in.
     pub region_id: String,
     pub unit_id: String,
-    /// The hex an arriving row set out from; `None` for every row that does not arrive.
+    /// The hex an arriving row set out from; absent for every row that does not arrive.
     pub arriving_from: Option<String>,
 }
 

@@ -79,6 +79,7 @@ describe("workspace selection", () => {
   });
 
   it("selects a hex's default unit as a unit that does not arrive", () => {
+    store().selectUnit({ regionId: "1:7,51", unitId: "new-1", arrivingFrom: "1:7,53" });
     store().selectRegion("1:8,53", "902");
     expect(store().selectedUnit).toEqual({ regionId: "1:8,53", unitId: "902", arrivingFrom: null });
   });
@@ -92,13 +93,11 @@ describe("workspace selection", () => {
 
     store().selectUnit(null);
     expect(store().selectedUnit).toBeNull();
-    expect(store().selectedUnit).toBeNull();
 
     store().selectRegion("1:6,52", "18642");
     expect(store().selectedUnit?.regionId).toBe("1:6,52");
 
     store().selectRegion("1:7,51");
-    expect(store().selectedUnit).toBeNull();
     expect(store().selectedUnit).toBeNull();
 
     store().selectRegion("1:6,52", "18642");

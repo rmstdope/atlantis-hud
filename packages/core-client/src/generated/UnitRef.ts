@@ -14,6 +14,6 @@ export type UnitRef = {
  */
 regionId: string, unitId: string, 
 /**
- * The hex an arriving row set out from; `None` for every row that does not arrive.
+ * The hex an arriving row set out from; absent for every row that does not arrive.
  */
 arrivingFrom: string | null, };
