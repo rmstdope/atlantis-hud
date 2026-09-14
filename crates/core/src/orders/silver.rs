@@ -260,6 +260,20 @@ pub struct NoStudyFee {
     pub limiting_races: Vec<LimitingRace>,
 }
 
+/// [`UnitSilver::short_for_orders`] from the fields beside it, by the formula its doc states - for a
+/// pass that changes `wanted_for_orders` after the forecast was built (`ah-7ale.4`).
+pub(crate) fn short_for_orders_of(silver: &UnitSilver) -> Option<i64> {
+    let (Some(income), Some(late), Some(wanted)) =
+        (silver.income, silver.late_income, silver.wanted_for_orders)
+    else {
+        return None;
+    };
+    let short_before = wanted
+        .saturating_sub(silver.held.saturating_add(income).saturating_sub(late))
+        .max(0);
+    Some(short_before.saturating_sub(silver.shared_silver_for_orders.clamp(0, short_before)))
+}
+
 /// What one unit's month is expected to do to its silver.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]

@@ -1086,8 +1086,18 @@ fn settle(
     // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
     // from - so the ITEMS and SILVER cells on one row cannot disagree (`ah-agbm`). `GIVE` is not
     // read here: the walk above already applied every gift through `Working::give`.
-    let item_effects =
-        super::semantics::item_effects(report, orders_document, Some(ruleset.as_ref()));
+    // With the geometry this settle holds, which `options.geometry` may not carry - without it
+    // nothing is priced and no unpaid shipment is ever refused (`ah-7ale.4`).
+    let priced_with = super::semantics::CheckOptions {
+        geometry,
+        ..working.options.clone()
+    };
+    let item_effects = super::semantics::item_effects(
+        report,
+        orders_document,
+        Some(ruleset.as_ref()),
+        &priced_with,
+    );
     working.apply_item_effects(&item_effects);
     settle_headcounts(&mut working.units, ruleset);
     // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
@@ -1936,6 +1946,10 @@ struct Working {
     /// phases, after the market and after production, so a sale written below a transport still
     /// takes its goods first (`ah-bxgs`).
     transports: Vec<PendingTransport>,
+    /// `(sender index, 1-based document line)` of every shipment the ledger found the sender's month
+    /// could not pay for, filled by `apply_item_effects` and read by `apply_transport_phase`
+    /// (`ah-7ale.4`).
+    refused_shipments: std::collections::BTreeSet<(usize, usize)>,
     /// Every unit id the report names, ours and everyone else's. A target in here but not in
     /// `by_id` is a unit we can see and cannot project; one in neither is what the hover calls
     /// "which your report does not show" (`ah-bxgs`).
@@ -2005,6 +2019,9 @@ struct PendingTransport {
     /// Where the line stood in the document, kept privately so phase execution can restore
     /// document order on `transport_sent`/`transport_received` afterwards (`ah-d0ku`).
     sequence: usize,
+    /// The 1-based document line, the key `UnitItemEffects::refused_shipments` names a shipment by
+    /// (`ah-7ale.4`).
+    line: usize,
 }
 
 /// The three phases `rules/sequenceofevents` runs TRANSPORT in, in rule order: "Items are sent
@@ -2085,6 +2102,7 @@ impl Working {
             forms: super::blocks::FormStack::new(),
             ruleset,
             transports: Vec::new(),
+            refused_shipments: std::collections::BTreeSet::new(),
             quartermasters,
             known_units,
             shown_in_region,
@@ -2270,6 +2288,19 @@ impl Working {
         &mut self,
         effects: &BTreeMap<super::semantics::UnitKey, super::semantics::UnitItemEffects>,
     ) {
+        for (index, unit) in self.units.iter().enumerate() {
+            let Some(effect) = effects.get(&super::semantics::unit_key(
+                &unit.unit.region_id,
+                &unit.unit.unit_id,
+            )) else {
+                continue;
+            };
+            for line in &effect.refused_shipments {
+                if let Ok(line) = usize::try_from(*line) {
+                    self.refused_shipments.insert((index, line));
+                }
+            }
+        }
         // Cloned before the loop: `self.units` is borrowed mutably by it.
         let ruleset = std::sync::Arc::clone(&self.ruleset);
         for unit in &mut self.units {
@@ -2467,7 +2498,7 @@ impl Working {
             // `rules/transport`: "the order DISTRIBUTE can be used in place of TRANSPORT and has
             // the same meaning and syntax", which is why one arm serves both and why the grammar
             // gives them one shared `TRANSPORT_FORMS` (`ah-bxgs`).
-            self.transport(active, arguments);
+            self.transport(active, arguments, line);
         }
     }
 
@@ -2950,7 +2981,7 @@ impl Working {
     /// (`TRANSPORT` is not `GIVE`, and no rule makes
     /// transport-to-zero destroy goods); or the target resolves to the sender itself, which the
     /// server refuses.
-    fn transport(&mut self, sender: usize, arguments: &[super::lexer::Token]) {
+    fn transport(&mut self, sender: usize, arguments: &[super::lexer::Token], line: usize) {
         use super::forms::{Party, Selector};
 
         let Some((target, rest)) = super::forms::read_party(arguments) else {
@@ -2983,6 +3014,7 @@ impl Working {
             what,
             amount,
             sequence,
+            line,
         });
     }
 
@@ -3253,6 +3285,15 @@ impl Working {
         }
 
         for pending in pending {
+            // The sender's month cannot pay the bill, so the game ships nothing
+            // (`rules/economy_transport`, the agreed record): no goods move and no row is written.
+            // The shortfall sentence is this case's one message (`ah-7ale.4`).
+            if self
+                .refused_shipments
+                .contains(&(pending.sender, pending.line))
+            {
+                continue;
+            }
             let index = order_index.get(&pending.sequence).copied().unwrap_or(0);
             let held = allowance
                 .get(&pending.sender)
@@ -4054,7 +4095,10 @@ mod tests {
             "  Northwest : plain (1,1) in Nowhere.",
             "",
             "+ Trade Post [1] : Caravanserai.",
-            "  * Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON]. Weight: 10. \
+            // Silver to pay what it forwards: a shipment its month cannot pay for ships nothing
+            // (`ah-7ale.4`).
+            "  * Quartermaster (6857), Foo (1), leader [LEAD], 15 stone [STON], \
+             100000 silver [SILV]. Weight: 10. \
              Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 5 (450).",
             "  * Hauler (6858), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
              Skills: quartermaster [QUAM] 1 (30).",
@@ -9297,10 +9341,13 @@ mod tests {
                 "* Source (900), Foo (1), leader [LEAD], 10 stone [STON]. Weight: 510. \
                  Capacity: 0/0/15/0.",
                 "+ Post One [1] : Caravanserai.",
-                "  * Quarterone (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
-                 Skills: quartermaster [QUAM] 1 (30).",
+                // The two forwarding quartermasters hold silver: a hop between quartermasters is
+                // priced, and one its month cannot pay for ships nothing (`ah-7ale.4`).
+                "  * Quarterone (901), Foo (1), leader [LEAD], 100000 silver [SILV]. Weight: 10. \
+                 Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (30).",
                 "+ Post Two [2] : Caravanserai.",
-                "  * Quartertwo (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                "  * Quartertwo (902), Foo (1), leader [LEAD], 100000 silver [SILV]. Weight: 10. \
+                 Capacity: 0/0/15/0. \
                  Skills: quartermaster [QUAM] 1 (30).",
                 "+ Post Three [3] : Caravanserai.",
                 "  * Destination (903), Foo (1), leader [LEAD]. Weight: 10. \
@@ -11074,6 +11121,40 @@ mod tests {
     /// `ah-7ale.2.2.2`: with `Settings > Warnings > Transport` off the reach check is not made at
     /// all, so the shipment is forecast as going through - goods gone, the target credited, and
     /// nothing left in the problem list.
+    /// `ah-7ale.4`: a shipment is all or nothing, so a sender whose month cannot pay the bill
+    /// keeps the goods - four hexes is inside a Quartermaster-5's reach of `3 + (5+1)/3` and
+    /// outside any free range (`data/quartermaster`, `rules/economy_transport`).
+    #[test]
+    fn a_shipment_nobody_can_pay_for_moves_nothing() {
+        let report = reach_report((0, 0), (0, 8), (5, 1));
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+
+        let refused = reach_preview(&report, orders, FLAT_MAP);
+        // A unit the orders leave unchanged is absent from the response and holds what the
+        // report gave it (see [`OrdersPreviewResponse`]) - which is the whole point here.
+        assert_eq!(
+            reach_drawn(&refused, "900").map_or(5, |unit| unit
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "STON")
+                .map_or(0, |item| item.amount)),
+            5,
+            "the stone stayed"
+        );
+        assert_eq!(reach_held(&refused, "901", "STON"), 0, "and never arrived");
+        assert!(
+            reach_drawn(&refused, "900").is_none_or(|unit| unit.transport_target_issues.is_empty())
+        );
+
+        let paid_report =
+            report.replace(" 5 stone [STON],", " 5 stone [STON], 100000 silver [SILV],");
+        assert_ne!(paid_report, report, "the sender was given silver");
+        let paid = reach_preview(&paid_report, orders, FLAT_MAP);
+        assert_eq!(reach_held(&paid, "900", "STON"), 0, "the stone left");
+        assert_eq!(reach_held(&paid, "901", "STON"), 5, "and arrived");
+    }
+
     #[test]
     fn a_silenced_reach_warning_forecasts_the_shipment_as_going_through() {
         let report = reach_report((0, 0), (0, 6), (0, 1));
@@ -11170,7 +11251,18 @@ mod tests {
             }]
         );
 
-        let in_reach = reach_preview(&reach_report((0, 0), (0, 6), (1, 1)), orders, FLAT_MAP);
+        // A shipment in reach is priced, and one nobody can pay for ships nothing (`ah-7ale.4`),
+        // so the sender holds silver wherever the shipment is meant to go.
+        let paying = |report: String| {
+            let paid = report.replace(" 5 stone [STON],", " 5 stone [STON], 1000 silver [SILV],");
+            assert_ne!(paid, report, "the sender was given silver");
+            paid
+        };
+        let in_reach = reach_preview(
+            &paying(reach_report((0, 0), (0, 6), (1, 1))),
+            orders,
+            FLAT_MAP,
+        );
         assert_eq!(
             reach_held(&in_reach, "901", "IRON"),
             1,
@@ -11181,7 +11273,11 @@ mod tests {
             .is_empty());
 
         // `Reach::hexes` at level 5 is 3 + 6/3 = 5, so the four-hex shipment now goes.
-        let skilled = reach_preview(&reach_report((0, 0), (0, 8), (5, 1)), orders, FLAT_MAP);
+        let skilled = reach_preview(
+            &paying(reach_report((0, 0), (0, 8), (5, 1))),
+            orders,
+            FLAT_MAP,
+        );
         assert_eq!(
             reach_held(&skilled, "901", "IRON"),
             1,
