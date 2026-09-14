@@ -32,9 +32,7 @@ export default function App({ client }: { client: CoreClient }) {
       // Desktop only: the game server sends no CORS headers, so the web build could send orders and
       // never learn whether they were accepted. Rejects when this bundle is opened in a browser.
       uploadOrders={desktopOrdersUploader()}
-      // Desktop only, and for a sharper reason than Send's: the world allowlists CORS origins and
-      // the live web deploy is not on the list. Rejects when this bundle is opened in a plain
-      // browser.
+      // Through Tauri's http plugin; rejects when this bundle is opened in a plain browser.
       newAgeTransport={desktopNewAgeTransport()}
       pbemTransport={desktopPbemTransport()}
     />

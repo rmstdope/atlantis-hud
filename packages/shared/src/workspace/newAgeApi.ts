@@ -3,8 +3,9 @@
  *
  * The whole of the logic is here and pure: building the requests the six endpoints the HUD needs
  * expect, and reading a value or a named failure out of each reply. Performing the request is a
- * shell's job, through `HttpTransport` - only the desktop has one, because `atlantis-newage.com`
- * allowlists CORS origins and the live web deploy is not on the list (probed 2026-09-04).
+ * shell's job, through `HttpTransport` - the desktop's goes through Tauri's http plugin, the web's is
+ * the browser's `fetch` (`browserHttpTransport.ts`), which works now that the world allows the live
+ * web deploy's origin (confirmed 2026-09-14).
  *
  * **The reply bodies are secret.** An orders document's first line is `#atlantis <id> "<password>"`
  * in cleartext, and the server echoes it in its validation output. So nothing here logs a request,

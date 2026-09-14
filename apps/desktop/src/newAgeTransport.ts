@@ -1,9 +1,5 @@
 /**
- * Reaching an Atlantis New Age world's REST API, which only the desktop shell can do.
- *
- * `atlantis-newage.com` allowlists CORS origins: `http://localhost:5173` and the server's own site
- * are allowed, the live web deploy is refused on the preflight (probed 2026-09-04). So the port is
- * desktop-only, exactly as `desktopOrdersUploader` is, and the web build simply has none.
+ * Reaching an Atlantis New Age world's REST API from the desktop shell, through Tauri's http plugin.
  *
  * Lives here rather than in `packages/shared` for the reason `saveTextFile.ts` gives: importing
  * `@tauri-apps/*` from shared code would put half a desktop shell in the web bundle.

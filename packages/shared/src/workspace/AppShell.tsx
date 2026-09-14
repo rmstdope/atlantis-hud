@@ -438,6 +438,7 @@ export function AppShell({
   openExternal = OPEN_EXTERNAL_IN_NEW_TAB,
   uploadOrders,
   newAgeTransport,
+  newAgeFromBrowser = false,
   pbemTransport
 }: {
   client: CoreClient;
@@ -473,11 +474,16 @@ export function AppShell({
    */
   uploadOrders?: OrdersUploader;
   /**
-   * How this shell reaches an Atlantis New Age world, or absent when it cannot - which is the web
-   * build, since the world refuses that origin's preflight (probed 2026-09-04). Its absence is the
-   * whole of what hides the sign-in control there.
+   * How this shell reaches an Atlantis New Age world, or absent when the shell cannot reach one.
+   * Both shells pass one today; its absence still hides the Fetch control and the New Age Send.
    */
   newAgeTransport?: HttpTransport;
+  /**
+   * True when `newAgeTransport` is a browser's `fetch`. A browser cannot tell a world that is down
+   * from one that refuses this page's address, so a sign-in that cannot reach the world says both.
+   * The web shell passes it; the desktop shell does not.
+   */
+  newAgeFromBrowser?: boolean;
   /**
    * How this shell reaches atlantis-pbem.com, or absent when it cannot - which is the web build,
    * since the site sends no CORS headers and a browser could post the download form and never read
@@ -4004,8 +4010,8 @@ export function AppShell({
   // it could file the turn under, so the control stays off rather than failing at the last step.
   //
   // A New Age world takes the other road - the REST API rather than an upload form - so it needs
-  // no `ordersUploadUrl`. On the web build `newAgeTransport` is absent, so `newAgeApi` is null and
-  // this is false, which is still the whole of what keeps New Age out of that bundle.
+  // no `ordersUploadUrl`. `newAgeApi` is null - absent when a shell passes no `newAgeTransport`,
+  // which leaves this false.
   /** Whether this game could be sent to over the New Age API. */
   const newAgeSendable = newAgeApi !== null && newAgeWorld !== null && openGameId !== null;
   const canSendOrders =
@@ -4321,7 +4327,7 @@ export function AppShell({
           setFetchPhase(phase);
         },
         abandoned: () => fetchAbandoned.current || fetchAbort.current !== controller
-      });
+      }, { fromBrowser: newAgeFromBrowser });
 
       let stillOurs = true;
       if (fetchAbort.current !== controller) {
@@ -4387,7 +4393,7 @@ export function AppShell({
         }
       }
     },
-    [newAgeApi, newAgeWorld, openGameId, loadReport, currentWorkingTurn, client, game]
+    [newAgeApi, newAgeWorld, openGameId, loadReport, currentWorkingTurn, client, game, newAgeFromBrowser]
   );
 
   /**
@@ -4411,7 +4417,7 @@ export function AppShell({
       }
       if (login.kind !== "ok") {
         newAgeSendAbort.current = null;
-        const { message, retype } = signInFailure(login, NEW_AGE_HOST);
+        const { message, retype } = signInFailure(login, NEW_AGE_HOST, { fromBrowser: newAgeFromBrowser });
         setNewAgeSendPhase({ kind: "failed", message, retype });
         return;
       }
@@ -4444,6 +4450,7 @@ export function AppShell({
     },
     [
       newAgeApi,
+      newAgeFromBrowser,
       newAgeWorld,
       openGameId,
       flush,

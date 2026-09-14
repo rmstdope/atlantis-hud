@@ -35,9 +35,8 @@ export type DesktopPlugins = {
   /**
    * One request, answered with the status and the body as text.
    *
-   * Only the desktop has this, and for two servers' worth of reason: `atlantis-pbem.com` sends no
-   * `Access-Control-Allow-Origin`, so a browser could send the orders form and never read what came
-   * back, and `atlantis-newage.com` allowlists CORS origins and does not carry the web deploy. One
+   * Only the desktop has this, because `atlantis-pbem.com` sends no `Access-Control-Allow-Origin`,
+   * so a browser could send the orders form and never read what came back. One
    * call rather than one per shape - a GET with a bearer token and two POST bodies go through here.
    *
    * The body it answers with is secret - it can echo the orders document, faction password and all
