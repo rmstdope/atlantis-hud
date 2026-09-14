@@ -38698,6 +38698,15 @@ BUILD
             short,
             ["short $105: this unit can have $0 and its orders spend $105, so it buys none of the 5 horses ordered and ships none of the 9 furs ordered"]
         );
+        // The purchase drew on the silver first, so the finding stays on its line: only an anchor a
+        // shipment holds moves onto a refused shipment.
+        assert_eq!(
+            findings
+                .iter()
+                .find(|finding| finding.code.as_str() == "not-enough-silver")
+                .and_then(|finding| finding.line),
+            Some(2)
+        );
     }
 
     /// The agreed record: "a faction-mate here with money enough means no shortfall and nothing
