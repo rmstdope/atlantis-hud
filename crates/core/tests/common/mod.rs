@@ -2,7 +2,9 @@
 //! here, so an unused one is expected rather than a mistake (ah-v2l).
 #![allow(dead_code)]
 
+use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::movement::rules::Ruleset;
+use atlantis_hud_core::orders::effects::{OrdersPreviewResponse, UnitPreview};
 use atlantis_hud_core::orders::intents::{read_intents, spends_the_month};
 use atlantis_hud_core::report::model::Coordinate;
 
@@ -48,4 +50,41 @@ pub fn without_standing_month_orders(template: &str, units: &[&str]) -> String {
         .map(|(_, line)| line)
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// The preview row for `unit_id`, or `None` when the orders change nothing about it.
+///
+/// The preview omits every unit its orders leave alone (`OrdersPreviewResponse`'s own doc), so an
+/// absent row is an ordinary answer. It is only an answer, though, when the unit exists: this
+/// panics when `unit_id` is not an own unit of `report_text` at all, so a fixture that reaches
+/// nothing fails as a broken fixture rather than reading as "unchanged" (ah-z9g8).
+pub fn preview_row<'a>(
+    report_text: &str,
+    response: &'a OrdersPreviewResponse,
+    unit_id: &str,
+) -> Option<&'a UnitPreview> {
+    let report = ReportCache::new().classified(report_text, atlantis_hud_fixtures::RULESET_JSON);
+    assert!(
+        report.own_units().any(|unit| unit.unit_id == unit_id),
+        "unit {unit_id} is not an own unit of the fixture report, so no orders can reach it - the fixture is broken, not the preview"
+    );
+    response
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.unit.unit_id == unit_id)
+}
+
+/// As [`preview_row`], for a unit the orders are known to change: panics, naming which of the two
+/// reasons it is, when there is no row.
+pub fn expect_preview_row<'a>(
+    report_text: &str,
+    response: &'a OrdersPreviewResponse,
+    unit_id: &str,
+) -> &'a UnitPreview {
+    preview_row(report_text, response, unit_id).unwrap_or_else(|| {
+        panic!(
+            "unit {unit_id} is an own unit of the report but has no preview row: the orders change nothing the preview shows about it"
+        )
+    })
 }

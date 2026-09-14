@@ -69,21 +69,17 @@ fn orders_for(iron: i64, script: &str) -> String {
 
 /// The ITEMS preview's answer: how many swords unit 900 makes, and what iron it is left holding.
 fn items_column(iron: i64, script: &str) -> (i64, i64) {
+    let report_text = report(iron);
     let response = preview_orders_for_remembered_report(
         &mut ReportCache::new(),
         atlantis_hud_fixtures::RULESET_JSON,
-        &report(iron),
+        &report_text,
         "[]",
         &orders_for(iron, script),
     )
     .expect("the ruleset loads");
 
-    let unit = response
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .find(|unit| unit.unit.unit_id == "900")
-        .expect("unit 900 is previewed");
+    let unit = common::expect_preview_row(&report_text, &response, "900");
 
     let swords = unit
         .produced

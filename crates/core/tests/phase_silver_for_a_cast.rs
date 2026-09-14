@@ -178,21 +178,17 @@ fn the_silver_column_prices_a_cast_from_the_silver_the_turn_leaves_it() {
 #[test]
 fn the_items_column_and_its_warning_agree_with_it() {
     for (index, case) in cases().iter().enumerate() {
+        let report_text = report(case.holds);
         let preview = preview_orders_for_remembered_report(
             &mut ReportCache::new(),
             atlantis_hud_fixtures::RULESET_JSON,
-            &report(case.holds),
+            &report_text,
             "[]",
             &orders_for(case.holds, case.script),
         )
         .expect("the ruleset loads");
 
-        let previewed = preview
-            .regions
-            .iter()
-            .flat_map(|region| region.units.iter())
-            .find(|unit| unit.unit.unit_id == "900")
-            .unwrap_or_else(|| panic!("case {}: the preview has the mage", index + 1));
+        let previewed = common::expect_preview_row(&report_text, &preview, "900");
 
         let amulets: i64 = previewed
             .created
