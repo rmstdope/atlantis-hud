@@ -35,7 +35,7 @@ pub fn trident_ruleset() -> Ruleset {
 /// test code that nothing would fail to update: `read_intents` skips `TURN` blocks, whose orders
 /// belong to a later month, so those lines survive.
 pub fn without_standing_month_orders(template: &str, units: &[&str]) -> String {
-    let dropped: std::collections::BTreeSet<usize> = read_intents(template)
+    let dropped: std::collections::BTreeSet<usize> = read_intents(template, None)
         .iter()
         .filter(|block| units.contains(&block.unit_id.as_str()))
         .flat_map(|block| block.intents.iter())

@@ -33,7 +33,7 @@ pub(crate) struct RouteChain {
 
 impl RouteChain {
     /// `command` is the order's keyword as written; `intent` is what
-    /// `orders::intents::read_order_with_ruleset` read from that same line.
+    /// `orders::intents::read_order` read from that same line.
     ///
     /// An order that leaves the month free does not touch the chain. A month-long order other
     /// than MOVE/ADVANCE/SAIL ends it, and a movement line of a different kind replaces the route.

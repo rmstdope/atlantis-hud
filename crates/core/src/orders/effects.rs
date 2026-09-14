@@ -1323,9 +1323,9 @@ pub fn shown_extent(
 /// Whether the document writes any `TRANSPORT`/`DISTRIBUTE`, which is what the keystroke-path
 /// entries check before building the known map.
 fn ships_anything(orders_document: &str, ruleset: &Ruleset) -> bool {
-    use super::intents::{read_intents_with_ruleset, Intent};
+    use super::intents::{read_intents, Intent};
 
-    read_intents_with_ruleset(orders_document, Some(ruleset))
+    read_intents(orders_document, Some(ruleset))
         .iter()
         .any(|unit| {
             unit.intents

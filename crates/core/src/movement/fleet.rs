@@ -122,11 +122,9 @@ impl OrderedUnits {
                             .push(target);
                     }
                 }
-                let Some(intent) = crate::orders::intents::read_order_with_ruleset(
-                    line.command,
-                    line.arguments,
-                    ruleset,
-                ) else {
+                let Some(intent) =
+                    crate::orders::intents::read_order(line.command, line.arguments, ruleset)
+                else {
                     return;
                 };
                 let owner = forms.owner();
@@ -559,7 +557,7 @@ mod tests {
         let diagnostics = crate::orders::validate_orders(unreadable, None).diagnostics;
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_eq!(diagnostics[0].code, "bad-argument");
-        assert!(crate::orders::intents::read_intents(unreadable)[0]
+        assert!(crate::orders::intents::read_intents(unreadable, None)[0]
             .intents
             .is_empty());
         let ordered = OrderedUnits::from_document(unreadable);
@@ -571,7 +569,7 @@ mod tests {
             crate::orders::validate_orders(bare, None).diagnostics,
             vec![]
         );
-        let intents = &crate::orders::intents::read_intents(bare)[0].intents;
+        let intents = &crate::orders::intents::read_intents(bare, None)[0].intents;
         assert_eq!(intents.len(), 1);
         assert!(
             matches!(&intents[0].intent, crate::orders::intents::Intent::Sail { steps, .. } if steps.is_empty()),

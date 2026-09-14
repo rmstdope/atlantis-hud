@@ -39,7 +39,7 @@ fn report(reported: Option<&str>) -> String {
 
 /// What `orders::semantics` makes of the block, over parsed intents.
 fn by_intents(reported: Option<&str>, orders: &str) -> Option<String> {
-    let read = read_intents(orders);
+    let read = read_intents(orders, None);
     let intents = read
         .iter()
         .filter(|block| block.unit_id == "900")

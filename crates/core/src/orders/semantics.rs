@@ -24,8 +24,7 @@ use serde::{Deserialize, Serialize};
 use super::effects::{self, ItemChangeCause, ItemChangeParty};
 use super::forms::{Amount, Party, Selector};
 use super::intents::{
-    read_formed_with_ruleset, read_intents_with_ruleset, spends_the_month, FormedBlock, Intent,
-    PlacedIntent, UnitIntents,
+    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
 };
 use super::phases::{self, StatePhase};
 use super::standing::{self, standing_after, Boarding};
@@ -494,16 +493,9 @@ fn food_uncertain_after_gifts(ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) 
 /// fallback map below always has the parent by the time a nested block asks for it - mirroring
 /// `effects::Working::open_form`, which resolves a nested parent from `self.units` for the same
 /// reason. Without this, a nested `FORM`'s unit is silently dropped.
-#[cfg(test)]
-fn formed_units(report: &ParsedReport, source: &str) -> Vec<Formed> {
-    formed_units_with_ruleset(report, source, None)
-}
-
-fn formed_units_with_ruleset(
-    report: &ParsedReport,
-    source: &str,
-    ruleset: Option<&Ruleset>,
-) -> Vec<Formed> {
+///
+/// `None` reads under the New Origins lexical rules.
+fn formed_units(report: &ParsedReport, source: &str, ruleset: Option<&Ruleset>) -> Vec<Formed> {
     let unit_regions = where_the_report_shows_each_unit(report);
     let unit_by_id = units_by_id(report);
     // Report-wide, so keyed on [`UnitKey`]: `rules/form` scopes an alias to its region, so two
@@ -512,7 +504,7 @@ fn formed_units_with_ruleset(
     // already puts the right unit in reach - but a map spanning hexes keyed on a bare number is
     // one edit away from being wrong, which is what this bead is about.
     let mut minted: BTreeMap<UnitKey, ReportUnit> = BTreeMap::new();
-    read_formed_with_ruleset(source, &unit_regions, ruleset)
+    read_formed(source, &unit_regions, ruleset)
         .into_iter()
         .filter_map(|block| {
             // The first lookup stays on a bare number: it resolves a unit the report physically
@@ -606,7 +598,7 @@ pub fn review_turn(
     // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
     // `formed_units` is the one reader `item_effects` uses too - see its own doc comment for the
     // nested-FORM resolution it carries.
-    let formed: Vec<Formed> = formed_units_with_ruleset(report, source, ruleset);
+    let formed: Vec<Formed> = formed_units(report, source, ruleset);
     // Same reasoning as `located` above: `review_turn` runs on every keystroke once typing
     // settles, so the index a sailing passenger's produce check walks is built only when that
     // check is actually enabled (`ah-8myf`).
@@ -2325,7 +2317,7 @@ impl OrderedUnits {
             flag_changes,
             destroys_structure,
             promotes_units,
-        } in read_intents_with_ruleset(source, ruleset)
+        } in read_intents(source, ruleset)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
                 block_line: line,
@@ -2740,7 +2732,7 @@ pub(super) fn transfer_projection_for_tests(
     let ordered = OrderedUnits::read_with_ruleset(source, ruleset);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
-    let formed: Vec<Formed> = formed_units_with_ruleset(report, source, ruleset);
+    let formed: Vec<Formed> = formed_units(report, source, ruleset);
 
     let mut projections = Vec::new();
     for region in &report.regions {
@@ -5314,7 +5306,7 @@ pub(crate) fn item_effects(
     // exactly as `review_turn` does - one reader for both entry points, so they cannot
     // diverge. `item_effects` only ever reads `ledger.movements` and `ledger.uncounted`,
     // neither of which the projection touches, so this changes no output here.
-    let formed = formed_units_with_ruleset(report, orders_document, ruleset);
+    let formed = formed_units(report, orders_document, ruleset);
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
@@ -15295,7 +15287,7 @@ mod tests {
     fn trident_month_segments_ignore_form_and_turn_orders() {
         let ruleset = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
             .expect("the committed Trident ruleset should be usable");
-        let unit = read_intents_with_ruleset(
+        let unit = read_intents(
             concat!(
                 "unit 5\n",
                 "CREATE VILLAGE \"New Hope\"\n",
@@ -25807,7 +25799,7 @@ BUILD
         ) -> R {
             let parsed = report(vec![hex_region]);
             let ordered = OrderedUnits::read(orders);
-            let formed = formed_units(&parsed, orders);
+            let formed = formed_units(&parsed, orders, None);
             let rules = ruleset();
             let hex = hex_with_transfers(
                 &parsed.regions[0],
@@ -28614,7 +28606,7 @@ BUILD
             region_at("1:8,54", 8, 54, vec![unit("6")]),
         ]);
         let ordered = OrderedUnits::read(orders);
-        let formed = formed_units(&parsed, orders);
+        let formed = formed_units(&parsed, orders, None);
         let hexes: Vec<Hex<'_>> = parsed
             .regions
             .iter()
@@ -28644,7 +28636,7 @@ BUILD
             region_at("1:7,53", 7, 53, vec![unit("5")]),
             region_at("1:8,54", 8, 54, vec![unit("6")]),
         ]);
-        let formed = formed_units(&parsed, orders);
+        let formed = formed_units(&parsed, orders, None);
 
         let minted: Vec<_> = formed
             .iter()
@@ -28680,7 +28672,7 @@ BUILD
         ])]);
         // `verdicts` reads a hex with no formed units at all, which is the whole subject here.
         let ordered = OrderedUnits::read(orders);
-        let formed = formed_units(&parsed, orders);
+        let formed = formed_units(&parsed, orders, None);
         let hex = Hex::read(&parsed.regions[0], &ordered, &formed);
         let rules = ruleset();
         let ledger = ledger_for(&hex, Some(&rules));
