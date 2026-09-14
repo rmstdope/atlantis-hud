@@ -25,7 +25,8 @@ import {
   originalTooltip,
   type PreviewedUnit
 } from "./unitPreview";
-import { SILVER_NOTES, summariseUnit, type SilverFacts } from "./unitTooltip";
+import { summariseUnit } from "./unitTooltip";
+import { SILVER_NOTES, type SilverFacts } from "./silverVocabulary";
 import {
   atMost,
   monthLostToAnUnreadLine,
