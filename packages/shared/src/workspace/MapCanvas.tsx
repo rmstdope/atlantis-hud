@@ -61,6 +61,7 @@ import {
   hexPointsAttribute,
   routeSegments
 } from "./mapHexView";
+import { wallTip } from "./routeWall";
 import { radii } from "./mapThemes/geometry";
 import { buildHexViews, type BadgeName, type HexView } from "./mapThemes/hexView";
 import type { BattleInvolvement } from "./battles";
@@ -136,6 +137,10 @@ const ROUTE_CASING = radii(0.278);
 const ROUTE_LINE = radii(0.167);
 const RISK_OUTLINE = radii(0.111);
 
+/** The red bar at the tip of a route that met a wall, and its casing. */
+const ROUTE_WALL_BAR = radii(0.133);
+const ROUTE_WALL_CASING = radii(0.233);
+
 /** The disc the passage mark is drawn on, and the ring round it. */
 const PASSAGE_RADIUS = radii(0.36);
 
@@ -175,6 +180,33 @@ function RouteLine({
         strokeWidth={ROUTE_LINE}
         strokeLinejoin="round"
         strokeDasharray={dash}
+        data-testid={testId}
+      />
+    </>
+  );
+}
+
+/**
+ * The red bar across the tip of a route that met a wall: "you can't go this way", and nothing
+ * past it. Over a casing in the ground colour, like the line it ends, and scaled with the world as
+ * that line is.
+ */
+function RouteWallBar({ bar, testId }: { bar: string; testId: string }) {
+  return (
+    <>
+      <path
+        d={bar}
+        fill="none"
+        className="stroke-ground"
+        strokeWidth={ROUTE_WALL_CASING}
+        strokeLinecap="round"
+      />
+      <path
+        d={bar}
+        fill="none"
+        className="stroke-risk-high"
+        strokeWidth={ROUTE_WALL_BAR}
+        strokeLinecap="round"
         data-testid={testId}
       />
     </>
@@ -1092,12 +1124,29 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     () => new Map(routeRisk.map((hex) => [`${hex.coordinate.x},${hex.coordinate.y}`, hex.level])),
     [routeRisk]
   );
+  // A route stopped by a wall ends at its tip, on whichever level the wall is.
+  const nearTip = useMemo(
+    () => (route?.wall && route.wall.coordinate.z === level ? wallTip(route.wall) : null),
+    [route, level]
+  );
+  const beyondTip = useMemo(
+    () =>
+      route?.beyond?.wall && route.beyond.wall.coordinate.z === level
+        ? wallTip(route.beyond.wall)
+        : null,
+    [route, level]
+  );
   const routeLine = useMemo(
     () =>
       route
-        ? routeSegments([route.origin, ...route.hexes], route.solidSteps, level)
+        ? routeSegments(
+            [route.origin, ...route.hexes],
+            route.solidSteps,
+            level,
+            nearTip?.tail ?? null
+          )
         : { solid: "", dotted: "" },
-    [route, level]
+    [route, level, nearTip]
   );
   const routeBeyondLine = useMemo(
     () =>
@@ -1105,10 +1154,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
         ? routeSegments(
             [route.beyond.origin, ...route.beyond.hexes],
             route.beyond.solidSteps,
-            level
+            level,
+            beyondTip?.tail ?? null
           )
         : { solid: "", dotted: "" },
-    [route, level]
+    [route, level, beyondTip]
   );
   // Risk is painted on hexes the unit enters, never its own - which is why the origin stays out.
   // Both halves of a journey through a passage, so risk is painted on every hex it enters.
@@ -1444,6 +1494,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                   />
                 );
               })}
+              {nearTip && <RouteWallBar bar={nearTip.bar} testId="route-wall-bar" />}
+              {beyondTip && <RouteWallBar bar={beyondTip.bar} testId="route-wall-beyond-bar" />}
             </g>
           )}
 

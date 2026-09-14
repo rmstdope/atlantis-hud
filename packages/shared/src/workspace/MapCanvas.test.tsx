@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
 import type { HexNoteRecord, MapShape } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
+import type { RouteOverlay } from "./routeOverlay";
+import { wallTip } from "./routeWall";
 import { CONGESTED_CENTRE, CONGESTED_HEXES } from "./mapThemes/congestedFixture";
 import { allBadges } from "./mapThemes/hexView";
 import { terrainTextureBrightness, terrainTextureRotation } from "./mapHexView";
@@ -788,5 +790,100 @@ describe("the matched pair of rings on a passage the faction has proved", () => 
 
     expect(elsewhere).not.toContain("map-passage-entry-ring");
     expect(elsewhere).not.toContain("map-passage-exit-ring");
+  });
+});
+
+/** The same map with `route` drawn at `level`. */
+function drawWithWalledRoute(level: number, route: RouteOverlay): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={model}
+      theme={probe()}
+      level={level}
+      selectedRegionId={null}
+      selectionEpoch={0}
+      pickEpoch={0}
+      onSelectRegion={() => {}}
+      showStaleness
+      showTextures={false}
+      badges={allBadges(true)}
+      route={route}
+    />
+  );
+}
+
+/** The tag in `svg` holding `testId`, so assertions stay inside the one element they are about. */
+function tagWith(svg: string, tag: string, testId: string): string {
+  const match = svg.match(new RegExp(`<${tag}\\b[^>]*data-testid="${testId}"[^>]*>`));
+  expect(match, `<${tag}> with ${testId}`).not.toBeNull();
+  return match![0];
+}
+
+const BLOCKED: RouteOverlay = {
+  origin: { x: 7, y: 53, z: 1 },
+  hexes: [{ x: 7, y: 51, z: 1 }],
+  solidSteps: 1,
+  passage: null,
+  beyond: null,
+  wall: { coordinate: { x: 7, y: 51, z: 1 }, direction: "north" }
+};
+
+describe("a route that ran into a wall", () => {
+  it("ends a route that met a wall in a red bar", () => {
+    const bar = tagWith(drawWithWalledRoute(1, BLOCKED), "path", "route-wall-bar");
+
+    expect(bar).toContain("stroke-risk-high");
+    expect(bar).toContain(`d="${wallTip(BLOCKED.wall!).bar}"`);
+  });
+
+  it("runs the line to the bar's tip", () => {
+    const tip = wallTip(BLOCKED.wall!).tail;
+    const line = tagWith(drawWithWalledRoute(1, BLOCKED), "polyline", "route-line-solid");
+
+    expect(line).toMatch(new RegExp(`points="[^"]* ${tip.x.toFixed(3)},${tip.y.toFixed(3)}"`));
+  });
+
+  it("draws the bar over the line it ends", () => {
+    const svg = drawWithWalledRoute(1, BLOCKED);
+
+    expect(svg.indexOf('data-testid="route-wall-bar"')).toBeGreaterThan(
+      svg.indexOf('data-testid="route-line-solid"')
+    );
+  });
+
+  it("draws nothing for a wall on another level", () => {
+    expect(drawWithWalledRoute(2, BLOCKED)).not.toContain("route-wall");
+  });
+
+  it("draws a wall past a passage on the level it is on", () => {
+    const route: RouteOverlay = {
+      origin: { x: 7, y: 53, z: 1 },
+      hexes: [],
+      solidSteps: 0,
+      passage: {
+        coordinate: { x: 7, y: 53, z: 1 },
+        structure: "Shaft [3]",
+        stepsAfter: 0,
+        terrain: "mountain",
+        exit: { coordinate: { x: 12, y: 34, z: 2 }, terrain: "cavern", cost: 2, steps: [] }
+      },
+      beyond: {
+        origin: { x: 12, y: 34, z: 2 },
+        hexes: [{ x: 13, y: 35, z: 2 }],
+        solidSteps: 0,
+        wall: { coordinate: { x: 13, y: 35, z: 2 }, direction: "south" }
+      },
+      wall: null
+    };
+
+    const underworld = drawWithWalledRoute(2, route);
+    expect(underworld).toContain('data-testid="route-wall-beyond-bar"');
+    expect(underworld).not.toContain('data-testid="route-wall-bar"');
+    expect(drawWithWalledRoute(1, route)).not.toContain("route-wall");
+  });
+
+  it("draws no bar on a route that met no wall", () => {
+    expect(drawWithKnownPassage(2)).not.toContain("route-wall");
   });
 });
