@@ -787,18 +787,21 @@ pub fn preview_orders_on_map(
     }
 
     let mut regions: BTreeMap<String, Vec<UnitPreview>> = BTreeMap::new();
-    for Decided {
-        entry,
-        status,
-        arrival,
-        ends_at: _,
-        aboard,
-        dissolves_into,
-        formed,
-        dissolving,
-    } in decided
-    {
-        let changes = entry.changes();
+    for decided in decided {
+        let changes = decided.entry.changes();
+        if !decided.has_preview_row(&changes) {
+            continue;
+        }
+        let Decided {
+            entry,
+            status,
+            arrival,
+            ends_at: _,
+            aboard,
+            dissolves_into,
+            formed,
+            dissolving,
+        } = decided;
         // Captured before `entry.unit` is moved below - the same data on both rows of a unit
         // that is arriving and departing at once, since items are not a property of where the
         // unit stands (`ah-agbm`).
@@ -854,35 +857,10 @@ pub fn preview_orders_on_map(
         } else {
             entry.item_log.changes().to_vec()
         };
-        let items_moved = !dissolving && entry.item_log.moved_stock();
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
         let transport_target_issues = entry.transport_target_issues.clone();
         let shipment_unmeasured = entry.shipment_unmeasured;
-
-        let departed = status == UnitPreviewStatus::Departing;
-        if changes.is_empty()
-            && !departed
-            && !formed
-            && uncounted.is_empty()
-            && transport_sent.is_empty()
-            && transport_received.is_empty()
-            && transport_target_issues.is_empty()
-            && !shipment_unmeasured
-            && study.is_none()
-            // A unit that buys five of a tag and sells five of the same tag ends the month holding
-            // what it started with, so `changes()` records nothing - and the row would be dropped
-            // along with the explanation of why nothing changed (`ah-rgkk.3.1`).
-            //
-            // `items_moved` rather than `!item_changes.is_empty()`: a cast charged for materials
-            // the mage does not hold records a change that takes nothing away (`ah-ofpb.5`), and a
-            // row whose every change is one of those has nothing to show - admitting it would put
-            // rows on the units table for orders with no effect at all, which is the leak
-            // `tests/orders_preview.rs` guards against.
-            && !items_moved
-        {
-            continue;
-        }
 
         if let Some(destination) = arrival {
             let mut arrived = entry.unit.clone();
@@ -1520,6 +1498,37 @@ struct Decided {
     formed: bool,
     /// `rules/form` dissolves this unit before the month ends (`ah-4hux`).
     dissolving: bool,
+}
+
+impl Decided {
+    /// Whether this unit has a row in the orders preview.
+    ///
+    /// `changes` is `self.entry.changes()`, passed in because the caller already computed it for
+    /// the row itself.
+    fn has_preview_row(&self, changes: &[FieldChange]) -> bool {
+        // `rules/form` dissolves a unit that gains nobody before the month ends, so it never
+        // studied and never held anything to move (`ah-rgkk.3.1`).
+        let lives = !self.dissolving;
+        !changes.is_empty()
+            || self.status == UnitPreviewStatus::Departing
+            || self.formed
+            || !self.entry.uncounted.is_empty()
+            || !self.entry.transport_sent.is_empty()
+            || !self.entry.transport_received.is_empty()
+            || !self.entry.transport_target_issues.is_empty()
+            || self.entry.shipment_unmeasured
+            || (lives && self.entry.study.is_some())
+            // A unit that buys five of a tag and sells five of the same tag ends the month holding
+            // what it started with, so `changes()` records nothing - and the row would be dropped
+            // along with the explanation of why nothing changed (`ah-rgkk.3.1`).
+            //
+            // `moved_stock` rather than a non-empty log: a cast charged for materials the mage
+            // does not hold records a change that takes nothing away (`ah-ofpb.5`), and a row
+            // whose every change is one of those has nothing to show - admitting it would put rows
+            // on the units table for orders with no effect at all, which is the leak
+            // `tests/orders_preview.rs` guards against.
+            || (lives && self.entry.item_log.moved_stock())
+    }
 }
 
 /// A fleet leaving its hex this month, as its passengers need to read it.
@@ -3955,6 +3964,76 @@ mod tests {
             "",
         ]
         .join("\n")
+    }
+
+    /// A mage who can cast `Enchant_Swords` and holds none of its materials (`ah-ofpb.5`).
+    fn report_with_an_empty_handed_enchanter() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Enchanter (900), Foo (1), behind, leader [LEAD]. Weight: 10. \
+             Capacity: 0/0/15/0. Skills: enchant swords [ESWO] 3 (270).",
+            "",
+        ]
+        .join("\n")
+    }
+
+    /// `ah-z9g8`. The gate is asked of the unit's own verdict, over entries built by the real walk.
+    #[test]
+    fn a_decided_row_answers_the_gate_itself() {
+        let ruleset = std::sync::Arc::new(Ruleset::from_json(RULESET).expect("the ruleset loads"));
+        let decided_900 = |text: &str, orders: &str, dissolving: bool| {
+            let report = ReportCache::new().classified(text, RULESET);
+            let (units, _, _) = settle(
+                &report,
+                &ruleset,
+                orders,
+                None,
+                crate::orders::semantics::CheckOptions::default(),
+            );
+            let entry = units
+                .into_iter()
+                .find(|entry| entry.unit.unit_id == "900")
+                .expect("the fixture has unit 900");
+            Decided {
+                formed: entry.formed,
+                dissolving,
+                entry,
+                status: UnitPreviewStatus::Present,
+                arrival: None,
+                ends_at: None,
+                aboard: None,
+                dissolves_into: None,
+            }
+        };
+
+        let cast = decided_900(
+            &report_with_an_empty_handed_enchanter(),
+            "unit 900\nCAST Enchant_Swords\n",
+            false,
+        );
+        assert!(
+            !cast.has_preview_row(&cast.entry.changes()),
+            "a logged change that moved nothing earns no row"
+        );
+
+        let orders = "unit 900\nSELL 5 fur\nWITHDRAW 5 FUR\n";
+        let netted = decided_900(&report_with_market(), orders, false);
+        // The fixture's shape: the moved-stock term is the only one keeping this row.
+        assert!(netted.entry.changes().is_empty());
+        assert!(netted.entry.study.is_none());
+        assert!(
+            netted.has_preview_row(&netted.entry.changes()),
+            "stock moved and netted to zero"
+        );
+
+        let dissolving = decided_900(&report_with_market(), orders, true);
+        assert!(
+            !dissolving.has_preview_row(&dissolving.entry.changes()),
+            "a dissolving unit's moved stock earns it nothing"
+        );
     }
 
     /// Like `report_with_market()`, but the market sells people and the unit already has men, a
@@ -7907,16 +7986,7 @@ mod tests {
         /// away. A row whose every change is one of those has nothing to show.
         #[test]
         fn a_cast_charged_for_materials_the_mage_has_not_got_earns_no_row() {
-            let empty_handed = [
-                "Foo (1) Report",
-                "",
-                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
-                "",
-                "* Enchanter (900), Foo (1), behind, leader [LEAD]. Weight: 10. \
-                 Capacity: 0/0/15/0. Skills: enchant swords [ESWO] 3 (270).",
-                "",
-            ]
-            .join("\n");
+            let empty_handed = report_with_an_empty_handed_enchanter();
             let response = preview_over(&empty_handed, "unit 900\nCAST Enchant_Swords\n");
 
             assert!(
