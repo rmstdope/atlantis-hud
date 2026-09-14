@@ -575,7 +575,7 @@ pub fn review_turn(
     // lazily: this runs on every keystroke once typing settles, and it is a second full walk of
     // the orders document.
     let fleet_orders = if options.emits(codes::SAIL_NOT_BY_OWNER) {
-        FleetOrders::from_document_with_ruleset(source, ruleset)
+        FleetOrders::from_document(source, ruleset)
     } else {
         FleetOrders::default()
     };

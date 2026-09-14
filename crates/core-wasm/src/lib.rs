@@ -703,7 +703,7 @@ pub fn passage_claims_state(
 ) -> Result<JsValue, JsValue> {
     let report = atlantis_hud_core::report::parse_report_full(&raw_report);
     let ruleset = atlantis_hud_core::movement::rules::Ruleset::from_json(&ruleset_json).ok();
-    let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document_with_ruleset(
+    let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document(
         &orders_document,
         ruleset.as_ref(),
     );

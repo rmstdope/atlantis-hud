@@ -249,7 +249,7 @@ pub fn trace_orders_on_map(
 
     let report = cache.classified(raw_report, ruleset_json);
 
-    let ordered = OrderedUnits::from_document_with_ruleset(orders_document, Some(ruleset.as_ref()));
+    let ordered = OrderedUnits::from_document(orders_document, Some(ruleset.as_ref()));
     let formed;
     let (unit, own, own_is_sail) =
         match report.units().find(|unit| unit.unit_id == unit_id).cloned() {

@@ -754,7 +754,7 @@ pub fn preview_orders_on_map(
         ..options
     };
     // One reading serves both settles and the movement decision alike.
-    let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(
         orders_document,
         Some(ruleset.as_ref()),
     );
@@ -1013,7 +1013,7 @@ pub(super) fn transported_out(
     geometry: Option<crate::movement::graph::MapGeometry>,
 ) -> BTreeMap<String, Vec<(String, i64)>> {
     let ruleset = std::sync::Arc::new(ruleset.clone());
-    let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(
         orders_document,
         Some(ruleset.as_ref()),
     );
@@ -1212,7 +1212,7 @@ pub(crate) fn formed_unit_as_ordered(
     }
     // A `FORM`ed row is looked up on its own; no transport is applied here, so the map's shape
     // is not needed (`ah-7ale.2.1`).
-    let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(
         orders_document,
         Some(ruleset.as_ref()),
     );
@@ -1274,7 +1274,7 @@ pub fn month_end_hexes(
         shown: map.shown_extent(),
         ..options
     };
-    let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(
         orders_document,
         Some(ruleset.as_ref()),
     );
@@ -3909,7 +3909,7 @@ mod tests {
         let mut cache = crate::cache::ReportCache::new();
         let parsed = cache.classified(&report(), RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+        let ordered = crate::movement::fleet::OrderedUnits::from_document(
             "unit 900\nMOVE SE\n",
             Some(ruleset.as_ref()),
         );
@@ -3937,10 +3937,8 @@ mod tests {
         let mut cache = crate::cache::ReportCache::new();
         let parsed = cache.classified(&report(), RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
-            document,
-            Some(ruleset.as_ref()),
-        );
+        let ordered =
+            crate::movement::fleet::OrderedUnits::from_document(document, Some(ruleset.as_ref()));
         let (units, _, _) = settle(
             &parsed,
             &ruleset,
@@ -4068,10 +4066,8 @@ mod tests {
         let ruleset = std::sync::Arc::new(Ruleset::from_json(RULESET).expect("the ruleset loads"));
         let decided_900 = |text: &str, orders: &str, dissolving: bool| {
             let report = ReportCache::new().classified(text, RULESET);
-            let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
-                orders,
-                Some(ruleset.as_ref()),
-            );
+            let ordered =
+                crate::movement::fleet::OrderedUnits::from_document(orders, Some(ruleset.as_ref()));
             let (units, _, _) = settle(
                 &report,
                 &ruleset,

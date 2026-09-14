@@ -45,14 +45,10 @@ pub struct OrderedUnits {
 }
 
 impl OrderedUnits {
-    /// Reads every unit's block out of one orders document.
+    /// Reads every unit's block out of one orders document. `None` reads it under the New Origins
+    /// lexical rules.
     #[must_use]
-    pub fn from_document(orders_document: &str) -> Self {
-        Self::from_document_with_ruleset(orders_document, None)
-    }
-
-    #[must_use]
-    pub fn from_document_with_ruleset(orders_document: &str, ruleset: Option<&Ruleset>) -> Self {
+    pub fn from_document(orders_document: &str, ruleset: Option<&Ruleset>) -> Self {
         use crate::orders::walk::{walk, BlockKind, Event};
 
         let mut chains: BTreeMap<String, RouteChain> = BTreeMap::new();
@@ -495,7 +491,7 @@ mod tests {
         let mut cache = ReportCache::new();
         let report = cache.classified(TURN_24, RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered = OrderedUnits::from_document(orders);
+        let ordered = OrderedUnits::from_document(orders, None);
         let unit = report
             .units()
             .find(|unit| unit.unit_id == unit_id)
@@ -560,7 +556,7 @@ mod tests {
         assert!(crate::orders::intents::read_intents(unreadable, None)[0]
             .intents
             .is_empty());
-        let ordered = OrderedUnits::from_document(unreadable);
+        let ordered = OrderedUnits::from_document(unreadable, None);
         assert_eq!(ordered.steps_for("1471"), None);
         assert!(!ordered.issues_sail("1471"));
 
@@ -575,7 +571,7 @@ mod tests {
             matches!(&intents[0].intent, crate::orders::intents::Intent::Sail { steps, .. } if steps.is_empty()),
             "{intents:?}"
         );
-        let ordered = OrderedUnits::from_document(bare);
+        let ordered = OrderedUnits::from_document(bare, None);
         assert_eq!(ordered.steps_for("1471"), None);
         assert!(ordered.issues_sail("1471"));
     }
@@ -619,7 +615,7 @@ mod tests {
             .iter()
             .find(|region| region.region_id == "1:1,1")
             .expect("the scene's ocean hex");
-        let ordered = OrderedUnits::from_document(orders);
+        let ordered = OrderedUnits::from_document(orders, None);
         fleet_owner(region, &ordered, structure_id)
     }
 
@@ -631,7 +627,7 @@ mod tests {
             .iter()
             .find(|region| region.region_id == "1:1,1")
             .expect("the scene's ocean hex");
-        let ordered = OrderedUnits::from_document(orders);
+        let ordered = OrderedUnits::from_document(orders, None);
         fleet_course(region, &ordered, structure_id)
             .steps
             .map(<[MoveStep]>::to_vec)
@@ -697,7 +693,7 @@ mod tests {
         let mut cache = ReportCache::new();
         let report = cache.classified(&owner_scene(), RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered = OrderedUnits::from_document(orders);
+        let ordered = OrderedUnits::from_document(orders, None);
         let unit = report
             .units()
             .find(|unit| unit.unit_id == unit_id)
@@ -788,24 +784,24 @@ mod tests {
 
     #[test]
     fn a_sail_is_told_from_a_move_and_a_promote_is_read() {
-        assert!(OrderedUnits::from_document("unit 10575\nSAIL SE\n").sails_a_course("10575"));
-        assert!(!OrderedUnits::from_document("unit 10575\nMOVE N\n").sails_a_course("10575"));
+        assert!(OrderedUnits::from_document("unit 10575\nSAIL SE\n", None).sails_a_course("10575"));
+        assert!(!OrderedUnits::from_document("unit 10575\nMOVE N\n", None).sails_a_course("10575"));
         assert!(
-            !OrderedUnits::from_document("unit 10575\nSAIL\n").sails_a_course("10575"),
+            !OrderedUnits::from_document("unit 10575\nSAIL\n", None).sails_a_course("10575"),
             "a bare SAIL stores no steps, so it names no course"
         );
         assert_eq!(
-            OrderedUnits::from_document("unit 900\nPROMOTE 901\n").promotes_of("900"),
+            OrderedUnits::from_document("unit 900\nPROMOTE 901\n", None).promotes_of("900"),
             ["901".to_string()]
         );
     }
 
     #[test]
     fn bare_sail_participates_but_only_directional_sail_departs() {
-        let bare = OrderedUnits::from_document("unit 10575\nSAIL\n");
-        let in_only = OrderedUnits::from_document("unit 10575\nSAIL IN\n");
-        let out_only = OrderedUnits::from_document("unit 10575\nSAIL OUT\n");
-        let directional = OrderedUnits::from_document("unit 10575\nSAIL SE\n");
+        let bare = OrderedUnits::from_document("unit 10575\nSAIL\n", None);
+        let in_only = OrderedUnits::from_document("unit 10575\nSAIL IN\n", None);
+        let out_only = OrderedUnits::from_document("unit 10575\nSAIL OUT\n", None);
+        let directional = OrderedUnits::from_document("unit 10575\nSAIL SE\n", None);
 
         assert!(bare.issues_sail("10575"));
         assert!(!in_only.issues_sail("10575"));
@@ -846,7 +842,7 @@ mod tests {
     fn structure_after(orders: &str, unit_id: &str) -> Option<String> {
         let mut cache = ReportCache::new();
         let report = cache.classified(TURN_24, RULESET);
-        let ordered = OrderedUnits::from_document(orders);
+        let ordered = OrderedUnits::from_document(orders, None);
         let unit = report
             .units()
             .find(|unit| unit.unit_id == unit_id)
@@ -983,7 +979,7 @@ mod tests {
         // The hull's course is its owner's, and the first unit listed under Frozen Tomb [194] is
         // the **foreign** `A Tomb's Crew (6311)` - which is exactly why our own 13401 sailing it
         // now carries nobody, and why the SAIL is written under 6311 here (`ah-ofra`).
-        let ordered = OrderedUnits::from_document("unit 6311\nsail sw\n");
+        let ordered = OrderedUnits::from_document("unit 6311\nsail sw\n", None);
         let passenger = report
             .units()
             .find(|unit| unit.unit_id == "13848")
@@ -1014,7 +1010,7 @@ mod tests {
     #[test]
     fn chained_move_lines_are_one_route() {
         use crate::movement::graph::Direction::{North, Northeast};
-        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\nMOVE NE\n");
+        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\nMOVE NE\n", None);
         assert_eq!(
             ordered.steps_for("900"),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
@@ -1025,7 +1021,7 @@ mod tests {
     #[test]
     fn chained_sail_lines_are_one_course() {
         use crate::movement::graph::Direction::{North, Northwest};
-        let ordered = OrderedUnits::from_document("unit 10575\nSAIL N\nSAIL NW\n");
+        let ordered = OrderedUnits::from_document("unit 10575\nSAIL N\nSAIL NW\n", None);
         assert_eq!(
             ordered.steps_for("10575"),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northwest)][..])
@@ -1036,7 +1032,7 @@ mod tests {
     #[test]
     fn a_work_between_two_moves_leaves_only_the_second() {
         use crate::movement::graph::Direction::South;
-        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\nWORK\nMOVE S\n");
+        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\nWORK\nMOVE S\n", None);
         assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(South)][..]));
     }
 
@@ -1045,6 +1041,7 @@ mod tests {
         use crate::movement::graph::Direction::{North, Northeast};
         let ordered = OrderedUnits::from_document(
             "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
+            None,
         );
         assert_eq!(ordered.steps_for("new-1"), None);
         assert_eq!(
@@ -1060,10 +1057,7 @@ mod tests {
         use crate::movement::graph::Direction::Southeast;
         let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
             .expect("the Trident ruleset loads");
-        let ordered = OrderedUnits::from_document_with_ruleset(
-            "unit 900\nMOVE SE;scouting\n",
-            Some(&trident),
-        );
+        let ordered = OrderedUnits::from_document("unit 900\nMOVE SE;scouting\n", Some(&trident));
         assert_eq!(
             ordered.steps_for("900"),
             Some(&[MoveStep::Go(Southeast)][..])
@@ -1075,7 +1069,7 @@ mod tests {
     #[test]
     fn an_order_after_a_directive_belongs_to_no_unit() {
         use crate::movement::graph::Direction::North;
-        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\n#end\nMOVE S\n");
+        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\n#end\nMOVE S\n", None);
         assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(North)][..]));
     }
 
@@ -1084,6 +1078,7 @@ mod tests {
         use crate::movement::graph::Direction::{North, Northeast, South, Southeast};
         let ordered = OrderedUnits::from_document(
             "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
+            None,
         );
         let formed = ordered
             .formed_route(3)
@@ -1100,7 +1095,7 @@ mod tests {
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
         );
 
-        let unreadable = OrderedUnits::from_document("unit 900\nFORM 0\nMOVE S\nEND\n");
+        let unreadable = OrderedUnits::from_document("unit 900\nFORM 0\nMOVE S\nEND\n", None);
         assert_eq!(unreadable.formed_route(2), None);
     }
 }
