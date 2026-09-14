@@ -5558,6 +5558,27 @@ test("a route through a passage stops at the structure and says why", async ({ p
   // The hex the passage was entered from carries the mark instead.
   await expect(page.getByTestId("map-passage-ring")).toHaveCount(1);
 
+  const ring = page.getByTestId("map-passage-ring");
+  const hex = page.locator('polygon[data-region-id="0:0,0"]');
+  const hexLine = (await hex.locator("title").textContent()) ?? "";
+  expect(hexLine).not.toBe("");
+
+  // The ring, not the hex under it, takes the pointer - and its hover leads with the hex's own line.
+  await ring.hover();
+  await expect(ring.locator("title")).toHaveText(
+    `${hexLine}\n\nThrough the passage in Gateway to plain [1]\nWhere this passage comes out is not in any report yet, so the rest of the journey — 2 more steps — cannot be drawn.`
+  );
+
+  // Away from the ring the hex keeps its own hover, unchanged.
+  const box = await hex.boundingBox();
+  await hex.hover({ position: { x: box!.width / 2, y: box!.height * 0.85 } });
+  await expect(hex.locator("title")).toHaveText(hexLine);
+
+  // A click on the ring does what a click on the hex does: the hex is selected and takes focus.
+  await ring.click();
+  await expect(page.getByRole("button", { name: "hex 0:0,0", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "hex 0:0,0", exact: true })).toHaveAttribute("aria-pressed", "true");
+
   // And the count of what could not be placed is said in words.
   const problem = page
     .getByTestId("region-problems")
@@ -5606,13 +5627,15 @@ test("a route through a known passage carries on where it comes out", async ({ p
 
   const entry = page.getByTestId("map-passage-entry-ring");
   await expect(entry).toHaveCount(1);
+  await entry.hover();
   await expect(entry.locator("title")).toHaveText(
-    "Through the passage in Building [1]\nComes out in mountain (35,5). Costs 2 movement points, the cost of entering that mountain."
+    "mountain (36,4) in Slounspifra\n\nThrough the passage in Building [1]\nComes out in mountain (35,5). Costs 2 movement points, the cost of entering that mountain."
   );
   const exit = page.getByTestId("map-passage-exit-ring");
   await expect(exit).toHaveCount(1);
+  await exit.hover();
   await expect(exit.locator("title")).toHaveText(
-    "Out of the passage from Building [1]\nOn the surface, in mountain (36,4). The journey carries on from here."
+    "mountain (35,5) in Slounspifra\n\nOut of the passage from Building [1]\nOn the surface, in mountain (36,4). The journey carries on from here."
   );
   await expect(page.getByTestId("map-passage-ring")).toHaveCount(0);
 
