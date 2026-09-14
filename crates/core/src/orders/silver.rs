@@ -25,7 +25,7 @@ use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::phases;
 use crate::orders::semantics::{counted_with_singular, withdrawal_cost, FormedSubject, Plurals};
 use crate::orders::study;
-use crate::orders::targets::{party_label, GiveReach};
+use crate::orders::targets::GiveReach;
 use crate::report::model::{ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
@@ -685,10 +685,6 @@ pub struct BuyAllShown {
 }
 
 /// Why a unit's silver moved this month. One variant per term [`forecast_unit`] prices.
-// `Ord` is here so `semantics::silver_records_agree` can sort its two projections into one order
-// before comparing them; the order itself is declaration order and means nothing (`ah-6m7b.5.3`).
-// A plain comment, not a doc one: this type's doc is exported to `SilverChangeCause.ts`, and a
-// note about a Rust-side check has no business in the binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "kebab-case")]
@@ -774,6 +770,31 @@ pub struct SilverChange {
     /// [`UnitSilver::givers`] and [`UnitSilver::taken_unshown_from`] already carry. `None` on
     /// every cause but a gift, a take and a discard.
     pub other: Option<String>,
+}
+
+/// One movement of one unit's silver, as the ledger settled it.
+///
+/// Not an `ItemMovement`: that list is a goods record by construction and carries no silver leg of
+/// any order (`ah-6m7b.5`). This one is what the SILVER column's rows and totals are:
+/// `forecast_hex` hands each unit's list to [`forecast_unit`] through [`PhaseFacts::silver_moves`]
+/// (`ah-xryu`).
+///
+/// `cause` is [`SilverChangeCause`] rather than a second enum: the column's list already names every
+/// reason silver moves, and two vocabularies for one concept is what `ah-6m7b` existed to remove.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SilverMove {
+    /// The phase `rules/sequenceofevents` settles the order in.
+    pub(crate) phase: phases::StatePhase,
+    /// Signed: positive into the unit, negative out of it. Never zero - a term that moves nothing
+    /// is not recorded, exactly as `SilverChange::amount` is documented never to be.
+    pub(crate) amount: i64,
+    pub(crate) cause: SilverChangeCause,
+    /// The 1-based document line of the order responsible, when one order is. `None` for the
+    /// taxing flag with no `TAX` order, and for a unit set to work by default.
+    pub(crate) line: Option<i64>,
+    /// The other unit, exactly as [`SilverChange::other`] carries it. `None` on every cause but a
+    /// gift, a take and a discard.
+    pub(crate) other: Option<String>,
 }
 
 /// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
@@ -1498,16 +1519,19 @@ pub struct PhaseFacts<'a> {
     /// for a caller with no ledger to read them from, which is every test that builds its own
     /// `PhaseFacts`.
     pub gifts: &'a [SettledGift],
-    /// What the market withholds from this unit's OWN market-open balance **beyond** the
-    /// `tax_overstated_by` figure this walk already subtracts: the rest of its hopeful tax, in a
-    /// hex whose tax pool could not be settled at all and whose purse therefore lent silver in
-    /// hand alone (`ah-3c2t.1`'s `MarketPurse::also_withholds_from`). `0` everywhere else and for
-    /// every caller with no ledger, so it may be subtracted unconditionally.
+    /// This unit's silver movements as the ledger recorded them, in settlement order: what the
+    /// SILVER column's rows and totals are (`ah-xryu`). Empty for a caller with no ledger, which is
+    /// every test that builds its own `PhaseFacts`.
+    pub(crate) silver_moves: &'a [SilverMove],
+    /// What the market withholds from this unit's own market-open balance beyond
+    /// `tax_overstated_by` (`ah-3c2t.1`'s `MarketPurse::also_withholds_from`). Unread since the
+    /// column's `Bought` rows became the ledger's record (`ah-xryu`): the ledger's own `buy` is what
+    /// subtracts it now.
     pub market_withholds: i64,
     /// The same unit's silver at every phase, or `None` for a caller that has no ledger to read
-    /// one from - which is every test that builds its own `PhaseFacts`. The two caps in
-    /// [`forecast_unit`] then fall back to this walk's own running total, which is what they
-    /// always read.
+    /// one from - which is every test that builds its own `PhaseFacts`. The caps in
+    /// [`forecast_unit`] then read `held` at every phase, since with no ledger there is no record to
+    /// have moved it.
     pub silver: Option<PhaseSilver>,
 }
 
@@ -1523,6 +1547,7 @@ impl<'a> PhaseFacts<'a> {
             silver: None,
             buy_all: &[],
             gifts: &[],
+            silver_moves: &[],
             market_withholds: 0,
         }
     }
@@ -1570,8 +1595,14 @@ impl<'a> UnitFacts<'a> {
         self.phases.map_or(&[][..], |phases| phases.gifts)
     }
 
+    /// The ledger's record of this unit's silver. Empty where there is no ledger.
+    #[must_use]
+    pub(crate) fn silver_moves(&self) -> &'a [SilverMove] {
+        self.phases.map_or(&[][..], |phases| phases.silver_moves)
+    }
+
     /// What the market withholds from this unit's own balance beyond `tax_overstated_by`. `0`
-    /// where there is no ledger (`ah-3c2t.1`).
+    /// where there is no ledger (`ah-3c2t.1`). Unread by `forecast_unit` since `ah-xryu`.
     #[must_use]
     pub fn market_withholds(&self) -> i64 {
         self.phases.map_or(0, |phases| phases.market_withholds)
@@ -1798,8 +1829,8 @@ pub(crate) fn late_income_terms(
 ///
 /// [`SilverChange`]'s own doc has always said that "every term either total is built from appears
 /// here exactly once". This is what makes that true rather than hoped for - nothing keeps a
-/// running `income` or `expense` any more, a term is recorded, and the totals are read off the
-/// record (`ah-6m7b.4`).
+/// running `income` or `expense` any more: the moves are the ledger's record, and the totals are
+/// read off it (`ah-xryu`).
 ///
 /// Both halves are non-negative: `expense` is the magnitude of what left, as
 /// [`UnitSilver::expense`] has always been.
@@ -1817,32 +1848,6 @@ fn totals_of(moves: &[(phases::StatePhase, SilverChange)]) -> (i64, i64) {
     (income, expense)
 }
 
-/// What the unit still has to spend, from everything the walk has recorded so far. Clamped at
-/// zero: a `GIVE` of a stated quantity is not clamped against the holding, so what left can
-/// exceed what came in, and a negative figure must never reach a cap.
-///
-/// The replacement for `available_silver` and for the sub-totals it needed. The walk runs in
-/// `phases::in_phase_order`, so what has been recorded when an arm runs is exactly what the turn
-/// has settled by the time that order does (`ah-6m7b.4`).
-#[must_use]
-fn spendable_so_far(held: i64, moves: &[(phases::StatePhase, SilverChange)]) -> i64 {
-    recorded_so_far(held, moves).max(0)
-}
-
-/// The same sum, **unclamped**: what the unit holds once everything recorded so far is applied,
-/// which a caller with further terms of its own to apply must have before any clamp.
-///
-/// Clamping first and adjusting afterwards is not the same arithmetic: at `held + income - expense`
-/// of -100, a 50 study spend added back gives -50 unclamped and 50 clamped-first, and the second is
-/// wrong. The deleted `running` total never clamped, and the market's own `funds` line clamps what
-/// this feeds (`ah-6m7b.4`).
-#[must_use]
-fn recorded_so_far(held: i64, moves: &[(phases::StatePhase, SilverChange)]) -> i64 {
-    moves.iter().fold(held, |total, (_, change)| {
-        total.saturating_add(change.amount)
-    })
-}
-
 /// The signed sum of everything one cause has moved so far.
 ///
 /// The replacement for a per-cause accumulator: `cast_expense` and `cast_earned` were each a
@@ -1858,23 +1863,53 @@ fn moved_by(moves: &[(phases::StatePhase, SilverChange)], cause: SilverChangeCau
         })
 }
 
-/// One bounded `BUY`, held until the market phase so it is priced against what the Give phase
-/// leaves (`ah-npab`).
-struct ExactBuy {
-    count: i64,
-    price: i64,
-    allowed: i64,
-    /// The document line, so the ledger can name the order that spent the silver.
-    line: i64,
-    /// What this line asked to spend, before any affordability cap - the same figure that feeds
-    /// `market_demand`. Carried so that a unit whose *income* is doubted, and whose market pass
-    /// therefore never runs, still has its demand on the internal record - which is what
-    /// `totals_of` sums (`ah-6m7b.4`). It is not displayed: `changes` is emptied for a doubted
-    /// unit on the way out (`ah-rgkk.4.4`).
-    wanted: i64,
+/// A unit's record as the SILVER column lists it: every movement but `Shipped`, in the turn's order.
+///
+/// By phase, and within a phase every `Sold` above everything else - `rules/sequenceofevents`
+/// processes "SELL orders" before "BUY orders", and the ledger records the two in the order they
+/// were written. Stable, so rows that share a place keep the ledger's settlement order, which puts a
+/// unit's receipts above its own gifts.
+///
+/// `Shipped` is left out because the hex pass books it after `Lent` and `WasLent`, where the popup
+/// has always drawn it, and adds the bill to the totals itself (`forecast_hex`).
+#[must_use]
+fn listed_moves(record: &[SilverMove]) -> Vec<(phases::StatePhase, SilverChange)> {
+    let mut listed: Vec<_> = record
+        .iter()
+        .filter(|moved| moved.cause != SilverChangeCause::Shipped)
+        .map(|moved| {
+            (
+                moved.phase,
+                SilverChange {
+                    amount: moved.amount,
+                    cause: moved.cause,
+                    line: moved.line,
+                    other: moved.other.clone(),
+                },
+            )
+        })
+        .collect();
+    listed.sort_by_key(|(phase, change)| (*phase, change.cause != SilverChangeCause::Sold));
+    listed
 }
 
-/// What the market pass settled on this unit's **exact** `BUY` lines, read back off the record.
+/// What one cause moved on lines written above `line`. For a term that must see only the orders its
+/// phase settled before it - a second `CAST` sees the first one's cost, not its own.
+#[must_use]
+fn moved_above(
+    moves: &[(phases::StatePhase, SilverChange)],
+    cause: SilverChangeCause,
+    line: i64,
+) -> i64 {
+    moves
+        .iter()
+        .filter(|(_, change)| change.cause == cause && change.line.is_some_and(|at| at < line))
+        .fold(0i64, |total, (_, change)| {
+            total.saturating_add(change.amount)
+        })
+}
+
+/// What the ledger settled on this unit's **exact** `BUY` lines, read off its `Bought` rows.
 ///
 /// [`UnitSilver::wanted_for_orders`] is `expense` with the market's *demand* in place of its
 /// settled spend (`ah-omn7`), and the term it puts back is the exact buys' spend alone. A settled
@@ -1884,7 +1919,7 @@ struct ExactBuy {
 #[must_use]
 fn exact_market_spend(
     moves: &[(phases::StatePhase, SilverChange)],
-    exact_buys: &[ExactBuy],
+    exact_buy_lines: &[i64],
 ) -> i64 {
     moves
         .iter()
@@ -1892,7 +1927,7 @@ fn exact_market_spend(
             change.cause == SilverChangeCause::Bought
                 && change
                     .line
-                    .is_some_and(|line| exact_buys.iter().any(|buy| buy.line == line))
+                    .is_some_and(|line| exact_buy_lines.contains(&line))
         })
         .fold(0i64, |total, (_, change)| {
             total.saturating_sub(change.amount)
@@ -1941,7 +1976,8 @@ pub fn forecast_unit(
     facts: UnitFacts<'_>,
     region: RegionWages,
     shares: PoolShares,
-    purse: FactionPurse,
+    // Unread since the CLAIM row became the ledger's (`ah-xryu`); removing it touches every caller.
+    _purse: FactionPurse,
     shared_for_orders: i64,
     lookups: Lookups<'_>,
     // What this hex's `SHARE` flags lend this unit's market purse, as the ledger snapshotted it
@@ -1973,6 +2009,12 @@ pub fn forecast_unit(
         receipts,
         ..
     } = facts;
+
+    // The ledger's silver at every phase, or - for a caller with no ledger - what the unit holds,
+    // unmoved: with no record there is nothing to have moved it (`ah-xryu`).
+    let silver = facts
+        .phase_silver()
+        .unwrap_or_else(|| PhaseSilver::from_balances([held; phases::StatePhase::COUNT]));
 
     // Unconditional, unlike the estimated-headcount arm below: that one is gated on orders that
     // multiply something out, while a line that lost its tail lost the flags and skills that say
@@ -2113,26 +2155,17 @@ pub fn forecast_unit(
 
     // A gift is in the giver's block, so it arrives already gathered. It is income whatever the
     // unit itself is ordered to do, including nothing.
-    // Silver another unit's block has already handed over is not summed into any total here: each
-    // of `receipts.silver`, `receipts.taken` and `receipts.taken_unshown` is recorded as a
-    // movement below, from `receipts.silver_moves`, and `semantics`'s own
-    // `each_settled_silver_transfer_is_recorded_as_a_movement` pins that those movements add up to
-    // exactly those three sums. The totals are the record (`ah-6m7b.4`).
-    //
-    // The four sub-totals this walk used to keep beside them - `give_phase_income`,
-    // `month_long_expense`, `cast_expense` and `cast_earned` - are gone with them. Each existed
-    // only to reconstruct a running total at a phase boundary, and each was a second copy of a
-    // figure the record already carried. `spendable_so_far` and `moved_by` read the record instead.
+    // Silver another unit's block has already handed over is not summed into any total here: it is
+    // in the ledger's record, which the rows and totals are read off (`ah-xryu`).
     // Whether any `GIVE ... ALL SILV` this unit wrote actually moved silver, so `spent_on` can be
     // credited after every arm of the walk and before the market's own spends. Not a second
     // derivation of anything: the amounts come from the ledger, and this flag exists only to keep
     // the hover's first-spender ordering where it was (`ah-m7su`, `ah-6m7b.3`).
     let mut gave_all_silver = false;
-    let mut exact_buys: Vec<ExactBuy> = Vec::new();
+    let mut exact_buy_lines: Vec<i64> = Vec::new();
     // What the exact buys asked to spend, whatever the unit could pay for. `short_for_orders` and
     // the shortfall warning are measured against this (`ah-omn7`).
     let mut market_demand = 0i64;
-    let mut claim_remaining = purse.unclaimed;
     // A `TAKE FROM <unit> ALL <class>` is in this unit's own block, but the ledger's own
     // `transfer` returns early for a class selector, so its balance never carries the take and
     // this column will not open its market pass on a figure the two surfaces disagree about
@@ -2168,10 +2201,6 @@ pub fn forecast_unit(
     // What a `CAST` order will make, for the four `cast_*` fields the hover reads. Filled by the
     // arm below; a unit with no such order, or none the ruleset prices, leaves it at nothing.
     let mut cast: Option<CastPlan> = None;
-    // What this unit's earlier `SELL` lines have already moved, per canonical tag. A block may name
-    // the same goods twice, and the second line can only move what the first left - of the stock
-    // and of the settled share alike (`ah-vw8e`).
-    let mut sold: BTreeMap<String, i64> = BTreeMap::new();
     // What this unit's earlier `BUY` lines have already taken out of its settled share, per
     // canonical tag. A block may name the same goods twice, and the second line can only buy what
     // the first left - of the market line and of this unit's share of it alike (`ah-lauy`).
@@ -2180,78 +2209,15 @@ pub fn forecast_unit(
     // in document order.
     let mut buy_all: Vec<BuyAllShown> = Vec::new();
 
-    // Every term below records itself here as it is priced, tagged with the phase it settles in.
-    // Sorted once at the end rather than pushed in order: the market pass and the wage term are
-    // computed after the walk has already recorded the study and manufacturing spends, so the
-    // push order is not the turn's order.
-    let mut moves: Vec<(phases::StatePhase, SilverChange)> = Vec::new();
+    // What this unit's silver did this month, as the ledger settled it and in the turn's order.
+    // The rows and both totals are read off this; no arm below records anything (`ah-xryu`).
+    let moves = listed_moves(facts.silver_moves());
     /// The ledger's settlement of the gift written on `line`, or `None` where its walk could not
     /// follow the line - a class the catalogue cannot resolve, or a target whose faction
     /// declaration the report does not carry. The column books nothing then, which is what it did
     /// for such a line before (`ah-6m7b.3`).
     fn settled_gift<'a>(facts: &UnitFacts<'a>, line: i64) -> Option<&'a SettledGift> {
         facts.settled_gifts().iter().find(|gift| gift.line == line)
-    }
-
-    // A term that moved nothing is not a movement: `SilverChange::amount` is documented as never
-    // zero, and a popup listing "taxed 0" would be worse than saying nothing.
-    fn record(
-        moves: &mut Vec<(phases::StatePhase, SilverChange)>,
-        phase: phases::StatePhase,
-        amount: i64,
-        cause: SilverChangeCause,
-        line: Option<i64>,
-        other: Option<String>,
-    ) {
-        if amount != 0 {
-            moves.push((
-                phase,
-                SilverChange {
-                    amount,
-                    cause,
-                    line,
-                    other,
-                },
-            ));
-        }
-    }
-
-    /// Books one settled `GIVE ... ALL SILV` into this unit's month: the same expense, the same
-    /// movement and the same discard total an exact gift's own arm books. One function so the
-    /// class form and the named-item form cannot book it two ways (`ah-6m7b.3`).
-    fn book_gift(
-        settled: &SettledGift,
-        moves: &mut Vec<(phases::StatePhase, SilverChange)>,
-        given_to_nobody: &mut i64,
-    ) {
-        record(
-            moves,
-            phases::StatePhase::Give,
-            -settled.spent,
-            if settled.to_nobody {
-                SilverChangeCause::Discarded
-            } else {
-                SilverChangeCause::GaveAway
-            },
-            Some(settled.line),
-            Some(settled.other.clone()),
-        );
-        if settled.to_nobody {
-            *given_to_nobody = given_to_nobody.saturating_add(settled.spent);
-        }
-    }
-
-    // Everything another unit's block already handed over, ahead of this unit's own gifts within
-    // the Give phase, which is where `rules/sequenceofevents` settles GIVE and TAKE.
-    for move_in in &receipts.silver_moves {
-        record(
-            &mut moves,
-            phases::StatePhase::Give,
-            move_in.amount,
-            move_in.cause,
-            Some(move_in.line),
-            Some(move_in.other.clone()),
-        );
     }
 
     // Whether this unit taxes at all is a property of the unit, not of one line in its block: the
@@ -2276,21 +2242,8 @@ pub fn forecast_unit(
         // The settlement is what the column shows: this unit's actual take once its faction-mates
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].
-        let priced = price_tax(men, region.tax_base, region.pillaged, shares.tax);
-        income_doubt = income_doubt.or(priced.doubt);
-        // `None` is the taxing flag doing it, which `taxes_by_flag` already reports.
-        let tax_line = intents
-            .iter()
-            .find(|placed| matches!(placed.intent, Intent::Tax))
-            .map(|placed| placed.line as i64);
-        record(
-            &mut moves,
-            phases::StatePhase::Tax,
-            priced.earns,
-            SilverChangeCause::Taxed,
-            tax_line,
-            None,
-        );
+        income_doubt =
+            income_doubt.or(price_tax(men, region.tax_base, region.pillaged, shares.tax).doubt);
     }
 
     // The materials manufacturing works from, kept running so a second `PRODUCE` line sees what
@@ -2326,23 +2279,8 @@ pub fn forecast_unit(
             }
         }
         match &placed.intent {
-            Intent::Claim(amount) => {
-                let priced = price_claim(*amount, claim_remaining);
-                // "CLAIM ... orders are processed" in the instant block, before *Give orders*, so
-                // claimed silver is in the purse a gift empties (`rules/sequenceofevents`,
-                // `ah-tc79`).
-                record(
-                    &mut moves,
-                    phases::StatePhase::Claim,
-                    priced.earns,
-                    SilverChangeCause::Claimed,
-                    Some(placed.line as i64),
-                    None,
-                );
-                if let Some(remaining) = &mut claim_remaining {
-                    *remaining = remaining.saturating_sub(priced.earns).max(0);
-                }
-            }
+            // The ledger's own Claim arm prices the line, and the row is its record (`ah-xryu`).
+            Intent::Claim(_) => {}
             // Priced once above, as a unit-level term rather than per line: a unit may tax by
             // its flag with no `TAX` order at all, and one with both must be counted once
             // (`ah-fvzu`).
@@ -2357,59 +2295,15 @@ pub fn forecast_unit(
             // `ah-q6bt`, both deliberate departures from `rules/economy_taxingpillaging`, which
             // gates on the faction's men in the region and shares the take out per unit.
             Intent::Pillage => {
-                let priced = price_pillage(region.tax_base, region.pillagers, mine);
-                income_doubt = income_doubt.or(priced.doubt);
-                record(
-                    &mut moves,
-                    phases::StatePhase::Tax,
-                    priced.earns,
-                    SilverChangeCause::Pillaged,
-                    Some(placed.line as i64),
-                    None,
-                );
+                income_doubt =
+                    income_doubt.or(price_pillage(region.tax_base, region.pillagers, mine).doubt);
             }
             // `WORK` and `ENTERTAIN` earn nothing but late income, so [`late_income`] prices them
             // both - once, for this function and for `semantics::charge_upkeep` alike.
             Intent::Work | Intent::Entertain => {}
-            Intent::Sell { item, amount } => match sale(item) {
-                SaleAnswer::Wanted {
-                    price,
-                    market_takes,
-                    unit_holds,
-                } => {
-                    // What this hex's other own sellers left of the line, or the line itself
-                    // where nothing was settled (`ah-t2pn.3`).
-                    let allowed =
-                        (lookups.market_share)(item, MarketSide::Selling).unwrap_or(market_takes);
-                    // Keyed by the canonical tag, which is the key the settlement itself uses, so
-                    // two spellings of one item share one total. A tag nothing resolves is
-                    // untracked and cannot double-count: `resolve_item` walks the unit's own
-                    // inventory, so a `None` here means the unit holds none of these goods and
-                    // every such line sells nothing whether tracked or not.
-                    let key = (lookups.item_tag)(item);
-                    let already = key
-                        .as_ref()
-                        .and_then(|tag| sold.get(tag))
-                        .copied()
-                        .unwrap_or(0);
-                    let line = price_sale_line(
-                        amount,
-                        (unit_holds - already).max(0),
-                        (allowed - already).max(0),
-                        price,
-                    );
-                    record(
-                        &mut moves,
-                        phases::StatePhase::Market,
-                        line.earns,
-                        SilverChangeCause::Sold,
-                        Some(placed.line as i64),
-                        None,
-                    );
-                    if let Some(tag) = key {
-                        *sold.entry(tag).or_default() += line.quantity;
-                    }
-                }
+            Intent::Sell { item, .. } => match sale(item) {
+                // The ledger's `sell` settles the line, and the row is its record (`ah-xryu`).
+                SaleAnswer::Wanted { .. } => {}
                 // Goods this market does not want are unsellable, so the order earns nothing. That
                 // is the answer rather than a guess, and the shipped `not-traded-here` finding is
                 // what tells the player why. See the bead's plan.
@@ -2498,34 +2392,19 @@ pub fn forecast_unit(
                     recipe,
                     work,
                     &priced_against,
-                    match facts.phase_silver() {
-                        // The ledger's own figure, which is what `semantics::produce` priced this
-                        // very order against, through this very function - so the two surfaces
-                        // cannot answer one `PRODUCE` differently (`ah-6m7b.1`).
-                        Some(silver) => silver
-                            .as_manufacturing_opens()
-                            .saturating_sub(manufacturing_spent)
-                            .max(0),
-                        None => spendable_so_far(held, &moves)
-                            .saturating_sub(market_demand)
-                            .max(0),
-                    },
+                    // The ledger's own figure, which is what `semantics::produce` priced this very
+                    // order against, through this very function - so the two surfaces cannot answer
+                    // one `PRODUCE` differently (`ah-6m7b.1`).
+                    silver
+                        .as_manufacturing_opens()
+                        .saturating_sub(manufacturing_spent)
+                        .max(0),
                     *requested,
                     region,
                 );
                 match plan.zip(recipe) {
                     Some((plan, recipe)) => {
                         manufacturing_spent = manufacturing_spent.saturating_add(priced.spends);
-                        // `phase_of` answers `Manufacturing` for every `PRODUCE`, and only a
-                        // manufacturing recipe has a silver input at all.
-                        record(
-                            &mut moves,
-                            phases::StatePhase::Manufacturing,
-                            -priced.spends,
-                            SilverChangeCause::ProductionSpent,
-                            Some(placed.line as i64),
-                            None,
-                        );
                         // The same running deduction the ITEMS ledger makes, by the same rule and
                         // for silver and materials alike: a tag the list does not carry is pushed
                         // with the negative amount, so a deficit survives to the next `PRODUCE`
@@ -2611,14 +2490,6 @@ pub fn forecast_unit(
                     // actually has, not only per man the report printed (`ah-dxfd.2`).
                     let cost = entry.and_then(|skill| skill.cost);
                     let priced = price_study(cost, facts.study().men);
-                    record(
-                        &mut moves,
-                        phases::StatePhase::Study,
-                        -priced.spends,
-                        SilverChangeCause::Studied,
-                        Some(placed.line as i64),
-                        None,
-                    );
                     if priced.spends > 0 {
                         // Money actually leaving, and the only thing that may take the note away:
                         // a study the catalogue cannot price spends nothing, so a unit carrying one
@@ -2675,16 +2546,15 @@ pub fn forecast_unit(
                     continue;
                 }
 
-                let hopeful = match facts.phase_silver() {
-                    // As at the manufacturing cap: `semantics::cast` prices this same spell
-                    // from this same figure, through this same `price_cast` (`ah-6m7b.1`).
-                    Some(silver) => silver
-                        .as_the_cast_opens()
-                        .saturating_add(moved_by(&moves, SilverChangeCause::CastEarned))
-                        .saturating_add(moved_by(&moves, SilverChangeCause::CastSpent))
-                        .max(0),
-                    None => spendable_so_far(held, &moves),
-                };
+                // As at the manufacturing cap: `semantics::cast` prices this same spell from this
+                // same figure, through this same `price_cast` (`ah-6m7b.1`). Only the casts written
+                // above this one have moved the purse yet.
+                let line = placed.line as i64;
+                let hopeful = silver
+                    .as_the_cast_opens()
+                    .saturating_add(moved_above(&moves, SilverChangeCause::CastEarned, line))
+                    .saturating_add(moved_above(&moves, SilverChangeCause::CastSpent, line))
+                    .max(0);
                 let caster = Caster {
                     skills: facts.skills,
                     held: facts.items,
@@ -2697,22 +2567,6 @@ pub fn forecast_unit(
                     transmuting,
                 };
                 let (priced, plan) = price_cast(resolved, &caster, region);
-                record(
-                    &mut moves,
-                    phases::StatePhase::Cast,
-                    priced.earns,
-                    SilverChangeCause::CastEarned,
-                    Some(placed.line as i64),
-                    None,
-                );
-                record(
-                    &mut moves,
-                    phases::StatePhase::Cast,
-                    -priced.spends,
-                    SilverChangeCause::CastSpent,
-                    Some(placed.line as i64),
-                    None,
-                );
                 if priced.spends > 0 {
                     spent_on = spent_on.or(Some(SilverSpender::Cast));
                 }
@@ -2752,13 +2606,7 @@ pub fn forecast_unit(
                         if wanted > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
                         }
-                        exact_buys.push(ExactBuy {
-                            count: *count,
-                            price,
-                            allowed,
-                            line: placed.line as i64,
-                            wanted,
-                        });
+                        exact_buy_lines.push(placed.line as i64);
                         if let Some(tag) = tag {
                             *bought.entry(tag).or_default() += asked;
                         }
@@ -2810,7 +2658,10 @@ pub fn forecast_unit(
                                 if income_doubt.is_none() && expense_doubt.is_none() {
                                     if let Some(settled) = settled_gift(&facts, placed.line as i64)
                                     {
-                                        book_gift(settled, &mut moves, &mut given_to_nobody);
+                                        if settled.to_nobody {
+                                            given_to_nobody =
+                                                given_to_nobody.saturating_add(settled.spent);
+                                        }
                                         gave_all_silver = gave_all_silver || settled.spent > 0;
                                     }
                                 }
@@ -2845,18 +2696,6 @@ pub fn forecast_unit(
                 match shape {
                     TransferShape::Unpriceable => {}
                     TransferShape::Exact(count) => {
-                        record(
-                            &mut moves,
-                            phases::StatePhase::Give,
-                            -count,
-                            if to_nobody {
-                                SilverChangeCause::Discarded
-                            } else {
-                                SilverChangeCause::GaveAway
-                            },
-                            Some(placed.line as i64),
-                            Some(party_label(to)),
-                        );
                         if count > 0 {
                             spent_on = spent_on.or(Some(SilverSpender::Give));
                         }
@@ -2867,7 +2706,9 @@ pub fn forecast_unit(
                     TransferShape::All { .. } => {
                         if income_doubt.is_none() && expense_doubt.is_none() {
                             if let Some(settled) = settled_gift(&facts, placed.line as i64) {
-                                book_gift(settled, &mut moves, &mut given_to_nobody);
+                                if settled.to_nobody {
+                                    given_to_nobody = given_to_nobody.saturating_add(settled.spent);
+                                }
                                 gave_all_silver = gave_all_silver || settled.spent > 0;
                             }
                         }
@@ -2926,146 +2767,11 @@ pub fn forecast_unit(
         }
     }
 
-    let mut late = 0i64;
-    for term in late_income_terms(&facts, region, shares, ruleset) {
-        late = late.saturating_add(term.amount);
-        record(
-            &mut moves,
-            phases::StatePhase::Wages,
-            term.amount,
-            term.cause,
-            term.line,
-            None,
-        );
-    }
+    let late = moved_by(&moves, SilverChangeCause::Worked)
+        .saturating_add(moved_by(&moves, SilverChangeCause::Entertained));
 
-    // Everything that spends what is *left*, by game phase and then in document order, against a
-    // running total that already carries every other term. Skipped where a side is doubted: the
-    // total it would spend against is not a number, and the side it feeds is `None` either way.
-    // The doubted path skips the block below entirely and records the full ask instead, exactly as
-    // it charged it before `ah-omn7`.
+    // Every `BUY ALL` as the ledger settled it, for the hover. Skipped where a side is doubted.
     if income_doubt.is_none() && expense_doubt.is_none() {
-        // What a deferred order can spend is what reaches the unit *in time* - `ah-1wcw.3` settled
-        // that `BUY ALL` spends what the unit can afford, and wages it earns this month cannot pay
-        // for anything this month's orders buy (`ah-uwa3`).
-        // The Give phase is already settled - `semantics::transfer` settled it and each arm of the
-        // walk booked what it decided (`ah-6m7b.3`) - so `expense` here carries the exact gifts
-        // *and* the `ALL` ones, and what is left is what the market opens on. A study and a manufacture
-        // are charged in the turn's last block and neither makes the gift smaller (`ah-a5ci`).
-        //
-        // Everything the Give phase could not spend is in the purse by the time the market opens:
-        // TAX and PILLAGE settle in the tax phase, both before "SELL orders are processed". A cast
-        // settles in *Instant Magic*, after the tax phase and still before the market, and has
-        // already been paid for, so its cost comes off here and not above. `late` stays out -
-        // wages earned this month cannot pay for anything this month's orders buy (`ah-uwa3`) -
-        // and so does `month_long_expense`, which the market never reaches (`ah-a5ci`).
-        //
-        // Market phase: every exact `BUY` gathered above is priced here, and each `BUY ALL` then
-        // spends what those leave.
-        //
-        // `rules/buy` caps a line at what the unit can afford, and since `ah-ud89.4` both surfaces
-        // size that cap from the **settled** share of a contended tax pool - so the quantity and
-        // the money columns read one figure. `ah-omn7`'s hopeful reading survives everywhere the
-        // application cannot see the contention (`ah-ud89`).
-        // What the market opens on. The ledger's own figure wherever there is a ledger, so the two
-        // surfaces cannot answer one `BUY` differently (`ah-6m7b.2`); the running total this walk
-        // has always kept where there is none, which is every caller with `phases: None`.
-        // The ledger's own figure wherever there is a ledger, so the two surfaces cannot answer
-        // one `BUY` differently (`ah-6m7b.2`). Where there is none - `silver.rs`'s own `mod tests`
-        // and nothing in production - everything the phase-ordered walk has recorded so far, less
-        // the wage that arrives too late to fund a purchase (`ah-uwa3`) and with the month-long
-        // spends added back: "TEACH orders are processed. STUDY orders are processed.
-        // Manufacturing PRODUCE orders ... are processed" is the last block of
-        // `rules/sequenceofevents`, after the market has closed, so neither fee shrinks what a
-        // `BUY` can afford (`ah-a5ci`). Both terms are recorded negative, so subtracting them adds
-        // their magnitude back.
-        //
-        // This is exactly what the deleted `running` total summed to, once its `cast_expense`
-        // terms are cancelled against each other: `held + income - expense + month_long_expense
-        // - late`. Unclamped, as `running` was - clamping before the month-long spends are added
-        // back is different arithmetic - and the `funds` line below clamps what it feeds.
-        let opening = match facts.phase_silver() {
-            // The pre-market balance is the balance *before* any Market-phase movement, and this
-            // unit's own `Sold` credit is one (`rules/sequenceofevents` settles "SELL orders are
-            // processed." before "BUY orders are processed."), so a sale funds the same month's
-            // purchase and must be added back (`ah-6m7b.5.3`). `Sold` is the only
-            // `StatePhase::Market` cause the walk records before this block, so nothing is
-            // double-counted; this unit's own earlier buys stay with `market_spent`.
-            //
-            // Unclamped, then clamped once at the end - the order `semantics::buy` uses on the
-            // ledger's own unclamped `known_balance_at(StatePhase::Market)`. Clamping first would
-            // let a sale rescue a unit already overdrawn as the market opens on this surface and
-            // not on the ledger's, and the two must cut one `BUY` to one quantity.
-            //
-            // Less what this unit's hopeful tax overstates its settled share of a contended
-            // region pool by - so a numbered `BUY` is sized by what the unit will actually
-            // collect, exactly as the income row above it already is (`ah-ud89.4`).
-            //
-            // Subtracted **before** this arm's single clamp, which is *not* where
-            // `semantics::buy` puts it: that side subtracts after its own clamp, so that a purse
-            // `rules/share` lends cannot refill the hole (`ah-ud89.2`'s rule). The one placement
-            // this arm cannot use is above the `Sold` credit, for the reason the paragraph above
-            // gives - clamping there would let a sale rescue a unit already overdrawn as the
-            // market opens on this surface and not on the ledger's. Below the credit the clamp
-            // could sit either side of the subtraction; it is left where it already was, and the
-            // two placements are indistinguishable anyway for the reason that follows.
-            //
-            // The two placements can only disagree where a unit's Market-phase balance is
-            // *below* its overstatement, and no report reaches that state: the overstatement is
-            // `hopeful - settled` and `hopeful` is itself credited into the balance, so
-            // `balance - overstatement >= held >= 0`. The one way to spend between the tax phase
-            // and the market is a `CAST`, which `ah-ud89.1` caps by the settled share too, and
-            // `rules/sequenceofevents` settles GIVE *before* TAX, so a unit cannot give its tax
-            // away either (`tests/give_all_silver_precedes_the_tax.rs`).
-            Some(silver) => silver
-                .before_the_market_opens()
-                .saturating_add(moved_by(&moves, SilverChangeCause::Sold))
-                .saturating_sub(tax_overstated)
-                // And the rest of this unit's hopeful tax where the hex's pool could not be
-                // settled at all: the ledger's purse lent silver in hand, so this surface spends
-                // silver in hand too (`ah-3c2t.1`). `0` in every other hex, so the paragraphs
-                // above hold unchanged - and their proof that the two clamp placements cannot
-                // disagree covers this term for the same reason, `hopeful` being itself credited
-                // into the balance.
-                .saturating_sub(facts.market_withholds())
-                .max(0),
-            // NOT settled here, and this is the one way to get `ah-ud89.4` wrong: this arm sums
-            // this walk's own `moves`, whose tax term is already the *settled* one
-            // (`price_tax(..., shares.tax)` above, where `semantics::credit_tax` passes
-            // `PoolShare::Uncontended` instead). Subtracting the overstatement here would settle
-            // the same contention twice. Do not add it for symmetry.
-            None => recorded_so_far(held, &moves)
-                .saturating_sub(late)
-                .saturating_sub(moved_by(&moves, SilverChangeCause::Studied))
-                .saturating_sub(moved_by(&moves, SilverChangeCause::ProductionSpent)),
-        };
-        // This unit's own earlier market lines, drawn off as `semantics::buy` draws them out of
-        // the `StatePhase::Market` slot line by line.
-        let mut market_spent = 0i64;
-        for buy in &exact_buys {
-            let funds = opening.saturating_sub(market_spent).max(0);
-            let line = price_purchase(
-                buy.count,
-                buy.price,
-                buy.allowed,
-                match shared_market {
-                    SharedMarket::Adds(adds) | SharedMarket::HeldOnly(adds) => {
-                        MarketFunds::Silver(funds.saturating_add(adds))
-                    }
-                    SharedMarket::Unmeasured => MarketFunds::Unmeasured,
-                },
-            );
-            record(
-                &mut moves,
-                phases::StatePhase::Market,
-                -line.spends,
-                SilverChangeCause::Bought,
-                Some(buy.line),
-                None,
-            );
-            market_spent = market_spent.saturating_add(line.spends);
-        }
-
         // Every `BUY ALL` as the ledger settled it. Nothing is priced here: `settle_buy_all` has
         // already run `price_buy_all` over the ledger's own market-phase silver, and this arm only
         // names the counts (`ah-6m7b.2`).
@@ -3074,31 +2780,8 @@ pub fn forecast_unit(
             if settled.spends > 0 {
                 spent_on = spent_on.or(Some(SilverSpender::Buy));
             }
-            record(
-                &mut moves,
-                phases::StatePhase::Market,
-                -settled.spends,
-                SilverChangeCause::Bought,
-                Some(settled.line),
-                None,
-            );
         }
     } else {
-        // The market pass never runs for a doubted unit, but its demand is still charged to
-        // `expense` - so the record has to carry it, or `totals_of` comes out short and the column
-        // stops showing money it has always shown. Nothing new is displayed: `changes` is emptied
-        // for a doubted unit on the way out (`ah-6m7b.4`).
-        for buy in &exact_buys {
-            record(
-                &mut moves,
-                phases::StatePhase::Market,
-                -buy.wanted,
-                SilverChangeCause::Bought,
-                Some(buy.line),
-                None,
-            );
-        }
-
         // A `BUY ALL` this unit's *certain* silver settled, in a hex whose purse could not be
         // worked out. `ah-3c2t.1` made that purse silver in hand alone and took this unit's own
         // uncollectable tax off its balance with it, so the count `settle_buy_all` recorded was
@@ -3131,21 +2814,11 @@ pub fn forecast_unit(
         {
             for settled in facts.settled_buy_all() {
                 buy_all.push(shown_buy_all(settled, &lookups));
-                record(
-                    &mut moves,
-                    phases::StatePhase::Market,
-                    -settled.spends,
-                    SilverChangeCause::Bought,
-                    Some(settled.line),
-                    None,
-                );
             }
         }
     }
 
-    // The totals are the movement list summed. Nothing keeps a running `income` or `expense` any
-    // more: a term is recorded where it is priced, and both halves are read off the record here
-    // (`ah-6m7b.4`).
+    // The totals are the ledger's record summed (`ah-xryu`).
     // Last, so a doubt one of this unit's own orders raised is still the one reported: shipping is
     // the month's final spending (`rules/sequenceofevents`) and the least specific thing in it that
     // can go unpriced (`ah-7ale.5`).
@@ -3157,7 +2830,7 @@ pub fn forecast_unit(
     // What the orders asked for, before the bounded `BUY` cap: `expense` with the demand put back
     // in place of the exact buys' settled spend (`ah-omn7`).
     let wanted = expense
-        .saturating_sub(exact_market_spend(&moves, &exact_buys))
+        .saturating_sub(exact_market_spend(&moves, &exact_buy_lines))
         .saturating_add(market_demand);
     let income = income_doubt.is_none().then_some(income);
     let late_income = income.map(|_| late);
@@ -3190,7 +2863,7 @@ pub fn forecast_unit(
     // overstatement is in the in-time half, which is the term this flag speaks for.
     //
     // Read off the movement record rather than recomputed: `moved_by` is the one place a cause's
-    // total is read (`ah-6m7b.4`), and `record` never pushes a zero - so this is true exactly of a
+    // total is read (`ah-6m7b.4`), and the ledger never records a zero - so this is true exactly of a
     // unit that really does earn silver selling here, which is the mockup's "a unit that is not
     // earning here is not bounded".
     let sells_here = moved_by(&moves, SilverChangeCause::Sold) > 0;
@@ -3223,9 +2896,6 @@ pub fn forecast_unit(
     if charged_a_study {
         no_study_fee = None;
     }
-
-    // Stable, so entries sharing a phase keep the document order they were pushed in.
-    moves.sort_by_key(|(phase, _)| *phase);
 
     UnitSilver {
         unit_id: unit_id.to_string(),
@@ -7761,6 +7431,7 @@ mod tests {
                 )),
                 buy_all: &[],
                 gifts: &[],
+                silver_moves: &[],
                 market_withholds: 0,
             }),
             ..facts(9, &intents, &receipts)
@@ -7786,211 +7457,184 @@ mod tests {
         assert_eq!(unit.production_men_left, 4);
     }
 
-    /// `ah-gdd3.2`. Materials in these four are exactly one catapult's, so `by_materials` is 1 and
-    /// only the silver moves.
-    fn catapult_materials() -> [ItemAmount; 3] {
-        [
-            ItemAmount {
-                amount: 250,
-                name: "wood".into(),
-                tag: "WOOD".into(),
-            },
-            ItemAmount {
-                amount: 30,
-                name: "ironwood".into(),
-                tag: "IRWD".into(),
-            },
-            ItemAmount {
-                amount: 80,
-                name: "furs".into(),
-                tag: "FUR".into(),
-            },
-        ]
+    fn causes(unit: &UnitSilver) -> Vec<SilverChangeCause> {
+        unit.changes.iter().map(|change| change.cause).collect()
     }
 
-    /// The same materials with the unit's own `SILV` line, which is what a real report prints for
-    /// a unit holding silver.
-    ///
-    /// The gift and cast cases below **must** carry it: without it the old cap read a holding of
-    /// nothing and already made none, so an assertion of `produced == 0` passed against the very
-    /// bug this bead fixes. Each of those two tests is paired with a control that drops the
-    /// spending order and asserts the run *is* funded, which is what pins the spend as the cause.
-    fn catapult_materials_and_silver(silver: i64) -> [ItemAmount; 4] {
-        let [wood, ironwood, furs] = catapult_materials();
-        [
-            ItemAmount {
-                amount: silver,
-                name: "silver".into(),
-                tag: "SILV".into(),
-            },
-            wood,
-            ironwood,
-            furs,
-        ]
+    fn moved(
+        phase: phases::StatePhase,
+        amount: i64,
+        cause: SilverChangeCause,
+        line: Option<i64>,
+        other: Option<&str>,
+    ) -> SilverMove {
+        SilverMove {
+            phase,
+            amount,
+            cause,
+            line,
+            other: other.map(str::to_string),
+        }
     }
 
-    /// `ah-gdd3.2`. `rules/sequenceofevents` runs CLAIM in the first instant batch, long before
-    /// "Manufacturing PRODUCE orders ... are processed", so silver a `CLAIM` brings in funds this
-    /// month's catapult - which the report's own `SILV` line does not show.
-    #[test]
-    fn a_claim_funds_the_months_manufacturing() {
+    /// `forecast_unit` over a handed-in ledger record, for the projection tests below (`ah-xryu`).
+    fn projected<'a>(
+        held: i64,
+        intents: &'a [PlacedIntent],
+        skills: &'a [Skill],
+        record: &'a [SilverMove],
+        ruleset: Option<&Ruleset>,
+    ) -> UnitSilver {
         let receipts = Receipts::default();
-        let intents = [
-            placed(Intent::Claim(3000)),
-            placed(Intent::Produce {
-                requested: None,
-                item: "CATP".to_string(),
-            }),
-        ];
-        let items = catapult_materials();
-        let carpenters = [skill("CARP", 4)];
-        let unit = forecast_unit(
+        let phases = PhaseFacts {
+            silver_moves: record,
+            ..PhaseFacts::uniform(LateFacts {
+                men: 1,
+                men_by_race: &[],
+                items: &[],
+                before_manufacturing: &[],
+                shared_materials: &[],
+            })
+        };
+        forecast_unit(
             UnitFacts {
-                items: &items,
-                skills: &carpenters,
-                skills_after_arrivals: &carpenters,
-                phases: Some(PhaseFacts::uniform(LateFacts {
-                    men: 4,
-                    men_by_race: &[],
-                    items: &items,
-                    before_manufacturing: &items,
-                    shared_materials: &[],
-                })),
-                ..facts(4, &intents, &receipts)
+                held,
+                skills,
+                phases: Some(phases),
+                ..facts(1, intents, &receipts)
             },
-            paying("$5.0", None),
-            PoolShares::default(),
-            FactionPurse {
-                unclaimed: Some(3000),
-            },
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset()),
-        );
-
-        assert_eq!(unit.produced, 1);
-    }
-
-    /// `ah-gdd3.2`. GIVE settles before manufacturing whatever order the two are written in, so a
-    /// gift written *under* a `PRODUCE` still empties the purse the run would have spent.
-    #[test]
-    fn a_gift_written_under_a_produce_is_still_spent_first() {
-        let receipts = Receipts::default();
-        let intents = [
-            placed(Intent::Produce {
-                requested: None,
-                item: "CATP".to_string(),
-            }),
-            placed(Intent::Give {
-                to: Party::Unit("1235".to_string()),
-                what: Selector::Item("SILV".to_string()),
-                amount: Amount::Exact(3000),
-            }),
-        ];
-        let items = catapult_materials_and_silver(3000);
-        let carpenters = [skill("CARP", 4)];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 3000,
-                items: &items,
-                skills: &carpenters,
-                skills_after_arrivals: &carpenters,
-                phases: Some(PhaseFacts::uniform(LateFacts {
-                    men: 4,
-                    men_by_race: &[],
-                    items: &items,
-                    before_manufacturing: &items,
-                    shared_materials: &[],
-                })),
-                ..facts(4, &intents, &receipts)
-            },
-            paying("$5.0", None),
+            RegionWages::default(),
             PoolShares::default(),
             FactionPurse::default(),
             0,
             no_market(),
             SharedMarket::Adds(0),
-            Some(&ruleset()),
-        );
-
-        assert_eq!(unit.produced, 0);
-        assert_eq!(unit.production_capped_by, Some(ProductionCap::Silver));
-
-        // The control: the same unit without the gift is funded, so it is the gift that binds and
-        // not something missing from the fixture.
-        let alone = [placed(Intent::Produce {
-            requested: None,
-            item: "CATP".to_string(),
-        })];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 3000,
-                items: &items,
-                skills: &carpenters,
-                skills_after_arrivals: &carpenters,
-                phases: Some(PhaseFacts::uniform(LateFacts {
-                    men: 4,
-                    men_by_race: &[],
-                    items: &items,
-                    before_manufacturing: &items,
-                    shared_materials: &[],
-                })),
-                ..facts(4, &alone, &receipts)
-            },
-            paying("$5.0", None),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset()),
-        );
-        assert_eq!(unit.produced, 1);
+            ruleset,
+        )
     }
 
-    /// `ah-gdd3.2`. "Spells are CAST" runs before manufacturing, and the committed ruleset prices
-    /// `CRPA`'s cast at 200 silver - so 3000 held becomes 2800, and a catapult wants 3000.
     #[test]
-    fn a_cast_lowers_what_a_production_can_afford() {
-        let receipts = Receipts::default();
-        let intents = [
-            placed(Intent::Cast {
-                spell: "create amulet of protection".to_string(),
-                arguments: vec![],
-            }),
-            placed(Intent::Produce {
-                requested: None,
-                item: "CATP".to_string(),
-            }),
+    fn the_columns_rows_are_the_ledgers_record() {
+        let record = [
+            moved(
+                phases::StatePhase::Market,
+                -70,
+                SilverChangeCause::Bought,
+                Some(3),
+                None,
+            ),
+            moved(
+                phases::StatePhase::Give,
+                200,
+                SilverChangeCause::WasGiven,
+                Some(7),
+                Some("Unit 9 (9)"),
+            ),
         ];
-        let items = catapult_materials_and_silver(3000);
-        let carpenters = [skill("CARP", 4), skill("CRPA", 1)];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 3000,
-                items: &items,
-                skills: &carpenters,
-                skills_after_arrivals: &carpenters,
-                phases: Some(PhaseFacts::uniform(LateFacts {
-                    men: 4,
-                    men_by_race: &[],
-                    items: &items,
-                    before_manufacturing: &items,
-                    shared_materials: &[],
-                })),
-                ..facts(4, &intents, &receipts)
-            },
-            paying("$5.0", None),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset()),
+        let unit = projected(100, &[], &[], &record, None);
+        assert_eq!(
+            unit.changes,
+            vec![
+                SilverChange {
+                    amount: 200,
+                    cause: SilverChangeCause::WasGiven,
+                    line: Some(7),
+                    other: Some("Unit 9 (9)".into()),
+                },
+                SilverChange {
+                    amount: -70,
+                    cause: SilverChangeCause::Bought,
+                    line: Some(3),
+                    other: None,
+                },
+            ]
         );
+        assert_eq!(unit.income, Some(200));
+        assert_eq!(unit.expense, Some(70));
+        assert_eq!(unit.at_month_end, Some(230));
+    }
 
-        assert_eq!(unit.produced, 0);
+    /// `rules/sequenceofevents`: "SELL orders are processed." comes before "BUY orders are
+    /// processed.", so a sale is listed above a purchase whichever the ledger recorded first.
+    #[test]
+    fn the_record_lists_sales_before_purchases_within_the_market() {
+        let record = [
+            moved(
+                phases::StatePhase::Market,
+                -40,
+                SilverChangeCause::Bought,
+                Some(2),
+                None,
+            ),
+            moved(
+                phases::StatePhase::Market,
+                90,
+                SilverChangeCause::Sold,
+                Some(3),
+                None,
+            ),
+        ];
+        let unit = projected(100, &[], &[], &record, None);
+        assert_eq!(
+            causes(&unit),
+            vec![SilverChangeCause::Sold, SilverChangeCause::Bought]
+        );
+    }
+
+    #[test]
+    fn a_shipment_in_the_record_is_left_to_the_hex_pass() {
+        let record = [moved(
+            phases::StatePhase::Transport,
+            -30,
+            SilverChangeCause::Shipped,
+            Some(2),
+            None,
+        )];
+        let unit = projected(100, &[], &[], &record, None);
+        assert!(unit.changes.is_empty(), "{:?}", unit.changes);
+        assert_eq!(unit.expense, Some(0));
+    }
+
+    fn amulet_cast() -> Intent {
+        Intent::Cast {
+            spell: "Create_Amulet_Of_Protection".to_string(),
+            arguments: Vec::new(),
+        }
+    }
+
+    /// `data/CRPA`: "create their level in amulets of protection [AMPR] via magic at a cost of 200
+    /// silver". The first cast sees the 200 held, not its own cost or the second line's.
+    #[test]
+    fn a_cast_is_funded_only_by_the_casts_written_above_it() {
+        let intents = [at_line(2, amulet_cast()), at_line(3, amulet_cast())];
+        let record = [
+            moved(
+                phases::StatePhase::Cast,
+                -200,
+                SilverChangeCause::CastSpent,
+                Some(2),
+                None,
+            ),
+            moved(
+                phases::StatePhase::Cast,
+                -200,
+                SilverChangeCause::CastSpent,
+                Some(3),
+                None,
+            ),
+        ];
+        let skills = [skill("CRPA", 1)];
+        let unit = projected(200, &intents, &skills, &record, Some(&ruleset()));
+        assert_eq!(unit.cast_made, 1);
+    }
+
+    /// With no ledger there is no record to have moved the purse, so a cap reads what is held.
+    #[test]
+    fn a_ledger_less_cap_reads_what_the_unit_holds() {
+        let intents = [placed(amulet_cast())];
+        let skills = [skill("CRPA", 1)];
+        let unit = projected(200, &intents, &skills, &[], Some(&ruleset()));
+        assert_eq!(unit.cast_made, 1);
     }
 
     /// Clamped at zero: a unit that *gains* men produces more, which needs no sentence.
@@ -8475,7 +8119,6 @@ mod tests {
     #[test]
     fn guarding_is_not_spending_the_month() {
         let unit = forecast(6, paying("$12.0", None), &[placed(Intent::Guard(true))]);
-        assert_eq!(unit.late_income, Some(72));
         assert!(unit.works_by_default);
     }
 
@@ -8490,7 +8133,6 @@ mod tests {
                 arguments: Vec::new(),
             })],
         );
-        assert_eq!(unit.late_income, Some(72));
         assert!(unit.works_by_default);
     }
 
@@ -8797,15 +8439,6 @@ mod tests {
 
     // --- when the silver lands ------------------------------------------------------------------
 
-    #[test]
-    fn wages_and_entertaining_are_still_late() {
-        // The guard that moving the spells took neither of these with them.
-        let working = forecast(10, paying("$12.0", None), &[placed(Intent::Work)]);
-        assert_eq!(working.late_income, Some(120));
-        let entertainer = entertaining(5, 2, Some(1000));
-        assert_eq!(entertainer.late_income, Some(300));
-    }
-
     // --- the turn's order, not the document's (`ah-gdd3.1`) --------------------------------------
 
     /// A doubt raised *in* the Give phase or before it does still hide the gift: the purse the gift
@@ -8854,42 +8487,6 @@ mod tests {
             unit.given_to_nobody, 0,
             "the purse the gift empties is not a number"
         );
-    }
-
-    /// `CLAIM` is in the first batch of instant orders, so it funds a cast written above it exactly
-    /// as it funds one written below it.
-    #[test]
-    fn a_claim_funds_a_cast_whichever_line_came_first() {
-        let ruleset = ruleset();
-        let receipts = Receipts::default();
-        let skills = [skill("CRPA", 1)];
-        let cast = || {
-            placed(Intent::Cast {
-                spell: "Create_Amulet_Of_Protection".to_string(),
-                arguments: Vec::new(),
-            })
-        };
-        let made = |intents: &[PlacedIntent]| {
-            forecast_unit(
-                UnitFacts {
-                    skills: &skills,
-                    ..facts(1, intents, &receipts)
-                },
-                RegionWages::default(),
-                PoolShares::default(),
-                FactionPurse {
-                    unclaimed: Some(200),
-                },
-                0,
-                no_market(),
-                SharedMarket::Adds(0),
-                Some(&ruleset),
-            )
-            .cast_made
-        };
-
-        assert_eq!(made(&[placed(Intent::Claim(200)), cast()]), 1);
-        assert_eq!(made(&[cast(), placed(Intent::Claim(200))]), 1);
     }
 
     /// The hover names the first spender the *turn* reaches, not the first one written.
@@ -9161,74 +8758,6 @@ mod tests {
             SharedMarket::Adds(0),
             ruleset,
         )
-    }
-
-    /// A bounded `BUY` in a hex whose tax pool could not be settled at all: the ledger's purse
-    /// lent silver in hand, so this surface must spend silver in hand too (`ah-3c2t.1`).
-    ///
-    /// Tested here rather than through `review_turn`, and deliberately: a unit with a non-zero
-    /// `market_withholds` is always income-doubted (`PoolShare::Unknowable` prices as
-    /// `SilverDoubt::ContestedRegionPool`), and `forecast_unit` then takes the arm where `opening`
-    /// is never evaluated at all. The disagreement is latent until `ah-3c2t.3` lifts that gate, so
-    /// an end-to-end test would pass whether or not the term is wired up.
-    ///
-    /// Asserted in both directions, which is what proves the term is actually read.
-    #[test]
-    fn a_bounded_buy_is_sized_by_what_the_market_withholds() {
-        // 30 grain at 12 asks 360; the market-open balance is 400, so nothing is cut without the
-        // withholding, and `400 - 300 = 100` buys 8 (96) with it.
-        let intents = vec![placed(Intent::Buy {
-            amount: Amount::Exact(30),
-            item: "grain".to_string(),
-        })];
-        let receipts = Receipts::default();
-        let mut after = [0i64; phases::StatePhase::COUNT];
-        after[phases::StatePhase::Cast as usize] = 400;
-
-        let expense_with = |market_withholds: i64| {
-            let phases = PhaseFacts {
-                silver: Some(PhaseSilver::from_balances(after)),
-                market_withholds,
-                ..PhaseFacts::uniform(LateFacts {
-                    men: 1,
-                    men_by_race: &[],
-                    items: &[],
-                    before_manufacturing: &[],
-                    shared_materials: &[],
-                })
-            };
-            forecast_unit(
-                with_gifts(
-                    UnitFacts {
-                        held: 400,
-                        ..facts(1, &intents, &receipts)
-                    },
-                    &phases,
-                ),
-                RegionWages::default(),
-                PoolShares::default(),
-                FactionPurse::default(),
-                0,
-                Lookups {
-                    purchase: &sells(12, 40),
-                    ..no_market()
-                },
-                SharedMarket::Adds(0),
-                None,
-            )
-            .expense
-        };
-
-        assert_eq!(
-            expense_with(0),
-            Some(360),
-            "with nothing withheld the whole line is affordable"
-        );
-        assert_eq!(
-            expense_with(300),
-            Some(96),
-            "the market withholds 300, so only 100 is left and 8 grain is what it buys"
-        );
     }
 
     /// A market selling men to a buyer the game refuses to let recruit.

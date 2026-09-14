@@ -9,9 +9,8 @@
 //! The unit here also recruits gnolls from the hex's own market, because the two surfaces read the
 //! composition from different places - the ledger from `Ordered::men_by_race_after_orders`, the
 //! column from `UnitFacts::men_by_race_after_arrivals` - and those must be the same post-recruit
-//! picture. `review_turn`'s own `silver_records_agree` debug assertion is the other half of that:
-//! it panics if the ledger and the column book different `Studied` movements, so this test
-//! reaching its assertions at all is the two surfaces having agreed.
+//! picture. The SILVER column's `Studied` row is the ledger's own record, so the two cannot book it
+//! differently.
 
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::orders::silver::UnitSilver;
