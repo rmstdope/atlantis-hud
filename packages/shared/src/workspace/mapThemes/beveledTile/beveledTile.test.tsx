@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../../../hexMapModel";
+import { TERRAIN_KINDS } from "../terrain";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
 import { allBadges, buildHexViews, type HexView, type HexViewOptions } from "../hexView";
 import { beveledTile } from "./index";
@@ -317,7 +318,16 @@ describe("how the board shows what it knows", () => {
 });
 
 describe("terrain and roads", () => {
-  const tridentTerrains = ["hill", "tunnels", "grotto", "deepforest", "chasm"] as const;
+  const tridentTerrains = TERRAIN_KINDS;
+
+  it("paints a lake with the ocean's paint where the ruleset calls it water", () => {
+    const svg = draw(beveledTile.TerrainLayer, [{ ...CONGESTED_CENTRE, terrain: "lake" }], {
+      showTextures: false,
+      water: { ocean: "ocean", alsoWater: ["lake"] }
+    });
+
+    expect(svg).toContain("bt-terrain-ocean");
+  });
 
   it("paints each terrain in the board's own palette, falling back rather than vanishing", () => {
     expect(draw(beveledTile.TerrainLayer, [CONGESTED_CENTRE])).toContain("bt-terrain-plain");

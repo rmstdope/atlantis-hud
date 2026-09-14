@@ -26,35 +26,10 @@ import {
   SHIELD_COUNT_DROP,
   workshopAnchors
 } from "./paint";
+import { terrainClassName } from "../terrain";
 
 /** Everything in this theme is drawn at the proposal's radius and shrunk to the map's. */
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
-
-/** Terrain classes, written out in full so Tailwind's scanner is never the reason one vanishes. */
-const TERRAIN_CLASSES: Record<string, string> = {
-  ocean: "ct-terrain-ocean",
-  lake: "ct-terrain-ocean",
-  plain: "ct-terrain-plain",
-  forest: "ct-terrain-forest",
-  mountain: "ct-terrain-mountain",
-  swamp: "ct-terrain-swamp",
-  desert: "ct-terrain-desert",
-  jungle: "ct-terrain-jungle",
-  tundra: "ct-terrain-tundra",
-  volcano: "ct-terrain-volcano",
-  cavern: "ct-terrain-cavern",
-  underforest: "ct-terrain-underforest",
-  wasteland: "ct-terrain-wasteland",
-  hill: "ct-terrain-hill",
-  tunnels: "ct-terrain-tunnels",
-  grotto: "ct-terrain-grotto",
-  deepforest: "ct-terrain-deepforest",
-  chasm: "ct-terrain-chasm"
-};
-
-function pigment(terrain: string): string {
-  return TERRAIN_CLASSES[terrain.toLowerCase()] ?? "ct-terrain-other";
-}
 
 /**
  * The pencil hatching that marks a sighting as held but ageing.
@@ -97,7 +72,7 @@ function TerrainLayer({ views }: LayerProps) {
           <g transform={`scale(${SCALE})`}>
             <polygon
               points={HEX_POINTS_MOCKUP}
-              className={`${pigment(view.terrain)} ct-edge`}
+              className={`${terrainClassName("ct", view.terrainKind)} ct-edge`}
               style={view.texture ? { fill: `url(#${view.texture.patternId})` } : undefined}
               strokeWidth={1.4}
               vectorEffect="non-scaling-stroke"

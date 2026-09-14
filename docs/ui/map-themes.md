@@ -48,6 +48,7 @@ type HexView = {
   key: string;                      // regionId, and the React key
   at: { x: number; y: number };     // world position: a theme needs no geometry of its own
   terrain: string;
+  terrainKind: TerrainPaint;        // what to paint: resolved against the ruleset's water terrains
   texture: { url; patternId } | null;   // null when textures are off
   fogOpacity: number;               // age already resolved into a fade
   hatched: boolean;
@@ -185,9 +186,13 @@ properties in the theme's own `theme.css`, and give **every one of them** a ligh
 `theme.test.ts` enforces the pairing, and also that the stylesheet is imported at all — a theme
 whose CSS nobody imports renders unstyled, and nothing else would say so.
 
-A theme happy with the app's terrain colours calls `terrainFillClass` from `mapHexView.ts` in its
-own `TerrainLayer` rather than declaring a palette of its own. Every theme that ships does declare
-one, so this is an offer rather than a description.
+A theme picks terrain paint by `view.terrainKind`, never by the report's raw `terrain` word: through
+`terrainClassName(prefix, kind)` from `mapThemes/terrain.ts`, or through `terrainFillClass` from
+`mapHexView.ts` for the app's own palette. The kind is already resolved against the ruleset's water
+terrains, so a lake the ruleset calls water arrives as `ocean`. Its stylesheet must declare
+`.<prefix>-terrain-<kind>` for every kind in `TERRAIN_KINDS` plus `other`, which `theme.test.ts`
+enforces. A new terrain is one `TERRAIN_KINDS` entry, one `fill-terrain-*` line in `mapHexView.ts`,
+a biome image, and CSS.
 
 Walls a report proves are drawn by MapCanvas itself, not by a theme layer. A theme gives them their
 colours by overriding `.map-wall-bar` and `.map-wall-ticks` (its strongest ink) and `.map-wall-halo`

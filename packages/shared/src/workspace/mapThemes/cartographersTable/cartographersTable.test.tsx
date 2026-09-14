@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../../../hexMapModel";
 import { FADE_LIMIT } from "../../mapHexView";
+import { TERRAIN_KINDS } from "../terrain";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
 import { allBadges, buildHexViews, dampFog, type HexView, type HexViewOptions } from "../hexView";
 import { cartographersTable } from "./index";
@@ -268,7 +269,16 @@ describe("roads, as an atlas draws them", () => {
 });
 
 describe("terrain, in pigment rather than in the app's own colours", () => {
-  const tridentTerrains = ["hill", "tunnels", "grotto", "deepforest", "chasm"] as const;
+  const tridentTerrains = TERRAIN_KINDS;
+
+  it("paints a lake with the ocean's paint where the ruleset calls it water", () => {
+    const svg = draw(cartographersTable.TerrainLayer, [{ ...CONGESTED_CENTRE, terrain: "lake" }], {
+      showTextures: false,
+      water: { ocean: "ocean", alsoWater: ["lake"] }
+    });
+
+    expect(svg).toContain("ct-terrain-ocean");
+  });
 
   it("paints each terrain in the atlas's own muted palette", () => {
     const svg = draw(cartographersTable.TerrainLayer, [CONGESTED_CENTRE]);

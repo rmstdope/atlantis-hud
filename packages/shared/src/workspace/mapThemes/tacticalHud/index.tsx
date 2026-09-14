@@ -27,34 +27,9 @@ import {
   settlementBox,
   STATIONS
 } from "./paint";
+import { terrainClassName } from "../terrain";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
-
-/** Terrain classes, written out in full so nothing can tree-shake one away. */
-const TERRAIN_CLASSES: Record<string, string> = {
-  ocean: "hud-terrain-ocean",
-  lake: "hud-terrain-ocean",
-  plain: "hud-terrain-plain",
-  forest: "hud-terrain-forest",
-  mountain: "hud-terrain-mountain",
-  swamp: "hud-terrain-swamp",
-  desert: "hud-terrain-desert",
-  jungle: "hud-terrain-jungle",
-  tundra: "hud-terrain-tundra",
-  volcano: "hud-terrain-volcano",
-  cavern: "hud-terrain-cavern",
-  underforest: "hud-terrain-underforest",
-  wasteland: "hud-terrain-wasteland",
-  hill: "hud-terrain-hill",
-  tunnels: "hud-terrain-tunnels",
-  grotto: "hud-terrain-grotto",
-  deepforest: "hud-terrain-deepforest",
-  chasm: "hud-terrain-chasm"
-};
-
-function terrainClass(terrain: string): string {
-  return TERRAIN_CLASSES[terrain.toLowerCase()] ?? "hud-terrain-other";
-}
 
 /** How hard the biome image is dimmed: the readout has to stay a readout. */
 const TEXTURE_TINT = 0.52;
@@ -109,7 +84,7 @@ function TerrainLayer({ views }: LayerProps) {
               */}
               <polygon
                 points={HEX_POINTS_MOCKUP}
-                className={`${terrainClass(view.terrain)} hud-edge`}
+                className={`${terrainClassName("hud", view.terrainKind)} hud-edge`}
                 style={view.texture ? { fill: `url(#${view.texture.patternId})` } : undefined}
                 strokeWidth={1}
                 strokeDasharray={view.knowledge === "named" ? "4 3" : undefined}

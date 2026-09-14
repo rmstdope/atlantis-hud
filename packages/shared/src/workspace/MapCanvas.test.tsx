@@ -10,6 +10,7 @@ import { allBadges } from "./mapThemes/hexView";
 import { terrainTextureBrightness, terrainTextureRotation } from "./mapHexView";
 import { COLUMN_PITCH, ROW_PITCH, worldOf } from "./mapViewport";
 import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
+import type { WaterTerrains } from "./mapThemes/terrain";
 
 /**
  * What the map promises a theme, as opposed to what any one theme does with it.
@@ -72,7 +73,8 @@ function draw(
   battles?: ReadonlyMap<string, "own" | "other">,
   showTextures = false,
   rotateTextures = true,
-  animateWaterTextures = true
+  animateWaterTextures = true,
+  water?: WaterTerrains
 ): string {
   return renderToStaticMarkup(
     <MapCanvas
@@ -88,6 +90,7 @@ function draw(
       showTextures={showTextures}
       rotateTextures={rotateTextures}
       animateWaterTextures={animateWaterTextures}
+      water={water}
       badges={badges}
       notes={notes}
       battles={battles}
@@ -259,6 +262,26 @@ function drawWithRoute(): string {
 }
 
 describe("what the map hands a theme", () => {
+  it("resolves terrain against the water terrains it is given", () => {
+    const kinds: MapTheme = {
+      ...probe(),
+      TerrainLayer: ({ views }: LayerProps) => (
+        <g>
+          {views.map((view) => (
+            <g key={view.key} data-region={view.key} data-kind={view.terrainKind} />
+          ))}
+        </g>
+      )
+    };
+    const withWater = (water?: WaterTerrains) =>
+      draw(kinds, [], allBadges(true), undefined, false, true, true, water);
+
+    expect(withWater({ ocean: "ocean", alsoWater: ["mountain"] })).toContain(
+      'data-region="1:7,51" data-kind="ocean"'
+    );
+    expect(withWater()).toContain('data-region="1:7,51" data-kind="mountain"');
+  });
+
   it("defines a stable rotated texture pattern for textured ground", () => {
     const svg = draw(probe(), [], allBadges(true), undefined, true);
     const rotation = terrainTextureRotation("1:7,51");

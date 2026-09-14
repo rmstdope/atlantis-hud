@@ -66,6 +66,7 @@ import { radii } from "./mapThemes/geometry";
 import { buildHexViews, type BadgeName, type HexView } from "./mapThemes/hexView";
 import type { BattleInvolvement } from "./battles";
 import type { MapTheme } from "./mapThemes/mapTheme";
+import { DEFAULT_WATER, type WaterTerrains } from "./mapThemes/terrain";
 import {
   BADGE,
   drawsNotes,
@@ -379,8 +380,10 @@ type MapCanvasProps = {
   showTextures: boolean;
   /** Whether each biome texture is rotated by its stable per-hex angle. */
   rotateTextures?: boolean;
-  /** Whether ocean and lake textures scroll continuously along their texture axis. */
+  /** Whether water textures scroll continuously along their texture axis. */
   animateWaterTextures?: boolean;
+  /** The world's water terrains, from the ruleset. Defaults to DEFAULT_WATER. */
+  water?: WaterTerrains;
   /** Which marks the themes may draw over the terrain, one flag per kind. */
   badges: Record<BadgeName, boolean>;
   /**
@@ -469,6 +472,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     showTextures,
     rotateTextures = true,
     animateWaterTextures = true,
+    water = DEFAULT_WATER,
     badges,
     route = null,
     arrow = null,
@@ -535,6 +539,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       showTextures,
       rotateTextures,
       animateWaterTextures,
+      water,
       badges,
       battles,
       fogDamping: theme.fogDamping
@@ -544,6 +549,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       showTextures,
       rotateTextures,
       animateWaterTextures,
+      water,
       badges,
       battles,
       theme.fogDamping

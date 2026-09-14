@@ -239,6 +239,7 @@ import { loadSavedView, saveMapView } from "./mapViewportStorage";
 import { unitForHex } from "./hexUnitMemory";
 import type { MapViewState } from "./mapViewState";
 import { getMapTheme } from "./mapThemes";
+import { waterTerrainsOf } from "./mapThemes/terrain";
 import { OrdersPanel } from "./OrdersPanel";
 import { formedSelectionFor } from "./ordersLock";
 import type { OrdersEditorHandle } from "./OrdersEditor";
@@ -639,6 +640,9 @@ export function AppShell({
     () => (rulesetText === null ? null : parseGameData(rulesetText)),
     [rulesetText]
   );
+  // Which terrain words are water in this world, for the map's paint. Memoised so the map's view
+  // options are not rebuilt on unrelated renders.
+  const water = useMemo(() => waterTerrainsOf(rulesetText), [rulesetText]);
   /** Null while the dictionary is closed; `entryId` is where it should land, or null for the top. */
   const [gameDataOpen, setGameDataOpen] = useState<{ entryId: string | null } | null>(null);
   // The magic study tree, derived from the same index and gated the same way: no ruleset, no tree.
@@ -5345,6 +5349,7 @@ export function AppShell({
           showTextures={showTextures}
           rotateTextures={rotateTextures}
           animateWaterTextures={animateWaterTextures}
+          water={water}
           badges={badges}
           route={chooseRouteOverlay({
             movementLayerOn: layers.movement,
