@@ -74,6 +74,21 @@ pub fn utf16_column(line: &str, byte_offset: usize) -> usize {
     line[..byte_offset].encode_utf16().count()
 }
 
+/// The byte offset of a UTF-16 column within `line` - the inverse of [`utf16_column`], for a
+/// caller that has a token's columns and needs to slice the line's own text.
+/// A column past the end of the line answers `line.len()`.
+#[must_use]
+pub fn byte_offset(line: &str, utf16_column: usize) -> usize {
+    let mut column = 0;
+    for (index, ch) in line.char_indices() {
+        if column >= utf16_column {
+            return index;
+        }
+        column += ch.len_utf16();
+    }
+    line.len()
+}
+
 /// One line, split.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LexedLine {
@@ -228,6 +243,15 @@ fn is_number(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn byte_offset_inverts_utf16_column_on_a_line_with_an_accent() {
+        let line = "SELL ALL FUR EXCEPT dé x";
+        for (boundary, _) in line.char_indices().chain([(line.len(), ' ')]) {
+            assert_eq!(byte_offset(line, utf16_column(line, boundary)), boundary);
+        }
+        assert_eq!(byte_offset(line, 999), line.len());
+    }
 
     fn texts(line: &str) -> Vec<String> {
         lex_line(line, None)

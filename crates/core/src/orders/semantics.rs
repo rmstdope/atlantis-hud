@@ -18401,6 +18401,97 @@ mod tests {
         assert_eq!(review.silver[0].doubt, None);
     }
 
+    /// `ah-em79`. `SELL` has no `EXCEPT` (`rules/sell`): the game ignores the reserve, so the
+    /// column counts the sale exactly as the order without it.
+    #[test]
+    fn a_sale_with_an_ignored_except_is_counted_as_the_game_sells_it() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 40,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 24,
+            }],
+            ..region(vec![with_item(unit("2390"), 30, "furs", "FUR")])
+        };
+        let silver = |orders: &str| {
+            review_turn(
+                &report(vec![hex.clone()]),
+                &format!("unit 2390\n{orders}\n"),
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+            .silver
+        };
+
+        let except = silver("SELL ALL FUR EXCEPT 10");
+        assert_eq!(except[0].income, Some(720));
+        assert_eq!(except[0].doubt, None);
+        assert_eq!(except, silver("SELL ALL FUR"));
+        assert_eq!(silver("SELL 25 FUR EXCEPT 10"), silver("SELL 25 FUR"));
+    }
+
+    /// `ah-em79`. `BUY` has no `EXCEPT` either (`rules/buy`).
+    #[test]
+    fn a_purchase_with_an_ignored_except_is_counted_as_the_game_buys_it() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 12,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 10,
+            }],
+            ..region(vec![with_silver(unit("2390"), 100)])
+        };
+        let silver = |orders: &str| {
+            review_turn(
+                &report(vec![hex.clone()]),
+                &format!("unit 2390\n{orders}\n"),
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+            .silver
+        };
+
+        assert_eq!(silver("BUY 3 grain EXCEPT 1"), silver("BUY 3 grain"));
+        assert_eq!(silver("BUY ALL grain EXCEPT 1"), silver("BUY ALL grain"));
+    }
+
+    /// `ah-em79`. The order is read as the game reads it, so its market findings still apply.
+    #[test]
+    fn a_sale_with_an_ignored_except_still_gets_its_market_findings() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 42,
+            }],
+            ..region(vec![
+                with_item(unit("2390"), 10, "furs", "FUR"),
+                unit("5512"),
+            ])
+        };
+
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2390\nGIVE 5512 10 FUR\nSELL ALL FUR EXCEPT 10\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let findings: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "nothing-left-to-sell")
+            .collect();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].message,
+            "this unit gives away all 10 of its furs before the market opens, so this sells nothing"
+        );
+    }
+
     /// `ah-q7jd`. The ledger's credit, the column's income and the unit's market share must all
     /// settle a `SELL ALL` against one holding, not three - this is the bead's acceptance
     /// criterion written as a test.
@@ -19276,11 +19367,10 @@ mod tests {
             .any(|finding| finding.code.as_str() == "nothing-left-to-sell"));
     }
 
-    /// `ah-q7jd`, increment 8. The `EXCEPT` reserve is deliberately not consulted: a reserve only
-    /// bites when something survives to the market, so a stock nothing moved away is silent
-    /// whatever the reserve says.
+    /// `ah-q7jd`, increment 8. `SELL` has no `EXCEPT` (`rules/sell`), so the reserve is ignored as
+    /// the game ignores it; a stock nothing moved away is silent however the line ends.
     #[test]
-    fn a_sale_whose_except_reserve_takes_the_rest_is_not_warned() {
+    fn a_sale_with_an_ignored_except_and_its_stock_intact_is_not_warned() {
         let hex = ReportRegion {
             wanted: vec![MarketItem {
                 amount: 100,
