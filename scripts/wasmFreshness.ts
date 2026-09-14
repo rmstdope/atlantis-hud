@@ -7,6 +7,9 @@
  * fingerprint (tens of milliseconds) and, when it no longer matches, waits for a rebuild; a failed
  * rebuild answers 503 rather than serving the stale core.
  *
+ * Only page loads are held. A tab already open during or after a rebuild can still fetch the core's
+ * files as wasm-pack leaves them, so the guarantee is the next page load, not an open tab.
+ *
  * `vite` does not resolve from `scripts/`, so the few shapes needed are declared structurally.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";

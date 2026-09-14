@@ -114,6 +114,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     await buildWasm(root);
   } catch (error) {
     if (error instanceof WasmBuildError) process.exit(error.exitCode);
+    // wasm-pack could not be started at all (not installed, say): exit 1 as spawnSync used to.
+    if (error && typeof error === "object" && "syscall" in error) {
+      console.error(`could not run wasm-pack: ${error.message}`);
+      process.exit(1);
+    }
     throw error;
   }
 }
