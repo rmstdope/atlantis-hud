@@ -86,9 +86,10 @@ const STUDENTS_PER_TEACHER: i64 = 10;
 /// An advisory check's code, as the shell, the settings and the diagnostics know it.
 ///
 /// Constructible only through the constants in [`codes`]: the field is private and `codes` is the
-/// one child module, so a finding cannot be emitted under a code that is not in `codes::ALL` or `codes::ALWAYS_ON`. That
-/// is the guarantee `ah-m9q.2` had to add by hand when `teacher-has-free-slots` shipped as a bare
-/// literal missing from both this list and the shell's copy.
+/// one child module, so a finding cannot be emitted under a code that is not in `codes::ALL` or
+/// `codes::ALWAYS_ON`. That is the guarantee `ah-m9q.2` had to add by hand when
+/// `teacher-has-free-slots` shipped as a bare literal missing from both this list and the shell's
+/// copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Code(&'static str);
 
@@ -14400,15 +14401,6 @@ fn check_sail_route(
     }
 }
 
-/// A route through an inner passage, which no report says the far side of.
-///
-/// `rules/move`, direction 4: "IN, which will move through an inner passage in the structure that
-/// the unit is currently in", and `rules/tableitemweights`: the passage leads to another region.
-/// Nothing in a report, and nothing in the game data, names which region that is - so the steps
-/// ordered after the passage cannot be placed on any map the faction has.
-///
-/// Geography, not load, exactly as [`check_sail_route`] is: who else stands in the hex cannot make
-/// this doubtful.
 /// A MOVE that would cross a wall a report proves, on the line holding the blocked step.
 ///
 /// The wall itself is worked out beside the remembered map (`effects::walled_moves`), from the
@@ -14444,6 +14436,15 @@ fn check_walls(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding
     }
 }
 
+/// A route through an inner passage, which no report says the far side of.
+///
+/// `rules/move`, direction 4: "IN, which will move through an inner passage in the structure that
+/// the unit is currently in", and `rules/tableitemweights`: the passage leads to another region.
+/// Nothing in a report, and nothing in the game data, names which region that is - so the steps
+/// ordered after the passage cannot be placed on any map the faction has.
+///
+/// Geography, not load, exactly as [`check_sail_route`] is: who else stands in the hex cannot make
+/// this doubtful.
 fn check_passages(
     hex: &Hex<'_>,
     by_coordinate: &HashMap<Coordinate, &ReportRegion>,
@@ -15427,9 +15428,6 @@ mod tests {
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
-    /// `ah-v9p2`. The Silver column's warning marker is a property of the finding, declared beside
-    /// the findings; this pins that the list cannot name a code that does not exist, and cannot be
-    /// vacuously empty.
     #[test]
     fn the_wall_warning_has_no_switch() {
         assert!(codes::ALWAYS_ON.contains(&codes::MOVE_INTO_A_WALL));
@@ -15438,6 +15436,9 @@ mod tests {
         assert_eq!(codes::MOVE_INTO_A_WALL.as_str(), "move-into-a-wall");
     }
 
+    /// `ah-v9p2`. The Silver column's warning marker is a property of the finding, declared beside
+    /// the findings; this pins that the list cannot name a code that does not exist, and cannot be
+    /// vacuously empty.
     #[test]
     fn every_silver_trouble_code_is_a_real_code() {
         assert!(!codes::SILVER_TROUBLE.is_empty());
