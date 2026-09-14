@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Walls between hexes — a move that walks into a wall</title>
+<style>
+  :root { --page:#10151c; --ink:#d7dee8; --dim:#8a94a3; --card:#171e28; --line:#2a3442; --brass:#e0b25a; --risk:#e0685a; }
+  body { background:var(--page); color:var(--ink); font:14px/1.5 system-ui,sans-serif; margin:0; padding:24px 32px 64px; }
+  h1 { font-size:20px; margin:0 0 6px; } h2 { font-size:16px; margin:0 0 4px; }
+  p.note { color:var(--dim); max-width:80ch; }
+  .variant { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin:18px 0; }
+  .cost { color:var(--dim); font-size:13px; margin:0 0 12px; max-width:84ch; }
+  .row { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+  svg { display:block; border-radius:6px; background:#1b212a; }
+  .problems { width:420px; max-width:100%; background:#131922; border:1px solid var(--line); border-radius:6px; font-size:13px; }
+  .problems .hd { padding:6px 10px; border-bottom:1px solid var(--line); color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  .problems .it { padding:8px 10px; display:flex; gap:8px; }
+  .problems .dot { width:8px; height:8px; border-radius:50%; background:var(--risk); margin-top:6px; flex:none; }
+  .problems .who { color:var(--dim); font-size:12px; }
+  .orders { font:12px/1.6 ui-monospace,monospace; background:#0f141b; border:1px solid var(--line); border-radius:6px; padding:8px 10px; width:420px; max-width:100%; box-sizing:border-box; margin-bottom:10px; }
+  .orders .bad { text-decoration: underline wavy var(--risk); text-underline-offset:3px; }
+  code { color:#9fc3dd; }
+</style>
+</head>
+<body>
+<h1>A move that walks into a wall</h1>
+<p class="note">The same underground piece in the app's default map. A unit in <b>Ciestucshire (9,3)</b> has the order
+<code>MOVE N NW</code>. North of Ciestucshire is a wall, because the report lists no exit that way. The route planner already
+never plans through a wall, so the only question here is what the map and the Problems list show for an order someone
+typed by hand.</p>
+<p class="note">The game's rules do not say what happens when a unit moves toward a side with no exit. They only say that a
+move that fails stops the rest of that unit's moves. Neither option claims more than that.</p>
+
+<div class="variant"><h2>Option R1: the route becomes uncertain at the wall</h2>
+<p class="cost">The route is drawn solid up to the wall, a small red cross sits on the wall where it hits, and the rest of the
+route is dashed. That dashing is what the map already does when the sea stops a route, so it needs nothing new to learn. You still see
+where the order was heading.</p>
+<div class="row"><div id="r1"></div>
+<div><div class="orders">unit 3521 &nbsp;<span style="color:#8a94a3">; Ciestucshire Chieftain</span><br>MOVE <span class="bad">N</span> NW</div>
+<div class="problems"><div class="hd">Problems</div>
+<div class="it"><span class="dot"></span><div>There is no exit North from Ciestucshire (9,3,2): the report shows a wall on that side.
+<div class="who">Ciestucshire Chieftain (3521) &middot; MOVE N NW</div></div></div></div></div></div></div>
+
+<div class="variant"><h2>Option R2: the route ends at the wall</h2>
+<p class="cost">The route is drawn to the wall and stops with a red bar across its tip. Nothing is drawn past it. It is the clearest
+picture of "you can't go this way", but you no longer see where the rest of the order was heading.</p>
+<div class="row"><div id="r2"></div>
+<div><div class="orders">unit 3521 &nbsp;<span style="color:#8a94a3">; Ciestucshire Chieftain</span><br>MOVE <span class="bad">N</span> NW</div>
+<div class="problems"><div class="hd">Problems</div>
+<div class="it"><span class="dot"></span><div>MOVE N runs into a wall: Ciestucshire (9,3,2) has no exit North.
+<div class="who">Ciestucshire Chieftain (3521) &middot; MOVE N NW</div></div></div></div></div></div></div>
+
+<p class="note">The two Problems lines are different wordings on purpose, so you can pick either wording with either picture.
+The walls here are drawn in the look chosen on the other page (shown as Option A until then).</p>
+
+<script>
+const S3=Math.sqrt(3), R=40;
+const OFF={N:[0,-2],NE:[1,-1],SE:[1,1],S:[0,2],SW:[-1,1],NW:[-1,-1]};
+const EDGE={SE:[0,1],S:[1,2],SW:[2,3],NW:[3,4],N:[4,5],NE:[5,0]};
+const EX={"9,1":["NE","NW"],"7,3":["N","NE","SE","S","NW"],"9,3":["SE","S","NW"],"11,5":["N","NE","NW"]};
+const TERR={"9,1":"#3a3a44","10,0":"#3a3a44","8,0":"#3a3a44","7,3":"#3a3a44","7,1":"#3a3a44","8,2":"#3a3a44","9,3":"#3a3a44",
+  "6,2":"#2a4433","8,4":"#2a4433","7,5":"#2a4433","10,4":"#2a4433","9,5":"#2a4433","11,5":"#2a4433","11,3":"#2a4433","12,4":"#2a4433"};
+const ox=-5.3*1.5*R, oy=-0.4*R;
+const P=(x,y)=>[ox+x*1.5*R, oy+(y+1)*(S3/2)*R];
+const C=(cx,cy,r)=>[0,1,2,3,4,5].map(k=>[cx+r*Math.cos(k*Math.PI/3),cy+r*Math.sin(k*Math.PI/3)]);
+function base(){
+  let s=`<svg width="360" height="300" viewBox="0 0 360 300">`;
+  for(let x=5;x<=13;x++) for(let y=-2;y<=8;y++){ if((x+y)%2) continue;
+    const [cx,cy]=P(x,y), f=TERR[x+","+y]||"#232932";
+    s+=`<polygon points="${C(cx,cy,R).map(p=>p.join(",")).join(" ")}" fill="${f}" stroke="#0a0e13" stroke-width="1"/>`; }
+  for(const [k,d] of Object.entries(EX)){ const [x,y]=k.split(",").map(Number);
+    for(const dir of Object.keys(OFF)) if(!d.includes(dir)){ const c=C(...P(x,y),R),[a,b]=EDGE[dir];
+      s+=`<line x1="${c[a][0]}" y1="${c[a][1]}" x2="${c[b][0]}" y2="${c[b][1]}" stroke="#d7dee8" stroke-opacity=".55" stroke-width="8" stroke-linecap="round"/><line x1="${c[a][0]}" y1="${c[a][1]}" x2="${c[b][0]}" y2="${c[b][1]}" stroke="#08090b" stroke-width="5" stroke-linecap="round"/>`; } }
+  for(const [k,n] of [["9,3","Ciestucshire"],["9,1","(9,1)"],["8,0","(8,0)"]]){ const [x,y]=k.split(",").map(Number),[cx,cy]=P(x,y);
+    s+=`<text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="10" fill="#d7dee8" opacity=".85">${n}</text>`; }
+  return s;
+}
+function line(pts,dash){ const d=pts.map(p=>p.join(",")).join(" ");
+  return `<polyline points="${d}" fill="none" stroke="#1b212a" stroke-width="9" stroke-linejoin="round" stroke-linecap="round" ${dash?'stroke-dasharray="8 7"':''}/>`+
+         `<polyline points="${d}" fill="none" stroke="#e0b25a" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" ${dash?'stroke-dasharray="8 7"':''}/>`; }
+const a=P(9,3), c=C(...a,R), wall=[(c[4][0]+c[5][0])/2,(c[4][1]+c[5][1])/2], b=P(9,1), d=P(8,0);
+function unit(){ return `<circle cx="${a[0]}" cy="${a[1]-6}" r="6" fill="#4caf7d" stroke="#0a0e13" stroke-width="1.5"/>`; }
+function cross(x,y){ return `<g stroke="#1b212a" stroke-width="6" stroke-linecap="round"><line x1="${x-6}" y1="${y-6}" x2="${x+6}" y2="${y+6}"/><line x1="${x-6}" y1="${y+6}" x2="${x+6}" y2="${y-6}"/></g>`+
+  `<g stroke="#e0685a" stroke-width="3" stroke-linecap="round"><line x1="${x-6}" y1="${y-6}" x2="${x+6}" y2="${y+6}"/><line x1="${x-6}" y1="${y+6}" x2="${x+6}" y2="${y-6}"/></g>`; }
+document.getElementById("r1").innerHTML = base()+line([[a[0],a[1]-6],[wall[0],wall[1]+4]])+line([[wall[0],wall[1]],b,d],true)+cross(...wall)+unit()+"</svg>";
+document.getElementById("r2").innerHTML = base()+line([[a[0],a[1]-6],[wall[0],wall[1]+8]])+
+  `<line x1="${wall[0]-10}" y1="${wall[1]+8}" x2="${wall[0]+10}" y2="${wall[1]+8}" stroke="#1b212a" stroke-width="7" stroke-linecap="round"/><line x1="${wall[0]-9}" y1="${wall[1]+8}" x2="${wall[0]+9}" y2="${wall[1]+8}" stroke="#e0685a" stroke-width="4" stroke-linecap="round"/>`+unit()+"</svg>";
+</script>
+</body>
+</html>
