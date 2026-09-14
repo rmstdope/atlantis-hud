@@ -13,6 +13,15 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { ADVISORY_CHECK_CODES, type AdvisoryCheckCode } from "@atlantis/core-client";
 import { normalizeSnippets, type OrderSnippet } from "./orderSnippets";
 import { DEFAULT_MAP_THEME_ID, isMapThemeId } from "./workspace/mapThemes";
+import {
+  booleanSettingDefaults,
+  pickBooleanSettings,
+  reconcileBooleanSettings,
+  type BooleanSettingKey,
+  type BooleanSettings
+} from "./booleanSettings";
+
+export { BOOLEAN_SETTINGS, type BooleanSettingKey } from "./booleanSettings";
 
 export type ThemeName = "dark" | "light";
 
@@ -74,7 +83,8 @@ export function disabledAdvisoryCodes(checks: AdvisoryChecks): AdvisoryCheckCode
   return ADVISORY_CHECK_CODES.filter((code) => !checks[code]);
 }
 
-export type SettingsState = {
+/** The on/off settings are declared in `BOOLEAN_SETTINGS`, and arrive here as top-level keys. */
+export type SettingsState = BooleanSettings & {
   theme: ThemeName;
   /**
    * Which of the map's hex renderings the world map draws with, by registry id.
@@ -84,9 +94,6 @@ export type SettingsState = {
    * not this store's.
    */
   mapTheme: string;
-  biomeTextures: boolean;
-  biomeTextureRotation: boolean;
-  animateWaterTextures: boolean;
   /**
    * How see-through the panes floating over the map are, in percent.
    *
@@ -108,35 +115,6 @@ export type SettingsState = {
    */
   advisoryChecks: AdvisoryChecks;
   /**
-   * Whether the Movement pane shows at all. A feature flag rather than a preference: the planner
-   * is the one piece of the workspace still finding its shape, so it starts off and stays off
-   * until asked for.
-   */
-  movementPlanner: boolean;
-  /**
-   * Whether the orders editor uppercases the command keywords as they are typed (Order OCD).
-   *
-   * Off by default: orders are case-insensitive to the engine, so this is purely a matter of how
-   * the player likes their turn to read.
-   */
-  orderOcd: boolean;
-  /**
-   * Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`).
-   *
-   * On by default: upkeep is a real cost every month and a player who ignores it starves. It is a
-   * setting at all because the fee is pooled regionally by the game, so a per-unit figure is
-   * pessimistic and some players will prefer the column without it.
-   */
-  countUpkeep: boolean;
-  /**
-   * Whether the keyboard shortcuts overlay shows itself when the application starts.
-   *
-   * On by default, and the only piece of the interface that appears uninvited. It earns that: the
-   * overlay is opened by a key, so the player who most needs it is exactly the one who cannot find
-   * it. Turning it off is offered inside the overlay itself, next to the reason for wanting to.
-   */
-  showShortcutsAtStartup: boolean;
-  /**
    * The player's order snippets, insertable by name from the editor's completion popup.
    * Global on purpose: a patrol block is the same routine whichever game it is typed into.
    */
@@ -144,16 +122,11 @@ export type SettingsState = {
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
   setMapTheme: (id: string) => void;
-  setBiomeTextures: (enabled: boolean) => void;
-  setBiomeTextureRotation: (enabled: boolean) => void;
-  setAnimateWaterTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
   setInterfaceSize: (percent: number) => void;
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
-  setMovementPlanner: (enabled: boolean) => void;
-  setOrderOcd: (value: boolean) => void;
-  setCountUpkeep: (value: boolean) => void;
-  setShowShortcutsAtStartup: (enabled: boolean) => void;
+  /** Turns one of `BOOLEAN_SETTINGS` on or off. */
+  setFlag: (key: BooleanSettingKey, value: boolean) => void;
   addSnippet: (snippet: OrderSnippet) => void;
   updateSnippet: (id: string, changes: Pick<OrderSnippet, "name" | "body">) => void;
   removeSnippet: (id: string) => void;
@@ -161,20 +134,9 @@ export type SettingsState = {
 
 type Persisted = Pick<
   SettingsState,
-  | "theme"
-  | "mapTheme"
-  | "biomeTextures"
-  | "biomeTextureRotation"
-  | "animateWaterTextures"
-  | "paneTransparency"
-  | "interfaceSize"
-  | "advisoryChecks"
-  | "movementPlanner"
-  | "orderOcd"
-  | "countUpkeep"
-  | "showShortcutsAtStartup"
-  | "snippets"
->;
+  "theme" | "mapTheme" | "paneTransparency" | "interfaceSize" | "advisoryChecks" | "snippets"
+> &
+  BooleanSettings;
 
 /**
  * Stamps the theme where the stylesheet can see it. The dark tokens are the `:root` defaults, and
@@ -324,16 +286,10 @@ const STORAGE = createJSONStorage<Persisted>(() => {
 const DEFAULTS: Persisted = {
   theme: "dark",
   mapTheme: DEFAULT_MAP_THEME_ID,
-  biomeTextures: true,
-  biomeTextureRotation: true,
-  animateWaterTextures: true,
+  ...booleanSettingDefaults(),
   paneTransparency: { ...DEFAULT_PANE_TRANSPARENCY },
   interfaceSize: DEFAULT_INTERFACE_SIZE,
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
-  movementPlanner: false,
-  orderOcd: false,
-  countUpkeep: true,
-  showShortcutsAtStartup: true,
   snippets: []
 };
 
@@ -355,18 +311,6 @@ export const useSettingsStore = create<SettingsState>()(
         set({ mapTheme: knownMapTheme(id) });
       },
 
-      setBiomeTextures: (biomeTextures) => {
-        set({ biomeTextures });
-      },
-
-      setBiomeTextureRotation: (biomeTextureRotation) => {
-        set({ biomeTextureRotation });
-      },
-
-      setAnimateWaterTextures: (animateWaterTextures) => {
-        set({ animateWaterTextures });
-      },
-
       setPaneTransparency: (percent) => {
         // The slider always means the theme the player is looking at.
         const theme = get().theme;
@@ -385,20 +329,8 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({ advisoryChecks: { ...state.advisoryChecks, [code]: enabled } }));
       },
 
-      setMovementPlanner: (movementPlanner) => {
-        set({ movementPlanner });
-      },
-
-      setOrderOcd: (orderOcd) => {
-        set({ orderOcd });
-      },
-
-      setCountUpkeep: (countUpkeep) => {
-        set({ countUpkeep });
-      },
-
-      setShowShortcutsAtStartup: (showShortcutsAtStartup) => {
-        set({ showShortcutsAtStartup });
+      setFlag: (key, value) => {
+        set({ [key]: value } as Pick<BooleanSettings, typeof key>);
       },
 
       addSnippet: (snippet) => {
@@ -425,16 +357,10 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         theme: state.theme,
         mapTheme: state.mapTheme,
-        biomeTextures: state.biomeTextures,
-        biomeTextureRotation: state.biomeTextureRotation,
-        animateWaterTextures: state.animateWaterTextures,
+        ...pickBooleanSettings(state),
         paneTransparency: state.paneTransparency,
         interfaceSize: state.interfaceSize,
         advisoryChecks: state.advisoryChecks,
-        movementPlanner: state.movementPlanner,
-        orderOcd: state.orderOcd,
-        countUpkeep: state.countUpkeep,
-        showShortcutsAtStartup: state.showShortcutsAtStartup,
         snippets: state.snippets
       })
     }
@@ -468,6 +394,9 @@ export function applyPersistedSettings() {
   useSettingsStore.setState({
     snippets: normalizeSnippets(useSettingsStore.getState().snippets)
   });
+  // Same door for the on/off settings: a stored boolean is a choice and is kept, anything else
+  // (a string, a number, a missing key) takes that setting's default.
+  useSettingsStore.setState(reconcileBooleanSettings(useSettingsStore.getState()));
   // Migration, not clamping: a player who ticked the old "warn about unguarded hexes" checkbox has
   // `warnOnUnguardedHex: true` sitting in storage under a key this build no longer declares.
   // Rehydration merges unknown keys into state anyway (zustand's default merge does not filter by

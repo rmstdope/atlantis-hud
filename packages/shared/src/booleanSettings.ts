@@ -97,9 +97,15 @@ export const BOOLEAN_SETTINGS = {
 export type BooleanSettingKey = keyof typeof BOOLEAN_SETTINGS;
 export type BooleanSettings = Record<BooleanSettingKey, boolean>;
 
-/** Fails to compile when a `requires` names something that is not a boolean setting. */
-const REQUIRES_NAMES_A_SETTING: Record<BooleanSettingKey, { requires?: BooleanSettingKey }> =
-  BOOLEAN_SETTINGS;
+/**
+ * Fails to compile when a `requires` names something that is not a boolean setting. `testId` is
+ * in the shape only so it is not a weak type, which TypeScript refuses to match against an entry
+ * that has no `requires` at all.
+ */
+const REQUIRES_NAMES_A_SETTING: Record<
+  BooleanSettingKey,
+  { testId: string; requires?: BooleanSettingKey }
+> = BOOLEAN_SETTINGS;
 void REQUIRES_NAMES_A_SETTING;
 
 /** Every key, in table order. */

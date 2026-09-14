@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import {
   applyPersistedSettings,
+  BOOLEAN_SETTINGS,
   DEFAULT_ADVISORY_CHECKS,
   disabledAdvisoryCodes,
   resetSettingsStore,
@@ -9,6 +10,7 @@ import {
 } from "./settingsStore";
 import type { AdvisoryChecks, ThemeName } from "./settingsStore";
 import { DEFAULT_MAP_THEME_ID, MAP_THEMES } from "./workspace/mapThemes";
+import { BOOLEAN_SETTING_KEYS } from "./booleanSettings";
 
 const store = () => useSettingsStore.getState();
 
@@ -110,7 +112,7 @@ describe("settings store", () => {
 
   it("persists the Order OCD preference", async () => {
     expect(store().orderOcd).toBe(false);
-    store().setOrderOcd(true);
+    store().setFlag("orderOcd", true);
     expect(store().orderOcd).toBe(true);
 
     const storage = useSettingsStore.persist.getOptions().storage;
@@ -128,7 +130,7 @@ describe("settings store", () => {
 
   it("counts upkeep by default, and persists the preference", async () => {
     expect(store().countUpkeep).toBe(true);
-    store().setCountUpkeep(false);
+    store().setFlag("countUpkeep", false);
     expect(store().countUpkeep).toBe(false);
 
     const storage = useSettingsStore.persist.getOptions().storage;
@@ -219,7 +221,7 @@ describe("settings store", () => {
   });
 
   it("persists the biome texture preference", async () => {
-    store().setBiomeTextures(false);
+    store().setFlag("biomeTextures", false);
     expect(store().biomeTextures).toBe(false);
 
     const storage = useSettingsStore.persist.getOptions().storage;
@@ -236,7 +238,7 @@ describe("settings store", () => {
   });
 
   it("persists the biome texture rotation preference", async () => {
-    store().setBiomeTextureRotation(false);
+    store().setFlag("biomeTextureRotation", false);
     expect(store().biomeTextureRotation).toBe(false);
 
     const storage = useSettingsStore.persist.getOptions().storage;
@@ -253,7 +255,7 @@ describe("settings store", () => {
   });
 
   it("persists the water texture animation preference", async () => {
-    store().setAnimateWaterTextures(false);
+    store().setFlag("animateWaterTextures", false);
     expect(store().animateWaterTextures).toBe(false);
 
     const storage = useSettingsStore.persist.getOptions().storage;
@@ -267,6 +269,33 @@ describe("settings store", () => {
     await useSettingsStore.persist.rehydrate();
 
     expect(store().animateWaterTextures).toBe(false);
+  });
+
+  it("persists every boolean setting, whichever it is", async () => {
+    for (const key of BOOLEAN_SETTING_KEYS) {
+      const flipped = !BOOLEAN_SETTINGS[key].default;
+      store().setFlag(key, flipped);
+
+      const storage = useSettingsStore.persist.getOptions().storage;
+      const persisted = await storage?.getItem("atlantis-hud-settings");
+      if (!storage || !persisted) {
+        throw new Error("settings storage was not available");
+      }
+
+      useSettingsStore.setState({ [key]: !flipped });
+      await storage.setItem("atlantis-hud-settings", persisted);
+      await useSettingsStore.persist.rehydrate();
+
+      expect(store()[key], key).toBe(flipped);
+    }
+  });
+
+  it("reconciles a boolean setting storage kept as a string to its default", () => {
+    useSettingsStore.setState({ countUpkeep: "false" as never });
+
+    applyPersistedSettings();
+
+    expect(store().countUpkeep).toBe(true);
   });
 
   it("stamps the chosen theme onto the document root", () => {
@@ -566,7 +595,7 @@ describe("settings store", () => {
   });
 
   it("persists the movement planner flag", async () => {
-    store().setMovementPlanner(true);
+    store().setFlag("movementPlanner", true);
     expect(store().movementPlanner).toBe(true);
 
     const storage = useSettingsStore.persist.getOptions().storage;
@@ -583,7 +612,7 @@ describe("settings store", () => {
   });
 
   it("resets the movement planner flag to off", () => {
-    store().setMovementPlanner(true);
+    store().setFlag("movementPlanner", true);
 
     resetSettingsStore();
 
@@ -666,7 +695,7 @@ describe("settings store", () => {
   });
 
   it("remembers being told not to show it", async () => {
-    store().setShowShortcutsAtStartup(false);
+    store().setFlag("showShortcutsAtStartup", false);
     expect(store().showShortcutsAtStartup).toBe(false);
 
     const storage = useSettingsStore.persist.getOptions().storage;
@@ -720,7 +749,7 @@ describe("settings store", () => {
   });
 
   it("resets the startup preference with everything else", () => {
-    store().setShowShortcutsAtStartup(false);
+    store().setFlag("showShortcutsAtStartup", false);
 
     resetSettingsStore();
 
