@@ -1,0 +1,21 @@
+# ah-7ale.4 — retrospective
+
+- **Implementer:** Storm
+- **Date:** 2026-09-14
+- **PR:** #1244
+
+## The plan said every existing preview transport test would stay green; six broke because their senders held no silver
+
+**What happened.** The plan's *Test plan* said "Every existing shipping test must stay green, notably … every `reach_*` test in `effects.rs`", and named one test as the only deliberate rewrite. After wiring the ledger's refusal into the item preview, `cargo test -p atlantis-hud-core` failed six existing `effects.rs` tests: `a_quartermaster_ships_as_far_as_its_own_skill_allows`, plus five in `mod transport` (`one_sender_s_places_survive_being_split_across_phases`, `a_unit_whose_transports_net_to_nothing_is_still_sent`, `transports_settle_by_phase_rather_than_by_document_order`, `an_item_moves_only_once_in_a_transport_phase`, `transport_annotations_remain_in_document_order`). Their fixtures (`reach_report`, `report_across_two_hexes`, `quartermaster_chain_report`) ship over priced distances from quartermasters holding no silver. The preview used to ignore the price; under this bead those shipments are correctly refused. Giving the senders silver fixed it, but 1000 did not: stone is heavy enough that a 10–30 stone hop costs thousands, so it took a second pass at 100000.
+**Why.** The plan checked which tests pinned the old *silver* behaviour, but not which preview tests relied on a shipment going through regardless of price. The refusal reaches the preview only in this bead, so every preview fixture shipping a priced distance changed meaning at once.
+**Cost.** Three extra test runs and about 20 minutes of diagnosis, including a debug `eprintln!` pass to show that the refusal key did match and the bill was simply bigger than the fixture's silver.
+**Prevent by.** In `plan-bead`'s *Test plan*, when a plan turns a figure that was only reported (here, a price) into one that gates an effect (here, whether goods move), grep the existing tests of that effect for fixtures that never supply the figure — for this bead, `effects.rs` fixtures with a `quartermaster [QUAM]` sender and no `silver [SILV]` — and name them as expected edits instead of promising they stay green.
+**Seen before.** ah-1wcw.4 (a new cost charged to every unit broke 157 fixtures the plan did not foresee); ah-agbm (the plan's regression net named tests as unedited that its own increments broke). Third sighting of a plan's "stays green" list being wrong about fixtures its own change affects.
+
+## The plan prescribed charging a refused shipment inside the judging loop, which refused later shipments the sender could afford
+
+**What happened.** Section 2 of the plan said to call `apply_silver(ledger, StatePhase::Transport, sender, -cost, …)` in `shipping_bills`' refusal branch, while shipments were still being judged. Built as written, a refusal drained the purse a later, affordable shipment was judged against: $50 held, a $60 shipment then a $40 one, and both were refused. The plan's own increment 7 (`a_purse_that_runs_out_refuses_the_later_shipment`) only covered the affordable-first order, so it passed against the defect. The cold-read review sub-agent found it. The fix, charging every refusal in one pass at the end of `settle_shipping`, then moved the `not-enough-silver` anchor onto the shipment that did ship. The next delta round found that.
+**Why.** The plan reused `buy_silver`'s "apply the whole ask, record what was spent" asymmetry. A `BUY` gets `Ledger::overcharged` to credit the difference back to later judgements; a refused shipment had no such credit, and the plan did not notice the pattern depended on it.
+**Cost.** Two extra review rounds (the fix, then the anchor it moved), each with a full test and gate run — about 25 minutes.
+**Prevent by.** In `plan-bead`, when a plan copies an existing ledger pattern into a new code path, it should name every companion that pattern relies on (here `Ledger::overcharged` beside `buy_silver`), and include a test in the order that pattern is weakest at — a refusal *before* an affordable spend, not only after one.
+**Seen before.** None found for this pattern specifically; ah-6m7b.5.1 ("the plan forbade the one change its own promise required") is the nearest kind of plan-level defect.
