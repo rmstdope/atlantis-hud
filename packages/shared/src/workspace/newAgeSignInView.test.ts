@@ -73,4 +73,23 @@ describe("newAgeSignInView", () => {
       retype: false
     });
   });
+  it("names both causes when a browser could not reach the world", () => {
+    expect(signInFailure({ kind: "unreachable" }, NEW_AGE_HOST, { fromBrowser: true })).toEqual({
+      message:
+        "Could not reach atlantis-newage.com. Either it is down, or it does not accept requests from this web address. Nothing was sent.",
+      retype: false
+    });
+    expect(signInFailure({ kind: "unreachable" }, NEW_AGE_HOST, { nothingSent: false, fromBrowser: true })).toEqual({
+      message:
+        "Could not reach atlantis-newage.com. Either it is down, or it does not accept requests from this web address.",
+      retype: false
+    });
+  });
+
+  it("a browser changes only the unreachable sentence", () => {
+    expect(signInFailure({ kind: "unauthorized" }, NEW_AGE_HOST, { fromBrowser: true })).toEqual({
+      message: "The world did not accept that faction number and password.",
+      retype: true
+    });
+  });
 });

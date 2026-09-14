@@ -66,6 +66,10 @@ export function signInMetaLine(host: string, turnNumber: number | null): string 
   return turnNumber === null ? host : `${host} · turn ${turnNumber}`;
 }
 
+/** Web only: a browser cannot tell a world that is down from one refusing this page's address. */
+const BROWSER_UNREACHABLE_CAUSES =
+  "Either it is down, or it does not accept requests from this web address.";
+
 /**
  * The one sentence for a failure, and whether the password should be retyped.
  *
@@ -73,11 +77,14 @@ export function signInMetaLine(host: string, turnNumber: number | null): string 
  * than falling through to a blank message in front of a player. The `unsendable` arm repeats the
  * digits sentence rather than passing `failure.reason` through: the client's own reason says *id*
  * where this surface says *number*, and the dialog refuses that case before calling at all.
+ *
+ * `fromBrowser` picks the web version's unreachable sentence: a browser cannot tell a world that is
+ * down from one refusing this page's address (both make `fetch` reject), so it names both causes.
  */
 export function signInFailure(
   failure: NewAgeFailure,
   host: string,
-  { nothingSent = true }: { nothingSent?: boolean } = {}
+  { nothingSent = true, fromBrowser = false }: { nothingSent?: boolean; fromBrowser?: boolean } = {}
 ): { message: string; retype: boolean } {
   switch (failure.kind) {
     case "unauthorized":
@@ -87,7 +94,9 @@ export function signInFailure(
       };
     case "unreachable":
       return {
-        message: nothingSent ? `Could not reach ${host}. Nothing was sent.` : `Could not reach ${host}.`,
+        message: `Could not reach ${host}.${fromBrowser ? ` ${BROWSER_UNREACHABLE_CAUSES}` : ""}${
+          nothingSent ? " Nothing was sent." : ""
+        }`,
         retype: false
       };
     case "refused":
