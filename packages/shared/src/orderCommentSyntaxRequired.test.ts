@@ -1,0 +1,99 @@
+/**
+ * Every order-text reader must be told which world's comment rule to read under.
+ *
+ * A defaulted syntax parameter cannot fail a call that forgets it, so a missed reader type-checks
+ * and passes every test while a Trident document is read under New Origins rules. Each line below
+ * fails `tsc` if its function, input or prop regains a default or becomes optional.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  applyUnitOrders,
+  blockFor,
+  ensureUnitBlock,
+  findFormBlocks,
+  findUnitBlocks,
+  formBlockFor,
+  longOrderOf,
+  readUnitOrders,
+  regionUnitIdsAt,
+  repairFormedUnitBlocks,
+  reportedLongOrders,
+  stripLongOrderLines,
+  stripMovementOrderLines,
+  stripUnitComments,
+  withUnitComments,
+  writeRouteOrder,
+  writeUnitOrders
+} from "./ordersDocument";
+import type { OrderCommentSyntax } from "./rulesets";
+
+/** The parameter tuple of `F`, with no constraint on `F` (so no `any` is needed). */
+type Params<F> = F extends (...args: infer P) => unknown ? P : never;
+
+/** True when no parameter of `F` may be omitted and its last parameter is exactly the comment syntax. */
+type TakesTheSyntax<F> =
+  Params<F> extends Required<Params<F>>
+    ? Params<F> extends [...unknown[], infer Last]
+      ? [Last] extends [OrderCommentSyntax]
+        ? [OrderCommentSyntax] extends [Last]
+          ? true
+          : false
+        : false
+      : false
+    : false;
+
+/** True when `K` is a required key of `T`. */
+type Requires<T, K extends keyof T> = {} extends Pick<T, K> ? false : true;
+
+const findUnitBlocksTakesTheSyntax: TakesTheSyntax<typeof findUnitBlocks> = true;
+const findFormBlocksTakesTheSyntax: TakesTheSyntax<typeof findFormBlocks> = true;
+const repairFormedUnitBlocksTakesTheSyntax: TakesTheSyntax<typeof repairFormedUnitBlocks> = true;
+const regionUnitIdsAtTakesTheSyntax: TakesTheSyntax<typeof regionUnitIdsAt> = true;
+const formBlockForTakesTheSyntax: TakesTheSyntax<typeof formBlockFor> = true;
+const blockForTakesTheSyntax: TakesTheSyntax<typeof blockFor> = true;
+const readUnitOrdersTakesTheSyntax: TakesTheSyntax<typeof readUnitOrders> = true;
+const writeUnitOrdersTakesTheSyntax: TakesTheSyntax<typeof writeUnitOrders> = true;
+const ensureUnitBlockTakesTheSyntax: TakesTheSyntax<typeof ensureUnitBlock> = true;
+const applyUnitOrdersTakesTheSyntax: TakesTheSyntax<typeof applyUnitOrders> = true;
+const stripUnitCommentsTakesTheSyntax: TakesTheSyntax<typeof stripUnitComments> = true;
+const withUnitCommentsTakesTheSyntax: TakesTheSyntax<typeof withUnitComments> = true;
+const stripMovementOrderLinesTakesTheSyntax: TakesTheSyntax<typeof stripMovementOrderLines> = true;
+const stripLongOrderLinesTakesTheSyntax: TakesTheSyntax<typeof stripLongOrderLines> = true;
+const longOrderOfTakesTheSyntax: TakesTheSyntax<typeof longOrderOf> = true;
+const reportedLongOrdersTakesTheSyntax: TakesTheSyntax<typeof reportedLongOrders> = true;
+
+const FUNCTIONS = {
+  findUnitBlocks: findUnitBlocksTakesTheSyntax,
+  findFormBlocks: findFormBlocksTakesTheSyntax,
+  repairFormedUnitBlocks: repairFormedUnitBlocksTakesTheSyntax,
+  regionUnitIdsAt: regionUnitIdsAtTakesTheSyntax,
+  formBlockFor: formBlockForTakesTheSyntax,
+  blockFor: blockForTakesTheSyntax,
+  readUnitOrders: readUnitOrdersTakesTheSyntax,
+  writeUnitOrders: writeUnitOrdersTakesTheSyntax,
+  ensureUnitBlock: ensureUnitBlockTakesTheSyntax,
+  applyUnitOrders: applyUnitOrdersTakesTheSyntax,
+  stripUnitComments: stripUnitCommentsTakesTheSyntax,
+  withUnitComments: withUnitCommentsTakesTheSyntax,
+  stripMovementOrderLines: stripMovementOrderLinesTakesTheSyntax,
+  stripLongOrderLines: stripLongOrderLinesTakesTheSyntax,
+  longOrderOf: longOrderOfTakesTheSyntax,
+  reportedLongOrders: reportedLongOrdersTakesTheSyntax
+};
+
+const writeRouteOrderRequiresTheSyntax: Requires<Parameters<typeof writeRouteOrder>[0], "syntax"> =
+  true;
+
+const INPUTS = {
+  writeRouteOrder: writeRouteOrderRequiresTheSyntax
+};
+
+describe("the order comment syntax is never defaulted", () => {
+  it("every order-text function requires the comment syntax", () => {
+    expect(Object.keys(FUNCTIONS)).toHaveLength(16);
+  });
+
+  it("every order-writing input requires the comment syntax", () => {
+    expect(Object.keys(INPUTS)).toHaveLength(1);
+  });
+});

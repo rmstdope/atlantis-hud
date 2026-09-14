@@ -84,7 +84,7 @@ function belongsToDocument(line: string, syntax: OrderCommentSyntax): boolean {
 /** Finds every unit block in a document. */
 export function findUnitBlocks(
   document: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): UnitBlock[] {
   const lines = document.split("\n");
   const blocks: UnitBlock[] = [];
@@ -172,7 +172,7 @@ type OpenBlock = { kind: "turn" | "form"; index: number | null; headerLine: numb
  */
 export function findFormBlocks(
   document: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): FormBlock[] {
   const lines = document.split("\n");
   const blocks: FormBlock[] = [];
@@ -328,7 +328,7 @@ function withoutBlockAt(lines: string[], headerLine: number, lastLine: number): 
  */
 export function repairFormedUnitBlocks(
   document: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): FormedBlockRepair {
   const moved: { alias: string; orderCount: number }[] = [];
   const emptied: string[] = [];
@@ -396,7 +396,7 @@ export function repairFormedUnitBlocks(
 export function regionUnitIdsAt(
   document: string,
   line: number,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): ReadonlySet<string> {
   const lines = document.split("\n");
 
@@ -437,7 +437,7 @@ export function formBlockFor(
   document: string,
   alias: string,
   regionUnitIds: ReadonlySet<string>,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): FormBlock | null {
   const blocks = findFormBlocks(document, syntax);
   const taken = new Set<string>();
@@ -474,8 +474,8 @@ export function formBlockFor(
 export function blockFor(
   document: string,
   unitId: string,
-  regionUnitIds?: ReadonlySet<string>,
-  syntax: OrderCommentSyntax = "origins"
+  regionUnitIds: ReadonlySet<string> | undefined,
+  syntax: OrderCommentSyntax
 ): UnitBlock | null {
   const alias = formedAlias(unitId);
   if (alias === null) {
@@ -529,8 +529,8 @@ export function regionBannerLine(
 export function readUnitOrders(
   document: string,
   unitId: string,
-  regionUnitIds?: ReadonlySet<string>,
-  syntax: OrderCommentSyntax = "origins"
+  regionUnitIds: ReadonlySet<string> | undefined,
+  syntax: OrderCommentSyntax
 ): string | null {
   const block = blockFor(document, unitId, regionUnitIds, syntax);
   if (!block) {
@@ -555,8 +555,8 @@ export function writeUnitOrders(
   document: string,
   unitId: string,
   orders: string,
-  regionUnitIds?: ReadonlySet<string>,
-  syntax: OrderCommentSyntax = "origins"
+  regionUnitIds: ReadonlySet<string> | undefined,
+  syntax: OrderCommentSyntax
 ): string {
   const block = blockFor(document, unitId, regionUnitIds, syntax);
   if (!block) {
@@ -629,7 +629,7 @@ export function ensureUnitBlock(
   document: string,
   unitId: string,
   banner: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string {
   // A unit this month's `FORM` orders create has no `unit` block and never gains one: its orders
   // live between its `form` line and its `end`, and a literal `unit new-1` block is a file the
@@ -694,8 +694,8 @@ export function applyUnitOrders(
   unitId: string,
   orders: string,
   banner: string | null,
-  regionUnitIds?: ReadonlySet<string>,
-  syntax: OrderCommentSyntax = "origins"
+  regionUnitIds: ReadonlySet<string> | undefined,
+  syntax: OrderCommentSyntax
 ): string {
   const base =
     orders === "" || banner === null
@@ -734,7 +734,7 @@ function isServerCommentLine(line: string): boolean {
 
 export function stripUnitComments(
   document: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string {
   const lines = document.split("\n");
   const descriptions = new Set<number>();
@@ -766,7 +766,7 @@ export function stripUnitComments(
 export function withUnitComments(
   document: string,
   template: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string {
   const templateLines = template.split("\n");
   const descriptionsByUnit = new Map<string, string[]>();
@@ -1001,7 +1001,7 @@ function stripOwnOrderLines(
  */
 export function stripMovementOrderLines(
   orders: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string {
   return stripOwnOrderLines(orders, MOVEMENT_ORDER_COMMANDS, syntax).trim();
 }
@@ -1030,9 +1030,9 @@ export function writeRouteOrder(input: {
   /** The route line to write, e.g. `MOVE N NE`. */
   order: string;
   /** How the game played reads an unquoted semicolon. */
-  syntax?: OrderCommentSyntax;
+  syntax: OrderCommentSyntax;
 }): string {
-  const syntax = input.syntax ?? "origins";
+  const syntax = input.syntax;
   const base =
     input.banner === null
       ? input.document
@@ -1056,7 +1056,7 @@ export function writeRouteOrder(input: {
  */
 export function stripLongOrderLines(
   orders: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string {
   return stripOwnOrderLines(orders, LONG_ORDER_COMMANDS, syntax);
 }
@@ -1069,7 +1069,7 @@ export function stripLongOrderLines(
  */
 export function longOrderOf(
   orders: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string | null {
   const own = atTopLevel(orders, syntax);
   const mine = orders.split("\n").filter((_line, index) => own[index] === true);
@@ -1109,7 +1109,7 @@ export const NO_ORDERS_TEMPLATE: ReportedLongOrder = { kind: "no-template" };
  */
 export function reportedLongOrders(
   template: OrdersTemplate | null | undefined,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): ReadonlyMap<string, string | null> | null {
   if (!template) {
     return null;

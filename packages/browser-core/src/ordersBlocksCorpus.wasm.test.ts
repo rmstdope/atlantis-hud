@@ -75,9 +75,9 @@ describe("blocks and banners across the committed corpus", () => {
       for (const region of parsed.regions) {
         const banner = regionBannerLine(region, levelFieldOf(region.coordinate.z));
         for (const unit of region.units.filter((candidate) => candidate.own)) {
-          document = ensureUnitBlock(document, unit.unitId, banner);
-          document = writeUnitOrders(document, unit.unitId, "@work");
-          expect(readUnitOrders(document, unit.unitId), `${key}: unit ${unit.unitId}`).toContain(
+          document = ensureUnitBlock(document, unit.unitId, banner, "origins");
+          document = writeUnitOrders(document, unit.unitId, "@work", undefined, "origins");
+          expect(readUnitOrders(document, unit.unitId, undefined, "origins"), `${key}: unit ${unit.unitId}`).toContain(
             "@work"
           );
         }
@@ -87,7 +87,7 @@ describe("blocks and banners across the committed corpus", () => {
         expect(hasFactionHeader(document), key).toBe(true);
       }
 
-      const ids = findUnitBlocks(document).map((block) => block.unitId);
+      const ids = findUnitBlocks(document, "origins").map((block) => block.unitId);
       expect(new Set(ids).size, `${key}: duplicate unit blocks`).toBe(ids.length);
     }
   }, 120_000);
