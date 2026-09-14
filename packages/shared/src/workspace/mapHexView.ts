@@ -15,7 +15,7 @@
  *   `terrain * (1 - a) + fog * a` either way.
  */
 
-import type { Coordinate } from "@atlantis/core-client";
+import type { Coordinate, Direction } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
 
@@ -179,6 +179,19 @@ export type Point = { x: number; y: number };
  * Exported so `regionDecorations.ts` can trace a boundary along the same vertices a hex is
  * actually drawn with, rather than a second copy of this maths.
  */
+/**
+ * Which side of a hex each direction crosses: side `k` runs from `corners(r)[k]` to
+ * `corners(r)[(k + 1) % 6]`. The order `regionDecorations.ts`'s `NEIGHBOR_OFFSETS` walks.
+ */
+export const HEX_SIDE: Record<Direction, number> = {
+  southeast: 0,
+  south: 1,
+  southwest: 2,
+  northwest: 3,
+  north: 4,
+  northeast: 5
+};
+
 export function corners(radius: number): Point[] {
   return Array.from({ length: 6 }, (_, corner) => {
     const angle = (Math.PI / 180) * (60 * corner);
