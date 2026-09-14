@@ -5579,6 +5579,29 @@ test("a route through a passage stops at the structure and says why", async ({ p
   await expect(page.getByRole("button", { name: "hex 0:0,0", exact: true })).toBeFocused();
   await expect(page.getByRole("button", { name: "hex 0:0,0", exact: true })).toHaveAttribute("aria-pressed", "true");
 
+  // A hand on the ring still pans the map, and a right-click on it still recentres: both gestures live
+  // on the root svg and reach it only by bubbling up from the ring.
+  const world = page.getByTestId("map-world");
+  const before = await world.getAttribute("transform");
+  const ringBox = (await ring.boundingBox())!;
+  const grab = { x: ringBox.x + ringBox.width / 2, y: ringBox.y + ringBox.height / 2 };
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(grab.x + 80, grab.y + 60, { steps: 5 });
+  await page.mouse.up();
+  const panned = await world.getAttribute("transform");
+  expect(panned).not.toBe(before);
+
+  await ring.click({ button: "right" });
+  await expect.poll(() => world.getAttribute("transform")).not.toBe(panned);
+  const centred = await world.getAttribute("transform");
+  // Centring on the hex the ring already stands at the middle of moves nothing: the first right-click
+  // was a recentre and not some other movement.
+  await ring.click({ button: "right" });
+  // Read once rather than polled: `commit` writes the transform synchronously, and a poll would pass
+  // on its first read before the click had any effect.
+  expect(await world.getAttribute("transform")).toBe(centred);
+
   // And the count of what could not be placed is said in words.
   const problem = page
     .getByTestId("region-problems")

@@ -976,3 +976,34 @@ describe("a route that ran into a wall", () => {
     expect(drawWithKnownPassage(2)).not.toContain("route-wall");
   });
 });
+
+describe("the mark layer", () => {
+  const LAYER = 'data-testid="map-marks"';
+
+  it("is drawn after the hex hit layer, even with no mark to put in it", () => {
+    const svg = draw();
+
+    expect(svg).toContain(LAYER);
+    expect(svg.indexOf(LAYER)).toBeGreaterThan(svg.lastIndexOf('aria-label="hex '));
+  });
+
+  it("sets no pointer-events of its own", () => {
+    const tag = /<g[^>]*data-testid="map-marks"[^>]*>/.exec(draw())?.[0];
+
+    expect(tag).toBeDefined();
+    expect(tag).not.toContain("pointer-events");
+  });
+
+  it("holds the walls, the passage rings and the note pins", () => {
+    const cases: [string, string][] = [
+      [drawWithWalls(), 'data-testid="map-wall"'],
+      [drawWithPassage(1, 1), 'data-testid="map-passage-ring"'],
+      [drawWithKnownPassage(1), 'data-testid="map-passage-entry-ring"'],
+      [draw(probe(), [note()]), 'data-testid="map-note-pin"']
+    ];
+    for (const [svg, mark] of cases) {
+      expect(svg.indexOf(LAYER), mark).toBeGreaterThan(-1);
+      expect(svg.indexOf(mark), mark).toBeGreaterThan(svg.indexOf(LAYER));
+    }
+  });
+});
