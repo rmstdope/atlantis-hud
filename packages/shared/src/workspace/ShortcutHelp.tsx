@@ -19,7 +19,7 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
   useEscapeToDismiss(onDismiss);
 
   const showAtStartup = useSettingsStore((state) => state.showShortcutsAtStartup);
-  const setShowAtStartup = useSettingsStore((state) => state.setShowShortcutsAtStartup);
+  const setFlag = useSettingsStore((state) => state.setFlag);
 
   // Focus returns where it was summoned from, the same way the command palette's does and for the
   // same reason: this overlay can be opened from inside the orders editor, and its close button
@@ -177,7 +177,7 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
             data-testid="shortcut-help-at-startup"
             aria-label="Show this when Atlantis HUD starts"
             checked={showAtStartup}
-            onChange={(event) => setShowAtStartup(event.target.checked)}
+            onChange={(event) => setFlag("showShortcutsAtStartup", event.target.checked)}
             className="accent-brass"
           />
         </label>

@@ -11,6 +11,7 @@ import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
+import { SettingFlag } from "./SettingFlag";
 import { SettingToggle } from "./SettingToggle";
 import {
   COLUMN_LABELS,
@@ -210,25 +211,11 @@ export function GlobalSettings() {
   const setTheme = useSettingsStore((state) => state.setTheme);
   const mapTheme = useSettingsStore((state) => state.mapTheme);
   const setMapTheme = useSettingsStore((state) => state.setMapTheme);
-  const biomeTextures = useSettingsStore((state) => state.biomeTextures);
-  const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
-  const biomeTextureRotation = useSettingsStore((state) => state.biomeTextureRotation);
-  const setBiomeTextureRotation = useSettingsStore((state) => state.setBiomeTextureRotation);
-  const animateWaterTextures = useSettingsStore((state) => state.animateWaterTextures);
-  const setAnimateWaterTextures = useSettingsStore((state) => state.setAnimateWaterTextures);
   // Per theme (ah-j1xd): the slider always shows and writes the theme the player is looking at.
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
   const interfaceSize = useSettingsStore((state) => state.interfaceSize);
   const setInterfaceSize = useSettingsStore((state) => state.setInterfaceSize);
-  const showShortcutsAtStartup = useSettingsStore((state) => state.showShortcutsAtStartup);
-  const setShowShortcutsAtStartup = useSettingsStore((state) => state.setShowShortcutsAtStartup);
-  const movementPlanner = useSettingsStore((state) => state.movementPlanner);
-  const setMovementPlanner = useSettingsStore((state) => state.setMovementPlanner);
-  const orderOcd = useSettingsStore((state) => state.orderOcd);
-  const setOrderOcd = useSettingsStore((state) => state.setOrderOcd);
-  const countUpkeep = useSettingsStore((state) => state.countUpkeep);
-  const setCountUpkeep = useSettingsStore((state) => state.setCountUpkeep);
   const layers = useWorkspaceStore((state) => state.layers);
   const toggleLayer = useWorkspaceStore((state) => state.toggleLayer);
 
@@ -266,31 +253,11 @@ export function GlobalSettings() {
         </select>
       </label>
 
-      <SettingToggle
-        title="Biome textures"
-        description="Uses image tiles for known biomes."
-        testId="settings-biome-textures"
-        checked={biomeTextures}
-        onChange={setBiomeTextures}
-      />
+      <SettingFlag name="biomeTextures" />
 
       <div className="ml-4 space-y-2 border-l-2 border-brass/40 pl-2">
-        <SettingToggle
-          title="Rotate biome textures"
-          description="Turns each hex's texture by a different angle."
-          testId="settings-biome-texture-rotation"
-          checked={biomeTextureRotation}
-          onChange={setBiomeTextureRotation}
-          disabled={!biomeTextures}
-        />
-        <SettingToggle
-          title="Animate water textures"
-          description="Moves ocean and lake textures along their texture direction."
-          testId="settings-animate-water-textures"
-          checked={animateWaterTextures}
-          onChange={setAnimateWaterTextures}
-          disabled={!biomeTextures}
-        />
+        <SettingFlag name="biomeTextureRotation" />
+        <SettingFlag name="animateWaterTextures" />
       </div>
 
       {/*
@@ -320,13 +287,7 @@ export function GlobalSettings() {
         screen a player can turn off from inside and then be unable to find again: the key that
         opens it is written on the thing they just dismissed.
       */}
-      <SettingToggle
-        title="Show the getting-around guide at startup"
-        description="The mouse and keyboard guide greets you when the application opens."
-        testId="settings-shortcuts-at-startup"
-        checked={showShortcutsAtStartup}
-        onChange={setShowShortcutsAtStartup}
-      />
+      <SettingFlag name="showShortcutsAtStartup" />
 
       <label className="flex flex-col gap-1">
         <span className="flex items-baseline justify-between gap-2">
@@ -376,29 +337,11 @@ export function GlobalSettings() {
         </span>
       </label>
 
-      <SettingToggle
-        title="Movement planner"
-        description="Shows the experimental Movement pane for planning MOVE routes on the map."
-        testId="settings-movement-planner"
-        checked={movementPlanner}
-        onChange={setMovementPlanner}
-      />
+      <SettingFlag name="movementPlanner" />
 
-      <SettingToggle
-        title="Order OCD"
-        description="Uppercase the command keywords as you write, indent each level of a nested FORM or TURN by one space, and end every unit's orders with a single blank line. Text inside quotes is left alone."
-        testId="settings-order-ocd"
-        checked={orderOcd}
-        onChange={setOrderOcd}
-      />
+      <SettingFlag name="orderOcd" />
 
-      <SettingToggle
-        title="Count upkeep in the Silver column"
-        description="Charge each unit its monthly maintenance at the rates of the world its game is played in, paid with food first where the unit is set to consume it."
-        testId="settings-count-upkeep"
-        checked={countUpkeep}
-        onChange={setCountUpkeep}
-      />
+      <SettingFlag name="countUpkeep" />
     </div>
   );
 }

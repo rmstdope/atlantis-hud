@@ -63,7 +63,13 @@ import {
 } from "./mapHexView";
 import { wallTip } from "./routeWall";
 import { radii } from "./mapThemes/geometry";
-import { buildHexViews, type BadgeName, type HexView } from "./mapThemes/hexView";
+import {
+  DEFAULT_TEXTURE_STYLE,
+  buildHexViews,
+  type BadgeName,
+  type HexView,
+  type TextureStyle
+} from "./mapThemes/hexView";
 import type { BattleInvolvement } from "./battles";
 import type { MapTheme } from "./mapThemes/mapTheme";
 import { DEFAULT_WATER, type WaterTerrains } from "./mapThemes/terrain";
@@ -378,10 +384,8 @@ type MapCanvasProps = {
   onSelectRegion: (regionId: string) => void;
   showStaleness: boolean;
   showTextures: boolean;
-  /** Whether each biome texture is rotated by its stable per-hex angle. */
-  rotateTextures?: boolean;
-  /** Whether water textures scroll continuously along their texture axis. */
-  animateWaterTextures?: boolean;
+  /** How textured hexes are drawn; the default rotates and animates. */
+  textureStyle?: TextureStyle;
   /** The world's water terrains, from the ruleset. Defaults to DEFAULT_WATER. */
   water?: WaterTerrains;
   /** Which marks the themes may draw over the terrain, one flag per kind. */
@@ -470,8 +474,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     onSelectRegion,
     showStaleness,
     showTextures,
-    rotateTextures = true,
-    animateWaterTextures = true,
+    textureStyle = DEFAULT_TEXTURE_STYLE,
     water = DEFAULT_WATER,
     badges,
     route = null,
@@ -537,8 +540,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     () => ({
       showStaleness,
       showTextures,
-      rotateTextures,
-      animateWaterTextures,
+      textureStyle,
       water,
       badges,
       battles,
@@ -547,8 +549,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     [
       showStaleness,
       showTextures,
-      rotateTextures,
-      animateWaterTextures,
+      textureStyle,
       water,
       badges,
       battles,

@@ -91,7 +91,7 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
   });
 
   it("leaves texture orientation alone when rotation is off", () => {
-    const texture = viewOf(hex({ knowledge: "current" }), { rotateTextures: false }).texture;
+    const texture = viewOf(hex({ knowledge: "current" }), { textureStyle: { rotate: false, animateWater: true } }).texture;
 
     expect(texture?.rotation).toBe(0);
   });
@@ -114,7 +114,7 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
 
   it("leaves water textures still when animation is off", () => {
     const texture = viewOf(hex({ knowledge: "current", terrain: "ocean" }), {
-      animateWaterTextures: false
+      textureStyle: { rotate: true, animateWater: false }
     }).texture;
 
     expect(texture?.moves).toBe(false);
