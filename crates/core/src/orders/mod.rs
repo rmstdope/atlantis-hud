@@ -37,6 +37,8 @@ mod standing_agreement;
 /// Core-internal: the one race-aware study ceiling both `semantics` and `completion` read.
 mod study;
 pub mod targets;
+/// Core-internal: a BUY or SELL written with an EXCEPT neither order has.
+mod trade_except;
 #[cfg(test)]
 mod transfer_agreement;
 /// Core-internal: the one Give-phase transfer record and report order both `effects` and
@@ -124,7 +126,7 @@ pub fn validate_turn(
     }
 
     if let Some(report) = report {
-        place_build_object_errors(&mut diagnostics, source, ruleset, report);
+        place_unit_errors(&mut diagnostics, source, ruleset, report);
     }
 
     // Line order across the whole document, as the panel has always shown them. What belongs to a
@@ -137,26 +139,27 @@ pub fn validate_turn(
     }
 }
 
-/// Gives each `unknown-object` / `unbuildable-object` diagnostic the report unit whose block the
+/// Gives each `unknown-object` / `unbuildable-object` / `trade-except` diagnostic the report unit whose block the
 /// line sits in, and that unit's hex, so the region panel lists it against the unit. Only a line
 /// directly in a `unit NNNN` block counts: inside a `FORM` block, before any unit line, or under a
 /// unit number the report does not show, the diagnostic stays unplaced, as every other syntax
 /// diagnostic is.
 ///
 /// Runs after the unread-unit `retain`, so that cannot drop them: the fault is in the orders.
-fn place_build_object_errors(
+fn place_unit_errors(
     diagnostics: &mut [OrderDiagnostic],
     source: &str,
     ruleset: Option<&Ruleset>,
     report: &ParsedReport,
 ) {
-    let is_build_object = |diagnostic: &OrderDiagnostic| {
+    let is_placed = |diagnostic: &OrderDiagnostic| {
         diagnostic.unit_id.is_none()
             && (diagnostic.code == build_object::UNKNOWN_OBJECT
-                || diagnostic.code == build_object::UNBUILDABLE_OBJECT)
+                || diagnostic.code == build_object::UNBUILDABLE_OBJECT
+                || diagnostic.code == trade_except::TRADE_EXCEPT)
     };
     // Almost every validation has nothing to place; skip the second walk then.
-    if !diagnostics.iter().any(is_build_object) {
+    if !diagnostics.iter().any(is_placed) {
         return;
     }
     let mut owner_by_line: HashMap<usize, String> = HashMap::new();
@@ -175,7 +178,7 @@ fn place_build_object_errors(
 
     for diagnostic in diagnostics
         .iter_mut()
-        .filter(|diagnostic| is_build_object(diagnostic))
+        .filter(|diagnostic| is_placed(diagnostic))
     {
         let Some(unit_id) = diagnostic
             .line_start
@@ -344,6 +347,35 @@ mod tests {
         assert_eq!(diagnostic.unit_id.as_deref(), Some(id.as_str()));
         assert_eq!(diagnostic.region_id.as_deref(), Some(region.as_str()));
         assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Error);
+    }
+
+    #[test]
+    fn a_trade_except_error_is_placed_on_its_unit_and_hex() {
+        let (base, ruleset) = build_object_fixture();
+        let (id, region) = first_unit_and_hex(&base);
+        let result = validate_turn(
+            &format!("unit {id}\nSELL ALL FUR EXCEPT 10\n"),
+            Some(&ruleset),
+            Some(&base),
+            semantics::CheckOptions::default(),
+        );
+        let diagnostic = only_code(&result, "trade-except");
+        assert_eq!(diagnostic.unit_id.as_deref(), Some(id.as_str()));
+        assert_eq!(diagnostic.region_id.as_deref(), Some(region.as_str()));
+        assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Error);
+    }
+
+    #[test]
+    fn without_a_report_a_trade_except_error_is_not_placed() {
+        let (base, ruleset) = build_object_fixture();
+        let (id, _) = first_unit_and_hex(&base);
+        let result = validate_turn(
+            &format!("unit {id}\nSELL ALL FUR EXCEPT 10\n"),
+            Some(&ruleset),
+            None,
+            semantics::CheckOptions::default(),
+        );
+        assert_eq!(only_code(&result, "trade-except").region_id, None);
     }
 
     #[test]

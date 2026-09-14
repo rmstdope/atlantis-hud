@@ -182,6 +182,20 @@ impl Document {
                         );
                     }
                 }
+                if let Some(ignored) = super::trade_except::ignored_except(
+                    order.name,
+                    line.text,
+                    line.arguments,
+                    consumed,
+                ) {
+                    self.error(
+                        line.number,
+                        ignored.column_start,
+                        ignored.column_end,
+                        super::trade_except::TRADE_EXCEPT,
+                        ignored.message,
+                    );
+                }
             }
             Err(mismatch) => self.report_mismatch(
                 line.number,
@@ -640,6 +654,101 @@ mod tests {
         // MOVE's remainder is strict: a bad route element is still an error, not a place to stop
         // reading.
         assert_eq!(codes("MOVE N nowhere"), ["bad-argument"]);
+    }
+
+    fn columns(diagnostic: &OrderDiagnostic) -> (Option<usize>, Option<usize>) {
+        (diagnostic.column_start, diagnostic.column_end)
+    }
+
+    #[test]
+    fn a_sell_all_with_except_is_an_error_under_the_ignored_words() {
+        let diagnostic = only("SELL ALL FUR EXCEPT 10");
+        assert_eq!(diagnostic.code, "trade-except");
+        assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Error);
+        assert_eq!(columns(&diagnostic), (Some(13), Some(22)));
+        assert_eq!(
+            diagnostic.message,
+            "SELL has no EXCEPT — the game ignores “EXCEPT 10” and sells all your FUR"
+        );
+        assert!(validate_orders("SELL ALL FUR EXCEPT 10", None).is_blocking());
+    }
+
+    #[test]
+    fn a_sell_of_a_number_with_except_names_the_number() {
+        let diagnostic = only("SELL 25 FUR EXCEPT 10");
+        assert_eq!(
+            diagnostic.message,
+            "SELL has no EXCEPT — the game ignores “EXCEPT 10” and sells 25 FUR"
+        );
+        assert_eq!(columns(&diagnostic), (Some(12), Some(21)));
+    }
+
+    #[test]
+    fn a_buy_with_except_is_the_same_error_in_buy_words() {
+        assert_eq!(
+            only("BUY ALL FUR EXCEPT 10").message,
+            "BUY has no EXCEPT — the game ignores “EXCEPT 10” and buys as much FUR as you can afford"
+        );
+        assert_eq!(
+            only("BUY 25 FUR EXCEPT 10").message,
+            "BUY has no EXCEPT — the game ignores “EXCEPT 10” and buys 25 FUR"
+        );
+    }
+
+    #[test]
+    fn an_except_with_nothing_or_no_number_after_it_quotes_what_was_written() {
+        let bare = only("SELL ALL FUR EXCEPT");
+        assert_eq!(
+            bare.message,
+            "SELL has no EXCEPT — the game ignores “EXCEPT” and sells all your FUR"
+        );
+        assert_eq!(columns(&bare), (Some(13), Some(19)));
+        assert_eq!(
+            only("SELL ALL FUR EXCEPT x").message,
+            "SELL has no EXCEPT — the game ignores “EXCEPT x” and sells all your FUR"
+        );
+    }
+
+    #[test]
+    fn a_lower_case_except_quotes_the_players_spelling() {
+        assert_eq!(
+            only("sell all fur except 10").message,
+            "SELL has no EXCEPT — the game ignores “except 10” and sells all your fur"
+        );
+    }
+
+    #[test]
+    fn the_quote_is_sliced_by_utf16_columns() {
+        let diagnostic = only("SELL ALL FUR EXCEPT dé");
+        assert_eq!(
+            diagnostic.message,
+            "SELL has no EXCEPT — the game ignores “EXCEPT dé” and sells all your FUR"
+        );
+        assert_eq!(columns(&diagnostic), (Some(13), Some(22)));
+    }
+
+    #[test]
+    fn a_comment_after_the_except_is_neither_quoted_nor_underlined() {
+        let diagnostic = only("SELL ALL FUR EXCEPT 10 ; keep");
+        assert_eq!(
+            diagnostic.message,
+            "SELL has no EXCEPT — the game ignores “EXCEPT 10” and sells all your FUR"
+        );
+        assert_eq!(columns(&diagnostic), (Some(13), Some(22)));
+    }
+
+    #[test]
+    fn trade_orders_without_except_stay_clean() {
+        for source in [
+            "SELL 20 FUR",
+            "SELL ALL FUR",
+            "BUY 5 FUR",
+            "BUY ALL FUR",
+            "SELL ALL FUR note EXCEPT 10",
+            "TAKE FROM 4573 ALL swords EXCEPT 10",
+        ] {
+            clean(source);
+        }
     }
 
     #[test]
