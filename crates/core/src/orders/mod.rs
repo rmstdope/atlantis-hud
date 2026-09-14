@@ -19,6 +19,8 @@ mod form_agreement;
 pub mod forms;
 pub mod grammar;
 pub mod intents;
+/// Core-internal: every item a month's orders move on one preview row, and whether any of them moved stock.
+mod item_change_log;
 pub mod items;
 pub mod lexer;
 /// Core-internal: who may become a mage, and who already is one.
