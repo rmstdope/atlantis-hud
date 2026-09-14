@@ -21,28 +21,37 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LegResult, summarizeLegs } from "./summarizeLegs";
+import { GATE_WORKLOAD_ENV, decideWorkload, describeWorkload, planLegs } from "./gateWorkload";
 import { SUITE_RESULTS_ENV, readSuiteDetail } from "./suiteHandoff";
 
 /**
  * `handoff` opts a leg into naming its own inner verdict: the gate hands it a path and quotes
  * whatever it finds there. Only `test` has an inner runner to quote.
  */
-export type Leg = { name: string; command: string; args: string[]; handoff?: boolean };
+export type Leg = {
+  name: string;
+  command: string;
+  args: string[];
+  handoff?: boolean;
+  /** Skipped when the diff touches no Rust path; see gateWorkload.ts (ah-ckzw). */
+  rust?: boolean;
+};
 
 /**
  * `test` stays one leg on purpose: `runSuites.ts` already reports inside it, and flattening its
  * suites in here would leave two reporters to disagree with each other.
  */
-const LEGS: readonly Leg[] = [
+export const LEGS: readonly Leg[] = [
   { name: "lint", command: "pnpm", args: ["run", "lint"] },
   { name: "typecheck", command: "pnpm", args: ["run", "typecheck"] },
   { name: "test", command: "pnpm", args: ["run", "test"], handoff: true },
   { name: "generated", command: "pnpm", args: ["run", "check:generated"] },
-  { name: "fmt", command: "cargo", args: ["fmt", "--check"] },
+  { name: "fmt", command: "cargo", args: ["fmt", "--check"], rust: true },
   {
     name: "clippy",
     command: "cargo",
-    args: ["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
+    args: ["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
+    rust: true
   }
 ];
 
@@ -124,12 +133,29 @@ const invokedDirectly =
   process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
+  const decision = decideWorkload(process.env, process.cwd());
+  const planned = planLegs(LEGS, decision.workload);
+  const skippedNames = planned.filter((entry) => entry.skip).map((entry) => entry.leg.name);
+  const workloadLine = `${describeWorkload(decision, skippedNames)}\n`;
+
+  // `--workload-only` checks the decision without running a leg; check:fast never passes it.
+  if (process.argv.includes("--workload-only")) {
+    process.stdout.write(workloadLine);
+    process.exit(0);
+  }
+
   reportDisk();
+  process.stdout.write(workloadLine);
+  // Before the legs run, not in any cleanup path: runLeg spreads process.env into every child, so
+  // this is what reaches runSuites inside the test leg.
+  process.env[GATE_WORKLOAD_ENV] = decision.workload;
   // Per-run and outside the repository: several worktrees on this machine run the gate at once, and
   // a shared path would have one gate reporting another's verdict. No try/finally - process.exit
   // does not run finally blocks, so the cleanup that matters would be the one that never fired.
   const handoffDir = mkdtempSync(join(tmpdir(), "atlantis-gate-"));
-  const results = LEGS.map((leg) => runLeg(leg, join(handoffDir, "suites.json")));
+  const results = planned.map(({ leg, skip }) =>
+    skip ? { name: leg.name, passed: true, skipped: true } : runLeg(leg, join(handoffDir, "suites.json"))
+  );
   rmSync(handoffDir, { recursive: true, force: true });
   const { exitCode, text } = summarizeGate(results);
   process.stdout.write(`${text}\n`);

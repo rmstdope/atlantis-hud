@@ -33,3 +33,25 @@ describe("summarizeLegs", () => {
     expect(result.exitCode).toBe(0);
   });
 });
+
+describe("summarizeLegs with a skipped leg", () => {
+  it("prints a skipped leg as SKIP and does not count it as failed", () => {
+    const result = summarizeLegs("gate", "legs", [
+      { name: "lint", passed: true },
+      { name: "fmt", passed: true, skipped: true }
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.text).toBe("gate: lint PASS  fmt SKIP");
+  });
+
+  it("counts only the failed legs when a skip is present", () => {
+    const result = summarizeLegs("gate", "legs", [
+      { name: "test", passed: false },
+      { name: "clippy", passed: true, skipped: true }
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.text).toContain("1 of 2 legs failed: test");
+  });
+});

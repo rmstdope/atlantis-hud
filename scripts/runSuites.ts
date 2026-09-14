@@ -16,17 +16,19 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LegResult, summarizeLegs } from "./summarizeLegs";
+import { GATE_WORKLOAD_ENV, planLegs } from "./gateWorkload";
 import { handoffPathFromEnv, writeSuiteResults } from "./suiteHandoff";
 
 export type SuiteResult = LegResult;
 
-type Suite = { name: string; command: string; args: string[] };
+/** `rust` marks a suite the gate skips when its diff touches no Rust path (ah-ckzw). */
+type Suite = { name: string; command: string; args: string[]; rust?: boolean };
 
 /** CI runs `test:tooling`, `test:smoke` and the rest as their own steps; this list is `pnpm test` alone. */
-const SUITES: readonly Suite[] = [
+export const SUITES: readonly Suite[] = [
   { name: "packages", command: "pnpm", args: ["-r", "run", "test"] },
   { name: "tooling", command: "pnpm", args: ["run", "test:tooling"] },
-  { name: "cargo", command: "cargo", args: ["test", "--workspace"] }
+  { name: "cargo", command: "cargo", args: ["test", "--workspace"], rust: true }
 ];
 
 /**
@@ -59,7 +61,12 @@ const invokedDirectly =
   process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
-  const results = SUITES.map(runSuite);
+  // Only the gate sets this, after classifying its own diff; run by hand it is unset and every
+  // suite runs, as it always has.
+  const workload = process.env[GATE_WORKLOAD_ENV] === "non-rust" ? "non-rust" : "rust";
+  const results = planLegs(SUITES, workload).map(({ leg, skip }) =>
+    skip ? { name: leg.name, passed: true, skipped: true } : runSuite(leg)
+  );
   // The gate asks for a machine-readable verdict by naming a path; run by hand nobody asks, no file
   // is written, and this runner prints and exits exactly as it always has.
   const handoffPath = handoffPathFromEnv(process.env);
