@@ -21,6 +21,7 @@ import {
   type StoredTurnSnapshot
 } from "./webStore";
 import { createCoreWasmModuleDouble } from "./testing/coreWasmModuleDouble";
+import type { UnitRef } from "@atlantis/core-client";
 
 /** A minimal, complete `ReportParseResult` - every fake below merges its own fields over this. */
 const EMPTY_PARSE_RESULT: ReportParseResult = {
@@ -139,8 +140,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rulesetJson: string,
       rawReport: string,
       rememberedJson: string,
-      unitId: string,
-      regionId: string,
+      unit: UnitRef,
       ordersDocument: string,
       mapJson: string,
       passagesJson: string
@@ -150,8 +150,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         rulesetJson,
         rawReport,
         rememberedJson,
-        unitId,
-        regionId,
+        unit,
         ordersDocument,
         mapJson,
         passagesJson
@@ -1630,14 +1629,13 @@ describe("exporting and importing games", () => {
 });
 
 describe("tracing written movement", () => {
-  it("passes the trace request straight to the core, unshuffled, with the unit's hex", async () => {
+  it("passes the trace request straight to the core, unshuffled, with the unit whole", async () => {
     const adapter = createWebCoreAdapter(fakeWasm());
     const answer = (await adapter.traceMoveOrders(
       "{ruleset}",
       "{report}",
       "[remembered]",
-      "new-1",
-      "1:1,5",
+      { regionId: "1:1,5", unitId: "new-1", arrivingFrom: null },
       "unit 902",
       "{map}",
       "[passages]"
@@ -1646,8 +1644,7 @@ describe("tracing written movement", () => {
       rulesetJson: "{ruleset}",
       rawReport: "{report}",
       rememberedJson: "[remembered]",
-      unitId: "new-1",
-      regionId: "1:1,5",
+      unit: { regionId: "1:1,5", unitId: "new-1", arrivingFrom: null },
       ordersDocument: "unit 902",
       mapJson: "{map}",
       passagesJson: "[passages]"

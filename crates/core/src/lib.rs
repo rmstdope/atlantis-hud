@@ -8,6 +8,7 @@ pub mod orders;
 pub mod reopen;
 pub mod report;
 pub mod trade;
+pub mod unit_ref;
 
 #[cfg(test)]
 mod export_dir_guard;

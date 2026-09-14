@@ -3,6 +3,8 @@ import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { structuresByRegionOf } from "./structureLabel";
 import {
+  unitRefKey,
+  unitRefOf,
   DEFAULT_SORT,
   filterUnits,
   rowHeightAt,
@@ -500,6 +502,27 @@ describe("silverIsRed", () => {
  * `ah-9o0c.2`: a row that spans hexes is identified by its hex and its unit number. `ah-jw85`:
  * `new-1` is unique to a hex, not to a turn, so the key has to carry both.
  */
+describe("unitRefOf", () => {
+  it("reads a row without an origin as a row that does not arrive", () => {
+    expect(unitRefOf(aReportUnit({ regionId: "1:7,53", unitId: "900" }))).toEqual({
+      regionId: "1:7,53",
+      unitId: "900",
+      arrivingFrom: null
+    });
+  });
+});
+
+describe("unitRefKey", () => {
+  it("is the row key of the row it names", () => {
+    expect(unitRefKey({ regionId: "1:7,51", unitId: "new-1", arrivingFrom: "1:7,53" })).toBe(
+      rowKeyOf({ regionId: "1:7,51", unitId: "new-1", arrivingFrom: "1:7,53" })
+    );
+    expect(unitRefKey({ regionId: "1:7,51", unitId: "new-1", arrivingFrom: null })).toBe(
+      unitRowKey("1:7,51", "new-1")
+    );
+  });
+});
+
 describe("unitRowKey", () => {
   it("is the same for the same hex and unit", () => {
     expect(unitRowKey("1:7,53", "new-1")).toBe(unitRowKey("1:7,53", "new-1"));

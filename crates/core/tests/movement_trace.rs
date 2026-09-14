@@ -9,6 +9,7 @@ use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::movement::request::{
     trace_orders_for_remembered_report, MoveOrderTraceResponse,
 };
+use atlantis_hud_core::unit_ref::UnitRef;
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const G3_F42_T40: &str = atlantis_hud_fixtures::G3_F42_T40.text;
 const G5_F21_T24: &str = atlantis_hud_fixtures::G5_F21_T24.text;
@@ -722,8 +723,12 @@ fn trace_in_shaft_knowing(
         RULESET,
         &report_with_a_shaft(),
         "[]",
-        unit_id,
-        "",
+        &UnitRef {
+            // Walker (900) stands in plain (1,1).
+            region_id: "1:1,1".into(),
+            unit_id: unit_id.into(),
+            arriving_from: None,
+        },
         &document(unit_id, orders),
         "",
         passages_json,
@@ -1087,8 +1092,35 @@ fn trace_in_column(region_id: &str, unit_id: &str, orders: &str) -> MoveOrderTra
         RULESET,
         &three_hexes_in_a_column(),
         "[]",
-        unit_id,
-        region_id,
+        &UnitRef {
+            region_id: region_id.into(),
+            unit_id: unit_id.into(),
+            arriving_from: None,
+        },
+        orders,
+        "",
+        "",
+    )
+    .expect("the ruleset loads")
+}
+
+/// Traces the row of `unit_id` listed in `listed_in` that arrives there from `arriving_from`.
+fn trace_arrival_in_column(
+    listed_in: &str,
+    arriving_from: &str,
+    unit_id: &str,
+    orders: &str,
+) -> MoveOrderTraceResponse {
+    atlantis_hud_core::movement::request::trace_orders_on_map(
+        &mut ReportCache::new(),
+        RULESET,
+        &three_hexes_in_a_column(),
+        "[]",
+        &UnitRef {
+            region_id: listed_in.into(),
+            unit_id: unit_id.into(),
+            arriving_from: Some(arriving_from.into()),
+        },
         orders,
         "",
         "",
@@ -1143,11 +1175,15 @@ unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n";
 
 #[test]
 fn a_new_units_number_alone_still_traces_when_only_one_hex_forms_it() {
-    let path = trace_in_column(
-        "",
+    let path = trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        &three_hexes_in_a_column(),
+        "[]",
         "new-1",
         "unit 900\nFORM 1\nMOVE S\nEND\nGIVE NEW 1 1 LEAD\n",
     )
+    .expect("the ruleset loads")
     .path
     .expect("the only New 1 moves");
     assert_eq!(path.from, at(1, 1));
@@ -1191,6 +1227,17 @@ unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n";
         None,
         "the northern New 1 writes no MOVE"
     );
+}
+
+/// The southern New 1's arrival row, listed where the northern hex forms its own (`ah-jxrw`).
+#[test]
+fn an_arrival_row_is_traced_from_the_hex_it_set_out_from() {
+    let path = trace_arrival_in_column("1:1,1", "1:1,5", "new-1", EACH_HEX_FORMS_NEW_1)
+        .path
+        .expect("the southern New 1 moves");
+    assert_eq!(path.from, at(1, 5));
+    assert_eq!(path.steps.len(), 2);
+    assert_eq!(path.steps[1].to, at(1, 1));
 }
 
 /// The map trace lexes under the world's rules: under Trident a `;` starts a comment wherever it

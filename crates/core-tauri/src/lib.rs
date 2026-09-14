@@ -1175,14 +1175,13 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "trace_move_orders")
     )]
-    // Eight, as the core's `trace_orders_on_map` less its cache; the hex is the one the selected unit set out from (`ah-jxrw`).
+    // Seven, as the core's `trace_orders_on_map` less its cache; the unit crosses whole as a `UnitRef`.
     #[allow(clippy::too_many_arguments)]
     pub fn command_trace_move_orders(
         ruleset_json: &str,
         raw_report: &str,
         remembered_json: &str,
-        unit_id: &str,
-        region_id: &str,
+        unit: atlantis_hud_core::unit_ref::UnitRef,
         orders_document: &str,
         map_json: &str,
         passages_json: &str,
@@ -1193,8 +1192,7 @@ pub mod commands {
                 ruleset_json,
                 raw_report,
                 remembered_json,
-                unit_id,
-                region_id,
+                &unit,
                 orders_document,
                 map_json,
                 passages_json,
@@ -1586,8 +1584,11 @@ mod trace_move_orders_command_tests {
             RULESET,
             &current,
             &remembered,
-            "900",
-            "1:1,1",
+            atlantis_hud_core::unit_ref::UnitRef {
+                region_id: "1:1,1".into(),
+                unit_id: "900".into(),
+                arriving_from: None,
+            },
             "unit 900\nMOVE SE SE",
             "",
             "",
@@ -1613,8 +1614,11 @@ mod trace_move_orders_command_tests {
             RULESET,
             &current,
             "[]",
-            "900",
-            "1:1,1",
+            atlantis_hud_core::unit_ref::UnitRef {
+                region_id: "1:1,1".into(),
+                unit_id: "900".into(),
+                arriving_from: None,
+            },
             "unit 900\nwork",
             "",
             "",
@@ -2643,8 +2647,11 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             atlantis_hud_fixtures::RULESET_JSON,
             &report,
             "[]",
-            "900",
-            "1:1,1",
+            atlantis_hud_core::unit_ref::UnitRef {
+                region_id: "1:1,1".into(),
+                unit_id: "900".into(),
+                arriving_from: None,
+            },
             "unit 900\nMOVE 3 IN\n",
             "",
             passages,
