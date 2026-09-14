@@ -52,11 +52,13 @@ impl StatePhase {
 
 /// Every phase an order can settle in, in the turn's order.
 ///
-/// [`StatePhase::Maintenance`] is absent: it carries no order, only the upkeep charge assessed
-/// after every order has run. So is [`StatePhase::PrimaryProduction`]: [`phase_of`] cannot answer
+/// These are the phases the **per-hex** walk settles. Three are absent. [`StatePhase::Transport`]
+/// and [`StatePhase::Maintenance`] are settled by [`super::semantics`]' report-wide steps, across
+/// every hex at once (`rules/sequenceofevents`: "In each phase all units in all hexes are processed
+/// before starting the next phase"). [`StatePhase::PrimaryProduction`]: [`phase_of`] cannot answer
 /// it without a ruleset, and [`super::semantics`] runs both PRODUCE passes outside this walk
 /// anyway (`ah-728m.2.2`).
-pub(crate) const ORDER: [StatePhase; 13] = [
+pub(crate) const ORDER: [StatePhase; 12] = [
     StatePhase::Instant,
     StatePhase::Claim,
     StatePhase::Give,
@@ -69,7 +71,6 @@ pub(crate) const ORDER: [StatePhase; 13] = [
     StatePhase::Manufacturing,
     StatePhase::Build,
     StatePhase::Wages,
-    StatePhase::Transport,
 ];
 
 /// The phase one order settles in, per `rules/sequenceofevents`.
@@ -267,5 +268,15 @@ mod tests {
         let backwards = vec![second, first];
         let ordered = in_phase_order(&backwards);
         assert_eq!([ordered[0].line, ordered[1].line], [2, 1]);
+    }
+
+    #[test]
+    fn transport_is_not_a_phase_the_hex_walk_settles() {
+        assert!(!ORDER.contains(&StatePhase::Transport));
+        assert!(!ORDER.contains(&StatePhase::Maintenance));
+        assert!(
+            ORDER.windows(2).all(|w| w[0] < w[1]),
+            "ORDER is strictly in the turn's order"
+        );
     }
 }

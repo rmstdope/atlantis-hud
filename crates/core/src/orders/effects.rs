@@ -4068,10 +4068,15 @@ mod tests {
         let ruleset = std::sync::Arc::new(Ruleset::from_json(RULESET).expect("the ruleset loads"));
         let decided_900 = |text: &str, orders: &str, dissolving: bool| {
             let report = ReportCache::new().classified(text, RULESET);
+            let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+                orders,
+                Some(ruleset.as_ref()),
+            );
             let (units, _, _) = settle(
                 &report,
                 &ruleset,
                 orders,
+                &ordered,
                 None,
                 crate::orders::semantics::CheckOptions::default(),
             );
