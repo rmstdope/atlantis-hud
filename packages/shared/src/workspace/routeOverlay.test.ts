@@ -40,7 +40,8 @@ const trace: TracedPath = {
   ],
   mode: "walk",
   blockedFrom: null,
-  passage: null
+  passage: null,
+  wall: null
 };
 
 const passage = {
@@ -83,7 +84,8 @@ describe("which movement line the map draws", () => {
       hexes: [at(7, 51), at(7, 49)],
       solidSteps: 2,
       passage: null,
-      beyond: null
+      beyond: null,
+      wall: null
     });
   });
 
@@ -108,7 +110,8 @@ describe("which movement line the map draws", () => {
       hexes: [at(7, 51), at(7, 49), at(7, 47)],
       solidSteps: 1,
       passage: null,
-      beyond: null
+      beyond: null,
+      wall: null
     });
   });
 
@@ -195,7 +198,8 @@ describe("a passage the faction has proved the far side of", () => {
     expect(overlay?.beyond).toEqual({
       origin: at(30, 30, 3),
       hexes: [at(31, 31), at(32, 32)],
-      solidSteps: 2
+      solidSteps: 2,
+      wall: null
     });
   });
 
@@ -270,5 +274,43 @@ describe("a passage the faction has proved the far side of", () => {
     });
 
     expect(overlay?.beyond).toBeNull();
+  });
+});
+
+describe("a route that ran into a wall", () => {
+  it("carries the wall on the near half of a written order", () => {
+    const overlay = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: { ...trace, wall: { coordinate: at(7, 47), direction: "north" } }
+    });
+
+    expect(overlay?.wall).toEqual({ coordinate: at(7, 47), direction: "north" });
+    expect(overlay?.beyond).toBeNull();
+  });
+
+  it("carries a wall past a followed passage on the far half, not the near one", () => {
+    const wall = { coordinate: at(32, 32, 3), direction: "south" as const };
+    const overlay = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: { ...trace, steps: [], passage: followed, wall }
+    });
+
+    expect(overlay?.wall).toBeNull();
+    expect(overlay?.beyond?.wall).toEqual(wall);
+  });
+
+  it("never carries a wall on a planner preview", () => {
+    const overlay = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan,
+      trace: { ...trace, wall: { coordinate: at(7, 47), direction: "north" } }
+    });
+
+    expect(overlay?.wall).toBeNull();
   });
 });

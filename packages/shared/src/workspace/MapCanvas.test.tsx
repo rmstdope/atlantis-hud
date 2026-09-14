@@ -165,7 +165,8 @@ function drawWithRoute(): string {
         hexes: [{ x: 7, y: 51, z: 1 }],
         solidSteps: 1,
         passage: null,
-        beyond: null
+        beyond: null,
+        wall: null
       }}
       routeRisk={[
         {
@@ -664,7 +665,8 @@ function drawWithPassage(level: number, passageLevel: number): string {
           terrain: "mountain",
           exit: null
         },
-        beyond: null
+        beyond: null,
+        wall: null
       }}
     />
   );
@@ -730,7 +732,13 @@ function drawWithKnownPassage(level: number): string {
             steps: []
           }
         },
-        beyond: { origin: { x: 12, y: 34, z: 2 }, hexes: [{ x: 13, y: 34, z: 2 }], solidSteps: 0 }
+        beyond: {
+          origin: { x: 12, y: 34, z: 2 },
+          hexes: [{ x: 13, y: 34, z: 2 }],
+          solidSteps: 0,
+          wall: null
+        },
+        wall: null
       }}
     />
   );
