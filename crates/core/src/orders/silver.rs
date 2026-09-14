@@ -7617,21 +7617,6 @@ mod tests {
         }
     }
 
-    /// A region whose tax base is stated and whose *pillaging* units have men enough to take it -
-    /// the threshold exactly, and all of them this unit's own, so its share of the take is the
-    /// whole of it (decision G1, `ah-q6bt`). What the `PILLAGE` arm needs before it credits
-    /// anything (`ah-1ad6.2`).
-    fn pillageable(tax_base: i64) -> RegionWages {
-        RegionWages {
-            tax_base: Some(tax_base),
-            pillagers: Some(Pillagers {
-                ready: pillage_threshold(tax_base),
-                incomplete: false,
-            }),
-            ..RegionWages::default()
-        }
-    }
-
     /// Combat 1, which makes every man of a unit a taxer whatever it wields
     /// (`rules/economy_taxingpillaging`) - so a test unit's combat ready men are simply its men.
     fn combat_one() -> Skill {
@@ -8381,45 +8366,6 @@ mod tests {
         )
     }
 
-    /// The reported defect: 800 men set to tax every turn, no `TAX` line, shown earning nothing
-    /// (`ah-fvzu`).
-    #[test]
-    fn a_flagged_unit_earns_its_tax_without_an_order() {
-        let unit = forecast_flagged(
-            800,
-            taxable(Some(40_000)),
-            PoolShares::default(),
-            &flags(&["taxing"]),
-            &[],
-        );
-        assert_eq!(unit.income, Some(40_000));
-    }
-
-    /// The obvious wrong implementation - keep the intent arm, add a flag branch - doubles this.
-    #[test]
-    fn a_flagged_unit_with_a_tax_order_is_not_counted_twice() {
-        let unit = forecast_flagged(
-            800,
-            taxable(Some(40_000)),
-            PoolShares::default(),
-            &flags(&["taxing"]),
-            &[placed(Intent::Tax)],
-        );
-        assert_eq!(unit.income, Some(40_000));
-    }
-
-    #[test]
-    fn a_flagged_unit_is_capped_by_the_tax_base() {
-        let unit = forecast_flagged(
-            8,
-            taxable(Some(120)),
-            PoolShares::default(),
-            &flags(&["autotax"]),
-            &[],
-        );
-        assert_eq!(unit.income, Some(120));
-    }
-
     #[test]
     fn a_flagged_unit_in_a_pillaged_hex_earns_nothing() {
         let region = RegionWages {
@@ -8430,16 +8376,6 @@ mod tests {
         let unit = forecast_flagged(30, region, PoolShares::default(), &flags(&["taxing"]), &[]);
         assert_eq!(unit.income, Some(0));
         assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn a_flagged_unit_contends_for_the_pool_like_any_other() {
-        let shares = PoolShares {
-            tax: PoolShare::Share(500),
-            ..PoolShares::default()
-        };
-        let unit = forecast_flagged(30, taxable(Some(2500)), shares, &flags(&["taxing"]), &[]);
-        assert_eq!(unit.income, Some(500));
     }
 
     /// Lifting tax out of the intent loop makes the tax doubt win over a later order's, whichever
@@ -8498,71 +8434,6 @@ mod tests {
         assert!(!ordered.taxes_by_flag);
     }
 
-    /// A unit taxing by its flag spends its month taxing, so it is not also set to work - which
-    /// would credit it the region's wage on top of its tax (`ah-fvzu` meeting `ah-gjq4`).
-    #[test]
-    fn a_flagged_taxer_is_not_also_set_to_work() {
-        let region = RegionWages {
-            tax_base: Some(40_000),
-            wage_centis: Some(1200),
-            max_wages: Some(10_000),
-            ..RegionWages::default()
-        };
-        let unit = forecast_flagged(8, region, PoolShares::default(), &flags(&["taxing"]), &[]);
-        assert!(!unit.works_by_default);
-        assert_eq!(unit.income, Some(400));
-        assert_eq!(unit.late_income, Some(0));
-    }
-
-    #[test]
-    fn a_claiming_unit_counts_what_it_claims() {
-        let unit = forecast_holding(
-            1,
-            RegionWages::default(),
-            purse(Some(4935)),
-            &[placed(Intent::Claim(500))],
-        );
-        assert_eq!(unit.income, Some(500));
-        assert_eq!(unit.at_month_end, Some(500));
-        assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn a_claim_is_capped_by_what_the_faction_holds() {
-        let unit = forecast_holding(
-            1,
-            RegionWages::default(),
-            purse(Some(4935)),
-            &[placed(Intent::Claim(9000))],
-        );
-        assert_eq!(unit.income, Some(4935));
-        assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn a_claim_with_no_stated_purse_counts_what_was_claimed() {
-        let unit = forecast_holding(
-            1,
-            RegionWages::default(),
-            purse(None),
-            &[placed(Intent::Claim(500))],
-        );
-        assert_eq!(unit.income, Some(500));
-        assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn one_unit_repeated_claims_share_its_allowance() {
-        let region = RegionWages::default();
-        let unit = forecast_holding(
-            1,
-            region,
-            purse(Some(4935)),
-            &[placed(Intent::Claim(4000)), placed(Intent::Claim(4000))],
-        );
-        assert_eq!(unit.income, Some(4935));
-    }
-
     #[test]
     fn a_claim_of_nothing_changes_nothing() {
         let unit = forecast_holding(
@@ -8573,32 +8444,6 @@ mod tests {
         );
         assert_eq!(unit.income, Some(0));
         assert_eq!(unit.at_month_end, Some(0));
-    }
-
-    #[test]
-    fn a_claim_alongside_other_income_adds_to_it() {
-        let unit = forecast_holding(
-            8,
-            taxable(Some(100_000)),
-            purse(Some(4935)),
-            &[placed(Intent::Tax), placed(Intent::Claim(500))],
-        );
-        assert_eq!(unit.income, Some(900));
-    }
-
-    #[test]
-    fn a_taxing_unit_earns_fifty_a_man() {
-        let unit = forecast(8, taxable(Some(100_000)), &[placed(Intent::Tax)]);
-        assert_eq!(unit.income, Some(400));
-        assert_eq!(unit.expense, Some(0));
-        assert_eq!(unit.at_month_end, Some(400));
-        assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn a_taxing_unit_is_capped_by_the_regions_tax_base() {
-        let unit = forecast(8, taxable(Some(120)), &[placed(Intent::Tax)]);
-        assert_eq!(unit.income, Some(120));
     }
 
     #[test]
@@ -8641,21 +8486,6 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
-    /// "The amount of money collected is equal to twice the available tax money." The ledger
-    /// (`semantics::apply`) has credited exactly this since it shipped; the column credited
-    /// nothing at all, so the two surfaces priced one order two ways (`ah-abwx`).
-    #[test]
-    fn a_pillaging_unit_earns_twice_the_tax_base() {
-        let unit = forecast_pillaging(
-            pillage_threshold(2500),
-            pillageable(2500),
-            &[placed(Intent::Pillage)],
-        );
-        assert_eq!(unit.income, Some(5000));
-        assert_eq!(unit.at_month_end, Some(5000));
-        assert_eq!(unit.doubt, None);
-    }
-
     /// A silent zero is the defect being removed, so `income` is asserted `None` and not merely
     /// the doubt: a column that showed nothing would pass a test that only read the doubt.
     #[test]
@@ -8681,19 +8511,6 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
-    /// No regression on `ah-abwx`: the sole pillager, having the men, is credited the whole take.
-    #[test]
-    fn the_only_pillager_with_the_men_is_credited_in_full() {
-        let region = RegionWages {
-            tax_base: Some(8963),
-            pillagers: counted(90),
-            ..RegionWages::default()
-        };
-        let unit = forecast_pillaging(90, region, &[placed(Intent::Pillage)]);
-        assert_eq!(unit.income, Some(17_926));
-        assert_eq!(unit.doubt, None);
-    }
-
     /// A guessed headcount among the *pillagers* leaves the threshold unanswerable in the
     /// direction that matters: the estimate might be what carries them over it. A guess anywhere
     /// else in the hex no longer says anything at all, which is decision G1 (`ah-q6bt`).
@@ -8709,23 +8526,6 @@ mod tests {
         assert_eq!(unit.income, None);
     }
 
-    /// Decision **G1** and **D1** together (`ah-q6bt`), and the reversal of what shipped before:
-    /// a lone leader ordering `PILLAGE` beside eighty-nine armed faction-mates who also ordered it
-    /// takes its *share*, one ninetieth, and not the whole take. Before this bead the column
-    /// credited it all 17,926 - and credited the army the same 17,926 again, so the faction total
-    /// was a multiple of a take the region only holds once.
-    #[test]
-    fn the_men_are_counted_across_the_pillagers_and_the_take_divided_between_them() {
-        let region = RegionWages {
-            tax_base: Some(8963),
-            pillagers: counted(90),
-            ..RegionWages::default()
-        };
-        let unit = forecast_pillaging(1, region, &[placed(Intent::Pillage)]);
-        assert_eq!(unit.income, Some(199), "17_926 / 90, truncated");
-        assert_eq!(unit.doubt, None);
-    }
-
     /// The older doubt wins: what the region holds is unknown before the question of who may take
     /// it arises.
     #[test]
@@ -8737,18 +8537,6 @@ mod tests {
         };
         let unit = forecast_pillaging(1, region, &[placed(Intent::Pillage)]);
         assert_eq!(unit.doubt, Some(SilverDoubt::UnknownTaxBase));
-    }
-
-    /// Guards against the arm being folded into `Tax`'s match rather than written beside it: a
-    /// pillaging unit earns twice the base and nothing per man.
-    #[test]
-    fn pillaging_does_not_also_tax() {
-        let unit = forecast_pillaging(
-            pillage_threshold(1000),
-            pillageable(1000),
-            &[placed(Intent::Pillage)],
-        );
-        assert_eq!(unit.income, Some(2000));
     }
 
     #[test]
@@ -9395,13 +9183,6 @@ mod tests {
         assert_eq!(working.late_income, Some(120));
         let entertainer = entertaining(5, 2, Some(1000));
         assert_eq!(entertainer.late_income, Some(300));
-    }
-
-    #[test]
-    fn taxing_earns_in_time() {
-        let unit = forecast(8, taxable(Some(100_000)), &[placed(Intent::Tax)]);
-        assert_eq!(unit.income, Some(400));
-        assert_eq!(unit.late_income, Some(0));
     }
 
     #[test]
@@ -11223,51 +11004,6 @@ mod tests {
     /// The causes of a unit's ledger, in order, for the assertions below.
     fn causes(silver: &UnitSilver) -> Vec<SilverChangeCause> {
         silver.changes.iter().map(|change| change.cause).collect()
-    }
-
-    #[test]
-    fn changes_names_tax_pillage_and_claim() {
-        // CLAIM settles in the instant block, ahead of the tax phase (`rules/sequenceofevents`),
-        // so the ledger reports it first however the block was written.
-        let unit = forecast_holding(
-            8,
-            taxable(Some(40_000)),
-            purse(Some(1_000)),
-            &[at_line(3, Intent::Tax), at_line(5, Intent::Claim(50))],
-        );
-        assert_eq!(
-            causes(&unit),
-            [SilverChangeCause::Claimed, SilverChangeCause::Taxed]
-        );
-        assert_eq!(unit.changes[0].amount, 50);
-        assert_eq!(unit.changes[0].line, Some(5));
-        assert_eq!(unit.changes[0].other, None);
-        assert_eq!(unit.changes[1].line, Some(3));
-        assert_eq!(
-            unit.changes.iter().map(|change| change.amount).sum::<i64>(),
-            unit.income.expect("priced")
-        );
-    }
-
-    #[test]
-    fn changes_leaves_the_line_off_a_tax_the_flag_ordered() {
-        let unit = forecast_flagged(
-            8,
-            taxable(Some(40_000)),
-            PoolShares::default(),
-            &flags(&["taxing"]),
-            &[],
-        );
-        assert_eq!(causes(&unit), [SilverChangeCause::Taxed]);
-        assert_eq!(unit.changes[0].line, None);
-    }
-
-    #[test]
-    fn changes_names_a_pillage() {
-        let unit = forecast_pillaging(80, pillageable(4_000), &[at_line(7, Intent::Pillage)]);
-        assert_eq!(causes(&unit), [SilverChangeCause::Pillaged]);
-        assert_eq!(unit.changes[0].amount, unit.income.expect("priced"));
-        assert_eq!(unit.changes[0].line, Some(7));
     }
 
     #[test]

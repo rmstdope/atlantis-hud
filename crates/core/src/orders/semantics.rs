@@ -16186,6 +16186,109 @@ mod tests {
             pool_shares_for(&hex, region_wages(&hex, None), None, None).overruns
         }
 
+        #[test]
+        fn a_claiming_unit_counts_what_it_claims() {
+            let review = review_turn(
+                &report_with_purse(Some(4935), vec![region(vec![taxer("2390", 1)])]),
+                "unit 2390\nCLAIM 500\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let unit = silver_of(&review, "2390");
+            assert_eq!(unit.income, Some(500));
+            assert_eq!(unit.at_month_end, Some(500));
+            assert_eq!(unit.doubt, None);
+        }
+
+        #[test]
+        fn a_claim_is_capped_by_what_the_faction_holds() {
+            let review = review_turn(
+                &report_with_purse(Some(4935), vec![region(vec![taxer("2390", 1)])]),
+                "unit 2390\nCLAIM 9000\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let unit = silver_of(&review, "2390");
+            assert_eq!(unit.income, Some(4935));
+            assert_eq!(unit.doubt, None);
+        }
+
+        #[test]
+        fn one_unit_repeated_claims_share_its_allowance() {
+            let review = review_turn(
+                &report_with_purse(Some(4935), vec![region(vec![taxer("2390", 1)])]),
+                "unit 2390\nCLAIM 4000\nCLAIM 4000\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(4935));
+        }
+
+        #[test]
+        fn a_claim_alongside_other_income_adds_to_it() {
+            let review = review_turn(
+                &report_with_purse(
+                    Some(4935),
+                    vec![ReportRegion {
+                        tax_base: Some(100_000),
+                        ..region(vec![taxer("2390", 8)])
+                    }],
+                ),
+                "unit 2390\nTAX\nCLAIM 500\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(900));
+        }
+
+        #[test]
+        fn taxing_earns_in_time() {
+            let review = tax_review(Some(100_000), vec![taxer("2390", 8)], "unit 2390\nTAX\n");
+
+            let unit = silver_of(&review, "2390");
+            assert_eq!(unit.income, Some(400));
+            assert_eq!(unit.late_income, Some(0));
+        }
+
+        #[test]
+        fn changes_names_tax_pillage_and_claim() {
+            // CLAIM settles in the instant block, ahead of the tax phase (`rules/sequenceofevents`),
+            // so the ledger reports it first however the block was written.
+            let review = review_turn(
+                &report_with_purse(
+                    Some(1000),
+                    vec![ReportRegion {
+                        tax_base: Some(40_000),
+                        ..region(vec![taxer("2390", 8)])
+                    }],
+                ),
+                "unit 2390\nTAX\nCLAIM 50\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let unit = silver_of(&review, "2390");
+            assert_eq!(
+                unit.changes
+                    .iter()
+                    .map(|change| change.cause)
+                    .collect::<Vec<_>>(),
+                [SilverChangeCause::Claimed, SilverChangeCause::Taxed]
+            );
+            assert_eq!(unit.changes[0].amount, 50);
+            assert_eq!(unit.changes[0].line, Some(3));
+            assert_eq!(unit.changes[0].other, None);
+            assert_eq!(unit.changes[1].line, Some(2));
+            assert_eq!(
+                unit.changes.iter().map(|change| change.amount).sum::<i64>(),
+                unit.income.expect("priced")
+            );
+        }
+
         /// `ah-0n2k.1`. The tax base is drawn in the turn's earlier phase, so an unread hex-mate
         /// bounds the silver that arrives *in time* and not the wage and entertainment half.
         #[test]
@@ -18688,6 +18791,123 @@ mod tests {
         with_skill(unit, "COMB", 1)
     }
 
+    /// The reported defect: 800 men set to tax every turn, no `TAX` line, shown earning nothing
+    /// (`ah-fvzu`).
+    #[test]
+    fn a_flagged_unit_earns_its_tax_without_an_order() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                tax_base: Some(40_000),
+                ..region(vec![with_silver(
+                    taxing_by_flag(with_men(unit("1"), 800)),
+                    0,
+                )])
+            }]),
+            "unit 1\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "1").income, Some(40_000));
+    }
+
+    /// The obvious wrong implementation - keep the intent arm, add a flag branch - doubles this.
+    #[test]
+    fn a_flagged_unit_with_a_tax_order_is_not_counted_twice() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                tax_base: Some(40_000),
+                ..region(vec![with_silver(
+                    taxing_by_flag(with_men(unit("1"), 800)),
+                    0,
+                )])
+            }]),
+            "unit 1\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "1").income, Some(40_000));
+    }
+
+    #[test]
+    fn a_flagged_unit_is_capped_by_the_tax_base() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                tax_base: Some(120),
+                ..region(vec![with_silver(taxing_by_flag(with_men(unit("1"), 8)), 0)])
+            }]),
+            "unit 1\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "1").income, Some(120));
+    }
+
+    #[test]
+    fn a_flagged_unit_contends_for_the_pool_like_any_other() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                tax_base: Some(2500),
+                ..region(vec![
+                    with_silver(taxing_by_flag(with_men(unit("1"), 30)), 0),
+                    with_silver(with_skill(with_men(unit("2"), 30), "COMB", 1), 0),
+                ])
+            }]),
+            "unit 2\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "1").income, Some(1250));
+    }
+
+    /// A unit taxing by its flag spends its month taxing, so it is not also set to work - which
+    /// would credit it the region's wage on top of its tax (`ah-fvzu` meeting `ah-gjq4`).
+    #[test]
+    fn a_flagged_taxer_is_not_also_set_to_work() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                tax_base: Some(40_000),
+                wages: Some("$12".to_string()),
+                max_wages: Some(10_000),
+                ..region(vec![with_silver(taxing_by_flag(with_men(unit("1"), 8)), 0)])
+            }]),
+            "unit 1\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let unit = forecast(&review, "1");
+        assert!(!unit.works_by_default);
+        assert_eq!(unit.income, Some(400));
+        assert_eq!(unit.late_income, Some(0));
+    }
+
+    #[test]
+    fn changes_leaves_the_line_off_a_tax_the_flag_ordered() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                tax_base: Some(40_000),
+                ..region(vec![with_silver(taxing_by_flag(with_men(unit("1"), 8)), 0)])
+            }]),
+            "unit 1\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let unit = forecast(&review, "1");
+        assert_eq!(
+            unit.changes
+                .iter()
+                .map(|change| change.cause)
+                .collect::<Vec<_>>(),
+            [SilverChangeCause::Taxed]
+        );
+        assert_eq!(unit.changes[0].line, None);
+    }
+
     // --- this month's flag orders reach the flag list (`ah-9g94.3`) ---------------------------
 
     #[test]
@@ -19916,6 +20136,62 @@ mod tests {
             .expect("the pillager is priced");
         assert_eq!(pillager.income, Some(5000));
         assert_eq!(pillager.doubt, None);
+    }
+
+    /// Decision **G1** and **D1** together (`ah-q6bt`), and the reversal of what shipped before:
+    /// a lone leader ordering `PILLAGE` beside eighty-nine armed faction-mates who also ordered it
+    /// takes its *share*, one ninetieth, and not the whole take. Before this bead the column
+    /// credited it all 17,926 - and credited the army the same 17,926 again, so the faction total
+    /// was a multiple of a take the region only holds once.
+    #[test]
+    fn a_ready_leader_among_the_pillagers_takes_its_share() {
+        let hex_region = ReportRegion {
+            tax_base: Some(8963),
+            ..region(vec![
+                with_skill(with_silver(unit("683"), 0), "COMB", 1),
+                with_item(
+                    with_men(with_silver(unit("684"), 0), 89),
+                    89,
+                    "sword",
+                    "SWOR",
+                ),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 683\nPILLAGE\nunit 684\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let leader = forecast(&review, "683");
+        assert_eq!(leader.income, Some(199), "17_926 / 90, truncated");
+        assert_eq!(leader.doubt, None);
+    }
+
+    #[test]
+    fn changes_names_a_pillage() {
+        let hex_region = ReportRegion {
+            tax_base: Some(4000),
+            ..region(vec![armed_to_pillage(with_silver(unit("1"), 0), 4000)])
+        };
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 1\nPILLAGE\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let unit = forecast(&review, "1");
+        assert_eq!(
+            unit.changes
+                .iter()
+                .map(|change| change.cause)
+                .collect::<Vec<_>>(),
+            [SilverChangeCause::Pillaged]
+        );
+        assert_eq!(unit.changes[0].amount, unit.income.expect("priced"));
+        assert_eq!(unit.changes[0].line, Some(2));
     }
 
     #[test]
