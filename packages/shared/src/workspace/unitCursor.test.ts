@@ -1,29 +1,9 @@
 import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { isCursorRow, previewAtCursor, unitAtCursor, unitCursor } from "./unitCursor";
+import { isCursorRow, previewAtCursor, unitAtCursor } from "./unitCursor";
 
 const here = { regionId: "1:6,52", unitId: "new-1", arrivingFrom: null };
 const there = { regionId: "1:8,53", unitId: "new-1", arrivingFrom: null };
-
-describe("unitCursor", () => {
-  it("is the pair, or nothing at all", () => {
-    expect(
-      unitCursor({ selectedUnitId: "new-1", selectedUnitRegionId: "1:6,52", selectedUnitArrivingFrom: null })
-    ).toEqual(here);
-    expect(
-      unitCursor({ selectedUnitId: null, selectedUnitRegionId: "1:6,52", selectedUnitArrivingFrom: null })
-    ).toBeNull();
-    expect(
-      unitCursor({ selectedUnitId: "new-1", selectedUnitRegionId: null, selectedUnitArrivingFrom: null })
-    ).toBeNull();
-  });
-
-  it("carries the hex an arrival row set out from", () => {
-    expect(
-      unitCursor({ selectedUnitId: "new-1", selectedUnitRegionId: "1:6,52", selectedUnitArrivingFrom: "1:7,53" })
-    ).toEqual({ ...here, arrivingFrom: "1:7,53" });
-  });
-});
 
 describe("isCursorRow", () => {
   it("tells two hexes' same-numbered units apart", () => {

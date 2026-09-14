@@ -6,10 +6,10 @@
 //! ground - is driven the same way the planner's acceptance tests drive it.
 
 use atlantis_hud_core::cache::ReportCache;
-use atlantis_hud_core::unit_ref::UnitRef;
 use atlantis_hud_core::movement::request::{
     trace_orders_for_remembered_report, MoveOrderTraceResponse,
 };
+use atlantis_hud_core::unit_ref::UnitRef;
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const G3_F42_T40: &str = atlantis_hud_fixtures::G3_F42_T40.text;
 const G5_F21_T24: &str = atlantis_hud_fixtures::G5_F21_T24.text;

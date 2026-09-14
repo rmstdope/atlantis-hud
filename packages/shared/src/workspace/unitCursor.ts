@@ -13,27 +13,6 @@ import { rowKeyOf, unitRefKey, type KeyedRow } from "../unitTable";
  */
 export type UnitCursor = UnitRef;
 
-/**
- * The store's cursor fields as one value, or null when nothing is selected.
- *
- * NOT usable as a zustand selector: it builds a fresh object, and `useSyncExternalStore` would
- * re-render for ever. Read the fields with their own selectors and memoise this.
- */
-export function unitCursor(state: {
-  selectedUnitId: string | null;
-  selectedUnitRegionId: string | null;
-  selectedUnitArrivingFrom: string | null;
-}): UnitCursor | null {
-  if (state.selectedUnitId === null || state.selectedUnitRegionId === null) {
-    return null;
-  }
-  return {
-    regionId: state.selectedUnitRegionId,
-    unitId: state.selectedUnitId,
-    arrivingFrom: state.selectedUnitArrivingFrom
-  };
-}
-
 /** Whether this row - hex, number and origin together - is the cursor row. */
 export function isCursorRow(cursor: UnitCursor | null, row: KeyedRow): boolean {
   return cursor !== null && unitRefKey(cursor) === rowKeyOf(row);

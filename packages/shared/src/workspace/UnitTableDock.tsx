@@ -74,6 +74,7 @@ import {
   orderOf,
   unitNamesByRow,
   rowKeyOf,
+  unitRefOf,
   unitRowKey,
   unitRowSelector,
   silverIsRed,
@@ -87,7 +88,8 @@ import {
   type DrawnColumnId,
   type UnitColumn
 } from "../unitTable";
-import { isCursorRow, unitCursor } from "./unitCursor";
+import { isCursorRow } from "./unitCursor";
+import type { UnitRef } from "@atlantis/core-client";
 import {
   changeFor,
   originalTooltip,
@@ -321,17 +323,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     },
     ref
   ) {
-  const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
-  const selectedUnitRegionId = useWorkspaceStore((state) => state.selectedUnitRegionId);
-  const selectedUnitArrivingFrom = useWorkspaceStore((state) => state.selectedUnitArrivingFrom);
-  /**
-   * The cursor as a pair. Memoised rather than selected: a zustand selector building a fresh object
-   * re-renders for ever under `useSyncExternalStore` (`ah-bubf`).
-   */
-  const cursor = useMemo(
-    () => unitCursor({ selectedUnitId, selectedUnitRegionId, selectedUnitArrivingFrom }),
-    [selectedUnitId, selectedUnitRegionId, selectedUnitArrivingFrom]
-  );
+  /** The cursor, as the store holds it: selecting the stored object never re-renders for ever (`ah-bubf`). */
+  const cursor = useWorkspaceStore((state) => state.selectedUnit);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const columnShares = useWorkspaceStore((state) => state.unitColumnShares);
   const setColumnShares = useWorkspaceStore((state) => state.setUnitColumnShares);
@@ -601,10 +594,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     if (first) {
       // Not the player choosing: opening a foreign faction's list lands on its first row, and
       // recording that would make the hex reopen on a foreign unit (`ah-17t5`).
-      selectUnit(first.unitId, first.regionId, {
-        remember: false,
-        arrivingFrom: first.arrivingFrom ?? null
-      });
+      selectUnit(unitRefOf(first), { remember: false });
       // The existing scroll-into-view-then-focus machinery, not a second focus effect.
       refocusWanted.current = true;
     } else {
@@ -862,23 +852,18 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     // owing, and go to whichever row was selected next, including one chosen with the mouse.
     if (!isCursorRow(cursor, target)) {
       refocusWanted.current = true;
-      selectUnit(target.unitId, target.regionId, { arrivingFrom: target.arrivingFrom ?? null });
+      selectUnit(unitRefOf(target));
     }
   };
 
   /** Picks a row alone and puts the cursor on it - what a click, Enter and Space all mean. */
-  const settleOn = (
-    pickNext: UnitPick,
-    rowUnitId: string,
-    rowRegionId: string,
-    rowArrivingFrom: string | null
-  ) => {
+  const settleOn = (pickNext: UnitPick, unit: UnitRef) => {
     setPick(pickNext);
     // The row's own unit and the row's own hex. Since `ah-ty3s.1` a formed row selects itself
     // rather than the unit that wrote its `FORM`, and the hex is what tells two `new-1`s apart -
     // `rules/form` puts a formed unit "in the same region as the unit which formed it".
     // An arrival row also carries the hex it set out from (`ah-jxrw`).
-    selectUnit(rowUnitId, rowRegionId, { arrivingFrom: rowArrivingFrom });
+    selectUnit(unit);
   };
 
   /**
@@ -923,7 +908,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         return;
       }
       // Choosing a row from the keyboard collapses a pick exactly as a plain click does.
-      settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys), here, hereRow.regionId, hereRow.arrivingFrom ?? null);
+      settleOn(afterGesture(pick, { kind: "plain", rowKey: hereKey }, rowKeys), unitRefOf(hereRow));
       if (travel) {
         travelTo(here, hereRow.regionId);
       }
@@ -1040,7 +1025,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     const outcome = onPress(pick, rowKeyOf(unit), modifiers, rowKeys);
     if (outcome.now) {
       if (plain) {
-        settleOn(outcome.now, rowUnitId, unit.regionId, unit.arrivingFrom ?? null);
+        settleOn(outcome.now, unitRefOf(unit));
         travelTo(rowUnitId, unit.regionId);
       } else {
         setPick(outcome.now);
@@ -1061,7 +1046,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       unit,
       deferred
         ? () => {
-            settleOn(deferred, rowUnitId, unit.regionId, unit.arrivingFrom ?? null);
+            settleOn(deferred, unitRefOf(unit));
             travelTo(rowUnitId, unit.regionId);
           }
         : undefined
@@ -1184,11 +1169,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * `now`, exactly as `pressRow` does: `onRelease` is the collapse a *press* defers until it knows
    * it was not a drag, and a right-click never becomes one (Copilot, #764).
    */
-  const contextRow = (
-    event: ReactMouseEvent<HTMLTableRowElement>,
-    unit: PreviewedUnit,
-    rowUnitId: string
-  ) => {
+  const contextRow = (event: ReactMouseEvent<HTMLTableRowElement>, unit: PreviewedUnit) => {
     event.preventDefault();
     const outcome = onPress(
       pick,
@@ -1197,7 +1178,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       rowKeys
     );
     if (outcome.now) {
-      settleOn(outcome.now, rowUnitId, unit.regionId, unit.arrivingFrom ?? null);
+      settleOn(outcome.now, unitRefOf(unit));
     }
     setMenu({ at: "pointer", point: { x: event.clientX, y: event.clientY } });
   };
@@ -2156,7 +2137,7 @@ function UnitRow({
    * and it is the row's hex even for a formed row: `rules/form` puts a formed unit "in the same
    * region as the unit which formed it".
    */
-  onSelect: (unitId: string, regionId: string, options: { arrivingFrom: string | null }) => void;
+  onSelect: (unit: UnitRef) => void;
   /**
    * A press on the row, which is where selection now happens - `onClick` would be too late for a
    * press that may become a drag. Handed the row's own unit and the id the cursor should land on -
@@ -2171,8 +2152,7 @@ function UnitRow({
   /** A right-click on the row: the Army menu, at the pointer. */
   onContextMenu: (
     event: ReactMouseEvent<HTMLTableRowElement>,
-    unit: PreviewedUnit,
-    rowUnitId: string
+    unit: PreviewedUnit
   ) => void;
   /** The hex this row stands in, so its silver forecast is looked up by the right key. */
   regionId: string;
@@ -2350,7 +2330,7 @@ function UnitRow({
       <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
         <button
           type="button"
-          onClick={() => onSelect(unit.unitId, regionId, { arrivingFrom: unit.arrivingFrom ?? null })}
+          onClick={() => onSelect(unitRefOf({ regionId, unitId: unit.unitId, arrivingFrom: unit.arrivingFrom }))}
           aria-label={`unit ${unit.unitId}`}
           tabIndex={-1}
           className="focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
@@ -2708,7 +2688,7 @@ function UnitRow({
       // calling `preventDefault` on its pointerdown; a row cannot, because it must still take
       // focus, so it is refused here instead.
       onDragStart={(event) => event.preventDefault()}
-      onContextMenu={(event) => onContextMenu(event, unit, unit.unitId)}
+      onContextMenu={(event) => onContextMenu(event, unit)}
       onKeyDown={(event) => onKeyDown(event, index)}
       // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
       // so a touch would open a summary that never closed. Only a mouse can rest on something.
