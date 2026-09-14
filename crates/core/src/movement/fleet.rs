@@ -53,7 +53,7 @@ impl OrderedUnits {
 
     #[must_use]
     pub fn from_document_with_ruleset(orders_document: &str, ruleset: Option<&Ruleset>) -> Self {
-        use crate::orders::walk::{walk_with_ruleset, BlockKind, Event};
+        use crate::orders::walk::{walk, BlockKind, Event};
 
         let mut chains: BTreeMap<String, RouteChain> = BTreeMap::new();
         let mut formed: BTreeMap<usize, RouteChain> = BTreeMap::new();
@@ -69,7 +69,7 @@ impl OrderedUnits {
         let mut forms: crate::orders::blocks::FormStack<usize> =
             crate::orders::blocks::FormStack::new();
 
-        walk_with_ruleset(orders_document, ruleset, |event| match event {
+        walk(orders_document, ruleset, |event| match event {
             Event::Unit(line) => {
                 current = line.arguments.first().map(|id| id.text.to_string());
                 forms.reset();

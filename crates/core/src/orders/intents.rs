@@ -274,7 +274,7 @@ fn canonical_keyword(command: &str, ruleset: Option<&Ruleset>) -> &'static str {
 pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents> {
     let mut units: Vec<UnitIntents> = Vec::new();
 
-    walk::walk_with_ruleset(source, ruleset, |event| match event {
+    walk::walk(source, ruleset, |event| match event {
         // A unit line ends the previous block, nesting and all: the walk abandons whatever was
         // still open before this event, so an unclosed TURN cannot swallow the next unit's orders.
         Event::Unit(line) => {
@@ -421,7 +421,7 @@ pub fn read_formed(
         by_alias: BTreeMap::new(),
         results: Vec::new(),
     };
-    walk::walk_with_ruleset(source, ruleset, |event| reader.visit(event));
+    walk::walk(source, ruleset, |event| reader.visit(event));
     reader.results
 }
 

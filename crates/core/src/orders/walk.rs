@@ -125,18 +125,10 @@ fn abandon_all(stack: &mut Vec<Opened>, mut visit: impl FnMut(Event<'_>)) {
 
 /// Walks `source` and calls `visit` once per event, in document order. Blank lines and
 /// comment-only lines produce no event. Every reader in this crate goes through here.
-pub fn walk(source: &str, visit: impl FnMut(Event<'_>)) {
-    walk_with_ruleset(source, None, visit);
-}
-
-/// The same walk, under the selected world's lexical rules - the one world-aware document walk in
-/// this crate. Every reader that already holds a ruleset comes through here, so the tokens a
-/// projection acts on are the tokens the validator accepted.
-pub fn walk_with_ruleset(
-    source: &str,
-    ruleset: Option<&Ruleset>,
-    mut visit: impl FnMut(Event<'_>),
-) {
+///
+/// The walk runs under the selected world's lexical rules, so the tokens a projection acts on are
+/// the tokens the validator accepted. `None` walks under the New Origins lexical rules.
+pub fn walk(source: &str, ruleset: Option<&Ruleset>, mut visit: impl FnMut(Event<'_>)) {
     let mut stack: Vec<Opened> = Vec::new();
 
     for (index, text) in source.lines().enumerate() {
@@ -272,7 +264,7 @@ mod tests {
 
     fn summarize(source: &str) -> Vec<String> {
         let mut lines = Vec::new();
-        walk(source, |event| {
+        walk(source, None, |event| {
             lines.push(match event {
                 Event::Broken { number, .. } => format!("broken @{number}"),
                 Event::Directive(line) => format!("directive @{}", line.number),

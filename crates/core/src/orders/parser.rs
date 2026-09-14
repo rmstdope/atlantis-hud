@@ -32,7 +32,7 @@ pub fn validate(source: &str, ruleset_json: Option<&str>) -> OrderValidationResu
 pub fn validate_against(source: &str, ruleset: Option<&Ruleset>) -> OrderValidationResult {
     let mut document = Document::default();
 
-    walk::walk_with_ruleset(source, ruleset, |event| document.visit(event, ruleset));
+    walk::walk(source, ruleset, |event| document.visit(event, ruleset));
     document.finish(source);
 
     let mut diagnostics = document.diagnostics;

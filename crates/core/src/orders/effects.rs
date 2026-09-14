@@ -1061,7 +1061,7 @@ fn settle(
     std::collections::BTreeSet<String>,
 ) {
     let mut working = Working::over_own_units(report, ruleset.clone(), geometry, options);
-    super::walk::walk_with_ruleset(orders_document, Some(ruleset.as_ref()), |event| {
+    super::walk::walk(orders_document, Some(ruleset.as_ref()), |event| {
         working.visit(event);
     });
     // Every route is chained by `movement::fleet::OrderedUnits` alone, so the map and the preview

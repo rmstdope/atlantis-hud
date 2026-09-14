@@ -158,7 +158,7 @@ fn place_build_object_errors(
     }
     let mut owner_by_line: HashMap<usize, String> = HashMap::new();
     let mut current: Option<String> = None;
-    walk::walk_with_ruleset(source, ruleset, |event| match event {
+    walk::walk(source, ruleset, |event| match event {
         walk::Event::Unit(line) => {
             current = line.arguments.first().map(|token| token.text.clone());
         }
