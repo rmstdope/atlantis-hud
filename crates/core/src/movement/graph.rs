@@ -298,6 +298,33 @@ pub struct MapKnowledge {
     /// structure's number. `#[serde(default)]`, so every stored `MapKnowledge` still reads.
     #[serde(default)]
     passages: BTreeMap<String, crate::movement::passages::KnownPassage>,
+    /// How far across each level this map's own hexes reach, for the wall rule's edge test.
+    /// Filled by `from_known_map`; skipped by serde, since it is derived from `hexes`.
+    #[serde(skip)]
+    shown: ShownExtent,
+}
+
+/// A side of a hex that a report proves has no way through.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Wall {
+    /// A hex whose own Exits list proves the wall, and the side it is on, seen from that hex.
+    pub from: Coordinate,
+    pub direction: Direction,
+    /// The hex on the other side of it, which may be one no report has described or named.
+    pub to: Coordinate,
+    /// Every hex whose own Exits list proves it: `from` always, and `to` as well when its list
+    /// leaves out the side facing `from`. In that order.
+    pub proven_by: Vec<WallProof>,
+}
+
+/// One hex whose Exits list proves a wall, with what the pointing note names it by.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WallProof {
+    pub coordinate: Coordinate,
+    /// The hex's terrain, as `KnownHex::terrain` holds it (`cavern`).
+    pub terrain: String,
 }
 
 /// Keys a passage the way the screen's own memory keys one: the hex and the structure's number
@@ -455,7 +482,77 @@ impl MapKnowledge {
         // Exits are gathered after every hex is in place, so a remembered region can point at one
         // the current report describes and vice versa.
         map.rebuild_exits();
+        let shown = ShownExtent::from_coordinates(map.coordinates());
+        map.shown = shown;
         map
+    }
+
+    /// Whether a report proves there is no way out of `from` travelling `direction`.
+    ///
+    /// Only a hex described with a non-empty Exits list proves anything, and only about a side
+    /// that list leaves out. No rule states what the game does with such a side (`rules/move` is
+    /// silent), so this reads the report and claims nothing more. A side is never a wall when:
+    /// the hex is on the nexus; the step leaves what the level has shown (the outer edge and the
+    /// wrap seam, judged unwrapped); or the neighbour's own list names this hex, which is proof of
+    /// passage whichever report is newer. A stale sighting counts at full weight.
+    #[must_use]
+    pub fn wall(&self, from: Coordinate, direction: Direction) -> bool {
+        if from.z == crate::report::level::NEXUS {
+            return false;
+        }
+        let Some(list) = self.exits.get(&key(from)) else {
+            return false;
+        };
+        if list.is_empty() || list.iter().any(|(heading, _)| *heading == direction) {
+            return false;
+        }
+        let (dx, dy) = direction.offset();
+        let (x, y) = (from.x + dx, from.y + dy);
+        if x < 0 || y < 0 || x >= self.shown.columns(from.z) || y >= self.shown.rows(from.z) {
+            return false;
+        }
+        !self
+            .into
+            .get(&key(from))
+            .is_some_and(|reverse| reverse.iter().any(|(heading, _)| *heading == direction))
+    }
+
+    /// Every wall on the map, once each, in the order the hexes are keyed.
+    #[must_use]
+    pub fn walls(&self) -> Vec<Wall> {
+        let mut walls: Vec<Wall> = Vec::new();
+        let mut index: std::collections::HashMap<(Coordinate, Direction), usize> =
+            std::collections::HashMap::new();
+        for from in self.exits.keys().filter_map(|k| self.hexes.get(k)) {
+            let from_coordinate = from.coordinate;
+            for direction in Direction::ALL {
+                if !self.wall(from_coordinate, direction) {
+                    continue;
+                }
+                let (dx, dy) = direction.offset();
+                let to = Coordinate {
+                    x: from_coordinate.x + dx,
+                    y: from_coordinate.y + dy,
+                    z: from_coordinate.z,
+                };
+                let proof = WallProof {
+                    coordinate: from_coordinate,
+                    terrain: from.terrain.clone(),
+                };
+                if let Some(&existing) = index.get(&(to, direction.opposite())) {
+                    walls[existing].proven_by.push(proof);
+                } else {
+                    index.insert((from_coordinate, direction), walls.len());
+                    walls.push(Wall {
+                        from: from_coordinate,
+                        direction,
+                        to,
+                        proven_by: vec![proof],
+                    });
+                }
+            }
+        }
+        walls
     }
 
     /// Turns every region's exits into adjacency, and enters the hexes they name.
@@ -743,6 +840,191 @@ pub fn hex_distance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn walled_map(text: &str) -> MapKnowledge {
+        MapKnowledge::from_report(&crate::report::parse_report_full(text))
+    }
+
+    fn c(x: i32, y: i32) -> Coordinate {
+        Coordinate { x, y, z: 1 }
+    }
+
+    #[test]
+    fn a_side_facing_unexplored_ground_is_a_wall() {
+        let map = walled_map(concat!(
+            "Foo (1) Report\n\n",
+            "plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Southeast : plain (3,3) in Nowhere.\n\n",
+            "plain (4,4) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Northwest : plain (3,3) in Nowhere.\n\n",
+        ));
+        assert!(map.hex(c(2, 0)).is_none(), "(2,0) is on no report");
+        assert!(map.wall(c(2, 2), Direction::North));
+    }
+
+    #[test]
+    fn a_side_the_neighbour_names_back_is_no_wall() {
+        let map = walled_map(concat!(
+            "Foo (1) Report\n\n",
+            "plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  North : plain (2,0) in Nowhere.\n\n",
+            "plain (3,3) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Northwest : plain (2,2) in Nowhere.\n\n",
+        ));
+        assert!(!map.wall(c(2, 2), Direction::Southeast));
+        assert!(
+            map.wall(c(3, 3), Direction::North),
+            "an omission elsewhere still counts"
+        );
+    }
+
+    #[test]
+    fn a_hex_only_named_proves_nothing() {
+        let map = walled_map(concat!(
+            "Foo (1) Report\n\n",
+            "plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Southeast : plain (3,3) in Nowhere.\n\n",
+            "plain (4,4) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  North : plain (4,2) in Nowhere.\n\n",
+        ));
+        assert!(map.hex(c(3, 3)).is_some());
+        for direction in Direction::ALL {
+            assert!(!map.wall(c(3, 3), direction), "{direction:?}");
+        }
+    }
+
+    #[test]
+    fn the_map_edge_is_never_a_wall() {
+        let map = walled_map(concat!(
+            "Foo (1) Report\n\n",
+            "plain (0,0) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Southeast : plain (1,1) in Nowhere.\n\n",
+            "plain (1,3) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  North : plain (1,1) in Nowhere.\n\n",
+        ));
+        assert!(!map.wall(c(0, 0), Direction::North));
+        assert!(!map.wall(c(0, 0), Direction::Northwest));
+        assert!(!map.wall(c(0, 0), Direction::Southwest));
+        // The shown extent is two columns wide, so a step to x == 2 leaves it.
+        assert_eq!(map.shown_extent().columns(1), 2);
+        assert!(!map.wall(c(1, 3), Direction::Southeast));
+        assert!(!map.wall(c(1, 3), Direction::Northeast));
+        assert!(
+            map.wall(c(0, 0), Direction::South),
+            "a side inside the extent still is"
+        );
+    }
+
+    #[test]
+    fn a_region_with_no_exits_listed_proves_nothing() {
+        let map = walled_map(concat!(
+            "Foo (1) Report\n\n",
+            "plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "plain (4,4) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Northwest : plain (3,3) in Nowhere.\n\n",
+        ));
+        for direction in Direction::ALL {
+            assert!(!map.wall(c(2, 2), direction), "{direction:?}");
+        }
+    }
+
+    #[test]
+    fn a_wall_proven_from_both_sides_is_listed_once_with_both_proofs() {
+        let map = walled_map(concat!(
+            "Foo (1) Report\n\n",
+            "plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  North : plain (2,0) in Nowhere.\n",
+            "  Northeast : plain (3,1) in Nowhere.\n",
+            "  South : plain (2,4) in Nowhere.\n",
+            "  Southwest : plain (1,3) in Nowhere.\n",
+            "  Northwest : plain (1,1) in Nowhere.\n\n",
+            "forest (3,3) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  North : plain (3,1) in Nowhere.\n",
+            "  Northeast : plain (4,2) in Nowhere.\n",
+            "  Southeast : plain (4,4) in Nowhere.\n",
+            "  South : plain (3,5) in Nowhere.\n",
+            "  Southwest : plain (2,4) in Nowhere.\n\n",
+        ));
+        let between: Vec<Wall> = map
+            .walls()
+            .into_iter()
+            .filter(|wall| {
+                [wall.from, wall.to].contains(&c(2, 2)) && [wall.from, wall.to].contains(&c(3, 3))
+            })
+            .collect();
+        assert_eq!(between.len(), 1);
+        let wall = &between[0];
+        assert_eq!(wall.from, c(2, 2), "the key that sorts first");
+        assert_eq!(wall.direction, Direction::Southeast);
+        assert_eq!(wall.to, c(3, 3));
+        assert_eq!(
+            wall.proven_by,
+            vec![
+                WallProof {
+                    coordinate: c(2, 2),
+                    terrain: "plain".into()
+                },
+                WallProof {
+                    coordinate: c(3, 3),
+                    terrain: "forest".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_stale_sighting_proves_a_wall_as_strongly_as_a_current_one() {
+        let older = crate::report::parse_report_full(concat!(
+            "Foo (1) Report\n\n",
+            "plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Southeast : plain (3,3) in Nowhere.\n\n",
+        ));
+        let current = crate::report::parse_report_full(concat!(
+            "Foo (1) Report\n\n",
+            "plain (4,4) in Nowhere, 10 peasants (orcs), $5.\n\n",
+            "Exits:\n",
+            "  Northwest : plain (3,3) in Nowhere.\n\n",
+        ));
+        let map = MapKnowledge::from_remembered(
+            &current,
+            &[RememberedRegion {
+                region: older.regions[0].clone(),
+                last_seen_turn: 3,
+            }],
+        );
+        assert_eq!(map.hex(c(2, 2)).and_then(|hex| hex.last_seen_turn), Some(3));
+        assert!(map.wall(c(2, 2), Direction::North));
+    }
+
+    #[test]
+    fn the_nexus_has_no_walls() {
+        let map = walled_map(concat!(
+            "Foo (1) Report\n\n",
+            "nexus (2,2,0) in Nowhere.\n\n",
+            "Exits:\n",
+            "  Southeast : nexus (3,3,0) in Nowhere.\n\n",
+            "nexus (4,4,0) in Nowhere.\n\n",
+            "Exits:\n",
+            "  Northwest : nexus (3,3,0) in Nowhere.\n\n",
+        ));
+        let here = Coordinate { x: 2, y: 2, z: 0 };
+        assert!(map.hex(here).is_some());
+        for direction in Direction::ALL {
+            assert!(!map.wall(here, direction), "{direction:?}");
+        }
+    }
 
     /// A map shape is player-entered, so a coordinate beyond the stated width is ordinary input.
     /// A negative distance would read as *in reach* to every caller in the `ah-7ale` family.

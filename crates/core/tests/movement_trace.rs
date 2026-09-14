@@ -374,6 +374,10 @@ fn the_answer_serializes_the_way_typescript_reads_it() {
         path["blockedFrom"].is_null(),
         "camelCase, and nothing on this path blocks"
     );
+    assert!(
+        path["wall"].is_null(),
+        "present, and null when nothing walls the route"
+    );
 
     let none = serde_json::to_value(trace("18642", "work")).expect("serializes");
     assert!(none["path"].is_null());
@@ -632,6 +636,22 @@ fn report_with_a_shaft() -> String {
     text.push_str("plain (2,2) in Inland, 10 peasants (orcs), $5.\n\n");
     text.push_str("Exits:\n  Northwest : plain (1,1) in Inland.\n");
     text
+}
+
+/// (1,1) names only Southeast, so its Northeast side, towards (2,0) inside what the report has
+/// shown, is a wall. A unit stopped by it never reaches the shaft, so nothing is said about it.
+#[test]
+fn a_wall_before_a_passage_follows_no_passage() {
+    let path = trace_in_shaft("900", "MOVE NE IN SE")
+        .path
+        .expect("a traced path");
+
+    assert!(
+        path.passage.is_none(),
+        "the walled unit never enters the shaft"
+    );
+    assert!(path.wall.is_some());
+    assert!(path.steps.is_empty());
 }
 
 /// Traces one unit's orders over the shaft report.

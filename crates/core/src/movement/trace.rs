@@ -44,6 +44,21 @@ pub struct TracedPath {
     /// The inner passage the route ran into, when it ran into one. [`steps`](Self::steps) ends
     /// where it begins.
     pub passage: Option<TracedPassage>,
+    /// The first wall a report proves on the whole journey. [`steps`](Self::steps) (or, past a
+    /// followed passage, the exit's steps) ends at the hex before it, and nothing after it is
+    /// placed.
+    pub wall: Option<TracedWall>,
+}
+
+/// Where a traced route met a wall a report proves, and so where the drawing ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TracedWall {
+    /// The hex the blocked step would have left. The route's last hex, or `from` when the first
+    /// step is the blocked one; on the destination's level when the wall is past a passage.
+    pub coordinate: crate::report::model::Coordinate,
+    /// The side of that hex the step would have crossed.
+    pub direction: Direction,
 }
 
 /// Where a traced route ran into an inner passage, and what could not be drawn past it.
@@ -137,73 +152,79 @@ pub fn trace_move(
     // The structure is resolved against the hex the near walk finished in. Where the order named
     // none, the hex was never visited, or no structure there carries that id, nothing is claimed
     // about why the route is short - `accept on doubt`.
-    let followed = ordered_passage.and_then(|ordered| {
-        let structure_id = ordered.structure_id.clone()?;
-        let structure = map
-            .hex(near.position)?
-            .structures
-            .iter()
-            .find(|structure| structure.structure_id == structure_id)?;
-        let structure = crate::report::model::numbered_structure_label(structure);
-
-        let crossed = map.passage(near.position, &structure_id).map(|known| {
-            // The map is this turn's word and the memory an older turn's, so the map wins wherever
-            // it describes the destination at all.
-            let terrain = map.hex(known.destination).map_or_else(
-                || known.destination_terrain.clone(),
-                |hex| hex.terrain.clone(),
-            );
-            // A second `IN` in the tail is not followed: the tail's walk stops at it exactly as the
-            // near walk stopped at this one, and what is left counts as steps that could not be
-            // placed.
-            let tail = &steps[ordered.before + 1..];
-            let stopped_at = tail
+    // A unit stopped by a wall before the passage never enters it, so nothing is claimed about it.
+    let followed = if near.wall.is_some() {
+        None
+    } else {
+        ordered_passage.and_then(|ordered| {
+            let structure_id = ordered.structure_id.clone()?;
+            let structure = map
+                .hex(near.position)?
+                .structures
                 .iter()
-                .position(|step| matches!(step, MoveStep::In))
-                .unwrap_or(tail.len());
-            let beyond = walk(
-                map,
-                ruleset,
-                journey,
-                known.destination,
-                &terrain,
-                &tail[..stopped_at],
-            );
-            let steps_after = tail[stopped_at..]
-                .iter()
-                .filter(|step| matches!(step, MoveStep::Go(_) | MoveStep::In))
-                .count();
+                .find(|structure| structure.structure_id == structure_id)?;
+            let structure = crate::report::model::numbered_structure_label(structure);
 
-            let exit = TracedPassageExit {
-                coordinate: known.destination,
-                cost: journey.map_or(0, |journey| {
-                    base_terrain_cost(ruleset, journey.mode, &terrain)
-                }),
-                terrain,
-                steps: beyond.route,
+            let crossed = map.passage(near.position, &structure_id).map(|known| {
+                // The map is this turn's word and the memory an older turn's, so the map wins wherever
+                // it describes the destination at all.
+                let terrain = map.hex(known.destination).map_or_else(
+                    || known.destination_terrain.clone(),
+                    |hex| hex.terrain.clone(),
+                );
+                // A second `IN` in the tail is not followed: the tail's walk stops at it exactly as the
+                // near walk stopped at this one, and what is left counts as steps that could not be
+                // placed.
+                let tail = &steps[ordered.before + 1..];
+                let stopped_at = tail
+                    .iter()
+                    .position(|step| matches!(step, MoveStep::In))
+                    .unwrap_or(tail.len());
+                let beyond = walk(
+                    map,
+                    ruleset,
+                    journey,
+                    known.destination,
+                    &terrain,
+                    &tail[..stopped_at],
+                );
+                let steps_after = tail[stopped_at..]
+                    .iter()
+                    .filter(|step| matches!(step, MoveStep::Go(_) | MoveStep::In))
+                    .count();
+
+                let exit = TracedPassageExit {
+                    coordinate: known.destination,
+                    cost: journey.map_or(0, |journey| {
+                        base_terrain_cost(ruleset, journey.mode, &terrain)
+                    }),
+                    terrain,
+                    steps: beyond.route,
+                };
+                (exit, beyond.blocked_from, steps_after, beyond.wall)
+            });
+
+            let (exit, beyond_blocked, steps_after, beyond_wall) = match crossed {
+                Some((exit, blocked, after, wall)) => (Some(exit), blocked, after, wall),
+                None => (None, None, ordered.steps_after, None),
             };
-            (exit, beyond.blocked_from, steps_after)
-        });
 
-        let (exit, beyond_blocked, steps_after) = match crossed {
-            Some((exit, blocked, after)) => (Some(exit), blocked, after),
-            None => (None, None, ordered.steps_after),
-        };
-
-        Some((
-            TracedPassage {
-                coordinate: near.position,
-                structure,
-                steps_after,
-                terrain: near.terrain.clone(),
-                exit,
-            },
-            beyond_blocked,
-        ))
-    });
-    let (passage, beyond_blocked) = match followed {
-        Some((passage, blocked)) => (Some(passage), blocked),
-        None => (None, None),
+            Some((
+                TracedPassage {
+                    coordinate: near.position,
+                    structure,
+                    steps_after,
+                    terrain: near.terrain.clone(),
+                    exit,
+                },
+                beyond_blocked,
+                beyond_wall,
+            ))
+        })
+    };
+    let (passage, beyond_blocked, beyond_wall) = match followed {
+        Some((passage, blocked, wall)) => (Some(passage), blocked, wall),
+        None => (None, None, None),
     };
 
     // Counted over the whole journey: the steps before the passage, then the crossing, then the
@@ -232,6 +253,7 @@ pub fn trace_move(
         mode,
         blocked_from,
         passage,
+        wall: near.wall.or(beyond_wall),
     })
 }
 
@@ -241,6 +263,7 @@ struct Walked {
     position: crate::report::model::Coordinate,
     terrain: String,
     blocked_from: Option<usize>,
+    wall: Option<TracedWall>,
 }
 
 /// Walks a run of ordered steps from one hex, exactly as a whole order used to be walked.
@@ -260,6 +283,7 @@ fn walk(
     let mut terrain = from_terrain.to_string();
     let mut route = Vec::new();
     let mut blocked_from = None;
+    let mut wall = None;
     // `None` for the hex the order starts in: "Ships ending their movement in a land hex may sail
     // out along any side connecting to water", so the first step is a departure, never a
     // through-pass. A unit stepping out of a passage entered its hex by no side either.
@@ -269,6 +293,14 @@ fn walk(
         let MoveStep::Go(direction) = step else {
             continue;
         };
+        // A side a report proves closed ends the walk: nothing past it is drawn.
+        if map.wall(position, *direction) {
+            wall = Some(TracedWall {
+                coordinate: position,
+                direction: *direction,
+            });
+            break;
+        }
 
         // A stated exit is the map's own word and survives the wrap seam; arithmetic is the
         // fallback for country nobody has described.
@@ -349,6 +381,7 @@ fn walk(
         position,
         terrain,
         blocked_from,
+        wall,
     }
 }
 
@@ -420,6 +453,49 @@ mod tests {
             &parse_move(order).expect("a readable order"),
             None,
         )
+    }
+
+    /// (2,2) in the corridor names only Northwest and Southeast, and its Northeast side steps to
+    /// (3,1), inside what the corridor has shown: the report proves a wall there.
+    #[test]
+    fn a_move_into_a_wall_ends_before_the_blocked_step() {
+        let path =
+            trace(&corridor(&["plain", "plain", "plain"]), "MOVE SE NE SE").expect("an origin");
+
+        assert_eq!(path.steps.len(), 1);
+        assert_eq!(path.steps[0].to, at(2, 2));
+        assert_eq!(
+            path.wall,
+            Some(TracedWall {
+                coordinate: at(2, 2),
+                direction: Direction::Northeast
+            })
+        );
+    }
+
+    #[test]
+    fn a_first_step_into_a_wall_draws_no_step() {
+        let path = trace(&corridor(&["plain", "plain", "plain"]), "MOVE NE").expect("an origin");
+
+        assert!(path.steps.is_empty());
+        assert_eq!(path.wall.map(|wall| wall.coordinate), Some(at(1, 1)));
+    }
+
+    #[test]
+    fn a_move_with_no_wall_carries_none() {
+        let path = trace(&corridor(&["plain"]), "MOVE SE SE").expect("an origin");
+
+        assert_eq!(path.wall, None);
+    }
+
+    #[test]
+    fn a_traced_wall_serializes_with_a_lower_case_direction() {
+        let path =
+            trace(&corridor(&["plain", "plain", "plain"]), "MOVE SE NE SE").expect("an origin");
+        let json = serde_json::to_value(&path).expect("serializes");
+
+        assert_eq!(json["wall"]["direction"], "northeast");
+        assert_eq!(json["wall"]["coordinate"]["x"], 2);
     }
 
     #[test]
