@@ -55,8 +55,8 @@ use crate::orders::silver::{
     LateFoodRelief, Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver,
     Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove,
     Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket,
-    ShipmentPriced, SilverChange, SilverChangeCause, SilverMove, SilverDoubt, TransferShape, Transmuting,
-    UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt, SilverMove, TransferShape,
+    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1811,6 +1811,14 @@ fn forecast_hex(
     };
     // What the ITEMS ledger's own Give phase handed over on each of this unit's `GIVE ... ALL SILV`
     // lines, so the column books that figure rather than settling the phase again (`ah-6m7b.3`).
+    // The ledger's own record of each unit's silver, which is what the SILVER column's rows and
+    // totals are (`ah-xryu`).
+    let silver_moves_of = |unit_id: &str| {
+        ledger
+            .silver_moves
+            .get(unit_id)
+            .map_or(&[][..], Vec::as_slice)
+    };
     let settled_gifts_of = |unit_id: &str| {
         ledger
             .settled_gifts
@@ -1966,6 +1974,7 @@ fn forecast_hex(
                 shared_materials_of(&ordered.unit.unit_id),
                 settled_buy_all_of(&ordered.unit.unit_id),
                 settled_gifts_of(&ordered.unit.unit_id),
+                silver_moves_of(&ordered.unit.unit_id),
                 market_purse.also_withholds_from(index),
             )),
             ruleset,
@@ -4481,6 +4490,7 @@ impl PhaseHoldings {
             silver: Some(self.silver[index]),
             buy_all: &[],
             gifts: &[],
+            silver_moves: &[],
             market_withholds: 0,
         }
     }
@@ -4495,6 +4505,7 @@ impl PhaseHoldings {
         shared_materials: &'a [(usize, Vec<ItemAmount>)],
         buy_all: &'a [SettledBuyAll],
         gifts: &'a [SettledGift],
+        silver_moves: &'a [SilverMove],
         market_withholds: i64,
     ) -> PhaseFacts<'a> {
         PhaseFacts {
@@ -4506,6 +4517,7 @@ impl PhaseHoldings {
             silver: Some(self.silver[index]),
             buy_all,
             gifts,
+            silver_moves,
             market_withholds,
         }
     }
@@ -18413,6 +18425,40 @@ mod tests {
         assert_eq!(forecast.at_month_end, Some(696));
     }
 
+    /// `rules/sequenceofevents` processes "SELL orders" before "BUY orders", so the column lists a
+    /// sale above a purchase even where the purchase was written first (`ah-xryu`).
+    #[test]
+    fn a_sale_written_below_a_purchase_is_still_listed_first() {
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 40,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 24,
+            }],
+            for_sale: vec![MarketItem {
+                amount: 40,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 12,
+            }],
+            ..region(vec![with_item(
+                with_silver(unit("5"), 100),
+                10,
+                "furs",
+                "FUR",
+            )])
+        };
+        let forecast = forecast_with_ruleset(vec![hex], "unit 5\nBUY 1 grain\nSELL 10 furs\n");
+        let causes: Vec<_> = forecast.changes.iter().map(|change| change.cause).collect();
+        assert_eq!(
+            causes,
+            vec![SilverChangeCause::Sold, SilverChangeCause::Bought]
+        );
+        assert_eq!(forecast.changes[0].line, Some(3));
+        assert_eq!(forecast.changes[1].line, Some(2));
+    }
+
     #[test]
     fn a_sale_the_market_wants_is_income_and_one_it_does_not_is_zero() {
         let region = ReportRegion {
@@ -30983,6 +31029,29 @@ BUILD
         with_skill(unit, "CARP", 5)
     }
 
+    /// `ah-gdd3.2`. "Spells are CAST" runs before manufacturing, and the committed ruleset prices
+    /// `CRPA`'s cast at 200 silver - so 3000 held becomes 2800, and a catapult wants 3000.
+    #[test]
+    fn a_cast_lowers_what_a_production_can_afford() {
+        let orders = "unit 12881\nCAST Create_Amulet_Of_Protection\nPRODUCE catapult\n";
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![with_skill(carpenters(3000, 9999), "CRPA", 1)])],
+            orders,
+        );
+        assert_eq!(forecast.produced, 0);
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Silver)
+        );
+
+        // The control: 200 more silver pays for both.
+        let funded = forecast_with_ruleset(
+            vec![region(vec![with_skill(carpenters(3200, 9999), "CRPA", 1)])],
+            orders,
+        );
+        assert_eq!(funded.produced, 1);
+    }
+
     #[test]
     fn a_producing_unit_spends_what_its_run_costs() {
         let forecast = forecast_with_ruleset(
@@ -31115,6 +31184,24 @@ BUILD
     /// runs "Give orders. GIVE and TAKE orders are processed." long before manufacturing - so a
     /// gift of the whole purse leaves nothing for the catapult whichever order the two are written
     /// in, and no catapult is created.
+    /// `ah-gdd3.2`. GIVE settles before manufacturing whatever order the two are written in, so a
+    /// gift written *under* a `PRODUCE` still empties the purse the run would have spent.
+    #[test]
+    fn a_gift_written_under_a_produce_is_still_spent_first() {
+        let review = review_turn(
+            &report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]),
+            "unit 12881\nPRODUCE catapult\nGIVE 12882 3000 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let unit = forecast(&review, "12881");
+        assert_eq!(unit.produced, 0);
+        assert_eq!(
+            unit.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Silver)
+        );
+    }
+
     #[test]
     fn a_gift_lowers_what_the_ledger_lets_a_produce_make() {
         let hex = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
