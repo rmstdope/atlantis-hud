@@ -1523,11 +1523,10 @@ pub struct PhaseFacts<'a> {
     /// SILVER column's rows and totals are (`ah-xryu`). Empty for a caller with no ledger, which is
     /// every test that builds its own `PhaseFacts`.
     pub(crate) silver_moves: &'a [SilverMove],
-    /// What the market withholds from this unit's OWN market-open balance **beyond** the
-    /// `tax_overstated_by` figure this walk already subtracts: the rest of its hopeful tax, in a
-    /// hex whose tax pool could not be settled at all and whose purse therefore lent silver in
-    /// hand alone (`ah-3c2t.1`'s `MarketPurse::also_withholds_from`). `0` everywhere else and for
-    /// every caller with no ledger, so it may be subtracted unconditionally.
+    /// What the market withholds from this unit's own market-open balance beyond
+    /// `tax_overstated_by` (`ah-3c2t.1`'s `MarketPurse::also_withholds_from`). Unread since the
+    /// column's `Bought` rows became the ledger's record (`ah-xryu`): the ledger's own `buy` is what
+    /// subtracts it now.
     pub market_withholds: i64,
     /// The same unit's silver at every phase, or `None` for a caller that has no ledger to read
     /// one from - which is every test that builds its own `PhaseFacts`. The caps in
@@ -1603,7 +1602,7 @@ impl<'a> UnitFacts<'a> {
     }
 
     /// What the market withholds from this unit's own balance beyond `tax_overstated_by`. `0`
-    /// where there is no ledger (`ah-3c2t.1`).
+    /// where there is no ledger (`ah-3c2t.1`). Unread by `forecast_unit` since `ah-xryu`.
     #[must_use]
     pub fn market_withholds(&self) -> i64 {
         self.phases.map_or(0, |phases| phases.market_withholds)

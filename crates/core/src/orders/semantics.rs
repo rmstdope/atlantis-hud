@@ -30924,10 +30924,6 @@ BUILD
         assert_eq!(forecast.expense, None);
     }
 
-    /// `ah-gdd3.2`. The ledger settles a `GIVE` at its own phase, and `rules/sequenceofevents`
-    /// runs "Give orders. GIVE and TAKE orders are processed." long before manufacturing - so a
-    /// gift of the whole purse leaves nothing for the catapult whichever order the two are written
-    /// in, and no catapult is created.
     /// `ah-gdd3.2`. GIVE settles before manufacturing whatever order the two are written in, so a
     /// gift written *under* a `PRODUCE` still empties the purse the run would have spent.
     #[test]
@@ -30946,6 +30942,10 @@ BUILD
         );
     }
 
+    /// `ah-gdd3.2`. The ledger settles a `GIVE` at its own phase, and `rules/sequenceofevents`
+    /// runs "Give orders. GIVE and TAKE orders are processed." long before manufacturing - so a
+    /// gift of the whole purse leaves nothing for the catapult whichever order the two are written
+    /// in, and no catapult is created.
     #[test]
     fn a_gift_lowers_what_the_ledger_lets_a_produce_make() {
         let hex = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
