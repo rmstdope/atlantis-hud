@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hovering a passage ring</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+    --hexface:#1a212b; --hexline:#2b3542; --mountain:#3a3430;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  h3.sec { margin:40px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:16px; max-width:96ch; }
+  .settled { border-left:3px solid var(--ok); background:var(--raised); padding:10px 14px; border-radius:0 8px 8px 0; margin:8px 0 18px; font-size:13px; color:var(--ink-soft); max-width:110ch; }
+  .settled b { color:var(--ok); font-weight:normal; }
+  .row { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; flex:1 1 380px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; position:relative; }
+  .stage + .stage { margin-top:10px; }
+  .cap { font:11px/1.4 'Helvetica Neue',Arial,sans-serif; color:var(--ink-dim); letter-spacing:.05em; text-transform:uppercase; margin-bottom:6px; }
+  .scene { display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  /* the plain hover every other thing on the map uses today */
+  .sys { background:#f2f2f2; color:#111; border:1px solid #aaa; box-shadow:0 2px 6px rgba(0,0,0,.45); padding:3px 6px;
+         font:12px/1.35 -apple-system,'Helvetica Neue',Arial,sans-serif; white-space:pre-wrap; max-width:44ch; border-radius:3px; }
+  /* the app's own styled hover, as the earlier drawing showed it */
+  .tip { background:#0c1016; border:1px solid var(--brass); border-radius:6px; padding:8px 10px;
+         font:12px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink); max-width:44ch; }
+  .tip b { color:var(--brass-bright); font-weight:normal; display:block; margin-bottom:3px; }
+  .tip .hexl { color:var(--ink-soft); display:block; margin-bottom:5px; padding-bottom:5px; border-bottom:1px solid var(--edge); }
+  .q { background:var(--raised); border-left:3px solid var(--brass); padding:10px 14px; border-radius:0 8px 8px 0; margin:6px 0 18px; }
+  .q b { color:var(--brass-bright); font-weight:normal; }
+  .zone { fill:none; stroke:var(--select); stroke-width:2; stroke-dasharray:4 3; }
+  svg text { font-family:'Helvetica Neue',Arial,sans-serif; }
+</style></head><body>
+<header>
+  <h1><span>Hovering a passage ring</span> &mdash; what it says, and where</h1>
+  <p>When a unit's route runs into a passage inside a structure, the map puts a brass ring on that hex. We
+  agreed that hovering the ring explains the passage. Today it doesn't: whatever you hover on that hex,
+  you only get the hex's own line &mdash; <i>mountain (36,4) in Inhead</i>. Two things to settle before it's
+  fixed: <b>where on the hex</b> the explanation appears, and <b>what the hover looks like</b>.</p>
+</header>
+<main>
+
+<div class="settled"><b>Already settled, not reopened:</b> the words of all three hovers (unknown far side, and
+the entry and exit rings of a known one), the rings themselves, and that clicking anywhere on the hex &mdash;
+ring included &mdash; selects the hex exactly as it does today. A note pin sits in the hex's top-right
+corner and never covers the ring.</div>
+
+<h3 class="sec">Today &mdash; what's wrong</h3>
+<p>The dashed blue outline marks where the pointer is. Hovering the ring gives the same line as hovering the empty
+corner of the hex.</p>
+<div class="row"><div class="card" style="flex:0 1 520px">
+  <div class="stage"><div class="scene">
+    <svg width="150" height="140" viewBox="-75 -70 150 140">
+      <polygon points="0,-62 54,-31 54,31 0,62 -54,31 -54,-31" fill="var(--mountain)" stroke="var(--hexline)" stroke-width="2"/>
+      <line x1="-120" y1="40" x2="0" y2="0" stroke="var(--brass)" stroke-width="4"/>
+      <circle r="22" fill="var(--ground)" stroke="var(--brass)" stroke-width="3"/>
+      <text text-anchor="middle" dominant-baseline="central" font-size="22" fill="var(--brass-bright)">?</text>
+      <circle r="26" class="zone"/>
+    </svg>
+    <div class="sys">mountain (36,4) in Inhead</div>
+  </div></div>
+</div></div>
+
+<h3 class="sec">Question 1 &mdash; where on the hex the passage is explained</h3>
+<p>Each drawing shows two places the pointer can rest: <b>on the ring</b>, and <b>on the hex away from the
+ring</b>. The words below are the unknown-passage ones; the known-passage rings follow the same rule.</p>
+<div class="q"><b>Where does hovering show the passage words?</b></div>
+<div class="row">
+
+  <div class="card">
+    <h2><em>A</em> The ring alone speaks for the passage</h2>
+    <p class="concept">On the ring: only the passage. Elsewhere on the hex: the hex's line, as today.</p>
+    <div class="stage"><div class="cap">Pointer on the ring</div><div class="scene">
+      <svg width="110" height="104" viewBox="-75 -70 150 140"><polygon points="0,-62 54,-31 54,31 0,62 -54,31 -54,-31" fill="var(--mountain)" stroke="var(--hexline)" stroke-width="2"/>
+        <circle r="22" fill="var(--ground)" stroke="var(--brass)" stroke-width="3"/><text text-anchor="middle" dominant-baseline="central" font-size="22" fill="var(--brass-bright)">?</text><circle r="26" class="zone"/></svg>
+      <div class="sys">Through the passage in Shaft [3]
+Where this passage comes out is not in any report yet, so the rest of the journey — 2 more steps — cannot be drawn.</div>
+    </div></div>
+    <div class="stage"><div class="cap">Pointer on the hex, away from the ring</div><div class="scene">
+      <svg width="110" height="104" viewBox="-75 -70 150 140"><polygon points="0,-62 54,-31 54,31 0,62 -54,31 -54,-31" fill="var(--mountain)" stroke="var(--hexline)" stroke-width="2"/>
+        <circle r="22" fill="var(--ground)" stroke="var(--brass)" stroke-width="3"/><text text-anchor="middle" dominant-baseline="central" font-size="22" fill="var(--brass-bright)">?</text><circle cx="-30" cy="30" r="10" class="zone"/></svg>
+      <div class="sys">mountain (36,4) in Inhead</div>
+    </div></div>
+    <ul class="notes"><li>Works like a note pin already does: the thing you point at is the thing that answers.</li>
+      <li class="con">On the ring you lose which hex you're on &mdash; you have to move off it to read that.</li>
+      <li class="n">The ring is small at far zoom; you have to find it.</li></ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em> The ring adds the passage beneath the hex's line</h2>
+    <p class="concept">On the ring: the hex's line first, then the passage. Elsewhere on the hex: the hex's line, as today.</p>
+    <div class="stage"><div class="cap">Pointer on the ring</div><div class="scene">
+      <svg width="110" height="104" viewBox="-75 -70 150 140"><polygon points="0,-62 54,-31 54,31 0,62 -54,31 -54,-31" fill="var(--mountain)" stroke="var(--hexline)" stroke-width="2"/>
+        <circle r="22" fill="var(--ground)" stroke="var(--brass)" stroke-width="3"/><text text-anchor="middle" dominant-baseline="central" font-size="22" fill="var(--brass-bright)">?</text><circle r="26" class="zone"/></svg>
+      <div class="sys">mountain (36,4) in Inhead
+
+Through the passage in Shaft [3]
+Where this passage comes out is not in any report yet, so the rest of the journey — 2 more steps — cannot be drawn.</div>
+    </div></div>
+    <div class="stage"><div class="cap">Pointer on the hex, away from the ring</div><div class="scene">
+      <svg width="110" height="104" viewBox="-75 -70 150 140"><polygon points="0,-62 54,-31 54,31 0,62 -54,31 -54,-31" fill="var(--mountain)" stroke="var(--hexline)" stroke-width="2"/>
+        <circle r="22" fill="var(--ground)" stroke="var(--brass)" stroke-width="3"/><text text-anchor="middle" dominant-baseline="central" font-size="22" fill="var(--brass-bright)">?</text><circle cx="-30" cy="30" r="10" class="zone"/></svg>
+      <div class="sys">mountain (36,4) in Inhead</div>
+    </div></div>
+    <ul class="notes"><li>Nothing you had before is taken away when you land on the ring.</li>
+      <li class="con">Longest hover of the three: four to five lines in a narrow window.</li>
+      <li class="n">Still need to find the small ring.</li></ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em> The whole hex explains the passage</h2>
+    <p class="concept">Anywhere on the hex, ring or not: the hex's line, then the passage. The ring is only a mark.</p>
+    <div class="stage"><div class="cap">Pointer on the ring</div><div class="scene">
+      <svg width="110" height="104" viewBox="-75 -70 150 140"><polygon points="0,-62 54,-31 54,31 0,62 -54,31 -54,-31" fill="var(--mountain)" stroke="var(--hexline)" stroke-width="2"/>
+        <circle r="22" fill="var(--ground)" stroke="var(--brass)" stroke-width="3"/><text text-anchor="middle" dominant-baseline="central" font-size="22" fill="var(--brass-bright)">?</text><circle r="26" class="zone"/></svg>
+      <div class="sys">mountain (36,4) in Inhead
+
+Through the passage in Shaft [3]
+Where this passage comes out is not in any report yet, so the rest of the journey — 2 more steps — cannot be drawn.</div>
+    </div></div>
+    <div class="stage"><div class="cap">Pointer on the hex, away from the ring</div><div class="scene">
+      <svg width="110" height="104" viewBox="-75 -70 150 140"><polygon points="0,-62 54,-31 54,31 0,62 -54,31 -54,-31" fill="var(--mountain)" stroke="var(--hexline)" stroke-width="2"/>
+        <circle r="22" fill="var(--ground)" stroke="var(--brass)" stroke-width="3"/><text text-anchor="middle" dominant-baseline="central" font-size="22" fill="var(--brass-bright)">?</text><circle cx="-30" cy="30" r="10" class="zone"/></svg>
+      <div class="sys">mountain (36,4) in Inhead
+
+Through the passage in Shaft [3]
+Where this passage comes out is not in any report yet, so the rest of the journey — 2 more steps — cannot be drawn.</div>
+    </div></div>
+    <ul class="notes"><li>No hunting for the ring at far zoom &mdash; the whole hex is the target.</li>
+      <li class="con">Only while that unit is selected: hover the same hex with another unit selected and the passage words are gone, which can read as the hex changing.</li>
+      <li class="n">Same length as B, but everywhere on the hex.</li></ul>
+  </div>
+</div>
+
+<h3 class="sec">Question 2 &mdash; what the hover looks like</h3>
+<p>Every hover on the map today &mdash; the hex, a note pin &mdash; is the computer's plain pop-up, which can't set
+a line in bold or colour. The earlier drawing showed the passage hover with its first line in brass. Shown here
+with the unknown-passage words; whichever you pick in Question 1 gets this look.</p>
+<div class="q"><b>Which look ships?</b></div>
+<div class="row">
+  <div class="card">
+    <h2><em>P</em> Plain, like every other hover on the map</h2>
+    <div class="stage" style="display:flex;justify-content:center;padding:18px">
+      <div class="sys">Through the passage in Shaft [3]
+Where this passage comes out is not in any report yet, so the rest of the journey — 2 more steps — cannot be drawn.</div></div>
+    <ul class="notes"><li>Looks exactly like the hex and note-pin hovers next to it.</li>
+      <li class="n">Appears after the computer's usual short pause, and looks slightly different in the desktop app and in a browser.</li>
+      <li class="con">No bold first line: the heading and the explanation run together.</li></ul>
+  </div>
+  <div class="card">
+    <h2><em>S</em> The app's own hover, brass heading, as first drawn</h2>
+    <div class="stage" style="display:flex;justify-content:center;padding:18px">
+      <div class="tip"><b>Through the passage in Shaft [3]</b>Where this passage comes out is not in any report yet, so the rest of the journey &mdash; 2 more steps &mdash; cannot be drawn.</div></div>
+    <div class="stage" style="display:flex;justify-content:center;padding:18px">
+      <div class="tip"><span class="hexl">mountain (36,4) in Inhead</span><b>Through the passage in Shaft [3]</b>Where this passage comes out is not in any report yet, so the rest of the journey &mdash; 2 more steps &mdash; cannot be drawn.</div></div>
+    <p class="concept" style="margin-top:6px">Second drawing: the same look if you chose B or C.</p>
+    <ul class="notes"><li>Matches what was agreed in the first drawing; the heading reads as a heading.</li>
+      <li>Same in the desktop app and a browser.</li>
+      <li class="con">The only styled hover on the map &mdash; the hex and note-pin hovers stay plain beside it.</li></ul>
+  </div>
+</div>
+
+</main></body></html>
