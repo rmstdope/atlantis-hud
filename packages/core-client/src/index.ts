@@ -100,6 +100,9 @@ export type { ItemChange } from "./generated/ItemChange";
 export type { CreatedItem } from "./generated/CreatedItem";
 export type { RegionPreview } from "./generated/RegionPreview";
 export type { OrdersPreviewResponse } from "./generated/OrdersPreviewResponse";
+export type { ValidateOrdersRequest } from "./generated/ValidateOrdersRequest";
+export type { PreviewOrdersRequest } from "./generated/PreviewOrdersRequest";
+export type { TraceMoveOrdersRequest } from "./generated/TraceMoveOrdersRequest";
 
 export {
   aBattle,

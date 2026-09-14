@@ -715,8 +715,8 @@ pub fn preview_orders_for_remembered_report(
 /// # Errors
 ///
 /// As [`preview_orders_for_remembered_report`], plus an error when the map shape cannot be read.
-// Eight, for the same reason as `trace_orders_on_map`: each document the screen holds crosses as
-// its own text, beside the options the forecast reads (`ah-3u7c.2.2`).
+// Eight: each document the screen holds crosses as its own text, beside the options the forecast
+// reads (`ah-3u7c.2.2`). The shells reach it through `orders::request::preview_orders_request`.
 #[allow(clippy::too_many_arguments)]
 pub fn preview_orders_on_map(
     cache: &mut ReportCache,
