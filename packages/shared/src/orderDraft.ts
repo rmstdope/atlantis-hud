@@ -116,7 +116,7 @@ export async function documentFor(
   game: OpenedGame,
   key: DraftKey | null,
   template: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): Promise<DocumentChoice> {
   const clean = stripUnitComments(template, syntax);
 

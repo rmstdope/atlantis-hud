@@ -67,7 +67,7 @@ export function StudyPlannerDialog({
   onSaveText,
   ordersError,
   ordersDocument,
-  orderCommentSyntax = "origins",
+  orderCommentSyntax,
   regionBanner,
   onWriteOrdersDocument,
   onSaveNote,
@@ -110,7 +110,7 @@ export function StudyPlannerDialog({
   /** The orders document as it stands, so the Orders tab can say what writing into it would change. */
   ordersDocument: string;
   /** How the game played reads an unquoted semicolon (`rulesets.orderCommentSyntaxFor`). */
-  orderCommentSyntax?: OrderCommentSyntax;
+  orderCommentSyntax: OrderCommentSyntax;
   /** The `;***` banner a new block for a mage in this region goes under, or null. */
   regionBanner: (regionId: string) => string | null;
   /** Replaces the whole document, as an external write. `AppShell`'s `writeStudyOrdersDocument`. */

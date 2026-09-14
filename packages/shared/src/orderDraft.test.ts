@@ -111,7 +111,7 @@ describe("choosing which document to show", () => {
   it("shows the report's own template when nothing was ever saved", async () => {
     const core = client();
 
-    const choice = await documentFor(core, OPEN_GAME, KEY, "#atlantis 95 pass");
+    const choice = await documentFor(core, OPEN_GAME, KEY, "#atlantis 95 pass", "origins");
 
     expect(choice).toEqual({
       text: "#atlantis 95 pass",
@@ -134,7 +134,7 @@ describe("choosing which document to show", () => {
       })
     });
 
-    const choice = await documentFor(core, OPEN_GAME, KEY, "#atlantis 95 pass");
+    const choice = await documentFor(core, OPEN_GAME, KEY, "#atlantis 95 pass", "origins");
 
     // The saved time comes back with it, so the editor can say "saved" and mean it rather than
     // showing "not saved yet" over work it has just recovered from disk.
@@ -151,7 +151,7 @@ describe("choosing which document to show", () => {
       loadOrderDraft: vi.fn().mockRejectedValue(new Error("database is locked"))
     });
 
-    const choice = await documentFor(core, OPEN_GAME, KEY, "#atlantis 95 pass");
+    const choice = await documentFor(core, OPEN_GAME, KEY, "#atlantis 95 pass", "origins");
 
     expect(choice.text).toBe("#atlantis 95 pass");
     expect(choice.restored).toBe(false);
@@ -161,7 +161,7 @@ describe("choosing which document to show", () => {
   it("does not ask storage anything for a report with no draft key", async () => {
     const core = client();
 
-    const choice = await documentFor(core, OPEN_GAME, null, "#atlantis 95 pass");
+    const choice = await documentFor(core, OPEN_GAME, null, "#atlantis 95 pass", "origins");
 
     expect(choice.text).toBe("#atlantis 95 pass");
     expect(core.loadOrderDraft).not.toHaveBeenCalled();
@@ -176,7 +176,7 @@ describe("choosing which document to show", () => {
     const core = client();
     const template = ["unit 793", ";Three of Five (793), leader [LEAD].", "@study obse"].join("\n");
 
-    const choice = await documentFor(core, OPEN_GAME, KEY, template);
+    const choice = await documentFor(core, OPEN_GAME, KEY, template, "origins");
 
     expect(choice.text).toBe(["unit 793", "@study obse"].join("\n"));
   });
@@ -185,7 +185,7 @@ describe("choosing which document to show", () => {
     const core = client();
     const template = ["unit 793", ";Three of Five (793), leader [LEAD]."].join("\n");
 
-    expect((await documentFor(core, OPEN_GAME, null, template)).text).toBe("unit 793");
+    expect((await documentFor(core, OPEN_GAME, null, template, "origins")).text).toBe("unit 793");
   });
 
   it("leaves them out of the template a failed read falls back to", async () => {
@@ -194,7 +194,7 @@ describe("choosing which document to show", () => {
     });
     const template = ["unit 793", ";Three of Five (793), leader [LEAD]."].join("\n");
 
-    expect((await documentFor(core, OPEN_GAME, KEY, template)).text).toBe("unit 793");
+    expect((await documentFor(core, OPEN_GAME, KEY, template, "origins")).text).toBe("unit 793");
   });
 
   /**
@@ -210,7 +210,7 @@ describe("choosing which document to show", () => {
       })
     });
 
-    const choice = await documentFor(core, OPEN_GAME, KEY, "unit 793\n;Three of Five (793).");
+    const choice = await documentFor(core, OPEN_GAME, KEY, "unit 793\n;Three of Five (793).", "origins");
 
     expect(choice.text).toBe("unit 793\n;tax here next turn\n@study obse");
   });

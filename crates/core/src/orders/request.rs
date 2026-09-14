@@ -80,6 +80,7 @@ pub fn validate_orders_request(
             .and_then(|json| crate::movement::passages::known_passages_from_json(json).ok())
             .unwrap_or_default(),
         month_end: Default::default(),
+        walled_moves: Default::default(),
     };
 
     // Both the ruleset and the report come from the cache. This runs every time the player stops
@@ -117,6 +118,18 @@ pub fn validate_orders_request(
         .unwrap_or_default();
         options.shown = measures.shown;
         options.month_end = measures.month_end;
+        // Every own unit whose MOVE crosses a wall a report proves, including one only an old
+        // sighting shows. An error is nothing known - bad config, not bad orders - and no wall is
+        // warned about (`ah-wq2e.4`).
+        options.walled_moves = super::effects::walled_moves(
+            cache,
+            rules,
+            raw,
+            remembered,
+            &request.raw_orders,
+            options.geometry,
+        )
+        .unwrap_or_default();
     }
 
     super::validate_turn(
@@ -251,6 +264,49 @@ mod tests {
             preview_orders_request(&mut ReportCache::new(), &absent),
             preview_orders_request(&mut ReportCache::new(), &spelled)
         );
+    }
+
+    /// The wall a report proves reaches the Problems check only through the remembered map the
+    /// shell hands over (`ah-wq2e.4`).
+    #[test]
+    fn validation_warns_about_a_move_into_a_wall_with_the_remembered_map() {
+        let report = "Foo (1) Report\n\
+                      \n\
+                      plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\
+                      \n\
+                      Exits:\n  \
+                        Southeast : plain (2,2) in Nowhere.\n\
+                      \n\
+                      * Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+                      \n\
+                      plain (2,2) in Nowhere, contains Harrowby [village], 10 peasants (orcs), $5.\n\
+                      \n\
+                      Exits:\n  \
+                        Northwest : plain (1,1) in Nowhere.\n  \
+                        Southeast : plain (3,3) in Nowhere.\n\
+                      \n\
+                      plain (3,3) in Nowhere, 10 peasants (orcs), $5.\n\
+                      \n\
+                      Exits:\n  \
+                        Northwest : plain (2,2) in Nowhere.\n\
+                      \n";
+        let walls = |remembered: Option<&str>| -> usize {
+            let request = ValidateOrdersRequest {
+                raw_orders: "unit 900\nMOVE NE\n".into(),
+                ruleset_json: Some(RULESET.into()),
+                raw_report: Some(report.into()),
+                remembered_json: remembered.map(str::to_string),
+                ..Default::default()
+            };
+            validate_orders_request(&mut ReportCache::new(), &request)
+                .diagnostics
+                .into_iter()
+                .filter(|diagnostic| diagnostic.code == "move-into-a-wall")
+                .count()
+        };
+
+        assert_eq!(walls(Some("[]")), 1);
+        assert_eq!(walls(None), 0);
     }
 
     /// `ah-b6fz`: validation given the remembered map measures a shipment from where the

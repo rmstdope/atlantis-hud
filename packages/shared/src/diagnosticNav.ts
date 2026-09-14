@@ -35,8 +35,8 @@ export type DiagnosticTarget = {
 export function diagnosticTargets(
   text: string,
   diagnostics: OrderDiagnostic[],
-  unitIdsByRegion?: ReadonlyMap<string, ReadonlySet<string>>,
-  syntax: OrderCommentSyntax = "origins"
+  unitIdsByRegion: ReadonlyMap<string, ReadonlySet<string>> | undefined,
+  syntax: OrderCommentSyntax
 ): DiagnosticTarget[] {
   const blocks = findUnitBlocks(text, syntax);
   const formBlocks = unitIdsByRegion === undefined ? [] : findFormBlocks(text, syntax);

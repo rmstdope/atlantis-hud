@@ -80,7 +80,7 @@ type OrdersPanelProps = {
    * Passed down rather than derived here: the shell holds the open game, and every reader of the
    * document has to answer the question the same way the validator does.
    */
-  orderCommentSyntax?: OrderCommentSyntax;
+  orderCommentSyntax: OrderCommentSyntax;
 };
 
 export function OrdersPanel({
@@ -102,7 +102,7 @@ export function OrdersPanel({
   editorRef,
   onWalkProblems,
   walkPosition,
-  orderCommentSyntax = "origins"
+  orderCommentSyntax
 }: OrdersPanelProps) {
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
   // keeps the editor's `latest` ref current without rebuilding the view.

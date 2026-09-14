@@ -275,7 +275,7 @@ describe("diffOrders", () => {
       ["unit 1", "; a note to self", "", "@claim 50", "", "@study obse", ""].join("\n")
     );
 
-    const diff = diffOrders(older, newer);
+    const diff = diffOrders(older, newer, "origins");
 
     expect(diff.changed).toEqual([]);
   });
@@ -284,7 +284,7 @@ describe("diffOrders", () => {
     const older = document(["unit 1", "@claim 50"].join("\n"));
     const newer = document(["unit 1", "@claim 50", "@;study obse"].join("\n"));
 
-    const diff = diffOrders(older, newer);
+    const diff = diffOrders(older, newer, "origins");
 
     expect(diff.changed).toEqual([
       { unitId: "1", before: ["@claim 50"], after: ["@claim 50", "@;study obse"] }
@@ -295,7 +295,7 @@ describe("diffOrders", () => {
     const older = document(["unit 1", "@claim 50"].join("\n"));
     const newer = document(["unit 1", "@claim 60"].join("\n"));
 
-    const diff = diffOrders(older, newer);
+    const diff = diffOrders(older, newer, "origins");
 
     expect(diff.changed).toEqual([{ unitId: "1", before: ["@claim 50"], after: ["@claim 60"] }]);
   });
@@ -304,7 +304,7 @@ describe("diffOrders", () => {
     const older = document(["unit 1", "@claim 50"].join("\n"));
     const newer = document(["unit 2", "@claim 50"].join("\n"));
 
-    const diff = diffOrders(older, newer);
+    const diff = diffOrders(older, newer, "origins");
 
     expect(diff.onlyInOlder).toEqual(["1"]);
     expect(diff.onlyInNewer).toEqual(["2"]);

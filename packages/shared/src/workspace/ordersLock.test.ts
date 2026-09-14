@@ -92,12 +92,12 @@ describe("a unit formed this month", () => {
   });
 
   it("a new-1 selection resolves to the FORM block that creates it in this hex", () => {
-    expect(formedSelectionFor(document, "new-1", REGION)).toEqual({ alias: "1", formedBy: "1922" });
-    expect(formedSelectionFor("unit 1922\n@tax", "new-1", REGION)).toEqual({
+    expect(formedSelectionFor(document, "new-1", REGION, "origins")).toEqual({ alias: "1", formedBy: "1922" });
+    expect(formedSelectionFor("unit 1922\n@tax", "new-1", REGION, "origins")).toEqual({
       alias: "1",
       formedBy: null
     });
-    expect(formedSelectionFor(document, "1922", REGION)).toBeNull();
-    expect(formedSelectionFor(document, null, REGION)).toBeNull();
+    expect(formedSelectionFor(document, "1922", REGION, "origins")).toBeNull();
+    expect(formedSelectionFor(document, null, REGION, "origins")).toBeNull();
   });
 });

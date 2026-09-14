@@ -37,7 +37,7 @@ export function formedSelectionFor(
   document: string,
   selectedUnitId: string | null,
   regionUnitIds: ReadonlySet<string>,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): FormedSelection | null {
   if (selectedUnitId === null) {
     return null;

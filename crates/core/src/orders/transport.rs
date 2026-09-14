@@ -521,6 +521,135 @@ pub(crate) fn arrival(
     }
 }
 
+/// Everything the measurement of a shipment reads, built once per settle. A new input to where or
+/// when a shipment is measured is a field here, filled in `read` and read in `judge` - so the
+/// Problems check, the shipping bill and the item preview cannot measure one line differently.
+pub(crate) struct Shipping {
+    pub(crate) quartermasters: Quartermasters,
+    pub(crate) targets: std::collections::BTreeMap<String, TargetFacts>,
+    pub(crate) geometry: Option<crate::movement::graph::MapGeometry>,
+    shown: crate::movement::graph::ShownExtent,
+    month_end: MonthEndHexes,
+}
+
+impl Shipping {
+    /// `geometry`, `shown` and `month_end` are cloned out of `options`.
+    pub(crate) fn read(
+        report: &crate::report::ParsedReport,
+        ruleset: &crate::movement::rules::Ruleset,
+        options: &super::semantics::CheckOptions,
+    ) -> Self {
+        let quartermasters = Quartermasters::read(report, ruleset);
+        let targets = target_facts(report, &quartermasters);
+        Self {
+            quartermasters,
+            targets,
+            geometry: options.geometry,
+            shown: options.shown.clone(),
+            month_end: options.month_end.clone(),
+        }
+    }
+
+    /// The one judgement of one shipment line: whether the target accepts, which phase and reach
+    /// it runs under, where both ends stand once `rules/sequenceofevents` has moved every unit, and
+    /// whether the map lets it arrive.
+    pub(crate) fn judge(
+        &self,
+        sender: &str,
+        sender_reported: Option<crate::report::model::Coordinate>,
+        target: &str,
+    ) -> Judged {
+        let facts = self.targets.get(target);
+        let sender_qm = self.quartermasters.contains(sender);
+        let target_qm = self.quartermasters.contains(target);
+        let reach = reach_for(sender_qm, target_qm, self.quartermasters.level(sender));
+        let measured = match (reach, sender_reported, facts) {
+            (Some(reach), Some(reported), Some(facts)) => {
+                let from = standing_at(&self.month_end, sender, reported);
+                let to = standing_at(&self.month_end, target, facts.coordinate);
+                Some(Measured {
+                    reach,
+                    from,
+                    to,
+                    arrival: arrival(reach, from, to, self.geometry, &self.shown),
+                })
+            }
+            _ => None,
+        };
+        Judged {
+            target_shown: facts.is_some(),
+            acceptance: acceptance(facts),
+            phase: shipment_phase(sender_qm, target_qm),
+            reach,
+            measured,
+        }
+    }
+
+    /// What a shipment whose ends `judge` measured costs by weight.
+    pub(crate) fn priced(
+        &self,
+        measured: &Measured,
+        language: OrderLanguage,
+        weight: i64,
+    ) -> Priced {
+        priced(
+            measured.reach,
+            measured.from,
+            measured.to,
+            self.geometry,
+            &self.shown,
+            language,
+            weight,
+        )
+    }
+}
+
+/// What `Shipping::judge` settled about one line. Owned and `Copy`, so the preview can hold it
+/// across `&mut self`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Judged {
+    /// The report shows the target somewhere: `targets` has an entry for it.
+    pub target_shown: bool,
+    pub acceptance: Acceptance,
+    pub phase: ShipmentPhase,
+    /// `None` exactly when `reach_for` answers `None`.
+    pub reach: Option<Reach>,
+    /// `Some` exactly when `reach`, the sender's reported hex and the target's facts are all known.
+    pub measured: Option<Measured>,
+}
+
+/// Both ends of a shipment as the month leaves them, and whether it arrives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Measured {
+    pub reach: Reach,
+    /// `standing_at(month_end, sender, sender_reported)`.
+    pub from: crate::report::model::Coordinate,
+    /// `standing_at(month_end, target, facts.coordinate)`.
+    pub to: crate::report::model::Coordinate,
+    /// `arrival(reach, from, to, geometry, &shown)` - ungated: the preview's switch stays the
+    /// preview's.
+    pub arrival: Arrival,
+}
+
+/// The target unit number of a line any surface measures, or `None` for a line none of them
+/// does: a target that is not an existing unit (`NEW`, another faction's `NEW`, unit `0`), a target
+/// that is the sender itself, or a `Class` / `WholeUnit` selector. A surface that measures fewer
+/// selectors than this filters them itself.
+pub(crate) fn shipment_target<'a>(
+    sender: &str,
+    to: &'a super::forms::Party,
+    what: &super::forms::Selector,
+) -> Option<&'a str> {
+    use super::forms::{Party, Selector};
+    if matches!(what, Selector::Class(_) | Selector::WholeUnit) {
+        return None;
+    }
+    match to {
+        Party::Unit(id) if id != sender => Some(id.as_str()),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1003,6 +1132,150 @@ mod tests {
                     "{language:?} at {distance}"
                 );
             }
+        }
+    }
+
+    fn shipping(
+        quartermasters: &[(&str, u32)],
+        targets: Vec<(&str, TargetFacts)>,
+        month_end: &[(&str, crate::report::model::Coordinate)],
+    ) -> Shipping {
+        Shipping {
+            quartermasters: Quartermasters {
+                by_id: quartermasters
+                    .iter()
+                    .map(|(id, level)| ((*id).to_string(), *level))
+                    .collect(),
+                skill_known: true,
+            },
+            targets: targets
+                .into_iter()
+                .map(|(id, facts)| (id.to_string(), facts))
+                .collect(),
+            geometry: Some(fixture_map()),
+            shown: crate::movement::graph::ShownExtent::default(),
+            month_end: month_end
+                .iter()
+                .map(|(id, at)| ((*id).to_string(), *at))
+                .collect(),
+        }
+    }
+
+    fn at(mut facts: TargetFacts, coordinate: crate::report::model::Coordinate) -> TargetFacts {
+        facts.coordinate = coordinate;
+        facts
+    }
+
+    /// `rules/sequenceofevents` moves every unit before any TRANSPORT, so both ends are measured
+    /// from where the month leaves them.
+    #[test]
+    fn judge_measures_both_ends_from_their_month_end_hexes() {
+        let shipping = shipping(
+            &[("901", 1)],
+            vec![("901", at(facts(true, true, true, true), hex(0, 4)))],
+            &[("901", hex(0, 6))],
+        );
+        let judged = shipping.judge("900", Some(hex(0, 0)), "901");
+        assert_eq!(
+            judged.measured,
+            Some(Measured {
+                reach: Reach::Local,
+                from: hex(0, 0),
+                to: hex(0, 6),
+                arrival: Arrival::TooFar(OutOfReach::Distance {
+                    away: 3,
+                    limit: 2,
+                    between_quartermasters: false,
+                }),
+            })
+        );
+        assert_eq!(judged.acceptance, Acceptance::Eligible);
+        assert_eq!(judged.phase, ShipmentPhase::ToQuartermaster);
+        assert!(judged.target_shown);
+    }
+
+    #[test]
+    fn judge_measures_a_sender_the_map_does_not_move_from_where_the_report_shows_it() {
+        let shipping = shipping(
+            &[("901", 1)],
+            vec![("901", at(facts(true, true, true, true), hex(0, 2)))],
+            &[],
+        );
+        let measured = shipping
+            .judge("900", Some(hex(0, 0)), "901")
+            .measured
+            .expect("both ends are shown");
+        assert_eq!(measured.from, hex(0, 0));
+        assert_eq!(measured.to, hex(0, 2));
+        assert_eq!(measured.arrival, Arrival::Certain);
+    }
+
+    #[test]
+    fn judge_names_no_reach_for_a_quartermaster_sending_to_a_non_quartermaster() {
+        let shipping = shipping(
+            &[("900", 2)],
+            vec![("901", at(facts(true, false, true, true), hex(0, 1)))],
+            &[],
+        );
+        let judged = shipping.judge("900", Some(hex(0, 0)), "901");
+        assert_eq!(judged.reach, None);
+        assert_eq!(judged.measured, None);
+        assert_eq!(judged.phase, ShipmentPhase::FromQuartermaster);
+    }
+
+    #[test]
+    fn judge_measures_nothing_without_the_senders_hex() {
+        let shipping = shipping(
+            &[("901", 1)],
+            vec![("901", at(facts(true, true, true, true), hex(0, 1)))],
+            &[],
+        );
+        let judged = shipping.judge("900", None, "901");
+        assert!(judged.reach.is_some());
+        assert_eq!(judged.measured, None);
+    }
+
+    #[test]
+    fn judge_measures_nothing_for_a_target_the_report_does_not_show() {
+        let shipping = shipping(&[("901", 1)], Vec::new(), &[]);
+        let judged = shipping.judge("900", Some(hex(0, 0)), "901");
+        assert!(!judged.target_shown);
+        assert_eq!(judged.acceptance, Acceptance::EligibilityUnknown);
+        assert_eq!(judged.measured, None);
+    }
+
+    #[test]
+    fn shipment_target_names_an_existing_unit_other_than_the_sender() {
+        use super::super::forms::{Party, Selector};
+        let to = Party::Unit("901".to_string());
+        assert_eq!(
+            shipment_target("900", &to, &Selector::Item("STON".to_string())),
+            Some("901")
+        );
+        assert_eq!(
+            shipment_target("900", &to, &Selector::UnfinishedShip("Cog".to_string())),
+            Some("901")
+        );
+    }
+
+    #[test]
+    fn shipment_target_skips_what_no_surface_measures() {
+        use super::super::forms::{Party, Selector};
+        let item = Selector::Item("STON".to_string());
+        for to in [
+            Party::New("1".to_string()),
+            Party::Foreign {
+                faction: "3".to_string(),
+                alias: "1".to_string(),
+            },
+            Party::Discard,
+            Party::Unit("900".to_string()),
+        ] {
+            assert_eq!(shipment_target("900", &to, &item), None, "{to:?}");
+        }
+        let to = Party::Unit("901".to_string());
+        for what in [Selector::Class("items".to_string()), Selector::WholeUnit] {
+            assert_eq!(shipment_target("900", &to, &what), None, "{what:?}");
         }
     }
 }

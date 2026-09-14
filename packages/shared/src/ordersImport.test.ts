@@ -103,13 +103,13 @@ describe("describing an import before it happens", () => {
   ].join("\n");
 
   it("counts the file's units", () => {
-    expect(describeOrdersImport(ORDERS_FILE, CURRENT).fileUnitIds).toEqual(["18642", "99001"]);
+    expect(describeOrdersImport(ORDERS_FILE, CURRENT, "origins").fileUnitIds).toEqual(["18642", "99001"]);
   });
 
   it("names the units about to be emptied - present with real orders now, absent from the file", () => {
     // 18642 is in the file, so it survives. 13401 has no real orders (comment only), so emptying it
     // costs nothing. 20000 is the same. Nothing here should be emptied by this particular file.
-    expect(describeOrdersImport(ORDERS_FILE, CURRENT).emptiedUnitIds).toEqual([]);
+    expect(describeOrdersImport(ORDERS_FILE, CURRENT, "origins").emptiedUnitIds).toEqual([]);
   });
 
   it("does not count a unit with only comments or blank orders as emptied", () => {
@@ -124,7 +124,7 @@ describe("describing an import before it happens", () => {
     ].join("\n");
 
     // 13401 now has a real order and is absent from the file - that one should be counted.
-    expect(describeOrdersImport(ORDERS_FILE, withOrders).emptiedUnitIds).toEqual(["13401"]);
+    expect(describeOrdersImport(ORDERS_FILE, withOrders, "origins").emptiedUnitIds).toEqual(["13401"]);
   });
 });
 
@@ -233,17 +233,17 @@ describe("naming a diagnostic's subject", () => {
 
   it("names a formed unit the way the player wrote it", () => {
     expect(
-      unitLabelForDiagnostic("", diagnostic({ unitId: "new-1", formed: { alias: "1", formedBy: "1010" } }))
+      unitLabelForDiagnostic("", diagnostic({ unitId: "new-1", formed: { alias: "1", formedBy: "1010" } }), "origins")
     ).toBe("new 1");
   });
 
   it("names an ordinary unit by its number", () => {
-    expect(unitLabelForDiagnostic("", diagnostic({ unitId: "1815" }))).toBe("1815");
+    expect(unitLabelForDiagnostic("", diagnostic({ unitId: "1815" }), "origins")).toBe("1815");
   });
 
   it("still places a syntax diagnostic by the block its line falls in", () => {
     expect(
-      unitLabelForDiagnostic("unit 1815\n@work\n", diagnostic({ lineStart: 2, lineEnd: 2 }))
+      unitLabelForDiagnostic("unit 1815\n@work\n", diagnostic({ lineStart: 2, lineEnd: 2 }), "origins")
     ).toBe("1815");
   });
 });

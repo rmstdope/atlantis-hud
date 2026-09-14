@@ -60,11 +60,11 @@ const DOCUMENT = [
 
 describe("finding unit blocks", () => {
   it("finds every unit in the document", () => {
-    expect(findUnitBlocks(DOCUMENT).map((block) => block.unitId)).toEqual(["18642", "13401"]);
+    expect(findUnitBlocks(DOCUMENT, "origins").map((block) => block.unitId)).toEqual(["18642", "13401"]);
   });
 
   it("does not let a unit swallow the document's closing directive", () => {
-    const last = findUnitBlocks(DOCUMENT)[1];
+    const last = findUnitBlocks(DOCUMENT, "origins")[1];
     const lines = DOCUMENT.split("\n");
     expect(lines[last.lastLine]).toBe(";Drone (13401), behind.");
   });
@@ -76,14 +76,14 @@ describe("finding unit blocks", () => {
     const upperCase = ['#ATLANTIS 95 "secret"', "", "UNIT 18642", "@claim 50", "", "#END"].join(
       "\n"
     );
-    expect(findUnitBlocks(upperCase).map((block) => block.unitId)).toEqual(["18642"]);
+    expect(findUnitBlocks(upperCase, "origins").map((block) => block.unitId)).toEqual(["18642"]);
   });
 
   it("does not let an uppercase #END get folded into the last unit's own orders", () => {
     const upperCase = ['#ATLANTIS 95 "secret"', "", "UNIT 18642", "@claim 50", "", "#END"].join(
       "\n"
     );
-    expect(readUnitOrders(upperCase, "18642")).toBe("@claim 50");
+    expect(readUnitOrders(upperCase, "18642", undefined, "origins")).toBe("@claim 50");
   });
 });
 
@@ -103,7 +103,7 @@ describe("hasFactionHeader", () => {
 
 describe("reading a unit's orders", () => {
   it("returns the unit's own lines, comments included", () => {
-    expect(readUnitOrders(DOCUMENT, "18642")).toBe(
+    expect(readUnitOrders(DOCUMENT, "18642", undefined, "origins")).toBe(
       [";Seven of Eight (18642), avoiding, behind, leader [LEAD].", "@claim 50", "@study obse"].join(
         "\n"
       )
@@ -111,19 +111,19 @@ describe("reading a unit's orders", () => {
   });
 
   it("returns nothing for a unit the document does not list", () => {
-    expect(readUnitOrders(DOCUMENT, "99999")).toBeNull();
+    expect(readUnitOrders(DOCUMENT, "99999", undefined, "origins")).toBeNull();
   });
 
   it("distinguishes a unit with no orders from one that is absent", () => {
     const empty = ["#atlantis 95 \"secret\"", "unit 100", "", "#end"].join("\n");
-    expect(readUnitOrders(empty, "100")).toBe("");
-    expect(readUnitOrders(empty, "200")).toBeNull();
+    expect(readUnitOrders(empty, "100", undefined, "origins")).toBe("");
+    expect(readUnitOrders(empty, "200", undefined, "origins")).toBeNull();
   });
 });
 
 describe("writing a unit's orders", () => {
   it("leaves every other byte of the document untouched", () => {
-    const updated = writeUnitOrders(DOCUMENT, "18642", "@work");
+    const updated = writeUnitOrders(DOCUMENT, "18642", "@work", undefined, "origins");
 
     expect(updated).toContain('#atlantis 95 "secret"');
     expect(updated).toContain(";*** mountain (7,53) in Inhead ***");
@@ -133,34 +133,34 @@ describe("writing a unit's orders", () => {
   });
 
   it("replaces only the edited unit's lines", () => {
-    const updated = writeUnitOrders(DOCUMENT, "18642", "@work");
+    const updated = writeUnitOrders(DOCUMENT, "18642", "@work", undefined, "origins");
 
-    expect(readUnitOrders(updated, "18642")).toBe("@work");
-    expect(readUnitOrders(updated, "13401")).toBe(";Drone (13401), behind.");
+    expect(readUnitOrders(updated, "18642", undefined, "origins")).toBe("@work");
+    expect(readUnitOrders(updated, "13401", undefined, "origins")).toBe(";Drone (13401), behind.");
   });
 
   it("round trips a document when nothing is changed", () => {
-    const unchanged = writeUnitOrders(DOCUMENT, "18642", readUnitOrders(DOCUMENT, "18642") ?? "");
+    const unchanged = writeUnitOrders(DOCUMENT, "18642", readUnitOrders(DOCUMENT, "18642", undefined, "origins") ?? "", undefined, "origins");
     expect(unchanged).toBe(DOCUMENT);
   });
 
   it("preserves the faction header, which carries the password", () => {
-    const updated = writeUnitOrders(DOCUMENT, "13401", "@work");
+    const updated = writeUnitOrders(DOCUMENT, "13401", "@work", undefined, "origins");
     expect(hasFactionHeader(updated)).toBe(true);
     expect(updated.split("\n")[0]).toBe('#atlantis 95 "secret"');
   });
 
   it("clears a unit's orders without collapsing the document", () => {
-    const updated = writeUnitOrders(DOCUMENT, "18642", "");
+    const updated = writeUnitOrders(DOCUMENT, "18642", "", undefined, "origins");
 
-    expect(readUnitOrders(updated, "18642")).toBe("");
+    expect(readUnitOrders(updated, "18642", undefined, "origins")).toBe("");
     expect(updated).toContain("unit 13401");
     expect(hasFactionHeader(updated)).toBe(true);
   });
 
   it("refuses to invent a block for a unit the server never listed", () => {
     // Such an orders file would be rejected, so leaving the document alone is the honest outcome.
-    expect(writeUnitOrders(DOCUMENT, "99999", "@work")).toBe(DOCUMENT);
+    expect(writeUnitOrders(DOCUMENT, "99999", "@work", undefined, "origins")).toBe(DOCUMENT);
   });
 });
 
@@ -192,7 +192,7 @@ const TWO_REGIONS = [
 
 describe("a region banner belongs to the document, not to the unit above it", () => {
   it("stops a unit's block at the banner announcing the next region", () => {
-    expect(readUnitOrders(TWO_REGIONS, "18642")).toBe(
+    expect(readUnitOrders(TWO_REGIONS, "18642", undefined, "origins")).toBe(
       [";Seven of Eight (18642), avoiding, behind, leader [LEAD].", "@claim 50", "@study obse"].join(
         "\n"
       )
@@ -200,23 +200,23 @@ describe("a region banner belongs to the document, not to the unit above it", ()
   });
 
   it("ends the block on the unit's own last line", () => {
-    const block = findUnitBlocks(TWO_REGIONS)[0];
+    const block = findUnitBlocks(TWO_REGIONS, "origins")[0];
     expect(TWO_REGIONS.split("\n")[block.lastLine]).toBe("@study obse");
   });
 
   it("leaves the banner standing when that unit's orders are rewritten", () => {
-    const updated = writeUnitOrders(TWO_REGIONS, "18642", "@work");
+    const updated = writeUnitOrders(TWO_REGIONS, "18642", "@work", undefined, "origins");
 
     expect(updated).toContain(";*** desert (15,63) in Feltiuckfex, contains Trasicy [city] ***");
-    expect(readUnitOrders(updated, "18642")).toBe("@work");
-    expect(readUnitOrders(updated, "1688")).toBe([";Drone (1688), avoiding, behind.", "@work"].join("\n"));
+    expect(readUnitOrders(updated, "18642", undefined, "origins")).toBe("@work");
+    expect(readUnitOrders(updated, "1688", undefined, "origins")).toBe([";Drone (1688), avoiding, behind.", "@work"].join("\n"));
   });
 
   it("keeps both banners out of the editor once the descriptions are dropped", () => {
-    const stripped = stripUnitComments(TWO_REGIONS);
+    const stripped = stripUnitComments(TWO_REGIONS, "origins");
 
-    expect(readUnitOrders(stripped, "18642")).toBe(["@claim 50", "@study obse"].join("\n"));
-    expect(readUnitOrders(stripped, "1688")).toBe("@work");
+    expect(readUnitOrders(stripped, "18642", undefined, "origins")).toBe(["@claim 50", "@study obse"].join("\n"));
+    expect(readUnitOrders(stripped, "1688", undefined, "origins")).toBe("@work");
     expect(stripped).toContain(";*** mountain (7,53) in Inhead, contains Inholm [city] ***");
     expect(stripped).toContain(";*** desert (15,63) in Feltiuckfex, contains Trasicy [city] ***");
   });
@@ -243,7 +243,7 @@ const WRAPPED = [
 
 describe("dropping the server's unit descriptions", () => {
   it("removes a description however many lines it wraps to", () => {
-    const stripped = stripUnitComments(WRAPPED);
+    const stripped = stripUnitComments(WRAPPED, "origins");
 
     expect(stripped).not.toContain("Three of Five");
     expect(stripped).not.toContain("Capacity");
@@ -251,17 +251,17 @@ describe("dropping the server's unit descriptions", () => {
   });
 
   it("leaves the orders the player has already written", () => {
-    expect(readUnitOrders(stripUnitComments(WRAPPED), "793")).toBe("@study obse");
+    expect(readUnitOrders(stripUnitComments(WRAPPED, "origins"), "793", undefined, "origins")).toBe("@study obse");
   });
 
   it("keeps the region banners, which belong to the document and not to any unit", () => {
-    expect(stripUnitComments(WRAPPED)).toContain(
+    expect(stripUnitComments(WRAPPED, "origins")).toContain(
       ";*** mountain (13,63) in Liou'ecpu, contains Rihead [town] ***"
     );
   });
 
   it("keeps the faction header, which carries the password, and the closing directive", () => {
-    const stripped = stripUnitComments(WRAPPED);
+    const stripped = stripUnitComments(WRAPPED, "origins");
 
     expect(hasFactionHeader(stripped)).toBe(true);
     expect(stripped.split("\n")[0]).toBe('#atlantis 73 "secret"');
@@ -270,12 +270,12 @@ describe("dropping the server's unit descriptions", () => {
 
   it("leaves a unit whose block was nothing but description ready to be ordered", () => {
     // Empty, not absent: an empty block still accepts orders, where a missing one is refused.
-    expect(readUnitOrders(stripUnitComments(WRAPPED), "1382")).toBe("");
-    expect(readUnitOrders(stripUnitComments(WRAPPED), "9999")).toBeNull();
+    expect(readUnitOrders(stripUnitComments(WRAPPED, "origins"), "1382", undefined, "origins")).toBe("");
+    expect(readUnitOrders(stripUnitComments(WRAPPED, "origins"), "9999", undefined, "origins")).toBeNull();
   });
 
   it("keeps every unit's block, so no unit becomes unorderable", () => {
-    expect(findUnitBlocks(stripUnitComments(WRAPPED)).map((block) => block.unitId)).toEqual([
+    expect(findUnitBlocks(stripUnitComments(WRAPPED, "origins"), "origins").map((block) => block.unitId)).toEqual([
       "793",
       "1382"
     ]);
@@ -285,7 +285,7 @@ describe("dropping the server's unit descriptions", () => {
     // `@;` repeats a comment into next turn's template. The server does not write them; a player
     // might, and dropping one would delete something they typed.
     const withRepeat = ["unit 793", "@;remember to tax here", "@study obse"].join("\n");
-    expect(stripUnitComments(withRepeat)).toBe(withRepeat);
+    expect(stripUnitComments(withRepeat, "origins")).toBe(withRepeat);
   });
 
   it("goes by the first non-blank character, so indentation hides nothing and spares nothing", () => {
@@ -293,14 +293,14 @@ describe("dropping the server's unit descriptions", () => {
       "\n"
     );
 
-    expect(stripUnitComments(indented)).toBe(
+    expect(stripUnitComments(indented, "origins")).toBe(
       ["unit 793", "  @;keep me", "@study obse"].join("\n")
     );
   });
 
   it("leaves a document that carries no descriptions exactly as it was", () => {
     const plain = ["#atlantis 73 \"secret\"", "unit 793", "@study obse", "#end"].join("\n");
-    expect(stripUnitComments(plain)).toBe(plain);
+    expect(stripUnitComments(plain, "origins")).toBe(plain);
   });
 });
 
@@ -316,23 +316,23 @@ const TURN_71_TEMPLATE = TURN_71_REPORT.slice(TEMPLATE_START + TEMPLATE_MARKER.l
 
 describe("restoring the server's unit descriptions", () => {
   it("puts the server's description back under the unit line", () => {
-    const stripped = stripUnitComments(WRAPPED);
+    const stripped = stripUnitComments(WRAPPED, "origins");
 
-    expect(withUnitComments(stripped, WRAPPED)).toBe(WRAPPED);
+    expect(withUnitComments(stripped, WRAPPED, "origins")).toBe(WRAPPED);
   });
 
   it("leaves a unit the template does not know", () => {
     const document = ["unit 793", "@study obse", "", "unit 9999", "@work", "", "#end"].join("\n");
 
-    const restored = withUnitComments(document, WRAPPED);
+    const restored = withUnitComments(document, WRAPPED, "origins");
 
-    expect(readUnitOrders(restored, "9999")).toBe("@work");
+    expect(readUnitOrders(restored, "9999", undefined, "origins")).toBe("@work");
   });
 
   it("keeps the player's own note, once, below the restored description", () => {
     const document = ["unit 793", ";remember to check this", "@study obse"].join("\n");
 
-    const restored = withUnitComments(document, WRAPPED);
+    const restored = withUnitComments(document, WRAPPED, "origins");
 
     expect(restored).toBe(
       [
@@ -349,7 +349,7 @@ describe("restoring the server's unit descriptions", () => {
   it("does not touch an @; repeating comment", () => {
     const document = ["unit 793", "@;remember to tax here", "@study obse"].join("\n");
 
-    const restored = withUnitComments(document, WRAPPED);
+    const restored = withUnitComments(document, WRAPPED, "origins");
 
     expect(restored).toBe(
       [
@@ -366,24 +366,24 @@ describe("restoring the server's unit descriptions", () => {
   it("returns the document unchanged when the template is empty", () => {
     const document = ["unit 793", "@study obse"].join("\n");
 
-    expect(withUnitComments(document, "")).toBe(document);
+    expect(withUnitComments(document, "", "origins")).toBe(document);
   });
 
   it("is the exact inverse of stripUnitComments, over a real report's template", () => {
-    const stripped = stripUnitComments(TURN_71_TEMPLATE);
+    const stripped = stripUnitComments(TURN_71_TEMPLATE, "origins");
 
-    expect(stripUnitComments(withUnitComments(stripped, TURN_71_TEMPLATE))).toBe(stripped);
+    expect(stripUnitComments(withUnitComments(stripped, TURN_71_TEMPLATE, "origins"), "origins")).toBe(stripped);
   });
 
   it("gives every unit with a description in the template exactly those lines", () => {
-    const stripped = stripUnitComments(TURN_71_TEMPLATE);
-    const restored = withUnitComments(stripped, TURN_71_TEMPLATE);
+    const stripped = stripUnitComments(TURN_71_TEMPLATE, "origins");
+    const restored = withUnitComments(stripped, TURN_71_TEMPLATE, "origins");
     const restoredLines = restored.split("\n");
-    const restoredBlocks = findUnitBlocks(restored);
+    const restoredBlocks = findUnitBlocks(restored, "origins");
     const templateLines = TURN_71_TEMPLATE.split("\n");
 
     let checked = 0;
-    for (const templateBlock of findUnitBlocks(TURN_71_TEMPLATE)) {
+    for (const templateBlock of findUnitBlocks(TURN_71_TEMPLATE, "origins")) {
       const description = templateLines
         .slice(templateBlock.firstLine, templateBlock.lastLine + 1)
         .filter((line) => line.trim().startsWith(";"));
@@ -410,8 +410,8 @@ describe("trailing blank lines", () => {
   it("cannot survive the round trip, which is why the editor keeps its own draft", () => {
     // A blank line at the end of a block is indistinguishable from the separator before the next
     // unit, so the document cannot hold one. The panel guards against this rather than fighting it.
-    const updated = writeUnitOrders(DOCUMENT, "18642", "@work\n");
-    expect(readUnitOrders(updated, "18642")).toBe("@work");
+    const updated = writeUnitOrders(DOCUMENT, "18642", "@work\n", undefined, "origins");
+    expect(readUnitOrders(updated, "18642", undefined, "origins")).toBe("@work");
   });
 
   it("are dropped from the end and nowhere else", () => {
@@ -428,8 +428,8 @@ describe("trailing blank lines", () => {
   });
 
   it("changes nothing in the document when the draft merely ends in one", () => {
-    expect(writeUnitOrders(DOCUMENT, "18642", "@work\n")).toBe(
-      writeUnitOrders(DOCUMENT, "18642", "@work")
+    expect(writeUnitOrders(DOCUMENT, "18642", "@work\n", undefined, "origins")).toBe(
+      writeUnitOrders(DOCUMENT, "18642", "@work", undefined, "origins")
     );
   });
 
@@ -441,9 +441,9 @@ describe("trailing blank lines", () => {
   it("does not pile up as line after line is opened and filled", () => {
     let document = DOCUMENT;
     for (let cycle = 1; cycle <= 4; cycle += 1) {
-      const opened = `${readUnitOrders(document, "18642")}\n`;
-      document = writeUnitOrders(document, "18642", opened);
-      document = writeUnitOrders(document, "18642", `${opened}@order${cycle}`);
+      const opened = `${readUnitOrders(document, "18642", undefined, "origins")}\n`;
+      document = writeUnitOrders(document, "18642", opened, undefined, "origins");
+      document = writeUnitOrders(document, "18642", `${opened}@order${cycle}`, undefined, "origins");
     }
 
     expect(document).toBe(
@@ -458,7 +458,7 @@ describe("trailing blank lines", () => {
           "@order2",
           "@order3",
           "@order4"
-        ].join("\n")
+        ].join("\n"), undefined, "origins"
       )
     );
   });
@@ -466,46 +466,46 @@ describe("trailing blank lines", () => {
 
 describe("reading orders without the commentary", () => {
   it("drops the game's descriptive comments", () => {
-    expect(commandsOnly(readUnitOrders(DOCUMENT, "18642") ?? "")).toEqual([
+    expect(commandsOnly(readUnitOrders(DOCUMENT, "18642", undefined, "origins") ?? "")).toEqual([
       "@claim 50",
       "@study obse"
     ]);
   });
 
   it("reports no commands for a unit that only carries a comment", () => {
-    expect(commandsOnly(readUnitOrders(DOCUMENT, "13401") ?? "")).toEqual([]);
+    expect(commandsOnly(readUnitOrders(DOCUMENT, "13401", undefined, "origins") ?? "")).toEqual([]);
   });
 });
 
 describe("stripping a unit's existing movement order", () => {
   it("drops a MOVE line so a newly planned route replaces it", () => {
-    expect(stripMovementOrderLines("@claim 50\nMOVE SE SE\n@study obse")).toBe(
+    expect(stripMovementOrderLines("@claim 50\nMOVE SE SE\n@study obse", "origins")).toBe(
       "@claim 50\n@study obse"
     );
   });
 
   it("drops an ADVANCE line the same way", () => {
-    expect(stripMovementOrderLines("ADVANCE N\n@study obse")).toBe("@study obse");
+    expect(stripMovementOrderLines("ADVANCE N\n@study obse", "origins")).toBe("@study obse");
   });
 
   /** A planned sea route replaces an existing SAIL just as a land route replaces a MOVE. */
   it("drops a SAIL line so a newly planned sea route replaces it", () => {
-    expect(stripMovementOrderLines("@claim 50\nSAIL N NE\n@study obse")).toBe(
+    expect(stripMovementOrderLines("@claim 50\nSAIL N NE\n@study obse", "origins")).toBe(
       "@claim 50\n@study obse"
     );
   });
 
   it("drops a repeating @MOVE line too", () => {
-    expect(stripMovementOrderLines("@MOVE SE\n@study obse")).toBe("@study obse");
+    expect(stripMovementOrderLines("@MOVE SE\n@study obse", "origins")).toBe("@study obse");
   });
 
   it("leaves orders with no movement line untouched", () => {
-    expect(stripMovementOrderLines("@claim 50\n@study obse")).toBe("@claim 50\n@study obse");
+    expect(stripMovementOrderLines("@claim 50\n@study obse", "origins")).toBe("@claim 50\n@study obse");
   });
 
   it("drops every movement order the core knows", () => {
     for (const command of MOVEMENT_ORDER_COMMANDS) {
-      expect(stripMovementOrderLines(`${command} N\n@study obse`)).toBe("@study obse");
+      expect(stripMovementOrderLines(`${command} N\n@study obse`, "origins")).toBe("@study obse");
     }
   });
 
@@ -517,25 +517,25 @@ describe("stripping a unit's existing movement order", () => {
   const withQueuedMove = ["MOVE N", "TURN", "  MOVE S", "ENDTURN"].join("\n");
 
   it("a_move_inside_a_form_block_is_not_this_units_move", () => {
-    expect(stripMovementOrderLines(withFormedMove)).toBe(
+    expect(stripMovementOrderLines(withFormedMove, "origins")).toBe(
       ["@claim 50", "FORM 1", "  BUY 5 Plainsmen", "  MOVE S", "END"].join("\n")
     );
   });
 
   it("a_move_inside_a_turn_block_is_a_later_months", () => {
-    expect(stripMovementOrderLines(withQueuedMove)).toBe(
+    expect(stripMovementOrderLines(withQueuedMove, "origins")).toBe(
       ["TURN", "  MOVE S", "ENDTURN"].join("\n")
     );
   });
 
   it("a_repeating_turn_blocks_move_is_nested_too", () => {
-    expect(stripMovementOrderLines(["SAIL N", "@TURN", "  MOVE S S S", "ENDTURN"].join("\n"))).toBe(
+    expect(stripMovementOrderLines(["SAIL N", "@TURN", "  MOVE S S S", "ENDTURN"].join("\n"), "origins")).toBe(
       ["@TURN", "  MOVE S S S", "ENDTURN"].join("\n")
     );
   });
 
   it("the_units_own_move_after_an_end_is_still_removed", () => {
-    expect(stripMovementOrderLines(["FORM 1", "  MOVE S", "END", "ADVANCE NE"].join("\n"))).toBe(
+    expect(stripMovementOrderLines(["FORM 1", "  MOVE S", "END", "ADVANCE NE"].join("\n"), "origins")).toBe(
       ["FORM 1", "  MOVE S", "END"].join("\n")
     );
   });
@@ -598,32 +598,32 @@ describe("withFactionPassword", () => {
 describe("finds the one order that takes the whole month", () => {
   it("recognises every one of the eleven month-long commands", () => {
     for (const command of LONG_ORDER_COMMANDS) {
-      expect(longOrderOf(`@claim 50\n${command} thing`)).toBe(`${command} thing`);
+      expect(longOrderOf(`@claim 50\n${command} thing`, "origins")).toBe(`${command} thing`);
     }
   });
 
   it("finds the month-long line among a unit's other orders", () => {
-    expect(longOrderOf('@claim 50\nproduce yew\nguard 1')).toBe("produce yew");
+    expect(longOrderOf('@claim 50\nproduce yew\nguard 1', "origins")).toBe("produce yew");
   });
 
   it("keeps a repeated order exactly as typed", () => {
-    expect(longOrderOf("@tax")).toBe("@tax");
+    expect(longOrderOf("@tax", "origins")).toBe("@tax");
   });
 
   it("ignores the game's own descriptive comments", () => {
-    expect(longOrderOf("; a comment about MOVE\nguard 1")).toBeNull();
+    expect(longOrderOf("; a comment about MOVE\nguard 1", "origins")).toBeNull();
   });
 
   it("is null when the unit has no month-long order at all", () => {
-    expect(longOrderOf("@GIVE 1 50 SILV\nguard 1")).toBeNull();
+    expect(longOrderOf("@GIVE 1 50 SILV\nguard 1", "origins")).toBeNull();
   });
 
   it("does not match a command that merely starts with the same letters", () => {
-    expect(longOrderOf("taxation 1")).toBeNull();
+    expect(longOrderOf("taxation 1", "origins")).toBeNull();
   });
 
   it("returns the first one when a document somehow holds two", () => {
-    expect(longOrderOf("produce yew\n@tax")).toBe("produce yew");
+    expect(longOrderOf("produce yew\n@tax", "origins")).toBe("produce yew");
   });
 });
 
@@ -686,11 +686,11 @@ describe("ensureUnitBlock", () => {
   ].join("\n");
 
   it("leaves a unit that already has a block alone", () => {
-    expect(ensureUnitBlock(region, "3832", BANNER_43_81)).toBe(region);
+    expect(ensureUnitBlock(region, "3832", BANNER_43_81, "origins")).toBe(region);
   });
 
   it("adds a block after the last unit under its own banner", () => {
-    expect(ensureUnitBlock(region, "1656", BANNER_43_81)).toBe(
+    expect(ensureUnitBlock(region, "1656", BANNER_43_81, "origins")).toBe(
       [
         "#atlantis 62",
         "",
@@ -712,22 +712,22 @@ describe("ensureUnitBlock", () => {
 
   it("adds a block straight under a banner that has no units yet", () => {
     const empty = ["#atlantis 62", "", BANNER_43_81, "", "#end", ""].join("\n");
-    expect(ensureUnitBlock(empty, "1656", BANNER_43_81)).toBe(
+    expect(ensureUnitBlock(empty, "1656", BANNER_43_81, "origins")).toBe(
       ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "", "#end", ""].join("\n")
     );
   });
 
   it("writes the banner too, before #end, when the document has no banner for the region", () => {
     const seeded = ["#atlantis 62", "", "#end", ""].join("\n");
-    expect(ensureUnitBlock(seeded, "1656", BANNER_43_81)).toBe(
+    expect(ensureUnitBlock(seeded, "1656", BANNER_43_81, "origins")).toBe(
       ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "", "#end", ""].join("\n")
     );
   });
 
   it("writeUnitOrders fills the block ensureUnitBlock created", () => {
     const seeded = ["#atlantis 62", "", "#end", ""].join("\n");
-    const withBlock = ensureUnitBlock(seeded, "1656", BANNER_43_81);
-    expect(writeUnitOrders(withBlock, "1656", "buy 1 humn\nstudy forc")).toBe(
+    const withBlock = ensureUnitBlock(seeded, "1656", BANNER_43_81, "origins");
+    expect(writeUnitOrders(withBlock, "1656", "buy 1 humn\nstudy forc", undefined, "origins")).toBe(
       [
         "#atlantis 62",
         "",
@@ -797,24 +797,24 @@ describe("applyUnitOrders", () => {
   const seeded = ["#atlantis 62", "", "#end", ""].join("\n");
 
   it("creates the block under the region's banner on the first order", () => {
-    expect(applyUnitOrders(seeded, "1656", "buy 1 humn", BANNER_43_81)).toBe(
+    expect(applyUnitOrders(seeded, "1656", "buy 1 humn", BANNER_43_81, undefined, "origins")).toBe(
       ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "buy 1 humn", "", "#end", ""].join("\n")
     );
   });
 
   it("creates nothing for an edit that carries no text", () => {
-    expect(applyUnitOrders(seeded, "1656", "", BANNER_43_81)).toBe(seeded);
+    expect(applyUnitOrders(seeded, "1656", "", BANNER_43_81, undefined, "origins")).toBe(seeded);
   });
 
   it("creates nothing when there is no banner to put it under", () => {
-    expect(applyUnitOrders(seeded, "1656", "buy 1 humn", null)).toBe(seeded);
+    expect(applyUnitOrders(seeded, "1656", "buy 1 humn", null, undefined, "origins")).toBe(seeded);
   });
 
   it("leaves an existing block where it is", () => {
     const existing = ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "@tax", "", "#end", ""].join(
       "\n"
     );
-    expect(applyUnitOrders(existing, "1656", "@work", BANNER_43_81)).toBe(
+    expect(applyUnitOrders(existing, "1656", "@work", BANNER_43_81, undefined, "origins")).toBe(
       ["#atlantis 62", "", BANNER_43_81, "", "unit 1656", "@work", "", "#end", ""].join("\n")
     );
   });
@@ -838,7 +838,7 @@ describe("finding FORM blocks", () => {
   ].join("\n");
 
   it("finds a FORM block's own lines, inside the unit block that holds it", () => {
-    const blocks = findFormBlocks(formed);
+    const blocks = findFormBlocks(formed, "origins");
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toMatchObject({
       alias: "1",
@@ -852,21 +852,21 @@ describe("finding FORM blocks", () => {
 
   it("rule 5: a FORM opened inside a TURN block is next month's and is not returned", () => {
     const document = ["unit 1922", "turn", "form 1", "buy 1 hdwa", "end", "endturn"].join("\n");
-    expect(findFormBlocks(document)).toEqual([]);
+    expect(findFormBlocks(document, "origins")).toEqual([]);
   });
 
   it("rule 6: an alias that is not a number of at least one is not returned", () => {
-    expect(findFormBlocks(["unit 1922", "form a", "buy 1 hdwa", "end"].join("\n"))).toEqual([]);
-    expect(findFormBlocks(["unit 1922", "form 0", "buy 1 hdwa", "end"].join("\n"))).toEqual([]);
+    expect(findFormBlocks(["unit 1922", "form a", "buy 1 hdwa", "end"].join("\n"), "origins")).toEqual([]);
+    expect(findFormBlocks(["unit 1922", "form 0", "buy 1 hdwa", "end"].join("\n"), "origins")).toEqual([]);
   });
 
   it("rule 2: a FORM inside a unit block naming no reported unit is not returned", () => {
-    expect(findFormBlocks(["unit new-1", "form 1", "buy 1 hdwa", "end"].join("\n"))).toEqual([]);
+    expect(findFormBlocks(["unit new-1", "form 1", "buy 1 hdwa", "end"].join("\n"), "origins")).toEqual([]);
   });
 
   it("rule 6: a FORM nested inside one that was not returned is not returned either", () => {
     const document = ["unit 1922", "form 0", "form 2", "buy 1 hdwa", "end", "end"].join("\n");
-    expect(findFormBlocks(document)).toEqual([]);
+    expect(findFormBlocks(document, "origins")).toEqual([]);
   });
 
   it("a nested FORM points at the block enclosing it", () => {
@@ -879,7 +879,7 @@ describe("finding FORM blocks", () => {
       "end",
       "end"
     ].join("\n");
-    const blocks = findFormBlocks(document);
+    const blocks = findFormBlocks(document, "origins");
     expect(blocks.map((block) => [block.alias, block.parentIndex])).toEqual([
       ["1", null],
       ["2", 0]
@@ -889,9 +889,9 @@ describe("finding FORM blocks", () => {
 
   it("rule for comments and @: @form 1 is a block and ; form 1 is not", () => {
     expect(
-      findFormBlocks(["unit 1922", "@form 1", "buy 1 hdwa", "end"].join("\n")).map((b) => b.alias)
+      findFormBlocks(["unit 1922", "@form 1", "buy 1 hdwa", "end"].join("\n"), "origins").map((b) => b.alias)
     ).toEqual(["1"]);
-    expect(findFormBlocks(["unit 1922", "; form 1", "buy 1 hdwa"].join("\n"))).toEqual([]);
+    expect(findFormBlocks(["unit 1922", "; form 1", "buy 1 hdwa"].join("\n"), "origins")).toEqual([]);
   });
 
   it("rule 7: an unterminated FORM runs to the line before the next unit line", () => {
@@ -903,12 +903,12 @@ describe("finding FORM blocks", () => {
       "unit 1923",
       "@tax"
     ].join("\n");
-    expect(findFormBlocks(document)[0]).toMatchObject({ firstLine: 2, lastLine: 2 });
+    expect(findFormBlocks(document, "origins")[0]).toMatchObject({ firstLine: 2, lastLine: 2 });
   });
 
   it("rule 7: an empty FORM block gives lastLine below firstLine", () => {
     const document = ["unit 1922", "form 1", "end"].join("\n");
-    const block = findFormBlocks(document)[0];
+    const block = findFormBlocks(document, "origins")[0];
     expect(block?.lastLine).toBeLessThan(block?.firstLine ?? 0);
   });
 
@@ -916,12 +916,12 @@ describe("finding FORM blocks", () => {
     const document = ["unit 1922", "form 1", "buy 1 hdwa", "#end", "form 2", "study comb"].join(
       "\n"
     );
-    expect(findFormBlocks(document).map((block) => block.alias)).toEqual(["1"]);
+    expect(findFormBlocks(document, "origins").map((block) => block.alias)).toEqual(["1"]);
   });
 
   it("rule 3: endturn closes a TURN and only a TURN", () => {
     const document = ["unit 1922", "turn", "endturn", "form 1", "buy 1 hdwa", "end"].join("\n");
-    expect(findFormBlocks(document).map((block) => block.alias)).toEqual(["1"]);
+    expect(findFormBlocks(document, "origins").map((block) => block.alias)).toEqual(["1"]);
   });
 });
 
@@ -946,12 +946,12 @@ describe("formBlockFor and blockFor", () => {
       "study comb",
       "end"
     ].join("\n");
-    expect(formBlockFor(document, "1", region)).toMatchObject({ unitId: "1922", firstLine: 2 });
+    expect(formBlockFor(document, "1", region, "origins")).toMatchObject({ unitId: "1922", firstLine: 2 });
   });
 
   it("a form 1 under a unit in another region does not match", () => {
     const document = ["unit 4000", "form 1", "buy 1 hdwa", "end"].join("\n");
-    expect(formBlockFor(document, "1", region)).toBeNull();
+    expect(formBlockFor(document, "1", region, "origins")).toBeNull();
   });
 
   it("a FORM nested inside a swallowed duplicate is swallowed with it", () => {
@@ -967,14 +967,14 @@ describe("formBlockFor and blockFor", () => {
       "end",
       "end"
     ].join("\n");
-    expect(formBlockFor(document, "2", region)).toBeNull();
+    expect(formBlockFor(document, "2", region, "origins")).toBeNull();
   });
 
   it("blockFor gives the unit block for a reported id and null for a new-1 with no region", () => {
     const document = ["unit 1922", "form 1", "buy 1 hdwa", "end"].join("\n");
-    expect(blockFor(document, "1922")).toMatchObject({ unitId: "1922", headerLine: 0 });
-    expect(blockFor(document, "new-1")).toBeNull();
-    expect(blockFor(document, "new-1", region)).toMatchObject({
+    expect(blockFor(document, "1922", undefined, "origins")).toMatchObject({ unitId: "1922", headerLine: 0 });
+    expect(blockFor(document, "new-1", undefined, "origins")).toBeNull();
+    expect(blockFor(document, "new-1", region, "origins")).toMatchObject({
       unitId: "new-1",
       headerLine: 1,
       firstLine: 2,
@@ -1003,11 +1003,11 @@ describe("a formed unit's own orders", () => {
   ].join("\n");
 
   it("reads the lines between form 1 and end, and nothing else", () => {
-    expect(readUnitOrders(document, "new-1", region)).toBe("buy 1 hdwa\nstudy comb");
+    expect(readUnitOrders(document, "new-1", region, "origins")).toBe("buy 1 hdwa\nstudy comb");
   });
 
   it("writes a formed unit's orders back inside its FORM block", () => {
-    expect(writeUnitOrders(document, "new-1", "buy 1 hdwa\nstudy comb\n@work", region)).toBe(
+    expect(writeUnitOrders(document, "new-1", "buy 1 hdwa\nstudy comb\n@work", region, "origins")).toBe(
       [
         "#atlantis 62",
         "",
@@ -1029,7 +1029,7 @@ describe("a formed unit's own orders", () => {
   });
 
   it("emptying a formed unit's orders leaves its form and end standing", () => {
-    const emptied = writeUnitOrders(document, "new-1", "", region);
+    const emptied = writeUnitOrders(document, "new-1", "", region, "origins");
     expect(emptied.split("\n").filter((line) => line.trim() !== "")).toEqual([
       "#atlantis 62",
       BANNER_43_81,
@@ -1040,19 +1040,19 @@ describe("a formed unit's own orders", () => {
       "give new 1 100 silv",
       "#end"
     ]);
-    expect(readUnitOrders(emptied, "new-1", region)).toBe("");
+    expect(readUnitOrders(emptied, "new-1", region, "origins")).toBe("");
   });
 
   it("never invents a unit new-1 block", () => {
     const noForm = ["#atlantis 62", "", BANNER_43_81, "", "unit 1922", "@tax", "", "#end", ""].join(
       "\n"
     );
-    expect(applyUnitOrders(noForm, "new-1", "buy 1 hdwa", BANNER_43_81, region)).toBe(noForm);
-    expect(ensureUnitBlock(noForm, "new-1", BANNER_43_81)).toBe(noForm);
+    expect(applyUnitOrders(noForm, "new-1", "buy 1 hdwa", BANNER_43_81, region, "origins")).toBe(noForm);
+    expect(ensureUnitBlock(noForm, "new-1", BANNER_43_81, "origins")).toBe(noForm);
   });
 
   it("applyUnitOrders edits an existing FORM block", () => {
-    expect(applyUnitOrders(document, "new-1", "@work", BANNER_43_81, region)).toContain(
+    expect(applyUnitOrders(document, "new-1", "@work", BANNER_43_81, region, "origins")).toContain(
       "form 1\n@work\nend"
     );
   });
@@ -1078,13 +1078,13 @@ describe("regionUnitIdsAt", () => {
   ].join("\n");
 
   it("the region's reported units are the ones under the same banner", () => {
-    expect([...regionUnitIdsAt(TWO_REGIONS, 3)].sort()).toEqual(["1922", "3001"]);
-    expect([...regionUnitIdsAt(TWO_REGIONS, 10)]).toEqual(["4100"]);
+    expect([...regionUnitIdsAt(TWO_REGIONS, 3, "origins")].sort()).toEqual(["1922", "3001"]);
+    expect([...regionUnitIdsAt(TWO_REGIONS, 10, "origins")]).toEqual(["4100"]);
   });
 
   it("a document with no banners is one region", () => {
     const document = ["unit 1922", "@tax", "", "unit 4100", "work", ""].join("\n");
-    expect([...regionUnitIdsAt(document, 0)].sort()).toEqual(["1922", "4100"]);
+    expect([...regionUnitIdsAt(document, 0, "origins")].sort()).toEqual(["1922", "4100"]);
   });
 
   it("a stale unit new-1 block is not a reported unit", () => {
@@ -1097,7 +1097,7 @@ describe("regionUnitIdsAt", () => {
       "study comb",
       ""
     ].join("\n");
-    expect([...regionUnitIdsAt(document, 4)]).toEqual(["1922"]);
+    expect([...regionUnitIdsAt(document, 4, "origins")]).toEqual(["1922"]);
   });
 });
 
@@ -1120,7 +1120,7 @@ describe("repairFormedUnitBlocks", () => {
       "#end",
       ""
     ].join("\n");
-    const repair = repairFormedUnitBlocks(document);
+    const repair = repairFormedUnitBlocks(document, "origins");
     expect(repair.document).not.toContain("unit new-1");
     expect(repair.document.split("\n")).toEqual([
       BANNER,
@@ -1152,7 +1152,7 @@ describe("repairFormedUnitBlocks", () => {
       "#end",
       ""
     ].join("\n");
-    const repair = repairFormedUnitBlocks(document);
+    const repair = repairFormedUnitBlocks(document, "origins");
     expect(repair.document.split("\n")).toEqual([
       BANNER,
       "unit 1922",
@@ -1170,7 +1170,7 @@ describe("repairFormedUnitBlocks", () => {
 
   it("an empty unit new-1 block with no form 1 anywhere still loses its header", () => {
     const document = [BANNER, "unit 1922", "@tax", "", "unit new-1", "", "#end", ""].join("\n");
-    const repair = repairFormedUnitBlocks(document);
+    const repair = repairFormedUnitBlocks(document, "origins");
     expect(repair.document.split("\n")).toEqual([BANNER, "unit 1922", "@tax", "", "#end", ""]);
     expect(repair.emptied).toEqual(["new-1"]);
   });
@@ -1194,7 +1194,7 @@ describe("repairFormedUnitBlocks", () => {
       "#end",
       ""
     ].join("\n");
-    const repair = repairFormedUnitBlocks(document);
+    const repair = repairFormedUnitBlocks(document, "origins");
     expect(repair.document.split("\n")).toEqual([
       BANNER,
       "unit 1922",
@@ -1232,7 +1232,7 @@ describe("repairFormedUnitBlocks", () => {
       "#end",
       ""
     ].join("\n");
-    const repair = repairFormedUnitBlocks(document);
+    const repair = repairFormedUnitBlocks(document, "origins");
     expect(repair.document).toBe(document);
     expect(repair.orphaned).toEqual(["new-1"]);
     expect(repair.moved).toEqual([]);
@@ -1242,7 +1242,7 @@ describe("repairFormedUnitBlocks", () => {
     const document = [BANNER, "unit 1922", "@tax", "", "unit new-1", "study comb", "", "#end", ""].join(
       "\n"
     );
-    const repair = repairFormedUnitBlocks(document);
+    const repair = repairFormedUnitBlocks(document, "origins");
     expect(repair.document).toBe(document);
     expect(repair.orphaned).toEqual(["new-1"]);
   });
@@ -1263,7 +1263,7 @@ describe("repairFormedUnitBlocks", () => {
       "#end",
       ""
     ].join("\n");
-    const repair = repairFormedUnitBlocks(document);
+    const repair = repairFormedUnitBlocks(document, "origins");
     expect(repair.document.split("\n")).toEqual([
       BANNER,
       "unit 1922",
@@ -1296,7 +1296,7 @@ describe("repairFormedUnitBlocks", () => {
       "#end",
       ""
     ].join("\n");
-    const repair = repairFormedUnitBlocks(document);
+    const repair = repairFormedUnitBlocks(document, "origins");
     expect(repair.document.split("\n")).toEqual([
       BANNER,
       "unit 1922",
@@ -1326,7 +1326,7 @@ describe("repairFormedUnitBlocks", () => {
       "#end",
       ""
     ].join("\n");
-    const repair = repairFormedUnitBlocks(document);
+    const repair = repairFormedUnitBlocks(document, "origins");
     expect(repair.document).not.toContain("NEW-1");
     expect(repair.moved).toEqual([{ alias: "1", orderCount: 1 }]);
   });
@@ -1354,12 +1354,12 @@ describe("repairFormedUnitBlocks", () => {
       "#end",
       ""
     ].join("\n");
-    const first = repairFormedUnitBlocks(document);
+    const first = repairFormedUnitBlocks(document, "origins");
     expect(first.moved).toEqual([{ alias: "1", orderCount: 1 }]);
     expect(first.emptied).toEqual(["new-2"]);
     expect(first.orphaned).toEqual(["new-7"]);
 
-    const second = repairFormedUnitBlocks(first.document);
+    const second = repairFormedUnitBlocks(first.document, "origins");
     expect(second.document).toBe(first.document);
     expect(second.moved).toEqual([]);
     expect(second.emptied).toEqual([]);
@@ -1368,23 +1368,23 @@ describe("repairFormedUnitBlocks", () => {
 
   it("a document with nothing to repair comes back by reference", () => {
     const document = [BANNER, "unit 1922", "@tax", "", "#end", ""].join("\n");
-    expect(repairFormedUnitBlocks(document).document).toBe(document);
+    expect(repairFormedUnitBlocks(document, "origins").document).toBe(document);
   });
 });
 
 describe("stripLongOrderLines", () => {
   it("every_month_long_order_line_is_removed_including_an_at_repeated_one", () => {
-    expect(stripLongOrderLines("@work\nBUILD Tower\nclaim 200")).toBe("claim 200");
+    expect(stripLongOrderLines("@work\nBUILD Tower\nclaim 200", "origins")).toBe("claim 200");
   });
 
   it("a_give_or_claim_line_survives", () => {
-    expect(stripLongOrderLines("claim 200\ngive 1250 20 silv")).toBe(
+    expect(stripLongOrderLines("claim 200\ngive 1250 20 silv", "origins")).toBe(
       "claim 200\ngive 1250 20 silv"
     );
   });
 
   it("the_first_lines_indentation_is_not_trimmed_away", () => {
-    expect(stripLongOrderLines("  study forc\n  claim 200")).toBe("  claim 200");
+    expect(stripLongOrderLines("  study forc\n  claim 200", "origins")).toBe("  claim 200");
   });
 });
 
@@ -1403,24 +1403,24 @@ describe("nested orders are not the unit's own month-long order", () => {
   const withTurn = ["STUDY COMB", "TURN", "  MOVE N", "ENDTURN"].join("\n");
 
   it("a_form_blocks_own_study_survives_the_strip", () => {
-    expect(stripLongOrderLines(withForm)).toBe(
+    expect(stripLongOrderLines(withForm, "origins")).toBe(
       ["  claim 200", "FORM 1", "  BUY 5 Plainsmen", "  STUDY COMBAT", "END"].join("\n")
     );
   });
 
   it("a_queued_turns_orders_survive_the_strip", () => {
-    expect(stripLongOrderLines(withTurn)).toBe(["TURN", "  MOVE N", "ENDTURN"].join("\n"));
+    expect(stripLongOrderLines(withTurn, "origins")).toBe(["TURN", "  MOVE N", "ENDTURN"].join("\n"));
   });
 
   it("a_repeating_turn_block_is_nested_too", () => {
     const repeating = ["TAX", "@TURN", "  MOVE S S S", "ENDTURN"].join("\n");
-    expect(stripLongOrderLines(repeating)).toBe(["@TURN", "  MOVE S S S", "ENDTURN"].join("\n"));
+    expect(stripLongOrderLines(repeating, "origins")).toBe(["@TURN", "  MOVE S S S", "ENDTURN"].join("\n"));
   });
 
   it("the_long_order_named_is_the_units_own_not_a_nested_one", () => {
-    expect(longOrderOf(withForm)).toBe("@work");
-    expect(longOrderOf(withTurn)).toBe("STUDY COMB");
-    expect(longOrderOf(["  claim 200", "FORM 1", "  STUDY COMBAT", "END"].join("\n"))).toBeNull();
+    expect(longOrderOf(withForm, "origins")).toBe("@work");
+    expect(longOrderOf(withTurn, "origins")).toBe("STUDY COMB");
+    expect(longOrderOf(["  claim 200", "FORM 1", "  STUDY COMBAT", "END"].join("\n"), "origins")).toBeNull();
   });
 });
 
@@ -1437,7 +1437,7 @@ describe("the report's own long orders", () => {
   ]);
 
   it("reads each templated unit's long order out of the template", () => {
-    expect(reportedLongOrders(twoUnits)).toEqual(
+    expect(reportedLongOrders(twoUnits, "origins")).toEqual(
       new Map([
         ["1487", "@study obse"],
         ["1610", null]
@@ -1446,12 +1446,12 @@ describe("the report's own long orders", () => {
   });
 
   it("answers no-template for a report that carried none", () => {
-    expect(reportedLongOrders(null)).toBeNull();
+    expect(reportedLongOrders(null, "origins")).toBeNull();
     expect(reportedLongOrderFor(null, "1487")).toEqual({ kind: "no-template" });
   });
 
   it("tells a unit the template never listed from one it listed with no long order", () => {
-    const index = reportedLongOrders(twoUnits);
+    const index = reportedLongOrders(twoUnits, "origins");
     expect(reportedLongOrderFor(index, "1610")).toEqual({ kind: "known", order: null });
     expect(reportedLongOrderFor(index, "1801")).toEqual({ kind: "not-listed" });
     expect(NO_ORDERS_TEMPLATE).toEqual({ kind: "no-template" });
@@ -1459,7 +1459,7 @@ describe("the report's own long orders", () => {
 
   it("a FORM block's long order is not the unit's own", () => {
     const index = reportedLongOrders(
-      template([{ unitId: "1487", lines: ["@form 1", "study comb", "end", "@work"] }])
+      template([{ unitId: "1487", lines: ["@form 1", "study comb", "end", "@work"] }]), "origins"
     );
     expect(reportedLongOrderFor(index, "1487")).toEqual({ kind: "known", order: "@work" });
   });
@@ -1497,7 +1497,8 @@ describe("writeRouteOrder", () => {
         unitId: "1655",
         banner: BANNER_43_81,
         regionUnitIds: region,
-        order: "MOVE NE SE"
+        order: "MOVE NE SE",
+        syntax: "origins"
       })
     ).toBe(
       [
@@ -1525,7 +1526,8 @@ describe("writeRouteOrder", () => {
       unitId: "3832",
       banner: BANNER_43_81,
       regionUnitIds: region,
-      order: "MOVE NW"
+      order: "MOVE NW",
+      syntax: "origins"
     });
     expect(written).toContain("unit 3832\nMOVE NW");
     expect(written).not.toContain("unit 3832\n\n");
@@ -1537,7 +1539,8 @@ describe("writeRouteOrder", () => {
       unitId: "1656",
       banner: BANNER_43_81,
       regionUnitIds: region,
-      order: "MOVE N"
+      order: "MOVE N",
+      syntax: "origins"
     });
     expect(written).toContain("unit 1656\nMOVE N");
   });
@@ -1549,7 +1552,8 @@ describe("writeRouteOrder", () => {
         unitId: "1656",
         banner: null,
         regionUnitIds: region,
-        order: "MOVE N"
+        order: "MOVE N",
+        syntax: "origins"
       })
     ).toBe(document);
   });
@@ -1574,7 +1578,8 @@ describe("writeRouteOrder", () => {
       unitId: "new-1",
       banner: BANNER_43_81,
       regionUnitIds: new Set(["1922"]),
-      order: "MOVE N"
+      order: "MOVE N",
+      syntax: "origins"
     });
     expect(written).toContain("buy 1 hdwa\nMOVE N\nend");
     expect(written).not.toContain("unit new-1");
