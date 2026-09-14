@@ -4722,7 +4722,8 @@ struct Ledger<'a> {
     /// keeps it exhaustive meanwhile is the `debug_assert` in `charge` and `credit`, not a reader.
     /// Nothing a player's figures pass through reads it (`ah-6m7b.5.2`).
     pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
-    /// What each unit this hex pays for shipments, keyed by unit id. Written by `settle_report_wide`'s shipping steps.
+    /// What each unit this hex pays for shipments, keyed by unit id. Written by
+    /// `settle_report_wide`'s shipping steps.
     pub(crate) shipping_paid: BTreeMap<String, Vec<ShipmentPriced>>,
     /// Every shipment a sender's month could not pay for, in settlement order. Always accompanied
     /// by a `not-enough-silver` finding on the same unit: the charge is the whole ask.
@@ -13426,8 +13427,8 @@ fn shipping_bills(
                     } else {
                         // Recorded only: nothing is charged while shipments are still being
                         // judged, or a refusal would drain the purse a later, affordable shipment
-                        // is judged against. `charge_refused_shipments` charges the whole ask once every
-                        // shipment has been judged.
+                        // is judged against. `charge_refused_shipments` charges the whole ask once
+                        // every shipment has been judged.
                         priced_and_refused.push((
                             i64::try_from(placed.line).unwrap_or(i64::MAX),
                             super::transport::RefusedShipment {
