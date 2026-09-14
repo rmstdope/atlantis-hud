@@ -411,6 +411,37 @@ describe("a route split into what happens next turn and what comes later", () =>
     expect(routeSegments([], null, 1)).toEqual({ solid: "", dotted: "" });
   });
 
+  describe("with a wall's tip to end on", () => {
+    const tip: Point = { x: 190, y: 140 };
+
+    it("runs the solid line on to a wall's tip when the month covers every step", () => {
+      const segments = routeSegments([at(7, 53), at(7, 51)], 1, 1, tip);
+
+      expect(pairs(segments.solid)).toHaveLength(3);
+      expect(pairs(segments.solid)[2]).toBe("190.000,140.000");
+      expect(segments.dotted).toBe("");
+    });
+
+    it("runs the dotted line on to the tip when the route goes past the month", () => {
+      const segments = routeSegments([at(7, 53), at(7, 51), at(7, 49)], 1, 1, tip);
+
+      expect(pairs(segments.solid)).toHaveLength(2);
+      expect(pairs(segments.dotted)).toHaveLength(3);
+      expect(pairs(segments.dotted)[2]).toBe("190.000,140.000");
+    });
+
+    it("draws a first step into a wall as a line from the unit's hex to the tip", () => {
+      const known = routeSegments([at(7, 53)], 0, 1, tip);
+      expect(pairs(known.solid)).toHaveLength(2);
+      expect(pairs(known.solid)[1]).toBe("190.000,140.000");
+      expect(known.dotted).toBe("");
+
+      const unknown = routeSegments([at(7, 53)], null, 1, tip);
+      expect(unknown.solid).toBe("");
+      expect(pairs(unknown.dotted)).toHaveLength(2);
+    });
+  });
+
   it("leaves out steps on another level, exactly as the flat route does", () => {
     const segments = routeSegments([at(7, 53), at(8, 52, 2), at(9, 51)], 2, 1);
     expect(pairs(segments.solid)).toHaveLength(2);

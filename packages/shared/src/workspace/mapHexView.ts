@@ -320,19 +320,31 @@ export type RouteSegments = {
  * `solidSteps` is how many hexes the first month covers; null means the unit's speed is unknown
  * and the whole path is drawn dotted, and zero is a real answer too - a first hex dearer than one
  * month's points means the month is spent saving. A segment left with a single point renders as
- * nothing, because a polyline cannot show one.
+ * nothing, because a polyline cannot show one. `tail` is where a route that met a wall stops, and it
+ * runs on from whichever line reaches the route's end.
  */
 export function routeSegments(
   route: Coordinate[],
   solidSteps: number | null,
-  level: number
+  level: number,
+  tail: Point | null = null
 ): RouteSegments {
   const boundary = solidSteps === null ? 0 : Math.min(solidSteps + 1, route.length);
-  const line = (hexes: Coordinate[]) => (hexes.length < 2 ? "" : routePoints(hexes, level));
+  // The tail belongs to the step after the last hex, so it continues whichever line reaches the
+  // end of the route: the solid one when the month covers every drawn step, the dotted one otherwise.
+  const tailOnSolid = tail !== null && boundary >= route.length;
+  const line = (hexes: Coordinate[], withTail: boolean) => {
+    if (hexes.length + (withTail ? 1 : 0) < 2) {
+      return "";
+    }
+    const through = routePoints(hexes, level);
+    const end = withTail && tail ? `${round(tail.x)},${round(tail.y)}` : "";
+    return [through, end].filter((part) => part !== "").join(" ");
+  };
 
   return {
-    solid: line(route.slice(0, boundary)),
-    dotted: line(route.slice(Math.max(0, boundary - 1)))
+    solid: line(route.slice(0, boundary), tailOnSolid),
+    dotted: line(route.slice(Math.max(0, boundary - 1)), tail !== null && !tailOnSolid)
   };
 }
 
