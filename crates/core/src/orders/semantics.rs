@@ -16713,6 +16713,114 @@ mod tests {
             )
         }
 
+        #[test]
+        fn a_fractional_wage_rounds_down() {
+            let review = wage_review("$12.5", None, None, vec![worker("5", 3)], "unit 5\nWORK\n");
+
+            assert_eq!(silver_of(&review, "5").income, Some(37));
+        }
+
+        /// A unit with no month-long order is set to work, and work pays the region's wage. The
+        /// earning arrives in the turn's last phase exactly as an explicit `WORK` does.
+        #[test]
+        fn a_unit_with_no_month_long_order_works_by_default() {
+            let review = wage_review("$12.0", None, None, vec![worker("5", 6)], "unit 5\n");
+
+            let unit = silver_of(&review, "5");
+            assert_eq!(unit.income, Some(72));
+            assert_eq!(unit.late_income, Some(72));
+            assert!(unit.works_by_default);
+        }
+
+        #[test]
+        fn a_working_unit_is_capped_by_the_regions_maximum() {
+            let review = wage_review(
+                "$12.0",
+                Some(90),
+                None,
+                vec![worker("5", 12)],
+                "unit 5\nWORK\n",
+            );
+
+            assert_eq!(silver_of(&review, "5").income, Some(90));
+        }
+
+        #[test]
+        fn an_entertainer_earns_thirty_a_man_a_level() {
+            let review = wage_review(
+                "$12.0",
+                None,
+                Some(1000),
+                vec![entertainer("5", 5, 2)],
+                "unit 5\nENTERTAIN\n",
+            );
+
+            let unit = silver_of(&review, "5");
+            assert_eq!(unit.income, Some(300));
+            assert_eq!(unit.late_income, Some(300));
+            assert_eq!(unit.doubt, None);
+        }
+
+        #[test]
+        fn an_entertainer_is_capped_by_the_regions_demand() {
+            let review = wage_review(
+                "$12.0",
+                None,
+                Some(120),
+                vec![entertainer("5", 5, 2)],
+                "unit 5\nENTERTAIN\n",
+            );
+
+            assert_eq!(silver_of(&review, "5").income, Some(120));
+        }
+
+        #[test]
+        fn changes_names_a_wage_nobody_ordered() {
+            let review = wage_review("$10.0", None, None, vec![worker("5", 3)], "unit 5\n");
+
+            let unit = silver_of(&review, "5");
+            assert_eq!(
+                unit.changes
+                    .iter()
+                    .map(|change| change.cause)
+                    .collect::<Vec<_>>(),
+                [SilverChangeCause::Worked]
+            );
+            assert_eq!(unit.changes[0].line, None);
+            assert_eq!(unit.changes[0].amount, unit.late_income.expect("priced"));
+        }
+
+        #[test]
+        fn changes_puts_the_wage_after_the_market() {
+            let hex = ReportRegion {
+                wages: Some("$10.0".to_string()),
+                for_sale: vec![MarketItem {
+                    amount: 40,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 12,
+                }],
+                ..region(vec![with_silver(unit("5"), 60)])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 5\nWORK\nBUY 1 grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let unit = silver_of(&review, "5");
+            assert_eq!(
+                unit.changes
+                    .iter()
+                    .map(|change| change.cause)
+                    .collect::<Vec<_>>(),
+                [SilverChangeCause::Bought, SilverChangeCause::Worked]
+            );
+            assert_eq!(unit.changes[1].line, Some(2));
+            assert_eq!(unit.changes[1].amount, unit.late_income.expect("priced"));
+        }
+
         /// The regression net under everything below: one worker is not contention.
         #[test]
         fn a_lone_worker_still_earns_the_whole_pool() {
@@ -30451,6 +30559,321 @@ BUILD
             forecast.cast_capped_by,
             Some(crate::orders::silver::ProductionCap::Silver)
         );
+        assert_eq!(forecast.expense, Some(400));
+    }
+
+    #[test]
+    fn a_cast_at_full_rate_names_no_cap() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![with_silver(
+                with_skill(unit("5"), "CRPA", 3),
+                600,
+            )])],
+            "unit 5\nCAST Create_Amulet_Of_Protection\n",
+        );
+
+        assert_eq!(forecast.expense, Some(600));
+        assert_eq!(forecast.cast_made, 3);
+        assert_eq!(forecast.cast_capped_by, None);
+    }
+
+    /// The navigator's R4: silver a gift brings in time funds the cast, unlike `PRODUCE`'s cap
+    /// against the unit's own holding alone. Under the rejected reading (judging the cap on what
+    /// the mage holds now, as `PRODUCE` does) this mage would make none and spend $200.
+    #[test]
+    fn a_cast_counts_the_silver_a_gift_brings_it() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_skill(unit("5"), "CRPA", 3),
+                with_silver(unit("6"), 600),
+            ])]),
+            "unit 6\nGIVE 5 600 SILV\nunit 5\nCAST Create_Amulet_Of_Protection\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let mage = forecast(&review, "5");
+        assert_eq!(mage.cast_made, 3);
+        assert_eq!(mage.expense, Some(600));
+    }
+
+    #[test]
+    fn a_cast_that_consumes_silver_is_charged_for_it() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![with_silver(
+                with_skill(unit("5"), "CRPA", 1),
+                500,
+            )])],
+            "unit 5\nCAST Create_Amulet_Of_Protection\n",
+        );
+
+        assert_eq!(forecast.expense, Some(200));
+    }
+
+    #[test]
+    fn changes_names_what_a_cast_costs() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![with_silver(
+                with_skill(unit("5"), "CRPA", 1),
+                1000,
+            )])],
+            "unit 5\nCAST Create_Amulet_Of_Protection\n",
+        );
+
+        assert_eq!(
+            forecast
+                .changes
+                .iter()
+                .map(|change| change.cause)
+                .collect::<Vec<_>>(),
+            [SilverChangeCause::CastSpent]
+        );
+        assert_eq!(forecast.changes[0].line, Some(2));
+        assert_eq!(
+            forecast.changes[0].amount,
+            -forecast.expense.expect("priced")
+        );
+    }
+
+    #[test]
+    fn changes_names_what_a_cast_earns() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wages: Some("$13.5".to_string()),
+                ..region(vec![with_skill(unit("5"), "EART", 2)])
+            }],
+            "unit 5\nCAST Earth_Lore\n",
+        );
+
+        assert_eq!(
+            forecast
+                .changes
+                .iter()
+                .map(|change| change.cause)
+                .collect::<Vec<_>>(),
+            [SilverChangeCause::CastEarned, SilverChangeCause::Worked]
+        );
+        assert_eq!(
+            forecast.changes[0].amount,
+            forecast.income.expect("priced") - forecast.late_income.expect("priced")
+        );
+        assert!(forecast.changes[0].amount > 0);
+        assert_eq!(forecast.changes[0].line, Some(2));
+    }
+
+    /// `rules/sequenceofevents` opens the market (`SELL`, then `BUY`) *after* `Spells are CAST`, so
+    /// a sale written above a cast is still money the cast never sees.
+    #[test]
+    fn a_sale_does_not_fund_the_same_months_cast() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 10,
+                }],
+                ..region(vec![with_skill(
+                    with_item(unit("5"), 101, "grain", "GRAI"),
+                    "CRPA",
+                    1,
+                )])
+            }],
+            "unit 5\nSELL 30 grain\nCAST Create_Amulet_Of_Protection\n",
+        );
+
+        assert_eq!(forecast.income, Some(300));
+        assert_eq!(forecast.cast_made, 0);
+    }
+
+    #[test]
+    fn changes_names_a_production_cost() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![carpenters(3000, 9999)])],
+            "unit 12881\nPRODUCE catapult\n",
+        );
+
+        let spent: Vec<_> = forecast
+            .changes
+            .iter()
+            .filter(|change| change.cause == SilverChangeCause::ProductionSpent)
+            .collect();
+        assert_eq!(spent.len(), 1, "{:?}", forecast.changes);
+        assert_eq!(spent[0].line, Some(2));
+        assert!(spent[0].amount < 0);
+    }
+
+    // --- what a spell earns ---------------------------------------------------------------------
+
+    fn ruleset_pricing_an_earth_lore_cast(silver: i64) -> Ruleset {
+        let mut json: serde_json::Value =
+            serde_json::from_str(RULESET).expect("the committed ruleset should be JSON");
+        json["skills"]["EART"]["cast"] = serde_json::json!({
+            "costs": [{ "tag": "SILV", "amount": silver }],
+            "transmute": {},
+        });
+        Ruleset::from_json(&json.to_string()).expect("a priced Earth Lore should still parse")
+    }
+
+    #[test]
+    fn a_mage_casting_earth_lore_earns_twice_the_wage_a_level() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wages: Some("$14.0".to_string()),
+                ..region(vec![with_skill(unit("5"), "EART", 3)])
+            }],
+            "unit 5\nCAST Earth_Lore\n",
+        );
+
+        assert_eq!(
+            forecast.income,
+            Some(98),
+            "84 from the spell, 14 from the default wage"
+        );
+        assert_eq!(forecast.doubt, None);
+    }
+
+    #[test]
+    fn a_mage_with_no_earth_lore_skill_earns_nothing() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wages: Some("$14.0".to_string()),
+                ..region(vec![unit("5")])
+            }],
+            "unit 5\nCAST Earth_Lore\n",
+        );
+
+        assert_eq!(forecast.income, Some(14));
+        assert_eq!(forecast.doubt, None);
+    }
+
+    #[test]
+    fn earth_lore_does_not_lose_the_wage_s_fraction() {
+        assert_eq!(
+            forecast_with_ruleset(
+                vec![ReportRegion {
+                    wages: Some("$14.5".to_string()),
+                    ..region(vec![with_skill(unit("5"), "EART", 1)])
+                }],
+                "unit 5\nCAST Earth_Lore\n",
+            )
+            .income,
+            Some(29 + 14)
+        );
+    }
+
+    #[test]
+    fn earth_lore_rounds_down() {
+        assert_eq!(
+            forecast_with_ruleset(
+                vec![ReportRegion {
+                    wages: Some("$14.1".to_string()),
+                    ..region(vec![with_skill(unit("5"), "EART", 1)])
+                }],
+                "unit 5\nCAST Earth_Lore\n",
+            )
+            .income,
+            Some(28 + 14)
+        );
+    }
+
+    #[test]
+    fn earth_lore_is_not_late_income() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wages: Some("$14.0".to_string()),
+                ..region(vec![with_skill(unit("5"), "EART", 3)])
+            }],
+            "unit 5\nCAST Earth_Lore\n",
+        );
+
+        assert_eq!(forecast.income, Some(98));
+        assert_eq!(forecast.late_income, Some(14));
+    }
+
+    #[test]
+    fn earth_lore_and_a_cast_cost_are_both_counted() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                wages: Some("$14.0".to_string()),
+                ..region(vec![with_silver(with_skill(unit("5"), "EART", 3), 100)])
+            }]),
+            "unit 5\nCAST Earth_Lore\n",
+            Some(&ruleset_pricing_an_earth_lore_cast(50)),
+            CheckOptions::default(),
+        );
+
+        let mage = forecast(&review, "5");
+        assert_eq!(mage.income, Some(98));
+        assert_eq!(mage.expense, Some(50));
+    }
+
+    #[test]
+    fn a_mage_casting_phantasmal_entertainment_earns_six_hundred_a_level() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                entertainment: Some(5000),
+                ..region(vec![with_skill(unit("5"), "PHEN", 2)])
+            }]),
+            "unit 5\nCAST Phantasmal_Entertainment\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let mage = forecast(&review, "5");
+        assert_eq!(mage.income, Some(1200));
+        assert_eq!(mage.doubt, None);
+    }
+
+    #[test]
+    fn phantasmal_entertainment_is_capped_by_the_regions_entertainment() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                entertainment: Some(800),
+                ..region(vec![with_skill(unit("5"), "PHEN", 2)])
+            }]),
+            "unit 5\nCAST Phantasmal_Entertainment\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "5").income, Some(800));
+    }
+
+    #[test]
+    fn phantasmal_entertainment_is_not_late_income() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                entertainment: Some(10_000),
+                ..region(vec![with_skill(unit("5"), "PHEN", 2)])
+            }]),
+            "unit 5\nCAST Phantasmal_Entertainment\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let mage = forecast(&review, "5");
+        assert_eq!(mage.income, Some(1200));
+        assert_eq!(mage.late_income, Some(0));
+    }
+
+    #[test]
+    fn phantasmal_entertainment_does_not_reduce_what_an_entertainer_earns() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                entertainment: Some(1000),
+                ..region(vec![
+                    with_skill(unit("5"), "PHEN", 1),
+                    with_skill(with_men(unit("6"), 5), "ENTE", 2),
+                ])
+            }]),
+            "unit 5\nCAST Phantasmal_Entertainment\nunit 6\nENTERTAIN\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "5").income, Some(600));
+        assert_eq!(forecast(&review, "6").income, Some(300));
     }
 
     /// Production resolves in the month's last phase, so what it makes cannot be given away in the

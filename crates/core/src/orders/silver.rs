@@ -7717,7 +7717,7 @@ mod tests {
     /// `ah-728m.2.3`: each term takes the picture its own phase has. The real builder gives all
     /// three projections one headcount - no phase after the market moves people - so the pictures
     /// are deliberately separated here, which is the only way to catch a term wired to the wrong
-    /// one.
+    /// one. The study fee is the ledger's to price, so which picture it reads is pinned there.
     #[test]
     fn each_late_reader_takes_its_own_phase_picture() {
         let receipts = Receipts::default();
@@ -7755,9 +7755,10 @@ mod tests {
                 study: picture(3),
                 production: picture(5),
                 maintenance: picture(7),
-                // No ledger behind this literal, so the caps keep the running total they always
-                // read (`ah-6m7b.1`) and no `BUY ALL` is settled for it (`ah-6m7b.2`).
-                silver: None,
+                // A settled purse far above any cost, so no cap binds and no fallback is read.
+                silver: Some(PhaseSilver::from_balances(
+                    [100_000; phases::StatePhase::COUNT],
+                )),
                 buy_all: &[],
                 gifts: &[],
                 market_withholds: 0,
@@ -7769,10 +7770,6 @@ mod tests {
         let region = paying("$12.0", None);
         assert_eq!(pool_wants(&facts, region, Some(&rules)).wages, 7 * 12);
 
-        let cost = rules
-            .find_skill("COMB")
-            .and_then(|skill| skill.cost)
-            .expect("the committed ruleset prices combat");
         let unit = forecast_unit(
             facts,
             region,
@@ -7787,8 +7784,6 @@ mod tests {
         // The PRODUCE workforce and the men it says are gone both read the production picture.
         assert_eq!(unit.produced, 5);
         assert_eq!(unit.production_men_left, 4);
-        // The study fee reads the study picture, which predates the fee itself.
-        assert_eq!(unit.expense, Some(cost * 3));
     }
 
     /// `ah-gdd3.2`. Materials in these four are exactly one catapult's, so `by_materials` is 1 and
@@ -8203,92 +8198,6 @@ mod tests {
         assert_eq!(plan.expect("a priceable cast").made, 3);
     }
 
-    /// `ah-ofpb.4`: the four `cast_*` fields `forecast_unit` fills, both capped and at full rate.
-    /// `cast_made_named` is whatever this module's test `Lookups` produce, **not** English -
-    /// `no_market()` names items with `verbatim_counted`, so it reads "2 ampr" rather than "2
-    /// amulets of protection"; the real English is `a_capped_cast_names_what_it_will_make` in
-    /// `semantics.rs`, the one test that runs through the naming closure `forecast_hex` actually
-    /// builds.
-    #[test]
-    fn a_capped_cast_says_what_it_will_make() {
-        let ruleset = ruleset();
-        let receipts = Receipts::default();
-        let intents = [placed(Intent::Cast {
-            spell: "Create_Amulet_Of_Protection".to_string(),
-            arguments: Vec::new(),
-        })];
-        let skills = [skill("CRPA", 3)];
-        let cast = |held: i64| {
-            forecast_unit(
-                UnitFacts {
-                    held,
-                    skills: &skills,
-                    ..facts(1, &intents, &receipts)
-                },
-                RegionWages::default(),
-                PoolShares::default(),
-                FactionPurse::default(),
-                0,
-                no_market(),
-                SharedMarket::Adds(0),
-                Some(&ruleset),
-            )
-        };
-
-        let capped = cast(400);
-        assert_eq!(capped.expense, Some(400));
-        assert_eq!(capped.cast_made, 2);
-        assert_eq!(capped.cast_made_named.as_deref(), Some("2 ampr"));
-        assert_eq!(capped.cast_wanted, 3);
-        assert_eq!(capped.cast_capped_by, Some(ProductionCap::Silver));
-
-        let full_rate = cast(600);
-        assert_eq!(full_rate.expense, Some(600));
-        assert_eq!(full_rate.cast_made, 3);
-        assert_eq!(full_rate.cast_capped_by, None);
-    }
-
-    /// The navigator's R4: silver a gift brings in time funds the cast, unlike `PRODUCE`'s cap
-    /// against the unit's own holding alone. Under the rejected reading (judging the cap on what
-    /// the mage holds now, as `PRODUCE` does) this mage would make none and spend $200.
-    #[test]
-    fn a_cast_counts_the_silver_a_gift_brings_it() {
-        let ruleset = ruleset();
-        let receipts = Receipts {
-            silver: 600,
-            silver_moves: vec![ReceiptMove {
-                amount: 600,
-                cause: SilverChangeCause::WasGiven,
-                other: "Paymaster (2390)".to_string(),
-                line: 2,
-            }],
-            ..Receipts::default()
-        };
-        let intents = [placed(Intent::Cast {
-            spell: "Create_Amulet_Of_Protection".to_string(),
-            arguments: Vec::new(),
-        })];
-        let skills = [skill("CRPA", 3)];
-
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 0,
-                skills: &skills,
-                ..facts(1, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset),
-        );
-
-        assert_eq!(unit.cast_made, 3);
-        assert_eq!(unit.expense, Some(600));
-    }
-
     #[test]
     fn a_unit_with_a_tax_order_taxes() {
         assert!(taxes(&[], &[placed(Intent::Tax)]));
@@ -8540,19 +8449,6 @@ mod tests {
     }
 
     #[test]
-    fn a_working_unit_earns_the_regions_wage() {
-        let unit = forecast(12, paying("$12.0", None), &[placed(Intent::Work)]);
-        assert_eq!(unit.income, Some(144));
-        assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn a_working_unit_is_capped_by_the_regions_maximum() {
-        let unit = forecast(12, paying("$12.0", Some(90)), &[placed(Intent::Work)]);
-        assert_eq!(unit.income, Some(90));
-    }
-
-    #[test]
     fn a_working_unit_in_a_hex_with_no_wages_earns_nothing() {
         let unit = forecast(12, RegionWages::default(), &[placed(Intent::Work)]);
         assert_eq!(unit.income, Some(0));
@@ -8560,16 +8456,6 @@ mod tests {
     }
 
     // --- the defaulted WORK (`ah-gjq4`) ---------------------------------------------------------
-
-    /// A unit with no month-long order is set to work, and work pays the region's wage. The
-    /// earning arrives in the turn's last phase exactly as an explicit `WORK` does.
-    #[test]
-    fn a_unit_with_no_month_long_order_works_by_default() {
-        let unit = forecast(6, paying("$12.0", None), &[]);
-        assert_eq!(unit.late_income, Some(72));
-        assert_eq!(unit.income, Some(72));
-        assert!(unit.works_by_default);
-    }
 
     #[test]
     fn a_unit_that_spends_its_month_does_not_also_work() {
@@ -8614,30 +8500,6 @@ mod tests {
         let unit = forecast(6, RegionWages::default(), &[]);
         assert_eq!(unit.income, Some(0));
         assert!(unit.works_by_default);
-    }
-
-    /// Wages arrive in the turn's last phase, so a defaulted wage cannot fund this month's orders.
-    /// A term added straight to `income` would pass the test above and fail this one.
-    #[test]
-    fn an_idle_units_wages_cannot_fund_its_purchases() {
-        let receipts = Receipts::default();
-        let intents: [PlacedIntent; 0] = [];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 0,
-                ..facts(6, &intents, &receipts)
-            },
-            paying("$12.0", None),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(unit.income, Some(72));
-        assert_eq!(unit.short_for_orders, Some(0));
-        assert_eq!(unit.late_income, Some(72));
     }
 
     /// The estimated-headcount short-circuit is conditional on some intent moving silver per man,
@@ -8777,12 +8639,6 @@ mod tests {
             ..facts(100, &intents, &receipts)
         };
         assert_eq!(readiness(&cut, Some(&ruleset)), None);
-    }
-
-    #[test]
-    fn a_fractional_wage_rounds_down() {
-        let unit = forecast(3, paying("$12.5", None), &[placed(Intent::Work)]);
-        assert_eq!(unit.income, Some(37));
     }
 
     #[test]
@@ -9145,38 +9001,6 @@ mod tests {
     // --- when the silver lands ------------------------------------------------------------------
 
     #[test]
-    fn a_working_unit_earns_late() {
-        let unit = forecast(10, paying("$12.0", None), &[placed(Intent::Work)]);
-        assert_eq!(unit.income, Some(120));
-        assert_eq!(unit.late_income, Some(120));
-    }
-
-    #[test]
-    fn an_entertainer_earns_late() {
-        let unit = entertaining(5, 2, Some(1000));
-        assert_eq!(unit.income, Some(300));
-        assert_eq!(unit.late_income, Some(300));
-    }
-
-    #[test]
-    fn phantasmal_entertainment_is_not_late_income() {
-        // `CAST` resolves before every spend order, so a mage's takings can fund a `BUY` in the
-        // same month - which is why this spell left `late_income` (`ah-e77q` correcting `ah-uwa3`).
-        let unit = casting("Phantasmal_Entertainment", "PHEN", 2, Some(10_000));
-        assert_eq!(unit.income, Some(1200));
-        assert_eq!(unit.late_income, Some(0));
-    }
-
-    #[test]
-    fn earth_lore_is_not_late_income() {
-        // The spell's 84 is spendable this month; the 14 the mage also earns working is not
-        // (`ah-gjq4`), which is exactly the distinction this test exists to hold.
-        let unit = casting_for_wages("Earth_Lore", "EART", 3, "$14.0");
-        assert_eq!(unit.income, Some(98));
-        assert_eq!(unit.late_income, Some(14));
-    }
-
-    #[test]
     fn wages_and_entertaining_are_still_late() {
         // The guard that moving the spells took neither of these with them.
         let working = forecast(10, paying("$12.0", None), &[placed(Intent::Work)]);
@@ -9289,50 +9113,6 @@ mod tests {
             unit.given_to_nobody, 0,
             "the purse the gift empties is not a number"
         );
-    }
-
-    /// `rules/sequenceofevents` opens the market (`SELL`, then `BUY`) *after* `Spells are CAST`, so
-    /// a sale written above a cast is still money the cast never sees.
-    #[test]
-    fn a_sale_does_not_fund_the_same_months_cast() {
-        let ruleset = ruleset();
-        let receipts = Receipts::default();
-        let intents = [
-            placed(Intent::Sell {
-                item: "grain".to_string(),
-                amount: Amount::Exact(30),
-            }),
-            placed(Intent::Cast {
-                spell: "Create_Amulet_Of_Protection".to_string(),
-                arguments: Vec::new(),
-            }),
-        ];
-        let skills = [skill("CRPA", 1)];
-        let sale = |_item: &str| SaleAnswer::Wanted {
-            price: 10,
-            market_takes: 100,
-            unit_holds: 100,
-        };
-
-        let unit = forecast_unit(
-            UnitFacts {
-                skills: &skills,
-                ..facts(1, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            Lookups {
-                sale: &sale,
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            Some(&ruleset),
-        );
-
-        assert_eq!(unit.income, Some(300), "the sale still earns 300");
-        assert_eq!(unit.cast_made, 0, "but none of it reaches the cast");
     }
 
     /// `CLAIM` is in the first batch of instant orders, so it funds a cast written above it exactly
@@ -9534,19 +9314,6 @@ mod tests {
     }
 
     #[test]
-    fn an_entertainer_earns_thirty_a_man_a_level() {
-        let unit = entertaining(5, 2, Some(1000));
-        assert_eq!(unit.income, Some(300));
-        assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn an_entertainer_is_capped_by_the_regions_demand() {
-        let unit = entertaining(5, 2, Some(120));
-        assert_eq!(unit.income, Some(120));
-    }
-
-    #[test]
     fn an_entertainer_with_no_skill_earns_nothing() {
         let unit = entertaining(5, 0, Some(1000));
         assert_eq!(unit.income, Some(0));
@@ -9589,37 +9356,10 @@ mod tests {
     }
 
     #[test]
-    fn a_mage_casting_phantasmal_entertainment_earns_six_hundred_a_level() {
-        let unit = casting("Phantasmal_Entertainment", "PHEN", 2, Some(5000));
-        assert_eq!(unit.income, Some(1200));
-        assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn phantasmal_entertainment_is_capped_by_the_regions_entertainment() {
-        let unit = casting("Phantasmal_Entertainment", "PHEN", 2, Some(800));
-        assert_eq!(unit.income, Some(800));
-    }
-
-    #[test]
-    fn phantasmal_entertainment_does_not_reduce_what_an_entertainer_earns() {
-        // One hex, one pool: each unit is capped at it, and neither draws it down for the other.
-        let mage = casting("Phantasmal_Entertainment", "PHEN", 1, Some(1000));
-        let entertainer = entertaining(5, 2, Some(1000));
-        assert_eq!(mage.income, Some(600));
-        assert_eq!(entertainer.income, Some(300));
-    }
-
-    #[test]
     fn a_mage_with_no_phantasmal_skill_earns_nothing() {
         let unit = casting("Phantasmal_Entertainment", "PHEN", 0, Some(5000));
         assert_eq!(unit.income, Some(0));
         assert_eq!(unit.doubt, None);
-    }
-
-    /// A caster in a hex that states a wage, which is what Earth Lore is priced from.
-    fn casting_for_wages(spell: &str, tag: &str, level: u32, wage: &str) -> UnitSilver {
-        casting_in(spell, tag, level, paying(wage, None), None)
     }
 
     /// [`casting`] with the region and the ruleset both stated, for the two spells whose earnings
@@ -9655,74 +9395,12 @@ mod tests {
     }
 
     #[test]
-    fn a_mage_casting_earth_lore_earns_twice_the_wage_a_level() {
-        // 84 from the spell, plus 14 the mage earns working: CAST leaves the month free, so the
-        // unit is also set to work (`ah-gjq4`).
-        let unit = casting_for_wages("Earth_Lore", "EART", 3, "$14.0");
-        assert_eq!(unit.income, Some(98));
-        assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
     fn earth_lore_in_a_hex_with_no_wage_earns_nothing() {
         // The formula multiplies by the wage, and a hex that states none pays none - the same
         // answer `WORK` already gives, and not a doubt.
         let unit = casting_in("Earth_Lore", "EART", 3, RegionWages::default(), None);
         assert_eq!(unit.income, Some(0));
         assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn earth_lore_rounds_down() {
-        // floor(2 x 1 x 14.1) = floor(28.2) = 28. Rounding to nearest, or up, would say 29. Plus
-        // the 14 the same mage earns working, since CAST leaves its month free (`ah-gjq4`).
-        let unit = casting_for_wages("Earth_Lore", "EART", 1, "$14.1");
-        assert_eq!(unit.income, Some(28 + 14));
-    }
-
-    #[test]
-    fn earth_lore_does_not_lose_the_wage_s_fraction() {
-        // 2 x 1 x 1450 / 100 = 29. Dividing the wage down to whole silver first would say 28,
-        // which is what "multiply before dividing" buys. Plus the 14 the mage earns working
-        // (`ah-gjq4`).
-        let unit = casting_for_wages("Earth_Lore", "EART", 1, "$14.5");
-        assert_eq!(unit.income, Some(29 + 14));
-    }
-
-    #[test]
-    fn a_mage_with_no_earth_lore_skill_earns_nothing() {
-        // Nothing from the spell; the 14 is the wage its free month earns (`ah-gjq4`).
-        let unit = casting_for_wages("Earth_Lore", "EART", 0, "$14.0");
-        assert_eq!(unit.income, Some(14));
-        assert_eq!(unit.doubt, None);
-    }
-
-    #[test]
-    fn earth_lore_and_a_cast_cost_are_both_counted() {
-        // The committed ruleset prices no Earth Lore cast, so the cost is added here: the arm has
-        // to earn *and* fall through to the charge below, and nothing else notices if it does not.
-        let ruleset = ruleset_pricing_an_earth_lore_cast(50);
-        let unit = casting_in(
-            "Earth_Lore",
-            "EART",
-            3,
-            paying("$14.0", None),
-            Some(&ruleset),
-        );
-        assert_eq!(unit.income, Some(98));
-        assert_eq!(unit.expense, Some(50));
-    }
-
-    /// The committed ruleset with a silver cost put on Earth Lore's cast, which the real one
-    /// leaves `null`.
-    fn ruleset_pricing_an_earth_lore_cast(silver: i64) -> Ruleset {
-        let mut json: serde_json::Value = serde_json::from_str(atlantis_hud_fixtures::RULESET_JSON)
-            .expect("the committed ruleset should be JSON");
-        json["skills"]["EART"]["cast"] = serde_json::json!({
-            "costs": [{ "tag": "SILV", "amount": silver }],
-            "transmute": {},
-        });
-        Ruleset::from_json(&json.to_string()).expect("a priced Earth Lore should still parse")
     }
 
     #[test]
@@ -10415,35 +10093,6 @@ mod tests {
         );
         assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
         assert_eq!(unit.doubt_subject, Some("MAGIC".to_string()));
-    }
-
-    /// `spending` gives the unit no skills at all, and a mage with no skill in the spell now
-    /// creates nothing and is charged nothing (Q3, `ah-ofpb.4`) - so this needs a level, unlike
-    /// the two tests beside it, to still exercise the `SILV` charge it is named for.
-    #[test]
-    fn a_cast_that_consumes_silver_is_charged_for_it() {
-        let ruleset = ruleset();
-        let receipts = Receipts::default();
-        let intents = [placed(Intent::Cast {
-            spell: "create amulet of protection".to_string(),
-            arguments: Vec::new(),
-        })];
-        let skills = [skill("CRPA", 1)];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 500,
-                skills: &skills,
-                ..facts(1, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset),
-        );
-        assert_eq!(unit.expense, Some(200));
     }
 
     #[test]
@@ -11225,121 +10874,6 @@ mod tests {
     }
 
     #[test]
-    fn changes_names_a_production_cost() {
-        let items = catapult_materials_and_silver(3000);
-        let carpenters = [skill("CARP", 4)];
-        let intents = [at_line(
-            2,
-            Intent::Produce {
-                requested: None,
-                item: "CATP".to_string(),
-            },
-        )];
-        let receipts = Receipts::default();
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 3000,
-                items: &items,
-                skills: &carpenters,
-                skills_after_arrivals: &carpenters,
-                phases: Some(PhaseFacts::uniform(LateFacts {
-                    men: 4,
-                    men_by_race: &[],
-                    items: &items,
-                    before_manufacturing: &items,
-                    shared_materials: &[],
-                })),
-                ..facts(4, &intents, &receipts)
-            },
-            paying("$5.0", None),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset()),
-        );
-        let production: Vec<&SilverChange> = unit
-            .changes
-            .iter()
-            .filter(|change| change.cause == SilverChangeCause::ProductionSpent)
-            .collect();
-        assert_eq!(production.len(), 1);
-        assert_eq!(production[0].line, Some(2));
-        assert!(production[0].amount < 0);
-    }
-
-    #[test]
-    fn changes_names_what_a_cast_costs() {
-        let ruleset = ruleset();
-        let casters = [skill("CRPA", 1)];
-        let intents = [at_line(
-            6,
-            Intent::Cast {
-                spell: "Create_Amulet_Of_Protection".to_string(),
-                arguments: Vec::new(),
-            },
-        )];
-        let receipts = Receipts::default();
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 1000,
-                skills: &casters,
-                ..facts(1, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset),
-        );
-        assert_eq!(causes(&unit), [SilverChangeCause::CastSpent]);
-        assert_eq!(unit.changes[0].line, Some(6));
-        assert_eq!(unit.changes[0].amount, -unit.expense.expect("priced"));
-    }
-
-    #[test]
-    fn changes_names_what_a_cast_earns() {
-        let ruleset = ruleset();
-        let casters = [skill(EARTH_LORE_TAG, 2)];
-        let intents = [at_line(
-            3,
-            Intent::Cast {
-                spell: EARTH_LORE_TAG.to_string(),
-                arguments: Vec::new(),
-            },
-        )];
-        let receipts = Receipts::default();
-        let unit = forecast_unit(
-            UnitFacts {
-                skills: &casters,
-                ..facts(1, &intents, &receipts)
-            },
-            paying("$13.5", None),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset),
-        );
-        // A `CAST` is not a month-long order, so the unit is also set to work (`ah-gjq4`) - the
-        // wage is the second entry, and the cast's earnings are the first.
-        assert_eq!(
-            causes(&unit),
-            [SilverChangeCause::CastEarned, SilverChangeCause::Worked]
-        );
-        assert_eq!(
-            unit.changes[0].amount,
-            unit.income.expect("priced") - unit.late_income.expect("priced")
-        );
-        assert!(unit.changes[0].amount > 0);
-        assert_eq!(unit.changes[0].line, Some(3));
-    }
-
-    #[test]
     fn changes_names_an_exact_gift_and_who_took_it() {
         let receipts = Receipts::default();
         let intents = [at_line(
@@ -11458,35 +10992,6 @@ mod tests {
         assert_eq!(unit.changes[0].line, Some(3));
         assert_eq!(unit.changes[1].amount, -300);
         assert_eq!(unit.changes[1].line, Some(4));
-    }
-
-    #[test]
-    fn changes_puts_the_wage_after_the_market() {
-        let intents = [
-            at_line(2, Intent::Work),
-            at_line(
-                3,
-                Intent::Buy {
-                    amount: Amount::Exact(1),
-                    item: "grain".to_string(),
-                },
-            ),
-        ];
-        let unit = spending(60, &intents, paying("$10.0", None), &sells(12, 40), None);
-        assert_eq!(
-            causes(&unit),
-            [SilverChangeCause::Bought, SilverChangeCause::Worked]
-        );
-        assert_eq!(unit.changes[1].line, Some(2));
-        assert_eq!(unit.changes[1].amount, unit.late_income.expect("priced"));
-    }
-
-    #[test]
-    fn changes_names_a_wage_nobody_ordered() {
-        let unit = forecast(3, paying("$10.0", None), &[]);
-        assert_eq!(causes(&unit), [SilverChangeCause::Worked]);
-        assert_eq!(unit.changes[0].line, None);
-        assert_eq!(unit.changes[0].amount, unit.late_income.expect("priced"));
     }
 
     #[test]
