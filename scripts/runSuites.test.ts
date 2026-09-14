@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { summarize } from "./runSuites";
+import { SUITES, summarize } from "./runSuites";
 import { SUITE_RESULTS_ENV, handoffPathFromEnv, writeSuiteResults } from "./suiteHandoff";
 
 /**
@@ -94,5 +94,11 @@ describe("the gate's handoff", () => {
     handoff({});
 
     expect(readdirSync(dir)).toEqual([]);
+  });
+});
+
+describe("the rust suites", () => {
+  it("tags exactly the cargo suite as rust", () => {
+    expect(SUITES.filter((suite) => suite.rust).map((suite) => suite.name)).toEqual(["cargo"]);
   });
 });

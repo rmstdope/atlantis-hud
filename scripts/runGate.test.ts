@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { type Leg, runLeg, summarizeGate } from "./runGate";
+import { LEGS, type Leg, runLeg, summarizeGate } from "./runGate";
 
 /**
  * `summarizeGate` decides what `pnpm run check:fast` prints and exits with, once every leg has
@@ -96,5 +96,21 @@ describe("runLeg", () => {
 
     expect(result.passed).toBe(true);
     expect(result.detail).toBeUndefined();
+  });
+});
+
+describe("the gate's rust legs", () => {
+  it("tags exactly fmt and clippy as rust legs", () => {
+    expect(LEGS.filter((leg) => leg.rust).map((leg) => leg.name)).toEqual(["fmt", "clippy"]);
+  });
+
+  it("keeps a skipped leg out of the failures", () => {
+    const result = summarizeGate([
+      { name: "lint", passed: true },
+      { name: "fmt", passed: true, skipped: true }
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.text).toContain("fmt SKIP");
   });
 });

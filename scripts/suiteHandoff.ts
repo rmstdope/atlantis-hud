@@ -18,7 +18,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-import type { LegResult } from "./summarizeLegs";
+import { type LegResult, verdictWord } from "./summarizeLegs";
 
 /** The environment variable the gate uses to ask `runSuites.ts` for a machine-readable verdict. */
 export const SUITE_RESULTS_ENV = "ATLANTIS_SUITE_RESULTS_FILE";
@@ -29,9 +29,15 @@ export function handoffPathFromEnv(env: NodeJS.ProcessEnv): string | undefined {
   return value !== undefined && value.trim() !== "" ? value : undefined;
 }
 
-/** The verdict as it goes on disk: name and pass only, one JSON array. */
+/** The verdict as it goes on disk: name and pass, plus `skipped` only for a skipped suite. */
 export function encodeSuiteResults(results: readonly LegResult[]): string {
-  return JSON.stringify(results.map((result) => ({ name: result.name, passed: result.passed })));
+  return JSON.stringify(
+    results.map((result) =>
+      result.skipped === true
+        ? { name: result.name, passed: result.passed, skipped: true }
+        : { name: result.name, passed: result.passed }
+    )
+  );
 }
 
 /** The verdict back, or undefined for anything that is not exactly that shape. Never throws. */
@@ -48,9 +54,10 @@ export function decodeSuiteResults(text: string): readonly LegResult[] | undefin
   const results: LegResult[] = [];
   for (const entry of value) {
     if (typeof entry !== "object" || entry === null) return undefined;
-    const { name, passed } = entry as { name?: unknown; passed?: unknown };
+    const { name, passed, skipped } = entry as { name?: unknown; passed?: unknown; skipped?: unknown };
     if (typeof name !== "string" || typeof passed !== "boolean") return undefined;
-    results.push({ name, passed });
+    if (skipped !== undefined && typeof skipped !== "boolean") return undefined;
+    results.push(skipped === true ? { name, passed, skipped } : { name, passed });
   }
 
   return results;
@@ -66,7 +73,7 @@ export function describeSuiteResults(results: readonly LegResult[]): string {
   if (results.length === 0) return "suites: none ran";
 
   return `suites: ${results
-    .map((result) => `${result.name} ${result.passed ? "PASS" : "FAIL"}`)
+    .map((result) => `${result.name} ${verdictWord(result)}`)
     .join(" ")}`;
 }
 

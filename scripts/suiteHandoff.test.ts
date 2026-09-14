@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   SUITE_RESULTS_ENV,
+  decodeSuiteResults,
   describeSuiteResults,
+  encodeSuiteResults,
   handoffPathFromEnv,
   readSuiteDetail,
   writeSuiteResults
@@ -67,5 +69,32 @@ describe("suiteHandoff", () => {
     expect(handoffPathFromEnv({ [SUITE_RESULTS_ENV]: "" })).toBeUndefined();
     expect(handoffPathFromEnv({ [SUITE_RESULTS_ENV]: "   " })).toBeUndefined();
     expect(handoffPathFromEnv({ [SUITE_RESULTS_ENV]: "/tmp/x.json" })).toBe("/tmp/x.json");
+  });
+});
+
+describe("suiteHandoff with a skipped suite", () => {
+  it("round-trips a skipped suite", () => {
+    expect(
+      decodeSuiteResults(encodeSuiteResults([{ name: "cargo", passed: true, skipped: true }]))
+    ).toEqual([{ name: "cargo", passed: true, skipped: true }]);
+  });
+
+  it("keeps an unskipped entry's encoding unchanged", () => {
+    expect(encodeSuiteResults([{ name: "packages", passed: true }])).toBe(
+      '[{"name":"packages","passed":true}]'
+    );
+  });
+
+  it("rejects a non-boolean skipped", () => {
+    expect(decodeSuiteResults('[{"name":"cargo","passed":true,"skipped":"yes"}]')).toBeUndefined();
+  });
+
+  it("describes a skipped suite as SKIP", () => {
+    expect(
+      describeSuiteResults([
+        { name: "packages", passed: true },
+        { name: "cargo", passed: true, skipped: true }
+      ])
+    ).toBe("suites: packages PASS cargo SKIP");
   });
 });
