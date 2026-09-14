@@ -31,7 +31,7 @@ type Block = "turn" | "form";
  */
 export function lineDepths(
   text: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): number[] {
   const stack: Block[] = [];
   const depths: number[] = [];
@@ -75,7 +75,7 @@ export function lineDepths(
  */
 export function indentChanges(
   text: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): CaseChange[] {
   const depths = lineDepths(text, syntax);
   const changes: CaseChange[] = [];
@@ -99,7 +99,7 @@ export function indentChanges(
 }
 
 /** The block with every line indented to its depth. */
-export function indentBlock(text: string, syntax: OrderCommentSyntax = "origins"): string {
+export function indentBlock(text: string, syntax: OrderCommentSyntax): string {
   return applyChanges(text, indentChanges(text, syntax));
 }
 
@@ -136,7 +136,7 @@ export function contentChanges(
   text: string,
   vocabulary: Vocabulary,
   protect: number | null,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): CaseChange[] {
   // `to` breaks the tie so a zero-width indent insertion sorts ahead of a case change that starts
   // at the same offset - the line's first word, on a line with no indentation yet.
@@ -168,7 +168,7 @@ export function tidyInsertion(
   text: string,
   baseDepth: number,
   vocabulary: Vocabulary,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string {
   const shouted = uppercaseKeywords(text, vocabulary, syntax);
   const depths = lineDepths(shouted, syntax);

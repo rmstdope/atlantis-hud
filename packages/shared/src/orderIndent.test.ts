@@ -32,7 +32,7 @@ describe("lineDepths", () => {
 
   for (const [name, text, depths] of cases) {
     it(name, () => {
-      expect(lineDepths(text)).toEqual(depths);
+      expect(lineDepths(text, "origins")).toEqual(depths);
     });
   }
 });
@@ -40,34 +40,34 @@ describe("lineDepths", () => {
 describe("indentChanges and indentBlock", () => {
   it("indents each level of a nested block by one space", () => {
     expect(
-      indentBlock('TURN\nNAME UNIT "Scout"\nFORM 1\nNAME UNIT "New"\nSTUDY COMBAT\nEND\nMOVE N\nENDTURN\nWORK')
+      indentBlock('TURN\nNAME UNIT "Scout"\nFORM 1\nNAME UNIT "New"\nSTUDY COMBAT\nEND\nMOVE N\nENDTURN\nWORK', "origins")
     ).toBe(
       'TURN\n NAME UNIT "Scout"\n FORM 1\n  NAME UNIT "New"\n  STUDY COMBAT\n END\n MOVE N\nENDTURN\nWORK'
     );
   });
 
   it("replaces whatever leading whitespace was there", () => {
-    expect(indentBlock("TURN\n    WORK\n\tMOVE N\nENDTURN")).toBe("TURN\n WORK\n MOVE N\nENDTURN");
+    expect(indentBlock("TURN\n    WORK\n\tMOVE N\nENDTURN", "origins")).toBe("TURN\n WORK\n MOVE N\nENDTURN");
   });
 
   it("has nothing to do for an already-correct block", () => {
     const text = "TURN\n WORK\nENDTURN";
-    expect(indentChanges(text)).toEqual([]);
-    expect(indentBlock(text)).toBe(text);
+    expect(indentChanges(text, "origins")).toEqual([]);
+    expect(indentBlock(text, "origins")).toBe(text);
   });
 
   it("leaves a blank line truly empty", () => {
-    expect(indentBlock("TURN\nWORK\n\nMOVE N\nENDTURN")).toBe("TURN\n WORK\n\n MOVE N\nENDTURN");
+    expect(indentBlock("TURN\nWORK\n\nMOVE N\nENDTURN", "origins")).toBe("TURN\n WORK\n\n MOVE N\nENDTURN");
   });
 
   it("indents a comment line like any other", () => {
-    expect(indentBlock("TURN\n; note\n@; sent\nWORK\nENDTURN")).toBe(
+    expect(indentBlock("TURN\n; note\n@; sent\nWORK\nENDTURN", "origins")).toBe(
       "TURN\n ; note\n @; sent\n WORK\nENDTURN"
     );
   });
 
   it("indents everything below an unclosed FORM by the running depth", () => {
-    expect(indentBlock("TURN\nFORM 1\nWORK\nMOVE N")).toBe("TURN\n FORM 1\n  WORK\n  MOVE N");
+    expect(indentBlock("TURN\nFORM 1\nWORK\nMOVE N", "origins")).toBe("TURN\n FORM 1\n  WORK\n  MOVE N");
   });
 });
 
@@ -102,7 +102,7 @@ describe("contentChanges", () => {
 
   it("merges case and indent edits into one ordered, non-overlapping list", () => {
     const text = "turn\nwork";
-    const changes = contentChanges(text, vocabulary, null);
+    const changes = contentChanges(text, vocabulary, null, "origins");
 
     expect(changes.length).toBe(3);
     for (let i = 1; i < changes.length; i += 1) {
@@ -120,7 +120,7 @@ describe("contentChanges", () => {
   });
 
   it("leaves the word the caret is inside as typed", () => {
-    expect(contentChanges("turn\nwork", vocabulary, 9).some((change) => change.insert === "WORK")).toBe(
+    expect(contentChanges("turn\nwork", vocabulary, 9, "origins").some((change) => change.insert === "WORK")).toBe(
       false
     );
   });
@@ -130,21 +130,21 @@ describe("tidyInsertion", () => {
   const vocabulary = buildVocabulary(["form", "end", "study", "combat", "work", "move", "n"]);
 
   it("indents every line after the first, relative to where the caret already is", () => {
-    expect(tidyInsertion("work\nmove n", 1, vocabulary)).toBe("WORK\n MOVE N");
+    expect(tidyInsertion("work\nmove n", 1, vocabulary, "origins")).toBe("WORK\n MOVE N");
   });
 
   it("re-indents a pasted block by its own structure", () => {
-    expect(tidyInsertion("form 1\nstudy combat\nend", 0, vocabulary)).toBe(
+    expect(tidyInsertion("form 1\nstudy combat\nend", 0, vocabulary, "origins")).toBe(
       "FORM 1\n STUDY COMBAT\nEND"
     );
   });
 
   it("leaves a single-line paste alone but for its keywords", () => {
-    expect(tidyInsertion("  study combat", 2, vocabulary)).toBe("  STUDY COMBAT");
+    expect(tidyInsertion("  study combat", 2, vocabulary, "origins")).toBe("  STUDY COMBAT");
   });
 
   it("leaves a blank line inside a paste truly empty", () => {
-    expect(tidyInsertion("form 1\n\nend", 1, vocabulary)).toBe("FORM 1\n\n END");
+    expect(tidyInsertion("form 1\n\nend", 1, vocabulary, "origins")).toBe("FORM 1\n\n END");
   });
 });
 

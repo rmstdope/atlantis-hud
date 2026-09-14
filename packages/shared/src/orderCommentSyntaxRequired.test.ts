@@ -7,6 +7,20 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  bareWords,
+  keywordCaseChanges,
+  keywordJustFinished,
+  uppercaseKeywords,
+  uppercaseLine
+} from "./orderCase";
+import {
+  contentChanges,
+  indentBlock,
+  indentChanges,
+  lineDepths,
+  tidyInsertion
+} from "./orderIndent";
+import {
   applyUnitOrders,
   blockFor,
   ensureUnitBlock,
@@ -61,6 +75,16 @@ const stripMovementOrderLinesTakesTheSyntax: TakesTheSyntax<typeof stripMovement
 const stripLongOrderLinesTakesTheSyntax: TakesTheSyntax<typeof stripLongOrderLines> = true;
 const longOrderOfTakesTheSyntax: TakesTheSyntax<typeof longOrderOf> = true;
 const reportedLongOrdersTakesTheSyntax: TakesTheSyntax<typeof reportedLongOrders> = true;
+const bareWordsTakesTheSyntax: TakesTheSyntax<typeof bareWords> = true;
+const uppercaseLineTakesTheSyntax: TakesTheSyntax<typeof uppercaseLine> = true;
+const keywordCaseChangesTakesTheSyntax: TakesTheSyntax<typeof keywordCaseChanges> = true;
+const uppercaseKeywordsTakesTheSyntax: TakesTheSyntax<typeof uppercaseKeywords> = true;
+const keywordJustFinishedTakesTheSyntax: TakesTheSyntax<typeof keywordJustFinished> = true;
+const lineDepthsTakesTheSyntax: TakesTheSyntax<typeof lineDepths> = true;
+const indentChangesTakesTheSyntax: TakesTheSyntax<typeof indentChanges> = true;
+const indentBlockTakesTheSyntax: TakesTheSyntax<typeof indentBlock> = true;
+const contentChangesTakesTheSyntax: TakesTheSyntax<typeof contentChanges> = true;
+const tidyInsertionTakesTheSyntax: TakesTheSyntax<typeof tidyInsertion> = true;
 
 const FUNCTIONS = {
   findUnitBlocks: findUnitBlocksTakesTheSyntax,
@@ -78,7 +102,17 @@ const FUNCTIONS = {
   stripMovementOrderLines: stripMovementOrderLinesTakesTheSyntax,
   stripLongOrderLines: stripLongOrderLinesTakesTheSyntax,
   longOrderOf: longOrderOfTakesTheSyntax,
-  reportedLongOrders: reportedLongOrdersTakesTheSyntax
+  reportedLongOrders: reportedLongOrdersTakesTheSyntax,
+  bareWords: bareWordsTakesTheSyntax,
+  uppercaseLine: uppercaseLineTakesTheSyntax,
+  keywordCaseChanges: keywordCaseChangesTakesTheSyntax,
+  uppercaseKeywords: uppercaseKeywordsTakesTheSyntax,
+  keywordJustFinished: keywordJustFinishedTakesTheSyntax,
+  lineDepths: lineDepthsTakesTheSyntax,
+  indentChanges: indentChangesTakesTheSyntax,
+  indentBlock: indentBlockTakesTheSyntax,
+  contentChanges: contentChangesTakesTheSyntax,
+  tidyInsertion: tidyInsertionTakesTheSyntax
 };
 
 const writeRouteOrderRequiresTheSyntax: Requires<Parameters<typeof writeRouteOrder>[0], "syntax"> =
@@ -90,7 +124,7 @@ const INPUTS = {
 
 describe("the order comment syntax is never defaulted", () => {
   it("every order-text function requires the comment syntax", () => {
-    expect(Object.keys(FUNCTIONS)).toHaveLength(16);
+    expect(Object.keys(FUNCTIONS)).toHaveLength(26);
   });
 
   it("every order-writing input requires the comment syntax", () => {
