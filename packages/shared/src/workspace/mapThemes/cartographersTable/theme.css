@@ -289,3 +289,13 @@
 .map-theme-cartographers-table .region-outline-halo {
   stroke: var(--ct-parchment);
 }
+
+/* A wall, in this theme's strongest ink over its own ground - see theme.css. */
+.map-theme-cartographers-table .map-wall-bar,
+.map-theme-cartographers-table .map-wall-ticks {
+  stroke: var(--ct-ink-strong);
+}
+
+.map-theme-cartographers-table .map-wall-halo {
+  stroke: var(--ct-parchment);
+}

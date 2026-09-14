@@ -69,7 +69,7 @@ function report(
   return aParsedReport({ header: aReportHeaderInfo({ month: "January", ...overrides }), regions });
 }
 
-const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71 };
+const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71, walls: [] };
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {

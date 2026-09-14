@@ -756,3 +756,45 @@ fn a_unit_of_ours_in_a_same_turn_sighting_does_not_join_the_reports_hex() {
 
     assert_eq!(unit_ids_at(&known, 1, 1), ["100", "500"]);
 }
+
+/// The boundary lists every wall a report proves, so the screen can draw them: cavern (9,3,2) in the
+/// committed Arcanum report lists no northern exit, and no surface hex has a wall.
+#[test]
+fn known_map_json_lists_the_walls_a_report_proves() {
+    use atlantis_hud_core::movement::graph::Direction;
+    use atlantis_hud_core::report::model::Coordinate;
+
+    let mut cache = ReportCache::default();
+    let known = known_map_json(
+        &mut cache,
+        atlantis_hud_fixtures::NEWAGE_ARCANUM_F3_T84.text,
+        None,
+        "[]",
+    )
+    .expect("resolves");
+
+    let cavern = Coordinate { x: 9, y: 3, z: 2 };
+    let north = Coordinate { x: 9, y: 1, z: 2 };
+    // Listed once, from whichever end the core reaches first.
+    assert!(
+        known.walls.iter().any(
+            |wall| (wall.from == cavern && wall.direction == Direction::North)
+                || (wall.from == north && wall.to == cavern && wall.direction == Direction::South)
+        ),
+        "no wall between (9,3,2) and (9,1,2) in {:?}",
+        known
+            .walls
+            .iter()
+            .filter(|w| w.from == cavern || w.to == cavern)
+            .collect::<Vec<_>>()
+    );
+    assert!(known.walls.iter().all(|wall| wall.from.z != 1));
+}
+
+/// The resolution itself leaves walls empty: the movement readers build their own graph from it, so
+/// computing walls there would build that graph twice.
+#[test]
+fn resolve_known_map_leaves_walls_to_the_boundary() {
+    let report = parse_report_full(atlantis_hud_fixtures::NEWAGE_ARCANUM_F3_T84.text);
+    assert!(resolve_known_map(&report, &[]).walls.is_empty());
+}

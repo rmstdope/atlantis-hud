@@ -19,7 +19,7 @@ function report(factionId: string | null): ParsedReport {
   return aParsedReport({ header: aReportHeaderInfo({ factionId, factionName: "Borg", month: "January" }) });
 }
 
-const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71 };
+const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71, walls: [] };
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {

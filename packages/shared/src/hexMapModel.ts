@@ -21,6 +21,7 @@ import type {
   KnownMap,
   KnownMapHex,
   MapLevel,
+  MapWall,
   ReportRegion,
   ReportUnit
 } from "@atlantis/core-client";
@@ -55,6 +56,8 @@ export type HexMapModel = {
   /** The levels the map has hexes on, shallowest first, each with the word the control shows. */
   levels: MapLevel[];
   currentTurn: number | null;
+  /** Every wall on every level, as the core listed them. */
+  walls: MapWall[];
 };
 
 /**
@@ -233,7 +236,8 @@ export function buildHexMapModel(known: KnownMap): HexMapModel {
   return {
     hexes,
     levels: known.levels,
-    currentTurn: known.currentTurn
+    currentTurn: known.currentTurn,
+    walls: known.walls
   };
 }
 

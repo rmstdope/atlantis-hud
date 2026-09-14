@@ -93,6 +93,11 @@ pub struct KnownMap {
     /// [`crate::report::level::level_name`]. Empty when there are no hexes.
     pub levels: Vec<MapLevel>,
     pub current_turn: Option<u32>,
+    /// Every wall a report proves, once each, as `MapKnowledge::walls` lists them. Filled by
+    /// `known_map_json` only: `resolve_known_map` leaves it empty, because the movement readers
+    /// build their own `MapKnowledge` from the resolution and read walls from that.
+    #[serde(default)]
+    pub walls: Vec<crate::movement::graph::Wall>,
 }
 
 /// A hex's canonical key, matching how the game writes one.
@@ -344,6 +349,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
         hexes,
         levels,
         current_turn,
+        walls: Vec::new(),
     }
 }
 
@@ -364,5 +370,7 @@ pub fn known_map_json(
         .map_err(|error| format!("remembered regions could not be read: {error}"))?;
 
     let report = cache.classified_when_possible(raw_report, ruleset_json);
-    Ok(resolve_known_map(&report, &remembered))
+    let mut known = resolve_known_map(&report, &remembered);
+    known.walls = crate::movement::graph::MapKnowledge::from_known_map(&known).walls();
+    Ok(known)
 }

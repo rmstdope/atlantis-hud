@@ -76,6 +76,7 @@ import {
   TAG
 } from "./mapNotes";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { wallMarks, type WallMark } from "./wallMarks";
 
 const HEX_POINTS = hexPointsAttribute(HEX_RADIUS);
 const FOG_TILE = fogPatternTile(HEX_RADIUS);
@@ -240,6 +241,48 @@ function PassageRing({
       >
         {glyph}
       </text>
+    </g>
+  );
+}
+
+/**
+ * One wall a report proves, drawn as a rampart and explained by its hover.
+ *
+ * After the hit layer, as the passage rings are, so its strips - not the hex polygons beneath -
+ * take the pointer (see `PassageRing`). Each half of the wall is a strip inside its own hex with
+ * its own `<title>`, so the note names the proof on the side the pointer is on, and a click on a
+ * strip answers as that hex would.
+ */
+function WallRampart({
+  mark,
+  onClick
+}: {
+  mark: WallMark;
+  onClick: (event: React.MouseEvent<SVGGElement>, at: Coordinate) => void;
+}) {
+  return (
+    <g className="map-wall" data-testid="map-wall" data-wall={mark.key}>
+      <path d={mark.bar} className="map-wall-halo" fill="none" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+      <path d={mark.bar} className="map-wall-bar" fill="none" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+      <path
+        d={mark.ticks}
+        className="map-wall-ticks"
+        fill="none"
+        vectorEffect="non-scaling-stroke"
+        pointerEvents="none"
+      />
+      {mark.sides.map((side, index) => (
+        <g
+          key={index}
+          role="img"
+          aria-label={side.note}
+          style={GHOSTABLE_HIT}
+          onClick={(event) => onClick(event, side.hex)}
+        >
+          <title>{side.note}</title>
+          <polygon points={side.hit} fill="transparent" data-testid="map-wall-side" />
+        </g>
+      ))}
     </g>
   );
 }
@@ -504,6 +547,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     () => (badges.regions ? regionDecorations(onLevel, level) : []),
     [onLevel, level, badges.regions]
   );
+
+  /** Every wall a report proves on this level: always drawn, whatever the marks list says. */
+  const wallsOnLevel = useMemo(() => wallMarks(model.walls, level), [model.walls, level]);
 
   /**
    * How far apart the world's repeats are, per axis - `null` on an axis that does not repeat.
@@ -1658,6 +1704,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               />
             )}
           </g>
+
+          {/*
+            Walls a report proves (ah-wq2e). After the region decorations, so a wall covers the
+            dashed border; after the hit layer, so its strips take the pointer; before the passage
+            rings, so a ring on the same hex keeps its own hover.
+          */}
+          {wallsOnLevel.map((mark) => (
+            <WallRampart key={mark.key} mark={mark} onClick={clickRingAt} />
+          ))}
 
           {/*
             Where the route ran into an inner passage. `rules/move`, direction 4: `IN` travels

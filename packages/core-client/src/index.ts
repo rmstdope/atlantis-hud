@@ -365,6 +365,23 @@ export type MapLevel = {
   name: string;
 };
 
+/** One hex whose own Exits list proves a wall, and its terrain as the report writes it. */
+export type WallProof = {
+  coordinate: Coordinate;
+  terrain: string;
+};
+
+/** A side of a hex a report proves has no way through - the core's `movement::graph::Wall`. */
+export type MapWall = {
+  /** A proving hex, and the side the wall is on seen from it. */
+  from: Coordinate;
+  direction: Direction;
+  /** The hex across the side; possibly one no report describes. */
+  to: Coordinate;
+  /** `from` first, then `to` when its own Exits list proves the wall too. */
+  provenBy: WallProof[];
+};
+
 /** Everything the faction knows about the map, resolved once by the core. */
 export type KnownMap = {
   /** Sorted by level, then row, then column. */
@@ -372,6 +389,8 @@ export type KnownMap = {
   /** The distinct levels `hexes` holds, ascending by z, each named by the core. */
   levels: MapLevel[];
   currentTurn: number | null;
+  /** Every wall a report proves, once each, on every level. */
+  walls: MapWall[];
 };
 
 /**

@@ -390,7 +390,8 @@ export function rulesetTextOf(ruleset: RulesetState): string | null {
 const EMPTY: HexMapModel = {
   hexes: [],
   levels: [SURFACE_LEVEL],
-  currentTurn: null
+  currentTurn: null,
+  walls: []
 };
 
 /**
