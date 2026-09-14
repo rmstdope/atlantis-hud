@@ -8583,31 +8583,6 @@ mod tests {
         assert_eq!(unit.at_month_end, None);
     }
 
-    /// The refusal is about a broken line and nothing else: a unit the report read whole is priced
-    /// exactly as it always was.
-    #[test]
-    fn a_wholly_read_unit_is_priced_exactly_as_before() {
-        let receipts = Receipts::default();
-        let intents: [PlacedIntent; 0] = [];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 600,
-                money_read: MoneyRead::Whole,
-                ..facts(8, &intents, &receipts)
-            },
-            paying("$12.0", None),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(unit.doubt, None);
-        // 600 held plus a defaulted month's wages of 8 men at $12.
-        assert_eq!(unit.at_month_end, Some(696));
-    }
-
     /// `rules/economy_maintenance` prices maintenance per head, so a headcount that was never read
     /// prices no month at all - and a `0` fee on a unit of a hundred men is exactly the confident
     /// wrong answer this refusal exists to stop.
@@ -8639,31 +8614,6 @@ mod tests {
             ..facts(100, &intents, &receipts)
         };
         assert_eq!(readiness(&cut, Some(&ruleset)), None);
-    }
-
-    #[test]
-    fn a_studying_unit_pays_the_rulesets_cost_per_man() {
-        let ruleset = ruleset();
-        let receipts = Receipts::default();
-        let intents = [placed(Intent::Study {
-            skill: "combat".to_string(),
-        })];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 600,
-                ..facts(6, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset),
-        );
-        assert_eq!(unit.expense, Some(60));
-        assert_eq!(unit.income, Some(0));
-        assert_eq!(unit.at_month_end, Some(540));
     }
 
     #[test]
@@ -8750,13 +8700,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_selling_unit_earns_the_price_the_market_states() {
-        let unit = sold(&[selling("furs", Amount::Exact(40))], &wanted(24, 40, 40));
-        assert_eq!(unit.income, Some(960));
-        assert_eq!(unit.doubt, None);
-    }
-
     /// [`sold`] with a hex whose pools carry a bound. `sold` itself passes
     /// `PoolShares::default()`, which is every other selling test and must stay that way.
     fn sold_beside(
@@ -8778,75 +8721,6 @@ mod tests {
             SharedMarket::Adds(0),
             None,
         )
-    }
-
-    /// `ah-0n2k.2`. An own hex-mate whose line was cut short, ordered to sell the same goods,
-    /// claimed `0` of the line because its goods went with the tail - so what this unit is shown
-    /// earning is the most it can be, not a forecast. The figure itself is kept.
-    ///
-    /// The bare `SAIL` is what spends the month: without it the unit is set to work by default and
-    /// `ah-0n2k.1` bounds its late half too, which is a different statement from this one.
-    #[test]
-    fn a_seller_beside_an_unread_seller_reads_its_takings_as_a_ceiling() {
-        let unit = sold_beside(
-            &[
-                selling("furs", Amount::Exact(40)),
-                placed(Intent::MonthLong("SAIL")),
-            ],
-            &wanted(24, 40, 40),
-            PoolShares {
-                unread_seller: true,
-                ..PoolShares::default()
-            },
-        );
-        assert_eq!(unit.income, Some(960), "the figure is kept");
-        assert_eq!(unit.doubt, None, "a bound is not a doubt");
-        assert!(unit.income_in_time_at_most);
-        assert!(
-            !unit.late_income_at_most,
-            "nothing bounds the late half here"
-        );
-    }
-
-    /// `ah-0n2k.2`, the narrowing. A market claim needs an order, and a cut-short report line takes
-    /// no order away - so an unread hex-mate that was never told to sell provably takes nothing off
-    /// this unit's sale and the figure it is shown is exact.
-    #[test]
-    fn a_seller_beside_an_unread_unit_that_was_not_told_to_sell_is_not_bounded() {
-        let unit = sold_beside(
-            &[
-                selling("furs", Amount::Exact(40)),
-                placed(Intent::MonthLong("SAIL")),
-            ],
-            &wanted(24, 40, 40),
-            PoolShares {
-                unread_claimant_tax: true,
-                unread_claimant_wages: true,
-                unread_claimant_entertainment: true,
-                unread_seller: false,
-                ..PoolShares::default()
-            },
-        );
-        assert_eq!(unit.income, Some(960));
-        assert!(!unit.income_in_time_at_most);
-        assert!(!unit.late_income_at_most);
-    }
-
-    /// `ah-0n2k.2`. A hex whose every line was read - which is every committed fixture - costs
-    /// nothing.
-    #[test]
-    fn a_hex_read_in_full_bounds_no_sale() {
-        let unit = sold_beside(
-            &[
-                selling("furs", Amount::Exact(40)),
-                placed(Intent::MonthLong("SAIL")),
-            ],
-            &wanted(24, 40, 40),
-            PoolShares::default(),
-        );
-        assert_eq!(unit.income, Some(960));
-        assert!(!unit.income_in_time_at_most);
-        assert!(!unit.late_income_at_most);
     }
 
     /// `ah-0n2k.2`. A unit that earns no silver selling here has nothing to bound, which falls out
@@ -8888,74 +8762,6 @@ mod tests {
         assert!(!unit.income_in_time_at_most);
     }
 
-    #[test]
-    fn selling_takes_no_more_than_the_market_will_take() {
-        let unit = sold(
-            &[selling("furs", Amount::All { except: 0 })],
-            &wanted(24, 40, 200),
-        );
-        assert_eq!(unit.income, Some(960));
-    }
-
-    /// `ah-vw8e`, increment 2. A block naming the same goods twice can only move what the first
-    /// line left of the unit's stock, so the second earns nothing rather than pricing itself
-    /// against the whole holding a second time.
-    #[test]
-    fn a_second_sell_all_of_the_same_goods_earns_nothing() {
-        let unit = sold(
-            &[
-                selling("furs", Amount::All { except: 0 }),
-                selling("furs", Amount::All { except: 0 }),
-            ],
-            &wanted(42, 100, 10),
-        );
-        assert_eq!(unit.income, Some(420));
-    }
-
-    /// [`sold`], for a hex whose market line has been settled between the faction's own units.
-    fn sold_with_share(
-        intents: &[PlacedIntent],
-        sale: &dyn Fn(&str) -> SaleAnswer,
-        share: &dyn Fn(&str, MarketSide) -> Option<i64>,
-    ) -> UnitSilver {
-        let receipts = Receipts::default();
-        forecast_unit(
-            facts(1, intents, &receipts),
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            Lookups {
-                sale,
-                market_share: share,
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            None,
-        )
-    }
-
-    /// `ah-vw8e`, increment 3. The settled share is spent down the same way the holding is: a
-    /// second `SELL ALL` of the same goods finds the share already spent by the first.
-    #[test]
-    fn two_sell_lines_never_earn_more_than_the_settled_share() {
-        let unit = sold_with_share(
-            &[
-                selling("furs", Amount::All { except: 0 }),
-                selling("furs", Amount::All { except: 0 }),
-            ],
-            &wanted(42, 100, 10),
-            &|_item, _side| Some(3),
-        );
-        assert_eq!(unit.income, Some(126));
-    }
-
-    #[test]
-    fn selling_more_than_the_unit_holds_sells_only_what_it_holds() {
-        let unit = sold(&[selling("furs", Amount::Exact(40))], &wanted(24, 40, 12));
-        assert_eq!(unit.income, Some(288));
-    }
-
     /// `ah-q7jd`. `unit_holds` is the market-phase holding `forecast_hex`'s sale closure now
     /// reads from `Ordered::early_holding` rather than the report's own figure - a unit whose
     /// earlier gift has already moved everything away sells nothing, whatever the report shows.
@@ -8966,15 +8772,6 @@ mod tests {
             &wanted(24, 40, 0),
         );
         assert_eq!(unit.income, Some(0));
-    }
-
-    #[test]
-    fn selling_all_but_a_reserve_keeps_the_reserve() {
-        let unit = sold(
-            &[selling("furs", Amount::All { except: 10 })],
-            &wanted(24, 40, 30),
-        );
-        assert_eq!(unit.income, Some(480));
     }
 
     #[test]
@@ -9009,63 +8806,7 @@ mod tests {
         assert_eq!(entertainer.late_income, Some(300));
     }
 
-    #[test]
-    fn selling_earns_in_time() {
-        let receipts = Receipts::default();
-        let intents = [placed(Intent::Sell {
-            item: "grain".to_string(),
-            amount: Amount::Exact(3),
-        })];
-        let sale = |_item: &str| SaleAnswer::Wanted {
-            price: 10,
-            market_takes: 100,
-            unit_holds: 100,
-        };
-        let unit = forecast_unit(
-            facts(1, &intents, &receipts),
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            Lookups {
-                sale: &sale,
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(unit.income, Some(30));
-        assert_eq!(unit.late_income, Some(0));
-    }
-
     // --- the turn's order, not the document's (`ah-gdd3.1`) --------------------------------------
-
-    /// The same for a bounded `BUY`: its affordability cap is measured before the study is charged
-    /// (`ah-a5ci`).
-    #[test]
-    fn a_study_does_not_shrink_what_an_exact_buy_can_afford() {
-        let ruleset = ruleset();
-        let intents = [
-            placed(Intent::Study {
-                skill: "combat".to_string(),
-            }),
-            placed(Intent::Buy {
-                amount: Amount::Exact(5),
-                item: "grain".to_string(),
-            }),
-        ];
-        let unit = spending(
-            100,
-            &intents,
-            RegionWages::default(),
-            &sells(20, 20),
-            Some(&ruleset),
-        );
-        assert_eq!(unit.expense, Some(110));
-        assert_eq!(unit.wanted_for_orders, Some(110));
-        assert_eq!(unit.at_month_end, Some(-10));
-        assert_eq!(unit.short_for_orders, Some(10));
-    }
 
     /// A doubt raised *in* the Give phase or before it does still hide the gift: the purse the gift
     /// empties is what is unknown (`ah-m7su`).
@@ -9198,51 +8939,6 @@ mod tests {
     // --- what the orders cannot cover ------------------------------------------------------------
 
     #[test]
-    fn wages_cannot_pay_for_a_purchase() {
-        let intents = vec![
-            placed(Intent::Work),
-            placed(Intent::Buy {
-                amount: Amount::Exact(5),
-                item: "grain".to_string(),
-            }),
-        ];
-        let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
-        // Wages arrive after the market closes, so nothing is bought with them: the month ends on
-        // the wages themselves, and the warning still names the 60 the orders wanted (`ah-omn7`).
-        assert_eq!(unit.at_month_end, Some(120));
-        assert_eq!(unit.wanted_for_orders, Some(60));
-        assert_eq!(unit.short_for_orders, Some(60));
-    }
-
-    #[test]
-    fn silver_in_hand_pays_for_a_purchase() {
-        let intents = vec![
-            placed(Intent::Work),
-            placed(Intent::Buy {
-                amount: Amount::Exact(5),
-                item: "grain".to_string(),
-            }),
-        ];
-        let unit = spending(100, &intents, paying("$120.0", None), &sells(12, 40), None);
-        assert_eq!(unit.at_month_end, Some(160));
-        assert_eq!(unit.short_for_orders, Some(0));
-    }
-
-    #[test]
-    fn buying_all_spends_only_what_arrives_in_time() {
-        let intents = vec![
-            placed(Intent::Work),
-            placed(Intent::Buy {
-                amount: Amount::All { except: 0 },
-                item: "grain".to_string(),
-            }),
-        ];
-        let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
-        assert_eq!(unit.expense, Some(0));
-        assert_eq!(unit.short_for_orders, Some(0));
-    }
-
-    #[test]
     fn a_shortfall_names_the_order_it_bites_on() {
         let intents = vec![
             placed(Intent::Work),
@@ -9253,40 +8949,6 @@ mod tests {
         ];
         let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
         assert_eq!(unit.short_on, Some(SilverSpender::Buy));
-    }
-
-    /// A `GIVE` of items spends no silver, so it must not be blamed for a shortfall the later
-    /// `BUY` causes (Copilot on PR #591).
-    #[test]
-    fn an_order_that_spends_no_silver_is_never_named() {
-        let intents = vec![
-            placed(Intent::Work),
-            placed(Intent::Give {
-                to: Party::Unit("7".to_string()),
-                what: Selector::Item("horse".to_string()),
-                amount: Amount::Exact(2),
-            }),
-            placed(Intent::Buy {
-                amount: Amount::Exact(5),
-                item: "grain".to_string(),
-            }),
-        ];
-        let unit = spending(0, &intents, paying("$120.0", None), &sells(12, 40), None);
-        assert_eq!(unit.short_for_orders, Some(60));
-        assert_eq!(unit.short_on, Some(SilverSpender::Buy));
-    }
-
-    #[test]
-    fn a_unit_that_can_pay_names_no_order() {
-        let intents = vec![
-            placed(Intent::Work),
-            placed(Intent::Buy {
-                amount: Amount::Exact(5),
-                item: "grain".to_string(),
-            }),
-        ];
-        let unit = spending(100, &intents, paying("$120.0", None), &sells(12, 40), None);
-        assert_eq!(unit.short_on, None);
     }
 
     // --- entertaining -------------------------------------------------------------------------
@@ -9412,98 +9074,6 @@ mod tests {
 
     // --- receiving ----------------------------------------------------------------------------
 
-    #[test]
-    fn a_gift_counted_for_this_unit_is_income_it_can_name() {
-        let receipts = Receipts {
-            silver: 200,
-            givers: vec!["Paymaster (2390)".to_string()],
-            silver_moves: vec![ReceiptMove {
-                amount: 200,
-                cause: SilverChangeCause::WasGiven,
-                other: "Paymaster (2390)".to_string(),
-                line: 2,
-            }],
-            ..Receipts::default()
-        };
-        let unit = forecast_unit(
-            facts(5, &[], &receipts),
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(unit.income, Some(200));
-        assert_eq!(unit.received, 200);
-        assert_eq!(unit.givers, vec!["Paymaster (2390)".to_string()]);
-        assert_eq!(unit.doubt, None);
-    }
-
-    /// `ah-awcm`: silver a unit takes from a neighbour is income, and the hover can name where it
-    /// came from.
-    #[test]
-    fn a_taker_counts_what_it_takes() {
-        let receipts = Receipts {
-            taken: 100,
-            taken_from: vec!["Workers (6567)".to_string()],
-            silver_moves: vec![ReceiptMove {
-                amount: 100,
-                cause: SilverChangeCause::Took,
-                other: "Workers (6567)".to_string(),
-                line: 2,
-            }],
-            ..Receipts::default()
-        };
-        let unit = forecast_unit(
-            facts(5, &[], &receipts),
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(unit.income, Some(100));
-        assert_eq!(unit.taken, 100);
-        assert_eq!(unit.taken_from, vec!["Workers (6567)".to_string()]);
-        assert_eq!(unit.doubt, None);
-    }
-
-    /// `ah-awcm`: silver taken from a unit the report does not show here is income too - the
-    /// ledger credits it, and a column that did not would contradict the figures it displays.
-    #[test]
-    fn a_taker_counts_what_it_takes_from_a_source_the_report_does_not_show() {
-        let receipts = Receipts {
-            taken_unshown: 100,
-            taken_unshown_from: vec!["unit 999".to_string()],
-            silver_moves: vec![ReceiptMove {
-                amount: 100,
-                cause: SilverChangeCause::TookUnshown,
-                other: "unit 999".to_string(),
-                line: 2,
-            }],
-            ..Receipts::default()
-        };
-        let unit = forecast_unit(
-            facts(5, &[], &receipts),
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(unit.income, Some(100));
-        assert_eq!(unit.taken_unshown, 100);
-        assert_eq!(unit.taken_unshown_from, vec!["unit 999".to_string()]);
-        assert_eq!(unit.taken, 0);
-        assert_eq!(unit.doubt, None);
-    }
-
     /// `ah-sgn6`: the ledger cannot follow a class selector, so a `TAKE FROM <unit> ALL <class>`
     /// leaves the taker's whole figure unsaid. A named `TAKE ... ALL SILV` is not this case.
     #[test]
@@ -9528,68 +9098,10 @@ mod tests {
     }
 
     #[test]
-    fn a_gift_is_income_on_top_of_what_the_unit_earns_itself() {
-        let receipts = Receipts {
-            silver: 200,
-            givers: vec!["Paymaster (2390)".to_string()],
-            silver_moves: vec![ReceiptMove {
-                amount: 200,
-                cause: SilverChangeCause::WasGiven,
-                other: "Paymaster (2390)".to_string(),
-                line: 2,
-            }],
-            ..Receipts::default()
-        };
-        let intents = [placed(Intent::Tax)];
-        let unit = forecast_unit(
-            facts(8, &intents, &receipts),
-            taxable(Some(100_000)),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(unit.income, Some(600));
-    }
-
-    #[test]
     fn a_unit_given_nothing_names_nobody() {
         let unit = forecast(5, RegionWages::default(), &[]);
         assert_eq!(unit.received, 0);
         assert!(unit.givers.is_empty());
-    }
-
-    #[test]
-    fn a_sale_a_cast_and_a_guessed_headcount_are_still_priced() {
-        // Neither a sale nor a cast is per-man, so a headcount that is a guess does not stop them
-        // being priced - unlike TAX, WORK, STUDY and ENTERTAIN. The bare `SAIL` is what spends the
-        // month: without it the unit would be set to work by default, and a defaulted wage *is*
-        // per-man (`ah-gjq4`).
-        let receipts = Receipts::default();
-        let intents = [
-            selling("furs", Amount::Exact(10)),
-            placed(Intent::MonthLong("SAIL")),
-        ];
-        let unit = forecast_unit(
-            UnitFacts {
-                men_estimated: true,
-                ..facts(8, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            Lookups {
-                sale: &wanted(24, 40, 40),
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(unit.income, Some(240));
-        assert_eq!(unit.doubt, None);
     }
 
     #[test]
@@ -9649,39 +9161,6 @@ mod tests {
             SharedMarket::Adds(0),
             ruleset,
         )
-    }
-
-    #[test]
-    fn a_buying_unit_pays_the_price_the_market_states() {
-        let intents = vec![placed(Intent::Buy {
-            amount: Amount::Exact(5),
-            item: "grain".to_string(),
-        })];
-        // The unit holds nothing, so `rules/buy` gives it nothing; the ask survives as
-        // `wanted_for_orders`, which is what the shortfall warning is measured against (`ah-omn7`).
-        let unit = spending(0, &intents, RegionWages::default(), &sells(12, 40), None);
-        assert_eq!(unit.expense, Some(0));
-        assert_eq!(unit.wanted_for_orders, Some(60));
-        assert_eq!(unit.doubt, None);
-        let paid = spending(60, &intents, RegionWages::default(), &sells(12, 40), None);
-        assert_eq!(paid.expense, Some(60));
-    }
-
-    /// `rules/buy`: a unit that cannot afford the whole line buys as many as it can. The ledger
-    /// still charges the full ask, so the shortfall warning keeps firing; the column reports the
-    /// ask as `wanted_for_orders` and spends only what the unit has (`ah-omn7`).
-    #[test]
-    fn a_bounded_buy_spends_only_what_the_unit_can_pay() {
-        let intents = vec![placed(Intent::Buy {
-            amount: Amount::Exact(5),
-            item: "grain".to_string(),
-        })];
-        let unit = spending(25, &intents, RegionWages::default(), &sells(12, 40), None);
-        assert_eq!(unit.expense, Some(24));
-        assert_eq!(unit.wanted_for_orders, Some(60));
-        assert_eq!(unit.at_month_end, Some(1));
-        assert_eq!(unit.short_for_orders, Some(35));
-        assert_eq!(unit.short_on, Some(SilverSpender::Buy));
     }
 
     /// A bounded `BUY` in a hex whose tax pool could not be settled at all: the ledger's purse
@@ -9795,80 +9274,6 @@ mod tests {
         assert_eq!(unit.doubt_subject.as_deref(), Some("horses"));
     }
 
-    /// [`spending`], for a unit whose share of the line the hex has settled - the shape
-    /// `forecast_hex` always produces for a `For Sale` line, and the one `no_market`'s
-    /// `market_share` cannot express.
-    fn spending_with_share(
-        held: i64,
-        intents: &[PlacedIntent],
-        purchase: &dyn Fn(&str) -> PurchaseAnswer,
-        share: i64,
-    ) -> UnitSilver {
-        let receipts = Receipts::default();
-        let market_share = move |_item: &str, side: MarketSide| {
-            matches!(side, MarketSide::Buying).then_some(share)
-        };
-        forecast_unit(
-            UnitFacts {
-                held,
-                ..facts(1, intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            Lookups {
-                purchase,
-                market_share: &market_share,
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            None,
-        )
-    }
-
-    /// `ah-lauy`, increment 3. The exact form's running total, against a settled share.
-    #[test]
-    fn two_exact_buys_of_the_same_goods_share_one_settled_share() {
-        let intents = vec![
-            placed(Intent::Buy {
-                amount: Amount::Exact(5),
-                item: "grain".to_string(),
-            }),
-            placed(Intent::Buy {
-                amount: Amount::Exact(5),
-                item: "grain".to_string(),
-            }),
-        ];
-        let unit = spending_with_share(10_000, &intents, &sells(12, 20), 5);
-        assert_eq!(unit.expense, Some(60));
-    }
-
-    /// `ah-lauy`, increment 3. With no settled share at all, the exact arm's fallback is what the
-    /// unit asked for - not a quantity of goods - so there is nothing there for an earlier line to
-    /// have spent down.
-    #[test]
-    fn an_exact_buy_with_no_settled_share_is_uncapped() {
-        let intents = vec![
-            placed(Intent::Buy {
-                amount: Amount::Exact(5),
-                item: "grain".to_string(),
-            }),
-            placed(Intent::Buy {
-                amount: Amount::Exact(5),
-                item: "grain".to_string(),
-            }),
-        ];
-        let unit = spending(
-            10_000,
-            &intents,
-            RegionWages::default(),
-            &sells(12, 20),
-            None,
-        );
-        assert_eq!(unit.expense, Some(120));
-    }
-
     // --- ah-jown: price_buy_all --------------------------------------------------------------
 
     #[test]
@@ -9978,55 +9383,6 @@ mod tests {
                 .class_members(class)
                 .map(|tags| tags.iter().any(|tag| tag == SILVER_TAG))
         }
-    }
-
-    /// `ah-3sp7.1` taught the catalogue `NORMAL`'s members, and `SILV` is one of them - so
-    /// `GIVE ... ALL NORMAL` now hands over the unit's silver exactly as `GIVE ... ALL SILV` does.
-    #[test]
-    fn giving_all_normal_hands_over_the_silver() {
-        let rules = ruleset();
-        let carries_silver = class_carries_silver_against(&rules);
-        let intents = vec![placed(Intent::Give {
-            to: Party::Unit("1235".to_string()),
-            what: Selector::Class("NORMAL".to_string()),
-            amount: Amount::All { except: 0 },
-        })];
-        let receipts = Receipts::default();
-        // `class_tags` expands the class into one transfer per tag, silver among them, on this
-        // same line - so the ledger settles it exactly as it settles a `GIVE ... ALL SILV`.
-        let gifts = [gift(1, 500, false)];
-        let phases = PhaseFacts {
-            gifts: &gifts,
-            ..PhaseFacts::uniform(LateFacts {
-                men: 1,
-                men_by_race: &[],
-                items: &[],
-                before_manufacturing: &[],
-                shared_materials: &[],
-            })
-        };
-        let unit = forecast_unit(
-            with_gifts(
-                UnitFacts {
-                    held: 500,
-                    ..facts(1, &intents, &receipts)
-                },
-                &phases,
-            ),
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            Lookups {
-                class_carries_silver: &carries_silver,
-                ..no_market()
-            },
-            SharedMarket::Adds(0),
-            Some(&rules),
-        );
-        assert_eq!(unit.doubt, None);
-        assert_eq!(unit.expense, Some(500));
-        assert_eq!(unit.at_month_end, Some(0));
     }
 
     /// `MOUNT` is resolved by the catalogue and carries no silver - the `Some(false)` branch,
@@ -10650,64 +10006,6 @@ mod tests {
         assert!(silver.changes.is_empty());
     }
 
-    /// The causes of a unit's ledger, in order, for the assertions below.
-    fn causes(silver: &UnitSilver) -> Vec<SilverChangeCause> {
-        silver.changes.iter().map(|change| change.cause).collect()
-    }
-
-    #[test]
-    fn changes_names_a_sale_and_a_purchase() {
-        let unit = sold(&[selling("furs", Amount::Exact(40))], &wanted(24, 40, 40));
-        assert_eq!(causes(&unit), [SilverChangeCause::Sold]);
-        assert_eq!(unit.changes[0].amount, 960);
-        assert_eq!(unit.changes[0].line, Some(1));
-
-        let bought = spending(
-            60,
-            &[at_line(
-                4,
-                Intent::Buy {
-                    amount: Amount::Exact(5),
-                    item: "grain".to_string(),
-                },
-            )],
-            RegionWages::default(),
-            &sells(12, 40),
-            None,
-        );
-        assert_eq!(causes(&bought), [SilverChangeCause::Bought]);
-        assert_eq!(bought.changes[0].amount, -60);
-        assert_eq!(bought.changes[0].line, Some(4));
-    }
-
-    #[test]
-    fn changes_names_a_study_fee() {
-        let ruleset = ruleset();
-        let receipts = Receipts::default();
-        let intents = [at_line(
-            9,
-            Intent::Study {
-                skill: "combat".to_string(),
-            },
-        )];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 600,
-                ..facts(6, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            Some(&ruleset),
-        );
-        assert_eq!(causes(&unit), [SilverChangeCause::Studied]);
-        assert_eq!(unit.changes[0].amount, -60);
-        assert_eq!(unit.changes[0].line, Some(9));
-    }
-
     #[test]
     fn a_capped_study_says_why_it_costs_nothing() {
         let ruleset = ruleset();
@@ -10753,7 +10051,6 @@ mod tests {
             Vec::new(),
             "combat's own maximum is what stops a gnoll, so no race is blamed"
         );
-        assert_eq!(causes(&capped), [] as [SilverChangeCause; 0]);
 
         let studying = forecast_unit(
             UnitFacts {
@@ -10771,7 +10068,6 @@ mod tests {
             Some(&ruleset),
         );
         assert_eq!(studying.no_study_fee, None);
-        assert_eq!(causes(&studying), [SilverChangeCause::Studied]);
     }
 
     /// The note says the unit's month costs nothing, so a unit that paid for *any* study must not
@@ -10818,7 +10114,6 @@ mod tests {
             Some(&ruleset),
         );
 
-        assert_eq!(causes(&unit), [SilverChangeCause::Studied]);
         assert_eq!(
             unit.no_study_fee, None,
             "the observation month was paid for, so this unit's month did not cost nothing"
@@ -10871,201 +10166,6 @@ mod tests {
             unit.no_study_fee.is_some(),
             "nothing was ever charged, so the note stands: {unit:?}"
         );
-    }
-
-    #[test]
-    fn changes_names_an_exact_gift_and_who_took_it() {
-        let receipts = Receipts::default();
-        let intents = [at_line(
-            4,
-            Intent::Give {
-                to: Party::Unit("1789".to_string()),
-                what: Selector::Item("SILV".to_string()),
-                amount: Amount::Exact(120),
-            },
-        )];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 500,
-                ..facts(1, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(causes(&unit), [SilverChangeCause::GaveAway]);
-        assert_eq!(unit.changes[0].amount, -120);
-        assert_eq!(unit.changes[0].line, Some(4));
-        assert_eq!(
-            unit.changes[0].other,
-            Some(party_label(&Party::Unit("1789".to_string())))
-        );
-    }
-
-    #[test]
-    fn changes_names_a_discarded_gift() {
-        let receipts = Receipts::default();
-        let intents = [at_line(
-            2,
-            Intent::Give {
-                to: Party::Discard,
-                what: Selector::Item("SILV".to_string()),
-                amount: Amount::Exact(40),
-            },
-        )];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 500,
-                ..facts(1, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(causes(&unit), [SilverChangeCause::Discarded]);
-        assert_eq!(unit.changes[0].amount, -40);
-        assert_eq!(unit.changes[0].line, Some(2));
-    }
-
-    #[test]
-    fn changes_names_each_give_all_silver_separately() {
-        let receipts = Receipts::default();
-        let intents = [
-            at_line(
-                3,
-                Intent::Give {
-                    to: Party::Unit("1789".to_string()),
-                    what: Selector::Item("SILV".to_string()),
-                    amount: Amount::All { except: 300 },
-                },
-            ),
-            at_line(
-                4,
-                Intent::Give {
-                    to: Party::Discard,
-                    what: Selector::Item("SILV".to_string()),
-                    amount: Amount::All { except: 0 },
-                },
-            ),
-        ];
-        // Each line gets its own settlement from the ledger, and each becomes its own change.
-        let gifts = [gift(3, 200, false), gift(4, 300, true)];
-        let phases = PhaseFacts {
-            gifts: &gifts,
-            ..PhaseFacts::uniform(LateFacts {
-                men: 1,
-                men_by_race: &[],
-                items: &[],
-                before_manufacturing: &[],
-                shared_materials: &[],
-            })
-        };
-        let unit = forecast_unit(
-            with_gifts(
-                UnitFacts {
-                    held: 500,
-                    ..facts(1, &intents, &receipts)
-                },
-                &phases,
-            ),
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(
-            causes(&unit),
-            [SilverChangeCause::GaveAway, SilverChangeCause::Discarded]
-        );
-        assert_eq!(unit.changes[0].amount, -200);
-        assert_eq!(unit.changes[0].line, Some(3));
-        assert_eq!(unit.changes[1].amount, -300);
-        assert_eq!(unit.changes[1].line, Some(4));
-    }
-
-    #[test]
-    fn changes_names_each_giver_with_what_they_gave() {
-        let receipts = Receipts {
-            silver: 90,
-            givers: vec!["Scout (1789)".to_string()],
-            silver_moves: vec![ReceiptMove {
-                amount: 90,
-                cause: SilverChangeCause::WasGiven,
-                other: "Scout (1789)".to_string(),
-                line: 2,
-            }],
-            ..Receipts::default()
-        };
-        let intents = [at_line(
-            4,
-            Intent::Give {
-                to: Party::Discard,
-                what: Selector::Item("SILV".to_string()),
-                amount: Amount::Exact(10),
-            },
-        )];
-        let unit = forecast_unit(
-            UnitFacts {
-                held: 100,
-                ..facts(1, &intents, &receipts)
-            },
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        // A receipt settles before this unit's own gift within the Give phase.
-        assert_eq!(
-            causes(&unit),
-            [SilverChangeCause::WasGiven, SilverChangeCause::Discarded]
-        );
-        assert_eq!(unit.changes[0].amount, 90);
-        // `ah-1x2h.3`: the giver's own line, recorded rather than dropped - the order behind a
-        // received gift lives in the giver's block, and the receipt now carries it.
-        assert_eq!(unit.changes[0].line, Some(2));
-        assert_eq!(unit.changes[0].other.as_deref(), Some("Scout (1789)"));
-    }
-
-    #[test]
-    fn changes_names_a_take_from_a_unit_the_report_does_not_show() {
-        let receipts = Receipts {
-            taken_unshown: 25,
-            taken_unshown_from: vec!["unit 42".to_string()],
-            silver_moves: vec![ReceiptMove {
-                amount: 25,
-                cause: SilverChangeCause::TookUnshown,
-                other: "unit 42".to_string(),
-                line: 2,
-            }],
-            ..Receipts::default()
-        };
-        let unit = forecast_unit(
-            facts(1, &[], &receipts),
-            RegionWages::default(),
-            PoolShares::default(),
-            FactionPurse::default(),
-            0,
-            no_market(),
-            SharedMarket::Adds(0),
-            None,
-        );
-        assert_eq!(causes(&unit), [SilverChangeCause::TookUnshown]);
-        assert_eq!(unit.changes[0].amount, 25);
-        assert_eq!(unit.changes[0].other.as_deref(), Some("unit 42"));
     }
 
     #[test]

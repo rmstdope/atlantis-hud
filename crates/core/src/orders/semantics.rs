@@ -16821,6 +16821,99 @@ mod tests {
             assert_eq!(unit.changes[1].amount, unit.late_income.expect("priced"));
         }
 
+        /// `ah-0n2k.2`. A hex whose every line was read - which is every committed fixture - costs
+        /// nothing. Two sellers share the market's forty, so each takes half of it; what is pinned
+        /// is that no figure is bounded when every line was read.
+        #[test]
+        fn a_hex_read_in_full_bounds_no_sale() {
+            let hex = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 40,
+                    name: "furs".to_string(),
+                    tag: "FUR".to_string(),
+                    price: 24,
+                }],
+                ..region(vec![
+                    with_item(unit("4329"), 40, "furs", "FUR"),
+                    with_item(unit("4501"), 40, "furs", "FUR"),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 4329\nSELL 40 furs\nunit 4501\nSELL 40 furs\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            for id in ["4329", "4501"] {
+                let seller = silver_of(&review, id);
+                assert_eq!(seller.income, Some(480), "{id}");
+                assert!(!seller.income_in_time_at_most, "{id}");
+                assert!(!seller.late_income_at_most, "{id}");
+            }
+        }
+
+        /// `ah-0n2k.2`. An own hex-mate whose line was cut short, ordered to sell the same goods,
+        /// claimed `0` of the line because its goods went with the tail - so what this unit is shown
+        /// earning is the most it can be, not a forecast. The figure itself is kept.
+        #[test]
+        fn a_seller_beside_an_unread_seller_reads_its_takings_as_a_ceiling() {
+            let hex = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 40,
+                    name: "furs".to_string(),
+                    tag: "FUR".to_string(),
+                    price: 24,
+                }],
+                ..region(vec![
+                    with_item(unit("4329"), 40, "furs", "FUR"),
+                    unread("4501"),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 4329\nSELL 40 furs\nunit 4501\nSELL 40 furs\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let seller = silver_of(&review, "4329");
+            assert_eq!(seller.income, Some(960));
+            assert_eq!(seller.doubt, None);
+            assert!(seller.income_in_time_at_most);
+            assert!(!seller.late_income_at_most);
+        }
+
+        /// `ah-0n2k.2`, the narrowing. A market claim needs an order, and a cut-short report line takes
+        /// no order away - so an unread hex-mate that was never told to sell provably takes nothing off
+        /// this unit's sale and the figure it is shown is exact.
+        #[test]
+        fn a_seller_beside_an_unread_unit_that_was_not_told_to_sell_is_not_bounded() {
+            let hex = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 40,
+                    name: "furs".to_string(),
+                    tag: "FUR".to_string(),
+                    price: 24,
+                }],
+                ..region(vec![
+                    with_item(unit("4329"), 40, "furs", "FUR"),
+                    unread("4501"),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 4329\nSELL 40 furs\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let seller = silver_of(&review, "4329");
+            assert_eq!(seller.income, Some(960));
+            assert!(!seller.income_in_time_at_most);
+            assert!(!seller.late_income_at_most);
+        }
+
         /// The regression net under everything below: one worker is not contention.
         #[test]
         fn a_lone_worker_still_earns_the_whole_pool() {
@@ -17755,6 +17848,173 @@ mod tests {
             .find(|unit| unit.unit_id == "2391")
             .expect("the recipient is forecast");
         assert_eq!(recipient.received, 500);
+
+        let giver = review
+            .silver
+            .iter()
+            .find(|unit| unit.unit_id == "2390")
+            .expect("the giver is forecast");
+        assert_eq!(giver.expense, Some(500));
+        assert_eq!(giver.at_month_end, Some(0));
+        assert_eq!(giver.doubt, None);
+    }
+
+    #[test]
+    fn a_gift_counted_for_this_unit_is_income_it_can_name() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(unit("2390"), 500),
+                unit("2391"),
+            ])]),
+            "unit 2390\nGIVE 2391 200 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let receiver = forecast(&review, "2391");
+        assert_eq!(receiver.income, Some(200));
+        assert_eq!(receiver.received, 200);
+        assert_eq!(receiver.givers, vec!["Unit 2390 (2390)".to_string()]);
+        assert_eq!(receiver.doubt, None);
+    }
+
+    #[test]
+    fn a_gift_is_income_on_top_of_what_the_unit_earns_itself() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                tax_base: Some(100_000),
+                ..region(vec![
+                    with_silver(unit("2390"), 500),
+                    with_skill(with_men_grain(with_men(unit("2391"), 8), 8), "COMB", 1),
+                ])
+            }]),
+            "unit 2390\nGIVE 2391 200 SILV\nunit 2391\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(forecast(&review, "2391").income, Some(600));
+    }
+
+    /// `ah-awcm`: silver a unit takes from a neighbour is income, and the hover can name where it
+    /// came from.
+    #[test]
+    fn a_taker_counts_what_it_takes() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(unit("2390"), 500),
+                unit("2391"),
+            ])]),
+            "unit 2391\nTAKE FROM 2390 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taker = forecast(&review, "2391");
+        assert_eq!(taker.income, Some(100));
+        assert_eq!(taker.taken, 100);
+        assert_eq!(taker.taken_from, vec!["Unit 2390 (2390)".to_string()]);
+        assert_eq!(taker.doubt, None);
+    }
+
+    /// `ah-awcm`: silver taken from a unit the report does not show here is income too - the
+    /// ledger credits it, and a column that did not would contradict the figures it displays.
+    #[test]
+    fn a_taker_counts_what_it_takes_from_a_source_the_report_does_not_show() {
+        let review = review_turn(
+            &report(vec![region(vec![unit("2391")])]),
+            "unit 2391\nTAKE FROM 999 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let taker = forecast(&review, "2391");
+        assert_eq!(taker.income, Some(100));
+        assert_eq!(taker.taken, 0);
+        assert_eq!(taker.taken_unshown, 100);
+        assert_eq!(taker.taken_unshown_from, vec!["unit 999".to_string()]);
+        assert_eq!(taker.doubt, None);
+    }
+
+    #[test]
+    fn changes_names_an_exact_gift_and_who_took_it() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(unit("2390"), 500),
+                unit("1789"),
+            ])]),
+            "unit 2390\nGIVE 1789 120 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let giver = forecast(&review, "2390");
+        assert_eq!(
+            giver
+                .changes
+                .iter()
+                .map(|change| change.cause)
+                .collect::<Vec<_>>(),
+            [SilverChangeCause::GaveAway]
+        );
+        assert_eq!(giver.changes[0].amount, -120);
+        assert_eq!(giver.changes[0].line, Some(2));
+        assert_eq!(
+            giver.changes[0].other,
+            Some(party_label(&Party::Unit("1789".into())))
+        );
+    }
+
+    #[test]
+    fn changes_names_each_give_all_silver_separately() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(unit("2390"), 500),
+                unit("1789"),
+            ])]),
+            "unit 2390\nGIVE 1789 ALL SILV EXCEPT 300\nGIVE 0 ALL SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let giver = forecast(&review, "2390");
+        assert_eq!(
+            giver
+                .changes
+                .iter()
+                .map(|change| change.cause)
+                .collect::<Vec<_>>(),
+            [SilverChangeCause::GaveAway, SilverChangeCause::Discarded]
+        );
+        assert_eq!(giver.changes[0].amount, -200);
+        assert_eq!(giver.changes[0].line, Some(2));
+        assert_eq!(giver.changes[1].amount, -300);
+        assert_eq!(giver.changes[1].line, Some(3));
+    }
+
+    #[test]
+    fn changes_names_each_giver_with_what_they_gave() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(unit("1789"), 200),
+                with_silver(unit("2390"), 100),
+            ])]),
+            "unit 1789\nGIVE 2390 90 SILV\nunit 2390\nGIVE 0 10 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let unit = forecast(&review, "2390");
+        assert_eq!(
+            unit.changes
+                .iter()
+                .map(|change| change.cause)
+                .collect::<Vec<_>>(),
+            [SilverChangeCause::WasGiven, SilverChangeCause::Discarded]
+        );
+        assert_eq!(unit.changes[0].amount, 90);
+        assert_eq!(unit.changes[0].line, Some(2));
+        assert_eq!(unit.changes[0].other, Some("Unit 1789 (1789)".to_string()));
     }
 
     /// `ah-sgn6`: the class form stays unpriceable, and for its own reason - the ledger's
@@ -17868,6 +18128,287 @@ mod tests {
                 "Unit 2392 (2392)".to_string()
             ]
         );
+    }
+
+    /// `rules/buy`: a unit that cannot afford the whole line buys as many as it can. The ledger
+    /// still charges the full ask, so the shortfall warning keeps firing; the column reports the
+    /// ask as `wanted_for_orders` and spends only what the unit has (`ah-omn7`).
+    #[test]
+    fn a_bounded_buy_spends_only_what_the_unit_can_pay() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 40,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 12,
+                }],
+                ..region(vec![with_silver(unit("2390"), 25)])
+            }],
+            "unit 2390\nBUY 5 grain\n",
+        );
+
+        assert_eq!(forecast.expense, Some(24));
+        assert_eq!(forecast.wanted_for_orders, Some(60));
+        assert_eq!(forecast.at_month_end, Some(1));
+        assert_eq!(forecast.short_for_orders, Some(35));
+        assert_eq!(
+            forecast.short_on,
+            Some(crate::orders::silver::SilverSpender::Buy)
+        );
+    }
+
+    #[test]
+    fn a_buying_unit_pays_the_price_the_market_states() {
+        let buying = |silver: i64| {
+            forecast_with_ruleset(
+                vec![ReportRegion {
+                    for_sale: vec![MarketItem {
+                        amount: 40,
+                        name: "grain".to_string(),
+                        tag: "GRAI".to_string(),
+                        price: 12,
+                    }],
+                    ..region(vec![with_silver(unit("2390"), silver)])
+                }],
+                "unit 2390\nBUY 5 grain\n",
+            )
+        };
+
+        let broke = buying(0);
+        assert_eq!(broke.expense, Some(0));
+        assert_eq!(broke.wanted_for_orders, Some(60));
+        assert_eq!(broke.doubt, None);
+
+        assert_eq!(buying(60).expense, Some(60));
+    }
+
+    #[test]
+    fn buying_all_spends_only_what_arrives_in_time() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wages: Some("$120.0".to_string()),
+                for_sale: vec![MarketItem {
+                    amount: 40,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 12,
+                }],
+                ..region(vec![unit("2390")])
+            }],
+            "unit 2390\nWORK\nBUY ALL grain\n",
+        );
+
+        assert_eq!(forecast.expense, Some(0));
+        assert_eq!(forecast.short_for_orders, Some(0));
+    }
+
+    #[test]
+    fn silver_in_hand_pays_for_a_purchase() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wages: Some("$120.0".to_string()),
+                for_sale: vec![MarketItem {
+                    amount: 40,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 12,
+                }],
+                ..region(vec![with_silver(unit("2390"), 100)])
+            }],
+            "unit 2390\nWORK\nBUY 5 grain\n",
+        );
+
+        assert_eq!(forecast.at_month_end, Some(160));
+        assert_eq!(forecast.short_for_orders, Some(0));
+        assert_eq!(forecast.short_on, None);
+    }
+
+    #[test]
+    fn wages_cannot_pay_for_a_purchase() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wages: Some("$120.0".to_string()),
+                for_sale: vec![MarketItem {
+                    amount: 40,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 12,
+                }],
+                ..region(vec![unit("2390")])
+            }],
+            "unit 2390\nWORK\nBUY 5 grain\n",
+        );
+
+        assert_eq!(forecast.at_month_end, Some(120));
+        assert_eq!(forecast.wanted_for_orders, Some(60));
+        assert_eq!(forecast.short_for_orders, Some(60));
+    }
+
+    /// A `GIVE` of items spends no silver, so it must not be blamed for a shortfall the later
+    /// `BUY` causes (Copilot on PR #591).
+    #[test]
+    fn an_order_that_spends_no_silver_is_never_named() {
+        let review = review_turn(
+            &report(vec![ReportRegion {
+                wages: Some("$120.0".to_string()),
+                for_sale: vec![MarketItem {
+                    amount: 40,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 12,
+                }],
+                ..region(vec![with_item(unit("2390"), 2, "horse", "HORS"), unit("7")])
+            }]),
+            "unit 2390\nWORK\nGIVE 7 2 horse\nBUY 5 grain\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let buyer = forecast(&review, "2390");
+        assert_eq!(buyer.short_for_orders, Some(60));
+        assert_eq!(
+            buyer.short_on,
+            Some(crate::orders::silver::SilverSpender::Buy)
+        );
+    }
+
+    /// The same for a bounded `BUY`: its affordability cap is measured before the study is charged
+    /// (`ah-a5ci`).
+    #[test]
+    fn a_study_does_not_shrink_what_an_exact_buy_can_afford() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 20,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 20,
+                }],
+                ..region(vec![with_silver(unit("2390"), 100)])
+            }],
+            "unit 2390\nSTUDY combat\nBUY 5 grain\n",
+        );
+
+        assert_eq!(forecast.expense, Some(110));
+        assert_eq!(forecast.wanted_for_orders, Some(110));
+        assert_eq!(forecast.at_month_end, Some(-10));
+        assert_eq!(forecast.short_for_orders, Some(10));
+    }
+
+    /// `ah-lauy`, increment 3. The exact form's running total, against a settled share.
+    #[test]
+    fn two_exact_buys_of_the_same_goods_share_one_settled_share() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 5,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 12,
+                }],
+                ..region(vec![with_silver(unit("2390"), 10_000)])
+            }],
+            "unit 2390\nBUY 5 grain\nBUY 5 grain\n",
+        );
+
+        assert_eq!(forecast.expense, Some(60));
+    }
+
+    /// `ah-vw8e`, increment 2. A block naming the same goods twice can only move what the first
+    /// line left of the unit's stock, so the second earns nothing rather than pricing itself
+    /// against the whole holding a second time.
+    #[test]
+    fn a_second_sell_all_of_the_same_goods_earns_nothing() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 100,
+                    name: "furs".to_string(),
+                    tag: "FUR".to_string(),
+                    price: 42,
+                }],
+                ..region(vec![with_item(unit("2390"), 10, "fur", "FUR")])
+            }],
+            "unit 2390\nSELL ALL FUR\nSELL ALL FUR\n",
+        );
+
+        assert_eq!(forecast.income, Some(420));
+    }
+
+    #[test]
+    fn selling_earns_in_time() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 10,
+                }],
+                ..region(vec![with_item(unit("2390"), 100, "grain", "GRAI")])
+            }],
+            "unit 2390\nSELL 3 grain\n",
+        );
+
+        assert_eq!(forecast.income, Some(30));
+        assert_eq!(forecast.late_income, Some(0));
+    }
+
+    #[test]
+    fn a_studying_unit_pays_the_rulesets_cost_per_man() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![with_men_grain(
+                with_men(with_silver(unit("2390"), 600), 6),
+                6,
+            )])],
+            "unit 2390\nSTUDY combat\n",
+        );
+
+        assert_eq!(forecast.expense, Some(60));
+        assert_eq!(forecast.income, Some(0));
+        assert_eq!(forecast.at_month_end, Some(540));
+    }
+
+    #[test]
+    fn changes_names_a_study_fee() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![with_men_grain(
+                with_men(with_silver(unit("2390"), 600), 6),
+                6,
+            )])],
+            "unit 2390\nSTUDY combat\n",
+        );
+
+        assert_eq!(
+            forecast
+                .changes
+                .iter()
+                .map(|change| change.cause)
+                .collect::<Vec<_>>(),
+            [SilverChangeCause::Studied]
+        );
+        assert_eq!(forecast.changes[0].amount, -60);
+        assert_eq!(forecast.changes[0].line, Some(2));
+    }
+
+    /// The refusal is about a broken line and nothing else: a unit the report read whole is priced
+    /// exactly as it always was.
+    #[test]
+    fn a_wholly_read_unit_is_priced_exactly_as_before() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wages: Some("$12.0".to_string()),
+                ..region(vec![with_men_grain(
+                    with_men(with_silver(unit("2390"), 600), 8),
+                    8,
+                )])
+            }],
+            "unit 2390\n",
+        );
+
+        assert_eq!(forecast.doubt, None);
+        assert_eq!(forecast.at_month_end, Some(696));
     }
 
     #[test]
