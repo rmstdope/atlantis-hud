@@ -2246,87 +2246,6 @@ fn forecast_hex(
             }
         }
     }
-
-    // Last in the body, and it must be: the lending pass above pushed the `Lent` rows and the
-    // three settlements after it still mutate `upkeep`, so anywhere earlier compares a half-built
-    // `UnitSilver` (`ah-6m7b.5.3`).
-    #[cfg(debug_assertions)]
-    for forecast in into[start..].iter() {
-        let nothing: Vec<SilverMove> = Vec::new();
-        let moves = ledger
-            .silver_moves
-            .get(&forecast.unit_id)
-            .unwrap_or(&nothing);
-        silver_records_agree(forecast, moves);
-    }
-}
-
-/// The two silver records this hex just produced, held to each other (`ah-6m7b.5.3`).
-///
-/// Debug builds only, and `#[cfg(debug_assertions)]` rather than `debug_assert_eq!` alone: the
-/// projections each allocate a `Vec` and sort it, and `forecast_hex` runs on every keystroke, so
-/// the whole pass has to be absent from a release build rather than merely assert-free. What it buys is that every fixture in this crate's own
-/// suite and every one of the 26 real turns in `crates/core/tests/` compares the two lists.
-///
-/// The four transfer causes are compared here since `ah-1x2h.3`: both records read one settlement,
-/// the column through `Receipts` and the ledger through the recording pass in
-/// `ledger_for_with_production`, so a gift or a take is one event with one row on each side.
-///
-/// The dropped causes and the skipped units below are the whole of what this check does *not*
-/// cover, and each names why. Widening that set is how this check dies quietly, so a new entry
-/// needs a bead id beside it.
-#[cfg(debug_assertions)]
-fn silver_records_agree(forecast: &UnitSilver, moves: &[SilverMove]) {
-    // A doubted unit's `changes` is emptied on the way out (`ah-6m7b.4`), and its doubted market
-    // arm records `-buy.wanted` rather than what was spent. There is nothing to compare.
-    if forecast.doubt.is_some() {
-        return;
-    }
-    let column = compared_silver_rows(
-        forecast
-            .changes
-            .iter()
-            .map(|change| (change.cause, change.line, change.amount)),
-    );
-    let ledger = compared_silver_rows(
-        moves
-            .iter()
-            .map(|moved| (moved.cause, moved.line, moved.amount)),
-    );
-    debug_assert_eq!(
-        column, ledger,
-        "unit {}: the SILVER column and the ledger disagree (left is the column, right the ledger)",
-        forecast.unit_id
-    );
-}
-
-/// One side's rows, reduced to what the other side can be held to. `None` in the third slot is an
-/// amount this check deliberately does not compare.
-///
-/// Sorted, because the ledger's list is in settlement order and the column's in walk order;
-/// ordering within each list is already pinned separately by `mod silver_record`.
-#[cfg(debug_assertions)]
-fn compared_silver_rows(
-    rows: impl Iterator<Item = (SilverChangeCause, Option<i64>, i64)>,
-) -> Vec<(SilverChangeCause, Option<i64>, Option<i64>)> {
-    let mut compared: Vec<_> = rows
-        .filter(|(cause, _, _)| {
-            !matches!(
-                cause,
-                // Booked by the hex pass onto the column alone, after the unit's own walk: the draw
-                // is settled between units, and the ledger has no borrowing to record
-                // (`ah-6m7b.4`, `ah-3c2t.2`).
-                SilverChangeCause::Lent | SilverChangeCause::WasLent
-            )
-            // `Shipped` is compared like any other cause: the ledger books a paid shipment, and
-            // the column books it from the ledger's own moves (`ah-7ale.4`).
-        })
-        // No cause is compared without its amount any more (`ah-1x2h.2`), and no transfer cause is
-        // dropped (`ah-1x2h.3`). The `Option` slot is kept as the shape a future skip would use.
-        .map(|(cause, line, amount)| (cause, line, Some(amount)))
-        .collect();
-    compared.sort();
-    compared
 }
 
 /// Whether `GIVE ... ALL <class>` carries the holder's silver out with it.
@@ -4498,6 +4417,7 @@ impl PhaseHoldings {
     /// [`PhaseHoldings::of`], with the production picture's manufacturing inputs supplied - the
     /// clamped pre-manufacturing list and the settled shared materials, which only `forecast_hex`
     /// holds (`ah-l80z`, `ah-728m.2.2`).
+    #[allow(clippy::too_many_arguments)]
     fn of_with<'a>(
         &'a self,
         index: usize,
@@ -4695,11 +4615,11 @@ struct Ledger<'a> {
     /// Every movement of every unit's silver this month, in the order the walk settled them,
     /// keyed by unit id.
     ///
-    /// Read by `forecast_hex`, for the `Shipped` rows and for `silver_records_agree`. Carries every
-    /// cause the SILVER column's list does except `Lent` and `WasLent`, which the hex pass books
-    /// between units. The wage terms are recorded by `charge_upkeep` without being applied, because
-    /// the balance already carries them netted against the fee. What keeps the record exhaustive is
-    /// that `charge` and `credit` `debug_assert` they are never handed silver.
+    /// The SILVER column's rows and totals: `forecast_hex` hands each unit's list to `forecast_unit`
+    /// through `PhaseFacts::silver_moves` (`ah-xryu`). It carries every cause the column shows except
+    /// `Lent` and `WasLent`, which the hex pass books between units; the wage terms are recorded by
+    /// `charge_upkeep` without being applied, because the balance already carries them netted against
+    /// the fee. What keeps it exhaustive is the `debug_assert` in `charge` and `credit`.
     pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
     /// What each unit this hex pays for shipments, keyed by unit id. Written by
     /// `settle_report_wide`'s shipping steps.
@@ -5086,9 +5006,8 @@ fn ledger_for_with_production<'a>(
             //
             // Ordering: this pass runs before the unit's own `intents` loop, so within the Give
             // phase a unit's rows read settlement-first - every receipt, then its own `GaveAway`
-            // and `Discarded` - rather than interleaved with the walk. Nothing depends on that:
-            // `compared_silver_rows` sorts before comparing, and no surface reads
-            // `Ledger::silver_moves` at all.
+            // and `Discarded` - rather than interleaved with the walk. The SILVER column lists
+            // this record in this order, so a unit's receipts read above its own gifts in the popup.
             if phase == StatePhase::Give {
                 for moved in &ordered.transfer_receipts.silver_moves {
                     record_silver(
@@ -8344,7 +8263,7 @@ fn study(
     let who = &actor.unit.unit_id;
 
     // The identical call the SILVER column's own STUDY arm makes, on the identical two views, so
-    // the ledger and the column cannot charge one unit two ways (`silver_records_agree`).
+    // the ledger and the column cannot charge one unit two ways (`ah-1x2h.2`).
     //
     // An estimated headcount is left to the doubt below rather than answered here: the column
     // short-circuits such a unit with `SilverDoubt::EstimatedMen` before any arm runs
@@ -26569,180 +26488,6 @@ BUILD
     }
 
     /// The ledger's own record of the silver it moves (`ah-6m7b.5.2`).
-    /// Gated with the check itself: `silver_records_agree` is `#[cfg(debug_assertions)]`, and
-    /// `a_doubted_unit_is_not_compared` asserts a `debug_assert_eq!` actually fires, which it
-    /// cannot in a release profile. Without this, `cargo test --release` does not compile
-    /// (`ah-6m7b.5.3`).
-    #[cfg(debug_assertions)]
-    mod silver_records_agree {
-        use super::*;
-
-        /// A cause only one of the two records ever books leaves the comparison entirely
-        /// (`ah-6m7b.5.3`).
-        #[test]
-        fn a_cause_only_one_side_records_is_dropped() {
-            assert_eq!(
-                compared_silver_rows(
-                    [
-                        (SilverChangeCause::Lent, None, -50),
-                        (SilverChangeCause::WasLent, None, 50),
-                    ]
-                    .into_iter()
-                ),
-                vec![],
-                "the hex pass books these onto the column alone, so the ledger cannot be held to them"
-            );
-        }
-
-        /// `ah-xryu.1`: `charge_upkeep` records the wage terms, so both are compared like any
-        /// other cause.
-        #[test]
-        fn a_wage_is_compared_on_both_sides() {
-            for cause in [SilverChangeCause::Worked, SilverChangeCause::Entertained] {
-                assert_eq!(
-                    compared_silver_rows([(cause, None, 190)].into_iter()),
-                    vec![(cause, None, Some(190))],
-                    "{cause:?} is kept, with its amount"
-                );
-            }
-        }
-
-        /// `ah-1x2h.3`: the four transfer causes are compared like any other, because both sides
-        /// now read one settlement - the ledger records them from `Ordered::transfer_receipts`,
-        /// which is the same walk the SILVER column's receipts come from.
-        #[test]
-        fn a_settled_transfer_is_compared_on_both_sides() {
-            for cause in [
-                SilverChangeCause::WasGiven,
-                SilverChangeCause::Took,
-                SilverChangeCause::TookUnshown,
-                SilverChangeCause::WasTaken,
-            ] {
-                assert_eq!(
-                    compared_silver_rows([(cause, Some(2), 100)].into_iter()),
-                    vec![(cause, Some(2), Some(100))],
-                    "{cause:?} is kept, with its line and its amount"
-                );
-            }
-        }
-
-        /// No cause that reaches the comparison is nulled any more. `ah-1x2h.1` made the ledger
-        /// record the settled tax share, and `ah-1x2h.2` made both walks count the same heads when
-        /// STUDY runs, so `Studied` is compared on its amount like everything else.
-        #[test]
-        fn every_compared_cause_is_compared_on_its_amount() {
-            assert_ne!(
-                compared_silver_rows([(SilverChangeCause::Studied, Some(4), -150)].into_iter()),
-                compared_silver_rows([(SilverChangeCause::Studied, Some(4), -50)].into_iter()),
-                "both walks now count the same heads, so the fee is compared like any other amount"
-            );
-            assert_ne!(
-                compared_silver_rows([(SilverChangeCause::Bought, Some(3), -280)].into_iter()),
-                compared_silver_rows([(SilverChangeCause::Bought, Some(3), -60)].into_iter()),
-                "every other cause is still compared on its amount"
-            );
-            assert_ne!(
-                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 416)].into_iter()),
-                compared_silver_rows([(SilverChangeCause::Taxed, Some(2), 500)].into_iter()),
-                "the ledger now records the settled share, so the two walks agree on the amount"
-            );
-        }
-
-        /// The two lists are built in different orders by construction, so the projection sorts.
-        #[test]
-        fn the_projection_is_sorted() {
-            assert_eq!(
-                compared_silver_rows(
-                    [
-                        (SilverChangeCause::Sold, Some(2), 300),
-                        (SilverChangeCause::Bought, Some(3), -280),
-                    ]
-                    .into_iter()
-                ),
-                compared_silver_rows(
-                    [
-                        (SilverChangeCause::Bought, Some(3), -280),
-                        (SilverChangeCause::Sold, Some(2), 300),
-                    ]
-                    .into_iter()
-                ),
-                "settlement order and walk order are not the same order"
-            );
-        }
-
-        /// A real forecast to mutate, so these tests need no `Default` on a public type: one unit
-        /// that sells and then buys, whose change list is therefore non-empty.
-        fn a_forecast_with_changes() -> UnitSilver {
-            let mut hex = region(vec![with_item(
-                with_silver(unit("5"), 0),
-                10,
-                "grain",
-                "GRAI",
-            )]);
-            hex.wanted.push(MarketItem {
-                amount: 20,
-                name: "grain".to_string(),
-                tag: "GRAI".to_string(),
-                price: 30,
-            });
-            hex.for_sale.push(MarketItem {
-                amount: 10,
-                name: "horse".to_string(),
-                tag: "HORS".to_string(),
-                price: 70,
-            });
-            let forecast =
-                forecast_with_ruleset(vec![hex], "unit 5\nSELL 10 grain\nBUY 4 horses\n");
-            assert!(
-                !forecast.changes.is_empty(),
-                "the mutation needs something to compare"
-            );
-            forecast
-        }
-
-        /// A doubted unit is skipped whole: its `changes` is emptied on the way out and its
-        /// doubted market arm records what was *wanted*, not what was spent, so a disagreement
-        /// there is not evidence of anything (`ah-6m7b.5.3`).
-        #[test]
-        fn a_doubted_unit_is_not_compared() {
-            let mut forecast = a_forecast_with_changes();
-
-            // Nothing on the ledger's side at all, which for an undoubted unit fires.
-            assert!(
-                std::panic::catch_unwind(|| silver_records_agree(&forecast, &[])).is_err(),
-                "the mismatch must fire without the skip, or this test proves nothing"
-            );
-
-            forecast.doubt = Some(SilverDoubt::GiveConsequencesUncertain);
-            silver_records_agree(&forecast, &[]);
-        }
-
-        /// A unit this month's `FORM` creates is an ordinary unit to this check: it stands in
-        /// `hex.units` like any other (`semantics.rs` `Hex::read`), and now that its study fee
-        /// counts the men it was given rather than the zero `effects::formed_unit` mints, there is
-        /// nothing left to skip it for (`ah-1x2h.2`).
-        #[test]
-        fn a_formed_unit_is_compared() {
-            let mut forecast = a_forecast_with_changes();
-
-            // The same negative control the doubted case carries: without it this test would keep
-            // passing if the helper ever stopped producing a mismatch to skip over.
-            assert!(
-                std::panic::catch_unwind(|| silver_records_agree(&forecast, &[])).is_err(),
-                "the mismatch must fire without the skip, or this test proves nothing"
-            );
-
-            forecast.formed = Some(FormedSubject {
-                alias: "NEW 1".to_string(),
-                formed_by: "5".to_string(),
-            });
-            assert!(
-                std::panic::catch_unwind(|| silver_records_agree(&forecast, &[])).is_err(),
-                "a formed unit is an ordinary unit to this check (`ah-1x2h.2`)"
-            );
-        }
-    }
-
     mod silver_record {
         use super::*;
 
@@ -26933,9 +26678,8 @@ BUILD
         /// helpers above cannot reach: a unit that **recruits** this month and then studies.
         /// `UnitFacts::men` would carry the gift and miss the recruit, so only a recruiting unit
         /// tells `men_after_orders` apart from it. It goes through `forecast_with_ruleset`, hence
-        /// `review_turn`, because `ledger_for` settles no recruits - and `review_turn` runs
-        /// `silver_records_agree` in debug, so the ledger's own fee is held to the column's here
-        /// (`ah-1x2h.2`).
+        /// `review_turn`, because `ledger_for` settles no recruits, and the column's `Studied` row is
+        /// the ledger's own fee (`ah-xryu`).
         #[test]
         fn a_recruit_before_study_is_charged_for() {
             let hex_region = ReportRegion {
@@ -47152,8 +46896,8 @@ BUILD
                 "{:?}",
                 silver.changes
             );
-            // `silver_records_agree` is a debug assertion inside `review_turn`: reaching this
-            // line at all is the ledger and the column having charged this unit one way.
+            // The column's row is the ledger's record, so no `Studied` row means the ledger charged
+            // nothing either.
         }
 
         #[test]
