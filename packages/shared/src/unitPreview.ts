@@ -24,7 +24,7 @@ import {
   castCapSentence,
   productionStatusSentence,
   productionMenSentence
-} from "./unitTooltip";
+} from "./silverVocabulary";
 import { rowKeyOf } from "./unitTable";
 import { withoutSilver } from "./silverTag";
 import { previewPairs, type PreviewPair } from "./unitPreviewRows";

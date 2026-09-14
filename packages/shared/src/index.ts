@@ -38,6 +38,7 @@ export * from "./unitComposition";
 export * from "./unitMovement";
 export * from "./unitTable";
 export * from "./unitTooltip";
+export * from "./silverVocabulary";
 
 export * from "./workspace/appUpdate";
 export * from "./workspace/openExternal";
