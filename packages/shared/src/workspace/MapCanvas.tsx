@@ -380,7 +380,7 @@ type MapCanvasProps = {
   showTextures: boolean;
   /** Whether each biome texture is rotated by its stable per-hex angle. */
   rotateTextures?: boolean;
-  /** Whether ocean and lake textures scroll continuously along their texture axis. */
+  /** Whether water textures scroll continuously along their texture axis. */
   animateWaterTextures?: boolean;
   /** The world's water terrains, from the ruleset. Defaults to DEFAULT_WATER. */
   water?: WaterTerrains;

@@ -195,7 +195,7 @@ describe("terrain, painted rather than filled", () => {
     });
 
     expect(svg).toContain("url(#mw-grad-ocean)");
-    expect(svg).toContain("data-decoration");
+    expect(svg).toContain(`data-decoration="waves"`);
   });
 
   it("decorates the ground with what grows or stands on it", () => {
