@@ -634,6 +634,8 @@ pub fn preview_orders_state(
         known_passages: Vec::new(),
         // The preview builds its own from the trace it draws (`ah-b6fz`).
         month_end: Default::default(),
+        // The preview draws the wall itself; this is the Problems check's input.
+        walled_moves: Default::default(),
     };
 
     let response = atlantis_hud_core::cache::with_global(|cache| {
@@ -755,6 +757,7 @@ pub fn validate_orders_state(
             })
             .unwrap_or_default(),
         month_end: Default::default(),
+        walled_moves: Default::default(),
     };
 
     // Both the ruleset and the report come from the cache. This runs every time the player stops
@@ -805,6 +808,27 @@ pub fn validate_orders_state(
                     &raw_orders,
                     map_json.as_deref().unwrap_or(""),
                     options.clone(),
+                )
+                .unwrap_or_default()
+            }
+            _ => Default::default(),
+        };
+        // Every own unit whose MOVE crosses a wall a report proves, including one only an old
+        // sighting shows. An error is nothing known - bad config, not bad orders - and no wall is
+        // warned about.
+        options.walled_moves = match (
+            ruleset_json.as_deref(),
+            raw_report.as_deref(),
+            remembered_json.as_deref(),
+        ) {
+            (Some(rules), Some(raw), Some(remembered)) => {
+                atlantis_hud_core::orders::effects::walled_moves(
+                    cache,
+                    rules,
+                    raw,
+                    remembered,
+                    &raw_orders,
+                    options.geometry,
                 )
                 .unwrap_or_default()
             }
