@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-em79 — SELL ALL FUR EXCEPT 10</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h2 { margin:44px 0 6px; font-size:19px; border-bottom:1px solid var(--edge); padding-bottom:6px; }
+  h3.sec { margin:26px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:10px; max-width:100ch; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:22px 0 8px; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:10px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .editor { background:var(--panel); border:1px solid var(--edge); border-radius:5px; font-family:'SF Mono',Menlo,monospace;
+    font-size:12.5px; max-width:78ch; margin:8px 0; overflow-x:auto; }
+  .editor .ln { display:flex; padding:2px 0; white-space:pre; }
+  .editor .g { width:34px; text-align:center; color:var(--ink-dim); flex:none; }
+  .editor .g.err { color:var(--danger); font-weight:bold; }
+  .editor .t { color:var(--ink-soft); padding-right:12px; }
+  .sq { text-decoration: underline wavy var(--danger); text-underline-offset:3px; }
+  .hover { background:var(--raised); border:1px solid var(--edge); border-left:3px solid var(--danger); border-radius:5px; padding:8px 12px;
+    font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink); max-width:78ch; margin:4px 0 8px 34px; }
+  .hover .lbl { color:var(--danger); font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; display:block; margin-bottom:4px; }
+  .problems { background:var(--panel); border:1px solid var(--edge); border-radius:5px; font-family:system-ui,sans-serif;
+    font-size:12.5px; max-width:78ch; margin:8px 0; }
+  .problems .hx { color:var(--ink-dim); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; padding:7px 12px; border-bottom:1px solid var(--edge); }
+  .problems .it { padding:7px 12px; display:flex; gap:10px; }
+  .mark { color:var(--danger); font-weight:bold; }
+  .row { background:var(--panel); border:1px solid var(--edge); border-radius:6px; margin:8px 0; overflow-x:auto; max-width:900px; }
+  table.units { width:100%; border-collapse:collapse; font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; min-width:560px; }
+  table.units th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:8px 12px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  .unread { color:var(--danger); font-size:11px; border:1px solid var(--danger); border-radius:3px; padding:0 5px; margin-left:6px; }
+  .q { color:var(--ink-dim); font-style:italic; }
+  .ledger { color:var(--ink-dim); font-size:11.5px; margin-top:3px; }
+  table.cases { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); max-width:1100px; margin-top:8px; font-family:system-ui,sans-serif; }
+  table.cases th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.cases td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); vertical-align:top; }
+  table.cases td.o { font-family:'SF Mono',Menlo,monospace; color:#eebe63; white-space:nowrap; }
+  .wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<header>
+<h1>Selling “all except some”, which the game doesn't allow</h1>
+<p>A unit holds <b>30 furs</b>. The hex's market wants <b>40 furs at $24</b>. The player writes
+<code>SELL ALL FUR EXCEPT 10</code>, meaning to sell 20 and keep 10.</p>
+<p>The rules give SELL two forms only: <code>SELL [quantity] [item]</code> and <code>SELL ALL [item]</code>
+(rules/sell), and BUY the same two (rules/buy). GIVE is the order with an EXCEPT form. The game stops reading
+a SELL order once <code>ALL FUR</code> is complete and ignores the rest, so <b>this order sells all 30 furs,
+for $720</b>. Today the app shows $720 and says nothing, so the player never learns their 10 furs are
+not being kept.</p>
+<p><b>Already settled by the team:</b> this order is an <b>error</b>. The app does not honour the reserve.</p>
+<p class="note" style="border-left-color:#7fb069"><b>Chosen, over two rounds:</b> <b>1A</b>, where SILVER counts what the game does (all 30 furs, +720) and the error stands beside it. <b>W1</b>, which underlines only the ignored words and says what happens. <b>BUY gets the same error.</b> <b>V1</b> endings, which say what the unit will do (section 4).
+<br><b>Rejected:</b> 1B, counting nothing and marking the order unread, because it is wrong for what the game does and spreads doubt to other sellers. W2, "write how many to sell, e.g. SELL 20 FUR", with the whole order underlined. Keeping the check to SELL only. V2, "reads this as SELL ALL FUR".</p>
+</header>
+<main>
+
+<h2>1 · What the silver forecast counts</h2>
+<p class="note">The error appears either way. This question is what the unit's SILVER figure says while the error stands.</p>
+
+<span class="opt">A · Count what the game will do</span>
+<div class="row"><table class="units">
+<tr><th>Unit</th><th>Orders</th><th>Silver</th></tr>
+<tr><td>Fur Traders (2390)</td><td><span class="mark">●</span> 1 error</td>
+<td>112 → <b>832</b><div class="ledger">sold 30 FUR · +720</div></td></tr>
+</table></div>
+<ul class="notes">
+<li>The figure is what will really happen if the order goes in as written.</li>
+<li>Other units selling fur in the same hex keep firm market shares.</li>
+<li class="con">A figure beside an error can look as if the app accepted the order.</li>
+</ul>
+
+<span class="opt">B · Count nothing, as for an order the app cannot read</span>
+<div class="row"><table class="units">
+<tr><th>Unit</th><th>Orders</th><th>Silver</th></tr>
+<tr><td>Fur Traders (2390) <span class="unread">unread order</span></td><td><span class="mark">●</span> 1 error</td>
+<td>112 → <span class="q">112?</span><div class="ledger">no sale counted</div></td></tr>
+<tr><td>Hunters (2391), also selling FUR here</td><td>—</td>
+<td>40 → <span class="q">≈ 280?</span><div class="ledger">market share uncertain</div></td></tr>
+</table></div>
+<ul class="notes">
+<li>Matches how the app already treats other orders it refuses: they change nothing.</li>
+<li class="con">The figure is wrong for what the game will actually do, which is sell all 30.</li>
+<li class="con">It spreads doubt to every other seller of fur in the hex.</li>
+</ul>
+
+<h2>2 · The words, and what is underlined</h2>
+<p class="note">Each wording is shown where it appears: underlined in the orders editor with its hover, and in the Problems list.</p>
+
+<span class="opt">W1 · Say what the game will do · underline “EXCEPT 10”</span>
+<div class="editor">
+<div class="ln"><span class="g">1</span><span class="t">unit 2390</span></div>
+<div class="ln"><span class="g err">●</span><span class="t">SELL ALL FUR <span class="sq">EXCEPT 10</span></span></div>
+</div>
+<div class="hover"><span class="lbl">Error</span>SELL has no EXCEPT — the game ignores “EXCEPT 10” and sells all your FUR</div>
+<div class="problems"><div class="hx">Plain (12,34)</div>
+<div class="it"><span class="mark">●</span><span>Fur Traders (2390)</span><span>SELL has no EXCEPT — the game ignores “EXCEPT 10” and sells all your FUR</span></div></div>
+
+<span class="opt">W2 · Say how to write it instead · underline the whole order</span>
+<div class="editor">
+<div class="ln"><span class="g">1</span><span class="t">unit 2390</span></div>
+<div class="ln"><span class="g err">●</span><span class="t"><span class="sq">SELL ALL FUR EXCEPT 10</span></span></div>
+</div>
+<div class="hover"><span class="lbl">Error</span>SELL cannot keep some back — write how many to sell, e.g. SELL 20 FUR</div>
+<div class="problems"><div class="hx">Plain (12,34)</div>
+<div class="it"><span class="mark">●</span><span>Fur Traders (2390)</span><span>SELL cannot keep some back — write how many to sell, e.g. SELL 20 FUR</span></div></div>
+<ul class="notes">
+<li>W1 is true whatever the unit holds, and names the danger: everything goes.</li>
+<li>W2 hands the player the fix. When the app does not know how many the unit holds, the example becomes “e.g. SELL 5 FUR” with no arithmetic.</li>
+<li class="con">W2's “20” is worked out from the report, and a GIVE earlier in the month can make it wrong.</li>
+</ul>
+
+<h2>3 · Other ways to write it</h2>
+<p class="note">Every one of these gets the same error, since the game ignores anything after the item on all of them.</p>
+<div class="wrap"><table class="cases">
+<tr><th>Order</th><th>What the game does</th><th>Error?</th></tr>
+<tr><td class="o">SELL ALL FUR EXCEPT 10</td><td>sells all 30</td><td>yes</td></tr>
+<tr><td class="o">SELL 25 FUR EXCEPT 10</td><td>sells 25</td><td>yes (W1 would then read “…and sells 25 FUR”)</td></tr>
+<tr><td class="o">SELL ALL FUR EXCEPT x</td><td>sells all 30</td><td>yes, the same words</td></tr>
+<tr><td class="o">sell all fur except 10</td><td>sells all 30</td><td>yes, ignoring upper/lower case</td></tr>
+<tr><td class="o">BUY ALL FUR EXCEPT 10</td><td>buys as if EXCEPT were not there</td><td>question 3</td></tr>
+</table></div>
+
+<h2>4 · Round 2 — the words for every case</h2>
+<p class="note"><b>Chosen in round 1:</b> the SILVER figure counts what the game does (A); the wording says what happens, with only the ignored words underlined (W1); BUY gets the same error. One question remains: how the end of the sentence changes from case to case. The underline is on the ignored words in every row.</p>
+
+<span class="opt">V1 · Say what the unit will do</span>
+<div class="wrap"><table class="cases">
+<tr><th>Order</th><th>Error, exactly</th></tr>
+<tr><td class="o">SELL ALL FUR EXCEPT 10</td><td>SELL has no EXCEPT — the game ignores “EXCEPT 10” and sells all your FUR</td></tr>
+<tr><td class="o">SELL 25 FUR EXCEPT 10</td><td>SELL has no EXCEPT — the game ignores “EXCEPT 10” and sells 25 FUR</td></tr>
+<tr><td class="o">SELL ALL FUR EXCEPT</td><td>SELL has no EXCEPT — the game ignores “EXCEPT” and sells all your FUR</td></tr>
+<tr><td class="o">BUY ALL FUR EXCEPT 10</td><td>BUY has no EXCEPT — the game ignores “EXCEPT 10” and buys as much FUR as you can afford</td></tr>
+<tr><td class="o">BUY 25 FUR EXCEPT 10</td><td>BUY has no EXCEPT — the game ignores “EXCEPT 10” and buys 25 FUR</td></tr>
+</table></div>
+<ul class="notes"><li>Reads naturally, and the ALL cases spell out the danger.</li>
+<li class="con">Four sentence endings to keep right.</li></ul>
+
+<span class="opt">V2 · Show the order the game reads</span>
+<div class="wrap"><table class="cases">
+<tr><th>Order</th><th>Error, exactly</th></tr>
+<tr><td class="o">SELL ALL FUR EXCEPT 10</td><td>SELL has no EXCEPT — the game ignores “EXCEPT 10” and reads this as SELL ALL FUR</td></tr>
+<tr><td class="o">SELL 25 FUR EXCEPT 10</td><td>SELL has no EXCEPT — the game ignores “EXCEPT 10” and reads this as SELL 25 FUR</td></tr>
+<tr><td class="o">SELL ALL FUR EXCEPT</td><td>SELL has no EXCEPT — the game ignores “EXCEPT” and reads this as SELL ALL FUR</td></tr>
+<tr><td class="o">BUY ALL FUR EXCEPT 10</td><td>BUY has no EXCEPT — the game ignores “EXCEPT 10” and reads this as BUY ALL FUR</td></tr>
+<tr><td class="o">BUY 25 FUR EXCEPT 10</td><td>BUY has no EXCEPT — the game ignores “EXCEPT 10” and reads this as BUY 25 FUR</td></tr>
+</table></div>
+<ul class="notes"><li>One pattern for every case, in the order language the player already writes.</li>
+<li class="con">The player has to work out for themselves that SELL ALL means everything goes.</li></ul>
+
+</main>
+</body>
+</html>
