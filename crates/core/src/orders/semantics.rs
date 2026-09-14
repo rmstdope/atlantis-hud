@@ -599,11 +599,7 @@ pub fn review_turn(
     // Read from the report and the catalogue alone. Built whenever there is a catalogue, not only
     // when the reach check is enabled: the shipping price reads them too, and the agreed record
     // says the switch takes sentences away and leaves every figure honest (`ah-7ale.3`).
-    let shipping = ruleset.map(|ruleset| {
-        let quartermasters = super::transport::Quartermasters::read(report, ruleset);
-        let targets = super::transport::target_facts(report, &quartermasters);
-        (quartermasters, targets)
-    });
+    let shipping = shipping_facts(report, ruleset);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
@@ -722,36 +718,7 @@ pub fn review_turn(
     let settlement = settle_unclaimed(&claims, available);
     apply_relief(&mut hexes, &settlement);
 
-    // What quartermasters are sent in the first TRANSPORT phase, report-wide, so the second phase
-    // prices goods a quartermaster forwards (`rules/sequenceofevents`, `ah-7ale.3`).
-    let nothing_received = BTreeMap::new();
-    let mut received_early: BTreeMap<(String, String), i64> = BTreeMap::new();
-    for (hex, ledger) in &mut hexes {
-        let delivered = shipping_bills(
-            hex,
-            ledger,
-            shipping.as_ref(),
-            &options,
-            ruleset,
-            false,
-            &nothing_received,
-        );
-        for (key, quantity) in delivered {
-            *received_early.entry(key).or_default() += quantity;
-        }
-    }
-
-    for (hex, ledger) in &mut hexes {
-        shipping_bills(
-            hex,
-            ledger,
-            shipping.as_ref(),
-            &options,
-            ruleset,
-            true,
-            &received_early,
-        );
-    }
+    settle_shipping(&mut hexes, shipping.as_ref(), &options, ruleset);
 
     for priced in &hexes {
         let (hex, ledger) = priced;
@@ -2110,7 +2077,21 @@ fn forecast_hex(
                     .sum()
             })
             .unwrap_or_default();
-        if bill == 0 && shipped.is_empty() {
+        // A refused shipment spends nothing, but its ask is still what made the month short
+        // (`ah-7ale.4`).
+        let refused: i64 = ledger
+            .refused_shipments
+            .iter()
+            .filter(|refused| refused.unit_id == forecast.unit_id)
+            .map(|refused| refused.cost)
+            .sum();
+        if refused > 0 {
+            forecast.wanted_for_orders = forecast
+                .wanted_for_orders
+                .map(|wanted| wanted.saturating_add(refused));
+            forecast.short_for_orders = super::silver::short_for_orders_of(forecast);
+        }
+        if bill == 0 && shipped.is_empty() && refused == 0 {
             continue;
         }
         forecast.shipping = shipped;
@@ -2209,10 +2190,9 @@ fn compared_silver_rows(
                     // Booked by the hex pass onto the column alone, exactly as `Lent` is - the
                     // ledger has no borrowing to record, because no silver moves (`ah-3c2t.2`).
                     | SilverChangeCause::WasLent
-                    // Booked by the hex pass onto the column alone: the ledger models no
-                    // transport at all, so it has no shipment to charge (`ah-7ale.3`).
-                    | SilverChangeCause::Shipped
             )
+            // `Shipped` is compared like any other cause: the ledger books a paid shipment, and
+            // the column books it from the ledger's own moves (`ah-7ale.4`).
         })
         // No cause is compared without its amount any more (`ah-1x2h.2`), and no transfer cause is
         // dropped (`ah-1x2h.3`). The `Option` slot is kept as the shape a future skip would use.
@@ -5315,6 +5295,7 @@ pub(crate) fn item_effects(
     report: &ParsedReport,
     orders_document: &str,
     ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
 ) -> BTreeMap<UnitKey, UnitItemEffects> {
     let ordered = OrderedUnits::read_with_ruleset(orders_document, ruleset);
     let foreign_unit_ids = foreign_unit_ids(report);
@@ -5358,14 +5339,34 @@ pub(crate) fn item_effects(
     // which reads the report-wide answer (`ah-k43x`).
     let production = production_shares_for(&hexes, ruleset);
 
-    for hex in &hexes {
-        let ledger = ledger_for_with_production(
-            hex,
-            ruleset,
-            &production,
-            &foreign_unit_ids,
-            &claim_allowances,
-        );
+    // Every ledger before any is consumed, so shipping settles across every hex exactly as
+    // `review_turn` settles it - through the same driver (`ah-7ale.4`). No upkeep or relief pass is
+    // needed here: the purse is read at `StatePhase::Transport`, which none of them writes.
+    let shipping = shipping_facts(report, ruleset);
+    let mut priced: Vec<(Hex<'_>, Ledger<'_>)> = hexes
+        .into_iter()
+        .map(|hex| {
+            let ledger = ledger_for_with_production(
+                &hex,
+                ruleset,
+                &production,
+                &foreign_unit_ids,
+                &claim_allowances,
+            );
+            (hex, ledger)
+        })
+        .collect();
+    settle_shipping(&mut priced, shipping.as_ref(), options, ruleset);
+
+    for (hex, ledger) in priced {
+        let hex = &hex;
+        for refused in &ledger.refused_shipments {
+            result
+                .entry(unit_key(&hex.region.region_id, &refused.unit_id))
+                .or_default()
+                .refused_shipments
+                .push(refused.line);
+        }
 
         // Read before any of the ledger's fields are consumed below: the preview's exact
         // recruits are the same settled `Ledger::bought` reading Problems uses, so the two
@@ -5464,6 +5465,9 @@ pub(crate) struct UnitItemEffects {
     pub recruited: Vec<ItemAmount>,
     /// Where this unit's `STUDY` lands next turn (`ah-rgkk.2.2`). `None` for a unit not studying.
     pub study: Option<super::effects::StudyForecast>,
+    /// The 1-based document lines of this unit's shipments its month could not pay for. The item
+    /// preview keeps their goods: it has no silver of its own to judge with (`ah-7ale.4`).
+    pub refused_shipments: Vec<i64>,
 }
 
 /// What each unit in a hex holds once its whole month has run, in `hex.units` order.
@@ -9221,6 +9225,16 @@ impl<'a> Sharing<'a> {
             .map(|(_, o)| relieved_balance(ledger, &o.unit.unit_id, tag))
             .sum()
     }
+
+    /// The hex's silver pool at one phase: [`spendable_silver_at`] summed over the sharers.
+    /// [`Sharing::pool`] answers the month's end, after maintenance and its relief; a shipment is
+    /// paid before either, so it asks this instead (`ah-7ale.4`).
+    fn silver_pool_at(&self, ledger: &Ledger<'_>, phase: StatePhase) -> i64 {
+        self.sharers
+            .iter()
+            .map(|(_, o)| spendable_silver_at(ledger, &o.unit.unit_id, phase))
+            .sum()
+    }
 }
 
 /// What one unit's tax means to the market purse.
@@ -9811,13 +9825,13 @@ fn report_shortfalls(
             // `rules/buy` buys as many as the unit can afford, so the sentence goes on to say
             // what it gets instead of what it asked for. Appended rather than replacing anything,
             // so the figures a player already reads stay where they are (`ah-omn7`, Q1).
-            let cut: Vec<String> = ledger
+            let mut cut: Vec<String> = ledger
                 .reduced_buys
                 .iter()
                 .filter(|reduced| &reduced.unit_id == unit_id)
                 .map(|reduced| {
                     format!(
-                        "{} of the {} ordered",
+                        "buys {} of the {} ordered",
                         if reduced.bought == 0 {
                             "none".to_string()
                         } else {
@@ -9827,10 +9841,24 @@ fn report_shortfalls(
                     )
                 })
                 .collect();
+            // A shipment is all or nothing (the agreed record), so it always ships none
+            // (`ah-7ale.4`).
+            cut.extend(
+                ledger
+                    .refused_shipments
+                    .iter()
+                    .filter(|refused| &refused.unit_id == unit_id)
+                    .map(|refused| {
+                        format!(
+                            "ships none of the {} ordered",
+                            counted_item(refused.ordered, &refused.tag, hex, ruleset, plurals),
+                        )
+                    }),
+            );
             let bought = if cut.is_empty() {
                 String::new()
             } else {
-                format!(", so it buys {}", cut.join(" and "))
+                format!(", so it {}", cut.join(" and "))
             };
             // The food that paid part of the fee is counted in on both sides, so the sentence
             // states the whole fee (`ah-pyiy`).
@@ -9916,6 +9944,32 @@ fn report_shortfalls(
                     Some(&reduced.placed),
                 ));
             }
+            // A shipment the pool could not pay for is marked on its own line the same way, with
+            // the verb the unit sentence uses (`ah-7ale.4`).
+            let refused: &[super::transport::RefusedShipment] = if tag == SILVER {
+                &ledger.refused_shipments
+            } else {
+                &[]
+            };
+            for refused in refused {
+                let Some(ordered) = hex.find(&refused.unit_id) else {
+                    continue;
+                };
+                let placed = ordered
+                    .intents
+                    .iter()
+                    .find(|placed| i64::try_from(placed.line).ok() == Some(refused.line));
+                findings.push(ordered.finding(
+                    hex,
+                    codes::PART_OF_HEX_SHORTFALL,
+                    format!(
+                        "This hex is short of {name} between its units, so this order ships none \
+                         of the {}. See Problems for the hex.",
+                        counted_item(refused.ordered, &refused.tag, hex, ruleset, plurals),
+                    ),
+                    placed,
+                ));
+            }
             for verdict in &verdicts {
                 let Verdict::DeferredToPool {
                     unit_id,
@@ -9934,7 +9988,9 @@ fn report_shortfalls(
                 };
                 // Its cut lines were marked above, each on its own line; a generic marker as well
                 // would say the same thing twice.
-                if cut.iter().any(|reduced| &reduced.unit_id == unit_id) {
+                if cut.iter().any(|reduced| &reduced.unit_id == unit_id)
+                    || refused.iter().any(|refused| &refused.unit_id == unit_id)
+                {
                     continue;
                 }
                 let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
@@ -13198,19 +13254,17 @@ fn shipping_bills(
                         });
                         continue;
                     }
-                    move_silver(
-                        ledger,
-                        StatePhase::Transport,
-                        sender,
-                        -cost,
-                        SilverChangeCause::Shipped,
-                        Some(placed),
-                    );
-                    let can_pay = ledger
-                        .state
-                        .balance_at(StatePhase::Maintenance, sender, SILVER)
-                        >= 0;
-                    if can_pay {
+                    // Judged before anything is booked: a shipment is all or nothing, so a
+                    // refusal must leave no `Shipped` move behind (`ah-7ale.4`).
+                    if cost <= shipping_purse(ledger, hex, ordered, ruleset) {
+                        move_silver(
+                            ledger,
+                            StatePhase::Transport,
+                            sender,
+                            -cost,
+                            SilverChangeCause::Shipped,
+                            Some(placed),
+                        );
                         *shipped.entry(tag.clone()).or_default() += quantity;
                         delivered.push(((id.clone(), tag.clone()), quantity));
                         priced_here.push(ShipmentPriced {
@@ -13223,6 +13277,10 @@ fn shipping_bills(
                             conditional: false,
                         });
                     } else {
+                        // Recorded only: nothing is charged while shipments are still being
+                        // judged, or a refusal would drain the purse a later, affordable shipment
+                        // is judged against. `settle_shipping` charges the whole ask once every
+                        // shipment has been judged.
                         priced_and_refused.push((
                             i64::try_from(placed.line).unwrap_or(i64::MAX),
                             super::transport::RefusedShipment {
@@ -13261,6 +13319,144 @@ fn shipping_bills(
         }
     }
     delivered
+}
+
+/// What the shipping settlement reads from the report and the catalogue alone: who is a
+/// quartermaster, and what is known about every unit a shipment can name.
+#[allow(clippy::type_complexity)]
+fn shipping_facts(
+    report: &ParsedReport,
+    ruleset: Option<&Ruleset>,
+) -> Option<(
+    super::transport::Quartermasters,
+    BTreeMap<String, super::transport::TargetFacts>,
+)> {
+    ruleset.map(|ruleset| {
+        let quartermasters = super::transport::Quartermasters::read(report, ruleset);
+        let targets = super::transport::target_facts(report, &quartermasters);
+        (quartermasters, targets)
+    })
+}
+
+/// Every shipment this turn prices, pays for or refuses, settled across every hex at once
+/// (`rules/sequenceofevents`: each TRANSPORT phase processes all units in all hexes before the
+/// next).
+///
+/// The one driver for both entry points, so the problem list and the item preview cannot settle
+/// one shipment two ways (`ah-7ale.4`).
+#[allow(clippy::type_complexity)]
+fn settle_shipping(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    shipping: Option<&(
+        super::transport::Quartermasters,
+        BTreeMap<String, super::transport::TargetFacts>,
+    )>,
+    options: &CheckOptions,
+    ruleset: Option<&Ruleset>,
+) {
+    // What quartermasters are sent in the first TRANSPORT phase, report-wide, so the second phase
+    // prices goods a quartermaster forwards (`rules/sequenceofevents`, `ah-7ale.3`).
+    let nothing_received = BTreeMap::new();
+    let mut received_early: BTreeMap<(String, String), i64> = BTreeMap::new();
+    for (hex, ledger) in hexes.iter_mut() {
+        let delivered = shipping_bills(
+            hex,
+            ledger,
+            shipping,
+            options,
+            ruleset,
+            false,
+            &nothing_received,
+        );
+        for (key, quantity) in delivered {
+            *received_early.entry(key).or_default() += quantity;
+        }
+    }
+
+    for (hex, ledger) in hexes.iter_mut() {
+        shipping_bills(
+            hex,
+            ledger,
+            shipping,
+            options,
+            ruleset,
+            true,
+            &received_early,
+        );
+    }
+
+    // Only now, with every shipment judged, is each refusal's whole ask charged - applied and not
+    // recorded, `buy_silver`'s asymmetry. It is what makes `not-enough-silver` fire and what
+    // `balance_before_maintenance` reconstructs from, while the month's record says nothing moved,
+    // because nothing did. Charged any earlier, a refusal would drain the purse a later, affordable
+    // shipment is judged against, though the game ships that one (all or nothing, `ah-7ale.4`).
+    for (hex, ledger) in hexes.iter_mut() {
+        let refused: Vec<(String, i64, i64)> = ledger
+            .refused_shipments
+            .iter()
+            .map(|refused| (refused.unit_id.clone(), refused.line, refused.cost))
+            .collect();
+        for (unit_id, line, cost) in &refused {
+            let placed = hex.find(unit_id).and_then(|ordered| {
+                ordered
+                    .intents
+                    .iter()
+                    .find(|placed| i64::try_from(placed.line).ok() == Some(*line))
+            });
+            apply_silver(ledger, StatePhase::Transport, unit_id, -cost, placed);
+            // Charged after the shipments that paid, so `apply_silver` keeps a paid shipment as
+            // the first draw. The unit's shortfall is this refusal's doing, so it is anchored on
+            // the earliest refused line instead - unless an order other than a shipment drew the
+            // silver first, which keeps its place (`ah-7ale.4`).
+            let Some(placed) = placed else {
+                continue;
+            };
+            let key = (unit_id.clone(), SILVER.to_ascii_uppercase());
+            let refused_line = |at: &PlacedIntent| {
+                refused.iter().any(|(other, other_line, _)| {
+                    other == unit_id && i64::try_from(at.line).ok() == Some(*other_line)
+                })
+            };
+            let move_anchor = ledger.charged_at.get(&key).is_some_and(|at| {
+                matches!(at.intent, Intent::Transport { .. })
+                    && (!refused_line(at) || at.line > placed.line)
+            });
+            if move_anchor {
+                ledger.charged_at.insert(key, placed.clone());
+            }
+        }
+    }
+}
+
+/// What the sender can spend on a shipment at the moment it is settled: the silver the rest of the
+/// month has left before maintenance (`rules/sequenceofevents` runs TRANSPORT, then assesses
+/// maintenance), and in a hex where anything shares, the hex's pool - which is how a faction-mate
+/// with money enough pays and nothing is said (`ah-7ale.4`).
+fn shipping_purse(
+    ledger: &Ledger<'_>,
+    hex: &Hex<'_>,
+    sender: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+) -> i64 {
+    let own = spendable_silver_at(ledger, &sender.unit.unit_id, StatePhase::Transport);
+    let sharing = Sharing::read(hex);
+    match sharing.reading(SILVER, ruleset) {
+        Reading::PerUnit => own,
+        // A sharer is already inside the pool; a non-sharer borrows from it - the rule
+        // `judge_shortfalls`' `claims_pool: !ordered.shares()` states.
+        Reading::Pooled => {
+            sharing.silver_pool_at(ledger, StatePhase::Transport)
+                + if sender.shares() { 0 } else { own }
+        }
+    }
+}
+
+/// A unit's silver in one phase's slot as a purse: the ledger balance plus what its `BUY` lines were
+/// charged beyond what they spent (`Ledger::overcharged`), since the ledger charges a cut-down
+/// purchase its whole ask and the market really left that silver in the unit's hands.
+fn spendable_silver_at(ledger: &Ledger<'_>, unit_id: &str, phase: StatePhase) -> i64 {
+    ledger.state.balance_at(phase, unit_id, SILVER)
+        + ledger.overcharged.get(unit_id).copied().unwrap_or_default()
 }
 
 /// The refusal sentence the agreed experience quotes, word for word.
@@ -21566,7 +21762,12 @@ mod tests {
                 Some(crate::orders::silver::ProductionCap::Region)
             );
 
-            let effects = item_effects(&report, SAILING_MINERS, Some(&ruleset()));
+            let effects = item_effects(
+                &report,
+                SAILING_MINERS,
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            );
             assert_eq!(produced_in_items(&effects, "4021", "IRON"), 20);
             assert_eq!(produced_in_items(&effects, "1795", "IRON"), 16);
         }
@@ -21586,7 +21787,7 @@ mod tests {
             assert_eq!(passenger.production_wanted, 40);
             assert_eq!(passenger.production_capped_by, None);
 
-            let effects = item_effects(&report, orders, Some(&ruleset()));
+            let effects = item_effects(&report, orders, Some(&ruleset()), &CheckOptions::default());
             assert_eq!(produced_in_items(&effects, "4021", "IRON"), 40);
         }
     }
@@ -27797,7 +27998,7 @@ BUILD
         let report = report(vec![hex]);
         let orders = "unit 2390\nWITHDRAW 3 GRAI\nBUY ALL horse\n";
 
-        let effects = item_effects(&report, orders, Some(&ruleset()));
+        let effects = item_effects(&report, orders, Some(&ruleset()), &CheckOptions::default());
         let moved = effects_for(&effects, "2390")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
@@ -27831,7 +28032,7 @@ BUILD
         assert_eq!(forecast.produced, 0, "{forecast:?}");
         assert_eq!(forecast.production_wanted, 0, "{forecast:?}");
 
-        let effects = item_effects(&report, orders, Some(&ruleset()));
+        let effects = item_effects(&report, orders, Some(&ruleset()), &CheckOptions::default());
         let moved = effects_for(&effects, "683")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
@@ -27869,7 +28070,12 @@ BUILD
         let report = report(vec![hex_region]);
 
         let replaced = effects_for(
-            &item_effects(&report, "unit 900\nBUILD\nENTERTAIN\n", Some(&ruleset())),
+            &item_effects(
+                &report,
+                "unit 900\nBUILD\nENTERTAIN\n",
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            ),
             "900",
         )
         .cloned()
@@ -27888,7 +28094,12 @@ BUILD
         // The reverse order, so the assertions above are about the replacement and not about a
         // fixture that never built anything.
         let winning = effects_for(
-            &item_effects(&report, "unit 900\nENTERTAIN\nBUILD\n", Some(&ruleset())),
+            &item_effects(
+                &report,
+                "unit 900\nENTERTAIN\nBUILD\n",
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            ),
             "900",
         )
         .cloned()
@@ -29954,7 +30165,7 @@ BUILD
         let hex = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
         let orders = "unit 12881\nGIVE 12882 3000 SILV\nPRODUCE catapult\n";
 
-        let effects = item_effects(&hex, orders, Some(&ruleset()));
+        let effects = item_effects(&hex, orders, Some(&ruleset()), &CheckOptions::default());
         let moved = effects_for(&effects, "12881")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
@@ -29966,7 +30177,12 @@ BUILD
         // The control: the same hex without the gift does create one, so the gift is what binds
         // and the assertion above is not passing on a fixture that could never produce.
         let funded = report(vec![region(vec![carpenters(3000, 9999), unit("12882")])]);
-        let effects = item_effects(&funded, "unit 12881\nPRODUCE catapult\n", Some(&ruleset()));
+        let effects = item_effects(
+            &funded,
+            "unit 12881\nPRODUCE catapult\n",
+            Some(&ruleset()),
+            &CheckOptions::default(),
+        );
         let moved = effects_for(&effects, "12881")
             .map(|unit| unit.moved.clone())
             .unwrap_or_default();
@@ -34655,7 +34871,7 @@ BUILD
         let report = report(vec![region(vec![unit("4021"), helper])]);
         let orders = "unit 4021\nFORM 1\nBUILD Mine\nEND\nunit 4117\nBUILD HELP NEW 1\n";
 
-        let effects = item_effects(&report, orders, Some(&ruleset()));
+        let effects = item_effects(&report, orders, Some(&ruleset()), &CheckOptions::default());
         let helper = effects_for(&effects, "4117").expect("the helper is priced");
 
         assert_eq!(
@@ -34707,7 +34923,12 @@ BUILD
             "{findings:?}"
         );
 
-        let effects = item_effects(&report(regions), orders, Some(&ruleset()));
+        let effects = item_effects(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            &CheckOptions::default(),
+        );
         let helper = effects_for(&effects, "4117").expect("the helper is read");
         assert_eq!(
             helper.uncounted,
@@ -38382,29 +38603,56 @@ BUILD
         assert_eq!(shipped(&moved), Vec::<&SilverChange>::new());
     }
 
-    /// `ah-7ale.4`: a shipment the sender cannot pay for is refused (so it is not listed as
-    /// shipped), but its full ask is still charged and therefore contributes to shortfall.
+    // --- a sender that cannot pay ships nothing (`ah-7ale.4`) -----------------------------------
+
+    /// A Quartermaster-5 sender in its own Caravanserai holding nine furs and `silver`, shipping to
+    /// an own Quartermaster-1 Caravanserai owner, unit 901, which the shipping tests above already
+    /// price at 45 (`data/quartermaster`, and `data/items` weighing a fur at 1).
+    fn unpaid_shipping(silver: i64) -> Vec<ReportRegion> {
+        let mut regions = priced_shipping(
+            5,
+            &[(9, "furs", "FUR")],
+            vec![caravanserai_owner("901", 1, 0, 6)],
+        );
+        regions[0].units[0]
+            .items
+            .iter_mut()
+            .find(|item| item.tag == SILVER)
+            .expect("priced_shipping gives the sender silver")
+            .amount = silver;
+        regions
+    }
+
+    const UNPAID: &str = "unit 900\nTRANSPORT 901 9 FUR\n";
+
+    fn unpaid_findings(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        review_turn(&report(regions), orders, Some(&ruleset()), with_map()).findings
+    }
+
+    /// The agreed record: "The goods stay and the silver stays; no shipping line appears in the
+    /// working" - while the ask still makes the month short.
     #[test]
-    fn an_unaffordable_shipment_is_refused_but_still_charged() {
-        let regions = || {
-            let mut sender = with_silver(with_skill(unit("900"), "QUAM", 5), 40);
-            sender = with_item(sender, 9, "fur", "FUR");
-            sender.structure_id = Some("400".to_string());
-            let mut region = shipping_from(vec![sender]);
-            region.structures = vec![Structure {
-                structure_id: "400".to_string(),
-                name: "Caravan".to_string(),
-                kind: "Caravanserai".to_string(),
-                ..Default::default()
-            }];
-            vec![region, caravanserai_owner("901", 1, 0, 6)]
-        };
-        let orders = "unit 900\nTRANSPORT 901 9 FUR\n";
-        let silver = sender_silver(regions(), orders, with_map());
+    fn a_sender_that_cannot_pay_keeps_its_silver() {
+        let silver = sender_silver(unpaid_shipping(20), UNPAID, with_map());
         assert!(
             silver.shipping.is_empty(),
-            "the refused shipment moves nothing"
+            "the refused shipment is not priced"
         );
+        assert_eq!(shipped(&silver), Vec::<&SilverChange>::new());
+        assert_eq!(silver.expense, Some(0));
+        assert_eq!(silver.at_month_end, Some(20));
+        assert_eq!(silver.wanted_for_orders, Some(45));
+        assert_eq!(silver.short_for_orders, Some(25));
+        assert!(codes(&unpaid_findings(unpaid_shipping(20), UNPAID)).contains(&"not-enough-silver"));
+    }
+
+    /// `rules/sequenceofevents`: TRANSPORT runs before "Maintenance costs are assessed", so silver
+    /// the upkeep will want later still pays the bill.
+    #[test]
+    fn a_bill_is_paid_before_upkeep_is_assessed() {
+        let mut regions = unpaid_shipping(45);
+        regions[0].units[0].flags.clear();
+        let silver = sender_silver(regions, UNPAID, with_map());
         assert_eq!(
             shipped(&silver),
             vec![&SilverChange {
@@ -38414,12 +38662,262 @@ BUILD
                 other: None,
             }]
         );
+        assert_eq!(silver.shipping.len(), 1);
+    }
 
-        let findings =
-            review_turn(&report(regions()), orders, Some(&ruleset()), with_map()).findings;
+    #[test]
+    fn the_shortfall_sentence_says_it_ships_none_of_them() {
+        let findings = unpaid_findings(unpaid_shipping(20), UNPAID);
+        let short: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            short,
+            ["short $25: this unit can have $20 and its orders spend $45, so it ships none of the 9 furs ordered"]
+        );
+    }
+
+    #[test]
+    fn a_unit_that_cannot_pay_for_either_reads_one_sentence() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].for_sale.push(MarketItem {
+            amount: 40,
+            name: "horses".to_string(),
+            tag: "HORS".to_string(),
+            price: 12,
+        });
+        let findings = unpaid_findings(regions, "unit 900\nBUY 5 horses\nTRANSPORT 901 9 FUR\n");
+        let short: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            short,
+            ["short $105: this unit can have $0 and its orders spend $105, so it buys none of the 5 horses ordered and ships none of the 9 furs ordered"]
+        );
+        // The purchase drew on the silver first, so the finding stays on its line: only an anchor a
+        // shipment holds moves onto a refused shipment.
+        assert_eq!(
+            findings
+                .iter()
+                .find(|finding| finding.code.as_str() == "not-enough-silver")
+                .and_then(|finding| finding.line),
+            Some(2)
+        );
+    }
+
+    /// The agreed record: "a faction-mate here with money enough means no shortfall and nothing
+    /// said".
+    #[test]
+    fn a_faction_mate_sharing_enough_silver_pays_the_bill() {
+        let with_mate = |silver: i64| {
+            let mut regions = unpaid_shipping(20);
+            let mut mate = sharing(with_silver(unit("903"), silver));
+            mate.region_id = regions[0].region_id.clone();
+            regions[0].units.push(mate);
+            regions
+        };
+
+        let rich = sender_silver(with_mate(1000), UNPAID, with_map());
+        assert_eq!(rich.shipping.len(), 1, "the pool pays");
+        let findings = codes(&unpaid_findings(with_mate(1000), UNPAID))
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
         assert!(
-            codes(&findings).contains(&"not-enough-silver"),
-            "the charged refusal still contributes to shortfall: {findings:?}"
+            !findings.contains(&"not-enough-silver".to_string()),
+            "{findings:?}"
+        );
+        assert!(
+            !findings.contains(&"part-of-hex-shortfall".to_string()),
+            "{findings:?}"
+        );
+
+        let poor = sender_silver(with_mate(10), UNPAID, with_map());
+        assert!(poor.shipping.is_empty(), "thirty is not forty-five");
+        assert!(codes(&unpaid_findings(with_mate(10), UNPAID)).contains(&"part-of-hex-shortfall"));
+    }
+
+    #[test]
+    fn a_pooled_hex_that_cannot_pay_marks_the_shipment() {
+        let regions = || {
+            let mut regions = unpaid_shipping(20);
+            regions[0].units[0] = sharing(regions[0].units[0].clone());
+            regions
+        };
+        let findings = unpaid_findings(regions(), UNPAID);
+        let marked: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .collect();
+        assert_eq!(marked.len(), 1, "{findings:?}");
+        assert_eq!(marked[0].line, Some(2));
+        assert_eq!(
+            marked[0].message,
+            "This hex is short of silver between its units, so this order ships none of the 9 furs. See Problems for the hex."
+        );
+        assert!(!findings.iter().any(|finding| finding.message
+            == "This hex is short of silver between its units. See Problems for the hex."));
+        // The hex's own pool finding carries this code too; what must be absent is a unit
+        // sentence against the sender.
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code.as_str() == "not-enough-silver"
+                    && finding.unit_id.as_deref() == Some("900")),
+            "{findings:#?}"
+        );
+    }
+
+    /// `rules/sequenceofevents`: "units that appear higher on the report get precedence", and a
+    /// unit's own lines in the order written - so the purse runs out on the later shipment.
+    #[test]
+    fn a_purse_that_runs_out_refuses_the_later_shipment() {
+        let regions = |silver: i64| {
+            let mut regions = priced_shipping(
+                5,
+                &[(18, "furs", "FUR")],
+                vec![
+                    caravanserai_owner("901", 1, 0, 6),
+                    caravanserai_owner("902", 1, 0, 8),
+                ],
+            );
+            regions[0].units[0]
+                .items
+                .iter_mut()
+                .find(|item| item.tag == SILVER)
+                .expect("priced_shipping gives the sender silver")
+                .amount = silver;
+            regions
+        };
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n";
+
+        let short = sender_silver(regions(60), orders, with_map());
+        assert_eq!(
+            shipped(&short),
+            vec![&SilverChange {
+                amount: -45,
+                cause: SilverChangeCause::Shipped,
+                line: Some(2),
+                other: None,
+            }]
+        );
+        let findings = unpaid_findings(regions(60), orders);
+        let messages: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(messages.len(), 1, "{findings:?}");
+        assert!(messages[0].ends_with(", so it ships none of the 9 furs ordered"));
+
+        let paid = sender_silver(regions(90), orders, with_map());
+        assert_eq!(shipped(&paid).len(), 2);
+        assert!(!codes(&unpaid_findings(regions(90), orders)).contains(&"not-enough-silver"));
+    }
+
+    /// A refusal spends nothing, so it leaves the purse whole for the shipment after it: a $60
+    /// shipment the sender's $50 cannot cover is refused, and the $40 one written below it still
+    /// ships (all or nothing, the agreed record; `data/quartermaster` prices a fur at 5 at
+    /// Quartermaster 5).
+    #[test]
+    fn a_refused_shipment_leaves_the_purse_for_the_next_one() {
+        let regions = || {
+            let mut regions = priced_shipping(
+                5,
+                &[(20, "furs", "FUR")],
+                vec![
+                    caravanserai_owner("901", 1, 0, 6),
+                    caravanserai_owner("902", 1, 0, 8),
+                ],
+            );
+            regions[0].units[0]
+                .items
+                .iter_mut()
+                .find(|item| item.tag == SILVER)
+                .expect("priced_shipping gives the sender silver")
+                .amount = 50;
+            regions
+        };
+        let orders = "unit 900\nTRANSPORT 901 12 FUR\nTRANSPORT 902 8 FUR\n";
+
+        let silver = sender_silver(regions(), orders, with_map());
+        assert_eq!(
+            shipped(&silver),
+            vec![&SilverChange {
+                amount: -40,
+                cause: SilverChangeCause::Shipped,
+                line: Some(3),
+                other: None,
+            }]
+        );
+        let findings = unpaid_findings(regions(), orders);
+        let messages: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(messages.len(), 1, "{findings:?}");
+        assert!(
+            messages[0].ends_with(", so it ships none of the 12 furs ordered"),
+            "{messages:?}"
+        );
+        // On the order that failed, not the one that shipped after it.
+        assert_eq!(
+            findings
+                .iter()
+                .find(|finding| finding.code.as_str() == "not-enough-silver")
+                .and_then(|finding| finding.line),
+            Some(2)
+        );
+    }
+
+    /// The same across units in a sharing hex: one sharer's refused $65 shipment leaves the $60
+    /// pool whole, so a sharing mate's $30 shipment still pays from it.
+    #[test]
+    fn a_refused_shipment_leaves_the_pool_for_a_mate() {
+        let mut regions = priced_shipping(
+            5,
+            &[(13, "furs", "FUR")],
+            vec![caravanserai_owner("901", 1, 0, 6)],
+        );
+        regions[0].units[0]
+            .items
+            .iter_mut()
+            .find(|item| item.tag == SILVER)
+            .expect("priced_shipping gives the sender silver")
+            .amount = 20;
+        regions[0].units[0] = sharing(regions[0].units[0].clone());
+        let mut mate = sharing(with_item(
+            with_silver(with_skill(unit("903"), "QUAM", 5), 40),
+            6,
+            "furs",
+            "FUR",
+        ));
+        mate.structure_id = Some("400".to_string());
+        mate.region_id = regions[0].region_id.clone();
+        regions[0].units.push(mate);
+        let orders = "unit 900\nTRANSPORT 901 13 FUR\nunit 903\nTRANSPORT 901 6 FUR\n";
+
+        let forecast = review_turn(&report(regions), orders, Some(&ruleset()), with_map()).silver;
+        let of = |id: &str| {
+            forecast
+                .iter()
+                .find(|silver| silver.unit_id == id)
+                .expect("the unit is forecast")
+        };
+        assert_eq!(shipped(of("900")), Vec::<&SilverChange>::new());
+        assert_eq!(
+            shipped(of("903")),
+            vec![&SilverChange {
+                amount: -30,
+                cause: SilverChangeCause::Shipped,
+                line: Some(4),
+                other: None,
+            }]
         );
     }
 
@@ -44926,7 +45424,12 @@ BUILD
         orders: &str,
         unit_id: &str,
     ) -> Option<effects::StudyForecast> {
-        let effects = item_effects(&report(regions), orders, Some(&ruleset()));
+        let effects = item_effects(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            &CheckOptions::default(),
+        );
         // A unit whose month moves no item has no entry at all, which is no forecast either.
         effects_for(&effects, unit_id).and_then(|effects| effects.study.clone())
     }
@@ -45624,7 +46127,7 @@ BUILD
         assert_eq!(silver.doubt, None, "{silver:?}");
         assert_eq!(silver.no_study_fee, None, "{silver:?}");
 
-        let effects = item_effects(&report, orders, Some(&trident));
+        let effects = item_effects(&report, orders, Some(&trident), &CheckOptions::default());
         assert!(
             effects_for(&effects, "5").is_none(),
             "an unlearnable study should not produce item effects or a forecast"
@@ -46103,7 +46606,12 @@ BUILD
 
         // The ledger still refuses the site and still withholds the material, whatever the
         // settings say: the month moves nothing, so the builder has no item effects at all.
-        let effects = item_effects(&report(regions), orders, Some(&trident()));
+        let effects = item_effects(
+            &report(regions),
+            orders,
+            Some(&trident()),
+            &CheckOptions::default(),
+        );
         assert!(
             effects_for(&effects, "900").is_none(),
             "a refused site spends and moves nothing: {effects:?}"
