@@ -88,11 +88,7 @@ fn preview_holding(
         &format!("{template}\n{script}"),
     )
     .expect("the committed ruleset loads");
-    let unit = preview
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .find(|unit| unit.unit.unit_id == unit_id)?;
+    let unit = common::preview_row(text, &preview, unit_id)?;
     Some((
         unit.unit
             .items

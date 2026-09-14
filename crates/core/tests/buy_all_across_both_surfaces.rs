@@ -74,12 +74,7 @@ fn both_surfaces(text: &str, script: &str, unit_id: &str, tag: &str) -> (UnitSil
         &orders,
     )
     .expect("the committed ruleset loads");
-    let held: i64 = preview
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .find(|unit| unit.unit.unit_id == unit_id)
-        .expect("the preview has the unit")
+    let held: i64 = common::expect_preview_row(text, &preview, unit_id)
         .unit
         .items
         .iter()
