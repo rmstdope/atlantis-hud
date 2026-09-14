@@ -37,7 +37,8 @@ function gitLines(cwd: string, args: string[]): string[] {
 
 /**
  * Changed repository-relative paths: `git diff --name-only <merge-base>` (committed, staged and
- * unstaged, deletions included) plus untracked files, de-duplicated and sorted. Undefined when any
+ * unstaged, deletions included; `--no-renames` so a file moved out of a Rust path still lists its
+ * old path) plus untracked files, de-duplicated and sorted. Undefined when any
  * git call fails, including a missing BASE_REF.
  *
  * Not `origin/main...HEAD`: implementers run the gate before they commit, and three dots would miss
@@ -48,7 +49,7 @@ export function changedPaths(cwd: string): readonly string[] | undefined {
     const [base] = gitLines(cwd, ["merge-base", "HEAD", BASE_REF]);
     if (base === undefined) return undefined;
     const paths = [
-      ...gitLines(cwd, ["diff", "--name-only", base]),
+      ...gitLines(cwd, ["diff", "--name-only", "--no-renames", base]),
       ...gitLines(cwd, ["ls-files", "--others", "--exclude-standard"])
     ];
     return [...new Set(paths)].sort();

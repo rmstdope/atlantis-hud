@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -150,12 +150,32 @@ describe("changedPaths", () => {
     expect(changedPaths(root)).toEqual(["doomed.txt"]);
   });
 
+  it("lists both sides of a rename, so a file moved out of a Rust path still counts", () => {
+    const root = createRepo();
+    mkdirSync(join(root, "crates"));
+    writeFileSync(join(root, "crates", "lib.rs"), "fn main() {}\n".repeat(20));
+    git(root, ["add", "."]);
+    git(root, ["commit", "-m", "crate"]);
+    git(root, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    git(root, ["mv", "crates/lib.rs", "moved.rs"]);
+    git(root, ["commit", "-m", "move"]);
+
+    expect(changedPaths(root)).toEqual(["crates/lib.rs", "moved.rs"]);
+  });
+
   it("is undefined with no origin/main", () => {
     expect(changedPaths(createRepo(false))).toBeUndefined();
   });
 });
 
-describe("classifyPaths", () => {
+/**
+ * The real classifier lives in the cerebro submodule, which CI's checkout does not fetch (see
+ * scripts/verificationSkill.test.ts). Where it is absent these two cases are skipped rather than
+ * failed: the fallback they would then observe is decideWorkload's fail-closed rust, tested above.
+ */
+const BUILD_WORKLOAD = join(process.cwd(), ".claude", "cerebro", "scripts", "build-workload");
+
+describe.skipIf(!existsSync(BUILD_WORKLOAD))("classifyPaths", () => {
   it("classifies a TypeScript-only change as non-rust", () => {
     expect(classifyPaths(["packages/shared/src/x.ts"], process.cwd()).workload).toBe("non-rust");
   });

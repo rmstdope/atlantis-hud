@@ -64,6 +64,11 @@ if (invokedDirectly) {
   // Only the gate sets this, after classifying its own diff; run by hand it is unset and every
   // suite runs, as it always has.
   const workload = process.env[GATE_WORKLOAD_ENV] === "non-rust" ? "non-rust" : "rust";
+  if (workload === "non-rust") {
+    process.stderr.write(
+      `runSuites: ${GATE_WORKLOAD_ENV}=non-rust, so the Rust suites are skipped; unset it to run them.\n`
+    );
+  }
   const results = planLegs(SUITES, workload).map(({ leg, skip }) =>
     skip ? { name: leg.name, passed: true, skipped: true } : runSuite(leg)
   );
