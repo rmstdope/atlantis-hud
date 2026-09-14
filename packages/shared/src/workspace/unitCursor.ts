@@ -1,8 +1,8 @@
-import type { ReportUnit } from "@atlantis/core-client";
-import type { KeyedRow } from "../unitTable";
+import type { ReportUnit, UnitRef } from "@atlantis/core-client";
+import { rowKeyOf, unitRefKey, type KeyedRow } from "../unitTable";
 
 /**
- * Which unit the player is on: the hex it stands in, then its number.
+ * Which unit the player is on: a `UnitRef` - the hex it stands in, then its number.
  *
  * A unit *number* is not unique across a report - `rules/form` scopes a FORM alias to its region,
  * so two hexes may each write `FORM 1` and both formed units are called `new-1` (`ah-bubf`).
@@ -11,7 +11,7 @@ import type { KeyedRow } from "../unitTable";
  * from: an arrival and a unit formed where it arrives can share both the hex and the number
  * (`ah-jxrw`).
  */
-export type UnitCursor = { regionId: string; unitId: string; arrivingFrom: string | null };
+export type UnitCursor = UnitRef;
 
 /**
  * The store's cursor fields as one value, or null when nothing is selected.
@@ -36,12 +36,7 @@ export function unitCursor(state: {
 
 /** Whether this row - hex, number and origin together - is the cursor row. */
 export function isCursorRow(cursor: UnitCursor | null, row: KeyedRow): boolean {
-  return (
-    cursor !== null &&
-    cursor.regionId === row.regionId &&
-    cursor.unitId === row.unitId &&
-    (row.arrivingFrom ?? null) === cursor.arrivingFrom
-  );
+  return cursor !== null && unitRefKey(cursor) === rowKeyOf(row);
 }
 
 /**
@@ -56,11 +51,15 @@ export function previewAtCursor<T extends { unit: ReportUnit; arrivingFrom?: str
   if (cursor === null || hexRegionId === null || cursor.regionId !== hexRegionId) {
     return null;
   }
+  const key = unitRefKey(cursor);
   return (
     previewed.find(
       (candidate) =>
-        candidate.unit.unitId === cursor.unitId &&
-        (candidate.arrivingFrom ?? null) === cursor.arrivingFrom
+        rowKeyOf({
+          regionId: hexRegionId,
+          unitId: candidate.unit.unitId,
+          arrivingFrom: candidate.arrivingFrom
+        }) === key
     ) ?? null
   );
 }
