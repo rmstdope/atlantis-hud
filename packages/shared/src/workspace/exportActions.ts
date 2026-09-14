@@ -33,7 +33,7 @@ export async function deliverOrdersExport(
   ordersDocument: string,
   ordersTemplateText: string | null,
   withDescriptions: boolean,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): Promise<void> {
   const fileName = `orders-turn-${turnNumber ?? "unknown"}.txt`;
   const text = ordersExportText(ordersDocument, ordersTemplateText, withDescriptions, syntax);

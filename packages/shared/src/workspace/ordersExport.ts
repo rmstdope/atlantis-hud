@@ -15,7 +15,7 @@ export function ordersExportText(
   document: string,
   templateText: string | null,
   withDescriptions: boolean,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string {
   if (!withDescriptions || templateText === null) {
     return document;

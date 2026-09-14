@@ -23,7 +23,8 @@ const plan = (document: string, entries: OrdersEntry[], banner: string | null = 
     document,
     entries,
     banner: () => banner,
-    label: () => "plain (7,53)"
+    label: () => "plain (7,53)",
+    syntax: "origins"
   });
 
 describe("studyWritePlan", () => {

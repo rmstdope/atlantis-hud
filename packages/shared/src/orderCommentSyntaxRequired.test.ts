@@ -14,6 +14,11 @@ import {
   unitLabelForDiagnostic
 } from "./ordersImport";
 import { diffOrders } from "./turnDiff";
+import { documentFor } from "./orderDraft";
+import { studyWritePlan } from "./studyOrdersWrite";
+import { deliverOrdersExport } from "./workspace/exportActions";
+import { ordersExportText } from "./workspace/ordersExport";
+import { formedSelectionFor } from "./workspace/ordersLock";
 import {
   bareWords,
   keywordCaseChanges,
@@ -99,6 +104,10 @@ const describeOrdersImportTakesTheSyntax: TakesTheSyntax<typeof describeOrdersIm
 const unitIdForDiagnosticTakesTheSyntax: TakesTheSyntax<typeof unitIdForDiagnostic> = true;
 const unitLabelForDiagnosticTakesTheSyntax: TakesTheSyntax<typeof unitLabelForDiagnostic> = true;
 const diffOrdersTakesTheSyntax: TakesTheSyntax<typeof diffOrders> = true;
+const documentForTakesTheSyntax: TakesTheSyntax<typeof documentFor> = true;
+const deliverOrdersExportTakesTheSyntax: TakesTheSyntax<typeof deliverOrdersExport> = true;
+const formedSelectionForTakesTheSyntax: TakesTheSyntax<typeof formedSelectionFor> = true;
+const ordersExportTextTakesTheSyntax: TakesTheSyntax<typeof ordersExportText> = true;
 
 const FUNCTIONS = {
   findUnitBlocks: findUnitBlocksTakesTheSyntax,
@@ -132,22 +141,30 @@ const FUNCTIONS = {
   describeOrdersImport: describeOrdersImportTakesTheSyntax,
   unitIdForDiagnostic: unitIdForDiagnosticTakesTheSyntax,
   unitLabelForDiagnostic: unitLabelForDiagnosticTakesTheSyntax,
-  diffOrders: diffOrdersTakesTheSyntax
+  diffOrders: diffOrdersTakesTheSyntax,
+  documentFor: documentForTakesTheSyntax,
+  deliverOrdersExport: deliverOrdersExportTakesTheSyntax,
+  formedSelectionFor: formedSelectionForTakesTheSyntax,
+  ordersExportText: ordersExportTextTakesTheSyntax
 };
 
 const writeRouteOrderRequiresTheSyntax: Requires<Parameters<typeof writeRouteOrder>[0], "syntax"> =
   true;
 
+const studyWritePlanRequiresTheSyntax: Requires<Parameters<typeof studyWritePlan>[0], "syntax"> =
+  true;
+
 const INPUTS = {
-  writeRouteOrder: writeRouteOrderRequiresTheSyntax
+  writeRouteOrder: writeRouteOrderRequiresTheSyntax,
+  studyWritePlan: studyWritePlanRequiresTheSyntax
 };
 
 describe("the order comment syntax is never defaulted", () => {
   it("every order-text function requires the comment syntax", () => {
-    expect(Object.keys(FUNCTIONS)).toHaveLength(32);
+    expect(Object.keys(FUNCTIONS)).toHaveLength(36);
   });
 
   it("every order-writing input requires the comment syntax", () => {
-    expect(Object.keys(INPUTS)).toHaveLength(1);
+    expect(Object.keys(INPUTS)).toHaveLength(2);
   });
 });

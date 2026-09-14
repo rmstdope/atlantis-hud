@@ -102,7 +102,7 @@ describe("a unit formed this month", () => {
       <OrdersPanel
         unit={null}
         unitId="new-1"
-        formed={formedSelectionFor(document, "new-1", REGION)}
+        formed={formedSelectionFor(document, "new-1", REGION, "origins")}
         regionUnitIds={REGION}
         hex={null}
         document={document}

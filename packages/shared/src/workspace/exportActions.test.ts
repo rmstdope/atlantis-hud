@@ -15,7 +15,7 @@ describe("deliverOrdersExport", () => {
   it("saves through the shell's saver, with the plain-text mime type", async () => {
     const saveTextFile = vi.fn().mockResolvedValue("/chosen/orders-turn-71.txt");
 
-    await deliverOrdersExport(saveTextFile, 71, "unit 1 : work", null, false);
+    await deliverOrdersExport(saveTextFile, 71, "unit 1 : work", null, false, "origins");
 
     expect(saveTextFile).toHaveBeenCalledWith("orders-turn-71.txt", "unit 1 : work", "text/plain");
   });
@@ -23,7 +23,7 @@ describe("deliverOrdersExport", () => {
   it("a cancelled save (null) writes nothing further and does not throw", async () => {
     const saveTextFile = vi.fn().mockResolvedValue(null);
 
-    await expect(deliverOrdersExport(saveTextFile, 71, "unit 1 : work", null, false)).resolves.toBeUndefined();
+    await expect(deliverOrdersExport(saveTextFile, 71, "unit 1 : work", null, false, "origins")).resolves.toBeUndefined();
   });
 
   it("logs and swallows a failed delivery instead of rejecting", async () => {
@@ -32,7 +32,7 @@ describe("deliverOrdersExport", () => {
 
     try {
       await expect(
-        deliverOrdersExport(saveTextFile, 71, "unit 1 : work", null, false)
+        deliverOrdersExport(saveTextFile, 71, "unit 1 : work", null, false, "origins")
       ).resolves.toBeUndefined();
       expect(errorSpy).toHaveBeenCalled();
     } finally {
@@ -43,7 +43,7 @@ describe("deliverOrdersExport", () => {
   it("falls back to 'unknown' when the turn number is unavailable", async () => {
     const saveTextFile = vi.fn().mockResolvedValue("");
 
-    await deliverOrdersExport(saveTextFile, null, "unit 1 : work", null, true);
+    await deliverOrdersExport(saveTextFile, null, "unit 1 : work", null, true, "origins");
 
     expect(saveTextFile).toHaveBeenCalledWith("orders-turn-unknown.txt", expect.any(String), "text/plain");
   });
