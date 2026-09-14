@@ -12,9 +12,10 @@ fn wall_diagnostics(orders: &str) -> Vec<atlantis_hud_core::OrderDiagnostic> {
     let raw = atlantis_hud_fixtures::NEWAGE_ARCANUM_F3_T84.text;
     let rules = atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON;
     let mut cache = ReportCache::new();
-    let walled =
-        atlantis_hud_core::orders::effects::walled_moves(&mut cache, rules, raw, "[]", orders, None)
-            .expect("loads");
+    let walled = atlantis_hud_core::orders::effects::walled_moves(
+        &mut cache, rules, raw, "[]", orders, None,
+    )
+    .expect("loads");
     let ruleset = cache.ruleset(rules).expect("ruleset");
     let report = cache.classified(raw, rules);
     atlantis_hud_core::validate_turn(

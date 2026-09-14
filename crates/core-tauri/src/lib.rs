@@ -2556,7 +2556,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             }
         }
         let report = lines.join("\n");
-        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";        let map = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";
+        let map = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
         let ruleset = atlantis_hud_fixtures::RULESET_JSON;
         let reach = |remembered: Option<&str>| -> Vec<String> {
             command_validate_orders(
