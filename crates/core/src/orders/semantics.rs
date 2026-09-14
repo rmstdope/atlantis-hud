@@ -55,7 +55,7 @@ use crate::orders::silver::{
     LateFoodRelief, Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver,
     Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove,
     Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket,
-    ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt, TransferShape, Transmuting,
+    ShipmentPriced, SilverChange, SilverChangeCause, SilverMove, SilverDoubt, TransferShape, Transmuting,
     UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
@@ -4552,30 +4552,6 @@ pub(crate) struct RefusedRecruit {
     pub(crate) line: usize,
 }
 
-/// One movement of one unit's silver, as the ledger settled it.
-///
-/// Not an [`ItemMovement`]: that list is a goods record by construction and carries no silver leg
-/// of any order (`ah-6m7b.5`), and it also drives what a unit is shown holding
-/// (`effects::apply_item_effects`). This one drives nothing at all - it is the ledger's account of
-/// its own arithmetic, kept so `forecast_hex` can check the SILVER column against it rather than
-/// hope the two agree (`ah-6m7b.5.2`).
-///
-/// `cause` is [`SilverChangeCause`] rather than a second enum: the column's list already names
-/// every reason silver moves, and two vocabularies for one concept is what this family exists to
-/// remove.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SilverMove {
-    /// The phase `rules/sequenceofevents` settles the order in.
-    pub(crate) phase: StatePhase,
-    /// Signed: positive into the unit, negative out of it. Never zero - a term that moves nothing
-    /// is not recorded, exactly as `SilverChange::amount` is documented never to be.
-    pub(crate) amount: i64,
-    pub(crate) cause: SilverChangeCause,
-    /// The 1-based document line of the order responsible, when one order is. `None` for the
-    /// taxing flag with no `TAX` order.
-    pub(crate) line: Option<i64>,
-}
-
 struct Ledger<'a> {
     /// The catalogue that turns an order's item argument into a tag, where there is one.
     ruleset: Option<&'a Ruleset>,
@@ -5110,6 +5086,7 @@ fn ledger_for_with_production<'a>(
                         moved.amount,
                         moved.cause,
                         Some(moved.line),
+                        Some(moved.other.clone()),
                     );
                 }
             }
@@ -5862,6 +5839,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 term.amount,
                 term.cause,
                 term.line,
+                None,
             );
         }
         let owed = match settled.get(&ordered.unit.unit_id) {
@@ -6437,6 +6415,7 @@ fn credit_tax(
         priced.earns.saturating_sub(tax_overstated),
         SilverChangeCause::Taxed,
         line,
+        None,
     );
     apply_silver(
         ledger,
@@ -6605,6 +6584,7 @@ fn apply(
                 priced.earns,
                 SilverChangeCause::Claimed,
                 Some(placed),
+                None,
             );
             if let Some(remaining) = claim_remaining {
                 *remaining = remaining.saturating_sub(priced.earns).max(0);
@@ -6640,6 +6620,7 @@ fn apply(
                     priced.earns,
                     SilverChangeCause::Pillaged,
                     Some(placed),
+                    None,
                 );
             }
         }
@@ -7064,6 +7045,7 @@ fn transfer(
                     -quantity,
                     SilverChangeCause::Discarded,
                     Some(placed),
+                    target_label.map(str::to_string),
                 );
             } else if is_give {
                 move_silver(
@@ -7073,6 +7055,7 @@ fn transfer(
                     -quantity,
                     SilverChangeCause::GaveAway,
                     Some(placed),
+                    target_label.map(str::to_string),
                 );
             } else {
                 apply_silver(ledger, StatePhase::Give, &from, -quantity, Some(placed));
@@ -7395,6 +7378,7 @@ fn settle_buy_all(
             -priced.spends,
             SilverChangeCause::Bought,
             Some(&deferred.placed),
+            None,
         );
         credit(ledger, StatePhase::Market, who, &deferred.tag, plan.bought);
         *ledger
@@ -7629,6 +7613,7 @@ fn produce(
         -priced.spends,
         SilverChangeCause::ProductionSpent,
         Some(placed),
+        None,
     );
     // The running deduction is `PhaseState`'s since `ah-728m.2.2`: every charge below writes into
     // it at this phase and every later one, so a second `PRODUCE` line - or the next unit in
@@ -8305,6 +8290,7 @@ fn sell(
         line.earns,
         SilverChangeCause::Sold,
         Some(placed),
+        None,
     );
 
     let entry = ledger.sold.entry((who.clone(), tag.clone())).or_default();
@@ -8394,6 +8380,7 @@ fn study(
         -priced.spends,
         SilverChangeCause::Studied,
         Some(placed),
+        None,
     );
 }
 
@@ -8481,6 +8468,7 @@ fn cast(
         priced.earns,
         SilverChangeCause::CastEarned,
         Some(placed),
+        None,
     );
     move_silver(
         ledger,
@@ -8489,6 +8477,7 @@ fn cast(
         -priced.spends,
         SilverChangeCause::CastSpent,
         Some(placed),
+        None,
     );
 
     let Some(plan) = plan else {
@@ -9031,6 +9020,7 @@ fn move_silver(
     amount: i64,
     cause: SilverChangeCause,
     placed: Option<&PlacedIntent>,
+    other: Option<String>,
 ) {
     record_silver(
         ledger,
@@ -9039,6 +9029,7 @@ fn move_silver(
         amount,
         cause,
         placed.map(|placed| placed.line as i64),
+        other,
     );
     apply_silver(ledger, phase, who, amount, placed);
 }
@@ -9058,6 +9049,7 @@ fn buy_silver(ledger: &mut Ledger<'_>, who: &str, wanted: i64, spent: i64, place
         -spent,
         SilverChangeCause::Bought,
         Some(placed.line as i64),
+        None,
     );
     apply_silver(ledger, StatePhase::Market, who, -wanted, Some(placed));
 }
@@ -9073,6 +9065,7 @@ fn record_silver(
     amount: i64,
     cause: SilverChangeCause,
     line: Option<i64>,
+    other: Option<String>,
 ) {
     if amount == 0 {
         return;
@@ -9086,6 +9079,7 @@ fn record_silver(
             amount,
             cause,
             line,
+            other,
         });
 }
 
@@ -13248,6 +13242,7 @@ fn shipping_bills(
                             -cost,
                             SilverChangeCause::Shipped,
                             Some(placed),
+                            None,
                         );
                         *shipped.entry(tag.clone()).or_default() += quantity;
                         delivered.push(((id.to_string(), tag.clone()), quantity));
@@ -26775,6 +26770,7 @@ BUILD
                             amount: 100,
                             cause: SilverChangeCause::Worked,
                             line: Some(2),
+                            other: None,
                         }]
                     );
                 },
@@ -26795,6 +26791,7 @@ BUILD
                             amount: 100,
                             cause: SilverChangeCause::Worked,
                             line: None,
+                            other: None,
                         }]
                     );
                 },
@@ -26816,6 +26813,7 @@ BUILD
                         amount: 30,
                         cause: SilverChangeCause::Entertained,
                         line: Some(2),
+                        other: None,
                     }]
                 );
             });
@@ -27303,6 +27301,52 @@ BUILD
                     vec![(StatePhase::Give, SilverChangeCause::Discarded, Some(2))]
                 );
                 assert_eq!(moves(ledger, "1")[0].amount, -100);
+            });
+        }
+
+        fn the_one(ledger: &Ledger<'_>, who: &str, cause: SilverChangeCause) -> SilverMove {
+            let rows = rows_of(ledger, who, cause);
+            assert_eq!(rows.len(), 1, "{rows:?}");
+            rows[0].clone()
+        }
+
+        /// The column's gift row names who took the silver (`ah-xryu`), so the ledger's does too.
+        #[test]
+        fn a_gift_is_recorded_with_who_took_it() {
+            let hex_region = region(vec![with_silver(unit("2390"), 500), unit("1789")]);
+            with_ledger(hex_region, "unit 2390\nGIVE 1789 120 SILV\n", |ledger| {
+                let row = the_one(ledger, "2390", SilverChangeCause::GaveAway);
+                assert_eq!(row.other, Some("unit 1789".to_string()));
+            });
+        }
+
+        /// `GIVE 0` discards, and `party_label(&Party::Discard)` names it `unit 0`.
+        #[test]
+        fn a_discard_is_recorded_as_given_to_unit_zero() {
+            let hex_region = region(vec![with_silver(unit("2390"), 500), unit("1789")]);
+            with_ledger(hex_region, "unit 2390\nGIVE 0 50 SILV\n", |ledger| {
+                let row = the_one(ledger, "2390", SilverChangeCause::Discarded);
+                assert_eq!(row.other, Some("unit 0".to_string()));
+            });
+        }
+
+        #[test]
+        fn a_gift_of_all_silver_is_recorded_with_its_target() {
+            let hex_region = region(vec![with_silver(unit("2390"), 500), unit("1789")]);
+            with_ledger(hex_region, "unit 2390\nGIVE 1789 ALL SILV\n", |ledger| {
+                let row = the_one(ledger, "2390", SilverChangeCause::GaveAway);
+                assert_eq!(row.amount, -500);
+                assert_eq!(row.other, Some("unit 1789".to_string()));
+            });
+        }
+
+        /// A receipt carries the giver's label, `<name> (<id>)`, as `ReceiptMove::other` does.
+        #[test]
+        fn a_receipt_is_recorded_with_its_giver() {
+            let hex_region = region(vec![with_silver(unit("2390"), 500), unit("1789")]);
+            with_settled_ledger(hex_region, "unit 2390\nGIVE 1789 120 SILV\n", |ledger| {
+                let row = the_one(ledger, "1789", SilverChangeCause::WasGiven);
+                assert_eq!(row.other, Some("Unit 2390 (2390)".to_string()));
             });
         }
     }

@@ -776,6 +776,31 @@ pub struct SilverChange {
     pub other: Option<String>,
 }
 
+/// One movement of one unit's silver, as the ledger settled it.
+///
+/// Not an `ItemMovement`: that list is a goods record by construction and carries no silver leg of
+/// any order (`ah-6m7b.5`). This one is what the SILVER column's rows and totals are:
+/// `forecast_hex` hands each unit's list to [`forecast_unit`] through [`PhaseFacts::silver_moves`]
+/// (`ah-xryu`).
+///
+/// `cause` is [`SilverChangeCause`] rather than a second enum: the column's list already names every
+/// reason silver moves, and two vocabularies for one concept is what `ah-6m7b` existed to remove.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SilverMove {
+    /// The phase `rules/sequenceofevents` settles the order in.
+    pub(crate) phase: phases::StatePhase,
+    /// Signed: positive into the unit, negative out of it. Never zero - a term that moves nothing
+    /// is not recorded, exactly as `SilverChange::amount` is documented never to be.
+    pub(crate) amount: i64,
+    pub(crate) cause: SilverChangeCause,
+    /// The 1-based document line of the order responsible, when one order is. `None` for the
+    /// taxing flag with no `TAX` order, and for a unit set to work by default.
+    pub(crate) line: Option<i64>,
+    /// The other unit, exactly as [`SilverChange::other`] carries it. `None` on every cause but a
+    /// gift, a take and a discard.
+    pub(crate) other: Option<String>,
+}
+
 /// The kind of order a shortfall bites on, so the hover can name it (`ah-uwa3`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
