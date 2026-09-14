@@ -231,9 +231,8 @@ const PASSAGE_PAIR = "\u26AD";
  * One end of an inner passage, marked on the map and explained by its hover.
  *
  * Pointer events are on deliberately: an SVG `<title>` under a `pointer-events: none` element never
- * appears, which is why this is drawn here rather than as a theme mark. It is drawn after the hit
- * layer, so it is the hit target under the pointer, and it answers a click the way the hex beneath
- * it does (`ah-g1jk`).
+ * appears, which is why this is drawn here rather than as a theme mark. It lives in the mark layer,
+ * and answers a click the way the hex beneath it does.
  */
 function PassageRing({
   at,
@@ -287,8 +286,8 @@ function PassageRing({
 /**
  * One wall a report proves, drawn as a rampart and explained by its hover.
  *
- * After the hit layer, as the passage rings are, so its strips - not the hex polygons beneath -
- * take the pointer (see `PassageRing`). Each half of the wall is a strip inside its own hex with
+ * It lives in the mark layer, so its strips - not the hex polygons beneath - take the pointer.
+ * Each half of the wall is a strip inside its own hex with
  * its own `<title>`, so the note names the proof on the side the pointer is on, and a click on a
  * strip answers as that hex would.
  */
@@ -1680,8 +1679,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           )}
 
           {/*
-            The hit and accessibility layer: flat, in model order, and last so nothing paints over
-            it. Keeping it separate from the terrain buckets is what stops a hex being remounted —
+            The hit and accessibility layer: flat, in model order, and drawn over everything except
+            the mark layer below it. Keeping it separate from the terrain buckets is what stops a hex being remounted —
             and losing focus mid-keystroke — when its knowledge changes.
           */}
           <g
@@ -1765,9 +1764,25 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           </g>
 
           {/*
+            The mark layer: every mark a reader can hover or click goes in here, and nowhere else.
+
+            - It is drawn after the hit layer above. A hex polygon takes the pointer over its whole
+              interior, so a mark drawn before it never receives the pointer and its `<title>` never
+              shows.
+            - It is always rendered, with no condition and no `pointerEvents` of its own. A mark
+              inside a conditional group can fail to render at all, and one inside a
+              `pointer-events: none` group shows no hover; put a mark's condition on the mark.
+            - Each mark sets `style={GHOSTABLE_HIT}`, so a ghost copy lets a click fall through to
+              the fog rect.
+            - A mark that stands for its hex answers a click with
+              `clickHexAt(event, at, hexAt(onLevel, at))`, and never with a copy of the hex's handler.
+            - A mark never stops `pointerdown` or `contextmenu`: drag-to-pan and
+              right-click-to-recentre live on the root svg and reach it only by bubbling.
+          */}
+          <g data-testid="map-marks">
+          {/*
             Walls a report proves (ah-wq2e). After the region decorations, so a wall covers the
-            dashed border; after the hit layer, so its strips take the pointer; before the passage
-            rings, so a ring on the same hex keeps its own hover.
+            dashed border; before the passage rings, so a ring on the same hex keeps its own hover.
           */}
           {wallsOnLevel.map((mark) => (
             <WallRampart key={mark.key} mark={mark} onClick={clickRingAt} />
@@ -1778,11 +1793,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             through the structure to another region. Where no report names which, the line stops
             here and a `?` says so rather than leaving it unexplained; where one does, a matched
             pair of interlocked rings marks the two ends and each hover names the other
-            (`ah-3u7c.2.2`). Drawn after the line so they cap it, and with pointer events on: a
-            `<title>` under a `pointer-events: none` element never shows, which is why these cannot
-            be theme marks. Drawn after the hit layer, as the note pins are, because a hex polygon's
-            `pointer-events: all` covers its whole interior and would otherwise take the hover
-            (`ah-g1jk`).
+            (`ah-3u7c.2.2`). Drawn after the line so they cap it. They cannot be theme marks: see
+            the mark layer.
           */}
           {route?.passage && route.passage.exit === null && route.passage.coordinate.z === level && (
             <PassageRing
@@ -1822,9 +1834,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             Manual hex notes (ah-o1t.3): map-owned rather than a theme's, so it draws once for
             every theme and a theme can never redraw the reader's own note. Screen-constant, like
             the selection ring - each pin group is scaled by `1 / scaleOf(view.step)` so the ink
-            holds its size while its position scales with the world. Placed after the hit layer
-            above so a click always lands on the pin and never on the hex or fog beneath it - it is
-            the one mark on the map with a hit target of its own.
+            holds its size while its position scales with the world.
           */}
           {drawsNotes(band, badges.notes) && notePinsOnLevel.length > 0 && (
             <g data-testid="map-notes">
@@ -1956,6 +1966,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               })}
             </g>
           )}
+          </g>
           </g>
 
           {/*
