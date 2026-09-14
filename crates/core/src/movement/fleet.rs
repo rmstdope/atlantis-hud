@@ -8,6 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::movement::chain::{ChainedRoute, RouteChain};
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::Ruleset;
 use crate::orders::intents::Intent;
@@ -15,28 +16,23 @@ use crate::orders::standing::{self, standing_after, Boarding, BoardingOrder};
 use crate::report::model::{ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
 
-/// A unit's own movement order, and whether it was written as a `SAIL`.
-///
-/// The two are kept together because only a `SAIL` is a fleet's business: a `MOVE` written by a
-/// unit standing in a hull is that unit walking off, and is nobody else's course.
-#[derive(Debug, Clone)]
-struct UnitCourse {
-    steps: Vec<MoveStep>,
-    sail: bool,
-}
-
 /// Each unit's movement lines, chained into one route and read once from the whole orders document.
 ///
-/// Only lines that are a unit's own for this turn count: a `TURN` block holds orders for the turn
-/// after this one and a `FORM` block's orders are not read here at all - `effects::Working`
-/// owns a formed unit's orders, region by region - so movement inside either says nothing about
-/// where the unit whose block it is goes next. A unit's movement lines
+/// This is the only walk of the orders document that chains a route: `effects::Working` reads each
+/// row's route from here rather than chaining one of its own (`ah-xmqo`). A block's route is keyed
+/// by its unit number; a `FORM` block's route by the 1-based line of the `FORM` that opened it,
+/// because a formed unit's `new-<alias>` is unique only inside its hex (`rules/form`) and this
+/// reader sees no regions. A `TURN` block holds orders for the turn after this one and is skipped,
+/// and movement inside a `FORM` block says nothing about where the unit whose block it is goes
+/// next. A unit's movement lines
 /// are chained by `movement::chain::RouteChain` (`rules/move`: "Multiple MOVE orders given by one
 /// unit will chain together."); a different month-long order replaces the chain, as
 /// `orders::semantics::month_segments` states.
 #[derive(Debug, Default, Clone)]
 pub struct OrderedUnits {
-    by_unit: BTreeMap<String, UnitCourse>,
+    by_unit: BTreeMap<String, ChainedRoute>,
+    /// Each readable `FORM` block's route, keyed by the 1-based line of its `FORM`.
+    formed_routes: BTreeMap<usize, ChainedRoute>,
     sailers: BTreeSet<String>,
     /// Each unit's ENTER and LEAVE orders, in the order they were written. A unit that wrote
     /// neither is absent, and the report's own answer stands for it.
@@ -57,27 +53,30 @@ impl OrderedUnits {
 
     #[must_use]
     pub fn from_document_with_ruleset(orders_document: &str, ruleset: Option<&Ruleset>) -> Self {
-        use crate::orders::walk::{walk, BlockKind, Event};
+        use crate::orders::walk::{walk_with_ruleset, BlockKind, Event};
 
-        let mut chains: BTreeMap<String, crate::movement::chain::RouteChain> = BTreeMap::new();
+        let mut chains: BTreeMap<String, RouteChain> = BTreeMap::new();
+        let mut formed: BTreeMap<usize, RouteChain> = BTreeMap::new();
         let mut promotes_by_unit: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
         let mut sailers = BTreeSet::new();
         let mut current: Option<String> = None;
-        // The `FORM` blocks currently open, innermost last, each holding the id of the unit it
-        // creates - or `None` for a FORM whose alias could not be read, which still opens a block
+        // The `FORM` blocks currently open, innermost last, each holding the line of the `FORM`
+        // that opened it - or `None` for a FORM whose alias could not be read, which still opens a block
         // so its orders do not fall through to the unit outside it. The nesting rules themselves
         // live in `orders::blocks`, driven by this reader, `Working::visit` and
         // `intents::FormReader` alike, so they cannot drift apart again (`ah-i33f`).
-        let mut forms: crate::orders::blocks::FormStack<String> =
+        let mut forms: crate::orders::blocks::FormStack<usize> =
             crate::orders::blocks::FormStack::new();
 
-        walk(orders_document, |event| match event {
+        walk_with_ruleset(orders_document, ruleset, |event| match event {
             Event::Unit(line) => {
                 current = line.arguments.first().map(|id| id.text.to_string());
                 forms.reset();
             }
+            // A directive ends the block, as `effects::Working` and `intents::FormReader` read it.
             Event::Directive(_) => {
+                current = None;
                 forms.reset();
             }
             Event::Open {
@@ -89,9 +88,7 @@ impl OrderedUnits {
                     line.arguments
                         .first()
                         .and_then(crate::orders::forms::read_alias)
-                        .map(|alias| {
-                            format!("{}{alias}", crate::orders::effects::FORMED_ID_PREFIX)
-                        }),
+                        .map(|_| line.number),
                 );
             }
             Event::Close {
@@ -143,23 +140,27 @@ impl OrderedUnits {
                 // answers `None` there too, and these two readers must agree or the parent draws a
                 // line for a MOVE it did not write (`ah-4hux`).
 
-                // A `FORM` block's movement is recorded for nobody here. A formed unit's id,
-                // `new-<alias>`, is unique only inside its hex (`rules/form`), and this reader sees
-                // no regions - so a map keyed on it would merge two hexes' units. `effects::Working`
-                // resolves aliases by `(region, alias)` and holds each formed unit's route; the
-                // preview and the map trace both read it from there (`ah-5nqc`).
-                let moving = match &owner {
-                    crate::orders::blocks::Owner::Block => current.clone(),
-                    crate::orders::blocks::Owner::Formed(_)
-                    | crate::orders::blocks::Owner::Nobody => None,
-                };
+                // A `FORM` block's route is keyed by the line of its `FORM`, not by `new-<alias>`:
+                // that id is unique only inside its hex (`rules/form`) and this reader sees no
+                // regions (`ah-5nqc`). `effects::Working` resolves aliases by `(region, alias)` and
+                // asks for the line of each `FORM` it took up (`ah-xmqo`).
+                //
                 // Every readable order goes in, not only movement: a month-long order between two
                 // movement lines breaks their chain (`movement::chain::RouteChain`).
-                if let Some(unit_id) = moving {
-                    chains
-                        .entry(unit_id)
+                match &owner {
+                    crate::orders::blocks::Owner::Block => {
+                        if let Some(unit_id) = current.clone() {
+                            chains
+                                .entry(unit_id)
+                                .or_default()
+                                .push(&line.command.text, &intent);
+                        }
+                    }
+                    crate::orders::blocks::Owner::Formed(form_line) => formed
+                        .entry(**form_line)
                         .or_default()
-                        .push(&line.command.text, &intent);
+                        .push(&line.command.text, &intent),
+                    crate::orders::blocks::Owner::Nobody => {}
                 }
                 // Skipped inside a FORM block for the reason above: those orders are applied by
                 // `Working` to the formed unit's own row already.
@@ -194,33 +195,37 @@ impl OrderedUnits {
 
         let by_unit = chains
             .into_iter()
-            .filter_map(|(unit_id, chain)| {
-                chain.into_route().map(|route| {
-                    (
-                        unit_id,
-                        UnitCourse {
-                            steps: route.steps,
-                            sail: route.sail,
-                        },
-                    )
-                })
-            })
+            .filter_map(|(unit_id, chain)| chain.into_route().map(|route| (unit_id, route)))
+            .collect();
+        let formed_routes = formed
+            .into_iter()
+            .filter_map(|(form_line, chain)| chain.into_route().map(|route| (form_line, route)))
             .collect();
 
         Self {
             by_unit,
+            formed_routes,
             sailers,
             boardings_by_unit,
             promotes_by_unit,
         }
     }
 
+    /// The route a unit's own block chains to, if it wrote one.
+    pub(crate) fn route_of(&self, unit_id: &str) -> Option<&ChainedRoute> {
+        self.by_unit.get(unit_id)
+    }
+
+    /// The route chained inside the `FORM` block opened on this 1-based document line, when that
+    /// line's alias could be read. The formed unit's identity is the caller's business.
+    pub(crate) fn formed_route(&self, form_line: usize) -> Option<&ChainedRoute> {
+        self.formed_routes.get(&form_line)
+    }
+
     /// The unit's own movement steps, if it wrote any.
     #[must_use]
     pub fn steps_for(&self, unit_id: &str) -> Option<&[MoveStep]> {
-        self.by_unit
-            .get(unit_id)
-            .map(|course| course.steps.as_slice())
+        self.route_of(unit_id).map(|route| route.steps.as_slice())
     }
 
     /// Whether this unit's own movement order was a `SAIL` naming a course.
@@ -229,7 +234,7 @@ impl OrderedUnits {
     /// pair of hands and sets no course.
     #[must_use]
     pub fn sails_a_course(&self, unit_id: &str) -> bool {
-        self.by_unit.get(unit_id).is_some_and(|course| course.sail)
+        self.route_of(unit_id).is_some_and(|route| route.sail)
     }
 
     /// The units this unit named in a syntactically valid `PROMOTE` this month, in the order they
@@ -1048,5 +1053,56 @@ mod tests {
             ordered.steps_for("900"),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
         );
+    }
+
+    /// `newage trident rules/orders`: "A semicolon ends whatever word it lands in, so it starts a
+    /// comment wherever it appears".
+    #[test]
+    fn a_trident_comment_on_a_movement_line_is_read_as_a_comment() {
+        use crate::movement::graph::Direction::Southeast;
+        let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the Trident ruleset loads");
+        let ordered = OrderedUnits::from_document_with_ruleset(
+            "unit 900\nMOVE SE;scouting\n",
+            Some(&trident),
+        );
+        assert_eq!(
+            ordered.steps_for("900"),
+            Some(&[MoveStep::Go(Southeast)][..])
+        );
+    }
+
+    /// `rules/orders` closes the document with `#END`, so an order after a directive belongs to
+    /// no unit - as `effects::Working` and `intents::FormReader` already read it.
+    #[test]
+    fn an_order_after_a_directive_belongs_to_no_unit() {
+        use crate::movement::graph::Direction::North;
+        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\n#end\nMOVE S\n");
+        assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(North)][..]));
+    }
+
+    #[test]
+    fn a_form_blocks_route_is_recorded_under_its_form_line() {
+        use crate::movement::graph::Direction::{North, Northeast, South, Southeast};
+        let ordered = OrderedUnits::from_document(
+            "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
+        );
+        let formed = ordered
+            .formed_route(3)
+            .expect("the FORM on line 3 chains a route");
+        assert_eq!(
+            formed.steps,
+            vec![MoveStep::Go(South), MoveStep::Go(Southeast)]
+        );
+        assert_eq!(formed.command, "MOVE");
+        assert!(!formed.sail);
+        assert_eq!(ordered.formed_route(1), None);
+        assert_eq!(
+            ordered.steps_for("900"),
+            Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
+        );
+
+        let unreadable = OrderedUnits::from_document("unit 900\nFORM 0\nMOVE S\nEND\n");
+        assert_eq!(unreadable.formed_route(2), None);
     }
 }

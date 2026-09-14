@@ -752,19 +752,19 @@ pub fn preview_orders_on_map(
         shown: map.shown_extent(),
         ..options
     };
+    // One reading serves both settles and the movement decision alike.
+    let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
     let (units, dissolved, measured) = settle(
         &report,
         &ruleset,
         orders_document,
+        &ordered,
         geometry,
         options.clone(),
     );
-    // Where each unit stands once its own ENTER/LEAVE have run: `entry.unit` is already corrected
-    // (see `Working::visit`), but the map and the aboard set it is compared against are the
-    // report's, so the correction was thrown away one call later. `Working` applies the same
-    // ENTER/LEAVE rule to the unit row, so the two halves of one preview cannot disagree.
-    let ordered = crate::movement::fleet::OrderedUnits::from_document(orders_document);
-
     let (mut decided, sailing) =
         decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
     // `rules/sequenceofevents` moves every unit before any TRANSPORT, so a shipment one of whose
@@ -778,7 +778,14 @@ pub fn preview_orders_on_map(
             month_end,
             ..options
         };
-        let (units, _, _) = settle(&report, &ruleset, orders_document, geometry, again);
+        let (units, _, _) = settle(
+            &report,
+            &ruleset,
+            orders_document,
+            &ordered,
+            geometry,
+            again,
+        );
         for (decided, entry) in decided.iter_mut().zip(units) {
             debug_assert_eq!(decided.entry.unit.unit_id, entry.unit.unit_id);
             decided.entry = entry;
@@ -1027,10 +1034,15 @@ pub(super) fn transported_out(
     geometry: Option<crate::movement::graph::MapGeometry>,
 ) -> BTreeMap<String, Vec<(String, i64)>> {
     let ruleset = std::sync::Arc::new(ruleset.clone());
+    let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
     let (units, _, _) = settle(
         report,
         &ruleset,
         orders_document,
+        &ordered,
         geometry,
         super::semantics::CheckOptions::default(),
     );
@@ -1060,6 +1072,7 @@ fn settle(
     report: &crate::report::ParsedReport,
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
     orders_document: &str,
+    ordered: &crate::movement::fleet::OrderedUnits,
     geometry: Option<crate::movement::graph::MapGeometry>,
     options: super::semantics::CheckOptions,
 ) -> (
@@ -1071,6 +1084,16 @@ fn settle(
     super::walk::walk_with_ruleset(orders_document, Some(ruleset.as_ref()), |event| {
         working.visit(event);
     });
+    // Every route is chained by `movement::fleet::OrderedUnits` alone, so the map and the preview
+    // cannot chain one document two ways (`ah-xmqo`). Before the boardings, which read `move_steps`.
+    for unit in &mut working.units {
+        let route = match unit.form_line {
+            Some(line) => ordered.formed_route(line),
+            None => ordered.route_of(&unit.unit.unit_id),
+        };
+        unit.move_steps = route.map(|route| route.steps.clone());
+        unit.move_command = route.map(|route| route.command.clone());
+    }
     // `rules/move` gives a movement order two more directions that change the structure a unit is
     // standing in - "2) A structure number" and "3) OUT" - and they run in a later phase than the
     // ENTER and LEAVE orders `visit` already settled, so they are composed on top of that answer
@@ -1178,8 +1201,8 @@ fn apply_movement_boardings(units: &mut [WorkingUnit]) {
 /// its own block wrote.
 pub(crate) struct FormedAsOrdered {
     pub(crate) unit: ReportUnit,
-    /// `WorkingUnit::move_steps` of the settled row: region-scoped, because `Working` resolves an
-    /// alias by `(region, alias)`.
+    /// `WorkingUnit::move_steps` of the settled row: the route `movement::fleet::OrderedUnits`
+    /// recorded under the `FORM` line of the row `Working` took up.
     pub(crate) move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
     /// `WorkingUnit::move_command == Some("SAIL")`.
     pub(crate) sails: bool,
@@ -1209,10 +1232,15 @@ pub(crate) fn formed_unit_as_ordered(
     }
     // A `FORM`ed row is looked up on its own; no transport is applied here, so the map's shape
     // is not needed (`ah-7ale.2.1`).
+    let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
     let (units, _, _) = settle(
         report,
         ruleset,
         orders_document,
+        &ordered,
         None,
         super::semantics::CheckOptions::default(),
     );
@@ -1266,8 +1294,18 @@ pub fn month_end_hexes(
         shown: map.shown_extent(),
         ..options
     };
-    let (units, dissolved, _) = settle(&report, &ruleset, orders_document, geometry, options);
-    let ordered = crate::movement::fleet::OrderedUnits::from_document(orders_document);
+    let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
+    let (units, dissolved, _) = settle(
+        &report,
+        &ruleset,
+        orders_document,
+        &ordered,
+        geometry,
+        options,
+    );
     let (decided, _) = decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
     Ok(month_end_of(&decided))
 }
@@ -1638,9 +1676,9 @@ struct WorkingUnit {
     /// The movement command as written, upper-cased: `MOVE`, `ADVANCE` or `SAIL`. Kept beside
     /// `move_steps` so a rendered order clause names the word the player actually typed.
     move_command: Option<String>,
-    /// Every readable order of this unit's block, chained into the route `move_steps` and
-    /// `move_command` are read from.
-    movement: crate::movement::chain::RouteChain,
+    /// The 1-based line of the `FORM` that created this row, or `None` for a report unit. How
+    /// `settle` finds this row's route in `movement::fleet::OrderedUnits`.
+    form_line: Option<usize>,
     /// `MOVE OUT`/`MOVE 12`/... when a step of the movement order set this unit's structure in the
     /// hex it started in. Read by `changes()`.
     move_origin_cause: Option<String>,
@@ -2052,7 +2090,7 @@ impl Working {
                 formed: false,
                 move_steps: None,
                 move_command: None,
-                movement: crate::movement::chain::RouteChain::default(),
+                form_line: None,
                 move_origin_cause: None,
                 move_destination: None,
                 reported: unit.structure_id.clone(),
@@ -2150,7 +2188,7 @@ impl Working {
                 kind: BlockKind::Form,
                 depth,
             } if depth.turn == 0 => {
-                self.open_form(line.arguments);
+                self.open_form(line.number, line.arguments);
             }
             Event::Open { .. } => {}
             Event::Close {
@@ -2381,7 +2419,7 @@ impl Working {
         }
     }
 
-    fn open_form(&mut self, arguments: &[super::lexer::Token]) {
+    fn open_form(&mut self, form_line: usize, arguments: &[super::lexer::Token]) {
         // The alias has to be a number of at least 1 (`rules/form`): `GIVE NEW n` is the only way
         // to reach the formed unit, and the grammar's `Arg::Unit` accepts `NEW 1` and never
         // `NEW a` or `NEW 0`.
@@ -2420,7 +2458,7 @@ impl Working {
             formed: true,
             move_steps: None,
             move_command: None,
-            movement: crate::movement::chain::RouteChain::default(),
+            form_line: Some(form_line),
             move_origin_cause: None,
             move_destination: None,
             reported,
@@ -2457,7 +2495,6 @@ impl Working {
         arguments: &[super::lexer::Token],
         line: usize,
     ) {
-        let written = arguments;
         let Some(active) = self.active() else {
             return;
         };
@@ -2467,15 +2504,6 @@ impl Working {
             return;
         };
 
-        // Chained by `movement::chain::RouteChain` (`rules/move`).
-        if let Some(intent) =
-            super::intents::read_order_with_ruleset(command, written, Some(self.ruleset.as_ref()))
-        {
-            let working = &mut self.units[active];
-            working.movement.push(&command.text, &intent);
-            working.move_steps = working.movement.route().map(|route| route.steps.clone());
-            working.move_command = working.movement.route().map(|route| route.command.clone());
-        }
         if command.is("name") {
             self.rename(active, arguments);
         } else if let Some(change) = read_flag_order(command, arguments) {
@@ -3857,6 +3885,60 @@ mod tests {
             "",
         ]
         .join("\n")
+    }
+
+    #[test]
+    fn the_settle_takes_each_route_from_the_reading_it_is_given() {
+        use crate::movement::graph::Direction::Southeast;
+        use crate::movement::orders::MoveStep;
+        let mut cache = crate::cache::ReportCache::new();
+        let parsed = cache.classified(&report(), RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+            "unit 900\nMOVE SE\n",
+            Some(ruleset.as_ref()),
+        );
+        let (units, _, _) = settle(
+            &parsed,
+            &ruleset,
+            "unit 900\n",
+            &ordered,
+            None,
+            super::super::semantics::CheckOptions::default(),
+        );
+        let walker = units
+            .iter()
+            .find(|entry| entry.unit.unit_id == "900")
+            .expect("the walker is settled");
+        assert_eq!(walker.move_steps, Some(vec![MoveStep::Go(Southeast)]));
+        assert_eq!(walker.move_command.as_deref(), Some("MOVE"));
+    }
+
+    #[test]
+    fn a_formed_rows_route_is_the_one_under_its_form_line() {
+        use crate::movement::graph::Direction::Southeast;
+        use crate::movement::orders::MoveStep;
+        let document = "unit 900\nFORM 1\nMOVE SE\nEND\nGIVE NEW 1 1 LEAD\n";
+        let mut cache = crate::cache::ReportCache::new();
+        let parsed = cache.classified(&report(), RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        let ordered = crate::movement::fleet::OrderedUnits::from_document_with_ruleset(
+            document,
+            Some(ruleset.as_ref()),
+        );
+        let (units, _, _) = settle(
+            &parsed,
+            &ruleset,
+            document,
+            &ordered,
+            None,
+            super::super::semantics::CheckOptions::default(),
+        );
+        let formed = units
+            .iter()
+            .find(|entry| entry.formed && entry.unit.unit_id == "new-1")
+            .expect("the formed row is settled");
+        assert_eq!(formed.move_steps, Some(vec![MoveStep::Go(Southeast)]));
     }
 
     #[test]

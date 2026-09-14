@@ -1172,3 +1172,33 @@ unit 902\nFORM 1\nMOVE N N\nEND\nGIVE NEW 1 1 LEAD\n";
         "the northern New 1 writes no MOVE"
     );
 }
+
+/// The map trace lexes under the world's rules: under Trident a `;` starts a comment wherever it
+/// lands (`newage trident rules/orders`), so `MOVE SE;scouting` is a move south-east (`ah-xmqo`).
+#[test]
+fn a_trident_comment_on_a_move_line_still_draws_the_path() {
+    let report = [
+        "Foo (1) Report",
+        "",
+        "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+        "",
+        "Exits:",
+        "  Southeast : plain (2,2) in Nowhere.",
+        "",
+        "* Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR]. Weight: 10. Capacity: 0/0/15/0.",
+        "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+        "",
+    ]
+    .join("\n");
+    let response = trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        &report,
+        "[]",
+        "900",
+        "unit 900\nMOVE SE;scouting\n",
+    )
+    .expect("the Trident ruleset loads");
+    let path = response.path.expect("the commented MOVE is still traced");
+    assert_eq!(path.steps[0].to, at(2, 2));
+}

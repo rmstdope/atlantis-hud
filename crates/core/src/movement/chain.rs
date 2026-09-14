@@ -75,6 +75,7 @@ impl RouteChain {
     }
 
     /// The route so far. Never `Some` with empty `steps`.
+    #[cfg(test)]
     pub(crate) fn route(&self) -> Option<&ChainedRoute> {
         self.route.as_ref()
     }
