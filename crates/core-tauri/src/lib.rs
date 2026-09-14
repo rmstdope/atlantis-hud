@@ -16,7 +16,7 @@ use atlantis_hud_core::report::merge::{
 };
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    completions_at_caret, engine_info, order_argument_completions, order_commands_with_ruleset,
+    completions_at_caret, engine_info, order_argument_completions, order_commands,
     order_vocabulary, parse_report, plan_merge, reject_import, reserved_merge_identity,
     CaretCompletions, EngineInfo, MergePlan, OrderCheckOptions, OrderCompletion,
     OrderValidationResult, ReportParseResult, ReportParseResultWire,
@@ -185,7 +185,7 @@ pub mod commands {
     ) -> Vec<atlantis_hud_core::movement::passages::PassageClaim> {
         let report = atlantis_hud_core::report::parse_report_full(raw_report);
         let ruleset = atlantis_hud_core::movement::rules::Ruleset::from_json(ruleset_json).ok();
-        let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document_with_ruleset(
+        let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document(
             orders_document,
             ruleset.as_ref(),
         );
@@ -378,7 +378,7 @@ pub mod commands {
             ruleset_json.and_then(|json| cache.ruleset(json).ok())
         });
 
-        order_commands_with_ruleset(ruleset.as_deref())
+        order_commands(ruleset.as_deref())
             .into_iter()
             .map(str::to_string)
             .collect()

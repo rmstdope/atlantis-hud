@@ -501,3 +501,45 @@ fn a_unit_through_a_known_passage_arrives_where_it_comes_out() {
         "and it arrives there"
     );
 }
+
+/// A two-hex Trident world: Walker (900) stands at (1,1), with (2,2) to the southeast.
+fn trident_walker_report() -> String {
+    "Foo (1) Report
+
+plain (1,1) in Nowhere, 10 peasants (orcs), $5.
+
+Exits:
+  Southeast : plain (2,2) in Nowhere.
+
+* Walker (900), Foo (1), 5 orcs [ORC]. Weight: 50. Capacity: 0/0/75/0. Skills: none.
+
+plain (2,2) in Nowhere, 10 peasants (orcs), $5.
+
+Exits:
+  Northwest : plain (1,1) in Nowhere.
+"
+    .to_string()
+}
+
+/// Trident's `rules/orders`: a semicolon starts a comment wherever it appears, so the unit line
+/// names 900 and its MOVE departs it in the preview.
+#[test]
+fn a_trident_unit_line_with_a_comment_departs_in_the_preview() {
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        &trident_walker_report(),
+        "[]",
+        "unit 900;the walker\nMOVE SE\n",
+    )
+    .expect("the ruleset loads");
+
+    assert!(response
+        .regions
+        .iter()
+        .any(|region| region.units.iter().any(|unit| {
+            unit.unit.unit_id == "900"
+                && unit.status == UnitPreviewStatus::Departing
+                && unit.departing_to.as_deref() == Some("1:2,2")
+        })));
+}

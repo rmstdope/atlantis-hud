@@ -50,7 +50,7 @@ pub use completion::{
     completions_at_caret, order_argument_completions, CaretCompletions, CaretPosition,
     OrderCompletion,
 };
-pub use grammar::{order_commands, order_commands_with_ruleset};
+pub use grammar::order_commands;
 pub use vocabulary::order_vocabulary;
 
 use std::collections::{HashMap, HashSet};
@@ -158,7 +158,7 @@ fn place_build_object_errors(
     }
     let mut owner_by_line: HashMap<usize, String> = HashMap::new();
     let mut current: Option<String> = None;
-    walk::walk_with_ruleset(source, ruleset, |event| match event {
+    walk::walk(source, ruleset, |event| match event {
         walk::Event::Unit(line) => {
             current = line.arguments.first().map(|token| token.text.clone());
         }

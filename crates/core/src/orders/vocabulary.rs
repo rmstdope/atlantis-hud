@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn the_vocabulary_carries_every_order_name() {
         let vocabulary = order_vocabulary(None);
-        for name in order_commands() {
+        for name in order_commands(None) {
             assert!(
                 vocabulary.contains(&name.to_ascii_uppercase()),
                 "{name} is missing"

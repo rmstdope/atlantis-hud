@@ -256,7 +256,7 @@ impl UnitIntents {
 /// the parser checks argument shape against the same table - so the empty string is a floor rather
 /// than a case, and a reader skips it instead of printing it.
 fn canonical_keyword(command: &str, ruleset: Option<&Ruleset>) -> &'static str {
-    super::grammar::find_order_with_ruleset(command, ruleset).map_or("", |order| order.name)
+    super::grammar::find_order(command, ruleset).map_or("", |order| order.name)
 }
 
 /// Reads a whole orders document into one entry per unit block.
@@ -268,15 +268,13 @@ fn canonical_keyword(command: &str, ruleset: Option<&Ruleset>) -> &'static str {
 /// and a `FORM` block holds the orders of a unit that does not exist yet and has no number to file
 /// them under. Reading either as though it were the surrounding unit's would charge that unit for
 /// work it is not doing and move it out of a hex it is still standing in.
+///
+/// `None` reads under the New Origins lexical rules.
 #[must_use]
-pub fn read_intents(source: &str) -> Vec<UnitIntents> {
-    read_intents_with_ruleset(source, None)
-}
-
-pub fn read_intents_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents> {
+pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents> {
     let mut units: Vec<UnitIntents> = Vec::new();
 
-    walk::walk_with_ruleset(source, ruleset, |event| match event {
+    walk::walk(source, ruleset, |event| match event {
         // A unit line ends the previous block, nesting and all: the walk abandons whatever was
         // still open before this event, so an unclosed TURN cannot swallow the next unit's orders.
         Event::Unit(line) => {
@@ -304,8 +302,7 @@ pub fn read_intents_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Vec
                 {
                     unit.flag_changes.push(change);
                 }
-                if let Some(intent) = read_order_with_ruleset(line.command, line.arguments, ruleset)
-                {
+                if let Some(intent) = read_order(line.command, line.arguments, ruleset) {
                     unit.intents.push(PlacedIntent {
                         intent,
                         line: line.number,
@@ -407,12 +404,10 @@ pub struct FormedBlock {
 /// innermost forming unit rather than the outer one. `regions` is where the report shows each existing unit - only a unit's
 /// `region_id` is read from it, to key an alias to its hex without this module reaching into the
 /// report itself.
+///
+/// `None` reads under the New Origins lexical rules.
 #[must_use]
-pub fn read_formed(source: &str, regions: &BTreeMap<&str, &ReportRegion>) -> Vec<FormedBlock> {
-    read_formed_with_ruleset(source, regions, None)
-}
-
-pub fn read_formed_with_ruleset(
+pub fn read_formed(
     source: &str,
     regions: &BTreeMap<&str, &ReportRegion>,
     ruleset: Option<&Ruleset>,
@@ -426,7 +421,7 @@ pub fn read_formed_with_ruleset(
         by_alias: BTreeMap::new(),
         results: Vec::new(),
     };
-    walk::walk_with_ruleset(source, ruleset, |event| reader.visit(event));
+    walk::walk(source, ruleset, |event| reader.visit(event));
     reader.results
 }
 
@@ -560,7 +555,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
         if let Some(change) = super::effects::read_flag_order(command, arguments) {
             block.flag_changes.push(change);
         }
-        if let Some(intent) = read_order_with_ruleset(command, arguments, self.ruleset) {
+        if let Some(intent) = read_order(command, arguments, self.ruleset) {
             block.intents.push(PlacedIntent {
                 intent,
                 line: line_number,
@@ -649,7 +644,7 @@ fn is_free_order(command: &Token, ruleset: Option<&Ruleset>) -> bool {
     FREE_ORDERS
         .iter()
         .any(|free| command.text.eq_ignore_ascii_case(free))
-        && super::grammar::find_order_with_ruleset(&command.text, ruleset).is_some()
+        && super::grammar::find_order(&command.text, ruleset).is_some()
 }
 
 /// Whether a `DESTROY` line is shaped well enough for the game to attempt it.
@@ -696,17 +691,15 @@ pub(crate) fn promoted_unit(
 /// `PRODUCE` whose shape does not read as a priced item already fall back to a `MonthLong` intent
 /// when their own arguments do not parse (documented at each arm below), and gating them on the
 /// grammar's success would turn that deliberate fallback into no intent at all.
-pub fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
-    read_order_with_ruleset(command, arguments, None)
-}
-
-pub fn read_order_with_ruleset(
+///
+/// `None` reads under the New Origins lexical rules.
+pub fn read_order(
     command: &Token,
     arguments: &[Token],
     ruleset: Option<&Ruleset>,
 ) -> Option<Intent> {
     let name = command.text.to_ascii_uppercase();
-    super::grammar::find_order_with_ruleset(&command.text, ruleset)?;
+    super::grammar::find_order(&command.text, ruleset)?;
 
     match name.as_str() {
         "GIVE" => {
@@ -1006,7 +999,7 @@ mod tests {
     use crate::report::flags::{Group, Setting};
 
     fn only_unit(source: &str) -> UnitIntents {
-        let mut units = read_intents(source);
+        let mut units = read_intents(source, None);
         assert_eq!(units.len(), 1, "expected one unit block: {units:?}");
         units.remove(0)
     }
@@ -1021,7 +1014,7 @@ mod tests {
 
     fn only_unit_with_ruleset(source: &str, ruleset_json: &str) -> UnitIntents {
         let ruleset = Ruleset::from_json(ruleset_json).expect("fixture ruleset should parse");
-        let mut units = read_intents_with_ruleset(source, Some(&ruleset));
+        let mut units = read_intents(source, Some(&ruleset));
         assert_eq!(units.len(), 1, "expected one unit block: {units:?}");
         units.remove(0)
     }
@@ -1221,14 +1214,17 @@ mod tests {
 
     #[test]
     fn each_unit_block_is_read_under_its_own_number() {
-        let units = read_intents(concat!(
-            "#atlantis 95 \"secret\"\n",
-            "unit 18642\n",
-            "@work\n",
-            "unit 13401\n",
-            "TAX\n",
-            "#end\n",
-        ));
+        let units = read_intents(
+            concat!(
+                "#atlantis 95 \"secret\"\n",
+                "unit 18642\n",
+                "@work\n",
+                "unit 13401\n",
+                "TAX\n",
+                "#end\n",
+            ),
+            None,
+        );
 
         assert_eq!(
             units
@@ -1245,7 +1241,7 @@ mod tests {
     /// block is opened belong to nobody yet.
     #[test]
     fn orders_outside_a_unit_block_belong_to_no_unit() {
-        assert_eq!(read_intents("#atlantis 95\nWORK\n#end\n"), vec![]);
+        assert_eq!(read_intents("#atlantis 95\nWORK\n#end\n", None), vec![]);
     }
 
     #[test]
@@ -1956,14 +1952,17 @@ mod tests {
     /// to the forming unit would charge it for what the new unit does.
     #[test]
     fn orders_inside_a_form_block_belong_to_the_unit_being_formed() {
-        let units = read_intents(concat!(
-            "unit 5\n",
-            "WORK\n",
-            "FORM 1\n",
-            "BUY 5 Plainsmen\n",
-            "END\n",
-            "TAX\n",
-        ));
+        let units = read_intents(
+            concat!(
+                "unit 5\n",
+                "WORK\n",
+                "FORM 1\n",
+                "BUY 5 Plainsmen\n",
+                "END\n",
+                "TAX\n",
+            ),
+            None,
+        );
 
         assert_eq!(
             units.len(),
@@ -2023,7 +2022,11 @@ mod tests {
         let north = a_region("1:7,53");
         let south = a_region("1:8,54");
         let regions = regions_with_two(("1922", &north), ("1923", &south));
-        let formed = read_formed("unit 1922\nFORM 1\nEND\nunit 1923\nFORM 1\nEND\n", &regions);
+        let formed = read_formed(
+            "unit 1922\nFORM 1\nEND\nunit 1923\nFORM 1\nEND\n",
+            &regions,
+            None,
+        );
 
         assert_eq!(formed.len(), 2, "one FORM in each hex: {formed:?}");
         assert_eq!(formed[0].region_id, "1:7,53");
@@ -2035,7 +2038,7 @@ mod tests {
         let region = a_region("hex-1");
         let regions = regions_with("1922", &region);
         let source = "unit 1922\nAUTOTAX 1\nFORM 1\nNOCROSS 1\nEND\n";
-        let formed = read_formed(source, &regions);
+        let formed = read_formed(source, &regions, None);
 
         assert_eq!(formed.len(), 1, "{formed:?}");
         assert_eq!(
@@ -2058,7 +2061,7 @@ mod tests {
     fn orders_inside_a_form_block_belong_to_the_formed_unit() {
         let region = a_region("hex-1");
         let regions = regions_with("1922", &region);
-        let formed = read_formed("unit 1922\nFORM 1\nBUY 5 PLAI\nEND\n", &regions);
+        let formed = read_formed("unit 1922\nFORM 1\nBUY 5 PLAI\nEND\n", &regions, None);
 
         assert_eq!(formed.len(), 1, "{formed:?}");
         assert_eq!(formed[0].alias, "1");
@@ -2092,7 +2095,7 @@ mod tests {
     fn a_form_inside_a_turn_block_forms_nothing() {
         let region = a_region("hex-1");
         let regions = regions_with("1922", &region);
-        let formed = read_formed("unit 1922\nTURN\nFORM 1\nEND\nENDTURN\n", &regions);
+        let formed = read_formed("unit 1922\nTURN\nFORM 1\nEND\nENDTURN\n", &regions, None);
         assert_eq!(formed, vec![]);
     }
 
@@ -2100,7 +2103,7 @@ mod tests {
     fn a_form_alias_that_is_not_a_number_forms_nothing() {
         let region = a_region("hex-1");
         let regions = regions_with("1922", &region);
-        let formed = read_formed("unit 1922\nFORM a\nBUY 5 PLAI\nEND\n", &regions);
+        let formed = read_formed("unit 1922\nFORM a\nBUY 5 PLAI\nEND\n", &regions, None);
         assert_eq!(
             formed,
             vec![],
@@ -2113,7 +2116,7 @@ mod tests {
     fn a_zero_form_alias_forms_nothing() {
         let region = a_region("hex-1");
         let regions = regions_with("1922", &region);
-        let formed = read_formed("unit 1922\nFORM 0\nBUY 5 PLAI\nEND\n", &regions);
+        let formed = read_formed("unit 1922\nFORM 0\nBUY 5 PLAI\nEND\n", &regions, None);
         assert_eq!(
             formed,
             vec![],
@@ -2141,6 +2144,7 @@ mod tests {
         let formed = read_formed(
             "unit 1922\nFORM 1\nEND\nFORM 1\nBUY 5 PLAI\nEND\n",
             &regions,
+            None,
         );
         assert_eq!(formed.len(), 1, "one alias, one unit: {formed:?}");
         assert!(
@@ -2157,6 +2161,7 @@ mod tests {
         let formed = read_formed(
             "unit 1922\nFORM 1\nFORM 2\nBUY 5 PLAI\nEND\nEND\n",
             &regions,
+            None,
         );
 
         assert_eq!(formed.len(), 2, "{formed:?}");
