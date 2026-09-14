@@ -26,7 +26,13 @@ import {
   type PreviewedUnit
 } from "./unitPreview";
 import { summariseUnit } from "./unitTooltip";
-import { SILVER_NOTES, type SilverFacts } from "./silverVocabulary";
+import {
+  silverCauseGroups,
+  silverCauseLabel,
+  silverNoteLines,
+  type SilverCauseGroup,
+  type SilverFacts
+} from "./silverVocabulary";
 import {
   atMost,
   monthLostToAnUnreadLine,
@@ -53,8 +59,9 @@ import {
  * pure and holds no React, because `packages/shared` has no jsdom and a rule that lives in a
  * component there cannot be tested at all (`.cerebro/traps.md`).
  *
- * It sits at a leaf of the import graph. `unitPreview` already imports from `unitTooltip`, so this
- * module may import from both and neither may import it back.
+ * It sits at a leaf of the import graph. `unitPreview` already imports from `unitTooltip`, and all
+ * three import `silverVocabulary`, so this module may import from all of them and none may import
+ * it back.
  */
 
 /** A column of the table as the resolver sees it: one of its own, or one a source added. */
@@ -1561,117 +1568,6 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   };
 }
 
-/**
- * The `SILVER_NOTES` this popup does not draw, **because a line it drew says the whole of what the
- * note says** (`ah-rgkk.4.3`, decision **N2** - the Items popup's answer, `ah-rgkk.3.3`'s **T2**).
- *
- * Keyed by note id, each value asking the lines that were actually drawn whether they restated it.
- * The condition is not the note's own: a doubted month draws no cause lines at all
- * (`UnitSilver.changes` is empty there) while `givers`, `takenFrom`, `givenToNobody` and both flags
- * are still populated, so dropping a note on its own `when` would take the sentence away and put
- * nothing in its place. Same for a unit set to tax that taxes nothing this month.
- *
- * Nothing is removed from `SILVER_NOTES` itself: the whole-unit tooltip, which has no cause lines,
- * keeps every one of them word for word.
- */
-const SILVER_NOTES_RESTATED: Record<string, (groups: readonly CauseGroup[]) => boolean> = {
-  "includes-gift": (groups) => groups.some((group) => group.cause === "was-given"),
-  "includes-take": (groups) =>
-    groups.some((group) => group.entries.some((entry) => entry.cause === "took")),
-  "includes-take-unshown": (groups) =>
-    groups.some((group) => group.entries.some((entry) => entry.cause === "took-unshown")),
-  "given-to-nobody": (groups) => groups.some((group) => group.cause === "discarded"),
-  // Only where the clause fired, which is the same test `silverCauseWhy` makes.
-  "taxes-by-flag": (groups) => hasOrderlessGroup(groups, "taxed"),
-  "works-by-default": (groups) => hasOrderlessGroup(groups, "worked"),
-  // The `was lent` line carries the figure the sentence does not (`ah-3c2t.2`, option **S3**).
-  // Keyed on the drawn line and not on the note's own condition, as every entry here is: a
-  // doubted month draws no cause lines at all while `borrowedForOrders` is still populated, and
-  // dropping the note there would take the sentence away and put nothing in its place.
-  //
-  // Which doubt, exactly, because the core has two and they are not the same set: the column's
-  // own `SilverDoubt` (`EstimatedMen` and its kin) is what empties the change list, and it is not
-  // `ledger.doubted`, which is what zeroes `borrows` in `sharing_purse`. A unit doubted only the
-  // first way keeps a populated `borrowedForOrders` and draws no line - so this case is reachable,
-  // and it is the one this entry exists for.
-  "shared-silver-pays-orders": (groups) => groups.some((group) => group.cause === "was-lent")
-};
-
-/** Whether one cause was drawn with no order of this unit's behind any of it. */
-function hasOrderlessGroup(groups: readonly CauseGroup[], cause: string): boolean {
-  const group = groups.find((candidate) => candidate.cause === cause);
-  return group !== undefined && group.entries.every((entry) => entry.line === null);
-}
-
-/** One cause's line: every `SilverChange` with that cause, merged (decision **V2**). */
-type CauseGroup = {
-  cause: string;
-  /** Summed, signed. */
-  amount: number;
-  /** The `SilverChange` entries behind it, in the order `UnitSilver.changes` carried them. */
-  entries: SilverChange[];
-};
-
-/** What one cause's line is called. An unknown cause falls back to the cause itself, unhyphenated. */
-const SILVER_CAUSE_LABELS: Record<string, string> = {
-  taxed: "taxed",
-  pillaged: "pillaged",
-  claimed: "claimed",
-  sold: "sold",
-  "cast-earned": "earned by casting",
-  worked: "worked",
-  entertained: "entertained",
-  "was-given": "was given",
-  took: "took",
-  bought: "bought",
-  studied: "studied",
-  "cast-spent": "paid to cast",
-  "production-spent": "spent producing",
-  "gave-away": "gave away",
-  discarded: "given to nobody",
-  lent: "lent",
-  "was-taken": "was taken",
-  "was-lent": "was lent",
-  shipped: "shipped"
-};
-
-/**
- * What one cause's line is called.
- *
- * `SilverChangeCause` is generated, so the core may ship a cause this package has not been taught:
- * the fallback is what keeps it a readable line rather than nothing at all.
- */
-function silverCauseLabel(cause: string): string {
-  return SILVER_CAUSE_LABELS[cause] ?? cause.replaceAll("-", " ");
-}
-
-/**
- * The causes that moved this unit's silver, one group per cause, each in the position of its first
- * entry - which is the turn's own order, because `UnitSilver.changes` is in it.
- *
- * `took` and `took-unshown` merge into one group, keyed `took`: they are one event to a reader, and
- * which sources the report does not show is said in the clause instead.
- */
-function silverCauseGroups(changes: readonly SilverChange[]): CauseGroup[] {
-  const groups: CauseGroup[] = [];
-  const byCause = new Map<string, CauseGroup>();
-  for (const change of changes) {
-    const key = change.cause === "took-unshown" ? "took" : change.cause;
-    const existing = byCause.get(key);
-    if (existing) {
-      existing.amount += change.amount;
-      existing.entries.push(change);
-      continue;
-    }
-    const group: CauseGroup = { cause: key, amount: change.amount, entries: [change] };
-    byCause.set(key, group);
-    groups.push(group);
-  }
-  // A cause whose entries cancel moved nothing a reader can act on, and `signed(0)` would draw a
-  // `-0` in the down ink.
-  return groups.filter((group) => group.amount !== 0);
-}
-
 /** `+200`, `-90`. An ASCII hyphen-minus, which is what `String(-90)` gives. */
 function signed(amount: number): string {
   return `${amount > 0 ? "+" : "-"}${Math.abs(amount)}`;
@@ -1684,7 +1580,7 @@ function signed(amount: number): string {
  * `line` is the only thing joining the two ledgers, and both are `null` for a movement no order of
  * this unit's caused - so a `null` line matches nothing rather than matching every other `null`.
  */
-function marketClause(group: CauseGroup, itemChanges: readonly ItemChange[]): string | undefined {
+function marketClause(group: SilverCauseGroup, itemChanges: readonly ItemChange[]): string | undefined {
   const priced: string[] = [];
   for (const entry of group.entries) {
     if (entry.line === null) {
@@ -1777,7 +1673,7 @@ function conditionalShippingClause(shipping: UnitSilver["shipping"]): string | u
  * verbatim: the core builds it as `<name> (<id>)` or `unit <id>`, the form `ah-rgkk.2.3` settled.
  */
 function silverCauseWhy(
-  group: CauseGroup,
+  group: SilverCauseGroup,
   silver: UnitSilver,
   itemChanges: readonly ItemChange[]
 ): string | undefined {
@@ -1975,9 +1871,7 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     // agreed note directly under it says the same thing better.
     return {
       lines,
-      notes: SILVER_NOTES.filter((note) => note.when(noteFacts)).flatMap((note) =>
-        note.say(noteFacts).split("\n")
-      ),
+      notes: silverNoteLines(noteFacts),
       warning: silverMarkWarning(silver, null, facts.silverWarned)
     };
   }
@@ -2024,9 +1918,7 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     warned: facts.silverWarned,
     countUpkeep: facts.countUpkeep
   };
-  const notes = SILVER_NOTES.filter((note) => !(SILVER_NOTES_RESTATED[note.id]?.(groups) ?? false))
-    .filter((note) => note.when(noteFacts))
-    .flatMap((note) => note.say(noteFacts).split("\n"));
+  const notes = silverNoteLines(noteFacts, groups);
   if (silver.doubt !== null) {
     // Above the doubt's own sentence, which says *why* it could not be added up.
     notes.unshift("This month cannot be added up, so what moved this unit's silver is not listed.");

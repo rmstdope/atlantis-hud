@@ -1,6 +1,6 @@
 import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
 import { withoutSilver } from "./silverTag";
-import { SILVER_NOTES, type SilverFacts } from "./silverVocabulary";
+import { silverNoteLines } from "./silverVocabulary";
 import {
   atMost,
   monthLostToAnUnreadLine,
@@ -246,7 +246,6 @@ function silverNote(
   warned: boolean,
   countUpkeep: boolean
 ): string | null {
-  const facts: SilverFacts = { unit, silver, warned, countUpkeep };
-  const said = SILVER_NOTES.filter((note) => note.when(facts)).map((note) => note.say(facts));
-  return said.length > 0 ? said.join("\n") : null;
+  const lines = silverNoteLines({ unit, silver, warned, countUpkeep });
+  return lines.length > 0 ? lines.join("\n") : null;
 }

@@ -1,4 +1,10 @@
-import type { ProductionCap, ReportUnit, UnitSilver } from "@atlantis/core-client";
+import type {
+  ProductionCap,
+  ReportUnit,
+  SilverChange,
+  SilverChangeCause,
+  UnitSilver
+} from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { shareBoundedByAnUnreadUnit, unreadLineClause } from "./unitRead";
 
@@ -331,6 +337,19 @@ export type SilverNote = {
    * than a sentence nobody ever sees.
    */
   example: () => SilverFacts;
+  /**
+   * On a surface that draws one line per cause, whether the lines actually drawn already say the
+   * whole of this note (`ah-rgkk.4.3`, decision **N2** - the Items popup's answer, `ah-rgkk.3.3`'s
+   * **T2**). Absent means no line ever restates it.
+   *
+   * Asked of the drawn groups and never of the note's own `when`: a doubted month draws no cause
+   * lines at all (`UnitSilver.changes` is empty there) while `givers`, `takenFrom`, `givenToNobody`
+   * and both flags are still populated, so dropping a note on its own condition would take the
+   * sentence away and put nothing in its place. Same for a unit set to tax that taxes nothing this
+   * month. The whole-unit tooltip, which has no cause lines, asks none of this and keeps every note
+   * word for word.
+   */
+  restatedBy?: (drawn: readonly SilverCauseGroup[]) => boolean;
 };
 
 /**
@@ -839,6 +858,17 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // whatever that setting says - the same reasoning `withdrawing` and `works-by-default` use.
   {
     id: "shared-silver-pays-orders",
+    // The `was lent` line carries the figure the sentence does not (`ah-3c2t.2`, option **S3**).
+    // Keyed on the drawn line and not on the note's own condition, as every `restatedBy` is: a
+    // doubted month draws no cause lines at all while `borrowedForOrders` is still populated, and
+    // dropping the note there would take the sentence away and put nothing in its place.
+    //
+    // Which doubt, exactly, because the core has two and they are not the same set: the column's
+    // own `SilverDoubt` (`EstimatedMen` and its kin) is what empties the change list, and it is not
+    // `ledger.doubted`, which is what zeroes `borrows` in `sharing_purse`. A unit doubted only the
+    // first way keeps a populated `borrowedForOrders` and draws no line - so this case is reachable,
+    // and it is the one this entry exists for.
+    restatedBy: (groups) => groups.some((group) => group.cause === "was-lent"),
     // `borrowedForOrders` and not `sharedSilverForOrders`: that field is `0` for a sharer by
     // decision, and a sharer that overspends is exactly the borrower the agreed record draws
     // (`ah-3c2t.2`). A superset, so no hover that shows the sentence today loses it.
@@ -862,6 +892,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // which are not wages and would make this sentence say something untrue about them.
   {
     id: "works-by-default",
+    restatedBy: (groups) => hasOrderlessGroup(groups, "worked"),
     when: ({ silver }) =>
       silver.worksByDefault && silver.lateIncome !== null && silver.lateIncome > 0,
     say: () => "This unit has no month-long order, so it will work and earn wages.",
@@ -883,6 +914,8 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // explain where money in the figure came from.
   {
     id: "taxes-by-flag",
+    // Only where the clause fired, which is the same test `silverCauseWhy` makes.
+    restatedBy: (groups) => hasOrderlessGroup(groups, "taxed"),
     when: ({ silver }) => silver.taxesByFlag,
     say: () => "This unit is set to tax every turn, so it taxes without an order.",
     example: () => ({
@@ -896,6 +929,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // in before money out, and a taking is the unit's own order so it leads (`ah-awcm`).
   {
     id: "includes-take",
+    restatedBy: (groups) => groups.some((group) => group.entries.some((entry) => entry.cause === "took")),
     when: ({ silver }) => silver.taken > 0 && silver.takenFrom.length > 0,
     say: ({ silver }) =>
       `Includes ${silver.taken} taken from ${namesInAList(silver.takenFrom)} in this hex.`,
@@ -916,6 +950,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // the reader cannot check this one against anything in front of them (`ah-awcm`).
   {
     id: "includes-take-unshown",
+    restatedBy: (groups) => groups.some((group) => group.entries.some((entry) => entry.cause === "took-unshown")),
     when: ({ silver }) => silver.takenUnshown > 0 && silver.takenUnshownFrom.length > 0,
     say: ({ silver }) =>
       `Includes ${silver.takenUnshown} taken from ${namesInAList(
@@ -937,6 +972,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // part a reader cannot find by looking at this unit's own block.
   {
     id: "includes-gift",
+    restatedBy: (groups) => groups.some((group) => group.cause === "was-given"),
     when: ({ silver }) => silver.received > 0 && silver.givers.length > 0,
     say: ({ silver }) =>
       `Includes ${silver.received} given by ${namesInAList(silver.givers)} in this hex.`,
@@ -956,6 +992,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // would otherwise look for a recipient of and find none.
   {
     id: "given-to-nobody",
+    restatedBy: (groups) => groups.some((group) => group.cause === "discarded"),
     when: ({ silver }) => silver.givenToNobody > 0,
     say: ({ silver }) => `Includes ${silver.givenToNobody} given away to nobody.`,
     example: () => ({
@@ -993,3 +1030,98 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     })
   }
 ];
+
+/** Whether one cause was drawn with no order of this unit's behind any of it. */
+function hasOrderlessGroup(groups: readonly SilverCauseGroup[], cause: string): boolean {
+  const group = groups.find((candidate) => candidate.cause === cause);
+  return group !== undefined && group.entries.every((entry) => entry.line === null);
+}
+
+/**
+ * One cause's line: every `SilverChange` with that cause, merged (decision **V2**). `took-unshown`
+ * merges into `took`.
+ */
+export type SilverCauseGroup = {
+  cause: string;
+  /** Summed, signed. */
+  amount: number;
+  /** The `SilverChange` entries behind it, in the order `UnitSilver.changes` carried them. */
+  entries: SilverChange[];
+};
+
+/**
+ * What one cause's line is called, for every cause a group can carry. `took-unshown` never keys a
+ * group, since `silverCauseGroups` folds it into `took`; a new core cause fails to compile here.
+ */
+export const SILVER_CAUSE_LABELS: Readonly<Record<Exclude<SilverChangeCause, "took-unshown">, string>> = {
+  taxed: "taxed",
+  pillaged: "pillaged",
+  claimed: "claimed",
+  sold: "sold",
+  "cast-earned": "earned by casting",
+  worked: "worked",
+  entertained: "entertained",
+  "was-given": "was given",
+  took: "took",
+  bought: "bought",
+  studied: "studied",
+  "cast-spent": "paid to cast",
+  "production-spent": "spent producing",
+  "gave-away": "gave away",
+  discarded: "given to nobody",
+  lent: "lent",
+  "was-taken": "was taken",
+  "was-lent": "was lent",
+  shipped: "shipped"
+};
+
+/**
+ * What one cause's line is called.
+ *
+ * `SilverChangeCause` is generated, so the core may ship a cause this package has not been taught:
+ * the fallback is what keeps it a readable line rather than nothing at all.
+ */
+export function silverCauseLabel(cause: string): string {
+  return (SILVER_CAUSE_LABELS as Readonly<Record<string, string>>)[cause] ?? cause.replaceAll("-", " ");
+}
+
+/**
+ * The causes that moved this unit's silver, one group per cause, each in the position of its first
+ * entry - which is the turn's own order, because `UnitSilver.changes` is in it.
+ *
+ * `took` and `took-unshown` merge into one group, keyed `took`: they are one event to a reader, and
+ * which sources the report does not show is said in the clause instead.
+ */
+export function silverCauseGroups(changes: readonly SilverChange[]): SilverCauseGroup[] {
+  const groups: SilverCauseGroup[] = [];
+  const byCause = new Map<string, SilverCauseGroup>();
+  for (const change of changes) {
+    const key = change.cause === "took-unshown" ? "took" : change.cause;
+    const existing = byCause.get(key);
+    if (existing) {
+      existing.amount += change.amount;
+      existing.entries.push(change);
+      continue;
+    }
+    const group: SilverCauseGroup = { cause: key, amount: change.amount, entries: [change] };
+    byCause.set(key, group);
+    groups.push(group);
+  }
+  // A cause whose entries cancel moved nothing a reader can act on, and `signed(0)` would draw a
+  // `-0` in the down ink.
+  return groups.filter((group) => group.amount !== 0);
+}
+
+/**
+ * Every note whose `when` holds and that `drawn` does not restate, in `SILVER_NOTES` order, one
+ * entry per line: a `say` containing a newline becomes several entries. `drawn` defaults to none,
+ * since a surface with no cause lines restates nothing. A fresh array the caller may mutate.
+ */
+export function silverNoteLines(
+  facts: SilverFacts,
+  drawn: readonly SilverCauseGroup[] = []
+): string[] {
+  return SILVER_NOTES.filter((note) => !(note.restatedBy?.(drawn) ?? false))
+    .filter((note) => note.when(facts))
+    .flatMap((note) => note.say(facts).split("\n"));
+}

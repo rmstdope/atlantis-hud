@@ -1,4 +1,4 @@
-import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
+import type { ReportUnit, SilverChangeCause, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,6 +6,10 @@ import {
   buyAllSentences,
   productionStatusSentence,
   productionMenSentence,
+  silverCauseGroups,
+  silverCauseLabel,
+  silverNoteLines,
+  type SilverCauseGroup,
   type SilverFacts
 } from "./silverVocabulary";
 
@@ -650,4 +654,75 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       expect(note.say(note.example())).toBe(SAID_BEFORE[id]);
     }
   );
+});
+
+describe("what a drawn cause line already says", () => {
+  const drawnAs = (cause: string, entryCause = cause, line: number | null = null): SilverCauseGroup[] => [
+    { cause, amount: 1, entries: [{ amount: 1, cause: entryCause as SilverChangeCause, line, other: null }] }
+  ];
+
+  it("drops a note the drawn lines restate, and keeps it where nothing is drawn", () => {
+    const note = SILVER_NOTES.find((n) => n.id === "includes-gift");
+    if (!note) {
+      throw new Error("includes-gift is missing");
+    }
+    const facts = note.example();
+    const drawn: SilverCauseGroup[] = [
+      {
+        cause: "was-given",
+        amount: 25,
+        entries: [{ amount: 25, cause: "was-given", line: null, other: "Quartermaster (18500)" }]
+      }
+    ];
+    const sentence = "Includes 25 given by Quartermaster (18500) in this hex.";
+    expect(silverNoteLines(facts, drawn)).not.toContain(sentence);
+    expect(silverNoteLines(facts)).toContain(sentence);
+  });
+
+  const RESTATED: [string, SilverCauseGroup[]][] = [
+    ["includes-gift", drawnAs("was-given")],
+    ["includes-take", drawnAs("took")],
+    ["includes-take-unshown", drawnAs("took", "took-unshown")],
+    ["given-to-nobody", [{ cause: "discarded", amount: -1, entries: [{ amount: -1, cause: "discarded", line: null, other: null }] }]],
+    ["taxes-by-flag", drawnAs("taxed")],
+    ["works-by-default", drawnAs("worked")],
+    ["shared-silver-pays-orders", drawnAs("was-lent")]
+  ];
+
+  it.each(RESTATED)("%s is restated by its own line, and by nothing drawn", (id, drawn) => {
+    const note = SILVER_NOTES.find((n) => n.id === id);
+    expect(note?.restatedBy?.(drawn)).toBe(true);
+    expect(note?.restatedBy?.([])).toBe(false);
+  });
+
+  it("does not count a taxing line an order wrote as the flag's", () => {
+    const note = SILVER_NOTES.find((n) => n.id === "taxes-by-flag");
+    expect(note?.restatedBy?.(drawnAs("taxed", "taxed", 3))).toBe(false);
+  });
+
+  it("exactly seven notes declare a restatement", () => {
+    expect(
+      SILVER_NOTES.filter((n) => n.restatedBy)
+        .map((n) => n.id)
+        .sort()
+    ).toEqual(RESTATED.map(([id]) => id).sort());
+  });
+
+  it("folds took-unshown into took and drops a cause whose movements cancel", () => {
+    const groups = silverCauseGroups([
+      { amount: 5, cause: "took", line: null, other: null },
+      { amount: 7, cause: "took-unshown", line: null, other: null },
+      { amount: 4, cause: "was-given", line: null, other: null },
+      { amount: -4, cause: "was-given", line: null, other: null }
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.cause).toBe("took");
+    expect(groups[0]?.amount).toBe(12);
+    expect(groups[0]?.entries).toHaveLength(2);
+  });
+
+  it("labels a cause, and reads an untaught one as itself", () => {
+    expect(silverCauseLabel("cast-spent")).toBe("paid to cast");
+    expect(silverCauseLabel("brand-new-cause")).toBe("brand new cause");
+  });
 });
