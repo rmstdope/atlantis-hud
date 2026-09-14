@@ -61,7 +61,8 @@ export async function runNewAgeFetch(
   scope: NewAgeFetchScope,
   credentials: { factionNumber: string; password: string },
   worldName: string,
-  effects: NewAgeFetchEffects
+  effects: NewAgeFetchEffects,
+  { fromBrowser = false }: { fromBrowser?: boolean } = {}
 ): Promise<NewAgeFetchOutcome> {
   if (effects.abandoned()) {
     return ABANDONED;
@@ -71,7 +72,7 @@ export async function runNewAgeFetch(
   const login = await effects.login(credentials.factionNumber, credentials.password);
   if (login.kind !== "ok") {
     // Nothing was being sent, so the unreachable sentence drops its `Nothing was sent.` clause.
-    const { message, retype } = signInFailure(login, NEW_AGE_HOST, { nothingSent: false });
+    const { message, retype } = signInFailure(login, NEW_AGE_HOST, { nothingSent: false, fromBrowser });
     return { kind: "refused", message, retype };
   }
   const token = login.value.accessToken;

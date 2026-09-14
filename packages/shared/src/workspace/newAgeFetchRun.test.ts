@@ -196,4 +196,16 @@ describe("runNewAgeFetch", () => {
       { kind: "fetchingTurn", turnNumber: 81, done: 1, total: 2 }
     ]);
   });
+  it("names both causes when a browser could not reach the world at sign-in", async () => {
+    const { effects } = harness({ login: async () => ({ kind: "unreachable" }) });
+
+    const outcome = await runNewAgeFetch("thisTurn", credentials, "Arcanum", effects, { fromBrowser: true });
+
+    expect(outcome).toEqual({
+      kind: "refused",
+      message:
+        "Could not reach atlantis-newage.com. Either it is down, or it does not accept requests from this web address.",
+      retype: false
+    });
+  });
 });

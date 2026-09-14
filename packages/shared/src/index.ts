@@ -73,6 +73,7 @@ export * from "./workspace/sendOrders";
 export * from "./workspace/mapMarquee";
 export * from "./workspace/OrdersPanel";
 export * from "./workspace/httpTransport";
+export * from "./workspace/browserHttpTransport";
 export * from "./workspace/newAgeApi";
 export * from "./workspace/newAgeWorlds";
 export * from "./workspace/newAgeSignInView";
