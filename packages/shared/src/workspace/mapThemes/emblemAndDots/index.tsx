@@ -29,34 +29,9 @@ import {
   type DotShape,
   type Feature
 } from "./paint";
+import { terrainClassName } from "../terrain";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
-
-/** Terrain classes, written out in full so nothing can tree-shake one away. */
-const TERRAIN_CLASSES: Record<string, string> = {
-  ocean: "ed-terrain-ocean",
-  lake: "ed-terrain-ocean",
-  plain: "ed-terrain-plain",
-  forest: "ed-terrain-forest",
-  mountain: "ed-terrain-mountain",
-  swamp: "ed-terrain-swamp",
-  desert: "ed-terrain-desert",
-  jungle: "ed-terrain-jungle",
-  tundra: "ed-terrain-tundra",
-  volcano: "ed-terrain-volcano",
-  cavern: "ed-terrain-cavern",
-  underforest: "ed-terrain-underforest",
-  wasteland: "ed-terrain-wasteland",
-  hill: "ed-terrain-hill",
-  tunnels: "ed-terrain-tunnels",
-  grotto: "ed-terrain-grotto",
-  deepforest: "ed-terrain-deepforest",
-  chasm: "ed-terrain-chasm"
-};
-
-function terrainClass(terrain: string): string {
-  return TERRAIN_CLASSES[terrain.toLowerCase()] ?? "ed-terrain-other";
-}
 
 /** Moderate, so the emblem keeps its contrast over a photograph. */
 const TEXTURE_TINT = 0.38;
@@ -97,7 +72,7 @@ function TerrainLayer({ views }: LayerProps) {
           <g transform={`scale(${SCALE})`}>
             <polygon
               points={HEX_POINTS_MOCKUP}
-              className={`${terrainClass(view.terrain)} ed-edge`}
+              className={`${terrainClassName("ed", view.terrainKind)} ed-edge`}
               style={view.texture ? { fill: `url(#${view.texture.patternId})` } : undefined}
               strokeWidth={1.6}
               // A dashed rim says "do not trust the inside of this" for both the states that are

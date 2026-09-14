@@ -491,6 +491,34 @@ describe("map theme stylesheets", () => {
       }));
   };
 
+  it("declares every terrain kind, and the fallback, in every theme's stylesheet", async () => {
+    const { TERRAIN_KINDS } = await import("./workspace/mapThemes/terrain");
+    const prefixes: Record<string, readonly string[]> = {
+      beveledTile: ["bt-terrain"],
+      cartographersTable: ["ct-terrain"],
+      emblemAndDots: ["ed-terrain"],
+      tacticalHud: ["hud-terrain"],
+      miniatureWorld: ["mw-lit", "mw-shade"]
+    };
+    const missing: string[] = [];
+    for (const sheet of await themeSheets()) {
+      const expected = prefixes[sheet.theme];
+      if (!expected) {
+        missing.push(`${sheet.theme}: no terrain prefixes known for this theme`);
+        continue;
+      }
+      for (const prefix of expected) {
+        for (const kind of [...TERRAIN_KINDS, "other"]) {
+          if (!new RegExp(`\\.${prefix}-${kind}\\s*\\{`).test(sheet.source)) {
+            missing.push(`${sheet.theme}: .${prefix}-${kind}`);
+          }
+        }
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
   it("gives every theme a stylesheet of its own", async () => {
     // Filtering the missing ones out instead would quietly excuse a theme that has none, and its
     // zoom-band policy - which is CSS and only CSS - would simply never apply.

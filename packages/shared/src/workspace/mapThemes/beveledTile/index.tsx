@@ -30,34 +30,9 @@ import {
   TOKEN_ROW_Y,
   tokenRow
 } from "./paint";
+import { terrainClassName } from "../terrain";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
-
-/** Terrain classes, written out in full so nothing can tree-shake one away. */
-const TERRAIN_CLASSES: Record<string, string> = {
-  ocean: "bt-terrain-ocean",
-  lake: "bt-terrain-ocean",
-  plain: "bt-terrain-plain",
-  forest: "bt-terrain-forest",
-  mountain: "bt-terrain-mountain",
-  swamp: "bt-terrain-swamp",
-  desert: "bt-terrain-desert",
-  jungle: "bt-terrain-jungle",
-  tundra: "bt-terrain-tundra",
-  volcano: "bt-terrain-volcano",
-  cavern: "bt-terrain-cavern",
-  underforest: "bt-terrain-underforest",
-  wasteland: "bt-terrain-wasteland",
-  hill: "bt-terrain-hill",
-  tunnels: "bt-terrain-tunnels",
-  grotto: "bt-terrain-grotto",
-  deepforest: "bt-terrain-deepforest",
-  chasm: "bt-terrain-chasm"
-};
-
-function terrainClass(terrain: string): string {
-  return TERRAIN_CLASSES[terrain.toLowerCase()] ?? "bt-terrain-other";
-}
 
 /** Light, because the bevel is doing the work of separating tile from tile. */
 const TEXTURE_TINT = 0.14;
@@ -112,7 +87,7 @@ function TerrainLayer({ views }: LayerProps) {
               <polygon
                 points={TILE_POINTS}
                 data-tile="face"
-                className={terrainClass(view.terrain)}
+                className={terrainClassName("bt", view.terrainKind)}
                 style={view.texture ? { fill: `url(#${view.texture.patternId})` } : undefined}
               />
               {view.texture && (

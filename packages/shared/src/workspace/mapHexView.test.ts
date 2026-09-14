@@ -83,10 +83,17 @@ describe("terrain texture", () => {
     expect(terrainTexturePatternId(terrain)).toBe(`biome-texture-${terrain}`);
   });
 
-  it("paints lakes with the ocean's colour and texture", () => {
-    expect(terrainFillClass("lake")).toBe("fill-terrain-ocean");
-    expect(terrainTextureUrl("lake")).toBe("/biomes/ocean_512.png");
-    expect(terrainTexturePatternId("lake")).toBe("biome-texture-ocean");
+  it("paints a lake with the ocean's colour and texture where the ruleset calls it water", () => {
+    const water = { ocean: "ocean", alsoWater: ["lake"] };
+    expect(terrainFillClass("lake", water)).toBe("fill-terrain-ocean");
+    expect(terrainTextureUrl("lake", water)).toBe("/biomes/ocean_512.png");
+    expect(terrainTexturePatternId("lake", water)).toBe("biome-texture-ocean");
+  });
+
+  it("paints a lake as other terrain where the ruleset does not call it water", () => {
+    expect(terrainFillClass("lake")).toBe("fill-terrain-other");
+    expect(terrainTextureUrl("lake")).toBeNull();
+    expect(terrainTexturePatternId("lake")).toBeNull();
   });
 
   it("reads texture names case-insensitively", () => {

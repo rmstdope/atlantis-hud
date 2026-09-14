@@ -25,6 +25,7 @@ import {
   terrainTextureRotation,
   terrainTextureUrl
 } from "../mapHexView";
+import { terrainKindOf, type TerrainPaint, type WaterTerrains } from "./terrain";
 
 /**
  * The monster faction, whose units are wandering hazards rather than somebody's army.
@@ -116,6 +117,11 @@ export type HexView = {
   /** Where the hex's centre sits in world space, so a theme needs no geometry of its own. */
   at: { x: number; y: number };
   terrain: string;
+  /**
+   * What the hex is painted as: the terrain resolved against the world's water terrains. Pick paint
+   * by this, never by `terrain`.
+   */
+  terrainKind: TerrainPaint;
   /** The biome image to paint under the theme's own treatment, or null when textures are off. */
   texture: {
     url: string;
@@ -229,7 +235,7 @@ export type HexViewOptions = {
   showTextures: boolean;
   /** Defaults to true so existing renderers retain the textured map's varied orientation. */
   rotateTextures?: boolean;
-  /** Defaults to true so ocean and lake texture patterns move by default. */
+  /** Defaults to true so water texture patterns move by default. */
   animateWaterTextures?: boolean;
   badges: Record<BadgeName, boolean>;
   /**
@@ -240,6 +246,8 @@ export type HexViewOptions = {
   /** The theme's `MapTheme.fogDamping`; 1 when absent, so a caller not drawing through a theme
    * (tests, tools) gets the shared fade whole. */
   fogDamping?: number;
+  /** The world's water terrains, from the ruleset; `DEFAULT_WATER` when absent (tests, tools). */
+  water?: WaterTerrains;
 };
 
 /** The shared fade scaled by a theme's damping, to three decimals - the one place this arithmetic lives. */
@@ -373,10 +381,10 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
  * The biome image to paint under the theme's own treatment.
  *
  * Worked out only when textures are asked for: with the toggle off this runs for every hex on
- * screen to produce a null, and it lowercases the terrain word and probes a set to do it.
+ * screen to produce a null.
  */
 function textureOf(
-  terrain: string,
+  kind: TerrainPaint,
   regionId: string,
   rotateTextures: boolean,
   animateWaterTextures: boolean
@@ -387,8 +395,11 @@ function textureOf(
   brightness: number;
   moves: boolean;
 } | null {
-  const url = terrainTextureUrl(terrain);
-  const basePatternId = terrainTexturePatternId(terrain);
+  if (kind === "other") {
+    return null;
+  }
+  const url = terrainTextureUrl(kind);
+  const basePatternId = terrainTexturePatternId(kind);
   const rotation = rotateTextures ? terrainTextureRotation(regionId) : 0;
   const brightness = terrainTextureBrightness(regionId);
   const tone = Math.round(brightness * 100);
@@ -398,7 +409,7 @@ function textureOf(
         patternId: `${basePatternId}-${rotation}-${tone}`,
         rotation,
         brightness,
-        moves: animateWaterTextures && basePatternId === "biome-texture-ocean"
+        moves: animateWaterTextures && kind === "ocean"
       }
     : null;
 }
@@ -462,13 +473,16 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     ? Math.max(0, hex.foreignUnitCount - (badges.monsters ? 0 : monsters))
     : 0;
 
+  const terrainKind = terrainKindOf(hex.terrain, options.water);
+
   return {
     key: hex.regionId,
     at: worldOf(hex.coordinate),
     terrain: hex.terrain,
+    terrainKind,
     texture: options.showTextures
       ? textureOf(
-          hex.terrain,
+          terrainKind,
           hex.regionId,
           options.rotateTextures !== false,
           options.animateWaterTextures !== false

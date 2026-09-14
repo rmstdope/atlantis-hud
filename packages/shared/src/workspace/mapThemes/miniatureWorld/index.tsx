@@ -30,30 +30,9 @@ import {
   STAND_COUNT_DROP,
   unitStand
 } from "./paint";
+import { TERRAIN_KINDS } from "../terrain";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
-
-/** Terrain gradients, written out in full. Each is a lit ground rather than a flat fill. */
-const TERRAIN_GRADIENTS: Record<string, string> = {
-  ocean: "mw-grad-ocean",
-  lake: "mw-grad-ocean",
-  plain: "mw-grad-plain",
-  forest: "mw-grad-forest",
-  mountain: "mw-grad-mountain",
-  swamp: "mw-grad-swamp",
-  desert: "mw-grad-desert",
-  jungle: "mw-grad-jungle",
-  tundra: "mw-grad-tundra",
-  volcano: "mw-grad-volcano",
-  cavern: "mw-grad-cavern",
-  underforest: "mw-grad-underforest",
-  wasteland: "mw-grad-wasteland",
-  hill: "mw-grad-hill",
-  tunnels: "mw-grad-tunnels",
-  grotto: "mw-grad-grotto",
-  deepforest: "mw-grad-deepforest",
-  chasm: "mw-grad-chasm"
-};
 
 /**
  * The terrains that get a lit ground, by name only.
@@ -63,30 +42,7 @@ const TERRAIN_GRADIENTS: Record<string, string> = {
  * value here would also fail the token guard in `theme.test.ts`, and rightly: an inline colour
  * neither follows `data-theme` nor shows up in the light-mode parity check.
  */
-const GRADIENT_TERRAINS = [
-  "ocean",
-  "plain",
-  "forest",
-  "mountain",
-  "swamp",
-  "desert",
-  "jungle",
-  "tundra",
-  "volcano",
-  "cavern",
-  "underforest",
-  "wasteland",
-  "hill",
-  "tunnels",
-  "grotto",
-  "deepforest",
-  "chasm",
-  "other"
-] as const;
-
-function gradientOf(terrain: string): string {
-  return TERRAIN_GRADIENTS[terrain.toLowerCase()] ?? "mw-grad-other";
-}
+const GRADIENT_TERRAINS = [...TERRAIN_KINDS, "other"] as const;
 
 const HEX_POINTS_MOCKUP = HEX_POINTS.split(" ")
   .map((pair) =>
@@ -181,7 +137,7 @@ function TerrainLayer({ views }: LayerProps) {
         // an unfinished part of the board.
         const unpainted = view.knowledge === "named";
         // The scenery is what a modeller adds having seen the place; the ground colour is not.
-        const decoration = unpainted || view.texture ? null : decorationFor(view.terrain);
+        const decoration = unpainted || view.texture ? null : decorationFor(view.terrainKind);
         return (
           <g key={view.key} transform={at(view.at)}>
             <g transform={`scale(${SCALE})`}>
@@ -197,7 +153,7 @@ function TerrainLayer({ views }: LayerProps) {
                   // and the rim below carry "nobody has been here"; this carries what it is.
                   fill: view.texture
                     ? `url(#${view.texture.patternId})`
-                    : `url(#${gradientOf(view.terrain)})`
+                    : `url(#mw-grad-${view.terrainKind})`
                 }}
                 strokeWidth={1.6}
                 vectorEffect="non-scaling-stroke"

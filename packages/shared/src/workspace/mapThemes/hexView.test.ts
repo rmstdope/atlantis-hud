@@ -15,6 +15,9 @@ import {
   type HexViewOptions
 } from "./hexView";
 import { terrainTextureBrightness, terrainTextureRotation } from "../mapHexView";
+import type { WaterTerrains } from "./terrain";
+
+const TRIDENT_WATER: WaterTerrains = { ocean: "ocean", alsoWater: ["lake"] };
 
 function at(x: number, y: number, z = 1): Coordinate {
   return { x, y, z };
@@ -95,8 +98,18 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
 
   it("marks ocean and lake textures for movement", () => {
     expect(viewOf(hex({ knowledge: "current", terrain: "ocean" })).texture?.moves).toBe(true);
-    expect(viewOf(hex({ knowledge: "current", terrain: "lake" })).texture?.moves).toBe(true);
+    expect(
+      viewOf(hex({ knowledge: "current", terrain: "lake" }), { water: TRIDENT_WATER }).texture?.moves
+    ).toBe(true);
+    expect(viewOf(hex({ knowledge: "current", terrain: "lake" })).texture).toBeNull();
     expect(viewOf(hex({ knowledge: "current", terrain: "mountain" })).texture?.moves).toBe(false);
+  });
+
+  it("resolves a lake as ocean only where the ruleset calls it water", () => {
+    const lake = hex({ knowledge: "current", terrain: "lake" });
+
+    expect(viewOf(lake, { water: TRIDENT_WATER }).terrainKind).toBe("ocean");
+    expect(viewOf(lake).terrainKind).toBe("other");
   });
 
   it("leaves water textures still when animation is off", () => {

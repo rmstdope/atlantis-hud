@@ -14,6 +14,7 @@
  */
 
 import type { SettlementTier } from "../hexView";
+import type { TerrainPaint } from "../terrain";
 
 export const MOCKUP_RADIUS = 46;
 
@@ -119,8 +120,8 @@ export const STAND_COUNT_DROP = COUNT_DROP;
  * doing this job, and painting two mountains over a picture of a mountain is the one thing this
  * design must not do.
  */
-export function decorationFor(terrain: string): "peaks" | "trees" | "waves" | "dunes" | null {
-  switch (terrain.toLowerCase()) {
+export function decorationFor(kind: TerrainPaint): "peaks" | "trees" | "waves" | "dunes" | null {
+  switch (kind) {
     case "mountain":
     case "volcano":
     case "hill":
@@ -132,7 +133,6 @@ export function decorationFor(terrain: string): "peaks" | "trees" | "waves" | "d
     case "deepforest":
       return "trees";
     case "ocean":
-    case "lake":
     case "grotto":
       return "waves";
     case "desert":

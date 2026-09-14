@@ -18,16 +18,14 @@
 import type { Coordinate, Direction } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
+import { DEFAULT_WATER, terrainKindOf, type TerrainPaint, type WaterTerrains } from "./mapThemes/terrain";
 
 /**
- * Terrain classes, written out so Tailwind can see them.
- *
- * The parser takes whatever terrain word the report uses, so this cannot be exhaustive; anything
- * unrecognised falls back rather than vanishing.
+ * Terrain classes, written out so Tailwind can see them: one per kind in `TERRAIN_KINDS`, plus the
+ * fallback for a word the map has no paint for. Never build these from a template.
  */
-const TERRAIN_CLASSES: Record<string, string> = {
+const TERRAIN_CLASSES: Readonly<Record<TerrainPaint, string>> = {
   ocean: "fill-terrain-ocean",
-  lake: "fill-terrain-ocean",
   plain: "fill-terrain-plain",
   forest: "fill-terrain-forest",
   mountain: "fill-terrain-mountain",
@@ -43,29 +41,9 @@ const TERRAIN_CLASSES: Record<string, string> = {
   tunnels: "fill-terrain-tunnels",
   grotto: "fill-terrain-grotto",
   deepforest: "fill-terrain-deepforest",
-  chasm: "fill-terrain-chasm"
+  chasm: "fill-terrain-chasm",
+  other: "fill-terrain-other"
 };
-
-const TERRAIN_FALLBACK = "fill-terrain-other";
-const TEXTURED_TERRAINS = new Set([
-  "ocean",
-  "plain",
-  "forest",
-  "mountain",
-  "swamp",
-  "jungle",
-  "desert",
-  "tundra",
-  "volcano",
-  "cavern",
-  "underforest",
-  "wasteland",
-  "hill",
-  "tunnels",
-  "grotto",
-  "deepforest",
-  "chasm"
-]);
 
 /**
  * A hex named by a neighbour's exits is terrain and province only, and is drawn as that much.
@@ -92,8 +70,9 @@ export const FADE_LIMIT = 0.62;
  * How much of a hex the player is entitled to trust, as paint.
  *
  * Only the fade and the hatch: the terrain class and the texture are the theme's own business,
- * reached through `terrainFillClass` and `terrainTextureUrl` by whoever wants them, rather than
- * computed here for every hex on the level whether or not anybody reads them.
+ * reached through `HexView.terrainKind` (resolved once against the ruleset's water terrains) by
+ * whoever wants them, rather than computed here for every hex on the level whether or not anybody
+ * reads them.
  */
 export type HexPaint = {
   /** How much unexplored ground shows through, which is how age is drawn. */
@@ -102,18 +81,21 @@ export type HexPaint = {
   hatched: boolean;
 };
 
-export function terrainFillClass(terrain: string): string {
-  return TERRAIN_CLASSES[terrain.toLowerCase()] ?? TERRAIN_FALLBACK;
+export function terrainFillClass(terrain: string, water: WaterTerrains = DEFAULT_WATER): string {
+  return TERRAIN_CLASSES[terrainKindOf(terrain, water)];
 }
 
-export function terrainTextureUrl(terrain: string): string | null {
-  const name = terrain.toLowerCase() === "lake" ? "ocean" : terrain.toLowerCase();
-  return TEXTURED_TERRAINS.has(name) ? `/biomes/${name}_512.png` : null;
+export function terrainTextureUrl(terrain: string, water: WaterTerrains = DEFAULT_WATER): string | null {
+  const kind = terrainKindOf(terrain, water);
+  return kind === "other" ? null : `/biomes/${kind}_512.png`;
 }
 
-export function terrainTexturePatternId(terrain: string): string | null {
-  const name = terrain.toLowerCase() === "lake" ? "ocean" : terrain.toLowerCase();
-  return TEXTURED_TERRAINS.has(name) ? `biome-texture-${name}` : null;
+export function terrainTexturePatternId(
+  terrain: string,
+  water: WaterTerrains = DEFAULT_WATER
+): string | null {
+  const kind = terrainKindOf(terrain, water);
+  return kind === "other" ? null : `biome-texture-${kind}`;
 }
 
 /**
