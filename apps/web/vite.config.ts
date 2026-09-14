@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { wasmFreshness } from "../../scripts/wasmFreshness";
 import { VitePWA } from "vite-plugin-pwa";
 
 // The root manifest is where the version is edited, and the shells are told what it is rather than
@@ -22,6 +23,8 @@ export default defineConfig({
   publicDir: fileURLToPath(new URL("../../config/public", import.meta.url)),
   envPrefix: ["VITE_", "ATLANTIS_"],
   plugins: [
+    // A long-lived dev server must not serve a core older than the Rust sources it sits beside.
+    wasmFreshness({ repoRoot: fileURLToPath(new URL("../..", import.meta.url)) }),
     react(),
     tailwindcss(),
     // Web only. The desktop shell is a Tauri webview with no service worker and its own update

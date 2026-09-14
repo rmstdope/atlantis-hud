@@ -276,6 +276,19 @@ Heading and bounding sentence, **verbatim**:
 > These three are where a change like this usually breaks. Past them the returns drop off fast —
 > anything else odd is a new bead, not this verdict.
 
+## The core the shell serves is checked, not assumed
+
+The WebAssembly core is gitignored and built locally, so a shell can serve one older than the
+sources it sits beside — which reopened two correct features at P0. The dev servers rebuild a stale
+core before they serve a page, and this step proves it rather than trusting it: once the shell is up
+and before anyone is called, run from the tree the shell serves
+
+    node scripts/ensure-wasm.mjs
+
+and expect `wasm module is current, skipping the build`. Anything else means the core was rebuilt
+under you or failed to build: reload the page once the command finishes, and if it failed, this is
+*When the build fails* below, not a verdict.
+
 ## The handoff
 
 Four lines, verbatim shape, and **never `open` the page for the navigator** — the link is clickable,

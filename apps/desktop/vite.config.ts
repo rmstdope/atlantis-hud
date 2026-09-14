@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { wasmFreshness } from "../../scripts/wasmFreshness";
 
 // The root manifest is where the version is edited, and the shells are told what it is rather than
 // reading it back at runtime. A unit test asserts this and `tauri.conf.json` still agree.
@@ -15,5 +16,10 @@ export default defineConfig({
   // is a copy that will be missing wherever nobody remembered - which is what broke CI.
   publicDir: fileURLToPath(new URL("../../config/public", import.meta.url)),
   envPrefix: ["VITE_", "ATLANTIS_"],
-  plugins: [react(), tailwindcss()]
+  plugins: [
+    // A long-lived dev server must not serve a core older than the Rust sources it sits beside.
+    wasmFreshness({ repoRoot: fileURLToPath(new URL("../..", import.meta.url)) }),
+    react(),
+    tailwindcss()
+  ]
 });
