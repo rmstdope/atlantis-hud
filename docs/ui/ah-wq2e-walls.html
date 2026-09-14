@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walls between neighbouring hexes — round 1</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  h3.sec { margin:40px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:16px; max-width:96ch; }
+  .row { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; flex:1 1 400px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; }
+  .stage { background:#241c12; border:1px solid var(--edge-soft); border-radius:8px; padding:6px; overflow-x:auto; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:10px 0 6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .ui { font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .pane { background:var(--raised); border:1px solid var(--edge); border-radius:7px; overflow:hidden; }
+  .pane .hdr { background:#202935; border-bottom:1px solid var(--edge); padding:6px 10px; font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-soft); }
+  .pane .body { padding:9px 10px; }
+  .prob { display:flex; gap:8px; padding:5px 0; }
+  .dot { width:8px; height:8px; border-radius:50%; margin-top:5px; flex:none; background:var(--brass); }
+  .chk { display:flex; gap:8px; align-items:center; padding:2px 0; color:var(--ink); }
+  .box { width:13px; height:13px; border:1px solid var(--ink-dim); border-radius:3px; display:inline-block; }
+  .box.on { background:var(--brass); border-color:var(--brass); }
+  .new { color:var(--brass-bright); }
+  svg text { font:10px 'Helvetica Neue',Arial,sans-serif; fill:#2a2118; }
+</style></head><body>
+<header>
+  <h1><span>Walls</span> — where two neighbouring hexes have no way between them</h1>
+  <p>Underground, a cave can sit right next to another one and still have no way through. The
+  cavern at (9,3) in Sostrunland lists only three ways out: south-east, south and north-west.
+  Its north, north-east and south-west sides are closed. The map draws all six sides the same, so
+  it looks as though you could walk through any of them.</p>
+  <p>Every drawing below is that same patch of the underworld, taken from the turn 84 report. Two
+  caverns were seen in full: (9,3) and (9,1) just north of it. Their neighbours are only named, and
+  the grey hexes have never been seen at all. A wall is drawn only where a hex we have seen in full
+  leaves out the side facing its neighbour.</p>
+</header>
+<main>
+
+<h3 class="sec">Today</h3>
+<p>No sign that three sides of (9,3) are closed. Look for the wall against these states in the
+drawings below: <b>a wall facing unexplored ground</b> (south-west of 9,3, known from 9,3's side
+only), <b>a wall known from both sides</b> (between 9,1 and 9,3), <b>no wall at the top edge of the
+map</b> (north of 9,1), <b>no wall between two hexes that are only named</b>, and <b>a wall on a
+region border</b> (between 9,1 in Tandi and 8,2 in Sostrunland).</p>
+<div class="row"><div class="card" style="flex:0 1 460px"><div class="stage" id="today"></div></div></div>
+
+<h3 class="sec">Question 1 — what a wall looks like</h3>
+<p>The same patch in each of three looks: close up, then zoomed right out, where a dense
+underground level shows many walls at once.</p>
+<div class="row">
+  <div class="card"><h2><em>A</em>Black wall along the whole side</h2>
+    <p class="concept">A heavy black line along the entire closed side, with a thin pale edge so it
+    stands out against dark ground. Like a wall on a floor plan.</p>
+    <div class="stage" id="a1"></div><div class="hexlab">Zoomed out</div><div class="stage" id="a2"></div>
+    <ul class="notes"><li>Unmistakable. Reads as a wall with no explanation.</li>
+    <li>Closed-off caves are outlined from end to end, so you can see the passages between them.</li>
+    <li class="con">The heaviest of the three. A dense level gets very black when zoomed out.</li></ul></div>
+  <div class="card"><h2><em>B</em>Rock face</h2>
+    <p class="concept">A jagged, zig-zag line along the side, like a cliff drawn on an old map. It
+    suits the hand-drawn atlas look.</p>
+    <div class="stage" id="b1"></div><div class="hexlab">Zoomed out</div><div class="stage" id="b2"></div>
+    <ul class="notes"><li>Clearly different from a region border and from a hex outline.</li>
+    <li class="con">Zoomed out, the zig-zag blurs into a thick grey smudge.</li>
+    <li class="n">The other map styles need a look of their own rather than the same zig-zag.</li></ul></div>
+  <div class="card"><h2><em>C</em>A bar across the middle of the side</h2>
+    <p class="concept">A short, thick black bar on the middle of the closed side only. The corners
+    stay clear.</p>
+    <div class="stage" id="c1"></div><div class="hexlab">Zoomed out</div><div class="stage" id="c2"></div>
+    <ul class="notes"><li>Lightest when zoomed out, and never covers the corners where other lines meet.</li>
+    <li class="con">Reads more like a gate that is shut than a wall, and the outline of a
+    closed-off cave is broken up.</li></ul></div>
+</div>
+
+<h3 class="sec">Question 2 — an order that walks into a wall</h3>
+<p>A unit in (9,3) with the order <code>MOVE N NE</code>. The first step goes north, where there
+is no way through. Today the map draws that step as an ordinary solid line straight through.
+(The route planner already goes around closed sides, so nothing about it changes.) Both drawings
+use wall look A.</p>
+<div class="row">
+  <div class="card"><h2><em>A</em>The line stops at the wall</h2>
+    <p class="concept">The route runs up to the wall and ends in a red cross. Nothing after it is
+    drawn.</p><div class="stage" id="m1"></div>
+    <ul class="notes"><li>Plain: the journey does not go past this point.</li>
+    <li class="con">The rest of what you wrote (the NE step) is not shown anywhere on the map.</li></ul></div>
+  <div class="card"><h2><em>B</em>The whole order is drawn, the blocked step in red</h2>
+    <p class="concept">The line reaches the wall and gets a red cross. The step through the wall
+    is drawn dashed in red, and everything after it is dotted to show it is in doubt.</p><div class="stage" id="m2"></div>
+    <ul class="notes"><li>You can still see the whole of what you wrote, and where it goes wrong.</li>
+    <li class="con">Draws a journey past a wall that the unit cannot actually make.</li></ul></div>
+</div>
+
+<h3 class="sec">Question 3 — the warning in the list of problems</h3>
+<div class="row">
+  <div class="card"><h2><em>A</em>Short</h2><div class="pane ui"><div class="hdr">Problems</div><div class="body">
+    <div class="prob"><span class="dot"></span><span>Stonebeard (812): MOVE N runs into a wall. Cavern (9,3,2) has no exit to the north.</span></div></div></div></div>
+  <div class="card"><h2><em>B</em>Says how we know</h2><div class="pane ui"><div class="hdr">Problems</div><div class="body">
+    <div class="prob"><span class="dot"></span><span>Stonebeard (812): there is no way north out of cavern (9,3,2). The report lists no exit on that side.</span></div></div></div></div>
+</div>
+
+<h3 class="sec">Question 4 — can walls be switched off?</h3>
+<div class="row">
+  <div class="card"><h2><em>A</em>A "Walls" entry among the map marks, on by default</h2>
+    <div class="pane ui" style="max-width:220px"><div class="hdr">Show on map</div><div class="body">
+    <div class="chk"><span class="box on"></span>Shafts</div><div class="chk"><span class="box on"></span>Lairs</div>
+    <div class="chk"><span class="box on"></span>Gates</div><div class="chk"><span class="box on"></span>Roads</div>
+    <div class="chk"><span class="box on"></span>Regions</div><div class="chk new"><span class="box on"></span>Walls</div>
+    <div class="chk"><span class="box on"></span>Notes</div></div></div>
+    <ul class="notes"><li>Same as every other mark. You can hide walls on a busy level.</li></ul></div>
+  <div class="card"><h2><em>B</em>Always shown</h2>
+    <p class="concept">Walls are part of the ground, like the hex outlines, and have no switch.</p>
+    <ul class="notes"><li>One entry fewer in the list.</li><li class="con">No way to calm down a very dense level.</li></ul></div>
+</div>
+</main>
+<script>
+const S3 = Math.sqrt(3);
+const T = {cavern:'#8f8a86', underforest:'#6b8a72', fog:'#6d6a63'};
+// region: [terrain, province, knowledge] knowledge: seen | named | fog
+const H = {};
+for (let x=7;x<=11;x++) for (let y=0;y<=6;y++) if ((x+y)%2===0) H[x+','+y]=['fog','',"fog"];
+Object.assign(H, {
+  '9,3':['cavern','Sostrunland','seen'], '9,1':['cavern','Tandi','seen'],
+  '8,2':['cavern','Sostrunland','named'], '10,4':['underforest','Sturest','named'],
+  '9,5':['underforest','Mackmi','named'], '10,0':['cavern','Tandi','named'], '8,0':['cavern','Sostrunland','named'],
+});
+const EX = {'9,3':['SE','S','NW'], '9,1':['NE','NW']};
+const DIRS = {N:[0,-2,4,5], NE:[1,-1,5,0], SE:[1,1,0,1], S:[0,2,1,2], SW:[-1,1,2,3], NW:[-1,-1,3,4]};
+function walls(){ const w=[]; const seen=new Set();
+  for (const k in EX){ const [x,y]=k.split(',').map(Number);
+    for (const d in DIRS){ const [dx,dy]=DIRS[d]; const nk=(x+dx)+','+(y+dy);
+      if (EX[k].includes(d)) continue; if (y+dy<0) continue; // top edge of the map
+      const id=[k,nk].sort().join('|'); if (seen.has(id)) continue; seen.add(id); w.push([x,y,d]); } }
+  return w; }
+function draw(el, R, opts={}){
+  const ox=R*1.2-7*1.5*R, oy=R*1.1;
+  const c=(x,y)=>[ox+x*1.5*R, oy+y*R*S3/2];
+  const cor=(x,y,i)=>{const [cx,cy]=c(x,y); const a=Math.PI/3*i; return [cx+R*Math.cos(a), cy+R*Math.sin(a)];};
+  const W=ox+11*1.5*R+R*1.2, Hh=oy+6*R*S3/2+R*1.1;
+  let s=`<svg width="${W}" height="${Hh}" viewBox="0 0 ${W} ${Hh}">`;
+  // top edge of map
+  s+=`<line x1="0" y1="2" x2="${W}" y2="2" stroke="#8a97a8" stroke-dasharray="2 4"/>`;
+  for (const k in H){ const [x,y]=k.split(',').map(Number); const [t,p,kn]=H[k];
+    const pts=[0,1,2,3,4,5].map(i=>cor(x,y,i).join(',')).join(' ');
+    const op = kn==='seen'?1:(kn==='named'?0.72:0.45);
+    s+=`<polygon points="${pts}" fill="${T[t]}" fill-opacity="${op}" stroke="#4a3a22" stroke-opacity=".55" stroke-width="1"/>`;
+    if (R>20){ const [cx,cy]=c(x,y); s+=`<text x="${cx}" y="${cy+3}" text-anchor="middle" ${kn==='fog'?'style="fill:#cfc6b4"':''}>${kn==='fog'?'?':x+','+y}</text>`; }
+  }
+  // region border between Tandi (9,1),(10,0) and Sostrunland (8,2),(8,0) + (9,3)
+  const bord=[[9,1,'SW'],[9,1,'NW'],[9,1,'S']];
+  for (const [x,y,d] of bord){ const [,,i,j]=DIRS[d]; const [a,b]=[cor(x,y,i),cor(x,y,j)];
+    s+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#241c12" stroke-opacity=".8" stroke-width="5.5"/>`;
+    s+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#efe3c2" stroke-opacity=".75" stroke-width="3" stroke-dasharray="9 5"/>`; }
+  if (opts.style){ for (const [x,y,d] of walls()){ const [,,i,j]=DIRS[d]; const a=cor(x,y,i), b=cor(x,y,j);
+    if (opts.style==='A'){ s+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#efe3c2" stroke-width="8" stroke-linecap="round"/><line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#0d0b08" stroke-width="5" stroke-linecap="round"/>`; }
+    if (opts.style==='C'){ const m=(p,q,f)=>[p[0]+(q[0]-p[0])*f,p[1]+(q[1]-p[1])*f]; const p=m(a,b,.25), q=m(a,b,.75);
+      s+=`<line x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}" stroke="#efe3c2" stroke-width="10" stroke-linecap="round"/><line x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}" stroke="#0d0b08" stroke-width="7" stroke-linecap="round"/>`; }
+    if (opts.style==='B'){ const n=Math.max(3,Math.round(R/6)); const dx=(b[0]-a[0])/n, dy=(b[1]-a[1])/n; const L=Math.hypot(dx,dy); const px=-dy/L*Math.min(4,R/6), py=dx/L*Math.min(4,R/6);
+      let d=`M${a[0]},${a[1]}`; for(let k=0;k<n;k++){ const mx=a[0]+dx*(k+.5)+(k%2?px:-px), my=a[1]+dy*(k+.5)+(k%2?py:-py); d+=` L${mx},${my} L${a[0]+dx*(k+1)},${a[1]+dy*(k+1)}`; }
+      s+=`<path d="${d}" fill="none" stroke="#efe3c2" stroke-width="5" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="#0d0b08" stroke-width="2.6" stroke-linejoin="round"/>`; }
+  } }
+  if (opts.move){ const [sx,sy]=c(9,3); const e=[(cor(9,3,4)[0]+cor(9,3,5)[0])/2,(cor(9,3,4)[1]+cor(9,3,5)[1])/2];
+    const today = opts.move==='today';
+    if (today){ const [tx,ty]=c(9,1), [ux,uy]=c(10,0); s+=`<polyline points="${sx},${sy} ${tx},${ty} ${ux},${uy}" fill="none" stroke="#d9a441" stroke-width="3"/>`; }
+    else { s+=`<line x1="${sx}" y1="${sy}" x2="${e[0]}" y2="${e[1]+4}" stroke="#d9a441" stroke-width="3"/>`;
+      if (opts.move==='B'){ const [tx,ty]=c(9,1), [ux,uy]=c(10,0); s+=`<line x1="${e[0]}" y1="${e[1]}" x2="${tx}" y2="${ty}" stroke="#d97070" stroke-width="3" stroke-dasharray="7 5"/><line x1="${tx}" y1="${ty}" x2="${ux}" y2="${uy}" stroke="#d9a441" stroke-width="3" stroke-dasharray="2 6" stroke-linecap="round"/>`; }
+      const k=7; s+=`<g stroke="#d97070" stroke-width="3.5" stroke-linecap="round"><line x1="${e[0]-k}" y1="${e[1]-k}" x2="${e[0]+k}" y2="${e[1]+k}"/><line x1="${e[0]-k}" y1="${e[1]+k}" x2="${e[0]+k}" y2="${e[1]-k}"/></g>`; }
+    s+=`<circle cx="${sx}" cy="${sy+12}" r="6" fill="#d9a441" stroke="#241c12" stroke-width="1.5"/>`;
+  }
+  s+='</svg>'; document.getElementById(el).innerHTML=s; }
+draw('today',34,{move:'today'});
+draw('a1',34,{style:'A'}); draw('a2',13,{style:'A'});
+draw('b1',34,{style:'B'}); draw('b2',13,{style:'B'});
+draw('c1',34,{style:'C'}); draw('c2',13,{style:'C'});
+draw('m1',34,{style:'A',move:'A'}); draw('m2',34,{style:'A',move:'B'});
+</script>
+</body></html>
