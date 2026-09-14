@@ -13396,14 +13396,34 @@ fn settle_shipping(
             .iter()
             .map(|refused| (refused.unit_id.clone(), refused.line, refused.cost))
             .collect();
-        for (unit_id, line, cost) in refused {
-            let placed = hex.find(&unit_id).and_then(|ordered| {
+        for (unit_id, line, cost) in &refused {
+            let placed = hex.find(unit_id).and_then(|ordered| {
                 ordered
                     .intents
                     .iter()
-                    .find(|placed| i64::try_from(placed.line).ok() == Some(line))
+                    .find(|placed| i64::try_from(placed.line).ok() == Some(*line))
             });
-            apply_silver(ledger, StatePhase::Transport, &unit_id, -cost, placed);
+            apply_silver(ledger, StatePhase::Transport, unit_id, -cost, placed);
+            // Charged after the shipments that paid, so `apply_silver` keeps a paid shipment as
+            // the first draw. The unit's shortfall is this refusal's doing, so it is anchored on
+            // the earliest refused line instead - unless an order other than a shipment drew the
+            // silver first, which keeps its place (`ah-7ale.4`).
+            let Some(placed) = placed else {
+                continue;
+            };
+            let key = (unit_id.clone(), SILVER.to_ascii_uppercase());
+            let refused_line = |at: &PlacedIntent| {
+                refused.iter().any(|(other, other_line, _)| {
+                    other == unit_id && i64::try_from(at.line).ok() == Some(*other_line)
+                })
+            };
+            let move_anchor = ledger.charged_at.get(&key).is_some_and(|at| {
+                matches!(at.intent, Intent::Transport { .. })
+                    && (!refused_line(at) || at.line > placed.line)
+            });
+            if move_anchor {
+                ledger.charged_at.insert(key, placed.clone());
+            }
         }
     }
 }
@@ -38835,6 +38855,14 @@ BUILD
         assert!(
             messages[0].ends_with(", so it ships none of the 12 furs ordered"),
             "{messages:?}"
+        );
+        // On the order that failed, not the one that shipped after it.
+        assert_eq!(
+            findings
+                .iter()
+                .find(|finding| finding.code.as_str() == "not-enough-silver")
+                .and_then(|finding| finding.line),
+            Some(2)
         );
     }
 
