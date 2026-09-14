@@ -120,6 +120,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       hexes: [],
       levels: [],
       currentTurn: null,
+      walls: [],
       echoed: { rawReport, rulesetJson, rememberedJson }
     }),
     plan_route_state: (
