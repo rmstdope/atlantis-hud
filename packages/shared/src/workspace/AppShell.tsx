@@ -44,7 +44,7 @@ import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImpor
 import { ordersFileFaction } from "../ordersImport";
 import { orderCommentSyntaxFor, rulesetById } from "../rulesets";
 import { rowKeyOf, unitRowKey } from "../unitTable";
-import { previewAtCursor, setOutHex, unitAtCursor, unitCursor } from "./unitCursor";
+import { previewAtCursor, unitAtCursor } from "./unitCursor";
 import type { MapShape } from "@atlantis/core-client";
 import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import { ordersExportText } from "./ordersExport";
@@ -969,17 +969,9 @@ export function AppShell({
   } | null>(null);
 
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
-  const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
-  const selectedUnitRegionId = useWorkspaceStore((state) => state.selectedUnitRegionId);
-  const selectedUnitArrivingFrom = useWorkspaceStore((state) => state.selectedUnitArrivingFrom);
-  /**
-   * The cursor as a pair. Memoised rather than selected: a zustand selector building a fresh object
-   * re-renders for ever under `useSyncExternalStore` (`ah-bubf`).
-   */
-  const cursor = useMemo(
-    () => unitCursor({ selectedUnitId, selectedUnitRegionId, selectedUnitArrivingFrom }),
-    [selectedUnitId, selectedUnitRegionId, selectedUnitArrivingFrom]
-  );
+  /** The cursor, as the store holds it: selecting the stored object never re-renders for ever (`ah-bubf`). */
+  const cursor = useWorkspaceStore((state) => state.selectedUnit);
+  const selectedUnitId = cursor?.unitId ?? null;
   const selectionEpoch = useWorkspaceStore((state) => state.selectionEpoch);
   const pickEpoch = useWorkspaceStore((state) => state.pickEpoch);
   const selectRegion = useWorkspaceStore((state) => state.selectRegion);
@@ -1373,7 +1365,7 @@ export function AppShell({
       // And the unit itself, because `selectRegion` leaves the selection alone when the hex is
       // already the one on screen - which is exactly the case where a second message names a
       // different unit standing beside the first.
-      selectUnit(unitId, regionId);
+      selectUnit({ regionId, unitId, arrivingFrom: null });
       // Whichever popover asked for the jump, rather than always the turn report: the region pane
       // is not a popover and closes nothing, and the palette closes itself.
       if (closing) {
@@ -2824,11 +2816,11 @@ export function AppShell({
         // hex is a place on the map and outlives a turn, while a unit id may not survive to the
         // next one. Filling it in here is what stops a reopened game showing a selected hex over
         // an empty unit panel - and it is only ever filled in, never replaced.
-        if (useWorkspaceStore.getState().selectedUnitId === null) {
+        if (useWorkspaceStore.getState().selectedUnit === null) {
           const firstUnit = firstUnitIn(restored.parsed, selected);
           if (firstUnit !== null) {
             // An opening fill-in is not a choice, so it is not remembered (`ah-17t5`).
-            selectUnit(firstUnit, selected, { remember: false });
+            selectUnit({ regionId: selected, unitId: firstUnit, arrivingFrom: null }, { remember: false });
           }
         }
       })
@@ -3220,9 +3212,7 @@ export function AppShell({
           ruleset.text,
           rawReport,
           rememberedJson,
-          unit.unitId,
-          // The hex the unit set out from, not the one on screen: an arrival row is listed where it arrives (ah-jxrw).
-          setOutHex(cursor),
+          cursor,
           ordersDocument,
           mapJson,
           passagesJson

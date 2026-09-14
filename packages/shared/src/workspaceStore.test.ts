@@ -29,7 +29,7 @@ describe("changing the open game's ruleset", () => {
 
     expect(store().game?.rulesetId).toBe("magicdeep");
     expect(store().selectedRegionId).toBe("1:7,53");
-    expect(store().selectedUnitId).toBe("18642");
+    expect(store().selectedUnit?.unitId).toBe("18642");
   });
 
   it("does nothing when no game is open", () => {
@@ -56,7 +56,7 @@ describe("renaming the open game", () => {
 
     expect(store().game?.gameName).toBe("Binding of the North");
     expect(store().selectedRegionId).toBe("1:7,53");
-    expect(store().selectedUnitId).toBe("18642");
+    expect(store().selectedUnit?.unitId).toBe("18642");
   });
 
   it("does nothing when no game is open", () => {
@@ -69,100 +69,97 @@ describe("renaming the open game", () => {
 describe("workspace selection", () => {
   beforeEach(resetWorkspaceStore);
 
-  it("keeps the hex an arrival row set out from with the cursor, and drops it on the next selection", () => {
-    store().selectUnit("new-1", "1:7,51", { arrivingFrom: "1:7,53" });
-    expect(store().selectedUnitArrivingFrom).toBe("1:7,53");
+  it("holds the unit selected, origin and all", () => {
+    const arriving = { regionId: "1:7,51", unitId: "new-1", arrivingFrom: "1:7,53" };
+    store().selectUnit(arriving);
+    expect(store().selectedUnit).toEqual(arriving);
 
-    store().selectUnit("new-1", "1:7,51");
-    expect(store().selectedUnitArrivingFrom).toBeNull();
+    store().selectUnit(null);
+    expect(store().selectedUnit).toBeNull();
+  });
 
-    store().selectUnit("new-1", "1:7,51", { arrivingFrom: "1:7,53" });
-    store().selectRegion("1:9,55");
-    expect(store().selectedUnitArrivingFrom).toBeNull();
-
-    store().selectUnit("new-1", "1:7,51", { arrivingFrom: "1:7,53" });
-    store().selectUnit(null, null, { arrivingFrom: "1:7,53" });
-    expect(store().selectedUnitArrivingFrom).toBeNull();
+  it("selects a hex's default unit as a unit that does not arrive", () => {
+    store().selectUnit({ regionId: "1:7,51", unitId: "new-1", arrivingFrom: "1:7,53" });
+    store().selectRegion("1:8,53", "902");
+    expect(store().selectedUnit).toEqual({ regionId: "1:8,53", unitId: "902", arrivingFrom: null });
   });
 
   it("remembers which hex the selected unit stands in", () => {
     // A unit number is not unique across a report: two hexes may each write FORM 1 and both formed
     // units are called `new-1` (`rules/form`), so the cursor is the pair (`ah-bubf`).
     store().selectRegion("1:8,53");
-    store().selectUnit("new-1", "1:8,53");
-    expect(store().selectedUnitRegionId).toBe("1:8,53");
+    store().selectUnit({ regionId: "1:8,53", unitId: "new-1", arrivingFrom: null });
+    expect(store().selectedUnit?.regionId).toBe("1:8,53");
 
-    store().selectUnit(null, null);
-    expect(store().selectedUnitId).toBeNull();
-    expect(store().selectedUnitRegionId).toBeNull();
+    store().selectUnit(null);
+    expect(store().selectedUnit).toBeNull();
 
     store().selectRegion("1:6,52", "18642");
-    expect(store().selectedUnitRegionId).toBe("1:6,52");
+    expect(store().selectedUnit?.regionId).toBe("1:6,52");
 
     store().selectRegion("1:7,51");
-    expect(store().selectedUnitId).toBeNull();
-    expect(store().selectedUnitRegionId).toBeNull();
+    expect(store().selectedUnit).toBeNull();
 
     store().selectRegion("1:6,52", "18642");
     store().setLevel(2);
-    expect(store().selectedUnitRegionId).toBeNull();
+    expect(store().selectedUnit).toBeNull();
 
     store().selectRegion("1:6,52", "18642");
     store().restoreSelection("1:6,52");
-    expect(store().selectedUnitRegionId).toBeNull();
+    expect(store().selectedUnit).toBeNull();
 
     store().selectRegion("1:6,52", "18642");
     store().closeGame();
-    expect(store().selectedUnitRegionId).toBeNull();
+    expect(store().selectedUnit).toBeNull();
   });
 
   it("abandons the selected unit when the hex changes", () => {
     // Keeping it would leave the detail panel describing a unit no longer in the list.
     store().selectRegion("1:7,53");
-    store().selectUnit("18642", "1:7,53");
-    expect(store().selectedUnitId).toBe("18642");
+    store().selectUnit({ regionId: "1:7,53", unitId: "18642", arrivingFrom: null });
+    expect(store().selectedUnit?.unitId).toBe("18642");
 
     store().selectRegion("1:26,52");
 
     expect(store().selectedRegionId).toBe("1:26,52");
-    expect(store().selectedUnitId).toBeNull();
+    expect(store().selectedUnit).toBeNull();
   });
 
   it("selects the unit the caller nominates for the new hex", () => {
     // Landing on a hex with nothing selected leaves the detail and orders panels blank for no
     // reason, so the caller passes the first unit standing there.
     store().selectRegion("1:7,53", "18642");
-    expect(store().selectedUnitId).toBe("18642");
+    expect(store().selectedUnit?.unitId).toBe("18642");
 
     store().selectRegion("1:26,52", "13401");
     expect(store().selectedRegionId).toBe("1:26,52");
-    expect(store().selectedUnitId).toBe("13401");
+    expect(store().selectedUnit?.unitId).toBe("13401");
   });
 
   it("selects nothing when the new hex holds no units", () => {
     store().selectRegion("1:7,53", "18642");
     store().selectRegion("1:7,51");
-    expect(store().selectedUnitId).toBeNull();
+    expect(store().selectedUnit).toBeNull();
   });
 
   it("keeps the selected unit when the same hex is chosen again", () => {
     store().selectRegion("1:7,53");
-    store().selectUnit("18642", "1:7,53");
+    store().selectUnit({ regionId: "1:7,53", unitId: "18642", arrivingFrom: null });
 
     store().selectRegion("1:7,53");
 
-    expect(store().selectedUnitId).toBe("18642");
+    expect(store().selectedUnit?.unitId).toBe("18642");
   });
 
   it("clears both selections when the level changes", () => {
     store().selectRegion("1:7,53");
-    store().selectUnit("18642", "1:7,53");
+    store().selectUnit({ regionId: "1:7,53", unitId: "18642", arrivingFrom: null });
 
     store().setLevel(2);
 
     expect(store().level).toBe(2);
     expect(store().selectedRegionId).toBeNull();
-    expect(store().selectedUnitId).toBeNull();
+    expect(store().selectedUnit).toBeNull();
   });
 
   it("keeps selections when the same level is chosen again", () => {
@@ -173,7 +170,7 @@ describe("workspace selection", () => {
 
   it("clears selections when a game is opened", () => {
     store().selectRegion("1:7,53");
-    store().selectUnit("18642", "1:7,53");
+    store().selectUnit({ regionId: "1:7,53", unitId: "18642", arrivingFrom: null });
 
     store().openGame({
       gameId: "aug-2026",
@@ -184,7 +181,7 @@ describe("workspace selection", () => {
 
     expect(store().game?.gameName).toBe("NewOrigins Aug 2026");
     expect(store().selectedRegionId).toBeNull();
-    expect(store().selectedUnitId).toBeNull();
+    expect(store().selectedUnit).toBeNull();
   });
 });
 
@@ -236,11 +233,11 @@ describe("the selection epoch that drives the lock-on pulse", () => {
 
   it("clears the selected unit on restore, like selectRegion does with no default", () => {
     store().selectRegion("1:7,53", "18642");
-    expect(store().selectedUnitId).toBe("18642");
+    expect(store().selectedUnit?.unitId).toBe("18642");
 
     store().restoreSelection("1:26,52");
 
-    expect(store().selectedUnitId).toBeNull();
+    expect(store().selectedUnit).toBeNull();
   });
 });
 
@@ -1045,7 +1042,7 @@ describe("remembering a unit per hex", () => {
   it("records the unit selected in a hex", () => {
     open();
     store().selectRegion("1:7,53", "18642");
-    store().selectUnit("5812", "1:7,53");
+    store().selectUnit({ regionId: "1:7,53", unitId: "5812", arrivingFrom: null });
 
     expect(store().hexUnits["1:7,53"]).toBe("5812");
   });
@@ -1053,16 +1050,16 @@ describe("remembering a unit per hex", () => {
   it("keeps one hex's unit while another hex is worked in", () => {
     open();
     store().selectRegion("1:7,53", "18642");
-    store().selectUnit("5812", "1:7,53");
+    store().selectUnit({ regionId: "1:7,53", unitId: "5812", arrivingFrom: null });
     store().selectRegion("1:9,53", "1605");
-    store().selectUnit("1605", "1:9,53");
+    store().selectUnit({ regionId: "1:9,53", unitId: "1605", arrivingFrom: null });
 
     expect(store().hexUnits).toEqual({ "1:7,53": "5812", "1:9,53": "1605" });
   });
 
   it("forgets every hex when a game is opened", () => {
     open();
-    store().selectUnit("5812", "1:7,53");
+    store().selectUnit({ regionId: "1:7,53", unitId: "5812", arrivingFrom: null });
     open();
 
     expect(store().hexUnits).toEqual({});
@@ -1070,7 +1067,7 @@ describe("remembering a unit per hex", () => {
 
   it("forgets every hex when a game is closed", () => {
     open();
-    store().selectUnit("5812", "1:7,53");
+    store().selectUnit({ regionId: "1:7,53", unitId: "5812", arrivingFrom: null });
     store().closeGame();
 
     expect(store().hexUnits).toEqual({});
@@ -1078,7 +1075,7 @@ describe("remembering a unit per hex", () => {
 
   it("leaves the memory alone when the level changes", () => {
     open();
-    store().selectUnit("5812", "1:7,53");
+    store().selectUnit({ regionId: "1:7,53", unitId: "5812", arrivingFrom: null });
     store().setLevel(2);
 
     expect(store().hexUnits["1:7,53"]).toBe("5812");
@@ -1086,22 +1083,22 @@ describe("remembering a unit per hex", () => {
 
   it("keeps the last choice when the selection is cleared", () => {
     open();
-    store().selectUnit("5812", "1:7,53");
-    store().selectUnit(null, null);
+    store().selectUnit({ regionId: "1:7,53", unitId: "5812", arrivingFrom: null });
+    store().selectUnit(null);
 
     expect(store().hexUnits["1:7,53"]).toBe("5812");
   });
 
   it("records nothing for a selection the app made on the player's behalf", () => {
     open();
-    store().selectUnit("5812", "1:7,53", { remember: false });
+    store().selectUnit({ regionId: "1:7,53", unitId: "5812", arrivingFrom: null }, { remember: false });
 
     expect(store().hexUnits).toEqual({});
   });
 
   it("is cleared by resetWorkspaceStore", () => {
     open();
-    store().selectUnit("5812", "1:7,53");
+    store().selectUnit({ regionId: "1:7,53", unitId: "5812", arrivingFrom: null });
     resetWorkspaceStore();
 
     expect(store().hexUnits).toEqual({});

@@ -205,12 +205,9 @@ fn a_route_into_the_fog_uses_the_described_ground_it_passes() {
         "  Southeast : plain (2,2) in Nowhere.",
     ));
     text.push_str("* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\n");
-    text.push_str(&region(
-        "plain",
-        2,
-        2,
-        "  Northwest : plain (1,1) in Nowhere.",
-    ));
+    // Printed with no exits: a list naming only Northwest would prove a wall on the Southeast side
+    // the route leaves by (ah-wq2e.1), and naming (3,3) would take it out of the fog.
+    text.push_str(&region("plain", 2, 2, ""));
     // An island two hexes of fog further on, described but joined to nothing the unit can see.
     text.push_str(&region(
         "plain",
@@ -2311,4 +2308,29 @@ fn a_mystic_canal_and_a_stone_one_in_one_region_take_the_faster() {
 
     assert_eq!(route.steps[0].cost, 1);
     assert_eq!(route.steps[0].canal, Some("Mystic Canal".to_string()));
+}
+
+/// (3,3) states only its Southeast exit, so its report proves a wall on the North side even though
+/// (3,1) beyond it is on no report. The planner used to guess its way straight through.
+#[test]
+fn the_planner_goes_round_a_wall_facing_unexplored_ground() {
+    let report = parse_report_full(concat!(
+        "Foo (1) Report\n\n",
+        "plain (3,3) in Nowhere, 10 peasants (orcs), $5.\n\n",
+        "Exits:\n",
+        "  Southeast : plain (4,4) in Nowhere.\n\n",
+        "* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\n",
+        "plain (4,4) in Nowhere, 10 peasants (orcs), $5.\n\n",
+        "Exits:\n",
+        "  Northwest : plain (3,3) in Nowhere.\n",
+        "  North : plain (4,2) in Nowhere.\n\n",
+    ));
+    let destination = at(3, 1);
+    assert!(MapKnowledge::from_report(&report)
+        .hex(destination)
+        .is_none());
+
+    let route = plan(&report, "900", destination).expect("a way round");
+
+    assert_ne!(route.steps[0].direction, Direction::North);
 }

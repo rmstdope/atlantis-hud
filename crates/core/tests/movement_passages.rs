@@ -28,7 +28,7 @@ fn report_with_a_shaft() -> String {
 /// The claims of one orders document read against that report.
 fn claims(orders: &str) -> Vec<atlantis_hud_core::movement::passages::PassageClaim> {
     let report = parse_report_full(&report_with_a_shaft());
-    let ordered = OrderedUnits::from_document(orders);
+    let ordered = OrderedUnits::from_document(orders, None);
     passage_claims(&report, &ordered)
 }
 
@@ -95,7 +95,7 @@ fn a_foreign_unit_is_not_claimed() {
 #[test]
 fn a_nexus_gate_is_never_claimed() {
     let report = parse_report_full(NEXUS_TURN_ZERO);
-    let ordered = OrderedUnits::from_document("unit 666\nMOVE 1 IN\n");
+    let ordered = OrderedUnits::from_document("unit 666\nMOVE 1 IN\n", None);
 
     assert_eq!(passage_claims(&report, &ordered), vec![]);
 }
@@ -199,7 +199,7 @@ fn a_step_on_a_later_line_after_the_passage_is_not_claimed() {
 
     let orders = "unit 5\nMOVE IN\nMOVE SE\n";
     assert_eq!(
-        OrderedUnits::from_document(orders).steps_for("5"),
+        OrderedUnits::from_document(orders, None).steps_for("5"),
         Some(&[MoveStep::In, MoveStep::Go(Southeast)][..]),
         "the two lines are one route, so the step follows the passage"
     );

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Walls between hexes — round 3</title>
+<style>
+  :root { --page:#10151c; --ink:#d7dee8; --dim:#8a94a3; --card:#171e28; --line:#2a3442; --brass:#e0b25a; --warn:#d9a441; }
+  body { background:var(--page); color:var(--ink); font:14px/1.5 system-ui,sans-serif; margin:0; padding:24px 32px 64px; }
+  h1 { font-size:20px; margin:0 0 6px; } h2 { font-size:16px; margin:0 0 4px; } h3 { font-size:14px; margin:14px 0 6px; }
+  p.note { color:var(--dim); max-width:80ch; }
+  .variant { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin:18px 0; }
+  .cost { color:var(--dim); font-size:13px; margin:0 0 12px; max-width:84ch; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+  figure { margin:0; } figcaption { font-size:11px; color:var(--dim); padding:3px 2px 0; }
+  svg { display:block; border-radius:6px; }
+  .problems { width:460px; max-width:100%; background:#131922; border:1px solid var(--line); border-radius:6px; font-size:13px; margin-bottom:8px; }
+  .problems .it { padding:8px 10px; display:flex; gap:8px; border-top:1px solid var(--line); }
+  .problems .it:first-child { border-top:0; }
+  .problems .dot { width:8px; height:8px; border-radius:50%; background:var(--warn); margin-top:6px; flex:none; }
+  .problems .who { color:var(--dim); font-size:12px; }
+  .tip { display:inline-block; background:#0f141b; border:1px solid var(--line); border-radius:5px; padding:4px 8px; font-size:12px; margin:4px 0; }
+</style>
+</head>
+<body>
+<h1>Walls between hexes, round 3</h1>
+<p class="note">Settled so far: the rampart look, in each map style's own strongest ink. Walls are always shown, with no
+switch. A move into a wall is drawn up to the wall and ends in a red bar. Its warning reads "There is no exit North from…".
+Three things are still open.</p>
+
+<div class="variant"><h2>1 · The rampart when zoomed out</h2>
+<p class="cost">With no switch, a busy underground level cannot be calmed down. Up close the cross-ticks are what make it a rampart. Zoomed right out
+they become a fringe of short marks on every closed side.</p>
+<h3>Z1: cross-ticks at every zoom</h3>
+<div class="row" id="z1"></div>
+<h3>Z2: ticks drop away when zoomed out, leaving a plain bar in the same ink</h3>
+<div class="row" id="z2"></div>
+<p class="cost">Z2 changes the look at the zoom level where province names already drop away, so walls and names simplify at the same point.</p>
+</div>
+
+<div class="variant"><h2>2 · The warning when the hex has no name, or the wall is old</h2>
+<p class="cost">Your chosen wording names the settlement and says "the report". Most caverns have no settlement, and a wall can come
+from a sighting many turns old. Two ways to handle both:</p>
+<h3>N1: name if it has one, otherwise the terrain; always "a report"</h3>
+<div class="problems">
+<div class="it"><span class="dot"></span><div>There is no exit North from Ciestucshire (9,3,2): a report shows a wall on that side.<div class="who">Ciestucshire Chieftain (3521) · MOVE N NW</div></div></div>
+<div class="it"><span class="dot"></span><div>There is no exit Southwest from cavern (7,3,2): a report shows a wall on that side.<div class="who">Stonebeard (812) · MOVE SW</div></div></div>
+</div>
+<h3>N2: name if it has one, otherwise the terrain; say which turn</h3>
+<div class="problems">
+<div class="it"><span class="dot"></span><div>There is no exit North from Ciestucshire (9,3,2): the report shows a wall on that side.<div class="who">Ciestucshire Chieftain (3521) · MOVE N NW</div></div></div>
+<div class="it"><span class="dot"></span><div>There is no exit Southwest from cavern (7,3,2): the turn 79 report shows a wall on that side.<div class="who">Stonebeard (812) · MOVE SW</div></div></div>
+</div>
+<p class="cost">N1 is the same sentence every time. N2 says "the report" for this turn's report and names the turn for anything older, which is longer but tells a player how old the wall is.</p>
+</div>
+
+<div class="variant"><h2>3 · The note when pointing at a wall</h2>
+<p class="cost">You settled earlier that pointing at a wall lights it up in brass and shows a small note. That note was worded to match
+the earlier warning. Keep it, or make it match the warning you chose today:</p>
+<div class="row" id="p"></div>
+</div>
+
+<script>
+const S3=Math.sqrt(3);
+const OFF={N:[0,-2],NE:[1,-1],SE:[1,1],S:[0,2],SW:[-1,1],NW:[-1,-1]};
+const EDGE={SE:[0,1],S:[1,2],SW:[2,3],NW:[3,4],N:[4,5],NE:[5,0]};
+const EX={"5,1":["SE","S","SW","NW"],"9,1":["NE","NW"],"3,3":["N","SE","S","SW","NW"],"7,3":["N","NE","SE","S","NW"],"9,3":["SE","S","NW"],"13,3":["N","NE","SE","SW","NW"],"11,5":["N","NE","NW"],
+ "6,8":["SE","S","SW","NW"],"3,13":["NE","SE","S","NW"],"16,4":["NE","S","SW"],"17,7":["N","NE","SE","S","NW"],"16,14":["N","NE","S","NW"],"1,19":["N","SE","S","NW"],"1,21":["N","NE","S","SW"],"0,22":["NE","SE","SW"],"1,23":["N","NE","NW"],"4,22":["N","NE","SE","SW","NW"],"17,17":["SE","SW"],"16,20":["NE","SE","S","SW","NW"],"19,21":["N","S","SW","NW"],"17,23":["N","NE","NW"],"20,14":["NE","S","SW","NW"],"18,12":["NE","S","SW","NW"],"21,15":["N","NE","SE","SW"],"22,12":["N","NE","S","SW"]};
+const T=[{name:"Tactical HUD",ground:"#0d1117",fill:"#1a212b",edge:"#5e788c",ink:"#c9d6e2"},{name:"Cartographer's Table",ground:"#efe3c2",fill:"#d8c9a2",edge:"#8a7657",ink:"#3a2f1d"}];
+const C=(cx,cy,r)=>[0,1,2,3,4,5].map(k=>[cx+r*Math.cos(k*Math.PI/3),cy+r*Math.sin(k*Math.PI/3)]);
+function rampart(x1,y1,x2,y2,t,ticks,halo,sw=2.6){
+  let s=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${halo}" stroke-width="${sw+3}" stroke-linecap="round"/><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${t}" stroke-width="${sw}" stroke-linecap="round"/>`;
+  if(ticks){const L=Math.hypot(x2-x1,y2-y1),ux=(x2-x1)/L,uy=(y2-y1)/L,nx=-uy,ny=ux,n=Math.max(2,Math.round(L/6));
+    for(let i=1;i<n;i++){const px=x1+ux*L*i/n,py=y1+uy*L*i/n;s+=`<line x1="${px-nx*4}" y1="${py-ny*4}" x2="${px+nx*4}" y2="${py+ny*4}" stroke="${t}" stroke-width="1.4"/>`;}}
+  return s;
+}
+function far(t,ticks){
+  const R=9,w=300,h=240,ox=6,oy=6;let s=`<svg width="${w}" height="${h}" style="background:${t.ground}">`;
+  const P=(x,y)=>[ox+x*1.5*R,oy+(y+1)*(S3/2)*R];
+  for(let x=0;x<=22;x++)for(let y=0;y<=26;y++){if((x+y)%2)continue;const [cx,cy]=P(x,y);
+    s+=`<polygon points="${C(cx,cy,R).map(p=>p.join(",")).join(" ")}" fill="${t.fill}" stroke="${t.edge}" stroke-width=".6"/>`;}
+  for(const [k,d] of Object.entries(EX)){const [x,y]=k.split(",").map(Number);for(const dir of Object.keys(OFF))if(!d.includes(dir)){const c=C(...P(x,y),R),[a,b]=EDGE[dir];s+=rampart(c[a][0],c[a][1],c[b][0],c[b][1],t.ink,ticks,t.ground,ticks?2.6:3);}}
+  return s+"</svg>";
+}
+document.getElementById("z1").innerHTML=T.map(t=>`<figure>${far(t,true)}<figcaption>${t.name}, zoomed right out</figcaption></figure>`).join("");
+document.getElementById("z2").innerHTML=T.map(t=>`<figure>${far(t,false)}<figcaption>${t.name}, zoomed right out</figcaption></figure>`).join("");
+function point(label){
+  const R=46,w=320,h=210;let s=`<svg width="${w}" height="${h}" style="background:#0d1117">`;
+  const P=(x,y)=>[-5.2*1.5*R+x*1.5*R,-0.1*R+(y+1)*(S3/2)*R];
+  for(let x=6;x<=11;x++)for(let y=-1;y<=6;y++){if((x+y)%2)continue;const [cx,cy]=P(x,y);s+=`<polygon points="${C(cx,cy,R).map(p=>p.join(",")).join(" ")}" fill="#1a212b" stroke="#5e788c"/>`;}
+  const c=C(...P(9,3),R);s+=rampart(c[4][0],c[4][1],c[5][0],c[5][1],"#e0b25a",true,"#0d1117",3.4);
+  const [cx,cy]=P(9,3);s+=`<text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="10" fill="#c9d6e2">Ciestucshire</text>`;
+  s+=`<path d="M${(c[4][0]+c[5][0])/2+4} ${c[4][1]+2} l0 14 l4 -4 l5 7 l2 -1 l-5 -7 l6 0 z" fill="#fff" stroke="#000" stroke-width=".8"/>`;
+  s+="</svg>";
+  return `<figure>${s}<div class="tip">${label}</div></figure>`;
+}
+document.getElementById("p").innerHTML=
+  `<div><h3>P1: as agreed earlier</h3>${point("No way through: cavern (9,3,2) has no exit to the north.")}</div>`+
+  `<div><h3>P2: matching today's warning</h3>${point("No exit North from Ciestucshire (9,3,2)")}</div>`;
+</script>
+</body>
+</html>

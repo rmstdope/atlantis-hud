@@ -1334,12 +1334,15 @@ fn cheapest_path(
 /// such word to go on and no such objection: an unexplored hex states no exits at all, so
 /// arithmetic is the only way on, and it is also what lets a route come back out onto described
 /// ground rather than being stuck in the fog for the rest of the journey.
+///
+/// A side a report proves closed ([`MapKnowledge::wall`]) is not guessed at.
 fn ways_out(map: &MapKnowledge, here: Coordinate) -> Vec<(Direction, Coordinate)> {
     let mut ways: Vec<(Direction, Coordinate)> = map.neighbours(here).collect();
     let in_the_fog = map.hex(here).is_none();
     for direction in Direction::ALL {
         let guessed = map.geometric_neighbour(here, direction);
         if (in_the_fog || map.hex(guessed).is_none())
+            && !map.wall(here, direction)
             && !ways.iter().any(|(stated, _)| *stated == direction)
         {
             ways.push((direction, guessed));

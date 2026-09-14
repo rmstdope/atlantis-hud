@@ -16,7 +16,7 @@ use atlantis_hud_core::report::merge::{
 };
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    completions_at_caret, engine_info, order_argument_completions, order_commands_with_ruleset,
+    completions_at_caret, engine_info, order_argument_completions, order_commands,
     order_vocabulary, parse_report, plan_merge, reject_import, reserved_merge_identity,
     CaretCompletions, EngineInfo, MergePlan, OrderCheckOptions, OrderCompletion,
     OrderValidationResult, ReportParseResult, ReportParseResultWire,
@@ -185,7 +185,7 @@ pub mod commands {
     ) -> Vec<atlantis_hud_core::movement::passages::PassageClaim> {
         let report = atlantis_hud_core::report::parse_report_full(raw_report);
         let ruleset = atlantis_hud_core::movement::rules::Ruleset::from_json(ruleset_json).ok();
-        let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document_with_ruleset(
+        let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document(
             orders_document,
             ruleset.as_ref(),
         );
@@ -378,7 +378,7 @@ pub mod commands {
             ruleset_json.and_then(|json| cache.ruleset(json).ok())
         });
 
-        order_commands_with_ruleset(ruleset.as_deref())
+        order_commands(ruleset.as_deref())
             .into_iter()
             .map(str::to_string)
             .collect()
@@ -1175,14 +1175,13 @@ pub mod commands {
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "trace_move_orders")
     )]
-    // Eight, as the core's `trace_orders_on_map` less its cache; the hex is the one the selected unit set out from (`ah-jxrw`).
+    // Seven, as the core's `trace_orders_on_map` less its cache; the unit crosses whole as a `UnitRef`.
     #[allow(clippy::too_many_arguments)]
     pub fn command_trace_move_orders(
         ruleset_json: &str,
         raw_report: &str,
         remembered_json: &str,
-        unit_id: &str,
-        region_id: &str,
+        unit: atlantis_hud_core::unit_ref::UnitRef,
         orders_document: &str,
         map_json: &str,
         passages_json: &str,
@@ -1193,8 +1192,7 @@ pub mod commands {
                 ruleset_json,
                 raw_report,
                 remembered_json,
-                unit_id,
-                region_id,
+                &unit,
                 orders_document,
                 map_json,
                 passages_json,
@@ -1586,8 +1584,11 @@ mod trace_move_orders_command_tests {
             RULESET,
             &current,
             &remembered,
-            "900",
-            "1:1,1",
+            atlantis_hud_core::unit_ref::UnitRef {
+                region_id: "1:1,1".into(),
+                unit_id: "900".into(),
+                arriving_from: None,
+            },
             "unit 900\nMOVE SE SE",
             "",
             "",
@@ -1613,8 +1614,11 @@ mod trace_move_orders_command_tests {
             RULESET,
             &current,
             "[]",
-            "900",
-            "1:1,1",
+            atlantis_hud_core::unit_ref::UnitRef {
+                region_id: "1:1,1".into(),
+                unit_id: "900".into(),
+                arriving_from: None,
+            },
             "unit 900\nwork",
             "",
             "",
@@ -2643,8 +2647,11 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             atlantis_hud_fixtures::RULESET_JSON,
             &report,
             "[]",
-            "900",
-            "1:1,1",
+            atlantis_hud_core::unit_ref::UnitRef {
+                region_id: "1:1,1".into(),
+                unit_id: "900".into(),
+                arriving_from: None,
+            },
             "unit 900\nMOVE 3 IN\n",
             "",
             passages,

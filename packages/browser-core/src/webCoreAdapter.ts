@@ -37,6 +37,7 @@ import type {
 } from "@atlantis/core-client";
 import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
+import type { UnitRef } from "@atlantis/core-client";
 
 /**
  * The subset of the generated wasm module this adapter needs, typed against what each function
@@ -90,8 +91,7 @@ export type CoreWasmModule = {
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
-    unitId: string,
-    regionId: string,
+    unit: UnitRef,
     ordersDocument: string,
     mapJson: string,
     passagesJson: string
@@ -550,8 +550,7 @@ export function createWebCoreAdapter(
       rulesetJson: string,
       rawReport: string,
       rememberedJson: string,
-      unitId: string,
-      regionId: string,
+      unit: UnitRef,
       ordersDocument: string,
       mapJson: string,
       passagesJson: string
@@ -562,8 +561,7 @@ export function createWebCoreAdapter(
         rulesetJson,
         rawReport,
         rememberedJson,
-        unitId,
-        regionId,
+        unit,
         ordersDocument,
         mapJson,
         passagesJson

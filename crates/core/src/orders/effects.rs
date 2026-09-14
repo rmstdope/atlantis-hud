@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::ReportCache;
 use crate::movement::rules::Ruleset;
+use crate::orders::item_change_log::Stock;
 use crate::orders::items::item_named;
 use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::orders::transfers::{in_report_order, PendingTransfer};
@@ -752,19 +753,19 @@ pub fn preview_orders_on_map(
         shown: map.shown_extent(),
         ..options
     };
+    // One reading serves both settles and the movement decision alike.
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
     let (units, dissolved, measured) = settle(
         &report,
         &ruleset,
         orders_document,
+        &ordered,
         geometry,
         options.clone(),
     );
-    // Where each unit stands once its own ENTER/LEAVE have run: `entry.unit` is already corrected
-    // (see `Working::visit`), but the map and the aboard set it is compared against are the
-    // report's, so the correction was thrown away one call later. `Working` applies the same
-    // ENTER/LEAVE rule to the unit row, so the two halves of one preview cannot disagree.
-    let ordered = crate::movement::fleet::OrderedUnits::from_document(orders_document);
-
     let (mut decided, sailing) =
         decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
     // `rules/sequenceofevents` moves every unit before any TRANSPORT, so a shipment one of whose
@@ -778,7 +779,14 @@ pub fn preview_orders_on_map(
             month_end,
             ..options
         };
-        let (units, _, _) = settle(&report, &ruleset, orders_document, geometry, again);
+        let (units, _, _) = settle(
+            &report,
+            &ruleset,
+            orders_document,
+            &ordered,
+            geometry,
+            again,
+        );
         for (decided, entry) in decided.iter_mut().zip(units) {
             debug_assert_eq!(decided.entry.unit.unit_id, entry.unit.unit_id);
             decided.entry = entry;
@@ -786,18 +794,21 @@ pub fn preview_orders_on_map(
     }
 
     let mut regions: BTreeMap<String, Vec<UnitPreview>> = BTreeMap::new();
-    for Decided {
-        entry,
-        status,
-        arrival,
-        ends_at: _,
-        aboard,
-        dissolves_into,
-        formed,
-        dissolving,
-    } in decided
-    {
-        let changes = entry.changes();
+    for decided in decided {
+        let changes = decided.entry.changes();
+        if !decided.has_preview_row(&changes) {
+            continue;
+        }
+        let Decided {
+            entry,
+            status,
+            arrival,
+            ends_at: _,
+            aboard,
+            dissolves_into,
+            formed,
+            dissolving,
+        } = decided;
         // Captured before `entry.unit` is moved below - the same data on both rows of a unit
         // that is arriving and departing at once, since items are not a property of where the
         // unit stands (`ah-agbm`).
@@ -851,37 +862,12 @@ pub fn preview_orders_on_map(
         let item_changes = if dissolving {
             Vec::new()
         } else {
-            entry.item_changes.clone()
+            entry.item_log.changes().to_vec()
         };
-        let items_moved = !dissolving && entry.items_moved;
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
         let transport_target_issues = entry.transport_target_issues.clone();
         let shipment_unmeasured = entry.shipment_unmeasured;
-
-        let departed = status == UnitPreviewStatus::Departing;
-        if changes.is_empty()
-            && !departed
-            && !formed
-            && uncounted.is_empty()
-            && transport_sent.is_empty()
-            && transport_received.is_empty()
-            && transport_target_issues.is_empty()
-            && !shipment_unmeasured
-            && study.is_none()
-            // A unit that buys five of a tag and sells five of the same tag ends the month holding
-            // what it started with, so `changes()` records nothing - and the row would be dropped
-            // along with the explanation of why nothing changed (`ah-rgkk.3.1`).
-            //
-            // `items_moved` rather than `!item_changes.is_empty()`: a cast charged for materials
-            // the mage does not hold records a change that takes nothing away (`ah-ofpb.5`), and a
-            // row whose every change is one of those has nothing to show - admitting it would put
-            // rows on the units table for orders with no effect at all, which is the leak
-            // `tests/orders_preview.rs` guards against.
-            && !items_moved
-        {
-            continue;
-        }
 
         if let Some(destination) = arrival {
             let mut arrived = entry.unit.clone();
@@ -1027,10 +1013,15 @@ pub(super) fn transported_out(
     geometry: Option<crate::movement::graph::MapGeometry>,
 ) -> BTreeMap<String, Vec<(String, i64)>> {
     let ruleset = std::sync::Arc::new(ruleset.clone());
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
     let (units, _, _) = settle(
         report,
         &ruleset,
         orders_document,
+        &ordered,
         geometry,
         super::semantics::CheckOptions::default(),
     );
@@ -1038,7 +1029,8 @@ pub(super) fn transported_out(
         .iter()
         .map(|working| {
             let moved = working
-                .item_changes
+                .item_log
+                .changes()
                 .iter()
                 .filter(|change| change.cause == ItemChangeCause::TransportedOut)
                 .map(|change| (change.tag.to_ascii_uppercase(), -change.delta))
@@ -1060,6 +1052,7 @@ fn settle(
     report: &crate::report::ParsedReport,
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
     orders_document: &str,
+    ordered: &crate::movement::fleet::OrderedUnits,
     geometry: Option<crate::movement::graph::MapGeometry>,
     options: super::semantics::CheckOptions,
 ) -> (
@@ -1068,9 +1061,19 @@ fn settle(
     std::collections::BTreeSet<String>,
 ) {
     let mut working = Working::over_own_units(report, ruleset.clone(), geometry, options);
-    super::walk::walk_with_ruleset(orders_document, Some(ruleset.as_ref()), |event| {
+    super::walk::walk(orders_document, Some(ruleset.as_ref()), |event| {
         working.visit(event);
     });
+    // Every route is chained by `movement::fleet::OrderedUnits` alone, so the map and the preview
+    // cannot chain one document two ways (`ah-xmqo`). Before the boardings, which read `move_steps`.
+    for unit in &mut working.units {
+        let route = match unit.form_line {
+            Some(line) => ordered.formed_route(line),
+            None => ordered.route_of(&unit.unit.unit_id),
+        };
+        unit.move_steps = route.map(|route| route.steps.clone());
+        unit.move_command = route.map(|route| route.command.clone());
+    }
     // `rules/move` gives a movement order two more directions that change the structure a unit is
     // standing in - "2) A structure number" and "3) OUT" - and they run in a later phase than the
     // ENTER and LEAVE orders `visit` already settled, so they are composed on top of that answer
@@ -1178,8 +1181,8 @@ fn apply_movement_boardings(units: &mut [WorkingUnit]) {
 /// its own block wrote.
 pub(crate) struct FormedAsOrdered {
     pub(crate) unit: ReportUnit,
-    /// `WorkingUnit::move_steps` of the settled row: region-scoped, because `Working` resolves an
-    /// alias by `(region, alias)`.
+    /// `WorkingUnit::move_steps` of the settled row: the route `movement::fleet::OrderedUnits`
+    /// recorded under the `FORM` line of the row `Working` took up.
     pub(crate) move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
     /// `WorkingUnit::move_command == Some("SAIL")`.
     pub(crate) sails: bool,
@@ -1191,15 +1194,16 @@ pub(crate) struct FormedAsOrdered {
 /// a `new-<alias>` whose block is not in this document. A dissolving unit **is** returned: the
 /// order it was written is still drawn (decision **Q3b'** of `ah-4hux`).
 ///
-/// `region_id` is the hex the unit was formed in, which `rules/form` makes the only hex its alias
-/// names. A non-empty `region_id` that forms no unit with that id answers `None`: falling back to the
-/// number alone is how an arrival row came to draw another hex's unit. Empty means the caller does
-/// not know the hex, and the first formed row with that id in settle order answers.
+/// `formed_in` is the hex the unit was formed in, which `rules/form` makes the only hex its alias
+/// names. `Some` hex that forms no unit with that id answers `None`: falling back to the number
+/// alone is how an arrival row came to draw another hex's unit. `None` - only
+/// `trace_orders_for_remembered_report` passes it - answers the first formed row with that id in
+/// settle order.
 pub(crate) fn formed_unit_as_ordered(
     report: &crate::report::ParsedReport,
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
     orders_document: &str,
-    region_id: &str,
+    formed_in: Option<&str>,
     unit_id: &str,
 ) -> Option<FormedAsOrdered> {
     // Not an optimisation to skip: without it every trace of an id the report does not carry would
@@ -1209,17 +1213,25 @@ pub(crate) fn formed_unit_as_ordered(
     }
     // A `FORM`ed row is looked up on its own; no transport is applied here, so the map's shape
     // is not needed (`ah-7ale.2.1`).
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
     let (units, _, _) = settle(
         report,
         ruleset,
         orders_document,
+        &ordered,
         None,
         super::semantics::CheckOptions::default(),
     );
     let entry = units.into_iter().find(|entry| {
         entry.formed
             && entry.unit.unit_id == unit_id
-            && (region_id.is_empty() || entry.unit.region_id == region_id)
+            && match formed_in {
+                None => true,
+                Some(hex) => entry.unit.region_id == hex,
+            }
     })?;
     Some(FormedAsOrdered {
         sails: entry.move_command.as_deref() == Some("SAIL"),
@@ -1266,8 +1278,18 @@ pub fn month_end_hexes(
         shown: map.shown_extent(),
         ..options
     };
-    let (units, dissolved, _) = settle(&report, &ruleset, orders_document, geometry, options);
-    let ordered = crate::movement::fleet::OrderedUnits::from_document(orders_document);
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
+    let (units, dissolved, _) = settle(
+        &report,
+        &ruleset,
+        orders_document,
+        &ordered,
+        geometry,
+        options,
+    );
     let (decided, _) = decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
     Ok(month_end_of(&decided))
 }
@@ -1305,9 +1327,9 @@ pub fn shown_extent(
 /// Whether the document writes any `TRANSPORT`/`DISTRIBUTE`, which is what the keystroke-path
 /// entries check before building the known map.
 fn ships_anything(orders_document: &str, ruleset: &Ruleset) -> bool {
-    use super::intents::{read_intents_with_ruleset, Intent};
+    use super::intents::{read_intents, Intent};
 
-    read_intents_with_ruleset(orders_document, Some(ruleset))
+    read_intents(orders_document, Some(ruleset))
         .iter()
         .any(|unit| {
             unit.intents
@@ -1520,6 +1542,37 @@ struct Decided {
     dissolving: bool,
 }
 
+impl Decided {
+    /// Whether this unit has a row in the orders preview.
+    ///
+    /// `changes` is `self.entry.changes()`, passed in because the caller already computed it for
+    /// the row itself.
+    fn has_preview_row(&self, changes: &[FieldChange]) -> bool {
+        // `rules/form` dissolves a unit that gains nobody before the month ends, so it never
+        // studied and never held anything to move (`ah-rgkk.3.1`).
+        let lives = !self.dissolving;
+        !changes.is_empty()
+            || self.status == UnitPreviewStatus::Departing
+            || self.formed
+            || !self.entry.uncounted.is_empty()
+            || !self.entry.transport_sent.is_empty()
+            || !self.entry.transport_received.is_empty()
+            || !self.entry.transport_target_issues.is_empty()
+            || self.entry.shipment_unmeasured
+            || (lives && self.entry.study.is_some())
+            // A unit that buys five of a tag and sells five of the same tag ends the month holding
+            // what it started with, so `changes()` records nothing - and the row would be dropped
+            // along with the explanation of why nothing changed (`ah-rgkk.3.1`).
+            //
+            // `moved_stock` rather than a non-empty log: a cast charged for materials the mage
+            // does not hold records a change that takes nothing away (`ah-ofpb.5`), and a row
+            // whose every change is one of those has nothing to show - admitting it would put rows
+            // on the units table for orders with no effect at all, which is the leak
+            // `tests/orders_preview.rs` guards against.
+            || (lives && self.entry.item_log.moved_stock())
+    }
+}
+
 /// A fleet leaving its hex this month, as its passengers need to read it.
 struct SailingFleet {
     /// Where the fleet ends the month, or nothing when the trace could not say.
@@ -1638,9 +1691,9 @@ struct WorkingUnit {
     /// The movement command as written, upper-cased: `MOVE`, `ADVANCE` or `SAIL`. Kept beside
     /// `move_steps` so a rendered order clause names the word the player actually typed.
     move_command: Option<String>,
-    /// Every readable order of this unit's block, chained into the route `move_steps` and
-    /// `move_command` are read from.
-    movement: crate::movement::chain::RouteChain,
+    /// The 1-based line of the `FORM` that created this row, or `None` for a report unit. How
+    /// `settle` finds this row's route in `movement::fleet::OrderedUnits`.
+    form_line: Option<usize>,
     /// `MOVE OUT`/`MOVE 12`/... when a step of the movement order set this unit's structure in the
     /// hex it started in. Read by `changes()`.
     move_origin_cause: Option<String>,
@@ -1687,21 +1740,8 @@ struct WorkingUnit {
     /// What this unit's `CAST` orders create this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.5`).
     created: Vec<CreatedItem>,
-    /// Every item this month's orders move into or out of this unit, in the month's order.
-    ///
-    /// **Appended to, never assigned**: each phase's writer adds its own, and the writers run in
-    /// the month's order - `apply_transfers` first (`ah-rgkk.3.2`'s seam), then
-    /// `apply_item_effects` with the ledger's already-sorted movements, then `apply_transports`
-    /// last (`ah-rgkk.3.1`).
-    item_changes: Vec<ItemChange>,
-    /// Whether any of those changes actually moved stock on this row.
-    ///
-    /// Never on the wire, and not the same question as "is `item_changes` non-empty": a `CAST` is
-    /// charged its materials at the ceiling whether or not the mage holds them (`ah-ofpb.5`), so a
-    /// mage with none of the material records a change that takes nothing away. A row whose every
-    /// change is one of those has nothing to show, and `preview_orders_on_map` skips it - the
-    /// buy-then-sell month that nets to zero is the case the row is kept for (`ah-rgkk.3.1`).
-    items_moved: bool,
+    /// Every item this month's orders move on this row, and whether stock moved (`ah-z9g8`).
+    item_log: super::item_change_log::ItemChangeLog,
     /// What this unit's `TRANSPORT`/`DISTRIBUTE` orders send this month. Written once by
     /// `apply_transports`, after everything else has run (`ah-bxgs`).
     transport_sent: Vec<TransportSent>,
@@ -2052,7 +2092,7 @@ impl Working {
                 formed: false,
                 move_steps: None,
                 move_command: None,
-                movement: crate::movement::chain::RouteChain::default(),
+                form_line: None,
                 move_origin_cause: None,
                 move_destination: None,
                 reported: unit.structure_id.clone(),
@@ -2064,8 +2104,7 @@ impl Working {
                 produced: Vec::new(),
                 built: Vec::new(),
                 created: Vec::new(),
-                item_changes: Vec::new(),
-                items_moved: false,
+                item_log: super::item_change_log::ItemChangeLog::default(),
                 transport_sent: Vec::new(),
                 transport_received: Vec::new(),
                 recruited: Vec::new(),
@@ -2150,7 +2189,7 @@ impl Working {
                 kind: BlockKind::Form,
                 depth,
             } if depth.turn == 0 => {
-                self.open_form(line.arguments);
+                self.open_form(line.number, line.arguments);
             }
             Event::Open { .. } => {}
             Event::Close {
@@ -2251,20 +2290,22 @@ impl Working {
                     name: Some(self.units[index].unit.name.clone()),
                 };
                 // `moved`, not `gift.amount`: the clamp above is what actually changed hands.
-                // The flag keeps the row where the revert was silver alone (`ah-6m7b.5.1`).
-                self.units[recipient].items_moved = true;
-                self.units[recipient].item_changes.push(ItemChange {
-                    tag: gift.tag.clone(),
-                    name: gift.name.clone(),
-                    delta: moved,
-                    cause: ItemChangeCause::GiftReverted,
-                    // The gift's own line is not kept on `given`, and the revert is not an order
-                    // the player wrote: `rules/form` does it because the unit gained nobody.
-                    line: None,
-                    unit_price: None,
-                    other: Some(dissolving),
-                    is_man,
-                });
+                // `Stock::Moved` keeps the row where the revert was silver alone (`ah-6m7b.5.1`).
+                self.units[recipient].item_log.record(
+                    ItemChange {
+                        tag: gift.tag.clone(),
+                        name: gift.name.clone(),
+                        delta: moved,
+                        cause: ItemChangeCause::GiftReverted,
+                        // The gift's own line is not kept on `given`, and the revert is not an order
+                        // the player wrote: `rules/form` does it because the unit gained nobody.
+                        line: None,
+                        unit_price: None,
+                        other: Some(dissolving),
+                        is_man,
+                    },
+                    Stock::Moved,
+                );
             }
             dissolved.insert(
                 index,
@@ -2311,7 +2352,7 @@ impl Working {
                 continue;
             };
             for movement in &effect.moved {
-                match movement.delta.cmp(&0) {
+                let stock = match movement.delta.cmp(&0) {
                     std::cmp::Ordering::Greater => {
                         add_item(
                             &mut unit.unit.items,
@@ -2319,7 +2360,7 @@ impl Working {
                             &movement.tag,
                             movement.delta,
                         );
-                        unit.items_moved = true;
+                        Stock::Moved
                     }
                     std::cmp::Ordering::Less => {
                         // A stock can go negative here - the ledger clamps against a running
@@ -2334,11 +2375,29 @@ impl Working {
                             .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
                         {
                             take_item(&mut unit.unit.items, index, -movement.delta);
-                            unit.items_moved = true;
+                            Stock::Moved
+                        } else {
+                            Stock::Untouched
                         }
                     }
-                    std::cmp::Ordering::Equal => {}
-                }
+                    std::cmp::Ordering::Equal => Stock::Untouched,
+                };
+                // Recorded as it is applied, so the change and whether it moved stock are one
+                // fact (`ah-z9g8`). `apply_transfers` has already recorded this month's GIVE and
+                // TAKE in the Give phase, and `apply_transports` records after us (`ah-rgkk.3.1`).
+                unit.item_log.record(
+                    ItemChange {
+                        tag: movement.tag.clone(),
+                        name: movement.name.clone(),
+                        delta: movement.delta,
+                        cause: movement.cause,
+                        line: movement.line,
+                        unit_price: movement.unit_price,
+                        other: movement.other.clone(),
+                        is_man: ruleset.is_man(&movement.tag),
+                    },
+                    stock,
+                );
             }
             unit.uncounted = effect.uncounted.clone();
             unit.recruited = effect.recruited.clone();
@@ -2353,19 +2412,6 @@ impl Working {
                 })
                 .collect();
             unit.built = effect.built.clone();
-            // `extend`, never assign: `apply_transfers` has already written this month's GIVE and
-            // TAKE here in the Give phase, and `apply_transports` appends after us (`ah-rgkk.3.1`).
-            unit.item_changes
-                .extend(effect.moved.iter().map(|movement| ItemChange {
-                    tag: movement.tag.clone(),
-                    name: movement.name.clone(),
-                    delta: movement.delta,
-                    cause: movement.cause,
-                    line: movement.line,
-                    unit_price: movement.unit_price,
-                    other: movement.other.clone(),
-                    is_man: ruleset.is_man(&movement.tag),
-                }));
             unit.created = effect
                 .moved
                 .iter()
@@ -2381,7 +2427,7 @@ impl Working {
         }
     }
 
-    fn open_form(&mut self, arguments: &[super::lexer::Token]) {
+    fn open_form(&mut self, form_line: usize, arguments: &[super::lexer::Token]) {
         // The alias has to be a number of at least 1 (`rules/form`): `GIVE NEW n` is the only way
         // to reach the formed unit, and the grammar's `Arg::Unit` accepts `NEW 1` and never
         // `NEW a` or `NEW 0`.
@@ -2420,7 +2466,7 @@ impl Working {
             formed: true,
             move_steps: None,
             move_command: None,
-            movement: crate::movement::chain::RouteChain::default(),
+            form_line: Some(form_line),
             move_origin_cause: None,
             move_destination: None,
             reported,
@@ -2432,8 +2478,7 @@ impl Working {
             produced: Vec::new(),
             built: Vec::new(),
             created: Vec::new(),
-            item_changes: Vec::new(),
-            items_moved: false,
+            item_log: super::item_change_log::ItemChangeLog::default(),
             transport_sent: Vec::new(),
             transport_received: Vec::new(),
             recruited: Vec::new(),
@@ -2457,7 +2502,6 @@ impl Working {
         arguments: &[super::lexer::Token],
         line: usize,
     ) {
-        let written = arguments;
         let Some(active) = self.active() else {
             return;
         };
@@ -2467,15 +2511,6 @@ impl Working {
             return;
         };
 
-        // Chained by `movement::chain::RouteChain` (`rules/move`).
-        if let Some(intent) =
-            super::intents::read_order_with_ruleset(command, written, Some(self.ruleset.as_ref()))
-        {
-            let working = &mut self.units[active];
-            working.movement.push(&command.text, &intent);
-            working.move_steps = working.movement.route().map(|route| route.steps.clone());
-            working.move_command = working.movement.route().map(|route| route.command.clone());
-        }
         if command.is("name") {
             self.rename(active, arguments);
         } else if let Some(change) = read_flag_order(command, arguments) {
@@ -2749,27 +2784,29 @@ impl Working {
                         return;
                     }
                     add_item(&mut self.units[taker].unit.items, &name, &tag, *count);
-                    // This branch credits the item directly rather than through `move_between`, so
-                    // it sets the flag itself: with the `items` change silver-blind, a TAKE of
-                    // silver alone has nothing else to keep the row (`ah-6m7b.5.1`).
-                    self.units[taker].items_moved = true;
                     // Below the mage refusal and the catalogue and quantity guards, so nothing
                     // refused is recorded. `taken_unshown` stays exactly as it is - `ah-64wm`'s
                     // and `ah-agbm`'s sentences read it - and the change is written alongside.
-                    self.units[taker].item_changes.push(ItemChange {
-                        tag: tag.clone(),
-                        name: name.clone(),
-                        delta: *count,
-                        cause: ItemChangeCause::Took,
-                        line: i64::try_from(line).ok(),
-                        unit_price: None,
-                        other: Some(ItemChangeParty {
-                            unit_id: id.clone(),
-                            name: None,
-                        }),
-                        // The refusal above already asked the same question of the same tag.
-                        is_man: self.ruleset.is_man(&tag),
-                    });
+                    // This branch credits the item directly rather than through `move_between`, so
+                    // it records `Stock::Moved` itself: with the `items` change silver-blind, a
+                    // TAKE of silver alone has nothing else to keep the row (`ah-6m7b.5.1`).
+                    self.units[taker].item_log.record(
+                        ItemChange {
+                            tag: tag.clone(),
+                            name: name.clone(),
+                            delta: *count,
+                            cause: ItemChangeCause::Took,
+                            line: i64::try_from(line).ok(),
+                            unit_price: None,
+                            other: Some(ItemChangeParty {
+                                unit_id: id.clone(),
+                                name: None,
+                            }),
+                            // The refusal above already asked the same question of the same tag.
+                            is_man: self.ruleset.is_man(&tag),
+                        },
+                        Stock::Moved,
+                    );
                     self.units[taker].taken_unshown.push(TakenUnshown {
                         amount: *count,
                         tag,
@@ -2886,35 +2923,39 @@ impl Working {
             // Below all three `continue`s above: a change recorded higher would be a movement that
             // did not happen. `moved` is what `take_item` subtracts and `tags_moved` has already
             // clamped to the stock, so the change and the item list cannot disagree.
-            // The row survives on this flag rather than on an `items` `FieldChange`: a month whose
+            // The row survives on `Stock::Moved` rather than on an `items` `FieldChange`: a month whose
             // only movement was silver records no such change any more (`ah-6m7b.5.1`), and a unit
             // that gave money away must keep its row for the SILVER column to answer in.
-            self.units[source].items_moved = true;
-            self.units[source].item_changes.push(ItemChange {
-                tag: tag.clone(),
-                name: name.clone(),
-                delta: -moved,
-                cause: source_cause,
-                line,
-                // No transfer is priced: `rules/give` names no payment, and the market is a
-                // different phase of `rules/sequenceofevents`.
-                unit_price: None,
-                other: far_end.clone(),
-                is_man,
-            });
-            if let Some(receiver) = receiver {
-                add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
-                self.units[receiver].items_moved = true;
-                self.units[receiver].item_changes.push(ItemChange {
+            self.units[source].item_log.record(
+                ItemChange {
                     tag: tag.clone(),
                     name: name.clone(),
-                    delta: moved,
-                    cause: receiver_cause,
+                    delta: -moved,
+                    cause: source_cause,
                     line,
+                    // No transfer is priced: `rules/give` names no payment, and the market is a
+                    // different phase of `rules/sequenceofevents`.
                     unit_price: None,
-                    other: Some(near_end.clone()),
+                    other: far_end.clone(),
                     is_man,
-                });
+                },
+                Stock::Moved,
+            );
+            if let Some(receiver) = receiver {
+                add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
+                self.units[receiver].item_log.record(
+                    ItemChange {
+                        tag: tag.clone(),
+                        name: name.clone(),
+                        delta: moved,
+                        cause: receiver_cause,
+                        line,
+                        unit_price: None,
+                        other: Some(near_end.clone()),
+                        is_man,
+                    },
+                    Stock::Moved,
+                );
                 // `rules/form` reverts what a dissolving formed unit "was given", so only a GIVE
                 // is recorded here: what the row TAKES is its own doing, not a gift, and must not
                 // revert with the rest (`ah-dhga`, `ah-3mwm`).
@@ -3432,38 +3473,44 @@ impl Working {
                         .map(|receiver| self.units[receiver].unit.name.clone());
                     // `line` is `None`: what a transport carries is the order's `order_index`,
                     // which `TransportSent` already holds, not a document line (`ah-rgkk.3.1`).
-                    self.units[pending.sender].item_changes.push(ItemChange {
-                        tag: tag.clone(),
-                        name: name.clone(),
-                        delta: -moved,
-                        cause: ItemChangeCause::TransportedOut,
-                        line: None,
-                        unit_price: None,
-                        other: Some(ItemChangeParty {
-                            unit_id: pending.to.clone(),
-                            name: receiver_name,
-                        }),
-                        is_man,
-                    });
+                    self.units[pending.sender].item_log.record(
+                        ItemChange {
+                            tag: tag.clone(),
+                            name: name.clone(),
+                            delta: -moved,
+                            cause: ItemChangeCause::TransportedOut,
+                            line: None,
+                            unit_price: None,
+                            other: Some(ItemChangeParty {
+                                unit_id: pending.to.clone(),
+                                name: receiver_name,
+                            }),
+                            is_man,
+                        },
+                        Stock::Moved,
+                    );
                 }
                 if let Some(receiver) = pending.receiver {
                     add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
                     let from = self.units[pending.sender].unit.unit_id.clone();
                     let from_name = self.units[pending.sender].unit.name.clone();
                     if moved != 0 {
-                        self.units[receiver].item_changes.push(ItemChange {
-                            tag: tag.clone(),
-                            name: name.clone(),
-                            delta: moved,
-                            cause: ItemChangeCause::TransportedIn,
-                            line: None,
-                            unit_price: None,
-                            other: Some(ItemChangeParty {
-                                unit_id: from.clone(),
-                                name: Some(from_name),
-                            }),
-                            is_man,
-                        });
+                        self.units[receiver].item_log.record(
+                            ItemChange {
+                                tag: tag.clone(),
+                                name: name.clone(),
+                                delta: moved,
+                                cause: ItemChangeCause::TransportedIn,
+                                line: None,
+                                unit_price: None,
+                                other: Some(ItemChangeParty {
+                                    unit_id: from.clone(),
+                                    name: Some(from_name),
+                                }),
+                                is_man,
+                            },
+                            Stock::Moved,
+                        );
                     }
                     received[receiver].push((
                         pending.sequence,
@@ -3860,6 +3907,58 @@ mod tests {
     }
 
     #[test]
+    fn the_settle_takes_each_route_from_the_reading_it_is_given() {
+        use crate::movement::graph::Direction::Southeast;
+        use crate::movement::orders::MoveStep;
+        let mut cache = crate::cache::ReportCache::new();
+        let parsed = cache.classified(&report(), RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        let ordered = crate::movement::fleet::OrderedUnits::from_document(
+            "unit 900\nMOVE SE\n",
+            Some(ruleset.as_ref()),
+        );
+        let (units, _, _) = settle(
+            &parsed,
+            &ruleset,
+            "unit 900\n",
+            &ordered,
+            None,
+            super::super::semantics::CheckOptions::default(),
+        );
+        let walker = units
+            .iter()
+            .find(|entry| entry.unit.unit_id == "900")
+            .expect("the walker is settled");
+        assert_eq!(walker.move_steps, Some(vec![MoveStep::Go(Southeast)]));
+        assert_eq!(walker.move_command.as_deref(), Some("MOVE"));
+    }
+
+    #[test]
+    fn a_formed_rows_route_is_the_one_under_its_form_line() {
+        use crate::movement::graph::Direction::Southeast;
+        use crate::movement::orders::MoveStep;
+        let document = "unit 900\nFORM 1\nMOVE SE\nEND\nGIVE NEW 1 1 LEAD\n";
+        let mut cache = crate::cache::ReportCache::new();
+        let parsed = cache.classified(&report(), RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        let ordered =
+            crate::movement::fleet::OrderedUnits::from_document(document, Some(ruleset.as_ref()));
+        let (units, _, _) = settle(
+            &parsed,
+            &ruleset,
+            document,
+            &ordered,
+            None,
+            super::super::semantics::CheckOptions::default(),
+        );
+        let formed = units
+            .iter()
+            .find(|entry| entry.formed && entry.unit.unit_id == "new-1")
+            .expect("the formed row is settled");
+        assert_eq!(formed.move_steps, Some(vec![MoveStep::Go(Southeast)]));
+    }
+
+    #[test]
     fn a_name_synonym_previews_exactly_as_its_canonical_spelling_does() {
         for (synonym, canonical) in [
             ("SHIP", "OBJECT"),
@@ -3949,6 +4048,79 @@ mod tests {
             "",
         ]
         .join("\n")
+    }
+
+    /// A mage who can cast `Enchant_Swords` and holds none of its materials (`ah-ofpb.5`).
+    fn report_with_an_empty_handed_enchanter() -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Enchanter (900), Foo (1), behind, leader [LEAD]. Weight: 10. \
+             Capacity: 0/0/15/0. Skills: enchant swords [ESWO] 3 (270).",
+            "",
+        ]
+        .join("\n")
+    }
+
+    /// `ah-z9g8`. The gate is asked of the unit's own verdict, over entries built by the real walk.
+    #[test]
+    fn a_decided_row_answers_the_gate_itself() {
+        let ruleset = std::sync::Arc::new(Ruleset::from_json(RULESET).expect("the ruleset loads"));
+        let decided_900 = |text: &str, orders: &str, dissolving: bool| {
+            let report = ReportCache::new().classified(text, RULESET);
+            let ordered =
+                crate::movement::fleet::OrderedUnits::from_document(orders, Some(ruleset.as_ref()));
+            let (units, _, _) = settle(
+                &report,
+                &ruleset,
+                orders,
+                &ordered,
+                None,
+                crate::orders::semantics::CheckOptions::default(),
+            );
+            let entry = units
+                .into_iter()
+                .find(|entry| entry.unit.unit_id == "900")
+                .expect("the fixture has unit 900");
+            Decided {
+                formed: entry.formed,
+                dissolving,
+                entry,
+                status: UnitPreviewStatus::Present,
+                arrival: None,
+                ends_at: None,
+                aboard: None,
+                dissolves_into: None,
+            }
+        };
+
+        let cast = decided_900(
+            &report_with_an_empty_handed_enchanter(),
+            "unit 900\nCAST Enchant_Swords\n",
+            false,
+        );
+        assert!(
+            !cast.has_preview_row(&cast.entry.changes()),
+            "a logged change that moved nothing earns no row"
+        );
+
+        let orders = "unit 900\nSELL 5 fur\nWITHDRAW 5 FUR\n";
+        let netted = decided_900(&report_with_market(), orders, false);
+        // The fixture's shape: the moved-stock term is the only one keeping this row.
+        assert!(netted.entry.changes().is_empty());
+        assert!(netted.entry.study.is_none());
+        assert!(
+            netted.has_preview_row(&netted.entry.changes()),
+            "stock moved and netted to zero"
+        );
+
+        let dissolving = decided_900(&report_with_market(), orders, true);
+        assert!(
+            !dissolving.has_preview_row(&dissolving.entry.changes()),
+            "a dissolving unit's moved stock earns it nothing"
+        );
     }
 
     /// Like `report_with_market()`, but the market sells people and the unit already has men, a
@@ -7771,7 +7943,7 @@ mod tests {
                 .copied(),
         ) {
             assert!(
-                crate::orders::grammar::find_order(keyword).is_some(),
+                crate::orders::grammar::find_order(keyword, None).is_some(),
                 "{keyword} is not in the grammar"
             );
         }
@@ -7901,16 +8073,7 @@ mod tests {
         /// away. A row whose every change is one of those has nothing to show.
         #[test]
         fn a_cast_charged_for_materials_the_mage_has_not_got_earns_no_row() {
-            let empty_handed = [
-                "Foo (1) Report",
-                "",
-                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
-                "",
-                "* Enchanter (900), Foo (1), behind, leader [LEAD]. Weight: 10. \
-                 Capacity: 0/0/15/0. Skills: enchant swords [ESWO] 3 (270).",
-                "",
-            ]
-            .join("\n");
+            let empty_handed = report_with_an_empty_handed_enchanter();
             let response = preview_over(&empty_handed, "unit 900\nCAST Enchant_Swords\n");
 
             assert!(
@@ -8036,7 +8199,7 @@ mod tests {
         }
 
         /// `ah-6m7b.5.1`, finding 1: `take`'s unshown-source branch bypasses `move_between`, so
-        /// the row survives on `items_moved` alone once the `items` change is silver-blind.
+        /// the row survives on the log's `moved_stock` alone once the `items` change is silver-blind.
         #[test]
         fn a_take_of_silver_from_an_unshown_unit_keeps_its_row() {
             let response = preview_over(&report_with_market(), "unit 901\nTAKE FROM 999 5 SILV\n");
@@ -8058,7 +8221,7 @@ mod tests {
         }
 
         /// `ah-6m7b.5.1`, finding 2: the receiving row of a silver gift has no `items` change
-        /// either, so it too survives on `items_moved`.
+        /// either, so it too survives on the log's `moved_stock`.
         #[test]
         fn the_receiver_of_a_gift_of_silver_keeps_its_row() {
             let response = preview_over(

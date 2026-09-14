@@ -230,7 +230,7 @@ mod tests {
 
     /// The arguments of one order line, which is what every reader here takes.
     fn arguments(line: &str) -> Vec<Token> {
-        lex_line(line)
+        lex_line(line, None)
             .tokens
             .split_first()
             .expect("a command")
@@ -419,7 +419,7 @@ mod tests {
     /// line is rebuilt from the lexed tokens rather than read raw.
     #[test]
     fn a_move_reads_through_its_comment() {
-        let lexed = lex_line("MOVE N NE ;to the coast");
+        let lexed = lex_line("MOVE N NE ;to the coast", None);
         let (command, rest) = lexed.tokens.split_first().expect("a command");
 
         assert_eq!(

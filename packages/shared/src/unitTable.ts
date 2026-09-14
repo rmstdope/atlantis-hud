@@ -1,4 +1,4 @@
-import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
+import type { ReportUnit, UnitRef, UnitSilver } from "@atlantis/core-client";
 
 import {
   structureRegionOf,
@@ -465,12 +465,28 @@ export function unitRowKey(
   ) as UnitRowKey;
 }
 
-/** The parts of a row its identity is made of. `ReportUnit`, `PreviewedUnit` and `UnitCursor` all satisfy it. */
+/** The parts of a row its identity is read from. `ReportUnit` and `PreviewedUnit` both satisfy it. */
 export type KeyedRow = { regionId: string; unitId: string; arrivingFrom?: string | null };
 
-/** The key of a table row: `unitRowKey(row.regionId, row.unitId, row.arrivingFrom)`. */
+/** The `UnitRef` a row names. A row with no `arrivingFrom` does not arrive. */
+export function unitRefOf(row: KeyedRow): UnitRef {
+  return { regionId: row.regionId, unitId: row.unitId, arrivingFrom: row.arrivingFrom ?? null };
+}
+
+/**
+ * The row key of a `UnitRef`, from every one of its fields. The `rest` check is deliberate: a field
+ * added to `UnitRef` stops this compiling until the key includes it.
+ */
+export function unitRefKey(unit: UnitRef): UnitRowKey {
+  const { regionId, unitId, arrivingFrom, ...rest } = unit;
+  const noOtherField: Record<string, never> = rest;
+  void noOtherField;
+  return unitRowKey(regionId, unitId, arrivingFrom);
+}
+
+/** The key of a table row: `unitRefKey(unitRefOf(row))`. */
 export function rowKeyOf(row: KeyedRow): UnitRowKey {
-  return unitRowKey(row.regionId, row.unitId, row.arrivingFrom);
+  return unitRefKey(unitRefOf(row));
 }
 
 /** The parts of a row `unitNamesByRow` reads. `ReportUnit` and `PreviewedUnit` both satisfy it. */

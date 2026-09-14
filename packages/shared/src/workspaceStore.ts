@@ -7,7 +7,7 @@
  * nothing could be linked to anything else. One store fixes that.
  */
 
-import type { MapShape, OpenedGame } from "@atlantis/core-client";
+import type { MapShape, OpenedGame, UnitRef } from "@atlantis/core-client";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { allBadges, type BadgeName } from "./workspace/mapThemes/hexView";
@@ -131,18 +131,11 @@ export type WorkspaceState = {
    */
   unitSlotTab: SlotTab | null;
   selectedRegionId: string | null;
-  selectedUnitId: string | null;
   /**
-   * The hex the selected unit stands in. Non-null exactly when `selectedUnitId` is: a unit number
-   * is not unique across a report - two hexes may each write `FORM 1` and both formed units are
-   * called `new-1` (`rules/form`) - so the cursor is the pair (`ah-bubf`).
+   * The unit the cursor is on, or null. Never persisted. One field rather than one per part, so a
+   * selector returns the stored object and a new part of a unit's identity is a change to `UnitRef`.
    */
-  selectedUnitRegionId: string | null;
-  /**
-   * The hex the selected row arrives from, when the cursor is on an arrival row; null otherwise and
-   * whenever `selectedUnitId` is null (`ah-jxrw`). Never persisted.
-   */
-  selectedUnitArrivingFrom: string | null;
+  selectedUnit: UnitRef | null;
   /**
    * Which unit was last chosen in each hex, so returning to a hex returns to that unit rather than
    * to the first one in it (`ah-17t5`). Session-only: never persisted, and cleared whenever a game
@@ -273,11 +266,7 @@ export type WorkspaceState = {
    * behalf - an opening fill-in, or the first row of a foreign faction's list - which must not be
    * recorded as the hex's remembered choice (`ah-17t5`).
    */
-  selectUnit: (
-    unitId: string | null,
-    regionId: string | null,
-    options?: { remember?: boolean; arrivingFrom?: string | null }
-  ) => void;
+  selectUnit: (unit: UnitRef | null, options?: { remember?: boolean }) => void;
   setLevel: (level: number) => void;
   /** Records that the map committed a viewport for the open game on this level. */
   commitMapView: (viewport: Viewport, level: number) => void;
@@ -425,9 +414,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     (set) => ({
       game: null,
       selectedRegionId: null,
-      selectedUnitId: null,
-      selectedUnitRegionId: null,
-      selectedUnitArrivingFrom: null,
+      selectedUnit: null,
       hexUnits: NO_HEX_UNITS,
       selectionEpoch: 0,
       pickEpoch: 0,
@@ -452,9 +439,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           game,
           level: saved?.level ?? DEFAULT_LEVEL,
           selectedRegionId: saved?.regionId ?? null,
-          selectedUnitId: null,
-          selectedUnitRegionId: null,
-          selectedUnitArrivingFrom: null,
+          selectedUnit: null,
           hexUnits: NO_HEX_UNITS,
           selectionEpoch: 0,
           mapView: mapViewOpened(game.gameId, saved)
@@ -464,9 +449,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set({
           game: null,
           selectedRegionId: null,
-          selectedUnitId: null,
-          selectedUnitRegionId: null,
-          selectedUnitArrivingFrom: null,
+          selectedUnit: null,
           hexUnits: NO_HEX_UNITS,
           selectionEpoch: 0,
           mapView: NO_MAP_VIEW
@@ -513,9 +496,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           }
           return {
             selectedRegionId: regionId,
-            selectedUnitId: defaultUnitId,
-            selectedUnitRegionId: defaultUnitId === null ? null : regionId,
-            selectedUnitArrivingFrom: null,
+            selectedUnit:
+              defaultUnitId === null || regionId === null
+                ? null
+                : { regionId, unitId: defaultUnitId, arrivingFrom: null },
             selectionEpoch: state.selectionEpoch + 1,
             pickEpoch: options?.picked ? state.pickEpoch + 1 : state.pickEpoch,
             mapView: mapViewSelectionChanged(state.mapView, regionId)
@@ -525,24 +509,20 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       restoreSelection: (regionId) =>
         set((state) => ({
           selectedRegionId: regionId,
-          selectedUnitId: null,
-          selectedUnitRegionId: null,
-          selectedUnitArrivingFrom: null,
+          selectedUnit: null,
           mapView: mapViewSelectionChanged(state.mapView, regionId)
         })),
 
       // Choosing a unit is what the hex remembers. Clearing the selection deliberately writes
       // nothing: deselecting is not choosing somebody else, and the last real choice is still the
       // better guess when the player comes back.
-      selectUnit: (unitId, regionId, options) =>
+      selectUnit: (unit, options) =>
         set((state) => ({
-          selectedUnitId: unitId,
-          selectedUnitRegionId: unitId === null ? null : regionId,
-          selectedUnitArrivingFrom: unitId === null ? null : (options?.arrivingFrom ?? null),
+          selectedUnit: unit,
           hexUnits:
-            unitId === null || regionId === null || options?.remember === false
+            unit === null || options?.remember === false
               ? state.hexUnits
-              : withUnitRemembered(state.hexUnits, regionId, unitId)
+              : withUnitRemembered(state.hexUnits, unit.regionId, unit.unitId)
         })),
 
       // Levels are separate maps, so a selection from one does not carry to another.
@@ -553,9 +533,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             : {
                 level,
                 selectedRegionId: null,
-                selectedUnitId: null,
-                selectedUnitRegionId: null,
-                selectedUnitArrivingFrom: null,
+                selectedUnit: null,
                 selectionEpoch: 0,
                 mapView: mapViewSelectionChanged(state.mapView, null)
               }
@@ -692,9 +670,7 @@ export function resetWorkspaceStore() {
   useWorkspaceStore.setState({
     game: null,
     selectedRegionId: null,
-    selectedUnitId: null,
-    selectedUnitRegionId: null,
-    selectedUnitArrivingFrom: null,
+    selectedUnit: null,
     hexUnits: NO_HEX_UNITS,
     selectionEpoch: 0,
     pickEpoch: 0,

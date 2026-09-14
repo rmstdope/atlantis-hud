@@ -38,9 +38,10 @@ travels as raw text, which is the key the core's parse cache remembers it under.
   `RoutePlanResponse { plan, problem, risk, fullyModelled }`. A route that cannot be planned
   resolves with a named `problem`; only an unusable ruleset or unreadable memory rejects.
 - `trace_move_orders` (Tauri) / `trace_move_orders_state` (WASM) / `CoreClient.traceMoveOrders`:
-  `(ruleset_json, raw_report, remembered_json, unit_id, region_id, orders_document, map_json, passages_json)` →
-  `MoveOrderTraceResponse { path }`. `region_id` is the hex the unit set out from this month (for an arrival row, the hex it arrives from, not the hex it is listed in); a new unit's `new-<n>` is unique
-  only inside it. Traces the last readable MOVE/ADVANCE line in the unit's
+  `(ruleset_json, raw_report, remembered_json, unit, orders_document, map_json, passages_json)` →
+  `MoveOrderTraceResponse { path }`. `unit` is a `UnitRef { regionId, unitId, arrivingFrom }`; the core
+  traces it from `arrivingFrom ?? regionId`, the hex it set out from, since a new unit's `new-<n>` is
+  unique only inside the hex it was formed in. Traces the last readable MOVE/ADVANCE line in the unit's
   written orders across the remembered map, extrapolating geometrically past everything known and
   guessing unknown terrain from the previous hex. `path` is `null` when there is nothing to draw
   (no movement order, no such unit, or an unknown origin); `path.months` is empty and `path.mode`

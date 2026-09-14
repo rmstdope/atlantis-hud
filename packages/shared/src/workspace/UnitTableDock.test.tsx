@@ -1517,8 +1517,7 @@ describe("the source rail and an Army as the source (ah-1mpx.2)", () => {
     // Two hexes may each write `FORM 1`, and both formed units are called `new-1` (`rules/form`),
     // so the cursor is the pair - one row is the cursor row, not two (`ah-bubf`).
     setStoreStateForTest(useWorkspaceStore, {
-      selectedUnitId: "new-1",
-      selectedUnitRegionId: "1:8,53"
+      selectedUnit: { regionId: "1:8,53", unitId: "new-1", arrivingFrom: null }
     });
     const markup = renderWithStoreState(
       <UnitTableDock
@@ -1681,7 +1680,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "new-1", selectedUnitRegionId: "1:6,52", selectedUnitArrivingFrom: "1:7,53" }
+      { selectedUnit: { regionId: "1:6,52", unitId: "new-1", arrivingFrom: "1:7,53" } }
     );
 
     const rows = markup.match(/<tr data-testid="unit-row-new-1"[\s\S]*?<\/tr>/g) ?? [];
@@ -2076,7 +2075,7 @@ describe("picking several rows (ah-1mpx.4)", () => {
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
+      { selectedUnit: { regionId: "1:6,52", unitId: "1", arrivingFrom: null } }
     );
 
     // Round 3's numbers exactly: the cursor keeps 25%, a merely picked row takes 15%.
@@ -2096,7 +2095,7 @@ describe("picking several rows (ah-1mpx.4)", () => {
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
+      { selectedUnit: { regionId: "1:6,52", unitId: "1", arrivingFrom: null } }
     );
 
     // In a grid `aria-selected` is the selection and focus is the cursor, so both picked rows
@@ -2112,7 +2111,7 @@ describe("picking several rows (ah-1mpx.4)", () => {
     const one = renderWithStoreState(
       <UnitTableDock hex={twoRows()} preview={null} initialPick={{ ids: new Set([unitRowKey("1:6,52", "1")]), anchor: unitRowKey("1:6,52", "1") }} />,
       useWorkspaceStore,
-      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
+      { selectedUnit: { regionId: "1:6,52", unitId: "1", arrivingFrom: null } }
     );
     const two = renderWithStoreState(
       <UnitTableDock
@@ -2124,7 +2123,7 @@ describe("picking several rows (ah-1mpx.4)", () => {
         }}
       />,
       useWorkspaceStore,
-      { selectedUnitId: "1", selectedUnitRegionId: "1:6,52" }
+      { selectedUnit: { regionId: "1:6,52", unitId: "1", arrivingFrom: null } }
     );
 
     expect(one).not.toContain('data-testid="unit-bulk-line"');

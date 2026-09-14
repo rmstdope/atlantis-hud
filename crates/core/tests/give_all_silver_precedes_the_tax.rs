@@ -103,22 +103,18 @@ fn the_silver_column_gives_only_what_the_unit_holds_before_it_taxes() {
 #[test]
 fn the_item_projection_and_the_receivers_row_agree_with_it() {
     for script in SCRIPTS {
+        let report_text = report();
         let preview = preview_orders_for_remembered_report(
             &mut ReportCache::new(),
             atlantis_hud_fixtures::RULESET_JSON,
-            &report(),
+            &report_text,
             "[]",
             &orders_for(script),
         )
         .expect("the ruleset loads");
 
         let silver_of = |unit_id: &str| -> i64 {
-            preview
-                .regions
-                .iter()
-                .flat_map(|region| region.units.iter())
-                .find(|unit| unit.unit.unit_id == unit_id)
-                .unwrap_or_else(|| panic!("{script:?}: the preview has unit {unit_id}"))
+            common::expect_preview_row(&report_text, &preview, unit_id)
                 .unit
                 .items
                 .iter()

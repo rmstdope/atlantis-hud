@@ -8,6 +8,7 @@ pub mod orders;
 pub mod reopen;
 pub mod report;
 pub mod trade;
+pub mod unit_ref;
 
 #[cfg(test)]
 mod export_dir_guard;
@@ -142,9 +143,8 @@ impl OrderValidationResult {
 /// [`orders`] for the lexer and grammar that replaced the list this used to be.
 pub use orders::semantics::CheckOptions as OrderCheckOptions;
 pub use orders::{
-    completions_at_caret, order_argument_completions, order_commands, order_commands_with_ruleset,
-    order_vocabulary, validate_orders, validate_turn, CaretCompletions, CaretPosition,
-    OrderCompletion,
+    completions_at_caret, order_argument_completions, order_commands, order_vocabulary,
+    validate_orders, validate_turn, CaretCompletions, CaretPosition, OrderCompletion,
 };
 
 /// The trade-route finder, re-exported for the same reason the order vocabulary is above.

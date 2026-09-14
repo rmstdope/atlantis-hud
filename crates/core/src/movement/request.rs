@@ -175,10 +175,9 @@ pub struct MoveOrderTraceResponse {
 /// order this unit travels by may be another unit's. [`crate::movement::fleet::steps_followed_by`]
 /// settles which, for this reader and the units-in-hex preview alike.
 ///
-/// The last readable movement line of a block wins, because a later order replaces an earlier one
-/// when the game executes them - but only among the lines that are that unit's own for this turn. A
-/// `TURN` block holds orders for the turn after this one, and a `FORM` block's orders belong to the
-/// unit being formed, so movement inside either says nothing about where a unit goes next.
+/// A unit's movement lines chain into one route (`rules/move`: "Multiple MOVE orders given by one
+/// unit will chain together."), a different month-long order starts a new one, and `TURN` blocks
+/// are skipped. [`OrderedUnits`] holds the rest.
 ///
 /// # Errors
 ///
@@ -192,13 +191,13 @@ pub fn trace_orders_for_remembered_report(
     unit_id: &str,
     orders_document: &str,
 ) -> Result<MoveOrderTraceResponse, String> {
-    trace_orders_on_map(
+    trace_orders(
         cache,
         ruleset_json,
         raw_report,
         remembered_json,
         unit_id,
-        "",
+        None,
         orders_document,
         "",
         "",
@@ -215,24 +214,48 @@ pub fn trace_orders_for_remembered_report(
 /// As [`trace_orders_for_remembered_report`], plus an error when the map shape or the passages the
 /// faction has proved cannot be read.
 ///
-/// `region_id` is the hex the selected unit set out from this month: the hex it stands in, or, for a
-/// row that only arrives in the hex on screen, the hex it arrives from. A unit this month's `FORM`
-/// creates is known only by `new-<alias>`, which is unique inside the hex it was formed in and not
-/// across a report (`rules/form`), so it is found by both, and a hex that forms no such unit traces
-/// nothing. A unit the report prints is found by number alone. Empty means the hex is unknown, and
-/// the first hex forming that alias answers.
-// Nine. Each of the three documents the screen holds - the remembered map, the game's own shape,
+/// Traces `unit`'s written movement. The unit's hex is `unit.set_out_hex()`: the hex it stands in,
+/// or, for a row that only arrives in the hex on screen, the hex it arrives from. A unit this
+/// month's `FORM` creates is known only by `new-<alias>`, which is unique inside the hex it was
+/// formed in and not across a report (`rules/form`), so it is found by that hex and its number, and
+/// a hex that forms no such unit traces nothing. A unit the report prints is found by number alone.
+// Eight. Each of the three documents the screen holds - the remembered map, the game's own shape,
 // and the passages it has proved - crosses as its own text rather than in a struct every caller
-// would have to build (`ah-3u7c.2.2`), and the selected unit's hex crosses beside its id
-// (`ah-5nqc`).
+// would have to build (`ah-3u7c.2.2`), and the selected unit crosses whole as a `UnitRef`
+// (`ah-0ial`).
 #[allow(clippy::too_many_arguments)]
 pub fn trace_orders_on_map(
     cache: &mut ReportCache,
     ruleset_json: &str,
     raw_report: &str,
     remembered_json: &str,
+    unit: &crate::unit_ref::UnitRef,
+    orders_document: &str,
+    map_json: &str,
+    passages_json: &str,
+) -> Result<MoveOrderTraceResponse, String> {
+    trace_orders(
+        cache,
+        ruleset_json,
+        raw_report,
+        remembered_json,
+        &unit.unit_id,
+        Some(unit.set_out_hex()),
+        orders_document,
+        map_json,
+        passages_json,
+    )
+}
+
+/// Both traces: `formed_in` is the hex a `FORM`ed unit was formed in, `None` when it is unknown.
+#[allow(clippy::too_many_arguments)]
+fn trace_orders(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
     unit_id: &str,
-    region_id: &str,
+    formed_in: Option<&str>,
     orders_document: &str,
     map_json: &str,
     passages_json: &str,
@@ -250,7 +273,7 @@ pub fn trace_orders_on_map(
 
     let report = cache.classified(raw_report, ruleset_json);
 
-    let ordered = OrderedUnits::from_document(orders_document);
+    let ordered = OrderedUnits::from_document(orders_document, Some(ruleset.as_ref()));
     let formed;
     let (unit, own, own_is_sail) =
         match report.units().find(|unit| unit.unit_id == unit_id).cloned() {
@@ -270,7 +293,7 @@ pub fn trace_orders_on_map(
                 &report,
                 &ruleset,
                 orders_document,
-                region_id,
+                formed_in,
                 unit_id,
             ) {
                 Some(found) => {

@@ -7,8 +7,8 @@
 //! and they drifted five times. The rules live here once instead.
 //!
 //! [`FormStack`] is generic over the reader's own handle for a formed unit, because the three
-//! readers name one differently on purpose - per `(region, alias)` in the preview, globally as
-//! `new-<alias>` on the map. Passing `None` to [`FormStack::open`] is how a reader says "I could
+//! readers name one differently on purpose - per `(region, alias)` in the preview, by the line of its
+//! `FORM` in the movement reader. Passing `None` to [`FormStack::open`] is how a reader says "I could
 //! not take this `FORM` up", so both the unreadable-alias case and the taken-alias case stay each
 //! reader's own decision while the nesting rules stay here.
 

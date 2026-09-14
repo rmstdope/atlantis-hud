@@ -1,8 +1,8 @@
-import type { ReportUnit } from "@atlantis/core-client";
-import type { KeyedRow } from "../unitTable";
+import type { ReportUnit, UnitRef } from "@atlantis/core-client";
+import { rowKeyOf, unitRefKey, type KeyedRow } from "../unitTable";
 
 /**
- * Which unit the player is on: the hex it stands in, then its number.
+ * Which unit the player is on: a `UnitRef` - the hex it stands in, then its number.
  *
  * A unit *number* is not unique across a report - `rules/form` scopes a FORM alias to its region,
  * so two hexes may each write `FORM 1` and both formed units are called `new-1` (`ah-bubf`).
@@ -11,37 +11,11 @@ import type { KeyedRow } from "../unitTable";
  * from: an arrival and a unit formed where it arrives can share both the hex and the number
  * (`ah-jxrw`).
  */
-export type UnitCursor = { regionId: string; unitId: string; arrivingFrom: string | null };
-
-/**
- * The store's cursor fields as one value, or null when nothing is selected.
- *
- * NOT usable as a zustand selector: it builds a fresh object, and `useSyncExternalStore` would
- * re-render for ever. Read the fields with their own selectors and memoise this.
- */
-export function unitCursor(state: {
-  selectedUnitId: string | null;
-  selectedUnitRegionId: string | null;
-  selectedUnitArrivingFrom: string | null;
-}): UnitCursor | null {
-  if (state.selectedUnitId === null || state.selectedUnitRegionId === null) {
-    return null;
-  }
-  return {
-    regionId: state.selectedUnitRegionId,
-    unitId: state.selectedUnitId,
-    arrivingFrom: state.selectedUnitArrivingFrom
-  };
-}
+export type UnitCursor = UnitRef;
 
 /** Whether this row - hex, number and origin together - is the cursor row. */
 export function isCursorRow(cursor: UnitCursor | null, row: KeyedRow): boolean {
-  return (
-    cursor !== null &&
-    cursor.regionId === row.regionId &&
-    cursor.unitId === row.unitId &&
-    (row.arrivingFrom ?? null) === cursor.arrivingFrom
-  );
+  return cursor !== null && unitRefKey(cursor) === rowKeyOf(row);
 }
 
 /**
@@ -56,11 +30,15 @@ export function previewAtCursor<T extends { unit: ReportUnit; arrivingFrom?: str
   if (cursor === null || hexRegionId === null || cursor.regionId !== hexRegionId) {
     return null;
   }
+  const key = unitRefKey(cursor);
   return (
     previewed.find(
       (candidate) =>
-        candidate.unit.unitId === cursor.unitId &&
-        (candidate.arrivingFrom ?? null) === cursor.arrivingFrom
+        rowKeyOf({
+          regionId: hexRegionId,
+          unitId: candidate.unit.unitId,
+          arrivingFrom: candidate.arrivingFrom
+        }) === key
     ) ?? null
   );
 }
@@ -90,9 +68,4 @@ export function unitAtCursor(
       ? reported.find((candidate) => candidate.unitId === cursor.unitId)
       : undefined;
   return fromReport ?? previewAtCursor(cursor, hexRegionId, previewed)?.unit ?? null;
-}
-
-/** The hex the unit at the cursor set out from this month: `cursor.arrivingFrom ?? cursor.regionId`. */
-export function setOutHex(cursor: UnitCursor): string {
-  return cursor.arrivingFrom ?? cursor.regionId;
 }

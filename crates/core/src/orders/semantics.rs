@@ -24,8 +24,7 @@ use serde::{Deserialize, Serialize};
 use super::effects::{self, ItemChangeCause, ItemChangeParty};
 use super::forms::{Amount, Party, Selector};
 use super::intents::{
-    read_formed_with_ruleset, read_intents_with_ruleset, spends_the_month, FormedBlock, Intent,
-    PlacedIntent, UnitIntents,
+    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
 };
 use super::phases::{self, StatePhase};
 use super::standing::{self, standing_after, Boarding};
@@ -494,16 +493,9 @@ fn food_uncertain_after_gifts(ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) 
 /// fallback map below always has the parent by the time a nested block asks for it - mirroring
 /// `effects::Working::open_form`, which resolves a nested parent from `self.units` for the same
 /// reason. Without this, a nested `FORM`'s unit is silently dropped.
-#[cfg(test)]
-fn formed_units(report: &ParsedReport, source: &str) -> Vec<Formed> {
-    formed_units_with_ruleset(report, source, None)
-}
-
-fn formed_units_with_ruleset(
-    report: &ParsedReport,
-    source: &str,
-    ruleset: Option<&Ruleset>,
-) -> Vec<Formed> {
+///
+/// `None` reads under the New Origins lexical rules.
+fn formed_units(report: &ParsedReport, source: &str, ruleset: Option<&Ruleset>) -> Vec<Formed> {
     let unit_regions = where_the_report_shows_each_unit(report);
     let unit_by_id = units_by_id(report);
     // Report-wide, so keyed on [`UnitKey`]: `rules/form` scopes an alias to its region, so two
@@ -512,7 +504,7 @@ fn formed_units_with_ruleset(
     // already puts the right unit in reach - but a map spanning hexes keyed on a bare number is
     // one edit away from being wrong, which is what this bead is about.
     let mut minted: BTreeMap<UnitKey, ReportUnit> = BTreeMap::new();
-    read_formed_with_ruleset(source, &unit_regions, ruleset)
+    read_formed(source, &unit_regions, ruleset)
         .into_iter()
         .filter_map(|block| {
             // The first lookup stays on a bare number: it resolves a unit the report physically
@@ -583,7 +575,7 @@ pub fn review_turn(
     // lazily: this runs on every keystroke once typing settles, and it is a second full walk of
     // the orders document.
     let fleet_orders = if options.emits(codes::SAIL_NOT_BY_OWNER) {
-        FleetOrders::from_document_with_ruleset(source, ruleset)
+        FleetOrders::from_document(source, ruleset)
     } else {
         FleetOrders::default()
     };
@@ -606,7 +598,7 @@ pub fn review_turn(
     // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
     // `formed_units` is the one reader `item_effects` uses too - see its own doc comment for the
     // nested-FORM resolution it carries.
-    let formed: Vec<Formed> = formed_units_with_ruleset(report, source, ruleset);
+    let formed: Vec<Formed> = formed_units(report, source, ruleset);
     // Same reasoning as `located` above: `review_turn` runs on every keystroke once typing
     // settles, so the index a sailing passenger's produce check walks is built only when that
     // check is actually enabled (`ah-8myf`).
@@ -701,28 +693,18 @@ pub fn review_turn(
         })
         .collect();
 
-    // Shipping is settled before any step of maintenance: `rules/sequenceofevents` processes
-    // TRANSPORT and only then assesses maintenance, and step 4 below lends what each unit has spare
-    // *after* its orders - so a bill charged later would spend silver step 4 had already lent
-    // (`ah-6ak4`).
-    settle_shipping(&mut hexes, shipping.as_ref(), &options, ruleset);
-
-    // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's grain.
-    let shared_silver = share_silver_for_upkeep(&mut hexes);
-    // Steps 5 and 6 come before step 7 in the payment order, and `upkeep_claims` reads the relief
-    // they leave, so this must run first.
-    let food_relief = feed_from_food_after_silver(&mut hexes);
-    let claims = upkeep_claims(&hexes);
-    // `CLAIM` resolves during the month and maintenance is settled at its end, so this month's
-    // claims come off the fund before step 7 ever sees it (`ah-fjty`).
-    // A fund whose withdrawals nothing can price is not a fund we can spend on upkeep, so an
-    // unknown total leaves the settlement inactive rather than falling back (`ah-tdsi`).
-    let available = purse
-        .unclaimed
-        .zip(total_drawn_from_fund(report, &ordered, ruleset))
-        .map(|(held, drawn)| (held - drawn).max(0));
-    let settlement = settle_unclaimed(&claims, available);
-    apply_relief(&mut hexes, &settlement);
+    // Shipping, then maintenance's steps 4 to 7, in the one order `REPORT_WIDE_STEPS` states.
+    let month_end = settle_report_wide(
+        &mut hexes,
+        &ReportWideInputs {
+            report,
+            ordered: &ordered,
+            ruleset,
+            options: &options,
+            shipping: shipping.as_ref(),
+        },
+        StatePhase::Maintenance,
+    );
 
     for priced in &hexes {
         let (hex, ledger) = priced;
@@ -735,9 +717,9 @@ pub fn review_turn(
             purse,
             ruleset,
             &Relief {
-                shared_silver: &shared_silver,
-                food: &food_relief,
-                settlement: &settlement,
+                shared_silver: &month_end.shared_silver,
+                food: &month_end.food_relief,
+                settlement: &month_end.fund,
             },
             &plurals,
             &production,
@@ -821,9 +803,141 @@ pub fn review_turn(
     // counted once, after every hex has been read - and `validate_turn` sorts the whole list by
     // line afterwards, so these findings land beside the per-hex ones rather than after them.
     check_faction(report, &ordered, &hexes, ruleset, &options, &mut findings);
-    check_upkeep_fund(report, &settlement, &options, &mut findings);
+    check_upkeep_fund(report, &month_end.fund, &options, &mut findings);
 
     TurnReview { findings, silver }
+}
+
+/// What the shipping settlement reads from the report and the catalogue alone: who is a
+/// quartermaster, and what is known about every unit a shipment can name.
+type ShippingFacts = (
+    super::transport::Quartermasters,
+    BTreeMap<String, super::transport::TargetFacts>,
+);
+
+/// One step of the settlement `rules/sequenceofevents` runs across every hex at once, after the
+/// per-hex walk over `phases::ORDER` has run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReportWideStep {
+    /// TRANSPORT's first sub-phase: goods from non-quartermasters to quartermasters. Always free.
+    ShipToQuartermasters,
+    /// TRANSPORT's later sub-phase: goods between quartermasters, priced and charged.
+    ShipBetweenQuartermasters,
+    /// Every refused shipment's whole ask, charged once every shipment has been judged (`ah-7ale.4`).
+    ChargeRefusedShipments,
+    /// Maintenance step 4: a faction-mate's silver in the same hex (`ah-e66j`).
+    ShareSilverForUpkeep,
+    /// Maintenance steps 5 and 6: the unit's own food, then its hex's faction food (`ah-eacd`).
+    FeedFromFood,
+    /// Maintenance step 7: the faction's unclaimed fund (`ah-fjty`).
+    DrawOnUnclaimedFund,
+}
+
+/// The report-wide settlement, in the turn's order. Each step runs in, and reads balances at,
+/// the phase beside it. The maintenance steps read the Maintenance slot through `balance_of`.
+const REPORT_WIDE_STEPS: [(StatePhase, ReportWideStep); 6] = [
+    (StatePhase::Transport, ReportWideStep::ShipToQuartermasters),
+    (
+        StatePhase::Transport,
+        ReportWideStep::ShipBetweenQuartermasters,
+    ),
+    (
+        StatePhase::Transport,
+        ReportWideStep::ChargeRefusedShipments,
+    ),
+    (
+        StatePhase::Maintenance,
+        ReportWideStep::ShareSilverForUpkeep,
+    ),
+    (StatePhase::Maintenance, ReportWideStep::FeedFromFood),
+    (StatePhase::Maintenance, ReportWideStep::DrawOnUnclaimedFund),
+];
+
+/// What the report-wide steps read that no hex holds.
+struct ReportWideInputs<'r> {
+    report: &'r ParsedReport,
+    ordered: &'r OrderedUnits,
+    ruleset: Option<&'r Ruleset>,
+    options: &'r CheckOptions,
+    shipping: Option<&'r ShippingFacts>,
+}
+
+/// What the maintenance steps paid on the units' behalf. All empty when the driver was asked to
+/// stop before `StatePhase::Maintenance`.
+#[derive(Default)]
+struct ReportWideSettlement {
+    shared_silver: BTreeMap<UnitKey, i64>,
+    food_relief: BTreeMap<UnitKey, LateFoodRelief>,
+    fund: UpkeepSettlement,
+}
+
+/// Every step of `REPORT_WIDE_STEPS` whose phase is no later than `through`, in table order,
+/// each across every hex at once (`rules/sequenceofevents`: "In each phase all units in all hexes
+/// are processed before starting the next phase").
+///
+/// The one driver for both entry points, so the problem list and the item preview cannot settle
+/// one shipment two ways (`ah-7ale.4`). Shipping is settled before any step of maintenance: step
+/// 4 lends what each unit has spare *after* its orders, so a bill charged later would spend silver
+/// step 4 had already lent (`ah-6ak4`).
+fn settle_report_wide(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    inputs: &ReportWideInputs<'_>,
+    through: StatePhase,
+) -> ReportWideSettlement {
+    let mut settlement = ReportWideSettlement::default();
+    let mut received_early: BTreeMap<(String, String), i64> = BTreeMap::new();
+    for (phase, step) in REPORT_WIDE_STEPS {
+        if phase > through {
+            continue;
+        }
+        match step {
+            ReportWideStep::ShipToQuartermasters => {
+                received_early = ship_to_quartermasters(hexes, inputs, phase);
+            }
+            ReportWideStep::ShipBetweenQuartermasters => {
+                ship_between_quartermasters(hexes, inputs, phase, &received_early);
+            }
+            ReportWideStep::ChargeRefusedShipments => charge_refused_shipments(hexes, phase),
+            // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
+            // grain.
+            ReportWideStep::ShareSilverForUpkeep => {
+                settlement.shared_silver = share_silver_for_upkeep(hexes);
+            }
+            // Steps 5 and 6 come before step 7, and `upkeep_claims` reads the relief they leave.
+            ReportWideStep::FeedFromFood => {
+                settlement.food_relief = feed_from_food_after_silver(hexes);
+            }
+            ReportWideStep::DrawOnUnclaimedFund => {
+                settlement.fund = draw_on_unclaimed_fund(hexes, inputs);
+            }
+        }
+    }
+    settlement
+}
+
+/// Maintenance step 7: what the faction's unclaimed fund pays towards upkeep.
+fn draw_on_unclaimed_fund(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    inputs: &ReportWideInputs<'_>,
+) -> UpkeepSettlement {
+    let claims = upkeep_claims(hexes);
+    // `CLAIM` resolves during the month and maintenance is settled at its end, so this month's
+    // claims come off the fund before step 7 ever sees it (`ah-fjty`).
+    // A fund whose withdrawals nothing can price is not a fund we can spend on upkeep, so an
+    // unknown total leaves the settlement inactive rather than falling back (`ah-tdsi`).
+    let available = inputs
+        .report
+        .header
+        .unclaimed_silver
+        .zip(total_drawn_from_fund(
+            inputs.report,
+            inputs.ordered,
+            inputs.ruleset,
+        ))
+        .map(|(held, drawn)| (held - drawn).max(0));
+    let settlement = settle_unclaimed(&claims, available);
+    apply_relief(hexes, &settlement);
+    settlement
 }
 
 /// What the payment order's later steps paid on the units' behalf, decided before any hex is
@@ -2325,7 +2439,7 @@ impl OrderedUnits {
             flag_changes,
             destroys_structure,
             promotes_units,
-        } in read_intents_with_ruleset(source, ruleset)
+        } in read_intents(source, ruleset)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
                 block_line: line,
@@ -2740,7 +2854,7 @@ pub(super) fn transfer_projection_for_tests(
     let ordered = OrderedUnits::read_with_ruleset(source, ruleset);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
-    let formed: Vec<Formed> = formed_units_with_ruleset(report, source, ruleset);
+    let formed: Vec<Formed> = formed_units(report, source, ruleset);
 
     let mut projections = Vec::new();
     for region in &report.regions {
@@ -4600,7 +4714,8 @@ struct Ledger<'a> {
     /// keeps it exhaustive meanwhile is the `debug_assert` in `charge` and `credit`, not a reader.
     /// Nothing a player's figures pass through reads it (`ah-6m7b.5.2`).
     pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
-    /// What each unit this hex pays for shipments, keyed by unit id. Written by `settle_shipping`.
+    /// What each unit this hex pays for shipments, keyed by unit id. Written by
+    /// `settle_report_wide`'s shipping steps.
     pub(crate) shipping_paid: BTreeMap<String, Vec<ShipmentPriced>>,
     /// Every shipment a sender's month could not pay for, in settlement order. Always accompanied
     /// by a `not-enough-silver` finding on the same unit: the charge is the whole ask.
@@ -5314,7 +5429,7 @@ pub(crate) fn item_effects(
     // exactly as `review_turn` does - one reader for both entry points, so they cannot
     // diverge. `item_effects` only ever reads `ledger.movements` and `ledger.uncounted`,
     // neither of which the projection touches, so this changes no output here.
-    let formed = formed_units_with_ruleset(report, orders_document, ruleset);
+    let formed = formed_units(report, orders_document, ruleset);
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
@@ -5344,8 +5459,9 @@ pub(crate) fn item_effects(
     let production = production_shares_for(&hexes, ruleset);
 
     // Every ledger before any is consumed, so shipping settles across every hex exactly as
-    // `review_turn` settles it - through the same driver (`ah-7ale.4`). No upkeep or relief pass is
-    // needed here: the purse is read at `StatePhase::Transport`, which none of them writes.
+    // `review_turn` settles it - through the same driver (`ah-7ale.4`). The preview runs the
+    // report-wide steps through `StatePhase::Transport` and no further: it reads nothing
+    // maintenance writes.
     let shipping = shipping_facts(report, ruleset);
     let mut priced: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
@@ -5360,7 +5476,17 @@ pub(crate) fn item_effects(
             (hex, ledger)
         })
         .collect();
-    settle_shipping(&mut priced, shipping.as_ref(), options, ruleset);
+    settle_report_wide(
+        &mut priced,
+        &ReportWideInputs {
+            report,
+            ordered: &ordered,
+            ruleset,
+            options,
+            shipping: shipping.as_ref(),
+        },
+        StatePhase::Transport,
+    );
 
     for (hex, ledger) in priced {
         let hex = &hex;
@@ -6333,9 +6459,8 @@ fn apply(
         // see `ledger_for_with_production`, this function's only caller, which skips `Produce`
         // here and calls `produce` from that pass (`rules/sequenceofevents`, `ah-l80z`).
         Intent::Produce { .. } => {}
-        // A shipment costs the sender a fee the quartermaster charges, and that fee is `ah-7ale.3`.
-        // Until it lands this ledger says nothing about a TRANSPORT, exactly as it did before
-        // `TRANSPORT` became an intent (`ah-7ale.2.2.1`).
+        // Never reached from the walk: `phases::ORDER` holds no Transport phase. TRANSPORT settles
+        // report-wide in `settle_report_wide`.
         Intent::Transport { .. } => {}
         Intent::Give { to, what, amount } => {
             let GiveEndpoint {
@@ -12995,10 +13120,7 @@ fn check_transfer_targets(
 /// anchored.
 fn check_transport_reach(
     hex: &Hex<'_>,
-    shipping: Option<&(
-        super::transport::Quartermasters,
-        BTreeMap<String, super::transport::TargetFacts>,
-    )>,
+    shipping: Option<&ShippingFacts>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -13092,16 +13214,14 @@ fn check_transport_reach(
 /// calls: `quartermaster_senders: false` walks the first phase and returns what each unit
 /// receives from it; `true` walks the second, adding `received_earlier` to each sender's stock.
 /// The first phase is always free (`Reach::Local`), so only the second call's bills are booked.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 fn shipping_bills(
     hex: &Hex<'_>,
     ledger: &mut Ledger<'_>,
-    shipping: Option<&(
-        super::transport::Quartermasters,
-        BTreeMap<String, super::transport::TargetFacts>,
-    )>,
+    shipping: Option<&ShippingFacts>,
     options: &CheckOptions,
     ruleset: Option<&Ruleset>,
+    settled_at: StatePhase,
     quartermaster_senders: bool,
     received_earlier: &BTreeMap<(String, String), i64>,
 ) -> Vec<((String, String), i64)> {
@@ -13151,16 +13271,13 @@ fn shipping_bills(
                         .and_then(|tag| rules.find_item(&tag))
                         .is_some_and(|entry| {
                             let tag = entry.tag.to_ascii_uppercase();
-                            let held =
-                                (ledger
-                                    .state
-                                    .balance_at(StatePhase::Maintenance, sender, &tag)
-                                    + received_earlier
-                                        .get(&(sender.to_string(), tag.clone()))
-                                        .copied()
-                                        .unwrap_or_default()
-                                    - shipped.get(&tag).copied().unwrap_or_default())
-                                .max(0);
+                            let held = (ledger.state.balance_at(settled_at, sender, &tag)
+                                + received_earlier
+                                    .get(&(sender.to_string(), tag.clone()))
+                                    .copied()
+                                    .unwrap_or_default()
+                                - shipped.get(&tag).copied().unwrap_or_default())
+                            .max(0);
                             rules.can_be_transported(&tag)
                                 && super::transfers::quantity_moved(amount, held)
                                     .saturating_mul(entry.weight)
@@ -13222,20 +13339,16 @@ fn shipping_bills(
             if !rules.can_be_transported(&tag) {
                 continue;
             }
-            // The last phase's stock: every TRANSPORT runs immediately before maintenance
-            // (`rules/sequenceofevents`), and the ledger carries every earlier delta into it -
-            // every one but an earlier transport phase's, which is added here.
+            // The stock at the phase the step declares (`REPORT_WIDE_STEPS`): the ledger carries
+            // every earlier delta into it - every one but an earlier transport phase's, which is
+            // added here.
             let already = shipped.get(&tag).copied().unwrap_or_default();
             let arrived = received_earlier
                 .get(&(sender.to_string(), tag.clone()))
                 .copied()
                 .unwrap_or_default();
-            let held = (ledger
-                .state
-                .balance_at(StatePhase::Maintenance, sender, &tag)
-                + arrived
-                - already)
-                .max(0);
+            let held =
+                (ledger.state.balance_at(settled_at, sender, &tag) + arrived - already).max(0);
             let quantity = super::transfers::quantity_moved(amount, held);
             if quantity <= 0 {
                 continue;
@@ -13283,10 +13396,10 @@ fn shipping_bills(
                     }
                     // Judged before anything is booked: a shipment is all or nothing, so a
                     // refusal must leave no `Shipped` move behind (`ah-7ale.4`).
-                    if cost <= shipping_purse(ledger, hex, ordered, ruleset) {
+                    if cost <= shipping_purse(ledger, hex, ordered, ruleset, settled_at) {
                         move_silver(
                             ledger,
-                            StatePhase::Transport,
+                            settled_at,
                             sender,
                             -cost,
                             SilverChangeCause::Shipped,
@@ -13306,8 +13419,8 @@ fn shipping_bills(
                     } else {
                         // Recorded only: nothing is charged while shipments are still being
                         // judged, or a refusal would drain the purse a later, affordable shipment
-                        // is judged against. `settle_shipping` charges the whole ask once every
-                        // shipment has been judged.
+                        // is judged against. `charge_refused_shipments` charges the whole ask once
+                        // every shipment has been judged.
                         priced_and_refused.push((
                             i64::try_from(placed.line).unwrap_or(i64::MAX),
                             super::transport::RefusedShipment {
@@ -13350,14 +13463,7 @@ fn shipping_bills(
 
 /// What the shipping settlement reads from the report and the catalogue alone: who is a
 /// quartermaster, and what is known about every unit a shipment can name.
-#[allow(clippy::type_complexity)]
-fn shipping_facts(
-    report: &ParsedReport,
-    ruleset: Option<&Ruleset>,
-) -> Option<(
-    super::transport::Quartermasters,
-    BTreeMap<String, super::transport::TargetFacts>,
-)> {
+fn shipping_facts(report: &ParsedReport, ruleset: Option<&Ruleset>) -> Option<ShippingFacts> {
     ruleset.map(|ruleset| {
         let quartermasters = super::transport::Quartermasters::read(report, ruleset);
         let targets = super::transport::target_facts(report, &quartermasters);
@@ -13365,33 +13471,23 @@ fn shipping_facts(
     })
 }
 
-/// Every shipment this turn prices, pays for or refuses, settled across every hex at once
-/// (`rules/sequenceofevents`: each TRANSPORT phase processes all units in all hexes before the
-/// next).
-///
-/// The one driver for both entry points, so the problem list and the item preview cannot settle
-/// one shipment two ways (`ah-7ale.4`).
-#[allow(clippy::type_complexity)]
-fn settle_shipping(
+/// TRANSPORT's first sub-phase, across every hex: what each quartermaster is sent, so the next
+/// sub-phase prices goods a quartermaster forwards (`rules/sequenceofevents`, `ah-7ale.3`).
+fn ship_to_quartermasters(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
-    shipping: Option<&(
-        super::transport::Quartermasters,
-        BTreeMap<String, super::transport::TargetFacts>,
-    )>,
-    options: &CheckOptions,
-    ruleset: Option<&Ruleset>,
-) {
-    // What quartermasters are sent in the first TRANSPORT phase, report-wide, so the second phase
-    // prices goods a quartermaster forwards (`rules/sequenceofevents`, `ah-7ale.3`).
+    inputs: &ReportWideInputs<'_>,
+    phase: StatePhase,
+) -> BTreeMap<(String, String), i64> {
     let nothing_received = BTreeMap::new();
     let mut received_early: BTreeMap<(String, String), i64> = BTreeMap::new();
     for (hex, ledger) in hexes.iter_mut() {
         let delivered = shipping_bills(
             hex,
             ledger,
-            shipping,
-            options,
-            ruleset,
+            inputs.shipping,
+            inputs.options,
+            inputs.ruleset,
+            phase,
             false,
             &nothing_received,
         );
@@ -13399,24 +13495,36 @@ fn settle_shipping(
             *received_early.entry(key).or_default() += quantity;
         }
     }
+    received_early
+}
 
+/// TRANSPORT's later sub-phase, across every hex: goods between quartermasters, priced and paid.
+fn ship_between_quartermasters(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    inputs: &ReportWideInputs<'_>,
+    phase: StatePhase,
+    received_early: &BTreeMap<(String, String), i64>,
+) {
     for (hex, ledger) in hexes.iter_mut() {
         shipping_bills(
             hex,
             ledger,
-            shipping,
-            options,
-            ruleset,
+            inputs.shipping,
+            inputs.options,
+            inputs.ruleset,
+            phase,
             true,
-            &received_early,
+            received_early,
         );
     }
+}
 
-    // Only now, with every shipment judged, is each refusal's whole ask charged - applied and not
-    // recorded, `buy_silver`'s asymmetry. It is what makes `not-enough-silver` fire and what
-    // `balance_before_maintenance` reconstructs from, while the month's record says nothing moved,
-    // because nothing did. Charged any earlier, a refusal would drain the purse a later, affordable
-    // shipment is judged against, though the game ships that one (all or nothing, `ah-7ale.4`).
+/// Only now, with every shipment judged, is each refusal's whole ask charged - applied and not
+/// recorded, `buy_silver`'s asymmetry. It is what makes `not-enough-silver` fire and what
+/// `balance_before_maintenance` reconstructs from, while the month's record says nothing moved,
+/// because nothing did. Charged any earlier, a refusal would drain the purse a later, affordable
+/// shipment is judged against, though the game ships that one (all or nothing, `ah-7ale.4`).
+fn charge_refused_shipments(hexes: &mut [(Hex<'_>, Ledger<'_>)], phase: StatePhase) {
     for (hex, ledger) in hexes.iter_mut() {
         let refused: Vec<(String, i64, i64)> = ledger
             .refused_shipments
@@ -13430,7 +13538,7 @@ fn settle_shipping(
                     .iter()
                     .find(|placed| i64::try_from(placed.line).ok() == Some(*line))
             });
-            apply_silver(ledger, StatePhase::Transport, unit_id, -cost, placed);
+            apply_silver(ledger, phase, unit_id, -cost, placed);
             // Charged after the shipments that paid, so `apply_silver` keeps a paid shipment as
             // the first draw. The unit's shortfall is this refusal's doing, so it is anchored on
             // the earliest refused line instead - unless an order other than a shipment drew the
@@ -13464,16 +13572,16 @@ fn shipping_purse(
     hex: &Hex<'_>,
     sender: &Ordered<'_>,
     ruleset: Option<&Ruleset>,
+    phase: StatePhase,
 ) -> i64 {
-    let own = spendable_silver_at(ledger, &sender.unit.unit_id, StatePhase::Transport);
+    let own = spendable_silver_at(ledger, &sender.unit.unit_id, phase);
     let sharing = Sharing::read(hex);
     match sharing.reading(SILVER, ruleset) {
         Reading::PerUnit => own,
         // A sharer is already inside the pool; a non-sharer borrows from it - the rule
         // `judge_shortfalls`' `claims_pool: !ordered.shares()` states.
         Reading::Pooled => {
-            sharing.silver_pool_at(ledger, StatePhase::Transport)
-                + if sender.shares() { 0 } else { own }
+            sharing.silver_pool_at(ledger, phase) + if sender.shares() { 0 } else { own }
         }
     }
 }
@@ -15295,7 +15403,7 @@ mod tests {
     fn trident_month_segments_ignore_form_and_turn_orders() {
         let ruleset = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
             .expect("the committed Trident ruleset should be usable");
-        let unit = read_intents_with_ruleset(
+        let unit = read_intents(
             concat!(
                 "unit 5\n",
                 "CREATE VILLAGE \"New Hope\"\n",
@@ -25807,7 +25915,7 @@ BUILD
         ) -> R {
             let parsed = report(vec![hex_region]);
             let ordered = OrderedUnits::read(orders);
-            let formed = formed_units(&parsed, orders);
+            let formed = formed_units(&parsed, orders, None);
             let rules = ruleset();
             let hex = hex_with_transfers(
                 &parsed.regions[0],
@@ -28614,7 +28722,7 @@ BUILD
             region_at("1:8,54", 8, 54, vec![unit("6")]),
         ]);
         let ordered = OrderedUnits::read(orders);
-        let formed = formed_units(&parsed, orders);
+        let formed = formed_units(&parsed, orders, None);
         let hexes: Vec<Hex<'_>> = parsed
             .regions
             .iter()
@@ -28644,7 +28752,7 @@ BUILD
             region_at("1:7,53", 7, 53, vec![unit("5")]),
             region_at("1:8,54", 8, 54, vec![unit("6")]),
         ]);
-        let formed = formed_units(&parsed, orders);
+        let formed = formed_units(&parsed, orders, None);
 
         let minted: Vec<_> = formed
             .iter()
@@ -28680,7 +28788,7 @@ BUILD
         ])]);
         // `verdicts` reads a hex with no formed units at all, which is the whole subject here.
         let ordered = OrderedUnits::read(orders);
-        let formed = formed_units(&parsed, orders);
+        let formed = formed_units(&parsed, orders, None);
         let hex = Hex::read(&parsed.regions[0], &ordered, &formed);
         let rules = ruleset();
         let ledger = ledger_for(&hex, Some(&rules));
@@ -38630,6 +38738,126 @@ BUILD
         assert_eq!(shipped(&moved), Vec::<&SilverChange>::new());
     }
 
+    // --- the report-wide settlement is one ordered table (`ah-agze`) ------------------------------
+
+    /// `rules/sequenceofevents`: TRANSPORT is processed, and only then are "Maintenance costs
+    /// assessed" - and neither is a phase the per-hex walk settles as well.
+    #[test]
+    fn report_wide_steps_run_in_the_turns_order() {
+        assert!(REPORT_WIDE_STEPS.windows(2).all(|w| w[0].0 <= w[1].0));
+        assert_eq!(REPORT_WIDE_STEPS[0].0, StatePhase::Transport);
+        assert_eq!(
+            REPORT_WIDE_STEPS[REPORT_WIDE_STEPS.len() - 1].0,
+            StatePhase::Maintenance
+        );
+        for (phase, step) in REPORT_WIDE_STEPS {
+            assert!(
+                !phases::ORDER.contains(&phase),
+                "{step:?} settles {phase:?}, which the hex walk settles too"
+            );
+        }
+    }
+
+    #[test]
+    fn every_report_wide_step_is_run_by_the_driver() {
+        let steps: Vec<ReportWideStep> = REPORT_WIDE_STEPS.iter().map(|(_, step)| *step).collect();
+        assert_eq!(
+            steps,
+            vec![
+                ReportWideStep::ShipToQuartermasters,
+                ReportWideStep::ShipBetweenQuartermasters,
+                ReportWideStep::ChargeRefusedShipments,
+                ReportWideStep::ShareSilverForUpkeep,
+                ReportWideStep::FeedFromFood,
+                ReportWideStep::DrawOnUnclaimedFund,
+            ]
+        );
+    }
+
+    #[test]
+    fn every_phase_is_settled_by_exactly_one_walk() {
+        const ALL: [StatePhase; StatePhase::COUNT] = [
+            StatePhase::Instant,
+            StatePhase::Claim,
+            StatePhase::Give,
+            StatePhase::Tax,
+            StatePhase::Cast,
+            StatePhase::Market,
+            StatePhase::Withdraw,
+            StatePhase::Movement,
+            StatePhase::Study,
+            StatePhase::Manufacturing,
+            StatePhase::Build,
+            StatePhase::PrimaryProduction,
+            StatePhase::Wages,
+            StatePhase::Transport,
+            StatePhase::Maintenance,
+        ];
+        for phase in ALL {
+            let in_hex_walk = phases::ORDER.iter().filter(|&&p| p == phase).count();
+            let report_wide = usize::from(REPORT_WIDE_STEPS.iter().any(|(p, _)| *p == phase));
+            // `month_long_passes` settles both PRODUCE passes (`phases.rs`).
+            let month_long = usize::from(phase == StatePhase::PrimaryProduction);
+            assert_eq!(
+                in_hex_walk + report_wide + month_long,
+                1,
+                "{phase:?} is not settled by exactly one walk"
+            );
+        }
+    }
+
+    /// A Quartermaster-5 sender holding eighteen furs and `silver`, and two Caravanserai owners the
+    /// shipping tests price at 45 each (`data/quartermaster`).
+    fn two_shipments_from_900(silver: i64) -> Vec<ReportRegion> {
+        let mut regions = priced_shipping(
+            5,
+            &[(18, "furs", "FUR")],
+            vec![
+                caravanserai_owner("901", 1, 0, 6),
+                caravanserai_owner("902", 1, 0, 8),
+            ],
+        );
+        regions[0].units[0]
+            .items
+            .iter_mut()
+            .find(|item| item.tag == SILVER)
+            .expect("priced_shipping gives the sender silver")
+            .amount = silver;
+        regions
+    }
+
+    /// One driver for both entry points: the preview's refused line is the Problems list's.
+    #[test]
+    fn the_preview_and_the_problems_list_refuse_the_same_shipments() {
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n";
+        let effects = item_effects(
+            &report(two_shipments_from_900(60)),
+            orders,
+            Some(&ruleset()),
+            &with_map(),
+        );
+        assert_eq!(
+            effects_for(&effects, "900")
+                .expect("the sender has effects")
+                .refused_shipments,
+            vec![3]
+        );
+        let findings = unpaid_findings(two_shipments_from_900(60), orders);
+        let unpaid: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .collect();
+        assert_eq!(unpaid.len(), 1, "{findings:#?}");
+        assert!(
+            unpaid[0]
+                .message
+                .ends_with(", so it ships none of the 9 furs ordered"),
+            "{}",
+            unpaid[0].message
+        );
+        assert_eq!(unpaid[0].line, Some(3));
+    }
+
     // --- a sender that cannot pay ships nothing (`ah-7ale.4`) -----------------------------------
 
     /// A Quartermaster-5 sender in its own Caravanserai holding nine furs and `silver`, shipping to
@@ -38895,23 +39123,7 @@ BUILD
     /// unit's own lines in the order written - so the purse runs out on the later shipment.
     #[test]
     fn a_purse_that_runs_out_refuses_the_later_shipment() {
-        let regions = |silver: i64| {
-            let mut regions = priced_shipping(
-                5,
-                &[(18, "furs", "FUR")],
-                vec![
-                    caravanserai_owner("901", 1, 0, 6),
-                    caravanserai_owner("902", 1, 0, 8),
-                ],
-            );
-            regions[0].units[0]
-                .items
-                .iter_mut()
-                .find(|item| item.tag == SILVER)
-                .expect("priced_shipping gives the sender silver")
-                .amount = silver;
-            regions
-        };
+        let regions = two_shipments_from_900;
         let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n";
 
         let short = sender_silver(regions(60), orders, with_map());
