@@ -15,4 +15,5 @@ pub mod plan;
 pub mod request;
 pub mod risk;
 pub mod rules;
+pub(crate) mod sailing;
 pub mod trace;
