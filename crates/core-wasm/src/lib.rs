@@ -780,36 +780,21 @@ pub fn validate_orders_state(
             remembered_json.as_deref(),
         ) {
             // An error is nothing known - bad config, not bad orders - and a distance the map's
-            // shape leaves open stays open, as before (`ah-hc7z`). Set before `month_end`, whose
-            // settle takes a copy of these options.
-            options.shown = atlantis_hud_core::orders::effects::shown_extent(
+            // shape leaves open stays open, as before (`ah-hc7z`). One build of the known map
+            // answers both measures.
+            let measures = atlantis_hud_core::orders::effects::shipment_measures(
                 cache,
                 rules,
                 raw,
                 remembered,
                 &raw_orders,
+                map_json.as_deref().unwrap_or(""),
+                options.clone(),
             )
             .unwrap_or_default();
+            options.shown = measures.shown;
+            options.month_end = measures.month_end;
         }
-        options.month_end = match (
-            ruleset_json.as_deref(),
-            raw_report.as_deref(),
-            remembered_json.as_deref(),
-        ) {
-            (Some(rules), Some(raw), Some(remembered)) => {
-                atlantis_hud_core::orders::effects::month_end_hexes(
-                    cache,
-                    rules,
-                    raw,
-                    remembered,
-                    &raw_orders,
-                    map_json.as_deref().unwrap_or(""),
-                    options.clone(),
-                )
-                .unwrap_or_default()
-            }
-            _ => Default::default(),
-        };
         (ruleset, report)
     });
 
