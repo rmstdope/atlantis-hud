@@ -603,7 +603,7 @@ pub fn review_turn(
     // Read from the report and the catalogue alone. Built whenever there is a catalogue, not only
     // when the reach check is enabled: the shipping price reads them too, and the agreed record
     // says the switch takes sentences away and leaves every figure honest (`ah-7ale.3`).
-    let shipping = shipping_facts(report, ruleset);
+    let shipping = ruleset.map(|rules| super::transport::Shipping::read(report, rules, &options));
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
@@ -712,7 +712,6 @@ pub fn review_turn(
             report,
             ordered: &ordered,
             ruleset,
-            options: &options,
             shipping: shipping.as_ref(),
         },
         StatePhase::Maintenance,
@@ -821,13 +820,6 @@ pub fn review_turn(
     TurnReview { findings, silver }
 }
 
-/// What the shipping settlement reads from the report and the catalogue alone: who is a
-/// quartermaster, and what is known about every unit a shipment can name.
-type ShippingFacts = (
-    super::transport::Quartermasters,
-    BTreeMap<String, super::transport::TargetFacts>,
-);
-
 /// One step of the settlement `rules/sequenceofevents` runs across every hex at once, after the
 /// per-hex walk over `phases::ORDER` has run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -871,8 +863,7 @@ struct ReportWideInputs<'r> {
     report: &'r ParsedReport,
     ordered: &'r OrderedUnits,
     ruleset: Option<&'r Ruleset>,
-    options: &'r CheckOptions,
-    shipping: Option<&'r ShippingFacts>,
+    shipping: Option<&'r super::transport::Shipping>,
 }
 
 /// What the maintenance steps paid on the units' behalf. All empty when the driver was asked to
@@ -5475,7 +5466,7 @@ pub(crate) fn item_effects(
     // `review_turn` settles it - through the same driver (`ah-7ale.4`). The preview runs the
     // report-wide steps through `StatePhase::Transport` and no further: it reads nothing
     // maintenance writes.
-    let shipping = shipping_facts(report, ruleset);
+    let shipping = ruleset.map(|rules| super::transport::Shipping::read(report, rules, options));
     let mut priced: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
         .map(|hex| {
@@ -5495,7 +5486,6 @@ pub(crate) fn item_effects(
             report,
             ordered: &ordered,
             ruleset,
-            options,
             shipping: shipping.as_ref(),
         },
         StatePhase::Transport,
@@ -13133,7 +13123,7 @@ fn check_transfer_targets(
 /// anchored.
 fn check_transport_reach(
     hex: &Hex<'_>,
-    shipping: Option<&ShippingFacts>,
+    shipping: Option<&super::transport::Shipping>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -13141,7 +13131,7 @@ fn check_transport_reach(
     if !options.emits(codes::TRANSPORT_OUT_OF_REACH) {
         return;
     }
-    let Some((quartermasters, targets)) = shipping else {
+    let Some(shipping) = shipping else {
         return;
     };
 
@@ -13151,46 +13141,27 @@ fn check_transport_reach(
             let Intent::Transport { to, what, amount } = &placed.intent else {
                 continue;
             };
-            // Exactly the five skips the forecast makes (`effects.rs`'s `Working::transport`), so a
-            // line it never queues is never warned about either.
-            let Party::Unit(id) = to else {
+            let Some(id) = super::transport::shipment_target(sender, to, what) else {
                 continue;
             };
-            if id == sender {
-                continue;
-            }
+            // This check's own: it words a refusal for a named item only.
             if !matches!(what, Selector::Item(_)) {
                 continue;
             }
-            // Every other answer is one of `ah-64wm`'s four refusals, which the unit preview
-            // explains and which this check says nothing about. The facts are bound once: an
-            // `Eligible` answer implies they exist, so the hex below needs no second lookup.
-            let Some(facts) = targets.get(id.as_str()) else {
-                continue;
-            };
-            if super::transport::acceptance(Some(facts)) != super::transport::Acceptance::Eligible {
+            // Judged once, by the same function the forecast and the shipping bill read
+            // (`transport::Shipping::judge`). Every answer but `Eligible` is one of `ah-64wm`'s four
+            // refusals, which the unit preview explains and this check says nothing about; only a
+            // settled refusal is a problem, since an unmeasured distance may well be in reach
+            // (`ah-7ale.5`). The finding still anchors on the hex the report lists the sender in.
+            let judged = shipping.judge(sender, Some(hex.region.coordinate), id);
+            if judged.acceptance != super::transport::Acceptance::Eligible {
                 continue;
             }
-            let Some(reach) = super::transport::reach_for(
-                quartermasters.contains(sender),
-                quartermasters.contains(id),
-                quartermasters.level(sender),
-            ) else {
-                continue;
-            };
-            // The target's hex comes from the same facts the forecast measures from, so the two
-            // cannot disagree about where the far end stands.
-            // Only a settled refusal is a problem: an unmeasured distance may well be in reach, and
-            // the unit preview marks it instead (`ah-7ale.5`).
-            // Measured once the month's moves are made (`rules/sequenceofevents`, `ah-b6fz`); the
-            // finding still anchors on the hex the report lists the sender in.
-            let super::transport::Arrival::TooFar(refused) = super::transport::arrival(
-                reach,
-                super::transport::standing_at(&options.month_end, sender, hex.region.coordinate),
-                super::transport::standing_at(&options.month_end, id, facts.coordinate),
-                options.geometry,
-                &options.shown,
-            ) else {
+            let Some(super::transport::Measured {
+                arrival: super::transport::Arrival::TooFar(refused),
+                ..
+            }) = judged.measured
+            else {
                 continue;
             };
             let goods = match (amount, what) {
@@ -13231,18 +13202,14 @@ fn check_transport_reach(
 fn shipping_bills(
     hex: &Hex<'_>,
     ledger: &mut Ledger<'_>,
-    shipping: Option<&ShippingFacts>,
-    options: &CheckOptions,
+    shipping: Option<&super::transport::Shipping>,
     ruleset: Option<&Ruleset>,
     settled_at: StatePhase,
     quartermaster_senders: bool,
     received_earlier: &BTreeMap<(String, String), i64>,
 ) -> Vec<((String, String), i64)> {
-    let geometry = options.geometry;
-    let shown = &options.shown;
-    let month_end = &options.month_end;
     let mut delivered = Vec::new();
-    let (Some((quartermasters, targets)), Some(rules)) = (shipping, ruleset) else {
+    let (Some(shipping), Some(rules)) = (shipping, ruleset) else {
         return delivered;
     };
 
@@ -13259,27 +13226,23 @@ fn shipping_bills(
             let Intent::Transport { to, what, amount } = &placed.intent else {
                 continue;
             };
-            // The forecast's own skips (`effects.rs`'s `Working::transport`), so a shipment it
-            // never queues is never priced. An unfinished hull is skipped as well: the catalogue
-            // weighs no such thing, so no honest price exists.
-            let Party::Unit(id) = to else {
+            let Some(id) = super::transport::shipment_target(sender, to, what) else {
                 continue;
             };
-            if id == sender {
-                continue;
-            }
+            // This pass's own: an unfinished hull has no catalogue weight, so no honest price.
             let Selector::Item(text) = what else {
                 continue;
             };
+            let judged = shipping.judge(sender, Some(hex.region.coordinate), id);
             // `target_facts` has an entry for every unit in every region of the report, so an
             // absent entry is exactly "the report does not show this unit at all" - narrower than
             // `Acceptance::EligibilityUnknown`, whose other cause is a foreign unit the report does
             // show (`ah-cddb`). Only a quartermaster sender's month turns on it: every other sender
             // ships under `Reach::Local`, free at every distance in every world, so nothing about
             // its month is unknown (`ah-7ale.5`).
-            let Some(facts) = targets.get(id.as_str()) else {
+            if !judged.target_shown {
                 if quartermaster_senders
-                    && quartermasters.contains(sender)
+                    && shipping.quartermasters.contains(sender)
                     && resolve_item(text, hex, ordered, ruleset)
                         .and_then(|tag| rules.find_item(&tag))
                         .is_some_and(|entry| {
@@ -13300,8 +13263,8 @@ fn shipping_bills(
                     unmeasured.target_unshown = true;
                 }
                 continue;
-            };
-            let acceptance = super::transport::acceptance(Some(facts));
+            }
+            let acceptance = judged.acceptance;
             if !matches!(
                 acceptance,
                 super::transport::Acceptance::Eligible
@@ -13309,17 +13272,12 @@ fn shipping_bills(
             ) {
                 continue;
             }
-            let Some(reach) = super::transport::reach_for(
-                quartermasters.contains(sender),
-                quartermasters.contains(id),
-                quartermasters.level(sender),
-            ) else {
+            // With the target shown and the sender's hex given, nothing is measured exactly when no
+            // reach rule applies.
+            let Some(measured) = judged.measured else {
                 continue;
             };
-            let phase = super::transport::shipment_phase(
-                quartermasters.contains(sender),
-                quartermasters.contains(id),
-            );
+            let phase = judged.phase;
             if (phase == super::transport::ShipmentPhase::ToQuartermaster) != !quartermaster_senders
             {
                 continue;
@@ -13327,13 +13285,7 @@ fn shipping_bills(
             // A shipment the game refuses for distance keeps its goods (`ah-7ale.2.1`), and a
             // shipment that moves nothing is charged nothing. The same function the preview asks,
             // so the two surfaces cannot disagree about whether one shipment arrives (`ah-7ale.5`).
-            match super::transport::arrival(
-                reach,
-                super::transport::standing_at(month_end, sender, hex.region.coordinate),
-                super::transport::standing_at(month_end, id, facts.coordinate),
-                geometry,
-                shown,
-            ) {
+            match measured.arrival {
                 super::transport::Arrival::TooFar(_) => continue,
                 super::transport::Arrival::Unmeasured => {
                     // Nothing is charged for goods that may never leave, and the month says so: the
@@ -13368,21 +13320,13 @@ fn shipping_bills(
             }
             let conditional = acceptance == super::transport::Acceptance::AcceptanceUnknown;
             let weight = quantity.saturating_mul(entry.weight);
-            match super::transport::priced(
-                reach,
-                super::transport::standing_at(month_end, sender, hex.region.coordinate),
-                super::transport::standing_at(month_end, id, facts.coordinate),
-                geometry,
-                shown,
-                rules.order_language,
-                weight,
-            ) {
+            match shipping.priced(&measured, rules.order_language, weight) {
                 super::transport::Priced::Unknown(super::transport::Unpriceable::WorldWrap) => {
                     // The goods certainly arrive; only what they cost is unsaid (`ah-7ale.5`).
                     unmeasured.world_wrap = true;
                     if !conditional {
                         *shipped.entry(tag.clone()).or_default() += quantity;
-                        delivered.push(((id.clone(), tag.clone()), quantity));
+                        delivered.push(((id.to_string(), tag.clone()), quantity));
                     }
                 }
                 super::transport::Priced::Free
@@ -13391,14 +13335,14 @@ fn shipping_bills(
                 ) => {
                     if !conditional {
                         *shipped.entry(tag.clone()).or_default() += quantity;
-                        delivered.push(((id.clone(), tag.clone()), quantity));
+                        delivered.push(((id.to_string(), tag.clone()), quantity));
                     }
                 }
                 super::transport::Priced::Charged { rate, weight, cost } => {
                     if conditional {
                         priced_here.push(ShipmentPriced {
                             line: i64::try_from(placed.line).unwrap_or(i64::MAX),
-                            to: id.clone(),
+                            to: id.to_string(),
                             sent: format!("{quantity} {tag}"),
                             weight,
                             rate,
@@ -13419,10 +13363,10 @@ fn shipping_bills(
                             Some(placed),
                         );
                         *shipped.entry(tag.clone()).or_default() += quantity;
-                        delivered.push(((id.clone(), tag.clone()), quantity));
+                        delivered.push(((id.to_string(), tag.clone()), quantity));
                         priced_here.push(ShipmentPriced {
                             line: i64::try_from(placed.line).unwrap_or(i64::MAX),
-                            to: id.clone(),
+                            to: id.to_string(),
                             sent: format!("{quantity} {tag}"),
                             weight,
                             rate,
@@ -13439,7 +13383,7 @@ fn shipping_bills(
                             super::transport::RefusedShipment {
                                 unit_id: sender.to_string(),
                                 line: i64::try_from(placed.line).unwrap_or(i64::MAX),
-                                to: id.clone(),
+                                to: id.to_string(),
                                 tag: tag.clone(),
                                 ordered: quantity,
                                 cost,
@@ -13474,16 +13418,6 @@ fn shipping_bills(
     delivered
 }
 
-/// What the shipping settlement reads from the report and the catalogue alone: who is a
-/// quartermaster, and what is known about every unit a shipment can name.
-fn shipping_facts(report: &ParsedReport, ruleset: Option<&Ruleset>) -> Option<ShippingFacts> {
-    ruleset.map(|ruleset| {
-        let quartermasters = super::transport::Quartermasters::read(report, ruleset);
-        let targets = super::transport::target_facts(report, &quartermasters);
-        (quartermasters, targets)
-    })
-}
-
 /// TRANSPORT's first sub-phase, across every hex: what each quartermaster is sent, so the next
 /// sub-phase prices goods a quartermaster forwards (`rules/sequenceofevents`, `ah-7ale.3`).
 fn ship_to_quartermasters(
@@ -13498,7 +13432,6 @@ fn ship_to_quartermasters(
             hex,
             ledger,
             inputs.shipping,
-            inputs.options,
             inputs.ruleset,
             phase,
             false,
@@ -13523,7 +13456,6 @@ fn ship_between_quartermasters(
             hex,
             ledger,
             inputs.shipping,
-            inputs.options,
             inputs.ruleset,
             phase,
             true,
