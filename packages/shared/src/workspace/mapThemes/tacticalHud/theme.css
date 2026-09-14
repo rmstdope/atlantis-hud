@@ -264,21 +264,10 @@
   display: initial;
 }
 
-/* The province border, in this theme's own ink over its own ground - see theme.css. */
-.map-theme-tactical-hud .region-outline {
-  stroke: var(--hud-ink);
-}
-
-.map-theme-tactical-hud .region-outline-halo {
-  stroke: var(--hud-panel);
-}
-
-/* A wall, in this theme's strongest ink over its own ground - see theme.css. */
-.map-theme-tactical-hud .map-wall-bar,
-.map-theme-tactical-hud .map-wall-ticks {
-  stroke: var(--hud-ink);
-}
-
-.map-theme-tactical-hud .map-wall-halo {
-  stroke: var(--hud-panel);
+/* The map marks' colours - the province border, the wall and their shared halo - named once;
+   the base theme.css draws both marks from these. */
+.map-theme-tactical-hud {
+  --map-border-ink: var(--hud-ink);
+  --map-wall-ink: var(--hud-ink);
+  --map-mark-ground: var(--hud-panel);
 }

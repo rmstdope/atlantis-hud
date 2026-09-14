@@ -340,9 +340,12 @@
  * rings, via `vector-effect="non-scaling-stroke"` on the `<path>` in `MapCanvas.tsx`. The path
  * itself still traces the province in world units - it is only the ink and dash length that hold
  * in screen pixels, so the border stays legible against the hex lattice at every zoom.
+ *
+ * Each map theme names the colours once, as `--map-border-ink` and `--map-mark-ground` on its own
+ * `.map-theme-<id>` rule; with none, the chrome ink and ground are used.
  */
 .region-outline {
-  stroke: var(--color-ink-soft);
+  stroke: var(--map-border-ink, var(--color-ink-soft));
   stroke-width: 3;
   stroke-dasharray: 9 5;
   stroke-linecap: round;
@@ -350,7 +353,7 @@
 }
 
 .region-outline-halo {
-  stroke: var(--color-ground);
+  stroke: var(--map-mark-ground, var(--color-ground));
   stroke-width: 5.5;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -376,22 +379,23 @@
  * A wall a report proves (ah-wq2e): a bar in the map style's strongest ink over a halo of its
  * ground, with cross-ticks on both faces. Screen-constant like the province border. The ticks drop
  * away in the far band, where names do, leaving a slightly heavier plain bar. Brass under the
- * pointer. Each map theme overrides the two colours in its own theme.css.
+ * pointer. Each map theme names the colours once, as `--map-wall-ink` and `--map-mark-ground` on its
+ * own `.map-theme-<id>` rule; with none, the chrome ink and ground are used.
  */
 .map-wall-halo {
-  stroke: var(--color-ground);
+  stroke: var(--map-mark-ground, var(--color-ground));
   stroke-width: 6;
   stroke-linecap: round;
 }
 
 .map-wall-bar {
-  stroke: var(--color-ink);
+  stroke: var(--map-wall-ink, var(--color-ink));
   stroke-width: 2.6;
   stroke-linecap: round;
 }
 
 .map-wall-ticks {
-  stroke: var(--color-ink);
+  stroke: var(--map-wall-ink, var(--color-ink));
   stroke-width: 1.4;
 }
 

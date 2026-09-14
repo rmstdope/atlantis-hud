@@ -552,20 +552,47 @@ describe("map theme stylesheets", () => {
     }
   });
 
-  it("colours the province border in every theme's own ink", async () => {
+  it("gives every map theme its mark colours as tokens on its own root class", async () => {
     // A theme's directory is its id in camelCase (cartographers-table -> cartographersTable), the
     // same transform `docs/ui/map-themes.md` describes for the folder-to-id relationship.
     const { MAP_THEMES } = await import("./workspace/mapThemes/index");
     const folderNameOf = (id: string) => id.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+    // [border ink, wall ink, ground] - exactly the variables each theme's overrides used before
+    // ah-gacl, so pinning them is what proves nothing on screen moved.
+    const expected: Record<string, [string, string, string]> = {
+      "beveled-tile": ["--bt-ink", "--bt-ink", "--bt-halo"],
+      "cartographers-table": ["--ct-ink", "--ct-ink-strong", "--ct-parchment"],
+      "emblem-and-dots": ["--ed-ink", "--ed-ink", "--ed-halo"],
+      "miniature-world": ["--mw-edge", "--mw-edge", "--mw-tape"],
+      "tactical-hud": ["--hud-ink", "--hud-ink", "--hud-panel"]
+    };
     const sheets = await themeSheets();
 
     for (const theme of MAP_THEMES) {
+      const mapping = expected[theme.id];
+      expect(mapping, `no pinned mark colours for theme "${theme.id}"`).toBeDefined();
       const sheet = sheets.find((candidate) => candidate.theme === folderNameOf(theme.id));
-
       expect(sheet, `no stylesheet directory for theme "${theme.id}"`).toBeDefined();
-      expect(sheet!.source).toContain(`.map-theme-${theme.id} .region-outline`);
-      expect(sheet!.source).toContain(`.map-theme-${theme.id} .region-outline-halo`);
+
+      const block = extractBlock(sheet!.source, new RegExp(`\\.map-theme-${theme.id}\\s*\\{`));
+      const tokens = ["--map-border-ink", "--map-wall-ink", "--map-mark-ground"];
+      tokens.forEach((token, index) => {
+        const declared = block.match(new RegExp(`${token}\\s*:\\s*var\\((--[\\w-]+)\\)`));
+        expect(declared?.[1], `${theme.id} ${token}`).toBe(mapping![index]);
+      });
     }
+  });
+
+  it("styles the border and the wall only in the base sheet, from the mark tokens", async () => {
+    for (const sheet of await themeSheets()) {
+      expect(sheet.source, sheet.theme).not.toMatch(/\.region-outline|\.map-wall/);
+    }
+
+    expect(extractBlock(css, /\.region-outline\s*\{/)).toContain("var(--map-border-ink, var(--color-ink-soft))");
+    expect(extractBlock(css, /\.region-outline-halo\s*\{/)).toContain("var(--map-mark-ground, var(--color-ground))");
+    expect(extractBlock(css, /\.map-wall-halo\s*\{/)).toContain("var(--map-mark-ground, var(--color-ground))");
+    expect(extractBlock(css, /\.map-wall-bar\s*\{/)).toContain("var(--map-wall-ink, var(--color-ink))");
+    expect(extractBlock(css, /\.map-wall-ticks\s*\{/)).toContain("var(--map-wall-ink, var(--color-ink))");
   });
 });
 
@@ -576,23 +603,5 @@ describe("walls", () => {
 
   it("turns a wall brass under the pointer", () => {
     expect(extractBlock(css, /\.map-wall:hover \.map-wall-bar[^{]*\{/)).toContain("var(--color-brass)");
-  });
-
-  it("gives every map theme its own wall ink", () => {
-    const themes: [string, string][] = [
-      ["cartographersTable", "cartographers-table"],
-      ["tacticalHud", "tactical-hud"],
-      ["beveledTile", "beveled-tile"],
-      ["emblemAndDots", "emblem-and-dots"],
-      ["miniatureWorld", "miniature-world"]
-    ];
-    for (const [dir, id] of themes) {
-      const source = readFileSync(
-        fileURLToPath(new URL(`./workspace/mapThemes/${dir}/theme.css`, import.meta.url)),
-        "utf8"
-      );
-      expect(extractBlock(source, new RegExp(`\\.map-theme-${id} \\.map-wall-bar[^{]*\\{`)), id).toContain("stroke:");
-      expect(extractBlock(source, new RegExp(`\\.map-theme-${id} \\.map-wall-halo\\s*\\{`)), id).toContain("stroke:");
-    }
   });
 });

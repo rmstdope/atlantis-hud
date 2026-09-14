@@ -281,21 +281,10 @@
   display: none;
 }
 
-/* The province border, in this theme's own ink over its own ground - see theme.css. */
-.map-theme-emblem-and-dots .region-outline {
-  stroke: var(--ed-ink);
-}
-
-.map-theme-emblem-and-dots .region-outline-halo {
-  stroke: var(--ed-halo);
-}
-
-/* A wall, in this theme's strongest ink over its own ground - see theme.css. */
-.map-theme-emblem-and-dots .map-wall-bar,
-.map-theme-emblem-and-dots .map-wall-ticks {
-  stroke: var(--ed-ink);
-}
-
-.map-theme-emblem-and-dots .map-wall-halo {
-  stroke: var(--ed-halo);
+/* The map marks' colours - the province border, the wall and their shared halo - named once;
+   the base theme.css draws both marks from these. */
+.map-theme-emblem-and-dots {
+  --map-border-ink: var(--ed-ink);
+  --map-wall-ink: var(--ed-ink);
+  --map-mark-ground: var(--ed-halo);
 }
