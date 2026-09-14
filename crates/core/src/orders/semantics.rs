@@ -86,7 +86,7 @@ const STUDENTS_PER_TEACHER: i64 = 10;
 /// An advisory check's code, as the shell, the settings and the diagnostics know it.
 ///
 /// Constructible only through the constants in [`codes`]: the field is private and `codes` is the
-/// one child module, so a finding cannot be emitted under a code that is not in `codes::ALL`. That
+/// one child module, so a finding cannot be emitted under a code that is not in `codes::ALL` or `codes::ALWAYS_ON`. That
 /// is the guarantee `ah-m9q.2` had to add by hand when `teacher-has-free-slots` shipped as a bare
 /// literal missing from both this list and the shell's copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -201,6 +201,9 @@ pub mod codes {
     /// or, once `ah-7ale.5` lands, one whose distance cannot be worked out at all. One code for
     /// both, because the agreed experience gives them one switch.
     pub const TRANSPORT_OUT_OF_REACH: Code = Code("transport-out-of-reach");
+    /// A MOVE whose step would cross a side of a hex a report proves has no exit. Always on: the
+    /// agreed experience gives this warning no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const MOVE_INTO_A_WALL: Code = Code("move-into-a-wall");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -281,6 +284,10 @@ pub mod codes {
     /// row. Adding a code that belongs here is still one hand edit - but it is one edit, in this
     /// file, three lines below where the code was just declared.
     pub const SILVER_TROUBLE: [Code; 2] = [NOT_ENOUGH_SILVER, UPKEEP_EXCEEDS_UNCLAIMED];
+
+    /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
+    /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
+    pub const ALWAYS_ON: [Code; 1] = [MOVE_INTO_A_WALL];
 }
 
 /// Which checks to run, and - in the forecast - which refusals to make.
@@ -309,6 +316,9 @@ pub struct CheckOptions {
     /// (`ah-b6fz`). Empty measures every shipment from where the report shows its ends, which is
     /// what a caller without the remembered map gets.
     pub month_end: super::transport::MonthEndHexes,
+    /// Each own unit whose MOVE crosses a wall a report proves, from `effects::walled_moves`.
+    /// Empty by default: a caller without the remembered map warns about no wall.
+    pub walled_moves: super::walls::WalledMoves,
 }
 
 impl CheckOptions {
@@ -344,6 +354,7 @@ impl Default for CheckOptions {
             shown: crate::movement::graph::ShownExtent::default(),
             known_passages: Vec::new(),
             month_end: super::transport::MonthEndHexes::new(),
+            walled_moves: super::walls::WalledMoves::new(),
         }
     }
 }
@@ -791,6 +802,7 @@ pub fn review_turn(
         check_fleet_course(hex, &fleet_orders, ruleset, &options, &mut findings);
         check_sail_route(hex, &by_coordinate, ruleset, &options, &mut findings);
         check_passages(hex, &by_coordinate, &options, &mut findings);
+        check_walls(hex, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
@@ -14397,6 +14409,41 @@ fn check_sail_route(
 ///
 /// Geography, not load, exactly as [`check_sail_route`] is: who else stands in the hex cannot make
 /// this doubtful.
+/// A MOVE that would cross a wall a report proves, on the line holding the blocked step.
+///
+/// The wall itself is worked out beside the remembered map (`effects::walled_moves`), from the
+/// movement trace, and only placed here: `ordered.intents` is the same chained month the trace
+/// walks, so counting directional steps line by line finds the line the blocked step is on.
+fn check_walls(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if options.walled_moves.is_empty() || !options.emits(codes::MOVE_INTO_A_WALL) {
+        return;
+    }
+    for ordered in &hex.units {
+        let Some(walled) = options.walled_moves.get(&ordered.unit.unit_id) else {
+            continue;
+        };
+        let mut seen = 0;
+        let Some(placed) = ordered.intents.iter().find(|placed| match &placed.intent {
+            Intent::Move { steps } => {
+                seen += steps
+                    .iter()
+                    .filter(|step| matches!(step, MoveStep::Go(_)))
+                    .count();
+                seen > walled.go_step
+            }
+            _ => false,
+        }) else {
+            continue;
+        };
+        findings.push(ordered.finding(
+            hex,
+            codes::MOVE_INTO_A_WALL,
+            super::walls::message(walled),
+            Some(placed),
+        ));
+    }
+}
+
 fn check_passages(
     hex: &Hex<'_>,
     by_coordinate: &HashMap<Coordinate, &ReportRegion>,
@@ -15383,6 +15430,14 @@ mod tests {
     /// `ah-v9p2`. The Silver column's warning marker is a property of the finding, declared beside
     /// the findings; this pins that the list cannot name a code that does not exist, and cannot be
     /// vacuously empty.
+    #[test]
+    fn the_wall_warning_has_no_switch() {
+        assert!(codes::ALWAYS_ON.contains(&codes::MOVE_INTO_A_WALL));
+        assert!(!codes::ALL.contains(&codes::MOVE_INTO_A_WALL));
+        assert!(CheckOptions::default().emits(codes::MOVE_INTO_A_WALL));
+        assert_eq!(codes::MOVE_INTO_A_WALL.as_str(), "move-into-a-wall");
+    }
+
     #[test]
     fn every_silver_trouble_code_is_a_real_code() {
         assert!(!codes::SILVER_TROUBLE.is_empty());
@@ -26702,6 +26757,54 @@ BUILD
             .iter()
             .filter(|finding| finding.code == codes::PASSAGE_WITH_NO_KNOWN_EXIT)
             .collect()
+    }
+
+    fn walled_move_findings(options: CheckOptions) -> Vec<Finding> {
+        check_turn(
+            &report(vec![region(vec![unit("5")])]),
+            "unit 5\nMOVE SE\nMOVE N\n",
+            Some(&ruleset()),
+            options,
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::MOVE_INTO_A_WALL)
+        .collect()
+    }
+
+    #[test]
+    fn a_move_into_a_wall_is_warned_about_on_the_line_holding_the_blocked_step() {
+        let options = CheckOptions {
+            walled_moves: std::iter::once((
+                "5".to_string(),
+                super::super::walls::WalledMove {
+                    go_step: 1,
+                    from: Coordinate { x: 7, y: 53, z: 1 },
+                    direction: crate::movement::graph::Direction::North,
+                    place: "mountain".to_string(),
+                },
+            ))
+            .collect(),
+            ..disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS])
+        };
+
+        let walled = walled_move_findings(options);
+
+        assert_eq!(walled.len(), 1, "{walled:?}");
+        assert_eq!(walled[0].line, Some(3));
+        assert_eq!(walled[0].unit_id, Some("5".into()));
+        assert_eq!(
+            walled[0].message,
+            "There is no exit North from mountain (7,53,1): a report shows a wall on that side."
+        );
+    }
+
+    #[test]
+    fn a_unit_with_no_walled_move_is_not_warned_about() {
+        let walled = walled_move_findings(disabling_all(&[
+            codes::UNIT_DOES_NOTHING,
+            codes::TWO_MONTH_LONG_ORDERS,
+        ]));
+        assert!(walled.is_empty(), "{walled:?}");
     }
 
     /// A passage with steps ordered after it, in the words the design stage agreed.

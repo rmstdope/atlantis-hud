@@ -1324,6 +1324,64 @@ pub fn shown_extent(
     Ok(MapKnowledge::from_remembered(&report, &remembered).shown_extent())
 }
 
+/// Every own unit whose MOVE would cross a wall a report proves, for a caller that checks orders
+/// but draws no map. Empty when the document writes no directional MOVE/ADVANCE step, which keeps
+/// the known map off the keystroke path, exactly as [`month_end_hexes`] does for shipments.
+///
+/// # Errors
+///
+/// As [`month_end_hexes`].
+pub fn walled_moves(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    orders_document: &str,
+    geometry: Option<crate::movement::graph::MapGeometry>,
+) -> Result<super::walls::WalledMoves, String> {
+    use crate::movement::graph::MapKnowledge;
+
+    let ruleset = cache
+        .ruleset(ruleset_json)
+        .map_err(|error| error.to_string())?;
+    let remembered: Vec<crate::movement::graph::RememberedRegion> =
+        serde_json::from_str(remembered_json)
+            .map_err(|error| format!("remembered regions could not be read: {error}"))?;
+    if !moves_anywhere(orders_document, &ruleset) {
+        return Ok(super::walls::WalledMoves::new());
+    }
+
+    let report = cache.classified(raw_report, ruleset_json);
+    // The known map itself, not `MapKnowledge::from_remembered`: the warning names a hex by its
+    // settlement, which only the known map carries.
+    let known = crate::known_map::resolve_known_map(&report, &remembered);
+    let map = MapKnowledge::from_known_map(&known).with_geometry(geometry);
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
+    Ok(super::walls::walled_moves_on(
+        &report, &ruleset, &known, &map, &ordered,
+    ))
+}
+
+/// Whether the document writes any directional `MOVE`/`ADVANCE` step.
+fn moves_anywhere(orders_document: &str, ruleset: &Ruleset) -> bool {
+    use super::intents::{read_intents, Intent};
+    use crate::movement::orders::MoveStep;
+
+    read_intents(orders_document, Some(ruleset))
+        .iter()
+        .any(|unit| {
+            unit.intents.iter().any(|placed| {
+                matches!(
+                    &placed.intent,
+                    Intent::Move { steps } if steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+                )
+            })
+        })
+}
+
 /// Whether the document writes any `TRANSPORT`/`DISTRIBUTE`, which is what the keystroke-path
 /// entries check before building the known map.
 fn ships_anything(orders_document: &str, ruleset: &Ruleset) -> bool {
@@ -11090,6 +11148,104 @@ mod tests {
             super::super::semantics::CheckOptions::default(),
         )
         .expect("the ruleset loads")
+    }
+
+    /// Three plains on a diagonal, each listing exactly the exits the wall tests rely on: by the
+    /// wall rule (`ah-wq2e.1`), (1,1) Northeast and (2,2) North are walls, while (1,1) North is the
+    /// map's edge. Do not add exits.
+    fn walled_report() -> String {
+        "Foo (1) Report\n\
+         \n\
+         plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\
+         \n\
+         Exits:\n  \
+           Southeast : plain (2,2) in Nowhere.\n\
+         \n\
+         * Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+         \n\
+         plain (2,2) in Nowhere, contains Harrowby [village], 10 peasants (orcs), $5.\n\
+         \n\
+         Exits:\n  \
+           Northwest : plain (1,1) in Nowhere.\n  \
+           Southeast : plain (3,3) in Nowhere.\n\
+         \n\
+         plain (3,3) in Nowhere, 10 peasants (orcs), $5.\n\
+         \n\
+         Exits:\n  \
+           Northwest : plain (2,2) in Nowhere.\n\
+         \n"
+        .to_string()
+    }
+
+    fn walled_for(orders: &str) -> super::super::walls::WalledMoves {
+        walled_moves(
+            &mut ReportCache::new(),
+            RULESET,
+            &walled_report(),
+            "[]",
+            orders,
+            None,
+        )
+        .expect("the ruleset loads")
+    }
+
+    #[test]
+    fn a_move_into_a_wall_names_the_hex_the_side_and_the_step() {
+        use super::super::walls::WalledMove;
+        use crate::movement::graph::Direction;
+        use crate::report::model::Coordinate;
+
+        let z = reach_z(&walled_report());
+        let first = walled_for("unit 900\nMOVE NE\n");
+        assert_eq!(
+            first,
+            std::iter::once((
+                "900".to_string(),
+                WalledMove {
+                    go_step: 0,
+                    from: Coordinate { x: 1, y: 1, z },
+                    direction: Direction::Northeast,
+                    place: "plain".to_string(),
+                }
+            ))
+            .collect()
+        );
+
+        let second = walled_for("unit 900\nMOVE SE N\n");
+        assert_eq!(
+            second.get("900"),
+            Some(&WalledMove {
+                go_step: 1,
+                from: Coordinate { x: 2, y: 2, z },
+                direction: Direction::North,
+                place: "Harrowby".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_chained_move_counts_its_steps_across_lines() {
+        assert_eq!(
+            walled_for("unit 900\nMOVE SE\nMOVE N\n")
+                .get("900")
+                .map(|walled| walled.go_step),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_move_along_stated_exits_is_not_walled() {
+        assert!(walled_for("unit 900\nMOVE SE SE\n").is_empty());
+    }
+
+    #[test]
+    fn orders_that_move_nowhere_build_no_map() {
+        assert!(walled_for("unit 900\nWORK\n").is_empty());
+    }
+
+    #[test]
+    fn a_sail_course_is_never_a_walled_move() {
+        assert!(walled_for("unit 900\nSAIL NE\n").is_empty());
     }
 
     #[test]

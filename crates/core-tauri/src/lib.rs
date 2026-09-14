@@ -499,6 +499,7 @@ pub mod commands {
             shown: Default::default(),
             known_passages,
             month_end: Default::default(),
+            walled_moves: Default::default(),
         };
         let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
             let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
@@ -527,6 +528,23 @@ pub mod commands {
                         raw_orders,
                         map_json.unwrap_or(""),
                         options.clone(),
+                    )
+                    .unwrap_or_default()
+                }
+                _ => Default::default(),
+            };
+            // Every own unit whose MOVE crosses a wall a report proves, including one only an old
+            // sighting shows. An error is nothing known - bad config, not bad orders - and no wall
+            // is warned about.
+            options.walled_moves = match (ruleset_json, raw_report, remembered_json) {
+                (Some(rules), Some(raw), Some(remembered)) => {
+                    atlantis_hud_core::orders::effects::walled_moves(
+                        cache,
+                        rules,
+                        raw,
+                        remembered,
+                        raw_orders,
+                        options.geometry,
                     )
                     .unwrap_or_default()
                 }
@@ -1230,6 +1248,8 @@ pub mod commands {
             known_passages: Vec::new(),
             // The preview builds its own from the trace it draws (`ah-b6fz`).
             month_end: Default::default(),
+            // The preview draws the wall itself; this is the Problems check's input.
+            walled_moves: Default::default(),
         };
 
         atlantis_hud_core::cache::with_global(|cache| {
@@ -2536,8 +2556,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             }
         }
         let report = lines.join("\n");
-        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";
-        let map = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";        let map = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
         let ruleset = atlantis_hud_fixtures::RULESET_JSON;
         let reach = |remembered: Option<&str>| -> Vec<String> {
             command_validate_orders(
@@ -2562,6 +2581,51 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         );
         // Without the remembered map the shipment is measured from the report, as before.
         assert_eq!(reach(None), Vec::<String>::new());
+    }
+
+    /// The wall a report proves reaches the Problems check only through the remembered map the
+    /// shell hands over (`ah-wq2e.4`).
+    #[test]
+    fn validate_orders_warns_about_a_move_into_a_wall_with_the_remembered_map() {
+        let report = "Foo (1) Report\n\
+                      \n\
+                      plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\
+                      \n\
+                      Exits:\n  \
+                        Southeast : plain (2,2) in Nowhere.\n\
+                      \n\
+                      * Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+                      \n\
+                      plain (2,2) in Nowhere, contains Harrowby [village], 10 peasants (orcs), $5.\n\
+                      \n\
+                      Exits:\n  \
+                        Northwest : plain (1,1) in Nowhere.\n  \
+                        Southeast : plain (3,3) in Nowhere.\n\
+                      \n\
+                      plain (3,3) in Nowhere, 10 peasants (orcs), $5.\n\
+                      \n\
+                      Exits:\n  \
+                        Northwest : plain (2,2) in Nowhere.\n\
+                      \n";
+        let ruleset = atlantis_hud_fixtures::RULESET_JSON;
+        let walls = |remembered: Option<&str>| -> usize {
+            command_validate_orders(
+                "unit 900\nMOVE NE\n",
+                Some(ruleset),
+                Some(report),
+                None,
+                None,
+                None,
+                remembered,
+            )
+            .diagnostics
+            .into_iter()
+            .filter(|diagnostic| diagnostic.code == "move-into-a-wall")
+            .count()
+        };
+
+        assert_eq!(walls(Some("[]")), 1);
+        assert_eq!(walls(None), 0);
     }
 
     #[test]
