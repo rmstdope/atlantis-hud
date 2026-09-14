@@ -272,3 +272,13 @@
 .map-theme-tactical-hud .region-outline-halo {
   stroke: var(--hud-panel);
 }
+
+/* A wall, in this theme's strongest ink over its own ground - see theme.css. */
+.map-theme-tactical-hud .map-wall-bar,
+.map-theme-tactical-hud .map-wall-ticks {
+  stroke: var(--hud-ink);
+}
+
+.map-theme-tactical-hud .map-wall-halo {
+  stroke: var(--hud-panel);
+}

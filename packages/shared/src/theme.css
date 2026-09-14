@@ -373,6 +373,42 @@
 }
 
 /*
+ * A wall a report proves (ah-wq2e): a bar in the map style's strongest ink over a halo of its
+ * ground, with cross-ticks on both faces. Screen-constant like the province border. The ticks drop
+ * away in the far band, where names do, leaving a slightly heavier plain bar. Brass under the
+ * pointer. Each map theme overrides the two colours in its own theme.css.
+ */
+.map-wall-halo {
+  stroke: var(--color-ground);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.map-wall-bar {
+  stroke: var(--color-ink);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.map-wall-ticks {
+  stroke: var(--color-ink);
+  stroke-width: 1.4;
+}
+
+.map-far .map-wall-bar {
+  stroke-width: 3;
+}
+
+.map-far .map-wall-ticks {
+  display: none;
+}
+
+.map-wall:hover .map-wall-bar,
+.map-wall:hover .map-wall-ticks {
+  stroke: var(--color-brass);
+}
+
+/*
  * The floating panes' ground.
  *
  * How see-through the panes over the map are is a preference, not a design constant: the settings

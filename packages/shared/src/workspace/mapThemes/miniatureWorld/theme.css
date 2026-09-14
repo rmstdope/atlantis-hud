@@ -439,3 +439,13 @@
 .map-theme-miniature-world .region-outline-halo {
   stroke: var(--mw-tape);
 }
+
+/* A wall, in this theme's strongest ink over its own ground - see theme.css. */
+.map-theme-miniature-world .map-wall-bar,
+.map-theme-miniature-world .map-wall-ticks {
+  stroke: var(--mw-edge);
+}
+
+.map-theme-miniature-world .map-wall-halo {
+  stroke: var(--mw-tape);
+}

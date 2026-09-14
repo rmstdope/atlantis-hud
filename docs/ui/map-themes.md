@@ -189,6 +189,11 @@ A theme happy with the app's terrain colours calls `terrainFillClass` from `mapH
 own `TerrainLayer` rather than declaring a palette of its own. Every theme that ships does declare
 one, so this is an offer rather than a description.
 
+Walls a report proves are drawn by MapCanvas itself, not by a theme layer. A theme gives them their
+colours by overriding `.map-wall-bar` and `.map-wall-ticks` (its strongest ink) and `.map-wall-halo`
+(its ground), scoped to `.map-theme-<id>`, beside its province-border override. The brass a wall
+turns under the pointer is shared and needs nothing from the theme.
+
 ### Zoom bands
 
 The band policy is CSS, keyed on the root classes `map-far` / `map-mid` / `map-near` that

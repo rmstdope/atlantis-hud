@@ -1,4 +1,4 @@
-import type { Coordinate, KnownMap, KnownMapHex, MapLevel, ReportRegion, ReportUnit } from "@atlantis/core-client";
+import type { Coordinate, KnownMap, KnownMapHex, MapLevel, MapWall, ReportRegion, ReportUnit } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
@@ -50,9 +50,10 @@ function knownHex(overrides: Partial<KnownMapHex> = {}): KnownMapHex {
 function knownMap(
   hexes: KnownMapHex[],
   currentTurn: number | null = 71,
-  levels: MapLevel[] = []
+  levels: MapLevel[] = [],
+  walls: MapWall[] = []
 ): KnownMap {
-  return { hexes, currentTurn, levels };
+  return { hexes, currentTurn, levels, walls };
 }
 
 describe("hex geometry", () => {
@@ -133,6 +134,19 @@ describe("addressing a hex", () => {
  * `crates/core/tests/known_map.rs`; nothing here re-derives them.
  */
 describe("converting the known map", () => {
+  it("the core's walls reach the model", () => {
+    const walls: MapWall[] = [
+      {
+        from: { x: 9, y: 3, z: 2 },
+        direction: "north",
+        to: { x: 9, y: 1, z: 2 },
+        provenBy: [{ coordinate: { x: 9, y: 3, z: 2 }, terrain: "cavern" }]
+      }
+    ];
+
+    expect(buildHexMapModel(knownMap([], 71, [], walls)).walls).toBe(walls);
+  });
+
   it("a resolved hex becomes a node the map can draw", () => {
     const hex = knownHex({
       knowledge: "current",

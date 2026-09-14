@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
-import type { HexNoteRecord, MapShape } from "@atlantis/core-client";
+import type { HexNoteRecord, MapShape, MapWall } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
 import { CONGESTED_CENTRE, CONGESTED_HEXES } from "./mapThemes/congestedFixture";
 import { allBadges } from "./mapThemes/hexView";
@@ -43,7 +43,8 @@ function probe(): MapTheme {
 const model: HexMapModel = {
   hexes: CONGESTED_HEXES,
   levels: [SURFACE_LEVEL],
-  currentTurn: 71
+  currentTurn: 71,
+  walls: []
 };
 
 /** A theme whose mark layer states each hex's battle tone, so the prop can be followed through. */
@@ -91,6 +92,75 @@ function draw(
     />
   );
 }
+
+const WALL: MapWall = {
+  from: { x: 0, y: 0, z: 1 },
+  direction: "north",
+  to: { x: 0, y: -2, z: 1 },
+  provenBy: [{ coordinate: { x: 0, y: 0, z: 1 }, terrain: "cavern" }]
+};
+
+/** The same map as `draw` at its defaults, with one wall on the surface. */
+function drawWithWalls(level = 1, badges = allBadges(true)): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={{ ...model, walls: [WALL] }}
+      theme={probe()}
+      level={level}
+      selectedRegionId={null}
+      selectionEpoch={0}
+      pickEpoch={0}
+      onSelectRegion={() => {}}
+      showStaleness
+      showTextures={false}
+      rotateTextures
+      animateWaterTextures
+      badges={badges}
+      notes={[]}
+    />
+  );
+}
+
+describe("walls", () => {
+  it("draws a wall above the hit layer, so it can be pointed at", () => {
+    const html = drawWithWalls();
+
+    expect(html.indexOf('data-testid="map-wall"')).toBeGreaterThan(html.lastIndexOf("data-region-id="));
+  });
+
+  it("draws a wall over the province border", () => {
+    const html = drawWithWalls();
+
+    expect(html).toContain("region-outline");
+    expect(html.indexOf('data-testid="map-wall"')).toBeGreaterThan(html.lastIndexOf("region-outline"));
+  });
+
+  it("keeps a wall screen-constant, ticks included", () => {
+    const html = drawWithWalls();
+
+    for (const part of ["map-wall-halo", "map-wall-bar", "map-wall-ticks"]) {
+      const tag = html.match(new RegExp(`<path[^>]*class="${part}"[^>]*>`));
+      expect(tag, part).not.toBeNull();
+      expect(tag![0]).toContain('vector-effect="non-scaling-stroke"');
+    }
+  });
+
+  it("explains each side of a wall with its own title", () => {
+    const html = drawWithWalls();
+    const titles = html.match(/<title>No way through: cavern \(0,0,1\) has no exit to the north\.<\/title>/g);
+
+    expect(titles).toHaveLength(2);
+  });
+
+  it("draws walls whatever the marks list says", () => {
+    expect(drawWithWalls(1, allBadges(false))).toContain('data-testid="map-wall"');
+  });
+
+  it("draws no wall on another level", () => {
+    expect(drawWithWalls(2)).not.toContain('data-testid="map-wall"');
+  });
+});
 
 function note(overrides: Partial<HexNoteRecord> = {}): HexNoteRecord {
   return {

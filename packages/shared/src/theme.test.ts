@@ -540,3 +540,31 @@ describe("map theme stylesheets", () => {
     }
   });
 });
+
+describe("walls", () => {
+  it("drops the ticks in the far band", () => {
+    expect(extractBlock(css, /\.map-far \.map-wall-ticks\s*\{/)).toContain("display: none");
+  });
+
+  it("turns a wall brass under the pointer", () => {
+    expect(extractBlock(css, /\.map-wall:hover \.map-wall-bar[^{]*\{/)).toContain("var(--color-brass)");
+  });
+
+  it("gives every map theme its own wall ink", () => {
+    const themes: [string, string][] = [
+      ["cartographersTable", "cartographers-table"],
+      ["tacticalHud", "tactical-hud"],
+      ["beveledTile", "beveled-tile"],
+      ["emblemAndDots", "emblem-and-dots"],
+      ["miniatureWorld", "miniature-world"]
+    ];
+    for (const [dir, id] of themes) {
+      const source = readFileSync(
+        fileURLToPath(new URL(`./workspace/mapThemes/${dir}/theme.css`, import.meta.url)),
+        "utf8"
+      );
+      expect(extractBlock(source, new RegExp(`\\.map-theme-${id} \\.map-wall-bar[^{]*\\{`)), id).toContain("stroke:");
+      expect(extractBlock(source, new RegExp(`\\.map-theme-${id} \\.map-wall-halo\\s*\\{`)), id).toContain("stroke:");
+    }
+  });
+});
