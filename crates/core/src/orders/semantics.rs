@@ -701,6 +701,12 @@ pub fn review_turn(
         })
         .collect();
 
+    // Shipping is settled before any step of maintenance: `rules/sequenceofevents` processes
+    // TRANSPORT and only then assesses maintenance, and step 4 below lends what each unit has spare
+    // *after* its orders - so a bill charged later would spend silver step 4 had already lent
+    // (`ah-6ak4`).
+    settle_shipping(&mut hexes, shipping.as_ref(), &options, ruleset);
+
     // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's grain.
     let shared_silver = share_silver_for_upkeep(&mut hexes);
     // Steps 5 and 6 come before step 7 in the payment order, and `upkeep_claims` reads the relief
@@ -717,8 +723,6 @@ pub fn review_turn(
         .map(|(held, drawn)| (held - drawn).max(0));
     let settlement = settle_unclaimed(&claims, available);
     apply_relief(&mut hexes, &settlement);
-
-    settle_shipping(&mut hexes, shipping.as_ref(), &options, ruleset);
 
     for priced in &hexes {
         let (hex, ledger) = priced;
@@ -8577,6 +8581,19 @@ fn withdrawn_this_month(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
         - ledger.state.balance_at(StatePhase::Market, unit_id, tag)
 }
 
+/// The silver this unit's own `CLAIM` lines brought in this month, as the ledger priced them against
+/// the faction's fund.
+///
+/// `CLAIM` is the only order `phases::phase_of` settles in `StatePhase::Claim`, and nothing is
+/// applied at `StatePhase::Instant` that moves silver, so the step between the two slots is exactly
+/// the claim - the same slot arithmetic `withdrawn_this_month` uses for WITHDRAW (`ah-6ak4`).
+fn claimed_this_month(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    ledger.state.balance_at(StatePhase::Claim, unit_id, SILVER)
+        - ledger
+            .state
+            .balance_at(StatePhase::Instant, unit_id, SILVER)
+}
+
 fn balance_of(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
     ledger
         .state
@@ -9745,7 +9762,14 @@ fn pool_shortfalls(
                     || (!ledger.doubted.contains(&o.unit.unit_id)
                         && relieved_balance(ledger, &o.unit.unit_id, &tag) < 0)
             })
-            .map(|o| o.holding(&tag))
+            .map(|o| {
+                o.holding(&tag)
+                    + if tag == SILVER {
+                        claimed_this_month(ledger, &o.unit.unit_id)
+                    } else {
+                        0
+                    }
+            })
             .sum();
 
         shortfalls.push(PoolShortfall { tag, short, held });
@@ -9863,14 +9887,17 @@ fn report_shortfalls(
             // The food that paid part of the fee is counted in on both sides, so the sentence
             // states the whole fee (`ah-pyiy`).
             let food = food_counted_in(ledger, unit_id);
+            // Claimed silver likewise, since `rules/claim` gives it to the unit, which 'may then
+            // spend' it (`ah-6ak4`).
+            let claimed = claimed_this_month(ledger, unit_id);
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
                     "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
-                    ordered.holding(SILVER) + received + food,
+                    ordered.holding(SILVER) + received + claimed + food,
                     spenders(upkeep_still_drawn(ledger, unit_id)),
-                    ordered.holding(SILVER) + received + short + food,
+                    ordered.holding(SILVER) + received + claimed + short + food,
                 ),
                 at,
             )
@@ -38739,6 +38766,98 @@ BUILD
         let poor = sender_silver(with_mate(10), UNPAID, with_map());
         assert!(poor.shipping.is_empty(), "thirty is not forty-five");
         assert!(codes(&unpaid_findings(with_mate(10), UNPAID)).contains(&"part-of-hex-shortfall"));
+    }
+
+    // --- a claim pays for a shipment (`ah-6ak4`) ------------------------------------------------
+
+    /// `review_turn` over a report whose faction holds $1000 unclaimed, so a `CLAIM` is paid in full
+    /// (`rules/claim`).
+    fn claimed_review(regions: Vec<ReportRegion>, orders: &str) -> TurnReview {
+        review_turn(
+            &report_with_purse(Some(1000), regions),
+            orders,
+            Some(&ruleset()),
+            with_map(),
+        )
+    }
+
+    fn in_hex(regions: &[ReportRegion], mut unit: ReportUnit) -> ReportUnit {
+        unit.region_id = regions[0].region_id.clone();
+        unit
+    }
+
+    fn short_messages(review: &TurnReview, unit_id: Option<&str>) -> Vec<String> {
+        review
+            .findings
+            .iter()
+            .filter(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.as_deref() == unit_id)
+            .map(|f| f.message.clone())
+            .collect()
+    }
+
+    fn shipments_of_900(review: &TurnReview) -> usize {
+        review
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast")
+            .shipping
+            .len()
+    }
+
+    #[test]
+    fn a_claim_that_pays_the_bill_is_not_lent_to_upkeep_first() {
+        let mut regions = unpaid_shipping(0);
+        let mate = in_hex(&regions, with_men(starving(unit("903")), 6));
+        regions[0].units.push(mate);
+        let review = claimed_review(regions, "unit 900\nCLAIM 60\nTRANSPORT 901 9 FUR\n");
+        assert_eq!(shipments_of_900(&review), 1, "the claim pays");
+        assert_eq!(short_messages(&review, Some("900")), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_claim_too_small_counts_in_what_the_unit_can_have() {
+        let review = claimed_review(
+            unpaid_shipping(0),
+            "unit 900\nCLAIM 20\nTRANSPORT 901 9 FUR\n",
+        );
+        assert_eq!(
+            short_messages(&review, Some("900")),
+            vec!["short $25: this unit can have $20 and its orders spend $45, so it ships none of the 9 furs ordered".to_string()]
+        );
+    }
+
+    fn sharing_hex_with_claimer() -> Vec<ReportRegion> {
+        let mut regions = unpaid_shipping(0);
+        regions[0].units[0] = sharing(regions[0].units[0].clone());
+        let mate = in_hex(&regions, sharing(unit("903")));
+        regions[0].units.push(mate);
+        regions
+    }
+
+    #[test]
+    fn a_claim_in_a_short_pool_counts_in_what_the_units_can_have() {
+        let review = claimed_review(
+            sharing_hex_with_claimer(),
+            "unit 900\nTRANSPORT 901 9 FUR\nunit 903\nCLAIM 20\n",
+        );
+        assert_eq!(
+            short_messages(&review, None),
+            vec!["the units in this hex are short $25 between them: they can have $20 and their orders spend $45".to_string()]
+        );
+    }
+
+    /// Green on main before this bead: pins that settling shipping earlier keeps the pool path.
+    #[test]
+    fn a_claim_on_a_sharing_mate_pays_the_bill() {
+        let review = claimed_review(
+            sharing_hex_with_claimer(),
+            "unit 900\nTRANSPORT 901 9 FUR\nunit 903\nCLAIM 60\n",
+        );
+        assert_eq!(shipments_of_900(&review), 1, "the claim in the pool pays");
+        let found = codes(&review.findings);
+        assert!(!found.contains(&"not-enough-silver"), "{found:?}");
+        assert!(!found.contains(&"part-of-hex-shortfall"), "{found:?}");
     }
 
     #[test]
