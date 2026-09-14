@@ -2010,22 +2010,13 @@ struct Working {
     /// not the order their blocks were written in (`ah-3mwm`). The rule itself, and the sort that
     /// obeys it, are [`in_report_order`]'s.
     transfers: Vec<PendingTransfer<'static>>,
-    /// Every unit id the report shows holding the quartermaster skill and at what level, resolved
-    /// through the catalogue rather than by tag spelling (`ah-d0ku`). Shared with the orders
-    /// advisory, so the forecast and the sentence read one set (`ah-7ale.2.2.1`).
-    quartermasters: super::transport::Quartermasters,
-    /// What the report can say about each unit it shows as a `TRANSPORT`/`DISTRIBUTE` target,
-    /// keyed by unit id. A target missing from here is one the report never described
-    /// (`ah-64wm`).
-    transport_targets: BTreeMap<String, super::transport::TargetFacts>,
+    /// Everything a shipment's measurement reads, shared with the orders advisory and the shipping
+    /// bill so the three cannot measure one line differently (`ah-t6fq`).
+    shipping: super::transport::Shipping,
     /// Each region's coordinate, by the `region_id` every `ReportUnit` carries - the sending end
     /// of a shipment, including a unit this document forms, whose `unit_id` the report never
     /// printed but whose `region_id` its parent's row supplies (`ah-7ale.2.1`).
     hex_of_region: BTreeMap<String, crate::report::model::Coordinate>,
-    /// The map's own shape, as the shell recorded it, for the distance a `TRANSPORT` is measured
-    /// across (`ah-7ale.2.1`). `None` is a game that never recorded one, which leaves every
-    /// shipment forecast exactly as it was.
-    geometry: Option<crate::movement::graph::MapGeometry>,
     /// Which advisory checks are on, for the refusals the forecast makes itself (`ah-7ale.2.2.2`).
     options: super::semantics::CheckOptions,
     /// Every unit id a reach measurement read a position for this settle - senders and targets
@@ -2062,17 +2053,6 @@ struct PendingTransport {
     /// The 1-based document line, the key `UnitItemEffects::refused_shipments` names a shipment by
     /// (`ah-7ale.4`).
     line: usize,
-}
-
-/// The three phases `rules/sequenceofevents` runs TRANSPORT in, in rule order: "Items are sent
-/// from non-quartermaster units to quartermaster units", then "from one quartermaster unit to
-/// another quartermaster units", then "a quartermaster unit to non-quartermaster units"
-/// (`ah-d0ku`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum TransportPhase {
-    ToQuartermaster,
-    BetweenQuartermasters,
-    FromQuartermaster,
 }
 
 impl Working {
@@ -2121,8 +2101,16 @@ impl Working {
         // The skill set, the levels and the target facts are all read from the report and the
         // catalogue by `super::transport`, which the orders advisory reads too - so the forecast
         // and the sentence cannot disagree about one shipment (`ah-7ale.2.2.1`).
-        let quartermasters = super::transport::Quartermasters::read(report, &ruleset);
-        let transport_targets = super::transport::target_facts(report, &quartermasters);
+        // The settle's `geometry` wins over `options.geometry`: the preview is handed the map's
+        // shape separately.
+        let shipping = super::transport::Shipping::read(
+            report,
+            &ruleset,
+            &super::semantics::CheckOptions {
+                geometry,
+                ..options.clone()
+            },
+        );
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
         let mut hex_of_region: BTreeMap<String, crate::report::model::Coordinate> = BTreeMap::new();
@@ -2142,7 +2130,7 @@ impl Working {
             ruleset,
             transports: Vec::new(),
             refused_shipments: std::collections::BTreeSet::new(),
-            quartermasters,
+            shipping,
             known_units,
             shown_in_region,
             foreign_units: report
@@ -2151,9 +2139,7 @@ impl Working {
                 .map(|unit| unit.unit_id.clone())
                 .collect(),
             transfers: Vec::new(),
-            transport_targets,
             hex_of_region,
-            geometry,
             options,
             measured_ends: std::cell::RefCell::default(),
         }
@@ -3069,10 +3055,10 @@ impl Working {
     /// Only the first two are ours to settle. `rules/com_attitudes` prints the attitudes *we*
     /// declare toward other factions, never theirs toward us, so a foreign target that passes both
     /// structural tests is still unknown - accept on doubt, and say so.
-    fn transport_target(&self, id: &str) -> TransportTargetOutcome {
+    fn transport_target(acceptance: super::transport::Acceptance) -> TransportTargetOutcome {
         use super::transport::Acceptance;
 
-        match super::transport::acceptance(self.transport_targets.get(id)) {
+        match acceptance {
             Acceptance::Eligible => TransportTargetOutcome::Eligible,
             Acceptance::NotQuartermaster => {
                 TransportTargetOutcome::Refused(TransportTargetReason::NotQuartermaster)
@@ -3109,16 +3095,24 @@ impl Working {
             order_index.insert(pending.sequence, *next);
             *next += 1;
         }
+        // Every line judged once, before any phase mutates the units. `Working::transport` stamps
+        // each line with its place in the queue, so a verdict is found by `sequence`.
+        let judged: Vec<super::transport::Judged> =
+            pending.iter().map(|line| self.judge(line)).collect();
+        debug_assert!(pending
+            .iter()
+            .enumerate()
+            .all(|(index, line)| line.sequence == index));
 
         for phase in [
-            TransportPhase::ToQuartermaster,
-            TransportPhase::BetweenQuartermasters,
-            TransportPhase::FromQuartermaster,
+            super::transport::ShipmentPhase::ToQuartermaster,
+            super::transport::ShipmentPhase::BetweenQuartermasters,
+            super::transport::ShipmentPhase::FromQuartermaster,
         ] {
             let mut of_this_phase: Vec<&PendingTransport> = pending
                 .iter()
                 .filter(|pending| !dissolved.contains_key(&pending.sender))
-                .filter(|pending| self.transport_phase(pending) == phase)
+                .filter(|pending| judged[pending.sequence].phase == phase)
                 .collect();
             // `rules/sequenceofevents`: "units that appear higher on the report get precedence",
             // which is `Working::units`' own order. The sequence is the secondary key alone, so
@@ -3130,6 +3124,7 @@ impl Working {
             self.apply_transport_phase(
                 &of_this_phase,
                 &order_index,
+                &judged,
                 &mut sent,
                 &mut received,
                 &mut issues,
@@ -3149,42 +3144,14 @@ impl Working {
         }
     }
 
-    /// Which of `rules/sequenceofevents`' three phases one queued line belongs to.
-    ///
-    /// A sender that is not a quartermaster is always the first phase. A quartermaster sending to
-    /// a unit the report shows holding the skill is the second. Everything else - including a
-    /// target the report does not show, or one whose skills are hidden - is the third: the
-    /// navigator chose that deterministic fallback over inventing a skill the report never states
-    /// (`ah-d0ku`).
-    ///
-    /// Since `ah-64wm` an eligible target is a quartermaster by construction, so the third phase
-    /// carries only orders the target gate refuses. It still has to run - the refusals are what
-    /// the interface explains - and it becomes live again the moment the target rule changes.
-    fn transport_phase(&self, pending: &PendingTransport) -> TransportPhase {
-        let sender = &self.units[pending.sender].unit.unit_id;
-        if !self.quartermasters.contains(sender) {
-            return TransportPhase::ToQuartermaster;
-        }
-        if self.quartermasters.contains(&pending.to) {
-            TransportPhase::BetweenQuartermasters
-        } else {
-            TransportPhase::FromQuartermaster
-        }
-    }
-
-    /// Which of `rules/economy_transport`'s two reaches this shipment is measured against, and
-    /// how far it may travel - or `None` when no reach rule applies to it (`ah-7ale.2.1`).
-    ///
-    /// Only ever asked of a shipment `transport_target` has already called `Eligible`, and an
-    /// eligible target is one of ours holding the quartermaster skill by construction (`ah-64wm`).
-    /// So `TransportPhase::FromQuartermaster` - the fallback phase for a target the report cannot
-    /// classify - cannot reach this, and answers `None` rather than inventing a rule for it.
-    fn transport_reach(&self, pending: &PendingTransport) -> Option<super::transport::Reach> {
-        let sender = &self.units[pending.sender].unit.unit_id;
-        super::transport::reach_for(
-            self.quartermasters.contains(sender),
-            self.quartermasters.contains(&pending.to),
-            self.quartermasters.level(sender),
+    /// The one judgement of one queued line, read from the same `transport::Shipping::judge` the
+    /// orders advisory and the shipping bill read.
+    fn judge(&self, pending: &PendingTransport) -> super::transport::Judged {
+        let sender = &self.units[pending.sender].unit;
+        self.shipping.judge(
+            &sender.unit_id,
+            self.hex_of_region.get(&sender.region_id).copied(),
+            &pending.to,
         )
     }
 
@@ -3192,38 +3159,28 @@ impl Working {
     /// (`ah-7ale.5`).
     ///
     /// `Arrival::Certain` also covers the cases `ah-7ale.2.1` documented as no refusal besides
-    /// "near enough": no reach rule applies (see `transport_reach`), and either end's hex is not in
+    /// "near enough": no reach rule applies (`transport::reach_for`), and either end's hex is not in
     /// the report.
-    fn arrival(&self, pending: &PendingTransport) -> super::transport::Arrival {
+    fn arrival(
+        &self,
+        pending: &PendingTransport,
+        verdict: &super::transport::Judged,
+    ) -> super::transport::Arrival {
         use super::transport::Arrival;
-        let Some(reach) = self.transport_reach(pending) else {
+        if verdict.reach.is_none() {
             return Arrival::Certain;
-        };
-        let sender = &self.units[pending.sender].unit.unit_id;
+        }
         {
             let mut measured = self.measured_ends.borrow_mut();
-            measured.insert(sender.clone());
+            measured.insert(self.units[pending.sender].unit.unit_id.clone());
             measured.insert(pending.to.clone());
         }
         // Measured once the month's moves are made: `rules/sequenceofevents` moves every unit
-        // before any TRANSPORT (`ah-b6fz`).
-        let month_end = &self.options.month_end;
-        let Some(from) = self
-            .hex_of_region
-            .get(&self.units[pending.sender].unit.region_id)
-            .copied()
-            .map(|reported| super::transport::standing_at(month_end, sender, reported))
-        else {
+        // before any TRANSPORT (`ah-b6fz`). Nothing measured is either end's hex missing.
+        let Some(measured) = verdict.measured else {
             return Arrival::Certain;
         };
-        let Some(to) = self
-            .transport_targets
-            .get(&pending.to)
-            .map(|facts| super::transport::standing_at(month_end, &pending.to, facts.coordinate))
-        else {
-            return Arrival::Certain;
-        };
-        match super::transport::arrival(reach, from, to, self.geometry, &self.options.shown) {
+        match measured.arrival {
             // A silenced warning is a check not made, so a shipment the map proves too far is
             // forecast as going through (`ah-7ale.2.2.2`). An *unmeasured* distance is not that
             // case and is not gated: nothing here claims the goods left, and the switch may not
@@ -3314,6 +3271,7 @@ impl Working {
         &mut self,
         pending: &[&PendingTransport],
         order_index: &BTreeMap<usize, i64>,
+        judged: &[super::transport::Judged],
         sent: &mut [Vec<(usize, TransportSent)>],
         received: &mut [Vec<(usize, TransportReceived)>],
         issues: &mut [Vec<(usize, TransportTargetIssue)>],
@@ -3335,6 +3293,7 @@ impl Working {
             {
                 continue;
             }
+            let verdict = judged[pending.sequence];
             let index = order_index.get(&pending.sequence).copied().unwrap_or(0);
             let held = allowance
                 .get(&pending.sender)
@@ -3354,7 +3313,7 @@ impl Working {
             if moving.is_empty() {
                 continue;
             }
-            if let TransportTargetOutcome::Refused(reason) = self.transport_target(&pending.to) {
+            if let TransportTargetOutcome::Refused(reason) = Self::transport_target(verdict.acceptance) {
                 // One record for the order, naming the goods only where there is a claim to make.
                 let (amount, tag) = self.goods_claimed(&moving);
                 issues[pending.sender].push((
@@ -3372,7 +3331,7 @@ impl Working {
             }
             // The goods are welcome, but the hexes are too far apart: `rules/economy_transport`
             // moves nothing, so they and their weight stay with the sender (`ah-7ale.2.1`).
-            let arrival = self.arrival(pending);
+            let arrival = self.arrival(pending, &verdict);
             if let super::transport::Arrival::TooFar(refused) = arrival {
                 let (reason, reach_opt) = Self::refusal(refused);
                 let (amount, tag) = self.goods_claimed(&moving);
@@ -10607,7 +10566,7 @@ mod tests {
             super::super::semantics::CheckOptions::default(),
         );
 
-        assert_eq!(working.geometry, Some(geometry));
+        assert_eq!(working.shipping.geometry, Some(geometry));
     }
 
     /// `ah-7ale.2.1` increment 2: both ends of a shipment need the hex the report shows them in.
@@ -10628,7 +10587,8 @@ mod tests {
 
         let hex = |unit_id: &str| {
             working
-                .transport_targets
+                .shipping
+                .targets
                 .get(unit_id)
                 .expect("the report shows the unit")
                 .coordinate
@@ -10673,12 +10633,12 @@ mod tests {
             super::super::semantics::CheckOptions::default(),
         );
 
-        assert_eq!(working.quartermasters.level("5531"), 3);
-        assert_eq!(working.quartermasters.level("6857"), 5);
-        assert!(working.quartermasters.contains("5531"));
+        assert_eq!(working.shipping.quartermasters.level("5531"), 3);
+        assert_eq!(working.shipping.quartermasters.level("6857"), 5);
+        assert!(working.shipping.quartermasters.contains("5531"));
         // A unit with no quartermaster skill holds no level and is not in the set.
-        assert_eq!(working.quartermasters.level("5530"), 0);
-        assert!(!working.quartermasters.contains("5530"));
+        assert_eq!(working.shipping.quartermasters.level("5530"), 0);
+        assert!(!working.shipping.quartermasters.contains("5530"));
     }
 
     /// `ah-7ale.2.1`: an ordinary source and its own quartermaster, each in a hex of its own, for
