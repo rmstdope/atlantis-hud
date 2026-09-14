@@ -10908,6 +10908,56 @@ mod tests {
         assert_eq!(issues[0].reach, too_far(3, 2));
     }
 
+    /// Both surfaces read `transport::Shipping::judge`, so a shipment one refuses the other refuses
+    /// (`ah-t6fq`).
+    #[test]
+    fn the_preview_and_the_problems_panel_refuse_one_month_end_shipment_alike() {
+        let report = reach_report((0, 0), (0, 4), (0, 1));
+        let z = reach_z(&report);
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+        let options = super::super::semantics::CheckOptions {
+            month_end: std::iter::once((
+                "901".to_string(),
+                crate::report::model::Coordinate { x: 0, y: 6, z },
+            ))
+            .collect(),
+            ..super::super::semantics::CheckOptions::default()
+        };
+
+        let response = reach_preview_with_options(&report, orders, FLAT_MAP, options.clone());
+        assert_eq!(reach_held(&response, "900", "STON"), 5);
+        let issues = &reach_unit(&response, "900").transport_target_issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].reason, TransportTargetReason::TooFarToAccept);
+        assert_eq!(issues[0].reach, too_far(3, 2));
+
+        let mut cache = ReportCache::new();
+        let ruleset = cache.ruleset(RULESET).expect("the ruleset loads");
+        let parsed = cache.classified(&report, RULESET);
+        let review = super::super::semantics::review_turn(
+            &parsed,
+            orders,
+            Some(ruleset.as_ref()),
+            super::super::semantics::CheckOptions {
+                geometry: crate::movement::graph::geometry_from_json(FLAT_MAP)
+                    .expect("the map reads"),
+                ..options
+            },
+        );
+        let refused: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == super::super::semantics::codes::TRANSPORT_OUT_OF_REACH
+            })
+            .collect();
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!(
+            refused[0].message,
+            "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit."
+        );
+    }
+
     /// `rules/sequenceofevents`: movement before TRANSPORT, so a quartermaster walking out of reach
     /// leaves the goods with the sender.
     #[test]
