@@ -238,8 +238,9 @@ import { type MapRect } from "./mapMarquee";
 import { loadSavedView, saveMapView } from "./mapViewportStorage";
 import { unitForHex } from "./hexUnitMemory";
 import type { MapViewState } from "./mapViewState";
-import { getMapTheme } from "./mapThemes";
+import { getMapTheme, type TextureStyle } from "./mapThemes";
 import { waterTerrainsOf } from "./mapThemes/terrain";
+import { useShallow } from "zustand/react/shallow";
 import { OrdersPanel } from "./OrdersPanel";
 import { formedSelectionFor } from "./ordersLock";
 import type { OrdersEditorHandle } from "./OrdersEditor";
@@ -986,8 +987,16 @@ export function AppShell({
   const layers = useWorkspaceStore((state) => state.layers);
   const badges = useWorkspaceStore((state) => state.badges);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
-  const rotateTextures = useSettingsStore((state) => state.biomeTextureRotation);
-  const animateWaterTextures = useSettingsStore((state) => state.animateWaterTextures);
+  // Shallow, so the style keeps its identity across renders and the map's views are not rebuilt
+  // every time AppShell renders.
+  const textureStyle = useSettingsStore(
+    useShallow(
+      (state): TextureStyle => ({
+        rotate: state.biomeTextureRotation,
+        animateWater: state.animateWaterTextures
+      })
+    )
+  );
   const mapThemeId = useSettingsStore((state) => state.mapTheme);
   const advisoryChecks = useSettingsStore((state) => state.advisoryChecks);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
@@ -5347,8 +5356,7 @@ export function AppShell({
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
           showTextures={showTextures}
-          rotateTextures={rotateTextures}
-          animateWaterTextures={animateWaterTextures}
+          textureStyle={textureStyle}
           water={water}
           badges={badges}
           route={chooseRouteOverlay({

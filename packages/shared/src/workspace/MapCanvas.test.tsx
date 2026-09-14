@@ -6,7 +6,7 @@ import { MapCanvas } from "./MapCanvas";
 import type { RouteOverlay } from "./routeOverlay";
 import { wallTip } from "./routeWall";
 import { CONGESTED_CENTRE, CONGESTED_HEXES } from "./mapThemes/congestedFixture";
-import { allBadges } from "./mapThemes/hexView";
+import { DEFAULT_TEXTURE_STYLE, allBadges, type TextureStyle } from "./mapThemes/hexView";
 import { terrainTextureBrightness, terrainTextureRotation } from "./mapHexView";
 import { COLUMN_PITCH, ROW_PITCH, worldOf } from "./mapViewport";
 import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
@@ -72,8 +72,7 @@ function draw(
   badges = allBadges(true),
   battles?: ReadonlyMap<string, "own" | "other">,
   showTextures = false,
-  rotateTextures = true,
-  animateWaterTextures = true,
+  textureStyle: TextureStyle = DEFAULT_TEXTURE_STYLE,
   water?: WaterTerrains
 ): string {
   return renderToStaticMarkup(
@@ -88,8 +87,7 @@ function draw(
       onSelectRegion={() => {}}
       showStaleness
       showTextures={showTextures}
-      rotateTextures={rotateTextures}
-      animateWaterTextures={animateWaterTextures}
+      textureStyle={textureStyle}
       water={water}
       badges={badges}
       notes={notes}
@@ -119,8 +117,6 @@ function drawWithWalls(level = 1, badges = allBadges(true)): string {
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
-      rotateTextures
-      animateWaterTextures
       badges={badges}
       notes={[]}
     />
@@ -274,7 +270,7 @@ describe("what the map hands a theme", () => {
       )
     };
     const withWater = (water?: WaterTerrains) =>
-      draw(kinds, [], allBadges(true), undefined, false, true, true, water);
+      draw(kinds, [], allBadges(true), undefined, false, DEFAULT_TEXTURE_STYLE, water);
 
     expect(withWater({ ocean: "ocean", alsoWater: ["mountain"] })).toContain(
       'data-region="1:7,51" data-kind="ocean"'
@@ -297,7 +293,7 @@ describe("what the map hands a theme", () => {
   });
 
   it("leaves biome textures unrotated when rotation is off", () => {
-    const svg = draw(probe(), [], allBadges(true), undefined, true, false);
+    const svg = draw(probe(), [], allBadges(true), undefined, true, { rotate: false, animateWater: true });
     const pattern = svg.match(/<pattern id="biome-texture-mountain-0-\d+"[^>]*>/)?.[0];
 
     expect(pattern).toBeDefined();
@@ -313,7 +309,7 @@ describe("what the map hands a theme", () => {
   });
 
   it("leaves water textures still when their animation is off", () => {
-    const svg = draw(probe(), [], allBadges(true), undefined, true, true, false);
+    const svg = draw(probe(), [], allBadges(true), undefined, true, { rotate: true, animateWater: false });
 
     expect(svg).not.toContain("<animateTransform");
   });

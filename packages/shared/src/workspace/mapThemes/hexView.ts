@@ -230,13 +230,22 @@ export function allBadges(
 /** Whether a battle was fought in this hex last turn, and whether the viewer's faction was in it. */
 export type BattleMark = BattleInvolvement | null;
 
+/** How a textured hex is drawn, once textures are on at all. */
+export type TextureStyle = {
+  /** Turn each texture by its stable per-hex angle. */
+  rotate: boolean;
+  /** Scroll ocean and lake textures along their axis. */
+  animateWater: boolean;
+};
+
+/** What a caller that says nothing gets: the varied, moving map. */
+export const DEFAULT_TEXTURE_STYLE: TextureStyle = { rotate: true, animateWater: true };
+
 export type HexViewOptions = {
   showStaleness: boolean;
   showTextures: boolean;
-  /** Defaults to true so existing renderers retain the textured map's varied orientation. */
-  rotateTextures?: boolean;
-  /** Defaults to true so water texture patterns move by default. */
-  animateWaterTextures?: boolean;
+  /** How textured hexes are drawn; `DEFAULT_TEXTURE_STYLE` when absent. */
+  textureStyle?: TextureStyle;
   badges: Record<BadgeName, boolean>;
   /**
    * Where last turn's battles were fought, from `battleHexes`, keyed by `HexNode.regionId`.
@@ -386,8 +395,7 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
 function textureOf(
   kind: TerrainPaint,
   regionId: string,
-  rotateTextures: boolean,
-  animateWaterTextures: boolean
+  style: TextureStyle
 ): {
   url: string;
   patternId: string;
@@ -400,7 +408,7 @@ function textureOf(
   }
   const url = terrainTextureUrl(kind);
   const basePatternId = terrainTexturePatternId(kind);
-  const rotation = rotateTextures ? terrainTextureRotation(regionId) : 0;
+  const rotation = style.rotate ? terrainTextureRotation(regionId) : 0;
   const brightness = terrainTextureBrightness(regionId);
   const tone = Math.round(brightness * 100);
   return url && basePatternId
@@ -409,7 +417,7 @@ function textureOf(
         patternId: `${basePatternId}-${rotation}-${tone}`,
         rotation,
         brightness,
-        moves: animateWaterTextures && kind === "ocean"
+        moves: style.animateWater && kind === "ocean"
       }
     : null;
 }
@@ -481,12 +489,7 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     terrain: hex.terrain,
     terrainKind,
     texture: options.showTextures
-      ? textureOf(
-          terrainKind,
-          hex.regionId,
-          options.rotateTextures !== false,
-          options.animateWaterTextures !== false
-        )
+      ? textureOf(terrainKind, hex.regionId, options.textureStyle ?? DEFAULT_TEXTURE_STYLE)
       : null,
     fogOpacity: dampFog(paint.fogOpacity, options.fogDamping ?? 1),
     hatched: paint.hatched,

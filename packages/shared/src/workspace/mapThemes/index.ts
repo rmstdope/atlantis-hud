@@ -57,5 +57,5 @@ export function mapThemeOptions(themes: readonly MapTheme[] = MAP_THEMES): MapTh
 }
 
 export type { MapTheme, LayerProps } from "./mapTheme";
-export type { HexView, HexViewOptions } from "./hexView";
-export { buildHexView, buildHexViews } from "./hexView";
+export type { HexView, HexViewOptions, TextureStyle } from "./hexView";
+export { DEFAULT_TEXTURE_STYLE, buildHexView, buildHexViews } from "./hexView";
