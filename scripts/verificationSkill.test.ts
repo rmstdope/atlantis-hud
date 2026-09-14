@@ -74,3 +74,16 @@ describe("the project's declared verification skill", () => {
     ).toBe(value);
   });
 });
+
+describe("the verification skill's wasm core check", () => {
+  it("the skill has the verifier confirm the wasm core is current before the navigator is called", () => {
+    const skillMd = readFileSync(
+      join(REPO, ".claude", "skills", "atlantis-verification", "SKILL.md"),
+      "utf8"
+    );
+    const heading = skillMd.indexOf("## The core the shell serves is checked, not assumed");
+    expect(heading).toBeGreaterThanOrEqual(0);
+    expect(skillMd).toContain("node scripts/ensure-wasm.mjs");
+    expect(heading).toBeLessThan(skillMd.indexOf("## The handoff"));
+  });
+});

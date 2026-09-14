@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build:wasm": "pnpm --filter @atlantis/browser-core build:wasm",
-    "dev": "pnpm run build:wasm && vite",
+    "dev": "node ../../scripts/ensure-wasm.mjs && vite",
     "build": "pnpm run build:wasm && vite build",
     "preview": "vite preview",
     "lint": "eslint src --max-warnings=0",
