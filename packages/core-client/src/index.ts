@@ -76,6 +76,7 @@ export type { ArmyRecord } from "./generated/ArmyRecord";
 export type { UnitPreviewStatus } from "./generated/UnitPreviewStatus";
 export type { FieldChange } from "./generated/FieldChange";
 export type { UnitPreview } from "./generated/UnitPreview";
+export type { UnitRef } from "./generated/UnitRef";
 export type { TransportSent } from "./generated/TransportSent";
 export type { TransportReceived } from "./generated/TransportReceived";
 export type { TransportTargetReason } from "./generated/TransportTargetReason";
