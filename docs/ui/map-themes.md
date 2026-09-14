@@ -194,10 +194,12 @@ terrains, so a lake the ruleset calls water arrives as `ocean`. Its stylesheet m
 enforces. A new terrain is one `TERRAIN_KINDS` entry, one `fill-terrain-*` line in `mapHexView.ts`,
 a biome image, and CSS.
 
-Walls a report proves are drawn by MapCanvas itself, not by a theme layer. A theme gives them their
-colours by overriding `.map-wall-bar` and `.map-wall-ticks` (its strongest ink) and `.map-wall-halo`
-(its ground), scoped to `.map-theme-<id>`, beside its province-border override. The brass a wall
-turns under the pointer is shared and needs nothing from the theme.
+Walls a report proves, and province borders, are drawn by MapCanvas itself, not by a theme layer. A
+theme gives both their colours by declaring three custom properties once, on its own
+`.map-theme-<id>` rule: `--map-border-ink` (the border), `--map-wall-ink` (its strongest ink, for
+the wall's bar and ticks) and `--map-mark-ground` (the halo under both). `theme.test.ts` enforces
+that every theme declares all three and restates neither mark. The brass a wall turns under the
+pointer is shared and needs nothing from the theme.
 
 ### Zoom bands
 
