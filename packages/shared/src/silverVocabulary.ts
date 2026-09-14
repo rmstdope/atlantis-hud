@@ -1,3 +1,11 @@
+/**
+ * The words for a unit's silver, shared by every surface that explains it: the whole-unit tooltip
+ * and the Silver cell popup both render their notes from here, so a new note is one entry.
+ *
+ * A leaf of the import graph: it may import nothing from `unitTooltip`, `unitPreview` or
+ * `unitCellPopup`, which all import it.
+ */
+
 import type {
   ProductionCap,
   ReportUnit,
@@ -8,13 +16,6 @@ import type {
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { shareBoundedByAnUnreadUnit, unreadLineClause } from "./unitRead";
 
-/**
- * The words for a unit's silver, shared by every surface that explains it: the whole-unit tooltip
- * and the Silver cell popup both render their notes from here, so a new note is one entry.
- *
- * A leaf of the import graph: it may import nothing from `unitTooltip`, `unitPreview` or
- * `unitCellPopup`, which all import it.
- */
 /**
  * What the unit calls the food of a given tag, for the sentences that name it. Report food names
  * are already mass nouns - `grain`, `livestock`, `fish` - so nothing is pluralised; the tag itself,
