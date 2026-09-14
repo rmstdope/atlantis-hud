@@ -6,6 +6,14 @@
  * fails `tsc` if its function, input or prop regains a default or becomes optional.
  */
 import { describe, expect, it } from "vitest";
+import { diagnosticTargets } from "./diagnosticNav";
+import { diagnosticsForUnit } from "./orderEditor";
+import {
+  describeOrdersImport,
+  unitIdForDiagnostic,
+  unitLabelForDiagnostic
+} from "./ordersImport";
+import { diffOrders } from "./turnDiff";
 import {
   bareWords,
   keywordCaseChanges,
@@ -85,6 +93,12 @@ const indentChangesTakesTheSyntax: TakesTheSyntax<typeof indentChanges> = true;
 const indentBlockTakesTheSyntax: TakesTheSyntax<typeof indentBlock> = true;
 const contentChangesTakesTheSyntax: TakesTheSyntax<typeof contentChanges> = true;
 const tidyInsertionTakesTheSyntax: TakesTheSyntax<typeof tidyInsertion> = true;
+const diagnosticTargetsTakesTheSyntax: TakesTheSyntax<typeof diagnosticTargets> = true;
+const diagnosticsForUnitTakesTheSyntax: TakesTheSyntax<typeof diagnosticsForUnit> = true;
+const describeOrdersImportTakesTheSyntax: TakesTheSyntax<typeof describeOrdersImport> = true;
+const unitIdForDiagnosticTakesTheSyntax: TakesTheSyntax<typeof unitIdForDiagnostic> = true;
+const unitLabelForDiagnosticTakesTheSyntax: TakesTheSyntax<typeof unitLabelForDiagnostic> = true;
+const diffOrdersTakesTheSyntax: TakesTheSyntax<typeof diffOrders> = true;
 
 const FUNCTIONS = {
   findUnitBlocks: findUnitBlocksTakesTheSyntax,
@@ -112,7 +126,13 @@ const FUNCTIONS = {
   indentChanges: indentChangesTakesTheSyntax,
   indentBlock: indentBlockTakesTheSyntax,
   contentChanges: contentChangesTakesTheSyntax,
-  tidyInsertion: tidyInsertionTakesTheSyntax
+  tidyInsertion: tidyInsertionTakesTheSyntax,
+  diagnosticTargets: diagnosticTargetsTakesTheSyntax,
+  diagnosticsForUnit: diagnosticsForUnitTakesTheSyntax,
+  describeOrdersImport: describeOrdersImportTakesTheSyntax,
+  unitIdForDiagnostic: unitIdForDiagnosticTakesTheSyntax,
+  unitLabelForDiagnostic: unitLabelForDiagnosticTakesTheSyntax,
+  diffOrders: diffOrdersTakesTheSyntax
 };
 
 const writeRouteOrderRequiresTheSyntax: Requires<Parameters<typeof writeRouteOrder>[0], "syntax"> =
@@ -124,7 +144,7 @@ const INPUTS = {
 
 describe("the order comment syntax is never defaulted", () => {
   it("every order-text function requires the comment syntax", () => {
-    expect(Object.keys(FUNCTIONS)).toHaveLength(26);
+    expect(Object.keys(FUNCTIONS)).toHaveLength(32);
   });
 
   it("every order-writing input requires the comment syntax", () => {

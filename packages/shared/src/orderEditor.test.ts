@@ -155,7 +155,7 @@ describe("the diagnostics belonging to one unit", () => {
     const mine = diagnosticsForUnit(VALIDATED, "18642", [
       diagnostic(5, "unknown order command: WROK"),
       diagnostic(8, "MOVE needs at least one direction")
-    ]);
+    ], undefined, "origins");
 
     expect(mine).toEqual([
       {
@@ -176,19 +176,19 @@ describe("the diagnostics belonging to one unit", () => {
   it("numbers another unit's block from its own first line, not the document's", () => {
     const theirs = diagnosticsForUnit(VALIDATED, "13401", [
       diagnostic(8, "MOVE needs at least one direction")
-    ]);
+    ], undefined, "origins");
 
     expect(theirs.map((entry) => entry.lineStart)).toEqual([1]);
   });
 
   it("ignores a problem outside every unit's block", () => {
-    expect(diagnosticsForUnit(VALIDATED, "18642", [diagnostic(1, "unknown order command")])).toEqual(
+    expect(diagnosticsForUnit(VALIDATED, "18642", [diagnostic(1, "unknown order command")], undefined, "origins")).toEqual(
       []
     );
   });
 
   it("reports nothing for a unit the document does not list", () => {
-    expect(diagnosticsForUnit(VALIDATED, "99999", [diagnostic(5, "unknown")])).toEqual([]);
+    expect(diagnosticsForUnit(VALIDATED, "99999", [diagnostic(5, "unknown")], undefined, "origins")).toEqual([]);
   });
 
   it("keeps a problem that reaches into the block from above, clamped to its first line", () => {
@@ -205,7 +205,7 @@ describe("the diagnostics belonging to one unit", () => {
       severity: "warning"
     };
 
-    expect(diagnosticsForUnit(VALIDATED, "18642", [reaching])).toEqual([
+    expect(diagnosticsForUnit(VALIDATED, "18642", [reaching], undefined, "origins")).toEqual([
       { ...reaching, lineStart: 1, lineEnd: 1 }
     ]);
   });
@@ -224,7 +224,7 @@ describe("the diagnostics belonging to one unit", () => {
       severity: "warning"
     };
 
-    expect(diagnosticsForUnit(VALIDATED, "18642", [running])).toEqual([
+    expect(diagnosticsForUnit(VALIDATED, "18642", [running], undefined, "origins")).toEqual([
       { ...running, lineStart: 2, lineEnd: 2 }
     ]);
   });
@@ -243,7 +243,7 @@ describe("the diagnostics belonging to one unit", () => {
       severity: "warning"
     };
 
-    expect(diagnosticsForUnit(VALIDATED, "18642", [spanning])).toEqual([
+    expect(diagnosticsForUnit(VALIDATED, "18642", [spanning], undefined, "origins")).toEqual([
       { ...spanning, lineStart: 1, lineEnd: 2 }
     ]);
   });
@@ -373,7 +373,7 @@ describe("findings that belong to a hex", () => {
   it("gives a unit the findings raised against it, renumbered into its own block", () => {
     // The editor shows a unit's orders and not its `unit` line, so document line 5 - the second
     // of unit 13401's two orders - is line 2 of what the player is looking at.
-    const found = diagnosticsForUnit(DOCUMENT, "13401", [unitFinding("13401", 5)]);
+    const found = diagnosticsForUnit(DOCUMENT, "13401", [unitFinding("13401", 5)], undefined, "origins");
 
     expect(found).toHaveLength(1);
     expect(found[0].lineStart).toBe(2);
@@ -385,7 +385,7 @@ describe("findings that belong to a hex", () => {
    * a line number landed in the wrong range.
    */
   it("does not give a unit a finding raised against a different unit", () => {
-    expect(diagnosticsForUnit(DOCUMENT, "18642", [unitFinding("13401", 2)])).toEqual([]);
+    expect(diagnosticsForUnit(DOCUMENT, "18642", [unitFinding("13401", 2)], undefined, "origins")).toEqual([]);
   });
 
   /**
@@ -393,16 +393,16 @@ describe("findings that belong to a hex", () => {
    * happens to be selected would say a unit has a problem when the hex does.
    */
   it("keeps a finding about a hex out of every unit's list", () => {
-    expect(diagnosticsForUnit(DOCUMENT, "13401", [hexFinding("hex-unguarded")])).toEqual([]);
-    expect(diagnosticsForUnit(DOCUMENT, "18642", [hexFinding("hex-unguarded")])).toEqual([]);
+    expect(diagnosticsForUnit(DOCUMENT, "13401", [hexFinding("hex-unguarded")], undefined, "origins")).toEqual([]);
+    expect(diagnosticsForUnit(DOCUMENT, "18642", [hexFinding("hex-unguarded")], undefined, "origins")).toEqual([]);
   });
 
   /** A syntax diagnostic names no unit and is placed by its line, exactly as before. */
   it("still places a syntax diagnostic by its line", () => {
     const syntax: OrderDiagnostic = { ...unitFinding("x", 4), unitId: null, regionId: null };
 
-    expect(diagnosticsForUnit(DOCUMENT, "13401", [syntax])).toHaveLength(1);
-    expect(diagnosticsForUnit(DOCUMENT, "18642", [syntax])).toEqual([]);
+    expect(diagnosticsForUnit(DOCUMENT, "13401", [syntax], undefined, "origins")).toHaveLength(1);
+    expect(diagnosticsForUnit(DOCUMENT, "18642", [syntax], undefined, "origins")).toEqual([]);
   });
 
   it("collects everything belonging to one hex, whether it names a unit or not", () => {
@@ -561,24 +561,24 @@ describe("the diagnostics belonging to a unit formed this month", () => {
   });
 
   it("a finding naming a formed unit is numbered from the top of its FORM block", () => {
-    expect(diagnosticsForUnit(FORMED, "new-1", [named(7, "new-1")], REGION)).toEqual([
+    expect(diagnosticsForUnit(FORMED, "new-1", [named(7, "new-1")], REGION, "origins")).toEqual([
       { ...named(7, "new-1"), lineStart: 2, lineEnd: 2 }
     ]);
   });
 
   it("a finding naming a formed unit is not in its creator's list", () => {
-    expect(diagnosticsForUnit(FORMED, "1922", [named(7, "new-1")], REGION)).toEqual([]);
+    expect(diagnosticsForUnit(FORMED, "1922", [named(7, "new-1")], REGION, "origins")).toEqual([]);
   });
 
   it("a syntax finding inside a FORM block belongs to the formed unit alone", () => {
-    expect(diagnosticsForUnit(FORMED, "1922", [named(7, null)], REGION)).toEqual([]);
-    expect(diagnosticsForUnit(FORMED, "new-1", [named(7, null)], REGION)).toEqual([
+    expect(diagnosticsForUnit(FORMED, "1922", [named(7, null)], REGION, "origins")).toEqual([]);
+    expect(diagnosticsForUnit(FORMED, "new-1", [named(7, null)], REGION, "origins")).toEqual([
       { ...named(7, null), lineStart: 2, lineEnd: 2 }
     ]);
   });
 
   it("a finding on the FORM line itself stays with the unit that wrote it", () => {
-    expect(diagnosticsForUnit(FORMED, "1922", [named(5, null)], REGION)).toEqual([
+    expect(diagnosticsForUnit(FORMED, "1922", [named(5, null)], REGION, "origins")).toEqual([
       { ...named(5, null), lineStart: 2, lineEnd: 2 }
     ]);
   });
@@ -596,7 +596,7 @@ describe("the diagnostics belonging to a unit formed this month", () => {
       "end" // 9
     ].join("\n");
     expect(
-      diagnosticsForUnit(twice, "1922", [named(8, null)], REGION).map((entry) => entry.lineStart)
+      diagnosticsForUnit(twice, "1922", [named(8, null)], REGION, "origins").map((entry) => entry.lineStart)
     ).toEqual([5]);
   });
 });
@@ -619,19 +619,19 @@ describe("a FORM nested inside a FORM", () => {
   });
 
   it("an unnamed finding inside it belongs to the unit it forms and to no editor above", () => {
-    expect(diagnosticsForUnit(NESTED, "new-2", [unnamed(6)], REGION)).toEqual([
+    expect(diagnosticsForUnit(NESTED, "new-2", [unnamed(6)], REGION, "origins")).toEqual([
       { ...unnamed(6), lineStart: 1, lineEnd: 1 }
     ]);
     // Neither the unit that wrote the outer FORM, nor the unit that outer FORM creates.
-    expect(diagnosticsForUnit(NESTED, "new-1", [unnamed(6)], REGION)).toEqual([]);
-    expect(diagnosticsForUnit(NESTED, "1922", [unnamed(6)], REGION)).toEqual([]);
+    expect(diagnosticsForUnit(NESTED, "new-1", [unnamed(6)], REGION, "origins")).toEqual([]);
+    expect(diagnosticsForUnit(NESTED, "1922", [unnamed(6)], REGION, "origins")).toEqual([]);
   });
 
   it("the inner FORM line itself stays with the unit that wrote it", () => {
-    expect(diagnosticsForUnit(NESTED, "new-1", [unnamed(5)], REGION).map((e) => e.lineStart)).toEqual(
+    expect(diagnosticsForUnit(NESTED, "new-1", [unnamed(5)], REGION, "origins").map((e) => e.lineStart)).toEqual(
       [2]
     );
-    expect(diagnosticsForUnit(NESTED, "1922", [unnamed(5)], REGION)).toEqual([]);
+    expect(diagnosticsForUnit(NESTED, "1922", [unnamed(5)], REGION, "origins")).toEqual([]);
   });
 
 });

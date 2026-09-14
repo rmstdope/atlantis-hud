@@ -204,7 +204,7 @@ function hasWrittenOrders(
 export function describeOrdersImport(
   fileText: string,
   currentDocument: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): OrdersImportDescription {
   const fileUnitIds = findUnitBlocks(fileText, syntax).map((block) => block.unitId);
   const fileUnitSet = new Set(fileUnitIds);
@@ -230,7 +230,7 @@ export function describeOrdersImport(
 export function unitIdForDiagnostic(
   document: string,
   diagnostic: OrderDiagnostic,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string | null {
   if (diagnostic.unitId !== null) {
     return diagnostic.unitId;
@@ -261,7 +261,7 @@ export function unitIdForDiagnostic(
 export function unitLabelForDiagnostic(
   document: string,
   diagnostic: OrderDiagnostic,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string | null {
   if (diagnostic.formed !== null) {
     return `new ${diagnostic.formed.alias}`;
