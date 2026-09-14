@@ -2,7 +2,8 @@ import type {
   Coordinate,
   RoutePlan,
   TracedPassage,
-  TracedPath
+  TracedPath,
+  TracedWall
 } from "@atlantis/core-client";
 
 /**
@@ -28,6 +29,12 @@ export type RouteOverlay = {
    * cross country the unit never enters (`ah-3u7c.2.2`).
    */
   beyond: RouteBeyond | null;
+  /**
+   * The wall the near half of the journey stopped at, or null. Null when the wall lies past a
+   * followed passage - that one is `beyond.wall` - and always null for a planner preview, which
+   * never routes through a wall.
+   */
+  wall: TracedWall | null;
 };
 
 /** The half of a journey beyond a followed passage, drawn on the destination's own level. */
@@ -38,6 +45,8 @@ export type RouteBeyond = {
   hexes: Coordinate[];
   /** How many of them the coming month covers; null when the unit's speed is unknown. */
   solidSteps: number | null;
+  /** The wall the far half stopped at, or null. */
+  wall: TracedWall | null;
 };
 
 /**
@@ -69,7 +78,8 @@ export function chooseRouteOverlay(input: {
       // line exactly as it always was; the month split belongs to written orders.
       solidSteps: input.plan.steps.length,
       passage: null,
-      beyond: null
+      beyond: null,
+      wall: null
     };
   }
 
@@ -95,8 +105,11 @@ export function chooseRouteOverlay(input: {
       ? {
           origin: exit.coordinate,
           hexes: exit.steps.map((step) => step.to),
-          solidSteps: input.trace.mode === null ? null : Math.max(0, reach - near - 1)
+          solidSteps: input.trace.mode === null ? null : Math.max(0, reach - near - 1),
+          wall: input.trace.wall
         }
-      : null
+      : null,
+    // A wall before a passage means no passage is followed, so a followed one puts any wall beyond.
+    wall: exit ? null : input.trace.wall
   };
 }

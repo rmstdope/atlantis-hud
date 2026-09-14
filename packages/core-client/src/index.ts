@@ -421,6 +421,19 @@ export type ReportMergeResult = {
 };
 
 /**
+ * Where a traced route met a wall a report proves, and so where the drawing ends.
+ *
+ * Mirrors `TracedWall` in crates/core/src/movement/trace.rs by hand - this type is not a ts-rs
+ * export, so a field added in Rust has to be added here too.
+ */
+export type TracedWall = {
+  /** The hex the blocked step would have left: the route's last hex, or its origin. */
+  coordinate: Coordinate;
+  /** The side of that hex the step would have crossed. */
+  direction: Direction;
+};
+
+/**
  * Where a unit's written MOVE order takes it, hex by hex and month by month.
  *
  * Terrain is a guess wherever the map could not say, and the trace never refuses: an order into
@@ -444,6 +457,11 @@ export type TracedPath = {
    * where a passage comes out, so nothing beyond it can be placed on the map.
    */
   passage: TracedPassage | null;
+  /**
+   * The first wall a report proves on the whole journey, or null. `steps` - or, past a followed
+   * passage, `passage.exit.steps` - ends at the hex before it, and nothing after it is placed.
+   */
+  wall: TracedWall | null;
 };
 
 /**
