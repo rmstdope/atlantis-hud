@@ -5598,7 +5598,9 @@ test("a route through a passage stops at the structure and says why", async ({ p
   // Centring on the hex the ring already stands at the middle of moves nothing: the first right-click
   // was a recentre and not some other movement.
   await ring.click({ button: "right" });
-  await expect.poll(() => world.getAttribute("transform")).toBe(centred);
+  // Read once rather than polled: `commit` writes the transform synchronously, and a poll would pass
+  // on its first read before the click had any effect.
+  expect(await world.getAttribute("transform")).toBe(centred);
 
   // And the count of what could not be placed is said in words.
   const problem = page

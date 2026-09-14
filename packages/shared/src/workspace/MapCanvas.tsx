@@ -1681,8 +1681,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
 
           {/*
             The hit and accessibility layer: flat, in model order, and drawn over everything except
-            the mark layer below it. Keeping it separate from the terrain buckets is what stops a hex being remounted —
-            and losing focus mid-keystroke — when its knowledge changes.
+            the mark layer below it. Keeping it separate from the terrain buckets is what stops a
+            hex being remounted — and losing focus mid-keystroke — when its knowledge changes.
           */}
           <g
             onFocus={() => setMapFocused(true)}
@@ -1763,192 +1763,212 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               right-click-to-recentre live on the root svg and reach it only by bubbling.
           */}
           <g data-testid="map-marks">
-          {/*
-            Walls a report proves (ah-wq2e). After the region decorations, so a wall covers the
-            dashed border; before the passage rings, so a ring on the same hex keeps its own hover.
-          */}
-          {wallsOnLevel.map((mark) => (
-            <WallRampart key={mark.key} mark={mark} onClick={(event, at) => clickHexAt(event, at, hexAt(onLevel, at))} />
-          ))}
+            {/*
+              Walls a report proves (ah-wq2e). After the region decorations, so a wall covers the
+              dashed border; before the passage rings, so a ring on the same hex keeps its own hover.
+            */}
+            {wallsOnLevel.map((mark) => (
+              <WallRampart
+                key={mark.key}
+                mark={mark}
+                onClick={(event, at) => clickHexAt(event, at, hexAt(onLevel, at))}
+              />
+            ))}
 
-          {/*
-            Where the route ran into an inner passage. `rules/move`, direction 4: `IN` travels
-            through the structure to another region. Where no report names which, the line stops
-            here and a `?` says so rather than leaving it unexplained; where one does, a matched
-            pair of interlocked rings marks the two ends and each hover names the other
-            (`ah-3u7c.2.2`). Drawn after the line so they cap it. They cannot be theme marks: see
-            the mark layer.
-          */}
-          {route?.passage && route.passage.exit === null && route.passage.coordinate.z === level && (
-            <PassageRing
-              at={route.passage.coordinate}
-              glyph="?"
-              hover={ringHover(hexAt(onLevel, route.passage.coordinate)?.label ?? null, passageTitle(route.passage))}
-              onClick={(event) => clickHexAt(event, route.passage!.coordinate, hexAt(onLevel, route.passage!.coordinate))}
-              testId="map-passage-ring"
-              translateAt={translateAt}
-            />
-          )}
-          {route?.passage?.exit && route.passage.coordinate.z === level && (
-            <PassageRing
-              at={route.passage.coordinate}
-              glyph={PASSAGE_PAIR}
-              hover={ringHover(hexAt(onLevel, route.passage.coordinate)?.label ?? null, passageTitle(route.passage))}
-              onClick={(event) => clickHexAt(event, route.passage!.coordinate, hexAt(onLevel, route.passage!.coordinate))}
-              testId="map-passage-entry-ring"
-              translateAt={translateAt}
-            />
-          )}
-          {route?.passage?.exit && route.passage.exit.coordinate.z === level && (
-            <PassageRing
-              at={route.passage.exit.coordinate}
-              glyph={PASSAGE_PAIR}
-              hover={ringHover(
-                hexAt(onLevel, route.passage.exit.coordinate)?.label ?? null,
-                passageExitTitle(route.passage)
-              )}
-              onClick={(event) => clickHexAt(event, route.passage!.exit!.coordinate, hexAt(onLevel, route.passage!.exit!.coordinate))}
-              testId="map-passage-exit-ring"
-              translateAt={translateAt}
-            />
-          )}
+            {/*
+              Where the route ran into an inner passage. `rules/move`, direction 4: `IN` travels
+              through the structure to another region. Where no report names which, the line stops
+              here and a `?` says so rather than leaving it unexplained; where one does, a matched
+              pair of interlocked rings marks the two ends and each hover names the other
+              (`ah-3u7c.2.2`). Drawn after the line so they cap it. They cannot be theme marks: see
+              the mark layer.
+            */}
+            {route?.passage && route.passage.exit === null && route.passage.coordinate.z === level && (
+              <PassageRing
+                at={route.passage.coordinate}
+                glyph="?"
+                hover={ringHover(
+                  hexAt(onLevel, route.passage.coordinate)?.label ?? null,
+                  passageTitle(route.passage)
+                )}
+                onClick={(event) =>
+                  clickHexAt(event, route.passage!.coordinate, hexAt(onLevel, route.passage!.coordinate))
+                }
+                testId="map-passage-ring"
+                translateAt={translateAt}
+              />
+            )}
+            {route?.passage?.exit && route.passage.coordinate.z === level && (
+              <PassageRing
+                at={route.passage.coordinate}
+                glyph={PASSAGE_PAIR}
+                hover={ringHover(
+                  hexAt(onLevel, route.passage.coordinate)?.label ?? null,
+                  passageTitle(route.passage)
+                )}
+                onClick={(event) =>
+                  clickHexAt(event, route.passage!.coordinate, hexAt(onLevel, route.passage!.coordinate))
+                }
+                testId="map-passage-entry-ring"
+                translateAt={translateAt}
+              />
+            )}
+            {route?.passage?.exit && route.passage.exit.coordinate.z === level && (
+              <PassageRing
+                at={route.passage.exit.coordinate}
+                glyph={PASSAGE_PAIR}
+                hover={ringHover(
+                  hexAt(onLevel, route.passage.exit.coordinate)?.label ?? null,
+                  passageExitTitle(route.passage)
+                )}
+                onClick={(event) =>
+                  clickHexAt(
+                    event,
+                    route.passage!.exit!.coordinate,
+                    hexAt(onLevel, route.passage!.exit!.coordinate)
+                  )
+                }
+                testId="map-passage-exit-ring"
+                translateAt={translateAt}
+              />
+            )}
 
-          {/*
-            Manual hex notes (ah-o1t.3): map-owned rather than a theme's, so it draws once for
-            every theme and a theme can never redraw the reader's own note. Screen-constant, like
-            the selection ring - each pin group is scaled by `1 / scaleOf(view.step)` so the ink
-            holds its size while its position scales with the world.
-          */}
-          {drawsNotes(band, badges.notes) && notePinsOnLevel.length > 0 && (
-            <g data-testid="map-notes">
-              {notePinsOnLevel.map((pin) => {
-                const scale = 1 / scaleOf(view.step);
-                const at = `translate(${pin.x + PIN_OFFSET.x * HEX_RADIUS},${
-                  pin.y + PIN_OFFSET.y * HEX_RADIUS
-                }) scale(${scale})`;
-                const isOpen = openNotesId === pin.regionId;
-                return (
-                  <g key={pin.regionId} transform={at}>
-                    <g
-                      role="button"
-                      tabIndex={-1}
-                      aria-label={`notes on hex ${pin.regionId}`}
-                      aria-expanded={isOpen}
-                      data-testid="map-note-pin"
-                      data-region-id={pin.regionId}
-                      style={GHOSTABLE_HIT}
-                      className="cursor-pointer"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        // Mirrors the hex polygon's own check: Ctrl+click on macOS recentres
-                        // rather than opening the stack, exactly as it would on the hex under it.
-                        if (
-                          isRecentreGesture(
-                            { button: event.button, ctrlKey: event.ctrlKey },
-                            isMacPlatform()
-                          )
-                        ) {
-                          return;
-                        }
-                        selectRef.current(pin.regionId);
-                        setOpenNotesId((open) => (open === pin.regionId ? null : pin.regionId));
-                        // Mirrors the hex polygon's own click handler: focused as well as
-                        // selected, so the arrow keys carry on from the hex the pin just picked
-                        // rather than staying wherever focus was before.
-                        worldRef.current
-                          ?.querySelector<SVGPolygonElement>(
-                            `polygon[data-region-id="${pin.regionId}"]`
-                          )
-                          ?.focus();
-                      }}
-                    >
-                      <title>
-                        {pin.notes.length === 1
-                          ? wrapNoteLines(pin.notes[0].text, 40, 1)[0]
-                          : `${pin.notes.length} notes`}
-                      </title>
-                      <g transform={`scale(${PIN_SCALE})`}>
-                        <path
-                          d="M-4.5 -5h6l3 3v7h-9z"
-                          className="fill-note stroke-note-ink"
-                          strokeWidth={0.9}
-                        />
-                        <path
-                          d="M1.5 -5v3h3"
-                          fill="none"
-                          className="stroke-note-ink"
-                          strokeWidth={0.9}
-                        />
-                        <path
-                          d="M-2.5 0h4M-2.5 2.2h3"
-                          className="stroke-note-ink"
-                          strokeWidth={0.8}
-                        />
-                      </g>
-                      {pin.notes.length > 1 && (
-                        <>
-                          <circle
-                            cx={BADGE.cx}
-                            cy={BADGE.cy}
-                            r={BADGE.r}
-                            className="fill-note-ink"
+            {/*
+              Manual hex notes (ah-o1t.3): map-owned rather than a theme's, so it draws once for
+              every theme and a theme can never redraw the reader's own note. Screen-constant, like
+              the selection ring - each pin group is scaled by `1 / scaleOf(view.step)` so the ink
+              holds its size while its position scales with the world.
+            */}
+            {drawsNotes(band, badges.notes) && notePinsOnLevel.length > 0 && (
+              <g data-testid="map-notes">
+                {notePinsOnLevel.map((pin) => {
+                  const scale = 1 / scaleOf(view.step);
+                  const at = `translate(${pin.x + PIN_OFFSET.x * HEX_RADIUS},${
+                    pin.y + PIN_OFFSET.y * HEX_RADIUS
+                  }) scale(${scale})`;
+                  const isOpen = openNotesId === pin.regionId;
+                  return (
+                    <g key={pin.regionId} transform={at}>
+                      <g
+                        role="button"
+                        tabIndex={-1}
+                        aria-label={`notes on hex ${pin.regionId}`}
+                        aria-expanded={isOpen}
+                        data-testid="map-note-pin"
+                        data-region-id={pin.regionId}
+                        style={GHOSTABLE_HIT}
+                        className="cursor-pointer"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          // Mirrors `hexClickOf`: Ctrl+click on macOS recentres
+                          // rather than opening the stack, exactly as it would on the hex under it.
+                          if (
+                            isRecentreGesture(
+                              { button: event.button, ctrlKey: event.ctrlKey },
+                              isMacPlatform()
+                            )
+                          ) {
+                            return;
+                          }
+                          selectRef.current(pin.regionId);
+                          setOpenNotesId((open) => (open === pin.regionId ? null : pin.regionId));
+                          // Mirrors the hex polygon's own click handler: focused as well as
+                          // selected, so the arrow keys carry on from the hex the pin just picked
+                          // rather than staying wherever focus was before.
+                          worldRef.current
+                            ?.querySelector<SVGPolygonElement>(
+                              `polygon[data-region-id="${pin.regionId}"]`
+                            )
+                            ?.focus();
+                        }}
+                      >
+                        <title>
+                          {pin.notes.length === 1
+                            ? wrapNoteLines(pin.notes[0].text, 40, 1)[0]
+                            : `${pin.notes.length} notes`}
+                        </title>
+                        <g transform={`scale(${PIN_SCALE})`}>
+                          <path
+                            d="M-4.5 -5h6l3 3v7h-9z"
+                            className="fill-note stroke-note-ink"
+                            strokeWidth={0.9}
                           />
-                          <text
-                            x={BADGE.cx}
-                            y={BADGE.cy + BADGE.baseline}
-                            textAnchor="middle"
-                            fontSize={BADGE.fontSize}
-                            className="fill-note"
-                          >
-                            {pin.notes.length}
-                          </text>
-                        </>
+                          <path
+                            d="M1.5 -5v3h3"
+                            fill="none"
+                            className="stroke-note-ink"
+                            strokeWidth={0.9}
+                          />
+                          <path
+                            d="M-2.5 0h4M-2.5 2.2h3"
+                            className="stroke-note-ink"
+                            strokeWidth={0.8}
+                          />
+                        </g>
+                        {pin.notes.length > 1 && (
+                          <>
+                            <circle
+                              cx={BADGE.cx}
+                              cy={BADGE.cy}
+                              r={BADGE.r}
+                              className="fill-note-ink"
+                            />
+                            <text
+                              x={BADGE.cx}
+                              y={BADGE.cy + BADGE.baseline}
+                              textAnchor="middle"
+                              fontSize={BADGE.fontSize}
+                              className="fill-note"
+                            >
+                              {pin.notes.length}
+                            </text>
+                          </>
+                        )}
+                      </g>
+                      {isOpen && (
+                        <g
+                          data-testid="map-note-tags"
+                          style={GHOSTABLE_HIT}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {noteTagLayout(pin.notes).map((tag) => (
+                            <g key={tag.noteId} data-testid="map-note-tag">
+                              <path
+                                d={`M${tag.x} ${tag.y}h${tag.width}v${tag.height}h-${tag.width}l-3 -4z`}
+                                className="fill-note stroke-note-ink"
+                                strokeWidth={0.8}
+                              />
+                              {tag.lines.map((line, i) => (
+                                <text
+                                  key={i}
+                                  x={tag.x + TAG.pad / 2}
+                                  y={tag.y + TAG.lineHeight * 0.85 + i * TAG.lineHeight}
+                                  fontSize={TAG.fontSize}
+                                  className="fill-note-ink"
+                                >
+                                  {line}
+                                </text>
+                              ))}
+                              {tag.stamp && (
+                                <text
+                                  x={tag.x + TAG.pad / 2}
+                                  y={tag.y + TAG.lineHeight * 0.85 + tag.lines.length * TAG.lineHeight}
+                                  fontSize={TAG.stampFontSize}
+                                  className="fill-note-ink"
+                                  opacity={0.7}
+                                >
+                                  {tag.stamp}
+                                </text>
+                              )}
+                            </g>
+                          ))}
+                        </g>
                       )}
                     </g>
-                    {isOpen && (
-                      <g
-                        data-testid="map-note-tags"
-                        style={GHOSTABLE_HIT}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        {noteTagLayout(pin.notes).map((tag) => (
-                          <g key={tag.noteId} data-testid="map-note-tag">
-                            <path
-                              d={`M${tag.x} ${tag.y}h${tag.width}v${tag.height}h-${tag.width}l-3 -4z`}
-                              className="fill-note stroke-note-ink"
-                              strokeWidth={0.8}
-                            />
-                            {tag.lines.map((line, i) => (
-                              <text
-                                key={i}
-                                x={tag.x + TAG.pad / 2}
-                                y={tag.y + TAG.lineHeight * 0.85 + i * TAG.lineHeight}
-                                fontSize={TAG.fontSize}
-                                className="fill-note-ink"
-                              >
-                                {line}
-                              </text>
-                            ))}
-                            {tag.stamp && (
-                              <text
-                                x={tag.x + TAG.pad / 2}
-                                y={tag.y + TAG.lineHeight * 0.85 + tag.lines.length * TAG.lineHeight}
-                                fontSize={TAG.stampFontSize}
-                                className="fill-note-ink"
-                                opacity={0.7}
-                              >
-                                {tag.stamp}
-                              </text>
-                            )}
-                          </g>
-                        ))}
-                      </g>
-                    )}
-                  </g>
-                );
-              })}
-            </g>
-          )}
+                  );
+                })}
+              </g>
+            )}
           </g>
           </g>
 
