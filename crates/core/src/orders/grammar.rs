@@ -613,28 +613,18 @@ pub(super) fn selected_orders(ruleset: Option<&Ruleset>) -> Vec<&'static Order> 
     orders
 }
 
-/// Every order name, for callers that only need the vocabulary.
+/// Every order name, for callers that only need the vocabulary. `None` lists the New Origins orders.
 #[must_use]
-pub fn order_commands() -> Vec<&'static str> {
-    order_commands_with_ruleset(None)
-}
-
-#[must_use]
-pub fn order_commands_with_ruleset(ruleset: Option<&Ruleset>) -> Vec<&'static str> {
+pub fn order_commands(ruleset: Option<&Ruleset>) -> Vec<&'static str> {
     selected_orders(ruleset)
         .into_iter()
         .map(|order| order.name)
         .collect()
 }
 
-/// The order this keyword names, if the ruleset has one.
+/// The order this keyword names, if the ruleset has one. `None` looks it up among the New Origins orders.
 #[must_use]
-pub fn find_order(command: &str) -> Option<&'static Order> {
-    find_order_with_ruleset(command, None)
-}
-
-#[must_use]
-pub fn find_order_with_ruleset(command: &str, ruleset: Option<&Ruleset>) -> Option<&'static Order> {
+pub fn find_order(command: &str, ruleset: Option<&Ruleset>) -> Option<&'static Order> {
     selected_orders(ruleset)
         .into_iter()
         .find(|order| order.name.eq_ignore_ascii_case(command))
@@ -740,7 +730,7 @@ fn shape_of(tokens: &[Token], ruleset: Option<&Ruleset>) -> CaretShape {
     let Some((command, arguments)) = tokens.split_first() else {
         return CaretShape::Command;
     };
-    let Some(order) = find_order_with_ruleset(&command.text, ruleset) else {
+    let Some(order) = find_order(&command.text, ruleset) else {
         return CaretShape::Nowhere;
     };
 
@@ -896,7 +886,7 @@ pub(super) fn consumed_arguments<'a>(
     arguments: &'a [Token],
     ruleset: Option<&Ruleset>,
 ) -> Option<&'a [Token]> {
-    let order = find_order_with_ruleset(&command.text, ruleset)?;
+    let order = find_order(&command.text, ruleset)?;
     let matched = match_order(order, arguments, ruleset).ok()?;
     Some(&arguments[..matched.consumed])
 }
@@ -1225,7 +1215,7 @@ mod tests {
 
     #[test]
     fn the_table_names_each_order_once() {
-        let mut names: Vec<&str> = order_commands();
+        let mut names: Vec<&str> = order_commands(None);
         names.sort_unstable();
         let mut deduplicated = names.clone();
         deduplicated.dedup();
@@ -1234,7 +1224,7 @@ mod tests {
 
     #[test]
     fn the_table_is_alphabetical_so_it_can_be_read_against_the_rules_page() {
-        let names = order_commands();
+        let names = order_commands(None);
         let mut sorted = names.clone();
         sorted.sort_unstable();
         assert_eq!(names, sorted);
@@ -1252,18 +1242,27 @@ mod tests {
     #[test]
     fn the_vocabulary_is_corrected() {
         for invented in ["ENDFORM", "SWEAR", "NOSPOILS", "WISHDRAW"] {
-            assert!(find_order(invented).is_none(), "{invented} is not an order");
+            assert!(
+                find_order(invented, None).is_none(),
+                "{invented} is not an order"
+            );
         }
         for real in ["END", "DISTRIBUTE"] {
-            assert!(find_order(real).is_some(), "{real} is an order");
+            assert!(find_order(real, None).is_some(), "{real} is an order");
         }
     }
 
     #[test]
     fn an_order_is_found_whatever_its_case() {
-        assert_eq!(find_order("give").map(|order| order.name), Some("GIVE"));
-        assert_eq!(find_order("Give").map(|order| order.name), Some("GIVE"));
-        assert!(find_order("fly").is_none());
+        assert_eq!(
+            find_order("give", None).map(|order| order.name),
+            Some("GIVE")
+        );
+        assert_eq!(
+            find_order("Give", None).map(|order| order.name),
+            Some("GIVE")
+        );
+        assert!(find_order("fly", None).is_none());
     }
 
     #[test]
@@ -1274,15 +1273,15 @@ mod tests {
         let trident =
             Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON).unwrap();
 
-        assert!(find_order_with_ruleset("ANNIHILATE", Some(&origins)).is_some());
-        assert!(find_order_with_ruleset("SACRIFICE", Some(&origins)).is_some());
-        assert!(find_order_with_ruleset("ANNIHILATE", Some(&arcanum)).is_none());
-        assert!(find_order_with_ruleset("SACRIFICE", Some(&arcanum)).is_none());
-        assert!(find_order_with_ruleset("CREATE", Some(&arcanum)).is_none());
-        assert!(find_order_with_ruleset("CREATE", Some(&trident)).is_some());
+        assert!(find_order("ANNIHILATE", Some(&origins)).is_some());
+        assert!(find_order("SACRIFICE", Some(&origins)).is_some());
+        assert!(find_order("ANNIHILATE", Some(&arcanum)).is_none());
+        assert!(find_order("SACRIFICE", Some(&arcanum)).is_none());
+        assert!(find_order("CREATE", Some(&arcanum)).is_none());
+        assert!(find_order("CREATE", Some(&trident)).is_some());
         for command in ["CAPITAL", "EXPLORE", "QUEST"] {
-            assert!(find_order_with_ruleset(command, Some(&arcanum)).is_some());
-            assert!(find_order_with_ruleset(command, Some(&trident)).is_some());
+            assert!(find_order(command, Some(&arcanum)).is_some());
+            assert!(find_order(command, Some(&trident)).is_some());
         }
     }
 
@@ -1372,19 +1371,19 @@ mod tests {
     fn fixed_forms_report_the_consumed_prefix_and_ignore_the_suffix() {
         // Zero arguments: LEAVE takes none, so the whole line is trailing text.
         let (command, args) = arguments("LEAVE note");
-        let order = find_order(&command.text).expect("LEAVE is an order");
+        let order = find_order(&command.text, None).expect("LEAVE is an order");
         let matched = match_order(order, &args, None).expect("trailing text is not an error");
         assert_eq!(matched.consumed, 0);
 
         // One argument: CLAIM takes a number, and stops there.
         let (command, args) = arguments("CLAIM 100 note");
-        let order = find_order(&command.text).expect("CLAIM is an order");
+        let order = find_order(&command.text, None).expect("CLAIM is an order");
         let matched = match_order(order, &args, None).expect("trailing text is not an error");
         assert_eq!(matched.consumed, 1);
 
         // Multiple arguments: STEAL takes a unit and an item.
         let (command, args) = arguments("STEAL 123 SILV note");
-        let order = find_order(&command.text).expect("STEAL is an order");
+        let order = find_order(&command.text, None).expect("STEAL is an order");
         let matched = match_order(order, &args, None).expect("trailing text is not an error");
         assert_eq!(matched.consumed, 2);
     }
@@ -1395,7 +1394,7 @@ mod tests {
         // `EXCEPT` as trailing text; the `EXCEPT [number]` form reaches one token farther before
         // finding nothing where a reserve belongs, so its complaint is the one that must surface.
         let (command, args) = arguments("GIVE 17 ALL SWOR EXCEPT x");
-        let order = find_order(&command.text).expect("GIVE is an order");
+        let order = find_order(&command.text, None).expect("GIVE is an order");
         let mismatch =
             match_order(order, &args, None).expect_err("a malformed reserve is still an error");
         assert_eq!(mismatch.at, 4);
@@ -1403,7 +1402,7 @@ mod tests {
 
         // The complete shorter form still wins when nothing reaches farther than it did.
         let (command, args) = arguments("STUDY COMB note");
-        let order = find_order(&command.text).expect("STUDY is an order");
+        let order = find_order(&command.text, None).expect("STUDY is an order");
         let matched = match_order(order, &args, None).expect("the short form is complete");
         assert_eq!(matched.consumed, 1);
     }
@@ -1411,13 +1410,13 @@ mod tests {
     #[test]
     fn repeated_unit_forms_stop_after_the_last_unit() {
         let (command, args) = arguments("EVICT 415 698 note");
-        let order = find_order(&command.text).expect("EVICT is an order");
+        let order = find_order(&command.text, None).expect("EVICT is an order");
         let matched = match_order(order, &args, None).expect("two units, then trailing text");
         assert_eq!(matched.consumed, 2);
 
         // The first unit is still required.
         let (command, args) = arguments("EVICT note");
-        let order = find_order(&command.text).expect("EVICT is an order");
+        let order = find_order(&command.text, None).expect("EVICT is an order");
         let mismatch = match_order(order, &args, None).expect_err("no unit to read at all");
         assert_eq!(mismatch.at, 0);
     }
@@ -1427,14 +1426,14 @@ mod tests {
         // `Rest` is strict where `Repeat` is not: every remaining token must match, so a bad
         // route element is still the player's mistake to fix rather than a place to stop reading.
         let (command, args) = arguments("MOVE N nowhere");
-        let order = find_order(&command.text).expect("MOVE is an order");
+        let order = find_order(&command.text, None).expect("MOVE is an order");
         let mismatch =
             match_order(order, &args, None).expect_err("a bad route step is still an error");
         assert_eq!(mismatch.at, 1);
 
         // `Tail` keeps consuming everything, unaffected by this change.
         let (command, args) = arguments("CAST Fire_Shield a whole spell line");
-        let order = find_order(&command.text).expect("CAST is an order");
+        let order = find_order(&command.text, None).expect("CAST is an order");
         let matched = match_order(order, &args, None).expect("Tail accepts anything");
         assert_eq!(matched.consumed, args.len());
     }

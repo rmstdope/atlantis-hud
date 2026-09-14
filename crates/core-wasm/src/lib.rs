@@ -832,9 +832,7 @@ pub fn order_commands_state(ruleset_json: Option<String>) -> Result<JsValue, JsV
             .and_then(|json| cache.ruleset(json).ok())
     });
 
-    to_js(&atlantis_hud_core::order_commands_with_ruleset(
-        ruleset.as_deref(),
-    ))
+    to_js(&atlantis_hud_core::order_commands(ruleset.as_deref()))
 }
 
 /// Every word the rules know, for the editor that has to spot a keyword as it is typed.

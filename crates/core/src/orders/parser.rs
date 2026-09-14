@@ -6,7 +6,7 @@
 //! whole file when any of it is wrong - which is exactly the kind of mistake a per-line check cannot
 //! see.
 
-use super::grammar::{find_order_with_ruleset, match_order, Mismatch};
+use super::grammar::{find_order, match_order, Mismatch};
 use super::lexer::{utf16_column, Token, TokenKind};
 use super::walk::{self, Event, Line, Opened};
 use crate::movement::rules::Ruleset;
@@ -141,7 +141,7 @@ impl Document {
     /// The argument-shape check every order gets, block keywords included. An unrecognised command
     /// is `unknown-command`; a recognised one is checked against the grammar's own shape.
     fn check_shape(&mut self, line: &Line<'_>, ruleset: Option<&Ruleset>) {
-        let Some(order) = find_order_with_ruleset(&line.command.text, ruleset) else {
+        let Some(order) = find_order(&line.command.text, ruleset) else {
             self.error(
                 line.number,
                 line.command.column_start,

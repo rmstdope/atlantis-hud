@@ -256,7 +256,7 @@ impl UnitIntents {
 /// the parser checks argument shape against the same table - so the empty string is a floor rather
 /// than a case, and a reader skips it instead of printing it.
 fn canonical_keyword(command: &str, ruleset: Option<&Ruleset>) -> &'static str {
-    super::grammar::find_order_with_ruleset(command, ruleset).map_or("", |order| order.name)
+    super::grammar::find_order(command, ruleset).map_or("", |order| order.name)
 }
 
 /// Reads a whole orders document into one entry per unit block.
@@ -649,7 +649,7 @@ fn is_free_order(command: &Token, ruleset: Option<&Ruleset>) -> bool {
     FREE_ORDERS
         .iter()
         .any(|free| command.text.eq_ignore_ascii_case(free))
-        && super::grammar::find_order_with_ruleset(&command.text, ruleset).is_some()
+        && super::grammar::find_order(&command.text, ruleset).is_some()
 }
 
 /// Whether a `DESTROY` line is shaped well enough for the game to attempt it.
@@ -706,7 +706,7 @@ pub fn read_order_with_ruleset(
     ruleset: Option<&Ruleset>,
 ) -> Option<Intent> {
     let name = command.text.to_ascii_uppercase();
-    super::grammar::find_order_with_ruleset(&command.text, ruleset)?;
+    super::grammar::find_order(&command.text, ruleset)?;
 
     match name.as_str() {
         "GIVE" => {

@@ -7938,7 +7938,7 @@ mod tests {
                 .copied(),
         ) {
             assert!(
-                crate::orders::grammar::find_order(keyword).is_some(),
+                crate::orders::grammar::find_order(keyword, None).is_some(),
                 "{keyword} is not in the grammar"
             );
         }

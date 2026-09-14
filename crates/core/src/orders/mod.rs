@@ -50,7 +50,7 @@ pub use completion::{
     completions_at_caret, order_argument_completions, CaretCompletions, CaretPosition,
     OrderCompletion,
 };
-pub use grammar::{order_commands, order_commands_with_ruleset};
+pub use grammar::order_commands;
 pub use vocabulary::order_vocabulary;
 
 use std::collections::{HashMap, HashSet};
