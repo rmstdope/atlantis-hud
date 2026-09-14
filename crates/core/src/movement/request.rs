@@ -175,10 +175,9 @@ pub struct MoveOrderTraceResponse {
 /// order this unit travels by may be another unit's. [`crate::movement::fleet::steps_followed_by`]
 /// settles which, for this reader and the units-in-hex preview alike.
 ///
-/// The last readable movement line of a block wins, because a later order replaces an earlier one
-/// when the game executes them - but only among the lines that are that unit's own for this turn. A
-/// `TURN` block holds orders for the turn after this one, and a `FORM` block's orders belong to the
-/// unit being formed, so movement inside either says nothing about where a unit goes next.
+/// A unit's movement lines chain into one route (`rules/move`: "Multiple MOVE orders given by one
+/// unit will chain together."), a different month-long order starts a new one, and `TURN` blocks
+/// are skipped. [`OrderedUnits`] holds the rest.
 ///
 /// # Errors
 ///
@@ -250,7 +249,7 @@ pub fn trace_orders_on_map(
 
     let report = cache.classified(raw_report, ruleset_json);
 
-    let ordered = OrderedUnits::from_document(orders_document);
+    let ordered = OrderedUnits::from_document_with_ruleset(orders_document, Some(ruleset.as_ref()));
     let formed;
     let (unit, own, own_is_sail) =
         match report.units().find(|unit| unit.unit_id == unit_id).cloned() {
