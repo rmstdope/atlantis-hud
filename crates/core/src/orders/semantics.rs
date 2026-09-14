@@ -13277,11 +13277,10 @@ fn shipping_bills(
                             conditional: false,
                         });
                     } else {
-                        // The whole ask, applied and not recorded - `buy_silver`'s asymmetry. It
-                        // is what makes `not-enough-silver` fire, and what
-                        // `balance_before_maintenance` reconstructs from; the month's record says
-                        // nothing moved, because nothing did.
-                        apply_silver(ledger, StatePhase::Transport, sender, -cost, Some(placed));
+                        // Recorded only: nothing is charged while shipments are still being
+                        // judged, or a refusal would drain the purse a later, affordable shipment
+                        // is judged against. `settle_shipping` charges the whole ask once every
+                        // shipment has been judged.
                         priced_and_refused.push((
                             i64::try_from(placed.line).unwrap_or(i64::MAX),
                             super::transport::RefusedShipment {
@@ -13384,6 +13383,28 @@ fn settle_shipping(
             true,
             &received_early,
         );
+    }
+
+    // Only now, with every shipment judged, is each refusal's whole ask charged - applied and not
+    // recorded, `buy_silver`'s asymmetry. It is what makes `not-enough-silver` fire and what
+    // `balance_before_maintenance` reconstructs from, while the month's record says nothing moved,
+    // because nothing did. Charged any earlier, a refusal would drain the purse a later, affordable
+    // shipment is judged against, though the game ships that one (all or nothing, `ah-7ale.4`).
+    for (hex, ledger) in hexes.iter_mut() {
+        let refused: Vec<(String, i64, i64)> = ledger
+            .refused_shipments
+            .iter()
+            .map(|refused| (refused.unit_id.clone(), refused.line, refused.cost))
+            .collect();
+        for (unit_id, line, cost) in refused {
+            let placed = hex.find(&unit_id).and_then(|ordered| {
+                ordered
+                    .intents
+                    .iter()
+                    .find(|placed| i64::try_from(placed.line).ok() == Some(line))
+            });
+            apply_silver(ledger, StatePhase::Transport, &unit_id, -cost, placed);
+        }
     }
 }
 
@@ -38767,6 +38788,100 @@ BUILD
         let paid = sender_silver(regions(90), orders, with_map());
         assert_eq!(shipped(&paid).len(), 2);
         assert!(!codes(&unpaid_findings(regions(90), orders)).contains(&"not-enough-silver"));
+    }
+
+    /// A refusal spends nothing, so it leaves the purse whole for the shipment after it: a $60
+    /// shipment the sender's $50 cannot cover is refused, and the $40 one written below it still
+    /// ships (all or nothing, the agreed record; `data/quartermaster` prices a fur at 5 at
+    /// Quartermaster 5).
+    #[test]
+    fn a_refused_shipment_leaves_the_purse_for_the_next_one() {
+        let regions = || {
+            let mut regions = priced_shipping(
+                5,
+                &[(20, "furs", "FUR")],
+                vec![
+                    caravanserai_owner("901", 1, 0, 6),
+                    caravanserai_owner("902", 1, 0, 8),
+                ],
+            );
+            regions[0].units[0]
+                .items
+                .iter_mut()
+                .find(|item| item.tag == SILVER)
+                .expect("priced_shipping gives the sender silver")
+                .amount = 50;
+            regions
+        };
+        let orders = "unit 900\nTRANSPORT 901 12 FUR\nTRANSPORT 902 8 FUR\n";
+
+        let silver = sender_silver(regions(), orders, with_map());
+        assert_eq!(
+            shipped(&silver),
+            vec![&SilverChange {
+                amount: -40,
+                cause: SilverChangeCause::Shipped,
+                line: Some(3),
+                other: None,
+            }]
+        );
+        let findings = unpaid_findings(regions(), orders);
+        let messages: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(messages.len(), 1, "{findings:?}");
+        assert!(
+            messages[0].ends_with(", so it ships none of the 12 furs ordered"),
+            "{messages:?}"
+        );
+    }
+
+    /// The same across units in a sharing hex: one sharer's refused $65 shipment leaves the $60
+    /// pool whole, so a sharing mate's $30 shipment still pays from it.
+    #[test]
+    fn a_refused_shipment_leaves_the_pool_for_a_mate() {
+        let mut regions = priced_shipping(
+            5,
+            &[(13, "furs", "FUR")],
+            vec![caravanserai_owner("901", 1, 0, 6)],
+        );
+        regions[0].units[0]
+            .items
+            .iter_mut()
+            .find(|item| item.tag == SILVER)
+            .expect("priced_shipping gives the sender silver")
+            .amount = 20;
+        regions[0].units[0] = sharing(regions[0].units[0].clone());
+        let mut mate = sharing(with_item(
+            with_silver(with_skill(unit("903"), "QUAM", 5), 40),
+            6,
+            "furs",
+            "FUR",
+        ));
+        mate.structure_id = Some("400".to_string());
+        mate.region_id = regions[0].region_id.clone();
+        regions[0].units.push(mate);
+        let orders = "unit 900\nTRANSPORT 901 13 FUR\nunit 903\nTRANSPORT 901 6 FUR\n";
+
+        let forecast = review_turn(&report(regions), orders, Some(&ruleset()), with_map()).silver;
+        let of = |id: &str| {
+            forecast
+                .iter()
+                .find(|silver| silver.unit_id == id)
+                .expect("the unit is forecast")
+        };
+        assert_eq!(shipped(of("900")), Vec::<&SilverChange>::new());
+        assert_eq!(
+            shipped(of("903")),
+            vec![&SilverChange {
+                amount: -30,
+                cause: SilverChangeCause::Shipped,
+                line: Some(4),
+                other: None,
+            }]
+        );
     }
 
     /// `rules/economy_transport`, New Age: "Sending items to a quartermaster no more than 2 hexes
