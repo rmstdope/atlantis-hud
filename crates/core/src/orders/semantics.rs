@@ -17,6 +17,7 @@
 //! confidence in every other line on the screen, which is a far worse trade than a missed one.
 
 use std::borrow::Cow;
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
@@ -30,16 +31,17 @@ use super::phases::{self, StatePhase};
 use super::standing::{self, standing_after, Boarding};
 use super::transfers;
 use crate::movement::fleet::OrderedUnits as FleetOrders;
-use crate::movement::graph::{may_leave_land, Direction};
+use crate::movement::graph::{Direction, MapKnowledge};
 use crate::movement::mode::{
     best_allowance, capacities_from_items, cargo_capacity, fleet_flies, fleet_label,
     hulls_named_in, is_vessel, sailing_requirement, Capacities,
 };
 use crate::movement::orders::{first_passage, MoveStep};
-use crate::movement::plan::{constrains_departure, refused_by_sailing_step, Hull, Journey};
+use crate::movement::plan::{Hull, Journey};
 use crate::movement::rules::{
     item_spellings, ItemEntry, ItemKind, MovementMode, Ruleset, SkillEntry,
 };
+use crate::movement::sailing::refused_sail_steps;
 use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::magic;
 use crate::orders::silver::{
@@ -604,9 +606,7 @@ pub fn review_turn(
     // check is actually enabled (`ah-8myf`).
     let by_coordinate: HashMap<Coordinate, &ReportRegion> = if options
         .emits(codes::PRODUCE_NOT_HERE)
-        || options.emits(codes::SAIL_BETWEEN_LAND_HEXES)
         || options.emits(codes::PASSAGE_WITH_NO_KNOWN_EXIT)
-        || options.emits(codes::SAIL_THROUGH_NECK_OF_LAND)
     {
         report
             .regions
@@ -616,6 +616,10 @@ pub fn review_turn(
     } else {
         HashMap::new()
     };
+    // The map the sail-route checks walk, built on the first unit that actually sails somewhere and
+    // never for a turn with none: `MapKnowledge::from_report` clones every region, and this runs on
+    // every keystroke (`ah-csb8`).
+    let sail_map: OnceCell<MapKnowledge> = OnceCell::new();
     let mut findings = Vec::new();
     let mut silver = Vec::new();
 
@@ -789,7 +793,7 @@ pub fn review_turn(
         check_cast_material(hex, ruleset, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
         check_fleet_course(hex, &fleet_orders, ruleset, &options, &mut findings);
-        check_sail_route(hex, &by_coordinate, ruleset, &options, &mut findings);
+        check_sail_route(hex, report, &sail_map, ruleset, &options, &mut findings);
         check_passages(hex, &by_coordinate, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
 
@@ -11519,130 +11523,6 @@ fn sail_destination<'a>(
     Some(here)
 }
 
-/// The first `SAIL` step this report can show goes from land to land, if there is one.
-///
-/// Returns the step's direction, the region it leaves and the region it enters, each as
-/// `"<terrain> (<x>,<y>)"`.
-///
-/// Walks the `Go` steps through each region's own `exits`, exactly as [`sail_destination`] does.
-/// `In`, `Out` and `Enter` move a unit within a hex rather than across the map, so they are skipped.
-///
-/// **Stops silently at the first thing it cannot follow**, and returns `None`: an exit the region
-/// does not list, or a neighbour the report does not carry so the step *after* it cannot be judged.
-/// That is the panel's standing "accept on doubt" policy; a false warning costs the player their
-/// confidence in every other line on the screen.
-///
-/// Note that the destination of a step is judged from the `Exit` itself, which carries the
-/// neighbour's terrain - so a step into a hex the report describes only as an exit is still judged.
-/// `regions` is needed only to walk *past* that hex.
-fn first_land_to_land_step<'a>(
-    from: &'a ReportRegion,
-    steps: &[MoveStep],
-    regions: &HashMap<Coordinate, &'a ReportRegion>,
-    ruleset: &Ruleset,
-    journey: Journey,
-) -> Option<(Direction, String, String)> {
-    let mut here: Option<&ReportRegion> = Some(from);
-    let mut here_label = hex_label(&from.terrain, from.coordinate);
-    let mut here_terrain: String = from.terrain.clone();
-
-    for step in steps {
-        let MoveStep::Go(direction) = step else {
-            continue;
-        };
-        let region = here?;
-        let exit = region
-            .exits
-            .iter()
-            .find(|exit| Direction::parse(&exit.direction) == Some(*direction))?;
-        let there_label = hex_label(&exit.terrain, exit.coordinate);
-        if refused_by_sailing_step(ruleset, journey, &here_terrain, &exit.terrain) {
-            return Some((*direction, here_label, there_label));
-        }
-        here = regions.get(&exit.coordinate).copied();
-        here_terrain = exit.terrain.clone();
-        here_label = there_label;
-    }
-    None
-}
-
-/// Whether a canal that works stands in this region.
-///
-/// Only whether, not what it costs: a typed order has no list of steps anywhere in the application,
-/// so nothing here would print a price.
-///
-/// The region's own exits answer "does it touch water", which is what `is_coastal` answers from the
-/// map in the planner - `newage/trident rules/economy_canals`, "A canal built in a region that
-/// touches no water has no effect on ship movement".
-///
-/// **That half has no test, because it cannot fire here.** The only caller reaches it after
-/// [`refused_by_sailing_step`] has declined the step, and that - for the `Sail`/`Bound` journey
-/// this is only reached under - reduces to `sailing_land_needs_coast() && !is_water(exit)`. The
-/// flag is hardcoded true by the scraper (`packages/ruleset/src/rules.ts`) for every world the
-/// application can load, so declining the step forces the exit to be water: by the time this is
-/// asked, the side being left by is water and the region is coastal. The guard is kept because it is the rule's own sentence and costs nothing, not because
-/// any input reaches it. `Ruleset::canal_cost` returning `None` for a region's structures is what
-/// actually decides this today.
-///
-/// Structures come from the current sighting, which is the only sighting these checks have - a
-/// canal in a hex this report does not describe ends the walk above rather than being guessed at.
-fn canal_in(region: &ReportRegion, ruleset: &Ruleset) -> bool {
-    region
-        .exits
-        .iter()
-        .any(|exit| ruleset.is_water(&exit.terrain))
-        && region
-            .structures
-            .iter()
-            .any(|standing| ruleset.canal_cost(&standing.base_kind).is_some())
-}
-
-/// The first `SAIL` step out of a land region by a side the rule refuses, with no canal to lift it.
-///
-/// Returns the direction that entered the region, the direction that would leave it, and the
-/// region's label. Stops at the first step the land-to-land rule already refuses: the fleet goes
-/// nowhere from there, and that step has its own sentence.
-fn first_refused_isthmus_step(
-    from: &ReportRegion,
-    steps: &[MoveStep],
-    regions: &HashMap<Coordinate, &ReportRegion>,
-    ruleset: &Ruleset,
-    journey: Journey,
-) -> Option<(Direction, Direction, String)> {
-    let mut here: Option<&ReportRegion> = Some(from);
-    let mut here_label = hex_label(&from.terrain, from.coordinate);
-    let mut here_terrain: String = from.terrain.clone();
-    // `None` for the fleet's own hex, which is where last month left it: "Ships ending their
-    // movement in a land hex may sail out along any side connecting to water." So a fleet is never
-    // accused of its first step.
-    let mut entered_by: Option<Direction> = None;
-
-    for step in steps {
-        let MoveStep::Go(direction) = step else {
-            continue;
-        };
-        let region = here?;
-        let exit = region
-            .exits
-            .iter()
-            .find(|exit| Direction::parse(&exit.direction) == Some(*direction))?;
-        // The land-to-land rule refuses this step whatever the sides, and has its own sentence.
-        if refused_by_sailing_step(ruleset, journey, &here_terrain, &exit.terrain) {
-            return None;
-        }
-        if let Some(entered) = entered_by {
-            if !may_leave_land(entered, *direction) && !canal_in(region, ruleset) {
-                return Some((entered, *direction, here_label));
-            }
-        }
-        entered_by = constrains_departure(ruleset, journey, &exit.terrain).then_some(*direction);
-        here = regions.get(&exit.coordinate).copied();
-        here_terrain = exit.terrain.clone();
-        here_label = hex_label(&exit.terrain, exit.coordinate);
-    }
-    None
-}
-
 /// How this check names a hex: terrain and coordinate, and no province.
 ///
 /// Deliberately not [`crate::report::model::region_label`], which appends `in <province>` - two of
@@ -14304,7 +14184,8 @@ fn check_sailing(
 /// where the step goes does not depend on who is aboard.
 fn check_sail_route(
     hex: &Hex<'_>,
-    by_coordinate: &HashMap<Coordinate, &ReportRegion>,
+    report: &ParsedReport,
+    sail_map: &OnceCell<MapKnowledge>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -14347,18 +14228,20 @@ fn check_sail_route(
                 None => Hull::Bound,
             };
             let journey = Journey::enforced(MovementMode::Sail, hull);
+            let map = sail_map.get_or_init(|| MapKnowledge::from_report(report));
+            let refused = refused_sail_steps(map, ruleset, journey, hex.region.coordinate, steps);
 
             if options.emits(codes::SAIL_BETWEEN_LAND_HEXES) {
-                if let Some((direction, from, to)) =
-                    first_land_to_land_step(hex.region, steps, by_coordinate, ruleset, journey)
-                {
+                if let Some(step) = &refused.land_to_land {
+                    let from = hex_label(&step.from_terrain, step.from);
+                    let to = hex_label(&step.to_terrain, step.to);
                     findings.push(ordered.finding(
                         hex,
                         codes::SAIL_BETWEEN_LAND_HEXES,
                         format!(
                             "a fleet may only sail where one end of the step is water: {} leaves \
                              {from} for {to}, so it will not move",
-                            direction.abbreviation()
+                            step.direction.abbreviation()
                         ),
                         Some(placed),
                     ));
@@ -14366,9 +14249,9 @@ fn check_sail_route(
             }
 
             if options.emits(codes::SAIL_THROUGH_NECK_OF_LAND) {
-                if let Some((entered, leaving, label)) =
-                    first_refused_isthmus_step(hex.region, steps, by_coordinate, ruleset, journey)
-                {
+                if let Some(neck) = &refused.neck_of_land {
+                    let (entered, leaving) = (neck.entered, neck.leaving);
+                    let label = hex_label(&neck.terrain, neck.at);
                     findings.push(ordered.finding(
                         hex,
                         codes::SAIL_THROUGH_NECK_OF_LAND,
@@ -27286,170 +27169,6 @@ BUILD
         assert!(
             !sailed(fleet("Fleet, 1 Skyferry")),
             "a hull the catalogue does not carry cannot be judged"
-        );
-    }
-
-    /// The walk finds the first land-to-land step, and declines wherever the report cannot say.
-    #[test]
-    fn the_first_land_to_land_step_is_found_and_doubt_stops_the_walk() {
-        let rules = ruleset();
-        let ocean = rules.movement.ocean.terrain.clone();
-        let exit = |direction: &str, terrain: &str, x: i32, y: i32| Exit {
-            direction: direction.to_string(),
-            terrain: terrain.to_string(),
-            coordinate: Coordinate { x, y, z: 1 },
-            province: "Inhead".to_string(),
-            settlement: None,
-        };
-        let land_north = || ReportRegion {
-            exits: vec![exit("North", "mountain", 7, 51)],
-            ..region(vec![])
-        };
-
-        // one land exit, one step north: the step is refused and named.
-        assert_eq!(
-            first_land_to_land_step(
-                &land_north(),
-                &[MoveStep::Go(Direction::North)],
-                &HashMap::new(),
-                &rules,
-                Journey::enforced(MovementMode::Sail, Hull::Bound)
-            ),
-            Some((
-                Direction::North,
-                "mountain (7,53)".to_string(),
-                "mountain (7,51)".to_string()
-            ))
-        );
-
-        // origin is ocean: one end is water, so the step is legal.
-        let from_ocean = ReportRegion {
-            terrain: ocean.clone(),
-            ..land_north()
-        };
-        assert_eq!(
-            first_land_to_land_step(
-                &from_ocean,
-                &[MoveStep::Go(Direction::North)],
-                &HashMap::new(),
-                &rules,
-                Journey::enforced(MovementMode::Sail, Hull::Bound)
-            ),
-            None
-        );
-
-        // destination is ocean: likewise legal.
-        let into_ocean = ReportRegion {
-            exits: vec![exit("North", &ocean, 7, 51)],
-            ..region(vec![])
-        };
-        assert_eq!(
-            first_land_to_land_step(
-                &into_ocean,
-                &[MoveStep::Go(Direction::North)],
-                &HashMap::new(),
-                &rules,
-                Journey::enforced(MovementMode::Sail, Hull::Bound)
-            ),
-            None
-        );
-
-        // two steps, the first into ocean and the second out of it: both legal.
-        let ocean_hop = ReportRegion {
-            region_id: "1:7,51".to_string(),
-            coordinate: Coordinate { x: 7, y: 51, z: 1 },
-            terrain: ocean.clone(),
-            exits: vec![exit("North", "mountain", 7, 49)],
-            ..region(vec![])
-        };
-        let mut regions: HashMap<Coordinate, &ReportRegion> = HashMap::new();
-        regions.insert(ocean_hop.coordinate, &ocean_hop);
-        assert_eq!(
-            first_land_to_land_step(
-                &into_ocean,
-                &[
-                    MoveStep::Go(Direction::North),
-                    MoveStep::Go(Direction::North)
-                ],
-                &regions,
-                &rules,
-                Journey::enforced(MovementMode::Sail, Hull::Bound)
-            ),
-            None
-        );
-
-        // two land steps: the first is what is reported, and the second is never reached.
-        let land_hop = ReportRegion {
-            region_id: "1:7,51".to_string(),
-            coordinate: Coordinate { x: 7, y: 51, z: 1 },
-            exits: vec![exit("North", "mountain", 7, 49)],
-            ..region(vec![])
-        };
-        let mut land_regions: HashMap<Coordinate, &ReportRegion> = HashMap::new();
-        land_regions.insert(land_hop.coordinate, &land_hop);
-        assert_eq!(
-            first_land_to_land_step(
-                &land_north(),
-                &[
-                    MoveStep::Go(Direction::North),
-                    MoveStep::Go(Direction::North)
-                ],
-                &land_regions,
-                &rules,
-                Journey::enforced(MovementMode::Sail, Hull::Bound)
-            ),
-            Some((
-                Direction::North,
-                "mountain (7,53)".to_string(),
-                "mountain (7,51)".to_string()
-            ))
-        );
-
-        // the first hop is legal but its region is not in the report: the walk stops at doubt.
-        assert_eq!(
-            first_land_to_land_step(
-                &into_ocean,
-                &[
-                    MoveStep::Go(Direction::North),
-                    MoveStep::Go(Direction::North)
-                ],
-                &HashMap::new(),
-                &rules,
-                Journey::enforced(MovementMode::Sail, Hull::Bound)
-            ),
-            None
-        );
-
-        // an exit the region does not list, and steps that cross no hex at all.
-        assert_eq!(
-            first_land_to_land_step(
-                &land_north(),
-                &[MoveStep::Go(Direction::South)],
-                &HashMap::new(),
-                &rules,
-                Journey::enforced(MovementMode::Sail, Hull::Bound)
-            ),
-            None
-        );
-        assert_eq!(
-            first_land_to_land_step(
-                &land_north(),
-                &[],
-                &HashMap::new(),
-                &rules,
-                Journey::enforced(MovementMode::Sail, Hull::Bound)
-            ),
-            None
-        );
-        assert_eq!(
-            first_land_to_land_step(
-                &land_north(),
-                &[MoveStep::In],
-                &HashMap::new(),
-                &rules,
-                Journey::enforced(MovementMode::Sail, Hull::Bound)
-            ),
-            None
         );
     }
 
@@ -44531,8 +44250,11 @@ BUILD
             coordinate: Coordinate { x: 7, y: 51, z: 1 },
             ..Default::default()
         }];
+        // The destination is that same ocean: the sail-route checks read a step's terrain from the
+        // hex itself since `ah-csb8`, so a mountain here would contradict the exit above.
         let there = ReportRegion {
             products: destination,
+            terrain: ruleset().movement.ocean.terrain.clone(),
             ..region_at("1:7,51", 7, 51, Vec::new())
         };
         vec![here, there]

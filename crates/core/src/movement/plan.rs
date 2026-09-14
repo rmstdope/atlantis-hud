@@ -902,7 +902,8 @@ pub(crate) fn constrains_departure(ruleset: &Ruleset, journey: Journey, terrain:
 /// through a land-locked canal region does reach here. The answer is still right and still
 /// invisible: `blocks` has already set that hex's `blocked_from`, and `Isthmus::Refused` only
 /// withholds a premium on a step nothing displays. Kept because it is the rule's own sentence and
-/// costs nothing. Read from
+/// costs nothing. The Problems panel reads it too, through `sailing::refused_sail_steps`, and
+/// `sailing`'s own `a_canal_lifts_the_neck` reaches it that way. Read from
 /// `structures_ever_seen` rather than `structures` because a canal cannot fall down or sail away.
 /// Where both grades stand in one region the cheaper wins - a fleet would use the faster canal -
 /// with the name breaking a tie so the answer never depends on report order.

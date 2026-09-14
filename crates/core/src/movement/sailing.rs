@@ -12,6 +12,7 @@
 //! may sail through the region in any direction".
 
 use crate::movement::graph::{Direction, MapKnowledge};
+use crate::movement::orders::MoveStep;
 use crate::movement::plan::{
     constrains_departure, leaving_land, refused_by_sailing_step, Isthmus, Journey, SailRule,
 };
@@ -81,6 +82,112 @@ pub(crate) fn entered_by(
     direction: Direction,
 ) -> Option<Direction> {
     constrains_departure(ruleset, journey, into_terrain).then_some(direction)
+}
+
+/// A step with land at both ends. Coordinates and terrains are the map's own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LandToLandStep {
+    pub(crate) direction: Direction,
+    pub(crate) from: Coordinate,
+    pub(crate) from_terrain: String,
+    pub(crate) to: Coordinate,
+    pub(crate) to_terrain: String,
+}
+
+/// A step leaving a land hex by a side the isthmus rule refuses, with no canal to lift it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NeckOfLandStep {
+    pub(crate) entered: Direction,
+    pub(crate) leaving: Direction,
+    pub(crate) at: Coordinate,
+    pub(crate) terrain: String,
+}
+
+/// The first step of each kind the map can show a written SAIL is refused.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct RefusedSailSteps {
+    pub(crate) land_to_land: Option<LandToLandStep>,
+    pub(crate) neck_of_land: Option<NeckOfLandStep>,
+}
+
+/// Walks a written SAIL from `from` along the exits the map states, and never guesses.
+///
+/// **Stops silently at the first thing it cannot follow**: an exit the hex does not list, or a hex
+/// known only by name, which states no exits of its own. That is the Problems panel's standing
+/// "accept on doubt" policy - a false warning costs the player their confidence in every other line
+/// on the screen - and it is why this does not borrow the tracer's arithmetic fallback.
+///
+/// A land-to-land step ends the walk: the fleet goes nowhere from there, and a step refused by both
+/// rules is reported as land to land only. A neck does not end it, so a land-to-land step further
+/// on is still found. The fleet's own hex was entered by no side - "Ships ending their movement in a
+/// land hex may sail out along any side connecting to water" (`rules/movement_sailing`) - so its
+/// first step is never a neck.
+pub(crate) fn refused_sail_steps(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    journey: Journey,
+    from: Coordinate,
+    steps: &[MoveStep],
+) -> RefusedSailSteps {
+    let mut refused = RefusedSailSteps::default();
+    let Some(origin) = map.hex(from) else {
+        return refused;
+    };
+    let mut position = from;
+    let mut here_terrain = origin.terrain.clone();
+    let mut entered: Option<Direction> = None;
+
+    for step in steps {
+        let MoveStep::Go(direction) = step else {
+            continue;
+        };
+        let Some((_, into)) = map
+            .neighbours(position)
+            .find(|(heading, _)| heading == direction)
+        else {
+            break;
+        };
+        let Some(into_hex) = map.hex(into) else {
+            break;
+        };
+        let judgement = judge_sail_step(
+            map,
+            ruleset,
+            journey,
+            SailStep {
+                here: position,
+                here_terrain: &here_terrain,
+                entered_by: entered,
+                leaving_by: *direction,
+                into_terrain: &into_hex.terrain,
+            },
+        );
+        if judgement.land_to_land {
+            refused.land_to_land = Some(LandToLandStep {
+                direction: *direction,
+                from: position,
+                from_terrain: here_terrain,
+                to: into,
+                to_terrain: into_hex.terrain.clone(),
+            });
+            break;
+        }
+        if judgement.isthmus == Isthmus::Refused && refused.neck_of_land.is_none() {
+            // `leaving_land` answers `Free` for a hex entered by no side, so this always holds.
+            if let Some(entered_side) = entered {
+                refused.neck_of_land = Some(NeckOfLandStep {
+                    entered: entered_side,
+                    leaving: *direction,
+                    at: position,
+                    terrain: here_terrain.clone(),
+                });
+            }
+        }
+        entered = entered_by(ruleset, journey, &into_hex.terrain, *direction);
+        position = into;
+        here_terrain = into_hex.terrain.clone();
+    }
+    refused
 }
 
 #[cfg(test)]
@@ -222,6 +329,130 @@ mod tests {
         assert_eq!(
             entered_by(&ruleset(), enforced(), "plain", Direction::Southeast),
             Some(Direction::Southeast)
+        );
+    }
+
+    fn southeast(count: usize) -> Vec<MoveStep> {
+        vec![MoveStep::Go(Direction::Southeast); count]
+    }
+
+    #[test]
+    fn a_neck_does_not_end_the_search_for_a_land_to_land_step() {
+        // Step 2 leaves the plain at (2,2) straight through, into water; step 4 is plain to plain.
+        let map = corridor(&["ocean", "plain", "ocean", "plain", "plain"], "");
+
+        let refused = refused_sail_steps(&map, &ruleset(), enforced(), at(1, 1), &southeast(4));
+
+        assert_eq!(
+            refused.neck_of_land,
+            Some(NeckOfLandStep {
+                entered: Direction::Southeast,
+                leaving: Direction::Southeast,
+                at: at(2, 2),
+                terrain: "plain".to_string(),
+            })
+        );
+        assert_eq!(
+            refused.land_to_land.map(|step| step.from),
+            Some(at(4, 4)),
+            "the land-to-land step is the fourth"
+        );
+    }
+
+    #[test]
+    fn a_land_to_land_step_ends_the_walk_before_a_later_neck() {
+        let map = corridor(&["plain", "plain", "ocean"], "");
+
+        let refused = refused_sail_steps(&map, &ruleset(), enforced(), at(1, 1), &southeast(2));
+
+        assert!(refused.land_to_land.is_some());
+        assert_eq!(refused.neck_of_land, None);
+    }
+
+    #[test]
+    fn a_step_refused_by_both_rules_is_land_to_land_only() {
+        let map = corridor(&["ocean", "plain", "plain"], "");
+
+        let refused = refused_sail_steps(&map, &ruleset(), enforced(), at(1, 1), &southeast(2));
+
+        assert!(refused.land_to_land.is_some());
+        assert_eq!(refused.neck_of_land, None);
+    }
+
+    #[test]
+    fn a_canal_lifts_the_neck() {
+        let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset loads");
+        let neck = |structure: &str| {
+            refused_sail_steps(
+                &corridor(&["ocean", "plain", "ocean"], structure),
+                &trident,
+                enforced(),
+                at(1, 1),
+                &southeast(2),
+            )
+        };
+
+        assert!(
+            neck("").neck_of_land.is_some(),
+            "Trident restricts the side"
+        );
+        assert_eq!(neck("+ The Cut [3] : Canal."), RefusedSailSteps::default());
+    }
+
+    #[test]
+    fn doubt_stops_the_walk() {
+        let rules = ruleset();
+        let walk = |map: &MapKnowledge, from: Coordinate, steps: &[MoveStep]| {
+            refused_sail_steps(map, &rules, enforced(), from, steps)
+        };
+        let corridor = corridor(&["ocean", "plain", "plain"], "");
+
+        // a direction the hex lists no exit for
+        assert_eq!(
+            walk(&corridor, at(1, 1), &[MoveStep::Go(Direction::North)]),
+            RefusedSailSteps::default()
+        );
+        // nothing to walk
+        assert_eq!(walk(&corridor, at(1, 1), &[]), RefusedSailSteps::default());
+        assert_eq!(
+            walk(&corridor, at(1, 1), &[MoveStep::In]),
+            RefusedSailSteps::default()
+        );
+        // an origin the map does not know
+        assert_eq!(
+            walk(&corridor, at(9, 9), &southeast(2)),
+            RefusedSailSteps::default()
+        );
+
+        // a hex known only by name states no exits, so the step out of it - plain into the named
+        // mountain, which would be land to land - is never judged
+        let named = MapKnowledge::from_report(&parse_report_full(
+            "Foo (1) Report\n\nocean (1,1) in Nowhere.\n\nExits:\n  \
+             Southeast : plain (2,2) in Nowhere.\n\nmountain (3,3) in Nowhere.\n\nExits:\n  \
+             Northwest : plain (2,2) in Nowhere.\n\n",
+        ));
+        assert_eq!(
+            walk(&named, at(1, 1), &southeast(2)),
+            RefusedSailSteps::default()
+        );
+    }
+
+    #[test]
+    fn the_first_land_to_land_step_names_the_maps_coordinates_and_terrains() {
+        let map = corridor(&["ocean", "plain", "mountain"], "");
+
+        let refused = refused_sail_steps(&map, &ruleset(), enforced(), at(1, 1), &southeast(2));
+
+        assert_eq!(
+            refused.land_to_land,
+            Some(LandToLandStep {
+                direction: Direction::Southeast,
+                from: at(2, 2),
+                from_terrain: "plain".to_string(),
+                to: at(3, 3),
+                to_terrain: "mountain".to_string(),
+            })
         );
     }
 }
