@@ -7,7 +7,7 @@
 //! had to be fixed in three of them at once (c6ee017), and they had drifted apart again by ah-nc7.
 //! This module walks once and reports what it passes; what to do about it is each reader's.
 
-use super::lexer::{lex_line_with_ruleset, LexedLine, Token};
+use super::lexer::{lex_line, LexedLine, Token};
 use crate::movement::rules::Ruleset;
 
 /// Which kind of block a line opens or closes.
@@ -141,7 +141,7 @@ pub fn walk_with_ruleset(
 
     for (index, text) in source.lines().enumerate() {
         let number = index + 1;
-        let lexed = lex_line_with_ruleset(text, ruleset);
+        let lexed = lex_line(text, ruleset);
 
         if let Some(span) = lexed.unterminated_quote {
             visit(Event::Broken { number, text, span });

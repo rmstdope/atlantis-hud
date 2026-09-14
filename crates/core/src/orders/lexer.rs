@@ -97,23 +97,15 @@ impl LexedLine {
     }
 }
 
-/// Splits one line into tokens, under the New Origins comment rule.
-///
-/// Kept for callers that have no ruleset in hand; [`lex_line_with_ruleset`] is the world-aware
-/// entry point every reader with a selected game goes through.
-#[must_use]
-pub fn lex_line(line: &str) -> LexedLine {
-    lex_line_with_ruleset(line, None)
-}
-
-/// Splits one line into tokens, under the selected world's comment rule.
+/// Splits one line into tokens, under the selected world's comment rule. `None` reads under the
+/// New Origins rule (a semicolon inside a word is kept).
 ///
 /// Trident's `rules/orders` says a semicolon ends whatever word it lands in, so it starts a comment
 /// wherever it appears; the only place one survives as an ordinary character is inside a quoted
 /// name. New Origins instead keeps a semicolon that is in the middle of a word. The difference is
 /// deliberate and is the whole of what this argument decides.
 #[must_use]
-pub fn lex_line_with_ruleset(line: &str, ruleset: Option<&Ruleset>) -> LexedLine {
+pub fn lex_line(line: &str, ruleset: Option<&Ruleset>) -> LexedLine {
     let semicolon_always_comments =
         ruleset.is_some_and(|ruleset| ruleset.order_language == OrderLanguage::NewAgeTrident);
     let bytes = line.as_bytes();
@@ -238,7 +230,7 @@ mod tests {
     use super::*;
 
     fn texts(line: &str) -> Vec<String> {
-        lex_line(line)
+        lex_line(line, None)
             .tokens
             .into_iter()
             .map(|token| token.text)
@@ -271,7 +263,7 @@ mod tests {
     #[test]
     fn columns_are_counted_in_utf16_code_units_not_bytes() {
         let line = "STUDY Mörk x";
-        let lexed = lex_line(line);
+        let lexed = lex_line(line, None);
         let last = lexed.tokens.last().expect("three tokens");
 
         assert_eq!(last.text, "x");
@@ -288,7 +280,7 @@ mod tests {
 
     #[test]
     fn a_span_covering_a_non_ascii_token_covers_the_whole_of_it() {
-        let lexed = lex_line("STUDY Mörk");
+        let lexed = lex_line("STUDY Mörk", None);
         let skill = &lexed.tokens[1];
 
         assert_eq!(skill.text, "Mörk");
@@ -297,7 +289,7 @@ mod tests {
 
     #[test]
     fn columns_are_offsets_into_the_line_as_written() {
-        let lexed = lex_line("  @give 0 all spea");
+        let lexed = lex_line("  @give 0 all spea", None);
         let columns: Vec<(usize, usize)> = lexed
             .tokens
             .iter()
@@ -310,7 +302,7 @@ mod tests {
 
     #[test]
     fn a_leading_at_sign_marks_a_repeating_order_and_is_not_a_token() {
-        let lexed = lex_line("@study obse");
+        let lexed = lex_line("@study obse", None);
 
         assert!(lexed.repeat);
         assert_eq!(texts("@study obse"), ["study", "obse"]);
@@ -322,12 +314,12 @@ mod tests {
 
     #[test]
     fn a_line_without_an_at_sign_does_not_repeat() {
-        assert!(!lex_line("study obse").repeat);
+        assert!(!lex_line("study obse", None).repeat);
     }
 
     #[test]
     fn a_semicolon_at_the_start_of_a_token_begins_a_comment() {
-        let lexed = lex_line(";Seven of Eight (18642), avoiding.");
+        let lexed = lex_line(";Seven of Eight (18642), avoiding.", None);
 
         assert!(lexed.tokens.is_empty());
         assert_eq!(
@@ -339,7 +331,7 @@ mod tests {
     #[test]
     fn a_repeating_comment_is_still_a_comment() {
         // Real reports carry "@;" lines.
-        let lexed = lex_line("@;keep the caravan moving");
+        let lexed = lex_line("@;keep the caravan moving", None);
 
         assert!(lexed.repeat);
         assert!(lexed.tokens.is_empty());
@@ -349,7 +341,7 @@ mod tests {
     /// This exact line is in the committed turn 71 report, so it is not a hypothetical.
     #[test]
     fn a_semicolon_ending_a_word_begins_a_comment() {
-        let lexed = lex_line("@declare 43 friendly; Squirrels");
+        let lexed = lex_line("@declare 43 friendly; Squirrels", None);
 
         assert_eq!(
             texts("@declare 43 friendly; Squirrels"),
@@ -365,12 +357,12 @@ mod tests {
             texts("declare 43 friend;ly"),
             ["declare", "43", "friend;ly"]
         );
-        assert_eq!(lex_line("declare 43 friend;ly").comment, None);
+        assert_eq!(lex_line("declare 43 friend;ly", None).comment, None);
     }
 
     #[test]
     fn a_quoted_name_is_one_token_without_its_quotes() {
-        let lexed = lex_line("NAME UNIT \"Merlin's Guards\"");
+        let lexed = lex_line("NAME UNIT \"Merlin's Guards\"", None);
 
         assert_eq!(
             texts("NAME UNIT \"Merlin's Guards\""),
@@ -390,12 +382,12 @@ mod tests {
             texts("NAME UNIT \"Odd; Name\""),
             ["NAME", "UNIT", "Odd; Name"]
         );
-        assert_eq!(lex_line("NAME UNIT \"Odd; Name\"").comment, None);
+        assert_eq!(lex_line("NAME UNIT \"Odd; Name\"", None).comment, None);
     }
 
     #[test]
     fn a_quote_that_is_never_closed_is_reported_and_the_rest_kept() {
-        let lexed = lex_line("NAME UNIT \"Merlin");
+        let lexed = lex_line("NAME UNIT \"Merlin", None);
 
         assert_eq!(lexed.unterminated_quote, Some((10, 17)));
         assert_eq!(
@@ -411,7 +403,7 @@ mod tests {
 
     #[test]
     fn digits_alone_are_a_number_and_anything_else_is_a_word() {
-        let lexed = lex_line("GIVE 0 10x LBOW");
+        let lexed = lex_line("GIVE 0 10x LBOW", None);
         let kinds: Vec<TokenKind> = lexed.tokens.iter().map(|token| token.kind).collect();
 
         assert_eq!(
@@ -428,14 +420,17 @@ mod tests {
     #[test]
     fn a_quoted_number_is_still_quoted() {
         // QUIT "foobar" takes a password, which may look like anything at all.
-        assert_eq!(lex_line("QUIT \"1234\"").tokens[1].kind, TokenKind::Quoted);
+        assert_eq!(
+            lex_line("QUIT \"1234\"", None).tokens[1].kind,
+            TokenKind::Quoted
+        );
     }
 
     #[test]
     fn a_blank_line_carries_nothing() {
-        assert!(lex_line("").is_empty());
-        assert!(lex_line("   \t ").is_empty());
-        assert_eq!(lex_line("   ").comment, None);
+        assert!(lex_line("", None).is_empty());
+        assert!(lex_line("   \t ", None).is_empty());
+        assert_eq!(lex_line("   ", None).comment, None);
     }
 
     #[test]
@@ -445,7 +440,7 @@ mod tests {
 
     #[test]
     fn keyword_comparison_ignores_case() {
-        let lexed = lex_line("@STUDY PATT");
+        let lexed = lex_line("@STUDY PATT", None);
         assert!(lexed.tokens[0].is("study"));
         assert!(!lexed.tokens[0].is("work"));
     }
@@ -461,14 +456,14 @@ mod tests {
         .expect("the Trident ruleset loads");
 
         let trident_texts = |line: &str| -> Vec<String> {
-            lex_line_with_ruleset(line, Some(&trident))
+            lex_line(line, Some(&trident))
                 .tokens
                 .into_iter()
                 .map(|token| token.text)
                 .collect::<Vec<_>>()
         };
         let origins_texts = |line: &str| -> Vec<String> {
-            lex_line_with_ruleset(line, Some(&origins))
+            lex_line(line, Some(&origins))
                 .tokens
                 .into_iter()
                 .map(|token| token.text)
@@ -486,12 +481,12 @@ mod tests {
         assert_eq!(trident_texts("#end;note"), ["#end"]);
 
         // The number is still a number, not a word ending in a semicolon.
-        let lexed = lex_line_with_ruleset("GUARD 1;note", Some(&trident));
+        let lexed = lex_line("GUARD 1;note", Some(&trident));
         assert_eq!(lexed.tokens[1].kind, TokenKind::Number);
         assert_eq!(lexed.comment, Some((7, "GUARD 1;note".len())));
 
         // The @ prefix survives, and the comment after it is still a comment.
-        let repeating = lex_line_with_ruleset("@WORK;note", Some(&trident));
+        let repeating = lex_line("@WORK;note", Some(&trident));
         assert!(repeating.repeat);
         assert_eq!(
             repeating
@@ -516,10 +511,10 @@ mod tests {
             origins_texts("GIVE 42 1 SILV;note"),
             ["GIVE", "42", "1", "SILV;note"]
         );
-        assert_eq!(lex_line("WORK;note").tokens[0].text, "WORK;note");
+        assert_eq!(lex_line("WORK;note", None).tokens[0].text, "WORK;note");
 
         // UTF-16 spans survive the new branch: the comment starts after a non-ASCII word.
-        let non_ascii = lex_line_with_ruleset("NAME UNIT Mörk;note", Some(&trident));
+        let non_ascii = lex_line("NAME UNIT Mörk;note", Some(&trident));
         assert_eq!(
             non_ascii.comment,
             Some((14, "NAME UNIT Mörk;note".encode_utf16().count()))

@@ -11,7 +11,7 @@
 //! say", and it accepts anything, including nothing. That is the accept-on-doubt policy made
 //! concrete: a `CAST` whose arguments depend on the spell must not be guessed at.
 
-use super::lexer::{lex_line_with_ruleset, utf16_column, Token, TokenKind};
+use super::lexer::{lex_line, utf16_column, Token, TokenKind};
 use crate::movement::graph::Direction;
 use crate::movement::rules::{OrderLanguage, Ruleset};
 
@@ -686,7 +686,7 @@ pub(super) struct Caret {
 /// half-typed word included: the position is worked out from the complete words before it, and the
 /// half-typed word is what the shell filters the answer by.
 pub(super) fn caret_at(line_prefix: &str, ruleset: Option<&Ruleset>) -> Caret {
-    let lexed = lex_line_with_ruleset(line_prefix, ruleset);
+    let lexed = lex_line(line_prefix, ruleset);
     if lexed.comment.is_some() {
         return Caret {
             shape: CaretShape::Nowhere,
@@ -1292,7 +1292,7 @@ mod tests {
     #[test]
     fn build_material_forms_belong_to_new_age_worlds() {
         fn consumed(line: &str, ruleset: &Ruleset) -> usize {
-            let lexed = crate::orders::lexer::lex_line_with_ruleset(line, Some(ruleset));
+            let lexed = crate::orders::lexer::lex_line(line, Some(ruleset));
             let (command, arguments) = lexed.tokens.split_first().expect("a command");
             consumed_arguments(command, arguments, Some(ruleset))
                 .expect("the line matches a form")
@@ -1344,7 +1344,7 @@ mod tests {
 
     /// One token of a lexed line, for building the argument slices these tests match against.
     fn arguments(line: &str) -> (Token, Vec<Token>) {
-        let mut tokens = super::super::lexer::lex_line(line).tokens;
+        let mut tokens = super::super::lexer::lex_line(line, None).tokens;
         let command = tokens.remove(0);
         (command, tokens)
     }
