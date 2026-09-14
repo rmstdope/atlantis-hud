@@ -5850,10 +5850,10 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     for (((ordered, facts), shares), claim) in
         hex.units.iter().zip(&facts).zip(&shares).zip(&claims)
     {
-        // What the unit earns in the Wages phase, recorded and not applied: the balance already carries
-        // these terms netted against the fee below, so applying them as well would pay each wage twice.
-        // Recorded for every unit, before the `continue`s below skip a unit whose fee is contended or
-        // nothing, because a worker with no fee still earns its wage.
+        // What the unit earns in the Wages phase, recorded and not applied: the balance already
+        // carries these terms netted against the fee below, so applying them as well would pay
+        // each wage twice. Recorded for every unit, before the `continue`s below skip a unit whose
+        // fee is contended or nothing, because a worker with no fee still earns its wage.
         for term in late_income_terms(facts, region, *shares, ledger.ruleset) {
             record_silver(
                 ledger,
