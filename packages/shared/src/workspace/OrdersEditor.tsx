@@ -73,7 +73,7 @@ type OrdersEditorProps = {
    * tidy and the Enter-depth scanners read without rebuilding CodeMirror - and so losing the undo
    * history with it.
    */
-  orderCommentSyntax?: OrderCommentSyntax;
+  orderCommentSyntax: OrderCommentSyntax;
   /** The player's snippet library, offered in the same popup and expanded with tab-through fields. */
   snippets: readonly OrderSnippet[];
   /** What may stand at an argument position, asked of the core once per half-typed word. */
@@ -123,7 +123,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     commands,
     orderOcd,
     orderVocabulary,
-    orderCommentSyntax = "origins",
+    orderCommentSyntax,
     snippets,
     caretCompletions,
     onChange

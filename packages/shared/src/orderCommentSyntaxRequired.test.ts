@@ -5,8 +5,13 @@
  * and passes every test while a Trident document is read under New Origins rules. Each line below
  * fails `tsc` if its function, input or prop regains a default or becomes optional.
  */
+import type { ComponentProps } from "react";
 import { describe, expect, it } from "vitest";
 import { diagnosticTargets } from "./diagnosticNav";
+import { OrdersEditor } from "./workspace/OrdersEditor";
+import { OrdersImportSummaryDialog } from "./workspace/OrdersImportSummaryDialog";
+import { OrdersPanel } from "./workspace/OrdersPanel";
+import { StudyPlannerDialog } from "./workspace/StudyPlannerDialog";
 import { diagnosticsForUnit } from "./orderEditor";
 import {
   describeOrdersImport,
@@ -159,6 +164,28 @@ const INPUTS = {
   studyWritePlan: studyWritePlanRequiresTheSyntax
 };
 
+const OrdersEditorRequiresTheSyntax: Requires<
+  ComponentProps<typeof OrdersEditor>,
+  "orderCommentSyntax"
+> = true;
+const OrdersPanelRequiresTheSyntax: Requires<ComponentProps<typeof OrdersPanel>, "orderCommentSyntax"> =
+  true;
+const StudyPlannerDialogRequiresTheSyntax: Requires<
+  ComponentProps<typeof StudyPlannerDialog>,
+  "orderCommentSyntax"
+> = true;
+const OrdersImportSummaryDialogRequiresTheSyntax: Requires<
+  ComponentProps<typeof OrdersImportSummaryDialog>,
+  "orderCommentSyntax"
+> = true;
+
+const PROPS = {
+  OrdersEditor: OrdersEditorRequiresTheSyntax,
+  OrdersPanel: OrdersPanelRequiresTheSyntax,
+  StudyPlannerDialog: StudyPlannerDialogRequiresTheSyntax,
+  OrdersImportSummaryDialog: OrdersImportSummaryDialogRequiresTheSyntax
+};
+
 describe("the order comment syntax is never defaulted", () => {
   it("every order-text function requires the comment syntax", () => {
     expect(Object.keys(FUNCTIONS)).toHaveLength(36);
@@ -166,5 +193,9 @@ describe("the order comment syntax is never defaulted", () => {
 
   it("every order-writing input requires the comment syntax", () => {
     expect(Object.keys(INPUTS)).toHaveLength(2);
+  });
+
+  it("every order component requires the comment syntax prop", () => {
+    expect(Object.keys(PROPS)).toHaveLength(4);
   });
 });

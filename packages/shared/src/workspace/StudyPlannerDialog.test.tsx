@@ -269,7 +269,7 @@ describe("the All mages view carries no warnings strip", () => {
 describe("the Orders tab", () => {
   const dialog = (plans: StudyPlanRecord[]) =>
     renderToStaticMarkup(
-      <StudyPlannerDialog
+      <StudyPlannerDialog orderCommentSyntax="origins"
         groups={GROUPS}
         summaryLine={null}
         emptyCopy={{ headline: "", detail: "" }}

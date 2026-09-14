@@ -33,12 +33,12 @@ function count(n: number, noun: string): string {
 export function OrdersImportSummaryDialog({
   summary,
   onDismiss,
-  orderCommentSyntax = "origins"
+  orderCommentSyntax
 }: {
   summary: OrdersImportSummary;
   onDismiss: () => void;
   /** How the game played reads an unquoted semicolon (`rulesets.orderCommentSyntaxFor`). */
-  orderCommentSyntax?: OrderCommentSyntax;
+  orderCommentSyntax: OrderCommentSyntax;
 }) {
   useEscapeToDismiss(onDismiss);
 

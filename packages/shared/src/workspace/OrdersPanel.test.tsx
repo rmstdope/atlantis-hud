@@ -15,7 +15,7 @@ const draw = (
   walkPosition?: { at: number; of: number } | null
 ) =>
   renderToStaticMarkup(
-    <OrdersPanel
+    <OrdersPanel orderCommentSyntax="origins"
       unit={null}
       unitId={null}
       formed={null}
@@ -99,7 +99,7 @@ describe("a unit formed this month", () => {
 
   const drawFormed = (document: string) =>
     renderToStaticMarkup(
-      <OrdersPanel
+      <OrdersPanel orderCommentSyntax="origins"
         unit={null}
         unitId="new-1"
         formed={formedSelectionFor(document, "new-1", REGION, "origins")}
