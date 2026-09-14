@@ -91,9 +91,9 @@ export const SWEEP: SweepEntry[] = [
   },
   {
     command: "validate_orders",
-    // The ruleset is what lets an item name be checked against the catalogue, and it crosses as its
-    // own argument: a name this side does not match deserializes to `None` over there without an
-    // error, and every item would silently go unchecked.
+    // The ruleset is what lets an item name be checked against the catalogue, and it crosses as the
+    // request's `rulesetJson` field: a key this side does not match deserializes to `None` over
+    // there without an error, and every item would silently go unchecked (ah-t8c4).
     args: () => ({
       request: {
         rawOrders: "unit 18642\n@work",

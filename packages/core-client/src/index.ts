@@ -1,4 +1,3 @@
-
 // The report model and the parse family are generated from the Rust core by ts-rs
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
 export type { EngineInfo } from "./generated/EngineInfo";
