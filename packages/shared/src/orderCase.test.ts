@@ -24,7 +24,7 @@ const vocabulary = buildVocabulary([
   "LONGBOW",
 ]);
 
-const texts = (line: string): string[] => bareWords(line).map((word) => word.text);
+const texts = (line: string): string[] => bareWords(line, "origins").map((word) => word.text);
 
 describe("bareWords", () => {
   it("finds the words of a plain order line", () => {
@@ -52,7 +52,7 @@ describe("bareWords", () => {
   });
 
   it("reports the span of each word", () => {
-    expect(bareWords("move n")).toEqual([
+    expect(bareWords("move n", "origins")).toEqual([
       { from: 0, to: 4, text: "move" },
       { from: 5, to: 6, text: "n" },
     ]);
@@ -79,63 +79,63 @@ describe("isKeyword", () => {
 
 describe("uppercaseLine", () => {
   it("uppercases the keywords and leaves the names alone", () => {
-    expect(uppercaseLine('name unit "seven of eight"', vocabulary)).toBe(
+    expect(uppercaseLine('name unit "seven of eight"', vocabulary, "origins")).toBe(
       'NAME UNIT "seven of eight"'
     );
   });
 
   it("uppercases a plural item", () => {
-    expect(uppercaseLine("give 2 longbows", buildVocabulary(["GIVE", "LONGBOW"]))).toBe(
+    expect(uppercaseLine("give 2 longbows", buildVocabulary(["GIVE", "LONGBOW"]), "origins")).toBe(
       "GIVE 2 LONGBOWS"
     );
   });
 
   it("leaves a word the rules do not know", () => {
-    expect(uppercaseLine("move frobnicate", vocabulary)).toBe("MOVE frobnicate");
+    expect(uppercaseLine("move frobnicate", vocabulary, "origins")).toBe("MOVE frobnicate");
   });
 
   it("returns the line unchanged when nothing matches", () => {
-    expect(uppercaseLine("; just a comment", vocabulary)).toBe("; just a comment");
+    expect(uppercaseLine("; just a comment", vocabulary, "origins")).toBe("; just a comment");
   });
 });
 
 describe("uppercaseKeywords", () => {
   it("uppercases every line of a block", () => {
-    expect(uppercaseKeywords("move n\nstudy combat", vocabulary)).toBe("MOVE N\nSTUDY COMBAT");
+    expect(uppercaseKeywords("move n\nstudy combat", vocabulary, "origins")).toBe("MOVE N\nSTUDY COMBAT");
   });
 
   it("returns the text unchanged when nothing matches", () => {
-    expect(uppercaseKeywords("; nothing\n; here", vocabulary)).toBe("; nothing\n; here");
+    expect(uppercaseKeywords("; nothing\n; here", vocabulary, "origins")).toBe("; nothing\n; here");
   });
 });
 
 describe("keywordJustFinished", () => {
   it("finds the word just finished", () => {
-    expect(keywordJustFinished("move", 4, vocabulary)).toEqual({ from: 0, to: 4, upper: "MOVE" });
+    expect(keywordJustFinished("move", 4, vocabulary, "origins")).toEqual({ from: 0, to: 4, upper: "MOVE" });
   });
 
   it("finds nothing inside a quote", () => {
-    expect(keywordJustFinished('name "move', 10, vocabulary)).toBeNull();
+    expect(keywordJustFinished('name "move', 10, vocabulary, "origins")).toBeNull();
   });
 
   it("finds nothing in a comment", () => {
-    expect(keywordJustFinished("; move", 6, vocabulary)).toBeNull();
+    expect(keywordJustFinished("; move", 6, vocabulary, "origins")).toBeNull();
   });
 
   it("finds nothing when the word is not a keyword", () => {
-    expect(keywordJustFinished("frobnicate", 10, vocabulary)).toBeNull();
+    expect(keywordJustFinished("frobnicate", 10, vocabulary, "origins")).toBeNull();
   });
 
   it("looks past trailing punctuation the player typed", () => {
-    expect(keywordJustFinished("move n,", 7, vocabulary)).toEqual({ from: 5, to: 6, upper: "N" });
+    expect(keywordJustFinished("move n,", 7, vocabulary, "origins")).toEqual({ from: 5, to: 6, upper: "N" });
   });
 
   it("finds nothing when another word stands between the caret and the keyword", () => {
-    expect(keywordJustFinished("move frobnicate", 15, vocabulary)).toBeNull();
+    expect(keywordJustFinished("move frobnicate", 15, vocabulary, "origins")).toBeNull();
   });
 
   it("finds nothing when the caret is mid-word", () => {
-    expect(keywordJustFinished("move n", 2, vocabulary)).toBeNull();
+    expect(keywordJustFinished("move n", 2, vocabulary, "origins")).toBeNull();
   });
 });
 
@@ -143,7 +143,7 @@ describe("keywordCaseChanges", () => {
   const vocabulary = buildVocabulary(["MOVE", "N", "STUDY", "COMBAT"]);
 
   it("returns a span per keyword that is not already upper case", () => {
-    expect(keywordCaseChanges("move n\nstudy combat", vocabulary, null)).toEqual([
+    expect(keywordCaseChanges("move n\nstudy combat", vocabulary, null, "origins")).toEqual([
       { from: 0, to: 4, insert: "MOVE" },
       { from: 5, to: 6, insert: "N" },
       { from: 7, to: 12, insert: "STUDY" },
@@ -152,18 +152,18 @@ describe("keywordCaseChanges", () => {
   });
 
   it("returns nothing when the block is already upper case", () => {
-    expect(keywordCaseChanges("MOVE N", vocabulary, null)).toEqual([]);
+    expect(keywordCaseChanges("MOVE N", vocabulary, null, "origins")).toEqual([]);
   });
 
   it("leaves the word the caret is inside alone", () => {
-    expect(keywordCaseChanges("study combat\nmove", vocabulary, 17)).toEqual([
+    expect(keywordCaseChanges("study combat\nmove", vocabulary, 17, "origins")).toEqual([
       { from: 0, to: 5, insert: "STUDY" },
       { from: 6, to: 12, insert: "COMBAT" }
     ]);
   });
 
   it("protects a caret at the head of a word", () => {
-    expect(keywordCaseChanges("move n", vocabulary, 0)).toEqual([{ from: 5, to: 6, insert: "N" }]);
+    expect(keywordCaseChanges("move n", vocabulary, 0, "origins")).toEqual([{ from: 5, to: 6, insert: "N" }]);
   });
 });
 
@@ -220,6 +220,6 @@ describe("the selected world's comment boundary", () => {
   });
 
   it("defaults to New Origins when no world is named", () => {
-    expect(uppercaseLine("work;note", vocabulary)).toBe("work;note");
+    expect(uppercaseLine("work;note", vocabulary, "origins")).toBe("work;note");
   });
 });

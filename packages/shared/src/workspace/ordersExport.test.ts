@@ -6,16 +6,16 @@ const TEMPLATE = ["unit 793", ";Three of Five (793), leader [LEAD].", "@study ob
 
 describe("choosing what the orders export writes", () => {
   it("returns the document byte for byte when descriptions were not asked for", () => {
-    expect(ordersExportText(DOCUMENT, TEMPLATE, false)).toBe(DOCUMENT);
+    expect(ordersExportText(DOCUMENT, TEMPLATE, false, "origins")).toBe(DOCUMENT);
   });
 
   it("restores the descriptions when they were asked for", () => {
-    expect(ordersExportText(DOCUMENT, TEMPLATE, true)).toBe(
+    expect(ordersExportText(DOCUMENT, TEMPLATE, true, "origins")).toBe(
       ["unit 793", ";Three of Five (793), leader [LEAD].", "@study obse"].join("\n")
     );
   });
 
   it("returns the document unchanged when there is no template to restore from", () => {
-    expect(ordersExportText(DOCUMENT, null, true)).toBe(DOCUMENT);
+    expect(ordersExportText(DOCUMENT, null, true, "origins")).toBe(DOCUMENT);
   });
 });

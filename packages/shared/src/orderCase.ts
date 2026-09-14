@@ -48,7 +48,7 @@ export function isKeyword(word: string, vocabulary: Vocabulary): boolean {
  */
 export function bareWords(
   line: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): BareWord[] {
   const words: BareWord[] = [];
   let index = 0;
@@ -113,7 +113,7 @@ export function bareWords(
 export function uppercaseLine(
   line: string,
   vocabulary: Vocabulary,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string {
   const matches = bareWords(line, syntax).filter((word) => isKeyword(word.text, vocabulary));
   let result = line;
@@ -143,7 +143,7 @@ export function keywordCaseChanges(
   text: string,
   vocabulary: Vocabulary,
   protect: number | null,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): CaseChange[] {
   const changes: CaseChange[] = [];
   let lineStart = 0;
@@ -166,7 +166,7 @@ export function keywordCaseChanges(
 export function uppercaseKeywords(
   text: string,
   vocabulary: Vocabulary,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): string {
   let result = text;
   const changes = keywordCaseChanges(text, vocabulary, null, syntax);
@@ -185,7 +185,7 @@ export function keywordJustFinished(
   line: string,
   at: number,
   vocabulary: Vocabulary,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): { from: number; to: number; upper: string } | null {
   // `at` may sit past the word's own end when the player typed trailing punctuation - `move n,`
   // then a space - which `bareWords` strips from the span. Anything between the two must be that

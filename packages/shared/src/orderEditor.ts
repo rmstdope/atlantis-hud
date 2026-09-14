@@ -159,8 +159,8 @@ export function diagnosticsForUnit(
   document: string,
   unitId: string,
   diagnostics: OrderDiagnostic[],
-  regionUnitIds?: ReadonlySet<string>,
-  syntax: OrderCommentSyntax = "origins"
+  regionUnitIds: ReadonlySet<string> | undefined,
+  syntax: OrderCommentSyntax
 ): OrderDiagnostic[] {
   const block = blockFor(document, unitId, regionUnitIds, syntax);
   if (!block) {

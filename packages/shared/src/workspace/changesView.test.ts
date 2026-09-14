@@ -57,7 +57,7 @@ describe("changesTabs", () => {
 
   it("counts a non-null orders diff", () => {
     const diff = diffTurns(report([]), report([]));
-    const orders = diffOrders("unit 1\n@work\n", "unit 1\n@fish\n");
+    const orders = diffOrders("unit 1\n@work\n", "unit 1\n@fish\n", "origins");
 
     const tabs = changesTabs(diff, orders);
 
@@ -73,7 +73,7 @@ describe("empty-state text", () => {
 
   it("distinguishes a null orders diff from one with no changes", () => {
     expect(ordersEmptyText(null, 70)).toBe("No orders known for turn 70.");
-    const emptyDiff = diffOrders("unit 1\n@work\n", "unit 1\n@work\n");
+    const emptyDiff = diffOrders("unit 1\n@work\n", "unit 1\n@work\n", "origins");
     expect(ordersEmptyText(emptyDiff, 70)).toBe("No orders changed between these turns.");
   });
 });
@@ -186,7 +186,7 @@ describe("orderRows", () => {
   it("names a changed unit's orders by its report name when known", () => {
     const older = report([region(at(7, 53), { units: [unit({ unitId: "1", name: "Scouts" })] })]);
     const newer = report([region(at(7, 53), { units: [unit({ unitId: "1", name: "Scouts" })] })]);
-    const orders = diffOrders("unit 1\n@work\n", "unit 1\n@fish\n");
+    const orders = diffOrders("unit 1\n@work\n", "unit 1\n@fish\n", "origins");
 
     const rows = orderRows(orders, older, newer);
 

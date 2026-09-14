@@ -95,9 +95,9 @@ export function studyWritePlan(input: {
   /** How a region id reads to a player: `AppShell`'s `hexLabel`. */
   label: (regionId: string) => string;
   /** How the game played reads an unquoted semicolon. */
-  syntax?: OrderCommentSyntax;
+  syntax: OrderCommentSyntax;
 }): StudyWritePlan {
-  const syntax = input.syntax ?? "origins";
+  const syntax = input.syntax;
   const rows: WriteRow[] = [];
   let next = input.document;
   let changed = 0;

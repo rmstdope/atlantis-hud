@@ -29,12 +29,12 @@ describe("diagnosticTargets", () => {
     const targets = diagnosticTargets(TEXT, [
       problem({ lineStart: 6, lineEnd: 6, message: "second" }),
       problem({ lineStart: 3, lineEnd: 3, message: "first" })
-    ]);
+    ], undefined, "origins");
     expect(targets.map((target) => target.problem.message)).toEqual(["first", "second"]);
   });
 
   it("names the unit whose block the problem sits in, with lines re-based to that block", () => {
-    const targets = diagnosticTargets(TEXT, [problem({ lineStart: 6, lineEnd: 6 })]);
+    const targets = diagnosticTargets(TEXT, [problem({ lineStart: 6, lineEnd: 6 })], undefined, "origins");
     expect(targets).toHaveLength(1);
     expect(targets[0].unitId).toBe("200");
     // Line 6 of the document is line 1 of unit 200's own block, which is what its editor shows.
@@ -44,7 +44,7 @@ describe("diagnosticTargets", () => {
   it("believes a problem that names its unit over where its line happens to sit", () => {
     const targets = diagnosticTargets(TEXT, [
       problem({ unitId: "100", lineStart: 3, lineEnd: 3 })
-    ]);
+    ], undefined, "origins");
     expect(targets[0].unitId).toBe("100");
     expect(targets[0].problem.lineStart).toBe(2);
   });
@@ -53,20 +53,20 @@ describe("diagnosticTargets", () => {
     const targets = diagnosticTargets(TEXT, [
       problem({ columnStart: 5, columnEnd: 7, message: "later" }),
       problem({ columnStart: 0, columnEnd: 4, message: "sooner" })
-    ]);
+    ], undefined, "origins");
     expect(targets.map((target) => target.problem.message)).toEqual(["sooner", "later"]);
   });
 
   it("leaves out problems with no line - there is nowhere in an editor to jump to", () => {
     const targets = diagnosticTargets(TEXT, [
       problem({ lineStart: null, lineEnd: null, columnStart: null, columnEnd: null, regionId: "1:7,53" })
-    ]);
+    ], undefined, "origins");
     expect(targets).toEqual([]);
   });
 
   it("leaves out problems whose line sits outside every unit's block", () => {
     // Line 1 is the `unit 100` header itself: document furniture, no editor shows it.
-    const targets = diagnosticTargets(TEXT, [problem({ lineStart: 1, lineEnd: 1 })]);
+    const targets = diagnosticTargets(TEXT, [problem({ lineStart: 1, lineEnd: 1 })], undefined, "origins");
     expect(targets).toEqual([]);
   });
 });
@@ -98,7 +98,7 @@ describe("stopKeys", () => {
     const targets = diagnosticTargets(TEXT, [
       problem({ lineStart: 6, lineEnd: 6, message: "second" }),
       problem({ lineStart: 3, lineEnd: 3, message: "first" })
-    ]);
+    ], undefined, "origins");
     const keys = stopKeys(targets);
 
     expect(keys).toHaveLength(2);
@@ -110,7 +110,7 @@ describe("stopKeys", () => {
     const targets = diagnosticTargets(TEXT, [
       problem({ lineStart: 2, lineEnd: 2, columnStart: 0, message: "a" }),
       problem({ lineStart: 3, lineEnd: 3, columnStart: 0, message: "b" })
-    ]);
+    ], undefined, "origins");
     const keys = stopKeys(targets);
 
     expect(targets[0].unitId).toBe(targets[1].unitId);
@@ -121,7 +121,7 @@ describe("stopKeys", () => {
     const targets = diagnosticTargets(TEXT, [
       problem({ lineStart: 3, lineEnd: 3, message: "unit 100" }),
       problem({ lineStart: 6, lineEnd: 6, message: "unit 200" })
-    ]);
+    ], undefined, "origins");
     const keys = stopKeys(targets);
 
     expect(keys[1].line).toBeGreaterThan(keys[0].line);
@@ -209,7 +209,7 @@ describe("the walk over a formed unit's problems", () => {
     const targets = diagnosticTargets(
       FORMED,
       [problem({ lineStart: 4, lineEnd: 4, unitId: "new-1", regionId: "1:7,53" })],
-      REGIONS
+      REGIONS, "origins"
     );
 
     expect(targets).toHaveLength(1);
@@ -228,7 +228,7 @@ describe("the walk over a formed unit's problems", () => {
     const targets = diagnosticTargets(
       FORMED,
       [problem({ lineStart: 4, lineEnd: 4, regionId: null })],
-      REGIONS
+      REGIONS, "origins"
     );
 
     expect(targets.map((target) => target.unitId)).toEqual(["new-1"]);
@@ -241,7 +241,7 @@ describe("the walk over a formed unit's problems", () => {
     const targets = diagnosticTargets(
       FORMED,
       [problem({ lineStart: 2, lineEnd: 2, regionId: null })],
-      REGIONS
+      REGIONS, "origins"
     );
 
     expect(targets.map((target) => target.unitId)).toEqual(["1922"]);
@@ -251,7 +251,7 @@ describe("the walk over a formed unit's problems", () => {
     const targets = diagnosticTargets(
       FORMED,
       [problem({ lineStart: 4, lineEnd: 4, unitId: "new-1", regionId: "1:7,53" })],
-      REGIONS
+      REGIONS, "origins"
     );
 
     expect(stopKeys(targets)[0].line).toBe(4);
@@ -274,7 +274,7 @@ describe("a formed unit's stop names the hex its block was resolved in", () => {
     const targets = diagnosticTargets(
       TWO_HEXES,
       [problem({ lineStart: 7, lineEnd: 7, regionId: null })],
-      REGIONS
+      REGIONS, "origins"
     );
 
     expect(targets.map((target) => [target.unitId, target.regionId])).toEqual([
@@ -288,7 +288,7 @@ describe("a formed unit's stop names the hex its block was resolved in", () => {
     const targets = diagnosticTargets(
       TWO_HEXES,
       [problem({ lineStart: 3, lineEnd: 3, unitId: "new-1", regionId: "1:8,54" })],
-      REGIONS
+      REGIONS, "origins"
     );
 
     expect(targets[0].regionId).toBe("1:8,54");

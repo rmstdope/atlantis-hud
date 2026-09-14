@@ -337,7 +337,7 @@ function commandsEqual(a: string[], b: string[]): boolean {
 export function diffOrders(
   olderText: string,
   newerText: string,
-  syntax: OrderCommentSyntax = "origins"
+  syntax: OrderCommentSyntax
 ): OrdersDiff {
   const olderIds = findUnitBlocks(olderText, syntax).map((block) => block.unitId);
   const newerIds = findUnitBlocks(newerText, syntax).map((block) => block.unitId);
