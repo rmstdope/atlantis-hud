@@ -40,6 +40,7 @@ import {
 } from "./mapViewport";
 import { rectFromCorners, rectPixels, type MapRect } from "./mapMarquee";
 import { isRecentreGesture } from "./mapRecentre";
+import { hexClickOf } from "./hexClick";
 import { travelsToSelection, type FollowedSelection } from "./mapViewState";
 import {
   followViewport,
@@ -1031,28 +1032,39 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   useImperativeHandle(ref, () => ({ zoomBy, frameAll }), [zoomBy, frameAll]);
 
   /**
-   * A click on a passage ring does exactly what a click on the hex beneath it does: the ring is drawn
-   * over the hit layer, so the hex polygon never receives this click itself.
+   * Everything a click on a hex position does, for every element that stands for a hex: the hex
+   * polygon, the fog rect (with `hex` null, so it selects by position), and any mark in the mark layer
+   * that is drawn over a hex. The decision is `hexClickOf`; this only carries it out.
    */
-  const clickRingAt = (event: React.MouseEvent<SVGGElement>, at: Coordinate) => {
-    if (draggedRef.current) {
-      return;
+  const clickHexAt = (event: React.MouseEvent<SVGElement>, at: Coordinate, hex: HexNode | null) => {
+    const click = hexClickOf({
+      dragged: draggedRef.current,
+      button: event.button,
+      ctrlKey: event.ctrlKey,
+      isMac: isMacPlatform(),
+      hexRegionId: hex?.regionId ?? null
+    });
+    switch (click.kind) {
+      case "ignore":
+        return;
+      case "recentre":
+        // Ctrl+click is the recentre gesture on macOS - most webviews already deliver it as
+        // `contextmenu` instead, but this is the belt to that suspender. Centres, never selects.
+        commit(centreOn(at, viewRef.current, size.width, size.height, insets ?? NO_INSETS));
+        return;
+      case "select-hex":
+        // Focused as well as selected, so the arrow keys carry on from the hex just clicked.
+        worldRef.current
+          ?.querySelector<SVGPolygonElement>(`polygon[data-region-id="${click.regionId}"]`)
+          ?.focus();
+        selectRef.current(click.regionId);
+        return;
+      case "select-ground":
+        setCursor(at);
+        pendingFocusRef.current = cursorKeyOf(at);
+        selectRef.current(regionIdOf(at));
+        return;
     }
-    if (isRecentreGesture({ button: event.button, ctrlKey: event.ctrlKey }, isMacPlatform())) {
-      commit(centreOn(at, viewRef.current, size.width, size.height, insets ?? NO_INSETS));
-      return;
-    }
-    const hex = hexAt(onLevel, at);
-    if (hex) {
-      worldRef.current
-        ?.querySelector<SVGPolygonElement>(`polygon[data-region-id="${hex.regionId}"]`)
-        ?.focus();
-      selectRef.current(hex.regionId);
-      return;
-    }
-    setCursor(at);
-    pendingFocusRef.current = cursorKeyOf(at);
-    selectRef.current(regionIdOf(at));
   };
 
   const onMapKeyDown = (event: React.KeyboardEvent<SVGPolygonElement>, from: Coordinate) => {
@@ -1425,9 +1437,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           width="100%"
           height="100%"
           onClick={(event) => {
-            if (draggedRef.current) {
-              return;
-            }
             const bounds = event.currentTarget.getBoundingClientRect();
             // Folded, so a click in a ghost copy selects the hex it is a copy of rather than one
             // beyond the map's own range.
@@ -1440,17 +1449,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               ),
               shape
             );
-            // Ctrl+click is the recentre gesture on macOS - most webviews already deliver it as
-            // `contextmenu` instead, but this is the belt to that suspender. Centres, never
-            // selects, same as a right-click.
-            if (isRecentreGesture({ button: event.button, ctrlKey: event.ctrlKey }, isMacPlatform())) {
-              commit(centreOn(coordinate, viewRef.current, size.width, size.height, insets ?? NO_INSETS));
-              return;
-            }
-            // Focus follows the click, as it does on a hex, so the arrow keys carry on from here.
-            setCursor(coordinate);
-            pendingFocusRef.current = cursorKeyOf(coordinate);
-            selectRef.current(regionIdOf(coordinate));
+            // `null` on purpose: a fog click selects by position even where the fold lands on a hex
+            // the map holds (a click in a ghost copy).
+            clickHexAt(event, coordinate, null);
           }}
         />
         <rect className="fill-terrain-unknown" width="100%" height="100%" pointerEvents="none" />
@@ -1711,25 +1712,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                 aria-pressed={hex.regionId === selectedRegionId}
                 onFocus={() => setCursor(hex.coordinate)}
                 onKeyDown={(event) => onMapKeyDown(event, hex.coordinate)}
-                onClick={(event) => {
-                  if (draggedRef.current) {
-                    return;
-                  }
-                  // Ctrl+click is the recentre gesture on macOS - see the fog rect's handler.
-                  if (
-                    isRecentreGesture({ button: event.button, ctrlKey: event.ctrlKey }, isMacPlatform())
-                  ) {
-                    commit(
-                      centreOn(hex.coordinate, viewRef.current, size.width, size.height, insets ?? NO_INSETS)
-                    );
-                    return;
-                  }
-                  // Focused as well as selected, so the arrow keys carry on from the hex just
-                  // clicked. Chromium happens to focus an SVG shape on pointerdown anyway, but
-                  // that is not something to rely on across the two shells' webviews.
-                  event.currentTarget.focus();
-                  selectRef.current(hex.regionId);
-                }}
+                onClick={(event) => clickHexAt(event, hex.coordinate, hex)}
               >
                 <title>{hex.label}</title>
               </polygon>
@@ -1785,7 +1768,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             dashed border; before the passage rings, so a ring on the same hex keeps its own hover.
           */}
           {wallsOnLevel.map((mark) => (
-            <WallRampart key={mark.key} mark={mark} onClick={clickRingAt} />
+            <WallRampart key={mark.key} mark={mark} onClick={(event, at) => clickHexAt(event, at, hexAt(onLevel, at))} />
           ))}
 
           {/*
@@ -1801,7 +1784,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               at={route.passage.coordinate}
               glyph="?"
               hover={ringHover(hexAt(onLevel, route.passage.coordinate)?.label ?? null, passageTitle(route.passage))}
-              onClick={(event) => clickRingAt(event, route.passage!.coordinate)}
+              onClick={(event) => clickHexAt(event, route.passage!.coordinate, hexAt(onLevel, route.passage!.coordinate))}
               testId="map-passage-ring"
               translateAt={translateAt}
             />
@@ -1811,7 +1794,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               at={route.passage.coordinate}
               glyph={PASSAGE_PAIR}
               hover={ringHover(hexAt(onLevel, route.passage.coordinate)?.label ?? null, passageTitle(route.passage))}
-              onClick={(event) => clickRingAt(event, route.passage!.coordinate)}
+              onClick={(event) => clickHexAt(event, route.passage!.coordinate, hexAt(onLevel, route.passage!.coordinate))}
               testId="map-passage-entry-ring"
               translateAt={translateAt}
             />
@@ -1824,7 +1807,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                 hexAt(onLevel, route.passage.exit.coordinate)?.label ?? null,
                 passageExitTitle(route.passage)
               )}
-              onClick={(event) => clickRingAt(event, route.passage!.exit!.coordinate)}
+              onClick={(event) => clickHexAt(event, route.passage!.exit!.coordinate, hexAt(onLevel, route.passage!.exit!.coordinate))}
               testId="map-passage-exit-ring"
               translateAt={translateAt}
             />
