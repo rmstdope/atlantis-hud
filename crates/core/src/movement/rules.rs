@@ -2,7 +2,7 @@
 //!
 //! Reads `config/public/ruleset.json`, which `packages/ruleset` writes; every struct here refuses a
 //! key it does not know, so a field the scraper adds without a home here fails
-//! `tests/movement_ruleset.rs`.
+//! `tests/movement/ruleset/`.
 
 use std::collections::BTreeMap;
 

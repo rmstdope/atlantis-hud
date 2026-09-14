@@ -408,7 +408,7 @@ impl MapKnowledge {
     ///
     /// This is the no-memory path, and resolving with an empty `remembered` slice describes exactly
     /// the same map (`from_report_agrees_with_from_remembered_given_nothing_remembered`,
-    /// `movement_graph.rs`) - so it delegates rather than carrying its own copy of the same rules.
+    /// `tests/movement/graph/map.rs`) - so it delegates rather than carrying its own copy of the same rules.
     #[must_use]
     pub fn from_report(report: &ParsedReport) -> Self {
         Self::from_remembered(report, &[])

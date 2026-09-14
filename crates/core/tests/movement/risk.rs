@@ -11,8 +11,7 @@ use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport}
 
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 
-mod common;
-use common::{at, ruleset};
+use crate::common::{at, ruleset};
 
 /// Classified, because the risk heuristic weighs men and a unit's men are only exact once the
 /// catalogue has been consulted.

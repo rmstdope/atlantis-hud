@@ -97,7 +97,7 @@ The shape is declared twice, once on each side of the file, and two tests hold t
   field the core requires that the file lacks fails the same parse.
 - **The file itself** is proven equal to the scraper's output from the committed fixture pages by
   `packages/ruleset/src/committed.test.ts`, and proven readable by
-  `crates/core/tests/movement_ruleset.rs`. Both run in `pnpm test`.
+  `crates/core/tests/movement/ruleset/`. Both run in `pnpm test`.
 
 Three things the field lists do not say for themselves: `ocean.terrain` is the water terrain's name
 read out of the rule's own sentence rather than assumed to be `ocean`; `skills.*.cost` is
@@ -119,7 +119,7 @@ matches either complete grammar the scraper understands. One unrecognized race s
 does not make the rest of the item catalogue unusable.
 
 **Adding a field** touches exactly: the scraper (`rules.ts` or `data.ts`, and its test), the core
-(`rules.rs`, and `tests/movement_ruleset.rs`), and the file — regenerated, never edited:
+(`rules.rs`, and `tests/movement/ruleset/`), and the file — regenerated, never edited:
 
 ```
 pnpm --filter @atlantis/ruleset scrape -- \

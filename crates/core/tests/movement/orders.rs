@@ -12,8 +12,7 @@ use atlantis_hud_core::report::{parse_report_full, ParsedReport};
 
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 
-mod common;
-use common::at;
+use crate::common::at;
 
 fn turn_71() -> ParsedReport {
     parse_report_full(TURN_71)

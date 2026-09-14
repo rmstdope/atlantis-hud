@@ -1,27 +1,14 @@
-//! Acceptance tests for the map a route is planned over, and for how a unit gets about.
-//!
-//! Both are read out of the committed turn 71 report by hand, so a failure here is a disagreement
-//! with the report rather than with an earlier run.
-
-use atlantis_hud_core::movement::graph::{may_leave_land, Direction, MapKnowledge};
-use atlantis_hud_core::movement::mode::{mobility, unit_movement, Mobility};
-use atlantis_hud_core::movement::rules::MovementMode;
-use atlantis_hud_core::report::model::{
-    Coordinate, ReportUnit, UnitMovementMode, UnitMovementStatus,
-};
+use crate::common::at;
+use atlantis_hud_core::movement::graph::{Direction, MapKnowledge};
+use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::parse_report_full;
 
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const G3_F42_T40: &str = atlantis_hud_fixtures::G3_F42_T40.text;
 
-mod common;
-use common::at;
-
 fn knowledge() -> MapKnowledge {
     MapKnowledge::from_report(&parse_report_full(TURN_71))
 }
-
-// ---------------------------------------------------------------- the map
 
 /// A report describes far more of the map than the faction stood in: every region block names its
 /// six neighbours with their terrain, which is enough to cost a step into one.
@@ -168,123 +155,6 @@ fn a_road_with_nothing_on_the_far_side_does_not_connect() {
     // facing back is simply unknown - and unknown is not a bonus.
     assert!(!map.road_connects(at(7, 53), Direction::North));
 }
-
-// ---------------------------------------------------------------- the unit
-
-/// The report states each unit's four capacities as the server computed them, so how a unit travels
-/// is read rather than derived. The order is fly/ride/walk/swim, confirmed against three units.
-#[test]
-fn a_unit_takes_the_fastest_mode_its_weight_allows() {
-    let report = parse_report_full(TURN_71);
-    let unit_by = |id: &str| {
-        report
-            .units()
-            .find(|unit| unit.unit_id == id)
-            .expect("the report should carry that unit")
-            .clone()
-    };
-
-    // "Six of Seven (881) ... Weight: 773. Capacity: 901/901/916/0."
-    assert_eq!(
-        mobility(&unit_by("881")),
-        Mobility::Moves(MovementMode::Fly),
-        "flight is available and fastest"
-    );
-
-    // "Drone (13432) ... hill dwarf, horse. Weight: 60. Capacity: 0/70/85/0."
-    assert_eq!(
-        mobility(&unit_by("13432")),
-        Mobility::Moves(MovementMode::Ride),
-        "the horse can carry the unit"
-    );
-
-    // "Drones (14451) ... 50 lizardmen, 7500 silver. Weight: 500. Capacity: 0/0/750/750."
-    assert_eq!(
-        mobility(&unit_by("14451")),
-        Mobility::Moves(MovementMode::Walk)
-    );
-}
-
-/// The fixture's own example of a unit that cannot move at all: its weight exceeds every one of its
-/// capacities, so the game will not let it issue a MOVE order.
-#[test]
-fn a_unit_heavier_than_all_its_capacities_cannot_move() {
-    let report = parse_report_full(TURN_71);
-    let unit = report
-        .units()
-        .find(|unit| unit.unit_id == "13972")
-        .expect("the report should carry that unit");
-
-    // "Thirteen of Eight (13972) ... Weight: 17. Capacity: 0/0/15/0."
-    assert_eq!(mobility(unit), Mobility::Overloaded);
-}
-
-#[test]
-fn report_units_expose_the_complete_movement_presentation() {
-    let report = parse_report_full(TURN_71);
-    let movement = |id: &str| {
-        report
-            .units()
-            .find(|unit| unit.unit_id == id)
-            .and_then(unit_movement)
-            .expect("the report states movement")
-    };
-
-    let overloaded = movement("13972");
-    assert_eq!(overloaded.status, UnitMovementStatus::Overloaded);
-    assert_eq!(overloaded.capacity_mode, UnitMovementMode::Walk);
-    assert_eq!((overloaded.load, overloaded.walk), (17, 15));
-
-    let walking = movement("14451");
-    assert_eq!(walking.status, UnitMovementStatus::Walk);
-    assert_eq!(walking.capacity_mode, UnitMovementMode::Walk);
-    assert_eq!((walking.load, walking.walk), (500, 750));
-
-    let riding = movement("13432");
-    assert_eq!(riding.status, UnitMovementStatus::Ride);
-    assert_eq!(riding.capacity_mode, UnitMovementMode::Ride);
-    assert_eq!((riding.load, riding.ride, riding.walk), (60, 70, 85));
-
-    let flying = movement("881");
-    assert_eq!(flying.status, UnitMovementStatus::Fly);
-    assert_eq!(flying.capacity_mode, UnitMovementMode::Fly);
-    assert_eq!((flying.load, flying.fly), (773, 901));
-}
-
-#[test]
-fn exact_capacity_is_mobile_and_foreign_units_without_it_are_unstated() {
-    let exact = ReportUnit {
-        weight: Some(15),
-        capacity: Some("0/0/15/0".to_string()),
-        ..Default::default()
-    };
-    assert_eq!(
-        unit_movement(&exact).map(|movement| movement.status),
-        Some(UnitMovementStatus::Walk)
-    );
-
-    let report = parse_report_full(TURN_71);
-    let foreign = report
-        .units()
-        .find(|unit| !unit.own && unit.weight.is_none())
-        .expect("the report has foreign units");
-    assert_eq!(foreign.movement, None);
-}
-
-/// A report prints weight and capacity only for your own units, so a foreign unit's mobility is not
-/// unknown by accident - it is genuinely not in the report, and saying so beats assuming it walks.
-#[test]
-fn a_foreign_unit_has_no_stated_mobility() {
-    let report = parse_report_full(TURN_71);
-    let foreign = report
-        .units()
-        .find(|unit| !unit.own && unit.weight.is_none())
-        .expect("the report is full of foreign units");
-
-    assert_eq!(mobility(foreign), Mobility::Unstated);
-}
-
-// ---------------------------------------------------------------- the fleet
 
 /// "+ Ship [329] : Longship; Load: 110/150; Sailors: 4/4; MaxSpeed: 4." - the planner cannot see a
 /// fleet at all until `KnownHex` carries the structures a report describes, the way it already
@@ -441,7 +311,7 @@ fn the_newer_of_two_memories_wins() {
 
 /// A same-turn ally sighting is as fresh as anything the current report itself describes, so the
 /// planner should see its units - the disagreement ah-u4e.1 fixes (the risk heuristic used to read
-/// "Nobody else is here" for exactly this hex; see `movement_risk.rs`).
+/// "Nobody else is here" for exactly this hex; see `risk.rs`).
 #[test]
 fn the_planner_sees_a_same_turn_allys_units() {
     use atlantis_hud_core::movement::graph::RememberedRegion;
@@ -579,122 +449,4 @@ fn from_report_agrees_with_from_remembered_given_nothing_remembered() {
         MapKnowledge::from_report(&report),
         MapKnowledge::from_remembered(&report, &[])
     );
-}
-
-/// `rules/movement_sailing`: "Ships may not sail through single hex land masses and must leave via
-/// the same side they entered or a side adjacent to that one." Entering travelling `entered` means
-/// coming in through the side facing back the way it came, so the three sides refused are the
-/// direction of travel itself and the two beside it - and only one of those three is `opposite`.
-#[test]
-fn three_of_the_six_sides_are_refused_whichever_way_a_fleet_came_in() {
-    for entered in Direction::ALL {
-        let refused: Vec<Direction> = Direction::ALL
-            .into_iter()
-            .filter(|leaving| !may_leave_land(entered, *leaving))
-            .collect();
-        let allowed: Vec<Direction> = Direction::ALL
-            .into_iter()
-            .filter(|leaving| may_leave_land(entered, *leaving))
-            .collect();
-
-        assert_eq!(refused.len(), 3, "entering {entered:?}");
-        assert_eq!(allowed.len(), 3, "entering {entered:?}");
-
-        let mut expected_refused = vec![entered];
-        expected_refused.extend(entered.beside());
-        expected_refused.sort();
-        let mut got = refused.clone();
-        got.sort();
-        assert_eq!(got, expected_refused, "entering {entered:?}");
-
-        let mut expected_allowed = vec![entered.opposite()];
-        expected_allowed.extend(entered.opposite().beside());
-        expected_allowed.sort();
-        let mut got_allowed = allowed.clone();
-        got_allowed.sort();
-        assert_eq!(got_allowed, expected_allowed, "entering {entered:?}");
-    }
-}
-
-/// The case every agreed sentence is written against: a fleet sailing SE into a plain entered
-/// through the plain's NW side, so it may leave NW, N or SW and not SE, NE or S.
-#[test]
-fn the_refused_sides_after_sailing_southeast_are_the_mockups_three() {
-    for leaving in [Direction::Southeast, Direction::Northeast, Direction::South] {
-        assert!(
-            !may_leave_land(Direction::Southeast, leaving),
-            "{leaving:?} should be refused"
-        );
-    }
-    for leaving in [Direction::Northwest, Direction::North, Direction::Southwest] {
-        assert!(
-            may_leave_land(Direction::Southeast, leaving),
-            "{leaving:?} should be allowed"
-        );
-    }
-}
-
-/// An ocean hex is known only by the shore that named it, so it states no exits of its own -
-/// and that shore is the only evidence there is that the water has a coast. `adjacent` reads the
-/// statement from both ends; `neighbours` reads only the hex's own, and for an ocean hex that is
-/// nothing at all.
-#[test]
-fn an_ocean_hex_named_from_the_shore_knows_its_shore() {
-    let report = parse_report_full(
-        "Foo (1) Report\n\
-         \n\
-         plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\
-         \n\
-         Exits:\n  \
-         Southeast : ocean (2,2) in Atlantis Ocean.\n",
-    );
-    let map = MapKnowledge::from_report(&report);
-
-    assert_eq!(
-        map.neighbours(at(2, 2)).count(),
-        0,
-        "nothing described the ocean's own exits"
-    );
-    assert_eq!(
-        map.adjacent(at(2, 2)),
-        vec![(Direction::Northwest, at(1, 1))],
-        "the shore that named it is adjacency all the same"
-    );
-
-    // The hex's own statement is unchanged, and is not duplicated by the reverse edge.
-    assert_eq!(
-        map.adjacent(at(1, 1)),
-        vec![(Direction::Southeast, at(2, 2))]
-    );
-}
-
-// ---------------------------------------------------------------- walls
-
-/// Cavern (9,3,2) in the Arcanum report lists only Southeast, South and Northwest, so its report
-/// proves the other three sides have no way through.
-#[test]
-fn a_cavern_whose_exits_leave_out_three_sides_is_walled_on_those_three() {
-    let map = MapKnowledge::from_report(&parse_report_full(
-        atlantis_hud_fixtures::NEWAGE_ARCANUM_F3_T84.text,
-    ));
-    let cavern = Coordinate { x: 9, y: 3, z: 2 };
-
-    assert!(map.wall(cavern, Direction::North));
-    assert!(map.wall(cavern, Direction::Northeast));
-    assert!(map.wall(cavern, Direction::Southwest));
-    assert!(!map.wall(cavern, Direction::Southeast));
-    assert!(!map.wall(cavern, Direction::South));
-    assert!(!map.wall(cavern, Direction::Northwest));
-}
-
-/// The surface of the same report lists every exit, so none of its hexes proves a wall.
-#[test]
-fn no_surface_hex_of_the_arcanum_report_is_walled() {
-    let map = MapKnowledge::from_report(&parse_report_full(
-        atlantis_hud_fixtures::NEWAGE_ARCANUM_F3_T84.text,
-    ));
-    let walls = map.walls();
-
-    assert!(!walls.is_empty(), "the underground has walls");
-    assert!(walls.iter().all(|wall| wall.from.z != 1));
 }
