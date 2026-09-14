@@ -586,7 +586,12 @@ impl Shipping {
     }
 
     /// What a shipment whose ends `judge` measured costs by weight.
-    pub(crate) fn priced(&self, measured: &Measured, language: OrderLanguage, weight: i64) -> Priced {
+    pub(crate) fn priced(
+        &self,
+        measured: &Measured,
+        language: OrderLanguage,
+        weight: i64,
+    ) -> Priced {
         priced(
             measured.reach,
             measured.from,

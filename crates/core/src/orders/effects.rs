@@ -3313,7 +3313,9 @@ impl Working {
             if moving.is_empty() {
                 continue;
             }
-            if let TransportTargetOutcome::Refused(reason) = Self::transport_target(verdict.acceptance) {
+            if let TransportTargetOutcome::Refused(reason) =
+                Self::transport_target(verdict.acceptance)
+            {
                 // One record for the order, naming the goods only where there is a claim to make.
                 let (amount, tag) = self.goods_claimed(&moving);
                 issues[pending.sender].push((
