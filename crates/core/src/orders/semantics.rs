@@ -14578,6 +14578,98 @@ fn push_region_finding(
     findings.push(ordered.finding(hex, codes::TOO_MANY_TRADE_REGIONS, message, Some(placed)));
 }
 
+/// Which kind of order uses a tax or trade slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RegionUseKind {
+    Tax,
+    TaxByFlag,
+    Pillage,
+    Produce,
+}
+
+/// One own unit's use of a tax or trade slot, in document walk order.
+struct RegionUse<'a, 'b> {
+    hex: &'a Hex<'b>,
+    ordered: &'a Ordered<'b>,
+    kind: RegionUseKind,
+    /// The region the slot is used in. `None` only for a PRODUCE whose sail `production_region`
+    /// cannot follow - it still anchors the warning, but counts nowhere.
+    region: Option<&'b ReportRegion>,
+    /// The order line. `None` for `TaxByFlag`.
+    placed: Option<&'a PlacedIntent>,
+}
+
+/// Every use of a tax or trade slot this month's orders make. The one walk both the region-limit
+/// warning and the Production window read, so the two cannot disagree about what uses a slot.
+fn region_uses<'a, 'b>(
+    hexes: &'a [(Hex<'b>, Ledger<'_>)],
+    ruleset: Option<&Ruleset>,
+) -> Vec<RegionUse<'a, 'b>> {
+    let by_coordinate: HashMap<Coordinate, &'b ReportRegion> = hexes
+        .iter()
+        .map(|(hex, _)| (hex.region.coordinate, hex.region))
+        .collect();
+    let mut uses = Vec::new();
+    for (hex, _) in hexes {
+        for ordered_unit in hex
+            .units
+            .iter()
+            .filter(|unit| spends_faction_allowance(unit) && unit.unit.own)
+        {
+            // A unit taxing by its flag taxes this region with no `TAX` line to find, so the
+            // region counts against the allowance like any other (`ah-fvzu`). Counted once per
+            // unit, flag or order alike; the earliest TAX line is the anchor.
+            if taxes(&ordered_unit.flags, &ordered_unit.intents) {
+                let placed = ordered_unit
+                    .intents
+                    .iter()
+                    .filter(|placed| matches!(placed.intent, Intent::Tax))
+                    .min_by_key(|placed| placed.line);
+                uses.push(RegionUse {
+                    hex,
+                    ordered: ordered_unit,
+                    kind: if placed.is_some() {
+                        RegionUseKind::Tax
+                    } else {
+                        RegionUseKind::TaxByFlag
+                    },
+                    region: Some(hex.region),
+                    placed,
+                });
+            }
+            for placed in ordered_unit.intents.iter() {
+                match &placed.intent {
+                    // Both shapes a PRODUCE order can take: one naming what it makes
+                    // (`ah-19l2.2`) and one that named nothing readable.
+                    Intent::Produce { .. } | Intent::MonthLong("PRODUCE") => {
+                        uses.push(RegionUse {
+                            hex,
+                            ordered: ordered_unit,
+                            kind: RegionUseKind::Produce,
+                            region: production_region(hex, ordered_unit, ruleset, &by_coordinate),
+                            placed: Some(placed),
+                        });
+                    }
+                    Intent::Pillage => uses.push(RegionUse {
+                        hex,
+                        ordered: ordered_unit,
+                        kind: RegionUseKind::Pillage,
+                        region: Some(hex.region),
+                        placed: Some(placed),
+                    }),
+                    // TRANSPORT, BUY and SELL never use up a region. The rules page says TRANSPORT
+                    // "counts as trade activity in the hex of the unit issuing the order", but the
+                    // game engine does not count it, and the engine is what refuses orders. Do not
+                    // add it here to match the rules.
+                    Intent::Transport { .. } | Intent::Buy { .. } | Intent::Sell { .. } => {}
+                    _ => {}
+                }
+            }
+        }
+    }
+    uses
+}
+
 /// `PRODUCE: Faction can't produce in that many regions.` A faction may only tax and trade in so
 /// many regions a month (rules/tablefactionpoints). PRODUCE, TAX - an order or the taxing flag -
 /// and PILLAGE use up a region; BUY, SELL and TRANSPORT never do. Order one region too many and the
@@ -14609,50 +14701,20 @@ fn check_trade_regions(
     let mut first_produce: Option<RegionAnchor<'_, '_>> = None;
     let mut first_tax_or_pillage: Option<RegionAnchor<'_, '_>> = None;
 
-    let by_coordinate: HashMap<Coordinate, &ReportRegion> = hexes
-        .iter()
-        .map(|(hex, _)| (hex.region.coordinate, hex.region))
-        .collect();
-    for (hex, _) in hexes {
-        for ordered_unit in hex
-            .units
-            .iter()
-            .filter(|unit| spends_faction_allowance(unit) && unit.unit.own)
-        {
-            let region_id = hex.region.region_id.as_str();
-            // A unit taxing by its flag taxes this region with no `TAX` line to find, so the
-            // region counts against the allowance like any other (`ah-fvzu`).
-            if taxes(&ordered_unit.flags, &ordered_unit.intents) {
-                taxing.insert(region_id);
-            }
-            for placed in ordered_unit.intents.iter() {
-                let here = Some((hex, ordered_unit, placed));
-                match &placed.intent {
-                    // Both shapes a PRODUCE order can take: one naming what it makes
-                    // (`ah-19l2.2`) and one that named nothing readable.
-                    Intent::Produce { .. } | Intent::MonthLong("PRODUCE") => {
-                        if let Some(region) =
-                            production_region(hex, ordered_unit, ruleset, &by_coordinate)
-                        {
-                            producing.insert(region.region_id.as_str());
-                        }
-                        first_produce = earlier_anchor(first_produce, here);
-                    }
-                    // Counted once per unit above, flag or order alike; the line is the anchor.
-                    Intent::Tax => {
-                        first_tax_or_pillage = earlier_anchor(first_tax_or_pillage, here);
-                    }
-                    Intent::Pillage => {
-                        taxing.insert(region_id);
-                        first_tax_or_pillage = earlier_anchor(first_tax_or_pillage, here);
-                    }
-                    // TRANSPORT, BUY and SELL never use up a region. The rules page says TRANSPORT
-                    // "counts as trade activity in the hex of the unit issuing the order", but the
-                    // game engine does not count it, and the engine is what refuses orders. Do not
-                    // add it here to match the rules.
-                    Intent::Transport { .. } | Intent::Buy { .. } | Intent::Sell { .. } => {}
-                    _ => {}
+    for used in region_uses(hexes, ruleset) {
+        let anchor = used.placed.map(|placed| (used.hex, used.ordered, placed));
+        match used.kind {
+            RegionUseKind::Produce => {
+                if let Some(region) = used.region {
+                    producing.insert(region.region_id.as_str());
                 }
+                first_produce = earlier_anchor(first_produce, anchor);
+            }
+            RegionUseKind::Tax | RegionUseKind::TaxByFlag | RegionUseKind::Pillage => {
+                if let Some(region) = used.region {
+                    taxing.insert(region.region_id.as_str());
+                }
+                first_tax_or_pillage = earlier_anchor(first_tax_or_pillage, anchor);
             }
         }
     }
