@@ -14,6 +14,7 @@ pub mod blocks;
 mod build_object;
 pub mod completion;
 pub mod effects;
+pub mod faction_orders;
 #[cfg(test)]
 mod form_agreement;
 pub mod forms;

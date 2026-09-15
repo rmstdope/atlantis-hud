@@ -6406,6 +6406,8 @@ fn apply(
         // see `ledger_for_with_production`, this function's only caller, which skips `Produce`
         // here and calls `produce` from that pass (`rules/sequenceofevents`, `ah-l80z`).
         Intent::Produce { .. } => {}
+        // FACTION moves no silver, goods or people (`rules/faction`).
+        Intent::Faction { .. } => {}
         // Never reached from the walk: `phases::ORDER` holds no Transport phase. TRANSPORT settles
         // report-wide in `settle_report_wide`.
         Intent::Transport { .. } => {}

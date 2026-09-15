@@ -15,7 +15,9 @@ use common::{ruleset, trident_ruleset};
 
 #[test]
 fn the_committed_rulesets_carry_their_faction_points() {
-    let origins = ruleset().faction_points.expect("New Origins states its table");
+    let origins = ruleset()
+        .faction_points
+        .expect("New Origins states its table");
     assert_eq!(origins.available, 5);
     assert_eq!(
         origins.table.iter().find(|row| row.points == 3),
@@ -28,10 +30,16 @@ fn the_committed_rulesets_carry_their_faction_points() {
         })
     );
 
-    let trident = trident_ruleset().faction_points.expect("Trident states its table");
+    let trident = trident_ruleset()
+        .faction_points
+        .expect("Trident states its table");
     assert_eq!(trident.available, 3);
     assert_eq!(
-        trident.table.iter().map(|row| row.points).collect::<Vec<_>>(),
+        trident
+            .table
+            .iter()
+            .map(|row| row.points)
+            .collect::<Vec<_>>(),
         vec![1, 2]
     );
 
@@ -39,6 +47,10 @@ fn the_committed_rulesets_carry_their_faction_points() {
         .expect("the committed Arcanum ruleset loads")
         .faction_points
         .expect("Arcanum states its table");
-    let row = arcanum.table.iter().find(|row| row.points == 3).expect("row 3");
+    let row = arcanum
+        .table
+        .iter()
+        .find(|row| row.points == 3)
+        .expect("row 3");
     assert_eq!((row.regions, row.quartermasters), (56, 16));
 }

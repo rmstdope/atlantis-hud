@@ -465,7 +465,10 @@ pub struct FactionPoints {
 #[cfg_attr(
     test,
     derive(ts_rs::TS),
-    ts(export, export_to = "../../../ruleset/src/generated/FactionPointsRow.ts")
+    ts(
+        export,
+        export_to = "../../../ruleset/src/generated/FactionPointsRow.ts"
+    )
 )]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FactionPointsRow {
