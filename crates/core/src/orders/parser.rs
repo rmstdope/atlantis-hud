@@ -44,6 +44,7 @@ pub fn validate_against(source: &str, ruleset: Option<&Ruleset>) -> OrderValidat
     OrderValidationResult {
         diagnostics,
         silver: Vec::new(),
+        production: crate::orders::production_overview::ProductionOverview::default(),
     }
 }
 
