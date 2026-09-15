@@ -7,7 +7,7 @@ import {
   type ReportRegion,
   type WorkedRegion
 } from "@atlantis/core-client";
-import { activatesRow, productionView, statesRegionLimit } from "./productionView";
+import { activatesRow, hexesOverNote, productionView, regionsUsed, statesRegionLimit } from "./productionView";
 
 /**
  * The Production window's words and judgements (ah-nneu). Every string here is one the design
@@ -240,5 +240,23 @@ describe("activatesRow", () => {
     expect(activatesRow("Enter")).toBe(true);
     expect(activatesRow(" ")).toBe(false);
     expect(activatesRow("Escape")).toBe(false);
+  });
+});
+
+describe("the helpers the faction view shares (ah-x7s3)", () => {
+  it("hexesOverNote says one hex in the singular and two in the plural", () => {
+    expect(hexesOverNote(1)).toBe("1 hex over — orders in 1 hex will be refused");
+    expect(hexesOverNote(2)).toBe("2 hexes over — orders in 2 hexes will be refused");
+  });
+
+  it("regionsUsed counts all regions, tax slots and trade slots", () => {
+    const overview = aProductionOverview({
+      regions: [
+        aWorkedRegion({ regionId: "a", usesTaxSlot: true, usesTradeSlot: false }),
+        aWorkedRegion({ regionId: "b", usesTaxSlot: true, usesTradeSlot: true }),
+        aWorkedRegion({ regionId: "c", usesTaxSlot: false, usesTradeSlot: true })
+      ]
+    });
+    expect(regionsUsed(overview)).toEqual({ pooled: 3, tax: 2, trade: 2 });
   });
 });

@@ -1,8 +1,12 @@
 import type { ReactNode } from "react";
-import type { DeclaredAttitudes, FactionStatus } from "@atlantis/core-client";
-import { allowanceRows, attitudeLines } from "./factionView";
+import type { DeclaredAttitudes, FactionStatus, NewStudents, ProductionOverview } from "@atlantis/core-client";
+import { allowanceRows, attitudeLines, type AllowanceState } from "./factionView";
 import { POPOVER_BODY_MAX_H } from "./primitives";
 import { PopoverFrame } from "./popover";
+
+/** The bar and count colours by allowance state, the same the Production window uses. */
+const BAR_FILL: Record<AllowanceState, string> = { room: "bg-select", full: "bg-brass", over: "bg-danger" };
+const COUNT_TEXT: Record<AllowanceState, string> = { room: "text-ink", full: "text-brass-bright", over: "text-danger" };
 
 /**
  * Everything the report says about the faction as a whole: allowances, unclaimed silver and the
@@ -20,6 +24,8 @@ export function FactionPanel({
   status,
   attitudes,
   mergedFactionIds,
+  production,
+  students,
   renderFactionName,
   onOpenProduction,
   onDismiss
@@ -31,6 +37,10 @@ export function FactionPanel({
   status: FactionStatus | null;
   attitudes: DeclaredAttitudes | null;
   mergedFactionIds: ReadonlySet<string>;
+  /** This turn's worked regions, which the Regions rows count (ah-x7s3). */
+  production: ProductionOverview;
+  /** This turn's new quartermasters, mages and apprentices (ah-x7s3). */
+  students: NewStudents;
   /**
    * Wraps a named faction so it can open that faction's dossier beside itself (ah-bu2c). Left off,
    * the name prints as it always did - this panel has no idea what a dossier is, and does not need
@@ -41,7 +51,7 @@ export function FactionPanel({
   onOpenProduction?: () => void;
   onDismiss: () => void;
 }) {
-  const rows = status ? allowanceRows(status) : [];
+  const rows = status ? allowanceRows(status, production, students) : [];
   const lines = attitudes ? attitudeLines(attitudes, mergedFactionIds) : [];
   const unparsed = status?.unparsed ?? [];
 
@@ -84,13 +94,18 @@ export function FactionPanel({
                   <span className="text-ink-soft">{row.label}</span>
                   <span className="block h-1 rounded bg-edge-soft">
                     <span
-                      className={`block h-full rounded ${row.atCeiling ? "bg-brass" : "bg-select"}`}
-                      style={{ width: `${Math.min(row.fraction, 1) * 100}%` }}
+                      className={`block h-full rounded ${BAR_FILL[row.state]}`}
+                      style={{ width: `${row.fraction * 100}%` }}
                     />
                   </span>
-                  <span className={row.atCeiling ? "text-brass-bright" : "text-ink"}>
+                  <span className={COUNT_TEXT[row.state]}>
                     {row.used} / {row.maximum}
                   </span>
+                  {row.note !== "" ? (
+                    <span data-testid="allowance-note" className="col-span-3 text-xs text-danger">
+                      {row.note}
+                    </span>
+                  ) : null}
                 </div>
               ))}
             </div>

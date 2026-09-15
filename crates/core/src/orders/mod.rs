@@ -25,6 +25,7 @@ pub mod items;
 pub mod lexer;
 /// Core-internal: who may become a mage, and who already is one.
 mod magic;
+pub mod new_students;
 pub mod parser;
 /// Core-internal: the one `rules/sequenceofevents` phase order both `semantics` and `silver` read.
 mod phases;
@@ -95,11 +96,13 @@ pub fn validate_turn(
     let mut diagnostics = parser::validate_against(source, ruleset).diagnostics;
     let mut silver = Vec::new();
     let mut production = production_overview::ProductionOverview::default();
+    let mut students = new_students::NewStudents::default();
 
     if let Some(report) = report {
         let review = semantics::review_turn(report, source, ruleset, options);
         silver = review.silver;
         production = review.production;
+        students = review.students;
         diagnostics.extend(review.findings.into_iter().map(into_diagnostic));
 
         // Advice derived from a unit whose line the parser could not read is advice derived from
@@ -140,6 +143,7 @@ pub fn validate_turn(
         diagnostics,
         silver,
         production,
+        students,
     }
 }
 

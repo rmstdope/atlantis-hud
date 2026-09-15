@@ -14,7 +14,8 @@ import {
   suggestOrderCommands,
   summarizeOrderValidation,
   unitsWarnedAboutSilver,
-  NO_PRODUCTION
+  NO_PRODUCTION,
+  NO_STUDENTS
 } from "./orderEditor";
 import { unitRowKey } from "./unitTable";
 
@@ -35,6 +36,7 @@ describe("orderEditor policy", () => {
     const result: OrderValidationResult = {
       silver: [],
       production: NO_PRODUCTION,
+      students: NO_STUDENTS,
       diagnostics: [
         {
           code: "unknown-command",
@@ -76,6 +78,7 @@ describe("orderEditor policy", () => {
     const result: OrderValidationResult = {
       silver: [],
       production: NO_PRODUCTION,
+      students: NO_STUDENTS,
       diagnostics: [
         {
           code: "extra-arguments",

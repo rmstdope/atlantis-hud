@@ -1,7 +1,7 @@
 import type {
   OrderDiagnostic,
   OrderValidationResult,
-  ProductionOverview,
+  NewStudents, ProductionOverview,
   UnitSilver
 } from "@atlantis/core-client";
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
@@ -143,10 +143,15 @@ export type ValidatedOrders = {
   silver: UnitSilver[];
   /** Every region those orders tax, pillage or produce in, for the Production window. `ah-nneu`. */
   production: ProductionOverview;
+  /** New quartermasters, mages and apprentices those orders make. `ah-x7s3`. */
+  students: NewStudents;
 };
 
 /** No regions and no limits: what the window reads before the first validation lands. */
 export const NO_PRODUCTION: ProductionOverview = { limits: { pooled: null, tax: null, trade: null }, regions: [] };
+
+/** No new students: what the Allowances rows read before the first validation lands. `ah-x7s3`. */
+export const NO_STUDENTS: NewStudents = { quartermasters: 0, mages: 0, apprentices: 0 };
 
 /**
  * The diagnostics belonging to one unit, numbered from the top of that unit's block.

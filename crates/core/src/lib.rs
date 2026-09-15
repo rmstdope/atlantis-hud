@@ -113,6 +113,10 @@ pub struct OrderValidationResult {
     /// `ah-nneu`. `#[serde(default)]` so an older payload deserialises to no regions.
     #[serde(default)]
     pub production: crate::orders::production_overview::ProductionOverview,
+    /// New quartermasters, mages and apprentices these orders make, for the faction view's
+    /// Allowances rows. `ah-x7s3`. `#[serde(default)]` so an older payload deserialises to zeros.
+    #[serde(default)]
+    pub students: crate::orders::new_students::NewStudents,
 }
 
 impl OrderValidationResult {

@@ -60,6 +60,7 @@ export type { RegionLimits } from "./generated/RegionLimits";
 export type { WorkedRegion } from "./generated/WorkedRegion";
 export type { SlotOrder } from "./generated/SlotOrder";
 export type { SlotOrderKind } from "./generated/SlotOrderKind";
+export type { NewStudents } from "./generated/NewStudents";
 export type { WorkedTax } from "./generated/WorkedTax";
 export type { WorkedResource } from "./generated/WorkedResource";
 export type { NoStudyFee } from "./generated/NoStudyFee";

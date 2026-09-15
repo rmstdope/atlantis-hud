@@ -110,6 +110,7 @@ import {
   unitsWarnedAboutSilver,
   type OrdersOrigin,
   NO_PRODUCTION,
+  NO_STUDENTS,
   type ValidatedOrders
 } from "../orderEditor";
 import { openNewestGame, rulesetUrlFor } from "../gameSession";
@@ -588,7 +589,7 @@ export function AppShell({
   );
   const [status, setStatus] = useState<StatusLine | null>(null);
   const [busy, setBusy] = useState(false);
-  const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION });
+  const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS });
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text, which keeps the call stateless: there is no session to
   // invalidate when a new turn arrives. The text is also the key the core remembers its last parse
@@ -3288,7 +3289,7 @@ export function AppShell({
   // leave the panel pointing at lines that moved several keystrokes ago.
   useEffect(() => {
     if (!ordersDocument) {
-      setValidated({ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION });
+      setValidated({ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS });
       return undefined;
     }
 
@@ -3318,7 +3319,8 @@ export function AppShell({
               text: ordersDocument,
               diagnostics: result.diagnostics,
               silver: result.silver ?? [],
-              production: result.production ?? NO_PRODUCTION
+              production: result.production ?? NO_PRODUCTION,
+              students: result.students ?? NO_STUDENTS
             });
           }
         })
@@ -5163,6 +5165,8 @@ export function AppShell({
             factionTypes={parsed?.header.factionTypes ?? []}
             unclaimedSilver={parsed?.header.unclaimedSilver ?? null}
             status={parsed?.header.factionStatus ?? null}
+            production={validated.production}
+            students={validated.students}
             attitudes={parsed?.header.attitudes ?? null}
             mergedFactionIds={new Set(mergedReports.map((record) => record.mergedFactionId))}
             renderFactionName={(factionId, label) => (
