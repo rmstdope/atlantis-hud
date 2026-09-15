@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-2jb3 — Tabs in each other's way</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --danger:#e06c6c; --soft:#a3b0c0; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 16px; margin: 36px 0 4px; border-top: 1px solid var(--edge); padding-top: 18px; }
+  p.note { color: var(--dim); max-width: 90ch; margin: 4px 0; }
+  .cost { color: var(--dim); font-size: 13px; max-width: 90ch; margin: 4px 0 10px; }
+  .cost b { color: var(--ink); }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; margin-top: 10px; }
+  .app { width: 520px; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden; }
+  .app.narrow { width: 340px; }
+  .header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--panel);
+            border-bottom: 1px solid var(--edge); flex-wrap: wrap; }
+  .btn { font-size: 12px; padding: 3px 9px; border: 1px solid var(--edge); border-radius: 5px;
+         color: var(--ink); background: #1d2532; }
+  .btn.primary { border-color: var(--brass); color: var(--brass); outline: 2px solid #d9a44155; outline-offset: 2px; }
+  .btn.off { opacity: .35; }
+  .game { font-size: 12px; color: var(--brass); border: 1px solid var(--edge); border-radius: 5px; padding: 3px 9px; }
+  .body { display: grid; grid-template-columns: 1fr 150px; height: 240px; position: relative; }
+  .narrow .body { grid-template-columns: 1fr; height: 300px; }
+  .narrow .side { display: none; }
+  .map { background: repeating-linear-gradient(60deg,#141b24 0 18px,#161e29 18px 36px); }
+  .map.live { background: repeating-linear-gradient(60deg,#1a2a3a 0 18px,#20344a 18px 36px); }
+  .side { border-left: 1px solid var(--edge); background: var(--panel); font: 11px monospace; color: var(--soft); padding: 8px; }
+  .off-all { opacity: .4; }
+  .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 16px; }
+  .notice { width: 340px; max-width: 100%; background: var(--panel); border: 1px solid var(--danger); border-radius: 8px;
+            padding: 14px 16px; box-shadow: 0 8px 30px #0008; box-sizing: border-box; }
+  .notice.brass { border-color: var(--brass); }
+  .notice h4 { margin: 0 0 6px; font-size: 14px; overflow-wrap: anywhere; }
+  .notice p { margin: 0 0 10px; font-size: 12.5px; color: var(--soft); }
+  .notice .acts { display: flex; gap: 8px; justify-content: flex-end; }
+  .tag { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin: 0 0 4px; }
+  .pick { color: var(--brass); font-size: 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>ah-2jb3 — Atlantis HUD open in several tabs: say what is in the way, never grey out silently</h1>
+<p class="note"><b>Decisions (agreed in the design session, 2026-09-15):</b> the tab that cannot open its data shows a
+  notice over the workspace with <b>Try again</b> (rejected: a header status line only); the header stays usable behind it.
+  The old tab that is in the way saves its orders, lets go and stops behind a notice with <b>Reload</b> (rejected: reloading
+  itself; leaving it alone). A repeated failure says "still"; the notice has no Close and ignores Escape; the old tab
+  names the update when it is one and uses the general words otherwise. Every word below ships as written.
+  Focus starts on the button with the outline.</p>
+
+<h2>1 · This tab: the game can't be opened</h2>
+<div class="row">
+  <div><div class="tag">Blocked</div>
+    <div class="app"><div class="header"><span class="game">Game: Midgard ▾</span><span class="btn">Create game</span><span class="btn off">Import report</span></div>
+      <div class="body"><div class="map"></div><div class="side"></div>
+        <div class="overlay"><div class="notice">
+          <h4>Midgard is open in another tab</h4>
+          <p>Another Atlantis HUD tab is holding on to this game's saved data, so it can't be opened here.
+             Close the other Atlantis HUD tabs, then try again.</p>
+          <div class="acts"><span class="btn primary">Try again</span></div>
+        </div></div></div></div></div>
+  <div><div class="tag">Pressed Try again — while it tries</div>
+    <div class="app"><div class="header"><span class="game">Game: Midgard ▾</span><span class="btn">Create game</span><span class="btn off">Import report</span></div>
+      <div class="body"><div class="map"></div><div class="side"></div>
+        <div class="overlay"><div class="notice">
+          <h4>Midgard is open in another tab</h4>
+          <p>Another Atlantis HUD tab is holding on to this game's saved data, so it can't be opened here.
+             Close the other Atlantis HUD tabs, then try again.</p>
+          <div class="acts"><span class="btn off">Try again</span></div>
+        </div></div></div></div></div>
+  <div><div class="tag">Try again works</div>
+    <div class="app"><div class="header"><span class="game">Game: Midgard ▾</span><span class="btn">Create game</span><span class="btn">Import report</span></div>
+      <div class="body"><div class="map live"></div><div class="side">unit 1234<br>MOVE N</div></div></div>
+    <p class="cost">The notice goes, the game opens as normal. Choosing another game from the menu behind the notice also clears it.</p></div>
+</div>
+
+<h3 class="pick">When Try again fails again — "still" CHOSEN</h3>
+<div class="row">
+  <div><div class="tag">CHOSEN: say "still"</div>
+    <div class="app"><div class="header"><span class="game">Game: Midgard ▾</span><span class="btn">Create game</span><span class="btn off">Import report</span></div>
+      <div class="body"><div class="map"></div><div class="side"></div>
+        <div class="overlay"><div class="notice">
+          <h4>Midgard is still open in another tab</h4>
+          <p>Another Atlantis HUD tab is holding on to this game's saved data, so it can't be opened here.
+             Close the other Atlantis HUD tabs, then try again.</p>
+          <div class="acts"><span class="btn primary">Try again</span></div>
+        </div></div></div></div>
+    <p class="cost">Proves the press did something. <b>Cost:</b> a second heading to keep in step.</p></div>
+  <div><div class="tag">Rejected: same words every time</div>
+    <div class="app"><div class="header"><span class="game">Game: Midgard ▾</span><span class="btn">Create game</span><span class="btn off">Import report</span></div>
+      <div class="body"><div class="map"></div><div class="side"></div>
+        <div class="overlay"><div class="notice">
+          <h4>Midgard is open in another tab</h4>
+          <p>Another Atlantis HUD tab is holding on to this game's saved data, so it can't be opened here.
+             Close the other Atlantis HUD tabs, then try again.</p>
+          <div class="acts"><span class="btn primary">Try again</span></div>
+        </div></div></div></div>
+    <p class="cost">Simpler. <b>Cost:</b> the only sign the press did anything is the button greying for a moment.</p></div>
+</div>
+
+<h3 class="pick">Can the notice be closed? — no, CHOSEN</h3>
+<div class="row">
+  <div><div class="tag">CHOSEN: no Close — only Try again (as above)</div>
+    <p class="cost">The header behind it already works: choose another game or create one. Escape does nothing. The notice stays
+      for as long as this game is the one chosen.</p></div>
+  <div><div class="tag">Rejected: a Close button too</div>
+    <div class="app"><div class="header"><span class="game">Game: Midgard ▾</span><span class="btn">Create game</span><span class="btn off">Import report</span></div>
+      <div class="body"><div class="map"></div><div class="side"></div>
+        <div class="overlay"><div class="notice">
+          <h4>Midgard is open in another tab</h4>
+          <p>Another Atlantis HUD tab is holding on to this game's saved data, so it can't be opened here.
+             Close the other Atlantis HUD tabs, then try again.</p>
+          <div class="acts"><span class="btn">Close</span><span class="btn primary">Try again</span></div>
+        </div></div></div></div>
+    <p class="cost">Close and Escape hide it, leaving an empty workspace with no turn — and no reminder why.</p></div>
+</div>
+
+<h2>2 · This tab: the list of saved games can't be read</h2>
+<div class="row">
+  <div><div class="tag">Blocked (game menu and Create game unavailable)</div>
+    <div class="app"><div class="header"><span class="game off">Game: — ▾</span><span class="btn off">Create game</span><span class="btn off">Import report</span></div>
+      <div class="body"><div class="map"></div><div class="side"></div>
+        <div class="overlay"><div class="notice">
+          <h4>Your saved games are open in another tab</h4>
+          <p>Another Atlantis HUD tab is holding on to your saved games, so they can't be read here.
+             Close the other Atlantis HUD tabs, then try again.</p>
+          <div class="acts"><span class="btn primary">Try again</span></div>
+        </div></div></div></div>
+    <p class="cost">Same behaviour as section 1, different words. Repeated failure: "Your saved games are still open in another tab".</p></div>
+  <div><div class="tag">Narrow window</div>
+    <div class="app narrow"><div class="header"><span class="game">Game: The Long Winter of Midgard ▾</span><span class="btn">Create game</span><span class="btn off">Import report</span></div>
+      <div class="body"><div class="map"></div>
+        <div class="overlay"><div class="notice">
+          <h4>The Long Winter of Midgard is open in another tab</h4>
+          <p>Another Atlantis HUD tab is holding on to this game's saved data, so it can't be opened here.
+             Close the other Atlantis HUD tabs, then try again.</p>
+          <div class="acts"><span class="btn primary">Try again</span></div>
+        </div></div></div></div>
+    <p class="cost">The notice narrows with the window, keeping a margin at each side; a long game name wraps.</p></div>
+</div>
+
+<h2>3 · The old tab: it has let go</h2>
+<p class="note">The old tab saves its orders first, then stops. Everything behind the notice is greyed out and can't be
+  pressed. Reload reopens the same game. There's no Close and Escape does nothing — a tab that can't save must not
+  look usable.</p>
+<h3 class="pick">The words — name the update, CHOSEN. The old tab can be in the way for more than an update: another tab may also be deleting this game.</h3>
+<div class="row">
+  <div><div class="tag">CHOSEN for every cause other than an update (rejected as the only message)</div>
+    <div class="app"><div class="header off-all"><span class="game">Game: Midgard ▾</span><span class="btn">Create game</span><span class="btn">Import report</span></div>
+      <div class="body"><div class="map live off-all"></div><div class="side off-all">unit 1234<br>MOVE N<br>STUDY COMB</div>
+        <div class="overlay"><div class="notice brass">
+          <h4>This tab has stopped</h4>
+          <p>Another Atlantis HUD tab needed the saved data this tab was using. Your orders are saved.
+             Reload this tab to carry on here, or close it.</p>
+          <div class="acts"><span class="btn primary">Reload</span></div>
+        </div></div></div></div>
+    <p class="cost">Always true. <b>Cost:</b> the player doesn't learn <i>why</i>.</p></div>
+  <div><div class="tag">CHOSEN when another tab runs a newer version</div>
+    <div class="app"><div class="header off-all"><span class="game">Game: Midgard ▾</span><span class="btn">Create game</span><span class="btn">Import report</span></div>
+      <div class="body"><div class="map live off-all"></div><div class="side off-all">unit 1234<br>MOVE N<br>STUDY COMB</div>
+        <div class="overlay"><div class="notice brass">
+          <h4>Atlantis HUD was updated in another tab</h4>
+          <p>A newer version of Atlantis HUD is open in another tab, so this one has stopped. Your orders are saved.
+             Reload this tab to carry on here, or close it.</p>
+          <div class="acts"><span class="btn primary">Reload</span></div>
+        </div></div></div></div>
+    <p class="cost">…and when it is not an update, the general words on the left.
+      <b>Cost:</b> two messages; says why in the common case.</p></div>
+</div>
+</body>
+</html>
