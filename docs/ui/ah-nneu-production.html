@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Production — A: one table</title>
+<style>
+:root{--ground:#1b212a;--panel:#222933;--raised:#2a323d;--edge:#46525f;--edge-soft:#333d49;--ink:#d4dce6;--ink-soft:#a8b4c2;--ink-dim:#99a4b2;--brass:#e0b25a;--brass-bright:#eebe63;--select:#5aa9de;--ok:#4fb783;--warn:#d9a441;--danger:#e89494;}
+*{box-sizing:border-box;margin:0}
+body{background:#12171e;color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 24px 60px}
+.page{max-width:1100px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+h2{font-size:17px;margin:34px 0 6px;border-top:1px solid var(--edge);padding-top:18px}
+h2 em{color:var(--brass);font-style:normal;font-size:11px;letter-spacing:1.8px;text-transform:uppercase;margin-right:10px}
+p.lead{color:var(--ink-soft);font-size:14px;max-width:90ch;margin-top:8px}
+.app{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:13px;line-height:1.45;margin-top:14px}
+.stage{position:relative;background:repeating-linear-gradient(60deg,#1b212a 0 10px,#1d242d 10px 20px);border:1px solid var(--edge-soft);border-radius:6px;padding:26px 30px}
+.stage.narrow{max-width:430px;padding:14px 10px}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.5);border-radius:6px}
+.dlg{position:relative;background:var(--raised);border:1px solid var(--edge);border-radius:4px;box-shadow:0 12px 34px rgba(0,0,0,.55);max-width:56rem;margin:0 auto}
+.dlg .head{display:flex;align-items:center;border-bottom:1px solid var(--edge);padding:6px 9px;color:var(--ink-soft)}
+.dlg .head .x{margin-left:auto;color:var(--ink-dim);padding:0 6px}
+.dlg .body{padding:9px 10px 12px}
+.sum{display:grid;grid-template-columns:auto 14rem auto 1fr;gap:4px 12px;align-items:center;margin-bottom:10px}
+.sum .k{color:var(--ink-soft)} .sum .n{font-variant-numeric:tabular-nums}
+.bar{height:5px;background:var(--edge-soft);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--select)}.bar i.full{background:var(--brass)}.bar i.over{background:var(--danger)}
+.sum .note{color:var(--ink-dim)} .sum .note.bad{color:var(--danger)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:40rem}
+th{text-align:left;color:var(--brass);font-weight:normal;font-size:11px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--edge);padding:3px 8px}
+td{border-bottom:1px solid var(--edge-soft);padding:3px 8px;vertical-align:top}
+td.hex{color:var(--ink);white-space:nowrap} td.hex .c{color:var(--ink-dim)}
+td.by{color:var(--ink-soft);white-space:nowrap}
+.ok{color:var(--ok)} .gap{color:var(--warn)} .dim{color:var(--ink-dim)} .bad{color:var(--danger)}
+.res span{white-space:nowrap;margin-right:12px}
+tr.sep td{color:var(--ink-dim);font-size:11px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--edge);padding-top:9px}
+.empty{color:var(--ink-dim);font-style:italic;padding:14px 4px}
+.hover{display:inline-block;background:var(--panel);border:1px solid var(--edge);border-radius:3px;padding:5px 8px;color:var(--ink-soft);margin-top:8px}
+.facpop{position:relative;width:20rem;background:var(--raised);border:1px solid var(--edge);border-radius:4px;box-shadow:0 10px 26px rgba(0,0,0,.5)}
+.facpop .head{display:flex;border-bottom:1px solid var(--edge);padding:5px 8px}.facpop .head .x{margin-left:auto;color:var(--ink-dim)}
+.facpop .body{padding:7px 8px;display:grid;gap:5px}
+.sec{color:var(--brass);font-size:11px;letter-spacing:1px;text-transform:uppercase}
+.allow{display:grid;grid-template-columns:auto 1fr auto;gap:3px 8px;align-items:center}.allow .k{color:var(--ink-soft)}
+.btn{display:inline-block;border:1px solid var(--brass);color:var(--brass-bright);border-radius:3px;padding:0 8px;background:var(--panel)}
+.ann{font:13px/1.5 Georgia,serif;color:var(--ink-soft);margin-top:8px;max-width:90ch}
+.ann b{color:var(--brass)}
+</style></head><body><div class="page">
+<h1>Production &amp; tax <span>— A: one table, every hex a row</span></h1>
+<p class="lead">A <b>Production</b> button under the faction's Allowances opens a large window over the map. The count of regions used sits on top; below it one row per hex that this turn's orders tax, pillage or produce in. Each row says whether the tax is collected in full and, resource by resource, how much of what the hex offers is produced. Hexes with something left over come first; hexes worked to the full follow under their own divider.</p>
+<p class="lead"><b>What it costs:</b> everything is visible at once and easy to scan down, but with forty hexes it is a long table, and a row of small numbers reads slower than a sentence.</p>
+<p class="lead" style="border-left:2px solid var(--brass);padding-left:12px;color:var(--ink)"><b style="color:var(--brass)">Chosen (bead ah-nneu).</b> This table, rather than the leftovers-in-words list. A hex that has tax to collect but is not taxed is a gap. An older report with separate limits shows two count lines. Clicking a row centres the map on that hex, selects it, and closes the window. A pillaged hex counts as taxed in full. An estimate is marked with "at most" or "?" in a neutral colour and never makes a hex a gap. "Production" is also a command palette entry. All words ship as drawn.</p>
+
+<h2><em>Where it opens</em>The faction view gains a button</h2>
+<div class="app"><div class="stage" style="padding:16px">
+ <div class="facpop"><div class="head">Borg TNG <span class="dim">&nbsp;(95)</span><span class="x">✕</span></div>
+ <div class="body"><div class="dim">Martial 3, Magic 2</div><div>Unclaimed silver 6038</div>
+ <div class="sec">Allowances</div>
+ <div class="allow"><span class="k">Regions</span><div class="bar"><i style="width:85%"></i></div><span>34 / 40</span><span class="k">Quartermasters</span><div class="bar"><i style="width:44%"></i></div><span>4 / 9</span></div>
+ <div><span class="btn">Production…</span></div>
+ <div class="sec">Declared attitudes <span class="dim">· default Neutral</span></div><div class="dim">Ally: Silver Hand (12)</div></div></div>
+</div></div>
+
+<h2><em>Normal</em>34 of 40 regions, some hexes not worked to the full</h2>
+<div class="app"><div class="stage"><div class="scrim"></div>
+<div class="dlg"><div class="head">Production · 34 of 40 regions<span class="x">✕</span></div><div class="body">
+ <div class="sum"><span class="k">Regions</span><div class="bar"><i style="width:85%"></i></div><span class="n">34 of 40</span><span class="note">6 more hexes could tax or produce</span></div>
+ <div class="scroll"><table>
+ <tr><th>Hex</th><th>Orders</th><th>Tax</th><th>Resources</th></tr>
+ <tr><td class="hex">plain <span class="c">(12,18)</span> Tadmor</td><td class="by">TAX · PRODUCE</td><td><span class="gap">$350 of $600</span></td><td class="res"><span class="ok">grain 24/24</span><span class="gap">horses 0/6</span></td></tr>
+ <tr><td class="hex">forest <span class="c">(13,19)</span> Tadmor</td><td class="by">PRODUCE</td><td><span class="gap">not taxed · $400</span></td><td class="res"><span class="ok">wood 15/15</span><span class="gap">furs 4/10</span></td></tr>
+ <tr><td class="hex">mountain <span class="c">(14,16)</span> Gorr</td><td class="by">PRODUCE swords</td><td><span class="dim">no tax here</span></td><td class="res"><span class="ok">iron 20/20</span><span class="gap">stone 0/12</span></td></tr>
+ <tr><td class="hex">hill <span class="c">(10,20)</span> Esk</td><td class="by">PILLAGE</td><td><span class="ok">pillaged · $1200</span></td><td class="res"><span class="gap">iron 0/8</span></td></tr>
+ <tr class="sep"><td colspan="4">Worked to the full · 30 hexes</td></tr>
+ <tr><td class="hex">plain <span class="c">(11,18)</span> Tadmor</td><td class="by">TAX</td><td><span class="ok">$800 of $800</span></td><td class="res"><span class="dim">none offered</span></td></tr>
+ <tr><td class="hex">swamp <span class="c">(9,21)</span> Esk</td><td class="by">TAX (every turn) · PRODUCE</td><td><span class="ok">$250 of $250</span></td><td class="res"><span class="ok">herbs 6/6</span></td></tr>
+ <tr><td class="hex">desert <span class="c">(8,22)</span> Esk</td><td class="by">TAX</td><td><span class="dim">$600 of $600 at most</span></td><td class="res"><span class="dim">iron 5/?</span></td></tr>
+ <tr><td class="hex dim" colspan="4">… 27 more</td></tr>
+ </table></div>
+ <p class="ann"><b>Click</b> (or Enter on a focused row): the map centres on that hex and selects it, and the window closes. <b>Estimates</b> (desert row) show in a neutral colour and don't make a hex a gap. <b>Pillage</b> (hill row) counts as taxed in full.</p>
+</div></div></div></div>
+
+<h2><em>State</em>Over the limit</h2>
+<div class="app"><div class="stage"><div class="dlg"><div class="head">Production · 42 of 40 regions<span class="x">✕</span></div><div class="body">
+ <div class="sum"><span class="k">Regions</span><div class="bar"><i class="over" style="width:100%"></i></div><span class="n bad">42 of 40</span><span class="note bad">2 hexes over — orders in 2 hexes will be refused</span></div>
+ <div class="dim">(table as above)</div></div></div></div></div>
+
+<h2><em>State</em>An older report: taxing and producing have separate limits</h2>
+<div class="app"><div class="stage"><div class="dlg"><div class="head">Production · tax 12 of 25 · trade 20 of 25<span class="x">✕</span></div><div class="body">
+ <div class="sum"><span class="k">Tax regions</span><div class="bar"><i style="width:48%"></i></div><span class="n">12 of 25</span><span class="note">13 more hexes could tax</span>
+ <span class="k">Trade regions</span><div class="bar"><i style="width:80%"></i></div><span class="n">20 of 25</span><span class="note">5 more hexes could produce</span></div>
+ <div class="dim">(table as above)</div></div></div></div></div>
+
+<h2><em>State</em>Nothing taxed or produced this turn</h2>
+<div class="app"><div class="stage"><div class="dlg"><div class="head">Production · 0 of 40 regions<span class="x">✕</span></div><div class="body">
+ <div class="sum"><span class="k">Regions</span><div class="bar"><i style="width:0"></i></div><span class="n">0 of 40</span><span class="note"></span></div>
+ <div class="empty">This turn's orders tax, pillage and produce nowhere.</div></div></div></div></div>
+
+<h2><em>State</em>A faction with no Martial points</h2>
+<div class="app"><div class="stage"><div class="dlg"><div class="head">Production · 0 of 0 regions<span class="x">✕</span></div><div class="body">
+ <div class="sum"><span class="k">Regions</span><div class="bar"><i style="width:0"></i></div><span class="n">0 of 0</span><span class="note">this faction may not tax or produce anywhere</span></div>
+ <div class="empty">This turn's orders tax, pillage and produce nowhere.</div></div></div></div></div>
+
+<h2><em>State</em>A narrow window</h2>
+<div class="app"><div class="stage narrow"><div class="dlg"><div class="head">Production · 34 of 40<span class="x">✕</span></div><div class="body">
+ <div class="sum" style="grid-template-columns:auto 1fr auto"><span class="k">Regions</span><div class="bar"><i style="width:85%"></i></div><span class="n">34 of 40</span></div>
+ <div class="scroll"><table>
+ <tr><th>Hex</th><th>Orders</th><th>Tax</th><th>Resources</th></tr>
+ <tr><td class="hex">plain <span class="c">(12,18)</span> Tadmor</td><td class="by">TAX · PRODUCE</td><td><span class="gap">$350 of $600</span></td><td class="res"><span class="ok">grain 24/24</span><span class="gap">horses 0/6</span></td></tr>
+ </table></div><p class="ann">The table scrolls sideways inside the window.</p></div></div></div></div>
+</div></body></html>
