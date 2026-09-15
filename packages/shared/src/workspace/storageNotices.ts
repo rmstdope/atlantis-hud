@@ -44,7 +44,8 @@ export function heldNoticeReducer(state: HeldNotice | null, action: HeldAction):
     case "retry-started":
       return state === null ? null : { ...state, retrying: true };
     case "retry-failed":
-      return state === null ? null : { ...state, attempt: "still", retrying: false };
+      // Only an attempt the player made: an unrelated failure must not turn a notice to "still".
+      return state?.retrying ? { ...state, attempt: "still", retrying: false } : state;
     case "opened":
       return state !== null && state.scope === action.scope ? null : state;
     case "game-changed":

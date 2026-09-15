@@ -53,6 +53,11 @@ describe("the held notice's state", () => {
     expect(heldNoticeReducer(null, { type: "retry-failed" })).toBeNull();
   });
 
+  it("leaves a notice nobody retried alone when something else fails", () => {
+    const list = heldNoticeReducer(null, blockedList);
+    expect(heldNoticeReducer(list, { type: "retry-failed" })).toBe(list);
+  });
+
   it("does nothing when trying again with no notice", () => {
     expect(heldNoticeReducer(null, { type: "retry-started" })).toBeNull();
   });
