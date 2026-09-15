@@ -31,10 +31,8 @@ describe("newAgeFetchView", () => {
   });
 
   it("offers the two scopes and says what a credential is used for", () => {
-    expect(FETCH_SCOPE_THIS_TURN).toBe("This turn's report");
-    expect(FETCH_SCOPE_WITH_HISTORY).toBe(
-      "This turn's report and every earlier turn not yet loaded"
-    );
+    expect(FETCH_SCOPE_THIS_TURN).toBe("Latest report");
+    expect(FETCH_SCOPE_WITH_HISTORY).toBe("All reports not yet fetched/imported");
     expect(FETCH_REFUSED_MID_RUN).toBe(
       "The world stopped accepting that faction number and password."
     );

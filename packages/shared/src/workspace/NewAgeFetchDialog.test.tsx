@@ -28,8 +28,7 @@ describe("NewAgeFetchDialog", () => {
     expect(markup).toContain('data-testid="newage-faction-number"');
     expect(markup).toContain('data-testid="newage-password"');
     expect(markup).toContain("Used for this fetch only. Nothing is written to this machine.");
-    // `renderToStaticMarkup` escapes the apostrophe, so the tail of the sentence is what is read.
-    expect(markup).toContain("report and every earlier turn not yet loaded");
+    expect(markup).toContain("All reports not yet fetched/imported");
     expect(markup).toContain('data-testid="newage-fetch-confirm"');
     expect(markup).not.toContain('data-testid="newage-fetch-working"');
   });

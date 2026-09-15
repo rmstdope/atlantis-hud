@@ -35,8 +35,8 @@ export type NewAgeFetchPhase =
 export const FETCH_CONTROL_LABEL = "Fetch";
 export const FETCH_CONFIRM = "Fetch";
 export const FETCH_SIGNING_IN = "Signing in…";
-export const FETCH_SCOPE_THIS_TURN = "This turn's report";
-export const FETCH_SCOPE_WITH_HISTORY = "This turn's report and every earlier turn not yet loaded";
+export const FETCH_SCOPE_THIS_TURN = "Latest report";
+export const FETCH_SCOPE_WITH_HISTORY = "All reports not yet fetched/imported";
 
 /**
  * A 401 seconds after a successful login: a world changing its mind rather than an expiry, so it
