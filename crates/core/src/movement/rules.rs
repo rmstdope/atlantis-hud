@@ -441,6 +441,41 @@ pub struct Maintenance {
     pub evidence: String,
 }
 
+/// `rules/playing_factions` and `rules/tablefactionpoints`: how many points a faction has, and the
+/// limits each number of points gives (`ah-7g4f`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/FactionPoints.ts")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FactionPoints {
+    /// "The faction has 5 Faction Points".
+    pub available: i64,
+    /// One row per points value the table states, in page order. Trident states only 1 and 2.
+    pub table: Vec<FactionPointsRow>,
+    /// The page's own sentence, as `Maintenance::evidence`.
+    pub evidence: String,
+}
+
+/// One row of `rules/tablefactionpoints`. Martial points give `regions` and `quartermasters`;
+/// Magic points give `mages` and `apprentices`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/FactionPointsRow.ts")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FactionPointsRow {
+    pub points: i64,
+    pub regions: i64,
+    pub quartermasters: i64,
+    pub mages: i64,
+    pub apprentices: i64,
+}
+
 /// Where the ruleset came from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
@@ -937,6 +972,11 @@ pub struct Ruleset {
     /// back to New Origins' published figures in that case; see `silver.rs`.
     #[serde(default)]
     pub maintenance: Option<Maintenance>,
+    /// The faction points table. Absent for a ruleset generated before it was scraped, which reads
+    /// as "this catalogue cannot say what a FACTION order would give" - the app then shows the
+    /// report's figures and judges no FACTION order.
+    #[serde(default)]
+    pub faction_points: Option<FactionPoints>,
 }
 
 /// One of the classes `GIVE [unit] ALL [item class]` accepts, as `rules/give` enumerates them.

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  parseFactionPoints,
   parseFoodMaintenance,
   parseMaintenanceFee,
   parseMovementRules,
@@ -451,6 +452,49 @@ describe("parseMaintenanceFee", () => {
     expect(() =>
       parseMaintenanceFee("<html><body>a page about something else</body></html>")
     ).toThrowError(/maintenanceFee/);
+  });
+});
+
+describe("parseFactionPoints", () => {
+  it("reads New Origins' five points and six rows", () => {
+    const points = parseFactionPoints(RULES_HTML);
+    expect(points.available).toBe(5);
+    expect(points.table.map((row) => row.points)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(points.table.find((row) => row.points === 3)).toEqual({
+      points: 3,
+      regions: 40,
+      quartermasters: 9,
+      mages: 4,
+      apprentices: 7
+    });
+    expect(points.evidence).toBe("The faction has 5 Faction Points");
+  });
+
+  it("reads Trident's three points and its two rows", () => {
+    const points = parseFactionPoints(TRIDENT_RULES_HTML);
+    expect(points.available).toBe(3);
+    expect(points.table.map((row) => row.points)).toEqual([1, 2]);
+    expect(points.table[1]).toEqual({
+      points: 2,
+      regions: 36,
+      quartermasters: 14,
+      mages: 5,
+      apprentices: 10
+    });
+  });
+
+  it('refuses a cell that is not "n / m"', () => {
+    const at = RULES_HTML.indexOf('name="tablefactionpoints"');
+    const edited =
+      RULES_HTML.slice(0, at) + RULES_HTML.slice(at).replace(/40\s*\/\s*9/, "40-9");
+    expect(edited).not.toBe(RULES_HTML);
+    expect(() => parseFactionPoints(edited)).toThrowError(RulesetScrapeError);
+  });
+
+  it("refuses a page with no faction points table", () => {
+    expect(() =>
+      parseFactionPoints("<html><body>The faction has 5 Faction Points.</body></html>")
+    ).toThrowError(RulesetScrapeError);
   });
 });
 

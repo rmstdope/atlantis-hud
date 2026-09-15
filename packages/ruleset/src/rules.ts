@@ -21,6 +21,8 @@ export type { TerrainCosts } from "./generated/TerrainCosts";
 import type { MovementMode } from "./generated/MovementMode";
 import type { Gap } from "./generated/Gap";
 import type { MovementRules } from "./generated/MovementRules";
+import type { FactionPoints } from "./generated/FactionPoints";
+import type { FactionPointsRow } from "./generated/FactionPointsRow";
 import { anchoredTableRows, htmlToText } from "./html";
 
 /** Raised when the page does not say what the scraper needs, naming the value that is missing. */
@@ -420,6 +422,63 @@ export function parseMaintenanceFee(html: string): MaintenanceFee {
     perLeader: Number.parseInt(match[2], 10),
     evidence: sentence(match)
   };
+}
+
+/**
+ * Reads `rules/playing_factions`' points total and `rules/tablefactionpoints`' rows (ah-7g4f).
+ *
+ * Martial points give max tax and trade regions / quartermasters; Magic points give max mages /
+ * apprentices. The table differs per world (Trident states only 1 and 2), so it is scraped rather
+ * than chosen, and a page with no readable table stops the run.
+ */
+export function parseFactionPoints(html: string): FactionPoints {
+  const match = requireMatch(
+    htmlToText(html),
+    "factionPoints",
+    /The faction has (\d+) Faction Points/i
+  );
+  const pair = /^(\d+)\s*\/\s*(\d+)$/;
+  const table: FactionPointsRow[] = [];
+  for (const row of anchoredTableRows(html, "tablefactionpoints")) {
+    if (row.length !== 3) {
+      continue;
+    }
+    const [pointsCell, martialCell, magicCell] = row.map((cell) => cell.trim());
+    if (!/^\d+$/.test(pointsCell)) {
+      throw new RulesetScrapeError(
+        `the faction points table row for ${pointsCell} reads "${pointsCell}", expected a number`
+      );
+    }
+    const martial = martialCell.match(pair);
+    if (!martial) {
+      throw new RulesetScrapeError(
+        `the faction points table row for ${pointsCell} reads "${martialCell}", expected "n / m"`
+      );
+    }
+    const magic = magicCell.match(pair);
+    if (!magic) {
+      throw new RulesetScrapeError(
+        `the faction points table row for ${pointsCell} reads "${magicCell}", expected "n / m"`
+      );
+    }
+    const points = Number.parseInt(pointsCell, 10);
+    if (table.some((existing) => existing.points === points)) {
+      throw new RulesetScrapeError(`the faction points table states ${points} points twice`);
+    }
+    table.push({
+      points,
+      regions: Number.parseInt(martial[1], 10),
+      quartermasters: Number.parseInt(martial[2], 10),
+      mages: Number.parseInt(magic[1], 10),
+      apprentices: Number.parseInt(magic[2], 10)
+    });
+  }
+  if (table.length === 0) {
+    throw new RulesetScrapeError(
+      "could not read the faction points table (rules/tablefactionpoints) from the rules page"
+    );
+  }
+  return { available: Number.parseInt(match[1], 10), table, evidence: sentence(match) };
 }
 
 /**
