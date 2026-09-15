@@ -32,7 +32,18 @@ import { readReport } from "@atlantis/fixtures";
  * behaviour a player gets.
  */
 export async function clearGames(page: Page) {
-  await page.goto("/");
+  // A static file on the origin rather than the app. Storage is per origin, not per document, so
+  // the preference and the deletion below land in the same place either way - but a document
+  // that is the app boots it, against exactly the storage this is about to wipe, and then needs a
+  // second boot to see it gone. This document boots nothing and holds no database open, so the
+  // deletions are never blocked by the app's own handles. The app then loads once, at the end,
+  // against a clean slate: one boot per walk where there were two.
+  //
+  // The ruleset and not the favicon: a walk that has `page.route` armed (persistence.spec.ts's
+  // slow-ruleset walk) puts every request through Chromium's interception, and a top-level
+  // navigation to an image then ends as an aborted download. JSON is shown as text and survives.
+  // Every path that names no file falls back to the app, so it has to be a real file.
+  await page.goto("/ruleset.json");
   await page.evaluate(() => {
     const stored = localStorage.getItem("atlantis-hud-settings");
     const blob = stored ? (JSON.parse(stored) as { state?: Record<string, unknown> }) : {};
@@ -62,7 +73,7 @@ export async function clearGames(page: Page) {
       )
     );
   });
-  await page.reload();
+  await page.goto("/");
 }
 
 /**
@@ -264,6 +275,24 @@ export async function ordersText(page: Page): Promise<string> {
 /** Asserts on the draft, polling because edits land through CodeMirror asynchronously. */
 export async function expectOrders(page: Page, pattern: RegExp) {
   await expect.poll(() => ordersText(page)).toMatch(pattern);
+}
+
+/**
+ * Writes the draft now, rather than waiting out the autosave's five-second idle.
+ *
+ * Fires the app's own `pagehide` hook - the path a closing tab takes - so the write is the real
+ * one, then waits for the panel to say it landed. Waits for "unsaved changes" first: the editor
+ * hands its text to the store asynchronously, and a flush fired before that lands writes the
+ * previous draft and leaves the new one owed. About twenty walks used to wait the idle out at five
+ * seconds apiece, a fifth of the suite's serial time; the one walk about the idle timer itself
+ * (`persistence.spec.ts`, "orders typed into a game are still there after a reload") still does,
+ * on purpose. Every other walk only needs the draft on disk.
+ */
+export async function saveNow(page: Page) {
+  const status = page.getByTestId("orders-status");
+  await expect(status).toContainText("unsaved changes");
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  await expect(status).toContainText(/saved \d/u);
 }
 
 /** The negative twin of `expectOrders`, for "this text must not be in the draft". */

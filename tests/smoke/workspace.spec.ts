@@ -13,6 +13,7 @@ import {
   mapTransform,
   ordersInput,
   ordersText,
+  saveNow,
   selectHex,
   selectUnit,
   visibleStrip,
@@ -775,7 +776,7 @@ test("comparing does not disturb the working turn's orders", async ({ page }) =>
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "@work");
   await expectOrders(page, /^@work\n?$/u);
-  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+  await saveNow(page);
 
   await page.getByTestId("turn-chip").click();
   await page.getByTestId("turn-row-70").click();
@@ -5763,7 +5764,7 @@ test("a route through a known passage carries on where it comes out", async ({ p
   await selectHex(page, "1:36,4");
   await selectUnit(page, "5480");
   await fillOrders(page, "MOVE 1 IN");
-  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+  await saveNow(page);
 
   // Turn 41 is the crossing answered.
   await importReport(page, "turn-41.rep", passageT41);
