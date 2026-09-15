@@ -14519,8 +14519,8 @@ fn first_studies<'a, 'b>(
         .flat_map(|(hex, _)| hex.units.iter().map(move |ordered| (hex, ordered)))
         .filter(|(_, ordered)| spends_faction_allowance(ordered) && ordered.unit.own)
         .filter_map(|(hex, ordered)| {
-            // The first STUDY order wins, the same as `Ordered::studies()` reads it - a unit that
-            // writes several is not asking to be counted once per line.
+            // The settled intents hold at most one STUDY: of several month-long orders only the last
+            // one runs (`settle_effective_month_intents`, `ah-728m.2.1`).
             let (placed, studied) =
                 ordered
                     .intents

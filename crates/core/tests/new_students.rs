@@ -159,6 +159,14 @@ fn a_study_replaced_by_a_later_one_does_not_count() {
     assert_eq!(review.students, ZERO);
 }
 
+/// The other direction of the same rule: a STUDY FORC that replaces an earlier STUDY COMB is the one
+/// that runs, so it makes a mage.
+#[test]
+fn a_study_that_replaces_an_earlier_one_counts() {
+    let review = one_unit_review("combat [COMB] 1 (30)", "unit 900\nSTUDY COMB\nSTUDY FORC\n");
+    assert_eq!(review.students, NewStudents { mages: 1, ..ZERO });
+}
+
 #[test]
 fn a_foreign_unit_is_not_counted() {
     let own = unit(900, "combat [COMB] 1 (30)");
