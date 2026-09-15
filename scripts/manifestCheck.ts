@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,9 +38,14 @@ export type ManifestVerdict = {
   attempts: number;
 };
 
+/** The absolute URL of a path under a site root given with or without a trailing slash. */
+export function siteUrl(site: string, path: string): string {
+  return `${site.replace(/\/+$/, "")}/${path}`;
+}
+
 /** The manifest's absolute URL for a site root given with or without a trailing slash. */
 export function manifestUrl(site: string): string {
-  return `${site.replace(/\/+$/, "")}/${MANIFEST_PATH}`;
+  return siteUrl(site, MANIFEST_PATH);
 }
 
 /**
@@ -52,13 +58,17 @@ export function isRetryable(status: Status): boolean {
   return status === 0 || status === 429 || (status >= 500 && status < 600);
 }
 
-/** Asks up to `ATTEMPTS` times, sleeping `RETRY_DELAY_MS` between retryable answers. */
+/** Asks for the manifest under the retry policy. */
 export async function checkManifest(
   site: string,
   fetchStatus: StatusFetcher,
   sleep: Sleeper
 ): Promise<ManifestVerdict> {
-  const url = manifestUrl(site);
+  return checkServed(manifestUrl(site), fetchStatus, sleep);
+}
+
+/** Asks for one URL up to `ATTEMPTS` times, sleeping `RETRY_DELAY_MS` between retryable answers. */
+export async function checkServed(url: string, fetchStatus: StatusFetcher, sleep: Sleeper): Promise<ManifestVerdict> {
   let status: Status = 0;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
     status = await fetchStatus(url);
@@ -95,6 +105,35 @@ export function successNotice(verdict: ManifestVerdict): string | null {
 }
 
 /**
+ * The icon paths a web app manifest lists, in order, relative to the site root.
+ * Takes each `icons[].src` that is a string and strips one leading "/".
+ * Returns [] when `icons` is absent or not an array. Throws on text that is not JSON.
+ */
+export function iconPaths(manifestJson: string): string[] {
+  const manifest = JSON.parse(manifestJson) as { icons?: unknown };
+  if (!Array.isArray(manifest.icons)) return [];
+  return manifest.icons.flatMap((icon: unknown) => {
+    const src = (icon as { src?: unknown } | null)?.src;
+    return typeof src === "string" ? [src.replace(/^\//, "")] : [];
+  });
+}
+
+/** The `::error::` text for an icon that was not served, without the prefix. */
+export function iconFailureMessage(path: string, verdict: ManifestVerdict): string {
+  const what =
+    verdict.attempts > 1
+      ? `The icon ${path} returned ${verdict.status} on all ${verdict.attempts} attempts.`
+      : `The icon ${path} returned ${verdict.status}.`;
+  return `${what} Without it the service worker cannot install.`;
+}
+
+/** The `::notice::` text for an icon that recovered after a retry, or null for a first-attempt 200 or a failure. */
+export function iconSuccessNotice(path: string, verdict: ManifestVerdict): string | null {
+  if (!verdict.ok || verdict.attempts === 1) return null;
+  return `The icon ${path} returned ${verdict.status} on attempt ${verdict.attempts}.`;
+}
+
+/**
  * The real fetcher: a GET with a 30-second ceiling, returning 0 rather than throwing.
  *
  * `fetch` does not throw on 4xx or 5xx, so the `catch` covers only network-level failures and the
@@ -123,30 +162,46 @@ const invokedDirectly =
  * `scripts/` has no `"type": "module"` above it, so `tsx` transforms these files as CJS and a
  * top-level `await` is a hard transform error - the script would fail to run at all, on every deploy.
  * Not covered by tests directly; `manifestCheck.cli.test.ts` runs it as a subprocess instead.
+ *
+ * Usage: manifestCheck.ts <site root> [<built manifest file>]. With the second argument, every icon
+ * that manifest lists is fetched too, in sequence (the host throttles), once the manifest passes.
  */
-function runCli(site: string | undefined): void {
+function runCli(site: string | undefined, manifestFile: string | undefined): void {
   if (site === undefined || site.length === 0) {
-    process.stderr.write("::error::Usage: manifestCheck.ts <site root>\n");
+    process.stderr.write("::error::Usage: manifestCheck.ts <site root> [<built manifest file>]\n");
     process.exitCode = 1;
     return;
   }
-  void checkManifest(site, fetchStatus, (ms) => new Promise<void>((done) => setTimeout(done, ms)))
-    .then((verdict) => {
+  const sleep: Sleeper = (ms) => new Promise<void>((done) => setTimeout(done, ms));
+  void checkManifest(site, fetchStatus, sleep)
+    .then(async (verdict) => {
       const notice = successNotice(verdict);
       if (notice !== null) process.stdout.write(`::notice::${notice}\n`);
       if (!verdict.ok) {
         process.stdout.write(`::error::${failureMessage(verdict)}\n`);
         process.exitCode = 1;
+        return;
+      }
+      if (manifestFile === undefined) return;
+      const paths = iconPaths(readFileSync(manifestFile, "utf8"));
+      for (const path of paths) {
+        const icon = await checkServed(siteUrl(site, path), fetchStatus, sleep);
+        const iconNotice = iconSuccessNotice(path, icon);
+        if (iconNotice !== null) process.stdout.write(`::notice::${iconNotice}\n`);
+        if (!icon.ok) {
+          process.stdout.write(`::error::${iconFailureMessage(path, icon)}\n`);
+          process.exitCode = 1;
+        }
       }
     })
     .catch((error: unknown) => {
-      // Nothing here rejects today, but an unhandled rejection would reach the workflow log as a
-      // stack trace rather than as the `::error::` line the step is built to read.
+      // An unreadable manifest file or bad JSON lands here, and so would any future rejection: the
+      // workflow log should read an `::error::` line rather than a stack trace.
       process.stdout.write(`::error::The manifest check itself failed: ${String(error)}\n`);
       process.exitCode = 1;
     });
 }
 
 if (invokedDirectly) {
-  runCli(process.argv[2]);
+  runCli(process.argv[2], process.argv[3]);
 }

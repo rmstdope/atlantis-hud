@@ -239,10 +239,10 @@ broken test.
 
 ## Icons
 
-`config/public/icons/` is derived from `apps/desktop/src-tauri/icons/icon.png` with macOS's built-in
+`config/public/app-icons/` is derived from `apps/desktop/src-tauri/icons/icon.png` with macOS's built-in
 `sips`, so the web and desktop builds carry the same mark and nothing new was added to the toolchain.
 The maskable variant is padded to 640 on the theme's ground colour and resized back to 512, so
-Android's circular crop takes the padding rather than the artwork.
+Android's circular crop takes the padding rather than the artwork. Not icons/ - the web host's Apache reserves that path for its own images.
 
 That mark is still Tauri's placeholder — a plain blue square. Replacing it is worth doing and is not
 part of this issue; when it happens, both builds change together because both read the same source.
