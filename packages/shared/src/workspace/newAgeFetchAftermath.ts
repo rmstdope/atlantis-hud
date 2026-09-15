@@ -1,8 +1,19 @@
 import type { NewAgeFetchOutcome } from "./newAgeFetchRun";
-import { FETCH_FAILURE_PREFIX, FETCH_REFUSED_MID_RUN } from "./newAgeFetchView";
+import {
+  FETCH_FAILURE_PREFIX,
+  FETCH_REFUSED_MID_RUN,
+  fetchFailureReason
+} from "./newAgeFetchView";
 import type { NewAgeFetchPhase } from "./newAgeFetchView";
-import { runSummary } from "./newAgeHistoryView";
-import { failedStatus, warningStatus, type StatusLine } from "./shellStatus";
+import {
+  historyListNotFetched,
+  historyListNotUnderstood,
+  historyNoneEarlier,
+  historyNothingMissing,
+  runSummary
+} from "./newAgeHistoryView";
+import { NEW_AGE_HOST } from "./newAgeSignInView";
+import { failedStatus, type StatusLine } from "./shellStatus";
 
 /** What the shell knows the moment `runNewAgeFetch` returns. Every field is read, none is derived. */
 export type NewAgeFetchAftermathInput = {
@@ -23,6 +34,8 @@ export type NewAgeFetchAftermathInput = {
   sameGame: boolean;
   /** The turn on screen as the run sees it, from `viewerRef` and never from a render. */
   workingTurn: number | null;
+  /** The world's short name, as the dialog shows it: `Arcanum`. */
+  worldName: string;
 };
 
 /** What the Fetch dialog is told. Three cases, because "say nothing" is not "close". */
@@ -57,7 +70,7 @@ export function newAgeFetchAftermath(input: NewAgeFetchAftermathInput): NewAgeFe
             phase: { kind: "ready", message: outcome.message, retype: outcome.retype }
           }
         : { kind: "close" },
-    status: stillOurs ? statusFor(outcome, input.workingTurn) : null,
+    status: stillOurs ? statusFor(outcome, input.workingTurn, input.worldName) : null,
     relistTurns: relistTurns(input)
   };
 }
@@ -68,26 +81,46 @@ export function newAgeFetchAftermath(input: NewAgeFetchAftermathInput): NewAgeFe
  * Exhaustive with no `default` on purpose: a sixth outcome kind must fail the typecheck rather
  * than leave a blank line in front of a player.
  */
-function statusFor(outcome: NewAgeFetchOutcome, workingTurn: number | null): StatusLine | null {
+function statusFor(
+  outcome: NewAgeFetchOutcome,
+  workingTurn: number | null,
+  worldName: string
+): StatusLine | null {
   switch (outcome.kind) {
     case "refused":
       // The dialog carries the message; the header says nothing.
       return null;
     case "reportFailed":
       return failedStatus(`${FETCH_FAILURE_PREFIX}: ${outcome.reason}`);
-    case "done":
-      if (outcome.listFailed !== null) {
-        return warningStatus(outcome.listFailed);
-      }
-      if (outcome.history === null) {
+    case "done": {
+      const { history } = outcome;
+      if (history === null) {
         // A plain `thisTurn` fetch: `loadReport` has already written its own line for the turn
         // that just landed, and a second one would repeat it.
         return null;
       }
-      return outcome.history.refusedMidRun
-        ? failedStatus(FETCH_REFUSED_MID_RUN)
-        : // `failed` is a Map, so `.size`: `.length` is `undefined` and reads as 0.
-          runSummary(outcome.history.stored.length, outcome.history.failed.size, workingTurn);
+      switch (history.kind) {
+        case "listFailed":
+          // `unreadable` is Atlantis HUD failing to understand the reply - the app's own fault -
+          // so it is not worded through `fetchFailureReason`, whose arm speaks of a missing report.
+          return history.failure.kind === "unreadable"
+            ? historyListNotUnderstood(worldName, workingTurn)
+            : historyListNotFetched(
+                worldName,
+                fetchFailureReason(history.failure, NEW_AGE_HOST),
+                workingTurn
+              );
+        case "noneEarlier":
+          return historyNoneEarlier(worldName, workingTurn);
+        case "nothingMissing":
+          return historyNothingMissing(workingTurn);
+        case "ran":
+          return history.refusedMidRun
+            ? failedStatus(FETCH_REFUSED_MID_RUN)
+            : // `failed` is a Map, so `.size`: `.length` is `undefined` and reads as 0.
+              runSummary(history.stored.length, history.failed.size, workingTurn);
+      }
+    }
     case "abandoned":
       // The player closed the dialog, and a line about a run they stopped is noise.
       return null;
@@ -117,7 +150,7 @@ function relistTurns(input: NewAgeFetchAftermathInput): boolean {
   const { outcome } = input;
   const storedSomething =
     input.reachedTurns &&
-    (outcome.kind === "abandoned" || (outcome.kind === "done" && outcome.history !== null));
+    (outcome.kind === "abandoned" || (outcome.kind === "done" && outcome.history?.kind === "ran"));
   return storedSomething && !input.superseded && input.sameGame;
 }
 

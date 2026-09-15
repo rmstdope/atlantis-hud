@@ -58,7 +58,7 @@ describe("runNewAgeFetch", () => {
     expect(calls).toEqual(["login 27 hunter2", "report t0ken", "store null"]);
     expect(stored).toEqual([[null, "this turn"]]);
     expect(phases.map((phase) => phase.kind)).toEqual(["signingIn", "fetchingReport"]);
-    expect(outcome).toEqual({ kind: "done", history: null, listFailed: null });
+    expect(outcome).toEqual({ kind: "done", history: null });
   });
 
   it("stops at a refused login and asks for the password again", async () => {
@@ -102,17 +102,74 @@ describe("runNewAgeFetch", () => {
     expect(calls.some((call) => call.startsWith("historyTurns"))).toBe(false);
   });
 
-  it("keeps the fetched turn when the world would not say which turns it holds", async () => {
+  it("keeps the fetched turn when the list of earlier turns could not be had", async () => {
     const { effects } = harness({ historyTurns: async () => ({ kind: "unreachable" }) });
 
     const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
 
     expect(outcome).toEqual({
       kind: "done",
-      history: null,
-      listFailed:
-        "Arcanum would not say which turns it holds: could not reach atlantis-newage.com."
+      history: { kind: "listFailed", failure: { kind: "unreachable" } }
     });
+
+    const unreadable = harness({ historyTurns: async () => ({ kind: "unreadable" }) });
+    expect(
+      await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", unreadable.effects)
+    ).toEqual({ kind: "done", history: { kind: "listFailed", failure: { kind: "unreadable" } } });
+  });
+
+  it("treats a refused listing as the world stopping mid-run", async () => {
+    const { askedTurns, effects } = harness({ historyTurns: async () => ({ kind: "unauthorized" }) });
+
+    const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
+
+    expect(outcome).toEqual({
+      kind: "done",
+      history: { kind: "ran", stored: [], failed: new Map(), refusedMidRun: true }
+    });
+    expect(askedTurns).toEqual([]);
+  });
+
+  it("says the world holds no earlier turns when its list has none before the turn on screen", async () => {
+    for (const listed of [[84], []]) {
+      const { askedTurns, phases, effects } = harness({
+        historyTurns: async () => ({ kind: "ok", value: listed }),
+        heldTurns: () => ({ stored: [{ turnNumber: 84 }], workingTurn: 84 })
+      });
+
+      const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
+
+      expect(outcome).toEqual({ kind: "done", history: { kind: "noneEarlier" } });
+      expect(askedTurns).toEqual([]);
+      expect(phases.some((phase) => phase.kind === "fetchingTurn")).toBe(false);
+    }
+  });
+
+  it("says nothing earlier was missing when every listed turn is already held", async () => {
+    const { askedTurns, phases, effects } = harness({
+      historyTurns: async () => ({ kind: "ok", value: [82, 83, 84] }),
+      heldTurns: () => ({
+        stored: [{ turnNumber: 82 }, { turnNumber: 83 }, { turnNumber: 84 }],
+        workingTurn: 84
+      })
+    });
+
+    const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
+
+    expect(outcome).toEqual({ kind: "done", history: { kind: "nothingMissing" } });
+    expect(askedTurns).toEqual([]);
+    expect(phases.some((phase) => phase.kind === "fetchingTurn")).toBe(false);
+  });
+
+  it("fetches the earlier turns when the list leaves out the turn on screen", async () => {
+    const { askedTurns, effects } = harness({
+      historyTurns: async () => ({ kind: "ok", value: [82, 83] }),
+      heldTurns: () => ({ stored: [{ turnNumber: 84 }], workingTurn: 84 })
+    });
+
+    await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
+
+    expect(askedTurns).toEqual([82, 83]);
   });
 
   it("stops the run and says so when the world refuses a turn mid-run", async () => {
@@ -127,7 +184,7 @@ describe("runNewAgeFetch", () => {
     const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
 
     expect(outcome.kind).toBe("done");
-    if (outcome.kind !== "done" || outcome.history === null) {
+    if (outcome.kind !== "done" || outcome.history?.kind !== "ran") {
       throw new Error("expected a history run");
     }
     expect(outcome.history.stored).toEqual([80]);

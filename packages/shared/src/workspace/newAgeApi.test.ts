@@ -164,10 +164,10 @@ describe("report and history", () => {
     });
   });
 
-  it("reads a bare array of turn numbers", async () => {
+  it("reads the world's available_turns list", async () => {
     const { transport, calls } = fakeTransport({
       status: 200,
-      body: fixture("newage-history-turns-array.json")
+      body: fixture("newage-history-turns.json")
     });
 
     expect(await newAgeClient(transport, "arcanum").historyTurns("tok", signal)).toEqual({
@@ -181,15 +181,12 @@ describe("report and history", () => {
     });
   });
 
-  it("reads a turns object as well", async () => {
-    const { transport } = fakeTransport({
-      status: 200,
-      body: fixture("newage-history-turns-object.json")
-    });
+  it("reads an empty list", async () => {
+    const { transport } = fakeTransport({ status: 200, body: '{"available_turns": []}' });
 
     expect(await newAgeClient(transport, "arcanum").historyTurns("tok", signal)).toEqual({
       kind: "ok",
-      value: [80, 81, 82]
+      value: []
     });
   });
 
@@ -225,12 +222,27 @@ describe("report and history", () => {
     await expect(client.historyReport("tok", 1.5, signal)).rejects.toThrow(/turn number/);
   });
 
-  it("answers unreadable for a turn history in neither shape", async () => {
-    const { transport } = fakeTransport({ status: 200, body: '{"latest": 82}' });
+  it("answers unreadable for a turn list in any other shape", async () => {
+    // The first two are the shapes once guessed at; the world never sends them.
+    for (const body of ["[80, 81]", '{"turns": [80]}', '{"latest": 82}', "not json"]) {
+      const { transport } = fakeTransport({ status: 200, body });
+      expect(await newAgeClient(transport, "arcanum").historyTurns("tok", signal)).toEqual({
+        kind: "unreadable"
+      });
+    }
+  });
 
-    expect(await newAgeClient(transport, "arcanum").historyTurns("tok", signal)).toEqual({
-      kind: "unreadable"
-    });
+  it("answers unreadable when a listed turn is not a plain turn number", async () => {
+    for (const body of [
+      '{"available_turns": [80, 1.5]}',
+      '{"available_turns": [-1]}',
+      '{"available_turns": ["80"]}'
+    ]) {
+      const { transport } = fakeTransport({ status: 200, body });
+      expect(await newAgeClient(transport, "arcanum").historyTurns("tok", signal)).toEqual({
+        kind: "unreadable"
+      });
+    }
   });
 });
 
