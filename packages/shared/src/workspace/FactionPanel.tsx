@@ -1,6 +1,18 @@
 import type { ReactNode } from "react";
-import type { DeclaredAttitudes, FactionStatus, NewStudents, ProductionOverview } from "@atlantis/core-client";
-import { allowanceRows, attitudeLines, type AllowanceState } from "./factionView";
+import type {
+  DeclaredAttitudes,
+  FactionOrders,
+  FactionStatus,
+  NewStudents,
+  ProductionOverview
+} from "@atlantis/core-client";
+import {
+  allowanceRows,
+  attitudeLines,
+  factionOrderWarning,
+  factionTypeLine,
+  type AllowanceState
+} from "./factionView";
 import { POPOVER_BODY_MAX_H } from "./primitives";
 import { PopoverFrame } from "./popover";
 
@@ -26,6 +38,7 @@ export function FactionPanel({
   mergedFactionIds,
   production,
   students,
+  faction,
   renderFactionName,
   onOpenProduction,
   onDismiss
@@ -41,6 +54,8 @@ export function FactionPanel({
   production: ProductionOverview;
   /** This turn's new quartermasters, mages and apprentices (ah-x7s3). */
   students: NewStudents;
+  /** What this turn's FACTION orders do (ah-7g4f). */
+  faction: FactionOrders;
   /**
    * Wraps a named faction so it can open that faction's dossier beside itself (ah-bu2c). Left off,
    * the name prints as it always did - this panel has no idea what a dossier is, and does not need
@@ -51,7 +66,9 @@ export function FactionPanel({
   onOpenProduction?: () => void;
   onDismiss: () => void;
 }) {
-  const rows = status ? allowanceRows(status, production, students) : [];
+  const rows = status ? allowanceRows(status, production, students, faction.applied?.limits ?? null) : [];
+  const typeLine = factionTypeLine(factionTypes, faction);
+  const warning = factionOrderWarning(faction);
   const lines = attitudes ? attitudeLines(attitudes, mergedFactionIds) : [];
   const unparsed = status?.unparsed ?? [];
 
@@ -74,8 +91,21 @@ export function FactionPanel({
       </div>
 
       <div data-testid="faction-panel-body" className={`${POPOVER_BODY_MAX_H} overflow-y-auto p-2`}>
-        {factionTypes.length > 0 ? (
-          <p className="text-ink-soft">{factionTypes.join(", ")}</p>
+        {typeLine ? (
+          <p data-testid="faction-type-line" className="text-ink-soft">
+            {typeLine.reported}
+            {typeLine.applied !== null ? (
+              <>
+                {" "}
+                <span className="text-ink-dim">→</span> <span className="text-ink">{typeLine.applied}</span>
+              </>
+            ) : null}
+          </p>
+        ) : null}
+        {warning !== null ? (
+          <p data-testid="faction-order-warning" className="text-xs text-brass-bright">
+            {warning}
+          </p>
         ) : null}
 
         {unclaimedSilver !== null ? (
