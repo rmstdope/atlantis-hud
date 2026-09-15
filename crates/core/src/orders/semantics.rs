@@ -44,6 +44,7 @@ use crate::movement::rules::{
 use crate::movement::sailing::refused_sail_steps;
 use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::magic;
+use crate::orders::new_students::NewStudents;
 use crate::orders::production_overview::{
     ProductionOverview, RegionLimits, SlotOrder, SlotOrderKind, WorkedRegion, WorkedResource,
     WorkedTax,
@@ -81,6 +82,13 @@ const QUARTERMASTERS: &str = "quartermasters";
 /// The skill this check is about, by name rather than by tag - see [`check_faction`]'s own doc
 /// comment for why.
 const QUARTERMASTER_SKILL: &str = "quartermaster";
+
+/// The Foundation skills, by name: studying one for the first time makes a mage (`rules/magic`,
+/// `rules/magic_foundations`).
+const FOUNDATION_SKILLS: [&str; 3] = ["force", "pattern", "spirit"];
+
+/// The skill that makes an apprentice, by name (`rules/magic_apprentices`, `data/MANI`).
+const MANIPULATION_SKILL: &str = "manipulation";
 
 /// The game's own currency tag.
 const SILVER: &str = "SILV";
@@ -572,6 +580,8 @@ pub struct TurnReview {
     pub silver: Vec<UnitSilver>,
     /// Every region this month's orders use a tax or trade slot in, for the Production window.
     pub production: ProductionOverview,
+    /// New quartermasters, mages and apprentices this month's orders make, for the Allowances rows.
+    pub students: NewStudents,
 }
 
 /// Checks a whole turn's orders against the report they were written for, and forecasts each
@@ -833,6 +843,7 @@ pub fn review_turn(
         findings,
         silver,
         production: worked,
+        students: new_students(&hexes, ruleset),
     }
 }
 
@@ -14456,6 +14467,103 @@ fn check_movement(
 
 // --- allowances spent across the whole map -------------------------------------------------------
 
+/// Which faction allowance a first-time STUDY spends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StudyAllowance {
+    Quartermaster,
+    Mage,
+    Apprentice,
+}
+
+/// One own unit's first-time STUDY of an allowance-limited skill, in document walk order.
+struct FirstStudy<'a, 'b> {
+    hex: &'a Hex<'b>,
+    ordered: &'a Ordered<'b>,
+    placed: &'a PlacedIntent,
+    allowance: StudyAllowance,
+}
+
+/// Every first-time STUDY of quartermaster, a Foundation or manipulation this month's orders make.
+/// The one walk `check_quartermasters` and `new_students` both read, so the warning and the
+/// Allowances bar cannot disagree about who is a new student.
+///
+/// The settled hexes rather than the raw document: a STUDY that lost the unit's month never runs,
+/// so it asks for no place (`ah-rzkm`). A unit this month's FORM creates counts too, once it will
+/// have people to study with. Skills are resolved by name, never by tag literal: QUAM is
+/// quartermaster, QUAR is quarrying.
+fn first_studies<'a, 'b>(
+    hexes: &'a [(Hex<'b>, Ledger<'_>)],
+    ruleset: &Ruleset,
+) -> Vec<FirstStudy<'a, 'b>> {
+    let tag_of = |name: &str| ruleset.find_skill(name).map(|skill| skill.tag.clone());
+    let groups: Vec<(StudyAllowance, Vec<String>)> = vec![
+        (
+            StudyAllowance::Quartermaster,
+            tag_of(QUARTERMASTER_SKILL).into_iter().collect(),
+        ),
+        (
+            StudyAllowance::Mage,
+            FOUNDATION_SKILLS
+                .iter()
+                .filter_map(|name| tag_of(name))
+                .collect(),
+        ),
+        (
+            StudyAllowance::Apprentice,
+            tag_of(MANIPULATION_SKILL).into_iter().collect(),
+        ),
+    ];
+
+    hexes
+        .iter()
+        .flat_map(|(hex, _)| hex.units.iter().map(move |ordered| (hex, ordered)))
+        .filter(|(_, ordered)| spends_faction_allowance(ordered) && ordered.unit.own)
+        .filter_map(|(hex, ordered)| {
+            // The first STUDY order wins, the same as `Ordered::studies()` reads it - a unit that
+            // writes several is not asking to be counted once per line.
+            let (placed, studied) =
+                ordered
+                    .intents
+                    .iter()
+                    .find_map(|placed| match &placed.intent {
+                        Intent::Study { skill: studied } => Some((placed, studied)),
+                        _ => None,
+                    })?;
+            let found = ruleset.find_skill(studied)?;
+            let (allowance, tags) = groups
+                .iter()
+                .find(|(_, tags)| tags.iter().any(|tag| tag.eq_ignore_ascii_case(&found.tag)))?;
+            let holds = ordered
+                .unit
+                .skills
+                .iter()
+                .any(|held| tags.iter().any(|tag| held.tag.eq_ignore_ascii_case(tag)));
+            (!holds).then_some(FirstStudy {
+                hex,
+                ordered,
+                placed,
+                allowance: *allowance,
+            })
+        })
+        .collect()
+}
+
+/// `NewStudents` for the Allowances rows. All zero without a ruleset.
+fn new_students(hexes: &[(Hex<'_>, Ledger<'_>)], ruleset: Option<&Ruleset>) -> NewStudents {
+    let mut students = NewStudents::default();
+    let Some(ruleset) = ruleset else {
+        return students;
+    };
+    for study in first_studies(hexes, ruleset) {
+        match study.allowance {
+            StudyAllowance::Quartermaster => students.quartermasters += 1,
+            StudyAllowance::Mage => students.mages += 1,
+            StudyAllowance::Apprentice => students.apprentices += 1,
+        }
+    }
+    students
+}
+
 /// Checks the allowances the faction spends across the whole map rather than in one hex.
 ///
 /// The report states each one as `used (maximum)` in its `Faction Status:` block. `used` is the
@@ -15017,9 +15125,9 @@ fn check_quartermasters(
 
     // The tag is QUAM. It is not QUAR, which is quarrying - resolving by name rather than writing
     // a tag literal is what keeps that mistake out.
-    let Some(skill) = ruleset.find_skill(QUARTERMASTER_SKILL) else {
+    if ruleset.find_skill(QUARTERMASTER_SKILL).is_none() {
         return;
-    };
+    }
 
     let Some(entry) = report
         .header
@@ -15033,37 +15141,12 @@ fn check_quartermasters(
 
     let free_places = (entry.maximum - entry.used).max(0);
 
-    // The settled hexes rather than the raw document: a STUDY that lost the unit's month never
-    // runs, so it asks for no quartermaster place (`ah-rzkm`). A unit this month's FORM creates
-    // counts too, once it will have people to study with.
-    let mut candidates: Vec<(&Hex<'_>, &Ordered<'_>, &PlacedIntent)> = hexes
-        .iter()
-        .flat_map(|(hex, _)| hex.units.iter().map(move |ordered| (hex, ordered)))
-        .filter(|(_, ordered)| spends_faction_allowance(ordered) && ordered.unit.own)
-        .map(|(hex, ordered)| (hex, ordered, &ordered.intents))
-        .filter(|(_, ordered, _)| {
-            !ordered
-                .unit
-                .skills
-                .iter()
-                .any(|held| held.tag.eq_ignore_ascii_case(&skill.tag))
-        })
-        .filter_map(|(hex, ordered, intents)| {
-            // The first STUDY order wins, the same as `Ordered::studies()` reads it - a unit that
-            // writes several is not asking to be counted once per line.
-            let placed = intents.iter().find_map(|placed| match &placed.intent {
-                Intent::Study { skill: studied } => Some((placed, studied)),
-                _ => None,
-            })?;
-            Some((hex, ordered, placed))
-        })
-        .filter(|(_, _, (_, studied))| {
-            ruleset
-                .find_skill(studied)
-                .is_some_and(|found| found.tag.eq_ignore_ascii_case(&skill.tag))
-        })
-        .map(|(hex, ordered, (placed, _))| (hex, ordered, placed))
-        .collect();
+    let mut candidates: Vec<(&Hex<'_>, &Ordered<'_>, &PlacedIntent)> =
+        first_studies(hexes, ruleset)
+            .into_iter()
+            .filter(|study| study.allowance == StudyAllowance::Quartermaster)
+            .map(|study| (study.hex, study.ordered, study.placed))
+            .collect();
 
     candidates.sort_by_key(|(_, _, placed)| placed.line);
 

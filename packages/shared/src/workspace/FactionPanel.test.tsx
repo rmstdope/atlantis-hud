@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { DeclaredAttitudes, FactionStatus } from "@atlantis/core-client";
+import { aProductionOverview, type DeclaredAttitudes, type FactionStatus } from "@atlantis/core-client";
+import { NO_STUDENTS } from "../orderEditor";
 import { FactionPanel } from "./FactionPanel";
 import { resetWorkspaceStore } from "../workspaceStore";
 
@@ -32,6 +33,8 @@ const draw = (overrides: Partial<Parameters<typeof FactionPanel>[0]> = {}) =>
       status={STATUS}
       attitudes={ATTITUDES}
       mergedFactionIds={new Set()}
+      production={aProductionOverview()}
+      students={NO_STUDENTS}
       onDismiss={() => {}}
       {...overrides}
     />
@@ -147,5 +150,31 @@ describe("an attitude name as a way into the faction dossier (ah-bu2c)", () => {
     const markup = draw();
     expect(markup).toContain("Creatures (2)");
     expect(markup).not.toContain("open-dossier");
+  });
+});
+
+describe("allowances counted from this turn's orders (ah-x7s3)", () => {
+  it("a row over its limit is red with its note", () => {
+    const markup = draw({
+      status: { entries: [{ label: "Mages", used: 5, maximum: 5 }], unparsed: [] },
+      students: { ...NO_STUDENTS, mages: 1 }
+    });
+    expect(markup).toContain("bg-danger");
+    expect(markup).toContain("text-danger");
+    expect(markup).toContain("6 / 5");
+    expect(markup).toContain('data-testid="allowance-note"');
+    expect(markup).toContain("1 over — 1 unit");
+  });
+
+  it("a row at its limit is brass, with no note", () => {
+    const markup = draw({ status: { entries: [{ label: "Mages", used: 5, maximum: 5 }], unparsed: [] } });
+    expect(markup).toContain("bg-brass");
+    expect(markup).not.toContain("allowance-note");
+  });
+
+  it("Regions reads this turn's count", () => {
+    const markup = draw({ status: { entries: [{ label: "Regions", used: 4, maximum: 10 }], unparsed: [] } });
+    expect(markup).toContain("0 / 10");
+    expect(markup).not.toContain("4 / 10");
   });
 });

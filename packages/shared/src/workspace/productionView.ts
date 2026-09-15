@@ -61,6 +61,20 @@ export function activatesRow(key: string): boolean {
 
 const hexes = (count: number) => (count === 1 ? "hex" : "hexes");
 
+/** How many regions this turn's orders use: all of them against a pooled limit, else each slot. */
+export function regionsUsed(overview: ProductionOverview): { pooled: number; tax: number; trade: number } {
+  return {
+    pooled: overview.regions.length,
+    tax: overview.regions.filter((region) => region.usesTaxSlot).length,
+    trade: overview.regions.filter((region) => region.usesTradeSlot).length
+  };
+}
+
+/** "2 hexes over — orders in 2 hexes will be refused". */
+export function hexesOverNote(over: number): string {
+  return `${over} ${hexes(over)} over — orders in ${over} ${hexes(over)} will be refused`;
+}
+
 /** What a count line's note says the hexes could do, and what the faction may not. */
 type Doing = { could: string; mayNot: string };
 
@@ -77,8 +91,7 @@ function countLine(
   if (maximum === 0) {
     note = `this faction may not ${doing.mayNot} anywhere`;
   } else if (used > maximum) {
-    const over = used - maximum;
-    note = `${over} ${hexes(over)} over — orders in ${over} ${hexes(over)} will be refused`;
+    note = hexesOverNote(used - maximum);
   } else if (listed > 0 && used < maximum) {
     const room = maximum - used;
     note = `${room} more ${hexes(room)} could ${doing.could}`;
@@ -88,9 +101,10 @@ function countLine(
 
 function counts(overview: ProductionOverview): CountLine[] {
   const { limits, regions } = overview;
+  const used = regionsUsed(overview);
   if (limits.pooled !== null) {
     return [
-      countLine("Regions", regions.length, limits.pooled, regions.length, {
+      countLine("Regions", used.pooled, limits.pooled, regions.length, {
         could: "tax or produce",
         mayNot: "tax or produce"
       })
@@ -98,13 +112,11 @@ function counts(overview: ProductionOverview): CountLine[] {
   }
   const lines: CountLine[] = [];
   if (limits.tax !== null) {
-    const used = regions.filter((region) => region.usesTaxSlot).length;
-    lines.push(countLine("Tax regions", used, limits.tax, regions.length, { could: "tax", mayNot: "tax" }));
+    lines.push(countLine("Tax regions", used.tax, limits.tax, regions.length, { could: "tax", mayNot: "tax" }));
   }
   if (limits.trade !== null) {
-    const used = regions.filter((region) => region.usesTradeSlot).length;
     lines.push(
-      countLine("Trade regions", used, limits.trade, regions.length, { could: "produce", mayNot: "produce" })
+      countLine("Trade regions", used.trade, limits.trade, regions.length, { could: "produce", mayNot: "produce" })
     );
   }
   return lines;
