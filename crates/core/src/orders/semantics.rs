@@ -14465,28 +14465,44 @@ fn check_faction(
     check_claims(report, ordered, ruleset, options, findings);
 }
 
-/// What this faction may spend on trade this month, and whether taxing draws on the same pool.
+/// The region limits this report prints in its `Faction Status:` block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RegionAllowances {
+    /// Newer reports: one `Regions: n (m)` pooling taxing and trading.
+    Pooled(i64),
+    /// Older reports: `Tax Regions: n (m)` and `Trade Regions: n (m)`, either possibly absent.
+    Separate {
+        tax: Option<i64>,
+        trade: Option<i64>,
+    },
+}
+
+/// What this faction may spend on taxing and trade this month.
 ///
 /// Two schemas are in the corpus and both are live. Older reports print `Tax Regions: 14 (15)` and
-/// `Trade Regions: 15 (15)`, two counters over two pools. Newer ones print one `Regions: 10 (10)`
-/// pooling both, and there a TAX order costs a region exactly as a PRODUCE does. The label is
-/// whatever the ruleset printed (`report/header.rs:60-63`), so the specific one is asked for first
-/// and the pooled one second; a report with neither is left alone rather than guessed at.
+/// `Trade Regions: 15 (15)`, two counters over two pools, and both are checked. Newer ones print
+/// one `Regions: 10 (10)` pooling both, and there a TAX order costs a region exactly as a PRODUCE
+/// does. The label is whatever the ruleset printed (`report/header.rs:60-63`), so the specific
+/// ones are asked for first and the pooled one second; a report with none is left alone rather
+/// than guessed at.
 ///
 /// The `used` figure is deliberately ignored. It counts what *last* month spent, and the question
 /// here is what this month's orders would spend.
-fn trade_allowance(report: &ParsedReport) -> Option<(i64, bool)> {
+fn region_allowances(report: &ParsedReport) -> Option<RegionAllowances> {
     let entries = &report.header.faction_status.entries;
     let labelled = |label: &str| {
         entries
             .iter()
             .find(|entry| entry.label.eq_ignore_ascii_case(label))
+            .map(|entry| entry.maximum)
     };
 
-    if let Some(entry) = labelled("Trade Regions") {
-        return Some((entry.maximum, false));
+    let tax = labelled("Tax Regions");
+    let trade = labelled("Trade Regions");
+    if tax.is_some() || trade.is_some() {
+        return Some(RegionAllowances::Separate { tax, trade });
     }
-    labelled("Regions").map(|entry| (entry.maximum, true))
+    labelled("Regions").map(RegionAllowances::Pooled)
 }
 
 /// Whether this unit's orders spend one of the faction's monthly allowances.
@@ -14498,15 +14514,80 @@ fn spends_faction_allowance(ordered: &Ordered<'_>) -> bool {
     ordered.formed.is_none() || ordered.men_after_orders > 0
 }
 
-/// `PRODUCE: Faction can't produce in that many regions.` A faction may only conduct trade
-/// activity - which the rules define to include producing - in so many regions a month. Order
-/// production in one region too many and the engine refuses that whole region's PRODUCE orders.
+/// A counting order's place: the hex, the unit and the line a region-limit warning sits on.
+type RegionAnchor<'a, 'b> = (&'a Hex<'b>, &'a Ordered<'b>, &'a PlacedIntent);
+
+/// Keeps whichever of `anchor` and `candidate` comes first in the document.
+fn earlier_anchor<'a, 'b>(
+    anchor: Option<RegionAnchor<'a, 'b>>,
+    candidate: Option<RegionAnchor<'a, 'b>>,
+) -> Option<RegionAnchor<'a, 'b>> {
+    match (anchor, candidate) {
+        (Some(first), Some(second)) if second.2.line < first.2.line => Some(second),
+        (None, second) => second,
+        (first, _) => first,
+    }
+}
+
+/// One region limit judged: `kinds` is how the sentence names the counting orders, `may` and
+/// `may_not` what the faction may do, and `refused` what the excess costs.
+struct RegionLimit {
+    allowance: i64,
+    used: usize,
+    kinds: &'static str,
+    may: &'static str,
+    may_not: &'static str,
+    refused: &'static str,
+}
+
+/// Pushes one `too-many-trade-regions` finding on `anchor` when `limit` is exceeded, or nothing
+/// when there is no line to sit on (a hexless finding is dropped by the client on purpose,
+/// `orderEditor.ts:194`).
+fn push_region_finding(
+    anchor: Option<RegionAnchor<'_, '_>>,
+    limit: &RegionLimit,
+    findings: &mut Vec<Finding>,
+) {
+    let Some((hex, ordered, placed)) = anchor else {
+        return;
+    };
+    let used = i64::try_from(limit.used).unwrap_or(i64::MAX);
+    let allowance = limit.allowance;
+    if used <= allowance {
+        return;
+    }
+    let RegionLimit {
+        kinds,
+        may,
+        may_not,
+        refused,
+        ..
+    } = limit;
+    let message = if allowance == 0 {
+        format!(
+            "this faction may not {may_not} in any region, so every {kinds} order will be refused"
+        )
+    } else {
+        let excess = used - allowance;
+        let regions = if excess == 1 { "region's" } else { "regions'" };
+        format!(
+            "{kinds} orders in {used} regions; this faction may {may} in {allowance}, so {excess} \
+             {regions} {refused} will be refused"
+        )
+    };
+    findings.push(ordered.finding(hex, codes::TOO_MANY_TRADE_REGIONS, message, Some(placed)));
+}
+
+/// `PRODUCE: Faction can't produce in that many regions.` A faction may only tax and trade in so
+/// many regions a month (rules/tablefactionpoints). PRODUCE, TAX - an order or the taxing flag -
+/// and PILLAGE use up a region; BUY, SELL and TRANSPORT never do. Order one region too many and the
+/// engine refuses that whole region's orders.
 ///
 /// Which region loses is the engine's business and not knowable from here, so the warning names
 /// the count and the allowance and never a hex. It belongs to the faction rather than to any one
 /// region, and every finding needs a hex - a hexless one is dropped by the client on purpose
-/// (`orderEditor.ts:194`). So it lands on the first PRODUCE order in the document: one line for
-/// one mistake, on something the player can click.
+/// (`orderEditor.ts:194`). So it lands on the first line in the document that counts toward the
+/// limit it warns about: one line for one mistake, on something the player can click.
 fn check_trade_regions(
     report: &ParsedReport,
     hexes: &[(Hex<'_>, Ledger<'_>)],
@@ -14518,13 +14599,15 @@ fn check_trade_regions(
         return;
     }
 
-    let Some((allowance, pooled)) = trade_allowance(report) else {
+    let Some(allowances) = region_allowances(report) else {
         return;
     };
 
     let mut producing: BTreeSet<&str> = BTreeSet::new();
+    // TAX, the taxing flag, and PILLAGE.
     let mut taxing: BTreeSet<&str> = BTreeSet::new();
-    let mut first_produce: Option<(&Hex<'_>, &Ordered<'_>, &PlacedIntent)> = None;
+    let mut first_produce: Option<RegionAnchor<'_, '_>> = None;
+    let mut first_tax_or_pillage: Option<RegionAnchor<'_, '_>> = None;
 
     let by_coordinate: HashMap<Coordinate, &ReportRegion> = hexes
         .iter()
@@ -14543,6 +14626,7 @@ fn check_trade_regions(
                 taxing.insert(region_id);
             }
             for placed in ordered_unit.intents.iter() {
+                let here = Some((hex, ordered_unit, placed));
                 match &placed.intent {
                     // Both shapes a PRODUCE order can take: one naming what it makes
                     // (`ah-19l2.2`) and one that named nothing readable.
@@ -14552,60 +14636,71 @@ fn check_trade_regions(
                         {
                             producing.insert(region.region_id.as_str());
                         }
-                        let earlier = first_produce
-                            .as_ref()
-                            .is_none_or(|(_, _, first)| placed.line < first.line);
-                        if earlier {
-                            first_produce = Some((hex, ordered_unit, placed));
-                        }
+                        first_produce = earlier_anchor(first_produce, here);
                     }
-                    // Counted once per unit above, flag or order alike.
-                    Intent::Tax => {}
+                    // Counted once per unit above, flag or order alike; the line is the anchor.
+                    Intent::Tax => {
+                        first_tax_or_pillage = earlier_anchor(first_tax_or_pillage, here);
+                    }
+                    Intent::Pillage => {
+                        taxing.insert(region_id);
+                        first_tax_or_pillage = earlier_anchor(first_tax_or_pillage, here);
+                    }
+                    // TRANSPORT, BUY and SELL never use up a region. The rules page says TRANSPORT
+                    // "counts as trade activity in the hex of the unit issuing the order", but the
+                    // game engine does not count it, and the engine is what refuses orders. Do not
+                    // add it here to match the rules.
+                    Intent::Transport { .. } | Intent::Buy { .. } | Intent::Sell { .. } => {}
                     _ => {}
                 }
             }
         }
     }
 
-    let Some((produced_in, producer, placed)) = first_produce else {
-        return;
-    };
-
-    let used = if pooled {
-        producing.union(&taxing).count()
-    } else {
-        producing.len()
-    };
-    let used = i64::try_from(used).unwrap_or(i64::MAX);
-    if used <= allowance {
-        return;
-    }
-
-    let message = if allowance == 0 {
-        "this faction may not trade in any region, so every PRODUCE order will be refused"
-            .to_string()
-    } else {
-        let excess = used - allowance;
-        let regions = if excess == 1 { "region's" } else { "regions'" };
-        if pooled {
-            format!(
-                "PRODUCE and TAX orders in {used} regions; this faction may tax and trade in \
-                 {allowance}, so {excess} {regions} orders will be refused"
-            )
-        } else {
-            format!(
-                "PRODUCE orders in {used} regions; this faction may trade in {allowance}, so \
-                 {excess} {regions} production will be refused"
-            )
+    match allowances {
+        RegionAllowances::Pooled(allowance) => push_region_finding(
+            earlier_anchor(first_produce, first_tax_or_pillage),
+            &RegionLimit {
+                allowance,
+                used: producing.union(&taxing).count(),
+                kinds: "PRODUCE, TAX and PILLAGE",
+                may: "tax and trade",
+                may_not: "tax or trade",
+                refused: "orders",
+            },
+            findings,
+        ),
+        RegionAllowances::Separate { tax, trade } => {
+            if let Some(allowance) = trade {
+                push_region_finding(
+                    first_produce,
+                    &RegionLimit {
+                        allowance,
+                        used: producing.len(),
+                        kinds: "PRODUCE",
+                        may: "trade",
+                        may_not: "trade",
+                        refused: "production",
+                    },
+                    findings,
+                );
+            }
+            if let Some(allowance) = tax {
+                push_region_finding(
+                    first_tax_or_pillage,
+                    &RegionLimit {
+                        allowance,
+                        used: taxing.len(),
+                        kinds: "TAX and PILLAGE",
+                        may: "tax",
+                        may_not: "tax",
+                        refused: "taxing",
+                    },
+                    findings,
+                );
+            }
         }
-    };
-
-    findings.push(producer.finding(
-        produced_in,
-        codes::TOO_MANY_TRADE_REGIONS,
-        message,
-        Some(placed),
-    ));
+    }
 }
 
 /// `STUDY: Can't have another quartermaster.` A faction may hold only so many at once, and the
@@ -28193,6 +28288,23 @@ BUILD
             regions,
             ..Default::default()
         }
+    }
+
+    /// `report_with_status` with several `label: 0 (maximum)` entries - an older report's separate
+    /// `Tax Regions` and `Trade Regions` counters, say.
+    fn report_with_statuses(entries: &[(&str, i64)], regions: Vec<ReportRegion>) -> ParsedReport {
+        let mut report = report_with_status("", 0, 0, regions);
+        report.header.faction_status.entries = entries
+            .iter()
+            .map(
+                |(label, maximum)| crate::report::header::FactionStatusEntry {
+                    label: (*label).to_string(),
+                    used: 0,
+                    maximum: *maximum,
+                },
+            )
+            .collect();
+        report
     }
 
     /// Runs the checks with the committed ruleset, which is what the shell serves.
@@ -45796,22 +45908,251 @@ BUILD
         label: &str,
         maximum: i64,
     ) -> Vec<Finding> {
+        check_trade_statuses(regions, orders, &[(label, maximum)])
+    }
+
+    /// The codes `check_trade_statuses` turns off, with `extra` added.
+    ///
+    /// Their bare BUILDs are written from outside any structure, which `build-outside-structure` is
+    /// right about and these tests are not about. So are the two production warnings: these fixture
+    /// units have no farming and their regions name no products, both of which are true and
+    /// neither of which is the allowance. The pillaging and taxing fixtures trip the four
+    /// pillage/tax warnings - also true, and also not the allowance.
+    const TRADE_TEST_DISABLED: &[Code] = &[
+        codes::BUILD_OUTSIDE_STRUCTURE,
+        codes::UNIT_DOES_NOTHING,
+        codes::PRODUCE_WITHOUT_SKILL,
+        codes::PRODUCE_NOT_HERE,
+        codes::TWO_MONTH_LONG_ORDERS,
+        codes::PILLAGE_WITHOUT_MEN,
+        codes::TAXED_A_PILLAGED_HEX,
+        codes::TAXED_A_GUARDED_HEX,
+        codes::TAX_WITHOUT_COMBAT_READY_MEN,
+    ];
+
+    /// `check_trade`, for a report carrying several `Faction Status:` entries.
+    fn check_trade_statuses(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        entries: &[(&str, i64)],
+    ) -> Vec<Finding> {
         check_turn(
-            &report_with_status(label, 0, maximum, regions),
+            &report_with_statuses(entries, regions),
             orders,
             Some(&ruleset()),
-            // Their bare BUILDs are written from outside any structure, which
-            // `build-outside-structure` is right about and these tests are not about. So are the
-            // two production warnings: these fixture units have no farming and their regions name
-            // no products, both of which are true and neither of which is the allowance.
-            disabling_all(&[
-                codes::BUILD_OUTSIDE_STRUCTURE,
-                codes::UNIT_DOES_NOTHING,
-                codes::PRODUCE_WITHOUT_SKILL,
-                codes::PRODUCE_NOT_HERE,
-                codes::TWO_MONTH_LONG_ORDERS,
-            ]),
+            disabling_all(TRADE_TEST_DISABLED),
         )
+    }
+
+    fn trade_findings(findings: &[Finding]) -> Vec<&Finding> {
+        findings
+            .iter()
+            .filter(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS)
+            .collect()
+    }
+
+    #[test]
+    fn pillaging_counts_toward_a_pooled_regions_counter() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,53", 8, 53, vec![unit("6")]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
+        ];
+        let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPILLAGE\n";
+        let findings = check_trade(regions, orders, "Regions", 2);
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        assert_eq!(
+            findings[0].message,
+            "PRODUCE, TAX and PILLAGE orders in 3 regions; this faction may tax and trade in 2, so \
+             1 region's orders will be refused"
+        );
+    }
+
+    #[test]
+    fn a_faction_that_taxes_and_pillages_but_produces_nothing_is_warned() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
+            region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
+        ];
+        let orders = "unit 5\nAVOID 1\nunit 6\nPILLAGE\nunit 5\nTAX\n";
+        let findings = check_trade(regions, orders, "Regions", 1);
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        assert_eq!(findings[0].unit_id.as_deref(), Some("6"));
+        assert_eq!(findings[0].region_id, "1:8,53");
+    }
+
+    #[test]
+    fn a_flag_taxer_counts_but_the_warning_sits_on_the_first_real_line() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![taxing_by_flag(with_skill(unit("5"), "COMB", 1))],
+            ),
+            region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
+        ];
+        let findings = check_trade(regions, "unit 6\nPILLAGE\n", "Regions", 1);
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        assert_eq!(findings[0].unit_id.as_deref(), Some("6"));
+        assert!(findings[0].message.contains("in 2 regions"));
+    }
+
+    #[test]
+    fn only_flag_taxers_have_no_line_to_warn_on() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![taxing_by_flag(with_skill(unit("5"), "COMB", 1))],
+            ),
+            region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![taxing_by_flag(with_skill(unit("6"), "COMB", 1))],
+            ),
+        ];
+        let findings = check_trade(regions, "", "Regions", 1);
+
+        assert!(trade_findings(&findings).is_empty());
+    }
+
+    #[test]
+    fn taxing_and_pillaging_in_one_region_count_once() {
+        let regions = vec![region_at(
+            "1:7,53",
+            7,
+            53,
+            vec![
+                with_skill(unit("5"), "COMB", 1),
+                with_skill(unit("6"), "COMB", 1),
+            ],
+        )];
+        let orders = "unit 5\nTAX\nunit 6\nPILLAGE\n";
+
+        assert!(trade_findings(&check_trade(regions, orders, "Regions", 1)).is_empty());
+    }
+
+    #[test]
+    fn transport_buy_and_sell_never_use_a_region() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,53", 8, 53, vec![unit("6")]),
+            region_at("1:9,53", 9, 53, vec![unit("7")]),
+        ];
+        let orders =
+            "unit 5\nPRODUCE grain\nunit 6\nTRANSPORT 5 1 IRON\nunit 7\nBUY 1 HUMN\nSELL 1 grain\n";
+
+        assert!(trade_findings(&check_trade(regions, orders, "Regions", 1)).is_empty());
+    }
+
+    #[test]
+    fn taxing_and_pillaging_past_a_separate_tax_counter_is_warned() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
+            region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
+        ];
+        let orders = "unit 5\nTAX\nunit 6\nPILLAGE\n";
+        let findings =
+            check_trade_statuses(regions, orders, &[("Tax Regions", 1), ("Trade Regions", 5)]);
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        assert_eq!(findings[0].unit_id.as_deref(), Some("5"));
+        assert_eq!(
+            findings[0].message,
+            "TAX and PILLAGE orders in 2 regions; this faction may tax in 1, so 1 region's taxing \
+             will be refused"
+        );
+    }
+
+    #[test]
+    fn pillaging_does_not_count_against_a_separate_trade_counter() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
+        ];
+        let orders = "unit 5\nPRODUCE grain\nunit 6\nPILLAGE\n";
+        let findings =
+            check_trade_statuses(regions, orders, &[("Tax Regions", 5), ("Trade Regions", 1)]);
+
+        assert_eq!(codes(&findings), Vec::<&str>::new());
+    }
+
+    fn over_both_separate_counters() -> (Vec<ReportRegion>, &'static str) {
+        (
+            vec![
+                region_at("1:7,53", 7, 53, vec![unit("5")]),
+                region_at("1:8,53", 8, 53, vec![unit("6")]),
+                region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
+                region_at("1:10,53", 10, 53, vec![with_skill(unit("8"), "COMB", 1)]),
+            ],
+            "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nTAX\nunit 8\nPILLAGE\n",
+        )
+    }
+
+    #[test]
+    fn over_both_separate_counters_gives_two_warnings_each_on_its_own_line() {
+        let (regions, orders) = over_both_separate_counters();
+        let findings =
+            check_trade_statuses(regions, orders, &[("Tax Regions", 1), ("Trade Regions", 1)]);
+
+        assert_eq!(
+            codes(&findings),
+            ["too-many-trade-regions", "too-many-trade-regions"]
+        );
+        assert_eq!(findings[0].unit_id.as_deref(), Some("5"));
+        assert_eq!(
+            findings[0].message,
+            "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
+             will be refused"
+        );
+        assert_eq!(findings[1].unit_id.as_deref(), Some("7"));
+        assert_eq!(
+            findings[1].message,
+            "TAX and PILLAGE orders in 2 regions; this faction may tax in 1, so 1 region's taxing \
+             will be refused"
+        );
+    }
+
+    #[test]
+    fn a_separate_tax_counter_of_zero_is_told_so() {
+        let regions = vec![region_at(
+            "1:7,53",
+            7,
+            53,
+            vec![with_skill(unit("5"), "COMB", 1)],
+        )];
+        let findings = check_trade_statuses(
+            regions,
+            "unit 5\nTAX\n",
+            &[("Tax Regions", 0), ("Trade Regions", 5)],
+        );
+
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        assert_eq!(
+            findings[0].message,
+            "this faction may not tax in any region, so every TAX and PILLAGE order will be refused"
+        );
+    }
+
+    #[test]
+    fn the_setting_silences_both_separate_warnings() {
+        let (regions, orders) = over_both_separate_counters();
+        let mut disabled = TRADE_TEST_DISABLED.to_vec();
+        disabled.push(codes::TOO_MANY_TRADE_REGIONS);
+        let findings = check_turn(
+            &report_with_statuses(&[("Tax Regions", 1), ("Trade Regions", 1)], regions),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&disabled),
+        );
+
+        assert!(trade_findings(&findings).is_empty());
     }
 
     #[test]
@@ -45908,8 +46249,8 @@ BUILD
         assert_eq!(codes(&findings), ["too-many-trade-regions"]);
         assert_eq!(
             findings[0].message,
-            "PRODUCE and TAX orders in 3 regions; this faction may tax and trade in 2, so 1 \
-             region's orders will be refused"
+            "PRODUCE, TAX and PILLAGE orders in 3 regions; this faction may tax and trade in 2, so \
+             1 region's orders will be refused"
         );
     }
 
@@ -45966,14 +46307,15 @@ BUILD
     }
 
     #[test]
-    fn a_faction_that_may_not_trade_at_all_is_told_so() {
+    fn a_faction_that_may_not_tax_or_trade_at_all_is_told_so() {
         let regions = vec![region_at("1:7,53", 7, 53, vec![unit("5")])];
         let orders = "unit 5\nPRODUCE grain\n";
         let findings = check_trade(regions, orders, "Regions", 0);
 
         assert_eq!(
             findings[0].message,
-            "this faction may not trade in any region, so every PRODUCE order will be refused"
+            "this faction may not tax or trade in any region, so every PRODUCE, TAX and PILLAGE \
+             order will be refused"
         );
     }
 
@@ -46066,19 +46408,20 @@ BUILD
         );
     }
 
+    /// Taxing alone uses up regions under the pooled counter, so a faction with no PRODUCE is still
+    /// warned - on its first TAX line (ah-enaj, which reversed the old silence here).
     #[test]
-    fn no_produce_orders_means_nothing_to_warn_about() {
+    fn taxing_without_producing_is_warned_on_the_first_tax_line() {
         let regions = vec![
             region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
             region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
             region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
         ];
         let orders = "unit 5\nTAX\nunit 6\nTAX\nunit 7\nTAX\n";
+        let findings = check_trade(regions, orders, "Regions", 1);
 
-        assert_eq!(
-            codes(&check_trade(regions, orders, "Regions", 1)),
-            Vec::<&str>::new()
-        );
+        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        assert_eq!(findings[0].unit_id.as_deref(), Some("5"));
     }
 
     #[test]
