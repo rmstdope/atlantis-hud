@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-enaj — Pillaging counts against the region limit</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#e0b050; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h2 { margin:44px 0 6px; font-size:19px; border-bottom:1px solid var(--edge); padding-bottom:6px; }
+  h3.sec { margin:26px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:10px; max-width:100ch; }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:22px 0 8px; }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:10px 0 4px; max-width:100ch; }
+  .note b { color:var(--ink); }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:104ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .editor { background:var(--panel); border:1px solid var(--edge); border-radius:5px; font-family:'SF Mono',Menlo,monospace;
+    font-size:12.5px; max-width:78ch; margin:8px 0; overflow-x:auto; }
+  .editor .ln { display:flex; padding:2px 0; white-space:pre; }
+  .editor .g { width:34px; text-align:center; color:var(--ink-dim); flex:none; }
+  .editor .g.w { color:var(--warn); font-weight:bold; }
+  .editor .t { color:var(--ink-soft); padding-right:12px; }
+  .editor .c { color:var(--ink-dim); }
+  .sq { text-decoration: underline wavy var(--warn); text-underline-offset:3px; }
+  .hover { background:var(--raised); border:1px solid var(--edge); border-left:3px solid var(--warn); border-radius:5px; padding:8px 12px;
+    font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink); max-width:78ch; margin:4px 0 8px 34px; }
+  .hover .lbl { color:var(--warn); font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; display:block; margin-bottom:4px; }
+  .silent { font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink-dim); font-style:italic; margin:4px 0 8px 34px; }
+  .settings { background:var(--panel); border:1px solid var(--edge); border-radius:5px; font-family:system-ui,sans-serif;
+    font-size:13px; max-width:78ch; margin:8px 0; padding:10px 14px; display:flex; gap:12px; align-items:flex-start; }
+  .settings .box { width:15px; height:15px; border:1px solid var(--select); background:var(--select); border-radius:3px; flex:none; margin-top:3px; }
+  .settings .d { color:var(--ink-soft); font-size:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:24px; }
+</style>
+</head>
+<body>
+<header>
+<h1>Pillaging counts against the faction's region limit</h1>
+<p>A faction may tax and trade in only so many regions a month, set by its Martial points
+(rules/tablefactionpoints). The order editor already warns when this month's orders go past that limit —
+but it counts only <b>PRODUCE</b> and <b>TAX</b>. A faction pillaging its way across its own regions can
+go past the limit and hear nothing.</p>
+<p><b>Already settled by the team:</b> only PRODUCE, TAX (including units set to tax every month) and
+PILLAGE use up a region. BUY, SELL and TRANSPORT do not — the team checked the game itself on TRANSPORT,
+whatever the rules page says.</p>
+<p class="note" style="border-left-color:#7fb069"><b>Chosen:</b> <b>1A</b>, the warning sits on the first order that counts toward the limit it warns about. <b>2A</b>, every order that counts toward that limit is always named, and the Settings line becomes “Taxing and trading in too many regions”. <b>3A</b>, older reports with two limits get a second warning, for TAX and PILLAGE against the tax limit.
+<br><b>Rejected:</b> 1B (first PRODUCE only, which leaves a faction that produces nothing unwarned), 2B (naming only the kinds ordered this month), 3B (leaving older reports unchanged).</p>
+<p>Example faction on every screen below: limit <b>10 regions</b>, orders taxing in 6, pillaging in 4 more,
+producing in 2 more — <b>12 regions</b> in all.</p>
+</header>
+<main>
+
+<h2>1 · Which order the warning sits on</h2>
+<h3 class="sec">The warning belongs to the whole faction, not one hex</h3>
+<p>It still has to sit on one line the player can click. Today it sits on the first PRODUCE order — so a
+faction that only taxes and pillages, with no PRODUCE anywhere, is never warned at all.</p>
+
+<div class="grid">
+<div>
+<span class="opt">1A · the first counting order of any kind</span>
+<div class="editor">
+  <div class="ln"><span class="g">1</span><span class="t">unit 1402</span></div>
+  <div class="ln"><span class="g w">▲</span><span class="t"><span class="sq">PILLAGE</span></span></div>
+  <div class="ln"><span class="g">3</span><span class="t">unit 1403</span></div>
+  <div class="ln"><span class="g">4</span><span class="t">TAX</span></div>
+  <div class="ln"><span class="g">…</span><span class="t c">;  no PRODUCE anywhere</span></div>
+</div>
+<div class="hover"><span class="lbl">Warning</span>TAX and PILLAGE orders in 12 regions; this faction may tax and trade in 10, so 2 regions' orders will be refused</div>
+<ul class="notes">
+  <li>Every faction over the limit is warned, whatever mix of orders it wrote.</li>
+  <li class="con">The underlined line moves when the player adds a PRODUCE or PILLAGE higher up.</li>
+</ul>
+</div>
+
+<div>
+<span class="opt">1B · keep it on the first PRODUCE only</span>
+<div class="editor">
+  <div class="ln"><span class="g">1</span><span class="t">unit 1402</span></div>
+  <div class="ln"><span class="g">2</span><span class="t">PILLAGE</span></div>
+  <div class="ln"><span class="g">3</span><span class="t">unit 1403</span></div>
+  <div class="ln"><span class="g">4</span><span class="t">TAX</span></div>
+  <div class="ln"><span class="g">…</span><span class="t c">;  no PRODUCE anywhere</span></div>
+</div>
+<div class="silent">No warning. Pillaging counts toward the total, but only once some unit produces.</div>
+<ul class="notes">
+  <li>The warning stays on the same line it always has.</li>
+  <li class="con">A faction that taxes and pillages but produces nothing can still go over the limit in silence — the gap this work is about, left half open.</li>
+</ul>
+</div>
+</div>
+
+<h2>2 · The words</h2>
+<h3 class="sec">The warning, and its line in Settings</h3>
+<p>Today: <code>PRODUCE and TAX orders in 12 regions; this faction may tax and trade in 10, so 2 regions' orders will be refused</code>,
+listed in Settings as <b>“Producing in too many regions”</b>.</p>
+
+<div class="grid">
+<div>
+<span class="opt">2A · always name all three</span>
+<div class="hover"><span class="lbl">Warning</span>PRODUCE, TAX and PILLAGE orders in 12 regions; this faction may tax and trade in 10, so 2 regions' orders will be refused</div>
+<div class="hover"><span class="lbl">Warning · limit of none</span>this faction may not tax or trade in any region, so every PRODUCE, TAX and PILLAGE order will be refused</div>
+<div class="settings"><span class="box"></span><div><b>Taxing and trading in too many regions</b><div class="d">PRODUCE, TAX and PILLAGE orders in more regions than the faction's allowance permits.</div></div></div>
+<ul class="notes">
+  <li>One fixed sentence; the player always learns the full list of what counts.</li>
+  <li class="con">Names orders the player may not have written this month.</li>
+</ul>
+</div>
+
+<div>
+<span class="opt">2B · name only the kinds actually ordered</span>
+<div class="hover"><span class="lbl">Warning</span>TAX and PILLAGE orders in 12 regions; this faction may tax and trade in 10, so 2 regions' orders will be refused</div>
+<div class="hover"><span class="lbl">Warning · limit of none</span>this faction may not tax or trade in any region, so every PILLAGE order will be refused</div>
+<div class="settings"><span class="box"></span><div><b>Taxing and trading in too many regions</b><div class="d">PRODUCE, TAX and PILLAGE orders in more regions than the faction's allowance permits.</div></div></div>
+<ul class="notes">
+  <li>Reads as a description of this month's own orders.</li>
+  <li class="con">The sentence changes shape with the orders; the player never sees that BUY or TRANSPORT were left out on purpose — Settings is the only place the full list lives.</li>
+</ul>
+</div>
+</div>
+<p class="note">Settings is drawn the same in both: the old title <b>“Producing in too many regions”</b> stops being true once taxing and pillaging count. Say if you'd rather keep it.</p>
+
+<h2>3 · Older reports, which print two separate limits</h2>
+<h3 class="sec">“Tax Regions: 14 (15)” and “Trade Regions: 15 (15)”</h3>
+<p>Some games still send reports with a separate tax limit and trade limit. There, today's warning compares only
+PRODUCE against the trade limit — taxing is not checked against anything.</p>
+
+<div class="grid">
+<div>
+<span class="opt">3A · a second warning for the tax limit</span>
+<div class="editor">
+  <div class="ln"><span class="g w">▲</span><span class="t"><span class="sq">TAX</span></span></div>
+</div>
+<div class="hover"><span class="lbl">Warning</span>TAX and PILLAGE orders in 16 regions; this faction may tax in 15, so 1 region's taxing will be refused</div>
+<div class="editor">
+  <div class="ln"><span class="g w">▲</span><span class="t"><span class="sq">PRODUCE STON</span></span></div>
+</div>
+<div class="hover"><span class="lbl">Warning</span>PRODUCE orders in 16 regions; this faction may trade in 15, so 1 region's production will be refused</div>
+<ul class="notes">
+  <li>Pillaging is caught in older games too, beside the taxing it shares a limit with.</li>
+  <li class="con">Two warnings from one Settings line; older games start warning about taxing, which they never did.</li>
+</ul>
+</div>
+
+<div>
+<span class="opt">3B · leave older reports as they are</span>
+<div class="editor">
+  <div class="ln"><span class="g">1</span><span class="t">TAX</span></div>
+  <div class="ln"><span class="g">2</span><span class="t">PILLAGE</span></div>
+</div>
+<div class="silent">No warning for taxing or pillaging, however many regions.</div>
+<div class="hover"><span class="lbl">Warning</span>PRODUCE orders in 16 regions; this faction may trade in 15, so 1 region's production will be refused</div>
+<ul class="notes">
+  <li>Nothing changes for older games.</li>
+  <li class="con">The same silent gap stays open there, for taxing as well as pillaging.</li>
+</ul>
+</div>
+</div>
+
+</main>
+</body>
+</html>
