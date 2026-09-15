@@ -1191,6 +1191,12 @@ export function AppShell({
    * whenever the hex holds any, and only falls to a foreign unit when it does not. The memory is
    * read with `getState()` rather than a selector: `selectHex` is a dependency of a great many
    * callbacks, and subscribing here would rebuild all of them on every unit pick.
+   *
+   * Follows the hex to its own level, the way `goToUnit` does: the Changes, Battles and Production
+   * dialogs and the palette all name hexes by id, and a hex on another level selected without a
+   * level switch left the map where it was with nothing marked. A click on the map itself is
+   * always on the level being drawn, so for it this is a no-op. `setLevel` clears the selection,
+   * so it has to come first.
    */
   const selectHex = useCallback(
     (regionId: string | null) => {
@@ -1201,13 +1207,20 @@ export function AppShell({
         planTo(regionId);
         return;
       }
+      if (regionId !== null) {
+        // Region ids are `z:x,y`, so the level is written on the front of the id.
+        const targetLevel = Number(regionId.split(":")[0]);
+        if (Number.isFinite(targetLevel) && targetLevel !== level) {
+          setLevel(targetLevel);
+        }
+      }
       const target = model.hexes.find((candidate) => candidate.regionId === regionId) ?? null;
       selectRegion(
         regionId,
         unitForHex(useWorkspaceStore.getState().hexUnits, regionId, unitsForHex(target))
       );
     },
-    [model, selectRegion, planner.armed, planTo]
+    [model, selectRegion, planner.armed, planTo, level, setLevel]
   );
 
   const hex = useMemo(

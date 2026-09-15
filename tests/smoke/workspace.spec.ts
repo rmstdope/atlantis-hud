@@ -718,6 +718,56 @@ test("clicking a changed unit selects it, closes the dialog and keeps the compar
   await expect(page.getByTestId("changes-dialog")).toBeVisible();
 });
 
+/**
+ * A changed hex can be on a level the map is not showing. Following it there is what a click on
+ * the row is for; selecting it without switching level left the map where it was with nothing
+ * marked (the navigator, 2026-09-15).
+ */
+test("clicking a changed hex on another level follows it there", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Two levels");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  // Turn 0 is the nexus alone; turn 23 is the surface. Compared, the nexus is a hex not seen this
+  // turn - and one that exists on the nexus level and nowhere else.
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-0.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(readReport("g5f21t0"), "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("region");
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-23.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(readReport("g5f21t23"), "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  // The selector exists only once the game knows two levels, so its appearance is what says the
+  // second import has landed.
+  const selector = page.getByTestId("app-header").getByLabel("Map level");
+  await expect(selector).toBeVisible();
+  const values = await selector.locator("option").evaluateAll((options) =>
+    options.map((option) => (option as HTMLOptionElement).value)
+  );
+  const surface = values.find((value) => value !== "0");
+  expect(surface).toBeDefined();
+  await selector.selectOption(surface!);
+  const nexusHex = page.getByRole("button", { name: "hex 0:0,0", exact: true });
+  await expect(nexusHex).toHaveCount(0);
+
+  await page.getByTestId("turn-chip").click();
+  await page.getByTestId("turn-row-0").click();
+  await expect(page.getByTestId("changes-dialog")).toBeVisible();
+  await page.getByTestId("changes-tab-regions").click();
+  await page.getByTestId("changes-region-0:0,0").click();
+
+  await expect(page.getByTestId("changes-dialog")).toHaveCount(0);
+  await expect(selector).toHaveValue("0");
+  await expect(nexusHex).toHaveCount(1);
+  await expect(page.getByTestId("panel-region")).toContainText("nexus (0,0)");
+});
+
 test("comparing does not disturb the working turn's orders", async ({ page }) => {
   await loadTwoTurns(page);
 
