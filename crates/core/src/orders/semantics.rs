@@ -14946,22 +14946,25 @@ fn worked_region(
                 )
         });
 
-    // `UnitSilver::produced` is one figure for the whole unit, for the item its PRODUCE order
-    // names, so each unit is credited once: to the raw resource its earliest raw PRODUCE line
-    // draws on. A repeated line, or a second PRODUCE, must not count the same output again.
-    let mut credited: BTreeMap<UnitKey, (usize, String, i64)> = BTreeMap::new();
+    // `UnitSilver::produced` is one figure for the whole unit, for the PRODUCE the forecast priced
+    // (`produced_name`) - the later of two lines, as `two-month-long-orders` reads them, and never
+    // a line it could not price. So each unit producing here is credited once, and only to the
+    // resource that priced order names, never by line order.
+    let mut credited: BTreeMap<UnitKey, (String, i64)> = BTreeMap::new();
     for used in uses.iter().filter(is_produce) {
-        let (Some(tag), Some(row), Some(placed)) = (raw_tag(used), row_of(used), used.placed)
+        let key = unit_key(&used.hex.region.region_id, &used.ordered.unit.unit_id);
+        if credited.contains_key(&key) {
+            continue;
+        }
+        let Some(row) = row_of(used) else { continue };
+        let Some(tag) = row
+            .produced_name
+            .as_deref()
+            .and_then(|name| resolve_item(name, used.hex, used.ordered, ruleset))
         else {
             continue;
         };
-        let key = unit_key(&used.hex.region.region_id, &used.ordered.unit.unit_id);
-        let earlier = credited
-            .get(&key)
-            .is_none_or(|(line, _, _)| placed.line < *line);
-        if earlier {
-            credited.insert(key, (placed.line, tag, row.produced));
-        }
+        credited.insert(key, (tag, row.produced));
     }
     let resources = region
         .products
@@ -14971,8 +14974,8 @@ fn worked_region(
             tag: product.tag.clone(),
             produced: credited
                 .values()
-                .filter(|(_, tag, _)| tag.eq_ignore_ascii_case(&product.tag))
-                .map(|(_, _, produced)| produced)
+                .filter(|(tag, _)| tag.eq_ignore_ascii_case(&product.tag))
+                .map(|(_, produced)| produced)
                 .sum(),
             available: Some(product.amount),
         })

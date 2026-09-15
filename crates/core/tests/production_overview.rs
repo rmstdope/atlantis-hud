@@ -345,8 +345,10 @@ fn a_taxers_share_beside_an_unread_unit_is_at_most() {
     assert!(region.tax.at_most);
 }
 
-/// `UnitSilver::produced` is one figure per unit: a repeated `PRODUCE grain` line, or a second
-/// PRODUCE for another resource, must not credit that figure twice.
+/// `UnitSilver::produced` is one figure per unit, for the PRODUCE the core treats as running - the
+/// later of two, as the core's own `two-month-long-orders` check reads them (not a rules claim; no
+/// rules page found states it). A repeated line must not credit that figure twice, and a replaced
+/// line is credited nothing.
 #[test]
 fn a_units_output_is_credited_once_to_the_resource_it_produces() {
     let text = report(
@@ -363,10 +365,51 @@ fn a_units_output_is_credited_once_to_the_resource_it_produces() {
         produced
     );
 
-    let both = review_of(&text, "unit 902\nPRODUCE grain\nPRODUCE horses\n");
-    let resources = &both.production.regions[0].resources;
-    assert_eq!(
-        resources[0].produced + resources[1].produced,
-        resources.iter().map(|r| r.produced).max().unwrap_or(0)
+    // The horses line runs and the farmer cannot make horses, so neither resource is credited.
+    let replaced = review_of(&text, "unit 902\nPRODUCE grain\nPRODUCE horses\n");
+    let resources = &replaced.production.regions[0].resources;
+    assert_eq!(resources[0].produced, 0, "grain was replaced");
+    assert_eq!(resources[1].produced, 0, "horses cannot be made");
+}
+
+/// A crafting line and a raw one: whichever runs is what the unit's figure is, and only a raw
+/// resource that runs is credited.
+#[test]
+fn only_the_production_that_runs_is_credited_to_a_raw_resource() {
+    let smith_farmer = SMITHS.replace(
+        "Skills: weaponsmith [WEAP] 1 (30).",
+        "Skills: weaponsmith [WEAP] 1 (30), farming [FARM] 1 (30).",
     );
+    let text = report(
+        &["Regions: 0 (40)"],
+        &[hex(
+            1,
+            600,
+            "20 iron [IRON], 24 grain [GRAI]",
+            &[&smith_farmer],
+        )],
+    );
+    let produced_of = |review: &TurnReview| {
+        review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "903")
+            .expect("the smiths have a row")
+            .produced
+    };
+
+    let swords_last = review_of(&text, "unit 903\nPRODUCE grain\nPRODUCE swords\n");
+    assert!(produced_of(&swords_last) > 0, "the swords are priced");
+    let resources = &swords_last.production.regions[0].resources;
+    assert_eq!((resources[0].produced, resources[1].produced), (0, 0));
+
+    let grain_last = review_of(&text, "unit 903\nPRODUCE swords\nPRODUCE grain\n");
+    let resources = &grain_last.production.regions[0].resources;
+    assert_eq!(resources[0].produced, 0, "iron");
+    assert_eq!(
+        resources[1].produced,
+        produced_of(&grain_last),
+        "grain runs"
+    );
+    assert!(resources[1].produced > 0);
 }
