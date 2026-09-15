@@ -419,7 +419,9 @@ describe("the fetch control", () => {
     });
 
     expect(markup).toContain("Fetch");
-    expect(controlTag(markup)).toContain("border-brass");
+    // Styled as Export and Send are, so the four actions read as one row.
+    expect(controlTag(markup)).toContain("border-edge");
+    expect(controlTag(markup)).not.toContain("border-brass");
     expect(controlTag(markup)).not.toContain("aria-haspopup");
   });
 });

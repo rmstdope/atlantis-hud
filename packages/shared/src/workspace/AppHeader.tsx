@@ -625,7 +625,7 @@ export function AppHeader({
         type="button"
         disabled={busy || importDisabled}
         onClick={() => fileRef.current?.click()}
-        className="rounded border border-brass px-2.5 py-1 text-brass disabled:opacity-50"
+        className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink disabled:opacity-50"
       >
         {busy ? importingLabel(progress) : "Import"}
       </button>
@@ -664,15 +664,15 @@ export function AppHeader({
 
       {/*
         Fetching, between Export and Send: it is about the server the orders are going to, so it
-        belongs beside Send rather than beside the settings cog. Brass-bordered because it is the
-        server's primary action rather than a state to leave.
+        belongs beside Send rather than beside the settings cog. Styled like Export and Send, so
+        the four actions read as one row (the navigator, 2026-09-15; it was brass before).
       */}
       {fetchControl === undefined ? null : (
         <button
           type="button"
           data-testid="fetch-control"
           onClick={fetchControl.onFetch}
-          className="rounded border border-brass bg-panel-raised px-2.5 py-1 text-brass"
+          className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink"
         >
           {fetchControl.label}
         </button>
