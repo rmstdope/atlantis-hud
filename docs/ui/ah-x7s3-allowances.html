@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Allowances From Orders</title>
+<style>
+:root{--ground:#1b212a;--panel:#222933;--raised:#2a323d;--edge:#46525f;--edge-soft:#333d49;--ink:#d4dce6;--ink-soft:#a8b4c2;--ink-dim:#99a4b2;--brass:#e0b25a;--brass-bright:#eebe63;--select:#5aa9de;--danger:#e89494;}
+*{box-sizing:border-box;margin:0}
+body{background:#12171e;color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 60px}
+.page{max-width:1000px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+h2{font-size:17px;margin:30px 0 6px;border-top:1px solid var(--edge);padding-top:16px}
+h2 em{color:var(--brass);font-style:normal;font-size:11px;letter-spacing:1.8px;text-transform:uppercase;margin-right:10px}
+p.lead{color:var(--ink-soft);font-size:14px;max-width:90ch;margin-top:8px}
+.row{display:flex;flex-wrap:wrap;gap:18px;margin-top:12px}
+.cap{font:13px/1.4 Georgia,serif;color:var(--ink-soft);margin-bottom:6px;max-width:26rem}
+.cap b{color:var(--brass)}
+.app{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:13px;line-height:1.45}
+.facpop{width:20rem;max-width:100%;background:var(--raised);border:1px solid var(--edge);border-radius:4px;box-shadow:0 10px 26px rgba(0,0,0,.5)}
+.facpop .head{display:flex;border-bottom:1px solid var(--edge);padding:5px 8px}.facpop .head .x{margin-left:auto;color:var(--ink-dim)}
+.facpop .body{padding:7px 8px;display:grid;gap:5px}
+.sec{color:var(--brass);font-size:11px;letter-spacing:1px;text-transform:uppercase}
+.allow{display:grid;grid-template-columns:auto 1fr auto;gap:3px 8px;align-items:center}.allow .k{color:var(--ink-soft)}
+.bar{height:5px;background:var(--edge-soft);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--select)}.bar i.full{background:var(--brass)}.bar i.over{background:var(--danger)}
+.dim{color:var(--ink-dim)} .full{color:var(--brass-bright)} .bad{color:var(--danger)}
+.note{grid-column:1/-1;color:var(--ink-dim);font-size:12px;margin-top:-2px}
+.note.bad{color:var(--danger)}
+.btn{display:inline-block;border:1px solid var(--brass);color:var(--brass-bright);border-radius:3px;padding:0 8px;background:var(--panel)}
+.chosen{border-left:2px solid var(--brass);padding-left:12px;color:var(--ink)}
+</style></head><body><div class="page">
+<h1>Allowances from this turn's orders <span>— chosen</span></h1>
+<p class="lead chosen"><b style="color:var(--brass)">Chosen (bead ah-x7s3).</b> Regions counts the hexes this turn's orders tax (including autotax), pillage or produce in, never BUY, SELL or TRANSPORT, exactly as the Production window counts. Quartermasters, Mages and Apprentices start from the report's figure and rise by one for each unit whose orders this turn study quartermaster, a magic foundation (force, pattern, spirit) or manipulation <b>for the first time</b>. Counts never go down from orders. No "last turn" figure, and no caption telling the rows apart. Over a limit: red bar, red number, red note. The limit after the slash is always the report's.</p>
+
+<h2><em>Normal</em>The example report (Borg, turn 20), no orders yet</h2>
+<div class="row app"><div class="facpop"><div class="head">Borg <span class="dim">&nbsp;(62)</span><span class="x">✕</span></div>
+ <div class="body"><div class="dim">Martial 1, Magic 4</div>
+ <div class="sec">Allowances</div>
+ <div class="allow"><span class="k">Regions</span><div class="bar"><i style="width:0"></i></div><span>0 / 10</span>
+ <span class="k">Quartermasters</span><div class="bar"><i style="width:50%"></i></div><span>1 / 2</span>
+ <span class="k">Mages</span><div class="bar"><i class="full" style="width:100%"></i></div><span class="full">5 / 5</span>
+ <span class="k">Apprentices</span><div class="bar"><i style="width:0"></i></div><span>0 / 10</span></div>
+ <div><span class="btn">Production…</span></div></div></div></div>
+
+<h2><em>State</em>Orders: tax in 3 hexes, one unit starts quartermaster, two start manipulation</h2>
+<div class="row app"><div class="facpop"><div class="body"><div class="sec">Allowances</div>
+ <div class="allow"><span class="k">Regions</span><div class="bar"><i style="width:30%"></i></div><span>3 / 10</span>
+ <span class="k">Quartermasters</span><div class="bar"><i class="full" style="width:100%"></i></div><span class="full">2 / 2</span>
+ <span class="k">Mages</span><div class="bar"><i class="full" style="width:100%"></i></div><span class="full">5 / 5</span>
+ <span class="k">Apprentices</span><div class="bar"><i style="width:20%"></i></div><span>2 / 10</span></div>
+ <div><span class="btn">Production…</span></div></div>
+ <p class="cap">At the limit: brass, as today. A unit that <b>already knows</b> the skill and studies further adds nothing.</p></div>
+
+<h2><em>State</em>Over the limit</h2>
+<div class="row app"><div class="facpop"><div class="body"><div class="sec">Allowances</div>
+ <div class="allow"><span class="k">Regions</span><div class="bar"><i class="over" style="width:100%"></i></div><span class="bad">12 / 10</span>
+ <span class="note bad">2 hexes over — orders in 2 hexes will be refused</span>
+ <span class="k">Mages</span><div class="bar"><i class="over" style="width:100%"></i></div><span class="bad">6 / 5</span>
+ <span class="note bad">1 over — 1 unit's study will fail</span></div></div></div></div>
+
+<h2><em>State</em>An older report with separate tax and trade limits</h2>
+<div class="row app"><div class="facpop"><div class="body"><div class="sec">Allowances</div>
+ <div class="allow"><span class="k">Tax Regions</span><div class="bar"><i style="width:40%"></i></div><span>6 / 15</span>
+ <span class="k">Trade Regions</span><div class="bar"><i style="width:20%"></i></div><span>3 / 15</span>
+ <span class="k">Quartermasters</span><div class="bar"><i style="width:33%"></i></div><span>1 / 3</span></div>
+ <div><span class="btn">Production…</span></div></div></div></div>
+
+<h2><em>State</em>No Martial points, and a narrow window</h2>
+<div class="row app" style="max-width:260px"><div class="facpop"><div class="body"><div class="sec">Allowances</div>
+ <div class="allow"><span class="k">Regions</span><div class="bar"><i style="width:0"></i></div><span>0 / 0</span>
+ <span class="k">Quartermasters</span><div class="bar"><i class="over" style="width:100%"></i></div><span class="bad">1 / 0</span>
+ <span class="note bad">1 over — 1 unit's study will fail</span></div></div></div></div>
+</div></body></html>
