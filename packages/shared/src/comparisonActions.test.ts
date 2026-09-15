@@ -111,12 +111,12 @@ describe("pickComparisonTurn", () => {
     expect(client.loadImportedTurn).not.toHaveBeenCalled();
   });
 
-  it("clicking the already-compared turn stops the comparison", async () => {
+  it("clicking the already-compared turn keeps it and does not reload it", async () => {
     const client = { loadImportedTurn: vi.fn() };
 
     const result = await pickComparisonTurn(client, { ...baseContext, currentTurn: 65 }, 65);
 
-    expect(result).toEqual({ changed: true, comparison: null });
+    expect(result).toEqual({ changed: false });
     expect(client.loadImportedTurn).not.toHaveBeenCalled();
   });
 

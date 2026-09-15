@@ -20,22 +20,16 @@ export type ComparisonTurn = {
  * The working turn is always one side of the pair, so clicking it changes nothing - it returns
  * `current` unchanged, whatever that is. There is nothing sensible to compare a turn against
  * itself, and if a comparison is already active, clicking the working row must not be a back-door
- * way to clear it; that is what clicking the *compared* turn again is for; it turns the comparison
- * off (`null`). Clicking any other turn starts or switches to it. Three distinct clicks, three
- * distinct meanings, whatever the current state.
+ * way to clear it. Clicking any other turn compares against it - the one already compared
+ * included, which simply keeps it. A click never turns a comparison off: that is what dismissing
+ * the Changes dialog does (the navigator, 2026-09-15, replacing ah-jg6.3's click-again-to-stop).
  */
 export function toggleComparison(
   current: number | null,
   clicked: number,
   working: number
 ): number | null {
-  if (clicked === working) {
-    return current;
-  }
-  if (clicked === current) {
-    return null;
-  }
-  return clicked;
+  return clicked === working ? current : clicked;
 }
 
 /**

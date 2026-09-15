@@ -13,8 +13,9 @@ export type TurnPickerEntry = {
  * The working turn is always the other half: this list only ever says which turn to compare
  * against it, never which two turns to pick. That is ah-jg6.3's whole interaction, chosen with the
  * navigator over the free-pick alternative (mockup `docs/ui/turn-compare-picker.html`) because it
- * matches the question a player actually has - "what changed since then?" - with one click to ask
- * it and one to stop.
+ * matches the question a player actually has - "what changed since then?". One click asks it and
+ * opens the Changes dialog; dismissing that dialog is what stops the comparison (the navigator,
+ * 2026-09-15, replacing the earlier click-again-to-stop).
  */
 export function TurnPicker({
   turns,
@@ -60,7 +61,7 @@ export function TurnPicker({
         })}
       </ul>
       <p className="border-t border-edge px-1 pt-1.5 text-ink-dim">
-        {`click a turn to compare it with ${workingTurn} · click again to stop`}
+        {`click a turn to see what changed between it and ${workingTurn}`}
       </p>
     </PopoverFrame>
   );

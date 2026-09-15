@@ -629,6 +629,10 @@ async function loadTwoTurns(page: Page) {
   await expect(page.getByTestId("app-header")).not.toContainText("December");
 }
 
+/**
+ * Clicking a turn in the picker is asking what changed since it: the Changes dialog opens on that
+ * click, and dismissing the dialog is done comparing - no ✕ to find afterwards.
+ */
 test("a second turn can be compared and dismissed", async ({ page }) => {
   await loadTwoTurns(page);
 
@@ -639,21 +643,24 @@ test("a second turn can be compared and dismissed", async ({ page }) => {
 
   await page.getByTestId("turn-row-70").click();
 
+  await expect(page.getByTestId("changes-dialog")).toBeVisible();
   await expect(page.getByTestId("app-header")).toContainText("⇄ 70");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("changes-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("app-header")).not.toContainText("⇄");
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+
   // The working turn is still 71, undisturbed: the faction and selection surfaces answer for it.
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
-
-  await page.getByRole("button", { name: "stop comparing", exact: true }).click();
-  await expect(page.getByTestId("app-header")).not.toContainText("⇄");
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 });
 
 /**
- * ah-jg6.4's surface: what changed between the working turn and a compared one, from the
- * Changes chip that appears only once a comparison is on.
+ * ah-jg6.4's surface: what changed between the working turn and a compared one, opened by the
+ * picker click itself. The Changes chip appears alongside, for reopening.
  */
 test("the changes dialog reads a real pair", async ({ page }) => {
   await loadTwoTurns(page);
@@ -662,38 +669,41 @@ test("the changes dialog reads a real pair", async ({ page }) => {
 
   await page.getByTestId("turn-chip").click();
   await page.getByTestId("turn-row-70").click();
-  await expect(page.getByTestId("changes-chip")).toBeVisible();
 
-  await page.getByTestId("changes-chip").click();
   const dialog = page.getByTestId("changes-dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("70");
   await expect(dialog).toContainText("71");
+  await expect(page.getByTestId("changes-chip")).toBeVisible();
 
   // The two fixtures genuinely differ, so the Units tab carries a non-zero count.
   const unitsTab = page.getByTestId("changes-tab-units");
   await expect(unitsTab).not.toContainText("· 0");
 });
 
-test("the changes dialog closes on Escape", async ({ page }) => {
+test("the changes dialog closes on Escape and ends the comparison", async ({ page }) => {
   await loadTwoTurns(page);
 
   await page.getByTestId("turn-chip").click();
   await page.getByTestId("turn-row-70").click();
-  await page.getByTestId("changes-chip").click();
   await expect(page.getByTestId("changes-dialog")).toBeVisible();
 
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("changes-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("changes-chip")).toHaveCount(0);
+  await expect(page.getByTestId("app-header")).not.toContainText("⇄");
 });
 
-test("clicking a changed unit selects it and closes the dialog", async ({ page }) => {
+/**
+ * Jumping to one change is not done comparing: the comparison stays so the next change is one
+ * click away on the Changes chip. Only an explicit dismissal ends it.
+ */
+test("clicking a changed unit selects it, closes the dialog and keeps the comparison", async ({ page }) => {
   await loadTwoTurns(page);
 
   await page.getByTestId("turn-chip").click();
   await page.getByTestId("turn-row-70").click();
-  await page.getByTestId("changes-chip").click();
   await expect(page.getByTestId("changes-dialog")).toBeVisible();
 
   const firstUnitRow = page.locator('[data-testid^="changes-unit-"]').first();
@@ -702,6 +712,10 @@ test("clicking a changed unit selects it and closes the dialog", async ({ page }
 
   await expect(page.getByTestId("changes-dialog")).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toBeVisible();
+  await expect(page.getByTestId("app-header")).toContainText("⇄ 70");
+
+  await page.getByTestId("changes-chip").click();
+  await expect(page.getByTestId("changes-dialog")).toBeVisible();
 });
 
 test("comparing does not disturb the working turn's orders", async ({ page }) => {
@@ -716,7 +730,9 @@ test("comparing does not disturb the working turn's orders", async ({ page }) =>
   await page.getByTestId("turn-chip").click();
   await page.getByTestId("turn-row-70").click();
   await expect(page.getByTestId("app-header")).toContainText("⇄ 70");
-  await page.getByRole("button", { name: "stop comparing", exact: true }).click();
+  await expect(page.getByTestId("changes-dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("app-header")).not.toContainText("⇄");
 
   await page.reload();
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);

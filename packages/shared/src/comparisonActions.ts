@@ -96,25 +96,23 @@ export function comparisonContextFor(input: ComparisonContextInput): ComparisonC
 /**
  * What a click on `clickedTurn` in the picker does to the comparison.
  *
- * `{ changed: false }`: nothing (the working turn, or the turn already compared, was clicked) - the
- * picker just closes. `{ changed: true, comparison: null }`: stop comparing.
+ * `{ changed: false }`: nothing to load (the working turn, or the turn already compared, was
+ * clicked) - the caller decides whether that still opens the dialog.
  * `{ changed: true, comparison }`: compare against the loaded turn. Rejects (through
  * `loadComparisonTurn`) when the turn will not load, with an Error the caller reports.
  *
- * Every exit here either changes the comparison or rejects - never "nothing happened silently"
- * (ah-6l2).
+ * A click never clears the comparison; dismissing the Changes dialog does. Every exit here either
+ * changes the comparison, says nothing needed loading, or rejects - never "nothing happened
+ * silently" (ah-6l2).
  */
 export async function pickComparisonTurn(
   client: Pick<ComparisonClient, "loadImportedTurn">,
   context: ComparisonContext,
   clickedTurn: number
-): Promise<{ changed: false } | { changed: true; comparison: ComparisonTurn | null }> {
+): Promise<{ changed: false } | { changed: true; comparison: ComparisonTurn }> {
   const next = toggleComparison(context.currentTurn, clickedTurn, context.workingTurn);
-  if (next === context.currentTurn) {
+  if (next === null || next === context.currentTurn) {
     return { changed: false };
-  }
-  if (next === null) {
-    return { changed: true, comparison: null };
   }
   return {
     changed: true,

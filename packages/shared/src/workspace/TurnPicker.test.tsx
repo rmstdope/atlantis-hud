@@ -49,5 +49,7 @@ describe("TurnPicker", () => {
 
     expect(markup).toContain('data-testid="turn-row-71"');
     expect(markup).not.toContain('data-testid="turn-row-70"');
+    expect(markup).toContain("click a turn to see what changed between it and 71");
+    expect(markup).not.toContain("click again to stop");
   });
 });

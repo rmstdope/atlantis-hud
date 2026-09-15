@@ -6,8 +6,8 @@ describe("toggleComparison", () => {
     expect(toggleComparison(null, 70, 71)).toBe(70);
   });
 
-  it("clicking the compared turn again turns the comparison off", () => {
-    expect(toggleComparison(70, 70, 71)).toBe(null);
+  it("clicking the compared turn again keeps the comparison", () => {
+    expect(toggleComparison(70, 70, 71)).toBe(70);
   });
 
   it("clicking the working turn changes nothing, active comparison or not", () => {

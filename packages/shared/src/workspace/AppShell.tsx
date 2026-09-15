@@ -995,10 +995,12 @@ export function AppShell({
   const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
   // A second, read-only turn held beside the working one (ah-jg6.3), and the picker that chooses
   // it. Plain `useState`, as the panel-open flags above are: a comparison is transient, never
-  // persisted, and is cleared the moment the working turn changes underneath it.
+  // persisted, and is cleared the moment the working turn changes underneath it - or the moment
+  // the Changes dialog is dismissed, since that dialog is the whole of what a comparison is for.
   const [comparison, setComparison] = useState<ComparisonTurn | null>(null);
-  // The diff dialog (ah-jg6.4), and the tab it is showing. Transient like `battlesOpen`; closed
-  // by the effect below whenever the comparison it reads dies out from under it.
+  // The diff dialog (ah-jg6.4), and the tab it is showing. Transient like `battlesOpen`; opened by
+  // the picker click that starts a comparison, closed by the effect below whenever the comparison
+  // it reads dies out from under it.
   const [changesOpen, setChangesOpen] = useState(false);
   const [changesTab, setChangesTab] = useState<ChangesTabKey>("units");
   // The compared side's orders text, loaded lazily on the dialog's first open for a given
@@ -4850,6 +4852,11 @@ export function AppShell({
           if (pick.changed) {
             setComparison(pick.comparison);
           }
+          // Picking a turn is asking what changed, so the dialog opens on the same click - for the
+          // turn already compared too, since reopening is the only thing left to want from it.
+          if (clickedTurn !== context.workingTurn) {
+            setChangesOpen(true);
+          }
           closePopover("turns");
         },
         reportComparisonFailure,
@@ -4866,7 +4873,8 @@ export function AppShell({
 
   // An open dialog reading a comparison that just vanished - game switch, a new working turn, or
   // the Turn chip's own ✕ - would show a blank or crash. One effect, keyed on the comparison
-  // itself, closes it and forgets the orders it had loaded for the pair that is gone.
+  // itself, closes it and forgets the orders it had loaded for the pair that is gone. (The
+  // dialog's own dismissal runs the other way: it clears the comparison, and this then follows.)
   useEffect(() => {
     if (!comparison) {
       setChangesOpen(false);
@@ -5030,6 +5038,10 @@ export function AppShell({
    * Selecting a changed unit or region is the way back to it: select on the map, close the
    * dialog. The dialog computes nothing else, following `BattlesDialog`'s `onShowOnMap`.
    *
+   * The comparison itself stays: a player who jumped to one change is likely to want the next, and
+   * the Changes chip reopens the dialog with one click. Only an explicit dismissal - Escape, the
+   * backdrop, the close button - ends the comparison (`handleDismissChanges`).
+   *
    * The map only ever renders the *working* turn, whichever side of the comparison that is - a
    * row naming a unit or region that exists only on the *other* side (added-only, removed-only,
    * or seen on only one side) carries an id the working map has never heard of. `goToUnit`
@@ -5056,6 +5068,17 @@ export function AppShell({
     },
     [selectHex]
   );
+  /**
+   * Dismissing the dialog is done comparing. The comparison exists for this dialog and nothing
+   * else reads it, so closing the one ends the other rather than leaving a ⇄ on the Turn chip to
+   * be cleared by hand afterwards (the navigator, 2026-09-15). Clearing the comparison also closes
+   * the dialog through the effect above; the explicit close here just spares one render of a
+   * dialog with no pair.
+   */
+  const handleDismissChanges = useCallback(() => {
+    setChangesOpen(false);
+    setComparison(null);
+  }, []);
 
   // Nothing until the games are known: rendering the gate first and the workspace a moment later
   // would flash "no game yet" at a player who has several.
@@ -5987,7 +6010,7 @@ export function AppShell({
           }
           onSelectUnit={handleSelectChangedUnit}
           onSelectRegion={handleSelectChangedRegion}
-          onDismiss={() => setChangesOpen(false)}
+          onDismiss={handleDismissChanges}
         />
       ) : null}
       {keyboardPanels}
