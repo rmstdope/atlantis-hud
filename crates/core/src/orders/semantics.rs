@@ -14529,8 +14529,8 @@ fn earlier_anchor<'a, 'b>(
     }
 }
 
-/// One region limit judged: `kinds` is how the sentence names the counting orders, `verb` what the
-/// faction may do, and `refused` what the excess costs.
+/// One region limit judged: `kinds` is how the sentence names the counting orders, `may` and
+/// `may_not` what the faction may do, and `refused` what the excess costs.
 struct RegionLimit {
     allowance: i64,
     used: usize,
@@ -46408,9 +46408,9 @@ BUILD
         );
     }
 
-    #[test]
     /// Taxing alone uses up regions under the pooled counter, so a faction with no PRODUCE is still
     /// warned - on its first TAX line (ah-enaj, which reversed the old silence here).
+    #[test]
     fn taxing_without_producing_is_warned_on_the_first_tax_line() {
         let regions = vec![
             region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
