@@ -44,6 +44,10 @@ use crate::movement::rules::{
 use crate::movement::sailing::refused_sail_steps;
 use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::magic;
+use crate::orders::production_overview::{
+    ProductionOverview, RegionLimits, SlotOrder, SlotOrderKind, WorkedRegion, WorkedResource,
+    WorkedTax,
+};
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
     forecast_unit, late_income, late_income_terms, parse_wage_centis, pillage_threshold,
@@ -566,6 +570,8 @@ pub struct TurnReview {
     pub findings: Vec<Finding>,
     /// One entry per own unit the report shows, whether or not it has orders. `ah-1wcw.1`.
     pub silver: Vec<UnitSilver>,
+    /// Every region this month's orders use a tax or trade slot in, for the Production window.
+    pub production: ProductionOverview,
 }
 
 /// Checks a whole turn's orders against the report they were written for, and forecasts each
@@ -821,7 +827,13 @@ pub fn review_turn(
     check_faction(report, &ordered, &hexes, ruleset, &options, &mut findings);
     check_upkeep_fund(report, &month_end.fund, &options, &mut findings);
 
-    TurnReview { findings, silver }
+    // Not a warning, so no `CheckOptions` switch hides it.
+    let worked = production_overview(report, &hexes, ruleset, &silver, &plurals);
+    TurnReview {
+        findings,
+        silver,
+        production: worked,
+    }
 }
 
 /// One step of the settlement `rules/sequenceofevents` runs across every hex at once, after the
@@ -14578,6 +14590,98 @@ fn push_region_finding(
     findings.push(ordered.finding(hex, codes::TOO_MANY_TRADE_REGIONS, message, Some(placed)));
 }
 
+/// Which kind of order uses a tax or trade slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RegionUseKind {
+    Tax,
+    TaxByFlag,
+    Pillage,
+    Produce,
+}
+
+/// One own unit's use of a tax or trade slot, in document walk order.
+struct RegionUse<'a, 'b> {
+    hex: &'a Hex<'b>,
+    ordered: &'a Ordered<'b>,
+    kind: RegionUseKind,
+    /// The region the slot is used in. `None` only for a PRODUCE whose sail `production_region`
+    /// cannot follow - it still anchors the warning, but counts nowhere.
+    region: Option<&'b ReportRegion>,
+    /// The order line. `None` for `TaxByFlag`.
+    placed: Option<&'a PlacedIntent>,
+}
+
+/// Every use of a tax or trade slot this month's orders make. The one walk both the region-limit
+/// warning and the Production window read, so the two cannot disagree about what uses a slot.
+fn region_uses<'a, 'b>(
+    hexes: &'a [(Hex<'b>, Ledger<'_>)],
+    ruleset: Option<&Ruleset>,
+) -> Vec<RegionUse<'a, 'b>> {
+    let by_coordinate: HashMap<Coordinate, &'b ReportRegion> = hexes
+        .iter()
+        .map(|(hex, _)| (hex.region.coordinate, hex.region))
+        .collect();
+    let mut uses = Vec::new();
+    for (hex, _) in hexes {
+        for ordered_unit in hex
+            .units
+            .iter()
+            .filter(|unit| spends_faction_allowance(unit) && unit.unit.own)
+        {
+            // A unit taxing by its flag taxes this region with no `TAX` line to find, so the
+            // region counts against the allowance like any other (`ah-fvzu`). Counted once per
+            // unit, flag or order alike; the earliest TAX line is the anchor.
+            if taxes(&ordered_unit.flags, &ordered_unit.intents) {
+                let placed = ordered_unit
+                    .intents
+                    .iter()
+                    .filter(|placed| matches!(placed.intent, Intent::Tax))
+                    .min_by_key(|placed| placed.line);
+                uses.push(RegionUse {
+                    hex,
+                    ordered: ordered_unit,
+                    kind: if placed.is_some() {
+                        RegionUseKind::Tax
+                    } else {
+                        RegionUseKind::TaxByFlag
+                    },
+                    region: Some(hex.region),
+                    placed,
+                });
+            }
+            for placed in ordered_unit.intents.iter() {
+                match &placed.intent {
+                    // Both shapes a PRODUCE order can take: one naming what it makes
+                    // (`ah-19l2.2`) and one that named nothing readable.
+                    Intent::Produce { .. } | Intent::MonthLong("PRODUCE") => {
+                        uses.push(RegionUse {
+                            hex,
+                            ordered: ordered_unit,
+                            kind: RegionUseKind::Produce,
+                            region: production_region(hex, ordered_unit, ruleset, &by_coordinate),
+                            placed: Some(placed),
+                        });
+                    }
+                    Intent::Pillage => uses.push(RegionUse {
+                        hex,
+                        ordered: ordered_unit,
+                        kind: RegionUseKind::Pillage,
+                        region: Some(hex.region),
+                        placed: Some(placed),
+                    }),
+                    // TRANSPORT, BUY and SELL never use up a region. The rules page says TRANSPORT
+                    // "counts as trade activity in the hex of the unit issuing the order", but the
+                    // game engine does not count it, and the engine is what refuses orders. Do not
+                    // add it here to match the rules.
+                    Intent::Transport { .. } | Intent::Buy { .. } | Intent::Sell { .. } => {}
+                    _ => {}
+                }
+            }
+        }
+    }
+    uses
+}
+
 /// `PRODUCE: Faction can't produce in that many regions.` A faction may only tax and trade in so
 /// many regions a month (rules/tablefactionpoints). PRODUCE, TAX - an order or the taxing flag -
 /// and PILLAGE use up a region; BUY, SELL and TRANSPORT never do. Order one region too many and the
@@ -14609,50 +14713,20 @@ fn check_trade_regions(
     let mut first_produce: Option<RegionAnchor<'_, '_>> = None;
     let mut first_tax_or_pillage: Option<RegionAnchor<'_, '_>> = None;
 
-    let by_coordinate: HashMap<Coordinate, &ReportRegion> = hexes
-        .iter()
-        .map(|(hex, _)| (hex.region.coordinate, hex.region))
-        .collect();
-    for (hex, _) in hexes {
-        for ordered_unit in hex
-            .units
-            .iter()
-            .filter(|unit| spends_faction_allowance(unit) && unit.unit.own)
-        {
-            let region_id = hex.region.region_id.as_str();
-            // A unit taxing by its flag taxes this region with no `TAX` line to find, so the
-            // region counts against the allowance like any other (`ah-fvzu`).
-            if taxes(&ordered_unit.flags, &ordered_unit.intents) {
-                taxing.insert(region_id);
-            }
-            for placed in ordered_unit.intents.iter() {
-                let here = Some((hex, ordered_unit, placed));
-                match &placed.intent {
-                    // Both shapes a PRODUCE order can take: one naming what it makes
-                    // (`ah-19l2.2`) and one that named nothing readable.
-                    Intent::Produce { .. } | Intent::MonthLong("PRODUCE") => {
-                        if let Some(region) =
-                            production_region(hex, ordered_unit, ruleset, &by_coordinate)
-                        {
-                            producing.insert(region.region_id.as_str());
-                        }
-                        first_produce = earlier_anchor(first_produce, here);
-                    }
-                    // Counted once per unit above, flag or order alike; the line is the anchor.
-                    Intent::Tax => {
-                        first_tax_or_pillage = earlier_anchor(first_tax_or_pillage, here);
-                    }
-                    Intent::Pillage => {
-                        taxing.insert(region_id);
-                        first_tax_or_pillage = earlier_anchor(first_tax_or_pillage, here);
-                    }
-                    // TRANSPORT, BUY and SELL never use up a region. The rules page says TRANSPORT
-                    // "counts as trade activity in the hex of the unit issuing the order", but the
-                    // game engine does not count it, and the engine is what refuses orders. Do not
-                    // add it here to match the rules.
-                    Intent::Transport { .. } | Intent::Buy { .. } | Intent::Sell { .. } => {}
-                    _ => {}
+    for used in region_uses(hexes, ruleset) {
+        let anchor = used.placed.map(|placed| (used.hex, used.ordered, placed));
+        match used.kind {
+            RegionUseKind::Produce => {
+                if let Some(region) = used.region {
+                    producing.insert(region.region_id.as_str());
                 }
+                first_produce = earlier_anchor(first_produce, anchor);
+            }
+            RegionUseKind::Tax | RegionUseKind::TaxByFlag | RegionUseKind::Pillage => {
+                if let Some(region) = used.region {
+                    taxing.insert(region.region_id.as_str());
+                }
+                first_tax_or_pillage = earlier_anchor(first_tax_or_pillage, anchor);
             }
         }
     }
@@ -14700,6 +14774,226 @@ fn check_trade_regions(
                 );
             }
         }
+    }
+}
+
+/// The Production window's facts: every region this month's orders use a slot in.
+///
+/// Read off the same [`region_uses`] walk the region-limit warning counts, so the window and the
+/// warning cannot disagree about which orders use a slot.
+fn production_overview(
+    report: &ParsedReport,
+    hexes: &[(Hex<'_>, Ledger<'_>)],
+    ruleset: Option<&Ruleset>,
+    silver: &[UnitSilver],
+    plurals: &Plurals,
+) -> ProductionOverview {
+    let limits = match region_allowances(report) {
+        Some(RegionAllowances::Pooled(maximum)) => RegionLimits {
+            pooled: Some(maximum),
+            ..RegionLimits::default()
+        },
+        Some(RegionAllowances::Separate { tax, trade }) => RegionLimits {
+            pooled: None,
+            tax,
+            trade,
+        },
+        None => RegionLimits::default(),
+    };
+
+    // A `UnitSilver` is filed under the unit's *home* hex, which for a sailing producer is not the
+    // region it produces in - so each use is looked up by its own hex, never by `region`.
+    let by_unit: HashMap<UnitKey, &UnitSilver> = silver
+        .iter()
+        .map(|row| (unit_key(&row.region_id, &row.unit_id), row))
+        .collect();
+
+    let mut grouped: HashMap<&str, Vec<RegionUse<'_, '_>>> = HashMap::new();
+    for used in region_uses(hexes, ruleset) {
+        if let Some(region) = used.region {
+            grouped
+                .entry(region.region_id.as_str())
+                .or_default()
+                .push(used);
+        }
+    }
+
+    let regions = report
+        .regions
+        .iter()
+        .filter_map(|region| {
+            let uses = grouped.get(region.region_id.as_str())?;
+            Some(worked_region(region, uses, &by_unit, ruleset, plurals))
+        })
+        .collect();
+
+    ProductionOverview { limits, regions }
+}
+
+/// One region's row of the Production window, from the slot uses made in it.
+fn worked_region(
+    region: &ReportRegion,
+    uses: &[RegionUse<'_, '_>],
+    by_unit: &HashMap<UnitKey, &UnitSilver>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+) -> WorkedRegion {
+    let row_of = |used: &RegionUse<'_, '_>| {
+        by_unit
+            .get(&unit_key(
+                &used.hex.region.region_id,
+                &used.ordered.unit.unit_id,
+            ))
+            .copied()
+    };
+    let is_tax = |used: &&RegionUse<'_, '_>| {
+        matches!(used.kind, RegionUseKind::Tax | RegionUseKind::TaxByFlag)
+    };
+    let is_pillage = |used: &&RegionUse<'_, '_>| used.kind == RegionUseKind::Pillage;
+    let is_produce = |used: &&RegionUse<'_, '_>| used.kind == RegionUseKind::Produce;
+    // What a producing use draws from the region's `Products` line, if anything.
+    let raw_tag = |used: &RegionUse<'_, '_>| match used.placed.map(|placed| &placed.intent) {
+        Some(Intent::Produce { item, .. }) => {
+            production_tag_of(used.hex, used.ordered, item, ruleset)
+        }
+        _ => None,
+    };
+    let changes_of = |used: &RegionUse<'_, '_>, cause: SilverChangeCause| -> i64 {
+        row_of(used).map_or(0, |row| {
+            row.changes
+                .iter()
+                .filter(|change| change.cause == cause)
+                .map(|change| change.amount)
+                .sum()
+        })
+    };
+
+    let mut orders = Vec::new();
+    for kind in [
+        RegionUseKind::Tax,
+        RegionUseKind::TaxByFlag,
+        RegionUseKind::Pillage,
+    ] {
+        if uses.iter().any(|used| used.kind == kind) {
+            orders.push(SlotOrder {
+                kind: match kind {
+                    RegionUseKind::Tax => SlotOrderKind::Tax,
+                    RegionUseKind::TaxByFlag => SlotOrderKind::TaxByFlag,
+                    _ => SlotOrderKind::Pillage,
+                },
+                crafted: None,
+            });
+        }
+    }
+    let mut plain_produce = false;
+    let mut crafted: BTreeSet<String> = BTreeSet::new();
+    for used in uses.iter().filter(is_produce) {
+        let named = match used.placed.map(|placed| &placed.intent) {
+            Some(Intent::Produce { item, .. }) if raw_tag(used).is_none() => {
+                resolve_item(item, used.hex, used.ordered, ruleset)
+                    .map(|tag| plural_name(&tag, used.hex, ruleset, plurals))
+            }
+            _ => None,
+        };
+        match named {
+            Some(name) => {
+                crafted.insert(name);
+            }
+            None => plain_produce = true,
+        }
+    }
+    if plain_produce {
+        orders.push(SlotOrder {
+            kind: SlotOrderKind::Produce,
+            crafted: None,
+        });
+    }
+    orders.extend(crafted.into_iter().map(|name| SlotOrder {
+        kind: SlotOrderKind::Produce,
+        crafted: Some(name),
+    }));
+
+    let base = region.tax_base;
+    let taxed = uses.iter().any(|used| is_tax(&used));
+    let collected: i64 = uses
+        .iter()
+        .filter(is_tax)
+        .map(|used| changes_of(used, SilverChangeCause::Taxed))
+        .sum();
+    // `rules/economy_taxingpillaging`: taxers never collect more than the region's tax income
+    // between them; the ledger prices each taxer on its own, so the sum is capped here.
+    let collected = base.map_or(collected, |base| collected.min(base));
+    let pillaged = uses.iter().any(|used| is_pillage(&used)).then(|| {
+        uses.iter()
+            .filter(is_pillage)
+            .map(|used| changes_of(used, SilverChangeCause::Pillaged))
+            .sum()
+    });
+    let at_most = uses
+        .iter()
+        .filter(|used| used.kind != RegionUseKind::Produce)
+        .filter_map(&row_of)
+        .any(|row| {
+            row.income_in_time_at_most
+                || matches!(
+                    row.doubt,
+                    Some(
+                        SilverDoubt::ContestedRegionPool
+                            | SilverDoubt::UnknownTaxBase
+                            | SilverDoubt::UnknownCombatReady
+                            | SilverDoubt::EstimatedMen
+                    )
+                )
+        });
+
+    // `UnitSilver::produced` is one figure for the whole unit, for the PRODUCE the forecast priced
+    // (`produced_name`) - the later of two lines, as `two-month-long-orders` reads them, and never
+    // a line it could not price. So each unit producing here is credited once, and only to the
+    // resource that priced order names, never by line order.
+    let mut credited: BTreeMap<UnitKey, (String, i64)> = BTreeMap::new();
+    for used in uses.iter().filter(is_produce) {
+        let key = unit_key(&used.hex.region.region_id, &used.ordered.unit.unit_id);
+        if credited.contains_key(&key) {
+            continue;
+        }
+        let Some(row) = row_of(used) else { continue };
+        let Some(tag) = row
+            .produced_name
+            .as_deref()
+            .and_then(|name| resolve_item(name, used.hex, used.ordered, ruleset))
+        else {
+            continue;
+        };
+        credited.insert(key, (tag, row.produced));
+    }
+    let resources = region
+        .products
+        .iter()
+        .map(|product| WorkedResource {
+            name: product.name.clone(),
+            tag: product.tag.clone(),
+            produced: credited
+                .values()
+                .filter(|(tag, _)| tag.eq_ignore_ascii_case(&product.tag))
+                .map(|(_, produced)| produced)
+                .sum(),
+            available: Some(product.amount),
+        })
+        .collect();
+
+    WorkedRegion {
+        region_id: region.region_id.clone(),
+        orders,
+        uses_tax_slot: uses.iter().any(|used| !is_produce(&used)),
+        uses_trade_slot: uses.iter().any(|used| is_produce(&used)),
+        tax: WorkedTax {
+            base,
+            taxed,
+            collected,
+            pillaged,
+            at_most,
+        },
+        resources,
     }
 }
 
@@ -46185,6 +46479,36 @@ BUILD
             findings[0].message,
             "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
              will be refused"
+        );
+    }
+
+    /// `ah-nneu`. A sailing producer's forecast is filed under its home hex, but its output belongs
+    /// to the region it sails into: the Production window must find the one and credit the other.
+    #[test]
+    fn a_sailing_producers_output_is_credited_where_it_produces() {
+        let regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
+        let review = review_turn(
+            &report_with_statuses(&[("Regions", 10)], regions),
+            "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n",
+            Some(&ruleset()),
+            disabling_all(TRADE_TEST_DISABLED),
+        );
+        let home = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "4021")
+            .expect("the fisherman has a row");
+        assert!(home.produced > 0, "{home:?}");
+        let worked: Vec<&str> = review
+            .production
+            .regions
+            .iter()
+            .map(|region| region.region_id.as_str())
+            .collect();
+        assert_eq!(worked, ["1:7,51"]);
+        assert_eq!(
+            review.production.regions[0].resources[0].produced,
+            home.produced
         );
     }
 

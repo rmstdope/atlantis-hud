@@ -1,6 +1,7 @@
 import type {
   OrderDiagnostic,
   OrderValidationResult,
+  ProductionOverview,
   UnitSilver
 } from "@atlantis/core-client";
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
@@ -140,7 +141,12 @@ export type ValidatedOrders = {
   diagnostics: OrderDiagnostic[];
   /** Each own unit's silver forecast for that same text. `ah-1wcw.1`. */
   silver: UnitSilver[];
+  /** Every region those orders tax, pillage or produce in, for the Production window. `ah-nneu`. */
+  production: ProductionOverview;
 };
+
+/** No regions and no limits: what the window reads before the first validation lands. */
+export const NO_PRODUCTION: ProductionOverview = { limits: { pooled: null, tax: null, trade: null }, regions: [] };
 
 /**
  * The diagnostics belonging to one unit, numbered from the top of that unit's block.

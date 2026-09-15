@@ -109,6 +109,10 @@ pub struct OrderValidationResult {
     /// failing.
     #[serde(default)]
     pub silver: Vec<crate::orders::silver::UnitSilver>,
+    /// Every region this month's orders use a tax or trade slot in, for the Production window.
+    /// `ah-nneu`. `#[serde(default)]` so an older payload deserialises to no regions.
+    #[serde(default)]
+    pub production: crate::orders::production_overview::ProductionOverview,
 }
 
 impl OrderValidationResult {

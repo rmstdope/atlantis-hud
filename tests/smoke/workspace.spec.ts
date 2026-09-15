@@ -427,6 +427,65 @@ test("the faction view closes on an outside press", async ({ page }) => {
   await expect(page.getByTestId("faction-panel")).toHaveCount(0);
 });
 
+/**
+ * ah-nneu: the Production window, from the faction view. Turn 71 prints `Regions: 0 (0)` and its
+ * orders template has no TAX, PRODUCE or PILLAGE and no taxing flag, so the window says the faction
+ * may not tax or produce and lists nothing.
+ */
+test("the faction view opens Production, which says a faction with no Martial points may not tax or produce", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.getByTestId("faction-chip").click();
+  await page.getByTestId("faction-production").click();
+
+  await expect(page.getByTestId("faction-panel")).toHaveCount(0);
+  const dialog = page.getByTestId("production-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Production · 0 of 0 regions");
+  await expect(dialog).toContainText("this faction may not tax or produce anywhere");
+  await expect(dialog).toContainText("This turn's orders tax, pillage and produce nowhere.");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("production-dialog")).toHaveCount(0);
+});
+
+/**
+ * ah-nneu: a Production row takes the map to its hex. Turn 42 is an older report (`Tax Regions`,
+ * `Trade Regions`), and `mountain (36,4)` offers 34 livestock, all of which unit 3493 produces - the
+ * same walk as "a produced item marks the ITEMS cell as a projection".
+ */
+test("a Production row takes the map to its hex", async ({ page }) => {
+  await loadReport(page, "Production smoke", F42_T42, "regions");
+  await selectHex(page, "1:36,4");
+  await selectUnit(page, "3493");
+  await fillOrders(page, "PRODUCE livestock");
+
+  const openFromPalette = async () => {
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.getByTestId("palette-input").fill("Production");
+    await page.keyboard.press("Enter");
+  };
+
+  await openFromPalette();
+  const dialog = page.getByTestId("production-dialog");
+  await expect(dialog).toContainText("Tax regions");
+  await expect(dialog).toContainText("Trade regions");
+  const row = page.getByTestId("production-row-1:36,4");
+  await expect(row).toContainText("PRODUCE");
+  await expect(row).toContainText("livestock 34/34");
+
+  await row.click();
+  await expect(page.getByTestId("production-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("(36,4)");
+
+  await openFromPalette();
+  await page.getByTestId("production-row-1:36,4").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("production-dialog")).toHaveCount(0);
+});
+
 test("a merged ally is marked in the attitude list", async ({ page }) => {
   await loadReport(page);
   await choose(page, "turn-71-f73.rep", ALLY_REPORT);

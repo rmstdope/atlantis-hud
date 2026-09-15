@@ -28,6 +28,7 @@ mod magic;
 pub mod parser;
 /// Core-internal: the one `rules/sequenceofevents` phase order both `semantics` and `silver` read.
 mod phases;
+pub mod production_overview;
 pub mod request;
 pub mod semantics;
 pub mod silver;
@@ -93,10 +94,12 @@ pub fn validate_turn(
 ) -> OrderValidationResult {
     let mut diagnostics = parser::validate_against(source, ruleset).diagnostics;
     let mut silver = Vec::new();
+    let mut production = production_overview::ProductionOverview::default();
 
     if let Some(report) = report {
         let review = semantics::review_turn(report, source, ruleset, options);
         silver = review.silver;
+        production = review.production;
         diagnostics.extend(review.findings.into_iter().map(into_diagnostic));
 
         // Advice derived from a unit whose line the parser could not read is advice derived from
@@ -136,6 +139,7 @@ pub fn validate_turn(
     OrderValidationResult {
         diagnostics,
         silver,
+        production,
     }
 }
 

@@ -24,6 +24,8 @@ import type { ReportUnit } from "./generated/ReportUnit";
 import type { StructureInfo } from "./generated/StructureInfo";
 import type { VesselEntry } from "./generated/VesselEntry";
 import type { UnitSilver } from "./generated/UnitSilver";
+import type { ProductionOverview } from "./generated/ProductionOverview";
+import type { WorkedRegion } from "./generated/WorkedRegion";
 import type { TradeRoute, TradedGood } from "./index";
 
 /** The mountain at (7,53) on the surface, where the default unit stands. */
@@ -278,6 +280,28 @@ export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
     shippingTargetUnshown: false,
     buyAll: [],
     changes: [],
+    ...overrides
+  };
+}
+
+/** One region the Production window lists, with nothing used and nothing collected (ah-nneu). */
+export function aWorkedRegion(overrides: Partial<WorkedRegion> = {}): WorkedRegion {
+  return {
+    regionId: regionIdOf(DEFAULT_COORDINATE),
+    orders: [],
+    usesTaxSlot: false,
+    usesTradeSlot: false,
+    tax: { base: null, taxed: false, collected: 0, pillaged: null, atMost: false },
+    resources: [],
+    ...overrides
+  };
+}
+
+/** A Production overview with no limits and no regions (ah-nneu). */
+export function aProductionOverview(overrides: Partial<ProductionOverview> = {}): ProductionOverview {
+  return {
+    limits: { pooled: null, tax: null, trade: null },
+    regions: [],
     ...overrides
   };
 }
