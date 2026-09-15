@@ -64,7 +64,11 @@ export function NewAgeSignInFields({
           value={password}
           disabled={busy}
           onChange={(event) => onPassword(event.target.value)}
-          className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+          // Outlined in red until the first character is typed: the field is the one thing
+          // holding the dialog's action back, and the outline says so where the eye already is.
+          className={`rounded border bg-panel px-2 py-1 text-ink disabled:opacity-50 ${
+            password === "" ? "border-danger" : "border-edge"
+          }`}
         />
       </label>
 

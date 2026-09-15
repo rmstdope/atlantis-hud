@@ -13,7 +13,7 @@ import {
   type NewAgeFetchPhase,
   type NewAgeFetchScope
 } from "./newAgeFetchView";
-import { credentialNote, signInMetaLine } from "./newAgeSignInView";
+import { credentialNote, PASSWORD_REQUIRED_HINT, signInMetaLine } from "./newAgeSignInView";
 
 /**
  * Asks for a faction number and a password, fetches with them, and stays up until the work is done.
@@ -195,6 +195,7 @@ export function NewAgeFetchDialog({
               type="submit"
               data-testid="newage-fetch-confirm"
               disabled={!canFetch}
+              title={password === "" ? PASSWORD_REQUIRED_HINT : undefined}
               className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
             >
               {FETCH_CONFIRM}

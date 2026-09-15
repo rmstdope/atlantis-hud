@@ -38,6 +38,14 @@ describe("NewOriginsFetchDialog", () => {
     expect(markup).not.toContain('data-testid="neworigins-fetch-working"');
   });
 
+  it("explains the disabled Fetch button while the password is empty", () => {
+    const markup = draw({ kind: "ready", message: null, retype: false });
+    const button = markup.match(/<button[^>]*data-testid="neworigins-fetch-confirm"[^>]*>/)?.[0];
+
+    expect(button).toContain("disabled");
+    expect(button).toContain('title="Password must be entered"');
+  });
+
   it("drops what it does not know from the line under the heading", () => {
     const markup = renderToStaticMarkup(
       <NewOriginsFetchDialog

@@ -4,7 +4,7 @@ import type { FormEvent } from "react";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { NewAgeSignInFields } from "./NewAgeSignInFields";
 import { FETCH_CONFIRM } from "./newAgeFetchView";
-import { credentialNote } from "./newAgeSignInView";
+import { credentialNote, PASSWORD_REQUIRED_HINT } from "./newAgeSignInView";
 import {
   FETCH_DIALOG_TITLE,
   FETCH_WORKING,
@@ -202,6 +202,7 @@ export function NewOriginsFetchDialog({
                   type="submit"
                   data-testid="neworigins-fetch-confirm"
                   disabled={!canFetch}
+                  title={password === "" ? PASSWORD_REQUIRED_HINT : undefined}
                   className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
                 >
                   {FETCH_CONFIRM}
