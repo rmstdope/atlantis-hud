@@ -14946,20 +14946,33 @@ fn worked_region(
                 )
         });
 
+    // `UnitSilver::produced` is one figure for the whole unit, for the item its PRODUCE order
+    // names, so each unit is credited once: to the raw resource its earliest raw PRODUCE line
+    // draws on. A repeated line, or a second PRODUCE, must not count the same output again.
+    let mut credited: BTreeMap<UnitKey, (usize, String, i64)> = BTreeMap::new();
+    for used in uses.iter().filter(is_produce) {
+        let (Some(tag), Some(row), Some(placed)) = (raw_tag(used), row_of(used), used.placed)
+        else {
+            continue;
+        };
+        let key = unit_key(&used.hex.region.region_id, &used.ordered.unit.unit_id);
+        let earlier = credited
+            .get(&key)
+            .is_none_or(|(line, _, _)| placed.line < *line);
+        if earlier {
+            credited.insert(key, (placed.line, tag, row.produced));
+        }
+    }
     let resources = region
         .products
         .iter()
         .map(|product| WorkedResource {
             name: product.name.clone(),
             tag: product.tag.clone(),
-            produced: uses
-                .iter()
-                .filter(is_produce)
-                .filter(|used| {
-                    raw_tag(used).is_some_and(|tag| tag.eq_ignore_ascii_case(&product.tag))
-                })
-                .filter_map(&row_of)
-                .map(|row| row.produced)
+            produced: credited
+                .values()
+                .filter(|(_, tag, _)| tag.eq_ignore_ascii_case(&product.tag))
+                .map(|(_, _, produced)| produced)
                 .sum(),
             available: Some(product.amount),
         })
@@ -46463,6 +46476,36 @@ BUILD
             findings[0].message,
             "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
              will be refused"
+        );
+    }
+
+    /// `ah-nneu`. A sailing producer's forecast is filed under its home hex, but its output belongs
+    /// to the region it sails into: the Production window must find the one and credit the other.
+    #[test]
+    fn a_sailing_producers_output_is_credited_where_it_produces() {
+        let regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
+        let review = review_turn(
+            &report_with_statuses(&[("Regions", 10)], regions),
+            "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n",
+            Some(&ruleset()),
+            disabling_all(TRADE_TEST_DISABLED),
+        );
+        let home = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "4021")
+            .expect("the fisherman has a row");
+        assert!(home.produced > 0, "{home:?}");
+        let worked: Vec<&str> = review
+            .production
+            .regions
+            .iter()
+            .map(|region| region.region_id.as_str())
+            .collect();
+        assert_eq!(worked, ["1:7,51"]);
+        assert_eq!(
+            review.production.regions[0].resources[0].produced,
+            home.produced
         );
     }
 

@@ -78,7 +78,8 @@ const RAIDERS: &str = "* Raiders (901), Foo (1), behind, 10 orcs [ORC]. Weight: 
 const FARMER: &str =
     "* Farmer (902), Foo (1), behind, 1 orc [ORC]. Weight: 10. Capacity: 0/0/15/0. \
                       Skills: farming [FARM] 1 (30).";
-const SMITHS: &str = "* Smiths (903), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON]. Weight: 180. \
+const SMITHS: &str =
+    "* Smiths (903), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON], 2 swords [SWOR]. Weight: 182. \
                       Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).";
 
 #[test]
@@ -208,7 +209,7 @@ fn a_crafting_unit_names_its_item_and_still_reports_the_raw_resources() {
         .crafted
         .as_deref()
         .expect("a crafted item is named");
-    assert!(crafted.starts_with("sword"), "{crafted}");
+    assert_eq!(crafted, "swords");
     assert_eq!(
         regions[0].resources,
         vec![WorkedResource {
@@ -342,4 +343,30 @@ fn a_taxers_share_beside_an_unread_unit_is_at_most() {
         .find(|region| region.region_id == home.region_id)
         .expect("the taxer's region is listed");
     assert!(region.tax.at_most);
+}
+
+/// `UnitSilver::produced` is one figure per unit: a repeated `PRODUCE grain` line, or a second
+/// PRODUCE for another resource, must not credit that figure twice.
+#[test]
+fn a_units_output_is_credited_once_to_the_resource_it_produces() {
+    let text = report(
+        &["Regions: 0 (40)"],
+        &[hex(1, 600, "24 grain [GRAI], 6 horses [HORS]", &[FARMER])],
+    );
+    let once = review_of(&text, "unit 902\nPRODUCE grain\n");
+    let produced = once.production.regions[0].resources[0].produced;
+    assert!(produced > 0);
+
+    let repeated = review_of(&text, "unit 902\nPRODUCE grain\nPRODUCE grain\n");
+    assert_eq!(
+        repeated.production.regions[0].resources[0].produced,
+        produced
+    );
+
+    let both = review_of(&text, "unit 902\nPRODUCE grain\nPRODUCE horses\n");
+    let resources = &both.production.regions[0].resources;
+    assert_eq!(
+        resources[0].produced + resources[1].produced,
+        resources.iter().map(|r| r.produced).max().unwrap_or(0)
+    );
 }
