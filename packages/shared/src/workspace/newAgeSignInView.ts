@@ -29,7 +29,7 @@ export type NewAgeSignInPhase =
 /** The host every sentence here names, from `NEW_AGE_API_ORIGIN` rather than typed out again. */
 export const NEW_AGE_HOST: string = new URL(NEW_AGE_API_ORIGIN).host;
 
-/** The tooltip on a fetch button held back by an empty password field. */
+/** The tooltip on a Fetch or Send button held back by an empty password field. */
 export const PASSWORD_REQUIRED_HINT = "Password must be entered";
 
 /**

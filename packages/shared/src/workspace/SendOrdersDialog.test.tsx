@@ -27,6 +27,7 @@ describe("the send dialog", () => {
     expect(markup).toContain('placeholder="Required"');
     const confirm = markup.match(/<button[^>]*data-testid="send-orders-confirm"[^>]*>/)![0];
     expect(confirm).toContain("disabled");
+    expect(confirm).toContain('title="Password must be entered"');
   });
 
   it("reports an acceptance, a refusal and an unreachable server, each in its own words", () => {

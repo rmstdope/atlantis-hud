@@ -17,7 +17,7 @@ import {
   type NewAgeSendPhase,
   type NewAgeSendTone
 } from "./newAgeSendView";
-import { credentialNote } from "./newAgeSignInView";
+import { credentialNote, PASSWORD_REQUIRED_HINT } from "./newAgeSignInView";
 import { metaLine } from "./sendOrdersView";
 
 /**
@@ -213,6 +213,7 @@ export function NewAgeSendDialog({
                 type="submit"
                 data-testid="newage-send-confirm"
                 disabled={!canSend}
+                title={password === "" ? PASSWORD_REQUIRED_HINT : undefined}
                 className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
               >
                 {NEW_AGE_SEND_CONFIRM}

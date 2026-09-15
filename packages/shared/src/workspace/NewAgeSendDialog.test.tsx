@@ -50,6 +50,9 @@ describe("the New Age send dialog", () => {
     expect(markup).toContain(credentialNote("send"));
     expect(markup).toContain(">Send</button>");
     expect(buttonTag(markup, "newage-send-confirm")).toContain("disabled");
+    expect(buttonTag(markup, "newage-send-confirm")).toContain(
+      'title="Password must be entered"'
+    );
     expect(markup).not.toContain("newage-send-outcome");
   });
 

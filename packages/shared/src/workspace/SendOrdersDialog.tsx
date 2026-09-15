@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { PASSWORD_REQUIRED_HINT } from "./newAgeSignInView";
 import {
   metaLine,
   outcomeMessage,
@@ -163,6 +164,7 @@ export function SendOrdersDialog({
                 type="submit"
                 data-testid="send-orders-confirm"
                 disabled={!canSend}
+                title={password === "" ? PASSWORD_REQUIRED_HINT : undefined}
                 className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
               >
                 Send
