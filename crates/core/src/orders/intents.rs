@@ -66,6 +66,12 @@ pub enum Intent {
     Share(bool),
     /// `CLAIM`, which draws on the faction's unclaimed silver.
     Claim(i64),
+    /// `FACTION [type] [points] ...`: the split this order asks for. An omitted type is 0
+    /// (`rules/faction`: "you may omit the type that will not have any points").
+    Faction {
+        martial: i64,
+        magic: i64,
+    },
     Tax,
     Pillage,
     Work,
@@ -774,6 +780,10 @@ pub fn read_order(
             let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             Some(Intent::Claim(forms::read_only_number(arguments)?))
         }
+        "FACTION" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
+            read_faction(arguments)
+        }
         // These four take no arguments at all, so trailing text is never anything but the
         // engine-ignored kind (`ah-86vk`): `TAX now`, like `WORK hard`, is still the bare order.
         "TAX" => Some(Intent::Tax),
@@ -935,6 +945,37 @@ pub fn read_order(
 /// write a regression test against when `BUILD` gained a shape. Here the compiler refuses a new
 /// `Intent` variant until somebody has said which side of this line it falls on.
 #[must_use]
+/// `FACTION [type] [points] ...` read as a split (`rules/faction`). Type and points come in pairs;
+/// a type other than MARTIAL or MAGIC, a type named twice, or a points value that is not a number
+/// reads as nothing.
+fn read_faction(arguments: &[Token]) -> Option<Intent> {
+    if arguments.is_empty() || !arguments.len().is_multiple_of(2) {
+        return None;
+    }
+    let (mut martial, mut magic) = (None, None);
+    for pair in arguments.chunks(2) {
+        let (kind, points) = (&pair[0], &pair[1]);
+        if points.kind != TokenKind::Number {
+            return None;
+        }
+        let points: i64 = points.text.parse().ok()?;
+        let slot = if kind.is("MARTIAL") {
+            &mut martial
+        } else if kind.is("MAGIC") {
+            &mut magic
+        } else {
+            return None;
+        };
+        if slot.replace(points).is_some() {
+            return None;
+        }
+    }
+    Some(Intent::Faction {
+        martial: martial.unwrap_or(0),
+        magic: magic.unwrap_or(0),
+    })
+}
+
 pub fn spends_the_month(intent: &Intent) -> bool {
     match intent {
         // The rules' enumerated list, plus IDLE and ANNIHILATE, which reach here as `MonthLong`.
@@ -968,6 +1009,7 @@ pub fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Avoid(_)
         | Intent::Share(_)
         | Intent::Claim(_)
+        | Intent::Faction { .. }
         | Intent::Withdraw { .. }
         | Intent::Form { .. }
         | Intent::Enter { .. }
@@ -1583,6 +1625,42 @@ mod tests {
         assert!(only_unit("unit 5\nTURN\nAUTOTAX 1\nENDTURN\n")
             .flag_changes
             .is_empty());
+    }
+
+    #[test]
+    fn faction_reads_its_type_and_points_pairs() {
+        assert_eq!(
+            intents("unit 5\nFACTION MARTIAL 4 MAGIC 1\n"),
+            vec![Intent::Faction {
+                martial: 4,
+                magic: 1
+            }]
+        );
+        assert_eq!(
+            intents("unit 5\nFACTION MAGIC 5\n"),
+            vec![Intent::Faction {
+                martial: 0,
+                magic: 5
+            }]
+        );
+        assert_eq!(
+            intents("unit 5\nfaction martial 2\n"),
+            vec![Intent::Faction {
+                martial: 2,
+                magic: 0
+            }]
+        );
+    }
+
+    #[test]
+    fn a_faction_order_that_does_not_read_yields_no_intent() {
+        for order in [
+            "FACTION WAR 1",
+            "FACTION MARTIAL 1 MARTIAL 2",
+            "FACTION MARTIAL x",
+        ] {
+            assert_eq!(intents(&format!("unit 5\n{order}\n")), vec![], "{order}");
+        }
     }
 
     #[test]

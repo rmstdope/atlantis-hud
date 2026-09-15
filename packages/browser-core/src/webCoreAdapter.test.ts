@@ -94,6 +94,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       silver: [],
       production: { limits: { pooled: null, tax: null, trade: null }, regions: [] },
       students: { quartermasters: 0, mages: 0, apprentices: 0 },
+      faction: { applied: null, lastFailure: null },
       echoed: request
     }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
@@ -488,6 +489,7 @@ describe("web core adapter", () => {
       silver: [],
       production: { limits: { pooled: null, tax: null, trade: null }, regions: [] },
       students: { quartermasters: 0, mages: 0, apprentices: 0 },
+      faction: { applied: null, lastFailure: null },
       echoed: validation
     });
     expect(await adapter.orderCommands(null)).toEqual(["GIVE", "MOVE", "WORK"]);

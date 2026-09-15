@@ -15,7 +15,7 @@ import {
   summarizeOrderValidation,
   unitsWarnedAboutSilver,
   NO_PRODUCTION,
-  NO_STUDENTS
+  NO_STUDENTS, NO_FACTION_ORDERS
 } from "./orderEditor";
 import { unitRowKey } from "./unitTable";
 
@@ -37,6 +37,7 @@ describe("orderEditor policy", () => {
       silver: [],
       production: NO_PRODUCTION,
       students: NO_STUDENTS,
+      faction: NO_FACTION_ORDERS,
       diagnostics: [
         {
           code: "unknown-command",
@@ -79,6 +80,7 @@ describe("orderEditor policy", () => {
       silver: [],
       production: NO_PRODUCTION,
       students: NO_STUDENTS,
+      faction: NO_FACTION_ORDERS,
       diagnostics: [
         {
           code: "extra-arguments",

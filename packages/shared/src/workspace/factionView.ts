@@ -1,4 +1,13 @@
-import type { DeclaredAttitudes, FactionStatus, NewStudents, ProductionOverview } from "@atlantis/core-client";
+import type {
+  DeclaredAttitudes,
+  FactionArea,
+  FactionLimits,
+  FactionOrders,
+  FactionStatus,
+  HeldKind,
+  NewStudents,
+  ProductionOverview
+} from "@atlantis/core-client";
 import { hexesOverNote, regionsUsed } from "./productionView";
 
 export type AllowanceState = "room" | "full" | "over";
@@ -51,15 +60,19 @@ function counted(
 /**
  * `FactionStatus.entries`, in report order, each counted row worked out from this turn's orders
  * (`ah-x7s3`): Regions from the Production window's own count, the study rows as the report's figure
- * plus this turn's new students. The maximum is always the report's.
+ * plus this turn's new students. The maximum is the report's, unless this turn's FACTION order
+ * applies (`ah-7g4f`): then Regions (or Tax and Trade Regions), Quartermasters, Mages and
+ * Apprentices take the limits the ordered points give.
  */
 export function allowanceRows(
   status: FactionStatus,
   production: ProductionOverview,
-  students: NewStudents
+  students: NewStudents,
+  applied: FactionLimits | null
 ): AllowanceRow[] {
   return status.entries.map((entry) => {
-    const { label, maximum } = entry;
+    const { label } = entry;
+    const maximum = appliedMaximum(label, applied) ?? entry.maximum;
     const count = counted(label, entry.used, production, students);
     if (count === null) {
       const used = entry.used;
@@ -83,6 +96,70 @@ export function allowanceRows(
       note: used > maximum ? count.overNote(used - maximum) : ""
     };
   });
+}
+
+/** The applied FACTION order's limit for a row, or null when it sets none. `ah-7g4f`. */
+function appliedMaximum(label: string, applied: FactionLimits | null): number | null {
+  if (applied === null) {
+    return null;
+  }
+  switch (label.toLowerCase()) {
+    case "regions":
+    case "tax regions":
+    case "trade regions":
+      return applied.regions;
+    case "quartermasters":
+      return applied.quartermasters;
+    case "mages":
+      return applied.mages;
+    case "apprentices":
+      return applied.apprentices;
+    default:
+      return null;
+  }
+}
+
+/** The type line: the report's split, and the applied split when a FACTION order changes it. */
+export type FactionTypeLine = { reported: string; applied: string | null };
+
+/** null when the report states no faction type. `reported` is `factionTypes.join(", ")`. `ah-7g4f`. */
+export function factionTypeLine(factionTypes: string[], faction: FactionOrders): FactionTypeLine | null {
+  if (factionTypes.length === 0) {
+    return null;
+  }
+  const split = faction.applied?.split ?? null;
+  let applied: string | null = null;
+  if (split !== null) {
+    const parts: string[] = [];
+    if (split.martial > 0) parts.push(`Martial ${split.martial}`);
+    if (split.magic > 0) parts.push(`Magic ${split.magic}`);
+    applied = parts.length > 0 ? parts.join(", ") : "Martial 0, Magic 0";
+  }
+  return { reported: factionTypes.join(", "), applied };
+}
+
+const HELD_NOUNS: Record<HeldKind, [string, string]> = {
+  mages: ["mage", "mages"],
+  apprentices: ["apprentice", "apprentices"],
+  quartermasters: ["quartermaster", "quartermasters"]
+};
+
+const AREA_WORDS: Record<FactionArea, string> = { martial: "MARTIAL", magic: "MAGIC" };
+
+/** The brass dropdown line for the last failing FACTION order, or null. `ah-7g4f`. */
+export function factionOrderWarning(faction: FactionOrders): string | null {
+  const failure = faction.lastFailure;
+  if (failure === null) {
+    return null;
+  }
+  const parts =
+    failure.points !== null
+      ? [`${failure.points.total} points, the faction has ${failure.points.available}`]
+      : failure.limits.map(
+          (limit) =>
+            `${limit.held} ${HELD_NOUNS[limit.kind][limit.held === 1 ? 0 : 1]}, ${AREA_WORDS[limit.area]} ${limit.points} allows ${limit.allows}`
+        );
+  return `FACTION order will fail — ${parts.join("; ")}`;
 }
 
 /** A faction named in an attitude level, marked with whether its report has been merged in. */

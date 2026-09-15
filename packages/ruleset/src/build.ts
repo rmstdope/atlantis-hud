@@ -22,6 +22,7 @@ import {
   ungiveableItemsOf
 } from "./data";
 import {
+  parseFactionPoints,
   parseFoodMaintenance,
   parseMaintenanceFee,
   parseMovementRules,
@@ -136,6 +137,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
   const movement = parseMovementRules(input.rulesHtml);
   const maintenance = parseFoodMaintenance(input.rulesHtml);
   const fee = parseMaintenanceFee(input.rulesHtml);
+  const factionPoints = parseFactionPoints(input.rulesHtml);
   const weather = parseWeatherGap(input.rulesHtml);
   const regionResources = parseRegionResources(input.rulesHtml);
   const items = parseItemReference(input.dataHtml);
@@ -196,6 +198,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
     itemClasses: itemClassesOf(items),
     ungiveableItems: ungiveableItemsOf(items),
     terrainResources: resolveRegionResources(regionResources, items),
-    maintenance: { perCharacter: fee.perCharacter, perLeader: fee.perLeader, evidence: fee.evidence }
+    maintenance: { perCharacter: fee.perCharacter, perLeader: fee.perLeader, evidence: fee.evidence },
+    factionPoints
   };
 }

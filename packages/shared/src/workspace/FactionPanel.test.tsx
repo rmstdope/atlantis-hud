@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { aProductionOverview, type DeclaredAttitudes, type FactionStatus } from "@atlantis/core-client";
-import { NO_STUDENTS } from "../orderEditor";
+import { NO_FACTION_ORDERS, NO_STUDENTS } from "../orderEditor";
 import { FactionPanel } from "./FactionPanel";
 import { resetWorkspaceStore } from "../workspaceStore";
 
@@ -35,12 +35,44 @@ const draw = (overrides: Partial<Parameters<typeof FactionPanel>[0]> = {}) =>
       mergedFactionIds={new Set()}
       production={aProductionOverview()}
       students={NO_STUDENTS}
+      faction={NO_FACTION_ORDERS}
       onDismiss={() => {}}
       {...overrides}
     />
   );
 
 describe("FactionPanel", () => {
+  it("shows the report's split and the applied one with an arrow (ah-7g4f)", () => {
+    const html = draw({
+      factionTypes: ["Martial 1", "Magic 1"],
+      faction: {
+        applied: {
+          split: { martial: 3, magic: 2 },
+          limits: { regions: 40, quartermasters: 9, mages: 3, apprentices: 5 }
+        },
+        lastFailure: null
+      }
+    });
+    expect(html).toContain("Martial 1, Magic 1");
+    expect(html).toContain("→");
+    expect(html).toContain("Martial 3, Magic 2");
+  });
+
+  it("shows no arrow without an applied split (ah-7g4f)", () => {
+    expect(draw()).not.toContain("→");
+  });
+
+  it("shows the failing FACTION order line (ah-7g4f)", () => {
+    const html = draw({
+      faction: {
+        applied: null,
+        lastFailure: { points: { split: { martial: 4, magic: 3 }, total: 7, available: 5 }, limits: [] }
+      }
+    });
+    expect(html).toContain('data-testid="faction-order-warning"');
+    expect(html).toContain("FACTION order will fail — 7 points, the faction has 5");
+  });
+
   it("offers Production… under the allowances when it can open it", () => {
     const html = draw({ onOpenProduction: () => {} });
     expect(html).toContain('data-testid="faction-production"');

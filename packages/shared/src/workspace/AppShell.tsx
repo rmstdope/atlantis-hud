@@ -111,6 +111,7 @@ import {
   type OrdersOrigin,
   NO_PRODUCTION,
   NO_STUDENTS,
+  NO_FACTION_ORDERS,
   type ValidatedOrders
 } from "../orderEditor";
 import { openStartupGame, rulesetUrlFor } from "../gameSession";
@@ -623,7 +624,14 @@ export function AppShell({
   // Another tab holding data this one needs (ah-2jb3), and this tab having let go for another.
   const [heldNotice, dispatchHeld] = useReducer(heldNoticeReducer, null);
   const [stopped, setStopped] = useState<StorageStopCause | null>(null);
-  const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS });
+  const [validated, setValidated] = useState<ValidatedOrders>({
+    text: "",
+    diagnostics: [],
+    silver: [],
+    production: NO_PRODUCTION,
+    students: NO_STUDENTS,
+    faction: NO_FACTION_ORDERS
+  });
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text, which keeps the call stateless: there is no session to
   // invalidate when a new turn arrives. The text is also the key the core remembers its last parse
@@ -3429,7 +3437,14 @@ export function AppShell({
   // leave the panel pointing at lines that moved several keystrokes ago.
   useEffect(() => {
     if (!ordersDocument) {
-      setValidated({ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS });
+      setValidated({
+        text: "",
+        diagnostics: [],
+        silver: [],
+        production: NO_PRODUCTION,
+        students: NO_STUDENTS,
+        faction: NO_FACTION_ORDERS
+      });
       return undefined;
     }
 
@@ -3460,7 +3475,8 @@ export function AppShell({
               diagnostics: result.diagnostics,
               silver: result.silver ?? [],
               production: result.production ?? NO_PRODUCTION,
-              students: result.students ?? NO_STUDENTS
+              students: result.students ?? NO_STUDENTS,
+              faction: result.faction ?? NO_FACTION_ORDERS
             });
           }
         })
@@ -5347,6 +5363,7 @@ export function AppShell({
             status={parsed?.header.factionStatus ?? null}
             production={validated.production}
             students={validated.students}
+            faction={validated.faction}
             attitudes={parsed?.header.attitudes ?? null}
             mergedFactionIds={new Set(mergedReports.map((record) => record.mergedFactionId))}
             renderFactionName={(factionId, label) => (

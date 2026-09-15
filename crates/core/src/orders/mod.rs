@@ -14,6 +14,7 @@ pub mod blocks;
 mod build_object;
 pub mod completion;
 pub mod effects;
+pub mod faction_orders;
 #[cfg(test)]
 mod form_agreement;
 pub mod forms;
@@ -97,12 +98,14 @@ pub fn validate_turn(
     let mut silver = Vec::new();
     let mut production = production_overview::ProductionOverview::default();
     let mut students = new_students::NewStudents::default();
+    let mut faction = faction_orders::FactionOrders::default();
 
     if let Some(report) = report {
         let review = semantics::review_turn(report, source, ruleset, options);
         silver = review.silver;
         production = review.production;
         students = review.students;
+        faction = review.faction;
         diagnostics.extend(review.findings.into_iter().map(into_diagnostic));
 
         // Advice derived from a unit whose line the parser could not read is advice derived from
@@ -144,6 +147,7 @@ pub fn validate_turn(
         silver,
         production,
         students,
+        faction,
     }
 }
 

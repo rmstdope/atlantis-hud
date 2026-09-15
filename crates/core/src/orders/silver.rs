@@ -2281,6 +2281,7 @@ pub fn forecast_unit(
         match &placed.intent {
             // The ledger's own Claim arm prices the line, and the row is its record (`ah-xryu`).
             Intent::Claim(_) => {}
+            Intent::Faction { .. } => {}
             // Priced once above, as a unit-level term rather than per line: a unit may tax by
             // its flag with no `TAX` order at all, and one with both must be counted once
             // (`ah-fvzu`).

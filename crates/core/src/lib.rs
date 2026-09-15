@@ -117,6 +117,10 @@ pub struct OrderValidationResult {
     /// Allowances rows. `ah-x7s3`. `#[serde(default)]` so an older payload deserialises to zeros.
     #[serde(default)]
     pub students: crate::orders::new_students::NewStudents,
+    /// What this turn's FACTION orders do, for the faction dropdown. `ah-7g4f`.
+    /// `#[serde(default)]` so an older payload deserialises to "no FACTION order".
+    #[serde(default)]
+    pub faction: crate::orders::faction_orders::FactionOrders,
 }
 
 impl OrderValidationResult {

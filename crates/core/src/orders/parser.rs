@@ -46,6 +46,7 @@ pub fn validate_against(source: &str, ruleset: Option<&Ruleset>) -> OrderValidat
         silver: Vec::new(),
         production: crate::orders::production_overview::ProductionOverview::default(),
         students: Default::default(),
+        faction: Default::default(),
     }
 }
 

@@ -1,6 +1,7 @@
 import type {
   OrderDiagnostic,
   OrderValidationResult,
+  FactionOrders,
   NewStudents, ProductionOverview,
   UnitSilver
 } from "@atlantis/core-client";
@@ -145,6 +146,8 @@ export type ValidatedOrders = {
   production: ProductionOverview;
   /** New quartermasters, mages and apprentices those orders make. `ah-x7s3`. */
   students: NewStudents;
+  /** What those orders' FACTION lines do. `ah-7g4f`. */
+  faction: FactionOrders;
 };
 
 /** No regions and no limits: what the window reads before the first validation lands. */
@@ -152,6 +155,9 @@ export const NO_PRODUCTION: ProductionOverview = { limits: { pooled: null, tax: 
 
 /** No new students: what the Allowances rows read before the first validation lands. `ah-x7s3`. */
 export const NO_STUDENTS: NewStudents = { quartermasters: 0, mages: 0, apprentices: 0 };
+
+/** No FACTION order: what the dropdown reads before the first validation lands. `ah-7g4f`. */
+export const NO_FACTION_ORDERS: FactionOrders = { applied: null, lastFailure: null };
 
 /**
  * The diagnostics belonging to one unit, numbered from the top of that unit's block.

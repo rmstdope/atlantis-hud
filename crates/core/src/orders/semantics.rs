@@ -42,6 +42,9 @@ use crate::movement::rules::{
     item_spellings, ItemEntry, ItemKind, MovementMode, Ruleset, SkillEntry,
 };
 use crate::movement::sailing::refused_sail_steps;
+use crate::orders::faction_orders::{
+    orders_warning, settle, FactionFailure, FactionLimits, FactionOrders, FactionSplit, Held,
+};
 use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named};
 use crate::orders::magic;
 use crate::orders::new_students::NewStudents;
@@ -219,6 +222,11 @@ pub mod codes {
     /// A MOVE whose step would cross a side of a hex a report proves has no exit. Always on: the
     /// agreed experience gives this warning no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const MOVE_INTO_A_WALL: Code = Code("move-into-a-wall");
+
+    /// A FACTION order the game will refuse: too many points, or more mages, apprentices or
+    /// quartermasters than the new points allow (`rules/faction`). Always on: the agreed experience
+    /// adds nothing interactive, so it is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const FACTION_ORDER_WILL_FAIL: Code = Code("faction-order-will-fail");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -302,7 +310,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 1] = [MOVE_INTO_A_WALL];
+    pub const ALWAYS_ON: [Code; 2] = [MOVE_INTO_A_WALL, FACTION_ORDER_WILL_FAIL];
 }
 
 /// Which checks to run, and - in the forecast - which refusals to make.
@@ -582,6 +590,8 @@ pub struct TurnReview {
     pub production: ProductionOverview,
     /// New quartermasters, mages and apprentices this month's orders make, for the Allowances rows.
     pub students: NewStudents,
+    /// What this turn's FACTION orders do, for the faction dropdown. `ah-7g4f`.
+    pub faction: FactionOrders,
 }
 
 /// Checks a whole turn's orders against the report they were written for, and forecasts each
@@ -834,16 +844,30 @@ pub fn review_turn(
     // Everything above is about one hex. An allowance is spent across the whole map, so it is
     // counted once, after every hex has been read - and `validate_turn` sorts the whole list by
     // line afterwards, so these findings land beside the per-hex ones rather than after them.
-    check_faction(report, &ordered, &hexes, ruleset, &options, &mut findings);
+    // FACTION is settled first: it runs in the first batch of instant orders
+    // (`rules/sequenceofevents`), so the split it applies is what every limit below judges against.
+    let (faction, failures) = faction_orders(report, &ordered, ruleset);
+    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
+    check_faction_orders(&failures, &options, &mut findings);
+    check_faction(
+        report,
+        &ordered,
+        &hexes,
+        ruleset,
+        applied,
+        &options,
+        &mut findings,
+    );
     check_upkeep_fund(report, &month_end.fund, &options, &mut findings);
 
     // Not a warning, so no `CheckOptions` switch hides it.
-    let worked = production_overview(report, &hexes, ruleset, &silver, &plurals);
+    let worked = production_overview(report, &hexes, ruleset, applied, &silver, &plurals);
     TurnReview {
         findings,
         silver,
         production: worked,
         students: new_students(&hexes, ruleset),
+        faction,
     }
 }
 
@@ -6406,6 +6430,8 @@ fn apply(
         // see `ledger_for_with_production`, this function's only caller, which skips `Produce`
         // here and calls `produce` from that pass (`rules/sequenceofevents`, `ah-l80z`).
         Intent::Produce { .. } => {}
+        // FACTION moves no silver, goods or people (`rules/faction`).
+        Intent::Faction { .. } => {}
         // Never reached from the walk: `phases::ORDER` holds no Transport phase. TRANSPORT settles
         // report-wide in `settle_report_wide`.
         Intent::Transport { .. } => {}
@@ -14577,11 +14603,12 @@ fn check_faction(
     ordered: &OrderedUnits,
     hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
+    applied: Option<&FactionLimits>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    check_quartermasters(report, hexes, ruleset, options, findings);
-    check_trade_regions(report, hexes, ruleset, options, findings);
+    check_quartermasters(report, hexes, ruleset, applied, options, findings);
+    check_trade_regions(report, hexes, ruleset, applied, options, findings);
     check_claims(report, ordered, ruleset, options, findings);
 }
 
@@ -14608,7 +14635,30 @@ enum RegionAllowances {
 ///
 /// The `used` figure is deliberately ignored. It counts what *last* month spent, and the question
 /// here is what this month's orders would spend.
-fn region_allowances(report: &ParsedReport) -> Option<RegionAllowances> {
+///
+/// The maximum is the report's unless this turn's FACTION order applies (`ah-7g4f`): then every
+/// region row the report prints takes the one limit the ordered Martial points give
+/// (`rules/tablefactionpoints`: "max tax and trade regions"). A report printing no region row
+/// stays `None`.
+fn region_allowances(
+    report: &ParsedReport,
+    applied: Option<&FactionLimits>,
+) -> Option<RegionAllowances> {
+    let reported = reported_region_allowances(report)?;
+    let Some(limits) = applied else {
+        return Some(reported);
+    };
+    Some(match reported {
+        RegionAllowances::Pooled(_) => RegionAllowances::Pooled(limits.regions),
+        RegionAllowances::Separate { tax, trade } => RegionAllowances::Separate {
+            tax: tax.map(|_| limits.regions),
+            trade: trade.map(|_| limits.regions),
+        },
+    })
+}
+
+/// [`region_allowances`] as the report prints them.
+fn reported_region_allowances(report: &ParsedReport) -> Option<RegionAllowances> {
     let entries = &report.header.faction_status.entries;
     let labelled = |label: &str| {
         entries
@@ -14804,6 +14854,7 @@ fn check_trade_regions(
     report: &ParsedReport,
     hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
+    applied: Option<&FactionLimits>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -14811,7 +14862,7 @@ fn check_trade_regions(
         return;
     }
 
-    let Some(allowances) = region_allowances(report) else {
+    let Some(allowances) = region_allowances(report, applied) else {
         return;
     };
 
@@ -14893,10 +14944,11 @@ fn production_overview(
     report: &ParsedReport,
     hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
+    applied: Option<&FactionLimits>,
     silver: &[UnitSilver],
     plurals: &Plurals,
 ) -> ProductionOverview {
-    let limits = match region_allowances(report) {
+    let limits = match region_allowances(report, applied) {
         Some(RegionAllowances::Pooled(maximum)) => RegionLimits {
             pooled: Some(maximum),
             ..RegionLimits::default()
@@ -15112,6 +15164,7 @@ fn check_quartermasters(
     report: &ParsedReport,
     hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
+    applied: Option<&FactionLimits>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -15139,7 +15192,9 @@ fn check_quartermasters(
         return;
     };
 
-    let free_places = (entry.maximum - entry.used).max(0);
+    // This turn's FACTION order, when one applies, sets the maximum (`ah-7g4f`).
+    let maximum = applied.map_or(entry.maximum, |limits| limits.quartermasters);
+    let free_places = (maximum - entry.used).max(0);
 
     let mut candidates: Vec<(&Hex<'_>, &Ordered<'_>, &PlacedIntent)> =
         first_studies(hexes, ruleset)
@@ -15156,10 +15211,7 @@ fn check_quartermasters(
         findings.push(ordered.finding(
             hex,
             codes::TOO_MANY_QUARTERMASTERS,
-            format!(
-                "your faction already has its {} quartermasters",
-                entry.maximum
-            ),
+            format!("your faction already has its {} quartermasters", maximum),
             Some(placed),
         ));
     }
@@ -15613,6 +15665,92 @@ fn check_claims(
     }
 }
 
+/// This turn's FACTION orders settled, and each failing one with the unit and line it sits on.
+///
+/// Walks the own units the report shows, as [`check_claims`] does; the holdings a FACTION order is
+/// judged against are the report's `used` figures, since FACTION runs before GIVE and STUDY
+/// (`rules/sequenceofevents`).
+fn faction_orders<'a>(
+    report: &'a ParsedReport,
+    ordered: &'a OrderedUnits,
+    ruleset: Option<&Ruleset>,
+) -> (
+    FactionOrders,
+    Vec<(&'a ReportUnit, &'a PlacedIntent, FactionFailure)>,
+) {
+    let mut placed: Vec<(&ReportUnit, &PlacedIntent)> = report
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .filter(|unit| unit.own)
+        .flat_map(|unit| {
+            ordered
+                .intents_of(&unit.unit_id)
+                .iter()
+                .filter(|placed| matches!(placed.intent, Intent::Faction { .. }))
+                .map(move |placed| (unit, placed))
+        })
+        .collect();
+    placed.sort_by_key(|(_, placed)| placed.line);
+
+    let splits: Vec<FactionSplit> = placed
+        .iter()
+        .filter_map(|(_, placed)| match placed.intent {
+            Intent::Faction { martial, magic } => Some(FactionSplit { martial, magic }),
+            _ => None,
+        })
+        .collect();
+    let used = |label: &str| {
+        report
+            .header
+            .faction_status
+            .entries
+            .iter()
+            .find(|entry| entry.label.eq_ignore_ascii_case(label))
+            .map(|entry| entry.used)
+    };
+    let held = Held {
+        mages: used("Mages"),
+        apprentices: used("Apprentices"),
+        quartermasters: used(QUARTERMASTERS),
+    };
+    let (faction, failures) = settle(
+        &splits,
+        &report.header.faction_types,
+        &held,
+        ruleset.and_then(|ruleset| ruleset.faction_points.as_ref()),
+    );
+    let failing = placed
+        .into_iter()
+        .zip(failures)
+        .filter_map(|((unit, placed), failure)| failure.map(|failure| (unit, placed, failure)))
+        .collect();
+    (faction, failing)
+}
+
+/// `faction-order-will-fail`: one warning on each FACTION line the game will refuse.
+fn check_faction_orders(
+    failures: &[(&ReportUnit, &PlacedIntent, FactionFailure)],
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::FACTION_ORDER_WILL_FAIL) {
+        return;
+    }
+    for (unit, placed, failure) in failures {
+        findings.push(Finding {
+            code: codes::FACTION_ORDER_WILL_FAIL,
+            message: orders_warning(failure),
+            region_id: unit.region_id.clone(),
+            unit_id: Some(unit.unit_id.clone()),
+            line: Some(placed.line),
+            column_start: Some(placed.column_start),
+            column_end: Some(placed.column_end),
+            formed: None,
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -15652,6 +15790,8 @@ mod tests {
     fn the_wall_warning_has_no_switch() {
         assert!(codes::ALWAYS_ON.contains(&codes::MOVE_INTO_A_WALL));
         assert!(!codes::ALL.contains(&codes::MOVE_INTO_A_WALL));
+        assert!(codes::ALWAYS_ON.contains(&codes::FACTION_ORDER_WILL_FAIL));
+        assert!(!codes::ALL.contains(&codes::FACTION_ORDER_WILL_FAIL));
         assert!(CheckOptions::default().emits(codes::MOVE_INTO_A_WALL));
         assert_eq!(codes::MOVE_INTO_A_WALL.as_str(), "move-into-a-wall");
     }
@@ -28669,6 +28809,40 @@ BUILD
 
     /// `report_with_status` with several `label: 0 (maximum)` entries - an older report's separate
     /// `Tax Regions` and `Trade Regions` counters, say.
+    #[test]
+    fn an_applied_limit_replaces_both_older_region_limits() {
+        let applied = FactionLimits {
+            regions: 40,
+            quartermasters: 9,
+            mages: 3,
+            apprentices: 5,
+        };
+        let older = report_with_statuses(&[("Tax Regions", 15), ("Trade Regions", 15)], vec![]);
+        assert_eq!(
+            region_allowances(&older, Some(&applied)),
+            Some(RegionAllowances::Separate {
+                tax: Some(40),
+                trade: Some(40),
+            })
+        );
+        assert_eq!(
+            region_allowances(&older, None),
+            Some(RegionAllowances::Separate {
+                tax: Some(15),
+                trade: Some(15),
+            })
+        );
+        let pooled = report_with_statuses(&[("Regions", 10)], vec![]);
+        assert_eq!(
+            region_allowances(&pooled, Some(&applied)),
+            Some(RegionAllowances::Pooled(40))
+        );
+        assert_eq!(
+            region_allowances(&pooled, None),
+            Some(RegionAllowances::Pooled(10))
+        );
+    }
+
     fn report_with_statuses(entries: &[(&str, i64)], regions: Vec<ReportRegion>) -> ParsedReport {
         let mut report = report_with_status("", 0, 0, regions);
         report.header.faction_status.entries = entries

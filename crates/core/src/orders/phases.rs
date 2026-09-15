@@ -84,6 +84,8 @@ pub(crate) fn phase_of(intent: &Intent) -> StatePhase {
         | Intent::Guard(_)
         | Intent::Avoid(_)
         | Intent::Share(_)
+        // FACTION is in the same first batch as AVOID and GUARD 0 (rules/sequenceofevents).
+        | Intent::Faction { .. }
         | Intent::Enter { .. }
         | Intent::Leave => StatePhase::Instant,
         // CLAIM is in that same first batch, and so ahead of GIVE.
