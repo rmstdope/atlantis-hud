@@ -40,3 +40,16 @@ describe("creating a game whose map cannot wrap", () => {
     expect(markup.match(/<button type="submit"[^>]*>/u)?.[0]).not.toContain('disabled=""');
   });
 });
+
+describe("a form that cannot be used for now", () => {
+  it("is disabled without claiming to be creating anything", () => {
+    // Another tab holding the saved-games list (ah-2jb3): nothing is being created.
+    const markup = renderToStaticMarkup(
+      <GameForm busy={false} unavailable error={null} onCreate={() => {}} />
+    );
+    const submit = markup.match(/<button type="submit"[^>]*>[^<]*/u)?.[0] ?? "";
+    expect(submit).toContain('disabled=""');
+    expect(submit).toContain("Create game");
+    expect(submit).not.toContain("Creating");
+  });
+});

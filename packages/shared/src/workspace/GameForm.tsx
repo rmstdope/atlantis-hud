@@ -34,11 +34,14 @@ export function gameSubmission(
  */
 export function GameForm({
   busy,
+  unavailable = false,
   error,
   onCreate,
   submitLabel = "Create game"
 }: {
   busy: boolean;
+  /** Disabled without claiming work is under way: another tab holds the saved-games list. */
+  unavailable?: boolean;
   error: string | null;
   onCreate: (name: string, rulesetId: string, map?: MapShape) => void;
   submitLabel?: string;
@@ -74,7 +77,7 @@ export function GameForm({
           data-testid="game-name"
           aria-label="game name"
           value={name}
-          disabled={busy}
+          disabled={busy || unavailable}
           onChange={(event) => setName(event.target.value)}
           className="rounded border border-edge bg-panel px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
         />
@@ -86,7 +89,7 @@ export function GameForm({
           data-testid="game-ruleset"
           aria-label="ruleset"
           value={rulesetId}
-          disabled={busy}
+          disabled={busy || unavailable}
           onChange={(event) => chooseRuleset(event.target.value)}
           className="rounded border border-edge bg-panel px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
         >
@@ -111,7 +114,7 @@ export function GameForm({
               aria-label="map width"
               inputMode="numeric"
               value={map.width}
-              disabled={busy}
+              disabled={busy || unavailable}
               onChange={(event) => setMap({ ...map, width: event.target.value })}
               className="w-full min-w-0 rounded border border-edge bg-panel-raised px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
             />
@@ -123,7 +126,7 @@ export function GameForm({
               aria-label="map height"
               inputMode="numeric"
               value={map.height}
-              disabled={busy}
+              disabled={busy || unavailable}
               onChange={(event) => setMap({ ...map, height: event.target.value })}
               className="w-full min-w-0 rounded border border-edge bg-panel-raised px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
             />
@@ -135,7 +138,7 @@ export function GameForm({
             aria-label="wraps east to west"
             type="checkbox"
             checked={map.wrapX}
-            disabled={busy}
+            disabled={busy || unavailable}
             onChange={(event) => setMap({ ...map, wrapX: event.target.checked })}
           />
           <span className="text-ink-soft">Wraps east to west</span>
@@ -146,7 +149,7 @@ export function GameForm({
             aria-label="wraps north to south"
             type="checkbox"
             checked={map.wrapY}
-            disabled={busy}
+            disabled={busy || unavailable}
             onChange={(event) => setMap({ ...map, wrapY: event.target.checked })}
           />
           <span className="text-ink-soft">Wraps north to south</span>
@@ -162,7 +165,7 @@ export function GameForm({
 
       <button
         type="submit"
-        disabled={busy || problems.length > 0}
+        disabled={busy || unavailable || problems.length > 0}
         className="rounded border border-brass bg-brass/10 px-2.5 py-1 text-brass hover:bg-brass/15 disabled:border-edge disabled:bg-transparent disabled:text-ink-dim disabled:opacity-50"
       >
         {busy ? "Creating…" : submitLabel}

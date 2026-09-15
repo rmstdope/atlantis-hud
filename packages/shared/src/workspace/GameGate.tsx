@@ -13,6 +13,7 @@ import { GameForm } from "./GameForm";
  */
 export function GameGate({
   busy,
+  unavailable = false,
   error,
   onCreate,
   onImport,
@@ -21,6 +22,8 @@ export function GameGate({
   settings
 }: {
   busy: boolean;
+  /** Create and Import are unusable for now, though nothing is in progress: another tab holds the saved-games list. */
+  unavailable?: boolean;
   error: string | null;
   onCreate: (name: string, rulesetId: string, map?: MapShape) => void;
   onImport: (file: File) => void;
@@ -73,12 +76,12 @@ export function GameGate({
           <p className="mb-3 text-pane text-ink-soft">
             Every turn you load belongs to a game. Name one to begin.
           </p>
-          <GameForm busy={busy} error={error} onCreate={onCreate} />
+          <GameForm busy={busy} unavailable={unavailable} error={error} onCreate={onCreate} />
           <div className="mt-3 border-t border-brass/60 pt-3">
             <button
               type="button"
               data-testid="game-gate-import"
-              disabled={busy}
+              disabled={busy || unavailable}
               onClick={() => importRef.current?.click()}
               className="w-full rounded border border-brass bg-brass/10 px-2.5 py-1 text-left text-brass hover:bg-brass/15 disabled:border-edge disabled:bg-transparent disabled:text-ink-dim disabled:opacity-50"
             >

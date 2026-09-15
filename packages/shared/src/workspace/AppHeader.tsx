@@ -143,6 +143,8 @@ type AppHeaderProps = {
   changesOpen: boolean;
   onToggleChanges: () => void;
   busy: boolean;
+  /** True when the open game's data could not be read, so there is nowhere to import into. */
+  importDisabled: boolean;
   /**
    * Every report the player chose, in the order the file dialog handed them over.
    *
@@ -230,6 +232,7 @@ export function AppHeader({
   changesOpen,
   onToggleChanges,
   busy,
+  importDisabled,
   onImportReports,
   progress,
   onExportOrders,
@@ -620,7 +623,7 @@ export function AppHeader({
       />
       <button
         type="button"
-        disabled={busy}
+        disabled={busy || importDisabled}
         onClick={() => fileRef.current?.click()}
         className="rounded border border-brass px-2.5 py-1 text-brass disabled:opacity-50"
       >

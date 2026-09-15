@@ -18,9 +18,12 @@ import type {
   AlliedMageRecord,
   ArmyRecord,
   HexNoteRecord,
+  StorageStopCause,
+  StorageStopListener,
   StudyPlanKey,
   StudyPlanRecord
 } from "@atlantis/core-client";
+import { STOP_SAVE_BUDGET_MS, deleteWithin, openWithin, stopCauseOf } from "./databaseOpen";
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
@@ -166,6 +169,12 @@ export interface WebStore {
   deleteGame(gameId: string): Promise<void>;
   /** Drops one game's own IndexedDB database, leaving the registry row alone. */
   dropGameData(databasePath: string): Promise<void>;
+  /**
+   * Tells `listener` when another tab asks this one to let go of its storage. The listener gets a
+   * short budget to save; after it the store closes every connection and opens nothing more.
+   * Returns the unsubscribe.
+   */
+  onStop(listener: StorageStopListener): () => void;
   putImportedTurn(turn: StoredTurn): Promise<void>;
   getImportedTurn(
     databasePath: string,
@@ -256,12 +265,10 @@ function settle(transaction: IDBTransaction): Promise<void> {
 }
 
 function openRegistryDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(REGISTRY_DATABASE_NAME, REGISTRY_DATABASE_VERSION);
-
-    request.onupgradeneeded = () => {
-      const database = request.result;
-
+  return openWithin(
+    indexedDB.open(REGISTRY_DATABASE_NAME, REGISTRY_DATABASE_VERSION),
+    "games-list",
+    (database) => {
       // Before v4 every game's turns, drafts and sightings lived here alongside the manifests,
       // told apart only by a key prefix. They move to a database per game in v4, and the old
       // stores are dropped rather than migrated: the schema predates any release, and copying
@@ -278,20 +285,15 @@ function openRegistryDatabase(): Promise<IDBDatabase> {
       }
 
       database.createObjectStore(GAME_STORE, { keyPath: "gameId" });
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("failed to open indexeddb"));
-  });
+    }
+  );
 }
 
 function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(gameDatabaseName(databasePath), GAME_DATABASE_VERSION);
-
-    request.onupgradeneeded = () => {
-      const database = request.result;
-
+  return openWithin(
+    indexedDB.open(gameDatabaseName(databasePath), GAME_DATABASE_VERSION),
+    "game",
+    (database) => {
       // The database belongs to one game, so its keys no longer carry the game: a turn is
       // identified by its faction and number, and a sighting by its faction and hex.
       //
@@ -308,17 +310,8 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
       for (const collection of gameCollections) {
         create(collection.name, [...collection.keyPath]);
       }
-    };
-
-    // An upgrade waits for every other connection to the database to close, and a second tab
-    // holding one open never does. Without this the promise simply never settles and the workspace
-    // sits on a spinner for ever; the first version had nothing to upgrade, so it could not happen.
-    request.onblocked = () =>
-      reject(new Error("this game is open in another tab, which is holding its storage open"));
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("failed to open indexeddb"));
-  });
+    }
+  );
 }
 
 /**
@@ -330,18 +323,78 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
 export function createIndexedDbWebStore(): WebStore {
   let registryHandle: Promise<IDBDatabase> | null = null;
   const gameHandles = new Map<string, Promise<IDBDatabase>>();
+  const stopListeners = new Set<StorageStopListener>();
+  let stopped = false;
 
+  /**
+   * Another tab has asked for data this tab holds - a newer build upgrading it, or a delete. The
+   * listeners save first, within a budget shorter than the other tab's own wait, and only then are
+   * the connections closed: a transaction created on a closed connection throws, so closing first
+   * would lose exactly the save this exists to make.
+   */
+  const release = async (cause: StorageStopCause) => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    await Promise.race([
+      Promise.allSettled([...stopListeners].map((listener) => Promise.resolve().then(() => listener(cause)))),
+      new Promise((resolve) => globalThis.setTimeout(resolve, STOP_SAVE_BUDGET_MS))
+    ]);
+    const handles = [registryHandle, ...gameHandles.values()];
+    registryHandle = null;
+    gameHandles.clear();
+    for (const handle of handles) {
+      handle?.then(
+        (database) => database.close(),
+        () => undefined
+      );
+    }
+  };
+
+  const watch = (database: IDBDatabase) => {
+    database.onversionchange = (event) => void release(stopCauseOf(event.newVersion));
+    return database;
+  };
+
+  // Reached only once a tab has let go, and never shown: the tab is behind its stopped notice.
+  const letGo = () => Promise.reject(new Error("this tab let go of its storage for another tab"));
+
+  // A cached handle is returned even once stopped, so a listener's save still reaches the open
+  // connection; only a new open is refused. A rejected handle is forgotten, or Try again could
+  // never succeed for the rest of the tab's life.
   const registry = () => {
-    registryHandle ??= openRegistryDatabase();
-    return registryHandle;
+    if (registryHandle) {
+      return registryHandle;
+    }
+    if (stopped) {
+      return letGo();
+    }
+    const handle = openRegistryDatabase().then(watch);
+    registryHandle = handle;
+    handle.catch(() => {
+      if (registryHandle === handle) {
+        registryHandle = null;
+      }
+    });
+    return handle;
   };
 
   const gameDatabase = (databasePath: string) => {
-    let handle = gameHandles.get(databasePath);
-    if (!handle) {
-      handle = openGameDatabase(databasePath);
-      gameHandles.set(databasePath, handle);
+    const cached = gameHandles.get(databasePath);
+    if (cached) {
+      return cached;
     }
+    if (stopped) {
+      return letGo();
+    }
+    const handle = openGameDatabase(databasePath).then(watch);
+    gameHandles.set(databasePath, handle);
+    handle.catch(() => {
+      if (gameHandles.get(databasePath) === handle) {
+        gameHandles.delete(databasePath);
+      }
+    });
     return handle;
   };
 
@@ -457,12 +510,20 @@ export function createIndexedDbWebStore(): WebStore {
       const handle = gameHandles.get(databasePath);
       gameHandles.delete(databasePath);
       if (handle) {
-        (await handle).close();
+        // A handle that never opened has nothing to close.
+        await handle.then(
+          (database) => database.close(),
+          () => undefined
+        );
       }
 
-      await promisify(
-        indexedDB.deleteDatabase(gameDatabaseName(databasePath)) as unknown as IDBRequest
-      );
+      await deleteWithin(indexedDB.deleteDatabase(gameDatabaseName(databasePath)));
+    },
+    onStop(listener) {
+      stopListeners.add(listener);
+      return () => {
+        stopListeners.delete(listener);
+      };
     },
     putImportedTurn: (turn) => write(turn.databasePath, IMPORTED_TURN_STORE, turn),
     getImportedTurn: (databasePath, _gameId, factionId, turnNumber) =>
@@ -635,6 +696,8 @@ export function createMemoryWebStore(): WebStore {
     ) as T[];
 
   return {
+    // A memory store belongs to one tab, so no other tab can ever ask it to let go.
+    onStop: () => () => undefined,
     async listGames() {
       return [...games.values()];
     },
