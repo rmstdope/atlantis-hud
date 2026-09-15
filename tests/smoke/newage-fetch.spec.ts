@@ -248,7 +248,7 @@ test("fetches every missing turn in one press and says what happened", async ({ 
   // asked for once, as this turn's report, never a second time through history.
   await replyWith(page, { status: 200, body: TURN_72 });
   await historyWith(page, {
-    turns: { status: 200, body: JSON.stringify({ turns: [70, 71, 72] }) },
+    turns: { status: 200, body: JSON.stringify({ available_turns: [70, 71, 72] }) },
     reports: {
       "70": { status: 200, body: TURN_70 },
       "71": { status: 200, body: TURN_71 }
@@ -273,7 +273,7 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   await arcanumGame(page);
   await replyWith(page, { status: 200, body: TURN_72 });
   await historyWith(page, {
-    turns: { status: 200, body: JSON.stringify({ turns: [70, 71, 72] }) },
+    turns: { status: 200, body: JSON.stringify({ available_turns: [70, 71, 72] }) },
     reports: {
       "70": { status: 200, body: TURN_70 },
       "71": { status: 200, body: TURN_71 }
@@ -319,7 +319,9 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   expect(historyCalls[0]).toContain("/history/70/");
 });
 
-test("keeps this turn when the world would not say which turns it holds", async ({ page }) => {
+test("keeps this turn and says why when the list of earlier turns could not be fetched", async ({
+  page
+}) => {
   await clearGames(page);
   await arcanumGame(page);
   await historyWith(page, { turns: { status: 500, body: "" }, reports: {} });
@@ -328,10 +330,55 @@ test("keeps this turn when the world would not say which turns it holds", async 
 
   // The report landed, so this is a warning about the listing rather than a failed fetch: the
   // status line carries the warning, and the turn it fetched is the one on screen.
-  await expect(page.getByTestId("import-status")).toContainText(
-    "would not say which turns it holds"
+  await expect(page.getByTestId("import-status")).toHaveText(
+    "turn 71 loaded, but Arcanum's list of earlier turns could not be fetched: the world refused the request (500)."
   );
   await expect(page.getByTestId("turn-chip")).toContainText("71");
+});
+
+test("owns the fault when the list of earlier turns cannot be understood", async ({ page }) => {
+  await clearGames(page);
+  await arcanumGame(page);
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ turns: [70] }) },
+    reports: {}
+  });
+
+  await fetchWith(page, { scope: "history" });
+
+  await expect(page.getByTestId("import-status")).toHaveText(
+    "turn 71 loaded. Atlantis HUD did not understand Arcanum's list of earlier turns, so none were fetched — trying again will not help."
+  );
+  const historyCalls = (await httpCalls(page))
+    .map((call) => call[2])
+    .filter((url) => url.includes("/files/history/70/"));
+  expect(historyCalls).toEqual([]);
+});
+
+test("says calmly when every earlier turn is already loaded", async ({ page }) => {
+  await clearGames(page);
+  await arcanumGame(page);
+  await replyWith(page, { status: 200, body: TURN_72 });
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ available_turns: [70, 71, 72] }) },
+    reports: {
+      "70": { status: 200, body: TURN_70 },
+      "71": { status: 200, body: TURN_71 }
+    }
+  });
+
+  await fetchWith(page, { scope: "history" });
+  // The stand-in answers instantly: wait for the first run's whole line, or the second press
+  // races its end.
+  await expect(page.getByTestId("import-status")).toHaveText(
+    "2 turns stored for history; still showing turn 72."
+  );
+
+  await fetchWith(page, { scope: "history" });
+
+  await expect(page.getByTestId("import-status")).toHaveText(
+    "every earlier turn was already loaded; still showing turn 72."
+  );
 });
 
 test("switching game closes the fetch dialog, and coming back does not reopen it", async ({

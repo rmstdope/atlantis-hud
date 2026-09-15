@@ -5,10 +5,16 @@ import {
   newAgeListingStillCurrent,
   type NewAgeFetchAftermathInput
 } from "./newAgeFetchAftermath";
-import type { NewAgeFetchOutcome } from "./newAgeFetchRun";
+import type { NewAgeFetchOutcome, NewAgeHistoryResult } from "./newAgeFetchRun";
 import { FETCH_FAILURE_PREFIX, FETCH_REFUSED_MID_RUN } from "./newAgeFetchView";
-import { runSummary } from "./newAgeHistoryView";
-import { failedStatus, warningStatus } from "./shellStatus";
+import {
+  historyListNotFetched,
+  historyListNotUnderstood,
+  historyNoneEarlier,
+  historyNothingMissing,
+  runSummary
+} from "./newAgeHistoryView";
+import { failedStatus } from "./shellStatus";
 
 const input = (
   outcome: NewAgeFetchOutcome,
@@ -20,17 +26,14 @@ const input = (
   superseded: false,
   sameGame: true,
   workingTurn: 80,
+  worldName: "Arcanum",
   ...overrides
 });
 
-const done = (
-  history: {
-    stored: number[];
-    failed: Map<string, string>;
-    refusedMidRun: boolean;
-  } | null,
-  listFailed: string | null = null
-): NewAgeFetchOutcome => ({ kind: "done", history, listFailed });
+const done = (history: NewAgeHistoryResult | null): NewAgeFetchOutcome => ({
+  kind: "done",
+  history
+});
 
 describe("newAgeFetchAftermath", () => {
   it("says nothing to a dialog that is no longer this run's", () => {
@@ -70,17 +73,15 @@ describe("newAgeFetchAftermath", () => {
       newAgeFetchAftermath(input({ kind: "reportFailed", reason: "could not reach x" })).status
     ).toEqual(failedStatus(`${FETCH_FAILURE_PREFIX}: could not reach x`));
     expect(
-      newAgeFetchAftermath(input(done(null, "the listing failed."))).status
-    ).toEqual(warningStatus("the listing failed."));
-    expect(
       newAgeFetchAftermath(
-        input(done({ stored: [78, 79, 80], failed: new Map(), refusedMidRun: true }))
+        input(done({ kind: "ran", stored: [78, 79, 80], failed: new Map(), refusedMidRun: true }))
       ).status
     ).toEqual(failedStatus(FETCH_REFUSED_MID_RUN));
     expect(
       newAgeFetchAftermath(
         input(
           done({
+            kind: "ran",
             stored: [78, 79, 80],
             failed: new Map([["77", "no"]]),
             refusedMidRun: false
@@ -93,18 +94,23 @@ describe("newAgeFetchAftermath", () => {
     ).toBeNull();
   });
 
-  it("lets a failed listing win over the run's own summary", () => {
-    // The one row where two conditions hold at once: a run that stored turns and could not list
-    // them says so, and the summary is not written on top of it.
-    const outcome = done(
-      { stored: [78, 79], failed: new Map(), refusedMidRun: false },
-      "the listing failed."
+  it("writes a line for every way the earlier turns can come out", () => {
+    const status = (history: NewAgeHistoryResult) => newAgeFetchAftermath(input(done(history))).status;
+
+    expect(status({ kind: "listFailed", failure: { kind: "unreadable" } })).toEqual(
+      historyListNotUnderstood("Arcanum", 80)
     );
-    expect(newAgeFetchAftermath(input(outcome)).status).toEqual(
-      warningStatus("the listing failed.")
+    expect(status({ kind: "listFailed", failure: { kind: "unreadable" } })?.text).not.toContain(
+      "no report for you yet"
     );
-    // And the picker is still re-listed: the turns landed whatever the listing did.
-    expect(newAgeFetchAftermath(input(outcome)).relistTurns).toBe(true);
+    expect(
+      status({ kind: "listFailed", failure: { kind: "refused", status: 500, detail: null } })
+    ).toEqual(historyListNotFetched("Arcanum", "the world refused the request (500)", 80));
+    expect(
+      status({ kind: "listFailed", failure: { kind: "unsendable", reason: "nope" } })
+    ).toEqual(historyListNotFetched("Arcanum", "the request could not be sent", 80));
+    expect(status({ kind: "noneEarlier" })).toEqual(historyNoneEarlier("Arcanum", 80));
+    expect(status({ kind: "nothingMissing" })).toEqual(historyNothingMissing(80));
   });
 
   it("says nothing for a plain this-turn fetch or an abandoned run", () => {
@@ -116,7 +122,7 @@ describe("newAgeFetchAftermath", () => {
     expect(newAgeFetchAftermath(input({ kind: "abandoned" })).relistTurns).toBe(true);
     expect(
       newAgeFetchAftermath(
-        input(done({ stored: [79], failed: new Map(), refusedMidRun: false }))
+        input(done({ kind: "ran", stored: [79], failed: new Map(), refusedMidRun: false }))
       ).relistTurns
     ).toBe(true);
   });
@@ -138,6 +144,13 @@ describe("newAgeFetchAftermath", () => {
       newAgeFetchAftermath(input({ kind: "abandoned" }, { sameGame: false })).relistTurns
     ).toBe(false);
     expect(newAgeFetchAftermath(input(done(null))).relistTurns).toBe(false);
+    for (const history of [
+      { kind: "nothingMissing" } as const,
+      { kind: "noneEarlier" } as const,
+      { kind: "listFailed", failure: { kind: "unreachable" } } as const
+    ]) {
+      expect(newAgeFetchAftermath(input(done(history))).relistTurns).toBe(false);
+    }
     expect(
       newAgeFetchAftermath(input({ kind: "refused", message: "no", retype: true })).relistTurns
     ).toBe(false);

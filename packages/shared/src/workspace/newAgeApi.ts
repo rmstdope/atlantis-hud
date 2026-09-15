@@ -310,18 +310,22 @@ function readGameStatus(body: string): NewAgeResult<NewAgeGameStatus> {
 }
 
 /**
- * The served spec declares no response schema for `files/history/turns` and it needs a bearer
- * token, so it could not be probed: a bare array and a `{turns: [...]}` object are the two shapes
- * accepted, and anything else is `unreadable` rather than a third guess.
+ * `{"available_turns": [<turn>, ...]}` - the shape the world's own web client reads
+ * (`.data.available_turns`); the served spec declares no schema. The current turn may be absent.
+ * Every entry must be a non-negative safe integer: `historyReport` throws on anything else, so a
+ * bad entry is `unreadable` here rather than a throw halfway through a run.
  */
 function readHistoryTurns(body: string): NewAgeResult<number[]> {
   const parsed = parse(body);
-  const turns = Array.isArray(parsed)
-    ? parsed
-    : isRecord(parsed) && Array.isArray(parsed.turns)
-      ? parsed.turns
-      : undefined;
-  if (!turns || !turns.every((entry) => typeof entry === "number")) {
+  if (!isRecord(parsed) || !Array.isArray(parsed.available_turns)) {
+    return { kind: "unreadable" };
+  }
+  const turns: unknown[] = parsed.available_turns;
+  if (
+    !turns.every(
+      (entry) => typeof entry === "number" && Number.isSafeInteger(entry) && entry >= 0
+    )
+  ) {
     return { kind: "unreadable" };
   }
   return { kind: "ok", value: turns as number[] };

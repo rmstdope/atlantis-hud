@@ -11,28 +11,34 @@
  * session" means.
  */
 
-import type { NewAgeLogin, NewAgeResult } from "./newAgeApi";
+import type { NewAgeFailure, NewAgeLogin, NewAgeResult } from "./newAgeApi";
 import {
   fetchFailureReason,
   type NewAgeFetchPhase,
   type NewAgeFetchScope
 } from "./newAgeFetchView";
 import { runHistoryFetch } from "./newAgeHistoryRun";
-import { historyListFailed, missingTurns } from "./newAgeHistoryView";
+import { earlierTurns, missingTurns } from "./newAgeHistoryView";
 import { NEW_AGE_HOST, signInFailure } from "./newAgeSignInView";
+
+/** What asking for earlier turns came to. Present only for `thisTurnAndHistory`. */
+export type NewAgeHistoryResult =
+  /** The listing call failed; this turn still landed. Never `unauthorized` - that is `ran`, refused. */
+  | { kind: "listFailed"; failure: Exclude<NewAgeFailure, { kind: "unauthorized" }> }
+  /** The world lists no turn earlier than the one on screen. */
+  | { kind: "noneEarlier" }
+  /** It lists earlier turns, and the game already holds every one of them. */
+  | { kind: "nothingMissing" }
+  /** At least one turn was asked for. */
+  | { kind: "ran"; stored: number[]; failed: Map<string, string>; refusedMidRun: boolean };
 
 export type NewAgeFetchOutcome =
   /** Nothing was fetched: the login itself failed. `message`/`retype` go straight to `ready`. */
   | { kind: "refused"; message: string; retype: boolean }
   /** This turn's report could not be had. `reason` is `fetchFailureReason`'s half-sentence. */
   | { kind: "reportFailed"; reason: string }
-  /** The turn landed; `history` is absent for `thisTurn` and present otherwise. */
-  | {
-      kind: "done";
-      history: { stored: number[]; failed: Map<string, string>; refusedMidRun: boolean } | null;
-      /** The listing call failed - the turn still landed. Whole sentence, for the status line. */
-      listFailed: string | null;
-    }
+  /** The turn landed; `history` is `null` for `thisTurn` and present otherwise. */
+  | { kind: "done"; history: NewAgeHistoryResult | null }
   /** Cancel or Escape, at a boundary. Whatever landed before it stays. */
   | { kind: "abandoned" };
 
@@ -93,7 +99,7 @@ export async function runNewAgeFetch(
   await effects.store(null, report.value);
 
   if (scope === "thisTurn") {
-    return { kind: "done", history: null, listFailed: null };
+    return { kind: "done", history: null };
   }
 
   if (effects.abandoned()) {
@@ -102,19 +108,29 @@ export async function runNewAgeFetch(
 
   effects.onPhase({ kind: "listing" });
   const turns = await effects.historyTurns(token);
-  if (turns.kind !== "ok") {
-    // This turn landed, so a failed listing is a warning rather than a failed fetch.
+  if (turns.kind === "unauthorized") {
+    // The world stopped accepting the token between the report and the listing: the agreed
+    // "stopped accepting mid-run" state, not a list that could not be fetched.
     return {
       kind: "done",
-      history: null,
-      listFailed: historyListFailed(worldName, fetchFailureReason(turns, NEW_AGE_HOST))
+      history: { kind: "ran", stored: [], failed: new Map(), refusedMidRun: true }
     };
+  }
+  if (turns.kind !== "ok") {
+    // This turn landed, so a failed listing is a warning rather than a failed fetch.
+    return { kind: "done", history: { kind: "listFailed", failure: turns } };
   }
 
   // Read now, not earlier: the turn just stored is the working turn, so it is excluded from the
   // bulk list rather than downloaded a second time.
   const held = effects.heldTurns();
+  if (earlierTurns(turns.value, held.workingTurn).length === 0) {
+    return { kind: "done", history: { kind: "noneEarlier" } };
+  }
   const missing = missingTurns(turns.value, held.stored, held.workingTurn);
+  if (missing.length === 0) {
+    return { kind: "done", history: { kind: "nothingMissing" } };
+  }
 
   const outcome = await runHistoryFetch(missing, {
     fetch: (turnNumber) => effects.historyReport(token, turnNumber),
@@ -134,10 +150,10 @@ export async function runNewAgeFetch(
   return {
     kind: "done",
     history: {
+      kind: "ran",
       stored: outcome.stored,
       failed: outcome.failed,
       refusedMidRun: outcome.remaining !== null
-    },
-    listFailed: null
+    }
   };
 }

@@ -4367,7 +4367,8 @@ export function AppShell({
         reachedTurns,
         superseded,
         sameGame: openGameIdRef.current === runGameId,
-        workingTurn: currentWorkingTurn()
+        workingTurn: currentWorkingTurn(),
+        worldName
       });
 
       if (aftermath.dialog.kind === "close") {
