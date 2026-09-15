@@ -266,7 +266,7 @@ describe("the Warnings settings tab", () => {
       "Courses set by the wrong unit",
       "More quartermasters than allowed",
       "Study of an unlearnable skill",
-      "Producing in too many regions",
+      "Taxing and trading in too many regions",
       "Claiming more than the faction has",
       "Upkeep the faction cannot pay",
       "Taxing a hex you are pillaging",
@@ -278,6 +278,9 @@ describe("the Warnings settings tab", () => {
     for (const title of titles) {
       expect(html).toContain(title);
     }
+    expect(html).toContain(
+      "PRODUCE, TAX and PILLAGE orders in more regions than the faction&#x27;s allowance permits."
+    );
     expect(html).toContain(
       "A GIVE or TAKE naming items that cannot change hands, or men given to another faction."
     );

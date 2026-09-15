@@ -546,8 +546,8 @@ export const WARNING_GROUPS: readonly {
       },
       {
         code: "too-many-trade-regions",
-        title: "Producing in too many regions",
-        description: "PRODUCE orders in more regions than the faction's allowance permits."
+        title: "Taxing and trading in too many regions",
+        description: "PRODUCE, TAX and PILLAGE orders in more regions than the faction's allowance permits."
       },
       {
         code: "withdraw-in-nexus",
