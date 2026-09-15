@@ -38,6 +38,16 @@ const draw = (overrides: Partial<Parameters<typeof FactionPanel>[0]> = {}) =>
   );
 
 describe("FactionPanel", () => {
+  it("offers Production… under the allowances when it can open it", () => {
+    const html = draw({ onOpenProduction: () => {} });
+    expect(html).toContain('data-testid="faction-production"');
+    expect(html).toContain("Production…");
+  });
+
+  it("offers no Production button without a way to open it", () => {
+    expect(draw()).not.toContain("faction-production");
+  });
+
   beforeEach(resetWorkspaceStore);
 
   it("shows the faction name, id and types", () => {

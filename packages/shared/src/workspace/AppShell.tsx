@@ -109,6 +109,7 @@ import {
   shouldTriggerAutosave,
   unitsWarnedAboutSilver,
   type OrdersOrigin,
+  NO_PRODUCTION,
   type ValidatedOrders
 } from "../orderEditor";
 import { openNewestGame, rulesetUrlFor } from "../gameSession";
@@ -217,6 +218,8 @@ import type { SendOrdersPhase } from "./sendOrdersView";
 import { sendDisabledReason } from "./sendOrdersView";
 import { performOrdersSend } from "./sendOrders";
 import { BattlesDialog } from "./BattlesDialog";
+import { ProductionDialog } from "./ProductionDialog";
+import { productionView, statesRegionLimit } from "./productionView";
 import { battleHexes } from "./battles";
 import { ChangesDialog } from "./ChangesDialog";
 import {
@@ -585,7 +588,7 @@ export function AppShell({
   );
   const [status, setStatus] = useState<StatusLine | null>(null);
   const [busy, setBusy] = useState(false);
-  const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [], silver: [] });
+  const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION });
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text, which keeps the call stateless: there is no session to
   // invalidate when a new turn arrives. The text is also the key the core remembers its last parse
@@ -942,6 +945,8 @@ export function AppShell({
   // exactly as the game picker is: it is a panel that is open for a moment, not a preference, so
   // it is remembered for the session and forgotten on reload (ah-30hg.2, round 5).
   const [battlesOpen, setBattlesOpen] = useState(false);
+  // The Production window (ah-nneu). Transient like `battlesOpen`: every opening reads the orders fresh.
+  const [productionOpen, setProductionOpen] = useState(false);
   const [selectedBattleIndex, setSelectedBattleIndex] = useState(0);
   const [reportTab, setReportTab] = useState<TurnReportTab>("problems");
   // A report from another faction, parsed and waiting for the player to say what to do with it,
@@ -1563,6 +1568,13 @@ export function AppShell({
   }, [dispatchShortcut]);
 
   // Everything the palette can reach, rebuilt only when the world it names changes.
+  const regionById = useMemo(
+    () => new Map((parsed?.regions ?? []).map((region) => [region.regionId, region])),
+    [parsed]
+  );
+  // Production counts against a region limit, so it is offered only where the report prints one.
+  const offersProduction = statesRegionLimit(parsed?.header.factionStatus ?? null);
+
   const paletteEntries = useMemo(() => {
     const mac = isMacPlatform();
     const helpSpec = SHORTCUTS.find((entry) => entry.id === "help");
@@ -1669,6 +1681,9 @@ export function AppShell({
               }
             ]
           : []),
+        ...(parsed && offersProduction
+          ? [{ id: "open-production", label: "Production", run: () => setProductionOpen(true) }]
+          : []),
         // Only with a game open and a hex selected: a note needs both to be saved anywhere - ah-o1t.
         ...(game && selectedRegionId
           ? [
@@ -1691,6 +1706,7 @@ export function AppShell({
       openGameData: (entryId) => setGameDataOpen({ entryId })
     });
   }, [
+    offersProduction,
     gameData,
     orderedOwnUnitIds,
     parsed,
@@ -3272,7 +3288,7 @@ export function AppShell({
   // leave the panel pointing at lines that moved several keystrokes ago.
   useEffect(() => {
     if (!ordersDocument) {
-      setValidated({ text: "", diagnostics: [], silver: [] });
+      setValidated({ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION });
       return undefined;
     }
 
@@ -3301,7 +3317,8 @@ export function AppShell({
             setValidated({
               text: ordersDocument,
               diagnostics: result.diagnostics,
-              silver: result.silver ?? []
+              silver: result.silver ?? [],
+              production: result.production ?? NO_PRODUCTION
             });
           }
         })
@@ -5158,6 +5175,14 @@ export function AppShell({
                 {label}
               </button>
             )}
+            onOpenProduction={
+              offersProduction
+                ? () => {
+                    closePopover("faction");
+                    setProductionOpen(true);
+                  }
+                : undefined
+            }
             onDismiss={() => closePopover("faction")}
           />
           )
@@ -5775,6 +5800,16 @@ export function AppShell({
             setBattlesOpen(false);
           }}
           onDismiss={() => setBattlesOpen(false)}
+        />
+      ) : null}
+      {productionOpen && parsed ? (
+        <ProductionDialog
+          view={productionView(validated.production, (regionId) => regionById.get(regionId))}
+          onSelectHex={(regionId) => {
+            selectHex(regionId);
+            setProductionOpen(false);
+          }}
+          onDismiss={() => setProductionOpen(false)}
         />
       ) : null}
       {changesOpen && turnDiff ? (

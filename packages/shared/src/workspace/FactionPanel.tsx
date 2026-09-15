@@ -21,6 +21,7 @@ export function FactionPanel({
   attitudes,
   mergedFactionIds,
   renderFactionName,
+  onOpenProduction,
   onDismiss
 }: {
   factionName: string | null;
@@ -36,6 +37,8 @@ export function FactionPanel({
    * the report to draw the attitudes list.
    */
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
+  /** Opens the Production window (ah-nneu). Left off, no button is drawn. */
+  onOpenProduction?: () => void;
   onDismiss: () => void;
 }) {
   const rows = status ? allowanceRows(status) : [];
@@ -91,6 +94,16 @@ export function FactionPanel({
                 </div>
               ))}
             </div>
+            {onOpenProduction ? (
+              <button
+                type="button"
+                data-testid="faction-production"
+                onClick={onOpenProduction}
+                className="mt-1.5 rounded border border-brass bg-panel px-2 text-brass-bright hover:bg-panel-raised"
+              >
+                Production…
+              </button>
+            ) : null}
           </div>
         ) : null}
 

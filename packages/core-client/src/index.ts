@@ -55,6 +55,13 @@ export type { FormedSubject } from "./generated/FormedSubject";
 export type { SilverChange } from "./generated/SilverChange";
 export type { SilverChangeCause } from "./generated/SilverChangeCause";
 export type { UnitSilver } from "./generated/UnitSilver";
+export type { ProductionOverview } from "./generated/ProductionOverview";
+export type { RegionLimits } from "./generated/RegionLimits";
+export type { WorkedRegion } from "./generated/WorkedRegion";
+export type { SlotOrder } from "./generated/SlotOrder";
+export type { SlotOrderKind } from "./generated/SlotOrderKind";
+export type { WorkedTax } from "./generated/WorkedTax";
+export type { WorkedResource } from "./generated/WorkedResource";
 export type { NoStudyFee } from "./generated/NoStudyFee";
 export type { SilverDoubt } from "./generated/SilverDoubt";
 export type { ProductionCap } from "./generated/ProductionCap";
@@ -111,7 +118,9 @@ export {
   aStructure,
   aTradeRoute,
   aTradedGood,
-  aUnitSilver
+  aUnitSilver,
+  aWorkedRegion,
+  aProductionOverview
 } from "./builders";
 
 import type { Coordinate } from "./generated/Coordinate";
