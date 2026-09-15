@@ -6,12 +6,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ATTEMPTS,
   checkManifest,
+  checkServed,
   failureMessage,
   fetchStatus,
+  iconFailureMessage,
+  iconPaths,
+  iconSuccessNotice,
   isRetryable,
   MANIFEST_PATH,
   manifestUrl,
   RETRY_DELAY_MS,
+  siteUrl,
   successNotice,
   type Status
 } from "./manifestCheck";
@@ -157,12 +162,61 @@ describe("against a server that really throttles", () => {
   });
 });
 
+describe("the icons the manifest lists", () => {
+  it("takes every string src, without a leading slash", () => {
+    expect(
+      iconPaths('{"icons":[{"src":"app-icons/a.png"},{"src":"/app-icons/b.png"},{"sizes":"1x1"}]}')
+    ).toEqual(["app-icons/a.png", "app-icons/b.png"]);
+  });
+
+  it("lists nothing when the manifest has no icons", () => {
+    expect(iconPaths("{}")).toEqual([]);
+  });
+
+  it("throws on text that is not JSON", () => {
+    expect(() => iconPaths("not json")).toThrow();
+  });
+
+  it("builds an icon's URL under the site root", () => {
+    expect(siteUrl("https://example.test/", "app-icons/a.png")).toBe("https://example.test/app-icons/a.png");
+  });
+
+  it("asks for the URL it is given under the retry policy", async () => {
+    const fetcher = scriptedFetcher([429, 200]);
+    const sleeper = recordingSleeper();
+    const url = "https://example.test/app-icons/a.png";
+    expect(await checkServed(url, fetcher.fetch, sleeper.sleep)).toEqual({ ok: true, status: 200, attempts: 2 });
+    expect(fetcher.urls).toEqual([url, url]);
+  });
+
+  it("says which icon failed and why that matters", () => {
+    expect(iconFailureMessage("app-icons/a.png", { ok: false, status: 404, attempts: 1 })).toBe(
+      "The icon app-icons/a.png returned 404. Without it the service worker cannot install."
+    );
+    expect(iconFailureMessage("app-icons/a.png", { ok: false, status: 429, attempts: 4 })).toBe(
+      "The icon app-icons/a.png returned 429 on all 4 attempts. Without it the service worker cannot install."
+    );
+  });
+
+  it("notes an icon that recovered after a retry, and nothing else", () => {
+    expect(iconSuccessNotice("app-icons/a.png", { ok: true, status: 200, attempts: 2 })).toBe(
+      "The icon app-icons/a.png returned 200 on attempt 2."
+    );
+    expect(iconSuccessNotice("app-icons/a.png", { ok: true, status: 200, attempts: 1 })).toBeNull();
+    expect(iconSuccessNotice("app-icons/a.png", { ok: false, status: 404, attempts: 1 })).toBeNull();
+  });
+});
+
 describe("the deploy workflow", () => {
   const yaml = readFileSync(fileURLToPath(new URL("../.github/workflows/deploy.yml", import.meta.url)), "utf8");
 
   it("runs the manifest check rather than a single curl", () => {
     expect(yaml).toContain("pnpm exec tsx scripts/manifestCheck.ts");
     expect(yaml).not.toContain(`curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$site/manifest.webmanifest"`);
+  });
+
+  it("checks the icons of the manifest it just uploaded", () => {
+    expect(yaml).toContain('pnpm exec tsx scripts/manifestCheck.ts "$site" apps/web/dist/manifest.webmanifest');
   });
 
   it("leaves the page fetch and its wording alone", () => {

@@ -1,6 +1,9 @@
 import { execFile } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,9 +21,10 @@ const root = fileURLToPath(new URL("..", import.meta.url));
  * transform error and the deploy step would have failed on every release. This suite is what makes
  * that visible.
  */
-async function runCli(site: string): Promise<{ code: number; out: string }> {
+async function runCli(site: string, manifestFile?: string): Promise<{ code: number; out: string }> {
+  const args = ["exec", "tsx", script, site, ...(manifestFile === undefined ? [] : [manifestFile])];
   try {
-    const { stdout } = await run("pnpm", ["exec", "tsx", script, site], { cwd: root });
+    const { stdout } = await run("pnpm", args, { cwd: root });
     return { code: 0, out: stdout };
   } catch (error) {
     const failure = error as { code?: number; stdout?: string; stderr?: string };
@@ -31,10 +35,23 @@ async function runCli(site: string): Promise<{ code: number; out: string }> {
 describe("the manifest check as the workflow runs it", () => {
   let server: Server;
   let base: string;
+  let dir: string | undefined;
+
+  function manifestListing(...srcs: string[]): string {
+    dir = mkdtempSync(join(tmpdir(), "manifest-check-"));
+    const file = join(dir, "manifest.webmanifest");
+    writeFileSync(file, JSON.stringify({ icons: srcs.map((src) => ({ src })) }));
+    return file;
+  }
 
   async function start(throttled: number): Promise<void> {
     let seen = 0;
     server = createServer((request, response) => {
+      if (request.url === "/app-icons/a.png") {
+        response.writeHead(200, { "content-type": "image/png" });
+        response.end("png");
+        return;
+      }
       if (request.url !== `/${MANIFEST_PATH}`) {
         response.writeHead(404);
         response.end("not the manifest");
@@ -54,6 +71,8 @@ describe("the manifest check as the workflow runs it", () => {
   }
 
   afterEach(async () => {
+    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
     server.closeAllConnections();
     await new Promise<void>((done) => server.close(() => done()));
   });
@@ -78,6 +97,28 @@ describe("the manifest check as the workflow runs it", () => {
     const { code, out } = await runCli(`${base}/elsewhere`);
     expect(code).toBe(1);
     expect(out).toContain("::error::The manifest returned 404.");
+  });
+
+  it("exits 1 and names each icon the site does not serve", async () => {
+    await start(0);
+    const { code, out } = await runCli(base, manifestListing("app-icons/a.png", "app-icons/b.png"));
+    expect(code).toBe(1);
+    expect(out).toContain("::error::The icon app-icons/b.png returned 404.");
+    expect(out).not.toContain("app-icons/a.png returned");
+  });
+
+  it("exits 0 when every listed icon is served", async () => {
+    await start(0);
+    const { code, out } = await runCli(base, manifestListing("app-icons/a.png"));
+    expect(code).toBe(0);
+    expect(out).not.toContain("::error::");
+  });
+
+  it("reports an unreadable manifest file rather than crashing", async () => {
+    await start(0);
+    const { code, out } = await runCli(base, join(tmpdir(), "manifest-check-does-not-exist.webmanifest"));
+    expect(code).toBe(1);
+    expect(out).toContain("::error::The manifest check itself failed:");
   });
 
   it("refuses to run without a site root", async () => {
