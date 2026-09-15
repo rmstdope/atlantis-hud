@@ -949,7 +949,7 @@ pub fn read_order(
 /// a type other than MARTIAL or MAGIC, a type named twice, or a points value that is not a number
 /// reads as nothing.
 fn read_faction(arguments: &[Token]) -> Option<Intent> {
-    if arguments.is_empty() || arguments.len() % 2 != 0 {
+    if arguments.is_empty() || !arguments.len().is_multiple_of(2) {
         return None;
     }
     let (mut martial, mut magic) = (None, None);
