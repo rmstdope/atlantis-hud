@@ -53,12 +53,13 @@ export default defineConfig({
         orientation: "any",
         background_color: GROUND,
         theme_color: GROUND,
+        // Not "icons/": the host's Apache aliases /icons/ server-wide to its own folder, so anything published there answers 404 and the service worker's precache fails. scripts/publicDir.test.ts refuses the name.
         icons: [
-          { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: "app-icons/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "app-icons/icon-512.png", sizes: "512x512", type: "image/png" },
           // Padded, so Android's circular crop takes the padding rather than the artwork.
           {
-            src: "icons/icon-maskable-512.png",
+            src: "app-icons/icon-maskable-512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable"
