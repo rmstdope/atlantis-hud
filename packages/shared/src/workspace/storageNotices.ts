@@ -23,6 +23,8 @@ export type HeldNotice = {
 export type HeldAction =
   | { type: "blocked"; scope: StorageHeldScope; gameId: string | null; gameName: string | null }
   | { type: "retry-started" }
+  /** The attempt failed for a reason other than another tab: the button must work again. */
+  | { type: "retry-failed" }
   | { type: "opened"; scope: StorageHeldScope }
   | { type: "game-changed" };
 
@@ -41,6 +43,8 @@ export function heldNoticeReducer(state: HeldNotice | null, action: HeldAction):
       };
     case "retry-started":
       return state === null ? null : { ...state, retrying: true };
+    case "retry-failed":
+      return state === null ? null : { ...state, attempt: "still", retrying: false };
     case "opened":
       return state !== null && state.scope === action.scope ? null : state;
     case "game-changed":

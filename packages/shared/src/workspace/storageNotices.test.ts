@@ -44,6 +44,15 @@ describe("the held notice's state", () => {
     expect(state?.gameName).toBe("Asgard");
   });
 
+  it("can be pressed again after an attempt that failed for another reason", () => {
+    let state = heldNoticeReducer(null, blockedGame("g1", "Midgard"));
+    state = heldNoticeReducer(state, { type: "retry-started" });
+    state = heldNoticeReducer(state, { type: "retry-failed" });
+    expect(state?.retrying).toBe(false);
+    expect(state?.attempt).toBe("still");
+    expect(heldNoticeReducer(null, { type: "retry-failed" })).toBeNull();
+  });
+
   it("does nothing when trying again with no notice", () => {
     expect(heldNoticeReducer(null, { type: "retry-started" })).toBeNull();
   });

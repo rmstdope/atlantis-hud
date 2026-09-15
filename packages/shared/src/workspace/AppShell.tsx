@@ -128,15 +128,6 @@ import {
 } from "./storageNotices";
 import { StorageHeldNotice } from "./StorageHeldNotice";
 import { StorageStoppedNotice } from "./StorageStoppedNotice";
-
-/** The tab's sessionStorage, or null where a private window refuses it. */
-function sessionStorageOrNull(): Storage | null {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
 import {
   createGame as createGameAction,
   deleteGame as deleteGameAction,
@@ -456,6 +447,15 @@ type RulesetState =
  * bundle. Returns whatever undoes the registration.
  */
 export type RegisterBeforeQuit = (handler: () => Promise<void>) => () => void;
+
+/** The tab's sessionStorage, or null where a private window refuses it. */
+function sessionStorageOrNull(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 export function AppShell({
   client,
@@ -2914,6 +2914,8 @@ export function AppShell({
           });
           return;
         }
+        // A Try again that failed another way must leave its button usable, not stuck disabled.
+        dispatchHeld({ type: "retry-failed" });
         setStatus(failedStatus(`the last turn could not be restored: ${describeError(error)}`));
       })
       .finally(() => {
@@ -3139,6 +3141,7 @@ export function AppShell({
           if (isStorageHeldElsewhere(error)) {
             dispatchHeld({ type: "blocked", scope: error.scope, gameId: null, gameName: null });
           } else {
+            dispatchHeld({ type: "retry-failed" });
             setGameError(describeError(error));
           }
         }
