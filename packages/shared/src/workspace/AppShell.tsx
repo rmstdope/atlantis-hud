@@ -113,7 +113,21 @@ import {
   NO_STUDENTS,
   type ValidatedOrders
 } from "../orderEditor";
-import { openNewestGame, rulesetUrlFor } from "../gameSession";
+import { openStartupGame, rulesetUrlFor } from "../gameSession";
+import {
+  isStorageHeldElsewhere,
+  type StorageStopCause,
+  type StorageStopSource
+} from "@atlantis/core-client";
+import {
+  heldNoticeReducer,
+  heldNoticeWords,
+  rememberReopenGame,
+  stoppedNoticeWords,
+  takeReopenGame
+} from "./storageNotices";
+import { StorageHeldNotice } from "./StorageHeldNotice";
+import { StorageStoppedNotice } from "./StorageStoppedNotice";
 import {
   createGame as createGameAction,
   deleteGame as deleteGameAction,
@@ -434,6 +448,15 @@ type RulesetState =
  */
 export type RegisterBeforeQuit = (handler: () => Promise<void>) => () => void;
 
+/** The tab's sessionStorage, or null where a private window refuses it. */
+function sessionStorageOrNull(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function AppShell({
   client,
   platformLabel,
@@ -444,7 +467,8 @@ export function AppShell({
   uploadOrders,
   newAgeTransport,
   newAgeFromBrowser = false,
-  pbemTransport
+  pbemTransport,
+  storageStop
 }: {
   client: CoreClient;
   platformLabel: string;
@@ -495,6 +519,13 @@ export function AppShell({
    * the reply. Its absence is the whole of what hides the Fetch button there on a New Origins game.
    */
   pbemTransport?: HttpTransport;
+  /**
+   * What tells this tab another tab has asked it to let go of its storage.
+   *
+   * Injected for the same reason `appUpdate` is: the web shell passes its browser store; the desktop
+   * shell passes nothing, since a Tauri store is never asked to let go.
+   */
+  storageStop?: StorageStopSource;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // The report currently on screen, readable at async resolve time. The restore effect below
@@ -589,6 +620,9 @@ export function AppShell({
   );
   const [status, setStatus] = useState<StatusLine | null>(null);
   const [busy, setBusy] = useState(false);
+  // Another tab holding data this one needs (ah-2jb3), and this tab having let go for another.
+  const [heldNotice, dispatchHeld] = useReducer(heldNoticeReducer, null);
+  const [stopped, setStopped] = useState<StorageStopCause | null>(null);
   const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS });
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text, which keeps the call stateless: there is no session to
@@ -2810,6 +2844,10 @@ export function AppShell({
 
     void restoreLatestTurn(client, game, reportParser(client, ruleset), rulesetText)
       .then((restored) => {
+        // Before the empty-game return: a game with no turn in it has still opened.
+        if (!cancelled) {
+          dispatchHeld({ type: "opened", scope: "game" });
+        }
         if (cancelled || !restored) {
           return;
         }
@@ -2864,9 +2902,21 @@ export function AppShell({
       .catch((error: unknown) => {
         // A game whose stored turn will not come back must say so. Silence here is exactly the
         // empty workspace this issue is about, only now with a reason nobody can see.
-        if (!cancelled) {
-          setStatus(failedStatus(`the last turn could not be restored: ${describeError(error)}`));
+        if (cancelled) {
+          return;
         }
+        if (isStorageHeldElsewhere(error)) {
+          dispatchHeld({
+            type: "blocked",
+            scope: error.scope,
+            gameId: game.manifest.metadata.gameId,
+            gameName: game.manifest.metadata.gameName
+          });
+          return;
+        }
+        // A Try again that failed another way must leave its button usable, not stuck disabled.
+        dispatchHeld({ type: "retry-failed" });
+        setStatus(failedStatus(`the last turn could not be restored: ${describeError(error)}`));
       })
       .finally(() => {
         if (!cancelled) {
@@ -2899,6 +2949,7 @@ export function AppShell({
       setRawReport("");
       writeOrdersDocument("external", "");
       setStatus(null);
+      dispatchHeld({ type: "game-changed" });
       setSave({ kind: "clean" });
       setRoute(null);
       clearPlan();
@@ -2941,16 +2992,51 @@ export function AppShell({
     []
   );
 
+  /** True, having raised the notice, when `error` is another tab holding the saved-games list. */
+  const heldGamesList = (error: unknown) => {
+    if (isStorageHeldElsewhere(error) && error.scope === "games-list") {
+      dispatchHeld({ type: "blocked", scope: "games-list", gameId: null, gameName: null });
+      return true;
+    }
+    return false;
+  };
+
+  /** This tab has been asked to let go: save what is typed, then stop. */
+  useEffect(
+    () =>
+      storageStop?.onStop(async (cause) => {
+        await flush();
+        setStopped(cause);
+      }),
+    [storageStop, flush]
+  );
+
+  /** Reload names the game first, so the tab comes back on it rather than on the newest game. */
+  const reloadStopped = useCallback(() => {
+    const gameId = game?.manifest.metadata.gameId;
+    if (gameId) {
+      rememberReopenGame(sessionStorageOrNull(), gameId);
+    }
+    window.location.reload();
+  }, [game]);
+
   const openGameById = useCallback(
     (gameId: string) =>
       runGameAction(async () => {
-        // Before the workspace lets go of the old game. `enterGame` wipes the document, and
-        // whatever was in it belongs to a game the player is walking away from.
-        await flush();
-        const outcome = await openGameAction(client, gameId, new Date().toISOString());
-        enterGame(outcome.opened);
-        setGames(outcome.games);
-        closePopover("games");
+        try {
+          // Before the workspace lets go of the old game. `enterGame` wipes the document, and
+          // whatever was in it belongs to a game the player is walking away from.
+          await flush();
+          const outcome = await openGameAction(client, gameId, new Date().toISOString());
+          enterGame(outcome.opened);
+          setGames(outcome.games);
+          closePopover("games");
+        } catch (error: unknown) {
+          if (heldGamesList(error)) {
+            return;
+          }
+          throw error;
+        }
       }),
     [client, closePopover, enterGame, flush, runGameAction]
   );
@@ -3008,12 +3094,19 @@ export function AppShell({
   const createGame = useCallback(
     (name: string, rulesetId: string, map?: MapShape) =>
       runGameAction(async () => {
-        await flush();
-        const now = new Date().toISOString();
-        const outcome = await createGameAction(client, name, rulesetId, now, map);
-        enterGame(outcome.opened);
-        setGames(outcome.games);
-        closePopover("games");
+        try {
+          await flush();
+          const now = new Date().toISOString();
+          const outcome = await createGameAction(client, name, rulesetId, now, map);
+          enterGame(outcome.opened);
+          setGames(outcome.games);
+          closePopover("games");
+        } catch (error: unknown) {
+          if (heldGamesList(error)) {
+            return;
+          }
+          throw error;
+        }
       }),
     [client, closePopover, enterGame, flush, runGameAction]
   );
@@ -3025,31 +3118,63 @@ export function AppShell({
   // Through `enterGame` like every other way into a game, so the workspace store learns which game
   // is open here too. Setting the local state alone left the store saying `null` while the app
   // displayed a game, and the next panel to read it would have believed the store.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
+  //
+  // A tab that stopped for another tab names its game before reloading, and that game is preferred
+  // over the newest. The same sequence is what Try again re-runs when the saved-games list was held.
+  const startup = useCallback(
+    async (isCancelled: () => boolean) => {
       try {
-        const opened = await openNewestGame(client, new Date().toISOString());
-        if (!cancelled && opened) {
+        const opened = await openStartupGame(
+          client,
+          new Date().toISOString(),
+          takeReopenGame(sessionStorageOrNull())
+        );
+        if (!isCancelled() && opened) {
           enterGame(opened);
         }
-        if (!cancelled) {
+        if (!isCancelled()) {
           setGames(await client.listGames());
+          dispatchHeld({ type: "opened", scope: "games-list" });
         }
       } catch (error: unknown) {
-        if (!cancelled) {
-          setGameError(describeError(error));
+        if (!isCancelled()) {
+          if (isStorageHeldElsewhere(error)) {
+            dispatchHeld({ type: "blocked", scope: error.scope, gameId: null, gameName: null });
+          } else {
+            dispatchHeld({ type: "retry-failed" });
+            setGameError(describeError(error));
+          }
         }
       } finally {
-        if (!cancelled) {
+        if (!isCancelled()) {
           setGamesLoaded(true);
         }
       }
-    })();
+    },
+    [client, enterGame]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void startup(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [client, enterGame]);
+  }, [startup]);
+
+  /** Tries the held data once more, the same way a normal open reaches it. */
+  const tryAgain = useCallback(() => {
+    if (heldNotice === null) {
+      return;
+    }
+    dispatchHeld({ type: "retry-started" });
+    if (heldNotice.scope === "game") {
+      // Re-runs the restore and every per-game loader keyed on the epoch: exactly a normal open.
+      setGameEpoch((epoch) => epoch + 1);
+    } else {
+      void startup(() => false);
+    }
+  }, [heldNotice, startup]);
 
   /**
    * Deletes a game and lands the player somewhere.
@@ -3874,6 +3999,10 @@ export function AppShell({
    * the session. Retrying is one UPSERT; the panel keeps showing the reason until one lands.
    */
   useEffect(() => {
+    // A tab that let go has a closed store: retrying it every five seconds would only fail.
+    if (stopped !== null) {
+      return undefined;
+    }
     if (save.kind !== "dirty" && save.kind !== "failed") {
       return undefined;
     }
@@ -3897,7 +4026,7 @@ export function AppShell({
     // `ordersDocument` is what re-arms the idle timer: every edit replaces the document, and
     // `save.kind` alone stays "dirty" across all of them. `save` rather than `save.kind` so a
     // second failure re-arms rather than looking like the same state to the dependency check.
-  }, [save, ordersDocument, flush, writer]);
+  }, [save, ordersDocument, flush, writer, stopped]);
 
   /**
    * Saving on the way out.
@@ -5070,22 +5199,37 @@ export function AppShell({
   if (!game) {
     return (
       <>
-      <GameGate
-        busy={busy}
-        error={gameError}
-        onCreate={(name, rulesetId, map) => void createGame(name, rulesetId, map)}
-        onImport={(file) => void importGameBackup(file)}
-        settingsOpen={settingsOpen}
-        onToggleSettings={() => setSettingsOpen((open) => !open)}
-        settings={settingsPanel}
-      />
-      {keyboardPanels}
+      <div className="contents" inert={stopped !== null}>
+        <GameGate
+          busy={busy}
+          unavailable={heldNotice?.scope === "games-list"}
+          error={gameError}
+          onCreate={(name, rulesetId, map) => void createGame(name, rulesetId, map)}
+          onImport={(file) => void importGameBackup(file)}
+          settingsOpen={settingsOpen}
+          onToggleSettings={() => setSettingsOpen((open) => !open)}
+          settings={settingsPanel}
+        />
+        {keyboardPanels}
+      </div>
+      {heldNotice ? (
+        <StorageHeldNotice
+          placement="screen"
+          words={heldNoticeWords(heldNotice)}
+          retrying={heldNotice.retrying}
+          onTryAgain={tryAgain}
+        />
+      ) : null}
+      {stopped ? (
+        <StorageStoppedNotice words={stoppedNoticeWords(stopped)} onReload={reloadStopped} />
+      ) : null}
     </>
     );
   }
 
   return (
-    <div className="flex h-full flex-col bg-ground text-ink">
+    <>
+    <div className="flex h-full flex-col bg-ground text-ink" inert={stopped !== null}>
       <AppHeader
         gameName={game.manifest.metadata.gameName}
         levels={model.levels}
@@ -5100,7 +5244,7 @@ export function AppShell({
           <GamePicker
             games={games}
             currentGameId={game.manifest.metadata.gameId}
-            busy={busy}
+            busy={busy || heldNotice?.scope === "games-list"}
             error={gameError}
             onOpen={(gameId) => void openGameById(gameId)}
             onCreate={(name, rulesetId, map) => void createGame(name, rulesetId, map)}
@@ -5240,6 +5384,7 @@ export function AppShell({
         changesOpen={changesOpen}
         onToggleChanges={() => setChangesOpen((open) => !open)}
         busy={busy}
+        importDisabled={heldNotice !== null}
         onImportReports={(files) => void importReports(files)}
         progress={importProgress}
         onExportOrders={exportOrders}
@@ -5690,6 +5835,14 @@ export function AppShell({
             />
           </div>
         </div>
+        {heldNotice ? (
+          <StorageHeldNotice
+            placement="workspace"
+            words={heldNoticeWords(heldNotice)}
+            retrying={heldNotice.retrying}
+            onTryAgain={tryAgain}
+          />
+        ) : null}
       </div>
       {dossier?.from === "units" && openDossier ? (
         <FloatingFactionDossier at={dossier.at} dossier={openDossier} {...dossierProps} />
@@ -5839,6 +5992,10 @@ export function AppShell({
       ) : null}
       {keyboardPanels}
     </div>
+    {stopped ? (
+      <StorageStoppedNotice words={stoppedNoticeWords(stopped)} onReload={reloadStopped} />
+    ) : null}
+    </>
   );
 }
 

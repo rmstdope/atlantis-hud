@@ -586,6 +586,15 @@ export {
   type MovementOrderCommand
 } from "./coreVocabulary.generated";
 
+export {
+  StorageHeldElsewhereError,
+  isStorageHeldElsewhere,
+  type StorageHeldScope,
+  type StorageStopCause,
+  type StorageStopListener,
+  type StorageStopSource
+} from "./storageContention";
+
 export type OrderDraftKey = {
   gameId: string;
   factionId: string;

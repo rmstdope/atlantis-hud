@@ -1,4 +1,4 @@
-import type { CoreClient } from "@atlantis/core-client";
+import type { CoreClient, StorageStopSource } from "@atlantis/core-client";
 import { AppShell, browserHttpTransport, browserTextFileSaver } from "@atlantis/shared";
 import { useWebAppUpdate } from "./useWebAppUpdate";
 
@@ -11,10 +11,17 @@ import { useWebAppUpdate } from "./useWebAppUpdate";
  * on a server that can be newer than the copy that is running - and the browser's own `fetch` as
  * the way to reach a New Age world.
  */
-export default function App({ client }: { client: CoreClient }) {
+export default function App({
+  client,
+  storageStop
+}: {
+  client: CoreClient;
+  storageStop: StorageStopSource;
+}) {
   return (
     <AppShell
       client={client}
+      storageStop={storageStop}
       platformLabel="web"
       appUpdate={useWebAppUpdate()}
       saveTextFile={browserTextFileSaver}

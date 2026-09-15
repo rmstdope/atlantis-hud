@@ -6,6 +6,7 @@ import {
   newGameManifest,
   newestGame,
   openNewestGame,
+  openStartupGame,
   rulesetUrlFor
 } from "./gameSession";
 
@@ -147,5 +148,41 @@ describe("opening the newest game on startup", () => {
 
     expect(await openNewestGame(client, NOW)).toBeNull();
     expect(client.openGame).not.toHaveBeenCalled();
+  });
+});
+
+describe("opening the startup game", () => {
+  const clientWith = (games: GameManifest[]) => {
+    const openGame = vi.fn().mockResolvedValue({ databasePath: "db" });
+    const client = {
+      listGames: vi.fn().mockResolvedValue(games),
+      openGame
+    } as unknown as Parameters<typeof openStartupGame>[0];
+    return { client, openGame };
+  };
+  const two = () => [game("older", "2026-08-01T09:00:00Z"), game("newest", "2026-08-09T18:00:00Z")];
+
+  it("opens the preferred game even when another is newer", async () => {
+    const { client, openGame } = clientWith(two());
+    expect(await openStartupGame(client, NOW, "older")).toEqual({ databasePath: "db" });
+    expect(openGame).toHaveBeenCalledWith("older", NOW);
+  });
+
+  it("falls back to the newest when the preferred game is not listed", async () => {
+    const { client, openGame } = clientWith(two());
+    await openStartupGame(client, NOW, "gone");
+    expect(openGame).toHaveBeenCalledWith("newest", NOW);
+  });
+
+  it("opens the newest when nothing is preferred", async () => {
+    const { client, openGame } = clientWith(two());
+    await openStartupGame(client, NOW, null);
+    expect(openGame).toHaveBeenCalledWith("newest", NOW);
+  });
+
+  it("opens nothing when there are no games", async () => {
+    const { client, openGame } = clientWith([]);
+    expect(await openStartupGame(client, NOW, "older")).toBeNull();
+    expect(openGame).not.toHaveBeenCalled();
   });
 });

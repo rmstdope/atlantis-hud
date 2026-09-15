@@ -114,3 +114,24 @@ export async function openNewestGame(
   }
   return client.openGame(newest.metadata.gameId, now);
 }
+
+/**
+ * Startup's choice: `preferredGameId` when it names a listed game, otherwise the newest.
+ *
+ * A tab that stopped for another tab names its game before reloading, because the newest game may
+ * by then be the one the other tab opened.
+ */
+export async function openStartupGame(
+  client: CoreClient,
+  now: string,
+  preferredGameId: string | null
+): Promise<OpenedGame | null> {
+  const games = await client.listGames();
+  const chosen =
+    games.find((game) => preferredGameId !== null && game.metadata.gameId === preferredGameId) ??
+    newestGame(games);
+  if (chosen === null) {
+    return null;
+  }
+  return client.openGame(chosen.metadata.gameId, now);
+}

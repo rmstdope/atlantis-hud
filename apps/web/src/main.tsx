@@ -6,7 +6,12 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import type { PersistenceOutcome } from "@atlantis/browser-core";
-import { createWebCoreAdapter, loadCoreWasm, requestPersistentStorage } from "@atlantis/browser-core";
+import {
+  createWebCoreAdapter,
+  createWebStore,
+  loadCoreWasm,
+  requestPersistentStorage
+} from "@atlantis/browser-core";
 
 // Before React mounts, so a light-theme user never sees a dark flash.
 applyPersistedSettings();
@@ -35,10 +40,13 @@ void requestPersistentStorage().then((outcome) => {
 // after the await keeps every panel free of a "core not ready yet" state.
 loadCoreWasm()
   .then((wasm) => {
-    const client = createCoreClient(createWebCoreAdapter(wasm));
+    // Kept in hand as well as given to the core: the shell needs to hear when another tab asks this
+    // one to let go of the storage.
+    const store = createWebStore();
+    const client = createCoreClient(createWebCoreAdapter(wasm, store));
     root.render(
       <StrictMode>
-        <App client={client} />
+        <App client={client} storageStop={store} />
       </StrictMode>
     );
   })

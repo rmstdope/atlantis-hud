@@ -382,3 +382,16 @@ describe("the per-game collections", () => {
     );
   });
 });
+
+describe("letting go of storage", () => {
+  it("a memory store is never asked to let go, so its listeners never run", () => {
+    const store = createMemoryWebStore();
+    let called = false;
+    const unsubscribe = store.onStop(() => {
+      called = true;
+    });
+    expect(typeof unsubscribe).toBe("function");
+    expect(() => unsubscribe()).not.toThrow();
+    expect(called).toBe(false);
+  });
+});

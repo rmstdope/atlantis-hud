@@ -36,6 +36,7 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       changesOpen={false}
       onToggleChanges={() => {}}
       busy={false}
+      importDisabled={false}
       onImportReports={() => {}}
       progress={null}
       onExportOrders={() => {}}
