@@ -21,7 +21,7 @@ svg{width:100%;height:auto;display:block}
 .menu span::before{content:"☑ ";color:var(--own)}
 </style></head><body><main>
 <h1>Your unit was turned back here — <span>as agreed (ah-vq8z)</span></h1>
-<p class="lead">The hex is ringed and hatched in red and labelled with the guard's <b>unit number</b>, because the report never gives a faction. A ship stopped by guards gets the same mark. The mark belongs to the turn it happened in.</p>
+<p class="lead">The hex is ringed and hatched in red and labelled with the guard's <b>unit number</b>, because the report never gives a faction. A ship stopped by guards gets the same mark, but the report never says who stopped a ship, so its hex is labelled with the word <b>guards</b> instead. The mark belongs to the turn it happened in.</p>
 
 <h2>1 · On the map <small>the guard's unit number, bare; zoomed out, the ring stays and the label goes</small></h2>
 <div class="cards" id="q1"></div>
@@ -29,14 +29,17 @@ svg{width:100%;height:auto;display:block}
 <h2>2 · More than one guard at one hex <small>the first, then +n</small></h2>
 <div class="cards" id="q2"></div>
 
+<h2>2b · A stopped ship <small>no guard is named, so the label says “guards”; beside a named guard it is not counted in “+n”</small></h2>
+<div class="cards" id="q2b"></div>
+
 <h2>3 · What the Region panel says when you select the hex <small>the map label is short, so the panel gives the full story</small></h2>
 <div class="cards">
  <div class="card"><h3>Heading “Blocked”, one sentence per guard</h3>
   <div class="rp"><div class="hd">swamp (36,50) in Pangmore</div>
    <div class="sec red">Blocked</div>
-   <ul><li>Unit (7235) kept out Scout (3744) and Drone (9616).</li><li>Unit (1353) stopped Ship [235].</li></ul>
+   <ul><li>Unit (7235) kept out Scout (3744) and Drone (9616).</li><li>Guards stopped Ship [235].</li></ul>
    <div class="sec">Products</div><div class="n">…</div></div>
-  <p>Above Products. Walkers are “kept out”, ships are “stopped”. Lines wrap in a narrow panel. The section is absent when nothing was blocked.</p></div>
+  <p>Above Products. Walkers are “kept out” by a named guard. Ships are “stopped” by guards the report does not name, after the guard sentences; several ships share one sentence (“Guards stopped Ship [235] and Ship [240].”). Lines wrap in a narrow panel. The section is absent when nothing was blocked.</p></div>
 </div>
 
 <h2>4 · Can you switch it off? <small>the map's Badges menu</small></h2>
@@ -60,4 +63,7 @@ const card=(k,t,svg,p)=>`<div class="card"><h3><em>${k}</em>${t}</h3>${svg}<p>${
 document.getElementById("q1").innerHTML=card("","Middle and near zoom",map([{c:2,r:1,t:"7235"}]),"Label at the foot of the hex.")+card("","Far zoom",map([{c:2,r:1,t:""}]),"No label at this distance, like every other map label.");
 document.getElementById("q2").innerHTML=
  card("","The first, then “+n”",map([{c:2,r:1,t:"7235 +1"},{c:3,r:0,t:"6082 +2"}]),"Always one line. The rest are in the Region panel.");
+document.getElementById("q2b").innerHTML=
+ card("","Only a ship stopped here",map([{c:2,r:1,t:"guards"}]),"The report does not name who stopped a ship.")+
+ card("","A ship and a named guard",map([{c:2,r:1,t:"7235"}]),"The ship does not count towards “+n”; the Region panel lists it.");
 </script></body></html>
