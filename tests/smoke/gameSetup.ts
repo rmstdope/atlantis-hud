@@ -32,18 +32,14 @@ import { readReport } from "@atlantis/fixtures";
  * behaviour a player gets.
  */
 export async function clearGames(page: Page) {
-  // A static file on the origin rather than the app. Storage is per origin, not per document, so
-  // the preference and the deletion below land in the same place either way - but a document
-  // that is the app boots it, against exactly the storage this is about to wipe, and then needs a
-  // second boot to see it gone. This document boots nothing and holds no database open, so the
-  // deletions are never blocked by the app's own handles. The app then loads once, at the end,
-  // against a clean slate: one boot per walk where there were two.
-  //
-  // The ruleset and not the favicon: a walk that has `page.route` armed (persistence.spec.ts's
-  // slow-ruleset walk) puts every request through Chromium's interception, and a top-level
-  // navigation to an image then ends as an aborted download. JSON is shown as text and survives.
-  // Every path that names no file falls back to the app, so it has to be a real file.
-  await page.goto("/ruleset.json");
+  // The app's own document, and a reload at the end, rather than a static document on the origin
+  // and a single load. That was tried (2026-09-16): storage is per origin, so wiping it from the
+  // ruleset file's document works, and it spares every walk a second boot - but in an interleaved
+  // A/B against this version it ran two to three times slower and hung three walks in two hundred
+  // where this hung one. The likely mechanism is the back-forward cache keeping the app's document,
+  // and its database connections, alive across the navigation, so the deletions stay blocked and
+  // the next boot waits on them. Not worth a boot.
+  await page.goto("/");
   await page.evaluate(() => {
     const stored = localStorage.getItem("atlantis-hud-settings");
     const blob = stored ? (JSON.parse(stored) as { state?: Record<string, unknown> }) : {};
@@ -73,7 +69,7 @@ export async function clearGames(page: Page) {
       )
     );
   });
-  await page.goto("/");
+  await page.reload();
 }
 
 /**
