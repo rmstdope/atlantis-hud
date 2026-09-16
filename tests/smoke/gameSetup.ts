@@ -32,6 +32,13 @@ import { readReport } from "@atlantis/fixtures";
  * behaviour a player gets.
  */
 export async function clearGames(page: Page) {
+  // The app's own document, and a reload at the end, rather than a static document on the origin
+  // and a single load. That was tried (2026-09-16): storage is per origin, so wiping it from the
+  // ruleset file's document works, and it spares every walk a second boot - but in an interleaved
+  // A/B against this version it ran two to three times slower and hung three walks in two hundred
+  // where this hung one. The likely mechanism is the back-forward cache keeping the app's document,
+  // and its database connections, alive across the navigation, so the deletions stay blocked and
+  // the next boot waits on them. Not worth a boot.
   await page.goto("/");
   await page.evaluate(() => {
     const stored = localStorage.getItem("atlantis-hud-settings");
@@ -264,6 +271,24 @@ export async function ordersText(page: Page): Promise<string> {
 /** Asserts on the draft, polling because edits land through CodeMirror asynchronously. */
 export async function expectOrders(page: Page, pattern: RegExp) {
   await expect.poll(() => ordersText(page)).toMatch(pattern);
+}
+
+/**
+ * Writes the draft now, rather than waiting out the autosave's five-second idle.
+ *
+ * Fires the app's own `pagehide` hook - the path a closing tab takes - so the write is the real
+ * one, then waits for the panel to say it landed. Waits for "unsaved changes" first: the editor
+ * hands its text to the store asynchronously, and a flush fired before that lands writes the
+ * previous draft and leaves the new one owed. About twenty walks used to wait the idle out at five
+ * seconds apiece, a fifth of the suite's serial time; the one walk about the idle timer itself
+ * (`persistence.spec.ts`, "orders typed into a game are still there after a reload") still does,
+ * on purpose. Every other walk only needs the draft on disk.
+ */
+export async function saveNow(page: Page) {
+  const status = page.getByTestId("orders-status");
+  await expect(status).toContainText("unsaved changes");
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  await expect(status).toContainText(/saved \d/u);
 }
 
 /** The negative twin of `expectOrders`, for "this text must not be in the draft". */

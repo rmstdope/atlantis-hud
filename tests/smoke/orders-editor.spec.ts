@@ -9,6 +9,7 @@ import {
   loadReport,
   ordersInput,
   ordersText,
+  saveNow,
   selectHex,
   selectUnit
 } from "./gameSetup";
@@ -575,7 +576,7 @@ test("orders written before the setting was on are tidied on the first unit open
   await openEditor(page);
   await fillOrders(page, "move n\nstudy combat");
   // The reload proves nothing until the draft has actually been written.
-  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+  await saveNow(page);
 
   // The setting is turned on for the *next* load only, in the persisted store rather than through
   // the dialog: ticking it here would tidy the mounted editor at once and the reload would then

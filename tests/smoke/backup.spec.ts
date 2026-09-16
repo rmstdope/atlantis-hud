@@ -7,6 +7,7 @@ import {
   fillOrders,
   importReport,
   openOrders,
+  saveNow,
   selectHex
 } from "./gameSetup";
 
@@ -89,7 +90,7 @@ test("a game backup restores turns, orders and remembered map after storage is c
 
   await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work\n@study combat");
-  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+  await saveNow(page);
 
   const originalGame = await gameIdentityFor(page, "Backup game");
   expect(originalGame).not.toBeNull();
@@ -137,7 +138,7 @@ async function toImportCollision(page: Page, testInfo: { outputPath: (name: stri
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
   await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work");
-  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+  await saveNow(page);
 
   await page.getByTestId("game-indicator").click();
   await page.getByTestId("game-picker-tab-settings").click();
@@ -149,7 +150,7 @@ async function toImportCollision(page: Page, testInfo: { outputPath: (name: stri
 
   // Without clearing: the backup still names the game that is still here.
   await fillOrders(page, "@study combat");
-  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+  await saveNow(page);
 
   await page.getByTestId("game-indicator").click();
   await page.getByTestId("game-picker-tab-settings").click();
