@@ -298,4 +298,7 @@
   --map-border-ink: var(--bt-ink);
   --map-wall-ink: var(--bt-ink);
   --map-mark-ground: var(--bt-halo);
+  --map-blocked-ink: #d04b43;
+  --map-blocked-label-ink: #2a0000;
+  --map-blocked-label-halo: var(--bt-halo);
 }

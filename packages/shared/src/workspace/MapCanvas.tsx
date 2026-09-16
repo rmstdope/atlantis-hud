@@ -72,6 +72,8 @@ import {
   type TextureStyle
 } from "./mapThemes/hexView";
 import type { BattleInvolvement } from "./battles";
+import type { BlockedHex } from "./blockedHexes";
+import { BlockedHatchPattern, BlockedLabels, BlockedRings } from "./mapThemes/blockedLayer";
 import type { MapTheme } from "./mapThemes/mapTheme";
 import { DEFAULT_WATER, type WaterTerrains } from "./mapThemes/terrain";
 import {
@@ -339,6 +341,11 @@ type MapCanvasProps = {
    */
   battles?: ReadonlyMap<string, BattleInvolvement>;
   /**
+   * Where guards stopped a move this turn, from `blockedHexes` (ah-vq8z). Like `battles`, a hex the
+   * map has no data for carries no mark.
+   */
+  blocked?: ReadonlyMap<string, BlockedHex>;
+  /**
    * How to draw a hex. Everything theme-specific lives behind this: the map itself knows about
    * geometry, interaction and the route overlay, and nothing about parchment or bevels.
    */
@@ -463,6 +470,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     model,
     notes = [],
     battles,
+    blocked,
     theme,
     level,
     selectedRegionId,
@@ -544,6 +552,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       water,
       badges,
       battles,
+      blocked,
       fogDamping: theme.fogDamping
     }),
     [
@@ -553,6 +562,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       water,
       badges,
       battles,
+      blocked,
       theme.fogDamping
     ]
   );
@@ -1321,6 +1331,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
         onContextMenu={onContextMenu}
       >
         <defs>
+          <BlockedHatchPattern />
           <pattern
             ref={fogRef}
             id="fog-lattice"
@@ -1552,7 +1563,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             </g>
           )}
 
+          {/* Under the theme's marks so counts stay readable; the label over them so none covers it. */}
+          <BlockedRings views={allViews} />
           <theme.MarkLayer views={allViews} />
+          <BlockedLabels views={allViews} />
 
           {/*
             A hovered trade route, as a straight line between its two hexes - the shape of the

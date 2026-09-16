@@ -63,6 +63,7 @@ const BARE: Partial<HexView> = {
   shafts: 0,
   lairs: 0,
   battle: null,
+  blocked: null,
   gate: false
 };
 

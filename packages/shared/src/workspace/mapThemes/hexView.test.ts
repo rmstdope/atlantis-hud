@@ -290,6 +290,7 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
       "foreignUnits",
       "monsters",
       "guard",
+      "blocked",
       "battles",
       "ships",
       "buildings",
@@ -678,6 +679,33 @@ describe("the battle fought in a hex last turn", () => {
 
     expect(view.battle).toBeNull();
     expect(view.shafts).toBe(1);
+  });
+});
+
+describe("a hex guards stopped a move into", () => {
+  it("labels the Blocked badge Blocked", () => {
+    expect(BADGES.find((b) => b.name === "blocked")?.label).toBe("Blocked");
+  });
+
+  it("carries a blocked hex's label", () => {
+    const view = viewOf(hex({ knowledge: "current", regionId: "1:7,53" }), {
+      blocked: new Map([["1:7,53", { regionId: "1:7,53", label: "7235 +1", sentences: [] }]])
+    });
+
+    expect(view.blocked).toBe("7235 +1");
+  });
+
+  it("draws no blocked mark with the badge off", () => {
+    const view = viewOf(hex({ knowledge: "current", regionId: "1:7,53" }), {
+      blocked: new Map([["1:7,53", { regionId: "1:7,53", label: "7235 +1", sentences: [] }]]),
+      badges: { blocked: false }
+    });
+
+    expect(view.blocked).toBeNull();
+  });
+
+  it("draws no blocked mark where the report had none", () => {
+    expect(viewOf(hex({ knowledge: "current", regionId: "1:7,53" })).blocked).toBeNull();
   });
 });
 

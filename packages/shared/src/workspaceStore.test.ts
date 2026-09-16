@@ -465,6 +465,12 @@ describe("panels and layers", () => {
     expect(badgesFromStorage({ settlements: false }).regions).toBe(true);
   });
 
+  it("turns the Blocked badge on for a record stored before it existed", () => {
+    const restored = badgesFromStorage({ guard: false });
+    expect(restored.blocked).toBe(true);
+    expect(restored.guard).toBe(false);
+  });
+
   it("ignores a badge name from outside the set", () => {
     expect(badgesFromStorage({ dragons: true } as Record<string, boolean>)).not.toHaveProperty(
       "dragons"

@@ -17,6 +17,7 @@
 import type { ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 import type { BattleInvolvement } from "../battles";
+import type { BlockedHex } from "../blockedHexes";
 import { worldOf } from "../mapViewport";
 import {
   hexPaint,
@@ -159,6 +160,11 @@ export type HexView = {
    * when the report only gave them sight of it, `null` when there was none or the badge is off.
    */
   battle: BattleMark;
+  /**
+   * The label of the mark guards stopping a move into this hex leaves (ah-vq8z): `7235`,
+   * `7235 +1` or `guards`. Null when nothing was stopped here or the badge is off.
+   */
+  blocked: string | null;
   /** Whether the hex holds a gateway, the magical passage between levels. */
   gate: boolean;
 };
@@ -180,6 +186,7 @@ export type BadgeName =
   | "foreignUnits"
   | "monsters"
   | "guard"
+  | "blocked"
   | "battles"
   | "ships"
   | "buildings"
@@ -197,6 +204,7 @@ export const BADGES: ReadonlyArray<{ name: BadgeName; label: string }> = [
   { name: "foreignUnits", label: "Foreign units" },
   { name: "monsters", label: "Monsters" },
   { name: "guard", label: "Guard" },
+  { name: "blocked", label: "Blocked" },
   { name: "battles", label: "Battles" },
   { name: "ships", label: "Ships" },
   { name: "buildings", label: "Buildings" },
@@ -252,6 +260,11 @@ export type HexViewOptions = {
    * Absent means no battle data reached this call - a tool or a test - and no hex gets a mark.
    */
   battles?: ReadonlyMap<string, BattleInvolvement>;
+  /**
+   * Where guards stopped a move this turn, from `blockedHexes`, keyed by `HexNode.regionId`.
+   * Absent means no such data reached this call - a tool or a test - and no hex gets a mark.
+   */
+  blocked?: ReadonlyMap<string, BlockedHex>;
   /** The theme's `MapTheme.fogDamping`; 1 when absent, so a caller not drawing through a theme
    * (tests, tools) gets the shared fade whole. */
   fogDamping?: number;
@@ -508,6 +521,7 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     shafts: badges.shafts ? structures.shafts : 0,
     lairs: badges.lairs ? structures.lairs : 0,
     battle: badges.battles ? (options.battles?.get(hex.regionId) ?? null) : null,
+    blocked: badges.blocked ? (options.blocked?.get(hex.regionId)?.label ?? null) : null,
     gate: badges.gate && structures.gates > 0
   };
 }
