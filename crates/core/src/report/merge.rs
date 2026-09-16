@@ -440,6 +440,7 @@ mod tests {
             },
             regions,
             battles: Vec::new(),
+            blocked_moves: Vec::new(),
             orders_template: None,
             unreadable_lines: Vec::new(),
         }

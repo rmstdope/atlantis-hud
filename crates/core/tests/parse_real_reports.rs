@@ -11,6 +11,8 @@ const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 /// with. Hand-written rather than captured, because no second real report of this turn exists.
 const ALLY_TURN_71: &str = atlantis_hud_fixtures::G8_F73_T71.text;
 /// Faction 95's turn 70, so loading an older report of one's *own* faction can still be tested.
+/// Faction 21's turn 24, whose events carry five moves guards blocked.
+const G5_F21_T24: &str = atlantis_hud_fixtures::G5_F21_T24.text;
 const TURN_70: &str = atlantis_hud_fixtures::G7_F95_T70.text;
 /// A fresh faction's very first turn: no history, nothing to merge into.
 const FIRST_TURN: &str = atlantis_hud_fixtures::G2_F42_T0.text;
@@ -656,4 +658,34 @@ fn no_committed_report_repeats_a_unit_number_within_a_region() {
             report.name, refused
         );
     }
+}
+
+#[test]
+fn turn_24_reads_the_moves_guards_blocked() {
+    let parsed = parse_regions(G5_F21_T24);
+    let moves: Vec<(&str, &str, i32, i32, &str, bool, u32)> = parsed
+        .blocked_moves
+        .iter()
+        .map(|m| {
+            (
+                m.mover_name.as_str(),
+                m.mover_id.as_str(),
+                m.coordinate.x,
+                m.coordinate.y,
+                m.guard.as_ref().map_or("", |g| g.id.as_str()),
+                m.fleet,
+                m.coordinate.z,
+            )
+        })
+        .collect();
+    assert_eq!(
+        moves,
+        [
+            ("Scout", "3744", 36, 50, "7235", false, 1),
+            ("Drone", "7181", 37, 51, "6082", false, 1),
+            ("Drone", "9616", 36, 50, "7235", false, 1),
+            ("Drones", "9933", 37, 51, "6082", false, 1),
+            ("Drone", "9662", 38, 50, "1354", false, 1),
+        ]
+    );
 }
