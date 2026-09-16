@@ -57,17 +57,24 @@ const SERVERS = {
   }
 };
 
-/** `SMOKE_WORKERS` if set and a positive whole number; otherwise one on CI and four elsewhere. */
+/**
+ * `SMOKE_WORKERS` if set and a positive whole number; otherwise four.
+ *
+ * Deliberately not keyed on `CI`: `scripts/playwrightServers.test.ts` forbids this file reading
+ * that variable at all, because reading it once as a proxy for "this machine is mine" is what
+ * switched the gate lock off for every agent that exported it. The workflow says what it wants
+ * in so many words - `SMOKE_WORKERS` on the smoke step of `.github/workflows/ci.yml`.
+ */
 function smokeWorkers(): number {
   const asked = process.env.SMOKE_WORKERS;
-  if (asked !== undefined) {
-    const workers = Number(asked);
-    if (!Number.isInteger(workers) || workers < 1) {
-      throw new Error(`SMOKE_WORKERS is "${asked}", which is not a positive whole number`);
-    }
-    return workers;
+  if (asked === undefined) {
+    return 4;
   }
-  return process.env.CI ? 1 : 4;
+  const workers = Number(asked);
+  if (!Number.isInteger(workers) || workers < 1) {
+    throw new Error(`SMOKE_WORKERS is "${asked}", which is not a positive whole number`);
+  }
+  return workers;
 }
 
 const only = process.env.SMOKE_PROJECT;
@@ -108,8 +115,8 @@ export default defineConfig({
    */
   fullyParallel: true,
   /**
-   * One worker on CI, four locally - and the local number is a measured compromise, not a
-   * core count.
+   * Four workers unless `SMOKE_WORKERS` says otherwise - a measured compromise, not a core count.
+   * The workflow sets its own number on the smoke step.
    *
    * The suite is pure test time: 798 walks serial took 870s of which 861s was inside walks, so
    * nothing but parallelism or cheaper walks can shorten it. Parallelism scales badly here. On an
@@ -119,16 +126,16 @@ export default defineConfig({
    * the wasm core and a video call was up took 1193s with five timeouts, so the win is real but
    * fragile under other load, which is why this is not eight.
    *
-   * CI stays at one and buys its parallelism with shards, one job per project and shard: the
-   * runners have few cores, and the interactivity guard in workspace.spec.ts measures how long the
-   * main thread is blocked, which becomes a measurement of contention the moment anything runs
-   * beside it. Its threshold is calibrated on CI, where it runs alone.
+   * The workflow's number is measured there, separately: the runners have few cores, and the
+   * interactivity guard in workspace.spec.ts measures how long the main thread is blocked, which
+   * becomes a measurement of contention the moment anything runs beside it. Its threshold is
+   * calibrated on CI.
    *
    * An earlier measurement against dev servers (four workers 3m54 against 2m32 serial) pointed
    * the other way; the dev server's per-request transforms were the shared bottleneck then, and
    * the built bundles removed it.
    *
-   * SMOKE_WORKERS overrides both, so the next measurement - on CI or on another machine - is an
+   * SMOKE_WORKERS overrides it, so the next measurement - on CI or on another machine - is an
    * environment variable and not an edit here.
    */
   workers: smokeWorkers(),

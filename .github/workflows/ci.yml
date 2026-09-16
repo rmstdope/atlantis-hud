@@ -359,6 +359,9 @@ jobs:
         run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
         env:
           SMOKE_PROJECT: ${{ matrix.project }}
+          # Measurement in progress (2026-09-16): two workers on a four-vCPU runner, against the
+          # one-worker baseline on this same branch. Read the smoke job times before believing it.
+          SMOKE_WORKERS: 2
 
       - name: Upload the report of a failed run
         if: failure()
