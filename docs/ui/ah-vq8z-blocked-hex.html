@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blocked hex mark</title>
+<style>
+:root{--ground:#10151c;--panel:#171d26;--edge:#26303d;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--danger:#e0605a;--plain:#c9c08a;--swamp:#6f8a6a;--mount:#9a8f86;--jungle:#4f8a52;--own:#4fb783;--ocean:#3f6f9a}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+main{max-width:1100px;margin:auto}
+h1{font-size:24px}h1 span{color:var(--brass)} p.lead{color:var(--soft);max-width:90ch;margin-top:8px;font-size:14px}
+h2{margin-top:32px;font-size:18px;color:var(--brass)} h2 small{color:var(--dim);font-size:13px;margin-left:8px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:14px}
+.card h3{font-size:15px;margin-bottom:6px}.card h3 em{color:var(--brass);font-style:normal;margin-right:6px}.card p{color:var(--soft);font-size:12.5px;margin-top:8px}
+svg{width:100%;height:auto;display:block}
+.label{font:700 10px 'Helvetica Neue',Arial,sans-serif;fill:#2a0000}
+.rp{font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif;background:#12171f;border:1px solid var(--edge);border-radius:6px;padding:10px 12px}
+.rp .hd{font-weight:600;border-bottom:1px solid var(--edge);padding-bottom:4px;margin-bottom:6px}
+.rp .sec{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);margin:8px 0 3px}
+.rp .sec.red{color:var(--danger)} .rp li{list-style:none;margin:2px 0}.rp .n{color:var(--dim)}
+.menu{font:13px 'Helvetica Neue',Arial,sans-serif;background:#12171f;border:1px solid var(--edge);border-radius:6px;padding:8px 12px;display:grid;gap:3px;width:180px}
+.menu span::before{content:"☑ ";color:var(--own)}
+</style></head><body><main>
+<h1>Your unit was turned back here — <span>as agreed (ah-vq8z)</span></h1>
+<p class="lead">The hex is ringed and hatched in red and labelled with the guard's <b>unit number</b>, because the report never gives a faction. A ship stopped by guards gets the same mark. The mark belongs to the turn it happened in.</p>
+
+<h2>1 · On the map <small>the guard's unit number, bare; zoomed out, the ring stays and the label goes</small></h2>
+<div class="cards" id="q1"></div>
+
+<h2>2 · More than one guard at one hex <small>the first, then +n</small></h2>
+<div class="cards" id="q2"></div>
+
+<h2>3 · What the Region panel says when you select the hex <small>the map label is short, so the panel gives the full story</small></h2>
+<div class="cards">
+ <div class="card"><h3>Heading “Blocked”, one sentence per guard</h3>
+  <div class="rp"><div class="hd">swamp (36,50) in Pangmore</div>
+   <div class="sec red">Blocked</div>
+   <ul><li>Unit (7235) kept out Scout (3744) and Drone (9616).</li><li>Unit (1353) stopped Ship [235].</li></ul>
+   <div class="sec">Products</div><div class="n">…</div></div>
+  <p>Above Products. Walkers are “kept out”, ships are “stopped”. Lines wrap in a narrow panel. The section is absent when nothing was blocked.</p></div>
+</div>
+
+<h2>4 · Can you switch it off? <small>the map's Badges menu</small></h2>
+<div class="cards">
+ <div class="card"><h3>Its own entry, “Blocked”, straight after Guard, on by default</h3><div class="menu"><span>Guard</span><span>Blocked</span><span>Battles</span><span>Ships</span></div><p>Just like every other mark on the map.</p></div>
+</div>
+</main>
+<script>
+const R=34,W=R*Math.sqrt(3),fills=["--plain","--swamp","--mount","--jungle"];
+const hex=(cx,cy,r=R)=>[0,1,2,3,4,5].map(i=>{const a=Math.PI/3*i;return (cx+r*Math.cos(a)).toFixed(1)+","+(cy+r*Math.sin(a)).toFixed(1)}).join(" ");
+const ctr=(c,r)=>[48+c*R*1.5,44+r*W+(c%2?W/2:0)];
+let pid=0;
+function map(marks){let s=`<svg viewBox="0 0 290 200">`;
+ for(let c=0;c<5;c++)for(let r=0;r<3;r++){const [x,y]=ctr(c,r);s+=`<polygon points="${hex(x,y)}" fill="var(${fills[(c*3+r)%4]})" stroke="#0a0d12"/>`}
+ const [ux,uy]=ctr(1,1);s+=`<circle cx="${ux}" cy="${uy}" r="6" fill="var(--own)" stroke="#0a0d12"/>`;
+ marks.forEach(m=>{const [x,y]=ctr(m.c,m.r),id="p"+(pid++);
+  s+=`<defs><pattern id="${id}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="6" fill="var(--danger)" opacity=".45"/></pattern></defs><polygon points="${hex(x,y,R-2.5)}" fill="url(#${id})" stroke="var(--danger)" stroke-width="3"/>`;
+  m.t.split("\n").forEach((line,i,a)=>{s+=`<text x="${x}" y="${y+R*0.6-(a.length-1-i)*11}" text-anchor="middle" class="label" paint-order="stroke" stroke="#fff" stroke-width="2.5">${line}</text>`})});
+ return s+"</svg>"}
+const card=(k,t,svg,p)=>`<div class="card"><h3><em>${k}</em>${t}</h3>${svg}<p>${p}</p></div>`;
+document.getElementById("q1").innerHTML=card("","Middle and near zoom",map([{c:2,r:1,t:"7235"}]),"Label at the foot of the hex.")+card("","Far zoom",map([{c:2,r:1,t:""}]),"No label at this distance, like every other map label.");
+document.getElementById("q2").innerHTML=
+ card("","The first, then “+n”",map([{c:2,r:1,t:"7235 +1"},{c:3,r:0,t:"6082 +2"}]),"Always one line. The rest are in the Region panel.");
+</script></body></html>
