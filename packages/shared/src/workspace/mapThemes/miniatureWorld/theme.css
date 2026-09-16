@@ -437,4 +437,7 @@
   --map-border-ink: var(--mw-edge);
   --map-wall-ink: var(--mw-edge);
   --map-mark-ground: var(--mw-tape);
+  --map-blocked-ink: #c8423a;
+  --map-blocked-label-ink: #2a0000;
+  --map-blocked-label-halo: var(--mw-tape);
 }

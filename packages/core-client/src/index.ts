@@ -43,6 +43,8 @@ export type { KnownPassage } from "./generated/KnownPassage";
 export type { Casualty } from "./generated/Casualty";
 export type { BattleRound } from "./generated/BattleRound";
 export type { Battle } from "./generated/Battle";
+export type { BlockedMove } from "./generated/BlockedMove";
+export type { BlockingGuard } from "./generated/BlockingGuard";
 export type { UnitRead } from "./generated/UnitRead";
 export type { UnreadableKind } from "./generated/UnreadableKind";
 export type { LostBlock } from "./generated/LostBlock";
@@ -120,6 +122,7 @@ export type { TraceMoveOrdersRequest } from "./generated/TraceMoveOrdersRequest"
 
 export {
   aBattle,
+  aBlockedMove,
   aBattleUnit,
   aParsedReport,
   aReportHeaderInfo,

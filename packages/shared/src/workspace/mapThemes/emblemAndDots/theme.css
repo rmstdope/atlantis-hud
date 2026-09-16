@@ -287,4 +287,7 @@
   --map-border-ink: var(--ed-ink);
   --map-wall-ink: var(--ed-ink);
   --map-mark-ground: var(--ed-halo);
+  --map-blocked-ink: #d9534f;
+  --map-blocked-label-ink: #2a0000;
+  --map-blocked-label-halo: var(--ed-halo);
 }

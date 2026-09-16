@@ -42,6 +42,7 @@ const EMPTY_PARSED_REPORT: ParsedReport = {
   header: aReportHeaderInfo(),
   regions: [],
   battles: [],
+  blockedMoves: [],
   ordersTemplate: null,
   unreadableLines: []
 };

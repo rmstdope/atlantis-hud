@@ -43,9 +43,15 @@ export function RegionPanel({
   onSelectUnit,
   gameData = null,
   remembered,
-  onOpenGameData
+  onOpenGameData,
+  blocked = []
 }: {
   hex: HexNode | null;
+  /**
+   * The sentences saying which guards stopped which moves into this hex this turn (ah-vq8z), from
+   * `blockedHexes`. Not gated by the Blocked badge: it is the report's own fact.
+   */
+  blocked?: readonly string[];
   /**
    * The hex that is selected when no report has ever described it.
    *
@@ -149,6 +155,18 @@ export function RegionPanel({
           </>
         ) : null}
       </p>
+
+      {blocked.length > 0 ? (
+        <div data-section="blocked">
+          <Section title="Blocked">
+            {blocked.map((sentence) => (
+              <p key={sentence} className="m-0 text-ink-soft">
+                {sentence}
+              </p>
+            ))}
+          </Section>
+        </div>
+      ) : null}
 
       {!region ? (
         <Absent>

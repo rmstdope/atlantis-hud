@@ -6,6 +6,7 @@
 
 pub mod atlaclient;
 pub mod battle;
+pub mod blocked;
 pub mod composition;
 pub mod export;
 pub mod flags;
@@ -46,6 +47,8 @@ pub struct ParsedReport {
     pub header: ReportHeader,
     pub regions: Vec<ReportRegion>,
     pub battles: Vec<Battle>,
+    /// Every move guards stopped this turn, read from the events (ah-vq8z), in report order.
+    pub blocked_moves: Vec<blocked::BlockedMove>,
     /// The orders document for the coming turn, when the report carries one.
     pub orders_template: Option<OrdersTemplate>,
     /// Every record the parser could not read, in file order. Empty for a healthy report.
@@ -116,6 +119,7 @@ pub fn parse_report_full(source: &str) -> ParsedReport {
     let preamble_end = starts.first().copied().unwrap_or(lines.len());
 
     let header = parse_header(&lines[..preamble_end], &mut unreadable);
+    let blocked_moves = blocked::blocked_moves(&header.events);
     // A second, independent pass over the same preamble slice - see the note on `ParsedReport`.
     let battles = parse_battles(&lines[..preamble_end], &mut unreadable);
 
@@ -126,6 +130,7 @@ pub fn parse_report_full(source: &str) -> ParsedReport {
         header,
         regions,
         battles,
+        blocked_moves,
         orders_template: extract_orders_template(source),
         unreadable_lines: unreadable,
     }

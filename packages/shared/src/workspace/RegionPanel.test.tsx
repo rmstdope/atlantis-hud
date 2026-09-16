@@ -670,3 +670,43 @@ describe("resource verdicts carried over from earlier turns (ah-tgtp)", () => {
     );
   });
 });
+
+describe("the region panel's Blocked section", () => {
+  const SENTENCES = ["Unit (7235) kept out Scout (3744).", "Guards stopped Ship [235]."];
+
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
+
+  it("lists the blocked sentences above Products", () => {
+    const markup = renderToStaticMarkup(
+      <RegionPanel
+        hex={{ ...HEX, region: { ...HEX.region!, products: [{ amount: 12, name: "iron", tag: "IRON" }] } }}
+        blocked={SENTENCES}
+        client={CLIENT}
+        game={GAME}
+        turn={71}
+      />
+    );
+
+    expect(markup).toContain("Products");
+    expect(markup).toContain('data-section="blocked"');
+    expect(markup.indexOf(SENTENCES[0]!)).toBeGreaterThan(-1);
+    expect(markup.indexOf(SENTENCES[0]!)).toBeLessThan(markup.indexOf(SENTENCES[1]!));
+    expect(markup.indexOf("Blocked")).toBeLessThan(markup.indexOf("Products"));
+  });
+
+  it("shows the Blocked section on a hex known only from exits", () => {
+    const markup = renderToStaticMarkup(
+      <RegionPanel hex={{ ...HEX, region: null }} blocked={SENTENCES} client={CLIENT} game={GAME} turn={71} />
+    );
+
+    expect(markup).toContain('data-section="blocked"');
+    expect(markup).toContain(SENTENCES[1]);
+  });
+
+  it("has no Blocked section when nothing was blocked", () => {
+    expect(draw()).not.toContain('data-section="blocked"');
+  });
+});

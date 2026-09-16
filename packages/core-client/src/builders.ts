@@ -16,6 +16,7 @@
  */
 import type { Battle } from "./generated/Battle";
 import type { BattleUnit } from "./generated/BattleUnit";
+import type { BlockedMove } from "./generated/BlockedMove";
 import type { Coordinate } from "./generated/Coordinate";
 import type { ParsedReport } from "./generated/ParsedReport";
 import type { ReportHeaderInfo } from "./generated/ReportHeaderInfo";
@@ -142,9 +143,22 @@ export function aParsedReport(overrides: Partial<ParsedReport> = {}): ParsedRepo
     header: aReportHeaderInfo(),
     regions: [],
     battles: [],
+    blockedMoves: [],
     ordersTemplate: null,
     unreadableLines: [],
     ...overrides
+  };
+}
+
+/** A unit kept out of swamp (36,50) by Unit (7235), as turn 24 of faction 21 reports it. */
+export function aBlockedMove(overrides: Partial<BlockedMove> = {}): BlockedMove {
+  return {
+    coordinate: { x: 36, y: 50, z: 1 },
+    moverName: "Scout",
+    moverId: "3744",
+    fleet: false,
+    guard: { name: "Unit", id: "7235" },
+    ...overrides,
   };
 }
 

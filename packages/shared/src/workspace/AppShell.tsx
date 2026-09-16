@@ -237,6 +237,7 @@ import { BattlesDialog } from "./BattlesDialog";
 import { ProductionDialog } from "./ProductionDialog";
 import { productionView, statesRegionLimit } from "./productionView";
 import { battleHexes } from "./battles";
+import { blockedHexes } from "./blockedHexes";
 import { ChangesDialog } from "./ChangesDialog";
 import {
   changesTabs,
@@ -777,6 +778,8 @@ export function AppShell({
     () => battleHexes(parsed?.battles ?? [], parsed?.header.factionId ?? null),
     [parsed]
   );
+  // Where guards stopped a move, on the turn on screen only (ah-vq8z): nothing carries forward.
+  const blockedHexIds = useMemo(() => blockedHexes(parsed?.blockedMoves ?? []), [parsed]);
   // Subscribed, not read through `getState()`: the refresh effect below depends on it, so the
   // Armies that arrive after an asynchronous load are still refreshed against the turn on screen.
   const armiesStatus = useArmiesStore((state) => state.status);
@@ -5595,6 +5598,7 @@ export function AppShell({
           model={model}
           notes={hexNotes}
           battles={battleHexIds}
+          blocked={blockedHexIds}
           theme={getMapTheme(mapThemeId)}
           level={level}
           selectedRegionId={selectedRegionId}
@@ -5693,6 +5697,7 @@ export function AppShell({
                 unknown={unknownHex}
                 levels={model.levels}
                 problems={findingsForHex(validated.diagnostics, hex?.regionId ?? null)}
+                blocked={blockedHexIds.get(hex?.regionId ?? "")?.sentences ?? []}
                 client={client}
                 game={game}
                 turn={parsed?.header.turnNumber ?? null}

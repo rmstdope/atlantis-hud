@@ -270,4 +270,7 @@
   --map-border-ink: var(--hud-ink);
   --map-wall-ink: var(--hud-ink);
   --map-mark-ground: var(--hud-panel);
+  --map-blocked-ink: #ff5a4f;
+  --map-blocked-label-ink: #ffd7d3;
+  --map-blocked-label-halo: var(--hud-panel);
 }

@@ -413,6 +413,33 @@
 }
 
 /*
+ * A hex guards stopped a move into (ah-vq8z): a ring and a hatch over the whole hex, and the
+ * guard's number at its foot. Each map theme names the colours once, as `--map-blocked-ink`,
+ * `--map-blocked-label-ink` and `--map-blocked-label-halo` on its own `.map-theme-<id>` block.
+ * The label is screen-constant through `--map-scale`, like `.map-label`.
+ */
+.map-blocked-ring {
+  stroke: var(--map-blocked-ink, #e0605a);
+  stroke-width: 3;
+}
+.map-blocked-hatch {
+  fill: var(--map-blocked-ink, #e0605a);
+  opacity: 0.45;
+}
+.map-blocked-label {
+  fill: var(--map-blocked-label-ink, #2a0000);
+  font: 700 calc(10px / var(--map-scale, 1)) "Helvetica Neue", Arial, sans-serif;
+  paint-order: stroke fill;
+  stroke: var(--map-blocked-label-halo, #fff);
+  stroke-width: calc(2.5px / var(--map-scale, 1));
+  stroke-linejoin: round;
+  white-space: pre;
+}
+.map-far .map-blocked-label {
+  display: none;
+}
+
+/*
  * The floating panes' ground.
  *
  * How see-through the panes over the map are is a preference, not a design constant: the settings
