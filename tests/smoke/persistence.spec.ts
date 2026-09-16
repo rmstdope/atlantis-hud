@@ -8,6 +8,7 @@ import {
   fillOrders,
   openOrders,
   ordersInput,
+  saveNow,
   selectHex,
   selectUnit
 } from "./gameSetup";
@@ -257,7 +258,7 @@ test("a saved draft gains its missing trailing newline without moving the cursor
   // save gate exists to rule out, and would pass the assertions below by accident.
   await expectOrders(page, /@study combat$/u);
 
-  await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
+  await saveNow(page);
 
   await expectOrders(page, /@study combat\n$/u);
   // The caret sits where it was parked: three characters into "@work", still collapsed. Measured
@@ -353,7 +354,7 @@ test("one game's orders never appear in another", async ({ page }) => {
   await openReport(page);
   await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work\n@build");
-  await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
+  await saveNow(page);
 
   await page.getByTestId("game-indicator").click();
   await page.getByTestId("new-game").click();
@@ -467,7 +468,7 @@ test("re-opening the same report keeps the orders already written for that turn"
   await openReport(page);
   await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work\n@entertain");
-  await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
+  await saveNow(page);
 
   // There is no undo anywhere in this application, so a stray file-open must not erase an evening.
   await openReport(page);
