@@ -129,8 +129,8 @@ pub fn parse_report_full(source: &str) -> ParsedReport {
     ParsedReport {
         header,
         regions,
-        blocked_moves,
         battles,
+        blocked_moves,
         orders_template: extract_orders_template(source),
         unreadable_lines: unreadable,
     }

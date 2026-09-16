@@ -63,8 +63,11 @@ fn unit_kept_out(line: &str) -> Option<BlockedMove> {
     let (prefix, rest) = line.split_once("): Is forbidden entry to ")?;
     let (mover_name, mover_id) = split_trailing_id(&format!("{prefix})"))?;
     let coordinate = coordinate_after_terrain(rest)?;
-    let (_, guard_text) = rest.rsplit_once(" by ")?;
-    let guard = guard(guard_text)?;
+    // The first " by " whose remainder reads as a guard: a trailing faction name may itself
+    // contain " by ", so the last one is not safe.
+    let guard = rest
+        .match_indices(" by ")
+        .find_map(|(at, by)| guard(&rest[at + by.len()..]))?;
     Some(BlockedMove {
         coordinate,
         mover_name,
@@ -149,6 +152,14 @@ mod tests {
     fn drops_the_guards_faction_when_the_report_names_it() {
         assert_eq!(
             guard_of("Scout (3744): Is forbidden entry to swamp (36,50) in Pangmore by Unit (7235), Some Faction (41)."),
+            Some(BlockingGuard { name: "Unit".into(), id: "7235".into() })
+        );
+    }
+
+    #[test]
+    fn keeps_the_guard_when_the_faction_name_says_by() {
+        assert_eq!(
+            guard_of("Scout (3744): Is forbidden entry to swamp (36,50) in Pangmore by Unit (7235), Stand by Me (41)."),
             Some(BlockingGuard { name: "Unit".into(), id: "7235".into() })
         );
     }
