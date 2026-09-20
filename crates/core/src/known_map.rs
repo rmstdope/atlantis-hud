@@ -70,9 +70,21 @@ pub struct KnownMapHex {
     /// ally's extra units, marked foreign); a same-turn ally sighting as stored; an older sighting
     /// with its units dropped. `None` for a hex merely named by an exit.
     pub region: Option<ReportRegion>,
+    /// Units last seen in this stale hex whose latest stored sighting is still here. Historical
+    /// occupancy stays separate from `region.units`, which is current knowledge only.
+    #[serde(default)]
+    pub remembered_units: Vec<KnownUnitSighting>,
     /// The settlement the hex's description names, if any - the exit's for a `Named` hex, the
     /// region's own for a visited one. The screen labels the hex with it.
     pub settlement: Option<Settlement>,
+}
+
+/// A unit last seen in a stale hex, with the turn its sighting came from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownUnitSighting {
+    pub unit: ReportUnit,
+    pub last_seen_turn: u32,
 }
 
 /// One level the known map has hexes on, with the word the level control shows for it.
@@ -223,6 +235,30 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
     // Rule 1: namings from memory, oldest sighting first, first naming in a turn wins.
     let mut ordered: Vec<&RememberedRegion> = remembered.iter().collect();
     ordered.sort_by_key(|entry| entry.last_seen_turn);
+    let current_unit_ids: HashSet<&str> = current
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter().map(|unit| unit.unit_id.as_str()))
+        .collect();
+    let mut latest_stored_units: BTreeMap<String, (u32, String, String, ReportUnit)> =
+        BTreeMap::new();
+    for entry in &ordered {
+        let region_key = key(entry.region.coordinate);
+        for unit in &entry.region.units {
+            let candidate = (
+                entry.last_seen_turn,
+                entry.region.region_id.clone(),
+                region_key.clone(),
+                unit.clone(),
+            );
+            if latest_stored_units
+                .get(&unit.unit_id)
+                .is_none_or(|known| (known.0, &known.1) < (candidate.0, &candidate.1))
+            {
+                latest_stored_units.insert(unit.unit_id.clone(), candidate);
+            }
+        }
+    }
 
     let mut named_in_turn: BTreeMap<String, u32> = BTreeMap::new();
     for entry in &ordered {
@@ -241,6 +277,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                     knowledge: HexKnowledge::Named,
                     last_seen_turn: Some(entry.last_seen_turn),
                     region: None,
+                    remembered_units: Vec::new(),
                     settlement: exit.settlement.clone(),
                 },
             );
@@ -266,6 +303,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                     knowledge: HexKnowledge::Named,
                     last_seen_turn: current_turn,
                     region: None,
+                    remembered_units: Vec::new(),
                     settlement: exit.settlement.clone(),
                 },
             );
@@ -284,7 +322,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
             ..entry.region.clone()
         };
         by_key.insert(
-            entry_key,
+            entry_key.clone(),
             KnownMapHex {
                 coordinate: entry.region.coordinate,
                 terrain: entry.region.terrain.clone(),
@@ -297,6 +335,22 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                 last_seen_turn: Some(entry.last_seen_turn),
                 settlement: entry.region.settlement.clone(),
                 region: Some(region),
+                remembered_units: if is_current_turn {
+                    Vec::new()
+                } else {
+                    latest_stored_units
+                        .values()
+                        .filter(|(turn, _, unit_region_key, unit)| {
+                            *turn == entry.last_seen_turn
+                                && unit_region_key == &entry_key
+                                && !current_unit_ids.contains(unit.unit_id.as_str())
+                        })
+                        .map(|(turn, _, _, unit)| KnownUnitSighting {
+                            unit: unit.clone(),
+                            last_seen_turn: *turn,
+                        })
+                        .collect()
+                },
             },
         );
     }
@@ -328,6 +382,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                 last_seen_turn: current_turn,
                 settlement: resolved.settlement.clone(),
                 region: Some(resolved),
+                remembered_units: Vec::new(),
             },
         );
     }

@@ -101,6 +101,159 @@ fn an_older_sighting_is_stale_and_keeps_no_units() {
     assert!(hex.region.as_ref().unwrap().units.is_empty());
 }
 
+#[test]
+fn a_stale_hex_remembers_its_last_valid_unit_sightings() {
+    let older = report_at_turn(
+        "swamp",
+        "February",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n- Other (600), Baz (3), 1 orc [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    let known = resolve_known_map(
+        &empty_report("December", 6),
+        &[RememberedRegion {
+            region: older,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    assert_eq!(hex.region.as_ref().unwrap().units, []);
+    assert_eq!(hex.remembered_units.len(), 2);
+    assert_eq!(hex.remembered_units[0].unit.unit_id, "500");
+    assert_eq!(hex.remembered_units[0].last_seen_turn, 1);
+    assert_eq!(hex.remembered_units[1].unit.unit_id, "600");
+}
+
+#[test]
+fn a_later_sighting_elsewhere_invalidates_only_that_remembered_unit() {
+    let older = report_at_turn(
+        "swamp",
+        "February",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n- Other (600), Baz (3), 1 orc [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+    let mut later = report_at_turn(
+        "plain",
+        "March",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+    later.coordinate = at(3, 3);
+    later.region_id = "1:3,3".to_string();
+
+    let known = resolve_known_map(
+        &empty_report("December", 6),
+        &[
+            RememberedRegion {
+                region: older,
+                last_seen_turn: 1,
+            },
+            RememberedRegion {
+                region: later,
+                last_seen_turn: 2,
+            },
+        ],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    assert_eq!(
+        hex.remembered_units
+            .iter()
+            .map(|sighting| sighting.unit.unit_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["600"]
+    );
+}
+
+#[test]
+fn a_current_empty_hex_clears_its_remembered_units() {
+    let older = report_at_turn(
+        "swamp",
+        "February",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    let known = resolve_known_map(
+        &report_at_turn("swamp", "December", 6, ""),
+        &[RememberedRegion {
+            region: older,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    assert_eq!(hex.knowledge, HexKnowledge::Current);
+    assert!(hex.remembered_units.is_empty());
+}
+
+#[test]
+fn same_turn_duplicate_unit_sightings_keep_the_lexically_last_region() {
+    let first = report_at_turn(
+        "swamp",
+        "February",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+    let mut second = first.clone();
+    second.coordinate = at(3, 3);
+    second.region_id = "1:3,3".to_string();
+    for unit in &mut second.units {
+        unit.region_id = second.region_id.clone();
+    }
+
+    let known = resolve_known_map(
+        &empty_report("December", 6),
+        &[
+            RememberedRegion {
+                region: first,
+                last_seen_turn: 1,
+            },
+            RememberedRegion {
+                region: second,
+                last_seen_turn: 1,
+            },
+        ],
+    );
+
+    let first_hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    let second_hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(3, 3))
+        .expect("known");
+    assert!(first_hex.remembered_units.is_empty());
+    assert_eq!(second_hex.remembered_units[0].unit.unit_id, "500");
+}
+
 /// The ally-units merge (rule 4) looks up a same-turn stored sighting by coordinate, and that
 /// lookup must be as deterministic as the direct-sighting resolution (rule 3) it sits beside: two
 /// remembered entries for the same hex - one a same-turn ally sighting, one an older, stale one -

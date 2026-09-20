@@ -17,6 +17,7 @@ function hex(overrides: Partial<HexNode> & { coordinate: Coordinate; province: s
     ageInTurns: 0,
     settlementName: null,
     region: null,
+    rememberedUnits: [],
     ownUnitCount: 0,
     foreignUnitCount: 0,
     ...overrides

@@ -80,6 +80,7 @@ function hex(spec: {
     ageInTurns: spec.knowledge === "named" ? null : (spec.ageInTurns ?? 0),
     settlementName: spec.settlement?.name ?? null,
     region,
+    rememberedUnits: [],
     ownUnitCount: held.filter((unit) => unit.own).length,
     foreignUnitCount: held.filter((unit) => !unit.own).length
   };
