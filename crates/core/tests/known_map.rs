@@ -210,7 +210,7 @@ fn a_current_empty_hex_clears_its_remembered_units() {
 }
 
 #[test]
-fn same_turn_duplicate_unit_sightings_keep_the_lexically_last_region() {
+fn same_turn_duplicate_unit_sightings_in_different_regions_are_ambiguous() {
     let first = report_at_turn(
         "swamp",
         "February",
@@ -251,7 +251,46 @@ fn same_turn_duplicate_unit_sightings_keep_the_lexically_last_region() {
         .find(|hex| hex.coordinate == at(3, 3))
         .expect("known");
     assert!(first_hex.remembered_units.is_empty());
-    assert_eq!(second_hex.remembered_units[0].unit.unit_id, "500");
+    assert!(second_hex.remembered_units.is_empty());
+}
+
+#[test]
+fn same_turn_duplicate_unit_sightings_in_one_region_remain_eligible() {
+    let region = report_at_turn(
+        "swamp",
+        "February",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    let known = resolve_known_map(
+        &empty_report("December", 6),
+        &[
+            RememberedRegion {
+                region: region.clone(),
+                last_seen_turn: 1,
+            },
+            RememberedRegion {
+                region,
+                last_seen_turn: 1,
+            },
+        ],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    assert_eq!(
+        hex.remembered_units
+            .iter()
+            .map(|sighting| sighting.unit.unit_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["500"]
+    );
 }
 
 /// The ally-units merge (rule 4) looks up a same-turn stored sighting by coordinate, and that
