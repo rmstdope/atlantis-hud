@@ -34,6 +34,7 @@ function hex(overrides: Partial<HexNode> & { knowledge: HexKnowledge }): HexNode
     ageInTurns: 0,
     settlementName: null,
     region: null,
+    rememberedUnits: [],
     ownUnitCount: 0,
     foreignUnitCount: 0,
     ...overrides

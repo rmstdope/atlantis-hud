@@ -15,6 +15,7 @@ import {
   parseRegionId,
   regionIdOf,
   sortUnitsForDisplay,
+  unitSightingsForHex,
   unitsForHex,
   type HexNode
 } from "./hexMapModel";
@@ -42,6 +43,7 @@ function knownHex(overrides: Partial<KnownMapHex> = {}): KnownMapHex {
     knowledge: "current",
     lastSeenTurn: 71,
     region: null,
+    rememberedUnits: [],
     settlement: null,
     ...overrides
   };
@@ -285,6 +287,36 @@ describe("unit ordering", () => {
 
   it("returns nothing for a hex with no detail", () => {
     expect(unitsForHex(null)).toEqual([]);
+  });
+
+  it("keeps a stale hex's remembered units and their individual turns out of map counts", () => {
+    const remembered = [unit("30", false, "Alpha"), unit("7", true, "Zulu")];
+    const stale = hexNodeOf(
+      knownHex({
+        knowledge: "stale",
+        lastSeenTurn: 68,
+        region: region(at(7, 53), { units: [] }),
+        rememberedUnits: [
+          { unit: remembered[0], lastSeenTurn: 68 },
+          { unit: remembered[1], lastSeenTurn: 67 }
+        ]
+      }),
+      71
+    );
+
+    expect(unitSightingsForHex(stale)).toEqual([
+      { unit: remembered[1], lastSeenTurn: 67 },
+      { unit: remembered[0], lastSeenTurn: 68 }
+    ]);
+    expect(unitsForHex(stale)).toEqual([remembered[1], remembered[0]]);
+    expect(stale.ownUnitCount).toBe(0);
+    expect(stale.foreignUnitCount).toBe(0);
+  });
+
+  it("marks current hex units as current sightings", () => {
+    const current = hexWith([unit("7", true, "Zulu")]);
+
+    expect(unitSightingsForHex(current)).toEqual([{ unit: current.region!.units[0], lastSeenTurn: null }]);
   });
 
   it("sorts directly too, own units first then by id", () => {

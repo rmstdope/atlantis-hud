@@ -1,5 +1,7 @@
 // The report model and the parse family are generated from the Rust core by ts-rs
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
+import type { ReportUnit } from "./generated/ReportUnit";
+
 export type { EngineInfo } from "./generated/EngineInfo";
 export type { TurnRef } from "./generated/TurnRef";
 export type { WarningSeverity } from "./generated/WarningSeverity";
@@ -379,8 +381,16 @@ export type KnownMapHex = {
   lastSeenTurn: number | null;
   /** `null` for a hex merely named by an exit, never visited. */
   region: ReportRegion | null;
+  /** Units last seen here in a stale hex, absent from current occupancy. */
+  rememberedUnits: KnownUnitSighting[];
   /** The settlement the hex's description names, if any. */
   settlement: SettlementInfo | null;
+};
+
+/** A unit's last valid sighting in a stale hex. */
+export type KnownUnitSighting = {
+  unit: ReportUnit;
+  lastSeenTurn: number;
 };
 
 /** One level the known map has hexes on, with the word the level control shows for it. */

@@ -21,6 +21,7 @@ function hex(x: number, y: number, knowledge: HexNode["knowledge"] = "current"):
     ageInTurns: 0,
     settlementName: null,
     region: null,
+    rememberedUnits: [],
     ownUnitCount: 0,
     foreignUnitCount: 0
   };

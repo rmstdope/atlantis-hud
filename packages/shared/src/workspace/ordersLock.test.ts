@@ -13,6 +13,7 @@ function hexAt(knowledge: "current" | "stale", lastSeenTurn: number | null): Hex
       knowledge,
       lastSeenTurn,
       region: null,
+      rememberedUnits: [],
       settlement: null
     },
     71

@@ -41,6 +41,7 @@ const HEX: HexNode = {
   lastSeenTurn: 71,
   ageInTurns: 0,
   settlementName: "Inholm",
+  rememberedUnits: [],
   ownUnitCount: 1,
   foreignUnitCount: 91,
   region: aReportRegion({

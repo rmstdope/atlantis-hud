@@ -26,7 +26,7 @@ import {
   type ReactNode
 } from "react";
 import type { HexNode } from "../hexMapModel";
-import { unitsForHex } from "../hexMapModel";
+import { unitSightingsForHex, unitsForHex } from "../hexMapModel";
 import {
   reportedStructureRegionOf,
   structureRegionOf,
@@ -455,6 +455,19 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         : (ownUnits ?? NO_UNITS),
     [source, ownUnits, ordersPreview]
   );
+  const hexSightings = useMemo(
+    () => (source.kind === "hex" ? unitSightingsForHex(hex) : []),
+    [source, hex]
+  );
+  const rememberedTurns = useMemo(
+    () =>
+      new Map(
+        hexSightings.flatMap(({ unit, lastSeenTurn }) =>
+          lastSeenTurn === null ? [] : [[unit.unitId, lastSeenTurn] as const]
+        )
+      ),
+    [hexSightings]
+  );
 
   /**
    * The rows for the current source, and everything the extra columns need alongside them.
@@ -473,7 +486,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    */
   const sourced = useMemo((): ArmyRows => {
     if (source.kind === "hex") {
-      return { ...NO_ARMY_ROWS, rows: mergePreview(unitsForHex(hex), preview) };
+      const units = hexSightings.map(({ unit }) => unit);
+      return {
+        ...NO_ARMY_ROWS,
+        rows: hex?.knowledge === "stale" ? units : mergePreview(units, preview)
+      };
     }
     if (source.kind === "own") {
       return { ...NO_ARMY_ROWS, rows: ownRows };
@@ -483,7 +500,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       return { ...NO_ARMY_ROWS, rows: [...pinnedRows(foreignUnits ?? [], pin)] };
     }
     return army ? armyRows(army, unitsById ?? EMPTY_UNITS_BY_ID, currentTurn) : NO_ARMY_ROWS;
-  }, [source, hex, preview, ownRows, foreignUnits, pin, army, unitsById, currentTurn]);
+  }, [source, hex, hexSightings, preview, ownRows, foreignUnits, pin, army, unitsById, currentTurn]);
 
   // Typed as table rows, so an arrival's origin is readable where the row is chosen (`ah-jxrw`).
   const units: PreviewedUnit[] = sourced.rows;
@@ -1541,6 +1558,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   // region, so a source spanning hexes must look each row up where it stands.
                   regionId={unit.regionId}
                   seen={seenLabel(sourced.seen.get(unit.unitId), currentTurn)}
+                  rememberedTurn={rememberedTurns.get(unit.unitId)}
                   fromReport={source.kind !== "army" || (unitsById?.has(unit.unitId) ?? false)}
                   dimDeparting={dimsDeparting(source)}
                   onRemove={army ? () => void actions.removeUnit(army.id, unit.unitId) : undefined}
@@ -2108,6 +2126,7 @@ function UnitRow({
   renderFactionName,
   onPinFaction,
   seen,
+  rememberedTurn,
   fromReport,
   dimDeparting,
   onRemove,
@@ -2186,6 +2205,8 @@ function UnitRow({
   onPinFaction?: (pin: FactionPin) => void;
   /** What the Seen column reads: `now`, or `turn 68` for a remembered member. */
   seen: string;
+  /** The historical sighting turn for a retained stale-hex row. */
+  rememberedTurn?: number;
   /** False for an Army member this turn's report does not mention - its Hex reads dimmed. */
   fromReport: boolean;
   /** Whether a row that leaves this month reads dimmed - `dimsDeparting(source)` (`ah-tguk`). */
@@ -2347,6 +2368,9 @@ function UnitRow({
         >
           {unit.name}
         </span>
+        {rememberedTurn !== undefined ? (
+          <span className="ml-1 text-pane-sm text-brass/70">last seen turn {rememberedTurn}</span>
+        ) : null}
         {/* Name opens the whole-unit summary rather than a column popup, so what the report said
             has no popup to live in - and it must still be reachable without a mouse. */}
         {nameChange ? (

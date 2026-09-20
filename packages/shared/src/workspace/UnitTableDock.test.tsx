@@ -49,6 +49,7 @@ function hex(overrides: Partial<HexNode> = {}): HexNode {
     ageInTurns: 0,
     settlementName: null,
     region: region(),
+    rememberedUnits: [],
     ownUnitCount: 0,
     foreignUnitCount: 0,
     ...overrides
@@ -78,6 +79,27 @@ describe("the units pane on an empty hex", () => {
 
     expect(markup).toContain("Not seen since turn 21 — no current unit information.");
     expect(markup).not.toContain("No units reported in this hex.");
+  });
+
+  it("marks each retained stale unit with its own last seen turn", () => {
+    const remembered = unit({ unitId: "500", name: "Remembered" });
+    const markup = draw(
+      hex({
+        knowledge: "stale",
+        lastSeenTurn: 21,
+        region: region({ units: [] }),
+        rememberedUnits: [{ unit: remembered, lastSeenTurn: 19 }]
+      })
+    );
+
+    expect(markup).toContain("Remembered");
+    expect(markup).toContain("last seen turn 19");
+  });
+
+  it("does not mark a current unit as remembered", () => {
+    const markup = draw(hex({ region: region({ units: [unit()] }) }));
+
+    expect(markup).not.toContain("last seen turn");
   });
 
   it("a stale hex's header names the ground but counts nothing", () => {

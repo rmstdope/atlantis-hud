@@ -23,7 +23,8 @@ import type {
   MapLevel,
   MapWall,
   ReportRegion,
-  ReportUnit
+  ReportUnit,
+  KnownUnitSighting
 } from "@atlantis/core-client";
 
 import { compareUnitIds } from "./unitOrder";
@@ -47,6 +48,8 @@ export type HexNode = {
   settlementName: string | null;
   /** Full detail, present only for a hex that has actually been visited. */
   region: ReportRegion | null;
+  /** Historical unit sightings for a stale hex; never counted as current occupants. */
+  rememberedUnits: KnownUnitSighting[];
   ownUnitCount: number;
   foreignUnitCount: number;
 };
@@ -219,6 +222,7 @@ export function hexNodeOf(hex: KnownMapHex, currentTurn: number | null): HexNode
         : Math.max(0, currentTurn - hex.lastSeenTurn),
     settlementName: hex.settlement?.name ?? null,
     region: hex.region,
+    rememberedUnits: hex.rememberedUnits,
     ...countUnits(hex.region)
   };
 }
@@ -272,8 +276,31 @@ export function sortUnitsForDisplay(units: ReportUnit[]): ReportUnit[] {
 }
 
 /** Units of one hex, for display. `[]` for a hex with no detail. */
+export type HexUnitSighting = {
+  unit: ReportUnit;
+  lastSeenTurn: number | null;
+};
+
+/** Current units, or the last valid sightings for a stale hex, sorted for the Units in hex list. */
+export function unitSightingsForHex(hex: HexNode | null): HexUnitSighting[] {
+  if (hex === null) {
+    return [];
+  }
+  if (hex.knowledge === "stale") {
+    const rememberedByUnit = new Map(hex.rememberedUnits.map((sighting) => [sighting.unit, sighting]));
+    return sortUnitsForDisplay(hex.rememberedUnits.map((sighting) => sighting.unit)).map((unit) => ({
+      unit,
+      lastSeenTurn: rememberedByUnit.get(unit)?.lastSeenTurn ?? null
+    }));
+  }
+  return hex.region
+    ? sortUnitsForDisplay(hex.region.units).map((unit) => ({ unit, lastSeenTurn: null }))
+    : [];
+}
+
+/** Units of one hex, for display. `[]` for a hex with no detail or valid sightings. */
 export function unitsForHex(hex: HexNode | null) {
-  return hex?.region ? sortUnitsForDisplay(hex.region.units) : [];
+  return unitSightingsForHex(hex).map(({ unit }) => unit);
 }
 
 /** The report's long direction names, in the shorthand MOVE orders are written in. */
