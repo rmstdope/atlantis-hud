@@ -240,33 +240,22 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
         .iter()
         .flat_map(|region| region.units.iter().map(|unit| unit.unit_id.as_str()))
         .collect();
-    let mut latest_stored_units: BTreeMap<String, (u32, BTreeMap<String, ReportUnit>)> =
+    let mut latest_stored_units: BTreeMap<String, (u32, String, String, ReportUnit)> =
         BTreeMap::new();
     for entry in &ordered {
         let region_key = key(entry.region.coordinate);
         for unit in &entry.region.units {
-            match latest_stored_units.get_mut(&unit.unit_id) {
-                Some((latest_turn, candidates)) if *latest_turn == entry.last_seen_turn => {
-                    candidates
-                        .entry(region_key.clone())
-                        .or_insert_with(|| unit.clone());
-                }
-                Some((latest_turn, _)) if *latest_turn > entry.last_seen_turn => {}
-                Some(candidate) => {
-                    *candidate = (
-                        entry.last_seen_turn,
-                        BTreeMap::from([(region_key.clone(), unit.clone())]),
-                    );
-                }
-                None => {
-                    latest_stored_units.insert(
-                        unit.unit_id.clone(),
-                        (
-                            entry.last_seen_turn,
-                            BTreeMap::from([(region_key.clone(), unit.clone())]),
-                        ),
-                    );
-                }
+            let candidate = (
+                entry.last_seen_turn,
+                entry.region.region_id.clone(),
+                region_key.clone(),
+                unit.clone(),
+            );
+            if latest_stored_units
+                .get(&unit.unit_id)
+                .is_none_or(|known| (known.0, &known.1) < (candidate.0, &candidate.1))
+            {
+                latest_stored_units.insert(unit.unit_id.clone(), candidate);
             }
         }
     }
@@ -351,20 +340,14 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                 } else {
                     latest_stored_units
                         .values()
-                        .filter(|(turn, candidates)| {
+                        .filter(|(turn, _, unit_region_key, unit)| {
                             *turn == entry.last_seen_turn
-                                && candidates.len() == 1
-                                && candidates.contains_key(&entry_key)
+                                && unit_region_key == &entry_key
+                                && !current_unit_ids.contains(unit.unit_id.as_str())
                         })
-                        .filter_map(|(turn, candidates)| {
-                            candidates.get(&entry_key).and_then(|unit| {
-                                (!current_unit_ids.contains(unit.unit_id.as_str())).then(|| {
-                                    KnownUnitSighting {
-                                        unit: unit.clone(),
-                                        last_seen_turn: *turn,
-                                    }
-                                })
-                            })
+                        .map(|(turn, _, _, unit)| KnownUnitSighting {
+                            unit: unit.clone(),
+                            last_seen_turn: *turn,
                         })
                         .collect()
                 },
