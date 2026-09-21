@@ -842,6 +842,43 @@ fn a_neighbours_exit_naming_the_nexus_on_the_surface_is_also_repaired() {
     );
 }
 
+#[test]
+fn a_legacy_unitless_underworld_cavern_is_repaired_off_the_surface() {
+    use atlantis_hud_core::report::model::Coordinate;
+
+    let legacy_cavern = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         cavern (7,53) in Deeps, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  North : tunnels (7,51) in Deeps.\n",
+    )
+    .regions[0]
+        .clone();
+    assert_eq!(
+        legacy_cavern.coordinate.z, 1,
+        "the pre-level-parser stored shape files the cavern on the surface"
+    );
+
+    let known = resolve_known_map(
+        &empty_report("March", 1),
+        &[RememberedRegion {
+            region: legacy_cavern,
+            last_seen_turn: 1,
+        }],
+    );
+
+    assert!(
+        known
+            .hexes
+            .iter()
+            .any(|hex| hex.coordinate == Coordinate { x: 7, y: 53, z: 2 }),
+        "the legacy cavern is restored to the underworld"
+    );
+    assert!(
+        known.hexes.iter().all(|hex| hex.coordinate != at(7, 53)),
+        "the legacy cavern no longer leaks onto the surface map"
+    );
+}
+
 /// A unit inside a misfiled region carries its own `region_id` (`ReportUnit.region_id`), separate
 /// from the region's - so repairing the region's coordinate without also repairing every unit
 /// inside it would leave a unit claiming to stand in `1:0,0` while its own region now reads
