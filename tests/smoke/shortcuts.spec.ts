@@ -73,17 +73,19 @@ test("the palette finds historical units and map objects", async ({ page }) => {
   await createGame(page, "Historical palette smoke");
   await expect(page.getByTestId("app-header")).toBeVisible();
 
-  await page.setInputFiles('input[type="file"]', [
-    { name: "f42-t42.rep", mimeType: "text/plain", buffer: Buffer.from(F42_T42, "utf8") },
-    {
-      name: "f42-t40.rep",
-      mimeType: "text/plain",
-      buffer: Buffer.from(HISTORICAL_F42_T40, "utf8")
-    }
-  ]);
-  const summary = page.getByTestId("import-summary");
-  await expect(summary).toBeVisible();
-  await summary.getByRole("button", { name: "Close", exact: true }).click();
+  await page.setInputFiles('input[type="file"]', {
+    name: "f42-t42.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(F42_T42, "utf8")
+  });
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*42\b/);
+
+  await page.setInputFiles('input[type="file"]', {
+    name: "f42-t40.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(HISTORICAL_F42_T40, "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("stored for history");
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill("Historical Scout (99999)");
