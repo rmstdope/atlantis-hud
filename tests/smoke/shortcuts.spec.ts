@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
@@ -21,6 +22,14 @@ import {
 const OWN_UNIT = "18642";
 /** Another of the player's units, in the mountain at (26,52). */
 const OTHER_OWN_UNIT = "13401";
+const F42_T40 = readReport("g3f42t40");
+const F42_T42 = readReport("g3f42t42");
+const HISTORICAL_F42_T40 = F42_T40.replace(
+  "+ Bog [1] : Bog, closed to player units.",
+  `+ Bog [1] : Bog, closed to player units.
+
+- Historical Scout (99999), The Disinherited Knights (42), avoiding, behind, gnoll [GNOL].`
+);
 
 test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ page }) => {
   await loadReport(page);
@@ -57,6 +66,38 @@ test("the palette goes to a structure's hex, and tells one from a dictionary pag
   const items = page.getByTestId("palette-item");
   await expect(items.filter({ hasText: "structure" }).first()).toBeVisible();
   await expect(items.filter({ hasText: "building" }).first()).toBeVisible();
+});
+
+test("the palette finds historical units and map objects", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Historical palette smoke");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', [
+    { name: "f42-t42.rep", mimeType: "text/plain", buffer: Buffer.from(F42_T42, "utf8") },
+    {
+      name: "f42-t40.rep",
+      mimeType: "text/plain",
+      buffer: Buffer.from(HISTORICAL_F42_T40, "utf8")
+    }
+  ]);
+  const summary = page.getByTestId("import-summary");
+  await expect(summary).toBeVisible();
+  await summary.getByRole("button", { name: "Close", exact: true }).click();
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Historical Scout (99999)");
+  await expect(page.getByTestId("palette-item").first()).toContainText("last seen turn 40");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 40");
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Bog [1]");
+  await expect(page.getByTestId("palette-item").first()).toContainText("last seen turn 40");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 40");
 });
 
 test("arrowing down a long list keeps the highlight on screen", async ({ page }) => {
@@ -747,4 +788,3 @@ test("the game data dialog stops short of the bottom edge", async ({ page }) => 
       .toBeGreaterThanOrEqual(Math.round(size.height * 0.05));
   }
 });
-

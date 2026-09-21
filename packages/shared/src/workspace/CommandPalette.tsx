@@ -158,6 +158,11 @@ export function CommandPalette({
               >
                 <span className="min-w-0 truncate">{entry.label}</span>
                 <span className="flex shrink-0 items-baseline gap-2">
+                  {entry.lastSeenTurn !== undefined ? (
+                    <span className="text-pane-sm text-brass-bright">
+                      last seen turn {entry.lastSeenTurn}
+                    </span>
+                  ) : null}
                   <span className="text-pane-sm uppercase tracking-[0.08em] text-ink-dim">
                     {entry.kind === "order-help" ? "order" : entry.kind}
                   </span>

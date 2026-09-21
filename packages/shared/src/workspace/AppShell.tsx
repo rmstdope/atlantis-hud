@@ -1649,6 +1649,17 @@ export function AppShell({
           .find((candidate) => candidate.unitId === unitId);
         return { unitId, name: owner?.name ?? unitId, run: () => goToUnit(unitId) };
       }),
+      staleUnits: model.hexes.flatMap((hex) =>
+        hex.knowledge !== "stale"
+          ? []
+          : hex.rememberedUnits.map((sighting) => ({
+              regionId: hex.regionId,
+              unitId: sighting.unit.unitId,
+              name: sighting.unit.name,
+              lastSeenTurn: sighting.lastSeenTurn,
+              run: () => selectHex(hex.regionId)
+            }))
+      ),
       regions: model.hexes.map((candidate) => ({
         regionId: candidate.regionId,
         label: candidate.label,
@@ -1657,13 +1668,23 @@ export function AppShell({
       // Every structure standing in this turn's report, with the places rather than with the
       // dictionary's building pages: a structure is somewhere you go, and choosing one goes to
       // its hex exactly as choosing the hex itself does.
-      structures: (parsed?.regions ?? []).flatMap((region) =>
-        region.structures.map((structure) => ({
-          structureId: `${region.regionId}-${structure.structureId}`,
-          label: structurePaletteLabel(structure, hexLabel(region.regionId)),
-          run: () => selectHex(region.regionId)
-        }))
-      ),
+      structures:
+        model.hexes.length > 0
+          ? model.hexes.flatMap((hex) =>
+              (hex.region?.structures ?? []).map((structure) => ({
+                structureId: `${hex.regionId}-${structure.structureId}`,
+                label: structurePaletteLabel(structure, hexLabel(hex.regionId)),
+                lastSeenTurn: hex.knowledge === "stale" ? (hex.lastSeenTurn ?? undefined) : undefined,
+                run: () => selectHex(hex.regionId)
+              }))
+            )
+          : (parsed?.regions ?? []).flatMap((region) =>
+              region.structures.map((structure) => ({
+                structureId: `${region.regionId}-${structure.structureId}`,
+                label: structurePaletteLabel(structure, hexLabel(region.regionId)),
+                run: () => selectHex(region.regionId)
+              }))
+            ),
       actions: [
         { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
         // Only where the picker can actually open: on the gate screen it renders nowhere, and

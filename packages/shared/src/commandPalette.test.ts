@@ -20,6 +20,9 @@ function entries(): PaletteEntry[] {
       { unitId: "18642", name: "Seven of Eight", run: noop },
       { unitId: "13401", name: "Drones", run: noop }
     ],
+    staleUnits: [
+      { regionId: "1:7,53", unitId: "18642", name: "Seven of Eight", lastSeenTurn: 70, run: noop }
+    ],
     regions: [
       { regionId: "1:7,53", label: "mountain (7,53)", run: noop },
       { regionId: "1:20,40", label: "ocean (20,40) in Atlantis Ocean", run: noop }
@@ -47,6 +50,7 @@ describe("buildPaletteEntries", () => {
   it("lists units, regions, actions, order help and game data, in that reading order", () => {
     const kinds = entries().map((entry) => entry.kind);
     expect(kinds).toEqual([
+      "unit",
       "unit",
       "unit",
       "region",
@@ -90,6 +94,42 @@ describe("buildPaletteEntries", () => {
     const unit = entries().find((entry) => entry.kind === "unit");
     expect(unit?.label).toContain("Seven of Eight");
     expect(unit?.label).toContain("18642");
+  });
+
+  it("offers a stale unit with its own id, historical marker, and selection callback", () => {
+    let selected = false;
+    const stale = buildPaletteEntries({
+      ownUnits: [{ unitId: "18642", name: "Seven of Eight", run: noop }],
+      staleUnits: [
+        {
+          regionId: "1:7,53",
+          unitId: "18642",
+          name: "Historical Seven",
+          lastSeenTurn: 70,
+          run: () => {
+            selected = true;
+          }
+        }
+      ],
+      regions: [],
+      structures: [],
+      actions: [],
+      orderCommands: [],
+      insertOrder: noop,
+      gameData: [],
+      openGameData: noop
+    });
+
+    const historical = filterPalette(stale, "Historical Seven (18642)")[0];
+    expect(historical).toMatchObject({
+      id: "stale-unit-1:7,53-18642",
+      kind: "unit",
+      label: "Historical Seven (18642)",
+      lastSeenTurn: 70
+    });
+    expect(historical.id).not.toBe(stale[0].id);
+    historical.run();
+    expect(selected).toBe(true);
   });
 
   it("carries an action's key binding for the popup to show", () => {
@@ -139,12 +179,12 @@ describe("filterPalette", () => {
     // "svneight" is not a substring of anything; its letters appear in order in "Seven of
     // Eight", which is how fuzzy finders earn their keep.
     const found = filterPalette(entries(), "svneight");
-    expect(found).toHaveLength(1);
-    expect(found[0].label).toContain("Seven of Eight");
+    expect(found).toHaveLength(2);
+    expect(found.every((entry) => entry.label.includes("Seven of Eight"))).toBe(true);
   });
 
   it("shows everything, in reading order, for an empty query", () => {
-    expect(filterPalette(entries(), "")).toHaveLength(13);
+    expect(filterPalette(entries(), "")).toHaveLength(14);
   });
 
   it("returns every match, with no cap", () => {
@@ -256,6 +296,7 @@ describe("game data in the palette", () => {
   it("offers no game data when the ruleset has not loaded", () => {
     const without = buildPaletteEntries({
       ownUnits: [],
+      staleUnits: [],
       regions: [],
       structures: [],
       actions: [],

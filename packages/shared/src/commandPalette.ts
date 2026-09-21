@@ -31,6 +31,8 @@ export type PaletteEntry = {
   id: string;
   kind: PaletteEntryKind;
   label: string;
+  /** The report turn of a historical map result, absent for current entries. */
+  lastSeenTurn?: number;
   /** The key chord shown beside an action, where one exists. */
   binding?: string;
   run: () => void;
@@ -38,9 +40,21 @@ export type PaletteEntry = {
 
 export type PaletteInput = {
   ownUnits: Array<{ unitId: string; name: string; run: () => void }>;
+  staleUnits: Array<{
+    regionId: string;
+    unitId: string;
+    name: string;
+    lastSeenTurn: number;
+    run: () => void;
+  }>;
   regions: Array<{ regionId: string; label: string; run: () => void }>;
   /** Every structure in this turn's report, labelled by `structurePaletteLabel`. */
-  structures: Array<{ structureId: string; label: string; run: () => void }>;
+  structures: Array<{
+    structureId: string;
+    label: string;
+    lastSeenTurn?: number;
+    run: () => void;
+  }>;
   actions: Array<{ id: string; label: string; binding?: string; run: () => void }>;
   orderCommands: readonly string[];
   insertOrder: (command: string) => void;
@@ -67,6 +81,13 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       label: `${unit.name} (${unit.unitId})`,
       run: unit.run
     })),
+    ...input.staleUnits.map<PaletteEntry>((unit) => ({
+      id: `stale-unit-${unit.regionId}-${unit.unitId}`,
+      kind: "unit",
+      label: `${unit.name} (${unit.unitId})`,
+      lastSeenTurn: unit.lastSeenTurn,
+      run: unit.run
+    })),
     ...input.regions.map<PaletteEntry>((region) => ({
       id: `region-${region.regionId}`,
       kind: "region",
@@ -77,6 +98,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       id: `structure-${structure.structureId}`,
       kind: "structure",
       label: structure.label,
+      lastSeenTurn: structure.lastSeenTurn,
       run: structure.run
     })),
     ...input.actions.map<PaletteEntry>((action) => ({
