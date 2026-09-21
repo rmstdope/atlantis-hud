@@ -163,6 +163,48 @@ describe("walls", () => {
   });
 });
 
+it("renders only hexes on the selected level", () => {
+  const surface = CONGESTED_CENTRE;
+  const underworld = {
+    ...CONGESTED_CENTRE,
+    regionId: "2:7,53",
+    coordinate: { ...CONGESTED_CENTRE.coordinate, z: 2 },
+    label: "cavern (7,53) in Underworld"
+  };
+  const twoLevelModel: HexMapModel = {
+    ...model,
+    hexes: [surface, underworld],
+    levels: [
+      SURFACE_LEVEL,
+      { z: 2, name: "underworld" }
+    ]
+  };
+  const drawLevel = (level: number) =>
+    renderToStaticMarkup(
+      <MapCanvas
+        gameId={null}
+        model={twoLevelModel}
+        theme={probe()}
+        level={level}
+        selectedRegionId={null}
+        selectionEpoch={0}
+        pickEpoch={0}
+        onSelectRegion={() => {}}
+        showStaleness
+        showTextures={false}
+        badges={allBadges(true)}
+      />
+    );
+
+  const surfaceSvg = drawLevel(1);
+  expect(surfaceSvg).toContain('data-region-id="1:7,53"');
+  expect(surfaceSvg).not.toContain('data-region-id="2:7,53"');
+
+  const underworldSvg = drawLevel(2);
+  expect(underworldSvg).toContain('data-region-id="2:7,53"');
+  expect(underworldSvg).not.toContain('data-region-id="1:7,53"');
+});
+
 function note(overrides: Partial<HexNoteRecord> = {}): HexNoteRecord {
   return {
     id: "note-1",
