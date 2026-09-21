@@ -983,6 +983,35 @@ fn known_map_json_lists_the_walls_a_report_proves() {
     assert!(known.walls.iter().all(|wall| wall.from.z != 1));
 }
 
+#[test]
+fn known_map_json_keeps_arcanum_underworld_hexes_off_the_surface() {
+    use atlantis_hud_core::report::model::Coordinate;
+
+    let mut cache = ReportCache::default();
+    let known = known_map_json(
+        &mut cache,
+        atlantis_hud_fixtures::NEWAGE_ARCANUM_F3_T84.text,
+        None,
+        "[]",
+    )
+    .expect("resolves");
+
+    assert!(
+        known
+            .hexes
+            .iter()
+            .any(|hex| { hex.coordinate == Coordinate { x: 9, y: 3, z: 2 } }),
+        "the committed cavern is underworld level 2"
+    );
+    assert!(
+        known
+            .hexes
+            .iter()
+            .all(|hex| { hex.coordinate != Coordinate { x: 9, y: 3, z: 1 } }),
+        "the cavern must not also appear on the surface"
+    );
+}
+
 /// The resolution itself leaves walls empty: the movement readers build their own graph from it, so
 /// computing walls there would build that graph twice.
 #[test]
