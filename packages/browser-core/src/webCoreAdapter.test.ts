@@ -593,7 +593,7 @@ describe("web core adapter", () => {
     expect(seen).toEqual(['{"items":{}}', '{"items":{}}', '{"items":{}}']);
   });
 
-  it("hands the stored stamp and the seen hexes to the core, and writes back what it returns", async () => {
+  it("hands the stored stamp and sightings to the core, and writes back what it returns", async () => {
     const seenArgs: Array<{ existingImportedAt: string | null; seenJson: string }> = [];
     const adapter = createWebCoreAdapter(
       fakeWasm({
@@ -625,7 +625,7 @@ describe("web core adapter", () => {
 
     expect(seenArgs[1]?.existingImportedAt).toBe("core-says-imported");
     expect(JSON.parse(seenArgs[1]?.seenJson ?? "[]")).toEqual([
-      { regionId: "1:1,1", lastSeenTurn: 12 }
+      { regionId: "1:1,1", lastSeenTurn: 12, payloadJson: "{}" }
     ]);
   });
 

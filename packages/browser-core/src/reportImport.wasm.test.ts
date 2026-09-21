@@ -14,6 +14,8 @@ import { createMemoryWebStore } from "./webStore";
 const TURN_70 = readReport("g7f95t70");
 const TURN_71 = readReport("g7f95t71");
 const FACTION_ID = "95";
+const BORG_TURN_17 = readReport("g7f62t17");
+const BORG_TURN_18 = readReport("g7f62t18");
 
 async function realCore(): Promise<CoreWasmModule> {
   const wasm = await import("./wasm/atlantis_core.js");
@@ -101,6 +103,41 @@ describe("what a report import writes, across the WebAssembly boundary", () => {
     expect(remembered).toHaveLength(11);
     const shared = remembered.find((entry) => entry.region.regionId === "1:10,50");
     expect(shared?.lastSeenTurn).toBe(71);
+  });
+
+  it("persists a transferred retained unit under its receiving faction", async () => {
+    const wasm = await realCore();
+    const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
+    const opened = (await adapter.createGame(manifest())) as { databasePath: string };
+
+    await adapter.commitReportImport(
+      opened.databasePath,
+      "alpha",
+      "62",
+      BORG_TURN_17,
+      null,
+      false,
+      "2026-08-01T10:00:00Z"
+    );
+    await adapter.commitReportImport(
+      opened.databasePath,
+      "alpha",
+      "62",
+      BORG_TURN_18,
+      null,
+      false,
+      "2026-08-01T11:00:00Z"
+    );
+
+    const remembered = (await adapter.loadRegionSightings(opened.databasePath, "alpha", "62")) as Array<{
+      region: { regionId: string; units: Array<{ unitId: string; factionId?: string; factionName?: string; own: boolean }> };
+      lastSeenTurn: number;
+    }>;
+    const retained = remembered.find((entry) => entry.region.regionId === "1:42,80");
+    const unit = retained?.region.units.find((entry) => entry.unitId === "7124");
+
+    expect(retained?.lastSeenTurn).toBe(17);
+    expect(unit).toMatchObject({ factionId: "34", factionName: "Queen XOT", own: false });
   });
 
   it("a re-imported turn keeps when it first arrived", async () => {

@@ -10,7 +10,7 @@
 
 use std::path::Path;
 
-use atlantis_hud_core::report::import::{import_writes, SeenRegion};
+use atlantis_hud_core::report::import::import_writes;
 use atlantis_hud_core::report::merge::{
     merge_map_export_into_sightings, merge_report_into_sightings, StoredSighting,
 };
@@ -311,11 +311,11 @@ pub mod commands {
         // are the core's rules, decided once for both platforms (`import_writes`).
         let existing = load_imported_turn_stamps(Path::new(database_path), &record.key)
             .map_err(|error| error.to_string())?;
-        let seen: Vec<SeenRegion> =
+        let seen: Vec<StoredSighting> =
             load_region_sightings(Path::new(database_path), game_id, confirmed_faction_id)
                 .map_err(|error| error.to_string())?
                 .iter()
-                .map(SeenRegion::from)
+                .map(StoredSighting::from)
                 .collect();
         let writes = import_writes(
             &report,
@@ -1700,6 +1700,8 @@ mod sightings_tests {
 
     const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
     const TURN_70: &str = atlantis_hud_fixtures::G7_F95_T70.text;
+    const BORG_TURN_17: &str = atlantis_hud_fixtures::G7_F62_T17.text;
+    const BORG_TURN_18: &str = atlantis_hud_fixtures::G7_F62_T18.text;
     /// The catalogue the shell serves, which recognises everything these fixtures carry.
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
@@ -1750,6 +1752,49 @@ mod sightings_tests {
             "a remembered region keeps its exits"
         );
         assert!(first.get("terrain").is_some());
+    }
+
+    #[test]
+    fn a_unit_transfer_repairs_the_reloaded_retained_identity() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game(directory.path());
+
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "62",
+            BORG_TURN_17,
+            Some(RULESET),
+            true,
+            IMPORTED_AT,
+        )
+        .expect("turn 17 commits");
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "62",
+            BORG_TURN_18,
+            Some(RULESET),
+            true,
+            IMPORTED_AT,
+        )
+        .expect("turn 18 commits");
+
+        let remembered = command_load_region_sightings(&created.database_path, "faction-95", "62")
+            .expect("the sightings load");
+        let retained = remembered
+            .iter()
+            .find(|entry| entry.region["regionId"] == "1:42,80")
+            .expect("retained hex is present");
+        let unit = retained.region["units"]
+            .as_array()
+            .and_then(|units| units.iter().find(|unit| unit["unitId"] == "7124"))
+            .expect("Drones remain remembered");
+
+        assert_eq!(retained.last_seen_turn, 17);
+        assert_eq!(unit["factionId"], "34");
+        assert_eq!(unit["factionName"], "Queen XOT");
+        assert_eq!(unit["own"], false);
     }
 
     #[test]
