@@ -9,7 +9,7 @@
 
 use atlantis_hud_core::backup::ManifestEdit;
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
-use atlantis_hud_core::report::import::{import_writes, SeenRegion};
+use atlantis_hud_core::report::import::import_writes;
 use atlantis_hud_core::report::merge::{
     merge_map_export_into_sightings, merge_report_into_sightings, StoredSighting,
 };
@@ -152,7 +152,7 @@ pub fn report_import_writes_state(
     seen_json: String,
     at: String,
 ) -> Result<JsValue, JsValue> {
-    let seen: Vec<SeenRegion> =
+    let seen: Vec<StoredSighting> =
         serde_json::from_str(&seen_json).map_err(|error| JsValue::from_str(&error.to_string()))?;
 
     let full = atlantis_hud_core::cache::with_global(|cache| {

@@ -972,7 +972,13 @@ export function createWebCoreAdapter(
         rawReport,
         rulesetJson,
         existing?.importedAt ?? null,
-        JSON.stringify(seen.map((s) => ({ regionId: s.regionId, lastSeenTurn: s.lastSeenTurn }))),
+        JSON.stringify(
+          seen.map((s) => ({
+            regionId: s.regionId,
+            lastSeenTurn: s.lastSeenTurn,
+            payloadJson: s.payloadJson
+          }))
+        ),
         importedAt
       );
 
