@@ -1913,12 +1913,14 @@ export function AppShell({
   );
 
   /**
-   * Commits an older report to the game's stored turn history, and leaves the screen untouched.
+   * Commits an older report to the game's stored turn history and refreshes the remembered map.
    *
    * gh-208: an older report - own or foreign - must never become the working turn, but it is still
    * committed so the turn-comparison feature (ah-jg6.3/4) can read it later. Never touches
    * `setParsed`, `setRawReport`, `setOrdersDocument`, `setSave`, `clearPlan`, `setRoute`,
-   * `setComparison`, `closePopover` or `selectRegion` - the turn on screen has not changed.
+   * `setComparison`, `closePopover` or `selectRegion` - the turn on screen has not changed. It
+   * does refresh the remembered map, so historical map entries become reachable without replacing
+   * the current report.
    * Its own rejection is reported by the enclosing `loadReport`, with the file name.
    */
   const storeReportOnly = useCallback(
@@ -1929,19 +1931,30 @@ export function AppShell({
         setStatus(failedStatus("there is no open game to store it in"));
         return;
       }
-      setStatus(
-        await storeOlderTurn(
-          client,
-          game,
-          report,
-          text,
-          rulesetTextOf(await rulesetForThisLoad()),
-          new Date().toISOString(),
-          currentTurn
-        )
+      const settledRuleset = rulesetTextOf(await rulesetForThisLoad());
+      const now = new Date().toISOString();
+      const status = await storeOlderTurn(
+        client,
+        game,
+        report,
+        text,
+        settledRuleset,
+        now,
+        currentTurn
       );
+      const memory = await readMemory(
+        client,
+        game,
+        parsed?.header.factionId ?? report.header.factionId ?? "",
+        currentTurn,
+        rawReport,
+        settledRuleset
+      );
+      setMemory({ remembered: memory.remembered, knownMap: memory.knownMap });
+      setMergedReports(memory.merged);
+      setStatus(memory.warning === null ? status : warningStatus(memory.warning));
     },
-    [client, game, rulesetForThisLoad]
+    [client, game, parsed, rawReport, rulesetForThisLoad]
   );
 
   /**
