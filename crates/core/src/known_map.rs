@@ -8,9 +8,10 @@
 //!    hex carrying the exit's terrain and province, `last_seen_turn` set to that sighting's turn.
 //! 2. **Namings from the current report**: the current report's own exits, first naming wins,
 //!    `last_seen_turn` set to the current turn. These overwrite memory's namings unconditionally.
-//! 3. **Stored sightings are read with the legacy nexus repair applied** (see
-//!    `with_nexus_level_repaired`): a nexus stored before ah-4b4 at `(0,0)` on the surface is given
-//!    its own level back, so an imported game is right after the fix without a store migration.
+//! 3. **Stored sightings are read with the legacy level repair applied** (see
+//!    `with_legacy_levels_repaired`): a nexus or recognisable underworld terrain stored before
+//!    ah-4b4 on the surface is given its own level back, so an imported game is right after the fix
+//!    without a store migration.
 //!    Each remembered region overwrites whatever a hex's
 //!    coordinate currently resolves to, so two direct sightings of the same hex - storage is
 //!    expected to hand back at most one, but nothing enforces it - settle on the more recent one
@@ -182,39 +183,50 @@ fn with_allies_units(
     merged
 }
 
-/// A nexus sighting stored before ah-4b4 was filed on the surface (`1:0,0`, terrain `nexus`)
-/// because the parser could not read its level. It is the same hex; give it its level back so a
-/// game imported before the fix draws the nexus where the fix puts it, without a store migration.
+fn legacy_underworld_terrain(terrain: &str) -> bool {
+    matches!(terrain, "cavern" | "tunnels" | "underforest")
+}
+
+/// A recognisable underground sighting stored before ah-4b4 was filed on the surface because the
+/// parser could not read its level. It is the same hex; give it its level back so a game imported
+/// before the fix draws it where the fix puts it, without a store migration.
 ///
 /// A region's own coordinate is not the only place this can be wrong: its `exits` carry their own
-/// coordinates too (`Exit.coordinate`), so a neighbour's pre-fix sighting that names the nexus in
-/// its own exits list is repaired the same way, or Rule 1 would still file a phantom `Named` hex at
-/// the surface origin alongside the repaired direct sighting. And every unit inside a misfiled
+/// coordinates too (`Exit.coordinate`), so a neighbour's pre-fix sighting that names an underground
+/// region in its own exits list is repaired the same way, or Rule 1 would still file a phantom
+/// `Named` hex on the surface alongside the repaired direct sighting. And every unit inside a misfiled
 /// region carries its own `region_id` (`ReportUnit.region_id`) rather than reading the region's -
-/// left alone, a unit would claim to stand in `1:0,0` while its own region now reads `0:0,0`.
-fn with_nexus_level_repaired(entry: &RememberedRegion) -> RememberedRegion {
-    let region_is_misfiled =
-        entry.region.terrain == "nexus" && entry.region.coordinate.z == level::SURFACE;
-    let any_exit_is_misfiled = entry
-        .region
-        .exits
-        .iter()
-        .any(|exit| exit.terrain == "nexus" && exit.coordinate.z == level::SURFACE);
-    if !region_is_misfiled && !any_exit_is_misfiled {
+/// left alone, a unit would claim to stand on the surface while its own region reads underground.
+fn with_legacy_levels_repaired(entry: &RememberedRegion) -> RememberedRegion {
+    let repaired_level = |terrain: &str, coordinate: Coordinate| {
+        (coordinate.z == level::SURFACE).then(|| match terrain {
+            "nexus" => level::NEXUS,
+            _ if legacy_underworld_terrain(terrain) => level::UNDERWORLD,
+            _ => level::SURFACE,
+        })
+    };
+    let region_level = repaired_level(&entry.region.terrain, entry.region.coordinate);
+    let any_exit_is_misfiled = entry.region.exits.iter().any(|exit| {
+        repaired_level(&exit.terrain, exit.coordinate)
+            .is_some_and(|repaired_z| repaired_z != level::SURFACE)
+    });
+    if region_level.is_none_or(|repaired_z| repaired_z == level::SURFACE) && !any_exit_is_misfiled {
         return entry.clone();
     }
 
     let mut repaired = entry.clone();
-    if region_is_misfiled {
-        repaired.region.coordinate.z = level::NEXUS;
+    if let Some(repaired_z) = region_level.filter(|repaired_z| *repaired_z != level::SURFACE) {
+        repaired.region.coordinate.z = repaired_z;
         repaired.region.region_id = repaired.region.coordinate.id();
         for unit in &mut repaired.region.units {
             unit.region_id = repaired.region.region_id.clone();
         }
     }
     for exit in &mut repaired.region.exits {
-        if exit.terrain == "nexus" && exit.coordinate.z == level::SURFACE {
-            exit.coordinate.z = level::NEXUS;
+        if let Some(repaired_z) = repaired_level(&exit.terrain, exit.coordinate)
+            .filter(|repaired_z| *repaired_z != level::SURFACE)
+        {
+            exit.coordinate.z = repaired_z;
         }
     }
     repaired
@@ -222,15 +234,15 @@ fn with_nexus_level_repaired(entry: &RememberedRegion) -> RememberedRegion {
 
 /// Everything the faction knows, resolved once. See the module doc for the precedence rules.
 ///
-/// Stored sightings are read with the legacy nexus repair applied first (see
-/// `with_nexus_level_repaired`), so a game imported before ah-4b4 is right after it too.
+/// Stored sightings are read with the legacy level repair applied first (see
+/// `with_legacy_levels_repaired`), so a game imported before ah-4b4 is right after it too.
 #[must_use]
 pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]) -> KnownMap {
     let current_turn = current.header.turn_number;
     let mut by_key: BTreeMap<String, KnownMapHex> = BTreeMap::new();
 
     let remembered: Vec<RememberedRegion> =
-        remembered.iter().map(with_nexus_level_repaired).collect();
+        remembered.iter().map(with_legacy_levels_repaired).collect();
 
     // Rule 1: namings from memory, oldest sighting first, first naming in a turn wins.
     let mut ordered: Vec<&RememberedRegion> = remembered.iter().collect();
