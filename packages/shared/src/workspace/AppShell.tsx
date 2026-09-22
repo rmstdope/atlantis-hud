@@ -42,7 +42,7 @@ import {
 } from "../ordersDocument";
 import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
-import { orderCommentSyntaxFor, rulesetById } from "../rulesets";
+import { rulesetById } from "../rulesets";
 import { orderProcessingFor } from "../orderProcessing";
 import { rowKeyOf, unitRowKey } from "../unitTable";
 import { previewAtCursor, unitAtCursor } from "./unitCursor";
@@ -564,15 +564,8 @@ export function AppShell({
   // creating, switching and deleting all move the open game and the list in one step.
   const [game, setGame] = useState<OpenedGame | null>(null);
   const openRulesetId = game?.manifest.metadata.rulesetId;
-  /**
-   * How the open game reads an unquoted semicolon, derived once from its recorded ruleset id.
-   *
-   * Everything that locates, classifies, rewrites or exports order text is given this, because a
-   * Trident `WORK;note` is a `WORK` with a comment on it and a New Origins `WORK;note` is one
-   * word (`rules/orders` on each server). A game with no ruleset id answers `"origins"`.
-   */
-  const orderCommentSyntax = orderCommentSyntaxFor(openRulesetId);
   const orders = useMemo(() => orderProcessingFor(openRulesetId), [openRulesetId]);
+  const orderCommentSyntax = orders.syntax;
 
   /**
    * What a unit will spend the month on, read from the live document so the units table follows an
