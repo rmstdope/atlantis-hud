@@ -18,6 +18,7 @@
     "test:native": "wdio run wdio.conf.ts",
     "build:web": "pnpm --filter @atlantis/web build",
     "test:pwa": "tsx scripts/withGateLock.ts pnpm exec playwright test --config playwright.pwa.config.ts",
+    "generate:bindings": "cargo test -p atlantis-hud-core --lib export_bindings_ && tsx scripts/checkGenerated.ts --write-barrel",
     "check:generated": "tsx scripts/checkGenerated.ts",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run check:generated && pnpm run test:smoke && pnpm run build:web && pnpm run test:pwa && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings",
     "check:fast": "tsx scripts/runGate.ts"

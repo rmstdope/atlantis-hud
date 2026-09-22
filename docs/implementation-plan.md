@@ -38,9 +38,10 @@ atlantis-hud-core` is the generator: it is what runs the `#[test]` functions ts-
 `#[ts(export)]` type.
 
 Never edit a file under `packages/core-client/src/generated/` or `packages/ruleset/src/generated/`
-by hand - it is overwritten on the next `cargo test`. Regenerate with `cargo test -p
-atlantis-hud-core` after changing a Rust report type, and commit the result; `pnpm run
-check:generated` and CI both fail on a stale copy. A renamed
+by hand - it is overwritten on the next generation. Regenerate with `pnpm run
+generate:bindings` after changing a Rust report type, and commit the result; it refreshes both the
+ts-rs output and the generated core-client barrel. `pnpm run check:generated` and CI both fail on a
+stale copy. A renamed
 export (`ts(rename = "...")`) always carries `export_to` alongside it, naming the file the rename
 should land in - without it the file keeps the type's Rust name and the re-export in `index.ts`
 points at nothing. A type reached only through `#[serde(flatten)]` carries no `export` of its own,
