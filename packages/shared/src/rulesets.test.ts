@@ -7,6 +7,7 @@ import {
   orderCommentSyntaxFor,
   rulesetById
 } from "./rulesets";
+import { orderProcessingFor } from "./orderProcessing";
 
 describe("rulesets", () => {
   it("spells the variant the way a player reads it", () => {
@@ -80,5 +81,13 @@ describe("rulesets", () => {
     expect(orderCommentSyntaxFor(null)).toBe("origins");
     expect(orderCommentSyntaxFor(undefined)).toBe("origins");
     expect(orderCommentSyntaxFor("not-a-ruleset")).toBe("origins");
+  });
+
+  it("builds one immutable order-processing context for every known or absent ruleset id", () => {
+    const document = "unit 42;the miner\nWORK";
+    expect(orderProcessingFor("newage-trident").readUnitOrders(document, "42", undefined)).toBe("WORK");
+    for (const rulesetId of ["neworigins", null, undefined, "not-a-ruleset"]) {
+      expect(orderProcessingFor(rulesetId).readUnitOrders(document, "42", undefined)).toBeNull();
+    }
   });
 });

@@ -1,8 +1,7 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
-import { unitLabelForDiagnostic } from "../ordersImport";
+import type { OrderProcessing } from "../orderProcessing";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { SeverityMark } from "./primitives";
-import type { OrderCommentSyntax } from "../rulesets";
 
 /**
  * What a dirty orders import found, once it has finished.
@@ -33,12 +32,12 @@ function count(n: number, noun: string): string {
 export function OrdersImportSummaryDialog({
   summary,
   onDismiss,
-  orderCommentSyntax
+  orders
 }: {
   summary: OrdersImportSummary;
   onDismiss: () => void;
-  /** How the game played reads an unquoted semicolon (`rulesets.orderCommentSyntaxFor`). */
-  orderCommentSyntax: OrderCommentSyntax;
+  /** The open game's order-processing context. */
+  orders: OrderProcessing;
 }) {
   useEscapeToDismiss(onDismiss);
 
@@ -49,7 +48,7 @@ export function OrdersImportSummaryDialog({
   // rather than in the render below.
   const ordered = [...errors, ...warnings].map((diagnostic) => ({
     diagnostic,
-    unitId: unitLabelForDiagnostic(summary.document, diagnostic, orderCommentSyntax)
+    unitId: orders.unitLabelForDiagnostic(summary.document, diagnostic)
   }));
 
   const headline =

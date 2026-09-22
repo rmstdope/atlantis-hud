@@ -24,9 +24,9 @@ import type {
   RememberedRegion,
   ReportMergeResult
 } from "@atlantis/core-client";
-import { documentFor, draftKeyFor } from "./orderDraft";
+import { draftKeyFor } from "./orderDraft";
 import { seedOrdersDocument } from "./ordersDocument";
-import { orderCommentSyntaxFor } from "./rulesets";
+import { orderProcessingFor } from "./orderProcessing";
 
 /**
  * What the shell holds about the world beyond the report: the remembered regions (for the planner
@@ -411,12 +411,11 @@ export async function restoreLatestTurn(
   const map = await knownMapFor(client, stored.rawReport, rulesetJson, remembered);
 
   const template = seedOrdersDocument(parsed.ordersTemplate?.text ?? "", parsed.header.factionId);
-  const chosen = await documentFor(
+  const chosen = await orderProcessingFor(game.manifest.metadata.rulesetId).documentFor(
     client,
     game,
     draftKeyFor(parsed),
-    template,
-    orderCommentSyntaxFor(game.manifest.metadata.rulesetId)
+    template
   );
 
   return {

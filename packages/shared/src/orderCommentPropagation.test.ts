@@ -7,21 +7,7 @@
  * that stops passing the policy fails here rather than silently reading the wrong world.
  */
 import { describe, expect, it } from "vitest";
-import { diagnosticTargets } from "./diagnosticNav";
-import { describeOrdersImport, unitIdForDiagnostic } from "./ordersImport";
-import {
-  longOrderOf,
-  readUnitOrders,
-  reportedLongOrders,
-  stripUnitComments,
-  writeRouteOrder,
-  writeUnitOrders
-} from "./ordersDocument";
-import { studyWritePlan } from "./studyOrdersWrite";
-import { diffOrders } from "./turnDiff";
-import { ordersExportText } from "./workspace/ordersExport";
-import { formedSelectionFor } from "./workspace/ordersLock";
-import { orderCommentSyntaxFor } from "./rulesets";
+import { orderProcessingFor } from "./orderProcessing";
 
 const DOCUMENT = [
   "#atlantis 1",
@@ -35,30 +21,25 @@ const DOCUMENT = [
   "#end;that is all"
 ].join("\n");
 
-const TRIDENT = orderCommentSyntaxFor("newage-trident");
-const ORIGINS = orderCommentSyntaxFor("neworigins");
+const TRIDENT = orderProcessingFor("newage-trident");
+const ORIGINS = orderProcessingFor("neworigins");
 
 describe("the comment policy reaches every reader of the document", () => {
-  it("is what the shell derives from the open game", () => {
-    expect(TRIDENT).toBe("trident");
-    expect(ORIGINS).toBe("origins");
-  });
-
   it("reads and rewrites the selected unit's block", () => {
-    expect(readUnitOrders(DOCUMENT, "42", undefined, TRIDENT)).toContain("WORK;paying the guard");
-    expect(readUnitOrders(DOCUMENT, "42", undefined, ORIGINS)).toBeNull();
+    expect(TRIDENT.readUnitOrders(DOCUMENT, "42", undefined)).toContain("WORK;paying the guard");
+    expect(ORIGINS.readUnitOrders(DOCUMENT, "42", undefined)).toBeNull();
 
-    const written = writeUnitOrders(DOCUMENT, "42", "TAX", undefined, TRIDENT);
+    const written = TRIDENT.writeUnitOrders(DOCUMENT, "42", "TAX", undefined);
     expect(written).toContain("unit 42;the miner\nTAX\n");
     expect(written).toContain("#atlantis 1");
   });
 
   it("resolves a formed selection through a commented FORM line", () => {
-    expect(formedSelectionFor(DOCUMENT, "new-1", new Set(["42"]), TRIDENT)).toEqual({
+    expect(TRIDENT.formedSelectionFor(DOCUMENT, "new-1", new Set(["42"]))).toEqual({
       alias: "1",
       formedBy: "42"
     });
-    expect(formedSelectionFor(DOCUMENT, "new-1", new Set(["42"]), ORIGINS)).toEqual({
+    expect(ORIGINS.formedSelectionFor(DOCUMENT, "new-1", new Set(["42"]))).toEqual({
       alias: "1",
       formedBy: null
     });
@@ -77,24 +58,24 @@ describe("the comment policy reaches every reader of the document", () => {
       columnEnd: null,
       regionId: null
     };
-    expect(unitIdForDiagnostic(DOCUMENT, diagnostic, TRIDENT)).toBe("42");
-    expect(unitIdForDiagnostic(DOCUMENT, diagnostic, ORIGINS)).toBeNull();
+    expect(TRIDENT.unitIdForDiagnostic(DOCUMENT, diagnostic)).toBe("42");
+    expect(ORIGINS.unitIdForDiagnostic(DOCUMENT, diagnostic)).toBeNull();
 
     expect(
-      diagnosticTargets(DOCUMENT, [diagnostic], new Map(), TRIDENT).map((target) => target.unitId)
+      TRIDENT.diagnosticTargets(DOCUMENT, [diagnostic], new Map()).map((target) => target.unitId)
     ).toEqual(["42"]);
   });
 
   it("counts the units an import would replace", () => {
-    expect(describeOrdersImport(DOCUMENT, DOCUMENT, TRIDENT)).toEqual({
+    expect(TRIDENT.describeOrdersImport(DOCUMENT, DOCUMENT)).toEqual({
       fileUnitIds: ["42"],
       emptiedUnitIds: []
     });
-    expect(describeOrdersImport(DOCUMENT, DOCUMENT, ORIGINS).fileUnitIds).toEqual([]);
+    expect(ORIGINS.describeOrdersImport(DOCUMENT, DOCUMENT).fileUnitIds).toEqual([]);
   });
 
   it("replaces a month-long order rather than writing a second one", () => {
-    const plan = studyWritePlan({
+    const plan = TRIDENT.studyWritePlan({
       document: DOCUMENT,
       entries: [
         {
@@ -107,29 +88,27 @@ describe("the comment policy reaches every reader of the document", () => {
         } as never
       ],
       banner: () => ";*** plain (1,1) in Nowhere ***",
-      label: () => "plain (1,1)",
-      syntax: TRIDENT
+      label: () => "plain (1,1)"
     });
-    expect(longOrderOf(readUnitOrders(plan.next, "42", undefined, TRIDENT) ?? "", TRIDENT)).toBe(
+    expect(TRIDENT.longOrderOf(TRIDENT.readUnitOrders(plan.next, "42", undefined) ?? "")).toBe(
       "STUDY COMB"
     );
     expect(plan.next).not.toContain("WORK;paying the guard");
   });
 
   it("replaces a commented movement order when a route is planned", () => {
-    const routed = writeRouteOrder({
+    const routed = TRIDENT.writeRouteOrder({
       document: ["unit 42;the miner", "MOVE;the old plan"].join("\n"),
       unitId: "42",
       banner: null,
-      order: "MOVE N NE",
-      syntax: TRIDENT
+      order: "MOVE N NE"
     });
     expect(routed).toBe(["unit 42;the miner", "MOVE N NE"].join("\n"));
   });
 
   it("strips and restores the server's descriptions around the right blocks", () => {
-    expect(stripUnitComments(DOCUMENT, TRIDENT)).toBe(DOCUMENT);
-    expect(ordersExportText(DOCUMENT, DOCUMENT, false, TRIDENT)).toBe(DOCUMENT);
+    expect(TRIDENT.stripUnitComments(DOCUMENT)).toBe(DOCUMENT);
+    expect(TRIDENT.ordersExportText(DOCUMENT, DOCUMENT, false)).toBe(DOCUMENT);
   });
 
   it("compares two turns' drafts by unit", () => {
@@ -137,7 +116,7 @@ describe("the comment policy reaches every reader of the document", () => {
     // `commandsOnly` keeps every line of the block that is not a whole-line comment, the nested
     // FORM among them; only the first line differs between the two drafts.
     const rest = ["FORM 1;the scout", "MOVE N;north", "END;done"];
-    expect(diffOrders(older, DOCUMENT, TRIDENT).changed).toEqual([
+    expect(TRIDENT.diffOrders(older, DOCUMENT).changed).toEqual([
       {
         unitId: "42",
         before: ["TAX;paying the guard", ...rest],
@@ -146,12 +125,12 @@ describe("the comment policy reaches every reader of the document", () => {
     ]);
     // Under the Origins default neither header parses, so every unit silently vanishes from the
     // comparison - which is the failure this seam exists to prevent.
-    expect(diffOrders(older, DOCUMENT, ORIGINS).changed).toEqual([]);
+    expect(ORIGINS.diffOrders(older, DOCUMENT).changed).toEqual([]);
   });
 
   it("indexes the template's long orders", () => {
     const template = { units: [{ unitId: "42", lines: ["WORK;paying the guard"] }] } as never;
-    expect(reportedLongOrders(template, TRIDENT)?.get("42")).toBe("WORK;paying the guard");
-    expect(reportedLongOrders(template, ORIGINS)?.get("42")).toBeNull();
+    expect(TRIDENT.reportedLongOrders(template)?.get("42")).toBe("WORK;paying the guard");
+    expect(ORIGINS.reportedLongOrders(template)?.get("42")).toBeNull();
   });
 });
