@@ -900,49 +900,8 @@ fn write_backup_collections(
         )?;
     }
 
-    for mage in &allied_mages {
-        transaction.execute(
-            "INSERT INTO allied_mages (
-                    game_id,
-                    faction_id,
-                    unit_id,
-                    faction_name,
-                    unit_json,
-                    sheet_turn,
-                    received_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                game_id,
-                mage.faction_id.as_str(),
-                mage.unit.unit_id.as_str(),
-                mage.faction_name.as_deref(),
-                serde_json::to_string(&mage.unit)?.as_str(),
-                mage.sheet_turn,
-                mage.received_at.as_str(),
-            ],
-        )?;
-    }
-
-    for plan in &study_plans {
-        transaction.execute(
-            "INSERT INTO study_plans (
-                    game_id,
-                    faction_id,
-                    unit_id,
-                    goals_json,
-                    comment,
-                    updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                game_id,
-                plan.faction_id.as_str(),
-                plan.unit_id.as_str(),
-                serde_json::to_string(&plan.goals)?.as_str(),
-                plan.comment.as_str(),
-                plan.updated_at.as_str(),
-            ],
-        )?;
-    }
+    insert_unit_keyed(transaction, game_id, &allied_mages)?;
+    insert_unit_keyed(transaction, game_id, &study_plans)?;
     Ok(())
 }
 
@@ -2126,12 +2085,53 @@ fn unit_keyed_upsert_sql<C: UnitKeyedCollection>() -> String {
     )
 }
 
+/// The insert used by backup restoration: duplicates are malformed backup data, not updates.
+fn unit_keyed_insert_sql<C: UnitKeyedCollection>() -> String {
+    let placeholders = (1..=3 + C::VALUE_COLUMNS.len())
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "INSERT INTO {} (game_id, faction_id, unit_id, {}) VALUES ({})",
+        C::TABLE,
+        C::VALUE_COLUMNS.join(", "),
+        placeholders,
+    )
+}
+
 /// `DELETE FROM <TABLE> WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3`.
 fn unit_keyed_delete_sql<C: UnitKeyedCollection>() -> String {
     format!(
         "DELETE FROM {} WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3",
         C::TABLE
     )
+}
+
+/// Writes unit-keyed rows using the SQL conflict policy the caller chooses.
+fn write_unit_keyed<C: UnitKeyedCollection>(
+    transaction: &Transaction<'_>,
+    game_id: &str,
+    rows: &[C],
+    sql: String,
+) -> Result<(), PersistenceError> {
+    let mut statement = transaction.prepare(&sql)?;
+    for row in rows {
+        let (faction_id, unit_id) = row.key();
+        let values = row.write_params()?;
+        let mut bound: Vec<&dyn rusqlite::ToSql> = vec![&game_id, &faction_id, &unit_id];
+        bound.extend(values.iter().map(|value| value.as_ref()));
+        statement.execute(bound.as_slice())?;
+    }
+    Ok(())
+}
+
+/// Inserts unit-keyed backup rows in a transaction the caller owns.
+fn insert_unit_keyed<C: UnitKeyedCollection>(
+    transaction: &Transaction<'_>,
+    game_id: &str,
+    rows: &[C],
+) -> Result<(), PersistenceError> {
+    write_unit_keyed(transaction, game_id, rows, unit_keyed_insert_sql::<C>())
 }
 
 /// Every row of `C` for one game, on a connection the caller already holds and has migrated.
@@ -2191,14 +2191,7 @@ fn save_unit_keyed<C: UnitKeyedCollection>(
         for key in removed {
             delete.execute(params![game_id, key.faction_id(), key.unit_id()])?;
         }
-        let mut upsert = transaction.prepare(&unit_keyed_upsert_sql::<C>())?;
-        for row in rows {
-            let (faction_id, unit_id) = row.key();
-            let values = row.write_params()?;
-            let mut bound: Vec<&dyn rusqlite::ToSql> = vec![&game_id, &faction_id, &unit_id];
-            bound.extend(values.iter().map(|value| value.as_ref()));
-            upsert.execute(bound.as_slice())?;
-        }
+        write_unit_keyed(&transaction, game_id, rows, unit_keyed_upsert_sql::<C>())?;
     }
     transaction.commit()?;
     Ok(())
@@ -4247,6 +4240,46 @@ mod tests {
     }
 
     #[test]
+    fn insert_unit_keyed_serializes_study_plan_value_columns_in_a_transaction() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let plan = StudyPlan {
+            faction_id: "21".to_string(),
+            unit_id: "9001".to_string(),
+            goals: vec![
+                StudyGoal::Study {
+                    turn: 25,
+                    skill: "FORC".to_string(),
+                },
+                StudyGoal::Teach {
+                    turn: 26,
+                    students: vec!["9002".to_string(), "9003".to_string()],
+                    live: false,
+                },
+            ],
+            comment: "finish force, then teach pattern".to_string(),
+            updated_at: "2026-08-01T09:00:00Z".to_string(),
+        };
+        let mut connection =
+            Connection::open(&created.database_path).expect("open migrated database");
+        let transaction = connection.transaction().expect("begin transaction");
+
+        insert_unit_keyed(&transaction, GAME_ID, std::slice::from_ref(&plan))
+            .expect("the collection codec should insert the plan");
+        transaction.commit().expect("commit inserted plan");
+
+        let listed =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+
+        assert_eq!(
+            listed,
+            vec![plan],
+            "the codec's value columns preserve every study-plan field"
+        );
+    }
+
+    #[test]
     fn export_and_import_carry_study_plans() {
         let dir = tempdir().expect("tempdir");
         let created =
@@ -4270,6 +4303,50 @@ mod tests {
             list_study_plans(&restored.database_path, GAME_ID).expect("list should succeed");
 
         assert_eq!(listed, vec![plan], "a study plan survives the round trip");
+    }
+
+    #[test]
+    fn importing_duplicate_study_plans_fails_and_cleans_up_the_new_game() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let plan = a_plan("9001", Some("FORC"), 25);
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&plan),
+            &[],
+        )
+        .expect("plan should persist");
+        let exported = export_game(dir.path(), GAME_ID, "2026-08-05T09:00:00Z")
+            .expect("export should succeed");
+        let mut duplicate_backup: serde_json::Value =
+            serde_json::from_str(&exported).expect("backup should be JSON");
+        let plans = duplicate_backup["studyPlans"]
+            .as_array_mut()
+            .expect("exported plans should be an array");
+        plans.push(plans[0].clone());
+        let restored_root = tempdir().expect("tempdir");
+
+        let error = import_game(
+            restored_root.path(),
+            &serde_json::to_string(&duplicate_backup).expect("backup should serialize"),
+            "2026-08-06T09:00:00Z",
+        )
+        .expect_err("duplicate unit-keyed rows should fail the import");
+
+        assert!(
+            matches!(
+                error,
+                PersistenceError::Database(rusqlite::Error::SqliteFailure(ref error, _))
+                    if error.code == ErrorCode::ConstraintViolation
+            ),
+            "the duplicate should retain SQLite's unique-constraint error"
+        );
+        assert!(
+            !restored_root.path().join(GAME_ID).exists(),
+            "the failed import should clean up its new game"
+        );
     }
 
     #[test]
