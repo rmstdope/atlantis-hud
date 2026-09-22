@@ -2085,6 +2085,20 @@ fn unit_keyed_upsert_sql<C: UnitKeyedCollection>() -> String {
     )
 }
 
+/// The insert used by backup restoration: duplicates are malformed backup data, not updates.
+fn unit_keyed_insert_sql<C: UnitKeyedCollection>() -> String {
+    let placeholders = (1..=3 + C::VALUE_COLUMNS.len())
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "INSERT INTO {} (game_id, faction_id, unit_id, {}) VALUES ({})",
+        C::TABLE,
+        C::VALUE_COLUMNS.join(", "),
+        placeholders,
+    )
+}
+
 /// `DELETE FROM <TABLE> WHERE game_id = ?1 AND faction_id = ?2 AND unit_id = ?3`.
 fn unit_keyed_delete_sql<C: UnitKeyedCollection>() -> String {
     format!(
@@ -2093,21 +2107,31 @@ fn unit_keyed_delete_sql<C: UnitKeyedCollection>() -> String {
     )
 }
 
-/// Inserts or updates unit-keyed rows in a transaction the caller owns.
-fn insert_unit_keyed<C: UnitKeyedCollection>(
+/// Writes unit-keyed rows using the SQL conflict policy the caller chooses.
+fn write_unit_keyed<C: UnitKeyedCollection>(
     transaction: &Transaction<'_>,
     game_id: &str,
     rows: &[C],
+    sql: String,
 ) -> Result<(), PersistenceError> {
-    let mut upsert = transaction.prepare(&unit_keyed_upsert_sql::<C>())?;
+    let mut statement = transaction.prepare(&sql)?;
     for row in rows {
         let (faction_id, unit_id) = row.key();
         let values = row.write_params()?;
         let mut bound: Vec<&dyn rusqlite::ToSql> = vec![&game_id, &faction_id, &unit_id];
         bound.extend(values.iter().map(|value| value.as_ref()));
-        upsert.execute(bound.as_slice())?;
+        statement.execute(bound.as_slice())?;
     }
     Ok(())
+}
+
+/// Inserts unit-keyed backup rows in a transaction the caller owns.
+fn insert_unit_keyed<C: UnitKeyedCollection>(
+    transaction: &Transaction<'_>,
+    game_id: &str,
+    rows: &[C],
+) -> Result<(), PersistenceError> {
+    write_unit_keyed(transaction, game_id, rows, unit_keyed_insert_sql::<C>())
 }
 
 /// Every row of `C` for one game, on a connection the caller already holds and has migrated.
@@ -2167,7 +2191,7 @@ fn save_unit_keyed<C: UnitKeyedCollection>(
         for key in removed {
             delete.execute(params![game_id, key.faction_id(), key.unit_id()])?;
         }
-        insert_unit_keyed(&transaction, game_id, rows)?;
+        write_unit_keyed(&transaction, game_id, rows, unit_keyed_upsert_sql::<C>())?;
     }
     transaction.commit()?;
     Ok(())
@@ -4279,6 +4303,50 @@ mod tests {
             list_study_plans(&restored.database_path, GAME_ID).expect("list should succeed");
 
         assert_eq!(listed, vec![plan], "a study plan survives the round trip");
+    }
+
+    #[test]
+    fn importing_duplicate_study_plans_fails_and_cleans_up_the_new_game() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let plan = a_plan("9001", Some("FORC"), 25);
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&plan),
+            &[],
+        )
+        .expect("plan should persist");
+        let exported = export_game(dir.path(), GAME_ID, "2026-08-05T09:00:00Z")
+            .expect("export should succeed");
+        let mut duplicate_backup: serde_json::Value =
+            serde_json::from_str(&exported).expect("backup should be JSON");
+        let plans = duplicate_backup["studyPlans"]
+            .as_array_mut()
+            .expect("exported plans should be an array");
+        plans.push(plans[0].clone());
+        let restored_root = tempdir().expect("tempdir");
+
+        let error = import_game(
+            restored_root.path(),
+            &serde_json::to_string(&duplicate_backup).expect("backup should serialize"),
+            "2026-08-06T09:00:00Z",
+        )
+        .expect_err("duplicate unit-keyed rows should fail the import");
+
+        assert!(
+            matches!(
+                error,
+                PersistenceError::Database(rusqlite::Error::SqliteFailure(ref error, _))
+                    if error.code == ErrorCode::ConstraintViolation
+            ),
+            "the duplicate should retain SQLite's unique-constraint error"
+        );
+        assert!(
+            !restored_root.path().join(GAME_ID).exists(),
+            "the failed import should clean up its new game"
+        );
     }
 
     #[test]
