@@ -34,7 +34,7 @@ import type {
 } from "@atlantis/core-client";
 import type { StatusLine } from "./workspace/shellStatus";
 import { commitTurn, rememberTurn, type MemoryOutcome } from "./gameMemory";
-import { documentFor, draftKeyFor } from "./orderDraft";
+import { draftKeyFor } from "./orderDraft";
 import { decideReportLoad, judgeReportUsable } from "./reportLoadDecision";
 import { readAtlaClientAges, type AtlaClientAges } from "./atlaClientImport";
 import {
@@ -56,7 +56,7 @@ import { sortUnitsForDisplay } from "./hexMapModel";
 import { countsStatus, noticeStatus, warningStatus } from "./workspace/shellStatus";
 import { seedOrdersDocument } from "./ordersDocument";
 import { factionLabelOf } from "./factionLabel";
-import { orderCommentSyntaxFor } from "./rulesets";
+import { orderProcessingFor } from "./orderProcessing";
 
 // Moved to `factionLabel.ts` so `mageSheetImport.ts` can use it without a cycle through this
 // module; re-exported here so every existing importer is untouched.
@@ -124,12 +124,11 @@ export async function loadTurn(
   // work; a new turn's report brings a clean template with it.
   const template = seedOrdersDocument(report.ordersTemplate?.text ?? "", report.header.factionId);
   const chosen = game
-    ? await documentFor(
+    ? await orderProcessingFor(game.manifest.metadata.rulesetId).documentFor(
         client,
         game,
         draftKeyFor(report),
-        template,
-        orderCommentSyntaxFor(game.manifest.metadata.rulesetId)
+        template
       )
     : { text: template, restored: false, savedAt: null, warning: null };
 

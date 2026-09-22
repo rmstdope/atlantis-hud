@@ -14,7 +14,7 @@ import {
 } from "react";
 import { minimalChange } from "../editorReconcile";
 import { buildVocabulary, keywordJustFinished } from "../orderCase";
-import type { OrderCommentSyntax } from "../rulesets";
+import type { OrderProcessing } from "../orderProcessing";
 import {
   contentChanges,
   lineDepths,
@@ -73,7 +73,7 @@ type OrdersEditorProps = {
    * tidy and the Enter-depth scanners read without rebuilding CodeMirror - and so losing the undo
    * history with it.
    */
-  orderCommentSyntax: OrderCommentSyntax;
+  orders: OrderProcessing;
   /** The player's snippet library, offered in the same popup and expanded with tab-through fields. */
   snippets: readonly OrderSnippet[];
   /** What may stand at an argument position, asked of the core once per half-typed word. */
@@ -123,13 +123,14 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     commands,
     orderOcd,
     orderVocabulary,
-    orderCommentSyntax,
+    orders,
     snippets,
     caretCompletions,
     onChange
   },
   ref
 ) {
+  const orderCommentSyntax = orders.syntax;
   const container = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
 
@@ -144,7 +145,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     commands,
     orderOcd,
     vocabulary,
-    orderCommentSyntax,
+    orderCommentSyntax: orders.syntax,
     snippets,
     caretCompletions,
     onChange

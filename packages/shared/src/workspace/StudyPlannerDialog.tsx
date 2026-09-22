@@ -9,7 +9,7 @@ import {
   type PlannerGroup,
   type PlannerMage
 } from "../studyPlanner";
-import type { OrderCommentSyntax } from "../rulesets";
+import type { OrderProcessing } from "../orderProcessing";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { STANDING_CHIP, standingLimit } from "./standingChip";
 import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
@@ -67,7 +67,7 @@ export function StudyPlannerDialog({
   onSaveText,
   ordersError,
   ordersDocument,
-  orderCommentSyntax,
+  orders: orderProcessing,
   regionBanner,
   onWriteOrdersDocument,
   onSaveNote,
@@ -109,8 +109,8 @@ export function StudyPlannerDialog({
   ordersError: string | null;
   /** The orders document as it stands, so the Orders tab can say what writing into it would change. */
   ordersDocument: string;
-  /** How the game played reads an unquoted semicolon (`rulesets.orderCommentSyntaxFor`). */
-  orderCommentSyntax: OrderCommentSyntax;
+  /** The open game's order-processing context. */
+  orders: OrderProcessing;
   /** The `;***` banner a new block for a mage in this region goes under, or null. */
   regionBanner: (regionId: string) => string | null;
   /** Replaces the whole document, as an external write. `AppShell`'s `writeStudyOrdersDocument`. */
@@ -188,10 +188,10 @@ export function StudyPlannerDialog({
             entries: ownEntries,
             banner: regionBanner,
             label,
-            syntax: orderCommentSyntax
+            syntax: orderProcessing.syntax
           })
         : null,
-    [ownEntries, ordersDocument, regionBanner, label, orderCommentSyntax]
+    [ownEntries, ordersDocument, regionBanner, label, orderProcessing]
   );
 
   // Never re-entered mid-question, and a stale Undo is never offered against a document that has

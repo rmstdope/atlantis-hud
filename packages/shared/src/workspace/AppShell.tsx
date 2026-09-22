@@ -43,6 +43,7 @@ import {
 import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { orderCommentSyntaxFor, rulesetById } from "../rulesets";
+import { orderProcessingFor } from "../orderProcessing";
 import { rowKeyOf, unitRowKey } from "../unitTable";
 import { previewAtCursor, unitAtCursor } from "./unitCursor";
 import type { MapShape } from "@atlantis/core-client";
@@ -571,6 +572,7 @@ export function AppShell({
    * word (`rules/orders` on each server). A game with no ruleset id answers `"origins"`.
    */
   const orderCommentSyntax = orderCommentSyntaxFor(openRulesetId);
+  const orders = useMemo(() => orderProcessingFor(openRulesetId), [openRulesetId]);
 
   /**
    * What a unit will spend the month on, read from the live document so the units table follows an
@@ -5196,7 +5198,7 @@ export function AppShell({
           onSaveText={(fileName, text) => void saveStudyOrders(fileName, text)}
           ordersError={studyOrdersError}
           ordersDocument={ordersDocument}
-          orderCommentSyntax={orderCommentSyntax}
+          orders={orders}
           regionBanner={regionBanner}
           onWriteOrdersDocument={writeStudyOrdersDocument}
           tree={magicTree}
@@ -5603,7 +5605,7 @@ export function AppShell({
       */}
       {ordersImportSummary ? (
         <OrdersImportSummaryDialog
-          orderCommentSyntax={orderCommentSyntax}
+          orders={orders}
           summary={ordersImportSummary}
           onDismiss={() => setOrdersImportSummary(null)}
         />
@@ -5827,7 +5829,7 @@ export function AppShell({
                   unit={unit}
                   unitId={selectedUnitId}
                   formed={formedSelection}
-                  orderCommentSyntax={orderCommentSyntax}
+                  orders={orders}
                   regionUnitIds={regionUnitIds}
                   hex={hex}
                   document={ordersDocument}

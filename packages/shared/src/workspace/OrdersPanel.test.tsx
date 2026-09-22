@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { OrdersPanel } from "./OrdersPanel";
 import { NO_PRODUCTION, NO_STUDENTS, NO_FACTION_ORDERS } from "../orderEditor";
 import { formedSelectionFor } from "./ordersLock";
+import { orderProcessingFor } from "../orderProcessing";
 
 /**
  * The orders pane's walk buttons (ah-dlao): the mouse route into the same walk F8 makes.
@@ -16,7 +17,7 @@ const draw = (
   walkPosition?: { at: number; of: number } | null
 ) =>
   renderToStaticMarkup(
-    <OrdersPanel orderCommentSyntax="origins"
+    <OrdersPanel orders={orderProcessingFor("neworigins")}
       unit={null}
       unitId={null}
       formed={null}
@@ -100,7 +101,7 @@ describe("a unit formed this month", () => {
 
   const drawFormed = (document: string) =>
     renderToStaticMarkup(
-      <OrdersPanel orderCommentSyntax="origins"
+      <OrdersPanel orders={orderProcessingFor("neworigins")}
         unit={null}
         unitId="new-1"
         formed={formedSelectionFor(document, "new-1", REGION, "origins")}

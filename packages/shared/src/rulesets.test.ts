@@ -7,6 +7,7 @@ import {
   orderCommentSyntaxFor,
   rulesetById
 } from "./rulesets";
+import { orderProcessingFor } from "./orderProcessing";
 
 describe("rulesets", () => {
   it("spells the variant the way a player reads it", () => {
@@ -80,5 +81,13 @@ describe("rulesets", () => {
     expect(orderCommentSyntaxFor(null)).toBe("origins");
     expect(orderCommentSyntaxFor(undefined)).toBe("origins");
     expect(orderCommentSyntaxFor("not-a-ruleset")).toBe("origins");
+  });
+
+  it("builds one immutable order-processing context for every known or absent ruleset id", () => {
+    expect(orderProcessingFor("newage-trident").syntax).toBe("trident");
+    expect(orderProcessingFor("neworigins").syntax).toBe("origins");
+    expect(orderProcessingFor(null).syntax).toBe("origins");
+    expect(orderProcessingFor(undefined).syntax).toBe("origins");
+    expect(orderProcessingFor("not-a-ruleset").syntax).toBe("origins");
   });
 });

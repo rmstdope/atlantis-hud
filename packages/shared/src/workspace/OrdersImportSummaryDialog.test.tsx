@@ -1,6 +1,7 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { orderProcessingFor } from "../orderProcessing";
 import { OrdersImportSummaryDialog } from "./OrdersImportSummaryDialog";
 
 function diagnostic(overrides: Partial<OrderDiagnostic>): OrderDiagnostic {
@@ -22,7 +23,7 @@ function diagnostic(overrides: Partial<OrderDiagnostic>): OrderDiagnostic {
 describe("OrdersImportSummaryDialog", () => {
   it("names a formed unit new 1 rather than the core's new-1 (ah-nix5)", () => {
     const markup = renderToStaticMarkup(
-      <OrdersImportSummaryDialog orderCommentSyntax="origins"
+      <OrdersImportSummaryDialog orders={orderProcessingFor("neworigins")}
         summary={{
           unitCount: 1,
           document: "",
@@ -44,7 +45,7 @@ describe("OrdersImportSummaryDialog", () => {
 
   it("lists errors before warnings with unit ids", () => {
     const markup = renderToStaticMarkup(
-      <OrdersImportSummaryDialog orderCommentSyntax="origins"
+      <OrdersImportSummaryDialog orders={orderProcessingFor("neworigins")}
         summary={{
           unitCount: 34,
           document: "",
@@ -75,7 +76,7 @@ describe("OrdersImportSummaryDialog", () => {
 
   it("marks each imported diagnostic with a severity glyph (ah-uia)", () => {
     const markup = renderToStaticMarkup(
-      <OrdersImportSummaryDialog orderCommentSyntax="origins"
+      <OrdersImportSummaryDialog orders={orderProcessingFor("neworigins")}
         summary={{
           unitCount: 2,
           document: "",
@@ -94,7 +95,7 @@ describe("OrdersImportSummaryDialog", () => {
 
   it("shows no diagnostics list when there are none", () => {
     const markup = renderToStaticMarkup(
-      <OrdersImportSummaryDialog orderCommentSyntax="origins"
+      <OrdersImportSummaryDialog orders={orderProcessingFor("neworigins")}
         summary={{ unitCount: 5, document: "", diagnostics: [] }}
         onDismiss={() => {}}
       />
@@ -112,7 +113,7 @@ describe("OrdersImportSummaryDialog", () => {
     );
 
     const markup = renderToStaticMarkup(
-      <OrdersImportSummaryDialog orderCommentSyntax="origins"
+      <OrdersImportSummaryDialog orders={orderProcessingFor("neworigins")}
         summary={{
           unitCount: 1,
           document,

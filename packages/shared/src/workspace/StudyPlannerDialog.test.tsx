@@ -8,6 +8,7 @@ import { buildMagicTree } from "../magicTree";
 import { standingOf } from "../magicStanding";
 import { plannerGroups, type PlannerMage } from "../studyPlanner";
 import { NO_TEACHING_RULE } from "../teachingPermission";
+import { orderProcessingFor } from "../orderProcessing";
 import { StudyPlannerDetail, StudyPlannerList, StudyPlannerDialog } from "./StudyPlannerDialog";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
@@ -269,7 +270,7 @@ describe("the All mages view carries no warnings strip", () => {
 describe("the Orders tab", () => {
   const dialog = (plans: StudyPlanRecord[]) =>
     renderToStaticMarkup(
-      <StudyPlannerDialog orderCommentSyntax="origins"
+      <StudyPlannerDialog orders={orderProcessingFor("neworigins")}
         groups={GROUPS}
         summaryLine={null}
         emptyCopy={{ headline: "", detail: "" }}

@@ -10,7 +10,8 @@
 
 import type { OpenedGame, OrderDiagnostic, ParsedReport } from "@atlantis/core-client";
 import { commandsOnly, findUnitBlocks, readUnitOrders } from "./ordersDocument";
-import { orderCommentSyntaxFor, type OrderCommentSyntax } from "./rulesets";
+import { orderProcessingFor } from "./orderProcessing";
+import type { OrderCommentSyntax } from "./rulesets";
 import { factionLabelOf } from "./reportLoad";
 
 const ATLANTIS_HEADER = /^#atlantis\b/iu;
@@ -124,10 +125,9 @@ export function routeOrdersImport(
     };
   }
 
-  const description = describeOrdersImport(
+  const description = orderProcessingFor(game.manifest.metadata.rulesetId).describeOrdersImport(
     text,
-    ordersDocument,
-    orderCommentSyntaxFor(game.manifest.metadata.rulesetId)
+    ordersDocument
   );
   return {
     kind: "ask",
