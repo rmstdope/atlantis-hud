@@ -25,11 +25,6 @@ const TRIDENT = orderProcessingFor("newage-trident");
 const ORIGINS = orderProcessingFor("neworigins");
 
 describe("the comment policy reaches every reader of the document", () => {
-  it("is what the shell derives from the open game", () => {
-    expect(TRIDENT.syntax).toBe("trident");
-    expect(ORIGINS.syntax).toBe("origins");
-  });
-
   it("reads and rewrites the selected unit's block", () => {
     expect(TRIDENT.readUnitOrders(DOCUMENT, "42", undefined)).toContain("WORK;paying the guard");
     expect(ORIGINS.readUnitOrders(DOCUMENT, "42", undefined)).toBeNull();

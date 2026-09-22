@@ -13,14 +13,9 @@ import {
   useRef
 } from "react";
 import { minimalChange } from "../editorReconcile";
-import { buildVocabulary, keywordJustFinished } from "../orderCase";
+import { buildVocabulary } from "../orderCase";
 import type { OrderProcessing } from "../orderProcessing";
-import {
-  contentChanges,
-  lineDepths,
-  tidyInsertion,
-  trailingNewlineChange
-} from "../orderIndent";
+import { trailingNewlineChange } from "../orderIndent";
 import { shownUnitText } from "../orderEditor";
 import { orderArgumentCompletions, orderCommandCompletions, type CaretLookup } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
@@ -67,7 +62,7 @@ type OrdersEditorProps = {
   /** Every word the rules know, uppercase, as `client.orderVocabulary` gives them. */
   orderVocabulary: readonly string[];
   /**
-   * How the game played reads an unquoted semicolon (`rulesets.orderCommentSyntaxFor`).
+   * The processing context for the game being played.
    *
    * Kept in the `latest` ref with the vocabulary, so switching a game's ruleset changes what the
    * tidy and the Enter-depth scanners read without rebuilding CodeMirror - and so losing the undo
@@ -130,7 +125,6 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   },
   ref
 ) {
-  const orderCommentSyntax = orders.syntax;
   const container = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
 
@@ -145,7 +139,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     commands,
     orderOcd,
     vocabulary,
-    orderCommentSyntax: orders.syntax,
+    orders,
     snippets,
     caretCompletions,
     onChange
@@ -157,7 +151,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     commands,
     orderOcd,
     vocabulary,
-    orderCommentSyntax,
+    orders,
     snippets,
     caretCompletions,
     onChange
@@ -186,11 +180,10 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
               return false;
             }
             const line = editor.state.doc.lineAt(from);
-            const found = keywordJustFinished(
+            const found = latest.current.orders.keywordJustFinished(
               line.text,
               from - line.from,
-              latest.current.vocabulary,
-              latest.current.orderCommentSyntax
+              latest.current.vocabulary
             );
             if (!found) {
               return false;
@@ -230,21 +223,18 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
                 // appended after the caret turns "the caret is on a FORM line" into "the next line
                 // is one level deeper". Computed from the text before the caret only, which is what
                 // makes the answer right while the block below is still being written.
-                const depth = lineDepths(
-                    `${editor.state.doc.sliceString(0, from)}\n`,
-                    latest.current.orderCommentSyntax
-                  ).at(-1) ?? 0;
+                const depth =
+                  latest.current.orders.lineDepths(`${editor.state.doc.sliceString(0, from)}\n`).at(-1) ?? 0;
                 const insert = `\n${" ".repeat(depth)}`;
                 // A keymap binding dispatches its own transaction, so the `inputHandler` above -
                 // which shouts the word a space or newline has just finished - never sees this
                 // newline. Shouting here keeps the setting's promise for the word Enter ends, and
                 // in the same transaction, so one Ctrl+Z still hands the line back as it was typed.
                 const line = editor.state.doc.lineAt(from);
-                const finished = keywordJustFinished(
+                const finished = latest.current.orders.keywordJustFinished(
                   line.text,
                   from - line.from,
-                  latest.current.vocabulary,
-                  latest.current.orderCommentSyntax
+                  latest.current.vocabulary
                 );
                 // The depth *this* line sits at, from the same walk one character earlier: without
                 // the appended newline the last entry is the caret's own line, computed from the
@@ -252,9 +242,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
                 // whose depth is the one outside the block - so the line the player is leaving is
                 // usually moved *left*, and the general rule covers any other line whose depth
                 // changed as it was typed (ah-rj96).
-                const ownDepth = lineDepths(
-                  editor.state.doc.sliceString(0, from),
-                  latest.current.orderCommentSyntax
+                const ownDepth = latest.current.orders.lineDepths(
+                  editor.state.doc.sliceString(0, from)
                 ).at(-1) ?? 0;
                 const indent = line.text.length - line.text.trimStart().length;
                 const wanted = " ".repeat(ownDepth);
@@ -335,15 +324,13 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
                 return false;
               }
               const { from, to } = editor.state.selection.main;
-              const base = lineDepths(
-                  editor.state.doc.sliceString(0, from),
-                  latest.current.orderCommentSyntax
-                ).at(-1) ?? 0;
-              const insert = tidyInsertion(
+              const base = latest.current.orders.lineDepths(
+                editor.state.doc.sliceString(0, from)
+              ).at(-1) ?? 0;
+              const insert = latest.current.orders.tidyInsertion(
                 text,
                 base,
-                latest.current.vocabulary,
-                latest.current.orderCommentSyntax
+                latest.current.vocabulary
               );
               event.preventDefault();
               editor.dispatch({
@@ -488,11 +475,10 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     // caret to protect - and selecting a unit row does not focus the editor, so that is the common
     // case, not the exotic one.
     const protect = editor.hasFocus ? editor.state.selection.main.head : null;
-    const changes = contentChanges(
+    const changes = orders.contentChanges(
       editor.state.doc.toString(),
       vocabulary,
-      protect,
-      orderCommentSyntax
+      protect
     );
     if (changes.length === 0) {
       return;
@@ -514,7 +500,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       // replaces was. And deliberately no `userEvent`, which is what history groups typing under.
       annotations: [Transaction.addToHistory.of(false)]
     });
-  }, [externalRevision, unitId, orderOcd, vocabulary, orderCommentSyntax]);
+  }, [externalRevision, unitId, orderOcd, vocabulary, orders]);
 
   // The other half of the tidy: the block ends in exactly one newline, so clicking in the empty
   // space below the last order puts the caret on a fresh line ready to type. External, because the
@@ -535,7 +521,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       changes: change,
       annotations: [External.of(true), Transaction.addToHistory.of(false)]
     });
-  }, [externalRevision, unitId, orderOcd, vocabulary, orderCommentSyntax]);
+  }, [externalRevision, unitId, orderOcd, vocabulary, orders]);
 
   // Once a save has landed, the shown text ends with the newline an orders file ends with. In the
   // editor only: the block boundary neither holds nor needs it, so the document is not written

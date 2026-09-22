@@ -48,7 +48,6 @@ type WithoutSyntaxInput<F> =
     : never;
 
 export interface OrderProcessing {
-  readonly syntax: OrderCommentSyntax;
   readonly lexOrderLine: WithoutSyntax<typeof lexOrderLine>;
   readonly findUnitBlocks: WithoutSyntax<typeof findUnitBlocks>;
   readonly findFormBlocks: WithoutSyntax<typeof findFormBlocks>;
@@ -94,7 +93,6 @@ export function orderProcessingFor(rulesetId: string | null | undefined): OrderP
   const syntax = orderCommentSyntaxFor(rulesetId);
 
   return {
-    syntax,
     lexOrderLine: (line) => lexOrderLine(line, syntax),
     findUnitBlocks: (document) => findUnitBlocks(document, syntax),
     findFormBlocks: (document) => findFormBlocks(document, syntax),

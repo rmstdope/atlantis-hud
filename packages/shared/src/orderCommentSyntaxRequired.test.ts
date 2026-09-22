@@ -2,12 +2,28 @@ import type { ComponentProps } from "react";
 import { describe, expect, it } from "vitest";
 import type { OrderProcessing } from "./orderProcessing";
 import { orderProcessingFor } from "./orderProcessing";
+import type { OrderCommentSyntax } from "./rulesets";
 import { OrdersEditor } from "./workspace/OrdersEditor";
 import { OrdersImportSummaryDialog } from "./workspace/OrdersImportSummaryDialog";
 import { OrdersPanel } from "./workspace/OrdersPanel";
 import { StudyPlannerDialog } from "./workspace/StudyPlannerDialog";
 
 type Requires<T, K extends keyof T> = {} extends Pick<T, K> ? false : true;
+type HasSyntaxKey = "syntax" extends keyof OrderProcessing ? true : false;
+type HasSyntaxArgument<Operation extends keyof OrderProcessing> =
+  OrderProcessing[Operation] extends (...args: infer Args) => unknown
+    ? Args extends [...unknown[], infer Last]
+      ? Last extends OrderCommentSyntax
+        ? true
+        : false
+      : false
+    : false;
+type HasSyntaxInput<Operation extends keyof OrderProcessing> =
+  OrderProcessing[Operation] extends (input: infer Input) => unknown
+    ? "syntax" extends keyof Input
+      ? true
+      : false
+    : false;
 
 const OrdersEditorRequiresOrders: Requires<ComponentProps<typeof OrdersEditor>, "orders"> = true;
 const OrdersPanelRequiresOrders: Requires<ComponentProps<typeof OrdersPanel>, "orders"> = true;
@@ -62,6 +78,18 @@ const POLICY_OPERATIONS = [
   "studyWritePlan"
 ] as const satisfies readonly (keyof OrderProcessing)[];
 
+const OrderProcessingHidesSyntax: HasSyntaxKey = false;
+const PolicyOperationsHideSyntaxArguments: {
+  readonly [Operation in (typeof POLICY_OPERATIONS)[number]]: HasSyntaxArgument<Operation>;
+} = Object.fromEntries(POLICY_OPERATIONS.map((operation) => [operation, false])) as {
+  readonly [Operation in (typeof POLICY_OPERATIONS)[number]]: false;
+};
+const PolicyOperationsHideSyntaxInputs: {
+  readonly [Operation in (typeof POLICY_OPERATIONS)[number]]: HasSyntaxInput<Operation>;
+} = Object.fromEntries(POLICY_OPERATIONS.map((operation) => [operation, false])) as {
+  readonly [Operation in (typeof POLICY_OPERATIONS)[number]]: false;
+};
+
 describe("the order comment policy lives in one processing context", () => {
   it("constructs every policy operation at the ruleset boundary", () => {
     const orders = orderProcessingFor("neworigins");
@@ -78,5 +106,15 @@ describe("the order comment policy lives in one processing context", () => {
       StudyPlannerDialogRequiresOrders,
       OrdersImportSummaryDialogRequiresOrders
     ]).toEqual([true, true, true, true]);
+  });
+
+  it("keeps the selected syntax private to the context", () => {
+    expect(OrderProcessingHidesSyntax).toBe(false);
+    expect(PolicyOperationsHideSyntaxArguments).toEqual(
+      Object.fromEntries(POLICY_OPERATIONS.map((operation) => [operation, false]))
+    );
+    expect(PolicyOperationsHideSyntaxInputs).toEqual(
+      Object.fromEntries(POLICY_OPERATIONS.map((operation) => [operation, false]))
+    );
   });
 });

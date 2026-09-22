@@ -84,10 +84,10 @@ describe("rulesets", () => {
   });
 
   it("builds one immutable order-processing context for every known or absent ruleset id", () => {
-    expect(orderProcessingFor("newage-trident").syntax).toBe("trident");
-    expect(orderProcessingFor("neworigins").syntax).toBe("origins");
-    expect(orderProcessingFor(null).syntax).toBe("origins");
-    expect(orderProcessingFor(undefined).syntax).toBe("origins");
-    expect(orderProcessingFor("not-a-ruleset").syntax).toBe("origins");
+    const document = "unit 42;the miner\nWORK";
+    expect(orderProcessingFor("newage-trident").readUnitOrders(document, "42", undefined)).toBe("WORK");
+    for (const rulesetId of ["neworigins", null, undefined, "not-a-ruleset"]) {
+      expect(orderProcessingFor(rulesetId).readUnitOrders(document, "42", undefined)).toBeNull();
+    }
   });
 });
