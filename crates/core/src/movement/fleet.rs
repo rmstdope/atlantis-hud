@@ -286,6 +286,13 @@ impl OrderedUnits {
             self.boardings_of(&unit.unit_id),
         )
     }
+
+    /// Whether this unit issued an ENTER for `structure_id`.
+    #[must_use]
+    pub fn enters(&self, unit: &ReportUnit, structure_id: &str) -> bool {
+        self.boardings_of(&unit.unit_id)
+            .any(|boarding| boarding == Boarding::Enter(structure_id))
+    }
 }
 
 /// The unit the report makes a structure's owner: the first unit listed under it.
@@ -327,10 +334,7 @@ pub fn fleet_owner(
         Some(owner) => region
             .units
             .iter()
-            .find(|unit| {
-                unit.structure_id.as_deref() != Some(structure_id)
-                    && ordered.could_captain(unit, structure_id)
-            })
+            .find(|unit| ordered.enters(unit, structure_id))
             .unwrap_or(owner),
         None => region
             .units
@@ -709,6 +713,28 @@ mod tests {
         assert_eq!(
             scene_course(
                 "unit 900\nLEAVE\nunit 903\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n",
+                "329"
+            ),
+            Some(vec![MoveStep::Go(
+                crate::movement::graph::Direction::Southeast
+            )]),
+            "the promoted sailor owns the hull and its course"
+        );
+    }
+
+    #[test]
+    fn a_passenger_who_reenters_can_replace_a_departing_builder() {
+        assert_eq!(
+            scene_owner(
+                "unit 900\nLEAVE\nunit 901\nLEAVE\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n",
+                "329"
+            ),
+            Some("902".to_string()),
+            "a passenger who reenters can promote the sailor"
+        );
+        assert_eq!(
+            scene_course(
+                "unit 900\nLEAVE\nunit 901\nLEAVE\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n",
                 "329"
             ),
             Some(vec![MoveStep::Go(
