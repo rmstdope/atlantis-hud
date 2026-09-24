@@ -286,6 +286,13 @@ impl OrderedUnits {
             self.boardings_of(&unit.unit_id),
         )
     }
+
+    /// Whether this unit issued an ENTER for `structure_id`.
+    #[must_use]
+    pub fn enters(&self, unit: &ReportUnit, structure_id: &str) -> bool {
+        self.boardings_of(&unit.unit_id)
+            .any(|boarding| boarding == Boarding::Enter(structure_id))
+    }
 }
 
 /// The unit the report makes a structure's owner: the first unit listed under it.
@@ -305,10 +312,10 @@ pub fn reported_owner<'r>(
 
 /// Who owns a hull once this month's boardings and `PROMOTE`s have run, as a unit id.
 ///
-/// The report's own answer first; then, for a hull the report lists nobody under, the first unit in
-/// report order that boards it this month ("The first unit to enter an object is considered to be
-/// the owner", `rules/world_structures` - and `rules/sequenceofevents` runs ENTER before movement);
-/// then each valid `PROMOTE` written by the owner to a unit aboard the same hull.
+/// The report's owner remains in charge unless it LEAVEs and another unit ENTERs that hull. The
+/// first such entrant takes ownership ("The first unit to enter an object is considered to be the
+/// owner", `rules/world_structures`; `rules/sequenceofevents` runs ENTER and LEAVE before PROMOTE
+/// and movement); then each valid `PROMOTE` written by the owner to a unit aboard the same hull.
 ///
 /// Among several `PROMOTE`s from one owner the **first valid one written** takes the hull, not the
 /// last: `rules/promote` promotes a unit "to owner of the object of which you are currently the
@@ -323,15 +330,19 @@ pub fn fleet_owner(
     structure_id: &str,
 ) -> Option<String> {
     let mut owner = match reported_owner(&region.units, structure_id) {
-        Some(unit) => unit.unit_id.clone(),
-        // Nobody is listed under it, so the first unit to board it this month owns it.
+        Some(owner) if ordered.structure_of(owner) == Some(structure_id) => owner,
+        Some(owner) => region
+            .units
+            .iter()
+            .find(|unit| ordered.enters(unit, structure_id))
+            .unwrap_or(owner),
         None => region
             .units
             .iter()
-            .find(|unit| ordered.structure_of(unit) == Some(structure_id))?
-            .unit_id
-            .clone(),
-    };
+            .find(|unit| ordered.structure_of(unit) == Some(structure_id))?,
+    }
+    .unit_id
+    .clone();
 
     // Each promotion is followed in turn, so a hull handed on twice in one month ends with the
     // unit actually holding it. `seen` bounds the walk: a document can name a cycle.
@@ -342,7 +353,7 @@ pub fn fleet_owner(
             .iter()
             .find(|target| {
                 region.units.iter().any(|unit| {
-                    &unit.unit_id == *target && ordered.could_captain(unit, structure_id)
+                    &unit.unit_id == *target && ordered.structure_of(unit) == Some(structure_id)
                 })
             })
             .cloned()
@@ -686,6 +697,50 @@ mod tests {
             scene_owner("unit 900\nPROMOTE 903\n", "329"),
             Some("900".to_string()),
             "903 stands ashore, so the promotion moves no hull"
+        );
+    }
+
+    #[test]
+    fn a_builder_who_leaves_cannot_keep_or_promote_the_hull() {
+        assert_eq!(
+            scene_owner(
+                "unit 900\nLEAVE\nunit 903\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n",
+                "329"
+            ),
+            Some("902".to_string()),
+            "after the builder leaves, the first entrant promotes the sailor"
+        );
+        assert_eq!(
+            scene_course(
+                "unit 900\nLEAVE\nunit 903\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n",
+                "329"
+            ),
+            Some(vec![MoveStep::Go(
+                crate::movement::graph::Direction::Southeast
+            )]),
+            "the promoted sailor owns the hull and its course"
+        );
+    }
+
+    #[test]
+    fn a_passenger_who_reenters_can_replace_a_departing_builder() {
+        assert_eq!(
+            scene_owner(
+                "unit 900\nLEAVE\nunit 901\nLEAVE\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n",
+                "329"
+            ),
+            Some("902".to_string()),
+            "a passenger who reenters can promote the sailor"
+        );
+        assert_eq!(
+            scene_course(
+                "unit 900\nLEAVE\nunit 901\nLEAVE\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n",
+                "329"
+            ),
+            Some(vec![MoveStep::Go(
+                crate::movement::graph::Direction::Southeast
+            )]),
+            "the promoted sailor owns the hull and its course"
         );
     }
 
