@@ -13108,13 +13108,14 @@ fn shipping_bills(
                         .and_then(|tag| rules.find_item(&tag))
                         .is_some_and(|entry| {
                             let tag = entry.tag.to_ascii_uppercase();
+                            let already_shipped = shipment_allowance_used(&shipped, &tag);
                             let held = (ledger.state.balance_at(settled_at, sender, &tag)
                                 + received_earlier
                                     .get(&(sender.to_string(), tag.clone()))
                                     .copied()
                                     .unwrap_or_default()
-                                - shipped.get(&tag).copied().unwrap_or_default())
-                            .max(0);
+                                - already_shipped)
+                                .max(0);
                             rules.can_be_transported(&tag)
                                 && super::transfers::quantity_moved(amount, held)
                                     .saturating_mul(entry.weight)
@@ -13168,7 +13169,7 @@ fn shipping_bills(
             // The stock at the phase the step declares (`REPORT_WIDE_STEPS`): the ledger carries
             // every earlier delta into it - every one but an earlier transport phase's, which is
             // added here.
-            let already = shipped.get(&tag).copied().unwrap_or_default();
+            let already = shipment_allowance_used(&shipped, &tag);
             let arrived = received_earlier
                 .get(&(sender.to_string(), tag.clone()))
                 .copied()
@@ -13186,8 +13187,17 @@ fn shipping_bills(
                     // The goods certainly arrive; only what they cost is unsaid (`ah-7ale.5`).
                     unmeasured.world_wrap = true;
                     if !conditional {
-                        *shipped.entry(tag.clone()).or_default() += quantity;
-                        delivered.push(((id.to_string(), tag.clone()), quantity));
+                        settle_shipment_delivery(
+                            ledger,
+                            settled_at,
+                            sender,
+                            &tag,
+                            quantity,
+                            placed,
+                            id,
+                            &mut shipped,
+                            &mut delivered,
+                        );
                     }
                 }
                 super::transport::Priced::Free
@@ -13195,8 +13205,17 @@ fn shipping_bills(
                     super::transport::Unpriceable::DifferentLevels,
                 ) => {
                     if !conditional {
-                        *shipped.entry(tag.clone()).or_default() += quantity;
-                        delivered.push(((id.to_string(), tag.clone()), quantity));
+                        settle_shipment_delivery(
+                            ledger,
+                            settled_at,
+                            sender,
+                            &tag,
+                            quantity,
+                            placed,
+                            id,
+                            &mut shipped,
+                            &mut delivered,
+                        );
                     }
                 }
                 super::transport::Priced::Charged { rate, weight, cost } => {
@@ -13224,8 +13243,17 @@ fn shipping_bills(
                             Some(placed),
                             None,
                         );
-                        *shipped.entry(tag.clone()).or_default() += quantity;
-                        delivered.push(((id.to_string(), tag.clone()), quantity));
+                        settle_shipment_delivery(
+                            ledger,
+                            settled_at,
+                            sender,
+                            &tag,
+                            quantity,
+                            placed,
+                            id,
+                            &mut shipped,
+                            &mut delivered,
+                        );
                         priced_here.push(ShipmentPriced {
                             line: i64::try_from(placed.line).unwrap_or(i64::MAX),
                             to: id.to_string(),
@@ -13278,6 +13306,45 @@ fn shipping_bills(
         }
     }
     delivered
+}
+
+/// Book a shipment that reaches its target. `SILV` is both an item and the sender's forecast,
+/// so it must leave the sender's silver ledger as well as the shipment inventory.
+#[allow(clippy::too_many_arguments)]
+fn settle_shipment_delivery(
+    ledger: &mut Ledger<'_>,
+    phase: StatePhase,
+    sender: &str,
+    tag: &str,
+    quantity: i64,
+    placed: &PlacedIntent,
+    target: &str,
+    shipped: &mut BTreeMap<String, i64>,
+    delivered: &mut Vec<((String, String), i64)>,
+) {
+    if tag.eq_ignore_ascii_case(SILVER) {
+        move_silver(
+            ledger,
+            phase,
+            sender,
+            -quantity,
+            SilverChangeCause::GaveAway,
+            Some(placed),
+            Some(format!("unit {target}")),
+        );
+    }
+    *shipped.entry(tag.to_string()).or_default() += quantity;
+    delivered.push(((target.to_string(), tag.to_string()), quantity));
+}
+
+/// Non-silver shipment quantities do not enter the phase ledger, so their allowance remembers
+/// what earlier shipments in the phase sent. Silver does enter it through [`move_silver`].
+fn shipment_allowance_used(shipped: &BTreeMap<String, i64>, tag: &str) -> i64 {
+    if tag.eq_ignore_ascii_case(SILVER) {
+        0
+    } else {
+        shipped.get(tag).copied().unwrap_or_default()
+    }
 }
 
 /// TRANSPORT's first sub-phase, across every hex: what each quartermaster is sent, so the next
@@ -40390,6 +40457,66 @@ BUILD
             .iter()
             .filter(|change| change.cause == SilverChangeCause::Shipped)
             .collect()
+    }
+
+    /// `rules/transport`: DISTRIBUTE has TRANSPORT's syntax and meaning, so it transports silver
+    /// to an eligible nearby quartermaster.
+    #[test]
+    fn a_distributed_silver_reduces_the_senders_forecast() {
+        let mut target = with_skill(unit("901"), "QUAM", 1);
+        target.structure_id = Some("500".to_string());
+        let sender = with_silver(unit("900"), 500);
+        let mut nearby = region(vec![sender, target]);
+        nearby.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+
+        let baseline = sender_silver(vec![nearby.clone()], "unit 900\n", CheckOptions::default());
+        let distributed = sender_silver(
+            vec![nearby],
+            "unit 900\nDISTRIBUTE 901 200 SILV\n",
+            CheckOptions::default(),
+        );
+
+        assert_eq!(
+            distributed.at_month_end,
+            baseline.at_month_end.map(|silver| silver - 200)
+        );
+        assert!(distributed.changes.contains(&SilverChange {
+            amount: -200,
+            cause: SilverChangeCause::GaveAway,
+            line: Some(2),
+            other: Some("unit 901".to_string()),
+        }));
+    }
+
+    #[test]
+    fn consecutive_silver_shipments_use_the_remaining_balance() {
+        let mut target = with_skill(unit("901"), "QUAM", 1);
+        target.structure_id = Some("500".to_string());
+        let sender = with_silver(unit("900"), 500);
+        let mut nearby = region(vec![sender, target]);
+        nearby.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+
+        let baseline = sender_silver(vec![nearby.clone()], "unit 900\n", CheckOptions::default());
+        let distributed = sender_silver(
+            vec![nearby],
+            "unit 900\nDISTRIBUTE 901 200 SILV\nDISTRIBUTE 901 200 SILV\n",
+            CheckOptions::default(),
+        );
+
+        assert_eq!(
+            distributed.at_month_end,
+            baseline.at_month_end.map(|silver| silver - 400)
+        );
     }
 
     /// `data/quartermaster`: shipping between transport structures costs `4-((level+1)/2) * 5`
