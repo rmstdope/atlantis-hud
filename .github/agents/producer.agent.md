@@ -1,0 +1,1 @@
+../../.cerebro/cerebro/agents/producer.md
