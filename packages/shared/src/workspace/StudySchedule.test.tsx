@@ -219,7 +219,7 @@ describe("StudySchedule", () => {
   it("says what to do when no report is loaded, rather than disabling the view", () => {
     const markup = schedule([]);
 
-    expect(markup).toContain("Load a report and the coming six turns appear here.");
+    expect(markup).toContain("Load a report to see a study schedule.");
     expect(markup).not.toContain("study-schedule-cell-");
     expect(markup).toContain("rounded border border-edge bg-panel-raised");
   });

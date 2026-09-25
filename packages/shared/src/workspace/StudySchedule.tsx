@@ -55,6 +55,7 @@ export function StudySchedule({
   onCommit,
   saveError,
   notices = [],
+  forecastNotice = null,
   label = (regionId: string) => regionId,
   onScheduleChange,
   rule
@@ -79,6 +80,8 @@ export function StudySchedule({
   saveError: string | null;
   /** Everything the planner has to say about this plan, for the strip and the cell tints. */
   notices?: readonly PlannerNotice[];
+  /** A forecast basis notice supplied by the enclosing planner. */
+  forecastNotice?: string | null;
   /** How a region id reads to a player, for a teach row naming a student's hex. */
   label?: (regionId: string) => string;
   /**
@@ -149,7 +152,7 @@ export function StudySchedule({
     return (
       <div data-testid="study-schedule" className="min-h-0 overflow-auto p-3">
         <div className="rounded border border-edge bg-panel-raised p-3">
-          <p className="m-0 text-ink-dim">Load a report and the coming six turns appear here.</p>
+          <p className="m-0 text-ink-dim">Load a report to see a study schedule.</p>
         </div>
       </div>
     );
@@ -172,6 +175,11 @@ export function StudySchedule({
         {saveError === null ? null : (
           <p data-testid="study-schedule-error" className="m-0 text-warn">
             {saveError}
+          </p>
+        )}
+        {forecastNotice === null ? null : (
+          <p data-testid="study-schedule-forecast-notice" className="m-0 text-warn">
+            {forecastNotice}
           </p>
         )}
         {notices.length === 0 ? (

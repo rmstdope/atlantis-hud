@@ -61,6 +61,8 @@ export function StudyPlannerDialog({
   tree,
   plans,
   viewedTurn,
+  assumeSheltered = false,
+  onAssumeShelteredChange = () => {},
   saveError,
   onSavePlan,
   onSaveText,
@@ -99,6 +101,10 @@ export function StudyPlannerDialog({
   plans: readonly StudyPlanRecord[];
   /** `report.header.turnNumber`, or null. Decides which turns the Schedule draws. */
   viewedTurn: number | null;
+  /** Whether this projection treats every mage as sheltered. */
+  assumeSheltered?: boolean;
+  /** Updates the enclosing shell's remembered forecast choice. */
+  onAssumeShelteredChange?: (assumeSheltered: boolean) => void;
   /** `Could not save this plan.`, or null. Reported here rather than in the header status line,
    * which this dialog covers - the same choice `RegionNotes` made. */
   saveError: string | null;
@@ -146,8 +152,8 @@ export function StudyPlannerDialog({
     [groups]
   );
   const rows = useMemo(
-    () => scheduleRows({ groups, plans, tree, turns, seats, after, rule }),
-    [groups, plans, tree, turns, seats, after, rule]
+    () => scheduleRows({ groups, plans, tree, turns, seats, assumeSheltered, after, rule }),
+    [groups, plans, tree, turns, seats, assumeSheltered, after, rule]
   );
   const shelters = useMemo(
     () => mageShelters({ groups, seats, names: structureNames, after }),
@@ -305,7 +311,7 @@ export function StudyPlannerDialog({
         // 20rem beside six turn columns, and All mages spends the same width on standing its three
         // lists side by side. One width for all three views, so the dialog does not resize under
         // the pointer as the tabs are walked.
-        className="grid max-h-[80vh] w-[74rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
+        className="grid max-h-[80vh] w-[74rem] max-w-[94vw] grid-rows-[auto_auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
       >
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
           <span className="text-brass">Study planner</span>
@@ -359,6 +365,25 @@ export function StudyPlannerDialog({
           )}
         </div>
         )}
+        <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-edge bg-panel px-2 py-1 text-ink">
+        <span className="inline-flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            data-testid="study-planner-assume-sheltered"
+            checked={turns.length > 0 && assumeSheltered}
+            disabled={turns.length === 0}
+            onChange={(event) => onAssumeShelteredChange(event.target.checked)}
+          />
+          Assume every mage is sheltered
+        </span>
+        <span className="w-full text-ink-dim sm:w-auto">
+          {turns.length === 0
+            ? "Load a report to change the forecast."
+            : assumeSheltered
+              ? "Forecast only — your report has not changed."
+              : ""}
+        </span>
+        </label>
 
         {view === "orders" ? (
           <StudyPlannerOrders
@@ -376,6 +401,11 @@ export function StudyPlannerDialog({
                   }
             }
             error={ordersError}
+            forecastNotice={
+              turns.length > 0 && assumeSheltered
+                ? "These orders use the all-sheltered forecast. Check your placements before writing them."
+                : null
+            }
             onSaveText={onSaveText}
             writePlan={writePlan}
             asking={asking}
@@ -429,6 +459,11 @@ export function StudyPlannerDialog({
             }}
             saveError={saveError}
             notices={notices}
+            forecastNotice={
+              assumeSheltered
+                ? "Forecasting every mage as sheltered. Check your placements before writing orders."
+                : null
+            }
             label={label}
             onScheduleChange={onScheduleChange}
             rule={rule}

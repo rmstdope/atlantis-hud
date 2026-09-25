@@ -268,7 +268,7 @@ describe("the All mages view carries no warnings strip", () => {
  * suite proves the switch.
  */
 describe("the Orders tab", () => {
-  const dialog = (plans: StudyPlanRecord[]) =>
+  const dialog = (plans: StudyPlanRecord[], assumeSheltered = false) =>
     renderToStaticMarkup(
       <StudyPlannerDialog orders={orderProcessingFor("neworigins")}
         groups={GROUPS}
@@ -283,6 +283,8 @@ describe("the Orders tab", () => {
         tree={tree}
         plans={plans}
         viewedTurn={71}
+        assumeSheltered={assumeSheltered}
+        onAssumeShelteredChange={() => {}}
         saveError={null}
         onSaveText={() => {}}
         ordersError={null}
@@ -306,6 +308,14 @@ describe("the Orders tab", () => {
     // The pane never opens on it: the view switch is remembered no longer than the dialog.
     expect(markup).toContain('data-testid="study-planner-view-orders" aria-selected="false"');
     expect(markup).not.toContain('data-testid="study-planner-orders"');
+  });
+
+  it("offers_the_remembered_all_sheltered_forecast_control", () => {
+    const markup = dialog([], true);
+
+    expect(markup).toContain('data-testid="study-planner-assume-sheltered" checked=""');
+    expect(markup).toContain("Assume every mage is sheltered");
+    expect(markup).toContain("Forecast only — your report has not changed.");
   });
 
   it("the_view_tabs_look_pressable_and_the_open_one_is_marked", () => {

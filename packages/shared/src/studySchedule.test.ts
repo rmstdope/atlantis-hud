@@ -331,6 +331,32 @@ describe("scheduleRows", () => {
     }
   });
 
+  it("forecasts every mage as sheltered when asked", () => {
+    const rows = scheduleRows({
+      groups: groupOf().map((group) => ({
+        ...group,
+        mages: group.mages.map((mage) => ({ ...mage, structureId: null }))
+      })) as ReturnType<typeof groupOf>,
+      plans: [
+        {
+          factionId: "21",
+          unitId: "2431",
+          goals: [{ kind: "study", turn: 24, skill: "FORC" }],
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      tree,
+      turns,
+      seats: new Map(),
+      assumeSheltered: true,
+      after: new Map(),
+      rule: NO_TEACHING_RULE
+    });
+
+    expect(rows[0].cells[0]).toMatchObject({ unsheltered: false, shelterUnknown: false, worth: 1 });
+  });
+
   it("gives a mage with no plan an idle row and no pencil", () => {
     const rows = scheduleRows({ groups: groupOf(), plans: [], tree, turns, seats: new Map(),
       after: new Map(),
