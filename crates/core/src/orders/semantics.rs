@@ -13069,13 +13069,26 @@ struct SettledShipment {
 }
 
 impl SettledShipment {
+    fn silver_change_for(&self, unit_id: &str) -> Option<i64> {
+        if !self.tag.eq_ignore_ascii_case(SILVER) {
+            return None;
+        }
+        if unit_id == self.sender {
+            Some(-self.quantity)
+        } else if unit_id == self.target {
+            Some(self.quantity)
+        } else {
+            None
+        }
+    }
+
     fn debit_sender(&self, ledger: &mut Ledger<'_>, phase: StatePhase, placed: &PlacedIntent) {
-        if self.tag.eq_ignore_ascii_case(SILVER) {
+        if let Some(amount) = self.silver_change_for(&self.sender) {
             move_silver(
                 ledger,
                 phase,
                 &self.sender,
-                -self.quantity,
+                amount,
                 SilverChangeCause::GaveAway,
                 Some(placed),
                 Some(format!("unit {}", self.target)),
@@ -13084,12 +13097,12 @@ impl SettledShipment {
     }
 
     fn credit_receiver(&self, ledger: &mut Ledger<'_>, phase: StatePhase) {
-        if self.tag.eq_ignore_ascii_case(SILVER) {
+        if let Some(amount) = self.silver_change_for(&self.target) {
             move_silver(
                 ledger,
                 phase,
                 &self.target,
-                self.quantity,
+                amount,
                 SilverChangeCause::WasGiven,
                 None,
                 None,
@@ -40603,10 +40616,9 @@ BUILD
             quantity: 200,
         };
 
-        assert_eq!(shipment.sender, "900");
-        assert_eq!(shipment.target, "901");
-        assert_eq!(shipment.tag, SILVER);
-        assert_eq!(shipment.quantity, 200);
+        assert_eq!(shipment.silver_change_for(&shipment.sender), Some(-200));
+        assert_eq!(shipment.silver_change_for(&shipment.target), Some(200));
+        assert_eq!(shipment.silver_change_for("902"), None);
     }
 
     /// `rules/economy_transport` lets a quartermaster owning a Caravanserai transport items to
