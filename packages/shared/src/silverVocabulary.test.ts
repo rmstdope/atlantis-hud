@@ -626,6 +626,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
     "food-contended":
       "There is not enough food here to feed every unit that needs it, so this unit may yet be fed.",
     "unclaimed-contended": "There is not enough unclaimed silver to feed every unit that needs it.",
+    "allied-upkeep-might-cover":
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
     "upkeep-paid-by":
       "This unit's upkeep was paid by its own food (8), faction food here (12), a faction-mate's silver (20) and the faction's unclaimed silver (10).",
     "forced-own-food": "This unit has no silver for its upkeep, so 2 grain will be eaten.",

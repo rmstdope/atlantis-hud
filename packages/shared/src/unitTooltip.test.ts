@@ -509,7 +509,10 @@ describe("the silver section", () => {
       true
     );
     expect(contended.silver?.note).toBe(
-      "There is not enough food here to feed every unit that needs it, so this unit may yet be fed."
+      [
+        "There is not enough food here to feed every unit that needs it, so this unit may yet be fed.",
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+      ].join("\n")
     );
   });
 
@@ -607,7 +610,10 @@ describe("the silver section", () => {
       true
     );
     expect(idle.silver?.note).toBe(
-      "This unit has no month-long order, so it will work and earn wages."
+      [
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+        "This unit has no month-long order, so it will work and earn wages."
+      ].join("\n")
     );
 
     const notCounting = summariseUnit(
@@ -637,7 +643,10 @@ describe("the silver section", () => {
       true
     );
     expect(gifted.silver?.note).toBe(
-      "Includes 40 given by Lender (100) in this hex."
+      [
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+        "Includes 40 given by Lender (100) in this hex."
+      ].join("\n")
     );
   });
 
@@ -674,7 +683,10 @@ describe("the silver section", () => {
       true
     );
     expect(contended.silver?.note).toBe(
-      "There is not enough unclaimed silver to feed every unit that needs it."
+      [
+        "There is not enough unclaimed silver to feed every unit that needs it.",
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+      ].join("\n")
     );
 
     const notCounting = summariseUnit(
@@ -763,7 +775,12 @@ describe("the silver section", () => {
       true
     );
 
-    expect(summary.silver?.note).toBe("This unit cannot pay the 50 its study costs.");
+    expect(summary.silver?.note).toBe(
+      [
+        "This unit cannot pay the 50 its study costs.",
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+      ].join("\n")
+    );
   });
 
   it("a_worker_whose_wages_arrive_late_still_is", () => {
@@ -785,7 +802,8 @@ describe("the silver section", () => {
     expect(summary.silver?.note).toBe(
       [
         "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
-        "This unit cannot pay the 60 its purchase costs."
+        "This unit cannot pay the 60 its purchase costs.",
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
       ].join("\n")
     );
   });
@@ -807,12 +825,13 @@ describe("the silver section", () => {
         true
       ).silver?.note;
 
-    expect(note("study")).toBe("This unit cannot pay the 50 its study costs.");
-    expect(note("buy")).toBe("This unit cannot pay the 50 its purchase costs.");
-    expect(note("produce")).toBe("This unit cannot pay the 50 its production costs.");
-    expect(note("cast")).toBe("This unit cannot pay the 50 its casting costs.");
-    expect(note("give")).toBe("This unit cannot pay the 50 it gives away.");
-    expect(note(null)).toBe("This unit cannot pay the 50 its orders cost.");
+    const ally = "This unit may avoid starvation if a same-region allied unit is sharing silver or food.";
+    expect(note("study")).toBe(["This unit cannot pay the 50 its study costs.", ally].join("\n"));
+    expect(note("buy")).toBe(["This unit cannot pay the 50 its purchase costs.", ally].join("\n"));
+    expect(note("produce")).toBe(["This unit cannot pay the 50 its production costs.", ally].join("\n"));
+    expect(note("cast")).toBe(["This unit cannot pay the 50 its casting costs.", ally].join("\n"));
+    expect(note("give")).toBe(["This unit cannot pay the 50 it gives away.", ally].join("\n"));
+    expect(note(null)).toBe(["This unit cannot pay the 50 its orders cost.", ally].join("\n"));
   });
 
   it("says_when_a_faction_mate_pays_for_this_units_orders", () => {
@@ -894,6 +913,21 @@ describe("the silver section", () => {
     );
     expect(summary.silver?.note).toBe(
       "This unit's upkeep was paid by a faction-mate's silver (60)."
+    );
+  });
+
+  it("says_an_allied_unit_might_yet_cover_unpaid_upkeep", () => {
+    // rules/economy_maintenance lists same-region allied silver and food after every visible
+    // maintenance source, but neither their inventory nor sharing status is in this forecast.
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ upkeep: 60 }),
+      true,
+      true
+    );
+
+    expect(summary.silver?.note).toBe(
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
     );
   });
 
@@ -1036,7 +1070,8 @@ describe("the silver section", () => {
     expect(summary.silver?.note).toBe(
       [
         "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
-        "This unit cannot pay the 60 its purchase costs."
+        "This unit cannot pay the 60 its purchase costs.",
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
       ].join("\n")
     );
   });
@@ -1583,7 +1618,11 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     // of zero. Each is covered by its own example above. Every other note must appear here.
     expect(
       SILVER_NOTES.map((note) => note.id).filter((id) => !appeared.has(id))
-    ).toEqual(["shared-silver-covers-shortfall", "nothing-moves-silver"]);
+    ).toEqual([
+      "shared-silver-covers-shortfall",
+      "allied-upkeep-might-cover",
+      "nothing-moves-silver"
+    ]);
   });
 });
 
