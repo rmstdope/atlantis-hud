@@ -788,6 +788,19 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
+  {
+    id: "allied-upkeep-might-cover",
+    when: ({ silver, warned, countUpkeep }) =>
+      countUpkeep && warned && silver.upkeep !== null && silver.upkeep > 0,
+    say: () =>
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ upkeep: 10 }),
+      warned: true,
+      countUpkeep: true
+    })
+  },
   // Who actually paid this unit's maintenance, in the game's own payment order: its own food
   // (step 1), the hex's faction food (step 2), a faction-mate's silver (step 4), the faction's
   // unclaimed fund (step 7). One note rather than four, because a unit fed by several sources
