@@ -962,8 +962,8 @@ fn settle_report_wide(
             ReportWideStep::ShipBetweenQuartermasters => {
                 let delivered_late =
                     ship_between_quartermasters(hexes, inputs, phase, &received_early);
-                credit_shipped_silver(hexes, phase, &delivered_early);
-                credit_shipped_silver(hexes, phase, &delivered_late);
+                credit_shipped_goods(hexes, phase, &delivered_early);
+                credit_shipped_goods(hexes, phase, &delivered_late);
             }
             ReportWideStep::ChargeRefusedShipments => charge_refused_shipments(hexes, phase),
             // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
@@ -1848,7 +1848,7 @@ fn forecast_hex(
     // The ledger is already complete by the time the column prices a hex - `review_turn` builds
     // every hex's ledger before it forecasts any of them - so the late picture is read once here
     // and handed to everything below that needs it.
-    let phases = ledger.state.phase_holdings(hex, ruleset);
+    let phases = ledger.phase_holdings(hex);
     // The second snapshot, for the one term that wants a mid-month balance: what each unit holds
     // as manufacturing opens (`ah-l80z`). Clamped here, once per hex, so the ITEMS ledger and this
     // column are handed exactly the same numbers and cannot clamp differently.
@@ -4266,6 +4266,7 @@ impl Ordered<'_> {
 /// between them - which is what the issue means by asking whether the silver goes round.
 type BalanceKey = (String, String);
 
+#[derive(Clone)]
 struct PhaseState {
     balances: BTreeMap<BalanceKey, [i64; StatePhase::COUNT]>,
     uncertain: BTreeMap<BalanceKey, UncertainGive>,
@@ -4549,6 +4550,9 @@ struct Ledger<'a> {
     ruleset: Option<&'a Ruleset>,
     /// What each unit would hold once its orders had run, keyed by unit and item tag.
     state: PhaseState,
+    /// Goods TRANSPORT moved after the ordinary per-hex order walk. Kept out of `state`, because
+    /// the ITEMS preview applies these movements from the shipment records itself.
+    transported_goods: BTreeMap<BalanceKey, i64>,
     /// What each PRODUCE created, and what later orders then spent, keyed like `balance` and held
     /// per phase.
     ///
@@ -4944,6 +4948,18 @@ fn settle_recruits_before_production(
     }
 }
 
+impl Ledger<'_> {
+    /// The item pictures maintenance reads, including the report-wide shipment phase that the
+    /// ITEMS preview settles separately from the ordinary per-hex ledger.
+    fn phase_holdings(&self, hex: &Hex<'_>) -> PhaseHoldings {
+        let mut state = self.state.clone();
+        for ((unit_id, tag), amount) in &self.transported_goods {
+            state.apply(StatePhase::Transport, unit_id, tag, *amount);
+        }
+        state.phase_holdings(hex, self.ruleset)
+    }
+}
+
 fn ledger_for_with_production<'a>(
     hex: &Hex<'_>,
     ruleset: Option<&'a Ruleset>,
@@ -4954,6 +4970,7 @@ fn ledger_for_with_production<'a>(
     let mut ledger = Ledger {
         ruleset,
         state: PhaseState::from_hex(hex),
+        transported_goods: BTreeMap::new(),
         produced: BTreeMap::new(),
         production_materials: BTreeMap::new(),
         spent_after_production: BTreeMap::new(),
@@ -5791,7 +5808,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // Built before anything below draws the balance down - see *Known traps*: `charge_upkeep`
     // mutates `balance` as it goes, and a `LateHoldings` read after that loop would price later
     // units against a balance earlier ones have already spent.
-    let phases = ledger.state.phase_holdings(hex, ledger.ruleset);
+    let phases = ledger.phase_holdings(hex);
 
     // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
     // them, so this is two passes over one set of facts rather than one pass - built once here,
@@ -8923,7 +8940,7 @@ fn feed_from_food_after_silver(
             continue;
         }
 
-        let phases = ledger.state.phase_holdings(hex, ledger.ruleset);
+        let phases = ledger.phase_holdings(hex);
         let facts = hex_facts(hex, &nothing, Some(&phases), ledger.ruleset);
         let claims: Vec<LateFoodClaim> = hex
             .units
@@ -13093,6 +13110,12 @@ impl SettledShipment {
                 Some(placed),
                 Some(format!("unit {}", self.target)),
             );
+        } else {
+            ledger
+                .transported_goods
+                .entry((self.sender.clone(), self.tag.clone()))
+                .and_modify(|amount| *amount -= self.quantity)
+                .or_insert(-self.quantity);
         }
     }
 
@@ -13107,6 +13130,12 @@ impl SettledShipment {
                 None,
                 None,
             );
+        } else {
+            ledger
+                .transported_goods
+                .entry((self.target.clone(), self.tag.clone()))
+                .and_modify(|amount| *amount += self.quantity)
+                .or_insert(self.quantity);
         }
     }
 }
@@ -13450,18 +13479,15 @@ fn ship_between_quartermasters(
     delivered
 }
 
-/// Silver arriving by a settled shipment belongs in the receiver's transport-phase ledger after
-/// all three transport passes settle. Earlier delivery would make a quartermaster's forwarded
-/// silver available twice: once in its phase balance and again through `received_early`.
-fn credit_shipped_silver(
+/// Goods arriving by a settled shipment belong in the receiver's transport-phase ledger after all
+/// three transport passes settle. Earlier delivery would make a quartermaster's forwarded goods
+/// available twice: once in its phase balance and again through `received_early`.
+fn credit_shipped_goods(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     phase: StatePhase,
     delivered: &[SettledShipment],
 ) {
     for shipment in delivered {
-        if !shipment.tag.eq_ignore_ascii_case(SILVER) {
-            continue;
-        }
         for (hex, ledger) in hexes.iter_mut() {
             if hex.find(&shipment.target).is_some() {
                 shipment.credit_receiver(ledger, phase);
@@ -40011,6 +40037,28 @@ BUILD
             .units
             .push(with_item(with_silver(owner, 1000), 5, "iron", "IRON"));
         region
+    }
+
+    #[test]
+    fn transported_grain_reserved_by_all_except_feeds_faction() {
+        let source = with_item(starving(unit("900")), 3, "grain", "GRAI");
+        let mut eater = starving(unit("901"));
+        eater.flags = vec!["consuming faction's food".to_string()];
+        eater.men = 6;
+
+        let review = review_turn(
+            &report(vec![
+                shipping_from(vec![source, eater]),
+                caravanserai_owner("902", 1, 0, 4),
+            ]),
+            "unit 900\nTRANSPORT 902 ALL GRAI EXCEPT 1\n",
+            Some(&ruleset()),
+            with_map(),
+        );
+
+        let eater = shipment_silver(&review, "901");
+        assert_eq!(eater.upkeep, Some(10));
+        assert_eq!(eater.faction_food_covered, 50);
     }
 
     fn silencing_transport() -> CheckOptions {
