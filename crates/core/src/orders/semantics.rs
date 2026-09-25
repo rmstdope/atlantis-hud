@@ -941,16 +941,27 @@ fn settle_report_wide(
 ) -> ReportWideSettlement {
     let mut settlement = ReportWideSettlement::default();
     let mut received_early: BTreeMap<(String, String), i64> = BTreeMap::new();
+    let mut delivered_early = Vec::new();
     for (phase, step) in REPORT_WIDE_STEPS {
         if phase > through {
             continue;
         }
         match step {
             ReportWideStep::ShipToQuartermasters => {
-                received_early = ship_to_quartermasters(hexes, inputs, phase);
+                delivered_early = ship_to_quartermasters(hexes, inputs, phase);
+                received_early = delivered_early.iter().fold(
+                    BTreeMap::new(),
+                    |mut received, (key, quantity)| {
+                        *received.entry(key.clone()).or_default() += quantity;
+                        received
+                    },
+                );
             }
             ReportWideStep::ShipBetweenQuartermasters => {
-                ship_between_quartermasters(hexes, inputs, phase, &received_early);
+                let delivered_late =
+                    ship_between_quartermasters(hexes, inputs, phase, &received_early);
+                credit_shipped_silver(hexes, phase, &delivered_early);
+                credit_shipped_silver(hexes, phase, &delivered_late);
             }
             ReportWideStep::ChargeRefusedShipments => charge_refused_shipments(hexes, phase),
             // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
@@ -13353,11 +13364,11 @@ fn ship_to_quartermasters(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     inputs: &ReportWideInputs<'_>,
     phase: StatePhase,
-) -> BTreeMap<(String, String), i64> {
+) -> Vec<((String, String), i64)> {
     let nothing_received = BTreeMap::new();
-    let mut received_early: BTreeMap<(String, String), i64> = BTreeMap::new();
+    let mut delivered = Vec::new();
     for (hex, ledger) in hexes.iter_mut() {
-        let delivered = shipping_bills(
+        delivered.extend(shipping_bills(
             hex,
             ledger,
             inputs.shipping,
@@ -13365,12 +13376,9 @@ fn ship_to_quartermasters(
             phase,
             false,
             &nothing_received,
-        );
-        for (key, quantity) in delivered {
-            *received_early.entry(key).or_default() += quantity;
-        }
+        ));
     }
-    received_early
+    delivered
 }
 
 /// TRANSPORT's later sub-phase, across every hex: goods between quartermasters, priced and paid.
@@ -13379,9 +13387,10 @@ fn ship_between_quartermasters(
     inputs: &ReportWideInputs<'_>,
     phase: StatePhase,
     received_early: &BTreeMap<(String, String), i64>,
-) {
+) -> Vec<((String, String), i64)> {
+    let mut delivered = Vec::new();
     for (hex, ledger) in hexes.iter_mut() {
-        shipping_bills(
+        delivered.extend(shipping_bills(
             hex,
             ledger,
             inputs.shipping,
@@ -13389,7 +13398,37 @@ fn ship_between_quartermasters(
             phase,
             true,
             received_early,
-        );
+        ));
+    }
+    delivered
+}
+
+/// Silver arriving by a settled shipment belongs in the receiver's transport-phase ledger after
+/// all three transport passes settle. Earlier delivery would make a quartermaster's forwarded
+/// silver available twice: once in its phase balance and again through `received_early`.
+fn credit_shipped_silver(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    phase: StatePhase,
+    delivered: &[((String, String), i64)],
+) {
+    for ((target, tag), quantity) in delivered {
+        if !tag.eq_ignore_ascii_case(SILVER) {
+            continue;
+        }
+        for (hex, ledger) in hexes.iter_mut() {
+            if hex.find(target).is_some() {
+                move_silver(
+                    ledger,
+                    phase,
+                    target,
+                    *quantity,
+                    SilverChangeCause::WasGiven,
+                    None,
+                    None,
+                );
+                break;
+            }
+        }
     }
 }
 
@@ -40462,7 +40501,7 @@ BUILD
     /// `rules/transport`: DISTRIBUTE has TRANSPORT's syntax and meaning, so it transports silver
     /// to an eligible nearby quartermaster.
     #[test]
-    fn a_distributed_silver_reduces_the_senders_forecast() {
+    fn a_distributed_silver_updates_both_forecasts() {
         let mut target = with_skill(unit("901"), "QUAM", 1);
         target.structure_id = Some("500".to_string());
         let sender = with_silver(unit("900"), 500);
@@ -40474,18 +40513,54 @@ BUILD
             ..Default::default()
         }];
 
-        let baseline = sender_silver(vec![nearby.clone()], "unit 900\n", CheckOptions::default());
-        let distributed = sender_silver(
-            vec![nearby],
-            "unit 900\nDISTRIBUTE 901 200 SILV\n",
+        let baseline = review_turn(
+            &report(vec![nearby.clone()]),
+            "unit 900\n",
+            Some(&ruleset()),
             CheckOptions::default(),
         );
+        let distributed = review_turn(
+            &report(vec![nearby]),
+            "unit 900\nDISTRIBUTE 901 200 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let baseline_sender = baseline
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast");
+        let baseline_receiver = baseline
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "901")
+            .expect("the receiver is forecast");
+        let distributed_sender = distributed
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast");
+        let distributed_receiver = distributed
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "901")
+            .expect("the receiver is forecast");
 
         assert_eq!(
-            distributed.at_month_end,
-            baseline.at_month_end.map(|silver| silver - 200)
+            distributed_sender.at_month_end,
+            baseline_sender.at_month_end.map(|silver| silver - 200)
         );
-        assert!(distributed.changes.contains(&SilverChange {
+        assert_eq!(
+            distributed_receiver.at_month_end,
+            baseline_receiver.at_month_end.map(|silver| silver + 200)
+        );
+        assert!(distributed_receiver.changes.contains(&SilverChange {
+            amount: 200,
+            cause: SilverChangeCause::WasGiven,
+            line: None,
+            other: None,
+        }));
+        assert!(distributed_sender.changes.contains(&SilverChange {
             amount: -200,
             cause: SilverChangeCause::GaveAway,
             line: Some(2),
