@@ -343,6 +343,8 @@ export function projectAll(input: {
   /** The turn numbers the columns carry, in order - `scheduleTurns(...)`. */
   turns: readonly number[];
   seats: ShelterSeats;
+  /** Forecast every mage as sheltered instead of deriving shelter from the report. */
+  assumeSheltered?: boolean;
   /** The selected world's cross-faction teaching rule. `NO_TEACHING_RULE` applies none. */
   rule: TeachingRule;
 }): Map<string, { cells: ScheduleCell[]; standings: SkillPoints[] }> {
@@ -508,7 +510,7 @@ export function projectAll(input: {
     const unsheltered = new Set<string>();
     const shelterUnknown = new Set<string>();
     const byShelter = new Map<string, ProjectedMage[]>();
-    for (const mage of input.mages) {
+    for (const mage of input.assumeSheltered ? [] : input.mages) {
       const intent = intents.get(mage.key);
       if (intent?.kind !== "study" || intent.blocked !== null || intent.before.level < 2) {
         continue;
@@ -731,6 +733,8 @@ export function scheduleRows(input: {
   turns: readonly number[];
   /** From `shelterSeats(...)`; an empty map means every shelter is unknown. */
   seats: ShelterSeats;
+  /** Forecast every mage as sheltered instead of deriving shelter from the report. */
+  assumeSheltered?: boolean;
   /**
    * `standingAfterOrders(...)` - where each own mage stands once this month's orders have run.
    * An absent key, and an empty map, both mean the report's own answer.
@@ -772,6 +776,7 @@ export function scheduleRows(input: {
     tree: input.tree,
     turns: input.turns,
     seats: input.seats,
+    assumeSheltered: input.assumeSheltered,
     rule: input.rule
   });
 

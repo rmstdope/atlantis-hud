@@ -130,6 +130,14 @@ describe("StudyPlannerOrders", () => {
     expect(html).toContain("Could not save these orders.");
     expect(html).toContain("border-warn/60 bg-warn/10");
   });
+
+  it("states_when_orders_use_the_all_sheltered_forecast", () => {
+    const html = drawWith({
+      forecastNotice: "These orders use the all-sheltered forecast. Check your placements before writing them."
+    });
+
+    expect(html).toContain("These orders use the all-sheltered forecast. Check your placements before writing them.");
+  });
 });
 
 const writePlan: StudyWritePlan = {

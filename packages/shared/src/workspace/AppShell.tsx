@@ -718,6 +718,7 @@ export function AppShell({
    * pane picks its own opening mage.
    */
   const [studyPlannerOpen, setStudyPlannerOpen] = useState<boolean>(false);
+  const [assumeMagesSheltered, setAssumeMagesSheltered] = useState(false);
   /**
    * The tree's view choice and the graph's pan and zoom, remembered for the app session.
    *
@@ -5170,6 +5171,8 @@ export function AppShell({
           tree={magicTree}
           plans={studyPlans}
           viewedTurn={parsed?.header.turnNumber ?? null}
+          assumeSheltered={assumeMagesSheltered}
+          onAssumeShelteredChange={setAssumeMagesSheltered}
           saveError={studyPlanError}
           onSavePlan={(factionId, unitId, edit) =>
             void saveStudyPlan(factionId, unitId, { goals: edit }, "Could not save this plan.")

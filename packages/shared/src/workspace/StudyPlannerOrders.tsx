@@ -14,6 +14,7 @@ export function StudyPlannerOrders({
   orders,
   emptyCopy,
   error,
+  forecastNotice = null,
   onSaveText,
   writePlan,
   asking,
@@ -31,6 +32,8 @@ export function StudyPlannerOrders({
   emptyCopy: { headline: string; detail: string };
   /** `ordersError`. */
   error: string | null;
+  /** The selected forecast basis, or null for the report-based forecast. */
+  forecastNotice?: string | null;
   onSaveText: (fileName: string, text: string) => void;
   /** The own faction's write plan, or null when this tab has nothing it could write. */
   writePlan: StudyWritePlan | null;
@@ -51,6 +54,11 @@ export function StudyPlannerOrders({
           className="m-0 rounded border border-warn/60 bg-warn/10 px-2 py-1 text-warn"
         >
           {error}
+        </p>
+      )}
+      {forecastNotice === null ? null : (
+        <p data-testid="study-planner-orders-forecast-notice" className="m-0 text-warn">
+          {forecastNotice}
         </p>
       )}
       {asking && writePlan !== null ? (
