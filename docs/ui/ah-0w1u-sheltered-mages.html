@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ah-0w1u — sheltered-mages forecast</title>
+<style>
+  :root { --ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--dim:#8a97a8;--brass:#d9a441;--select:#4a9fd8;--warn:#eebe63; }
+  * { box-sizing:border-box } body { margin:0;background:var(--ground);color:var(--ink);font:15px/1.5 Georgia,serif;padding:32px 20px } main { max-width:1050px;margin:auto } h1 { margin:0;font-size:26px } h1 span { color:var(--brass) } header p { max-width:84ch;color:#a3b0c0 } section { margin-top:25px;padding:16px;background:var(--panel);border:1px solid var(--edge);border-radius:9px } h2 { margin:0;font-size:17px } .stage { margin-top:12px;padding:18px;background:#0b0f14;overflow:auto } .pane { width:880px;background:var(--raised);border:1px solid var(--edge);border-radius:6px;overflow:hidden;font:13px/1.45 Arial,sans-serif } .top,.sub,.assumption { display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--edge) } .title { font-weight:bold }.tabs { display:flex;gap:4px }.tab,.close { border:1px solid var(--edge);border-radius:4px;padding:3px 9px;color:var(--dim);background:var(--ground) }.tab.open { color:var(--brass);border-color:var(--brass);background:#332915 }.close { margin-left:auto;padding:1px 8px;font-size:15px }.sub { color:var(--dim);font-size:12px }.assumption { background:#151c25 }.checkbox { width:16px;height:16px;border:1px solid var(--select);border-radius:3px;background:#1b2735;display:grid;place-items:center;font-size:12px }.help { color:var(--dim);font-size:11px }.body { display:grid;grid-template-columns:245px 1fr;min-height:250px }.list { border-right:1px solid var(--edge) }.group { padding:7px 12px;background:#141a23;color:var(--brass);font-size:11px }.mage { padding:7px 12px;border-bottom:1px solid #202a36 }.mage.on { background:#1b2735;box-shadow:inset 2px 0 var(--select) }.small { color:var(--dim);font-size:11px }.schedule { padding:15px }.notice { border-left:2px solid var(--warn);padding:5px 9px;color:var(--warn);background:#1c1912;font-size:12px }.row { display:grid;grid-template-columns:145px repeat(4,1fr);padding:8px 0;border-bottom:1px solid var(--edge) }.cell { color:#a3b0c0 }.caption { color:#a3b0c0;font-size:13px;margin:11px 0 0 }.narrow { width:355px }.narrow .top,.narrow .assumption { flex-wrap:wrap }.narrow .help { width:100% }.empty { padding:24px 15px;color:var(--dim) }.disabled { opacity:.45 }
+</style>
+<main>
+  <header>
+    <h1>ah-0w1u — <span>all-sheltered forecasts</span></h1>
+    <p>The Study planner normally forecasts from the loaded report. A remembered checkbox lets a player explore the same schedule as though every mage had suitable shelter, without changing the report or any planned studies.</p>
+  </header>
+  <section>
+    <h2>Checked: all-sheltered forecast</h2>
+    <div class="stage"><div class="pane">
+      <div class="top"><b class="title">Study planner</b><span class="tabs"><span class="tab">Overview</span><span class="tab open">Planner</span><span class="tab">Orders</span></span><span class="close">×</span></div>
+      <div class="sub">3 mages · 4 planned · turns 24–29</div>
+      <div class="assumption"><span class="checkbox">✓</span><b>Assume every mage is sheltered</b><span class="help">Forecast only — your report has not changed.</span></div>
+      <div class="body"><div class="list"><div class="group">WARDENS OF THE NORTH (12)</div><div class="mage on">Ereb (2431)<div class="small">Force 3 · teaches Kestrel</div></div><div class="mage">Sable (2517)<div class="small">Force 1 · towards Force 5</div></div><div class="mage">Kestrel (2688)<div class="small">Manipulation 3</div></div></div><div class="schedule"><div class="notice">Forecasting every mage as sheltered. Check your placements before writing orders.</div><div class="row"><b>Mage</b><b>24 · next</b><b>25</b><b>26</b><b>27</b></div><div class="row"><span>Ereb</span><span class="cell">TEACH Kestrel</span><span class="cell">TEACH Kestrel</span><span class="cell">Force 3</span><span class="cell">Force 4</span></div><div class="row"><span>Sable</span><span class="cell">Force 1</span><span class="cell">Force 2</span><span class="cell">Force 2</span><span class="cell">Force 3</span></div><div class="row"><span>Kestrel</span><span class="cell">Manipulation 3</span><span class="cell">Manipulation 4</span><span class="cell">Manipulation 4</span><span class="cell">Manipulation 5</span></div></div></div>
+    </div></div>
+    <p class="caption">Unchecked, the same control reads “Assume every mage is sheltered” and the schedule returns to the report’s sheltering and its shelter warnings. In the Orders tab, the checked state says: “These orders use the all-sheltered forecast. Check your placements before writing them.”</p>
+  </section>
+  <section>
+    <h2>Narrow window and no report</h2>
+    <div class="stage"><div class="pane narrow">
+      <div class="top"><b class="title">Study planner</b><span class="tabs"><span class="tab">Overview</span><span class="tab open">Planner</span></span><span class="close">×</span></div>
+      <div class="sub">No schedule available</div>
+      <div class="assumption disabled"><span class="checkbox"></span><b>Assume every mage is sheltered</b><span class="help">Load a report to change the forecast.</span></div>
+      <div class="empty">Load a report to see a study schedule.</div>
+    </div></div>
+    <p class="caption">At a narrow width the checkbox and its label stay together, and the explanation takes its own line. Opening begins on the first mage; Tab reaches the checkbox and Space changes it. Escape, × and a click outside close the planner and return focus to what opened it. The choice remains selected on reopening and when the loaded report changes.</p>
+  </section>
+</main>
