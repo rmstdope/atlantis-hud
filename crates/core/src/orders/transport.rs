@@ -371,11 +371,12 @@ pub(crate) fn target_facts(
     facts
 }
 
-/// Whether the game will let this target accept the goods, and why not when it will not.
+/// Whether the game will let this target receive the goods, and why not when it will not.
 ///
-/// `rules/transport`: "The target of the transport unit must be a unit with the quartermaster
-/// skill and must be the owner of a transport structure", which `rules/economy_transport` names
-/// the Caravanserai and which must also "be at least FRIENDLY to the unit which issues the order".
+/// `rules/economy_transport` lets a quartermaster owning a Caravanserai send to any unit within
+/// two hexes. A unit that is not a quartermaster can instead send only to a quartermaster owning a
+/// Caravanserai, the transport structure `rules/economy_transport` names; either target must be
+/// at least FRIENDLY to the sender.
 ///
 /// Only the first two are ours to settle. `rules/com_attitudes` prints the attitudes *we* declare
 /// toward other factions, never theirs toward us, so a foreign target that passes both structural
@@ -393,11 +394,21 @@ pub(crate) enum Acceptance {
     AcceptanceUnknown,
 }
 
-pub(crate) fn acceptance(facts: Option<&TargetFacts>) -> Acceptance {
+pub(crate) fn acceptance(sender_can_distribute: bool, facts: Option<&TargetFacts>) -> Acceptance {
     let Some(facts) = facts else {
         // A unit number the report never described: an ally's quartermaster, or a mistake.
         return Acceptance::EligibilityUnknown;
     };
+    if sender_can_distribute && !facts.quartermaster {
+        // The sender's own quartermaster status is what makes an ordinary target eligible. The
+        // report can settle that immediately for our unit; a foreign target's attitude stays
+        // unknown because `rules/com_attitudes` only reports our attitudes toward others.
+        return if facts.own {
+            Acceptance::Eligible
+        } else {
+            Acceptance::AcceptanceUnknown
+        };
+    }
     if facts.own {
         // Our own report prints our own units' skills in full, so a missing quartermaster is a
         // fact rather than a gap - and it is the reason worth naming when the unit fails both
@@ -428,11 +439,10 @@ pub(crate) fn acceptance(facts: Option<&TargetFacts>) -> Acceptance {
     Acceptance::AcceptanceUnknown
 }
 
-/// Which reach this shipment is measured against, or `None` when no reach rule applies to it.
+/// Which reach this shipment is measured against.
 ///
-/// `None` is exactly `rules/sequenceofevents`' third phase - a quartermaster distributing to a unit
-/// that is not one - which since `ah-64wm` carries only orders the target gate has already
-/// refused, so no rule is invented for it.
+/// `rules/economy_transport` gives shipments involving one quartermaster the local two-hex reach,
+/// while two quartermasters use the sender skill's longer reach.
 pub(crate) fn reach_for(
     sender_is_quartermaster: bool,
     target_is_quartermaster: bool,
@@ -446,7 +456,7 @@ pub(crate) fn reach_for(
             level: sender_level,
         });
     }
-    None
+    Some(Reach::Local)
 }
 
 /// How far apart the two ends are and how far the shipment was allowed to travel, when the map
@@ -561,6 +571,11 @@ impl Shipping {
     ) -> Judged {
         let facts = self.targets.get(target);
         let sender_qm = self.quartermasters.contains(sender);
+        let sender_can_distribute = sender_qm
+            && self
+                .targets
+                .get(sender)
+                .is_some_and(|facts| facts.caravanserai_owner);
         let target_qm = self.quartermasters.contains(target);
         let reach = reach_for(sender_qm, target_qm, self.quartermasters.level(sender));
         let measured = match (reach, sender_reported, facts) {
@@ -578,7 +593,7 @@ impl Shipping {
         };
         Judged {
             target_shown: facts.is_some(),
-            acceptance: acceptance(facts),
+            acceptance: acceptance(sender_can_distribute, facts),
             phase: shipment_phase(sender_qm, target_qm),
             reach,
             measured,
@@ -686,49 +701,52 @@ mod tests {
         }
     }
 
-    /// `rules/transport`: the target "must be a unit with the quartermaster skill and must be the
-    /// owner of a transport structure" - and `ah-64wm`'s four refusals for the cases the report
-    /// cannot settle.
+    /// `rules/economy_transport`: a non-quartermaster sender needs a quartermaster target that
+    /// owns a Caravanserai; a quartermaster sender may target an ordinary unit.
     #[test]
     fn a_target_that_is_not_a_caravanserai_owning_quartermaster_is_refused() {
         // One of ours, holding the skill, owning the Caravanserai: the goods go.
         assert_eq!(
-            acceptance(Some(&facts(true, true, true, true))),
+            acceptance(false, Some(&facts(true, true, true, true))),
             Acceptance::Eligible
         );
         // Ours, skill absent from a report that prints ours in full: a fact.
         assert_eq!(
-            acceptance(Some(&facts(true, false, true, true))),
+            acceptance(false, Some(&facts(true, false, true, true))),
             Acceptance::NotQuartermaster
         );
         // Ours, with the skill but no Caravanserai of its own.
         assert_eq!(
-            acceptance(Some(&facts(true, true, false, true))),
+            acceptance(false, Some(&facts(true, true, false, true))),
             Acceptance::NotCaravanseraiOwner
         );
         // Ours, but the catalogue names no quartermaster skill: missing evidence, not a missing
         // skill (`ah-d0ku`).
         assert_eq!(
-            acceptance(Some(&facts(true, false, true, false))),
+            acceptance(false, Some(&facts(true, false, true, false))),
             Acceptance::EligibilityUnknown
         );
         // Foreign: the structure is drawn in our report, so ownership is certain either way.
         assert_eq!(
-            acceptance(Some(&facts(false, true, false, true))),
+            acceptance(false, Some(&facts(false, true, false, true))),
             Acceptance::NotCaravanseraiOwner
         );
         // Foreign, owning one, skills undisclosed (`rules/reportformat`).
         assert_eq!(
-            acceptance(Some(&facts(false, false, true, true))),
+            acceptance(false, Some(&facts(false, false, true, true))),
             Acceptance::EligibilityUnknown
         );
         // Foreign, owning one and shown holding the skill: only its attitude to us is unknown.
         assert_eq!(
-            acceptance(Some(&facts(false, true, true, true))),
+            acceptance(false, Some(&facts(false, true, true, true))),
             Acceptance::AcceptanceUnknown
         );
         // A unit number the report never described at all.
-        assert_eq!(acceptance(None), Acceptance::EligibilityUnknown);
+        assert_eq!(acceptance(false, None), Acceptance::EligibilityUnknown);
+        assert_eq!(
+            acceptance(true, Some(&facts(true, false, false, true))),
+            Acceptance::Eligible
+        );
     }
 
     /// `rules/economy_transport`: a unit may send to a quartermaster "within 2 hexes", so three
@@ -780,9 +798,7 @@ mod tests {
             reach_for(true, true, 1),
             Some(Reach::BetweenQuartermasters { level: 1 })
         );
-        // A quartermaster distributing to a unit that is not one: no reach rule applies, because
-        // since `ah-64wm` the target gate has already refused every such order.
-        assert_eq!(reach_for(true, false, 1), None);
+        assert_eq!(reach_for(true, false, 1), Some(Reach::Local));
     }
 
     #[test]
@@ -1211,15 +1227,23 @@ mod tests {
     }
 
     #[test]
-    fn judge_names_no_reach_for_a_quartermaster_sending_to_a_non_quartermaster() {
+    fn judge_measures_a_quartermaster_sending_to_a_non_quartermaster() {
         let shipping = shipping(
             &[("900", 2)],
             vec![("901", at(facts(true, false, true, true), hex(0, 1)))],
             &[],
         );
         let judged = shipping.judge("900", Some(hex(0, 0)), "901");
-        assert_eq!(judged.reach, None);
-        assert_eq!(judged.measured, None);
+        assert_eq!(judged.reach, Some(Reach::Local));
+        assert_eq!(
+            judged.measured,
+            Some(Measured {
+                reach: Reach::Local,
+                from: hex(0, 0),
+                to: hex(0, 1),
+                arrival: Arrival::Certain,
+            })
+        );
         assert_eq!(judged.phase, ShipmentPhase::FromQuartermaster);
     }
 
