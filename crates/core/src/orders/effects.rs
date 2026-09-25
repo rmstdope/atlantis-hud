@@ -9085,28 +9085,17 @@ mod tests {
             &unit.transport_target_issues[0]
         }
 
-        // `rules/transport`: "The target of the transport unit must be a unit with the
-        // quartermaster skill". Our own report prints our own skills in full, so this is certain.
+        // `rules/economy_transport`: a quartermaster owning a Caravanserai may send items to
+        // another unit within two hexes.
         #[test]
-        fn an_own_target_without_the_quartermaster_skill_keeps_the_goods_here() {
+        fn an_own_ordinary_target_receives_goods_from_a_quartermaster() {
             let response = two_hex_preview("unit 6857\nTRANSPORT 5530 5 STON\n");
 
-            let sender = row(&response, "1:2,2", "6857").expect("the refusal is reported");
-            assert_eq!(held(sender, "STON"), Some(15), "nothing left 6857");
-            assert!(sender.transport_sent.is_empty());
-            assert_eq!(
-                only_issue(sender),
-                &TransportTargetIssue {
-                    to: "5530".to_string(),
-                    amount: 5,
-                    tag: "STON".to_string(),
-                    reason: TransportTargetReason::NotQuartermaster,
-                    order_index: 0,
-                    reach: None,
-                }
-            );
-            // The sender keeps them, so no row of ours gains them either.
-            assert!(row(&response, "1:1,1", "5530").is_none());
+            let sender = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            assert_eq!(held(sender, "STON"), Some(10), "five left 6857");
+            assert!(sender.transport_target_issues.is_empty());
+            let receiver = row(&response, "1:1,1", "5530").expect("the receiver is shown");
+            assert_eq!(held(receiver, "STON"), Some(45), "five arrived at 5530");
         }
 
         // `rules/economy_transport`: "a quartermaster must be the owner of a structure which allows
@@ -9557,10 +9546,8 @@ mod tests {
             // begins. The document is written in the opposite order on purpose: document order
             // must not decide where the goods end up (`ah-d0ku`).
             //
-            // Every target here is a quartermaster owning a Caravanserai, because `rules/transport`
-            // moves nothing to a target that is not (`ah-64wm`). The third phase of the sequence -
-            // quartermaster to non-quartermaster - can therefore carry only refused orders, and is
-            // covered by the target-eligibility tests rather than here.
+            // Every target here is a quartermaster owning a Caravanserai, so the fixture isolates
+            // the sequence's first two transport phases.
             let response = chain_preview(
                 "unit 902\nTRANSPORT 903 10 STON\n\
                  unit 901\nTRANSPORT 902 10 STON\n\

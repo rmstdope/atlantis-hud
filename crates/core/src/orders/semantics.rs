@@ -40568,6 +40568,64 @@ BUILD
         }));
     }
 
+    /// `rules/economy_transport` lets a quartermaster owning a Caravanserai transport items to
+    /// any unit within two hexes, so DISTRIBUTE must move silver out of that quartermaster too.
+    #[test]
+    fn a_quartermaster_distributes_silver_to_an_ordinary_unit() {
+        let mut sender = with_silver(with_skill(unit("900"), "QUAM", 1), 500);
+        sender.structure_id = Some("500".to_string());
+        let target = unit("901");
+        let mut nearby = region(vec![sender, target]);
+        nearby.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+
+        let baseline = review_turn(
+            &report(vec![nearby.clone()]),
+            "unit 900\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let distributed = review_turn(
+            &report(vec![nearby]),
+            "unit 900\nDISTRIBUTE 901 200 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let baseline_sender = baseline
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast");
+        let baseline_receiver = baseline
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "901")
+            .expect("the receiver is forecast");
+        let distributed_sender = distributed
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast");
+        let distributed_receiver = distributed
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "901")
+            .expect("the receiver is forecast");
+
+        assert_eq!(
+            distributed_sender.at_month_end,
+            baseline_sender.at_month_end.map(|silver| silver - 200)
+        );
+        assert_eq!(
+            distributed_receiver.at_month_end,
+            baseline_receiver.at_month_end.map(|silver| silver + 200)
+        );
+    }
+
     #[test]
     fn consecutive_silver_shipments_use_the_remaining_balance() {
         let mut target = with_skill(unit("901"), "QUAM", 1);
