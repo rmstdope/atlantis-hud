@@ -949,13 +949,15 @@ fn settle_report_wide(
         match step {
             ReportWideStep::ShipToQuartermasters => {
                 delivered_early = ship_to_quartermasters(hexes, inputs, phase);
-                received_early = delivered_early.iter().fold(
-                    BTreeMap::new(),
-                    |mut received, (key, quantity)| {
-                        *received.entry(key.clone()).or_default() += quantity;
-                        received
-                    },
-                );
+                received_early =
+                    delivered_early
+                        .iter()
+                        .fold(BTreeMap::new(), |mut received, shipment| {
+                            *received
+                                .entry((shipment.target.clone(), shipment.tag.clone()))
+                                .or_default() += shipment.quantity;
+                            received
+                        });
             }
             ReportWideStep::ShipBetweenQuartermasters => {
                 let delivered_late =
@@ -13056,6 +13058,46 @@ fn check_transport_reach(
     }
 }
 
+/// One shipment that transport accepted and settled. It is the single result from which the sender
+/// debit, receiver credit, and inventory delivery are applied.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SettledShipment {
+    sender: String,
+    target: String,
+    tag: String,
+    quantity: i64,
+}
+
+impl SettledShipment {
+    fn debit_sender(&self, ledger: &mut Ledger<'_>, phase: StatePhase, placed: &PlacedIntent) {
+        if self.tag.eq_ignore_ascii_case(SILVER) {
+            move_silver(
+                ledger,
+                phase,
+                &self.sender,
+                -self.quantity,
+                SilverChangeCause::GaveAway,
+                Some(placed),
+                Some(format!("unit {}", self.target)),
+            );
+        }
+    }
+
+    fn credit_receiver(&self, ledger: &mut Ledger<'_>, phase: StatePhase) {
+        if self.tag.eq_ignore_ascii_case(SILVER) {
+            move_silver(
+                ledger,
+                phase,
+                &self.target,
+                self.quantity,
+                SilverChangeCause::WasGiven,
+                None,
+                None,
+            );
+        }
+    }
+}
+
 /// What each unit in this hex pays to ship goods this month, by unit number (`ah-7ale.3`).
 ///
 /// A reader of the same rules the forecast reads, not a second one: `transport::acceptance`
@@ -13079,7 +13121,7 @@ fn shipping_bills(
     settled_at: StatePhase,
     quartermaster_senders: bool,
     received_earlier: &BTreeMap<(String, String), i64>,
-) -> Vec<((String, String), i64)> {
+) -> Vec<SettledShipment> {
     let mut delivered = Vec::new();
     let (Some(shipping), Some(rules)) = (shipping, ruleset) else {
         return delivered;
@@ -13198,7 +13240,7 @@ fn shipping_bills(
                     // The goods certainly arrive; only what they cost is unsaid (`ah-7ale.5`).
                     unmeasured.world_wrap = true;
                     if !conditional {
-                        settle_shipment_delivery(
+                        delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
                             sender,
@@ -13207,8 +13249,7 @@ fn shipping_bills(
                             placed,
                             id,
                             &mut shipped,
-                            &mut delivered,
-                        );
+                        ));
                     }
                 }
                 super::transport::Priced::Free
@@ -13216,7 +13257,7 @@ fn shipping_bills(
                     super::transport::Unpriceable::DifferentLevels,
                 ) => {
                     if !conditional {
-                        settle_shipment_delivery(
+                        delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
                             sender,
@@ -13225,8 +13266,7 @@ fn shipping_bills(
                             placed,
                             id,
                             &mut shipped,
-                            &mut delivered,
-                        );
+                        ));
                     }
                 }
                 super::transport::Priced::Charged { rate, weight, cost } => {
@@ -13254,7 +13294,7 @@ fn shipping_bills(
                             Some(placed),
                             None,
                         );
-                        settle_shipment_delivery(
+                        delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
                             sender,
@@ -13263,8 +13303,7 @@ fn shipping_bills(
                             placed,
                             id,
                             &mut shipped,
-                            &mut delivered,
-                        );
+                        ));
                         priced_here.push(ShipmentPriced {
                             line: i64::try_from(placed.line).unwrap_or(i64::MAX),
                             to: id.to_string(),
@@ -13331,21 +13370,16 @@ fn settle_shipment_delivery(
     placed: &PlacedIntent,
     target: &str,
     shipped: &mut BTreeMap<String, i64>,
-    delivered: &mut Vec<((String, String), i64)>,
-) {
-    if tag.eq_ignore_ascii_case(SILVER) {
-        move_silver(
-            ledger,
-            phase,
-            sender,
-            -quantity,
-            SilverChangeCause::GaveAway,
-            Some(placed),
-            Some(format!("unit {target}")),
-        );
-    }
+) -> SettledShipment {
+    let shipment = SettledShipment {
+        sender: sender.to_string(),
+        target: target.to_string(),
+        tag: tag.to_string(),
+        quantity,
+    };
+    shipment.debit_sender(ledger, phase, placed);
     *shipped.entry(tag.to_string()).or_default() += quantity;
-    delivered.push(((target.to_string(), tag.to_string()), quantity));
+    shipment
 }
 
 /// Non-silver shipment quantities do not enter the phase ledger, so their allowance remembers
@@ -13364,7 +13398,7 @@ fn ship_to_quartermasters(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     inputs: &ReportWideInputs<'_>,
     phase: StatePhase,
-) -> Vec<((String, String), i64)> {
+) -> Vec<SettledShipment> {
     let nothing_received = BTreeMap::new();
     let mut delivered = Vec::new();
     for (hex, ledger) in hexes.iter_mut() {
@@ -13387,7 +13421,7 @@ fn ship_between_quartermasters(
     inputs: &ReportWideInputs<'_>,
     phase: StatePhase,
     received_early: &BTreeMap<(String, String), i64>,
-) -> Vec<((String, String), i64)> {
+) -> Vec<SettledShipment> {
     let mut delivered = Vec::new();
     for (hex, ledger) in hexes.iter_mut() {
         delivered.extend(shipping_bills(
@@ -13409,23 +13443,15 @@ fn ship_between_quartermasters(
 fn credit_shipped_silver(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     phase: StatePhase,
-    delivered: &[((String, String), i64)],
+    delivered: &[SettledShipment],
 ) {
-    for ((target, tag), quantity) in delivered {
-        if !tag.eq_ignore_ascii_case(SILVER) {
+    for shipment in delivered {
+        if !shipment.tag.eq_ignore_ascii_case(SILVER) {
             continue;
         }
         for (hex, ledger) in hexes.iter_mut() {
-            if hex.find(target).is_some() {
-                move_silver(
-                    ledger,
-                    phase,
-                    target,
-                    *quantity,
-                    SilverChangeCause::WasGiven,
-                    None,
-                    None,
-                );
+            if hex.find(&shipment.target).is_some() {
+                shipment.credit_receiver(ledger, phase);
                 break;
             }
         }
@@ -40566,6 +40592,21 @@ BUILD
             line: Some(2),
             other: Some("unit 901".to_string()),
         }));
+    }
+
+    #[test]
+    fn settled_silver_shipment_names_both_ledger_legs() {
+        let shipment = SettledShipment {
+            sender: "900".to_string(),
+            target: "901".to_string(),
+            tag: SILVER.to_string(),
+            quantity: 200,
+        };
+
+        assert_eq!(shipment.sender, "900");
+        assert_eq!(shipment.target, "901");
+        assert_eq!(shipment.tag, SILVER);
+        assert_eq!(shipment.quantity, 200);
     }
 
     /// `rules/economy_transport` lets a quartermaster owning a Caravanserai transport items to
