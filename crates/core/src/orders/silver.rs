@@ -700,7 +700,7 @@ pub enum SilverChangeCause {
     /// The region's wage, from a `WORK` order or from [`UnitSilver::works_by_default`].
     Worked,
     Entertained,
-    /// Silver another unit's `GIVE` hands this one.
+    /// Silver another unit hands this one by `GIVE` or `TRANSPORT`.
     WasGiven,
     /// Silver this unit's `TAKE` pulls from a unit the report shows.
     Took,
