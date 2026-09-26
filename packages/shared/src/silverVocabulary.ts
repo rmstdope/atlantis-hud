@@ -403,8 +403,13 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // note on `poolDoubted`, and silent when a warning already speaks for the shortfall.
   {
     id: "shared-silver-unjudged",
-    when: ({ silver, warned }) =>
-      silver.atMonthEnd !== null && silver.atMonthEnd < 0 && !warned && silver.poolDoubted,
+    when: ({ silver, warned, hexShort }) =>
+      silver.atMonthEnd !== null &&
+      silver.atMonthEnd < 0 &&
+      !warned &&
+      // A hex-anchored shortfall means the checks did judge the pool, and found it short.
+      !(hexShort ?? false) &&
+      silver.poolDoubted,
     say: () =>
       "Shared silver in this hex could not be added up, because a sharing unit's month is uncertain, so whether it covers this unit's shortfall cannot be said.",
     example: () => ({
