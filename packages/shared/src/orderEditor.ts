@@ -333,6 +333,15 @@ const SILVER_TROUBLE = new Set<string>(SILVER_TROUBLE_CODES);
  * this month is unique to its hex, not to the turn, and a plain unit-id set would mark both hexes'
  * rows from one finding (`ah-jw85`).
  */
+export function unitsWarnedAboutSilver(diagnostics: OrderDiagnostic[]): Set<UnitRowKey> {
+  return new Set(
+    diagnostics
+      .filter((diagnostic) => SILVER_TROUBLE.has(diagnostic.code))
+      .filter((diagnostic) => diagnostic.unitId !== null && diagnostic.regionId !== null)
+      .map((diagnostic) => unitRowKey(diagnostic.regionId as string, diagnostic.unitId as string))
+  );
+}
+
 /**
  * The hexes whose silver the checks found short against the hex itself, naming no unit
  * (`ah-5znb`).
@@ -348,14 +357,5 @@ export function hexesShortOfSilver(diagnostics: OrderDiagnostic[]): Set<string> 
       .filter((diagnostic) => SILVER_TROUBLE.has(diagnostic.code))
       .filter((diagnostic) => diagnostic.unitId === null && diagnostic.regionId !== null)
       .map((diagnostic) => diagnostic.regionId as string)
-  );
-}
-
-export function unitsWarnedAboutSilver(diagnostics: OrderDiagnostic[]): Set<UnitRowKey> {
-  return new Set(
-    diagnostics
-      .filter((diagnostic) => SILVER_TROUBLE.has(diagnostic.code))
-      .filter((diagnostic) => diagnostic.unitId !== null && diagnostic.regionId !== null)
-      .map((diagnostic) => unitRowKey(diagnostic.regionId as string, diagnostic.unitId as string))
   );
 }
