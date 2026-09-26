@@ -581,6 +581,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
    */
   const SAID_BEFORE: Record<string, string> = {
     "shared-silver-covers-shortfall": "Shared silver in this hex covers the shortfall.",
+    "shared-silver-unjudged":
+      "Shared silver in this hex could not be added up, because a sharing unit's month is uncertain, so whether it covers this unit's shortfall cannot be said.",
     "doubt-unknown-tax-base": "The report never said what this region's tax base is.",
     "doubt-unpriced-production": "The ruleset does not say what producing mithril costs.",
     "doubt-unknown-skills-after-arrivals":

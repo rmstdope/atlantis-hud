@@ -398,6 +398,22 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
+  // The same short unit when the pool was never judged (`poolDoubted`, `ah-0jxx`): the silence
+  // above proves nothing, so say why no warning appears (`ah-pbxj`). Exclusive with the covered
+  // note on `poolDoubted`, and silent when a warning already speaks for the shortfall.
+  {
+    id: "shared-silver-unjudged",
+    when: ({ silver, warned }) =>
+      silver.atMonthEnd !== null && silver.atMonthEnd < 0 && !warned && silver.poolDoubted,
+    say: () =>
+      "Shared silver in this hex could not be added up, because a sharing unit's month is uncertain, so whether it covers this unit's shortfall cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ atMonthEnd: -5, upkeep: 5, poolDoubted: true }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
   {
     id: "doubt-unknown-tax-base",
     when: ({ silver }) => silver.doubt === "unknown-tax-base",

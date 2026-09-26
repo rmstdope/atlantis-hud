@@ -1645,11 +1645,14 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     // Two notes say that something did NOT happen, so an everything-is-true case cannot reach
     // either: `shared-silver-covers-shortfall` is inferred from a negative month end nothing warns
     // about and no faction-mate covered, and `nothing-moves-silver` from an income and an expense
-    // of zero. Each is covered by its own example above. Every other note must appear here.
+    // of zero. `shared-silver-unjudged` (ah-pbxj) needs a negative month end too, which this
+    // everything-is-true unit, holding silver at month end, cannot have. Each is covered by its own
+    // example above. Every other note must appear here.
     expect(
       SILVER_NOTES.map((note) => note.id).filter((id) => !appeared.has(id))
     ).toEqual([
       "shared-silver-covers-shortfall",
+      "shared-silver-unjudged",
       "allied-upkeep-might-cover",
       "nothing-moves-silver"
     ]);
