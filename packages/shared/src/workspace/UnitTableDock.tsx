@@ -224,6 +224,8 @@ type UnitTableDockProps = {
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<UnitRowKey>;
+  /** The hexes whose silver shortfall is anchored to the hex and names no unit (`ah-5znb`). */
+  silverShortHexes?: ReadonlySet<string>;
   /** Selects a unit and opens its orders. Absent means the cell is not clickable. */
   onSelectUnit?: (unitId: string, regionId?: string) => void;
   /**
@@ -304,6 +306,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       getReportedLongOrder,
       getSilver,
       silverWarnings,
+      silverShortHexes,
       onSelectUnit,
       renderFactionName,
       ownUnits,
@@ -1566,6 +1569,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   getReportedLongOrder={getReportedLongOrder}
                   getSilver={getSilver}
                   silverWarnings={silverWarnings}
+                  silverShortHexes={silverShortHexes}
                   countUpkeep={countUpkeep}
                   derivedSkills={derivedSkills}
                   unitNames={unitNames}
@@ -1592,6 +1596,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
             getLongOrder={getLongOrder}
             getReportedLongOrder={getReportedLongOrder}
             silverWarnings={silverWarnings}
+            silverShortHexes={silverShortHexes}
             countUpkeep={countUpkeep}
             derivedSkills={derivedSkills}
             structures={structures}
@@ -2011,6 +2016,7 @@ function HoveredPopup({
   getLongOrder,
   getReportedLongOrder,
   silverWarnings,
+  silverShortHexes,
   countUpkeep,
   derivedSkills,
   structures,
@@ -2022,6 +2028,7 @@ function HoveredPopup({
   /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
   getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
   silverWarnings?: ReadonlySet<UnitRowKey>;
+  silverShortHexes?: ReadonlySet<string>;
   countUpkeep: boolean;
   derivedSkills: DerivedSkills;
   structures: StructuresByRegion;
@@ -2039,6 +2046,7 @@ function HoveredPopup({
   // would be drawn from different arguments to `summariseUnit`.
   const warned =
     silver !== null && (silverWarnings?.has(unitRowKey(unit.regionId, unit.unitId)) ?? false);
+  const hexShort = silver !== null && (silverShortHexes?.has(unit.regionId) ?? false);
   const dissolving = dissolves(unit);
   const spec = popupForCell(column, unit, {
     structureLabel: unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures),
@@ -2047,6 +2055,7 @@ function HoveredPopup({
     reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
     silver,
     silverWarned: warned,
+    silverHexShort: hexShort,
     countUpkeep,
     derivedSkills: derivedSkillsFor(derivedSkills, unit),
     dissolving,
@@ -2060,6 +2069,7 @@ function HoveredPopup({
         at={at}
         silver={silver}
         warned={warned}
+        hexShort={hexShort}
         derivedSkills={derivedSkillsFor(derivedSkills, unit)}
         dissolving={dissolving ? { into: unit.dissolvesInto ?? null } : null}
       />
@@ -2121,6 +2131,7 @@ function UnitRow({
   getReportedLongOrder,
   getSilver,
   silverWarnings,
+  silverShortHexes,
   countUpkeep,
   onSelectUnit,
   renderFactionName,
@@ -2192,6 +2203,8 @@ function UnitRow({
   getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<UnitRowKey>;
+  /** The hexes whose silver shortfall is anchored to the hex and names no unit (`ah-5znb`). */
+  silverShortHexes?: ReadonlySet<string>;
   /** Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`). */
   countUpkeep: boolean;
   /** Selects a unit and opens its orders. */
@@ -2262,6 +2275,9 @@ function UnitRow({
   // would be as wrong there as it is in the Problems panel - so there is deliberately no fallback
   // to the hex.
   const warned = silver !== null && (silverWarnings?.has(unitRowKey(regionId, unit.unitId)) ?? false);
+  // Where the hex's pooled silver falls short, the finding names the hex and no row carries a ⚠ -
+  // but the popup must still not call the shortfall covered (`ah-5znb`).
+  const hexShort = silver !== null && (silverShortHexes?.has(regionId) ?? false);
   // The setting decides whether maintenance comes off the figure (`ah-1wcw.4`); the core computes
   // both answers, so switching it costs no round trip through the checks.
   const shownSilver = silverShownUI(silver, countUpkeep);
@@ -2309,6 +2325,7 @@ function UnitRow({
       reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
       silver,
       silverWarned: warned,
+      silverHexShort: hexShort,
       countUpkeep,
       derivedSkills: derivedSkillsFor(derivedSkills, unit),
       dissolving: Boolean(dissolving),
@@ -2327,6 +2344,7 @@ function UnitRow({
     getReportedLongOrder,
     silver,
     warned,
+    hexShort,
     countUpkeep,
     derivedSkills,
     dissolving,

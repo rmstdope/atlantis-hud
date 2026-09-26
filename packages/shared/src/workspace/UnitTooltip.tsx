@@ -17,6 +17,7 @@ export function UnitTooltip({
   at,
   silver = null,
   warned = false,
+  hexShort = false,
   derivedSkills = [],
   dissolving = null
 }: {
@@ -26,6 +27,8 @@ export function UnitTooltip({
   silver?: UnitSilver | null;
   /** Whether this unit carries the `not-enough-silver` finding, which the note explains. */
   warned?: boolean;
+  /** Whether this unit's hex carries a silver shortfall naming no unit (`ah-5znb`). */
+  hexShort?: boolean;
   /**
    * Combat skills recovered from battle rosters for this unit (`ah-1mpx.6.3`), or `[]` for a unit
    * with report-native skills or nothing recovered - in which case the tooltip draws exactly as it
@@ -40,7 +43,7 @@ export function UnitTooltip({
 }) {
   // The Silver column's upkeep setting also decides the hover's fifth row (`ah-1wcw.4`).
   const countUpkeep = useSettingsStore((state) => state.countUpkeep);
-  const summary = summariseUnit(unit, silver, warned, countUpkeep, dissolving);
+  const summary = summariseUnit(unit, silver, warned, countUpkeep, dissolving, hexShort);
   const groups = derivedSkills.length > 0 ? battleSkillGroups(derivedSkills) : [];
 
   return (

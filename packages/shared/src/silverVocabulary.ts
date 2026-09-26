@@ -314,6 +314,11 @@ export type SilverFacts = {
   silver: UnitSilver;
   /** Whether this unit carries the `not-enough-silver` finding, which the note explains. */
   warned: boolean;
+  /**
+   * Whether this unit's hex carries a silver finding anchored to the hex rather than a unit
+   * (`ah-5znb`) - a pooled hex whose shortfall nothing visible covers. Absent means no.
+   */
+  hexShort?: boolean;
   /** Whether the Silver column is counting upkeep, which adds the fifth row (`ah-1wcw.4`). */
   countUpkeep: boolean;
 };
@@ -374,10 +379,12 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // `SHARE` flags did it. The automatic kind has its own sentence further down.
   {
     id: "shared-silver-covers-shortfall",
-    when: ({ silver, warned }) =>
+    when: ({ silver, warned, hexShort }) =>
       silver.atMonthEnd !== null &&
       silver.atMonthEnd < 0 &&
       !warned &&
+      // A hex-anchored shortfall is the checks saying the sharing did *not* cover it (`ah-5znb`).
+      !(hexShort ?? false) &&
       silver.sharedSilverCovered === 0,
     say: () => "Shared silver in this hex covers the shortfall.",
     example: () => ({
@@ -790,8 +797,16 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   },
   {
     id: "allied-upkeep-might-cover",
-    when: ({ silver, warned, countUpkeep }) =>
-      countUpkeep && warned && silver.upkeep !== null && silver.upkeep > 0,
+    when: ({ silver, warned, hexShort, countUpkeep }) =>
+      countUpkeep &&
+      silver.upkeep !== null &&
+      silver.upkeep > 0 &&
+      // A unit the checks name, or - where the hex pools its silver and the finding names no unit -
+      // one that cannot pay its own way within that short hex (`ah-5znb`).
+      (warned ||
+        ((hexShort ?? false) &&
+          silver.atMonthEnd !== null &&
+          silver.atMonthEnd - silver.upkeep < 0)),
     say: () =>
       "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
     example: () => ({
