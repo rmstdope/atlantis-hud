@@ -373,7 +373,9 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // Counted alone this unit runs out, yet no finding names it - which in this hex means the units
   // that share have it covered, exactly as the engine's own borrowing rule would.
   //
-  // Inferred from the figures rather than read from a field, so it fires for *any* silence - and
+  // Inferred from the figures rather than read from a field, so it fires for any silence the checks
+  // could have broken - not a hex-anchored shortfall (`hexShort`), nor a pool the checks never
+  // judged because a sharer is doubted (`poolDoubted`, `ah-0jxx`) - and
   // since `ah-e66j` a hex with no `SHARE` flag anywhere pays its neighbours' upkeep too. Guarded on
   // `sharedSilverCovered` so this sentence keeps meaning what it says: that the player's own
   // `SHARE` flags did it. The automatic kind has its own sentence further down.
