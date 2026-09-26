@@ -398,6 +398,12 @@ shippingDistanceUnknown: boolean,
  */
 shippingTargetUnshown: boolean, 
 /**
+ * This unit's hex pools its silver, and one of the units that share has sums the checks
+ * cannot follow, so no pooled shortfall is judged here at all (`ah-0jxx`). The absence of a
+ * silver finding then says nothing about whether the sharing covers this unit.
+ */
+poolDoubted: boolean, 
+/**
  * Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
  * the turn, ties broken by document line.
  *

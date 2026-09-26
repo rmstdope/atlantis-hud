@@ -1897,6 +1897,23 @@ describe("the column popups", () => {
     expect(popup.notes).not.toContain("Shared silver in this hex covers the shortfall.");
   });
 
+  // ah-0jxx: a doubted sharer leaves the hex's pool unjudged, so neither the unit nor the hex is
+  // warned - and that silence is not coverage.
+  it("a short unit beside a doubted sharer is not told shared silver covers it", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({ held: 0, expense: 10, atMonthEnd: -10, poolDoubted: true }),
+          silverWarned: false,
+          countUpkeep: true
+        })
+      )
+    );
+    expect(popup.notes).not.toContain("Shared silver in this hex covers the shortfall.");
+  });
+
   it("the silver popup leaves an unmarked cell without an amber line", () => {
     const popup = columnPopup(
       popupForCell(

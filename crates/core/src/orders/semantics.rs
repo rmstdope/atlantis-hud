@@ -1907,6 +1907,9 @@ fn forecast_hex(
     // same function `report_shortfalls` judges against, so the column cannot call a unit short
     // that the warning knows a faction-mate is paying for (`ah-moq3`).
     let purse_for_orders = sharing_purse(hex, ledger);
+    // Whether `report_shortfalls` can judge this hex's pool at all: where it cannot, its silence
+    // is not coverage, and the popup must not read it as such (`ah-0jxx`).
+    let pool_doubted = !Sharing::read(hex).pool_trusted(ledger);
 
     // Step 2 of the payment order runs across the whole hex, so it needs every unit's step-1
     // leftovers before it can settle any of them. Gathered here, applied once the loop is done.
@@ -2126,6 +2129,7 @@ fn forecast_hex(
     // (`ah-3c2t.2`). Appended after the `Lent` pass so it is the last line in the list, which is
     // where the agreed mockup draws it - under `bought`.
     for (index, forecast) in into[start..].iter_mut().enumerate() {
+        forecast.pool_doubted = pool_doubted;
         let borrowed = purse_for_orders.borrows[index];
         forecast.borrowed_for_orders = borrowed;
         // The same guard the `Lent` pass makes, and for the same reason: a doubted unit's list is
@@ -30861,6 +30865,65 @@ BUILD
             vec![0, 0],
             "one doubted sharer silences the purse"
         );
+    }
+
+    /// `ah-0jxx`: a doubted sharer silences the hex's pooled shortfall, so a penniless non-sharer
+    /// studying beside it is warned nowhere - neither against itself nor against the hex. Its
+    /// forecast must say the pool could not be judged, or the Silver popup reads that silence as
+    /// "shared silver covers the shortfall".
+    #[test]
+    fn a_unit_beside_a_doubted_sharer_is_told_its_pool_was_not_judged() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 500)),
+        ]);
+        // Nothing this market sells, so the sharer's own month cannot be added up.
+        let orders = "unit 5\nSTUDY combat\nunit 7\nBUY 1 unobtainium\n";
+        let review = review_turn(
+            &report(vec![hex_region]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let silver_of = |id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|silver| silver.unit_id == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("{id} has a forecast"))
+        };
+
+        let studier = silver_of("5");
+        assert!(
+            studier.at_month_end.expect("priced") < 0,
+            "the studier cannot pay alone: {studier:?}"
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "the doubted sharer silences every silver shortfall here"
+        );
+        assert!(studier.pool_doubted, "the studier's pool was not judged");
+        assert!(silver_of("7").pool_doubted, "nor the sharer's own");
+    }
+
+    /// The same hex with nothing doubted judges its pool, and says so.
+    #[test]
+    fn a_hex_whose_sharers_are_all_counted_has_its_pool_judged() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 500)),
+        ]);
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 5\nSTUDY combat\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(review.silver.iter().all(|silver| !silver.pool_doubted));
     }
 
     // --- the purse the market opens with (`ah-szye`) --------------------------------------------

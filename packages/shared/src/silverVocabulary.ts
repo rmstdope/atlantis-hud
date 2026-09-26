@@ -385,6 +385,8 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       !warned &&
       // A hex-anchored shortfall is the checks saying the sharing did *not* cover it (`ah-5znb`).
       !(hexShort ?? false) &&
+      // A doubted sharer leaves the pool unjudged, so its silence proves nothing (`ah-0jxx`).
+      !silver.poolDoubted &&
       silver.sharedSilverCovered === 0,
     say: () => "Shared silver in this hex covers the shortfall.",
     example: () => ({

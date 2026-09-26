@@ -560,6 +560,10 @@ pub struct UnitSilver {
     /// Say, beneath the month, that a shipment's target is not in the report. Gated exactly as
     /// `shipping_distance_unknown` is.
     pub shipping_target_unshown: bool,
+    /// This unit's hex pools its silver, and one of the units that share has sums the checks
+    /// cannot follow, so no pooled shortfall is judged here at all (`ah-0jxx`). The absence of a
+    /// silver finding then says nothing about whether the sharing covers this unit.
+    pub pool_doubted: bool,
     /// Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
     /// the turn, ties broken by document line.
     ///
@@ -2083,6 +2087,7 @@ pub fn forecast_unit(
             // The notes are flags beside the doubt, not the doubt, so they survive it (`ah-7ale.5`).
             shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
             shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
+            pool_doubted: false,
             changes: Vec::new(),
         };
     }
@@ -2149,6 +2154,7 @@ pub fn forecast_unit(
             // The notes are flags beside the doubt, not the doubt, so they survive it (`ah-7ale.5`).
             shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
             shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
+            pool_doubted: false,
             changes: Vec::new(),
         };
     }
@@ -2969,6 +2975,7 @@ pub fn forecast_unit(
         shipping: Vec::new(),
         shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
         shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
+        pool_doubted: false,
         changes: if doubt.is_some() {
             Vec::new()
         } else {
