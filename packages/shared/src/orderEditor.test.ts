@@ -14,6 +14,7 @@ import {
   suggestOrderCommands,
   summarizeOrderValidation,
   unitsWarnedAboutSilver,
+  hexesShortOfSilver,
   NO_PRODUCTION,
   NO_STUDENTS, NO_FACTION_ORDERS
 } from "./orderEditor";
@@ -542,6 +543,25 @@ describe("the units the silver column marks", () => {
     expect(unitsWarnedAboutSilver([{ ...unitFinding("7226", 3), code: "unit-does-nothing" }])).toEqual(
       new Set()
     );
+  });
+});
+
+describe("hexesShortOfSilver (ah-5znb)", () => {
+  // A hex whose units pool their silver is warned against the hex, never a unit: that is the only
+  // way the Silver popup can know its shortfall was not covered.
+  it("names the hex of a silver finding anchored to no unit", () => {
+    expect(hexesShortOfSilver([hexFinding("not-enough-silver", "1:12,10")])).toEqual(
+      new Set(["1:12,10"])
+    );
+  });
+
+  it("names no hex for a finding that names a unit, or one about something else", () => {
+    expect(
+      hexesShortOfSilver([
+        { ...hexFinding("not-enough-silver"), unitId: "101" },
+        hexFinding("unguarded-hex")
+      ])
+    ).toEqual(new Set());
   });
 });
 

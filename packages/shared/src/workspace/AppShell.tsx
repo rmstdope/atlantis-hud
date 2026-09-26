@@ -101,6 +101,7 @@ import {
   findingsForHex,
   shouldTriggerAutosave,
   unitsWarnedAboutSilver,
+  hexesShortOfSilver,
   type OrdersOrigin,
   NO_PRODUCTION,
   NO_STUDENTS,
@@ -3567,6 +3568,14 @@ export function AppShell({
     () => unitsWarnedAboutSilver(validated.diagnostics),
     [validated.diagnostics]
   );
+  /**
+   * The hexes that deliberate silence leaves warned against the hex alone (`ah-5znb`), so the Silver
+   * popup can tell "the sharing covered it" from "the hex is short and nobody is named".
+   */
+  const silverShortHexes = useMemo(
+    () => hexesShortOfSilver(validated.diagnostics),
+    [validated.diagnostics]
+  );
 
   /**
    * Every trade route worth making across the known map, for the header's Trade chip (ah-1j5.2).
@@ -5860,6 +5869,7 @@ export function AppShell({
               getReportedLongOrder={getReportedLongOrder}
               getSilver={getSilver}
               silverWarnings={silverWarnings}
+              silverShortHexes={silverShortHexes}
               onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId)}
               ownUnits={ownUnits}
               foreignUnits={foreignUnits}

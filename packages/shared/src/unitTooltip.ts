@@ -77,10 +77,12 @@ export function summariseUnit(
    * Structural rather than the row type on purpose: `unitPreview` already imports from this
    * module, so taking a `PreviewedUnit` here would make a cycle.
    */
-  dissolving: { into: string | null } | null = null
+  dissolving: { into: string | null } | null = null,
+  /** Whether this unit's hex carries a silver shortfall naming no unit (`ah-5znb`). */
+  hexShort = false
 ): UnitSummary {
   return {
-    silver: silver === null ? null : summariseSilver(unit, silver, warned, countUpkeep),
+    silver: silver === null ? null : summariseSilver(unit, silver, warned, countUpkeep, hexShort),
     note: dissolving
       ? dissolving.into === null
         ? "Gains no recruits, so the game dissolves it. No unit of yours is shown in this hex for its goods to revert to."
@@ -178,7 +180,8 @@ function summariseSilver(
   unit: ReportUnit,
   silver: UnitSilver,
   warned: boolean,
-  countUpkeep: boolean
+  countUpkeep: boolean,
+  hexShort: boolean
 ): SilverSummary {
   const end = countUpkeep ? shownEnd(silver) : silver.atMonthEnd;
   // A term this unit's own broken line lost reads the agreed words; every other doubt keeps the
@@ -209,7 +212,7 @@ function summariseSilver(
     }
   ];
 
-  return { rows, note: silverNote(unit, silver, warned, countUpkeep) };
+  return { rows, note: silverNote(unit, silver, warned, countUpkeep, hexShort) };
 }
 
 /**
@@ -244,8 +247,9 @@ function silverNote(
   unit: ReportUnit,
   silver: UnitSilver,
   warned: boolean,
-  countUpkeep: boolean
+  countUpkeep: boolean,
+  hexShort: boolean
 ): string | null {
-  const lines = silverNoteLines({ unit, silver, warned, countUpkeep });
+  const lines = silverNoteLines({ unit, silver, warned, countUpkeep, hexShort });
   return lines.length > 0 ? lines.join("\n") : null;
 }

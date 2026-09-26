@@ -341,3 +341,21 @@ export function unitsWarnedAboutSilver(diagnostics: OrderDiagnostic[]): Set<Unit
       .map((diagnostic) => unitRowKey(diagnostic.regionId as string, diagnostic.unitId as string))
   );
 }
+
+/**
+ * The hexes whose silver the checks found short against the hex itself, naming no unit
+ * (`ah-5znb`).
+ *
+ * Where a hex's units pool their silver the core cannot say which of them goes short, so it warns
+ * the hex and no row carries a ⚠. The Silver popup still needs to know the shortfall was *not*
+ * covered - without this it read the missing unit warning as "shared silver covers it", which is
+ * false for a lone sharer nothing visible can pay.
+ */
+export function hexesShortOfSilver(diagnostics: OrderDiagnostic[]): Set<string> {
+  return new Set(
+    diagnostics
+      .filter((diagnostic) => SILVER_TROUBLE.has(diagnostic.code))
+      .filter((diagnostic) => diagnostic.unitId === null && diagnostic.regionId !== null)
+      .map((diagnostic) => diagnostic.regionId as string)
+  );
+}

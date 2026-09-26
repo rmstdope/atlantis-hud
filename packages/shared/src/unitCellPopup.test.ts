@@ -1873,6 +1873,30 @@ describe("the column popups", () => {
     );
   });
 
+  // ah-5znb, failed verification: a lone sharer in the navigator's desert (12,10) whose STUDY and
+  // upkeep nothing visible can pay. Its hex's silver is pooled, so the core anchors the shortfall
+  // to the hex and names no unit - `silverWarned` is false, and the popup used to read that silence
+  // as "shared silver covers it" while leaving out the allied-upkeep sentence
+  // (rules/economy_maintenance names allied silver and food as the last payment sources).
+  it("a unit in a hex whose shared silver falls short is told an ally might feed it", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({ held: 0, expense: 10, atMonthEnd: -10, upkeep: 10 }),
+          silverWarned: false,
+          silverHexShort: true,
+          countUpkeep: true
+        })
+      )
+    );
+    expect(popup.notes).toContain(
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+    );
+    expect(popup.notes).not.toContain("Shared silver in this hex covers the shortfall.");
+  });
+
   it("the silver popup leaves an unmarked cell without an amber line", () => {
     const popup = columnPopup(
       popupForCell(

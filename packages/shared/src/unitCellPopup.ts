@@ -174,6 +174,11 @@ export type PopupFacts = {
   silver: UnitSilver | null;
   /** Whether a `not-enough-silver` or `upkeep-exceeds-unclaimed` finding names this unit. */
   silverWarned: boolean;
+  /**
+   * Whether this unit's hex carries a silver finding anchored to the hex, naming no unit
+   * (`ah-5znb`). Absent means no.
+   */
+  silverHexShort?: boolean;
   /** The Silver column's upkeep setting (`ah-1wcw.4`). */
   countUpkeep: boolean;
   /** Battle-recovered skills for this unit, or `[]` (`ah-1mpx.6.3`). */
@@ -1865,6 +1870,7 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       unit,
       silver,
       warned: facts.silverWarned,
+      hexShort: facts.silverHexShort ?? false,
       countUpkeep: facts.countUpkeep
     };
     // The generic "this month cannot be added up" line below is deliberately not reached: the
@@ -1916,6 +1922,7 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     unit,
     silver,
     warned: facts.silverWarned,
+    hexShort: facts.silverHexShort ?? false,
     countUpkeep: facts.countUpkeep
   };
   const notes = silverNoteLines(noteFacts, groups);

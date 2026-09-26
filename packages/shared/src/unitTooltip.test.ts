@@ -931,6 +931,36 @@ describe("the silver section", () => {
     );
   });
 
+  it("tells_a_lone_sharer_in_a_short_hex_that_an_ally_might_feed_it", () => {
+    // ah-5znb, failed verification: the hex pools its silver, so the core's shortfall names the hex
+    // and no unit. That silence is not "shared silver covers it" (rules/economy_maintenance).
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "684" }),
+      forecast({ held: 0, expense: 10, atMonthEnd: -10, upkeep: 10 }),
+      false,
+      true,
+      null,
+      true
+    );
+
+    expect(summary.silver?.note).toBe(
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+    );
+  });
+
+  it("does_not_warn_a_unit_that_pays_its_own_way_in_a_short_hex", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ held: 100, expense: 0, atMonthEnd: 100, upkeep: 10 }),
+      false,
+      true,
+      null,
+      true
+    );
+
+    expect(summary.silver?.note ?? "").not.toContain("may avoid starvation");
+  });
+
   it("an_automatic_rescue_does_not_claim_the_player_shared_anything", () => {
     // The note at the top of `silverNote` is inferred from "the column is negative and nothing
     // warns", not from any field, so without the `sharedSilverCovered === 0` guard it tells a
