@@ -2184,6 +2184,11 @@ fn forecast_hex(
             // A doubt about maintenance alone: income, expense and the month-end figure are all
             // still exactly known, and `at_month_end` never counted upkeep to begin with.
             forecast.doubt = forecast.doubt.or(Some(SilverDoubt::ContestedFactionFood));
+            // Doubted after `forecast_unit` built the list, so its emptying (`ah-rgkk.4.4`) has
+            // to be repeated here: a doubted unit shows no change list at all - even though the
+            // totals above stand, since the list is the one place a consumer would add them up
+            // against a fee that is not a number.
+            forecast.changes.clear();
         }
     }
 
@@ -4614,6 +4619,14 @@ struct Ledger<'a> {
     /// Goods TRANSPORT moved after the ordinary per-hex order walk. Kept out of `state`, because
     /// the ITEMS preview applies these movements from the shipment records itself.
     transported_goods: BTreeMap<BalanceKey, i64>,
+    /// The production output `unwind_unconsumed_production` took back out of `state`, keyed like
+    /// `transported_goods` and handed back to maintenance the same way.
+    ///
+    /// The unwind keeps `report_shortfalls` from spending output on orders that settle before it,
+    /// but maintenance is assessed after both PRODUCE phases (`rules/sequenceofevents`), and
+    /// `rules/economy_maintenance` lets a unit eat the fish it caught this month. Without this the
+    /// month's catch fed nobody (`ah-0puh`, `gh-1325`).
+    unconsumed_production: BTreeMap<BalanceKey, i64>,
     /// What each PRODUCE created, and what later orders then spent, keyed like `balance` and held
     /// per phase.
     ///
@@ -5020,6 +5033,10 @@ impl Ledger<'_> {
         for ((unit_id, tag), amount) in &self.transported_goods {
             state.apply(StatePhase::Transport, unit_id, tag, *amount);
         }
+        // Credited at `Maintenance` alone, so no picture of an earlier phase can see it.
+        for ((unit_id, tag), amount) in &self.unconsumed_production {
+            state.apply(StatePhase::Maintenance, unit_id, tag, *amount);
+        }
         state.phase_holdings(hex, self.ruleset)
     }
 }
@@ -5035,6 +5052,7 @@ fn ledger_for_with_production<'a>(
         ruleset,
         state: PhaseState::from_hex(hex),
         transported_goods: BTreeMap::new(),
+        unconsumed_production: BTreeMap::new(),
         produced: BTreeMap::new(),
         production_materials: BTreeMap::new(),
         spent_after_production: BTreeMap::new(),
@@ -5346,6 +5364,10 @@ fn unwind_unconsumed_production(ledger: &mut Ledger<'_>) {
         .collect();
     for ((unit_id, tag), unwind) in unwinds {
         credit(ledger, StatePhase::Wages, &unit_id, &tag, -unwind);
+        *ledger
+            .unconsumed_production
+            .entry((unit_id, tag))
+            .or_default() += unwind;
     }
 }
 
@@ -47942,6 +47964,114 @@ BUILD
         assert_eq!(forecast(&review, "2001").own_food_covered, 0);
     }
 
+    // --- ah-0puh / gh-1325: fish caught this month feeds the fishermen -------------------------
+
+    /// The reported raft, reduced: an ocean hex producing fish, one fisherman catching it and a
+    /// crew beside him catching turtles, every unit `CONSUME FACTION` and holding no silver.
+    /// `rules/sequenceofevents` processes primary PRODUCE before "Maintenance costs are assessed",
+    /// and `rules/economy_maintenance` lets a CONSUME FACTION unit pay from its own food and then
+    /// its faction-mates' - so the month's catch pays the month's upkeep. Giant turtles are a mount
+    /// (`data/TURT`), never people.
+    fn fishing_raft() -> (ReportRegion, &'static str) {
+        let consuming = |unit: ReportUnit| {
+            let mut unit = starving(unit);
+            unit.flags = vec!["consuming faction's food".to_string()];
+            unit
+        };
+        let fisherman = consuming(with_skill(unit("4021"), "FISH", 3));
+        // `data/fishing`: FISH 3 may PRODUCE giant turtles, which is what the reporter's crew does.
+        let turtlers = consuming(with_item(
+            with_skill(with_men(unit("4022"), 5), "FISH", 3),
+            50,
+            "giant turtle",
+            "TURT",
+        ));
+        let mut sailor = consuming(unit("4023"));
+        sailor.skills.push(sail(3));
+        let mut products = one_product(50, "fish", "FISH");
+        products.extend(one_product(20, "giant turtle", "TURT"));
+        let region = ReportRegion {
+            terrain: ruleset().movement.ocean.terrain.clone(),
+            products,
+            ..region(vec![fisherman, turtlers, sailor])
+        };
+        (region, "unit 4021\nPRODUCE fish\nunit 4022\nPRODUCE TURT\n")
+    }
+
+    #[test]
+    fn fish_caught_this_month_pays_the_crews_upkeep() {
+        let (region, orders) = fishing_raft();
+        let review = review_turn(
+            &report(vec![region]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(
+            forecast(&review, "4021").upkeep,
+            Some(0),
+            "{:?}",
+            forecast(&review, "4021")
+        );
+        assert_eq!(
+            forecast(&review, "4022").upkeep,
+            Some(0),
+            "{:?}",
+            forecast(&review, "4022")
+        );
+        assert_eq!(
+            forecast(&review, "4023").upkeep,
+            Some(0),
+            "{:?}",
+            forecast(&review, "4023")
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED),
+            "{:?}",
+            review.findings
+        );
+    }
+
+    /// Fish already in hand feeds the crew too, with no PRODUCE at all - and the turtles owe
+    /// nothing.
+    #[test]
+    fn fish_held_pays_the_crews_upkeep_and_turtles_owe_none() {
+        let (mut region, _) = fishing_raft();
+        // The fisherman's own 10 silver still eats a whole fish, leaving two for the other six
+        // men's 60 (`rules/economy_maintenance`: one fish "for each 50 silver (or fraction
+        // thereof)").
+        region.units[0] = with_item(region.units[0].clone(), 3, "fish", "FISH");
+        let review = review_turn(
+            &report(vec![region]),
+            "",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(
+            forecast(&review, "4021").upkeep,
+            Some(0),
+            "{:?}",
+            forecast(&review, "4021")
+        );
+        assert_eq!(
+            forecast(&review, "4022").upkeep,
+            Some(0),
+            "{:?}",
+            forecast(&review, "4022")
+        );
+        assert_eq!(
+            forecast(&review, "4023").upkeep,
+            Some(0),
+            "{:?}",
+            forecast(&review, "4023")
+        );
+    }
+
     /// A hex with one eater and not enough grain: it eats what there is, and the hover says how
     /// much that was rather than claiming the whole fee was met.
     #[test]
@@ -48017,6 +48147,37 @@ BUILD
             assert_eq!(unit.doubt, Some(SilverDoubt::ContestedFactionFood), "{id}");
         }
         assert_eq!(forecast(&review, "2000").upkeep, Some(10));
+    }
+
+    /// A contested pool doubts the fee, and a doubted unit shows no change list at all
+    /// (`ah-rgkk.4.4`) - even one whose month already moved silver before the pool was settled.
+    /// `ah-0puh`'s fish reached this through the corpus: the doubt was added after the list was.
+    #[test]
+    fn a_contested_pool_empties_the_change_list_it_doubts() {
+        let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 3, "grain", "GRAI");
+        let mut first = with_silver(starving(unit("2001")), 500);
+        first.flags = vec!["consuming faction's food".to_string()];
+        first.men = 6;
+        let mut second = with_silver(starving(unit("2002")), 500);
+        second.flags = vec!["consuming faction's food".to_string()];
+        second.men = 8;
+
+        // Wages the worker earns: a change on its list before the pool is ever settled.
+        let hex = ReportRegion {
+            wages: Some("13.5".to_string()),
+            max_wages: Some(100),
+            ..region(vec![quartermaster, first, second])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 2001\nWORK\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let unit = forecast(&review, "2001");
+        assert_eq!(unit.doubt, Some(SilverDoubt::ContestedFactionFood));
+        assert_eq!(unit.changes, Vec::new(), "{unit:?}");
     }
 
     /// The plumbing test: the purse lives on the report header, and only `review_turn` can carry
