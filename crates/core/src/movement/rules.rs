@@ -1661,11 +1661,13 @@ impl Ruleset {
         !self.skills.is_empty()
     }
 
-    /// Every skill's name, in the catalogue's own spelling and order, for a suggestion.
+    /// Every studyable skill's name, in the catalogue's own spelling and order, for the
+    /// `unknown-skill` suggestion: a skill nobody may study is no answer to a misspelt STUDY.
     #[must_use]
-    pub fn skill_names(&self) -> Vec<String> {
+    pub fn studyable_skill_names(&self) -> Vec<String> {
         self.skills
             .values()
+            .filter(|skill| skill.is_studyable())
             .map(|skill| skill.name.clone())
             .collect()
     }

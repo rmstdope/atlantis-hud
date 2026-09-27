@@ -227,6 +227,11 @@ pub mod codes {
     /// quartermasters than the new points allow (`rules/faction`). Always on: the agreed experience
     /// adds nothing interactive, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const FACTION_ORDER_WILL_FAIL: Code = Code("faction-order-will-fail");
+
+    /// A STUDY naming a skill neither the catalogue nor the report knows (`ah-9199`), which sets
+    /// no month-long order. Always on: the bead asks for the warning and gives it no switch, so it
+    /// is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const UNKNOWN_SKILL: Code = Code("unknown-skill");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -310,7 +315,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 2] = [MOVE_INTO_A_WALL, FACTION_ORDER_WILL_FAIL];
+    pub const ALWAYS_ON: [Code; 3] = [MOVE_INTO_A_WALL, FACTION_ORDER_WILL_FAIL, UNKNOWN_SKILL];
 }
 
 /// Which checks to run, and - in the forecast - which refusals to make.
@@ -529,7 +534,12 @@ fn food_uncertain_after_gifts(ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) 
 /// reason. Without this, a nested `FORM`'s unit is silently dropped.
 ///
 /// `None` reads under the New Origins lexical rules.
-fn formed_units(report: &ParsedReport, source: &str, ruleset: Option<&Ruleset>) -> Vec<Formed> {
+fn formed_units(
+    report: &ParsedReport,
+    source: &str,
+    ruleset: Option<&Ruleset>,
+    report_skills: &study::ReportSkills,
+) -> Vec<Formed> {
     let unit_regions = where_the_report_shows_each_unit(report);
     let unit_by_id = units_by_id(report);
     // Report-wide, so keyed on [`UnitKey`]: `rules/form` scopes an alias to its region, so two
@@ -540,7 +550,7 @@ fn formed_units(report: &ParsedReport, source: &str, ruleset: Option<&Ruleset>) 
     let mut minted: BTreeMap<UnitKey, ReportUnit> = BTreeMap::new();
     read_formed(source, &unit_regions, ruleset)
         .into_iter()
-        .filter_map(|block| {
+        .filter_map(|mut block| {
             // The first lookup stays on a bare number: it resolves a unit the report physically
             // prints, whose number the game assigns once.
             let parent = unit_by_id
@@ -549,7 +559,12 @@ fn formed_units(report: &ParsedReport, source: &str, ruleset: Option<&Ruleset>) 
                 .or_else(|| minted.get(&unit_key(&block.region_id, &block.formed_by)))?;
             let unit = effects::formed_unit(parent, &block.alias, &parent.flags);
             minted.insert(unit_key(&unit.region_id, &unit.unit_id), unit.clone());
-            Some(Formed { unit, block })
+            let unknown_studies = take_unknown_studies(&mut block.intents, ruleset, report_skills);
+            Some(Formed {
+                unit,
+                block,
+                unknown_studies,
+            })
         })
         .collect()
 }
@@ -606,7 +621,8 @@ pub fn review_turn(
     ruleset: Option<&Ruleset>,
     options: CheckOptions,
 ) -> TurnReview {
-    let ordered = OrderedUnits::read_with_ruleset(source, ruleset);
+    let report_skills = study::ReportSkills::of(report);
+    let ordered = OrderedUnits::read_with_ruleset(source, ruleset, &report_skills);
     // The movement reader of the same name, aliased: `semantics`' own `OrderedUnits` above is a
     // different type with different readers, and importing both unaliased fails in a way that
     // reads like a missing method. This one states the fleet-owner rule (`ah-ofra`).
@@ -638,7 +654,7 @@ pub fn review_turn(
     // every `Hex<'_>` that borrows from it (`Ordered` holds a reference into `formed[i].unit`).
     // `formed_units` is the one reader `item_effects` uses too - see its own doc comment for the
     // nested-FORM resolution it carries.
-    let formed: Vec<Formed> = formed_units(report, source, ruleset);
+    let formed: Vec<Formed> = formed_units(report, source, ruleset, &report_skills);
     // Same reasoning as `located` above: `review_turn` runs on every keystroke once typing
     // settles, so the index a sailing passenger's produce check walks is built only when that
     // check is actually enabled (`ah-8myf`).
@@ -818,6 +834,7 @@ pub fn review_turn(
         check_forms(hex, &options, &mut findings);
         check_idle_units(hex, &options, &mut findings);
         check_two_month_long_orders(hex, &options, &mut findings);
+        check_unknown_skills(hex, ruleset, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
         check_transport_reach(hex, shipping.as_ref(), ruleset, &options, &mut findings);
         check_take_from_another_faction(hex, &options, &mut findings);
@@ -2401,6 +2418,25 @@ struct UnitOrders {
     flag_changes: Vec<FlagChange>,
     destroys_structure: bool,
     promotes_units: Vec<String>,
+    /// STUDY lines naming a skill nothing knows (`study::names_no_skill`), taken out of `intents`
+    /// because they set no month-long order, and kept for the `unknown-skill` warning (`ah-9199`).
+    unknown_studies: Vec<PlacedIntent>,
+}
+
+/// Moves every STUDY naming a skill nothing knows out of `intents` and into the returned list
+/// (`ah-9199`). One rule for report units and formed ones, so neither can price a typo.
+fn take_unknown_studies(
+    intents: &mut Vec<PlacedIntent>,
+    ruleset: Option<&Ruleset>,
+    report_skills: &study::ReportSkills,
+) -> Vec<PlacedIntent> {
+    let (unknown, known): (Vec<_>, Vec<_>) =
+        std::mem::take(intents).into_iter().partition(|placed| {
+            matches!(&placed.intent, Intent::Study { skill }
+                if study::names_no_skill(skill, ruleset, report_skills))
+        });
+    *intents = known;
+    unknown
 }
 
 /// `reported` with each change applied in document order, last order winning.
@@ -2418,10 +2454,14 @@ fn flags_after_orders(reported: &[String], changes: &[FlagChange]) -> Vec<String
 impl OrderedUnits {
     #[cfg(test)]
     fn read(source: &str) -> Self {
-        Self::read_with_ruleset(source, None)
+        Self::read_with_ruleset(source, None, &study::ReportSkills::default())
     }
 
-    fn read_with_ruleset(source: &str, ruleset: Option<&Ruleset>) -> Self {
+    fn read_with_ruleset(
+        source: &str,
+        ruleset: Option<&Ruleset>,
+        report_skills: &study::ReportSkills,
+    ) -> Self {
         let mut by_unit: BTreeMap<String, UnitOrders> = BTreeMap::new();
         for UnitIntents {
             unit_id,
@@ -2440,7 +2480,14 @@ impl OrderedUnits {
                 flag_changes: Vec::new(),
                 destroys_structure: false,
                 promotes_units: Vec::new(),
+                unknown_studies: Vec::new(),
             });
+            let mut intents = intents;
+            entry.unknown_studies.extend(take_unknown_studies(
+                &mut intents,
+                ruleset,
+                report_skills,
+            ));
             entry.intents.extend(intents);
             entry.flag_changes.extend(flag_changes);
             entry.unread |= !unread.is_empty();
@@ -2466,6 +2513,8 @@ impl OrderedUnits {
 struct Formed {
     unit: ReportUnit,
     block: FormedBlock,
+    /// As [`UnitOrders::unknown_studies`], taken out of `block.intents`.
+    unknown_studies: Vec<PlacedIntent>,
 }
 
 /// One hex, with the units we may order in it and what they have been told to do.
@@ -2593,6 +2642,9 @@ struct Ordered<'a> {
     unread: bool,
     /// Set when `unit` is not one the report shows but one this month's `FORM` orders create.
     formed: Option<FormedSubject>,
+    /// This unit's STUDY lines naming a skill nothing knows, which are in neither `intents` nor
+    /// `all_intents` (`ah-9199`).
+    unknown_studies: &'a [PlacedIntent],
     /// The unit's skills once this month's gifts of men have run. Written by `apply_transfers`
     /// after the hex is read; `Unchanged` until then.
     skills_after_gifts: SkillsAfterGifts,
@@ -2666,6 +2718,8 @@ impl<'a> Hex<'a> {
                     block_line: orders.map(|orders| orders.block_line),
                     unread: orders.is_some_and(|orders| orders.unread),
                     formed: None,
+                    unknown_studies: orders
+                        .map_or(&[][..], |orders| orders.unknown_studies.as_slice()),
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     skills_after_recruits: None,
                     races_after_recruits: RacesAfterRecruits::Unchanged,
@@ -2697,6 +2751,7 @@ impl<'a> Hex<'a> {
                         alias: formed.block.alias.clone(),
                         formed_by: formed.block.formed_by.clone(),
                     }),
+                    unknown_studies: &formed.unknown_studies,
                     skills_after_gifts: SkillsAfterGifts::Unchanged,
                     skills_after_recruits: None,
                     races_after_recruits: RacesAfterRecruits::Unchanged,
@@ -2843,10 +2898,11 @@ pub(super) fn transfer_projection_for_tests(
     source: &str,
     ruleset: Option<&Ruleset>,
 ) -> Vec<TransferProjection> {
-    let ordered = OrderedUnits::read_with_ruleset(source, ruleset);
+    let report_skills = study::ReportSkills::of(report);
+    let ordered = OrderedUnits::read_with_ruleset(source, ruleset, &report_skills);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
-    let formed: Vec<Formed> = formed_units(report, source, ruleset);
+    let formed: Vec<Formed> = formed_units(report, source, ruleset, &report_skills);
 
     let mut projections = Vec::new();
     for region in &report.regions {
@@ -5404,7 +5460,8 @@ pub(crate) fn item_effects(
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
 ) -> BTreeMap<UnitKey, UnitItemEffects> {
-    let ordered = OrderedUnits::read_with_ruleset(orders_document, ruleset);
+    let report_skills = study::ReportSkills::of(report);
+    let ordered = OrderedUnits::read_with_ruleset(orders_document, ruleset, &report_skills);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
     let mut result: BTreeMap<UnitKey, UnitItemEffects> = BTreeMap::new();
@@ -5417,7 +5474,7 @@ pub(crate) fn item_effects(
     // exactly as `review_turn` does - one reader for both entry points, so they cannot
     // diverge. `item_effects` only ever reads `ledger.movements` and `ledger.uncounted`,
     // neither of which the projection touches, so this changes no output here.
-    let formed = formed_units(report, orders_document, ruleset);
+    let formed = formed_units(report, orders_document, ruleset, &report_skills);
     let hexes: Vec<Hex<'_>> = report
         .regions
         .iter()
@@ -12669,6 +12726,28 @@ fn check_two_month_long_orders(hex: &Hex<'_>, options: &CheckOptions, findings: 
                     winner.keyword,
                 ),
             ));
+        }
+    }
+}
+
+/// Every STUDY naming a skill nothing knows (`ah-9199`), on its own line, with the catalogue's
+/// closest studyable name when one is clearly nearest. Always on (`codes::ALWAYS_ON`).
+fn check_unknown_skills(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut Vec<Finding>) {
+    for ordered in &hex.units {
+        for placed in ordered.unknown_studies {
+            let Intent::Study { skill } = &placed.intent else {
+                continue;
+            };
+            let suggestion = ruleset.and_then(|ruleset| {
+                super::build_object::closest(skill, &ruleset.studyable_skill_names())
+            });
+            let message = match suggestion {
+                Some(suggestion) => {
+                    format!("STUDY: there is no skill called {skill} — did you mean {suggestion}?")
+                }
+                None => format!("STUDY: there is no skill called {skill}"),
+            };
+            findings.push(ordered.finding(hex, codes::UNKNOWN_SKILL, message, Some(placed)));
         }
     }
 }
@@ -27393,7 +27472,7 @@ BUILD
         ) -> R {
             let parsed = report(vec![hex_region]);
             let ordered = OrderedUnits::read(orders);
-            let formed = formed_units(&parsed, orders, None);
+            let formed = formed_units(&parsed, orders, None, &study::ReportSkills::default());
             let rules = ruleset();
             let hex = hex_with_transfers(
                 &parsed.regions[0],
@@ -30260,7 +30339,7 @@ BUILD
             region_at("1:8,54", 8, 54, vec![unit("6")]),
         ]);
         let ordered = OrderedUnits::read(orders);
-        let formed = formed_units(&parsed, orders, None);
+        let formed = formed_units(&parsed, orders, None, &study::ReportSkills::default());
         let hexes: Vec<Hex<'_>> = parsed
             .regions
             .iter()
@@ -30290,7 +30369,7 @@ BUILD
             region_at("1:7,53", 7, 53, vec![unit("5")]),
             region_at("1:8,54", 8, 54, vec![unit("6")]),
         ]);
-        let formed = formed_units(&parsed, orders, None);
+        let formed = formed_units(&parsed, orders, None, &study::ReportSkills::default());
 
         let minted: Vec<_> = formed
             .iter()
@@ -30326,7 +30405,7 @@ BUILD
         ])]);
         // `verdicts` reads a hex with no formed units at all, which is the whole subject here.
         let ordered = OrderedUnits::read(orders);
-        let formed = formed_units(&parsed, orders, None);
+        let formed = formed_units(&parsed, orders, None, &study::ReportSkills::default());
         let hex = Hex::read(&parsed.regions[0], &ordered, &formed);
         let rules = ruleset();
         let ledger = ledger_for(&hex, Some(&rules));
@@ -31785,6 +31864,95 @@ BUILD
             forecast.income,
             Some(10),
             "the WORK still earns: {forecast:?}"
+        );
+    }
+
+    /// `ah-9199`. The unit carries a warning naming the skill, on the STUDY line.
+    #[test]
+    fn a_study_of_a_skill_nothing_knows_is_warned_about_on_its_unit() {
+        let review = review_turn(
+            &report(vec![region(vec![with_silver(unit("1"), 100)])]),
+            "unit 1\nSTUDY combatt\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let found: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::UNKNOWN_SKILL)
+            .collect();
+        assert_eq!(found.len(), 1, "{:?}", review.findings);
+        assert_eq!(found[0].unit_id.as_deref(), Some("1"));
+        assert_eq!(found[0].line, Some(2));
+        assert_eq!(
+            found[0].message,
+            "STUDY: there is no skill called combatt — did you mean combat?"
+        );
+    }
+
+    /// `ah-9199`, the review's case: the shipped catalogue is not the whole game. A skill the
+    /// report names - here one the unit already knows - is real even where the catalogue cannot
+    /// price it, so it keeps the `?` it had and is not called unknown.
+    #[test]
+    fn a_skill_the_report_names_is_not_unknown_even_where_the_catalogue_lacks_it() {
+        let student = with_skill(with_silver(unit("1"), 100), "BRTL", 1);
+        let review = review_turn(
+            &report(vec![region(vec![student])]),
+            "unit 1\nSTUDY BRTL\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !codes(&review.findings).contains(&"unknown-skill"),
+            "{:?}",
+            review.findings
+        );
+        assert_eq!(
+            review.silver[0].doubt,
+            Some(crate::orders::silver::SilverDoubt::UnpricedSkill)
+        );
+    }
+
+    /// `ah-9199`, on the real report: g3-f42-t82's unit 683 holds blasphemous ritual [BRTL], can
+    /// study it, and was shown studying it - the catalogue has no such skill.
+    #[test]
+    fn the_real_blasphemous_ritual_study_is_not_called_unknown() {
+        let mut report = crate::report::parse_report_full(atlantis_hud_fixtures::G3_F42_T82.text);
+        let ruleset = ruleset();
+        crate::report::classify_units(&mut report, &ruleset);
+        let orders =
+            crate::report::orders::extract_orders_template(atlantis_hud_fixtures::G3_F42_T82.text)
+                .expect("the fixture carries an orders template")
+                .text;
+        assert!(
+            orders.contains("@study BRTL"),
+            "the fixture still holds the case"
+        );
+
+        let review = review_turn(&report, &orders, Some(&ruleset), CheckOptions::default());
+
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::UNKNOWN_SKILL),
+            "{:?}",
+            review
+                .findings
+                .iter()
+                .filter(|finding| finding.code == codes::UNKNOWN_SKILL)
+                .collect::<Vec<_>>()
+        );
+        let silver = review
+            .silver
+            .iter()
+            .find(|silver| silver.unit_id == "683")
+            .expect("unit 683 is forecast");
+        assert_eq!(
+            silver.doubt,
+            Some(crate::orders::silver::SilverDoubt::UnpricedSkill)
         );
     }
 
@@ -38032,8 +38200,12 @@ BUILD
 
     #[test]
     fn a_skill_the_ruleset_does_not_know_is_silent() {
+        // Nothing but the unknown skill itself, which is `ah-9199`'s own warning.
         let units = vec![with_silver(unit("5"), 1000)];
-        assert_eq!(check(vec![region(units)], "unit 5\nSTUDY xyzzy\n"), vec![]);
+        assert_eq!(
+            codes(&check(vec![region(units)], "unit 5\nSTUDY xyzzy\n")),
+            vec!["unknown-skill"]
+        );
     }
 
     #[test]
@@ -38624,8 +38796,12 @@ BUILD
 
     #[test]
     fn a_skill_the_catalogue_does_not_know_says_nothing() {
+        // Nothing but the unknown skill itself, which is `ah-9199`'s own warning.
         let units = vec![with_silver(unit("5"), 1000)];
-        assert_eq!(check(vec![region(units)], "unit 5\nSTUDY xyzzy\n"), vec![]);
+        assert_eq!(
+            codes(&check(vec![region(units)], "unit 5\nSTUDY xyzzy\n")),
+            vec!["unknown-skill"]
+        );
     }
 
     #[test]

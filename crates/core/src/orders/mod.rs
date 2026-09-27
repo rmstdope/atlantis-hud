@@ -151,7 +151,7 @@ pub fn validate_turn(
     }
 }
 
-/// Gives each `unknown-object` / `unbuildable-object` / `trade-except` / `unknown-skill` diagnostic the report unit whose block the
+/// Gives each `unknown-object` / `unbuildable-object` / `trade-except` diagnostic the report unit whose block the
 /// line sits in, and that unit's hex, so the region panel lists it against the unit. Only a line
 /// directly in a `unit NNNN` block counts: inside a `FORM` block, before any unit line, or under a
 /// unit number the report does not show, the diagnostic stays unplaced, as every other syntax
@@ -168,8 +168,7 @@ fn place_unit_errors(
         diagnostic.unit_id.is_none()
             && (diagnostic.code == build_object::UNKNOWN_OBJECT
                 || diagnostic.code == build_object::UNBUILDABLE_OBJECT
-                || diagnostic.code == trade_except::TRADE_EXCEPT
-                || diagnostic.code == study::UNKNOWN_SKILL)
+                || diagnostic.code == trade_except::TRADE_EXCEPT)
     };
     // Almost every validation has nothing to place; skip the second walk then.
     if !diagnostics.iter().any(is_placed) {
@@ -360,23 +359,6 @@ mod tests {
         assert_eq!(diagnostic.unit_id.as_deref(), Some(id.as_str()));
         assert_eq!(diagnostic.region_id.as_deref(), Some(region.as_str()));
         assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Error);
-    }
-
-    /// `ah-9199`: the unit whose STUDY names no skill carries the warning.
-    #[test]
-    fn an_unknown_skill_warning_is_placed_on_its_unit_and_hex() {
-        let (base, ruleset) = build_object_fixture();
-        let (id, region) = first_unit_and_hex(&base);
-        let result = validate_turn(
-            &format!("unit {id}\nSTUDY combatt\n"),
-            Some(&ruleset),
-            Some(&base),
-            semantics::CheckOptions::default(),
-        );
-        let diagnostic = only_code(&result, "unknown-skill");
-        assert_eq!(diagnostic.unit_id.as_deref(), Some(id.as_str()));
-        assert_eq!(diagnostic.region_id.as_deref(), Some(region.as_str()));
-        assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Warning);
     }
 
     #[test]

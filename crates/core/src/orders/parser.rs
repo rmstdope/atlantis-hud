@@ -167,31 +167,6 @@ impl Document {
                         format!("no item \"{}\" in the catalogue", item.text),
                     );
                 }
-                // A STUDY naming a skill the catalogue does not have is read as setting no
-                // month-long order, so it is said here rather than left to a silent '?' in the
-                // Silver column (`ah-9199`). A warning, like `unknown-item`: the catalogue may be
-                // stale.
-                if let Some(skill) =
-                    super::study::unknown_study_skill(line.command, line.arguments, ruleset)
-                {
-                    let suggestion = ruleset.and_then(|ruleset| {
-                        super::build_object::closest(&skill.text, &ruleset.skill_names())
-                    });
-                    let message = match suggestion {
-                        Some(suggestion) => format!(
-                            "STUDY: there is no skill called {} — did you mean {suggestion}?",
-                            skill.text
-                        ),
-                        None => format!("STUDY: there is no skill called {}", skill.text),
-                    };
-                    self.warning(
-                        line.number,
-                        skill.column_start,
-                        skill.column_end,
-                        super::study::UNKNOWN_SKILL,
-                        message,
-                    );
-                }
                 // A BUILD naming nothing this world lets a player build wastes the month, so it is
                 // an error like an unknown order word, marked under the name only (ah-jyqk).
                 if order.name == "BUILD" {
@@ -1046,35 +1021,6 @@ mod tests {
             ),
             (Some(11), Some(17))
         );
-    }
-
-    /// `ah-9199`: a STUDY naming no skill in the catalogue is warned about under the name.
-    #[test]
-    fn a_study_of_a_skill_the_catalogue_does_not_know_is_a_warning() {
-        let result = validate_orders("STUDY combatt", Some(RULESET));
-
-        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
-        let diagnostic = &result.diagnostics[0];
-        assert_eq!(diagnostic.code, "unknown-skill");
-        assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Warning);
-        assert_eq!(
-            diagnostic.message,
-            "STUDY: there is no skill called combatt — did you mean combat?"
-        );
-        assert_eq!(
-            (diagnostic.column_start, diagnostic.column_end),
-            (Some(6), Some(13))
-        );
-    }
-
-    #[test]
-    fn skills_the_catalogue_knows_pass_by_tag_or_name() {
-        let result = validate_orders(
-            "STUDY COMB\nSTUDY combat 3\nSTUDY \"Horse Training\"\nSTUDY horse_training\n",
-            Some(RULESET),
-        );
-        assert_eq!(result.diagnostics, vec![], "{:?}", result.diagnostics);
-        assert_eq!(codes("STUDY combatt"), Vec::<String>::new());
     }
 
     #[test]

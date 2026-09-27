@@ -13,7 +13,6 @@
 //! rather than reaching a player as two surfaces contradicting each other.
 
 use atlantis_hud_core::cache::ReportCache;
-use atlantis_hud_core::movement::rules::Ruleset;
 use atlantis_hud_core::orders::effects::preview_orders_for_remembered_report;
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::orders::silver::UnitSilver;
@@ -62,130 +61,120 @@ fn compare_the_corpus() -> Vec<Compared> {
     let mut compared = Vec::new();
 
     for report in atlantis_hud_fixtures::ALL {
+        let mut parsed = parse_report_full(report.text);
+        classify_units(&mut parsed, &ruleset);
         let orders = extract_orders_template(report.text)
             .map(|template| template.text)
             .unwrap_or_default();
-        compare_report(report.name, report.text, &orders, &ruleset, &mut compared);
+
+        let review = review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default());
+
+        // A hex-level finding carries no unit, so filter on a present `unit_id` as well as the code
+        // (`Finding::unit_id` is `Option<String>`).
+        let warned: BTreeSet<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .filter_map(|finding| finding.unit_id.as_deref())
+            .collect();
+
+        // The hexes judged as one purse: `report_shortfalls` pools a hex where any own unit shares
+        // (`Ordered::shares`), while the column counts every unit alone by decision (`ah-1wcw.1`).
+        let sharing_hexes: BTreeSet<&str> = parsed
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .filter(|unit| unit.own)
+            .filter(|unit| {
+                unit.flags
+                    .iter()
+                    .any(|flag| flag.eq_ignore_ascii_case("sharing"))
+            })
+            .map(|unit| unit.region_id.as_str())
+            .collect();
+
+        // The pooled shortfall, which carries a hex and no unit.
+        let hex_warned: BTreeSet<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .filter(|finding| finding.unit_id.is_none())
+            .map(|finding| finding.region_id.as_str())
+            .collect();
+
+        // A doubted sharer makes the pool's sum untrustworthy, so `report_shortfalls` returns
+        // before emitting any pooled finding at all. Such a hex can be silent while its units are
+        // collectively short, by decision, so it is exempt from the hex-level assertion.
+        let doubted: BTreeSet<&str> = review
+            .silver
+            .iter()
+            .filter(|silver| balance_before_maintenance(silver).is_none())
+            .map(|silver| silver.unit_id.as_str())
+            .collect();
+        let hexes_with_a_doubted_sharer: BTreeSet<&str> = parsed
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .filter(|unit| unit.own)
+            .filter(|unit| {
+                unit.flags
+                    .iter()
+                    .any(|flag| flag.eq_ignore_ascii_case("sharing"))
+            })
+            .filter(|unit| doubted.contains(unit.unit_id.as_str()))
+            .map(|unit| unit.region_id.as_str())
+            .collect();
+
+        // Every hex holding more than one own unit. Since `ah-e66j` maintenance sharing is
+        // automatic, so any such hex lends silver between its units - and the lender's row shows
+        // nothing of the loan, by the navigator's decision, so the column cannot reconstruct the
+        // ledger's balances there.
+        let mut own_units_per_hex: BTreeMap<&str, usize> = BTreeMap::new();
+        for unit in parsed
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .filter(|unit| unit.own)
+        {
+            *own_units_per_hex
+                .entry(unit.region_id.as_str())
+                .or_default() += 1;
+        }
+        let crowded_hexes: BTreeSet<&str> = own_units_per_hex
+            .iter()
+            .filter(|(_, count)| **count > 1)
+            .map(|(region_id, _)| *region_id)
+            .collect();
+
+        let sharers: BTreeSet<&str> = parsed
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .filter(|unit| unit.own)
+            .filter(|unit| {
+                unit.flags
+                    .iter()
+                    .any(|flag| flag.eq_ignore_ascii_case("sharing"))
+            })
+            .map(|unit| unit.unit_id.as_str())
+            .collect();
+
+        for silver in review.silver {
+            compared.push(Compared {
+                fixture: report.name,
+                shares: sharers.contains(silver.unit_id.as_str()),
+                warned: warned.contains(silver.unit_id.as_str()),
+                shared_hex: sharing_hexes.contains(silver.region_id.as_str()),
+                crowded_hex: crowded_hexes.contains(silver.region_id.as_str()),
+                hex_warned: hex_warned.contains(silver.region_id.as_str()),
+                doubted_sharer_in_hex: hexes_with_a_doubted_sharer
+                    .contains(silver.region_id.as_str()),
+                silver,
+            });
+        }
     }
 
     compared
-}
-
-/// One report judged by both surfaces under `orders`, appended to `compared`. Split out of
-/// [`compare_the_corpus`] so a test can hand one real report orders of its own (`ah-9199`).
-fn compare_report(
-    name: &'static str,
-    text: &str,
-    orders: &str,
-    ruleset: &Ruleset,
-    compared: &mut Vec<Compared>,
-) {
-    let mut parsed = parse_report_full(text);
-    classify_units(&mut parsed, ruleset);
-    let review = review_turn(&parsed, orders, Some(ruleset), CheckOptions::default());
-
-    // A hex-level finding carries no unit, so filter on a present `unit_id` as well as the code
-    // (`Finding::unit_id` is `Option<String>`).
-    let warned: BTreeSet<&str> = review
-        .findings
-        .iter()
-        .filter(|finding| finding.code.as_str() == "not-enough-silver")
-        .filter_map(|finding| finding.unit_id.as_deref())
-        .collect();
-
-    // The hexes judged as one purse: `report_shortfalls` pools a hex where any own unit shares
-    // (`Ordered::shares`), while the column counts every unit alone by decision (`ah-1wcw.1`).
-    let sharing_hexes: BTreeSet<&str> = parsed
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own)
-        .filter(|unit| {
-            unit.flags
-                .iter()
-                .any(|flag| flag.eq_ignore_ascii_case("sharing"))
-        })
-        .map(|unit| unit.region_id.as_str())
-        .collect();
-
-    // The pooled shortfall, which carries a hex and no unit.
-    let hex_warned: BTreeSet<&str> = review
-        .findings
-        .iter()
-        .filter(|finding| finding.code.as_str() == "not-enough-silver")
-        .filter(|finding| finding.unit_id.is_none())
-        .map(|finding| finding.region_id.as_str())
-        .collect();
-
-    // A doubted sharer makes the pool's sum untrustworthy, so `report_shortfalls` returns
-    // before emitting any pooled finding at all. Such a hex can be silent while its units are
-    // collectively short, by decision, so it is exempt from the hex-level assertion.
-    let doubted: BTreeSet<&str> = review
-        .silver
-        .iter()
-        .filter(|silver| balance_before_maintenance(silver).is_none())
-        .map(|silver| silver.unit_id.as_str())
-        .collect();
-    let hexes_with_a_doubted_sharer: BTreeSet<&str> = parsed
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own)
-        .filter(|unit| {
-            unit.flags
-                .iter()
-                .any(|flag| flag.eq_ignore_ascii_case("sharing"))
-        })
-        .filter(|unit| doubted.contains(unit.unit_id.as_str()))
-        .map(|unit| unit.region_id.as_str())
-        .collect();
-
-    // Every hex holding more than one own unit. Since `ah-e66j` maintenance sharing is
-    // automatic, so any such hex lends silver between its units - and the lender's row shows
-    // nothing of the loan, by the navigator's decision, so the column cannot reconstruct the
-    // ledger's balances there.
-    let mut own_units_per_hex: BTreeMap<&str, usize> = BTreeMap::new();
-    for unit in parsed
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own)
-    {
-        *own_units_per_hex
-            .entry(unit.region_id.as_str())
-            .or_default() += 1;
-    }
-    let crowded_hexes: BTreeSet<&str> = own_units_per_hex
-        .iter()
-        .filter(|(_, count)| **count > 1)
-        .map(|(region_id, _)| *region_id)
-        .collect();
-
-    let sharers: BTreeSet<&str> = parsed
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own)
-        .filter(|unit| {
-            unit.flags
-                .iter()
-                .any(|flag| flag.eq_ignore_ascii_case("sharing"))
-        })
-        .map(|unit| unit.unit_id.as_str())
-        .collect();
-
-    for silver in review.silver {
-        compared.push(Compared {
-            fixture: name,
-            shares: sharers.contains(silver.unit_id.as_str()),
-            warned: warned.contains(silver.unit_id.as_str()),
-            shared_hex: sharing_hexes.contains(silver.region_id.as_str()),
-            crowded_hex: crowded_hexes.contains(silver.region_id.as_str()),
-            hex_warned: hex_warned.contains(silver.region_id.as_str()),
-            doubted_sharer_in_hex: hexes_with_a_doubted_sharer.contains(silver.region_id.as_str()),
-            silver,
-        });
-    }
 }
 
 /// Guards the guard: a predicate that is never exercised asserts nothing, and a refactor that
@@ -193,18 +182,20 @@ fn compare_report(
 ///
 /// Every bound here is a **floor with room under the measurement**, not the measurement itself, so
 /// that adding a fixture never renegotiates this test. At the time of writing the corpus gives
-/// 1,392 own units, 21 of them warned per-unit, 246 hexes exempt as `SharedHex` and 27 hex-level
-/// pooled warnings across them. The "at least one" floors are deliberately as weak as a floor can
-/// be.
-///
-/// The corpus no longer holds a `Doubted` unit: its only one was `@study BRTL`, a STUDY of a skill
-/// the catalogue does not have, which since `ah-9199` sets no order and doubts nothing. That
-/// exemption is exercised by [`a_doubted_unit_is_exempt_and_never_warned`] instead.
+/// 1,392 own units, 21 of them warned per-unit, 1 exempt as `Doubted`, 246 hexes exempt as
+/// `SharedHex` and 27 hex-level pooled warnings across them.
+/// The two "at least one" floors are deliberately as weak as a floor can be: `Doubted` is a single
+/// unit in the whole corpus, and a floor that tracked it would fail the day that fixture's owner
+/// fixed their orders.
 #[test]
 fn the_corpus_actually_exercises_the_agreement() {
     let compared = compare_the_corpus();
 
     let warned = compared.iter().filter(|case| case.warned).count();
+    let doubted = compared
+        .iter()
+        .filter(|case| exemption(case) == Some(Exempt::Doubted))
+        .count();
     let warned_shared_hexes: BTreeSet<(&str, &str)> = compared
         .iter()
         .filter(|case| case.shared_hex && case.hex_warned)
@@ -226,6 +217,10 @@ fn the_corpus_actually_exercises_the_agreement() {
         "no unit in the corpus is warned, so the equality never sees a `true`"
     );
     assert!(
+        doubted > 0,
+        "no unit in the corpus is doubted, so that exemption is never exercised"
+    );
+    assert!(
         !shared_hexes.is_empty(),
         "no hex in the corpus shares, so the hex-level assertion is never exercised"
     );
@@ -237,42 +232,6 @@ fn the_corpus_actually_exercises_the_agreement() {
         !warned_shared_hexes.is_empty(),
         "no sharing hex in the corpus is warned, so the hex-level equality never sees a `true`"
     );
-}
-
-/// The `Doubted` exemption on a real report, now that the corpus holds no doubted unit of its own
-/// (see [`the_corpus_actually_exercises_the_agreement`]). One unit is given a `SELL` of goods
-/// nothing can identify, `SilverDoubt::UnknownGoods`, so its month has no total; the ledger judges
-/// no doubted unit, so it must not be warned.
-#[test]
-fn a_doubted_unit_is_exempt_and_never_warned() {
-    let report = atlantis_hud_fixtures::G7_F95_T71;
-    let template = extract_orders_template(report.text)
-        .expect("the fixture carries an orders template")
-        .text;
-    let (head, rest) = template
-        .split_once("\nunit ")
-        .expect("the template holds a unit block");
-    let (unit_id, tail) = rest.split_once('\n').expect("a unit line ends");
-    let orders = format!("{head}\nunit {unit_id}\nSELL 1 zzzz\n{tail}");
-
-    let mut compared = Vec::new();
-    compare_report(report.name, report.text, &orders, &ruleset(), &mut compared);
-
-    let doubted: Vec<&Compared> = compared
-        .iter()
-        .filter(|case| exemption(case) == Some(Exempt::Doubted))
-        .collect();
-    assert!(
-        doubted.iter().any(|case| case.silver.unit_id == unit_id),
-        "unit {unit_id} was not doubted by its SELL of unknown goods"
-    );
-    for case in doubted {
-        assert!(
-            !case.warned,
-            "unit {}: the column is doubted and yet the warning fires",
-            case.silver.unit_id
-        );
-    }
 }
 
 /// The ledger's balance before maintenance, reconstructed from the column.

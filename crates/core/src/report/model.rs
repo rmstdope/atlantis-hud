@@ -213,6 +213,15 @@ pub struct ReportUnit {
     /// `men_by_race` does below.
     #[serde(default)]
     pub combat_spell: Option<CombatSpell>,
+    /// The skills the report says this unit can study, from its `Can Study:` section, each a
+    /// name and a tag exactly as [`CombatSpell`] carries them. Own units only, as that section is.
+    ///
+    /// Read so a `STUDY` of a skill the shipped catalogue lacks but the game offers is not taken
+    /// for a typo (`ah-9199`). `serde(default)` for payloads persisted before it existed, and kept
+    /// out of the TypeScript type: nothing in the shell reads it.
+    #[serde(default)]
+    #[cfg_attr(test, ts(skip))]
+    pub can_study: Vec<CombatSpell>,
     /// How many people the unit contains.
     ///
     /// Exact once the unit has been classified against the scraped item catalogue; until then it
@@ -319,6 +328,7 @@ impl Default for ReportUnit {
             items: Vec::new(),
             skills: Vec::new(),
             combat_spell: None,
+            can_study: Vec::new(),
             men: 0,
             men_estimated: true,
             men_by_race: Vec::new(),

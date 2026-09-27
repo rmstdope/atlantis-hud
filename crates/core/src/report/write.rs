@@ -169,10 +169,12 @@ pub fn write_mage_region(region: &ReportRegion, unit_ids: &BTreeSet<String>) -> 
     block.text
 }
 
-/// A unit line for a file somebody else will read back, so never marked as the reader's own.
+/// A unit line for a file somebody else will read back, so never marked as the reader's own - and
+/// so without the `Can Study` section, which a report prints for its own units only (`ah-9199`).
 fn shared_unit_line(unit: &ReportUnit) -> String {
     let mut shared = unit.clone();
     shared.own = false;
+    shared.can_study.clear();
     unit_line(&shared)
 }
 
@@ -360,6 +362,16 @@ fn unit_line(unit: &ReportUnit) -> String {
     // this writer drops is data quietly lost in the sharing.
     if let Some(spell) = &unit.combat_spell {
         head.push_str(&format!(" Combat spell: {} [{}].", spell.name, spell.tag));
+    }
+    // After the combat spell, as the report prints it, and for the same reason (`ah-9199`).
+    if !unit.can_study.is_empty() {
+        let offered = unit
+            .can_study
+            .iter()
+            .map(|skill| format!("{} [{}]", skill.name, skill.tag))
+            .collect::<Vec<_>>()
+            .join(", ");
+        head.push_str(&format!(" Can Study: {offered}."));
     }
 
     head
@@ -590,6 +602,48 @@ mod tests {
             })
             .contains("Combat spell"),
             "a unit with no spell writes no section at all"
+        );
+    }
+
+    /// `ah-9199`: what a unit can study is read back from the file `export_map` writes, after the
+    /// combat spell, where the report itself prints it.
+    #[test]
+    fn writes_what_a_unit_can_study_after_its_combat_spell() {
+        let unit = ReportUnit {
+            unit_id: "683".to_string(),
+            name: "Ivanhoe".to_string(),
+            own: true,
+            combat_spell: Some(CombatSpell {
+                name: "fire".to_string(),
+                tag: "FIRE".to_string(),
+            }),
+            can_study: vec![
+                CombatSpell {
+                    name: "earthquake".to_string(),
+                    tag: "EQUA".to_string(),
+                },
+                CombatSpell {
+                    name: "blasphemous ritual".to_string(),
+                    tag: "BRTL".to_string(),
+                },
+            ],
+            ..ReportUnit::default()
+        };
+
+        let line = unit_line(&unit);
+
+        assert!(
+            line.ends_with(
+                " Combat spell: fire [FIRE]. Can Study: earthquake [EQUA], blasphemous ritual \
+                 [BRTL]."
+            ),
+            "{line}"
+        );
+        assert_eq!(
+            parse_unit(&line, true, "1:7,53", None)
+                .expect("the written line parses")
+                .can_study,
+            unit.can_study
         );
     }
 
