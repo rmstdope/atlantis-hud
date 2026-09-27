@@ -2363,13 +2363,6 @@ impl Working {
         dissolved
     }
 
-    /// Applies what `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item
-    /// list, and records what could not be counted at all - `super::semantics::item_effects`'s
-    /// seam onto the ledger the same settlement already prices (`ah-agbm`).
-    ///
-    /// `GIVE` and `TAKE` are not read here: `Working::apply_transfers` has already settled the
-    /// whole Give phase in report order, and the ledger records no movement for either for
-    /// exactly that reason - applying one again here would move it twice (`ah-3mwm`).
     /// Takes the food maintenance eats off each unit that held it, recording each as
     /// [`ItemChangeCause::EatenForUpkeep`] (`ah-q490`).
     fn apply_eaten_food(
@@ -2384,35 +2377,46 @@ impl Working {
                 continue;
             };
             for movement in &effect.eaten {
-                let stock = match unit
+                // Only what the unit still holds: the passes price steps 1 and 2 before any
+                // TRANSPORT, so a unit that shipped its food away would otherwise be said to eat
+                // food it no longer has. Nothing held, nothing said.
+                let Some(index) = unit
                     .unit
                     .items
                     .iter()
                     .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
-                {
-                    Some(index) => {
-                        take_item(&mut unit.unit.items, index, -movement.delta);
-                        Stock::Moved
-                    }
-                    None => Stock::Untouched,
+                else {
+                    continue;
                 };
+                let eaten = (-movement.delta).min(unit.unit.items[index].amount);
+                if eaten <= 0 {
+                    continue;
+                }
+                take_item(&mut unit.unit.items, index, eaten);
                 unit.item_log.record(
                     ItemChange {
                         tag: movement.tag.clone(),
                         name: movement.name.clone(),
-                        delta: movement.delta,
+                        delta: -eaten,
                         cause: movement.cause,
                         line: None,
                         unit_price: None,
                         other: None,
                         is_man: false,
                     },
-                    stock,
+                    Stock::Moved,
                 );
             }
         }
     }
 
+    /// Applies what `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item
+    /// list, and records what could not be counted at all - `super::semantics::item_effects`'s
+    /// seam onto the ledger the same settlement already prices (`ah-agbm`).
+    ///
+    /// `GIVE` and `TAKE` are not read here: `Working::apply_transfers` has already settled the
+    /// whole Give phase in report order, and the ledger records no movement for either for
+    /// exactly that reason - applying one again here would move it twice (`ah-3mwm`).
     fn apply_item_effects(
         &mut self,
         effects: &BTreeMap<super::semantics::UnitKey, super::semantics::UnitItemEffects>,

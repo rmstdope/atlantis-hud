@@ -215,3 +215,88 @@ fn a_unit_paying_in_silver_keeps_its_food() {
         assert!(eaten(row).is_empty());
     }
 }
+
+/// Step 2 contended: two eaters want three grain and the hex holds two, so which one eats cannot
+/// be told (the column doubts both). Only what each ate of its own at step 1 comes off.
+#[test]
+fn a_contended_pool_takes_only_the_eaters_own_food() {
+    let text = report(&[
+        "* Granary (900), Foo (1), orc [ORC], 2 grain [GRAI], 10 silver [SILV]. Weight: 20. \
+         Capacity: 0/0/15/0.",
+        "* First (901), Foo (1), consuming faction's food, 10 orcs [ORC], grain [GRAI]. \
+         Weight: 105. Capacity: 0/0/150/0.",
+        "* Second (902), Foo (1), consuming faction's food, 10 orcs [ORC]. Weight: 100. \
+         Capacity: 0/0/150/0.",
+    ]);
+
+    let review = review_of(&text, "");
+    assert_eq!(silver_of(&review, "901").own_food_covered, 50);
+    assert_eq!(silver_of(&review, "901").upkeep, None, "contended");
+
+    let first = preview_row(&text, "", "901");
+    assert_eq!(holding(&first, "GRAI"), 0, "{:?}", first.unit.items);
+    assert_eq!(eaten(&first), vec![("GRAI".to_string(), -1)]);
+
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &text,
+        "[]",
+        &document(&text, ""),
+    )
+    .expect("the committed ruleset loads");
+    if let Some(granary) = common::preview_row(&text, &preview, "900") {
+        assert_eq!(holding(granary, "GRAI"), 2, "{:?}", granary.unit.items);
+        assert!(eaten(granary).is_empty());
+    }
+}
+
+/// Two foods of equal value (`data/GRAI`, `data/LIVE`): each tag comes off by what was eaten of it.
+#[test]
+fn each_food_comes_off_by_its_own_tag() {
+    let text = report(&[
+        "* Eaters (900), Foo (1), consuming unit's food, 10 orcs [ORC], grain [GRAI], \
+         5 livestock [LIVE], 100 silver [SILV]. Weight: 355. Capacity: 0/0/150/0.",
+    ]);
+
+    assert_eq!(
+        silver_of(&review_of(&text, ""), "900").own_food_covered,
+        100
+    );
+
+    let row = preview_row(&text, "", "900");
+    assert_eq!(holding(&row, "GRAI"), 0, "{:?}", row.unit.items);
+    assert_eq!(holding(&row, "LIVE"), 4, "{:?}", row.unit.items);
+    let mut got = eaten(&row);
+    got.sort();
+    assert_eq!(
+        got,
+        vec![("GRAI".to_string(), -1), ("LIVE".to_string(), -1)]
+    );
+}
+
+/// Grain shipped away by `TRANSPORT` is gone before maintenance (`rules/sequenceofevents`), so the
+/// ITEMS hover never says a unit holding none ate some.
+#[test]
+fn food_shipped_away_is_not_said_to_be_eaten() {
+    let text = [
+        "Foo (1) Report",
+        "",
+        "plain (1,1) in Nowhere, 1000 peasants (orcs), $0.",
+        "",
+        "Exits:",
+        "  Southeast : plain (2,2) in Nowhere.",
+        "",
+        "* Eaters (900), Foo (1), consuming unit's food, 10 orcs [ORC], 5 grain [GRAI], \
+         500 silver [SILV]. Weight: 125. Capacity: 0/0/150/0.",
+        "+ Waystation [1] : Caravanserai.",
+        "  * Broker (901), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+         Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (30).",
+        "",
+    ]
+    .join("\n");
+
+    let row = preview_row(&text, "unit 900\nTRANSPORT 901 5 GRAI\n", "900");
+    assert_eq!(holding(&row, "GRAI"), 0, "{:?}", row.item_changes);
+    assert!(eaten(&row).is_empty(), "{:?}", row.item_changes);
+}
