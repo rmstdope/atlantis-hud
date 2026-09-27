@@ -300,3 +300,40 @@ fn food_shipped_away_is_not_said_to_be_eaten() {
     assert_eq!(holding(&row, "GRAI"), 0, "{:?}", row.item_changes);
     assert!(eaten(&row).is_empty(), "{:?}", row.item_changes);
 }
+
+/// Food made this month is eaten this month, and both columns say so (`ah-0puh`, `gh-1325`).
+///
+/// `rules/sequenceofevents` runs primary PRODUCE before *"Maintenance costs are assessed"*, and
+/// `data/farming` makes grain *"at a rate of 1 per man-month"* - so ten farmers with nothing in
+/// hand make ten grain and eat two of them for their 100 silver of upkeep.
+#[test]
+fn food_produced_this_month_is_eaten_off_what_was_made() {
+    let text = [
+        "Foo (1) Report",
+        "",
+        "plain (1,1) in Nowhere, 1000 peasants (orcs), $0.",
+        "------------------------------------------------------------",
+        "  Wages: $0 (Max: $0).",
+        "  Wanted: none.",
+        "  For Sale: none.",
+        "  Entertainment available: $0.",
+        "  Products: 40 grain [GRAI].",
+        "",
+        "Exits:",
+        "  Southeast : plain (2,2) in Nowhere.",
+        "",
+        "* Farmers (900), Foo (1), consuming unit's food, 10 orcs [ORC]. Weight: 100. \
+         Capacity: 0/0/150/0. Skills: farming [FARM] 1 (30).",
+        "",
+    ]
+    .join("\n");
+    let script = "unit 900\nPRODUCE grain\n";
+
+    let silver = silver_of(&review_of(&text, script), "900");
+    assert_eq!(silver.upkeep, Some(0), "{silver:?}");
+    assert_eq!(silver.own_food_covered, 100, "{silver:?}");
+
+    let row = preview_row(&text, script, "900");
+    assert_eq!(holding(&row, "GRAI"), 8, "{:?}", row.item_changes);
+    assert_eq!(eaten(&row), vec![("GRAI".to_string(), -2)]);
+}

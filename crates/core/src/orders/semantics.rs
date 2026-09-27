@@ -2185,7 +2185,9 @@ fn forecast_hex(
             // still exactly known, and `at_month_end` never counted upkeep to begin with.
             forecast.doubt = forecast.doubt.or(Some(SilverDoubt::ContestedFactionFood));
             // Doubted after `forecast_unit` built the list, so its emptying (`ah-rgkk.4.4`) has
-            // to be repeated here: a doubted unit shows no change list at all.
+            // to be repeated here: a doubted unit shows no change list at all - even though the
+            // totals above stand, since the list is the one place a consumer would add them up
+            // against a fee that is not a number.
             forecast.changes.clear();
         }
     }
@@ -47977,18 +47979,23 @@ BUILD
             unit
         };
         let fisherman = consuming(with_skill(unit("4021"), "FISH", 3));
+        // `data/fishing`: FISH 3 may PRODUCE giant turtles, which is what the reporter's crew does.
         let turtlers = consuming(with_item(
             with_skill(with_men(unit("4022"), 5), "FISH", 3),
-            55,
+            50,
             "giant turtle",
             "TURT",
         ));
+        let mut sailor = consuming(unit("4023"));
+        sailor.skills.push(sail(3));
+        let mut products = one_product(50, "fish", "FISH");
+        products.extend(one_product(20, "giant turtle", "TURT"));
         let region = ReportRegion {
             terrain: ruleset().movement.ocean.terrain.clone(),
-            products: one_product(50, "fish", "FISH"),
-            ..region(vec![fisherman, turtlers])
+            products,
+            ..region(vec![fisherman, turtlers, sailor])
         };
-        (region, "unit 4021\nPRODUCE fish\n")
+        (region, "unit 4021\nPRODUCE fish\nunit 4022\nPRODUCE TURT\n")
     }
 
     #[test]
@@ -48013,6 +48020,12 @@ BUILD
             "{:?}",
             forecast(&review, "4022")
         );
+        assert_eq!(
+            forecast(&review, "4023").upkeep,
+            Some(0),
+            "{:?}",
+            forecast(&review, "4023")
+        );
         assert!(
             !review
                 .findings
@@ -48028,7 +48041,10 @@ BUILD
     #[test]
     fn fish_held_pays_the_crews_upkeep_and_turtles_owe_none() {
         let (mut region, _) = fishing_raft();
-        region.units[0] = with_item(region.units[0].clone(), 2, "fish", "FISH");
+        // The fisherman's own 10 silver still eats a whole fish, leaving two for the other six
+        // men's 60 (`rules/economy_maintenance`: one fish "for each 50 silver (or fraction
+        // thereof)").
+        region.units[0] = with_item(region.units[0].clone(), 3, "fish", "FISH");
         let review = review_turn(
             &report(vec![region]),
             "",
@@ -48047,6 +48063,12 @@ BUILD
             Some(0),
             "{:?}",
             forecast(&review, "4022")
+        );
+        assert_eq!(
+            forecast(&review, "4023").upkeep,
+            Some(0),
+            "{:?}",
+            forecast(&review, "4023")
         );
     }
 
