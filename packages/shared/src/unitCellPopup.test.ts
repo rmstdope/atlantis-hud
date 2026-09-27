@@ -3132,6 +3132,7 @@ describe("the items popup's cause sentences", () => {
       { cause: "gift-reverted", delta: -2 },
       "2 reverted from a unit that formed with nobody"
     ],
+    ["eaten for upkeep", { cause: "eaten-for-upkeep", delta: -2 }, "2 eaten for upkeep"],
     ["a cause it has not been taught", { cause: "unheard-of", delta: 4 }, "gained 4"],
     ["a loss it has not been taught", { cause: "unheard-of", delta: -4 }, "lost 4"]
   ];

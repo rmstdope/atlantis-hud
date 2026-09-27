@@ -74,13 +74,7 @@ fn both_surfaces(text: &str, script: &str, unit_id: &str, tag: &str) -> (UnitSil
         &orders,
     )
     .expect("the committed ruleset loads");
-    let held: i64 = common::expect_preview_row(text, &preview, unit_id)
-        .unit
-        .items
-        .iter()
-        .filter(|item| item.tag == tag)
-        .map(|item| item.amount)
-        .sum();
+    let held = common::held_before_upkeep(common::expect_preview_row(text, &preview, unit_id), tag);
 
     (row, held)
 }

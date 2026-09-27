@@ -596,6 +596,12 @@ pub enum ItemChangeCause {
     /// first own unit in the region. Recorded on the row the goods revert **to**; the dissolving
     /// row's own changes are dropped with the rest of its preview.
     GiftReverted,
+    /// Food maintenance eats this month, taken off the unit that held it (`ah-q490`). The same
+    /// food the SILVER column counts as paying upkeep, whoever's upkeep it paid:
+    /// `rules/economy_maintenance` lets `CONSUME UNIT`, `CONSUME FACTION` and a unit out of silver
+    /// all eat, and faction food comes out of whichever unit held it. No line: upkeep belongs to
+    /// no order.
+    EatenForUpkeep,
 }
 
 /// The other unit an item change is between (`ah-rgkk.3.1`).
@@ -1119,6 +1125,9 @@ fn settle(
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
     working.apply_transports(&dissolved);
+    // `rules/sequenceofevents`: "Maintenance costs are assessed" after every TRANSPORT phase, so
+    // the food upkeep eats comes off last, out of whatever the shipments left (`ah-q490`).
+    working.apply_eaten_food(&item_effects);
     // A dissolving row is drawn now (`ah-ty3s.3`), so its weight, capacity and movement are
     // settled exactly like any other formed row's rather than left at `formed_unit`'s defaults.
     for (working_unit, stepping_off) in working.units.iter_mut().zip(stepping_off) {
@@ -2361,6 +2370,49 @@ impl Working {
     /// `GIVE` and `TAKE` are not read here: `Working::apply_transfers` has already settled the
     /// whole Give phase in report order, and the ledger records no movement for either for
     /// exactly that reason - applying one again here would move it twice (`ah-3mwm`).
+    /// Takes the food maintenance eats off each unit that held it, recording each as
+    /// [`ItemChangeCause::EatenForUpkeep`] (`ah-q490`).
+    fn apply_eaten_food(
+        &mut self,
+        effects: &BTreeMap<super::semantics::UnitKey, super::semantics::UnitItemEffects>,
+    ) {
+        for unit in &mut self.units {
+            let Some(effect) = effects.get(&super::semantics::unit_key(
+                &unit.unit.region_id,
+                &unit.unit.unit_id,
+            )) else {
+                continue;
+            };
+            for movement in &effect.eaten {
+                let stock = match unit
+                    .unit
+                    .items
+                    .iter()
+                    .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
+                {
+                    Some(index) => {
+                        take_item(&mut unit.unit.items, index, -movement.delta);
+                        Stock::Moved
+                    }
+                    None => Stock::Untouched,
+                };
+                unit.item_log.record(
+                    ItemChange {
+                        tag: movement.tag.clone(),
+                        name: movement.name.clone(),
+                        delta: movement.delta,
+                        cause: movement.cause,
+                        line: None,
+                        unit_price: None,
+                        other: None,
+                        is_man: false,
+                    },
+                    stock,
+                );
+            }
+        }
+    }
+
     fn apply_item_effects(
         &mut self,
         effects: &BTreeMap<super::semantics::UnitKey, super::semantics::UnitItemEffects>,
@@ -10056,7 +10108,18 @@ mod tests {
             let response = preview_over(&report_with_three(), "unit 901\nTAKE FROM 999 5 GRAI\n");
             let unit = only_unit(&response);
 
-            assert_eq!(amount_of(unit, "GRAI"), 5);
+            // The taker has no silver, so maintenance eats some of what it took (`ah-q490`).
+            let eaten: i64 = unit
+                .item_changes
+                .iter()
+                .filter(|change| change.cause == ItemChangeCause::EatenForUpkeep)
+                .map(|change| change.delta)
+                .sum();
+            assert_eq!(amount_of(unit, "GRAI"), 5 + eaten);
+            assert!(unit
+                .item_changes
+                .iter()
+                .any(|change| change.cause == ItemChangeCause::Took && change.delta == 5));
             assert_eq!(
                 unit.taken_unshown,
                 vec![TakenUnshown {

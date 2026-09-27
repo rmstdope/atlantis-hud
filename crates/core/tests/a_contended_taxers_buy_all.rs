@@ -93,9 +93,7 @@ fn both_surfaces(
         .iter()
         .flat_map(|region| region.units.iter())
         .filter(|unit| unit.unit.unit_id == unit_id)
-        .flat_map(|unit| unit.unit.items.iter())
-        .filter(|item| item.tag == tag)
-        .map(|item| item.amount)
+        .map(|unit| common::held_before_upkeep(unit, tag))
         .sum();
 
     (row, held, review.findings.clone())
