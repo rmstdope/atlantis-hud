@@ -121,6 +121,7 @@ pub fn parse_unit(
         items: Vec::new(),
         skills: Vec::new(),
         combat_spell: None,
+        can_study: Vec::new(),
         men: 0,
         men_estimated: true,
         men_by_race: Vec::new(),
@@ -175,7 +176,13 @@ pub fn parse_unit(
             "Capacity" => unit.capacity = Some(value),
             "Skills" => unit.skills = parse_skills(&value),
             "Combat spell" => unit.combat_spell = parse_combat_spell(&value),
-            // The four remaining labels - `Can Study`, `Ready item`, `Ready weapon` and
+            "Can Study" => {
+                unit.can_study = split_top_level(&value, ',')
+                    .iter()
+                    .filter_map(|entry| parse_combat_spell(entry))
+                    .collect();
+            }
+            // The three remaining labels - `Ready item`, `Ready weapon` and
             // `Ready armor` - are recognised only so their contents are not mistaken for the
             // unit's items; nothing in the model needs them yet.
             _ => {}
@@ -256,6 +263,34 @@ mod tests {
         assert_eq!(
             read("* Drones (9498), Borg (21), 100 gnolls [GNOL], [SWOR]."),
             UnitRead::Partial
+        );
+    }
+
+    /// `ah-9199`: the skills a unit may study, as the report lists them, so a STUDY of a skill the
+    /// catalogue lacks but the game offers is not taken for a typo.
+    #[test]
+    fn reads_what_a_unit_can_study() {
+        let unit = parse_unit(
+            "* Ivanhoe (683), Knights (42), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: combat [COMB] 1 (30). Can Study: fire [FIRE], blasphemous ritual [BRTL].",
+            true,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+
+        assert_eq!(
+            unit.can_study,
+            vec![
+                CombatSpell {
+                    name: "fire".to_string(),
+                    tag: "FIRE".to_string()
+                },
+                CombatSpell {
+                    name: "blasphemous ritual".to_string(),
+                    tag: "BRTL".to_string()
+                },
+            ]
         );
     }
 

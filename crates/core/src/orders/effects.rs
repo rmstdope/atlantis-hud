@@ -1708,6 +1708,7 @@ pub(crate) fn formed_unit(
         skills: Vec::new(),
         // A newly formed unit has cast nothing and been set to cast nothing.
         combat_spell: None,
+        can_study: Vec::new(),
         men: 0,
         // Nothing has been given yet, and what is given is counted exactly.
         men_estimated: false,

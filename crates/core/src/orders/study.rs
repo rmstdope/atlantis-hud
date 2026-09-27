@@ -18,6 +18,8 @@
 use crate::movement::rules::{ItemEntry, Ruleset, SkillEntry};
 use crate::orders::effects::LimitingRace;
 use crate::report::model::{ItemAmount, Skill};
+use crate::report::ParsedReport;
+use std::collections::BTreeSet;
 
 /// How far a unit may study a skill, and what says so.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +134,56 @@ pub(crate) fn limiting_races(ceiling: &StudyCeiling<'_>) -> Vec<LimitingRace> {
             })
             .collect(),
     }
+}
+
+/// Every skill the report names - a unit's own skills, what it can study, and the skills its
+/// `Skill reports` section describes - as the upper-cased
+/// tags and names a `STUDY` may be written with (`ah-9199`).
+///
+/// The shipped catalogue is scraped from the game's data page, and that page does not list every
+/// skill the game has: g3-f42-t82's unit 683 holds and studies blasphemous ritual [BRTL], which
+/// `data` does not know. So a catalogue miss alone is not proof of a typo; a skill is unknown only
+/// when neither the catalogue nor the report names it.
+#[derive(Debug, Default)]
+pub(crate) struct ReportSkills(BTreeSet<String>);
+
+impl ReportSkills {
+    pub(crate) fn of(report: &ParsedReport) -> Self {
+        let mut named = BTreeSet::new();
+        for skill in &report.header.skill_reports {
+            named.insert(skill.tag.to_uppercase());
+            named.insert(skill.name.to_uppercase());
+        }
+        for unit in report.regions.iter().flat_map(|region| region.units.iter()) {
+            let skills = unit.skills.iter().map(|skill| (&skill.tag, &skill.name));
+            let offered = unit.can_study.iter().map(|skill| (&skill.tag, &skill.name));
+            for (tag, name) in skills.chain(offered) {
+                named.insert(tag.to_uppercase());
+                named.insert(name.to_uppercase());
+            }
+        }
+        Self(named)
+    }
+
+    /// Spelled as [`Ruleset::find_skill`] spells it: a tag or a name, any case, underscores for
+    /// spaces.
+    fn names(&self, written: &str) -> bool {
+        self.0.contains(&written.replace('_', " ").to_uppercase())
+    }
+}
+
+/// Whether a `STUDY` names a skill nothing knows: the ruleset carries a skills table and has no
+/// such skill, and the report names none either (`ah-9199`). Such a STUDY is read as setting no
+/// month-long order - the navigator's statement on the bead, since `rules/study` is silent on it -
+/// and is warned about as `unknown-skill`. Without a ruleset, or one that knows no skills, nothing
+/// is unknown.
+pub(crate) fn names_no_skill(
+    skill: &str,
+    ruleset: Option<&Ruleset>,
+    report: &ReportSkills,
+) -> bool {
+    ruleset.is_some_and(|ruleset| ruleset.knows_skills() && ruleset.find_skill(skill).is_none())
+        && !report.names(skill)
 }
 
 #[cfg(test)]

@@ -593,6 +593,28 @@ mod tests {
         );
     }
 
+    /// `ah-9199`: `Can Study` is read for the order checks only, and a shared file does not
+    /// carry it - an export is handed to allies, and the fix was not to widen what it reveals.
+    #[test]
+    fn writes_no_can_study_section() {
+        let unit = ReportUnit {
+            unit_id: "683".to_string(),
+            name: "Ivanhoe".to_string(),
+            own: true,
+            can_study: vec![CombatSpell {
+                name: "earthquake".to_string(),
+                tag: "EQUA".to_string(),
+            }],
+            ..ReportUnit::default()
+        };
+
+        assert!(
+            !unit_line(&unit).contains("Can Study"),
+            "{}",
+            unit_line(&unit)
+        );
+    }
+
     #[test]
     fn writes_a_unit_whose_structure_the_region_does_not_name() {
         let mut region = region_of(SETTLED);
