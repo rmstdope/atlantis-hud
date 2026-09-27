@@ -31462,16 +31462,18 @@ BUILD
     /// purse is their sum.
     #[test]
     fn a_doubted_unit_silences_the_purse_it_shares() {
+        // An estimated headcount cannot price a study, so unit 7's sums are doubted. (This used
+        // to be a STUDY of an unknown skill, which since `ah-9199` sets no order and doubts
+        // nothing.)
+        let mut guessed = sharing(with_silver(unit("7"), 30));
+        guessed.men_estimated = true;
         let regions = vec![region(vec![
             sharing(with_men(with_silver(unit("5"), 0), 10)),
-            sharing(with_silver(unit("7"), 30)),
+            guessed,
         ])];
 
         assert_eq!(
-            check(
-                regions,
-                "unit 5\nSTUDY combat\nunit 7\nSTUDY basketweaving\n"
-            ),
+            check(regions, "unit 5\nSTUDY combat\nunit 7\nSTUDY combat\n"),
             vec![]
         );
     }
@@ -31738,6 +31740,52 @@ BUILD
             .into_iter()
             .next()
             .expect("one own unit was forecast")
+    }
+
+    /// `ah-9199`. A `STUDY` naming a skill the catalogue does not have is a typo, not a study the
+    /// catalogue failed to price: the navigator's statement, recorded on the bead (rules/study is
+    /// silent), is that such an order sets no month-long order. So nothing is charged and nothing
+    /// is doubted, and the column shows a real month end.
+    #[test]
+    fn a_study_of_a_skill_the_catalogue_does_not_have_charges_nothing_and_doubts_nothing() {
+        let forecast = forecast_with_ruleset(
+            vec![region(vec![with_silver(unit("1"), 100)])],
+            "unit 1\nSTUDY combatt\n",
+        );
+
+        assert_eq!(forecast.doubt, None, "{forecast:?}");
+        assert_eq!(forecast.expense, Some(0), "{forecast:?}");
+        assert_eq!(forecast.at_month_end, Some(100), "{forecast:?}");
+    }
+
+    /// `ah-9199`. The unknown-skill `STUDY` does not take the month from an order written before
+    /// it, so nothing is replaced and the earlier `WORK` still earns.
+    #[test]
+    fn a_study_of_a_skill_the_catalogue_does_not_have_takes_no_month() {
+        let working = ReportRegion {
+            wages: Some("$10".to_string()),
+            max_wages: Some(300),
+            ..region(vec![with_silver(unit("1"), 100)])
+        };
+        let review = review_turn(
+            &report(vec![working]),
+            "unit 1\nWORK\nSTUDY combatt\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !codes(&review.findings).contains(&"two-month-long-orders"),
+            "{:?}",
+            review.findings
+        );
+        let forecast = &review.silver[0];
+        assert_eq!(forecast.doubt, None, "{forecast:?}");
+        assert_eq!(
+            forecast.income,
+            Some(10),
+            "the WORK still earns: {forecast:?}"
+        );
     }
 
     /// Unit 12881 `Carpenters` in miniature: ten carpenters with materials for two catapults and
@@ -34956,15 +35004,15 @@ BUILD
     /// The item twin of `a_doubted_unit_silences_the_purse_it_shares`.
     #[test]
     fn a_doubted_sharer_silences_the_stock_it_shares() {
-        let regions = vec![region(vec![
-            unit("5"),
-            sharing(with_item(unit("7"), 20, "sword", "SWOR")),
-        ])];
+        // Doubted the way `a_doubted_unit_silences_the_purse_it_shares` doubts its sharer.
+        let mut guessed = sharing(with_item(unit("7"), 20, "sword", "SWOR"));
+        guessed.men_estimated = true;
+        let regions = vec![region(vec![unit("5"), guessed])];
 
         assert_eq!(
             check_ignoring_transfer_targets(
                 regions,
-                "unit 5\nGIVE 0 30 swords\nunit 7\nSTUDY basketweaving\n"
+                "unit 5\nGIVE 0 30 swords\nunit 7\nSTUDY combat\n"
             ),
             vec![]
         );

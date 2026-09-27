@@ -17,6 +17,7 @@
 
 use crate::movement::rules::{ItemEntry, Ruleset, SkillEntry};
 use crate::orders::effects::LimitingRace;
+use crate::orders::lexer::Token;
 use crate::report::model::{ItemAmount, Skill};
 
 /// How far a unit may study a skill, and what says so.
@@ -132,6 +133,29 @@ pub(crate) fn limiting_races(ceiling: &StudyCeiling<'_>) -> Vec<LimitingRace> {
             })
             .collect(),
     }
+}
+
+/// The warning a `STUDY` naming a skill the catalogue does not have carries (`ah-9199`).
+pub(super) const UNKNOWN_SKILL: &str = "unknown-skill";
+
+/// The skill token of a `STUDY` whose skill the catalogue does not have (`ah-9199`), for the
+/// `unknown-skill` warning and for the intent reader, which reads such a line as setting no
+/// month-long order: the navigator's statement on the bead, since `rules/study` is silent on it.
+///
+/// `None` when the line is not a well-shaped `STUDY`, when there is no ruleset or it knows no
+/// skills, or when the skill is found by tag or name ([`Ruleset::find_skill`]).
+pub(crate) fn unknown_study_skill<'t>(
+    command: &Token,
+    arguments: &'t [Token],
+    ruleset: Option<&Ruleset>,
+) -> Option<&'t Token> {
+    let ruleset = ruleset.filter(|ruleset| ruleset.knows_skills())?;
+    if !command.is("STUDY") {
+        return None;
+    }
+    let consumed = crate::orders::grammar::consumed_arguments(command, arguments, Some(ruleset))?;
+    let skill = consumed.first()?;
+    ruleset.find_skill(&skill.text).is_none().then_some(skill)
 }
 
 #[cfg(test)]

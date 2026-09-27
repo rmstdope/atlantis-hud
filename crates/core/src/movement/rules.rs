@@ -1654,6 +1654,22 @@ impl Ruleset {
         !self.buildings.is_empty()
     }
 
+    /// Whether this ruleset carries the skills table at all. A ruleset that knows no skills
+    /// cannot say that a `STUDY` names one it does not have (`ah-9199`).
+    #[must_use]
+    pub fn knows_skills(&self) -> bool {
+        !self.skills.is_empty()
+    }
+
+    /// Every skill's name, in the catalogue's own spelling and order, for a suggestion.
+    #[must_use]
+    pub fn skill_names(&self) -> Vec<String> {
+        self.skills
+            .values()
+            .map(|skill| skill.name.clone())
+            .collect()
+    }
+
     /// Whether this world settles every BUILD before any PRODUCE, in one production phase.
     ///
     /// `newage trident rules/sequenceofevents` runs "BUILD orders are processed: new structures

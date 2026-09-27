@@ -316,7 +316,7 @@ pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents>
                         column_end: line.command.column_end,
                         keyword: canonical_keyword(&line.command.text, ruleset),
                     });
-                } else if !is_free_order(line.command, ruleset) {
+                } else if !is_understood_without_intent(line.command, line.arguments, ruleset) {
                     // A recognised free order is dropped exactly as an unread one used to be: it
                     // yields no intent because no check reads it, which is not the same as not
                     // being understood.
@@ -569,7 +569,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
                 column_end: command.column_end,
                 keyword: canonical_keyword(&command.text, self.ruleset),
             });
-        } else if !is_free_order(command, self.ruleset) {
+        } else if !is_understood_without_intent(command, arguments, self.ruleset) {
             block.unread.push(line_number);
         }
         block.destroys_structure |= is_valid_destroy_order(command, arguments, self.ruleset);
@@ -651,6 +651,18 @@ fn is_free_order(command: &Token, ruleset: Option<&Ruleset>) -> bool {
         .iter()
         .any(|free| command.text.eq_ignore_ascii_case(free))
         && super::grammar::find_order(&command.text, ruleset).is_some()
+}
+
+/// Whether a line that yields no intent is still one we have read: a free order, or a `STUDY` of
+/// a skill the catalogue does not have, which the reader takes as setting no month-long order
+/// (`ah-9199`) rather than as a line it could not follow.
+fn is_understood_without_intent(
+    command: &Token,
+    arguments: &[Token],
+    ruleset: Option<&Ruleset>,
+) -> bool {
+    is_free_order(command, ruleset)
+        || super::study::unknown_study_skill(command, arguments, ruleset).is_some()
 }
 
 /// Whether a `DESTROY` line is shaped well enough for the game to attempt it.
@@ -740,6 +752,11 @@ pub fn read_order(
         // "STUDY [skill]" and "STUDY [skill] [level]". The level says how far to go, not what a
         // month costs, so it changes nothing any check reads.
         "STUDY" => {
+            // A skill the catalogue does not have sets no month-long order (`ah-9199`): no
+            // intent, and `is_understood_without_intent` keeps the line from counting as unread.
+            if super::study::unknown_study_skill(command, arguments, ruleset).is_some() {
+                return None;
+            }
             let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             let skill = arguments.first()?;
             let trailing = arguments.get(1);
