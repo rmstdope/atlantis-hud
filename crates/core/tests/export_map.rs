@@ -24,10 +24,18 @@ fn whole_map(content: ExportContent) -> MapExportRequest {
     }
 }
 
+/// Keyed by id, with each unit's `can_study` cleared: the export leaves that section out on
+/// purpose, so it is the one thing that may not read back (`ah-9199`,
+/// `write::tests::writes_no_can_study_section`).
 fn by_id(regions: Vec<ReportRegion>) -> std::collections::BTreeMap<String, ReportRegion> {
     regions
         .into_iter()
-        .map(|region| (region.region_id.clone(), region))
+        .map(|mut region| {
+            for unit in &mut region.units {
+                unit.can_study.clear();
+            }
+            (region.region_id.clone(), region)
+        })
         .collect()
 }
 

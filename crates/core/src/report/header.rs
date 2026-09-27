@@ -59,6 +59,13 @@ pub struct ReportHeader {
     pub events: Vec<String>,
     pub faction_status: FactionStatus,
     pub attitudes: DeclaredAttitudes,
+    /// The skills the `Skill reports:` section describes, each a name and a tag, read so a `STUDY`
+    /// of a skill the shipped catalogue lacks is not taken for a typo (`ah-9199`). `serde(default)`
+    /// for payloads persisted before it existed, and kept out of the TypeScript type: nothing in
+    /// the shell reads it.
+    #[serde(default)]
+    #[cfg_attr(test, ts(skip))]
+    pub skill_reports: Vec<super::model::CombatSpell>,
 }
 
 /// The `Faction Status:` block: allowances the faction has used, of its maximum.
@@ -181,6 +188,7 @@ enum Section {
     Events,
     FactionStatus,
     Attitudes,
+    SkillReports,
 }
 
 /// Reads `Declared Attitudes (default Unfriendly):`, returning the default attitude.
@@ -285,7 +293,11 @@ pub fn parse_header(lines: &[LogicalLine], unreadable: &mut Vec<UnreadableLine>)
                 section = Section::FactionStatus;
                 continue;
             }
-            "Battles during turn" | "Skill reports" | "Item reports" => {
+            "Skill reports" => {
+                section = Section::SkillReports;
+                continue;
+            }
+            "Battles during turn" | "Item reports" => {
                 section = Section::None;
                 continue;
             }
@@ -334,6 +346,19 @@ pub fn parse_header(lines: &[LogicalLine], unreadable: &mut Vec<UnreadableLine>)
 
         match section {
             Section::Errors => header.errors.push(body.to_string()),
+            // `observation [OBSE] 1: A unit with this skill ...`: the name and tag before the
+            // level. A line of any other shape is description the unwrapper did not join, and says
+            // nothing about which skills exist.
+            Section::SkillReports => {
+                if let Some(skill) = body
+                    .split_once(':')
+                    .and_then(|(head, _)| head.trim().rsplit_once(' '))
+                    .filter(|(_, level)| level.parse::<u32>().is_ok())
+                    .and_then(|(named, _)| super::scan::parse_combat_spell(named))
+                {
+                    header.skill_reports.push(skill);
+                }
+            }
             Section::Events => header.events.push(body.to_string()),
             Section::FactionStatus => match parse_faction_status_entry(body) {
                 Some(entry) => header.faction_status.entries.push(entry),
@@ -361,6 +386,31 @@ mod tests {
 
     fn parse_header_of(source: &str) -> ReportHeader {
         parse_header(&unwrap_lines(source), &mut Vec::new())
+    }
+
+    /// `ah-9199`: the skills the report describes, as name and tag, so a STUDY of one the
+    /// shipped catalogue lacks is not taken for a typo.
+    #[test]
+    fn reads_the_skills_the_report_describes() {
+        let header = parse_header_of(
+            "Skill reports:\n\nobservation [OBSE] 1: A unit with this skill can see stealthy\n  \
+             units.\n\nblasphemous ritual [BRTL] 1: A dark rite.\n\nItem reports:\n\n\
+             sword [SWOR], weight 1: A weapon.\n",
+        );
+
+        assert_eq!(
+            header.skill_reports,
+            vec![
+                super::super::model::CombatSpell {
+                    name: "observation".to_string(),
+                    tag: "OBSE".to_string()
+                },
+                super::super::model::CombatSpell {
+                    name: "blasphemous ritual".to_string(),
+                    tag: "BRTL".to_string()
+                },
+            ]
+        );
     }
 
     #[test]

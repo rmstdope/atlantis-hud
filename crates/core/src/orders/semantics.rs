@@ -31915,6 +31915,85 @@ BUILD
         );
     }
 
+    /// `ah-9199`: a unit's first month on a skill the catalogue lacks, where only its `Can Study`
+    /// list names it.
+    #[test]
+    fn a_skill_only_the_units_can_study_list_names_is_not_unknown() {
+        let mut student = with_silver(unit("1"), 100);
+        student.can_study = vec![crate::report::model::CombatSpell {
+            name: "blasphemous ritual".to_string(),
+            tag: "BRTL".to_string(),
+        }];
+        let review = review_turn(
+            &report(vec![region(vec![student])]),
+            "unit 1\nSTUDY \"blasphemous ritual\"\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !codes(&review.findings).contains(&"unknown-skill"),
+            "{:?}",
+            review.findings
+        );
+        assert_eq!(
+            review.silver[0].doubt,
+            Some(crate::orders::silver::SilverDoubt::UnpricedSkill)
+        );
+    }
+
+    /// `ah-9199`: a skill only the report's `Skill reports` section describes is not unknown.
+    #[test]
+    fn a_skill_only_the_skill_reports_describe_is_not_unknown() {
+        let mut described = report(vec![region(vec![with_silver(unit("1"), 100)])]);
+        described.header.skill_reports = vec![crate::report::model::CombatSpell {
+            name: "blasphemous ritual".to_string(),
+            tag: "BRTL".to_string(),
+        }];
+        let review = review_turn(
+            &described,
+            "unit 1\nSTUDY brtl\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            !codes(&review.findings).contains(&"unknown-skill"),
+            "{:?}",
+            review.findings
+        );
+    }
+
+    /// `ah-9199`: "no month-long order" means exactly that - the unit's month is forecast and
+    /// judged as it would be with an empty block, default work and all, beside its warning.
+    #[test]
+    fn an_unknown_study_leaves_the_unit_as_if_it_had_no_order() {
+        let waged = || ReportRegion {
+            wages: Some("$10".to_string()),
+            max_wages: Some(300),
+            ..region(vec![with_silver(unit("1"), 100)])
+        };
+        let review_of = |orders: &str| {
+            review_turn(
+                &report(vec![waged()]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        };
+
+        let typo = review_of("unit 1\nSTUDY combatt\n");
+        let empty = review_of("unit 1\n");
+
+        assert_eq!(typo.silver, empty.silver);
+        let mut expected = codes(&empty.findings);
+        expected.push("unknown-skill");
+        expected.sort_unstable();
+        let mut found = codes(&typo.findings);
+        found.sort_unstable();
+        assert_eq!(found, expected);
+    }
+
     /// `ah-9199`, on the real report: g3-f42-t82's unit 683 holds blasphemous ritual [BRTL], can
     /// study it, and was shown studying it - the catalogue has no such skill.
     #[test]

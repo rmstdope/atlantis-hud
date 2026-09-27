@@ -136,7 +136,8 @@ pub(crate) fn limiting_races(ceiling: &StudyCeiling<'_>) -> Vec<LimitingRace> {
     }
 }
 
-/// Every skill the report names - a unit's own skills and what it can study - as the upper-cased
+/// Every skill the report names - a unit's own skills, what it can study, and the skills its
+/// `Skill reports` section describes - as the upper-cased
 /// tags and names a `STUDY` may be written with (`ah-9199`).
 ///
 /// The shipped catalogue is scraped from the game's data page, and that page does not list every
@@ -149,6 +150,10 @@ pub(crate) struct ReportSkills(BTreeSet<String>);
 impl ReportSkills {
     pub(crate) fn of(report: &ParsedReport) -> Self {
         let mut named = BTreeSet::new();
+        for skill in &report.header.skill_reports {
+            named.insert(skill.tag.to_uppercase());
+            named.insert(skill.name.to_uppercase());
+        }
         for unit in report.regions.iter().flat_map(|region| region.units.iter()) {
             let skills = unit.skills.iter().map(|skill| (&skill.tag, &skill.name));
             let offered = unit.can_study.iter().map(|skill| (&skill.tag, &skill.name));
