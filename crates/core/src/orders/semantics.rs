@@ -54,17 +54,18 @@ use crate::orders::production_overview::{
 };
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
-    forecast_unit, late_income, late_income_terms, parse_wage_centis, pillage_threshold,
-    plan_production, pool_wants, price_buy_all, price_cast, price_claim, price_pillage,
-    price_production, price_purchase, price_sale_line, price_study, price_tax, producing_skill,
-    quantity_bought, readiness, readiness_reason, settle_unclaimed, split_pool, tax_overstated_by,
-    taxes, taxing_men, transfer_shape, transmute_argument, unit_upkeep, workforce_for, BuyAllCap,
-    Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim, LateFacts, LateFoodClaim,
-    LateFoodRelief, Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver,
-    Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove,
-    Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll, SettledGift, SharedMarket,
-    ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt, SilverMove, TransferShape,
-    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    food_eaten_by_holder, forecast_unit, late_income, late_income_terms, parse_wage_centis,
+    pillage_threshold, plan_production, pool_wants, price_buy_all, price_cast, price_claim,
+    price_pillage, price_production, price_purchase, price_sale_line, price_study, price_tax,
+    producing_skill, quantity_bought, readiness, readiness_reason, settle_unclaimed, split_pool,
+    tax_overstated_by, taxes, taxing_men, transfer_shape, transmute_argument, unit_upkeep,
+    workforce_for, BuyAllCap, Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodClaim,
+    LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketFunds, MarketSide, MoneyRead,
+    PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
+    PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll,
+    SettledGift, SharedMarket, ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt,
+    SilverMove, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -4690,6 +4691,9 @@ struct Ledger<'a> {
     /// it already makes. Steps 5 and 6 draw on the same food, and a third call to
     /// `feed_from_faction_food` would be a third answer to one question.
     faction_food: FactionFoodPass,
+    /// The step-1 claims that pass was settled from, in `hex.units` order, so the ITEMS column can
+    /// say whose food maintenance ate (`ah-q490`).
+    food_claims: Vec<FoodClaim>,
     /// What this month's `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item list.
     /// Deliberately **not** `GIVE` or `TAKE`: the orders preview settles the whole Give phase
     /// itself, in the report order `rules/sequenceofevents` gives it and with the receiver and men
@@ -5043,6 +5047,7 @@ fn ledger_for_with_production<'a>(
         upkeep_food: BTreeMap::new(),
         maintenance_pooled: false,
         faction_food: FactionFoodPass::default(),
+        food_claims: Vec::new(),
         movements: Vec::new(),
         uncounted: BTreeMap::new(),
         refused_recruits: Vec::new(),
@@ -5504,9 +5509,9 @@ pub(crate) fn item_effects(
     let production = production_shares_for(&hexes, ruleset);
 
     // Every ledger before any is consumed, so shipping settles across every hex exactly as
-    // `review_turn` settles it - through the same driver (`ah-7ale.4`). The preview runs the
-    // report-wide steps through `StatePhase::Transport` and no further: it reads nothing
-    // maintenance writes.
+    // `review_turn` settles it - through the same driver (`ah-7ale.4`). Through maintenance, as
+    // `review_turn` runs it: the food upkeep eats comes off the ITEMS column, and steps 5 and 6
+    // are only known once step 4 has lent what it lends (`ah-q490`).
     let shipping = ruleset.map(|rules| super::transport::Shipping::read(report, rules, options));
     let mut priced: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
@@ -5521,7 +5526,7 @@ pub(crate) fn item_effects(
             (hex, ledger)
         })
         .collect();
-    settle_report_wide(
+    let month_end = settle_report_wide(
         &mut priced,
         &ReportWideInputs {
             report,
@@ -5529,11 +5534,44 @@ pub(crate) fn item_effects(
             ruleset,
             shipping: shipping.as_ref(),
         },
-        StatePhase::Transport,
+        StatePhase::Maintenance,
     );
 
     for (hex, ledger) in priced {
         let hex = &hex;
+        // The same passes the SILVER column's food figures come from, so the two columns count
+        // one meal (`ah-q490`).
+        let late: BTreeMap<String, LateFoodRelief> = hex
+            .units
+            .iter()
+            .filter_map(|ordered| {
+                month_end
+                    .food_relief
+                    .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+                    .map(|relief| (ordered.unit.unit_id.clone(), relief.clone()))
+            })
+            .collect();
+        for (unit_id, foods) in
+            food_eaten_by_holder(&ledger.food_claims, &ledger.faction_food, &late)
+        {
+            let entry = result
+                .entry(unit_key(&hex.region.region_id, &unit_id))
+                .or_default();
+            for food in foods {
+                entry.eaten.push(ItemMovement {
+                    unit_id: unit_id.clone(),
+                    name: item_name(&food.tag, hex, ruleset),
+                    tag: food.tag,
+                    delta: -food.amount,
+                    cause: ItemChangeCause::EatenForUpkeep,
+                    phase: StatePhase::Maintenance,
+                    line: None,
+                    unit_price: None,
+                    other: None,
+                    created: None,
+                });
+            }
+        }
         for refused in &ledger.refused_shipments {
             result
                 .entry(unit_key(&hex.region.region_id, &refused.unit_id))
@@ -5642,6 +5680,10 @@ pub(crate) struct UnitItemEffects {
     /// The 1-based document lines of this unit's shipments its month could not pay for. The item
     /// preview keeps their goods: it has no silver of its own to judge with (`ah-7ale.4`).
     pub refused_shipments: Vec<i64>,
+    /// The food maintenance eats off this unit, whoever's upkeep it paid (`ah-q490`). Apart from
+    /// `moved` because it is applied last: `rules/sequenceofevents` assesses maintenance after
+    /// every `TRANSPORT`, which the preview applies after `moved`.
+    pub eaten: Vec<ItemMovement>,
 }
 
 /// What each unit in a hex holds once its whole month has run, in `hex.units` order.
@@ -5892,6 +5934,7 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let pass = feed_from_faction_food(&claims);
     let settled = pass.settled.clone();
     ledger.faction_food = pass;
+    ledger.food_claims = claims.clone();
 
     for (((ordered, facts), shares), claim) in
         hex.units.iter().zip(&facts).zip(&shares).zip(&claims)
@@ -49169,8 +49212,12 @@ BUILD
         assert_eq!(silver.no_study_fee, None, "{silver:?}");
 
         let effects = item_effects(&report, orders, Some(&trident), &CheckOptions::default());
+        // Maintenance may still eat the mage's food (`ah-q490`); the study itself moves nothing.
         assert!(
-            effects_for(&effects, "5").is_none(),
+            effects_for(&effects, "5").is_none_or(|effects| UnitItemEffects {
+                eaten: Vec::new(),
+                ..effects.clone()
+            } == UnitItemEffects::default()),
             "an unlearnable study should not produce item effects or a forecast"
         );
     }
@@ -49653,8 +49700,12 @@ BUILD
             Some(&trident()),
             &CheckOptions::default(),
         );
+        // Maintenance still eats the builder's grain (`ah-q490`); the refused build moves nothing.
         assert!(
-            effects_for(&effects, "900").is_none(),
+            effects_for(&effects, "900").is_none_or(|effects| UnitItemEffects {
+                eaten: Vec::new(),
+                ..effects.clone()
+            } == UnitItemEffects::default()),
             "a refused site spends and moves nothing: {effects:?}"
         );
     }

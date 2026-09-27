@@ -484,6 +484,8 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
       return `discarded ${n}`;
     case "gift-reverted":
       return `${n} reverted from a unit that formed with nobody`;
+    case "eaten-for-upkeep":
+      return `${n} eaten for upkeep`;
     // Required rather than defensive: `ItemChangeCause` is a string union, so a cause from a newer
     // core is compile-time impossible and runtime real, and `ah-rgkk.3.1` asks a reader to treat
     // one as "moved, reason not stated". Deliberately not an exhaustiveness `never`.

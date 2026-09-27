@@ -14,7 +14,7 @@
 //! either - which is why this bead needs a fixture of its own.
 
 use atlantis_hud_core::cache::ReportCache;
-use atlantis_hud_core::orders::effects::preview_orders_for_remembered_report;
+use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, ItemChangeCause};
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::orders::silver::ProductionCap;
 use atlantis_hud_core::report::orders::extract_orders_template;
@@ -381,7 +381,10 @@ mod a_market_before_the_manufacture {
         let items_grain = unit
             .item_changes
             .iter()
-            .filter(|change| change.tag == "GRAI")
+            // What the market moved in, not what maintenance then eats (`ah-q490`).
+            .filter(|change| {
+                change.tag == "GRAI" && change.cause != ItemChangeCause::EatenForUpkeep
+            })
             .map(|change| change.delta)
             .sum();
 

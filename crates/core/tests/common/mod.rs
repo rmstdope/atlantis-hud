@@ -4,7 +4,7 @@
 
 use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::movement::rules::Ruleset;
-use atlantis_hud_core::orders::effects::{OrdersPreviewResponse, UnitPreview};
+use atlantis_hud_core::orders::effects::{ItemChangeCause, OrdersPreviewResponse, UnitPreview};
 use atlantis_hud_core::orders::intents::{read_intents, spends_the_month};
 use atlantis_hud_core::report::model::Coordinate;
 
@@ -73,6 +73,29 @@ pub fn preview_row<'a>(
         .iter()
         .flat_map(|region| region.units.iter())
         .find(|unit| unit.unit.unit_id == unit_id)
+}
+
+/// How many of `tag` the ITEMS preview leaves `unit` holding **before maintenance eats**: the
+/// holding plus whatever [`ItemChangeCause::EatenForUpkeep`] took (`ah-q490`).
+///
+/// For a test about what the market, a gift or a production leaves: a unit that ends the month out
+/// of silver eats its own food at maintenance (`rules/economy_maintenance`), which is true and is
+/// not what such a test is about. `food_eaten_for_upkeep.rs` pins the meal itself.
+pub fn held_before_upkeep(unit: &UnitPreview, tag: &str) -> i64 {
+    let held: i64 = unit
+        .unit
+        .items
+        .iter()
+        .filter(|item| item.tag == tag)
+        .map(|item| item.amount)
+        .sum();
+    let eaten: i64 = unit
+        .item_changes
+        .iter()
+        .filter(|change| change.tag == tag && change.cause == ItemChangeCause::EatenForUpkeep)
+        .map(|change| change.delta)
+        .sum();
+    held - eaten
 }
 
 /// As [`preview_row`], for a unit the orders are known to change: panics, naming which of the two

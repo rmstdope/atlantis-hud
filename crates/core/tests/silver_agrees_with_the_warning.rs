@@ -973,13 +973,8 @@ fn both_surfaces(text: &str, script: &str, unit_id: &str, tag: &str) -> (i64, i6
         &orders,
     )
     .expect("the committed ruleset loads");
-    let items_bought: i64 = common::expect_preview_row(text, &preview, unit_id)
-        .unit
-        .items
-        .iter()
-        .filter(|item| item.tag == tag)
-        .map(|item| item.amount)
-        .sum();
+    let items_bought =
+        common::held_before_upkeep(common::expect_preview_row(text, &preview, unit_id), tag);
 
     (column_bought, items_bought, warned)
 }
