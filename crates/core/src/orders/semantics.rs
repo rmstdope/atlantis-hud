@@ -899,7 +899,7 @@ enum ReportWideStep {
     ShipBetweenQuartermasters,
     /// Every refused shipment's whole ask, charged once every shipment has been judged (`ah-7ale.4`).
     ChargeRefusedShipments,
-    /// Maintenance step 4: a faction-mate's silver in the same hex (`ah-e66j`).
+    /// Maintenance step 4: a faction-mate's silver in the same region at month end (`ah-e66j`).
     ShareSilverForUpkeep,
     /// Maintenance steps 5 and 6: the unit's own food, then its hex's faction food (`ah-eacd`).
     FeedFromFood,
@@ -987,7 +987,13 @@ fn settle_report_wide(
             // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
             // grain.
             ReportWideStep::ShareSilverForUpkeep => {
-                settlement.shared_silver = share_silver_for_upkeep(hexes);
+                let regions: HashMap<Coordinate, &ReportRegion> = inputs
+                    .report
+                    .regions
+                    .iter()
+                    .map(|region| (region.coordinate, region))
+                    .collect();
+                settlement.shared_silver = share_silver_for_upkeep(hexes, &regions);
             }
             // Steps 5 and 6 come before step 7, and `upkeep_claims` reads the relief they leave.
             ReportWideStep::FeedFromFood => {
@@ -1033,7 +1039,8 @@ fn draw_on_unclaimed_fund(
 /// and because the order they are applied in is the rules' own: step 4, then steps 5 and 6, then
 /// step 7.
 struct Relief<'a> {
-    /// Step 4: silver from other own units in the same hex (`ah-e66j`).
+    /// Step 4: silver from other own units in the region each unit ends the month in (`ah-e66j`,
+    /// `ah-bwxp.1`).
     shared_silver: &'a BTreeMap<UnitKey, i64>,
     /// Steps 5 and 6: the unit's own food, then its hex's faction food (`ah-eacd`).
     food: &'a BTreeMap<UnitKey, LateFoodRelief>,
@@ -4696,8 +4703,9 @@ struct Ledger<'a> {
     /// whole fee and counts this food toward what the unit can have (`ah-pyiy`). Kept apart from
     /// `upkeep` so `unpaid_upkeep`, `unpayable_upkeep` and the step-4 lending do not move.
     upkeep_food: BTreeMap<String, i64>,
-    /// Whether this hex's maintenance sharing fell short, so its silver shortfall belongs to the
-    /// hex rather than to any unit in it. Turns the per-unit `not-enough-silver` findings into the
+    /// Whether this hex's maintenance sharing fell short - its units, and only they, pooled their
+    /// silver at month end and it did not reach - so its silver shortfall belongs to the hex rather
+    /// than to any unit in it. Never set for a hex a fleet sails into or out of (`ah-bwxp.1`). Turns the per-unit `not-enough-silver` findings into the
     /// single hex-level one, exactly as a `SHARE` flag already does for every tag (`ah-e66j`).
     maintenance_pooled: bool,
     /// What step 2 left of this hex's faction-food pool, written by `charge_upkeep` from the pass
@@ -8965,41 +8973,77 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
     claims
 }
 
-/// Step 4 of the maintenance payment order, per hex: silver from other faction units in the same
-/// region pays what a unit's own silver could not.
+/// Step 4 of the maintenance payment order: silver from other faction units in the same region pays
+/// what a unit's own silver could not.
+///
+/// **The region a unit ends the month in, not the one it starts it in** (`ah-bwxp.1`, GitHub
+/// #1326). `rules/sequenceofevents` assesses maintenance after "ADVANCE, MOVE and SAIL orders are
+/// processed", so a passenger whose fleet sails into a hex shares with the units standing there
+/// and no longer with the ones it left behind. Where a unit ends up is [`month_end_region`]'s
+/// answer.
 ///
 /// **Automatic and unconditional.** The `SHARE` flag governs discretionary spending only - the
 /// rules share money for maintenance "automatically ... between your units in the same region",
 /// and say of `SHARE` itself that funds are shared "for maintenance, but not for less important
-/// purposes" (`ah-e66j`). So every own unit in the hex lends, flag or no flag.
+/// purposes" (`ah-e66j`). So every own unit in the region lends, flag or no flag.
 ///
 /// Runs before steps 5 and 6, so a neighbour's silver is spent before anybody's grain - which is
 /// the rules' own order and not a preference.
 ///
-/// Returns what each fed unit's neighbours paid, for the column to show. A hex whose pool cannot
+/// Returns what each fed unit's neighbours paid, for the column to show. A region whose pool cannot
 /// cover every claimant lends all of it anyway and returns nothing for it: the total is exact even
 /// though which unit the engine feeds is not, and understating what step 4 paid would send a claim
 /// to the unclaimed fund that step 4 had already met.
-fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<UnitKey, i64> {
-    let mut covered: BTreeMap<UnitKey, i64> = BTreeMap::new();
+fn share_silver_for_upkeep(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    regions: &HashMap<Coordinate, &ReportRegion>,
+) -> BTreeMap<UnitKey, i64> {
+    /// One unit's place in `hexes`: the hex it is listed in, and its number there. A number alone
+    /// does not name a unit across hexes (`ah-9o0c.3`).
+    type Member = (usize, String);
 
-    for (hex, ledger) in hexes {
-        let claims = unpayable_upkeep(hex, ledger);
+    // Who shares with whom, in report order: every hex's units, grouped by where each one ends the
+    // month. A `Vec` rather than a map keyed by coordinate so the lending stays in document order.
+    let mut groups: Vec<(Coordinate, Vec<Member>)> = Vec::new();
+    for (index, (hex, ledger)) in hexes.iter().enumerate() {
+        for ordered in &hex.units {
+            let at = month_end_region(hex, ordered, ledger.ruleset, regions);
+            let member = (index, ordered.unit.unit_id.clone());
+            match groups.iter_mut().find(|(coordinate, _)| *coordinate == at) {
+                Some((_, members)) => members.push(member),
+                None => groups.push((at, vec![member])),
+            }
+        }
+    }
+
+    // What each unit could not pay itself, read once per hex before anything is lent.
+    let owing: Vec<BTreeMap<String, i64>> = hexes
+        .iter()
+        .map(|(hex, ledger)| unpayable_upkeep(hex, ledger).into_iter().collect())
+        .collect();
+
+    let mut covered: BTreeMap<UnitKey, i64> = BTreeMap::new();
+    for (_, members) in &groups {
+        let claims: Vec<(&Member, i64)> = members
+            .iter()
+            .filter_map(|member| {
+                let (index, unit_id) = member;
+                owing[*index].get(unit_id).map(|short| (member, *short))
+            })
+            .collect();
         if claims.is_empty() {
             continue;
         }
 
-        // Every own unit in the hex lends what it has spare. `silver_balance` is post-orders and
+        // Every own unit in the region lends what it has spare. `silver_balance` is post-orders and
         // post-own-maintenance and already carries any relief written before this point, so it is
         // exactly "what this unit has spare" - which `balance_of` is not.
-        let spare: Vec<(String, i64)> = hex
-            .units
+        let spare: Vec<(&Member, i64)> = members
             .iter()
-            .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
-            .map(|ordered| {
-                let id = ordered.unit.unit_id.clone();
-                let spare = silver_balance(ledger, &id).max(0);
-                (id, spare)
+            .filter(|(index, unit_id)| !hexes[*index].1.doubted.contains(unit_id))
+            .map(|member| {
+                let (index, unit_id) = member;
+                (member, silver_balance(&hexes[*index].1, unit_id).max(0))
             })
             .collect();
         let pool: i64 = spare.iter().map(|(_, spare)| spare).sum();
@@ -9016,12 +9060,13 @@ fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<Unit
         let short = pool < needed;
         let mut left = pool.min(needed);
         let lent = left;
-        for (unit_id, claim) in &claims {
+        for ((index, unit_id), claim) in &claims {
             if left <= 0 {
                 break;
             }
             let relieved = (*claim).min(left);
             left -= relieved;
+            let (hex, ledger) = &mut hexes[*index];
             *ledger.upkeep_relieved.entry(unit_id.clone()).or_default() += relieved;
             if !short {
                 *covered
@@ -9029,25 +9074,65 @@ fn share_silver_for_upkeep(hexes: &mut [(Hex<'_>, Ledger<'_>)]) -> BTreeMap<Unit
                     .or_default() += relieved;
             }
         }
+        // The hex-level sentence ("the units in this hex are short ... between them") sums the
+        // hex's own fees, so it is true only of a group that *is* one hex: nobody arrived and
+        // nobody left. A group any fleet joined or left keeps its claimants' own findings - the
+        // hex they are listed in did not share with them, and saying it did would count the fee
+        // of a unit that stayed behind with plenty.
         if short {
-            ledger.maintenance_pooled = true;
+            if let Some(index) = one_whole_hex(members, hexes) {
+                hexes[index].1.maintenance_pooled = true;
+            }
         }
 
         // The lenders, in document order, for exactly what the borrowers took.
         let mut owed = lent;
-        for (unit_id, spare) in &spare {
+        for ((index, unit_id), spare) in &spare {
             if owed <= 0 {
                 break;
             }
             let taken = (*spare).min(owed);
             if taken > 0 {
                 owed -= taken;
-                *ledger.upkeep_lent.entry(unit_id.clone()).or_default() += taken;
+                *hexes[*index]
+                    .1
+                    .upkeep_lent
+                    .entry(unit_id.clone())
+                    .or_default() += taken;
             }
         }
     }
 
     covered
+}
+
+/// The hex `members` is, when it is exactly one hex's units: all of them listed in that hex, and
+/// every unit of that hex among them. `None` for a group a fleet joined or left.
+fn one_whole_hex(members: &[(usize, String)], hexes: &[(Hex<'_>, Ledger<'_>)]) -> Option<usize> {
+    let (index, _) = members.first()?;
+    (members.iter().all(|(other, _)| other == index)
+        && members.len() == hexes[*index].0.units.len())
+    .then_some(*index)
+}
+
+/// The region `ordered` stands in when maintenance is assessed, by coordinate.
+///
+/// [`production_region`]'s answer, so a sailing passenger produces and is fed in the same place:
+/// wherever [`sail_destination`] says its fleet arrives (`ah-jk9h`). Every other unit, and a
+/// passenger whose sail the report cannot follow, is counted where it stands: "cannot say" is not a
+/// destination, and staying put is what the sharing did before `ah-bwxp.1`.
+///
+/// A `MOVE` is not followed yet (`ah-n3qb`). Where a walker is at the end of the month depends on
+/// its movement points and the terrain, which is `movement::plan`'s whole business and not a thing
+/// to guess here.
+fn month_end_region(
+    hex: &Hex<'_>,
+    ordered: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+    regions: &HashMap<Coordinate, &ReportRegion>,
+) -> Coordinate {
+    production_region(hex, ordered, ruleset, regions)
+        .map_or(hex.region.coordinate, |region| region.coordinate)
 }
 
 /// Steps 5 and 6 of the payment order, per hex, and what they leave for step 7.
@@ -31435,6 +31520,211 @@ BUILD
                 && finding.message.contains("the units in this hex"),
             "it names the shortfall and says whose it is: {}",
             finding.message
+        );
+    }
+
+    /// `ah-bwxp.1`, GitHub #1326. A fleet with no silver aboard sails into a hex where a
+    /// faction-mate holds plenty. `rules/sequenceofevents` assesses maintenance after movement, and
+    /// `rules/economy_maintenance` shares silver for it "between your units in the same region" - so
+    /// the region that counts is the one the passengers reach, and the silver waiting there feeds
+    /// them. The fund is nearly empty, as it was in the report, so a claim that reached it would
+    /// warn.
+    fn a_fleet_sailing_north_to_a_banker(sails: bool) -> TurnReview {
+        let ocean = ruleset().movement.ocean.terrain.clone();
+        let passenger = ReportUnit {
+            structure_id: Some("329".to_string()),
+            ..starving(with_men(unit("4021"), 4))
+        };
+        let mut sailor = ReportUnit {
+            structure_id: Some("329".to_string()),
+            ..starving(unit("4022"))
+        };
+        sailor.skills.push(sail(4));
+        let at_sea = ReportRegion {
+            terrain: ocean,
+            structures: vec![longship("329")],
+            exits: vec![Exit {
+                direction: "North".to_string(),
+                coordinate: Coordinate { x: 7, y: 51, z: 1 },
+                ..Default::default()
+            }],
+            ..region(vec![sailor, passenger])
+        };
+        let banker = with_silver(starving(unit("1795")), 500);
+        let report = ParsedReport {
+            regions: vec![at_sea, region_at("1:7,51", 7, 51, vec![banker])],
+            header: crate::report::header::ReportHeader {
+                unclaimed_silver: Some(5),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let orders = if sails {
+            "unit 4022\nSAIL N\nunit 4021\nunit 1795\n"
+        } else {
+            "unit 4022\nunit 4021\nunit 1795\n"
+        };
+        review_turn(
+            &report,
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        )
+    }
+
+    fn upkeep_warnings(review: &TurnReview) -> Vec<&Finding> {
+        review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    || finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_fleet_is_fed_by_silver_waiting_where_it_arrives() {
+        let review = a_fleet_sailing_north_to_a_banker(true);
+        assert!(
+            upkeep_warnings(&review).is_empty(),
+            "the banker in the hex the fleet reaches pays its upkeep: {:?}",
+            review.findings
+        );
+        for id in ["4021", "4022"] {
+            let forecast = review
+                .silver
+                .iter()
+                .find(|silver| silver.unit_id == id)
+                .expect("a forecast");
+            assert!(
+                forecast.at_month_end.expect("priced") >= 0,
+                "{id} is fed at month end: {forecast:?}"
+            );
+        }
+    }
+
+    /// A silverless fleet at sea, `sailor` its captain and `passenger` aboard, with an exit north to
+    /// (7,51) - the shape of GitHub #1326's galleon.
+    fn silverless_fleet(
+        region_id: &str,
+        x: i32,
+        y: i32,
+        fleet: &str,
+        sailor: &str,
+        passenger: &str,
+    ) -> ReportRegion {
+        let aboard = |unit: ReportUnit| ReportUnit {
+            structure_id: Some(fleet.to_string()),
+            ..unit
+        };
+        let mut captain = aboard(starving(unit(sailor)));
+        captain.skills.push(sail(4));
+        let direction = if y > 51 { "North" } else { "South" };
+        ReportRegion {
+            terrain: ruleset().movement.ocean.terrain.clone(),
+            structures: vec![longship(fleet)],
+            exits: vec![Exit {
+                direction: direction.to_string(),
+                coordinate: Coordinate { x: 7, y: 51, z: 1 },
+                ..Default::default()
+            }],
+            ..region_at(
+                region_id,
+                x,
+                y,
+                vec![captain, aboard(starving(with_men(unit(passenger), 4)))],
+            )
+        }
+    }
+
+    /// `ah-bwxp.1`, the bead's own acceptance: two fleets from different hexes converge on a
+    /// third, one with no silver and one carrying plenty. Both arrive before maintenance
+    /// (`rules/sequenceofevents`), so the second's silver feeds the first's units
+    /// (`rules/economy_maintenance`).
+    #[test]
+    fn two_fleets_converging_on_one_hex_share_their_silver_for_upkeep() {
+        let rich = {
+            let mut hex = silverless_fleet("1:7,49", 7, 49, "400", "5001", "5002");
+            for unit in &mut hex.units {
+                if unit.unit_id == "5002" {
+                    *unit = with_silver(unit.clone(), 500);
+                }
+            }
+            hex
+        };
+        let report = ParsedReport {
+            regions: vec![
+                silverless_fleet("1:7,53", 7, 53, "329", "4022", "4021"),
+                rich,
+                region_at("1:7,51", 7, 51, Vec::new()),
+            ],
+            header: crate::report::header::ReportHeader {
+                unclaimed_silver: Some(5),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let review = review_turn(
+            &report,
+            "unit 4022\nSAIL N\nunit 4021\nunit 5001\nSAIL S\nunit 5002\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        assert!(
+            upkeep_warnings(&review).is_empty(),
+            "the silver arriving on the other fleet pays the upkeep: {:?}",
+            review.findings
+        );
+    }
+
+    /// The other direction, and the hex left behind. A silverless fleet sails away from the
+    /// faction-mate whose silver would have fed it, into a hex whose one unit has $10 to spare -
+    /// less than the fleet owes. The fleet is warned unit by unit, and the banker it left is not
+    /// drawn into a hex-level sentence about a shortfall it no longer shares.
+    #[test]
+    fn a_fleet_sailing_away_from_its_banker_is_warned_on_its_own_units() {
+        let mut hex = silverless_fleet("1:7,53", 7, 53, "329", "4022", "4021");
+        hex.units.push(with_silver(starving(unit("1795")), 500));
+        let arrival = region_at(
+            "1:7,51",
+            7,
+            51,
+            vec![with_silver(starving(unit("1796")), 20)],
+        );
+        let report = ParsedReport {
+            regions: vec![hex, arrival],
+            ..Default::default()
+        };
+        let review = review_turn(
+            &report,
+            "unit 4022\nSAIL N\nunit 4021\nunit 1795\nunit 1796\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        let warned: BTreeSet<Option<String>> = upkeep_warnings(&review)
+            .iter()
+            .map(|finding| finding.unit_id.clone())
+            .collect();
+        assert_eq!(
+            warned,
+            // The $10 is lent in document order, to the captain's fee, so the passenger is left
+            // short on its own.
+            BTreeSet::from([Some("4021".to_string())]),
+            "the fleet is short on its own units, and nothing is said of the hex: {:?}",
+            review.findings
+        );
+    }
+
+    /// The control: the same fleet staying where it is has nobody beside it to pay, so it is
+    /// warned - which is what makes the test above say something.
+    #[test]
+    fn a_fleet_that_stays_away_from_the_banker_is_still_warned() {
+        let review = a_fleet_sailing_north_to_a_banker(false);
+        assert!(
+            !upkeep_warnings(&review).is_empty(),
+            "nobody in the fleet's own hex can pay: {:?}",
+            review.findings
         );
     }
 
