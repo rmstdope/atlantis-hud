@@ -1094,7 +1094,7 @@ struct PoolSettlement {
 
 /// One [`PoolShares`] per unit in `hex.units`, index-aligned, for every contended regional pool.
 ///
-/// Computed **once per hex** and handed to both [`forecast_hex`] and [`charge_upkeep`]: they price
+/// Computed **once per hex** and handed to both [`forecast_hex`] and [`charge_settled_upkeep`]: they price
 /// `WORK` and `ENTERTAIN` through the same [`late_income`], so two settlements would be two answers
 /// to one question - the drift `ah-uwa3` removed and `ah-ycuj` now guards.
 ///
@@ -1782,7 +1782,7 @@ fn region_product_name(
 
 /// The region's shared figures, as both surfaces that price a hex read them.
 ///
-/// One function rather than two identical literals: `forecast_hex` and `charge_upkeep` must settle
+/// One function rather than two identical literals: `forecast_hex` and `charge_settled_upkeep` must settle
 /// the same pools from the same numbers, and two copies are two things to keep in step.
 fn region_wages(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> RegionWages {
     RegionWages {
@@ -4743,7 +4743,7 @@ struct Ledger<'a> {
     maintenance_pooled: bool,
     /// What step 2 (`CONSUME FACTION`) left each of this hex's units owing, by unit number - the
     /// `settled` of the [`FactionFoodPass`] of the group it ends the month in
-    /// ([`feed_groups_from_faction_food`], `ah-21r0`). Read by `charge_upkeep` and by the SILVER
+    /// ([`feed_groups_from_faction_food`], `ah-21r0`). Read by `charge_settled_upkeep` and by the SILVER
     /// column, so the two cannot settle one pool two ways.
     faction_fed: BTreeMap<String, Option<i64>>,
     /// The step-1 claims step 2 was settled from, in `hex.units` order, so the ITEMS column can
@@ -4801,7 +4801,7 @@ struct Ledger<'a> {
     /// The SILVER column's rows and totals: `forecast_hex` hands each unit's list to `forecast_unit`
     /// through `PhaseFacts::silver_moves` (`ah-xryu`). It carries every cause the column shows except
     /// `Lent` and `WasLent`, which the hex pass books between units; the wage terms are recorded by
-    /// `charge_upkeep` without being applied, because the balance already carries them netted against
+    /// `charge_settled_upkeep` without being applied, because the balance already carries them netted against
     /// the fee. What keeps it exhaustive is the `debug_assert` in `charge` and `credit`.
     pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
     /// What each unit this hex pays for shipments, keyed by unit id. Written by
@@ -5855,7 +5855,7 @@ fn same_men(a: &[ItemAmount], b: &[ItemAmount], ruleset: &Ruleset) -> bool {
     a == b
 }
 
-/// Every own unit in one hex as maintenance sees it. Shared by `charge_upkeep` and by steps 5 and
+/// Every own unit in one hex as maintenance sees it. Shared by `charge_settled_upkeep` and by steps 5 and
 /// 6, which must read exactly the same facts or the column and the warning will disagree.
 ///
 /// `late` is `None` for a caller with no ledger to read one from - [`pillagers_in`] is the only
@@ -7770,7 +7770,7 @@ fn produce(
     // Every phase `rules/sequenceofevents` runs before "Manufacturing PRODUCE orders ... are
     // processed" has been applied to this unit by the phase-major dispatch, and `PhaseState::apply`
     // writes each delta forward, so this balance is the whole answer. Wages never enter it at all:
-    // `charge_upkeep` nets `late_income` against the fee rather than crediting it (`ah-gdd3.2`).
+    // `charge_settled_upkeep` nets `late_income` against the fee rather than crediting it (`ah-gdd3.2`).
     // `held` stays the material slice `ah-l80z` gave it.
     //
     // **Do not simplify this into `held`'s own `SILV` line.** The two coincide *today* and no test
@@ -9195,8 +9195,8 @@ fn share_silver_for_upkeep(
 /// not name a unit across hexes (`ah-9o0c.3`).
 type Member = (usize, String);
 
-/// Who shares maintenance with whom (`rules/economy_maintenance` steps 4 to 6: "faction units in
-/// the same region"): every hex's units, grouped by the region each one ends the month in
+/// Who shares maintenance with whom (`rules/economy_maintenance` steps 2 and 4 to 6: "faction
+/// units in the same region"): every hex's units, grouped by the region each one ends the month in
 /// ([`month_end_region`]), since `rules/sequenceofevents` assesses maintenance after "ADVANCE,
 /// MOVE and SAIL orders are processed" (`ah-bwxp.1`, `ah-n3qb`).
 ///
@@ -31647,7 +31647,7 @@ BUILD
         let rules = ruleset();
         let mut ledger = ledger_for(&hex, Some(&rules));
 
-        // What `charge_upkeep` and the sharing pass leave behind for a hex that could not feed
+        // What `charge_settled_upkeep` and the sharing pass leave behind for a hex that could not feed
         // itself: a fee nothing paid, drawn straight off the balance, and no `SHARE` flag.
         ledger
             .state
@@ -32296,6 +32296,39 @@ BUILD
             review.findings
         );
         assert_eq!(walker(&review).faction_food_covered, 40);
+    }
+
+    /// `ah-21r0`: a passenger set `CONSUME FACTION` is fed at step 2 by the grain waiting where its
+    /// fleet arrives (`rules/economy_maintenance`, `rules/sequenceofevents`), before its own silver
+    /// is asked for anything.
+    #[test]
+    fn a_consume_faction_passenger_is_fed_by_the_grain_where_its_fleet_arrives() {
+        let mut fleet = silverless_fleet("1:7,53", 7, 53, "329", "4022", "4021");
+        for unit in &mut fleet.units {
+            if unit.unit_id == "4021" {
+                *unit = with_silver(with_flag(unit.clone(), "consuming faction's food"), 100);
+            }
+        }
+        let report = ParsedReport {
+            regions: vec![
+                fleet,
+                region_at(
+                    "1:7,51",
+                    7,
+                    51,
+                    vec![with_item(starving(unit("1795")), 6, "grain", "GRAI")],
+                ),
+            ],
+            ..Default::default()
+        };
+        let review = review_turn(
+            &report,
+            "unit 4022\nSAIL N\nunit 4021\nunit 1795\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        assert_eq!(walker(&review).faction_food_covered, 40);
+        assert_eq!(walker(&review).upkeep, Some(0));
     }
 
     /// `ah-n3qb` review: a passenger is fed where [`sail_destination`] says its fleet arrives -
@@ -34182,7 +34215,7 @@ BUILD
         );
     }
 
-    /// A guessed headcount is charged nothing by `charge_upkeep`, so it has no shortfall to claim -
+    /// A guessed headcount is charged nothing by `charge_settled_upkeep`, so it has no shortfall to claim -
     /// and a fund too small for the rest is still judged without it.
     #[test]
     fn a_guessed_headcount_does_not_claim_from_the_fund() {
