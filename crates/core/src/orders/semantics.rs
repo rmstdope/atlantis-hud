@@ -1012,7 +1012,13 @@ fn draw_on_unclaimed_fund(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     inputs: &ReportWideInputs<'_>,
 ) -> UpkeepSettlement {
-    let claims = upkeep_claims(hexes);
+    let regions: HashMap<Coordinate, &ReportRegion> = inputs
+        .report
+        .regions
+        .iter()
+        .map(|region| (region.coordinate, region))
+        .collect();
+    let claims = upkeep_claims(hexes, &regions);
     // `CLAIM` resolves during the month and maintenance is settled at its end, so this month's
     // claims come off the fund before step 7 ever sees it (`ah-fjty`).
     // A fund whose withdrawals nothing can price is not a fund we can spend on upkeep, so an
@@ -8914,16 +8920,31 @@ fn relieved_balance(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
 /// ours rather than the engine's, and it is only ever visible in a hex whose pooled silver is
 /// short by less than its units' fees between them; the total - which is what the settlement and
 /// every message state - is exact either way.
-fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<UpkeepClaim> {
+fn upkeep_claims(
+    hexes: &[(Hex<'_>, Ledger<'_>)],
+    regions: &HashMap<Coordinate, &ReportRegion>,
+) -> Vec<UpkeepClaim> {
     let mut claims = Vec::new();
     for (hex, ledger) in hexes {
         claims.extend(
             unpayable_upkeep(hex, ledger)
                 .into_iter()
-                .map(|(unit_id, short)| UpkeepClaim {
-                    region_id: hex.region.region_id.clone(),
-                    unit_id,
-                    short,
+                .map(|(unit_id, short)| {
+                    // Where the fee falls due, for the warning's breakdown (`ah-bwxp.2`): the
+                    // region the unit ends the month in, as step 4 already groups it.
+                    let pays_in = hex
+                        .units
+                        .iter()
+                        .find(|ordered| ordered.unit.unit_id == unit_id)
+                        .map_or(hex.region.coordinate, |ordered| {
+                            month_end_region(hex, ordered, ledger.ruleset, regions)
+                        });
+                    UpkeepClaim {
+                        region_id: hex.region.region_id.clone(),
+                        unit_id,
+                        pays_in,
+                        short,
+                    }
                 }),
         );
     }
@@ -15630,8 +15651,9 @@ fn check_quartermasters(
 /// `claims-exceed-unclaimed` gives for naming every claiming unit.
 ///
 /// A total alone cannot be checked, though (`ah-bwxp.2`, gh-1326): each message also states the
-/// unit's own share, and breaks the total down by the region the short units stand in, in report
-/// order, so the parts add up to the figure stated.
+/// unit's own share, and breaks the total down by the region each fee falls due in - where the
+/// unit ends the month, `rules/sequenceofevents` assessing maintenance after SAIL - so the parts
+/// add up to the figure stated.
 ///
 /// The finding carries no line: maintenance belongs to no order, so there is nothing to point at.
 /// Per-hex sorting already puts a line-less finding last within its hex, which is where it belongs.
@@ -15663,26 +15685,10 @@ fn check_upkeep_fund(
             .copied()
     };
 
-    let by_region: Vec<String> = report
-        .regions
+    let by_region: Vec<String> = settlement
+        .short_by_region
         .iter()
-        .filter_map(|region| {
-            // Summed from the settlement rather than from the region's printed units, so a unit
-            // this month's FORM creates - a claimant the report never prints - still counts, and
-            // the parts add up to `owed` exactly.
-            let short: i64 = settlement
-                .claimants
-                .iter()
-                .filter(|(key, _)| key.region_id == region.region_id)
-                .map(|(_, short)| short)
-                .sum();
-            (short > 0).then(|| {
-                format!(
-                    "${short} in ({},{})",
-                    region.coordinate.x, region.coordinate.y
-                )
-            })
-        })
+        .map(|(at, short)| format!("${short} in ({},{})", at.x, at.y))
         .collect();
 
     let total = format!(
@@ -31711,6 +31717,48 @@ BUILD
         );
     }
 
+    /// `ah-bwxp.2`, GitHub #1326: the breakdown names the region where the upkeep falls due. Two
+    /// silverless fleets converge on (7,51); maintenance is assessed after SAIL
+    /// (`rules/sequenceofevents`), so every unit left short is short *there*, not in the hexes
+    /// the fleets set out from.
+    #[test]
+    fn the_shortfall_breakdown_names_where_a_fleet_arrives() {
+        let report = ParsedReport {
+            regions: vec![
+                silverless_fleet("1:7,53", 7, 53, "329", "4022", "4021"),
+                silverless_fleet("1:7,49", 7, 49, "400", "5001", "5002"),
+                region_at("1:7,51", 7, 51, Vec::new()),
+            ],
+            header: crate::report::header::ReportHeader {
+                unclaimed_silver: Some(5),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let review = review_turn(
+            &report,
+            "unit 4022\nSAIL N\nunit 4021\nunit 5001\nSAIL S\nunit 5002\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        let warnings: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED)
+            .collect();
+        assert_eq!(warnings.len(), 4, "{:?}", review.findings);
+        for finding in warnings {
+            let (_, total) = finding.message.split_once("; ").expect("two clauses");
+            let (_, breakdown) = total.split_once(" cannot pay (").expect("a breakdown");
+            let (breakdown, _) = breakdown.split_once(')').expect("closed");
+            assert_eq!(
+                breakdown, "$100 in (7,51",
+                "one region, where the fleets arrive: {}",
+                finding.message
+            );
+        }
+    }
+
     /// The other direction, and the hex left behind. A silverless fleet sails away from the
     /// faction-mate whose silver would have fed it, into a hex whose one unit has $10 to spare -
     /// less than the fleet owes. The fleet is warned unit by unit, and the banker it left is not
@@ -33766,6 +33814,56 @@ BUILD
         let second = forecast_in(&review, "1:8,54", "new-1");
         assert_eq!(second.unclaimed_covered, 10, "one man");
         assert_eq!(second.upkeep, Some(0));
+    }
+
+    /// `ah-bwxp.2`: a unit this month's FORM creates is a claimant the report never prints, so it
+    /// carries no finding of its own - but its share is still part of the total, and the region
+    /// breakdown must still add up to it.
+    #[test]
+    fn a_formed_units_shortfall_counts_in_the_region_breakdown() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![with_men(with_silver(starving(unit("5")), 0), 3)],
+            ),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("9")), 0), 3)],
+            ),
+        ];
+
+        let review = review_turn(
+            &report_with_purse(Some(10), regions),
+            "unit 5\nFORM 1\nEND\nGIVE NEW 1 2 HUMN\nunit 9\n",
+            Some(&ruleset()),
+            disabling(codes::UNIT_DOES_NOTHING),
+        );
+
+        let total = "your units owe $60 of upkeep they cannot pay ($30 in (7,53), $30 in (8,54)) \
+                     and the faction has $10 unclaimed";
+        let warned: Vec<(Option<&str>, &str)> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED)
+            .map(|finding| (finding.unit_id.as_deref(), finding.message.as_str()))
+            .collect();
+        assert_eq!(
+            warned,
+            [
+                (
+                    Some("5"),
+                    format!("this unit is $10 short of its upkeep; {total}").as_str()
+                ),
+                (
+                    Some("9"),
+                    format!("this unit is $30 short of its upkeep; {total}").as_str()
+                ),
+            ]
+        );
     }
 
     /// The short-fund branch: `covered` is empty and `claimants` is what marks a unit's hover. A

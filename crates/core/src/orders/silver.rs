@@ -26,7 +26,7 @@ use crate::orders::phases;
 use crate::orders::semantics::{counted_with_singular, withdrawal_cost, FormedSubject, Plurals};
 use crate::orders::study;
 use crate::orders::targets::GiveReach;
-use crate::report::model::{ItemAmount, Skill};
+use crate::report::model::{Coordinate, ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
 pub(crate) const TAX_PER_MAN: i64 = 50;
@@ -3874,6 +3874,9 @@ pub struct UpkeepClaim {
     /// region, so two hexes may each hold a `new-1` (`ah-9o0c.3`).
     pub region_id: String,
     pub unit_id: String,
+    /// Where the fee falls due: the region the unit ends the month in, which a sailing
+    /// passenger's is not the hex it is listed in (`ah-bwxp.2`).
+    pub pays_in: Coordinate,
     /// Silver of this unit's *maintenance* that its own silver cannot cover, after every earlier
     /// step of the payment order has already been applied. Never more than the fee itself: what a
     /// unit overspends on its orders is its orders' fault and no business of the fund's.
@@ -3892,6 +3895,9 @@ pub struct UpkeepSettlement {
     /// Every unit that owed maintenance it could not pay, whether or not the fund reached it, with
     /// what it could not pay - so a warning can say where its total comes from (`ah-bwxp.2`).
     pub claimants: BTreeMap<super::semantics::UnitKey, i64>,
+    /// What the claimants owed, by the region each fee falls due in, in the order the regions
+    /// first appear among the claims. Sums to `owed` (`ah-bwxp.2`).
+    pub short_by_region: Vec<(Coordinate, i64)>,
     /// What the claimants owed between them.
     pub owed: i64,
     /// What the fund had for them, after this month's `CLAIM` orders took theirs. Never negative.
@@ -3949,8 +3955,20 @@ pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> Upkee
         BTreeMap::new()
     };
 
+    let mut short_by_region: Vec<(Coordinate, i64)> = Vec::new();
+    for claim in claiming.clone() {
+        match short_by_region
+            .iter_mut()
+            .find(|(at, _)| *at == claim.pays_in)
+        {
+            Some((_, short)) => *short = short.saturating_add(claim.short),
+            None => short_by_region.push((claim.pays_in, claim.short)),
+        }
+    }
+
     UpkeepSettlement {
         covered,
+        short_by_region,
         claimants: claiming
             .map(|claim| {
                 (
@@ -10131,6 +10149,7 @@ mod unclaimed_fund_tests {
         UpkeepClaim {
             region_id: region_id.to_string(),
             unit_id: id.to_string(),
+            pays_in: Coordinate::default(),
             short,
         }
     }
