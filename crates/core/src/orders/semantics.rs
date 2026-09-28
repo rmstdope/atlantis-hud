@@ -2263,7 +2263,7 @@ fn forecast_hex(
             forecast.unclaimed_contended = settlement.short > 0
                 && settlement
                     .claimants
-                    .contains(&unit_key(&hex.region.region_id, &ordered.unit.unit_id));
+                    .contains_key(&unit_key(&hex.region.region_id, &ordered.unit.unit_id));
             continue;
         }
         let covered = settlement
@@ -15629,6 +15629,10 @@ fn check_quartermasters(
 /// not being blamed for a shortfall that is the faction's - the same reasoning
 /// `claims-exceed-unclaimed` gives for naming every claiming unit.
 ///
+/// A total alone cannot be checked, though (`ah-bwxp.2`, gh-1326): each message also states the
+/// unit's own share, and breaks the total down by the region the short units stand in, in report
+/// order, so the parts add up to the figure stated.
+///
 /// The finding carries no line: maintenance belongs to no order, so there is nothing to point at.
 /// Per-hex sorting already puts a line-less finding last within its hex, which is where it belongs.
 fn check_upkeep_fund(
@@ -15646,28 +15650,57 @@ fn check_upkeep_fund(
         return;
     }
 
-    let message = format!(
-        "your units owe ${} of upkeep they cannot pay and the faction has ${} unclaimed",
-        settlement.owed, settlement.available
+    // The key is the pair now (`ah-9o0c.3`), but nothing here moves: this walks
+    // `report.regions`, which holds parsed units only, and two parsed units never share a
+    // number (`parse_region_block` refuses a repeat, `ah-bm0d`).
+    let short_of = |unit: &ReportUnit| -> Option<i64> {
+        if !unit.own {
+            return None;
+        }
+        settlement
+            .claimants
+            .get(&unit_key(&unit.region_id, &unit.unit_id))
+            .copied()
+    };
+
+    let by_region: Vec<String> = report
+        .regions
+        .iter()
+        .filter_map(|region| {
+            // Summed from the settlement rather than from the region's printed units, so a unit
+            // this month's FORM creates - a claimant the report never prints - still counts, and
+            // the parts add up to `owed` exactly.
+            let short: i64 = settlement
+                .claimants
+                .iter()
+                .filter(|(key, _)| key.region_id == region.region_id)
+                .map(|(_, short)| short)
+                .sum();
+            (short > 0).then(|| {
+                format!(
+                    "${short} in ({},{})",
+                    region.coordinate.x, region.coordinate.y
+                )
+            })
+        })
+        .collect();
+
+    let total = format!(
+        "your units owe ${} of upkeep they cannot pay ({}) and the faction has ${} unclaimed",
+        settlement.owed,
+        by_region.join(", "),
+        settlement.available
     );
 
-    for unit in report
+    for (unit, short) in report
         .regions
         .iter()
         .flat_map(|region| region.units.iter())
-        // The key is the pair now (`ah-9o0c.3`), but nothing here moves: this walks
-        // `report.regions`, which holds parsed units only, and two parsed units never share a
-        // number (`parse_region_block` refuses a repeat, `ah-bm0d`).
-        .filter(|unit| {
-            unit.own
-                && settlement
-                    .claimants
-                    .contains(&unit_key(&unit.region_id, &unit.unit_id))
-        })
+        .filter_map(|unit| short_of(unit).map(|short| (unit, short)))
     {
         findings.push(Finding {
             code: codes::UPKEEP_EXCEEDS_UNCLAIMED,
-            message: message.clone(),
+            message: format!("this unit is ${short} short of its upkeep; {total}"),
             region_id: unit.region_id.clone(),
             unit_id: Some(unit.unit_id.clone()),
             line: None,
@@ -33307,9 +33340,13 @@ BUILD
 
         assert_eq!(findings.len(), 3, "{findings:?}");
         for finding in &findings {
-            assert_eq!(
-                finding.message,
-                "your units owe $160 of upkeep they cannot pay and the faction has $100 unclaimed"
+            // Each unit's own share opens the message (`ah-bwxp.2`); the total is the same for all.
+            assert!(
+                finding.message.ends_with(
+                    "; your units owe $160 of upkeep they cannot pay ($160 in (7,53)) \
+                     and the faction has $100 unclaimed"
+                ),
+                "{finding:?}"
             );
             assert_eq!(
                 finding.line, None,
@@ -33322,6 +33359,58 @@ BUILD
                 .filter_map(|finding| finding.unit_id.as_deref())
                 .collect::<Vec<_>>(),
             ["5", "7", "9"]
+        );
+    }
+
+    /// `ah-bwxp.2` (gh-1326): a faction-wide total alone cannot be checked - the reporter could not
+    /// see how 44 men came to $510. So each unit's message states its own share, and the total is
+    /// broken down by the region the short units stand in, in report order, so the parts add up
+    /// to the figure the message states.
+    #[test]
+    fn the_shortfall_warning_says_where_the_total_comes_from() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    with_men(with_silver(starving(unit("5")), 0), 6),
+                    with_men(with_silver(starving(unit("7")), 0), 4),
+                ],
+            ),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("9")), 0), 6)],
+            ),
+        ];
+
+        let findings: Vec<(String, String)> = check_with_purse(Some(100), regions, "")
+            .into_iter()
+            .filter(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED)
+            .map(|finding| (finding.unit_id.unwrap_or_default(), finding.message))
+            .collect();
+
+        let total =
+            "your units owe $160 of upkeep they cannot pay ($100 in (7,53), $60 in (8,54)) \
+                     and the faction has $100 unclaimed";
+        assert_eq!(
+            findings,
+            [
+                (
+                    "5".to_string(),
+                    format!("this unit is $60 short of its upkeep; {total}")
+                ),
+                (
+                    "7".to_string(),
+                    format!("this unit is $40 short of its upkeep; {total}")
+                ),
+                (
+                    "9".to_string(),
+                    format!("this unit is $60 short of its upkeep; {total}")
+                ),
+            ]
         );
     }
 
@@ -33420,7 +33509,8 @@ BUILD
         let finding = only(findings);
         assert_eq!(
             finding.message,
-            "your units owe $60 of upkeep they cannot pay and the faction has $50 unclaimed"
+            "this unit is $60 short of its upkeep; your units owe $60 of upkeep they cannot pay \
+             ($60 in (8,54)) and the faction has $50 unclaimed"
         );
     }
 
@@ -33450,7 +33540,8 @@ BUILD
         let finding = only(findings);
         assert_eq!(
             finding.message,
-            "your units owe $60 of upkeep they cannot pay and the faction has $50 unclaimed"
+            "this unit is $60 short of its upkeep; your units owe $60 of upkeep they cannot pay \
+             ($60 in (8,54)) and the faction has $50 unclaimed"
         );
     }
 
@@ -33548,7 +33639,8 @@ BUILD
         );
         assert_eq!(
             findings[0].message,
-            "your units owe $100 of upkeep they cannot pay and the faction has $60 unclaimed",
+            "this unit is $60 short of its upkeep; your units owe $100 of upkeep they cannot pay \
+             ($100 in (7,53)) and the faction has $60 unclaimed",
             "the guessed unit's own $60 is no part of the total either"
         );
     }
@@ -33809,7 +33901,8 @@ BUILD
         assert_eq!(findings.len(), 3, "{findings:?}");
         assert_eq!(
             findings[0].message,
-            "your units owe $180 of upkeep they cannot pay and the faction has $100 unclaimed",
+            "this unit is $60 short of its upkeep; your units owe $180 of upkeep they cannot pay \
+             ($60 in (7,53), $60 in (8,54), $60 in (9,55)) and the faction has $100 unclaimed",
             "one fund for the whole report, not $100 per hex"
         );
     }

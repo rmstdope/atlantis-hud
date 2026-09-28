@@ -11,7 +11,7 @@
 //! dangerous direction for a column whose negatives are what a player acts on.
 
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -3889,8 +3889,9 @@ pub struct UpkeepSettlement {
     /// claimant** - when it is short, which unit it fed is undeterminable, so it feeds none of
     /// them here.
     pub covered: BTreeMap<super::semantics::UnitKey, i64>,
-    /// Every unit that owed maintenance it could not pay, whether or not the fund reached it.
-    pub claimants: BTreeSet<super::semantics::UnitKey>,
+    /// Every unit that owed maintenance it could not pay, whether or not the fund reached it, with
+    /// what it could not pay - so a warning can say where its total comes from (`ah-bwxp.2`).
+    pub claimants: BTreeMap<super::semantics::UnitKey, i64>,
     /// What the claimants owed between them.
     pub owed: i64,
     /// What the fund had for them, after this month's `CLAIM` orders took theirs. Never negative.
@@ -3951,7 +3952,12 @@ pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> Upkee
     UpkeepSettlement {
         covered,
         claimants: claiming
-            .map(|claim| super::semantics::unit_key(&claim.region_id, &claim.unit_id))
+            .map(|claim| {
+                (
+                    super::semantics::unit_key(&claim.region_id, &claim.unit_id),
+                    claim.short,
+                )
+            })
             .collect(),
         owed,
         available,
@@ -10202,7 +10208,7 @@ mod unclaimed_fund_tests {
         let claims = [claim("a", 0), claim("b", -20), claim("c", 40)];
         let settled = settle_unclaimed(&claims, Some(8450));
         assert_eq!(settled.claimants.len(), 1);
-        assert!(settled.claimants.contains(&key("c")));
+        assert_eq!(settled.claimants.get(&key("c")), Some(&40));
         assert_eq!(settled.owed, 40);
         assert_eq!(settled.covered.get(&key("a")), None);
         assert_eq!(settled.covered.get(&key("b")), None);
