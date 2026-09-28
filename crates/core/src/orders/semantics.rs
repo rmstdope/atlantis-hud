@@ -901,8 +901,9 @@ enum ReportWideStep {
     ShipBetweenQuartermasters,
     /// Every refused shipment's whole ask, charged once every shipment has been judged (`ah-7ale.4`).
     ChargeRefusedShipments,
-    /// Maintenance steps 1 to 3, per hex: each unit's own food, its hex's faction food, then its
-    /// own silver - read from what it holds once TRANSPORT has run (`ah-7rjo`).
+    /// Maintenance steps 1 to 3: each unit's own food, the faction food where it ends the month,
+    /// then its own silver - read from what it holds once TRANSPORT has run (`ah-7rjo`,
+    /// `ah-21r0`).
     ChargeUpkeep,
     /// Maintenance step 4: a faction-mate's silver in the same region at month end (`ah-e66j`).
     ShareSilverForUpkeep,
@@ -949,6 +950,11 @@ struct ReportWideInputs<'r> {
 /// stop before `StatePhase::Maintenance`.
 #[derive(Default)]
 struct ReportWideSettlement {
+    /// Who shares maintenance with whom ([`maintenance_groups`]), for steps 2 to 6.
+    groups: Vec<Vec<Member>>,
+    /// What each group's faction food still holds once step 2 has run, index-aligned with
+    /// `groups`: `None` where step 2 was contended (`FactionFoodPass::pool_left`).
+    food_left: Vec<Option<Vec<FoodAmount>>>,
     shared_silver: BTreeMap<UnitKey, i64>,
     food_relief: BTreeMap<UnitKey, LateFoodRelief>,
     fund: UpkeepSettlement,
@@ -995,21 +1001,27 @@ fn settle_report_wide(
             }
             ReportWideStep::ChargeRefusedShipments => charge_refused_shipments(hexes, phase),
             // Steps 1 to 3 read holdings after every shipment, and step 4 lends what they leave.
+            // Step 2 is settled per maintenance group, so every hex's step-1 claims are read
+            // before any hex is charged (`ah-21r0`).
             ReportWideStep::ChargeUpkeep => {
                 for (hex, ledger) in hexes.iter_mut() {
-                    charge_upkeep(ledger, hex);
+                    ledger.food_claims = step_one_claims(ledger, hex);
+                }
+                settlement.groups = maintenance_groups(hexes, inputs.report, inputs.month_end);
+                settlement.food_left = feed_groups_from_faction_food(hexes, &settlement.groups);
+                for (hex, ledger) in hexes.iter_mut() {
+                    charge_settled_upkeep(ledger, hex);
                 }
             }
             // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
             // grain.
             ReportWideStep::ShareSilverForUpkeep => {
-                let groups = maintenance_groups(hexes, inputs.report, inputs.month_end);
-                settlement.shared_silver = share_silver_for_upkeep(hexes, &groups);
+                settlement.shared_silver = share_silver_for_upkeep(hexes, &settlement.groups);
             }
             // Steps 5 and 6 come before step 7, and `upkeep_claims` reads the relief they leave.
             ReportWideStep::FeedFromFood => {
-                let groups = maintenance_groups(hexes, inputs.report, inputs.month_end);
-                settlement.food_relief = feed_from_food_after_silver(hexes, &groups);
+                settlement.food_relief =
+                    feed_from_food_after_silver(hexes, &settlement.groups, &settlement.food_left);
             }
             ReportWideStep::DrawOnUnclaimedFund => {
                 settlement.fund = draw_on_unclaimed_fund(hexes, inputs);
@@ -1082,7 +1094,7 @@ struct PoolSettlement {
 
 /// One [`PoolShares`] per unit in `hex.units`, index-aligned, for every contended regional pool.
 ///
-/// Computed **once per hex** and handed to both [`forecast_hex`] and [`charge_upkeep`]: they price
+/// Computed **once per hex** and handed to both [`forecast_hex`] and [`charge_settled_upkeep`]: they price
 /// `WORK` and `ENTERTAIN` through the same [`late_income`], so two settlements would be two answers
 /// to one question - the drift `ah-uwa3` removed and `ah-ycuj` now guards.
 ///
@@ -1770,7 +1782,7 @@ fn region_product_name(
 
 /// The region's shared figures, as both surfaces that price a hex read them.
 ///
-/// One function rather than two identical literals: `forecast_hex` and `charge_upkeep` must settle
+/// One function rather than two identical literals: `forecast_hex` and `charge_settled_upkeep` must settle
 /// the same pools from the same numbers, and two copies are two things to keep in step.
 fn region_wages(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> RegionWages {
     RegionWages {
@@ -2193,7 +2205,9 @@ fn forecast_hex(
     // index-aligned - the ordering this settlement needs, and it does not depend on unit ids being
     // distinct. They are: one unit number is one row in a region block, because
     // `parse_region_block` refuses a repeat (`ah-bm0d`).
-    let settled = feed_from_faction_food(&claims).settled;
+    // Step 2 itself was settled across the unit's maintenance group, before any hex was priced
+    // (`feed_groups_from_faction_food`, `ah-21r0`); this reads that answer.
+    let settled = &ledger.faction_fed;
     for (claim, forecast) in claims.iter().zip(into[start..].iter_mut()) {
         let Some(upkeep) = settled.get(&claim.unit_id).copied() else {
             continue;
@@ -4727,11 +4741,12 @@ struct Ledger<'a> {
     /// than to any unit in it. Never set for a hex a fleet sails into or out of (`ah-bwxp.1`). Turns the per-unit `not-enough-silver` findings into the
     /// single hex-level one, exactly as a `SHARE` flag already does for every tag (`ah-e66j`).
     maintenance_pooled: bool,
-    /// What step 2 left of this hex's faction-food pool, written by `charge_upkeep` from the pass
-    /// it already makes. Steps 5 and 6 draw on the same food, and a third call to
-    /// `feed_from_faction_food` would be a third answer to one question.
-    faction_food: FactionFoodPass,
-    /// The step-1 claims that pass was settled from, in `hex.units` order, so the ITEMS column can
+    /// What step 2 (`CONSUME FACTION`) left each of this hex's units owing, by unit number - the
+    /// `settled` of the [`FactionFoodPass`] of the group it ends the month in
+    /// ([`feed_groups_from_faction_food`], `ah-21r0`). Read by `charge_settled_upkeep` and by the SILVER
+    /// column, so the two cannot settle one pool two ways.
+    faction_fed: BTreeMap<String, Option<i64>>,
+    /// The step-1 claims step 2 was settled from, in `hex.units` order, so the ITEMS column can
     /// say whose food maintenance ate (`ah-q490`).
     food_claims: Vec<FoodClaim>,
     /// What this month's `BUY`, `SELL` and `WITHDRAW` move into or out of each unit's item list.
@@ -4786,7 +4801,7 @@ struct Ledger<'a> {
     /// The SILVER column's rows and totals: `forecast_hex` hands each unit's list to `forecast_unit`
     /// through `PhaseFacts::silver_moves` (`ah-xryu`). It carries every cause the column shows except
     /// `Lent` and `WasLent`, which the hex pass books between units; the wage terms are recorded by
-    /// `charge_upkeep` without being applied, because the balance already carries them netted against
+    /// `charge_settled_upkeep` without being applied, because the balance already carries them netted against
     /// the fee. What keeps it exhaustive is the `debug_assert` in `charge` and `credit`.
     pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
     /// What each unit this hex pays for shipments, keyed by unit id. Written by
@@ -5096,7 +5111,7 @@ fn ledger_for_with_production<'a>(
         upkeep_lent: BTreeMap::new(),
         upkeep_food: BTreeMap::new(),
         maintenance_pooled: false,
-        faction_food: FactionFoodPass::default(),
+        faction_fed: BTreeMap::new(),
         food_claims: Vec::new(),
         movements: Vec::new(),
         uncounted: BTreeMap::new(),
@@ -5592,8 +5607,7 @@ pub(crate) fn item_effects(
         },
         StatePhase::Maintenance,
     );
-    let groups = maintenance_groups(&priced, report, &options.month_end);
-    let mut eaten = eaten_by_group(&priced, &groups, &month_end.food_relief);
+    let mut eaten = eaten_by_group(&priced, &month_end);
 
     for (hex, ledger) in priced {
         let hex = &hex;
@@ -5841,7 +5855,7 @@ fn same_men(a: &[ItemAmount], b: &[ItemAmount], ruleset: &Ruleset) -> bool {
     a == b
 }
 
-/// Every own unit in one hex as maintenance sees it. Shared by `charge_upkeep` and by steps 5 and
+/// Every own unit in one hex as maintenance sees it. Shared by `charge_settled_upkeep` and by steps 5 and
 /// 6, which must read exactly the same facts or the column and the warning will disagree.
 ///
 /// `late` is `None` for a caller with no ledger to read one from - [`pillagers_in`] is the only
@@ -5954,15 +5968,77 @@ fn unit_facts<'a>(
 /// (`ah-uwa3`), so it is netted off the fee. Netted off rather than credited to the balance: a
 /// credit would leave the surplus where the orders could spend it, which is the very error this
 /// removes.
+///
+/// This is the one-hex form, for [`ledger_for`]: the hex is its own maintenance group. The entry
+/// points settle step 2 across groups instead, in `settle_report_wide`.
+#[cfg(test)]
 fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
-    // Built before anything below draws the balance down - see *Known traps*: `charge_upkeep`
+    ledger.food_claims = step_one_claims(ledger, hex);
+    ledger.faction_fed = feed_from_faction_food(&ledger.food_claims).settled;
+    charge_settled_upkeep(ledger, hex);
+}
+
+/// Each unit's step-1 food claim - what it owes, and what it has spare, once it has eaten its own
+/// food - in `hex.units` order. Read before any upkeep is charged, since step 2 needs every
+/// unit's leftovers before it can settle any of them.
+fn step_one_claims(ledger: &Ledger<'_>, hex: &Hex<'_>) -> Vec<FoodClaim> {
+    let phases = ledger.phase_holdings(hex);
+    let nothing = Receipts::default();
+    hex_facts(hex, &nothing, Some(&phases), ledger.ruleset)
+        .iter()
+        .map(|facts| food_claim(facts, ledger.ruleset))
+        .collect()
+}
+
+/// Maintenance step 2 across the report (`rules/economy_maintenance`: "Food items from faction
+/// units in the same region if the unit is set CONSUME FACTION"), one [`FactionFoodPass`] per
+/// maintenance group - the units ending the month in one region, since `rules/sequenceofevents`
+/// assesses maintenance after ADVANCE, MOVE and SAIL (`ah-21r0`). So a walker is fed by the food
+/// where it arrives, and a stayer is not fed by food a walker carried away.
+///
+/// Writes each unit's answer to its own ledger's `faction_fed`, and returns what each group's pool
+/// still holds for steps 5 and 6, index-aligned with `groups`.
+fn feed_groups_from_faction_food(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    groups: &[Vec<Member>],
+) -> Vec<Option<Vec<FoodAmount>>> {
+    let mut food_left = Vec::with_capacity(groups.len());
+    for members in groups {
+        // Keyed by the member's position in the group: a number alone does not name a unit across
+        // hexes (`ah-9o0c.3`).
+        let claims: Vec<FoodClaim> = members
+            .iter()
+            .enumerate()
+            .filter_map(|(position, (index, unit_id))| {
+                food_claim_of(&hexes[*index], unit_id).map(|claim| FoodClaim {
+                    unit_id: position.to_string(),
+                    ..claim.clone()
+                })
+            })
+            .collect();
+        let pass = feed_from_faction_food(&claims);
+        for (position, left) in pass.settled {
+            let Some((index, unit_id)) = position
+                .parse::<usize>()
+                .ok()
+                .and_then(|position| members.get(position))
+            else {
+                continue;
+            };
+            hexes[*index].1.faction_fed.insert(unit_id.clone(), left);
+        }
+        food_left.push(pass.pool_left);
+    }
+    food_left
+}
+
+/// Steps 1 to 3 of the payment order for one hex, once step 2 has been settled into
+/// `ledger.faction_fed`.
+fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+    // Built before anything below draws the balance down - see *Known traps*: this function
     // mutates `balance` as it goes, and a `LateHoldings` read after that loop would price later
     // units against a balance earlier ones have already spent.
     let phases = ledger.phase_holdings(hex);
-
-    // Step 2 of the payment order needs every unit's step-1 leftovers before it can settle any of
-    // them, so this is two passes over one set of facts rather than one pass - built once here,
-    // because two copies of the same literal are two things to keep in step.
     let nothing = Receipts::default();
     let facts = hex_facts(hex, &nothing, Some(&phases), ledger.ruleset);
 
@@ -5971,17 +6047,11 @@ fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let region = region_wages(hex, ledger.ruleset);
     let shares = pool_shares_for(hex, region, Some(&phases), ledger.ruleset).shares;
 
-    // The check and the Silver column read one fact, so they settle the hex's faction-food pool
-    // the same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is
-    // two surfaces contradicting each other, which is what `ah-7cdt`'s verification found.
-    let claims: Vec<FoodClaim> = facts
-        .iter()
-        .map(|facts| food_claim(facts, ledger.ruleset))
-        .collect();
-    let pass = feed_from_faction_food(&claims);
-    let settled = pass.settled.clone();
-    ledger.faction_food = pass;
-    ledger.food_claims = claims.clone();
+    // The check and the Silver column read one fact, so they settle the faction-food pool the
+    // same way: warning that a unit cannot pay a fee its faction-mates' grain already paid is two
+    // surfaces contradicting each other, which is what `ah-7cdt`'s verification found.
+    let claims = ledger.food_claims.clone();
+    let settled = ledger.faction_fed.clone();
 
     for (((ordered, facts), shares), claim) in
         hex.units.iter().zip(&facts).zip(&shares).zip(&claims)
@@ -7700,7 +7770,7 @@ fn produce(
     // Every phase `rules/sequenceofevents` runs before "Manufacturing PRODUCE orders ... are
     // processed" has been applied to this unit by the phase-major dispatch, and `PhaseState::apply`
     // writes each delta forward, so this balance is the whole answer. Wages never enter it at all:
-    // `charge_upkeep` nets `late_income` against the fee rather than crediting it (`ah-gdd3.2`).
+    // `charge_settled_upkeep` nets `late_income` against the fee rather than crediting it (`ah-gdd3.2`).
     // `held` stays the material slice `ah-l80z` gave it.
     //
     // **Do not simplify this into `held`'s own `SILV` line.** The two coincide *today* and no test
@@ -9125,8 +9195,8 @@ fn share_silver_for_upkeep(
 /// not name a unit across hexes (`ah-9o0c.3`).
 type Member = (usize, String);
 
-/// Who shares maintenance with whom (`rules/economy_maintenance` steps 4 to 6: "faction units in
-/// the same region"): every hex's units, grouped by the region each one ends the month in
+/// Who shares maintenance with whom (`rules/economy_maintenance` steps 2 and 4 to 6: "faction
+/// units in the same region"): every hex's units, grouped by the region each one ends the month in
 /// ([`month_end_region`]), since `rules/sequenceofevents` assesses maintenance after "ADVANCE,
 /// MOVE and SAIL orders are processed" (`ah-bwxp.1`, `ah-n3qb`).
 ///
@@ -9199,11 +9269,12 @@ fn month_end_region(
 /// A group is the units that end the month in one region ([`maintenance_groups`]): step 6 feeds a
 /// unit from "faction units in the same region" (`rules/economy_maintenance`), and maintenance is
 /// assessed after movement (`rules/sequenceofevents`), so a walker or a fleet eats the food waiting
-/// where it arrives and not the food it left (`ah-n3qb`). What the group can eat is
-/// [`group_food_pool`]'s answer.
+/// where it arrives and not the food it left (`ah-n3qb`). What the group can eat is what its own
+/// step 2 left, `food_left` (`ah-21r0`).
 fn feed_from_food_after_silver(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     groups: &[Vec<Member>],
+    food_left: &[Option<Vec<FoodAmount>>],
 ) -> BTreeMap<UnitKey, LateFoodRelief> {
     let mut all: BTreeMap<UnitKey, LateFoodRelief> = BTreeMap::new();
 
@@ -9213,7 +9284,7 @@ fn feed_from_food_after_silver(
         .map(|(hex, ledger)| unpayable_upkeep(hex, ledger).into_iter().collect())
         .collect();
 
-    for members in groups {
+    for (members, food_left) in groups.iter().zip(food_left) {
         if !members
             .iter()
             .any(|(index, unit_id)| owing[*index].contains_key(unit_id))
@@ -9234,7 +9305,7 @@ fn feed_from_food_after_silver(
             })
             .collect();
 
-        let relief = feed_after_silver(&claims, group_food_pool(members, hexes));
+        let relief = feed_after_silver(&claims, food_left.clone());
 
         for (position, (index, unit_id)) in members.iter().enumerate() {
             let Some(fed) = relief.get(&position.to_string()) else {
@@ -9258,17 +9329,16 @@ fn feed_from_food_after_silver(
 }
 
 /// Whose food maintenance eats this month, per unit (`ah-q490`), read group by group: the food a
-/// unit eats at step 6 comes off the faction-mates it ends the month beside (`ah-n3qb`). Reads the
-/// same passes and the same [`group_food_pool`] steps 5 and 6 were settled from, so the ITEMS and
-/// SILVER columns count one meal.
+/// unit eats at steps 2 and 6 comes off the faction-mates it ends the month beside (`ah-n3qb`,
+/// `ah-21r0`). Reads the same passes and the same group remainders steps 5 and 6 were settled
+/// from, so the ITEMS and SILVER columns count one meal.
 fn eaten_by_group(
     hexes: &[(Hex<'_>, Ledger<'_>)],
-    groups: &[Vec<Member>],
-    food_relief: &BTreeMap<UnitKey, LateFoodRelief>,
+    settlement: &ReportWideSettlement,
 ) -> BTreeMap<UnitKey, Vec<FoodAmount>> {
     let key = |(index, unit_id): &Member| unit_key(&hexes[*index].0.region.region_id, unit_id);
     let mut eaten = BTreeMap::new();
-    for members in groups {
+    for (members, food_left) in settlement.groups.iter().zip(&settlement.food_left) {
         // Keyed by position in the group, as `feed_from_food_after_silver` keys its claims.
         let claims: Vec<FoodClaim> = members
             .iter()
@@ -9284,14 +9354,15 @@ fn eaten_by_group(
             .iter()
             .enumerate()
             .filter_map(|(position, member)| {
-                food_relief
+                settlement
+                    .food_relief
                     .get(&key(member))
                     .map(|relief| (position.to_string(), relief.clone()))
             })
             .collect();
         let pass = FactionFoodPass {
             settled: BTreeMap::new(),
-            pool_left: group_food_pool(members, hexes),
+            pool_left: food_left.clone(),
         };
         for (position, foods) in food_eaten_by_holder(&claims, &pass, &late) {
             let Some(member) = position
@@ -9317,99 +9388,6 @@ fn food_claim_of<'l>(
         .iter()
         .position(|ordered| ordered.unit.unit_id == unit_id)?;
     ledger.food_claims.get(position)
-}
-
-/// The food a maintenance group can still eat at steps 5 and 6: `None` when that cannot be told.
-///
-/// Step 2 (`CONSUME FACTION`) is still settled per starting hex (`FactionFoodPass`), so each hex
-/// the group draws members from brings what its step 2 left - exactly, when the group holds all
-/// of that hex's food:
-///
-/// - every unit of the hex is in the group, or every unit holding food is: the hex's whole
-///   remainder;
-/// - none of the members holds food: nothing;
-/// - the hex's food is split between groups and its step 2 ate none of it: the members' own spare
-///   food;
-/// - otherwise which holder's food step 2 ate cannot be told, and neither can the group's pool.
-///
-/// "Holding food" counts a unit whose food is uncertain, since it may be holding some.
-fn group_food_pool(members: &[Member], hexes: &[(Hex<'_>, Ledger<'_>)]) -> Option<Vec<FoodAmount>> {
-    let holds = |claim: &FoodClaim| {
-        claim.spare_food_uncertain || claim.spare_food.iter().any(|food| food.amount > 0)
-    };
-    let mut pool: Vec<FoodAmount> = Vec::new();
-    let mut seen: Vec<usize> = Vec::new();
-    for (index, _) in members {
-        if seen.contains(index) {
-            continue;
-        }
-        seen.push(*index);
-        let (hex, ledger) = &hexes[*index];
-        let inside = |ordered: &Ordered<'_>| {
-            members
-                .iter()
-                .any(|(other, unit_id)| other == index && *unit_id == ordered.unit.unit_id)
-        };
-        let (mut held_inside, mut held_outside) = (Vec::new(), false);
-        for (ordered, claim) in hex.units.iter().zip(&ledger.food_claims) {
-            if !holds(claim) {
-                continue;
-            }
-            if inside(ordered) {
-                held_inside.push(claim);
-            } else {
-                held_outside = true;
-            }
-        }
-        let share = if held_inside.is_empty() {
-            Vec::new()
-        } else if !held_outside {
-            ledger.faction_food.pool_left.clone()?
-        } else {
-            let spare = |claims: &mut dyn Iterator<Item = &FoodClaim>| -> Vec<FoodAmount> {
-                let mut total: Vec<FoodAmount> = Vec::new();
-                for food in claims.flat_map(|claim| &claim.spare_food) {
-                    merge_food(&mut total, food);
-                }
-                total
-            };
-            let left = ledger.faction_food.pool_left.as_ref()?;
-            let whole = spare(&mut ledger.food_claims.iter());
-            if !same_food(left, &whole) {
-                return None;
-            }
-            spare(&mut held_inside.into_iter())
-        };
-        for food in &share {
-            merge_food(&mut pool, food);
-        }
-    }
-    Some(pool)
-}
-
-/// Adds `food` to `into`, by tag. Nothing for an empty or worthless entry, as a pool counts it.
-fn merge_food(into: &mut Vec<FoodAmount>, food: &FoodAmount) {
-    if food.amount <= 0 || food.maintenance_value <= 0 {
-        return;
-    }
-    match into.iter_mut().find(|entry| entry.tag == food.tag) {
-        Some(entry) => entry.amount = entry.amount.saturating_add(food.amount),
-        None => into.push(food.clone()),
-    }
-}
-
-/// Whether two stocks hold the same amount of every tag, whatever their order.
-fn same_food(left: &[FoodAmount], right: &[FoodAmount]) -> bool {
-    let amount = |stock: &[FoodAmount], tag: &str| -> i64 {
-        stock
-            .iter()
-            .filter(|entry| entry.tag == tag)
-            .map(|entry| entry.amount)
-            .sum()
-    };
-    left.iter()
-        .chain(right)
-        .all(|entry| amount(left, &entry.tag) == amount(right, &entry.tag))
 }
 
 /// Writes what the fund paid into each ledger, so the checks that read a balance see it.
@@ -31669,7 +31647,7 @@ BUILD
         let rules = ruleset();
         let mut ledger = ledger_for(&hex, Some(&rules));
 
-        // What `charge_upkeep` and the sharing pass leave behind for a hex that could not feed
+        // What `charge_settled_upkeep` and the sharing pass leave behind for a hex that could not feed
         // itself: a fee nothing paid, drawn straight off the balance, and no `SHARE` flag.
         ledger
             .state
@@ -32014,7 +31992,23 @@ BUILD
         waiting: Vec<ReportUnit>,
         walks: bool,
     ) -> (ParsedReport, String, CheckOptions) {
-        let mut units = vec![starving(with_men(unit("4021"), 4))];
+        this_walkers_turn(
+            starving(with_men(unit("4021"), 4)),
+            left_behind,
+            waiting,
+            walks,
+        )
+    }
+
+    /// [`a_walkers_turn`] with the walker - which must be unit 4021 - given by the test.
+    fn this_walkers_turn(
+        walker: ReportUnit,
+        left_behind: Vec<ReportUnit>,
+        waiting: Vec<ReportUnit>,
+        walks: bool,
+    ) -> (ParsedReport, String, CheckOptions) {
+        assert_eq!(walker.unit_id, "4021");
+        let mut units = vec![walker];
         units.extend(left_behind);
         let orders = format!(
             "unit 4021\n{}{}",
@@ -32160,6 +32154,116 @@ BUILD
         );
     }
 
+    /// `ah-21r0`: the walker [`a_walkers_turn`] moves, set `CONSUME FACTION`.
+    fn a_consume_faction_walker() -> ReportUnit {
+        with_flag(
+            starving(with_men(unit("4021"), 4)),
+            "consuming faction's food",
+        )
+    }
+
+    /// `ah-21r0`: step 2 feeds a `CONSUME FACTION` unit from "faction units in the same region"
+    /// (`rules/economy_maintenance`), assessed after "ADVANCE, MOVE and SAIL"
+    /// (`rules/sequenceofevents`) - so the grain a walker leaves behind does not feed it, and with
+    /// nobody where it arrives to pay, it is warned.
+    #[test]
+    fn a_consume_faction_walker_is_not_fed_by_the_grain_it_leaves() {
+        let (report, orders, options) = this_walkers_turn(
+            a_consume_faction_walker(),
+            vec![with_item(starving(unit("1795")), 6, "grain", "GRAI")],
+            Vec::new(),
+            true,
+        );
+        let review = review_turn(&report, &orders, Some(&ruleset()), options);
+        assert_eq!(walker(&review).faction_food_covered, 0);
+        assert!(
+            upkeep_warnings(&review)
+                .iter()
+                .any(|finding| finding.unit_id.as_deref() == Some("4021")),
+            "nothing where the walker ends the month can feed it: {:?}",
+            review.findings
+        );
+    }
+
+    /// `ah-21r0`: and the grain waiting where it arrives feeds it at step 2, before its own silver
+    /// is asked for anything at step 3 (`rules/economy_maintenance`).
+    #[test]
+    fn a_consume_faction_walker_is_fed_by_the_grain_where_it_arrives_before_its_silver() {
+        let (report, orders, options) = this_walkers_turn(
+            with_silver(a_consume_faction_walker(), 100),
+            Vec::new(),
+            vec![with_item(starving(unit("1795")), 6, "grain", "GRAI")],
+            true,
+        );
+        let review = review_turn(&report, &orders, Some(&ruleset()), options);
+        assert_eq!(walker(&review).faction_food_covered, 40);
+        assert_eq!(walker(&review).upkeep, Some(0));
+    }
+
+    /// `ah-21r0`: a stayer set `CONSUME FACTION` is not fed at step 2 by grain a walker carried
+    /// away - the walker is in another region when maintenance is assessed.
+    #[test]
+    fn a_stayer_is_not_fed_by_grain_a_walker_carried_away() {
+        let (report, orders, options) = this_walkers_turn(
+            with_item(starving(with_men(unit("4021"), 4)), 6, "grain", "GRAI"),
+            vec![with_flag(
+                starving(with_men(unit("1796"), 4)),
+                "consuming faction's food",
+            )],
+            Vec::new(),
+            true,
+        );
+        let review = review_turn(&report, &orders, Some(&ruleset()), options);
+        assert_eq!(forecast(&review, "1796").faction_food_covered, 0);
+        assert!(
+            upkeep_warnings(&review)
+                .iter()
+                .any(|finding| finding.unit_id.as_deref() == Some("1796")),
+            "the only grain left the stayer's region: {:?}",
+            review.findings
+        );
+    }
+
+    /// `ah-21r0`, the ITEMS column: a hex whose grain is split between the walker leaving it and a
+    /// holder staying, where step 2 feeds a stayer. The stayer eats the holder's grain, not the
+    /// walker's, and the ITEMS column says exactly that rather than dropping the meal.
+    #[test]
+    fn step_two_in_a_hex_split_by_a_walker_eats_exact_grain() {
+        let (report, orders, options) = this_walkers_turn(
+            with_item(starving(with_men(unit("4021"), 4)), 6, "grain", "GRAI"),
+            vec![
+                with_item(starving(unit("1795")), 6, "grain", "GRAI"),
+                with_flag(
+                    starving(with_men(unit("1796"), 4)),
+                    "consuming faction's food",
+                ),
+            ],
+            Vec::new(),
+            true,
+        );
+        let effects = item_effects(&report, &orders, Some(&ruleset()), &options);
+        let grain_eaten = |unit_id: &str| -> i64 {
+            effects_for(&effects, unit_id)
+                .map(|unit| {
+                    unit.eaten
+                        .iter()
+                        .filter(|movement| movement.tag == "GRAI")
+                        .map(|movement| -movement.delta)
+                        .sum()
+                })
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            grain_eaten("1795"),
+            2,
+            "one for the holder's own fee, one for the stayer's at step 2"
+        );
+        assert_eq!(grain_eaten("4021"), 1, "the walker's own fee only");
+        assert_eq!(grain_eaten("1796"), 0, "the stayer holds no grain");
+        let review = review_turn(&report, &orders, Some(&ruleset()), options);
+        assert_eq!(forecast(&review, "1796").faction_food_covered, 40);
+    }
+
     /// `ah-n3qb`: a sailing fleet is fed by the faction food waiting where it arrives
     /// (`rules/sequenceofevents`, `rules/economy_maintenance` step 6).
     #[test]
@@ -32192,6 +32296,39 @@ BUILD
             review.findings
         );
         assert_eq!(walker(&review).faction_food_covered, 40);
+    }
+
+    /// `ah-21r0`: a passenger set `CONSUME FACTION` is fed at step 2 by the grain waiting where its
+    /// fleet arrives (`rules/economy_maintenance`, `rules/sequenceofevents`), before its own silver
+    /// is asked for anything.
+    #[test]
+    fn a_consume_faction_passenger_is_fed_by_the_grain_where_its_fleet_arrives() {
+        let mut fleet = silverless_fleet("1:7,53", 7, 53, "329", "4022", "4021");
+        for unit in &mut fleet.units {
+            if unit.unit_id == "4021" {
+                *unit = with_silver(with_flag(unit.clone(), "consuming faction's food"), 100);
+            }
+        }
+        let report = ParsedReport {
+            regions: vec![
+                fleet,
+                region_at(
+                    "1:7,51",
+                    7,
+                    51,
+                    vec![with_item(starving(unit("1795")), 6, "grain", "GRAI")],
+                ),
+            ],
+            ..Default::default()
+        };
+        let review = review_turn(
+            &report,
+            "unit 4022\nSAIL N\nunit 4021\nunit 1795\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        assert_eq!(walker(&review).faction_food_covered, 40);
+        assert_eq!(walker(&review).upkeep, Some(0));
     }
 
     /// `ah-n3qb` review: a passenger is fed where [`sail_destination`] says its fleet arrives -
@@ -34078,7 +34215,7 @@ BUILD
         );
     }
 
-    /// A guessed headcount is charged nothing by `charge_upkeep`, so it has no shortfall to claim -
+    /// A guessed headcount is charged nothing by `charge_settled_upkeep`, so it has no shortfall to claim -
     /// and a fund too small for the rest is still judged without it.
     #[test]
     fn a_guessed_headcount_does_not_claim_from_the_fund() {

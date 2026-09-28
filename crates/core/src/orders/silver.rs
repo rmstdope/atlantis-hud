@@ -1000,7 +1000,7 @@ pub struct PoolShares {
     ///
     /// A property of the hex rather than of one unit, carried per unit for the same reason
     /// [`UnitSilver::market_purse_held_only`] is: this is the struct the settlement already hands
-    /// down to both of its readers, index-aligned with `hex.units`. `charge_upkeep` receives them
+    /// down to both of its readers, index-aligned with `hex.units`. `charge_settled_upkeep` receives them
     /// and ignores them - a bound changes no figure, and the pessimistic charge it already makes
     /// against a settled share is still the right one.
     pub unread_claimant_tax: bool,
@@ -1717,7 +1717,7 @@ pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
 /// What a unit's orders earn it in the turn's last phase - wages and entertaining.
 ///
 /// The one place that decides which earnings arrive too late to be spent. [`forecast_unit`] and
-/// `semantics::charge_upkeep` both read it, because two copies of this rule is exactly the drift
+/// `semantics::charge_settled_upkeep` both read it, because two copies of this rule is exactly the drift
 /// that `ah-uwa3` was filed to remove.
 ///
 /// **This is already `ah-lu0f`'s shared pricing seam for `WORK` and `ENTERTAIN`**, alongside
@@ -1733,7 +1733,7 @@ pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
 /// `shares` is what this unit may draw from each pool once its faction-mates in the same hex have
 /// been settled against it (`ah-t2pn`). It is a parameter rather than something derived here
 /// because the settlement needs the whole hex, and this function is deliberately per unit and
-/// pure - and because [`forecast_unit`] and `semantics::charge_upkeep` must be handed **the same**
+/// pure - and because [`forecast_unit`] and `semantics::charge_settled_upkeep` must be handed **the same**
 /// shares, for the reason this function exists at all.
 #[must_use]
 pub fn late_income(
@@ -1759,7 +1759,7 @@ pub(crate) struct LateTerm {
 /// The terms [`late_income`] sums: at most one `Worked` and one `Entertained`.
 ///
 /// Separate from the sum so [`forecast_unit`] can name each one in its ledger while
-/// `semantics::charge_upkeep` keeps reading the total - one arithmetic, two readers.
+/// `semantics::charge_settled_upkeep` keeps reading the total - one arithmetic, two readers.
 pub(crate) fn late_income_terms(
     facts: &UnitFacts<'_>,
     region: RegionWages,
@@ -1787,7 +1787,7 @@ pub(crate) fn late_income_terms(
                         PoolShare::Share(share) => share,
                         // Nowhere to put a doubt: this returns a plain number, and `forecast_unit`
                         // raises `ContestedRegionPool` separately. Zero is the pessimistic direction,
-                        // and `semantics::charge_upkeep` - which has no doubt to raise at all - wants
+                        // and `semantics::charge_settled_upkeep` - which has no doubt to raise at all - wants
                         // exactly that: the full fee charged against no wages.
                         PoolShare::Unknowable => 0,
                     },
@@ -1813,7 +1813,7 @@ pub(crate) fn late_income_terms(
     // A unit that spends its month on nothing is set to work, and work pays the region's wage
     // exactly as an explicit `WORK` does (`ah-gjq4`). Priced here rather than beside the explicit
     // arm so it is unmistakably a default and not a second `Intent::Work`, and priced through this
-    // function so `semantics::charge_upkeep` sees it too - wages arrive in the turn's last phase,
+    // function so `semantics::charge_settled_upkeep` sees it too - wages arrive in the turn's last phase,
     // which is why they pay upkeep and cannot fund this month's orders.
     if is_set_to_work(facts.flags, facts.intents) {
         terms.push(LateTerm {
@@ -2306,7 +2306,7 @@ pub fn forecast_unit(
                     income_doubt.or(price_pillage(region.tax_base, region.pillagers, mine).doubt);
             }
             // `WORK` and `ENTERTAIN` earn nothing but late income, so [`late_income`] prices them
-            // both - once, for this function and for `semantics::charge_upkeep` alike.
+            // both - once, for this function and for `semantics::charge_settled_upkeep` alike.
             Intent::Work | Intent::Entertain => {}
             Intent::Sell { item, .. } => match sale(item) {
                 // The ledger's `sell` settles the line, and the row is its record (`ah-xryu`).
