@@ -899,6 +899,9 @@ enum ReportWideStep {
     ShipBetweenQuartermasters,
     /// Every refused shipment's whole ask, charged once every shipment has been judged (`ah-7ale.4`).
     ChargeRefusedShipments,
+    /// Maintenance steps 1 to 3, per hex: each unit's own food, its hex's faction food, then its
+    /// own silver - read from what it holds once TRANSPORT has run (`ah-7rjo`).
+    ChargeUpkeep,
     /// Maintenance step 4: a faction-mate's silver in the same region at month end (`ah-e66j`).
     ShareSilverForUpkeep,
     /// Maintenance steps 5 and 6: the unit's own food, then its hex's faction food (`ah-eacd`).
@@ -909,7 +912,7 @@ enum ReportWideStep {
 
 /// The report-wide settlement, in the turn's order. Each step runs in, and reads balances at,
 /// the phase beside it. The maintenance steps read the Maintenance slot through `balance_of`.
-const REPORT_WIDE_STEPS: [(StatePhase, ReportWideStep); 6] = [
+const REPORT_WIDE_STEPS: [(StatePhase, ReportWideStep); 7] = [
     (StatePhase::Transport, ReportWideStep::ShipToQuartermasters),
     (
         StatePhase::Transport,
@@ -919,6 +922,7 @@ const REPORT_WIDE_STEPS: [(StatePhase, ReportWideStep); 6] = [
         StatePhase::Transport,
         ReportWideStep::ChargeRefusedShipments,
     ),
+    (StatePhase::Maintenance, ReportWideStep::ChargeUpkeep),
     (
         StatePhase::Maintenance,
         ReportWideStep::ShareSilverForUpkeep,
@@ -984,6 +988,12 @@ fn settle_report_wide(
                 credit_shipped_goods(hexes, phase, &delivered_late);
             }
             ReportWideStep::ChargeRefusedShipments => charge_refused_shipments(hexes, phase),
+            // Steps 1 to 3 read holdings after every shipment, and step 4 lends what they leave.
+            ReportWideStep::ChargeUpkeep => {
+                for (hex, ledger) in hexes.iter_mut() {
+                    charge_upkeep(ledger, hex);
+                }
+            }
             // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
             // grain.
             ReportWideStep::ShareSilverForUpkeep => {
@@ -4984,7 +4994,12 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         .filter(|unit| !unit.own)
         .map(|unit| unit.unit_id.clone())
         .collect();
-    ledger_for_with_production(hex, ruleset, &production, &foreign_unit_ids, &None)
+    let mut ledger =
+        ledger_for_with_production(hex, ruleset, &production, &foreign_unit_ids, &None);
+    // A hex read alone ships nothing, so its upkeep can be charged straight away; the entry
+    // points charge it in `settle_report_wide`, after TRANSPORT (`ah-7rjo`).
+    charge_upkeep(&mut ledger, hex);
+    ledger
 }
 
 /// Everything the hex's units hold, with this month's orders applied.
@@ -5331,8 +5346,9 @@ fn ledger_for_with_production<'a>(
 
     unwind_unconsumed_production(&mut ledger);
 
-    charge_upkeep(&mut ledger, hex);
-
+    // Upkeep is not charged here: `rules/sequenceofevents` assesses maintenance after TRANSPORT,
+    // which settles across the whole report, so `settle_report_wide` charges it once every
+    // shipment has landed (`ah-7rjo`).
     ledger
 }
 
@@ -40973,6 +40989,117 @@ BUILD
         assert_eq!(eater.faction_food_covered, 50);
     }
 
+    // --- ah-7rjo: maintenance is assessed after TRANSPORT -----------------------------------------
+
+    /// What maintenance ate off one unit, per tag, as the ITEMS column shows it.
+    fn eaten_off(report: &ParsedReport, orders: &str, region_id: &str, id: &str) -> i64 {
+        item_effects(report, orders, Some(&ruleset()), &with_map())
+            .get(&unit_key(region_id, id))
+            .map_or(0, |effects| effects.eaten.iter().map(|m| -m.delta).sum())
+    }
+
+    /// `rules/sequenceofevents` processes TRANSPORT before "Maintenance costs are assessed", so a
+    /// `CONSUME UNIT` unit that ships its grain away has none left to eat and pays in silver
+    /// (`rules/economy_maintenance` steps 1 and 3).
+    #[test]
+    fn a_unit_that_ships_its_food_away_pays_upkeep_in_silver() {
+        let shipper = with_item(
+            with_men(with_silver(starving(unit("900")), 500), 10),
+            5,
+            "grain",
+            "GRAI",
+        );
+        let report = report(vec![
+            shipping_from(vec![shipper]),
+            caravanserai_owner("902", 1, 0, 4),
+        ]);
+        let orders = "unit 900\nCONSUME UNIT\nTRANSPORT 902 5 GRAI\n";
+
+        let review = review_turn(&report, orders, Some(&ruleset()), with_map());
+
+        let silver = shipment_silver(&review, "900");
+        assert_eq!(silver.own_food_covered, 0, "{silver:?}");
+        assert_eq!(silver.upkeep, Some(100), "{silver:?}");
+        assert_eq!(eaten_off(&report, orders, "1:0,0", "900"), 0);
+    }
+
+    /// The same unit with no silver at all: the check must say it cannot pay, as the column does.
+    #[test]
+    fn a_penniless_unit_that_ships_its_food_away_is_warned_about_upkeep() {
+        let shipper = with_item(with_men(starving(unit("900")), 10), 5, "grain", "GRAI");
+        let report = report(vec![
+            shipping_from(vec![shipper]),
+            caravanserai_owner("902", 1, 0, 4),
+        ]);
+
+        let review = review_turn(
+            &report,
+            "unit 900\nCONSUME UNIT\nTRANSPORT 902 5 GRAI\n",
+            Some(&ruleset()),
+            with_map(),
+        );
+
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.as_deref() == Some("900")),
+            "{:?}",
+            review.findings
+        );
+    }
+
+    /// The mirror image: a quartermaster with neither grain nor silver is fed by the grain
+    /// TRANSPORT brings it, since maintenance is assessed after the shipment lands.
+    #[test]
+    fn a_unit_fed_by_food_shipped_to_it_owes_nothing() {
+        let shipper = with_item(with_silver(starving(unit("900")), 500), 5, "grain", "GRAI");
+        let mut receiving = caravanserai_owner("902", 1, 0, 4);
+        receiving.units[0] = starving(receiving.units[0].clone());
+        let report = report(vec![shipping_from(vec![shipper]), receiving]);
+        let orders = "unit 900\nTRANSPORT 902 5 GRAI\nunit 902\nCONSUME UNIT\n";
+
+        let review = review_turn(&report, orders, Some(&ruleset()), with_map());
+
+        let silver = shipment_silver(&review, "902");
+        assert_eq!(silver.upkeep, Some(0), "{silver:?}");
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.as_deref() == Some("902")),
+            "{:?}",
+            review.findings
+        );
+        assert!(eaten_off(&report, orders, "1:0,4", "902") > 0);
+    }
+
+    /// Step 2: grain a faction-food holder ships away feeds none of its neighbours.
+    #[test]
+    fn food_shipped_away_feeds_no_faction_mate() {
+        let mut granary = with_item(
+            with_men(with_silver(starving(unit("900")), 500), 1),
+            5,
+            "grain",
+            "GRAI",
+        );
+        granary.flags = vec!["consuming faction's food".to_string()];
+        let mut eater = with_men(with_silver(starving(unit("901")), 500), 6);
+        eater.flags = vec!["consuming faction's food".to_string()];
+        let report = report(vec![
+            shipping_from(vec![granary, eater]),
+            caravanserai_owner("902", 1, 0, 4),
+        ]);
+        let orders = "unit 900\nTRANSPORT 902 5 GRAI\n";
+
+        let review = review_turn(&report, orders, Some(&ruleset()), with_map());
+
+        let eater = shipment_silver(&review, "901");
+        assert_eq!(eater.faction_food_covered, 0, "{eater:?}");
+        assert_eq!(eater.upkeep, Some(60), "{eater:?}");
+        assert_eq!(eaten_off(&report, orders, "1:0,0", "900"), 0);
+    }
+
     fn silencing_transport() -> CheckOptions {
         CheckOptions {
             disabled: ["transport-out-of-reach".to_string()].into_iter().collect(),
@@ -41759,6 +41886,7 @@ BUILD
                 ReportWideStep::ShipToQuartermasters,
                 ReportWideStep::ShipBetweenQuartermasters,
                 ReportWideStep::ChargeRefusedShipments,
+                ReportWideStep::ChargeUpkeep,
                 ReportWideStep::ShareSilverForUpkeep,
                 ReportWideStep::FeedFromFood,
                 ReportWideStep::DrawOnUnclaimedFund,
