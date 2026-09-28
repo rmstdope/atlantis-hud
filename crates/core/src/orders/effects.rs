@@ -1328,7 +1328,8 @@ pub fn shipment_measures(
 
 /// Every own unit whose MOVE would cross a wall a report proves, for a caller that checks orders
 /// but draws no map. Empty when the document writes no directional MOVE/ADVANCE step, which keeps
-/// the known map off the keystroke path, exactly as [`shipment_measures`] does for shipments.
+/// the known map off the keystroke path, as [`shipment_measures`] does for a document that neither
+/// ships nor walks.
 ///
 /// # Errors
 ///

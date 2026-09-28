@@ -9167,13 +9167,16 @@ fn one_whole_hex(members: &[(usize, String)], hexes: &[(Hex<'_>, Ledger<'_>)]) -
 
 /// The region `ordered` stands in when maintenance is assessed, by coordinate.
 ///
-/// First `month_end`, the movement trace's answer (`CheckOptions::month_end`): a walker's month
-/// end depends on its movement points and the terrain, which is `movement::plan`'s whole business
-/// and not a thing to guess here (`ah-n3qb`). Then [`production_region`]'s answer, so a sailing
-/// passenger produces and is fed in the same place: wherever [`sail_destination`] says its fleet
-/// arrives (`ah-jk9h`). Every other unit, and one whose move nothing can follow, is counted where
-/// it stands: "cannot say" is not a destination, and staying put is what the sharing did before
-/// `ah-bwxp.1`.
+/// A unit its fleet carries away: [`production_region`]'s answer, so a sailing passenger produces
+/// and is fed in the same place, wherever [`sail_destination`] says its fleet arrives (`ah-jk9h`,
+/// `ah-bwxp.1`). Never `month_end`, which the shells fill for a sail only when something else in
+/// the document walks or ships - so an unrelated order would otherwise move where a fleet is fed.
+///
+/// Any other unit: `month_end`, the movement trace's answer (`CheckOptions::month_end`), since a
+/// walker's month end depends on its movement points and the terrain, which is `movement::plan`'s
+/// whole business and not a thing to guess here (`ah-n3qb`). A unit nothing can follow is counted
+/// where it stands: "cannot say" is not a destination, and staying put is what the sharing did
+/// before `ah-bwxp.1`.
 fn month_end_region(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
@@ -9181,8 +9184,11 @@ fn month_end_region(
     regions: &HashMap<Coordinate, &ReportRegion>,
     month_end: &super::transport::MonthEndHexes,
 ) -> Coordinate {
-    if let Some(at) = month_end.get(&ordered.unit.unit_id) {
-        return *at;
+    let sails = ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some());
+    if !sails {
+        if let Some(at) = month_end.get(&ordered.unit.unit_id) {
+            return *at;
+        }
     }
     production_region(hex, ordered, ruleset, regions)
         .map_or(hex.region.coordinate, |region| region.coordinate)
@@ -31757,6 +31763,16 @@ BUILD
     /// them. The fund is nearly empty, as it was in the report, so a claim that reached it would
     /// warn.
     fn a_fleet_sailing_north_to_a_banker(sails: bool) -> TurnReview {
+        let (report, orders) = a_fleet_sailing_north_to_a_banker_inputs(sails);
+        review_turn(
+            &report,
+            &orders,
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        )
+    }
+
+    fn a_fleet_sailing_north_to_a_banker_inputs(sails: bool) -> (ParsedReport, String) {
         let ocean = ruleset().movement.ocean.terrain.clone();
         let passenger = ReportUnit {
             structure_id: Some("329".to_string()),
@@ -31791,12 +31807,7 @@ BUILD
         } else {
             "unit 4022\nunit 4021\nunit 1795\n"
         };
-        review_turn(
-            &report,
-            orders,
-            Some(&ruleset()),
-            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
-        )
+        (report, orders.to_string())
     }
 
     fn upkeep_warnings(review: &TurnReview) -> Vec<&Finding> {
@@ -32181,6 +32192,27 @@ BUILD
             review.findings
         );
         assert_eq!(walker(&review).faction_food_covered, 40);
+    }
+
+    /// `ah-n3qb` review: a passenger is fed where [`sail_destination`] says its fleet arrives -
+    /// where it also produces (`ah-jk9h`) - whatever `CheckOptions::month_end` says, which the
+    /// shells fill for a sail only when something else in the document walks or ships. So an
+    /// unrelated walk elsewhere cannot move where the fleet is fed.
+    #[test]
+    fn a_fleet_is_fed_where_its_sail_arrives_whatever_the_trace_says() {
+        let (report, orders) = a_fleet_sailing_north_to_a_banker_inputs(true);
+        let mut options = disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]);
+        for id in ["4021", "4022"] {
+            options
+                .month_end
+                .insert(id.to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        }
+        let review = review_turn(&report, &orders, Some(&ruleset()), options);
+        assert!(
+            upkeep_warnings(&review).is_empty(),
+            "the banker where the sail arrives pays: {:?}",
+            review.findings
+        );
     }
 
     /// The control: the same fleet staying where it is has nobody beside it to pay, so it is
