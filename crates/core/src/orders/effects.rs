@@ -764,7 +764,7 @@ pub fn preview_orders_on_map(
         orders_document,
         Some(ruleset.as_ref()),
     );
-    let (units, dissolved, measured) = settle(
+    let (units, dissolved) = settle(
         &report,
         &ruleset,
         orders_document,
@@ -774,18 +774,21 @@ pub fn preview_orders_on_map(
     );
     let (mut decided, sailing) =
         decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
-    // `rules/sequenceofevents` moves every unit before any TRANSPORT, so a shipment one of whose
-    // ends moves is settled again from where the units end the month. The map, statuses and
-    // arrivals stay the first settle's, because both settles weigh a moving unit before its
-    // shipments and the trace reads the report's printed weight where it has one, so the second
-    // settle can change only what the shipments deliver (`ah-b6fz`, `ah-ol1d`).
+    // `rules/sequenceofevents` moves every unit before any TRANSPORT and before maintenance, so a
+    // month in which anybody moves is settled again from where the units end it: a shipment one
+    // of whose ends moves is measured from there (`ah-b6fz`), and a mover's upkeep is shared with,
+    // and fed by the food of, the faction-mates it ends the month beside
+    // (`rules/economy_maintenance`, `ah-n3qb`). The map, statuses and arrivals stay the first
+    // settle's, because both settles weigh a moving unit before its shipments and the trace reads
+    // the report's printed weight where it has one, so the second settle can change only what the
+    // shipments deliver and what maintenance eats (`ah-ol1d`).
     let month_end = month_end_of(&decided);
-    if measured.iter().any(|id| month_end.contains_key(id)) {
+    if !month_end.is_empty() {
         let again = super::semantics::CheckOptions {
             month_end,
             ..options
         };
-        let (units, _, _) = settle(
+        let (units, _) = settle(
             &report,
             &ruleset,
             orders_document,
@@ -1023,7 +1026,7 @@ pub(super) fn transported_out(
         orders_document,
         Some(ruleset.as_ref()),
     );
-    let (units, _, _) = settle(
+    let (units, _) = settle(
         report,
         &ruleset,
         orders_document,
@@ -1061,11 +1064,7 @@ fn settle(
     ordered: &crate::movement::fleet::OrderedUnits,
     geometry: Option<crate::movement::graph::MapGeometry>,
     options: super::semantics::CheckOptions,
-) -> (
-    Vec<WorkingUnit>,
-    BTreeMap<usize, Option<String>>,
-    std::collections::BTreeSet<String>,
-) {
+) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
     let mut working = Working::over_own_units(report, ruleset.clone(), geometry, options);
     super::walk::walk(orders_document, Some(ruleset.as_ref()), |event| {
         working.visit(event);
@@ -1138,8 +1137,7 @@ fn settle(
         }
     }
 
-    let measured = working.measured_ends.take();
-    (working.units, dissolved, measured)
+    (working.units, dissolved)
 }
 
 /// Folds each unit's movement order over the answer its ENTER and LEAVE orders gave, recording
@@ -1226,7 +1224,7 @@ pub(crate) fn formed_unit_as_ordered(
         orders_document,
         Some(ruleset.as_ref()),
     );
-    let (units, _, _) = settle(
+    let (units, _) = settle(
         report,
         ruleset,
         orders_document,
@@ -1259,8 +1257,12 @@ pub struct ShipmentMeasures {
 
 /// The shipment measures, for a caller that checks orders but draws no map.
 ///
-/// Empty - measure from the report - when the document writes no `TRANSPORT`/`DISTRIBUTE`, which
-/// keeps the known map, the settle and the trace off the keystroke path.
+/// Empty - measure from the report - when the document writes no `TRANSPORT`/`DISTRIBUTE` and no
+/// directional `MOVE`/`ADVANCE`, which keeps the known map, the settle and the trace off the
+/// keystroke path. A walk alone is enough, because maintenance is shared where a unit ends the
+/// month, not only a shipment measured from there (`rules/sequenceofevents`,
+/// `rules/economy_maintenance`, `ah-n3qb`). A `SAIL` is not: the checks follow a fleet from the
+/// report on their own (`ah-bwxp.1`).
 ///
 /// # Errors
 ///
@@ -1284,7 +1286,7 @@ pub fn shipment_measures(
     let remembered: Vec<crate::movement::graph::RememberedRegion> =
         serde_json::from_str(remembered_json)
             .map_err(|error| format!("remembered regions could not be read: {error}"))?;
-    if !ships_anything(orders_document, &ruleset) {
+    if !ships_anything(orders_document, &ruleset) && !moves_anywhere(orders_document, &ruleset) {
         return Ok(ShipmentMeasures::default());
     }
 
@@ -1309,7 +1311,7 @@ pub fn shipment_measures(
         orders_document,
         Some(ruleset.as_ref()),
     );
-    let (units, dissolved, _) = settle(
+    let (units, dissolved) = settle(
         &report,
         &ruleset,
         orders_document,
@@ -2078,10 +2080,6 @@ struct Working {
     hex_of_region: BTreeMap<String, crate::report::model::Coordinate>,
     /// Which advisory checks are on, for the refusals the forecast makes itself (`ah-7ale.2.2.2`).
     options: super::semantics::CheckOptions,
-    /// Every unit id a reach measurement read a position for this settle - senders and targets
-    /// alike. What tells `preview_orders_on_map` whether a second settle can change anything
-    /// (`ah-b6fz`). A cell because `arrival` is a reader over `&self`.
-    measured_ends: std::cell::RefCell<std::collections::BTreeSet<String>>,
 }
 
 /// What the report can say about a named `TRANSPORT`/`DISTRIBUTE` target (`ah-64wm`).
@@ -2200,7 +2198,6 @@ impl Working {
             transfers: Vec::new(),
             hex_of_region,
             options,
-            measured_ends: std::cell::RefCell::default(),
         }
     }
 
@@ -3267,19 +3264,10 @@ impl Working {
     /// `Arrival::Certain` also covers the cases `ah-7ale.2.1` documented as no refusal besides
     /// "near enough": no reach rule applies (`transport::reach_for`), and either end's hex is not in
     /// the report.
-    fn arrival(
-        &self,
-        pending: &PendingTransport,
-        verdict: &super::transport::Judged,
-    ) -> super::transport::Arrival {
+    fn arrival(&self, verdict: &super::transport::Judged) -> super::transport::Arrival {
         use super::transport::Arrival;
         if verdict.reach.is_none() {
             return Arrival::Certain;
-        }
-        {
-            let mut measured = self.measured_ends.borrow_mut();
-            measured.insert(self.units[pending.sender].unit.unit_id.clone());
-            measured.insert(pending.to.clone());
         }
         // Measured once the month's moves are made: `rules/sequenceofevents` moves every unit
         // before any TRANSPORT (`ah-b6fz`). Nothing measured is either end's hex missing.
@@ -3439,7 +3427,7 @@ impl Working {
             }
             // The goods are welcome, but the hexes are too far apart: `rules/economy_transport`
             // moves nothing, so they and their weight stay with the sender (`ah-7ale.2.1`).
-            let arrival = self.arrival(pending, &verdict);
+            let arrival = self.arrival(&verdict);
             if let super::transport::Arrival::TooFar(refused) = arrival {
                 let (reason, reach_opt) = Self::refusal(refused);
                 let (amount, tag) = self.goods_claimed(&moving);
@@ -3984,7 +3972,7 @@ mod tests {
             "unit 900\nMOVE SE\n",
             Some(ruleset.as_ref()),
         );
-        let (units, _, _) = settle(
+        let (units, _) = settle(
             &parsed,
             &ruleset,
             "unit 900\n",
@@ -4010,7 +3998,7 @@ mod tests {
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
         let ordered =
             crate::movement::fleet::OrderedUnits::from_document(document, Some(ruleset.as_ref()));
-        let (units, _, _) = settle(
+        let (units, _) = settle(
             &parsed,
             &ruleset,
             document,
@@ -4139,7 +4127,7 @@ mod tests {
             let report = ReportCache::new().classified(text, RULESET);
             let ordered =
                 crate::movement::fleet::OrderedUnits::from_document(orders, Some(ruleset.as_ref()));
-            let (units, _, _) = settle(
+            let (units, _) = settle(
                 &report,
                 &ruleset,
                 orders,
@@ -10955,6 +10943,53 @@ mod tests {
         lines.join("\n")
     }
 
+    /// `ah-n3qb`: a penniless leader in (0,0) walks south to (0,2), where a penniless faction-mate
+    /// holds six grain. Maintenance is assessed after MOVE (`rules/sequenceofevents`) and step 6
+    /// feeds a unit from "faction units in the same region" (`rules/economy_maintenance`), so the
+    /// holder's ITEMS lose the walker's meal as well as its own.
+    #[test]
+    fn a_walker_eats_the_grain_held_where_it_arrives_in_the_preview() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (0,0) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  South : plain (0,2) in Nowhere.",
+            "",
+            "* Walker (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+            "plain (0,2) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  North : plain (0,0) in Nowhere.",
+            "",
+            "* Holder (900), Foo (1), leader [LEAD], 6 grain [GRAI].",
+            "",
+        ]
+        .join("\n");
+        let grain_eaten_by_holder = |orders: &str| -> i64 {
+            let response = reach_preview(&report, orders, FLAT_MAP);
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .filter(|unit| unit.unit.unit_id == "900")
+                .flat_map(|unit| unit.item_changes.iter())
+                .filter(|change| {
+                    change.cause == ItemChangeCause::EatenForUpkeep && change.tag == "GRAI"
+                })
+                .map(|change| -change.delta)
+                .sum()
+        };
+        assert_eq!(grain_eaten_by_holder("unit 901\nWORK\nunit 900\n"), 1);
+        assert_eq!(
+            grain_eaten_by_holder("unit 901\nMOVE S\nunit 900\n"),
+            2,
+            "its own fee and the walker's"
+        );
+    }
+
     /// The level the reach fixtures are written on, read rather than assumed.
     fn reach_z(report: &str) -> u32 {
         ReportCache::new()
@@ -11209,6 +11244,23 @@ mod tests {
         .month_end
     }
 
+    /// `ah-n3qb`: upkeep is shared where a unit ends the month (`rules/sequenceofevents`,
+    /// `rules/economy_maintenance`), so validation needs a walker's month end even when nothing
+    /// ships.
+    #[test]
+    fn shipment_measures_name_a_walker_when_nothing_ships() {
+        let report = moving_reach_report((0, 0), (0, 4), true);
+        let z = reach_z(&report);
+        assert_eq!(
+            month_end_for(&report, "unit 901\nMOVE S\n"),
+            std::iter::once((
+                "901".to_string(),
+                crate::report::model::Coordinate { x: 0, y: 6, z }
+            ))
+            .collect()
+        );
+    }
+
     /// Three plains on a diagonal, each listing exactly the exits the wall tests rely on: by the
     /// wall rule (`ah-wq2e.1`), (1,1) Northeast and (2,2) North are walls, while (1,1) North is the
     /// map's edge. Do not add exits.
@@ -11308,7 +11360,7 @@ mod tests {
     }
 
     #[test]
-    fn shipment_measures_are_empty_for_orders_that_ship_nothing() {
+    fn shipment_measures_are_empty_for_orders_that_neither_ship_nor_walk() {
         let report = moving_reach_report((0, 0), (0, 4), true);
         assert_eq!(
             shipment_measures(
@@ -11316,7 +11368,7 @@ mod tests {
                 RULESET,
                 &report,
                 "[]",
-                "unit 901\nMOVE S\n",
+                "unit 901\nWORK\n",
                 FLAT_MAP,
                 super::super::semantics::CheckOptions::default(),
             ),

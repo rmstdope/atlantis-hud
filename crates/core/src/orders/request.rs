@@ -96,9 +96,9 @@ pub fn validate_orders_request(
         .raw_report
         .as_deref()
         .map(|raw| cache.classified_when_possible(raw, ruleset_json));
-    // Where each unit ends the month, so a shipment is measured after the moves
-    // (`rules/sequenceofevents`, `ah-b6fz`), and how far the reports have shown the world
-    // (`ah-hc7z`). An error is nothing known - bad config, not bad orders - and every shipment is
+    // Where each unit ends the month, so a shipment is measured and maintenance is shared after
+    // the moves (`rules/sequenceofevents`, `ah-b6fz`, `ah-n3qb`), and how far the reports have
+    // shown the world (`ah-hc7z`). An error is nothing known - bad config, not bad orders - and every shipment is
     // measured from the report, with a distance the map's shape leaves open staying open, as
     // before. One build of the known map answers both.
     if let (Some(rules), Some(raw), Some(remembered)) = (
