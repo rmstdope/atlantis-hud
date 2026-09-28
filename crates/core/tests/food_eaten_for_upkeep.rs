@@ -337,3 +337,28 @@ fn food_produced_this_month_is_eaten_off_what_was_made() {
     assert_eq!(holding(&row, "GRAI"), 8, "{:?}", row.item_changes);
     assert_eq!(eaten(&row), vec![("GRAI".to_string(), -2)]);
 }
+
+/// `ah-3tg8`, Drones (1297) in `neworigins-3.0.0-g5-f21-t39.rep`: a farmer set `CONSUME UNIT`
+/// gives all its grain away and farms more. `rules/sequenceofevents` runs GIVE, then primary
+/// PRODUCE, and assesses maintenance last, so the grain farmed this month is the unit's own food
+/// when upkeep is charged - and `rules/economy_maintenance` pays from it before any faction mate's
+/// silver. Both columns must say so.
+#[test]
+fn grain_farmed_this_month_feeds_a_consume_unit_farmer_that_gave_its_grain_away() {
+    let text = atlantis_hud_fixtures::G5_F21_T39.text;
+    let script = "unit 1297\nPRODUCE GRAI\nGIVE 8333 ALL GRAI\nCONSUME UNIT\n";
+
+    let silver = silver_of(&review_of(text, script), "1297");
+    assert_eq!(silver.upkeep, Some(0), "{silver:?}");
+    assert_eq!(silver.shared_silver_covered, 0, "{silver:?}");
+    // 58 gnolls owe 580 silver, and a unit of grain covers 50 "or fraction thereof".
+    assert_eq!(silver.own_food_covered, 580, "{silver:?}");
+
+    let row = preview_row(text, script, "1297");
+    assert_eq!(
+        eaten(&row),
+        vec![("GRAI".to_string(), -12)],
+        "{:?}",
+        row.item_changes
+    );
+}
