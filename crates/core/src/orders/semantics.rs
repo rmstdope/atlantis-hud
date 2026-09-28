@@ -41049,6 +41049,31 @@ BUILD
         );
     }
 
+    /// The mirror image: a quartermaster with neither grain nor silver is fed by the grain
+    /// TRANSPORT brings it, since maintenance is assessed after the shipment lands.
+    #[test]
+    fn a_unit_fed_by_food_shipped_to_it_owes_nothing() {
+        let shipper = with_item(with_silver(starving(unit("900")), 500), 5, "grain", "GRAI");
+        let mut receiving = caravanserai_owner("902", 1, 0, 4);
+        receiving.units[0] = starving(receiving.units[0].clone());
+        let report = report(vec![shipping_from(vec![shipper]), receiving]);
+        let orders = "unit 900\nTRANSPORT 902 5 GRAI\nunit 902\nCONSUME UNIT\n";
+
+        let review = review_turn(&report, orders, Some(&ruleset()), with_map());
+
+        let silver = shipment_silver(&review, "902");
+        assert_eq!(silver.upkeep, Some(0), "{silver:?}");
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.as_deref() == Some("902")),
+            "{:?}",
+            review.findings
+        );
+        assert!(eaten_off(&report, orders, "1:0,4", "902") > 0);
+    }
+
     /// Step 2: grain a faction-food holder ships away feeds none of its neighbours.
     #[test]
     fn food_shipped_away_feeds_no_faction_mate() {
