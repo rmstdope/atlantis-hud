@@ -4,6 +4,7 @@ import { hexNodeOf } from "../hexMapModel";
 import type { HexNode } from "../hexMapModel";
 import {
   describeLock,
+  formationRegionUnitIds,
   formationSourceRegionId,
   formedSelectionFor,
   lockFor
@@ -90,10 +91,25 @@ describe("a unit formed this month", () => {
     ).toBe("1:7");
   });
 
-  it("keeps an arrived formed unit editable in a stale destination", () => {
-    const formed = formedSelectionFor(document, "new-1", REGION, "origins");
+  it.each([
+    ["current", 71],
+    ["stale", 68]
+  ] as const)("keeps an arrived formed unit's source orders editable in a %s destination", (knowledge, turn) => {
+    const formed = formedSelectionFor(
+      document,
+      "new-1",
+      formationRegionUnitIds(
+        { regionId: "1:8", unitId: "new-1", arrivingFrom: "1:7" },
+        "1:8",
+        new Map([
+          ["1:7", REGION],
+          ["1:8", new Set(["999"])]
+        ])
+      ),
+      "origins"
+    );
 
-    expect(lockFor(null, hexAt("stale", 68), formed)).toBeNull();
+    expect(lockFor(null, hexAt(knowledge, turn), formed)).toBeNull();
   });
 
   it("a formed unit whose FORM the document has lost is refused, and says which order to write", () => {

@@ -40,6 +40,17 @@ export function formationSourceRegionId(
   return cursor?.arrivingFrom ?? activeRegionId;
 }
 
+/** The reported units that scope the selected unit's block in the orders document. */
+export function formationRegionUnitIds(
+  cursor: UnitCursor | null,
+  activeRegionId: string,
+  unitIdsByRegion: ReadonlyMap<string, ReadonlySet<string>>
+): ReadonlySet<string> {
+  return unitIdsByRegion.get(formationSourceRegionId(cursor, activeRegionId)) ?? EMPTY_REGION_UNIT_IDS;
+}
+
+const EMPTY_REGION_UNIT_IDS: ReadonlySet<string> = Object.freeze(new Set<string>());
+
 /**
  * The selected id as a formed selection, or `null` when it names a unit the report shows.
  *
