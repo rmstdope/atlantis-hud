@@ -136,16 +136,31 @@ has read the repository, it does not belong on the page.
 
 ### The range
 
-Two most recent tags, newest first:
+The release command prints the version it cut. Treat that tag as `<latest>`, then choose
+`<previous>` by the bump that was cut — **not** simply as the next-most-recent tag:
+
+| Bump | `<previous>` | Delta to name |
+| --- | --- | --- |
+| maintenance | The immediately preceding release tag. | `v0.24.1 -> v0.24.2` |
+| minor | The preceding minor-release tag: same major version, previous minor version, patch zero. Include every maintenance release after it in the range. | `v0.24.0 -> v0.25.0` |
+| major | The preceding major-release tag: previous major version, minor and patch zero. Include every intervening minor and maintenance release in the range. | `v1.0.0 -> v2.0.0` |
+
+For a first release at that level, there is no earlier baseline tag. Say that plainly and use the
+repository's first commit as the start of the range. Do not silently substitute a different release
+level.
+
+Fetch and inspect the tags before setting the two names:
 
 ```bash
 git fetch --tags origin
-git tag --sort=-creatordate | head -2      # e.g. v0.11.1 then v0.11.0
+git tag --sort=-v:refname | head -30
 ```
 
-The notes cover `<previous>..<latest>`. If the navigator names a different pair, use theirs — and if
-the latest tag is not the release they meant, ask rather than guessing; a release cut minutes ago and
-one cut last week look identical from here.
+The notes cover `<previous>..<latest>`. State the delta before researching or handing over the notes,
+for example: **“These notes cover v0.24.0 -> v0.25.0.”** This makes it clear that a minor or major
+release deliberately includes more than the releases immediately before it. If the navigator names
+a different pair, use theirs — and if the latest tag is not the release they meant, ask rather than
+guessing; a release cut minutes ago and one cut last week look identical from here.
 
 ### The beads that shipped
 
@@ -153,7 +168,7 @@ Every commit in the range carries its bead id in the subject — `feat(ah-3bl): 
 so the range gives you the ids, and `bd` gives you what they were for:
 
 ```bash
-git log --format='%s' v0.11.0..v0.11.1 \
+git log --format='%s' <previous>..<latest> \
   | grep -oE '\(([a-z]+-[a-z0-9.]+)\)' | tr -d '()' | sort -u
 ```
 
@@ -216,8 +231,8 @@ about the map", not "what was a bug and what was a feature" — so a fix to the 
 new map feature, and the reader meets everything about one surface at once.
 
 ```markdown
-What's new for you in Atlantis HUD (<version>)
-=============================================
+What's new for you in Atlantis HUD (<previous version> -> <latest version>)
+============================================================================
 
 ## Map
 
