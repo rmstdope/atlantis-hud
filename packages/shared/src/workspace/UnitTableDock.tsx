@@ -492,7 +492,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       const units = hexSightings.map(({ unit }) => unit);
       return {
         ...NO_ARMY_ROWS,
-        rows: hex?.knowledge === "stale" ? units : mergePreview(units, preview)
+        rows: mergePreview(units, preview)
       };
     }
     if (source.kind === "own") {
@@ -503,7 +503,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       return { ...NO_ARMY_ROWS, rows: [...pinnedRows(foreignUnits ?? [], pin)] };
     }
     return army ? armyRows(army, unitsById ?? EMPTY_UNITS_BY_ID, currentTurn) : NO_ARMY_ROWS;
-  }, [source, hex, hexSightings, preview, ownRows, foreignUnits, pin, army, unitsById, currentTurn]);
+  }, [source, hexSightings, preview, ownRows, foreignUnits, pin, army, unitsById, currentTurn]);
 
   // Typed as table rows, so an arrival's origin is readable where the row is chosen (`ah-jxrw`).
   const units: PreviewedUnit[] = sourced.rows;
