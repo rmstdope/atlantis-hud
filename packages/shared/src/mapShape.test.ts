@@ -235,20 +235,24 @@ describe("an existing world's map sizes (ah-4hwa)", () => {
     wrapY: false
   };
 
-  it("summarises every level, naming the ones not configured", () => {
-    expect(mapSizesSummary(trident)).toBe(
-      "Surface 64 × 64 · Underworld 48 × 48 · Underdeep not configured · Dungeon 128 × 32 · wraps east to west"
-    );
+  it("summarises every level on a line of its own, naming the ones not configured", () => {
+    expect(mapSizesSummary(trident)).toEqual([
+      "Surface 64 × 64",
+      "Underworld 48 × 48",
+      "Underdeep not configured",
+      "Dungeon 128 × 32",
+      "Wraps east to west"
+    ]);
   });
 
   it("names both wraps, or neither", () => {
-    expect(mapSizesSummary({ ...trident, wrapY: true })).toMatch(/wraps east to west and north to south$/u);
-    expect(mapSizesSummary({ ...trident, wrapX: false })).toMatch(/does not wrap$/u);
+    expect(mapSizesSummary({ ...trident, wrapY: true }).at(-1)).toBe("Wraps east to west and north to south");
+    expect(mapSizesSummary({ ...trident, wrapX: false }).at(-1)).toBe("Does not wrap");
   });
 
   it("says so when no level is configured", () => {
-    expect(mapSizesSummary(null)).toBe("No map levels configured.");
-    expect(mapSizesSummary({ levels: {}, wrapX: true, wrapY: false })).toBe("No map levels configured.");
+    expect(mapSizesSummary(null)).toEqual(["No map levels configured."]);
+    expect(mapSizesSummary({ levels: {}, wrapX: true, wrapY: false })).toEqual(["No map levels configured."]);
   });
 
   it("reads a recorded configuration as it is", () => {

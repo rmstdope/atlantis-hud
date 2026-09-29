@@ -466,9 +466,10 @@ test("a corrected map size is still there when settings are reopened", async ({ 
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-tab-game").click();
 
-  const summary = page.getByTestId("settings-map-sizes-summary");
+  // One line per level, then the wrapping (ah-ciiq).
+  const summary = page.getByTestId("settings-map-sizes-summary").getByRole("listitem");
   await expect(summary).toHaveText(
-    "Surface 72 × 96 · Underworld not configured · Underdeep not configured · Dungeon not configured · wraps east to west"
+    ["Surface 72 × 96", "Underworld not configured", "Underdeep not configured", "Dungeon not configured", "Wraps east to west"]
   );
   // Nothing is editable in place: the only way in is Edit map sizes.
   await expect(page.getByTestId("settings-panel").locator("input")).toHaveCount(0);
@@ -491,14 +492,14 @@ test("a corrected map size is still there when settings are reopened", async ({ 
   await page.getByTestId("settings-map-sizes-confirm-save").click();
   await expect(page.getByTestId("settings-map-sizes-editor")).toHaveCount(0);
   await expect(summary).toHaveText(
-    "Surface 40 × 60 · Underworld 48 × 48 · Underdeep not configured · Dungeon not configured · wraps east to west"
+    ["Surface 40 × 60", "Underworld 48 × 48", "Underdeep not configured", "Dungeon not configured", "Wraps east to west"]
   );
 
   await page.getByTestId("settings-close").click();
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-tab-game").click();
   await expect(summary).toHaveText(
-    "Surface 40 × 60 · Underworld 48 × 48 · Underdeep not configured · Dungeon not configured · wraps east to west"
+    ["Surface 40 × 60", "Underworld 48 × 48", "Underdeep not configured", "Dungeon not configured", "Wraps east to west"]
   );
 });
 
@@ -512,9 +513,10 @@ test("closing the map-size editor without saving keeps nothing", async ({ page }
 
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-tab-game").click();
-  const summary = page.getByTestId("settings-map-sizes-summary");
+  // One line per level, then the wrapping (ah-ciiq).
+  const summary = page.getByTestId("settings-map-sizes-summary").getByRole("listitem");
   const before =
-    "Surface 40 × 60 · Underworld 48 × 48 · Underdeep 24 × 24 · Dungeon 128 × 32 · wraps east to west";
+    ["Surface 40 × 60", "Underworld 48 × 48", "Underdeep 24 × 24", "Dungeon 128 × 32", "Wraps east to west"];
   await expect(summary).toHaveText(before);
 
   await page.getByTestId("settings-map-sizes-edit").click();
