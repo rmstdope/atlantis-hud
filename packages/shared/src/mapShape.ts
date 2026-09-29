@@ -130,8 +130,13 @@ export function mapSizesDraftFor(rulesetId: string): MapSizesDraft {
     draft.underworld = { width: "48", height: "48" };
     draft.underdeep = { width: "24", height: "24" };
     draft.dungeon = { width: "128", height: "32" };
-  } else if (rulesetId === "neworigins") {
-    draft.surface = { width: "72", height: "96" };
+  } else {
+    const declared = defaultMapFor(rulesetId);
+    if (declared !== null) {
+      draft.surface = { width: String(declared.width), height: String(declared.height) };
+      draft.wrapX = declared.wrapX;
+      draft.wrapY = declared.wrapY;
+    }
   }
 
   return draft;
