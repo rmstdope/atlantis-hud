@@ -550,6 +550,7 @@ export interface CoreAdapter {
    * assumption into the player's own word.
    */
   setGameMap(gameId: string, mapJson: string): Promise<GameManifest>;
+  setGameMapSizes(gameId: string, mapSizesJson: string): Promise<GameManifest>;
   setGameName(gameId: string, gameName: string): Promise<GameManifest>;
   setActiveFaction(gameId: string, factionId: string): Promise<GameManifest>;
   parseReport(rawReport: string): Promise<ReportParseResult>;

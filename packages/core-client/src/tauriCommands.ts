@@ -31,6 +31,7 @@ export const TAURI_COMMANDS = {
   importGame: ["import_game", "backup_json", "opened_at"],
   setGameRuleset: ["set_game_ruleset", "game_id", "ruleset_id"],
   setGameMap: ["set_game_map", "game_id", "map_json"],
+  setGameMapSizes: ["set_game_map_sizes", "game_id", "map_sizes_json"],
   setGameName: ["set_game_name", "game_id", "game_name"],
   setActiveFaction: ["set_active_faction", "game_id", "faction_id"],
   parseReport: ["parse_report", "raw_report"],

@@ -8,7 +8,7 @@
 
 import type { CoreClient, GameManifest, OpenedGame } from "@atlantis/core-client";
 import { rulesetById } from "./rulesets";
-import type { MapShape } from "@atlantis/core-client";
+import type { MapShape, MapSizes } from "@atlantis/core-client";
 
 /** The most recently opened game, or `null` when the player has none. */
 export function newestGame(games: GameManifest[]): GameManifest | null {
@@ -63,7 +63,8 @@ export function newGameManifest(
   rulesetId: string,
   now: string,
   gameId: string,
-  map?: MapShape
+  map?: MapShape,
+  mapSizes?: MapSizes
 ): GameManifest {
   const trimmed = gameNameOf(gameName);
   if (rulesetById(rulesetId) === null) {
@@ -72,7 +73,13 @@ export function newGameManifest(
 
   return {
     manifestVersion: 1,
-    metadata: { gameId, gameName: trimmed, rulesetId, ...(map === undefined ? {} : { map }) },
+    metadata: {
+      gameId,
+      gameName: trimmed,
+      rulesetId,
+      ...(map === undefined ? {} : { map }),
+      ...(mapSizes === undefined ? {} : { mapSizes })
+    },
     reportSources: [],
     createdAt: now,
     lastOpenedAt: now

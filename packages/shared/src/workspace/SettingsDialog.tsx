@@ -1,6 +1,7 @@
-import type { MapShape } from "@atlantis/core-client";
-import { type MapDraft, mapCommitOf, mapFromDraft, mapShapeProblems } from "../mapShape";
+import type { MapShape, MapSizes } from "@atlantis/core-client";
+import { MAP_LEVELS, mapSizesDraftFor, mapSizesFromDraft, mapSizesProblems, type MapDraft, mapCommitOf, mapFromDraft, mapShapeProblems } from "../mapShape";
 import { MapShapeProblemLines } from "./MapShapeProblemLines";
+import { MapSizesSettings } from "./MapSizesSettings";
 import { useEffect, useRef, useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
@@ -50,6 +51,7 @@ export function SettingsDialog({
   busy,
   error,
   onChangeMap,
+  onChangeMapSizes,
   onDismiss
 }: {
   platformLabel: string;
@@ -59,6 +61,7 @@ export function SettingsDialog({
   busy: boolean;
   error: string | null;
   onChangeMap: (map: MapShape | undefined) => void;
+  onChangeMapSizes?: (mapSizes: MapSizes | undefined) => void;
   onDismiss: () => void;
 }) {
   // Local rather than lifted: the dialog unmounts when closed, so every open lands on Global,
@@ -151,6 +154,7 @@ export function SettingsDialog({
               busy={busy}
               error={error}
               onChangeMap={onChangeMap}
+              onChangeMapSizes={onChangeMapSizes ?? (() => {})}
             />
           ) : null}
           {tab === "columns" ? <ColumnSettings /> : null}
@@ -881,12 +885,14 @@ function GameSettings({
   game,
   busy,
   error,
-  onChangeMap
+  onChangeMap,
+  onChangeMapSizes
 }: {
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
   onChangeMap: (map: MapShape | undefined) => void;
+  onChangeMapSizes: (mapSizes: MapSizes | undefined) => void;
 }) {
   const presentation = gameSettingsPresentation(game);
 
@@ -897,6 +903,96 @@ function GameSettings({
       </p>
     );
   }
+
+  function NestedMapSizesSettings({
+    mapSizes,
+    busy,
+    onChange
+  }: {
+    mapSizes: MapSizes | undefined;
+    busy: boolean;
+    onChange: (mapSizes: MapSizes | undefined) => void;
+  }) {
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(() => sizesDraft(mapSizes));
+    const [confirming, setConfirming] = useState(false);
+    const save = () => {
+      const next = mapSizesFromDraft(draft);
+      if (next === null) return;
+      if (becomesSmaller(mapSizes, next)) {
+        setConfirming(true);
+        return;
+      }
+      onChange(next);
+      setEditing(false);
+    };
+    const summary = mapSizes
+      ? Object.entries(mapSizes.levels)
+          .map(([level, size]) => `${level} ${size.width} × ${size.height}`)
+          .join(" · ")
+      : "No map levels configured.";
+
+    if (!editing) {
+      return (
+        <section className="rounded border border-edge p-2">
+          <span className="block text-ink-soft">Map sizes</span>
+          <span className="block text-sm text-ink-dim">{summary}</span>
+          <button type="button" disabled={busy} onClick={() => setEditing(true)} className="mt-2 rounded border border-edge px-2 py-1 text-ink-soft">
+            Edit map sizes
+          </button>
+        </section>
+      );
+    }
+
+    return (
+      <section className="rounded border border-edge p-2">
+        <p className="text-ink-soft">Change a level’s size, add a level, or clear both fields to remove a level.</p>
+        <div className="grid grid-cols-3 gap-2">
+          <span>Map level</span><span>Width</span><span>Height</span>
+          {MAP_LEVELS.map((level) => (
+            <div className="contents" key={level}>
+              <span className="capitalize">{level}</span>
+              <input aria-label={`${level} width`} inputMode="numeric" value={draft[level].width} onChange={(event) => setDraft({ ...draft, [level]: { ...draft[level], width: event.target.value } })} />
+              <input aria-label={`${level} height`} inputMode="numeric" value={draft[level].height} onChange={(event) => setDraft({ ...draft, [level]: { ...draft[level], height: event.target.value } })} />
+            </div>
+          ))}
+        </div>
+        {mapSizesProblems(draft).map((problem) => <p key={problem} role="alert" className="text-danger">{problem}</p>)}
+        {confirming ? (
+          <div role="dialog" aria-label="Save map sizes?" className="mt-2 rounded border border-edge p-2">
+            <p>Making a level smaller may remove parts of this level that are outside its new size.</p>
+            <button type="button" onClick={() => setConfirming(false)}>Keep editing</button>
+            <button type="button" onClick={() => { const next = mapSizesFromDraft(draft); if (next) onChange(next); setEditing(false); setConfirming(false); }}>Save map sizes</button>
+          </div>
+        ) : null}
+        <button type="button" disabled={busy} onClick={save} className="rounded border border-brass px-2 py-1 text-brass">
+          Save map sizes
+        </button>
+        <button type="button" disabled={busy} onClick={() => { setDraft(sizesDraft(mapSizes)); setEditing(false); }} className="ml-2 rounded border border-edge px-2 py-1 text-ink-soft">
+          Cancel
+        </button>
+      </section>
+    );
+  }
+
+  function sizesDraft(mapSizes: MapSizes | undefined) {
+    const draft = mapSizesDraftFor("unknown");
+    if (!mapSizes) return draft;
+    for (const level of MAP_LEVELS) {
+      const size = mapSizes.levels[level];
+      if (size) draft[level] = { width: String(size.width), height: String(size.height) };
+    }
+    return { ...draft, wrapX: mapSizes.wrapX, wrapY: mapSizes.wrapY };
+  }
+
+  function becomesSmaller(previous: MapSizes | undefined, next: MapSizes) {
+    return Object.entries(previous?.levels ?? {}).some(([level, size]) => {
+      const changed = next.levels[level];
+      return !changed || changed.width < size.width || changed.height < size.height;
+    });
+  }
+
+  void NestedMapSizesSettings;
 
   return (
     <div className="flex flex-col gap-2">
@@ -920,6 +1016,7 @@ function GameSettings({
         busy={busy}
         onChangeMap={onChangeMap}
       />
+      <MapSizesSettings mapSizes={game!.mapSizes} busy={busy} onChange={onChangeMapSizes} />
       {error ? (
         <span data-testid="settings-game-error" role="alert" className="text-danger">
           {error}

@@ -41,7 +41,7 @@ import { orderProcessingFor, type OrderProcessing } from "../orderProcessing";
 import { rowKeyOf, unitRowKey } from "../unitTable";
 import { previewAtCursor, unitAtCursor } from "./unitCursor";
 import { formationRegionUnitIds } from "./ordersLock";
-import type { MapShape } from "@atlantis/core-client";
+import type { MapShape, MapSizes } from "@atlantis/core-client";
 import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import {
   deliverArmyExport,
@@ -1070,6 +1070,7 @@ export function AppShell({
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
   const updateGameNameInStore = useWorkspaceStore((state) => state.updateGameName);
   const updateGameMapInStore = useWorkspaceStore((state) => state.updateGameMap);
+  const updateGameMapSizesInStore = useWorkspaceStore((state) => state.updateGameMapSizes);
 
   /**
    * What is owed to storage, and one write at a time.
@@ -3090,12 +3091,26 @@ export function AppShell({
           game.manifest.metadata.gameId,
           mapShapeJson(map ?? null)
         );
+
         setGame({ ...game, manifest });
         updateGameMapInStore(map);
         setGames(await client.listGames());
       });
     },
     [client, game, runGameAction, updateGameMapInStore]
+  );
+
+  const changeMapSizes = useCallback(
+    (mapSizes: MapSizes | undefined) => {
+      if (!game) return;
+      return runGameAction(async () => {
+        const manifest = await client.setGameMapSizes(game.manifest.metadata.gameId, mapSizes === undefined ? "" : JSON.stringify(mapSizes));
+        setGame({ ...game, manifest });
+        updateGameMapSizesInStore(mapSizes);
+        setGames(await client.listGames());
+      });
+    },
+    [client, game, runGameAction, updateGameMapSizesInStore]
   );
 
   /**
@@ -3125,12 +3140,12 @@ export function AppShell({
   );
 
   const createGame = useCallback(
-    (name: string, rulesetId: string, map?: MapShape) =>
+    (name: string, rulesetId: string, map?: MapShape, mapSizes?: MapSizes) =>
       runGameAction(async () => {
         try {
           await flush();
           const now = new Date().toISOString();
-          const outcome = await createGameAction(client, name, rulesetId, now, map);
+          const outcome = await createGameAction(client, name, rulesetId, now, map, mapSizes);
           enterGame(outcome.opened);
           setGames(outcome.games);
           closePopover("games");
@@ -5140,6 +5155,7 @@ export function AppShell({
       busy={busy}
       error={gameError}
       onChangeMap={(map) => void changeMap(map)}
+      onChangeMapSizes={(mapSizes) => void changeMapSizes(mapSizes)}
       onDismiss={() => setSettingsOpen(false)}
     />
   );
@@ -5272,7 +5288,7 @@ export function AppShell({
           busy={busy}
           unavailable={heldNotice?.scope === "games-list"}
           error={gameError}
-          onCreate={(name, rulesetId, map) => void createGame(name, rulesetId, map)}
+          onCreate={(name, rulesetId, map, mapSizes) => void createGame(name, rulesetId, map, mapSizes)}
           onImport={(file) => void importGameBackup(file)}
           settingsOpen={settingsOpen}
           onToggleSettings={() => setSettingsOpen((open) => !open)}
@@ -5315,7 +5331,7 @@ export function AppShell({
             busy={busy || heldNotice?.scope === "games-list"}
             error={gameError}
             onOpen={(gameId) => void openGameById(gameId)}
-            onCreate={(name, rulesetId, map) => void createGame(name, rulesetId, map)}
+            onCreate={(name, rulesetId, map, mapSizes) => void createGame(name, rulesetId, map, mapSizes)}
             onDelete={deleteGame}
             onReset={resetGame}
             onExport={(gameId) => void exportGameBackup(gameId)}

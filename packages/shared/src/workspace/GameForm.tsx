@@ -1,10 +1,9 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
-import type { MapShape } from "@atlantis/core-client";
-import type { MapDraft } from "../mapShape";
-import { mapDraftFor, mapFromDraft, mapShapeProblems } from "../mapShape";
+import type { MapShape, MapSizes } from "@atlantis/core-client";
+import type { MapSizesDraft } from "../mapShape";
+import { MAP_LEVELS, mapSizesDraftFor, mapSizesFromDraft, mapSizesProblems } from "../mapShape";
 import { RULESETS } from "../rulesets";
-import { MapShapeProblemLines } from "./MapShapeProblemLines";
 
 /**
  * The game this form would create, or `null` when it would create none.
@@ -17,12 +16,19 @@ import { MapShapeProblemLines } from "./MapShapeProblemLines";
 export function gameSubmission(
   name: string,
   rulesetId: string,
-  map: MapDraft
-): { name: string; rulesetId: string; map: MapShape | undefined } | null {
-  if (mapShapeProblems(map).length > 0) {
+  map: MapSizesDraft
+): { name: string; rulesetId: string; map: MapShape | undefined; mapSizes: MapSizes } | null {
+  const mapSizes = mapSizesFromDraft(map);
+  if (mapSizes === null) {
     return null;
   }
-  return { name, rulesetId, map: mapFromDraft(map) ?? undefined };
+  const surface = mapSizes.levels.surface;
+  return {
+    name,
+    rulesetId,
+    map: surface === undefined ? undefined : { ...surface, wrapX: map.wrapX, wrapY: map.wrapY },
+    mapSizes
+  };
 }
 
 /**
@@ -43,7 +49,7 @@ export function GameForm({
   /** Disabled without claiming work is under way: another tab holds the saved-games list. */
   unavailable?: boolean;
   error: string | null;
-  onCreate: (name: string, rulesetId: string, map?: MapShape) => void;
+  onCreate: (name: string, rulesetId: string, map?: MapShape, mapSizes?: MapSizes) => void;
   submitLabel?: string;
 }) {
   const [name, setName] = useState("");
@@ -51,14 +57,14 @@ export function GameForm({
   // Prefilled from the chosen ruleset, and refilled below whenever that choice changes: a stale
   // 72x96 sitting under a newly-chosen variant is worse than no prefill, because it looks
   // deliberate.
-  const [map, setMap] = useState(() => mapDraftFor(RULESETS[0].id));
+  const [map, setMap] = useState(() => mapSizesDraftFor(RULESETS[0].id));
 
   const chooseRuleset = (chosen: string) => {
     setRulesetId(chosen);
-    setMap(mapDraftFor(chosen));
+    setMap(mapSizesDraftFor(chosen));
   };
 
-  const problems = mapShapeProblems(map);
+  const problems = mapSizesProblems(map);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -66,7 +72,7 @@ export function GameForm({
     if (submission === null) {
       return;
     }
-    onCreate(submission.name, submission.rulesetId, submission.map);
+    onCreate(submission.name, submission.rulesetId, submission.map, submission.mapSizes);
   };
 
   return (
@@ -102,35 +108,37 @@ export function GameForm({
       </label>
 
       <fieldset className="flex flex-col gap-2 rounded border border-brass/60 bg-panel p-2">
-        <legend className="px-1 text-pane-xs uppercase tracking-[0.08em] text-brass">Map</legend>
+        <legend className="px-1 text-pane-xs uppercase tracking-[0.08em] text-brass">Map level</legend>
         <p className="text-ink-soft">
-          How far the map runs, and where it joins back onto itself. Clear these if you do not know.
+          Set a size for any map level you want in this world. Leave both fields empty to not create that level.
         </p>
-        <div className="flex gap-2">
-          <label className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="text-pane-xs uppercase tracking-[0.08em] text-brass">Width</span>
-            <input
-              data-testid="game-map-width"
-              aria-label="map width"
-              inputMode="numeric"
-              value={map.width}
-              disabled={busy || unavailable}
-              onChange={(event) => setMap({ ...map, width: event.target.value })}
-              className="w-full min-w-0 rounded border border-edge bg-panel-raised px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
-            />
-          </label>
-          <label className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="text-pane-xs uppercase tracking-[0.08em] text-brass">Height</span>
-            <input
-              data-testid="game-map-height"
-              aria-label="map height"
-              inputMode="numeric"
-              value={map.height}
-              disabled={busy || unavailable}
-              onChange={(event) => setMap({ ...map, height: event.target.value })}
-              className="w-full min-w-0 rounded border border-edge bg-panel-raised px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
-            />
-          </label>
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2">
+          <span className="text-pane-xs uppercase tracking-[0.08em] text-brass">Map level</span>
+          <span className="text-pane-xs uppercase tracking-[0.08em] text-brass">Width</span>
+          <span className="text-pane-xs uppercase tracking-[0.08em] text-brass">Height</span>
+          {MAP_LEVELS.map((level) => (
+            <div key={level} className="contents">
+              <span className="self-center capitalize text-ink-soft">{level}</span>
+              <input
+                data-testid={`game-map-${level}-width`}
+                aria-label={`${level} width`}
+                inputMode="numeric"
+                value={map[level].width}
+                disabled={busy || unavailable}
+                onChange={(event) => setMap({ ...map, [level]: { ...map[level], width: event.target.value } })}
+                className="min-w-0 rounded border border-edge bg-panel-raised px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
+              />
+              <input
+                data-testid={`game-map-${level}-height`}
+                aria-label={`${level} height`}
+                inputMode="numeric"
+                value={map[level].height}
+                disabled={busy || unavailable}
+                onChange={(event) => setMap({ ...map, [level]: { ...map[level], height: event.target.value } })}
+                className="min-w-0 rounded border border-edge bg-panel-raised px-2 py-1 text-ink outline-none focus:border-brass disabled:opacity-50"
+              />
+            </div>
+          ))}
         </div>
         <label className="flex items-center gap-2">
           <input
@@ -141,7 +149,7 @@ export function GameForm({
             disabled={busy || unavailable}
             onChange={(event) => setMap({ ...map, wrapX: event.target.checked })}
           />
-          <span className="text-ink-soft">Wraps east to west</span>
+          <span className="text-ink-soft">Wrap east to west</span>
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -152,9 +160,9 @@ export function GameForm({
             disabled={busy || unavailable}
             onChange={(event) => setMap({ ...map, wrapY: event.target.checked })}
           />
-          <span className="text-ink-soft">Wraps north to south</span>
+          <span className="text-ink-soft">Wrap north to south</span>
         </label>
-        <MapShapeProblemLines problems={problems} testidPrefix="game-map-problem" />
+        {problems.map((problem) => <p key={problem} role="alert" className="text-danger">{problem}</p>)}
       </fieldset>
 
       {error ? (

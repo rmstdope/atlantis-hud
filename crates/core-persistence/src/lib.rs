@@ -9,7 +9,7 @@ use atlantis_hud_core::backup::{
     apply_manifest_edit, encode_game_backup, DecodedGameBackupCollections,
     EncodedGameBackupCollections, GameBackupArmy, GameBackupContent, GameBackupHexNote,
     GameBackupImportedTurn, GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
-    ManifestEdit,
+    ManifestEdit, MapSizes,
 };
 /// The stored row and its key. The core owns both because the backup carries them too.
 pub use atlantis_hud_core::backup::{
@@ -391,6 +391,23 @@ pub fn set_game_map(
     apply_manifest_edit(&mut manifest, &ManifestEdit::Map(map));
     save_game_manifest(&game_file_path, &manifest)?;
 
+    Ok(manifest)
+}
+
+/// Records the dimensions of every configured map level after creation.
+pub fn set_game_map_sizes(
+    games_root: &Path,
+    game_id: &str,
+    map_sizes: Option<MapSizes>,
+) -> Result<GameManifest, PersistenceError> {
+    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
+    if !game_file_path.exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
+    let mut manifest = load_game_manifest(&game_file_path)?;
+    ensure_supported_manifest_version(manifest.manifest_version)?;
+    apply_manifest_edit(&mut manifest, &ManifestEdit::MapSizes(map_sizes));
+    save_game_manifest(&game_file_path, &manifest)?;
     Ok(manifest)
 }
 
@@ -2462,6 +2479,7 @@ mod tests {
                 ruleset_id: "neworigins".to_string(),
                 active_faction_id: None,
                 map: None,
+                map_sizes: None,
             },
             report_sources: vec![
                 ReportSourceRef {
@@ -2628,6 +2646,39 @@ mod tests {
         assert_eq!(reopened.manifest.metadata.map, Some(shape));
     }
 
+    #[test]
+    fn stating_map_sizes_records_them_in_the_manifest() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+        let sizes = MapSizes {
+            levels: std::collections::BTreeMap::from([
+                (
+                    "surface".to_string(),
+                    atlantis_hud_core::backup::MapSize {
+                        width: 72,
+                        height: 96,
+                    },
+                ),
+                (
+                    "underworld".to_string(),
+                    atlantis_hud_core::backup::MapSize {
+                        width: 48,
+                        height: 48,
+                    },
+                ),
+            ]),
+            wrap_x: true,
+            wrap_y: false,
+        };
+
+        let updated = set_game_map_sizes(dir.path(), GAME_ID, Some(sizes.clone()))
+            .expect("the map-size change should succeed");
+        assert_eq!(updated.metadata.map_sizes, Some(sizes.clone()));
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
+        assert_eq!(reopened.manifest.metadata.map_sizes, Some(sizes));
+    }
+
     /// A game created before the app asked has no map at all, and must stay that way until someone
     /// says otherwise: absence is what makes the ruleset's default read as *assumed*.
     #[test]
@@ -2647,6 +2698,14 @@ mod tests {
         let error = set_game_map(dir.path(), "no-such-game", None)
             .expect_err("changing a missing game should fail");
 
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
+    }
+
+    #[test]
+    fn changing_map_sizes_of_a_missing_game_names_it() {
+        let dir = tempdir().expect("tempdir");
+        let error = set_game_map_sizes(dir.path(), "no-such-game", None)
+            .expect_err("changing a missing game should fail");
         assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
 
@@ -4831,6 +4890,7 @@ mod region_sighting_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -4989,6 +5049,7 @@ mod region_sighting_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -5127,6 +5188,7 @@ mod region_sighting_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -5181,6 +5243,7 @@ mod region_sighting_tests {
                 ruleset_id: "neworigins".to_string(),
                 active_faction_id: None,
                 map: None,
+                map_sizes: None,
             },
             report_sources: Vec::new(),
             created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -5233,6 +5296,7 @@ mod region_sighting_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -5279,6 +5343,7 @@ mod merged_report_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),

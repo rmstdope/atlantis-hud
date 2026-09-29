@@ -50,6 +50,8 @@ export type { LimitingRace } from "./LimitingRace";
 export type { LostBlock } from "./LostBlock";
 export type { ManifestEdit } from "./ManifestEdit";
 export type { MapShape } from "./MapShape";
+export type { MapSize } from "./MapSize";
+export type { MapSizes } from "./MapSizes";
 export type { MarketItem } from "./MarketItem";
 export type { MessageSummary } from "./MessageSummary";
 export type { MinimumAllocation } from "./MinimumAllocation";

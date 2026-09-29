@@ -27,8 +27,8 @@ use atlantis_hud_core_persistence::{
     list_imported_turns, list_study_plans, load_imported_turn, load_imported_turn_stamps,
     load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
     open_game, preview_imported_turn, reset_game, save_allied_mages, save_study_plans,
-    set_active_faction, set_game_map, set_game_name, set_game_ruleset, upsert_army,
-    upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
+    set_active_faction, set_game_map, set_game_map_sizes, set_game_name, set_game_ruleset,
+    upsert_army, upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
     upsert_region_sightings, AlliedMage, AlliedMageKey, Army, HexNote, ImportedTurnKey,
     ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
     OrderDraftRecord, PersistenceError, StudyPlan, StudyPlanKey,
@@ -1233,6 +1233,19 @@ pub fn command_set_game_map(
     set_game_map(Path::new(games_root), game_id, map).map_err(|error| error.to_string())
 }
 
+pub fn command_set_game_map_sizes(
+    games_root: &str,
+    game_id: &str,
+    map_sizes_json: &str,
+) -> Result<GameManifest, String> {
+    let map_sizes = if map_sizes_json.trim().is_empty() {
+        None
+    } else {
+        Some(serde_json::from_str(map_sizes_json).map_err(|error| error.to_string())?)
+    };
+    set_game_map_sizes(Path::new(games_root), game_id, map_sizes).map_err(|error| error.to_string())
+}
+
 /// Renames a game, returning the updated manifest.
 ///
 /// # Errors
@@ -1577,6 +1590,7 @@ mod test_support {
                 ruleset_id: "neworigins".to_string(),
                 active_faction_id: None,
                 map: None,
+                map_sizes: None,
             },
             report_sources: Vec::new(),
             created_at: OPENED_AT.to_string(),

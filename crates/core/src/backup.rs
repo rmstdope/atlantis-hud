@@ -6,6 +6,7 @@
 //! else; a store reads its rows and hands them over, or takes rows back and writes them.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::movement::graph::MapGeometry;
 
@@ -16,6 +17,33 @@ pub const GAME_BACKUP_FORMAT: &str = "atlantis-hud-game-backup";
 pub const CURRENT_GAME_BACKUP_VERSION: u32 = 1;
 /// Moved from core-persistence with the manifest types; `create_game`/`open_game` still check it.
 pub const CURRENT_MANIFEST_VERSION: u32 = 1;
+
+/// The dimensions configured for every level in a world.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "MapSizes", export_to = "MapSizes.ts")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct MapSizes {
+    pub levels: BTreeMap<String, MapSize>,
+    pub wrap_x: bool,
+    pub wrap_y: bool,
+}
+
+/// One configured level's dimensions. Wrapping belongs to [`MapSizes`], not a level.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "MapSize", export_to = "MapSize.ts")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct MapSize {
+    pub width: i32,
+    pub height: i32,
+}
 
 /// Game metadata stored in the game manifest and database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +79,10 @@ pub struct GameMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub map: Option<MapGeometry>,
+    /// The independently configured dimensions for each map level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub map_sizes: Option<MapSizes>,
 }
 
 /// Logical report source stored in the game manifest and database.
@@ -109,6 +141,7 @@ pub fn reset_manifest(previous: &GameManifest, now: &str) -> GameManifest {
             ruleset_id: previous.metadata.ruleset_id.clone(),
             active_faction_id: None,
             map: None,
+            map_sizes: None,
         },
         report_sources: Vec::new(),
         created_at: now.to_string(),
@@ -137,6 +170,8 @@ pub enum ManifestEdit {
     /// `null`: the absence is what makes the settings dialog say the ruleset's default is only
     /// assumed, and `skip_serializing_if` on the field is what keeps it absent on the way out.
     Map(Option<MapGeometry>),
+    /// All level sizes, with wrapping shared by every configured level.
+    MapSizes(Option<MapSizes>),
     /// The game's display name. Trimming and validating it is the shell's, not this function's.
     Name(String),
     /// `None` for a game that has never had a report imported. Unlike the map, this one writes a
@@ -154,6 +189,7 @@ pub fn apply_manifest_edit(manifest: &mut GameManifest, edit: &ManifestEdit) {
         ManifestEdit::Opened(at) => manifest.last_opened_at = at.clone(),
         ManifestEdit::Ruleset(id) => manifest.metadata.ruleset_id = id.clone(),
         ManifestEdit::Map(map) => manifest.metadata.map = *map,
+        ManifestEdit::MapSizes(map_sizes) => manifest.metadata.map_sizes = map_sizes.clone(),
         ManifestEdit::Name(name) => manifest.metadata.game_name = name.clone(),
         ManifestEdit::ActiveFaction(id) => manifest.metadata.active_faction_id = id.clone(),
     }
@@ -984,6 +1020,7 @@ mod tests {
                 ruleset_id: "newOrigins".to_string(),
                 active_faction_id: None,
                 map: None,
+                map_sizes: None,
             },
             report_sources: vec![],
             created_at: "2026-01-01T00:00:00Z".to_string(),

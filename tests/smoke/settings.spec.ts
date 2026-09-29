@@ -505,8 +505,8 @@ test("a corrected map size is still there when settings are reopened", async ({ 
 test("map dimensions re-entered after clearing persist while the map is configured", async ({ page }) => {
   await clearGames(page);
   await page.getByTestId("game-ruleset").selectOption("newage-arcanum");
-  await page.getByTestId("game-map-width").fill("40");
-  await page.getByTestId("game-map-height").fill("60");
+  await page.getByTestId("game-map-surface-width").fill("40");
+  await page.getByTestId("game-map-surface-height").fill("60");
   await page.getByTestId("game-map-wrap-x").check();
   await createGame(page, "Re-entered map size");
 

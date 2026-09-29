@@ -9,7 +9,7 @@
  * hands back what it changed and lets the caller apply it.
  */
 
-import type { CoreClient, GameManifest, MapShape, OpenedGame } from "@atlantis/core-client";
+import type { CoreClient, GameManifest, MapShape, MapSizes, OpenedGame } from "@atlantis/core-client";
 import { backupAsCopy, backupGameIdentity } from "./gameBackup";
 import { gameAfterDelete, gameNameOf, newGameId, newGameManifest } from "./gameSession";
 import { rulesetById } from "./rulesets";
@@ -54,9 +54,12 @@ export async function createGame(
   name: string,
   rulesetId: string,
   now: string,
-  map?: MapShape
+  map?: MapShape,
+  mapSizes?: MapSizes
 ): Promise<GameActionOutcome> {
-  const opened = await client.createGame(newGameManifest(name, rulesetId, now, newGameId(), map));
+  const opened = await client.createGame(
+    newGameManifest(name, rulesetId, now, newGameId(), map, mapSizes)
+  );
   return { opened, games: await client.listGames() };
 }
 
