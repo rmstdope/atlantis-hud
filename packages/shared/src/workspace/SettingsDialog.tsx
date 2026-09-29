@@ -1,8 +1,7 @@
-import type { MapShape, MapSizes } from "@atlantis/core-client";
-import { MAP_LEVELS, mapSizesDraftFor, mapSizesFromDraft, mapSizesProblems, type MapDraft, mapCommitOf, mapFromDraft, mapShapeProblems } from "../mapShape";
-import { MapShapeProblemLines } from "./MapShapeProblemLines";
+import type { MapSizes } from "@atlantis/core-client";
+import { mapSizesOfGame } from "../mapShape";
 import { MapSizesSettings } from "./MapSizesSettings";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
@@ -50,7 +49,6 @@ export function SettingsDialog({
   game,
   busy,
   error,
-  onChangeMap,
   onChangeMapSizes,
   onDismiss
 }: {
@@ -60,8 +58,7 @@ export function SettingsDialog({
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
-  onChangeMap: (map: MapShape | undefined) => void;
-  onChangeMapSizes?: (mapSizes: MapSizes | undefined) => void;
+  onChangeMapSizes: (mapSizes: MapSizes) => Promise<boolean>;
   onDismiss: () => void;
 }) {
   // Local rather than lifted: the dialog unmounts when closed, so every open lands on Global,
@@ -153,8 +150,7 @@ export function SettingsDialog({
               game={game}
               busy={busy}
               error={error}
-              onChangeMap={onChangeMap}
-              onChangeMapSizes={onChangeMapSizes ?? (() => {})}
+              onChangeMapSizes={onChangeMapSizes}
             />
           ) : null}
           {tab === "columns" ? <ColumnSettings /> : null}
@@ -881,18 +877,16 @@ function ThemeChoice({
 }
 
 /** Settings that hold for the open game only: its ruleset, until more arrive. */
-function GameSettings({
+export function GameSettings({
   game,
   busy,
   error,
-  onChangeMap,
   onChangeMapSizes
 }: {
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
-  onChangeMap: (map: MapShape | undefined) => void;
-  onChangeMapSizes: (mapSizes: MapSizes | undefined) => void;
+  onChangeMapSizes: (mapSizes: MapSizes) => Promise<boolean>;
 }) {
   const presentation = gameSettingsPresentation(game);
 
@@ -903,96 +897,6 @@ function GameSettings({
       </p>
     );
   }
-
-  function NestedMapSizesSettings({
-    mapSizes,
-    busy,
-    onChange
-  }: {
-    mapSizes: MapSizes | undefined;
-    busy: boolean;
-    onChange: (mapSizes: MapSizes | undefined) => void;
-  }) {
-    const [editing, setEditing] = useState(false);
-    const [draft, setDraft] = useState(() => sizesDraft(mapSizes));
-    const [confirming, setConfirming] = useState(false);
-    const save = () => {
-      const next = mapSizesFromDraft(draft);
-      if (next === null) return;
-      if (becomesSmaller(mapSizes, next)) {
-        setConfirming(true);
-        return;
-      }
-      onChange(next);
-      setEditing(false);
-    };
-    const summary = mapSizes
-      ? Object.entries(mapSizes.levels)
-          .map(([level, size]) => `${level} ${size.width} × ${size.height}`)
-          .join(" · ")
-      : "No map levels configured.";
-
-    if (!editing) {
-      return (
-        <section className="rounded border border-edge p-2">
-          <span className="block text-ink-soft">Map sizes</span>
-          <span className="block text-sm text-ink-dim">{summary}</span>
-          <button type="button" disabled={busy} onClick={() => setEditing(true)} className="mt-2 rounded border border-edge px-2 py-1 text-ink-soft">
-            Edit map sizes
-          </button>
-        </section>
-      );
-    }
-
-    return (
-      <section className="rounded border border-edge p-2">
-        <p className="text-ink-soft">Change a level’s size, add a level, or clear both fields to remove a level.</p>
-        <div className="grid grid-cols-3 gap-2">
-          <span>Map level</span><span>Width</span><span>Height</span>
-          {MAP_LEVELS.map((level) => (
-            <div className="contents" key={level}>
-              <span className="capitalize">{level}</span>
-              <input aria-label={`${level} width`} inputMode="numeric" value={draft[level].width} onChange={(event) => setDraft({ ...draft, [level]: { ...draft[level], width: event.target.value } })} />
-              <input aria-label={`${level} height`} inputMode="numeric" value={draft[level].height} onChange={(event) => setDraft({ ...draft, [level]: { ...draft[level], height: event.target.value } })} />
-            </div>
-          ))}
-        </div>
-        {mapSizesProblems(draft).map((problem) => <p key={problem} role="alert" className="text-danger">{problem}</p>)}
-        {confirming ? (
-          <div role="dialog" aria-label="Save map sizes?" className="mt-2 rounded border border-edge p-2">
-            <p>Making a level smaller may remove parts of this level that are outside its new size.</p>
-            <button type="button" onClick={() => setConfirming(false)}>Keep editing</button>
-            <button type="button" onClick={() => { const next = mapSizesFromDraft(draft); if (next) onChange(next); setEditing(false); setConfirming(false); }}>Save map sizes</button>
-          </div>
-        ) : null}
-        <button type="button" disabled={busy} onClick={save} className="rounded border border-brass px-2 py-1 text-brass">
-          Save map sizes
-        </button>
-        <button type="button" disabled={busy} onClick={() => { setDraft(sizesDraft(mapSizes)); setEditing(false); }} className="ml-2 rounded border border-edge px-2 py-1 text-ink-soft">
-          Cancel
-        </button>
-      </section>
-    );
-  }
-
-  function sizesDraft(mapSizes: MapSizes | undefined) {
-    const draft = mapSizesDraftFor("unknown");
-    if (!mapSizes) return draft;
-    for (const level of MAP_LEVELS) {
-      const size = mapSizes.levels[level];
-      if (size) draft[level] = { width: String(size.width), height: String(size.height) };
-    }
-    return { ...draft, wrapX: mapSizes.wrapX, wrapY: mapSizes.wrapY };
-  }
-
-  function becomesSmaller(previous: MapSizes | undefined, next: MapSizes) {
-    return Object.entries(previous?.levels ?? {}).some(([level, size]) => {
-      const changed = next.levels[level];
-      return !changed || changed.width < size.width || changed.height < size.height;
-    });
-  }
-
-  void NestedMapSizesSettings;
 
   return (
     <div className="flex flex-col gap-2">
@@ -1010,13 +914,12 @@ function GameSettings({
           The ruleset is chosen when this game is created.
         </span>
       </div>
-      <GameMapSettings
-        map={presentation.map}
-        stated={presentation.mapStated}
+      <MapSizesSettings
+        mapSizes={mapSizesOfGame(game?.mapSizes, presentation.map)}
+        assumed={game?.mapSizes === undefined && !presentation.mapStated && presentation.map !== null}
         busy={busy}
-        onChangeMap={onChangeMap}
+        onChange={onChangeMapSizes}
       />
-      <MapSizesSettings mapSizes={game!.mapSizes} busy={busy} onChange={onChangeMapSizes} />
       {error ? (
         <span data-testid="settings-game-error" role="alert" className="text-danger">
           {error}
@@ -1024,177 +927,6 @@ function GameSettings({
       ) : null}
     </div>
   );
-}
-
-/**
- * The map the open game is played on, and whether anyone ever said so.
- *
- * A game created before the app asked adopts its ruleset's declared map rather than interrupting
- * for an answer, so this is the one place a player can find out that is what happened - which is
- * why an assumed map is labelled as assumed rather than shown as a fact. Editing any value writes
- * all four, and that is what turns the assumption into a statement.
- */
-export function GameMapSettings({
-  map,
-  stated,
-  busy,
-  onChangeMap
-}: {
-  map: MapShape | null;
-  stated: boolean;
-  busy: boolean;
-  onChangeMap: (map: MapShape | undefined) => void;
-}) {
-  // Edited as text and committed on blur, through the same `mapFromDraft` the create form uses.
-  // Writing on every keystroke would store a half-typed "7" as a stated map seven hexes wide, and
-  // coercing a cleared field to zero would store a map no width at all - claimed, in both cases,
-  // as the player's own word. A cleared field means "I do not know", which records nothing and
-  // puts the game back to assuming its ruleset's default.
-  const [draft, setDraft] = useState<MapDraft>(() => draftOf(map));
-  // What this component last wrote, so a map coming back from its own write is not treated as news.
-  // A ref rather than state: nothing renders from it.
-  const committed = useRef<MapShape | null>(null);
-  // Refilled in an effect rather than during render. Correcting width and then height is one
-  // gesture: the width's blur starts a write, and the map comes back changed while the height is
-  // already being typed. The render-phase `setShownFor(map)` this replaces made React restart the
-  // render and DISCARD the queued draft update carrying those keystrokes, so the second field of
-  // every pair silently reverted - the refill itself was never the culprit, the render-phase set
-  // was. An effect runs after the commit, so nothing in flight is thrown away, and skipping the
-  // value we just wrote leaves the player's own typing alone while still refilling for a game
-  // switch or a change made elsewhere.
-  useEffect(() => {
-    if (sameMap(map, committed.current)) {
-      return;
-    }
-    setDraft(draftOf(map));
-  }, [map]);
-
-  // Only ever one write is outstanding, because the fieldset is disabled for the length of one -
-  // which is what makes a single slot enough to remember what we wrote.
-  const commit = (next: MapDraft) => {
-    // Wrapping a hex lattice cannot support stores nothing at all: the game keeps the map it had,
-    // and the draft keeps what was typed so either field can be the one that is corrected. The
-    // resync effect above cannot undo it, because it runs on a change to `map` and `map` is
-    // exactly what has not changed.
-    if (mapCommitOf(next) === null) {
-      return;
-    }
-    const written = mapFromDraft(next);
-    committed.current = written;
-    // An incomplete draft records no map, but stays in the fields so the player can fill its other
-    // dimension before making it a complete map.
-    onChangeMap(written ?? undefined);
-  };
-
-  return (
-    <fieldset className="flex flex-col gap-2 rounded border border-edge p-2">
-      <legend className="px-1 text-ink-soft">Map</legend>
-      {map === null ? (
-        <p data-testid="settings-map-unknown" className="text-ink-soft">
-          Neither this game nor its ruleset names a map, so routes into unexplored country are
-          drawn without wrapping.
-        </p>
-      ) : (
-        <p
-          data-testid={stated ? "settings-map-stated" : "settings-map-assumed"}
-          className="text-ink-soft"
-        >
-          {stated
-            ? "These are this game's own values."
-            : "Assumed from the ruleset - nobody has confirmed them for this game. Editing one records it."}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <label className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="text-ink-soft">Width</span>
-          <input
-            data-testid="settings-map-width"
-            aria-label="map width"
-            inputMode="numeric"
-            value={draft.width}
-            disabled={busy}
-            onChange={(event) => setDraft({ ...draft, width: event.target.value })}
-            onBlur={() => commit(draft)}
-            className="w-full min-w-0 rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
-          />
-        </label>
-        <label className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="text-ink-soft">Height</span>
-          <input
-            data-testid="settings-map-height"
-            aria-label="map height"
-            inputMode="numeric"
-            value={draft.height}
-            disabled={busy}
-            onChange={(event) => setDraft({ ...draft, height: event.target.value })}
-            onBlur={() => commit(draft)}
-            className="w-full min-w-0 rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
-          />
-        </label>
-      </div>
-      <label className="flex items-center gap-2">
-        <input
-          data-testid="settings-map-wrap-x"
-          aria-label="wraps east to west"
-          type="checkbox"
-          checked={draft.wrapX}
-          disabled={busy}
-          onChange={(event) => {
-            const next = { ...draft, wrapX: event.target.checked };
-            setDraft(next);
-            // A checkbox has no half-typed state, so it commits at once rather than on blur.
-            commit(next);
-          }}
-        />
-        <span className="text-ink-soft">Wraps east to west</span>
-      </label>
-      <label className="flex items-center gap-2">
-        <input
-          data-testid="settings-map-wrap-y"
-          aria-label="wraps north to south"
-          type="checkbox"
-          checked={draft.wrapY}
-          disabled={busy}
-          onChange={(event) => {
-            const next = { ...draft, wrapY: event.target.checked };
-            setDraft(next);
-            commit(next);
-          }}
-        />
-        <span className="text-ink-soft">Wraps north to south</span>
-      </label>
-      <MapShapeProblemLines
-        problems={mapShapeProblems(draft)}
-        testidPrefix="settings-map-problem"
-      />
-    </fieldset>
-  );
-}
-
-/** Whether two maps say the same thing, which is what matters when one of them came back from a write. */
-function sameMap(left: MapShape | null, right: MapShape | null): boolean {
-  if (left === null || right === null) {
-    return left === right;
-  }
-  return (
-    left.width === right.width &&
-    left.height === right.height &&
-    left.wrapX === right.wrapX &&
-    left.wrapY === right.wrapY
-  );
-}
-
-/** The four fields as text, for a game that may have no map at all. */
-function draftOf(map: MapShape | null): MapDraft {
-  if (map === null) {
-    return { width: "", height: "", wrapX: false, wrapY: false };
-  }
-  return {
-    width: String(map.width),
-    height: String(map.height),
-    wrapX: map.wrapX,
-    wrapY: map.wrapY
-  };
 }
 
 /**

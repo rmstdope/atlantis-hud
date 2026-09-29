@@ -52,10 +52,8 @@ export function mapShapeOfGame(rulesetId: string, recorded: MapShape | undefined
  * paper over per game.
  *
  * **The recorded object itself is returned when nothing needs turning off**, which almost always
- * it does not. That is not a micro-optimisation: `GameMapSettings` resyncs its draft in an effect
- * keyed on the map's identity, so a fresh object per call would make that effect run on every
- * render of the dialog and wipe half-typed text. The smoke spec "a corrected map size is still
- * there when settings are reopened" is what catches it.
+ * it does not. That is not a micro-optimisation: the shell memoises on the map's identity, so a
+ * fresh object per call would recompute everything keyed on it on every render.
  */
 function withDrawableWrapping(map: MapShape): MapShape {
   const wrapX = map.wrapX && map.width % 2 === 0;
@@ -180,6 +178,94 @@ export function mapSizesFromDraft(draft: MapSizesDraft): MapSizes | null {
     }
   }
   return { levels, wrapX: draft.wrapX, wrapY: draft.wrapY };
+}
+
+export function mapLevelLabel(level: MapLevel): string {
+  return MAP_LEVEL_LABELS[level];
+}
+
+/**
+ * The level sizes an existing world is configured with.
+ *
+ * A world created before map levels existed recorded only its single map, which is the surface's -
+ * so that is read as a surface-only configuration rather than as nothing at all.
+ */
+export function mapSizesOfGame(recorded: MapSizes | undefined, map: MapShape | null): MapSizes | null {
+  if (recorded !== undefined) {
+    return recorded;
+  }
+  if (map === null) {
+    return null;
+  }
+  return {
+    levels: { surface: { width: map.width, height: map.height } },
+    wrapX: map.wrapX,
+    wrapY: map.wrapY
+  };
+}
+
+/** One line naming every level's size and the shared wrapping, for World settings. */
+export function mapSizesSummary(sizes: MapSizes | null): string {
+  if (sizes === null || MAP_LEVELS.every((level) => sizes.levels[level] === undefined)) {
+    return "No map levels configured.";
+  }
+  const levels = MAP_LEVELS.map((level) => {
+    const size = sizes.levels[level];
+    return size === undefined
+      ? `${MAP_LEVEL_LABELS[level]} not configured`
+      : `${MAP_LEVEL_LABELS[level]} ${size.width} × ${size.height}`;
+  });
+  const wrapping =
+    sizes.wrapX && sizes.wrapY
+      ? "wraps east to west and north to south"
+      : sizes.wrapX
+        ? "wraps east to west"
+        : sizes.wrapY
+          ? "wraps north to south"
+          : "does not wrap";
+  return [...levels, wrapping].join(" · ");
+}
+
+/** The editing draft for a configuration; blank rows for the levels it does not have. */
+export function mapSizesDraftOf(sizes: MapSizes | null): MapSizesDraft {
+  const draft = mapSizesDraftFor("");
+  if (sizes === null) {
+    return draft;
+  }
+  for (const level of MAP_LEVELS) {
+    const size = sizes.levels[level];
+    if (size !== undefined) {
+      draft[level] = { width: String(size.width), height: String(size.height) };
+    }
+  }
+  return { ...draft, wrapX: sizes.wrapX, wrapY: sizes.wrapY };
+}
+
+/** A level made smaller or removed, and the field that did it - where "Keep editing" returns focus. */
+export type ShrunkField = { level: MapLevel; field: "width" | "height" };
+
+/**
+ * The first configured level that `next` makes smaller or removes, or `null` when none - the one
+ * change that asks for confirmation before saving.
+ */
+export function shrunkLevel(previous: MapSizes | null, next: MapSizes): ShrunkField | null {
+  if (previous === null) {
+    return null;
+  }
+  for (const level of MAP_LEVELS) {
+    const before = previous.levels[level];
+    if (before === undefined) {
+      continue;
+    }
+    const after = next.levels[level];
+    if (after === undefined || after.width < before.width) {
+      return { level, field: "width" };
+    }
+    if (after.height < before.height) {
+      return { level, field: "height" };
+    }
+  }
+  return null;
 }
 
 /**

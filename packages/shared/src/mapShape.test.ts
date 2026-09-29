@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   mapSizesDraftFor,
+  mapSizesDraftOf,
   mapSizesFromDraft,
+  mapSizesOfGame,
+  mapSizesSummary,
+  shrunkLevel,
   mapSizesProblems,
   mapDraftFor,
   mapFromDraft,
@@ -197,8 +201,7 @@ describe("a game that already carries wrapping that cannot be drawn", () => {
   });
 
   it("returns the very object it was given when nothing needs turning off", () => {
-    // Identity, not just equality: `GameMapSettings` resyncs its draft in an effect keyed on the
-    // map's identity, and a fresh object per call would wipe half-typed text on every render.
+    // Identity, not just equality: the shell memoises on the map's identity.
     const recorded = { width: 72, height: 96, wrapX: true, wrapY: true };
 
     expect(mapShapeOfGame("neworigins", recorded).map).toBe(recorded);
@@ -216,5 +219,74 @@ describe("a game that already carries wrapping that cannot be drawn", () => {
     mapShapeOfGame("neworigins", recorded);
 
     expect(recorded).toEqual({ width: 71, height: 96, wrapX: true, wrapY: false });
+  });
+});
+
+describe("an existing world's map sizes (ah-4hwa)", () => {
+  const trident = {
+    levels: {
+      surface: { width: 64, height: 64 },
+      underworld: { width: 48, height: 48 },
+      dungeon: { width: 128, height: 32 }
+    },
+    wrapX: true,
+    wrapY: false
+  };
+
+  it("summarises every level, naming the ones not configured", () => {
+    expect(mapSizesSummary(trident)).toBe(
+      "Surface 64 × 64 · Underworld 48 × 48 · Underdeep not configured · Dungeon 128 × 32 · wraps east to west"
+    );
+  });
+
+  it("names both wraps, or neither", () => {
+    expect(mapSizesSummary({ ...trident, wrapY: true })).toMatch(/wraps east to west and north to south$/u);
+    expect(mapSizesSummary({ ...trident, wrapX: false })).toMatch(/does not wrap$/u);
+  });
+
+  it("says so when no level is configured", () => {
+    expect(mapSizesSummary(null)).toBe("No map levels configured.");
+    expect(mapSizesSummary({ levels: {}, wrapX: true, wrapY: false })).toBe("No map levels configured.");
+  });
+
+  it("reads a recorded configuration as it is", () => {
+    expect(mapSizesOfGame(trident, { width: 72, height: 96, wrapX: true, wrapY: false })).toBe(trident);
+  });
+
+  it("reads a game created before map levels as a surface-only configuration", () => {
+    expect(mapSizesOfGame(undefined, { width: 72, height: 96, wrapX: true, wrapY: true })).toEqual({
+      levels: { surface: { width: 72, height: 96 } },
+      wrapX: true,
+      wrapY: true
+    });
+    expect(mapSizesOfGame(undefined, null)).toBeNull();
+  });
+
+  it("fills an editing draft from the configuration", () => {
+    expect(mapSizesDraftOf(trident)).toEqual({
+      surface: { width: "64", height: "64" },
+      underworld: { width: "48", height: "48" },
+      underdeep: { width: "", height: "" },
+      dungeon: { width: "128", height: "32" },
+      wrapX: true,
+      wrapY: false
+    });
+  });
+
+  it("finds the first configured level made smaller or removed", () => {
+    const next = { ...trident, levels: { ...trident.levels, underworld: { width: 48, height: 40 } } };
+    expect(shrunkLevel(trident, next)).toEqual({ level: "underworld", field: "height" });
+    const removed = { ...trident, levels: { surface: trident.levels.surface, underworld: trident.levels.underworld } };
+    expect(shrunkLevel(trident, removed)).toEqual({ level: "dungeon", field: "width" });
+  });
+
+  it("does not ask about a level added, grown, or a wrapping change", () => {
+    const next = {
+      levels: { ...trident.levels, surface: { width: 80, height: 64 }, underdeep: { width: 24, height: 24 } },
+      wrapX: false,
+      wrapY: true
+    };
+    expect(shrunkLevel(trident, next)).toBeNull();
+    expect(shrunkLevel(null, next)).toBeNull();
   });
 });

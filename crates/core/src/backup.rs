@@ -32,6 +32,18 @@ pub struct MapSizes {
     pub wrap_y: bool,
 }
 
+impl MapSizes {
+    /// The surface level as the single map movement and the viewport plan on, if it is configured.
+    pub fn surface(&self) -> Option<MapGeometry> {
+        self.levels.get("surface").map(|size| MapGeometry {
+            width: size.width,
+            height: size.height,
+            wrap_x: self.wrap_x,
+            wrap_y: self.wrap_y,
+        })
+    }
+}
+
 /// One configured level's dimensions. Wrapping belongs to [`MapSizes`], not a level.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
@@ -170,7 +182,8 @@ pub enum ManifestEdit {
     /// `null`: the absence is what makes the settings dialog say the ruleset's default is only
     /// assumed, and `skip_serializing_if` on the field is what keeps it absent on the way out.
     Map(Option<MapGeometry>),
-    /// All level sizes, with wrapping shared by every configured level.
+    /// All level sizes, with wrapping shared by every configured level. `Some` also records the
+    /// surface as `map` (or clears it when no surface is configured), in the same write.
     MapSizes(Option<MapSizes>),
     /// The game's display name. Trimming and validating it is the shell's, not this function's.
     Name(String),
@@ -189,7 +202,12 @@ pub fn apply_manifest_edit(manifest: &mut GameManifest, edit: &ManifestEdit) {
         ManifestEdit::Opened(at) => manifest.last_opened_at = at.clone(),
         ManifestEdit::Ruleset(id) => manifest.metadata.ruleset_id = id.clone(),
         ManifestEdit::Map(map) => manifest.metadata.map = *map,
-        ManifestEdit::MapSizes(map_sizes) => manifest.metadata.map_sizes = map_sizes.clone(),
+        ManifestEdit::MapSizes(map_sizes) => {
+            if let Some(sizes) = map_sizes {
+                manifest.metadata.map = sizes.surface();
+            }
+            manifest.metadata.map_sizes = map_sizes.clone();
+        }
         ManifestEdit::Name(name) => manifest.metadata.game_name = name.clone(),
         ManifestEdit::ActiveFaction(id) => manifest.metadata.active_faction_id = id.clone(),
     }
@@ -964,6 +982,72 @@ mod tests {
         apply_manifest_edit(&mut edited, &ManifestEdit::Map(Some(map)));
 
         assert_eq!(edited.metadata.map, Some(map));
+    }
+
+    /// Movement and the viewport still plan on the single map, which is the surface's, so the two
+    /// are written in one edit rather than two that could fail apart (ah-4hwa).
+    #[test]
+    fn setting_map_sizes_records_the_surface_as_the_map() {
+        let mut edited = manifest();
+        let sizes = MapSizes {
+            levels: BTreeMap::from([
+                (
+                    "surface".to_string(),
+                    MapSize {
+                        width: 40,
+                        height: 60,
+                    },
+                ),
+                (
+                    "underworld".to_string(),
+                    MapSize {
+                        width: 48,
+                        height: 48,
+                    },
+                ),
+            ]),
+            wrap_x: true,
+            wrap_y: false,
+        };
+
+        apply_manifest_edit(&mut edited, &ManifestEdit::MapSizes(Some(sizes.clone())));
+
+        assert_eq!(edited.metadata.map_sizes, Some(sizes));
+        assert_eq!(
+            edited.metadata.map,
+            Some(MapGeometry {
+                width: 40,
+                height: 60,
+                wrap_x: true,
+                wrap_y: false
+            })
+        );
+    }
+
+    #[test]
+    fn map_sizes_without_a_surface_leave_no_map() {
+        let mut edited = manifest();
+        edited.metadata.map = Some(MapGeometry {
+            width: 72,
+            height: 96,
+            wrap_x: true,
+            wrap_y: false,
+        });
+        let sizes = MapSizes {
+            levels: BTreeMap::from([(
+                "underworld".to_string(),
+                MapSize {
+                    width: 48,
+                    height: 48,
+                },
+            )]),
+            wrap_x: true,
+            wrap_y: false,
+        };
+
+        apply_manifest_edit(&mut edited, &ManifestEdit::MapSizes(Some(sizes)));
+
+        assert_eq!(edited.metadata.map, None);
     }
 
     #[test]

@@ -453,13 +453,11 @@ test("the About tab names the variants and offers somewhere to report a bug", as
 });
 
 /**
- * The map a game is played on, corrected in Settings and read back.
+ * Every map level's size, changed in Settings through the focused editor and read back.
  *
- * A walk rather than a unit test because the defect it pins was entirely in the wiring: the width
- * was written to the manifest, the store was updated, and the dialog still showed the ruleset's
- * default, because the shell handed the dialog a hand-built record that left the map out. Every
- * unit test in the area passed throughout - they all called the pieces directly, and the piece
- * nobody called was the one that was wrong.
+ * A walk rather than a unit test because the defects it pins were in the wiring: a width written to
+ * the manifest while the dialog kept showing the old value, and (ah-4hwa) a summary that showed only
+ * the surface beside surface fields that could still be edited in place.
  */
 test("a corrected map size is still there when settings are reopened", async ({ page }) => {
   await clearGames(page);
@@ -468,74 +466,73 @@ test("a corrected map size is still there when settings are reopened", async ({ 
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-tab-game").click();
 
-  // Created with the ruleset's declared map, so this game stated it: 72 x 96, east-west only.
-  await expect(page.getByTestId("settings-map-stated")).toBeVisible();
-  await expect(page.getByTestId("settings-map-width")).toHaveValue("72");
+  const summary = page.getByTestId("settings-map-sizes-summary");
+  await expect(summary).toHaveText(
+    "Surface 72 × 96 · Underworld not configured · Underdeep not configured · Dungeon not configured · wraps east to west"
+  );
+  // Nothing is editable in place: the only way in is Edit map sizes.
+  await expect(page.getByTestId("settings-panel").locator("input")).toHaveCount(0);
 
-  // One field at a time, each committed by its own blur. The wait between them is not politeness:
-  // a commit disables the fieldset for the length of the write, and text typed into a field while
-  // that is happening never reaches the form at all.
-  await page.getByTestId("settings-map-width").fill("40");
-  await page.getByTestId("settings-map-width").blur();
-  await expect(page.getByTestId("settings-map-width")).toBeEnabled();
-  await expect(page.getByTestId("settings-map-width")).toHaveValue("40");
+  await page.getByTestId("settings-map-sizes-edit").click();
+  const surfaceWidth = page.getByTestId("settings-map-sizes-surface-width");
+  await expect(surfaceWidth).toBeFocused();
+  await surfaceWidth.fill("40");
+  await page.getByTestId("settings-map-sizes-surface-height").fill("60");
+  await page.getByTestId("settings-map-sizes-underworld-width").fill("48");
+  await page.getByTestId("settings-map-sizes-underworld-height").fill("48");
+  await page.getByTestId("settings-map-sizes-save").click();
 
-  await page.getByTestId("settings-map-height").fill("60");
-  await page.getByTestId("settings-map-height").blur();
-  await expect(page.getByTestId("settings-map-height")).toBeEnabled();
-  // The height's own write must survive the width's write coming back changed.
-  await expect(page.getByTestId("settings-map-height")).toHaveValue("60");
+  // Smaller surface: asked first, naming the level.
+  await expect(page.getByTestId("settings-map-sizes-confirm")).toContainText("Making Surface smaller");
+  await page.getByRole("button", { name: "Keep editing", exact: true }).click();
+  await expect(page.getByTestId("settings-map-sizes-surface-width")).toBeFocused();
+  await expect(page.getByTestId("settings-map-sizes-surface-width")).toHaveValue("40");
+  await page.getByTestId("settings-map-sizes-save").click();
+  await page.getByTestId("settings-map-sizes-confirm-save").click();
+  await expect(page.getByTestId("settings-map-sizes-editor")).toHaveCount(0);
+  await expect(summary).toHaveText(
+    "Surface 40 × 60 · Underworld 48 × 48 · Underdeep not configured · Dungeon not configured · wraps east to west"
+  );
 
   await page.getByTestId("settings-close").click();
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-tab-game").click();
-
-  await expect(page.getByTestId("settings-map-width")).toHaveValue("40");
-  await expect(page.getByTestId("settings-map-height")).toHaveValue("60");
-  await expect(page.getByTestId("settings-map-stated")).toBeVisible();
-
-  // The same fields, in the narrower dialog: the fix for the create form's overflow was applied
-  // to both, so both are asserted. Measured on the panel, which is what would scroll sideways.
-  const overflow = await page
-    .getByTestId("settings-panel")
-    .evaluate((panel) => panel.scrollWidth - panel.clientWidth);
-  expect(overflow).toBeLessThanOrEqual(1);
+  await expect(summary).toHaveText(
+    "Surface 40 × 60 · Underworld 48 × 48 · Underdeep not configured · Dungeon not configured · wraps east to west"
+  );
 });
 
-test("map dimensions re-entered after clearing persist while the map is configured", async ({ page }) => {
+test("closing the map-size editor without saving keeps nothing", async ({ page }) => {
   await clearGames(page);
   await page.getByTestId("game-ruleset").selectOption("newage-arcanum");
   await page.getByTestId("game-map-surface-width").fill("40");
   await page.getByTestId("game-map-surface-height").fill("60");
   await page.getByTestId("game-map-wrap-x").check();
-  await createGame(page, "Re-entered map size");
+  await createGame(page, "Unsaved map size");
 
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-tab-game").click();
+  const summary = page.getByTestId("settings-map-sizes-summary");
+  const before =
+    "Surface 40 × 60 · Underworld 48 × 48 · Underdeep 24 × 24 · Dungeon 128 × 32 · wraps east to west";
+  await expect(summary).toHaveText(before);
 
-  const width = page.getByTestId("settings-map-width");
-  const height = page.getByTestId("settings-map-height");
-  await height.fill("");
-  await height.blur();
-  await expect(height).toBeEnabled();
+  await page.getByTestId("settings-map-sizes-edit").click();
+  await page.getByTestId("settings-map-sizes-dungeon-width").fill("");
+  // Escape closes the editor only, not Settings beneath it, and focus returns to the button.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("settings-map-sizes-editor")).toHaveCount(0);
+  await expect(page.getByTestId("settings-panel")).toBeVisible();
+  await expect(page.getByTestId("settings-map-sizes-edit")).toBeFocused();
+  await expect(summary).toHaveText(before);
 
-  await height.fill("60");
-  await height.blur();
-  await expect(height).toBeEnabled();
-  await expect(height).toHaveValue("60");
-
-  await width.fill("40");
-  await width.blur();
-  await expect(width).toHaveValue("40");
-  await expect(page.getByTestId("settings-map-wrap-x")).toBeChecked();
-
-  await page.getByTestId("settings-close").click();
-  await page.getByTestId("settings-indicator").click();
-  await page.getByTestId("settings-tab-game").click();
-
-  await expect(page.getByTestId("settings-map-width")).toHaveValue("40");
-  await expect(page.getByTestId("settings-map-height")).toHaveValue("60");
-  await expect(page.getByTestId("settings-map-wrap-x")).toBeChecked();
+  await page.getByTestId("settings-map-sizes-edit").click();
+  await expect(page.getByTestId("settings-map-sizes-dungeon-width")).toHaveValue("128");
+  // The editor fits its window rather than scrolling sideways.
+  const overflow = await page
+    .getByTestId("settings-map-sizes-editor")
+    .evaluate((panel) => panel.scrollWidth - panel.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
 });
 
 /**
