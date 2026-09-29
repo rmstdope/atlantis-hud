@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A new unit arrives in a previously visited hex</title>
+  <style>
+    :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#293442; --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8593a4; --brass:#d9a441; --blue:#4a9fd8; --green:#4fb783; }
+    * { box-sizing:border-box; margin:0; }
+    body { background:var(--ground); color:var(--ink); font:15px/1.5 Georgia,serif; padding:32px 24px 60px; }
+    header, main { max-width:1100px; margin:auto; }
+    h1 { font-size:27px; } h1 span { color:var(--brass); }
+    header p { color:var(--soft); max-width:82ch; margin-top:10px; }
+    h2 { color:var(--brass); font-size:16px; letter-spacing:.08em; margin:32px 0 10px; text-transform:uppercase; }
+    .choices { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    .choice { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; }
+    .choice.recommended { border-color:var(--brass); }
+    h3 { font-size:18px; } h3 em { color:var(--brass); font-size:11px; font-style:normal; letter-spacing:.12em; margin-right:7px; }
+    .copy { color:var(--soft); font-size:13px; margin:8px 0 13px; min-height:60px; }
+    .map { background:#0d1218; border:1px solid var(--edge); border-radius:7px; display:grid; grid-template-columns:88px 1fr; min-height:280px; overflow:hidden; }
+    .maplist { border-right:1px solid var(--edge); padding:12px 8px; display:grid; align-content:start; gap:8px; }
+    .hex { border:1px solid var(--edge); border-radius:5px; color:var(--dim); font:11px Arial,sans-serif; padding:7px 5px; text-align:center; }
+    .hex.active { border-color:var(--blue); background:#172736; color:var(--ink); }
+    .detail { padding:14px; font-family:Arial,sans-serif; }
+    .place { color:var(--dim); font-size:11px; letter-spacing:.1em; text-transform:uppercase; }
+    .region { font:18px Georgia,serif; margin:3px 0 13px; }
+    .unit { align-items:center; background:var(--raised); border:1px solid var(--edge); border-radius:6px; display:grid; gap:8px; grid-template-columns:26px 1fr auto; margin-top:7px; padding:9px; }
+    .unit .mark { color:var(--green); font-weight:bold; text-align:center; }
+    .unit .name { color:var(--ink); font-size:13px; }
+    .unit .sub { color:var(--dim); font-size:11px; margin-top:2px; }
+    .unit .status { color:var(--soft); font-size:11px; text-align:right; }
+    .new { border-style:dashed; border-color:var(--blue); }
+    .badge { background:#1c3a50; border-radius:10px; color:#a9d5f0; display:inline-block; font-size:10px; letter-spacing:.06em; padding:2px 6px; text-transform:uppercase; }
+    .group { color:var(--dim); font-size:11px; letter-spacing:.1em; margin:17px 0 6px; text-transform:uppercase; }
+    .arrival { background:#142434; border:1px solid var(--blue); border-radius:6px; padding:10px; margin-top:7px; }
+    .arrival .lead { color:#a9d5f0; font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+    .arrival .note { color:var(--soft); font-size:11px; margin-top:4px; }
+    ul { color:var(--soft); display:grid; font-size:12.5px; gap:5px; margin:13px 0 0 18px; }
+    li::marker { color:var(--green); }
+    li.con::marker { color:#d97070; }
+    footer { color:var(--dim); font-size:12px; margin-top:26px; max-width:90ch; }
+    @media (max-width:760px) { .choices { grid-template-columns:1fr; } body { padding:20px 14px 48px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>A newly formed unit reaches the <span>destination it is moving to</span></h1>
+    <p>A player creates a unit and sends it to a hex that was already on the map. The destination continues to show its familiar details, but now also shows the arriving unit before the next report gives it a permanent number.</p>
+  </header>
+  <main>
+    <h2>Choose how the arriving unit appears</h2>
+    <div class="choices">
+      <section class="choice recommended">
+        <h3><em>OPTION A — RECOMMENDED</em>In the unit list, with a “new” badge</h3>
+        <p class="copy">The arriving unit is part of the destination immediately, in the same list as every other unit. The small badge explains why it has no number yet.</p>
+        <div class="map">
+          <aside class="maplist"><div class="hex">Valley<br>(12,8)</div><div class="hex active">Plain<br>(13,8)</div><div class="hex">Forest<br>(14,8)</div></aside>
+          <section class="detail">
+            <div class="place">Plain (13,8)</div><div class="region">East Barrow</div>
+            <div class="group">Units here</div>
+            <div class="unit"><span class="mark">*</span><div><div class="name">Scouts (183)</div><div class="sub">10 men · moving north</div></div><div class="status">Own unit</div></div>
+            <div class="unit new"><span class="mark">*</span><div><div class="name">Pioneers <span class="badge">New</span></div><div class="sub">Newly formed · 5 men</div></div><div class="status">Arrives this turn</div></div>
+          </section>
+        </div>
+        <ul><li>Matches the established map pattern: the unit is where the player expects to find it.</li><li>The badge is present only until the next report supplies its number.</li></ul>
+      </section>
+      <section class="choice">
+        <h3><em>OPTION B</em>A separate “arriving this turn” group</h3>
+        <p class="copy">The destination keeps its ordinary list unchanged and places the new arrival in a clearly labelled group beneath it.</p>
+        <div class="map">
+          <aside class="maplist"><div class="hex">Valley<br>(12,8)</div><div class="hex active">Plain<br>(13,8)</div><div class="hex">Forest<br>(14,8)</div></aside>
+          <section class="detail">
+            <div class="place">Plain (13,8)</div><div class="region">East Barrow</div>
+            <div class="group">Units here</div>
+            <div class="unit"><span class="mark">*</span><div><div class="name">Scouts (183)</div><div class="sub">10 men · moving north</div></div><div class="status">Own unit</div></div>
+            <div class="group">Arriving this turn</div>
+            <div class="arrival"><div class="lead">Pioneers · New unit</div><div class="note">5 men will arrive here after movement.</div></div>
+          </section>
+        </div>
+        <ul><li>Separates confirmed report information from the player’s planned result.</li><li class="con">The player must look in a second place for a unit that is already expected to be there.</li></ul>
+      </section>
+    </div>
+    <footer>Both versions keep the map usable when there are no arrivals, several arrivals, or a narrow window: the unit area scrolls like the existing list, and the destination name remains visible.</footer>
+  </main>
+</body>
+</html>
