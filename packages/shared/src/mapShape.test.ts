@@ -275,9 +275,9 @@ describe("an existing world's map sizes (ah-4hwa)", () => {
 
   it("finds the first configured level made smaller or removed", () => {
     const next = { ...trident, levels: { ...trident.levels, underworld: { width: 48, height: 40 } } };
-    expect(shrunkLevel(trident, next)).toBe("underworld");
+    expect(shrunkLevel(trident, next)).toEqual({ level: "underworld", field: "height" });
     const removed = { ...trident, levels: { surface: trident.levels.surface, underworld: trident.levels.underworld } };
-    expect(shrunkLevel(trident, removed)).toBe("dungeon");
+    expect(shrunkLevel(trident, removed)).toEqual({ level: "dungeon", field: "width" });
   });
 
   it("does not ask about a level added, grown, or a wrapping change", () => {

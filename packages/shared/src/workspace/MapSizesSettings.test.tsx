@@ -26,7 +26,7 @@ const game = {
 
 function settings(overrides: Partial<typeof game> = {}) {
   return renderToStaticMarkup(
-    <GameSettings game={{ ...game, ...overrides }} busy={false} error={null} onChangeMapSizes={() => {}} />
+    <GameSettings game={{ ...game, ...overrides }} busy={false} error={null} onChangeMapSizes={async () => true} />
   );
 }
 
@@ -47,14 +47,14 @@ describe("World settings' map sizes (ah-4hwa)", () => {
     const legacy: Omit<typeof game, "mapSizes"> = { ...game };
     delete (legacy as Partial<typeof game>).mapSizes;
     const markup = renderToStaticMarkup(
-      <GameSettings game={legacy} busy={false} error={null} onChangeMapSizes={() => {}} />
+      <GameSettings game={legacy} busy={false} error={null} onChangeMapSizes={async () => true} />
     );
     expect(markup).toContain("Surface 64 × 64 · Underworld not configured");
   });
 });
 
 describe("the Edit map sizes window (ah-4hwa)", () => {
-  const panel = (confirming: "underworld" | null = null) =>
+  const panel = (confirming: { level: "underworld"; field: "height" } | null = null) =>
     renderToStaticMarkup(
       <MapSizesEditorPanel
         draft={mapSizesDraftOf(trident)}
@@ -94,7 +94,7 @@ describe("the Edit map sizes window (ah-4hwa)", () => {
   });
 
   it("names the level made smaller when it asks before saving", () => {
-    const markup = panel("underworld");
+    const markup = panel({ level: "underworld", field: "height" });
     expect(markup).toContain('aria-label="Save map sizes?"');
     expect(markup).toContain("Making Underworld smaller may remove parts of this level that are outside its new size.");
     expect(markup).toContain("Keep editing");

@@ -241,11 +241,14 @@ export function mapSizesDraftOf(sizes: MapSizes | null): MapSizesDraft {
   return { ...draft, wrapX: sizes.wrapX, wrapY: sizes.wrapY };
 }
 
+/** A level made smaller or removed, and the field that did it - where "Keep editing" returns focus. */
+export type ShrunkField = { level: MapLevel; field: "width" | "height" };
+
 /**
  * The first configured level that `next` makes smaller or removes, or `null` when none - the one
  * change that asks for confirmation before saving.
  */
-export function shrunkLevel(previous: MapSizes | null, next: MapSizes): MapLevel | null {
+export function shrunkLevel(previous: MapSizes | null, next: MapSizes): ShrunkField | null {
   if (previous === null) {
     return null;
   }
@@ -255,19 +258,14 @@ export function shrunkLevel(previous: MapSizes | null, next: MapSizes): MapLevel
       continue;
     }
     const after = next.levels[level];
-    if (after === undefined || after.width < before.width || after.height < before.height) {
-      return level;
+    if (after === undefined || after.width < before.width) {
+      return { level, field: "width" };
+    }
+    if (after.height < before.height) {
+      return { level, field: "height" };
     }
   }
   return null;
-}
-
-/** The surface's map shape, which is what movement and the viewport still plan on. */
-export function surfaceMapOf(sizes: MapSizes): MapShape | undefined {
-  const surface = sizes.levels.surface;
-  return surface === undefined
-    ? undefined
-    : { width: surface.width, height: surface.height, wrapX: sizes.wrapX, wrapY: sizes.wrapY };
 }
 
 /**

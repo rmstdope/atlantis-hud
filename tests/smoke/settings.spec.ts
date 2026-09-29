@@ -484,6 +484,10 @@ test("a corrected map size is still there when settings are reopened", async ({ 
 
   // Smaller surface: asked first, naming the level.
   await expect(page.getByTestId("settings-map-sizes-confirm")).toContainText("Making Surface smaller");
+  await page.getByRole("button", { name: "Keep editing", exact: true }).click();
+  await expect(page.getByTestId("settings-map-sizes-surface-width")).toBeFocused();
+  await expect(page.getByTestId("settings-map-sizes-surface-width")).toHaveValue("40");
+  await page.getByTestId("settings-map-sizes-save").click();
   await page.getByTestId("settings-map-sizes-confirm-save").click();
   await expect(page.getByTestId("settings-map-sizes-editor")).toHaveCount(0);
   await expect(summary).toHaveText(

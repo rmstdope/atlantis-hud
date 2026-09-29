@@ -109,7 +109,7 @@ function tag(html: string, testid: string): string {
           game={null}
           busy={false}
           error={null}
-          onChangeMapSizes={() => {}}
+          onChangeMapSizes={async () => true}
           onDismiss={() => {}}
         />
       );

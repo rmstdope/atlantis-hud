@@ -42,7 +42,7 @@ import { rowKeyOf, unitRowKey } from "../unitTable";
 import { previewAtCursor, unitAtCursor } from "./unitCursor";
 import { formationRegionUnitIds } from "./ordersLock";
 import type { MapShape, MapSizes } from "@atlantis/core-client";
-import { mapShapeJson, mapShapeOfGame, surfaceMapOf } from "../mapShape";
+import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import {
   deliverArmyExport,
   deliverGameBackupExport,
@@ -3082,24 +3082,27 @@ export function AppShell({
    * a value is what turns that assumption into the player's own word.
    */
   /**
-   * Saves every level's size. The surface's shape is written as the game's map too, because that is
-   * the one movement and the viewport still plan on.
+   * Saves every level's size. The core records the surface as the game's map in the same write,
+   * because that is the one movement and the viewport still plan on. Resolves `true` once saved, so
+   * the editor keeps the player's draft when it was not.
    */
   const changeMapSizes = useCallback(
-    (mapSizes: MapSizes) => {
+    async (mapSizes: MapSizes): Promise<boolean> => {
       if (!game) {
-        return;
+        return false;
       }
-      return runGameAction(async () => {
-        const gameId = game.manifest.metadata.gameId;
-        const map = surfaceMapOf(mapSizes);
-        await client.setGameMapSizes(gameId, JSON.stringify(mapSizes));
-        const manifest = await client.setGameMap(gameId, mapShapeJson(map ?? null));
+      const saved = await runGameAction(async () => {
+        const manifest = await client.setGameMapSizes(
+          game.manifest.metadata.gameId,
+          JSON.stringify(mapSizes)
+        );
         setGame({ ...game, manifest });
         updateGameMapSizesInStore(mapSizes);
-        updateGameMapInStore(map);
+        updateGameMapInStore(manifest.metadata.map);
         setGames(await client.listGames());
+        return true;
       });
+      return saved === true;
     },
     [client, game, runGameAction, updateGameMapInStore, updateGameMapSizesInStore]
   );
@@ -5145,7 +5148,7 @@ export function AppShell({
       game={game ? workspaceGameOf(game) : null}
       busy={busy}
       error={gameError}
-      onChangeMapSizes={(mapSizes) => void changeMapSizes(mapSizes)}
+      onChangeMapSizes={changeMapSizes}
       onDismiss={() => setSettingsOpen(false)}
     />
   );

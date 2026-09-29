@@ -58,7 +58,7 @@ export function SettingsDialog({
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
-  onChangeMapSizes: (mapSizes: MapSizes) => void;
+  onChangeMapSizes: (mapSizes: MapSizes) => Promise<boolean>;
   onDismiss: () => void;
 }) {
   // Local rather than lifted: the dialog unmounts when closed, so every open lands on Global,
@@ -886,7 +886,7 @@ export function GameSettings({
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
-  onChangeMapSizes: (mapSizes: MapSizes) => void;
+  onChangeMapSizes: (mapSizes: MapSizes) => Promise<boolean>;
 }) {
   const presentation = gameSettingsPresentation(game);
 

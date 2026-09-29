@@ -6,8 +6,8 @@ import {
   mapSizesFromDraft,
   mapSizesSummary,
   shrunkLevel,
-  type MapLevel,
-  type MapSizesDraft
+  type MapSizesDraft,
+  type ShrunkField
 } from "../mapShape";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { MapSizesFields } from "./MapSizesFields";
@@ -33,7 +33,8 @@ export function MapSizesSettings({
   /** The sizes are the ruleset's default rather than anything this world recorded. */
   assumed: boolean;
   busy: boolean;
-  onChange: (mapSizes: MapSizes) => void;
+  /** Resolves `true` once saved; the editor stays open, draft intact, when it was not. */
+  onChange: (mapSizes: MapSizes) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const editButton = useRef<HTMLButtonElement>(null);
@@ -56,9 +57,10 @@ export function MapSizesSettings({
         <MapSizesEditor
           mapSizes={mapSizes}
           busy={busy}
-          onSave={(next) => {
-            onChange(next);
-            close();
+          onSave={async (next) => {
+            if (await onChange(next)) {
+              close();
+            }
           }}
           onCancel={close}
         />
@@ -116,19 +118,24 @@ function MapSizesEditor({
 }: {
   mapSizes: MapSizes | null;
   busy: boolean;
-  onSave: (mapSizes: MapSizes) => void;
+  onSave: (mapSizes: MapSizes) => Promise<void>;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(() => mapSizesDraftOf(mapSizes));
-  const [confirming, setConfirming] = useState<MapLevel | null>(null);
+  const [confirming, setConfirming] = useState<ShrunkField | null>(null);
   const panel = useRef<HTMLDivElement>(null);
 
   const keepEditing = () => {
-    const level = confirming;
+    const changed = confirming;
     setConfirming(null);
+    if (changed === null) {
+      return;
+    }
     requestAnimationFrame(() =>
       panel.current
-        ?.querySelector<HTMLInputElement>(`[data-testid="settings-map-sizes-${level}-width"]`)
+        ?.querySelector<HTMLInputElement>(
+          `[data-testid="settings-map-sizes-${changed.level}-${changed.field}"]`
+        )
         ?.focus()
     );
   };
@@ -152,12 +159,13 @@ function MapSizesEditor({
           setConfirming(shrunk);
           return;
         }
-        onSave(next);
+        void onSave(next);
       }}
       onConfirm={() => {
         const next = mapSizesFromDraft(draft);
         if (next !== null) {
-          onSave(next);
+          setConfirming(null);
+          void onSave(next);
         }
       }}
       onKeepEditing={keepEditing}
@@ -182,7 +190,7 @@ export function MapSizesEditorPanel({
   draft: MapSizesDraft;
   busy: boolean;
   /** The level a save would make smaller or remove, while the player is asked to confirm. */
-  confirming: MapLevel | null;
+  confirming: ShrunkField | null;
   onDraft: (draft: MapSizesDraft) => void;
   onSave: () => void;
   onConfirm: () => void;
@@ -233,7 +241,7 @@ export function MapSizesEditorPanel({
           >
             <h4 className="m-0 text-ink">Save map sizes?</h4>
             <p className="my-1 text-ink-soft">
-              Making {mapLevelLabel(confirming)} smaller may remove parts of this level that are
+              Making {mapLevelLabel(confirming.level)} smaller may remove parts of this level that are
               outside its new size.
             </p>
             <div className="flex justify-end gap-2">
