@@ -21,7 +21,7 @@ describe("creating a game whose map cannot wrap", () => {
     ).toEqual({
       name: "Hexes",
       rulesetId: "neworigins",
-      map: { width: 72, height: 96, wrapX: true, wrapY: false },
+      map: { width: 72, height: 96, wrapX: true, wrapY: false, levels: { surface: { width: 72, height: 96 } } },
       mapSizes: { levels: { surface: { width: 72, height: 96 } }, wrapX: true, wrapY: false }
     });
   });

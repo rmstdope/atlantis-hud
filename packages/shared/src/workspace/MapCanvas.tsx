@@ -88,6 +88,7 @@ import {
 } from "./mapNotes";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { wallMarks, type WallMark } from "./wallMarks";
+import { mapShapeAtLevel } from "../mapShape";
 
 const HEX_POINTS = hexPointsAttribute(HEX_RADIUS);
 const FOG_TILE = fogPatternTile(HEX_RADIUS);
@@ -489,10 +490,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     arrow = null,
     routeRisk = [],
     onMarquee,
-    shape = null
+    shape: gameShape = null
   },
   ref
 ) {
+  // Each level wraps at its own size (ah-byqe).
+  const shape = useMemo(() => mapShapeAtLevel(gameShape, level), [gameShape, level]);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<SVGSVGElement | null>(null);
   const worldRef = useRef<SVGGElement | null>(null);

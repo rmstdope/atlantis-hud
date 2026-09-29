@@ -2636,6 +2636,7 @@ mod tests {
             height: 40,
             wrap_x: true,
             wrap_y: true,
+            levels: None,
         };
 
         let updated =

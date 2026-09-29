@@ -2,7 +2,7 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 import type { MapShape, MapSizes } from "@atlantis/core-client";
 import type { MapSizesDraft } from "../mapShape";
-import { mapSizesDraftFor, mapSizesFromDraft, mapSizesProblems } from "../mapShape";
+import { mapShapeOfSizes, mapSizesDraftFor, mapSizesFromDraft, mapSizesProblems } from "../mapShape";
 import { MapSizesFields } from "./MapSizesFields";
 import { RULESETS } from "../rulesets";
 
@@ -23,13 +23,7 @@ export function gameSubmission(
   if (mapSizes === null) {
     return null;
   }
-  const surface = mapSizes.levels.surface;
-  return {
-    name,
-    rulesetId,
-    map: surface === undefined ? undefined : { ...surface, wrapX: map.wrapX, wrapY: map.wrapY },
-    mapSizes
-  };
+  return { name, rulesetId, map: mapShapeOfSizes(mapSizes), mapSizes };
 }
 
 /**

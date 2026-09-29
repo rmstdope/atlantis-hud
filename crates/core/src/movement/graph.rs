@@ -167,9 +167,74 @@ pub struct MapGeometry {
     pub height: i32,
     pub wrap_x: bool,
     pub wrap_y: bool,
+    /// Every configured level's own size, when the game recorded them (ah-byqe). `width` and
+    /// `height` above are then the surface's. `None` is a shape recorded before levels had sizes of
+    /// their own, which still applies to every level, exactly as it always did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub levels: Option<LevelSizes>,
+}
+
+/// The size of each map level a game configured. A level left `None` was not configured.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "LevelSizes.ts"))]
+#[serde(rename_all = "camelCase")]
+pub struct LevelSizes {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub surface: Option<LevelSize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub underworld: Option<LevelSize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub underdeep: Option<LevelSize>,
+    /// The fourth level down, which New Age reports write as `4 <dungeon>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub dungeon: Option<LevelSize>,
+}
+
+/// One level's width and height, in coordinate space.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "LevelSize.ts"))]
+#[serde(rename_all = "camelCase")]
+pub struct LevelSize {
+    pub width: i32,
+    pub height: i32,
+}
+
+impl LevelSizes {
+    /// The size configured for level `z`, numbered as [`crate::report::level`] numbers them.
+    #[must_use]
+    pub fn at(self, z: u32) -> Option<LevelSize> {
+        match z {
+            crate::report::level::SURFACE => self.surface,
+            crate::report::level::UNDERWORLD => self.underworld,
+            crate::report::level::UNDERDEEP => self.underdeep,
+            crate::report::level::ABYSS => self.dungeon,
+            _ => None,
+        }
+    }
 }
 
 impl MapGeometry {
+    /// The shape of level `z` alone, or `None` when that level has no size of its own - which
+    /// every caller already reads as "the game never said".
+    #[must_use]
+    pub fn at_level(self, z: u32) -> Option<MapGeometry> {
+        let Some(levels) = self.levels else {
+            return Some(self);
+        };
+        levels.at(z).map(|size| MapGeometry {
+            width: size.width,
+            height: size.height,
+            wrap_x: self.wrap_x,
+            wrap_y: self.wrap_y,
+            levels: None,
+        })
+    }
+
     /// Brings a coordinate back onto the map, on whichever axes this map actually wraps.
     ///
     /// A dimension that is not positive is treated as unknown rather than as an error: a zero
@@ -239,7 +304,9 @@ pub fn geometric_neighbour(
         y: from.y + dy,
         z: from.z,
     };
-    geometry.map_or(stepped, |map| map.wrap(stepped))
+    geometry
+        .and_then(|map| map.at_level(from.z))
+        .map_or(stepped, |map| map.wrap(stepped))
 }
 
 /// A hex the faction knows something about.
@@ -793,6 +860,8 @@ pub fn hex_distance(
     if from.z != to.z {
         return None;
     }
+    // Each level measures across its own seam (ah-byqe).
+    let geometry = geometry.and_then(|map| map.at_level(from.z));
 
     // A separation, and whether the map's own shape settles it.
     //
@@ -1035,6 +1104,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         };
 
         let measured = hex_distance(
@@ -1055,6 +1125,7 @@ mod tests {
             height: 96,
             wrap_x: false,
             wrap_y: false,
+            levels: None,
         };
         let origin = Coordinate { x: 0, y: 0, z: 1 };
         let steps = |x: i32, y: i32| {
@@ -1075,6 +1146,90 @@ mod tests {
         assert_eq!(steps(3, 1), Some(HexDistance::Exact(3)));
     }
 
+    /// Trident's defaults: Surface 64 x 64, Underworld 48 x 48, no Underdeep, Dungeon 128 x 32.
+    fn per_level_map() -> MapGeometry {
+        MapGeometry {
+            width: 64,
+            height: 64,
+            wrap_x: true,
+            wrap_y: false,
+            levels: Some(LevelSizes {
+                surface: Some(LevelSize {
+                    width: 64,
+                    height: 64,
+                }),
+                underworld: Some(LevelSize {
+                    width: 48,
+                    height: 48,
+                }),
+                underdeep: None,
+                dungeon: Some(LevelSize {
+                    width: 128,
+                    height: 32,
+                }),
+            }),
+        }
+    }
+
+    #[test]
+    fn each_level_steps_across_its_own_seam() {
+        let map = Some(per_level_map());
+        let west_edge = |z| Coordinate { x: 0, y: 2, z };
+
+        let surface = geometric_neighbour(west_edge(1), Direction::Northwest, map);
+        let underworld = geometric_neighbour(west_edge(2), Direction::Northwest, map);
+        let dungeon = geometric_neighbour(west_edge(4), Direction::Northwest, map);
+
+        assert_eq!((surface.x, surface.z), (63, 1));
+        assert_eq!((underworld.x, underworld.z), (47, 2));
+        assert_eq!((dungeon.x, dungeon.z), (127, 4));
+    }
+
+    #[test]
+    fn a_level_with_no_size_wraps_nowhere() {
+        let map = Some(per_level_map());
+
+        let underdeep =
+            geometric_neighbour(Coordinate { x: 0, y: 2, z: 3 }, Direction::Northwest, map);
+        let nexus = geometric_neighbour(Coordinate { x: 0, y: 2, z: 0 }, Direction::Northwest, map);
+
+        assert_eq!(underdeep.x, -1);
+        assert_eq!(nexus.x, -1);
+    }
+
+    #[test]
+    fn a_shape_recorded_without_levels_applies_to_every_level() {
+        let map = Some(MapGeometry {
+            width: 64,
+            height: 64,
+            wrap_x: true,
+            wrap_y: false,
+            levels: None,
+        });
+
+        let underworld =
+            geometric_neighbour(Coordinate { x: 0, y: 2, z: 2 }, Direction::Northwest, map);
+
+        assert_eq!(underworld.x, 63);
+    }
+
+    #[test]
+    fn a_hex_distance_measures_across_its_own_levels_seam() {
+        let map = Some(per_level_map());
+        let across = |z| {
+            hex_distance(
+                Coordinate { x: 47, y: 1, z },
+                Coordinate { x: 0, y: 0, z },
+                map,
+                &ShownExtent::default(),
+            )
+        };
+
+        assert_eq!(across(2), Some(HexDistance::Exact(1)));
+        assert_eq!(across(1), Some(HexDistance::Exact(17)));
+        assert!(matches!(across(3), Some(HexDistance::AtMost(_))));
+    }
+
     #[test]
     fn a_hex_distance_goes_round_the_seam_on_a_map_that_wraps() {
         let wrapping_east = MapGeometry {
@@ -1082,6 +1237,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         };
         assert_eq!(
             hex_distance(
@@ -1127,6 +1283,7 @@ mod tests {
                     height: 0,
                     wrap_x: true,
                     wrap_y: true,
+                    levels: None,
                 }),
                 &ShownExtent::default()
             ),
@@ -1142,6 +1299,7 @@ mod tests {
                     height: 96,
                     wrap_x: false,
                     wrap_y: false,
+                    levels: None,
                 }),
                 &ShownExtent::default()
             ),
@@ -1196,6 +1354,7 @@ mod tests {
                     height: 0,
                     wrap_x: true,
                     wrap_y: true,
+                    levels: None,
                 }),
                 &shown(&[(51, 40, 1)])
             ),
@@ -1253,6 +1412,7 @@ mod tests {
                     height: 96,
                     wrap_x: true,
                     wrap_y: true,
+                    levels: None,
                 }),
                 &ShownExtent::default()
             ),
@@ -1363,6 +1523,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         };
         let from = Coordinate { x: 71, y: 41, z: 1 };
 
@@ -1390,6 +1551,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         };
         let from = Coordinate { x: 4, y: 94, z: 1 };
 
@@ -1407,6 +1569,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: true,
+            levels: None,
         };
         let from = Coordinate { x: 4, y: 94, z: 1 };
 
@@ -1424,6 +1587,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: true,
+            levels: None,
         };
         for (from, direction) in [
             (Coordinate { x: 71, y: 41, z: 1 }, Direction::Southeast),
@@ -1451,6 +1615,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         };
         assert_eq!(map.with_geometry(Some(shape)).geometry(), Some(shape));
     }
