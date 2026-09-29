@@ -40,6 +40,7 @@ import { rulesetById } from "../rulesets";
 import { orderProcessingFor, type OrderProcessing } from "../orderProcessing";
 import { rowKeyOf, unitRowKey } from "../unitTable";
 import { previewAtCursor, unitAtCursor } from "./unitCursor";
+import { formationRegionUnitIds } from "./ordersLock";
 import type { MapShape } from "@atlantis/core-client";
 import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import {
@@ -338,12 +339,6 @@ import {
  * can be tested without rendering anything.
  */
 export { isOlderTurn };
-
-/**
- * The reported units of a hex nothing is known about - one frozen instance, so a render with no hex
- * selected hands the same identity down and memoised work below it does not run again.
- */
-const NO_UNITS: ReadonlySet<string> = Object.freeze(new Set<string>());
 
 /** How long a load waits for the ruleset before giving up on it and parsing unclassified. */
 export const RULESET_WAIT_MS = 5000;
@@ -1360,8 +1355,12 @@ export function AppShell({
     [unitRegions, formedUnitIds]
   );
 
-  /** The reported units of the hex on screen, which is what a `NEW n` alias is scoped by. */
-  const regionUnitIds = unitIdsByRegion.get(hex?.regionId ?? "") ?? NO_UNITS;
+  /** The reported units that scope the selected unit's document block. */
+  const selectedUnitRegionIds = formationRegionUnitIds(
+    cursor,
+    hex?.regionId ?? "",
+    unitIdsByRegion
+  );
 
   /**
    * The selection as a unit this month's `FORM` orders create, when it is one.
@@ -1372,8 +1371,8 @@ export function AppShell({
    */
   const formedSelection = useMemo(
     () =>
-      orders.formedSelectionFor(ordersDocument, selectedUnitId, regionUnitIds),
-    [ordersDocument, selectedUnitId, regionUnitIds, orders]
+      orders.formedSelectionFor(ordersDocument, selectedUnitId, selectedUnitRegionIds),
+    [ordersDocument, selectedUnitId, selectedUnitRegionIds, orders]
   );
 
   /** Every own unit in the report, for the units dock's `All my units` source. `ah-1mpx.2`. */
@@ -3858,7 +3857,7 @@ export function AppShell({
           unitId,
           unitOrders,
           newBlockBanner,
-          regionUnitIds
+          selectedUnitRegionIds
         );
         writer.markDirty(game, draftKey, next);
         return next;
@@ -3870,7 +3869,7 @@ export function AppShell({
       writer,
       writeOrdersDocument,
       newBlockBanner,
-      regionUnitIds,
+      selectedUnitRegionIds,
       orders
     ]
   );
@@ -4014,7 +4013,7 @@ export function AppShell({
           document,
           unitId: unit.unitId,
           banner: newBlockBanner,
-          regionUnitIds,
+          regionUnitIds: selectedUnitRegionIds,
           order
         });
         writer.markDirty(game, draftKey, written);
@@ -4028,7 +4027,7 @@ export function AppShell({
       writer,
       writeOrdersDocument,
       newBlockBanner,
-      regionUnitIds,
+      selectedUnitRegionIds,
       orders
     ]
   );
@@ -5808,7 +5807,7 @@ export function AppShell({
                   unitId={selectedUnitId}
                   formed={formedSelection}
                   orders={orders}
-                  regionUnitIds={regionUnitIds}
+                  regionUnitIds={selectedUnitRegionIds}
                   hex={hex}
                   document={ordersDocument}
                   externalRevision={externalOrdersRevision}

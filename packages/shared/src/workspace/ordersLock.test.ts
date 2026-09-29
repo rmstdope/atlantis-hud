@@ -2,7 +2,13 @@ import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { hexNodeOf } from "../hexMapModel";
 import type { HexNode } from "../hexMapModel";
-import { describeLock, formedSelectionFor, lockFor } from "./ordersLock";
+import {
+  describeLock,
+  formationRegionUnitIds,
+  formationSourceRegionId,
+  formedSelectionFor,
+  lockFor
+} from "./ordersLock";
 
 function hexAt(knowledge: "current" | "stale", lastSeenTurn: number | null): HexNode {
   return hexNodeOf(
@@ -75,6 +81,36 @@ describe("describeLock", () => {
 describe("a unit formed this month", () => {
   const REGION = new Set(["1922"]);
   const document = ["unit 1922", "@claim 200", "form 1", "buy 1 hdwa", "end"].join("\n");
+
+  it("looks for an arriving formed unit's FORM in its source hex", () => {
+    expect(
+      formationSourceRegionId(
+        { regionId: "1:8", unitId: "new-1", arrivingFrom: "1:7" },
+        "1:8"
+      )
+    ).toBe("1:7");
+  });
+
+  it.each([
+    ["current", 71],
+    ["stale", 68]
+  ] as const)("keeps an arrived formed unit's source orders editable in a %s destination", (knowledge, turn) => {
+    const formed = formedSelectionFor(
+      document,
+      "new-1",
+      formationRegionUnitIds(
+        { regionId: "1:8", unitId: "new-1", arrivingFrom: "1:7" },
+        "1:8",
+        new Map([
+          ["1:7", REGION],
+          ["1:8", new Set(["999"])]
+        ])
+      ),
+      "origins"
+    );
+
+    expect(lockFor(null, hexAt(knowledge, turn), formed)).toBeNull();
+  });
 
   it("a formed unit whose FORM the document has lost is refused, and says which order to write", () => {
     const lock = lockFor(null, hexAt("current", 71), { alias: "1", formedBy: null });

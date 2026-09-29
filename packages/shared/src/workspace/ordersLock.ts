@@ -2,6 +2,7 @@ import type { ReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { formBlockFor, formedAlias } from "../ordersDocument";
 import type { OrderCommentSyntax } from "../rulesets";
+import type { UnitCursor } from "./unitCursor";
 
 /**
  * Why the editor is refusing an edit, and the words it says about it.
@@ -25,6 +26,30 @@ export type FormedSelection = {
   /** The reported unit whose block holds the `FORM`, or `null` when the document has no such block. */
   formedBy: string | null;
 };
+
+/**
+ * The report region holding the `FORM` for the unit at this cursor.
+ *
+ * An arrival's `NEW n` alias stopped being usable at its destination (`rules/form`), so its
+ * document block must still be resolved against the source region's reported units.
+ */
+export function formationSourceRegionId(
+  cursor: UnitCursor | null,
+  activeRegionId: string
+): string {
+  return cursor?.arrivingFrom ?? activeRegionId;
+}
+
+/** The reported units that scope the selected unit's block in the orders document. */
+export function formationRegionUnitIds(
+  cursor: UnitCursor | null,
+  activeRegionId: string,
+  unitIdsByRegion: ReadonlyMap<string, ReadonlySet<string>>
+): ReadonlySet<string> {
+  return unitIdsByRegion.get(formationSourceRegionId(cursor, activeRegionId)) ?? EMPTY_REGION_UNIT_IDS;
+}
+
+const EMPTY_REGION_UNIT_IDS: ReadonlySet<string> = Object.freeze(new Set<string>());
 
 /**
  * The selected id as a formed selection, or `null` when it names a unit the report shows.
