@@ -49273,9 +49273,10 @@ BUILD
         assert_eq!(eaten.faction_food_covered, 0);
     }
 
-    /// The doubt is about the upkeep alone: everything else about the month is still exact.
+    /// A short faction-food pool settles upkeep in report order while leaving the rest of each
+    /// month's forecast exact.
     #[test]
-    fn a_contested_pool_doubts_the_upkeep_but_not_the_income() {
+    fn a_short_pool_settles_upkeep_without_doubting_income() {
         let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 3, "grain", "GRAI");
         let mut first = with_silver(starving(unit("2001")), 500);
         first.flags = vec!["consuming faction's food".to_string()];
@@ -49286,22 +49287,20 @@ BUILD
 
         let review = forecast_of(vec![quartermaster, first, second]);
 
-        for id in ["2001", "2002"] {
+        for (id, upkeep) in [("2001", Some(0)), ("2002", Some(30))] {
             let unit = forecast(&review, id);
-            assert_eq!(unit.upkeep, None, "{id}");
+            assert_eq!(unit.upkeep, upkeep, "{id}");
             assert!(unit.income.is_some(), "{id}");
             assert!(unit.expense.is_some(), "{id}");
             assert!(unit.at_month_end.is_some(), "{id}");
-            assert_eq!(unit.doubt, Some(SilverDoubt::ContestedFactionFood), "{id}");
+            assert_eq!(unit.doubt, None, "{id}");
         }
         assert_eq!(forecast(&review, "2000").upkeep, Some(10));
     }
 
-    /// A contested pool doubts the fee, and a doubted unit shows no change list at all
-    /// (`ah-rgkk.4.4`) - even one whose month already moved silver before the pool was settled.
-    /// `ah-0puh`'s fish reached this through the corpus: the doubt was added after the list was.
+    /// A short pool does not doubt a settled fee, so it keeps a unit's existing change list.
     #[test]
-    fn a_contested_pool_empties_the_change_list_it_doubts() {
+    fn a_short_pool_keeps_the_change_list_it_settles() {
         let quartermaster = with_item(with_silver(starving(unit("2000")), 500), 3, "grain", "GRAI");
         let mut first = with_silver(starving(unit("2001")), 500);
         first.flags = vec!["consuming faction's food".to_string()];
@@ -49324,8 +49323,8 @@ BUILD
         );
 
         let unit = forecast(&review, "2001");
-        assert_eq!(unit.doubt, Some(SilverDoubt::ContestedFactionFood));
-        assert_eq!(unit.changes, Vec::new(), "{unit:?}");
+        assert_eq!(unit.doubt, None);
+        assert!(!unit.changes.is_empty(), "{unit:?}");
     }
 
     /// The plumbing test: the purse lives on the report header, and only `review_turn` can carry

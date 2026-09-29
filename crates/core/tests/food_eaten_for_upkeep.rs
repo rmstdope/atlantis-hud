@@ -216,10 +216,10 @@ fn a_unit_paying_in_silver_keeps_its_food() {
     }
 }
 
-/// Step 2 contended: two eaters want three grain and the hex holds two, so which one eats cannot
-/// be told (the column doubts both). Only what each ate of its own at step 1 comes off.
+/// `rules/sequenceofevents` gives report-order precedence, so a short faction-food pool settles
+/// each eater in that order: the first gets its last grain, and the second pays the remainder.
 #[test]
-fn a_contended_pool_takes_only_the_eaters_own_food() {
+fn a_short_faction_food_pool_settles_in_report_order() {
     let text = report(&[
         "* Granary (900), Foo (1), orc [ORC], 2 grain [GRAI], 10 silver [SILV]. Weight: 20. \
          Capacity: 0/0/15/0.",
@@ -231,7 +231,8 @@ fn a_contended_pool_takes_only_the_eaters_own_food() {
 
     let review = review_of(&text, "");
     assert_eq!(silver_of(&review, "901").own_food_covered, 50);
-    assert_eq!(silver_of(&review, "901").upkeep, None, "contended");
+    assert_eq!(silver_of(&review, "901").upkeep, Some(0));
+    assert_eq!(silver_of(&review, "902").upkeep, Some(50));
 
     let first = preview_row(&text, "", "901");
     assert_eq!(holding(&first, "GRAI"), 0, "{:?}", first.unit.items);
@@ -245,10 +246,32 @@ fn a_contended_pool_takes_only_the_eaters_own_food() {
         &document(&text, ""),
     )
     .expect("the committed ruleset loads");
-    if let Some(granary) = common::preview_row(&text, &preview, "900") {
-        assert_eq!(holding(granary, "GRAI"), 2, "{:?}", granary.unit.items);
-        assert!(eaten(granary).is_empty());
-    }
+    let granary = common::expect_preview_row(&text, &preview, "900");
+    assert_eq!(holding(granary, "GRAI"), 0, "{:?}", granary.unit.items);
+    assert_eq!(
+        eaten(granary),
+        vec![("GRAI".to_string(), -2)],
+        "{:?}",
+        granary.item_changes
+    );
+}
+
+/// `rules/sequenceofevents` gives an open-field unit precedence over a unit displayed inside a
+/// building, because the parsed region retains that report traversal order.
+#[test]
+fn a_short_faction_food_pool_visits_open_field_units_before_building_units() {
+    let text = report(&[
+        "* Granary (900), Foo (1), orc [ORC], grain [GRAI]. Weight: 15. Capacity: 0/0/15/0.",
+        "* First (901), Foo (1), consuming faction's food, 10 orcs [ORC]. Weight: 100. \
+         Capacity: 0/0/150/0.",
+        "+ Keep [1] : Tower.",
+        "  * Second (902), Foo (1), consuming faction's food, 10 orcs [ORC]. Weight: 100. \
+         Capacity: 0/0/150/0.",
+    ]);
+
+    let review = review_of(&text, "");
+    assert_eq!(silver_of(&review, "901").upkeep, Some(50));
+    assert_eq!(silver_of(&review, "902").upkeep, Some(100));
 }
 
 /// Two foods of equal value (`data/GRAI`, `data/LIVE`): each tag comes off by what was eaten of it.
