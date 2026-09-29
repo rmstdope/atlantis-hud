@@ -2646,6 +2646,39 @@ mod tests {
         assert_eq!(reopened.manifest.metadata.map, Some(shape));
     }
 
+    #[test]
+    fn stating_map_sizes_records_them_in_the_manifest() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+        let sizes = MapSizes {
+            levels: std::collections::BTreeMap::from([
+                (
+                    "surface".to_string(),
+                    atlantis_hud_core::backup::MapSize {
+                        width: 72,
+                        height: 96,
+                    },
+                ),
+                (
+                    "underworld".to_string(),
+                    atlantis_hud_core::backup::MapSize {
+                        width: 48,
+                        height: 48,
+                    },
+                ),
+            ]),
+            wrap_x: true,
+            wrap_y: false,
+        };
+
+        let updated = set_game_map_sizes(dir.path(), GAME_ID, Some(sizes.clone()))
+            .expect("the map-size change should succeed");
+        assert_eq!(updated.metadata.map_sizes, Some(sizes.clone()));
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
+        assert_eq!(reopened.manifest.metadata.map_sizes, Some(sizes));
+    }
+
     /// A game created before the app asked has no map at all, and must stay that way until someone
     /// says otherwise: absence is what makes the ruleset's default read as *assumed*.
     #[test]
@@ -2665,6 +2698,14 @@ mod tests {
         let error = set_game_map(dir.path(), "no-such-game", None)
             .expect_err("changing a missing game should fail");
 
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
+    }
+
+    #[test]
+    fn changing_map_sizes_of_a_missing_game_names_it() {
+        let dir = tempdir().expect("tempdir");
+        let error = set_game_map_sizes(dir.path(), "no-such-game", None)
+            .expect_err("changing a missing game should fail");
         assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
 
