@@ -96,6 +96,51 @@ describe("the units pane on an empty hex", () => {
     expect(markup).toContain("last seen turn 19");
   });
 
+  it("lists a formed unit arriving in a stale hex", () => {
+    const arriving = unit({ unitId: "new-1", name: "Pioneers", regionId: "1:6,52" });
+    const markup = draw(
+      hex({
+        knowledge: "stale",
+        lastSeenTurn: 21,
+        region: region({ units: [] })
+      }),
+      {
+        regionId: "1:6,52",
+        units: [
+          {
+            unit: arriving,
+            status: "arriving",
+            changes: [],
+            arrivingFrom: "1:5,51",
+            departingTo: null,
+            aboard: null,
+            uncounted: [],
+            takenUnshown: [],
+            produced: [],
+            built: [],
+            created: [],
+            transportSent: [],
+            transportReceived: [],
+            transportTargetIssues: [],
+            shipmentUnmeasured: false,
+            itemChanges: [],
+            dissolvesInto: null,
+            formed: true,
+            dissolving: false,
+            skillMerges: [],
+            reportedSkills: [],
+            recruitsUnmerged: false,
+            menOfUnknownSkill: [],
+            study: null
+          }
+        ]
+      }
+    );
+
+    expect(markup).toContain("Pioneers");
+    expect(markup).toContain("← 1:5,51");
+  });
+
   it("does not mark a current unit as remembered", () => {
     const markup = draw(hex({ region: region({ units: [unit()] }) }));
 
