@@ -76,14 +76,24 @@ pub struct TooManyPoints {
     pub available: i64,
 }
 
-/// Why one FACTION order fails. Exactly one of the two is filled: `points` when the order spends
-/// too many points (then `limits` is empty), otherwise every broken limit in the order mages,
-/// apprentices, quartermasters.
+/// One faction area whose allocation is below the world's stated minimum.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct MinimumAllocation {
+    pub area: FactionArea,
+    pub points: i64,
+}
+
+/// Why one FACTION order fails. Exactly one failure category is populated: `points` when the order
+/// spends too many points, `minimums` when an area has too few points, otherwise every broken limit
+/// in the order mages, apprentices, quartermasters.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FactionFailure {
     pub points: Option<TooManyPoints>,
+    pub minimums: Vec<MinimumAllocation>,
     pub limits: Vec<BrokenLimit>,
 }
 
@@ -159,10 +169,31 @@ pub fn judge(
                 total,
                 available: points.available,
             }),
+            minimums: Vec::new(),
             limits: Vec::new(),
         }));
     }
     let row = |value: i64| points.table.iter().find(|row| row.points == value);
+    let minimum = points.table.iter().map(|row| row.points).min()?;
+    let minimums: Vec<MinimumAllocation> = [
+        (FactionArea::Martial, split.martial),
+        (FactionArea::Magic, split.magic),
+    ]
+    .into_iter()
+    .filter_map(|(area, points)| {
+        (points < minimum).then_some(MinimumAllocation {
+            area,
+            points: minimum,
+        })
+    })
+    .collect();
+    if !minimums.is_empty() {
+        return Some(Err(FactionFailure {
+            points: None,
+            minimums,
+            limits: Vec::new(),
+        }));
+    }
     let (martial, magic) = (row(split.martial)?, row(split.magic)?);
     let limits = FactionLimits {
         regions: martial.regions,
@@ -211,6 +242,7 @@ pub fn judge(
     } else {
         Some(Err(FactionFailure {
             points: None,
+            minimums: Vec::new(),
             limits: broken,
         }))
     }
@@ -293,6 +325,25 @@ pub fn orders_warning(failure: &FactionFailure) -> String {
             "FACTION will fail - MARTIAL {} and MAGIC {} make {} points and this faction has {}",
             points.split.martial, points.split.magic, points.total, points.available
         );
+    }
+    if !failure.minimums.is_empty() {
+        let parts: Vec<String> = failure
+            .minimums
+            .iter()
+            .map(|minimum| {
+                format!(
+                    "{} must have at least {} {}",
+                    area_word(minimum.area),
+                    minimum.points,
+                    if minimum.points == 1 {
+                        "point"
+                    } else {
+                        "points"
+                    }
+                )
+            })
+            .collect();
+        return format!("FACTION will fail - {}", parts.join(" and "));
     }
     let parts: Vec<String> = failure
         .limits
@@ -419,6 +470,7 @@ mod tests {
             judge(split(3, 2), &held, &origins()),
             Some(Err(FactionFailure {
                 points: None,
+                minimums: vec![],
                 limits: vec![BrokenLimit {
                     kind: HeldKind::Mages,
                     held: 5,
@@ -492,6 +544,22 @@ mod tests {
                     total: 7,
                     available: 5,
                 }),
+                minimums: vec![],
+                limits: vec![],
+            }))
+        );
+    }
+
+    #[test]
+    fn an_allocation_below_the_table_minimum_fails() {
+        assert_eq!(
+            judge(split(0, 3), &NONE_HELD, &trident()),
+            Some(Err(FactionFailure {
+                points: None,
+                minimums: vec![MinimumAllocation {
+                    area: FactionArea::Martial,
+                    points: 1,
+                }],
                 limits: vec![],
             }))
         );
@@ -499,7 +567,12 @@ mod tests {
 
     #[test]
     fn a_points_value_the_table_does_not_state_is_not_judged() {
-        assert_eq!(judge(split(0, 3), &NONE_HELD, &trident()), None);
+        let incomplete = FactionPoints {
+            available: 5,
+            table: vec![row(1, 1, 1, 1, 1), row(2, 2, 2, 2, 2)],
+            evidence: "incomplete table".to_string(),
+        };
+        assert_eq!(judge(split(3, 2), &NONE_HELD, &incomplete), None);
     }
 
     #[test]
@@ -631,6 +704,7 @@ mod tests {
         };
         let limits = |limits| FactionFailure {
             points: None,
+            minimums: vec![],
             limits,
         };
         assert_eq!(
@@ -667,9 +741,21 @@ mod tests {
                     total: 7,
                     available: 5,
                 }),
+                minimums: vec![],
                 limits: vec![],
             }),
             "FACTION will fail - MARTIAL 4 and MAGIC 3 make 7 points and this faction has 5"
+        );
+        assert_eq!(
+            orders_warning(&FactionFailure {
+                points: None,
+                minimums: vec![MinimumAllocation {
+                    area: FactionArea::Magic,
+                    points: 1,
+                }],
+                limits: vec![],
+            }),
+            "FACTION will fail - MAGIC must have at least 1 point"
         );
     }
 }

@@ -155,10 +155,15 @@ export function factionOrderWarning(faction: FactionOrders): string | null {
   const parts =
     failure.points !== null
       ? [`${failure.points.total} points, the faction has ${failure.points.available}`]
-      : failure.limits.map(
-          (limit) =>
-            `${limit.held} ${HELD_NOUNS[limit.kind][limit.held === 1 ? 0 : 1]}, ${AREA_WORDS[limit.area]} ${limit.points} allows ${limit.allows}`
-        );
+      : failure.minimums.length > 0
+        ? failure.minimums.map(
+            (minimum) =>
+              `${AREA_WORDS[minimum.area]} must have at least ${minimum.points} ${minimum.points === 1 ? "point" : "points"}`
+          )
+        : failure.limits.map(
+            (limit) =>
+              `${limit.held} ${HELD_NOUNS[limit.kind][limit.held === 1 ? 0 : 1]}, ${AREA_WORDS[limit.area]} ${limit.points} allows ${limit.allows}`
+          );
   return `FACTION order will fail — ${parts.join("; ")}`;
 }
 

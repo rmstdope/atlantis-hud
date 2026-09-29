@@ -224,3 +224,38 @@ fn trident_balanced_two_point_faction_order_is_accepted() {
         })
     );
 }
+
+#[test]
+fn trident_faction_orders_require_a_point_in_both_areas() {
+    let first = unit(900);
+    let text = report("Martial 1, Magic 1", "0 (7)", "0 (4)", &[&first]);
+
+    // rules/tablefactionpoints (New Age: Trident) states that each area begins at 1 point.
+    for (script, message) in [
+        (
+            "unit 900\nFACTION MARTIAL 3\n",
+            "FACTION will fail - MAGIC must have at least 1 point",
+        ),
+        (
+            "unit 900\nFACTION MAGIC 3\n",
+            "FACTION will fail - MARTIAL must have at least 1 point",
+        ),
+    ] {
+        let review = review_of_with_ruleset(&text, script, &trident_ruleset());
+
+        assert!(
+            codes(&review).contains(&"faction-order-will-fail"),
+            "{script}: {:?}",
+            review.findings
+        );
+        assert_eq!(review.faction.applied, None, "{script}");
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.message == message),
+            "{script}: {:?}",
+            review.findings
+        );
+    }
+}

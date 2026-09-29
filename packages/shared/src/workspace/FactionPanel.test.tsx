@@ -66,7 +66,11 @@ describe("FactionPanel", () => {
     const html = draw({
       faction: {
         applied: null,
-        lastFailure: { points: { split: { martial: 4, magic: 3 }, total: 7, available: 5 }, limits: [] }
+        lastFailure: {
+          points: { split: { martial: 4, magic: 3 }, total: 7, available: 5 },
+          minimums: [],
+          limits: []
+        }
       }
     });
     expect(html).toContain('data-testid="faction-order-warning"');
