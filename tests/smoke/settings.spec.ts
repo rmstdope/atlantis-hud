@@ -502,6 +502,42 @@ test("a corrected map size is still there when settings are reopened", async ({ 
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
+test("map dimensions re-entered after clearing persist while the map is configured", async ({ page }) => {
+  await clearGames(page);
+  await page.getByTestId("game-ruleset").selectOption("newage-arcanum");
+  await page.getByTestId("game-map-width").fill("40");
+  await page.getByTestId("game-map-height").fill("60");
+  await page.getByTestId("game-map-wrap-x").check();
+  await createGame(page, "Re-entered map size");
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-game").click();
+
+  const width = page.getByTestId("settings-map-width");
+  const height = page.getByTestId("settings-map-height");
+  await height.fill("");
+  await height.blur();
+  await expect(height).toBeEnabled();
+
+  await height.fill("60");
+  await height.blur();
+  await expect(height).toBeEnabled();
+  await expect(height).toHaveValue("60");
+
+  await width.fill("40");
+  await width.blur();
+  await expect(width).toHaveValue("40");
+  await expect(page.getByTestId("settings-map-wrap-x")).toBeChecked();
+
+  await page.getByTestId("settings-close").click();
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-game").click();
+
+  await expect(page.getByTestId("settings-map-width")).toHaveValue("40");
+  await expect(page.getByTestId("settings-map-height")).toHaveValue("60");
+  await expect(page.getByTestId("settings-map-wrap-x")).toBeChecked();
+});
+
 /**
  * The create form's map fields fit the dialog they are in.
  *

@@ -984,13 +984,8 @@ export function GameMapSettings({
     }
     const written = mapFromDraft(next);
     committed.current = written;
-    // Clearing the fields records nothing, and the game then falls back to its ruleset's default -
-    // which may be no map at all. In that case nothing about the map changes identity, so the
-    // effect above never runs and half-typed text would sit above a line saying no map is known.
-    // Normalising here says out loud what was stored: nothing.
-    if (written === null) {
-      setDraft(draftOf(null));
-    }
+    // An incomplete draft records no map, but stays in the fields so the player can fill its other
+    // dimension before making it a complete map.
     onChangeMap(written ?? undefined);
   };
 
